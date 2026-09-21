@@ -828,7 +828,7 @@ async function handleGetDeploymentStatus({
 
   try {
     const [build, rule, routeEnabled] = await Promise.all([
-      getLatestBuild(token, row.accountId, row.workerTag),
+      getLatestBuild(token, row.accountId, row.workerTag, row.triggerUuid),
       // A rule deleted in the Cloudflare dashboard leaves the Worker and its
       // last build in place, so nothing else would show that deploys stopped.
       // Failing to list rules is not evidence that the rule is gone.
@@ -913,6 +913,13 @@ async function handleDisconnect({
     try {
       await deleteTrigger(token, row.accountId, row.triggerUuid);
     } catch (error) {
+      if (isCloudflareAuthFailure(error)) {
+        // The way out is not obvious from Cloudflare's own message.
+        throw new DyadError(
+          "Cloudflare refused the saved API token, so the deploy rule could not be removed. Remove the token under Settings > Integrations, then add a working one and disconnect again. Disconnecting without a token also works, but leaves the rule on Cloudflare.",
+          DyadErrorKind.Auth,
+        );
+      }
       throw toCloudflareDyadError(
         error,
         "Could not remove the deploy rule from Cloudflare",
@@ -922,6 +929,24 @@ async function handleDisconnect({
   await db
     .delete(cloudflareAppConnections)
     .where(eq(cloudflareAppConnections.id, row.id));
+}
+
+async function handleListWorkers(
+  accountId: string,
+): Promise<{ name: string }[]> {
+  try {
+    const workers = await listWorkers(requireToken(), accountId);
+    return workers.map(({ name }) => ({ name }));
+  } catch (error) {
+    if (error instanceof CloudflareApiError && error.status === 403) {
+      // A token can be good for one account and not another.
+      throw new DyadError(
+        "This API token cannot use Workers in this Cloudflare account. Pick another account, or add a token that can.",
+        DyadErrorKind.Auth,
+      );
+    }
+    throw toCloudflareDyadError(error, "Could not list Workers");
+  }
 }
 
 // --- Registration ---
@@ -952,12 +977,7 @@ export function registerCloudflareHandlers() {
     cloudflareContracts.listWorkers,
     async (_, { accountId }) => {
       assertCloudflareEnabled();
-      try {
-        const workers = await listWorkers(requireToken(), accountId);
-        return workers.map(({ name }) => ({ name }));
-      } catch (error) {
-        throw toCloudflareDyadError(error, "Could not list Workers");
-      }
+      return handleListWorkers(accountId);
     },
   );
 
@@ -1014,6 +1034,7 @@ export function registerCloudflareHandlers() {
 }
 
 export const cloudflareHandlersForTesting = {
+  handleListWorkers,
   clearGithubIdentityCache: () => githubIdentityCache.clear(),
   handleSaveToken,
   handleGetAppStatus,

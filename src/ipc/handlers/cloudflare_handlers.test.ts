@@ -111,6 +111,8 @@ interface FakeCloudflare {
   startedBuilds: string[];
   buildVariables: Record<string, Record<string, unknown>>;
   failOn: ((method: string, path: string) => boolean) | null;
+  /** The status a simulated failure answers with. */
+  failStatus: number;
   calls: string[];
 }
 
@@ -168,7 +170,7 @@ async function fakeFetch(
   const path = url.pathname.replace("/client/v4", "");
   cloudflare.calls.push(`${method} ${path}`);
   if (cloudflare.failOn?.(method, path)) {
-    return fail(500, 1, "simulated failure");
+    return fail(cloudflare.failStatus, 1, "simulated failure");
   }
   const body =
     typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
@@ -355,6 +357,7 @@ beforeEach(() => {
     startedBuilds: [],
     buildVariables: {},
     failOn: null,
+    failStatus: 500,
     calls: [],
   };
   vi.stubGlobal("fetch", fakeFetch);
@@ -1052,7 +1055,43 @@ describe("connecting to a Worker that already exists", () => {
   });
 });
 
+describe("listing an account's Workers", () => {
+  it("says the account is the problem when the token cannot use it", async () => {
+    // A token can be good for one account and not another.
+    cloudflare.failOn = (_, path) => path.endsWith("/workers/scripts");
+    cloudflare.failStatus = 403;
+    await expect(handlers.handleListWorkers(ACCOUNT)).rejects.toMatchObject({
+      kind: "auth",
+      message: expect.stringMatching(
+        /cannot use Workers in this Cloudflare account/,
+      ),
+    });
+  });
+
+  it("reports any other failure as it is", async () => {
+    cloudflare.failOn = (_, path) => path.endsWith("/workers/scripts");
+    await expect(handlers.handleListWorkers(ACCOUNT)).rejects.toThrow(
+      /Could not list Workers: simulated failure/,
+    );
+  });
+});
+
 describe("disconnecting", () => {
+  it("says how to get out when Cloudflare refuses the token", async () => {
+    await handlers.handleConnectWorker({ appId, ...CONNECT });
+    cloudflare.failOn = (method) => method === "DELETE";
+    cloudflare.failStatus = 401;
+
+    await expect(
+      handlers.handleDisconnect({ appId, rootDirectory: "worker" }),
+    ).rejects.toMatchObject({
+      kind: "auth",
+      message: expect.stringMatching(/Remove the token under Settings/),
+    });
+    // The rule is still there, so the connection must be too.
+    expect(connectionRows()).toHaveLength(1);
+  });
+
   it("removes the deploy rule and the row but keeps the Worker", async () => {
     await handlers.handleConnectWorker({ appId, ...CONNECT });
 
@@ -1165,6 +1204,42 @@ describe("deployment status", () => {
         rootDirectory: "worker",
       }),
     ).toMatchObject({ state: "building", commitHash: "abc1234def" });
+  });
+
+  it("reports what this folder's rule last deployed, not the Worker's other builds", async () => {
+    const own = { trigger_uuid: cloudflare.triggers[0].trigger_uuid };
+    cloudflare.builds = [
+      {
+        build_uuid: "b-1",
+        status: "stopped",
+        build_outcome: "success",
+        created_on: "2026-01-01T00:00:00Z",
+        build_trigger_metadata: { commit_hash: "abc1234def" },
+        trigger: own,
+      },
+      // A preview rule on the same Worker, building some other branch.
+      {
+        build_uuid: "b-2",
+        status: "stopped",
+        build_outcome: "fail",
+        created_on: "2026-01-02T00:00:00Z",
+        trigger: { trigger_uuid: "preview-rule" },
+      },
+      // A push Cloudflare looked at and deployed nothing for.
+      {
+        build_uuid: "b-3",
+        status: "stopped",
+        build_outcome: "skipped",
+        created_on: "2026-01-03T00:00:00Z",
+        trigger: own,
+      },
+    ];
+    expect(
+      await handlers.handleGetDeploymentStatus({
+        appId,
+        rootDirectory: "worker",
+      }),
+    ).toMatchObject({ state: "live", commitHash: "abc1234def" });
   });
 
   it("explains a failure with the end of its log", async () => {
@@ -1282,7 +1357,10 @@ describe("deployment status", () => {
   });
 
   it("finds the address of a Worker whose route was turned on after connecting", async () => {
-    db.update(cloudflareAppConnections).set({ workerUrl: null }).run();
+    db.update(cloudflareAppConnections)
+      .set({ workerUrl: null })
+      .where(eq(cloudflareAppConnections.appId, appId))
+      .run();
     expect(
       (
         await handlers.handleGetDeploymentStatus({
@@ -1294,6 +1372,8 @@ describe("deployment status", () => {
   });
 
   it("keeps the stored address when the route cannot be read", async () => {
+    // Off, so an answer that did get through would clear the address and
+    // fail this test.
     cloudflare.workers.get("shop-api")!.routeEnabled = false;
     cloudflare.failOn = (_, path) => path.endsWith("/subdomain");
     expect(

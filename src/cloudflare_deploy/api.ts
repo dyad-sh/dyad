@@ -693,23 +693,39 @@ export interface CloudflareBuild {
   build_outcome?: string | null;
   created_on?: string | null;
   build_trigger_metadata?: { commit_hash?: string | null } | null;
+  /** The rule that started the build. */
+  trigger?: { trigger_uuid?: string | null } | null;
 }
 
-/** The newest build for a Worker, or null before the first one. */
+/**
+ * The newest build a rule ran, or null before the first one.
+ *
+ * A Worker's builds include those of its other rules, such as a preview rule
+ * for other branches, and those Cloudflare skipped without deploying anything.
+ * Neither says what this rule last deployed. A build listed without its rule
+ * is kept.
+ */
 export async function getLatestBuild(
   token: string,
   accountId: string,
   workerTag: string,
+  triggerUuid: string,
 ): Promise<CloudflareBuild | null> {
   const builds = await request<CloudflareBuild[]>(
     token,
     "GET",
     apiPath`/accounts/${accountId}/builds/workers/${workerTag}/builds`,
   );
-  if (!builds || builds.length === 0) {
+  const own = (builds ?? []).filter(
+    (build) =>
+      build.build_outcome !== "skipped" &&
+      (!build.trigger?.trigger_uuid ||
+        build.trigger.trigger_uuid === triggerUuid),
+  );
+  if (own.length === 0) {
     return null;
   }
-  return [...builds].sort((a, b) =>
+  return [...own].sort((a, b) =>
     (b.created_on ?? "").localeCompare(a.created_on ?? ""),
   )[0];
 }

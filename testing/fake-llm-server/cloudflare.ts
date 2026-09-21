@@ -30,6 +30,7 @@ interface FakeBuild {
   created_on: string;
   external_script_id: string;
   build_trigger_metadata: { commit_hash: string };
+  trigger: { trigger_uuid: string };
 }
 
 interface State {
@@ -288,6 +289,7 @@ export function registerFakeCloudflare(app: Express): void {
       created_on: new Date().toISOString(),
       external_script_id: trigger.external_script_id,
       build_trigger_metadata: { commit_hash: "fa4ec0ffee0000" },
+      trigger: { trigger_uuid: trigger.trigger_uuid },
     };
     state.builds.push(build);
     ok(res, build);

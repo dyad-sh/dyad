@@ -74,6 +74,11 @@ export const CloudflareDeploymentStatusSchema = z.object({
    * folder whatever the last build says.
    */
   ruleMissing: z.boolean(),
+  /**
+   * What the rule deploys, when that is no longer the repository, branch and
+   * folder the app syncs. Null when it matches.
+   */
+  ruleDeploys: z.string().nullable(),
 });
 
 export type CloudflareDeploymentStatus = z.infer<

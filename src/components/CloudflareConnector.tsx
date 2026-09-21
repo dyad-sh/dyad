@@ -794,6 +794,13 @@ function DeploymentCard({
           again to restore it.
         </div>
       )}
+      {status.data?.ruleDeploys && (
+        <div className={warningClass} data-testid="cloudflare-rule-elsewhere">
+          This rule deploys {status.data.ruleDeploys}, which is not what this
+          app syncs to now, so syncing does not deploy {targetLabel}. Disconnect{" "}
+          {targetLabel} and connect it again to change that.
+        </div>
+      )}
       {status.data?.tokenRevoked && (
         <div className={warningClass}>
           The Cloudflare API token this deployment uses was deleted or rolled.
@@ -807,7 +814,7 @@ function DeploymentCard({
         </pre>
       )}
 
-      {hasConfig && (
+      {hasConfig && !status.data?.ruleDeploys && (
         <p className="text-xs text-gray-500 dark:text-gray-400">
           {deployTriggerText({
             rootDirectory: connection.rootDirectory,

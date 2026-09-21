@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   describeTriggerSource,
+  triggerDeploys,
   getTriggerRootDirectory,
   CloudflareApiError,
   deleteTrigger,
@@ -124,6 +125,41 @@ describe("what a rule deploys", () => {
     expect(describeTriggerSource({ ...rule, root_directory: "/" })).toBe(
       "acme/shop (branch staging, root folder)",
     );
+  });
+});
+
+describe("whether a rule still deploys what the app syncs", () => {
+  const rule = {
+    trigger_uuid: "rule-1",
+    branch_includes: ["main"],
+    root_directory: "/api",
+    repo_connection: { repo_name: "Shop", provider_account_name: "Acme" },
+  };
+  const app = {
+    owner: "acme",
+    repo: "shop",
+    branch: "main",
+    rootDirectory: "api",
+  };
+
+  it("does when repository, branch and folder match, whatever the case", () => {
+    expect(triggerDeploys(rule, app)).toBe(true);
+  });
+
+  it("does not for another branch, folder or repository", () => {
+    expect(triggerDeploys(rule, { ...app, branch: "redesign" })).toBe(false);
+    expect(triggerDeploys(rule, { ...app, rootDirectory: "" })).toBe(false);
+    expect(triggerDeploys(rule, { ...app, repo: "shop-v2" })).toBe(false);
+    expect(triggerDeploys(rule, { ...app, owner: "someone" })).toBe(false);
+  });
+
+  it("does not hold a missing repository against the rule", () => {
+    const { repo_connection: _, ...unnamed } = rule;
+    expect(triggerDeploys(unnamed, { ...app, repo: "shop-v2" })).toBe(true);
+    expect(triggerDeploys(rule, { ...app, owner: null, repo: null })).toBe(
+      true,
+    );
+    expect(describeTriggerSource(unnamed)).toBe("branch main, folder api");
   });
 });
 

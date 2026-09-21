@@ -3,6 +3,7 @@
  * form, Worker names, and the rule that deploys a target on every push.
  */
 
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { slugifyAppPath } from "@/shared/slugify";
 
 // ---------------------------------------------------------------------------
@@ -139,7 +140,10 @@ export interface DeployRuleBody {
 export function buildDeployRule(input: DeployRuleInput): DeployRuleBody {
   if (!isValidWorkerName(input.workerName)) {
     // The name is interpolated into a shell command run by Cloudflare.
-    throw new Error(`Invalid Worker name: ${input.workerName}`);
+    throw new DyadError(
+      `Invalid Worker name: ${input.workerName}`,
+      DyadErrorKind.Validation,
+    );
   }
   const isRoot = input.rootDirectory === "";
   return {

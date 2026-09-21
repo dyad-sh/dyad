@@ -18,6 +18,7 @@ const holder = vi.hoisted(() => ({
   files: {} as Record<string, string>,
   githubCalls: 0,
   githubOffline: false,
+  githubStatus: null as number | null,
   localPnpmVersion: "11.4.2" as string | undefined,
 }));
 
@@ -114,6 +115,10 @@ interface FakeCloudflare {
 }
 
 let cloudflare: FakeCloudflare;
+const repoConnections: Record<
+  string,
+  { repo_name: string; provider_account_name: string }
+> = {};
 let nextId = 0;
 const id = (prefix: string) => `${prefix}-${++nextId}`;
 
@@ -137,6 +142,9 @@ async function fakeFetch(
   if (url.origin === "https://github.test") {
     holder.githubCalls += 1;
     if (holder.githubOffline) throw new TypeError("fetch failed");
+    if (holder.githubStatus !== null) {
+      return new Response("{}", { status: holder.githubStatus });
+    }
     const headers = new Headers(init?.headers);
     if (headers.get("authorization") !== "Bearer gh-token") {
       return new Response(JSON.stringify({ message: "Bad credentials" }), {
@@ -215,6 +223,10 @@ async function fakeFetch(
       : fail(404, 12000, "Not found");
   }
   if (path === `${account}/builds/repos/connections`) {
+    repoConnections[`conn-${body.repo_id}`] = {
+      repo_name: body.repo_name,
+      provider_account_name: body.provider_account_name,
+    };
     return ok({ repo_connection_uuid: `conn-${body.repo_id}` });
   }
   if (path === `${account}/builds/tokens`) {
@@ -250,7 +262,11 @@ async function fakeFetch(
         "A trigger already exists for this configuration",
       );
     }
-    const trigger = { ...body, trigger_uuid: id("trigger") } as FakeTrigger;
+    const trigger = {
+      ...body,
+      trigger_uuid: id("trigger"),
+      repo_connection: repoConnections[body.repo_connection_uuid],
+    } as FakeTrigger;
     cloudflare.triggers.push(trigger);
     return ok(trigger);
   }
@@ -321,6 +337,7 @@ beforeEach(() => {
   holder.localPnpmVersion = "11.4.2";
   holder.githubCalls = 0;
   holder.githubOffline = false;
+  holder.githubStatus = null;
   handlers.clearGithubIdentityCache();
   holder.files = {
     "worker/wrangler.jsonc": `{ "name": "shop-api" }`,
@@ -505,8 +522,20 @@ describe("reading the target", () => {
     holder.settings.githubAccessToken = { value: "stale-token" };
     await expect(
       handlers.handleConnectWorker({ appId, ...CONNECT }),
-    ).rejects.toThrow(/Could not read acme\/shop from GitHub \(401\)/);
+    ).rejects.toMatchObject({
+      message: "Could not read this app's repository from GitHub (401).",
+      kind: "auth",
+    });
     expect(cloudflare.workers.size).toBe(0);
+  });
+
+  it("keeps the repository's name out of a failure that gets reported", async () => {
+    holder.githubStatus = 500;
+    const error = await handlers
+      .handleConnectWorker({ appId, ...CONNECT })
+      .catch((e: unknown) => e);
+    expect(error).toMatchObject({ kind: "external" });
+    expect((error as Error).message).not.toMatch(/acme|shop/);
   });
 });
 
@@ -940,8 +969,70 @@ describe("connecting to a Worker that already exists", () => {
         overwrite: true,
       }),
     ).rejects.toThrow(
-      /simulated failure.*from someone\/other-site was already removed/,
+      /simulated failure.*from the other repository was already removed/,
     );
+  });
+
+  it("does not name the replaced rule's repository in that error", async () => {
+    // The error is reported, and the name may be a private repository's.
+    existingWorkerDeployingFrom("conn-999");
+    cloudflare.failOn = (method, path) =>
+      method === "POST" && path.endsWith("/builds/triggers");
+
+    const error = await handlers
+      .handleConnectWorker({
+        appId,
+        ...CONNECT,
+        mode: "existing",
+        overwrite: true,
+      })
+      .catch((e: unknown) => e);
+    expect((error as Error).message).not.toMatch(/someone|other-site/);
+  });
+
+  it("says who has the Worker when another connect wins the race for it", async () => {
+    cloudflare.workers.set("shop-api", { tag: "tag-old", routeEnabled: false });
+    const otherAppId = db
+      .insert(apps)
+      .values({ name: "Blog", path: "blog" })
+      .returning({ id: apps.id })
+      .get().id;
+    // The other connect lands after this one checked the Worker was free.
+    cloudflare.failOn = (method, path) => {
+      if (method === "POST" && path.endsWith("/builds/triggers")) {
+        db.insert(cloudflareAppConnections)
+          .values({
+            appId: otherAppId,
+            rootDirectory: "",
+            accountId: ACCOUNT,
+            workerName: "shop-api",
+            workerTag: "tag-old",
+            triggerUuid: "their-rule",
+            workerUrl: null,
+          })
+          .run();
+      }
+      return false;
+    };
+
+    const error = await handlers
+      .handleConnectWorker({ appId, ...CONNECT, mode: "existing" })
+      .catch((e: unknown) => e);
+
+    expect(error).toMatchObject({ kind: "conflict" });
+    expect((error as Error).message).toMatch(
+      /already deploys the app root of Blog/,
+    );
+    expect((error as Error).message).not.toMatch(/UNIQUE/);
+    // This connect's rule is rolled back; the winner's row is untouched.
+    expect(cloudflare.triggers).toHaveLength(0);
+    expect(
+      db
+        .select()
+        .from(cloudflareAppConnections)
+        .all()
+        .map((row) => row.appId),
+    ).toEqual([otherAppId]);
   });
 
   it("says nothing about a removed rule when none was removed", async () => {
@@ -1132,6 +1223,63 @@ describe("deployment status", () => {
       state: "live",
       ruleMissing: true,
     });
+  });
+
+  it("says nothing about where the rule points while it matches the app", async () => {
+    expect(
+      (
+        await handlers.handleGetDeploymentStatus({
+          appId,
+          rootDirectory: "worker",
+        })
+      ).ruleDeploys,
+    ).toBeNull();
+  });
+
+  it("says what the rule deploys once the app syncs another branch", async () => {
+    db.update(apps)
+      .set({ githubBranch: "redesign" })
+      .where(eq(apps.id, appId))
+      .run();
+    expect(
+      (
+        await handlers.handleGetDeploymentStatus({
+          appId,
+          rootDirectory: "worker",
+        })
+      ).ruleDeploys,
+    ).toBe("acme/shop (branch main, folder worker)");
+  });
+
+  it("says what the rule deploys once the app syncs another repository", async () => {
+    db.update(apps)
+      .set({ githubRepo: "shop-v2" })
+      .where(eq(apps.id, appId))
+      .run();
+    expect(
+      (
+        await handlers.handleGetDeploymentStatus({
+          appId,
+          rootDirectory: "worker",
+        })
+      ).ruleDeploys,
+    ).toBe("acme/shop (branch main, folder worker)");
+  });
+
+  it("does not guess where the rule points when rules could not be listed", async () => {
+    db.update(apps)
+      .set({ githubBranch: "redesign" })
+      .where(eq(apps.id, appId))
+      .run();
+    cloudflare.failOn = (_, path) => path.endsWith("/triggers");
+    expect(
+      (
+        await handlers.handleGetDeploymentStatus({
+          appId,
+          rootDirectory: "worker",
+        })
+      ).ruleDeploys,
+    ).toBeNull();
   });
 
   it("does not call a rule missing just because rules could not be listed", async () => {

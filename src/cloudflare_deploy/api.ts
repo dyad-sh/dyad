@@ -483,12 +483,44 @@ export function getTriggerRootDirectory(trigger: CloudflareTrigger): string {
   return (trigger.root_directory ?? "").replace(/^\/+|\/+$/g, "");
 }
 
+/**
+ * Whether a rule deploys what is expected of it. A rule listed without its
+ * repository is not counted against the repository.
+ */
+export function triggerDeploys(
+  trigger: CloudflareTrigger,
+  expected: {
+    owner: string | null;
+    repo: string | null;
+    branch: string;
+    rootDirectory: string;
+  },
+): boolean {
+  const owner = trigger.repo_connection?.provider_account_name;
+  const repo = trigger.repo_connection?.repo_name;
+  const sameRepo =
+    !owner ||
+    !repo ||
+    !expected.owner ||
+    !expected.repo ||
+    (owner.toLowerCase() === expected.owner.toLowerCase() &&
+      repo.toLowerCase() === expected.repo.toLowerCase());
+  return (
+    sameRepo &&
+    (trigger.branch_includes ?? []).includes(expected.branch) &&
+    getTriggerRootDirectory(trigger) === expected.rootDirectory
+  );
+}
+
 /** The repository, branch and folder a rule deploys, for showing to the user. */
 export function describeTriggerSource(trigger: CloudflareTrigger): string {
   const branches = (trigger.branch_includes ?? []).join(", ");
   const root = getTriggerRootDirectory(trigger);
-  const folder = root === "" ? "root folder" : `folder ${root}`;
-  return `${describeTriggerRepo(trigger)} (branch ${branches}, ${folder})`;
+  const where = `branch ${branches}, ${root === "" ? "root folder" : `folder ${root}`}`;
+  // A listing that leaves the repository out still says where in it.
+  return trigger.repo_connection?.repo_name
+    ? `${describeTriggerRepo(trigger)} (${where})`
+    : where;
 }
 
 export async function listTriggers(

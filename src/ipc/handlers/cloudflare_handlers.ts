@@ -47,6 +47,7 @@ import {
   setTriggerBuildVariables,
   startBuild,
   toCloudflareDyadError,
+  triggerDeploys,
   updateTrigger,
   upsertRepoConnection,
   verifyToken,
@@ -307,16 +308,20 @@ async function getGithubRepoIdentity(app: AppRow): Promise<GithubRepoIdentity> {
       { headers: { Authorization: `Bearer ${githubToken}` } },
     );
   } catch (error) {
-    // Being offline is not a bug to report.
     throw new DyadError(
       `Could not reach GitHub: ${error instanceof Error ? error.message : String(error)}`,
       DyadErrorKind.External,
     );
   }
   if (!response.ok) {
+    // Without the repository's name, which would go out with the error report.
     throw new DyadError(
-      `Could not read ${app.githubOrg}/${app.githubRepo} from GitHub (${response.status}).`,
-      response.status === 404 ? DyadErrorKind.NotFound : DyadErrorKind.External,
+      `Could not read this app's repository from GitHub (${response.status}).`,
+      response.status === 404
+        ? DyadErrorKind.NotFound
+        : response.status === 401 || response.status === 403
+          ? DyadErrorKind.Auth
+          : DyadErrorKind.External,
     );
   }
   const repo = (await response.json()) as {
@@ -568,7 +573,7 @@ async function handleConnectWorker(
   let createdWorkerName: string | null = null;
   let createdTriggerUuid: string | null = null;
   let rewrittenTrigger: CloudflareTrigger | null = null;
-  const removedRuleRepos: string[] = [];
+  let removedForeignRule = false;
   try {
     if (!(await canCloudflareSeeRepo(token, accountId, repo, branch))) {
       throw new DyadError(
@@ -674,7 +679,7 @@ async function handleConnectWorker(
 
     for (const trigger of foreignTriggers) {
       await deleteTrigger(token, accountId, trigger.trigger_uuid);
-      removedRuleRepos.push(describeTriggerRepo(trigger));
+      removedForeignRule = true;
     }
     let triggerUuid: string;
     if (ownRule) {
@@ -699,18 +704,35 @@ async function handleConnectWorker(
       );
     }
 
-    const [row] = await db
-      .insert(cloudflareAppConnections)
-      .values({
-        appId,
-        rootDirectory,
-        accountId,
-        workerName,
-        workerTag: worker.tag,
-        triggerUuid,
-        workerUrl,
-      })
-      .returning();
+    let row: ConnectionRow;
+    try {
+      [row] = await db
+        .insert(cloudflareAppConnections)
+        .values({
+          appId,
+          rootDirectory,
+          accountId,
+          workerName,
+          workerTag: worker.tag,
+          triggerUuid,
+          workerUrl,
+        })
+        .returning();
+    } catch (error) {
+      if (
+        !(error instanceof Error) ||
+        !error.message.includes("UNIQUE constraint failed")
+      ) {
+        throw error;
+      }
+      // Another connect took the Worker after the check above. Say so the
+      // way that check does.
+      await assertWorkerIsFree(accountId, worker.tag, workerName);
+      throw new DyadError(
+        "This folder was connected a moment ago. Reopen the Cloudflare tab to see it.",
+        DyadErrorKind.Conflict,
+      );
+    }
     // From here the connection is real; nothing below may undo it.
     createdWorkerName = null;
     createdTriggerUuid = null;
@@ -754,12 +776,14 @@ async function handleConnectWorker(
       error,
       "Could not connect the Worker",
     );
-    if (removedRuleRepos.length > 0 && failure instanceof DyadError) {
+    if (removedForeignRule && failure instanceof DyadError) {
       // Cloudflare refuses a new rule while the old one exists, so it was
       // already gone when this failed, and its secrets cannot be read back
-      // to recreate it. The user has to be told.
+      // to recreate it. The user has to be told. The repository is not named:
+      // they confirmed it a moment ago, and the message goes out with the
+      // error report.
       throw new DyadError(
-        `${failure.message} The rule that deployed this Worker from ${removedRuleRepos.join(", ")} was already removed and has not been put back.`,
+        `${failure.message} The rule that deployed this Worker from the other repository was already removed and has not been put back.`,
         failure.kind,
       );
     }
@@ -775,6 +799,7 @@ async function handleGetDeploymentStatus({
   rootDirectory: string;
 }): Promise<CloudflareDeploymentStatus> {
   const token = requireToken();
+  const app = await requireApp(appId);
   const row = await findConnection(appId, rootDirectory);
   if (!row) {
     throw new DyadError(
@@ -784,7 +809,7 @@ async function handleGetDeploymentStatus({
   }
 
   try {
-    const [build, ruleMissing] = await Promise.all([
+    const [build, rule] = await Promise.all([
       getLatestBuild(token, row.accountId, row.workerTag),
       // A rule deleted in the Cloudflare dashboard leaves the Worker and its
       // last build in place, so nothing else would show that deploys stopped.
@@ -792,12 +817,25 @@ async function handleGetDeploymentStatus({
       listTriggers(token, row.accountId, row.workerTag)
         .then(
           (triggers) =>
-            !triggers.some(
+            triggers.find(
               (trigger) => trigger.trigger_uuid === row.triggerUuid,
-            ),
+            ) ?? null,
         )
-        .catch(() => false),
+        .catch(() => undefined),
     ]);
+    const ruleMissing = rule === null;
+    // The rule stays on the branch and repository it was made for. An app
+    // moved to another one still syncs, but nothing deploys.
+    const ruleDeploys =
+      rule &&
+      !triggerDeploys(rule, {
+        owner: app.githubOrg,
+        repo: app.githubRepo,
+        branch: app.githubBranch ?? DEFAULT_BRANCH,
+        rootDirectory: row.rootDirectory,
+      })
+        ? describeTriggerSource(rule)
+        : null;
     if (!build) {
       return {
         state: "none",
@@ -805,6 +843,7 @@ async function handleGetDeploymentStatus({
         logTail: [],
         tokenRevoked: false,
         ruleMissing,
+        ruleDeploys,
       };
     }
     const state = toDeploymentState(build);
@@ -821,6 +860,7 @@ async function handleGetDeploymentStatus({
       logTail,
       tokenRevoked: isBuildTokenRevokedLog(logTail),
       ruleMissing,
+      ruleDeploys,
     };
   } catch (error) {
     throw toCloudflareDyadError(error, "Could not read the deployment status");

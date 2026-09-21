@@ -445,6 +445,28 @@ describe("a connected Worker", () => {
     expect(screen.getByText("Live")).toBeTruthy();
   });
 
+  it("warns when the rule deploys something other than what the app syncs", async () => {
+    cloudflare.getAppStatus.mockResolvedValue(
+      appStatus({ connections: [CONNECTION] }),
+    );
+    cloudflare.getDeploymentStatus.mockResolvedValue({
+      state: "live",
+      commitHash: "abc1234def",
+      logTail: [],
+      tokenRevoked: false,
+      ruleMissing: false,
+      ruleDeploys: "acme/shop (branch main, folder worker)",
+    });
+    renderConnector();
+
+    const warning = await screen.findByTestId("cloudflare-rule-elsewhere");
+    expect(warning.textContent).toContain(
+      "acme/shop (branch main, folder worker)",
+    );
+    // It would be untrue here.
+    expect(screen.queryByText(/Deploys whenever/)).toBeNull();
+  });
+
   it("says a new token is needed when the old one was revoked", async () => {
     cloudflare.getDeploymentStatus.mockResolvedValue({
       state: "failed",

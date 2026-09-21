@@ -374,6 +374,10 @@ export function registerSupabaseHandlers() {
           throw unlinked;
         }
 
+        const { reconcileRunningSupabasePreview } =
+          await import("../services/app_runtime_service");
+        await reconcileRunningSupabasePreview(appId);
+
         logger.info(
           `Created Supabase project ${project.id} (${project.status}) and associated it with app ${appId}`,
         );
@@ -462,6 +466,9 @@ export function registerSupabaseHandlers() {
         // resolved anything the create guard is holding.
         if (projectId) {
           unlinkedProjectsByApp.delete(appId);
+          const { reconcileRunningSupabasePreview } =
+            await import("../services/app_runtime_service");
+          await reconcileRunningSupabasePreview(appId);
         }
 
         logger.info(

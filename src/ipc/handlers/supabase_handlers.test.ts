@@ -10,6 +10,7 @@ import { queryInvalidationBus } from "@/window_infrastructure/main/query_invalid
 import { activeRecordings } from "@/ipc/services/recording_registry";
 import { SupabaseManagementAPIError } from "@dyad-sh/supabase-management-js";
 import { RateLimitError } from "@/ipc/utils/retryWithRateLimit";
+import { runningApps } from "@/ipc/utils/process_manager";
 import {
   type HandlerTestHarness,
   setupHandlerTestHarness,
@@ -19,6 +20,7 @@ const mocks = vi.hoisted(() => ({
   deployAllSupabaseFunctions: vi.fn(),
   readSettings: vi.fn(),
   createSupabaseProject: vi.fn(),
+  ensureSupabaseAuthRedirectUrls: vi.fn(),
 }));
 
 vi.mock("electron", () => ({
@@ -54,6 +56,7 @@ vi.mock(
       typeof import("@/supabase_admin/supabase_management_client")
     >()),
     createSupabaseProject: mocks.createSupabaseProject,
+    ensureSupabaseAuthRedirectUrls: mocks.ensureSupabaseAuthRedirectUrls,
   }),
 );
 
@@ -66,6 +69,10 @@ describe("Supabase handlers", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     activeRecordings.clear();
+    runningApps.clear();
+    mocks.ensureSupabaseAuthRedirectUrls
+      .mockReset()
+      .mockResolvedValue(undefined);
     // Process-lifetime state, so without this a stranded project recorded by
     // one test refuses the next test's create.
     unlinkedProjectsByApp.clear();
@@ -75,6 +82,7 @@ describe("Supabase handlers", () => {
 
   afterEach(() => {
     activeRecordings.clear();
+    runningApps.clear();
     harness?.dispose();
   });
 
@@ -106,6 +114,39 @@ describe("Supabase handlers", () => {
         },
       );
     });
+  });
+
+  it("registers an existing preview when connecting and switching Supabase projects", async () => {
+    harness.db
+      .insert(apps)
+      .values({ id: 7, name: "Old App", path: "old-app" })
+      .run();
+    runningApps.set(7, {
+      process: null,
+      processId: 1,
+      mode: "host",
+      lastViewedAt: 0,
+      proxyUrl: "http://app-7.localhost:42999",
+    });
+    for (const projectId of ["project-1", "branch-ref"]) {
+      await harness.invokeHandler("supabase:set-app-project", {
+        appId: 7,
+        projectId,
+        organizationSlug: "org-1",
+      });
+      expect(mocks.ensureSupabaseAuthRedirectUrls).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          projectId,
+          organizationSlug: "org-1",
+          redirectUrls: [
+            "http://app-7.localhost:42999",
+            "http://app-7.localhost:42999/**",
+          ],
+        }),
+      );
+    }
+    await harness.invokeHandler("supabase:unset-app-project", { app: 7 });
+    expect(mocks.ensureSupabaseAuthRedirectUrls).toHaveBeenCalledTimes(2);
   });
 
   describe("supabase:redeploy-all-functions", () => {
@@ -237,6 +278,13 @@ describe("Supabase handlers", () => {
 
     it("creates the project and links the app to it in one call", async () => {
       insertApp();
+      runningApps.set(7, {
+        process: null,
+        processId: 1,
+        mode: "host",
+        lastViewedAt: 0,
+        proxyUrl: "http://app-7.localhost:42107",
+      });
 
       await expect(
         harness.invokeHandler("supabase:create-project", INPUT),
@@ -252,6 +300,15 @@ describe("Supabase handlers", () => {
         supabaseOrganizationSlug: "org-1",
         supabaseParentProjectId: null,
       });
+      expect(mocks.ensureSupabaseAuthRedirectUrls).toHaveBeenCalledWith(
+        expect.objectContaining({
+          projectId: "proj-new",
+          redirectUrls: [
+            "http://app-7.localhost:42107",
+            "http://app-7.localhost:42107/**",
+          ],
+        }),
+      );
     });
 
     // The renderer's disabled-button guard reads a React Query pending flag

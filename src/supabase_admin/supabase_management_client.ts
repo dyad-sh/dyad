@@ -19,6 +19,7 @@ import {
 } from "../ipc/utils/retryWithRateLimit";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import { enqueueSupabaseDeploy } from "./supabase_deploy_queue";
+import { abortable } from "../ipc/utils/abortable";
 
 const fsPromises = fs.promises;
 
@@ -699,6 +700,88 @@ export async function getProjectApiKeys({
     );
   }
   return parsed.data as SupabaseApiKey[];
+}
+
+/** Append preview callbacks without changing Site URL or other Auth settings. */
+export async function ensureSupabaseAuthRedirectUrls({
+  projectId,
+  organizationSlug,
+  redirectUrls,
+  signal,
+}: {
+  projectId: string;
+  organizationSlug: string | null;
+  redirectUrls: string[];
+  signal: AbortSignal;
+}): Promise<void> {
+  signal.throwIfAborted();
+  if (IS_TEST_BUILD) return;
+
+  // Different apps can share one project, even through different credentials.
+  // Serialize the whole read/merge/write by project, not by app or organization.
+  await abortable(
+    withLock(`supabase-auth-redirects:${projectId}`, async () => {
+      signal.throwIfAborted();
+      const supabase = await abortable(
+        getSupabaseClient({ organizationSlug }),
+        signal,
+      );
+      signal.throwIfAborted();
+      const url = `https://api.supabase.com/v1/projects/${encodeURIComponent(projectId)}/config/auth`;
+      const headers = {
+        Authorization: `Bearer ${(supabase as any).options.accessToken}`,
+        "Content-Type": "application/json",
+      };
+      const response = await abortable(fetch(url, { headers, signal }), signal);
+      if (!response.ok) {
+        throw classifyManagementApiError(
+          await abortable(
+            createResponseError(response, "read Auth redirect URLs"),
+            signal,
+          ),
+          "read Auth redirect URLs",
+        );
+      }
+      const config = z
+        .object({ uri_allow_list: z.string().nullable() })
+        .safeParse(await abortable(response.json(), signal));
+      // Never treat a malformed/partial response as an empty list: that would
+      // erase callbacks belonging to production or another linked app.
+      if (!config.success) {
+        throw new DyadError(
+          "Supabase returned an unexpected Auth configuration.",
+          DyadErrorKind.External,
+        );
+      }
+      const existing = (config.data.uri_allow_list ?? "")
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter(Boolean);
+      const merged = [...new Set([...existing, ...redirectUrls])];
+      if (redirectUrls.every((entry) => existing.includes(entry))) return;
+
+      signal.throwIfAborted();
+      const updated = await abortable(
+        fetch(url, {
+          method: "PATCH",
+          headers,
+          signal,
+          body: JSON.stringify({ uri_allow_list: merged.join(",") }),
+        }),
+        signal,
+      );
+      if (!updated.ok) {
+        throw classifyManagementApiError(
+          await abortable(
+            createResponseError(updated, "register Auth redirect URLs"),
+            signal,
+          ),
+          "register Auth redirect URLs",
+        );
+      }
+    }),
+    signal,
+  );
 }
 
 export async function getSupabaseProjectLogs(

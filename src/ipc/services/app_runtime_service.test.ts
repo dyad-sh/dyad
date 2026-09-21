@@ -1,5 +1,9 @@
 import { neonPreviewDomainService } from "./neon_preview_domain_service";
-import { reconcileRunningNeonPreview } from "./app_runtime_service";
+import { ensureSupabasePreviewRedirects } from "./supabase_preview_redirect_service";
+import {
+  reconcileRunningNeonPreview,
+  reconcileRunningSupabasePreview,
+} from "./app_runtime_service";
 import { EventEmitter } from "node:events";
 import type { ChildProcess } from "node:child_process";
 import type { Worker } from "node:worker_threads";
@@ -56,6 +60,10 @@ const {
 vi.mock("@/ipc/services/neon_preview_domain_service", () => ({
   resolveNeonPreviewTarget: vi.fn().mockResolvedValue(null),
   neonPreviewDomainService: { ensure: vi.fn().mockResolvedValue(undefined) },
+}));
+
+vi.mock("@/ipc/services/supabase_preview_redirect_service", () => ({
+  ensureSupabasePreviewRedirects: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("node:child_process", () => ({
@@ -289,6 +297,9 @@ describe("executeApp", () => {
     killPortMock.mockReset();
     killPortMock.mockResolvedValue(undefined);
     vi.mocked(neonPreviewDomainService.ensure)
+      .mockReset()
+      .mockResolvedValue(undefined);
+    vi.mocked(ensureSupabasePreviewRedirects)
       .mockReset()
       .mockResolvedValue(undefined);
     startProxyMock.mockReset();
@@ -942,6 +953,113 @@ describe("executeApp", () => {
     } finally {
       await rm(appPath, { recursive: true, force: true });
     }
+  });
+
+  it("registers Supabase callbacks before publishing the actual preview URL, including duplicate startup logs", async () => {
+    let finish!: () => void;
+    vi.mocked(ensureSupabasePreviewRedirects).mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    runningApps.set(42, {
+      process: null,
+      processId: 8,
+      mode: "host",
+      lastViewedAt: 0,
+    });
+    startProxyMock.mockImplementation(async (_url, opts) => {
+      opts.onStarted("http://app-42.localhost:42999");
+      return { terminate: vi.fn() };
+    });
+    const request = {
+      appId: 42,
+      output: createOutput(),
+      originalUrl: "http://localhost:32142",
+      mode: "host" as const,
+    };
+    const first = ensureProxyForRunningApp(request);
+    const duplicate = ensureProxyForRunningApp(request);
+    await vi.waitFor(() =>
+      expect(ensureSupabasePreviewRedirects).toHaveBeenCalledTimes(1),
+    );
+    expect(ensureSupabasePreviewRedirects).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appId: 42,
+        origin: "http://app-42.localhost:42999",
+      }),
+    );
+    expect(runningApps.get(42)?.proxyUrl).toBeUndefined();
+    expect(safeSendMock).not.toHaveBeenCalled();
+    finish();
+    await Promise.all([first, duplicate]);
+    expect(runningApps.get(42)?.proxyUrl).toBe("http://app-42.localhost:42999");
+    expect(startProxyMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens the preview after a Supabase registration failure and retries when the running project is reconciled", async () => {
+    const output = createOutput();
+    runningApps.set(42, {
+      process: null,
+      processId: 8,
+      mode: "host",
+      lastViewedAt: 0,
+      output,
+    });
+    vi.mocked(ensureSupabasePreviewRedirects).mockRejectedValueOnce(
+      new Error("private upstream details"),
+    );
+    await ensureProxyForRunningApp({
+      appId: 42,
+      output,
+      originalUrl: "http://localhost:32142",
+      mode: "host",
+    });
+    expect(runningApps.get(42)?.proxyUrl).toBe("http://app-42.localhost:42142");
+    expect(safeSendMock).toHaveBeenCalledWith(
+      expect.anything(),
+      "app:output",
+      expect.objectContaining({
+        type: "stderr",
+        message: expect.stringContaining("[supabase-auth]"),
+      }),
+    );
+    expect(JSON.stringify(safeSendMock.mock.calls)).not.toContain(
+      "private upstream details",
+    );
+    await reconcileRunningSupabasePreview(42);
+    expect(ensureSupabasePreviewRedirects).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not publish a preview or auth warning after stopping during Supabase registration", async () => {
+    let fail!: (error: Error) => void;
+    vi.mocked(ensureSupabasePreviewRedirects).mockImplementationOnce(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          fail = reject;
+        }),
+    );
+    runningApps.set(42, {
+      process: null,
+      processId: 8,
+      mode: "host",
+      lastViewedAt: 0,
+    });
+    const startup = ensureProxyForRunningApp({
+      appId: 42,
+      output: createOutput(),
+      originalUrl: "http://localhost:32142",
+      mode: "host",
+    });
+    await vi.waitFor(() =>
+      expect(ensureSupabasePreviewRedirects).toHaveBeenCalledTimes(1),
+    );
+    runningApps.get(42)!.proxyAbortController!.abort();
+    fail(new Error("Stopped"));
+    await startup;
+    expect(runningApps.get(42)?.proxyUrl).toBeUndefined();
+    expect(safeSendMock).not.toHaveBeenCalled();
   });
 
   it("waits for Neon reconciliation on the actual origin and serializes duplicate startup callbacks", async () => {

@@ -322,6 +322,17 @@ export class PageObject {
   private async baseSetup() {
     await this.githubConnector.clearPushEvents();
     await this.githubConnector.resetRepos();
+    await this.resetFakeCloudflare();
+  }
+
+  /** The fake Cloudflare is shared by every test in the worker. */
+  private async resetFakeCloudflare() {
+    const response = await this.page.request.post(
+      `http://localhost:${this.fakeLlmPort}/cloudflare/test/reset`,
+    );
+    if (!response.ok()) {
+      throw new Error(`fake Cloudflare reset failed: ${response.status()}`);
+    }
   }
 
   private async setAgentToolAutoApprove(autoApprove: boolean) {

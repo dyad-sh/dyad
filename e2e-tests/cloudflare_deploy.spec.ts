@@ -55,14 +55,6 @@ async function fakeCloudflare(port: number, path: string, init?: RequestInit) {
   return res;
 }
 
-async function resetCloudflare(port: number, overrides: unknown = {}) {
-  await fakeCloudflare(port, "reset", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(overrides),
-  });
-}
-
 async function cloudflareState(port: number) {
   const res = await fakeCloudflare(port, "state");
   return (await res.json()) as {
@@ -84,7 +76,6 @@ test("deploys a Worker from a subfolder and shows it live", async ({
   po,
 }, testInfo) => {
   const fakeLlmPort = FAKE_LLM_BASE_PORT + testInfo.parallelIndex;
-  await resetCloudflare(fakeLlmPort);
   await po.setUp({ autoApprove: true });
   await po.sendPrompt("tc=cloudflare-worker");
 
@@ -133,8 +124,9 @@ test("waits for Cloudflare to get access to the repository, then continues", asy
   po,
 }, testInfo) => {
   const fakeLlmPort = FAKE_LLM_BASE_PORT + testInfo.parallelIndex;
-  await resetCloudflare(fakeLlmPort, { hasGithubAccess: false });
   await po.setUp({ autoApprove: true });
+  // After setUp, which resets the fake to the usual access.
+  await fakeCloudflare(fakeLlmPort, "revoke-github-access", { method: "POST" });
   await po.sendPrompt("tc=cloudflare-worker");
 
   await po.previewPanel.selectPreviewMode("publish");

@@ -80,11 +80,13 @@ export function registerFakeCloudflare(app: Express): void {
     return true;
   };
 
-  app.post("/cloudflare/test/reset", (req, res) => {
+  app.post("/cloudflare/test/reset", (_req, res) => {
     state = initialState();
-    if (typeof req.body?.hasGithubAccess === "boolean") {
-      state.hasGithubAccess = req.body.hasGithubAccess;
-    }
+    res.json({ ok: true });
+  });
+
+  app.post("/cloudflare/test/revoke-github-access", (_req, res) => {
+    state.hasGithubAccess = false;
     res.json({ ok: true });
   });
 

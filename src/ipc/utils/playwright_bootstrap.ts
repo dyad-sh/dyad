@@ -80,20 +80,20 @@ export const TEST_BASE_URL_ENV = "DYAD_TEST_BASE_URL";
 export const TEST_SLOW_MO_ENV = "DYAD_TEST_SLOW_MO";
 
 /**
- * How long Playwright pauses between actions when slow motion is on. Slow
- * enough to follow each click by eye, short enough that a normal spec doesn't
- * turn into a multi-minute run.
+ * How long Playwright pauses between actions when slow motion is on. A
+ * second-and-a-half leaves enough time to follow each action and read the
+ * resulting UI state before the next one begins.
  */
-export const SLOW_MO_DELAY_MS = 500;
+export const SLOW_MO_DELAY_MS = 1_500;
 
 /**
  * Per-test timeout for a slow-motion run, replacing Playwright's 30s default.
  * The inserted delays are wall-clock time inside the test, so at
- * `SLOW_MO_DELAY_MS` a spec only needs ~60 actions to blow the default budget —
+ * `SLOW_MO_DELAY_MS` a spec only needs ~20 actions to blow the default budget —
  * a green spec would start failing purely from the toggle. Passed as
  * `--timeout` on slow-motion runs only, so ordinary runs keep the default.
  */
-export const SLOW_MO_TEST_TIMEOUT_MS = 120_000;
+export const SLOW_MO_TEST_TIMEOUT_MS = 360_000;
 
 /**
  * The generated config's slow-motion lines. Shared by the template and the
@@ -168,6 +168,12 @@ export const PREVIEW_CDP_ENDPOINT_ENV = "DYAD_PREVIEW_CDP_ENDPOINT";
 
 /** Bearer token for the run-scoped, one-preview CDP broker. */
 export const PREVIEW_CDP_TOKEN_ENV = "DYAD_PREVIEW_CDP_TOKEN";
+
+/** Preview-only pacing for the borrowed CDP connection. */
+export const PREVIEW_SLOW_MO_ENV = "DYAD_PREVIEW_SLOWMO_MS";
+
+/** Default pacing keeps preview runs watchable without affecting other runs. */
+export const PREVIEW_SLOW_MO_DELAY_MS = 250;
 
 /**
  * Directory holding the fixture shim and nothing else. It gets its own tsconfig
@@ -432,7 +438,540 @@ const endpoint = process.env.${PREVIEW_CDP_ENDPOINT_ENV};
 const cdpToken = process.env.${PREVIEW_CDP_TOKEN_ENV};
 // No browser is launched here, so the config's \`launchOptions.slowMo\` never
 // applies — the connection carries it instead.
-const slowMo = Number(process.env.${TEST_SLOW_MO_ENV}) || 0;
+const slowMo = Number(process.env.${PREVIEW_SLOW_MO_ENV}) || ${PREVIEW_SLOW_MO_DELAY_MS};
+
+type CursorPoint = { x: number; y: number };
+type CursorBox = CursorPoint & { width: number; height: number };
+type CursorTargetMeasurement = {
+  locatorBox: CursorBox;
+  targetBox: CursorBox;
+  point: CursorPoint;
+};
+type CursorTraceEntry = {
+  action: string;
+  from?: CursorPoint;
+  to?: CursorPoint;
+  transform?: string;
+  connected?: boolean;
+  error?: string;
+};
+type CursorActionOptions = {
+  force?: boolean;
+  position?: CursorPoint;
+  sourcePosition?: CursorPoint;
+  targetPosition?: CursorPoint;
+  trial?: boolean;
+};
+type CursorRuntime = {
+  show: (point: CursorPoint) => void;
+  glide: (from: CursorPoint, to: CursorPoint, duration: number) => void;
+  press: (box: CursorBox, point: CursorPoint) => void;
+  destroy: () => void;
+};
+
+declare global {
+  interface Window { __dyadTestCursor?: CursorRuntime }
+}
+
+// Serialized by Playwright and installed in every document. Keep it entirely
+// self-contained: addInitScript cannot see bindings from this module.
+function installCursorRuntime() {
+  if (window.__dyadTestCursor) return;
+  const nativeCursorStyle = document.createElement("style");
+  nativeCursorStyle.setAttribute("data-dyad-test-native-cursor", "");
+  // Electron cannot move the physical OS pointer when Playwright dispatches
+  // CDP mouse input. Hide that stationary pointer during the run so it cannot
+  // be mistaken for Dyad's locator-following pointer.
+  nativeCursorStyle.textContent = ":root, :root * { cursor: none !important; }";
+  // A custom host plus a shadow root keeps app-wide div/svg rules from
+  // changing the pointer's size, color, or transform.
+  const cursor = document.createElement("dyad-test-cursor");
+  cursor.setAttribute("data-dyad-test-cursor", "");
+  cursor.setAttribute("aria-hidden", "true");
+  // Build the arrow without innerHTML (which strict Trusted Types policies can
+  // reject) and isolate it from broad SVG/path styles in the app under test.
+  const shadow = cursor.attachShadow({ mode: "open" });
+  const svgNamespace = "http://www.w3.org/2000/svg";
+  const arrow = document.createElementNS(svgNamespace, "svg");
+  arrow.setAttribute("viewBox", "0 0 24 28");
+  arrow.setAttribute("width", "30");
+  arrow.setAttribute("height", "35");
+  Object.assign(arrow.style, { display: "block", overflow: "visible" });
+  const arrowPath = document.createElementNS(svgNamespace, "path");
+  arrowPath.setAttribute("d", "M2 1.5v21l5.5-5.2 4.1 8.7 4.6-2.2-4-8.1h8.3L2 1.5Z");
+  // Match a familiar native pointer while retaining an outline that works on
+  // both light and dark application surfaces.
+  arrowPath.setAttribute("fill", "#111827");
+  arrowPath.setAttribute("stroke", "white");
+  arrowPath.setAttribute("stroke-width", "2.4");
+  arrowPath.setAttribute("stroke-linejoin", "round");
+  arrow.appendChild(arrowPath);
+  shadow.appendChild(arrow);
+  Object.assign(cursor.style, {
+    all: "initial", position: "fixed", left: "0", top: "0", width: "30px", height: "35px",
+    filter: "drop-shadow(0 2px 3px rgba(0,0,0,.65))", pointerEvents: "none",
+    zIndex: "2147483647", opacity: "1", willChange: "transform",
+    transition: "opacity 120ms ease, scale 100ms ease",
+  });
+  // addInitScript runs at document start, before documentElement necessarily
+  // exists. Mount lazily so a navigation does not abort the runtime setup.
+  const ensureMounted = () => {
+    const root = document.documentElement;
+    if (root && !nativeCursorStyle.isConnected) root.appendChild(nativeCursorStyle);
+    if (root && !cursor.isConnected) root.appendChild(cursor);
+    return root;
+  };
+  if (!ensureMounted()) {
+    document.addEventListener("DOMContentLoaded", ensureMounted, { once: true });
+  }
+  let position = { x: innerWidth / 2, y: innerHeight / 2 };
+  let moveAnimation: Animation | undefined;
+  const transformFor = (point: CursorPoint) =>
+    \`translate3d(\${point.x - 2}px, \${point.y - 1.5}px, 0)\`;
+  const place = (point: CursorPoint) => {
+    position = point;
+    // The arrow's tip is the pointer hotspot, matching a native mouse cursor.
+    cursor.style.transform = transformFor(point);
+  };
+  place(position);
+
+  window.__dyadTestCursor = {
+    show(point) {
+      ensureMounted();
+      place(point);
+      cursor.style.opacity = "1";
+    },
+    glide(from, to, duration) {
+      ensureMounted();
+      cursor.style.opacity = "1";
+      moveAnimation?.cancel();
+      // Commit the destination before starting the visual effect. Electron can
+      // temporarily hide the native preview while setup UI is over it; when it
+      // becomes visible again the cursor is therefore at the correct element,
+      // even if Chromium skipped an intermediate paint while hidden.
+      position = to;
+      cursor.style.transform = transformFor(to);
+      moveAnimation =
+        typeof cursor.animate === "function"
+          ? cursor.animate(
+              [
+                { transform: transformFor(from) },
+                { transform: transformFor(to) },
+              ],
+              {
+                duration,
+                easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+              },
+            )
+          : undefined;
+    },
+    press(box, point) {
+      const root = ensureMounted();
+      if (!root) return;
+      cursor.animate(
+        [{ scale: "1" }, { scale: ".72" }, { scale: "1" }],
+        { duration: 180, easing: "ease-out" },
+      );
+      const flash = document.createElement("div");
+      Object.assign(flash.style, {
+        position: "fixed", left: \`\${box.x}px\`, top: \`\${box.y}px\`,
+        width: \`\${box.width}px\`, height: \`\${box.height}px\`,
+        boxSizing: "border-box", border: "2px solid #8b5cf6",
+        background: "rgba(139,92,246,.16)", pointerEvents: "none",
+        zIndex: "2147483646",
+      });
+      const ripple = document.createElement("div");
+      Object.assign(ripple.style, {
+        position: "fixed", left: \`\${point.x - 5}px\`, top: \`\${point.y - 5}px\`,
+        width: "10px", height: "10px", border: "2px solid #8b5cf6",
+        borderRadius: "50%", pointerEvents: "none", zIndex: "2147483647",
+      });
+      root.append(flash, ripple);
+      flash.animate([{ opacity: "1" }, { opacity: "0" }], { duration: 350 });
+      ripple.animate(
+        [{ transform: "scale(1)", opacity: "1" }, { transform: "scale(4)", opacity: "0" }],
+        { duration: 350, easing: "ease-out" },
+      );
+      setTimeout(() => { flash.remove(); ripple.remove(); }, 360);
+    },
+    destroy() {
+      moveAnimation?.cancel();
+      nativeCursorStyle.remove();
+      cursor.remove();
+      delete window.__dyadTestCursor;
+    },
+  };
+}
+
+const cursorPositions = new WeakMap<pw.Page, CursorPoint>();
+const cursorTraces = new WeakMap<pw.Page, CursorTraceEntry[]>();
+const patchedPrototypes = new WeakSet<object>();
+const activeLocatorActions = new WeakSet<object>();
+
+async function animatePointer(
+  page: pw.Page,
+  target: pw.Locator | CursorPoint,
+  options: { force?: boolean; position?: CursorPoint } | undefined,
+  action = "locator",
+): Promise<{ box: CursorBox; point: CursorPoint } | undefined> {
+  const guardedTarget = "boundingBox" in target ? target : undefined;
+  const ownsGuard = !!guardedTarget && !activeLocatorActions.has(guardedTarget);
+  if (ownsGuard && guardedTarget) activeLocatorActions.add(guardedTarget);
+  let from: CursorPoint | undefined;
+  const trace = cursorTraces.get(page) ?? [];
+  cursorTraces.set(page, trace);
+  try {
+    from = cursorPositions.get(page) ?? await page.evaluate(() => ({
+      x: innerWidth / 2, y: innerHeight / 2,
+    }));
+    // Navigation can replace the document between targeted actions. Reinstall
+    // synchronously and reveal the cursor before target measurement, so a slow
+    // or unmeasurable locator cannot make the cursor disappear from the run.
+    await page.evaluate(installCursorRuntime);
+    await page.evaluate(
+      (point) => window.__dyadTestCursor?.show(point),
+      from,
+    );
+    let box: CursorBox;
+    let point: CursorPoint;
+    if ("boundingBox" in target) {
+      // One locator round trip is important here: connectOverCDP's slowMo is
+      // applied to client operations, so the old wait + scroll + boundingBox
+      // sequence was slower than its own 1.1s bailout and cancelled every
+      // cursor move whenever Slow motion was enabled.
+      const found = await target.evaluate(
+        (element) => {
+          element.scrollIntoView({
+            behavior: "instant",
+            block: "center",
+            inline: "center",
+          });
+          const style = getComputedStyle(element);
+          if (
+            style.display === "none" ||
+            style.visibility === "hidden"
+          ) {
+            return null;
+          }
+
+          const toBox = (rect: DOMRect | DOMRectReadOnly): CursorBox => ({
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height,
+          });
+          const visibleBox = (
+            rect: DOMRect | DOMRectReadOnly,
+          ): CursorBox | null => {
+            const left = Math.max(0, rect.left);
+            const top = Math.max(0, rect.top);
+            const right = Math.min(innerWidth, rect.right);
+            const bottom = Math.min(innerHeight, rect.bottom);
+            return right > left && bottom > top
+              ? { x: left, y: top, width: right - left, height: bottom - top }
+              : null;
+          };
+
+          const locatorRect = element.getBoundingClientRect();
+          const actionableSelector = [
+            "a[href]",
+            "button",
+            "input:not([type=hidden])",
+            "select",
+            "textarea",
+            "[contenteditable=true]",
+            "[role=button]",
+            "[role=checkbox]",
+            "[role=combobox]",
+            "[role=link]",
+            "[role=menuitem]",
+            "[role=option]",
+            "[role=radio]",
+            "[role=slider]",
+            "[role=spinbutton]",
+            "[role=switch]",
+            "[role=tab]",
+            "[tabindex]:not([tabindex='-1'])",
+          ].join(",");
+          const isUsable = (candidate: Element) => {
+            const candidateStyle = getComputedStyle(candidate);
+            const candidateRect = candidate.getBoundingClientRect();
+            return candidateStyle.display !== "none" &&
+              candidateStyle.visibility !== "hidden" &&
+              candidateRect.width > 0 &&
+              candidateRect.height > 0 &&
+              visibleBox(candidateRect) !== null;
+          };
+
+          // Some high-level locators resolve a label or component wrapper
+          // around the one real control. Point at that control when it is
+          // unambiguous; a wrapper with several controls stays the target so
+          // we never invent which child the test meant.
+          let preciseElement = element;
+          const elementIsActionable = element.matches(actionableSelector);
+          const actionableChildren = elementIsActionable
+            ? []
+            : Array.from(
+              element.querySelectorAll(actionableSelector),
+            ).filter(isUsable);
+          if (actionableChildren.length === 1) {
+            preciseElement = actionableChildren[0];
+          }
+
+          let preciseRect = preciseElement.getBoundingClientRect();
+          if (
+            preciseElement === element &&
+            !elementIsActionable &&
+            actionableChildren.length === 0
+          ) {
+            // Text locators can resolve a padded block rather than the glyphs
+            // the user recognizes. Use the rendered text content when it has
+            // measurable pixels, keeping the arrow off empty parent padding.
+            const walker = document.createTreeWalker(
+              element,
+              NodeFilter.SHOW_TEXT,
+            );
+            const textRects: DOMRect[] = [];
+            for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+              if (!node.textContent?.trim()) continue;
+              const parent = node.parentElement;
+              if (!parent) continue;
+              const parentStyle = getComputedStyle(parent);
+              if (
+                parentStyle.display === "none" ||
+                parentStyle.visibility === "hidden"
+              ) {
+                continue;
+              }
+              const range = document.createRange();
+              range.selectNodeContents(node);
+              for (const rect of range.getClientRects()) {
+                if (rect.width > 0 && rect.height > 0 && visibleBox(rect)) {
+                  textRects.push(rect);
+                }
+              }
+            }
+            if (textRects.length > 0) {
+              const left = Math.min(...textRects.map((rect) => rect.left));
+              const top = Math.min(...textRects.map((rect) => rect.top));
+              const right = Math.max(...textRects.map((rect) => rect.right));
+              const bottom = Math.max(...textRects.map((rect) => rect.bottom));
+              preciseRect = new DOMRect(left, top, right - left, bottom - top);
+            }
+          }
+
+          const locatorBox = toBox(locatorRect);
+          const targetBox = visibleBox(preciseRect);
+          if (!targetBox) return null;
+          return {
+            locatorBox,
+            targetBox,
+            point: {
+              x: targetBox.x + targetBox.width / 2,
+              y: targetBox.y + targetBox.height / 2,
+            },
+          } satisfies CursorTargetMeasurement;
+        },
+        { timeout: Math.max(1_000, slowMo + 1_000) },
+      );
+      if (!found) {
+        trace.push({ action, from, error: "target could not be measured" });
+        return;
+      }
+      const explicitPoint = options?.position
+        ? {
+            x: found.locatorBox.x + options.position.x,
+            y: found.locatorBox.y + options.position.y,
+          }
+        : undefined;
+      box = explicitPoint ? found.locatorBox : found.targetBox;
+      point = explicitPoint ?? found.point;
+    } else {
+      box = { ...target, width: 0, height: 0 };
+      point = target;
+    }
+    const measured = { box, point };
+    if (!measured) {
+      trace.push({ action, from, error: "target could not be measured" });
+      return;
+    }
+    const distance = Math.hypot(measured.point.x - from.x, measured.point.y - from.y);
+    const deliberateMotion = slowMo >= ${SLOW_MO_DELAY_MS};
+    const duration = deliberateMotion
+      ? Math.min(1_400, Math.max(700, distance * 2.5))
+      : Math.min(900, Math.max(350, distance * 1.8));
+    await page.evaluate(
+      ({ from, to, duration }) => window.__dyadTestCursor?.glide(from, to, duration),
+      { from, to: measured.point, duration },
+    );
+    // Time the animation outside the page. Browser timers and animation-frame
+    // callbacks are throttled when Electron briefly hides a WebContentsView;
+    // the Playwright worker remains reliable throughout that lifecycle.
+    await new Promise((resolve) => setTimeout(resolve, duration));
+    if (deliberateMotion) {
+      // Let the eye settle on each located element before the action proceeds.
+      await new Promise((resolve) => setTimeout(resolve, 350));
+    }
+    const runtimeState = await page.evaluate(() => {
+      const cursor = document.querySelector<HTMLElement>("[data-dyad-test-cursor]");
+      return {
+        connected: Boolean(cursor?.isConnected),
+        transform: cursor?.style.transform,
+      };
+    });
+    trace.push({
+      action,
+      from,
+      to: measured.point,
+      connected: runtimeState.connected,
+      transform: runtimeState.transform,
+    });
+    cursorPositions.set(page, measured.point);
+    return measured;
+  } catch (error) {
+    trace.push({
+      action,
+      from,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return undefined;
+  } finally {
+    if (ownsGuard && guardedTarget) activeLocatorActions.delete(guardedTarget);
+  }
+}
+
+async function showPress(
+  page: pw.Page,
+  measured: { box: CursorBox; point: CursorPoint } | undefined,
+): Promise<void> {
+  if (!measured) return;
+  try {
+    await page.evaluate(
+      ({ box, point }) => window.__dyadTestCursor?.press(box, point),
+      measured,
+    );
+  } catch {
+    // Visual choreography must never change the action's outcome.
+  }
+}
+
+function patchPointerActions(page: pw.Page): () => void {
+  const restorers: Array<() => void> = [];
+  const locatorPositionMethods = new Set([
+    "check", "click", "dblclick", "hover", "setChecked", "tap", "uncheck",
+  ]);
+  const patch = (prototype: Record<string, unknown>, name: string, effect: boolean) => {
+    if (patchedPrototypes.has(prototype) && name === "click") return;
+    const original = prototype[name];
+    if (typeof original !== "function") return;
+    prototype[name] = async function (this: pw.Locator, ...args: unknown[]) {
+      if (activeLocatorActions.has(this)) {
+        return await (original as (...values: unknown[]) => unknown).apply(this, args);
+      }
+      activeLocatorActions.add(this);
+      try {
+        const rawOptions = args.at(-1) as CursorActionOptions | undefined;
+        const options = name === "dragTo"
+          ? { force: rawOptions?.force, position: rawOptions?.sourcePosition }
+          : locatorPositionMethods.has(name)
+            ? rawOptions
+            : undefined;
+        const measured = await animatePointer(page, this, options, \`locator.\${name}\`);
+        const dragTarget = args[0];
+        if (
+          name === "dragTo" &&
+          dragTarget &&
+          typeof dragTarget === "object" &&
+          "boundingBox" in dragTarget
+        ) {
+          await animatePointer(
+            page,
+            dragTarget as pw.Locator,
+            { force: rawOptions?.force, position: rawOptions?.targetPosition },
+            "locator.dragTo.target",
+          );
+        }
+        const result = await (original as (...values: unknown[]) => unknown).apply(this, args);
+        if (effect && !rawOptions?.trial && measured) {
+          await showPress(page, measured);
+        }
+        return result;
+      } finally {
+        activeLocatorActions.delete(this);
+      }
+    };
+    restorers.push(() => { prototype[name] = original; });
+  };
+  const locatorPrototype = Object.getPrototypeOf(page.locator("html")) as Record<string, unknown>;
+  const locatorPressMethods = new Set([
+    "check", "click", "dblclick", "selectOption", "setChecked", "tap", "uncheck",
+  ]);
+  const locatorTargetMethods = [
+    "_expect", "ariaSnapshot", "blur", "boundingBox", "check", "clear", "click",
+    "dblclick", "dispatchEvent", "dragTo", "elementHandle", "evaluate",
+    "evaluateHandle", "fill", "focus", "getAttribute", "highlight", "hover",
+    "innerHTML", "innerText", "inputValue", "isChecked", "isDisabled",
+    "isEditable", "isEnabled", "isHidden", "isVisible", "press",
+    "pressSequentially", "screenshot", "scrollIntoViewIfNeeded", "selectOption",
+    "selectText", "setChecked", "setInputFiles", "tap", "textContent", "type",
+    "uncheck", "waitFor",
+  ];
+  for (const name of locatorTargetMethods) {
+    patch(locatorPrototype, name, locatorPressMethods.has(name));
+  }
+  patchedPrototypes.add(locatorPrototype);
+  const pageObject = page as unknown as Record<string, unknown>;
+  const pagePressMethods = new Set([
+    "check", "click", "dblclick", "selectOption", "tap", "uncheck",
+  ]);
+  const pageTargetMethods = [
+    "check", "click", "dblclick", "dispatchEvent", "dragAndDrop", "fill", "focus",
+    "hover", "press", "selectOption", "setInputFiles", "tap", "type", "uncheck",
+  ];
+  for (const name of pageTargetMethods) {
+    const original = pageObject[name];
+    if (typeof original !== "function") continue;
+    pageObject[name] = async (...args: unknown[]) => {
+      const selector = args[0];
+      const rawOptions = args.at(-1) as CursorActionOptions | undefined;
+      const options = name === "dragAndDrop"
+        ? { force: rawOptions?.force, position: rawOptions?.sourcePosition }
+        : rawOptions;
+      const measured = typeof selector === "string"
+        ? await animatePointer(page, page.locator(selector), options, \`page.\${name}\`)
+        : undefined;
+      if (name === "dragAndDrop" && typeof args[1] === "string") {
+        await animatePointer(
+          page,
+          page.locator(args[1]),
+          { force: rawOptions?.force, position: rawOptions?.targetPosition },
+          "page.dragAndDrop.target",
+        );
+      }
+      const result = await (original as (...values: unknown[]) => unknown).apply(page, args);
+      if (pagePressMethods.has(name) && !rawOptions?.trial && measured) {
+        await showPress(page, measured);
+      }
+      return result;
+    };
+    restorers.push(() => { pageObject[name] = original; });
+  }
+  const mouse = page.mouse as unknown as Record<string, unknown>;
+  for (const name of ["move", "click"]) {
+    const original = mouse[name];
+    if (typeof original !== "function") continue;
+    mouse[name] = async (x: number, y: number, ...args: unknown[]) => {
+      const measured = await animatePointer(page, { x, y }, undefined, \`mouse.\${name}\`);
+      const result = await (original as (...values: unknown[]) => unknown).call(mouse, x, y, ...args);
+      if (name === "click" && measured) {
+        await showPress(page, measured);
+      }
+      return result;
+    };
+    restorers.push(() => { mouse[name] = original; });
+  }
+  return () => { for (const restore of restorers.reverse()) restore(); patchedPrototypes.delete(locatorPrototype); };
+}
 
 function requireBaseUrl(): string {
   const baseUrl = process.env.${TEST_BASE_URL_ENV};
@@ -633,6 +1172,9 @@ export const test = !endpoint
             \`Dyad preview: no page serving \${origin} — is the preview panel showing this app?\`,
           );
         }
+        await context.addInitScript(installCursorRuntime);
+        await page.evaluate(installCursorRuntime);
+        const restorePointerActions = patchPointerActions(page);
         // page.goto resolves relative URLs in Playwright's server half, from
         // the options the context was CREATED with — out of reach of the
         // assignment above, so "/" would reach Chromium verbatim and fail as an
@@ -647,6 +1189,22 @@ export const test = !endpoint
           // single-test process finishes.
           await use(page);
         } finally {
+          const cursorTrace = cursorTraces.get(page) ?? [];
+          try {
+            await testInfo.attach("dyad-cursor-trace", {
+              body: Buffer.from(JSON.stringify(cursorTrace, null, 2)),
+              contentType: "application/json",
+            });
+          } catch {
+            // Diagnostics must not affect the test's result.
+          }
+          cursorTraces.delete(page);
+          restorePointerActions();
+          try {
+            await page.evaluate(() => window.__dyadTestCursor?.destroy());
+          } catch {
+            // The page may have closed or navigated during teardown.
+          }
           page.goto = originalGoto;
           // Playwright's built-in screenshot/trace recorder is off for preview
           // runs (see the config) because tracing needs browser-global CDP

@@ -3,6 +3,7 @@
  */
 
 export { GitHubConnector } from "./GitHubConnector";
+export { GitLabConnector } from "./GitLabConnector";
 export { ChatActions } from "./ChatActions";
 export { PreviewPanel } from "./PreviewPanel";
 export { CodeEditor } from "./CodeEditor";

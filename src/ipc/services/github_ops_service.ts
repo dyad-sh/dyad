@@ -23,6 +23,10 @@ import {
   handleSwitchBranch,
 } from "../handlers/git_branch_handlers";
 import {
+  handleConnectToExistingGitLabProject,
+  handleCreateGitLabProject,
+} from "../handlers/gitlab_handlers";
+import {
   appOperationCoordinator,
   readAppResource,
 } from "./app_operation_coordinator";
@@ -59,11 +63,11 @@ export function getGithubRecordingRefusal(
     case "disconnect":
       return undefined;
     case "push":
-      return "push to GitHub";
+      return op.provider === "gitlab" ? "push to GitLab" : "push to GitHub";
     case "pull":
-      return "pull from GitHub";
+      return "pull from the repository";
     case "fetch":
-      return "fetch from GitHub";
+      return "fetch from the repository";
     case "rebase":
       return "rebase";
     case "rebase-continue":
@@ -83,7 +87,9 @@ export function getGithubRecordingRefusal(
     case "rename-branch":
       return "rename a branch";
     case "connect-repo":
-      return "connect a GitHub repository";
+      return op.provider === "gitlab"
+        ? "connect a GitLab project"
+        : "connect a GitHub repository";
   }
 }
 
@@ -153,17 +159,24 @@ export class GithubOpsService {
   private runUnlocked(appId: number, op: GithubOperation): Promise<void> {
     switch (op.type) {
       case "push":
+        // The provider travels with the operation so the handler can refuse
+        // one that no longer matches the app row — a window holding a stale
+        // row would otherwise get a banner naming the wrong provider.
         return handlePushToGithub(MAIN_SERVICE_EVENT, {
           appId,
           force: op.mode === "force",
           forceWithLease: op.mode === "lease",
+          provider: op.provider,
         });
       case "pull":
         return handlePullFromGithub(MAIN_SERVICE_EVENT, { appId });
       case "fetch":
         return handleFetchFromGithub(MAIN_SERVICE_EVENT, { appId });
       case "rebase":
-        return handleRebaseFromGithub(MAIN_SERVICE_EVENT, { appId });
+        return handleRebaseFromGithub(MAIN_SERVICE_EVENT, {
+          appId,
+          provider: op.provider,
+        });
       case "rebase-continue":
         return handleContinueRebase(MAIN_SERVICE_EVENT, { appId });
       case "rebase-abort":
@@ -200,6 +213,20 @@ export class GithubOpsService {
       case "disconnect":
         return handleDisconnectGithubRepo(MAIN_SERVICE_EVENT, { appId });
       case "connect-repo":
+        if (op.provider === "gitlab") {
+          return op.mode === "create"
+            ? handleCreateGitLabProject({
+                appId,
+                namespaceId: op.namespaceId,
+                repo: op.repo,
+                branch: op.branch,
+              })
+            : handleConnectToExistingGitLabProject({
+                appId,
+                projectId: op.projectId,
+                branch: op.branch,
+              });
+        }
         return op.mode === "create"
           ? handleCreateRepo(MAIN_SERVICE_EVENT, {
               appId,

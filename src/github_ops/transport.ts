@@ -63,37 +63,88 @@ const pushOperationSchema = z
   .object({
     type: z.literal("push"),
     mode: z.enum(["normal", "force", "lease"]),
+    provider: z.enum(["github", "gitlab"]),
   })
   .strict();
-const connectRepositoryOperationSchema = z.discriminatedUnion("mode", [
-  z
-    .object({
-      type: z.literal("connect-repo"),
-      mode: z.literal("create"),
-      org: z.string(),
-      repo: z.string(),
-      branch: z.string().optional(),
-      thenAutoPush: z.boolean(),
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("connect-repo"),
-      mode: z.literal("existing"),
-      owner: z.string(),
-      repo: z.string(),
-      branch: z.string(),
-      thenAutoPush: z.boolean(),
-    })
-    .strict(),
+// Nested: the outer machine schema discriminates on `type`, this one on
+// `provider`, and each provider on `mode`. `mode` alone would not do, since
+// both providers have a create and an existing form.
+const connectRepositoryOperationSchema = z.discriminatedUnion("provider", [
+  z.discriminatedUnion("mode", [
+    z
+      .object({
+        type: z.literal("connect-repo"),
+        provider: z.literal("github"),
+        mode: z.literal("create"),
+        org: z.string(),
+        repo: z.string(),
+        branch: z.string().optional(),
+        thenAutoPush: z.boolean(),
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("connect-repo"),
+        provider: z.literal("github"),
+        mode: z.literal("existing"),
+        owner: z.string(),
+        repo: z.string(),
+        branch: z.string(),
+        thenAutoPush: z.boolean(),
+      })
+      .strict(),
+  ]),
+  z.discriminatedUnion("mode", [
+    z
+      .object({
+        type: z.literal("connect-repo"),
+        provider: z.literal("gitlab"),
+        mode: z.literal("create"),
+        namespaceId: z.number().int(),
+        repo: z.string(),
+        branch: z.string().optional(),
+        thenAutoPush: z.boolean(),
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("connect-repo"),
+        provider: z.literal("gitlab"),
+        mode: z.literal("existing"),
+        projectId: z.number().int(),
+        branch: z.string(),
+        thenAutoPush: z.boolean(),
+      })
+      .strict(),
+  ]),
 ]);
 export const GithubOperationSchema: z.ZodType<GithubOperation> =
   z.discriminatedUnion("type", [
     pushOperationSchema,
-    z.object({ type: z.literal("pull") }).strict(),
-    z.object({ type: z.literal("fetch") }).strict(),
-    z.object({ type: z.literal("rebase") }).strict(),
-    z.object({ type: z.literal("rebase-continue") }).strict(),
+    z
+      .object({
+        type: z.literal("pull"),
+        provider: z.enum(["github", "gitlab"]),
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("fetch"),
+        provider: z.enum(["github", "gitlab"]),
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("rebase"),
+        provider: z.enum(["github", "gitlab"]),
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("rebase-continue"),
+        provider: z.enum(["github", "gitlab"]),
+      })
+      .strict(),
     z.object({ type: z.literal("rebase-abort") }).strict(),
     z.object({ type: z.literal("merge-abort") }).strict(),
     z.object({ type: z.literal("merge"), branch: z.string() }).strict(),

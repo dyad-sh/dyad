@@ -33,7 +33,7 @@ vi.mock("electron-log", () => ({
   },
 }));
 
-import { scrubGithubTokenFromRemotes } from "./git_remote_token_scrub";
+import { scrubTokensFromRemotes } from "./git_remote_token_scrub";
 
 async function createAppWithGitConfig(
   appName: string,
@@ -45,7 +45,7 @@ async function createAppWithGitConfig(
   return configPath;
 }
 
-describe("scrubGithubTokenFromRemotes", () => {
+describe("scrubTokensFromRemotes", () => {
   beforeEach(async () => {
     appsBaseDir = await fs.mkdtemp(path.join(os.tmpdir(), "dyad-token-scrub-"));
     appRows = [];
@@ -69,7 +69,7 @@ describe("scrubGithubTokenFromRemotes", () => {
     );
     appRows = [{ path: "my-app" }];
 
-    await scrubGithubTokenFromRemotes();
+    await scrubTokensFromRemotes();
 
     const scrubbed = await fs.readFile(configPath, "utf8");
     expect(scrubbed).toContain("url = https://github.com/owner/repo.git");
@@ -88,7 +88,7 @@ describe("scrubGithubTokenFromRemotes", () => {
     const configPath = await createAppWithGitConfig("clean-app", original);
     appRows = [{ path: "clean-app" }];
 
-    await scrubGithubTokenFromRemotes();
+    await scrubTokensFromRemotes();
 
     expect(await fs.readFile(configPath, "utf8")).toBe(original);
   });
@@ -102,7 +102,7 @@ describe("scrubGithubTokenFromRemotes", () => {
     const configPath = await createAppWithGitConfig("gitlab-app", original);
     appRows = [{ path: "gitlab-app" }];
 
-    await scrubGithubTokenFromRemotes();
+    await scrubTokensFromRemotes();
 
     expect(await fs.readFile(configPath, "utf8")).toBe(original);
   });
@@ -116,7 +116,7 @@ describe("scrubGithubTokenFromRemotes", () => {
     const configPath = await createAppWithGitConfig("enterprise-app", original);
     appRows = [{ path: "enterprise-app" }];
 
-    await scrubGithubTokenFromRemotes();
+    await scrubTokensFromRemotes();
 
     expect(await fs.readFile(configPath, "utf8")).toBe(original);
   });
@@ -124,6 +124,89 @@ describe("scrubGithubTokenFromRemotes", () => {
   it("ignores apps without a .git/config", async () => {
     appRows = [{ path: "no-git-app" }];
 
-    await expect(scrubGithubTokenFromRemotes()).resolves.toBeUndefined();
+    await expect(scrubTokensFromRemotes()).resolves.toBeUndefined();
+  });
+});
+
+describe("scrubbing the app's own GitLab host", () => {
+  it("strips credentials for the instance the app is linked to, and only that one", async () => {
+    const original = [
+      '[remote "origin"]',
+      "\turl = https://oauth2:glpat-secret@gitlab.example.com/group/app.git",
+      '[remote "mirror"]',
+      "\turl = https://user:pass@git.other.example/group/app.git",
+      "",
+    ].join("\n");
+    const configPath = await createAppWithGitConfig("gitlab-linked", original);
+    appRows = [
+      {
+        path: "gitlab-linked",
+        gitlabHost: "https://gitlab.example.com",
+      } as { path: string },
+    ];
+
+    await scrubTokensFromRemotes();
+
+    expect(await fs.readFile(configPath, "utf8")).toBe(
+      [
+        '[remote "origin"]',
+        "\turl = https://gitlab.example.com/group/app.git",
+        '[remote "mirror"]',
+        "\turl = https://user:pass@git.other.example/group/app.git",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  it("escapes a host with a port so the pattern stays exact", async () => {
+    const original = [
+      '[remote "origin"]',
+      "\turl = https://oauth2:tok@gitlab.example.com:8443/g/a.git",
+      "",
+    ].join("\n");
+    const configPath = await createAppWithGitConfig("gitlab-port", original);
+    appRows = [
+      {
+        path: "gitlab-port",
+        gitlabHost: "https://gitlab.example.com:8443",
+      } as { path: string },
+    ];
+
+    await scrubTokensFromRemotes();
+
+    expect(await fs.readFile(configPath, "utf8")).toContain(
+      "url = https://gitlab.example.com:8443/g/a.git",
+    );
+  });
+
+  it("leaves another instance on the same name but a different port alone", async () => {
+    // The app is linked to the portless instance. A remote on :8443 is a
+    // different GitLab, so its credentials are the user's own and must
+    // survive — the port is part of the host, not a terminator.
+    const original = [
+      '[remote "origin"]',
+      "\turl = https://oauth2:mine@gitlab.example.com/g/a.git",
+      '[remote "other"]',
+      "\turl = https://oauth2:theirs@gitlab.example.com:8443/g/b.git",
+      "",
+    ].join("\n");
+    const configPath = await createAppWithGitConfig(
+      "gitlab-other-port",
+      original,
+    );
+    appRows = [
+      {
+        path: "gitlab-other-port",
+        gitlabHost: "https://gitlab.example.com",
+      } as { path: string },
+    ];
+
+    await scrubTokensFromRemotes();
+
+    const written = await fs.readFile(configPath, "utf8");
+    expect(written).toContain("url = https://gitlab.example.com/g/a.git");
+    expect(written).toContain(
+      "url = https://oauth2:theirs@gitlab.example.com:8443/g/b.git",
+    );
   });
 });

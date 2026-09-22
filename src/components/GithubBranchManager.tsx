@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { GitRemoteProviderName } from "@/github_ops/state";
 import {
   AlertCircle,
   ChevronsDownUp,
@@ -65,9 +66,20 @@ import {
 
 interface BranchManagerProps {
   appId: number;
+  /**
+   * The provider the app is linked to, so a conflicted pull carries it into
+   * the rebase and push the machine composes after it rather than defaulting
+   * to GitHub. Passed in rather than resolved here: the only caller has
+   * already resolved it, and a query of its own would make this component
+   * need a QueryClient it does not otherwise use.
+   */
+  provider: GitRemoteProviderName;
 }
 
-export function GithubBranchManager({ appId }: BranchManagerProps) {
+export function GithubBranchManager({
+  appId,
+  provider: opProvider,
+}: BranchManagerProps) {
   const { data, isFetching } = useGithubBranchInventory(appId);
   const { projection, send } = useGithubOps(appId);
   const {
@@ -237,7 +249,10 @@ export function GithubBranchManager({ appId }: BranchManagerProps) {
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() =>
-                send({ type: "OP_REQUESTED", op: { type: "fetch" } })
+                send({
+                  type: "OP_REQUESTED",
+                  op: { type: "fetch", provider: opProvider },
+                })
               }
               disabled={!canMutateBranches || isFetching}
               data-testid="refresh-branches-button"
@@ -249,7 +264,10 @@ export function GithubBranchManager({ appId }: BranchManagerProps) {
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() =>
-                send({ type: "OP_REQUESTED", op: { type: "pull" } })
+                send({
+                  type: "OP_REQUESTED",
+                  op: { type: "pull", provider: opProvider },
+                })
               }
               disabled={!canMutateBranches}
               data-testid="git-pull-button"

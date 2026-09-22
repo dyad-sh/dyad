@@ -35,12 +35,27 @@ export interface GitBranchRenameParams extends GitBaseParams {
   oldBranch: string;
   newBranch: string;
 }
+/**
+ * Credentials for git network operations, bound to the host they are for.
+ *
+ * Git receives them as an `http.<hostUrl>/.extraheader` config entry for the
+ * duration of one command, so they never reach `.git/config`. The basic-auth
+ * pair differs per provider: GitHub takes the token as the user name, GitLab
+ * takes it as the password of a fixed user.
+ */
+export interface GitRemoteAuth {
+  /** Origin, plus an optional path prefix, that the header applies to. */
+  hostUrl: string;
+  username: string;
+  password: string;
+}
+
 export interface GitCloneParams {
   path: string; // destination
   url: string;
   depth?: number | null;
   singleBranch?: boolean;
-  accessToken?: string;
+  auth?: GitRemoteAuth;
 }
 export interface GitLogParams extends GitBaseParams {
   depth?: number;
@@ -53,7 +68,7 @@ export interface GitResult {
 }
 export interface GitPushParams extends GitBaseParams {
   branch: string;
-  accessToken: string;
+  auth: GitRemoteAuth;
   force?: boolean;
   forceWithLease?: boolean;
 }
@@ -92,7 +107,7 @@ export interface GitAuthorParam {
 
 export interface GitFetchParams extends GitBaseParams {
   remote?: string;
-  accessToken?: string;
+  auth?: GitRemoteAuth;
   /** Drop remote-tracking refs for branches that no longer exist on the remote. */
   prune?: boolean;
 }
@@ -100,7 +115,7 @@ export interface GitFetchParams extends GitBaseParams {
 export interface GitPullParams extends GitBaseParams {
   remote?: string;
   branch?: string;
-  accessToken?: string;
+  auth?: GitRemoteAuth;
   author?: GitAuthorParam;
   rebase?: boolean;
 }

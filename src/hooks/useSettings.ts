@@ -152,6 +152,12 @@ export function useSettings() {
     settings: settingsQuery.data ?? null,
     envVars: envVarsQuery.data ?? {},
     loading,
+    /**
+     * Just the user settings, without the env-vars query `loading` also
+     * covers. A caller that only reads a settings flag should not be held
+     * up by an unrelated request.
+     */
+    settingsLoading: settingsQuery.isLoading,
     error,
     updateSettings,
     refreshSettings,

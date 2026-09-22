@@ -66,9 +66,11 @@ export function queryKeysForInvalidationScope(
         queryKeys.settings.all,
         scope.provider === "github"
           ? queryKeys.github.all
-          : scope.provider === "supabase"
-            ? queryKeys.supabase.all
-            : queryKeys.neon.all,
+          : scope.provider === "gitlab"
+            ? queryKeys.gitlab.all
+            : scope.provider === "supabase"
+              ? queryKeys.supabase.all
+              : queryKeys.neon.all,
       ];
     case "mcp-servers":
       return [queryKeys.mcp.servers];

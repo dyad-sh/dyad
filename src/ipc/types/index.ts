@@ -123,6 +123,7 @@ export { appClient } from "./app";
 export { chatClient, chatStreamClient } from "./chat";
 export { agentClient, agentEventClient } from "./agent";
 export { githubClient, gitClient, gitEventClient } from "./github";
+export { gitlabClient } from "./gitlab";
 export {
   connectionFlowClient,
   connectionFlowEventClient,
@@ -529,6 +530,7 @@ import {
 } from "./connection_flow";
 import { mcpClient } from "./mcp";
 import { vercelClient } from "./vercel";
+import { gitlabClient } from "./gitlab";
 import { coolifyClient, coolifyEventClient } from "./coolify";
 import { coolifySetupClient, coolifySetupEventClient } from "./coolify_setup";
 import { supabaseClient, supabaseEventClient } from "./supabase";
@@ -613,6 +615,7 @@ export const ipc = {
   connectionFlow: connectionFlowClient,
   mcp: mcpClient,
   vercel: vercelClient,
+  gitlab: gitlabClient,
   coolify: coolifyClient,
   coolifySetup: coolifySetupClient,
   supabase: supabaseClient,

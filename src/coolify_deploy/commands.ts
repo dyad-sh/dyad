@@ -28,7 +28,15 @@ import {
   deployKeyFilePath,
   repoKeyName,
 } from "@/ipc/utils/coolify_deploy_key";
-import { getGitHubApiBase } from "@/ipc/handlers/github_handlers";
+import { getGitHubApiBase } from "@/ipc/utils/github_endpoints";
+import {
+  getGitLabClientForRemote,
+  resolveAppGitRemote,
+  type AppGitRemote,
+  type GitLabRemote,
+} from "@/ipc/utils/app_git_remote";
+import { isGitLabStatus } from "@/ipc/utils/gitlab_client";
+import { gitLabInstanceLabel } from "@/shared/gitlab_instance_url";
 import {
   getCurrentCommitHash,
   getGitUncommittedFiles,
@@ -313,6 +321,112 @@ async function ensureGithubDeployKey({
 }
 
 /**
+ * Puts Dyad's public key on a GitLab project as a read-only deploy key and
+ * asks the project for its SSH clone URL.
+ *
+ * The URL comes from the API rather than being composed: a self-hosted
+ * instance often serves SSH on a port other than 22, and only the project
+ * record knows which. GitLab, unlike GitHub, lets one key serve several
+ * projects, so "already taken" means the key is on this project (a
+ * re-deploy) or on another one this token can see; either way the project
+ * key list says whether it is here.
+ */
+async function ensureGitLabDeployKey({
+  remote,
+  report,
+  signal,
+}: {
+  remote: GitLabRemote;
+  report: DeployReporter;
+  signal: AbortSignal;
+}): Promise<{ keyName: string; publicKey: string; gitRepository: string }> {
+  const keyName = repoKeyName(
+    gitLabInstanceLabel(remote.host),
+    remote.projectPath,
+  );
+  const publicKey = await ensureDeployKey(keyName);
+  const client = getGitLabClientForRemote(remote, signal);
+  const label = remote.displayPath;
+
+  try {
+    await client.addDeployKey(remote.projectId, {
+      title: "Dyad deploy key (Coolify)",
+      key: publicKey,
+    });
+    report.log(`Added the deploy key to ${label}.\n`);
+  } catch (error) {
+    if (!isGitLabStatus(error, 400)) throw error;
+    // GitLab returns the key without its trailing comment.
+    const ours = publicKey.split(/\s+/).slice(0, 2).join(" ");
+    const keys = await client.listDeployKeys(remote.projectId);
+    // Before either verdict below: a cancel that lands while the listing is
+    // in flight should end the deploy as cancelled, not as a deploy-key
+    // problem the user would go and investigate.
+    throwIfAborted(signal);
+    const existing = keys.find((k) => k.key.startsWith(ours));
+    if (existing?.canPush) {
+      // Dyad registers this key read-only, but an earlier registration — by
+      // hand, or by another tool — can have granted write. Accepting it would
+      // hand Coolify push access to the repository it only needs to read.
+      throw new DyadError(
+        `Dyad's deploy key is already registered on ${label} with write access, ` +
+          `but Coolify only needs to read the repository. Give the key read-only ` +
+          `access in the project's Deploy keys settings, or remove it there and ` +
+          `deploy again so Dyad can register it read-only.`,
+        DyadErrorKind.Validation,
+      );
+    }
+    if (existing) {
+      report.log(`Deploy key already present on ${label}.\n`);
+    } else {
+      throw new DyadError(
+        `GitLab would not add the deploy key to ${label}: ${
+          error instanceof Error ? error.message : String(error)
+        }. Remove the key from wherever it is registered, or delete ` +
+          `${deployKeyFilePath(keyName)} to generate a new one — Dyad ` +
+          `registers a regenerated key with Coolify under a new name.`,
+        DyadErrorKind.Validation,
+      );
+    }
+  }
+  throwIfAborted(signal);
+
+  const project = await client.getProject(remote.projectId);
+  if (!project.sshUrlToRepo) {
+    throw new DyadError(
+      `GitLab did not report an SSH clone URL for ${label}, so Coolify has nothing to clone from.`,
+      DyadErrorKind.External,
+    );
+  }
+  return { keyName, publicKey, gitRepository: project.sshUrlToRepo };
+}
+
+/** Registers Dyad's key with whichever provider the app is linked to. */
+async function ensureProviderDeployKey({
+  remote,
+  report,
+  signal,
+}: {
+  remote: AppGitRemote;
+  report: DeployReporter;
+  signal: AbortSignal;
+}): Promise<{ keyName: string; publicKey: string; gitRepository: string }> {
+  switch (remote.provider) {
+    case "github": {
+      const key = await ensureGithubDeployKey({
+        owner: remote.owner,
+        repo: remote.repo,
+        report,
+        signal,
+      });
+      return { ...key, gitRepository: remote.sshUrl };
+    }
+    case "gitlab":
+      return ensureGitLabDeployKey({ remote, report, signal });
+  }
+}
+
+/**
  * Coolify's deployment log as something a person can read.
  *
  * The field is a JSON array of entries, so piping it straight through shows
@@ -501,10 +615,13 @@ async function resolveApplication({
 async function warnIfBranchNotPushed({
   appPath,
   branch,
+  providerLabel,
   report,
 }: {
   appPath: string;
   branch: string;
+  /** "GitHub" or "GitLab", for the warning text. */
+  providerLabel: string;
   report: DeployReporter;
 }): Promise<void> {
   // Two questions, asked separately. Reading the remote ref throws when the
@@ -522,7 +639,7 @@ async function warnIfBranchNotPushed({
     if (local !== remote) {
       report.log(
         `Warning: this app has commits that are not on origin/${branch}. ` +
-          `Coolify builds from GitHub, so those changes will not be deployed ` +
+          `Coolify builds from ${providerLabel}, so those changes will not be deployed ` +
           `until they are pushed.\n`,
       );
     }
@@ -547,7 +664,7 @@ async function warnIfBranchNotPushed({
       report.log(
         `Warning: this app has ${uncommitted.length} uncommitted ` +
           `${uncommitted.length === 1 ? "file" : "files"}. Coolify builds ` +
-          `from GitHub, so those edits are not in this deployment.\n`,
+          `from ${providerLabel}, so those edits are not in this deployment.\n`,
       );
     }
   } catch {
@@ -674,16 +791,19 @@ export async function runDeployPipeline({
       DyadErrorKind.Validation,
     );
   }
-  if (!app.githubOrg || !app.githubRepo) {
+  const remote = resolveAppGitRemote(app);
+  if (!remote) {
     throw new DyadError(
-      "Coolify deploys from a git repository. Connect this app to GitHub first.",
+      "Coolify deploys from a git repository. Connect this app to GitHub or GitLab first.",
       DyadErrorKind.Validation,
     );
   }
+  const providerShortLabel = remote.provider === "gitlab" ? "GitLab" : "GitHub";
 
   await warnIfBranchNotPushed({
     appPath: getDyadAppPath(app.path),
-    branch: app.githubBranch ?? "main",
+    branch: remote.branch,
+    providerLabel: providerShortLabel,
     report,
   });
 
@@ -695,9 +815,8 @@ export async function runDeployPipeline({
   );
   report.log(`Building as ${build.buildPack} on port ${build.portsExposes}.\n`);
 
-  const { keyName, publicKey } = await ensureGithubDeployKey({
-    owner: app.githubOrg,
-    repo: app.githubRepo,
+  const { keyName, publicKey, gitRepository } = await ensureProviderDeployKey({
+    remote,
     report,
     signal,
   });
@@ -714,8 +833,7 @@ export async function runDeployPipeline({
   });
   throwIfAborted(signal);
 
-  const gitRepository = `git@github.com:${app.githubOrg}/${app.githubRepo}.git`;
-  const gitBranch = app.githubBranch ?? "main";
+  const gitBranch = remote.branch;
   const serverUuid = connection.serverUuid;
 
   report.stage("configuring");

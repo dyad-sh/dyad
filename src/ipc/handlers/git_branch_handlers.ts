@@ -1,6 +1,5 @@
 import { IpcMainInvokeEvent } from "electron";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { readSettings } from "../../main/settings";
 import {
   gitMergeAbort,
   gitFetch,
@@ -34,7 +33,14 @@ import {
   appOperationCoordinator,
   readAppResource,
 } from "../services/app_operation_coordinator";
-import { updateAppGithubRepo, ensureCleanWorkspace } from "./github_handlers";
+import { ensureCleanWorkspace } from "./github_handlers";
+import {
+  getAppGitRemoteAuth,
+  requireAppGitRemote,
+  resolveAppGitRemote,
+  type AppGitRemoteColumns,
+} from "../utils/app_git_remote";
+import { findAppOrThrow } from "../utils/find_app";
 import { createTypedHandler } from "./base";
 import { githubContracts, gitContracts, gitEvents } from "../types/github";
 import { ensureDyadGitignored } from "./gitignoreUtils";
@@ -78,24 +84,14 @@ export async function handleFetchFromGithub(
   event: IpcMainInvokeEvent,
   { appId }: GitBranchAppIdParams,
 ): Promise<void> {
-  const settings = readSettings();
-  const accessToken = settings.githubAccessToken?.value;
-  if (!accessToken) {
-    throw new DyadError("Not authenticated with GitHub.", DyadErrorKind.Auth);
-  }
-  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
-  if (!app || !app.githubOrg || !app.githubRepo) {
-    throw new DyadError(
-      "App is not linked to a GitHub repo.",
-      DyadErrorKind.Precondition,
-    );
-  }
+  const app = await findAppOrThrow(appId);
+  const auth = getAppGitRemoteAuth(requireAppGitRemote(app));
   const appPath = getDyadAppPath(app.path);
 
   await gitFetch({
     path: appPath,
     remote: "origin",
-    accessToken,
+    auth,
     prune: true,
   });
 }
@@ -197,6 +193,41 @@ export async function handleDeleteBranch(
   }
 }
 
+/**
+ * Records the branch an app is now on, in the column its provider reads.
+ *
+ * Switching and renaming used to go through `updateAppGithubRepo`, which
+ * writes the GitHub columns and only those. A GitLab-linked app therefore
+ * kept the branch it was linked on while its `github_branch` moved, and
+ * `resolveAppGitRemote` — which reads `gitlabBranch` for a GitLab app — kept
+ * handing the old branch to push and pull. The result was a sync that
+ * reported success having pushed a branch the user had moved off.
+ *
+ * Only the branch is written. The old call also re-wrote the org and repo,
+ * which was a no-op for a GitHub app and wrote an empty string into
+ * `github_repo` for every other one.
+ */
+async function updateAppLinkedBranch({
+  app,
+  branch,
+}: {
+  app: { id: number } & AppGitRemoteColumns;
+  branch: string;
+}): Promise<void> {
+  const remote = resolveAppGitRemote(app);
+  await db
+    .update(apps)
+    .set(
+      // An app linked to nothing keeps writing github_branch, as it always
+      // has: nothing reads it until the app is linked, and linking writes
+      // the branch itself.
+      remote?.provider === "gitlab"
+        ? { gitlabBranch: branch }
+        : { githubBranch: branch },
+    )
+    .where(eq(apps.id, app.id));
+}
+
 export async function handleSwitchBranch(
   event: IpcMainInvokeEvent,
   { appId, branch }: GitBranchParams,
@@ -228,12 +259,7 @@ export async function handleSwitchBranch(
   });
 
   // Update DB with new branch
-  await updateAppGithubRepo({
-    appId,
-    org: app.githubOrg || undefined,
-    repo: app.githubRepo || "",
-    branch,
-  });
+  await updateAppLinkedBranch({ app, branch });
 }
 
 export async function handleRenameBranch(
@@ -257,12 +283,7 @@ export async function handleRenameBranch(
   // Only update DB if we were on oldBranch before renaming
   // (git branch -m renames the current branch if we're on it, so HEAD now points to newBranch)
   if (isRenamingCurrentBranch) {
-    await updateAppGithubRepo({
-      appId,
-      org: app.githubOrg || undefined,
-      repo: app.githubRepo || "",
-      branch: newBranch,
-    });
+    await updateAppLinkedBranch({ app, branch: newBranch });
   }
 }
 
@@ -551,18 +572,8 @@ export async function handlePullFromGithub(
   event: IpcMainInvokeEvent,
   { appId }: GitBranchAppIdParams,
 ): Promise<void> {
-  const settings = readSettings();
-  const accessToken = settings.githubAccessToken?.value;
-  if (!accessToken) {
-    throw new DyadError("Not authenticated with GitHub.", DyadErrorKind.Auth);
-  }
-  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
-  if (!app || !app.githubOrg || !app.githubRepo) {
-    throw new DyadError(
-      "App is not linked to a GitHub repo.",
-      DyadErrorKind.Precondition,
-    );
-  }
+  const app = await findAppOrThrow(appId);
+  const auth = getAppGitRemoteAuth(requireAppGitRemote(app));
   const appPath = getDyadAppPath(app.path);
   const currentBranch = await gitCurrentBranch({ path: appPath });
 
@@ -571,7 +582,7 @@ export async function handlePullFromGithub(
       path: appPath,
       remote: "origin",
       branch: currentBranch || "main",
-      accessToken,
+      auth,
     });
   } catch (pullError: any) {
     // Check if it's a missing remote branch error

@@ -401,6 +401,16 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
 - Record the machine dependency graph in each participating module's header
   and keep it acyclic. Construct concrete facade adapters at an application
   composition root, outside both machines.
+- Make a field that composed operations must carry **required** on every
+  operation that has it, even when that changes the wire shape. An optional
+  field has to be re-attached by hand at each composite edge (`compositeNext`,
+  continuation operations, conflict origins), and the miss is silent: adding
+  `provider?` to `push`/`rebase` but not `rebase-continue` made a resumed
+  rebase on a GitLab app announce a push to GitHub. Required, the compiler
+  finds every gap. Do not keep an optional field to preserve byte-identical
+  payloads for the existing provider — and treat a test asserting the wire
+  shape (`expect(op).not.toHaveProperty("provider")`) as a smell, since it
+  pins the shape rather than any behaviour and fails on the fix.
 
 ## Read models and intents
 

@@ -10,6 +10,7 @@ export { PageObject } from "./PageObject";
 // Component page objects
 export {
   GitHubConnector,
+  GitLabConnector,
   ChatActions,
   PreviewPanel,
   CodeEditor,

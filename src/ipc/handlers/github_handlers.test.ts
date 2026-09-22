@@ -23,6 +23,8 @@ vi.mock("@/ipc/utils/git_utils", async (importOriginal) => ({
 
 import {
   ensureCleanWorkspace,
+  handleConnectToExistingRepo,
+  handleCreateRepo,
   normalizeGitHubRepoName,
   prepareLocalBranch,
 } from "@/ipc/handlers/github_handlers";
@@ -115,5 +117,47 @@ describe("prepareLocalBranch locking", () => {
       name: "GitStateError",
       code: "UNCOMMITTED_CHANGES",
     });
+  });
+});
+
+describe("linking an app to GitHub", () => {
+  const gitlabLinkedApp = {
+    id: 1,
+    path: "test-app",
+    gitlabHost: "https://gitlab.example.com",
+    gitlabProjectId: 9,
+    gitlabProjectPath: "team/app",
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(db.query.apps.findFirst).mockResolvedValue(
+      gitlabLinkedApp as never,
+    );
+  });
+
+  // The one-provider invariant used to be enforced on the GitLab link paths
+  // only. An app that ended up with both column sets resolves to GitHub,
+  // because the resolver checks GitHub first — so the GitLab project was
+  // orphaned with no error, no banner and nothing for the user to act on.
+  it("refuses to create a repo for an app already linked to GitLab", async () => {
+    await expect(
+      handleCreateRepo({} as never, {
+        org: "acme",
+        repo: "demo",
+        appId: 1,
+      }),
+    ).rejects.toThrow(/already linked to GitLab/);
+  });
+
+  it("refuses to link an existing repo to an app already on GitLab", async () => {
+    await expect(
+      handleConnectToExistingRepo({} as never, {
+        owner: "acme",
+        repo: "demo",
+        branch: "main",
+        appId: 1,
+      }),
+    ).rejects.toThrow(/already linked to GitLab/);
   });
 });

@@ -1,4 +1,5 @@
 import { expect, it } from "vitest";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
   getAppPreviewHostname,
   isAppPreviewHostname,
@@ -15,7 +16,12 @@ it("uses the full immutable numeric identity even when app IDs share preferred p
 it.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, NaN])(
   "rejects an invalid app ID %s",
   (id) => {
-    expect(() => getAppPreviewHostname(id)).toThrow();
+    expect(() => getAppPreviewHostname(id)).toThrow(
+      new DyadError(
+        "Preview app ID must be a positive safe integer",
+        DyadErrorKind.Validation,
+      ),
+    );
   },
 );
 

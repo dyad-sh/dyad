@@ -42,6 +42,10 @@ Sanitize copied dotenv files throughout a disposable test workspace's lifetime.
 Preserve only provider-rewritten keys, never whole files, plus public Supabase
 URL/anon/publishable settings for RLS-scoped tests; strip privileged database credentials.
 
+Start a provider request's timeout after acquiring its shared project lock, so
+other apps' queued updates do not consume its API budget. Keep caller cancellation
+active during both admission and retry backoff, and cancel backoff timers on abort.
+
 App deletion closes coordinator admission before draining admitted work. Every
 new app-scoped main-process mutation must therefore use the coordinator unless
 it is already owned and drained by a domain-specific actor fence. Deletion-only

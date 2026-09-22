@@ -702,25 +702,33 @@ export async function getProjectApiKeys({
   return parsed.data as SupabaseApiKey[];
 }
 
+export const SUPABASE_PREVIEW_REGISTRATION_TIMEOUT_MS = 10_000;
+
 /** Append preview callbacks without changing Site URL or other Auth settings. */
 export async function ensureSupabaseAuthRedirectUrls({
   projectId,
   organizationSlug,
   redirectUrls,
-  signal,
+  signal: callerSignal,
 }: {
   projectId: string;
   organizationSlug: string | null;
   redirectUrls: string[];
   signal: AbortSignal;
 }): Promise<void> {
-  signal.throwIfAborted();
+  callerSignal.throwIfAborted();
   if (IS_TEST_BUILD) return;
 
   // Different apps can share one project, even through different credentials.
   // Serialize the whole read/merge/write by project, not by app or organization.
   await abortable(
     withLock(`supabase-auth-redirects:${projectId}`, async () => {
+      callerSignal.throwIfAborted();
+      // Waiting for another app's project update does not consume this budget.
+      const signal = AbortSignal.any([
+        callerSignal,
+        AbortSignal.timeout(SUPABASE_PREVIEW_REGISTRATION_TIMEOUT_MS),
+      ]);
       signal.throwIfAborted();
       const supabase = await abortable(
         getSupabaseClient({ organizationSlug }),
@@ -732,7 +740,10 @@ export async function ensureSupabaseAuthRedirectUrls({
         Authorization: `Bearer ${(supabase as any).options.accessToken}`,
         "Content-Type": "application/json",
       };
-      const response = await abortable(fetch(url, { headers, signal }), signal);
+      const response = await abortable(
+        fetchWithRetry(url, { headers, signal }, "read Auth redirect URLs"),
+        signal,
+      );
       if (!response.ok) {
         throw classifyManagementApiError(
           await abortable(
@@ -762,12 +773,16 @@ export async function ensureSupabaseAuthRedirectUrls({
 
       signal.throwIfAborted();
       const updated = await abortable(
-        fetch(url, {
-          method: "PATCH",
-          headers,
-          signal,
-          body: JSON.stringify({ uri_allow_list: merged.join(",") }),
-        }),
+        fetchWithRetry(
+          url,
+          {
+            method: "PATCH",
+            headers,
+            signal,
+            body: JSON.stringify({ uri_allow_list: merged.join(",") }),
+          },
+          "register Auth redirect URLs",
+        ),
         signal,
       );
       if (!updated.ok) {
@@ -780,7 +795,7 @@ export async function ensureSupabaseAuthRedirectUrls({
         );
       }
     }),
-    signal,
+    callerSignal,
   );
 }
 

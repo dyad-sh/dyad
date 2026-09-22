@@ -1,11 +1,15 @@
 import { session } from "electron";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { isAppPreviewHostname } from "../../../shared/preview_hostname";
 
 /** Recording must never clear another app's cookies in the shared session. */
 export async function clearPreviewStorage(origin: string): Promise<void> {
-  const url = new URL(origin);
-  if (!isAppPreviewHostname(url.hostname) || url.protocol !== "http:") {
-    throw new Error("Cannot clear storage for an unrecognized preview origin");
+  const url = URL.parse(origin);
+  if (!url || !isAppPreviewHostname(url.hostname) || url.protocol !== "http:") {
+    throw new DyadError(
+      "Cannot clear storage for an unrecognized preview origin",
+      DyadErrorKind.Validation,
+    );
   }
   // Include the app's partitioned iframe storage, matching the frame origin
   // even when Dyad's file:// renderer is the top-level site. Keep cookies out:

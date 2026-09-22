@@ -375,8 +375,9 @@ export async function prepareIsolatedTestDatabase({
       if (restartApp) {
         const info = runningApps.get(app.id);
         if (!info?.proxyUrl)
-          throw new Error(
+          throw new DyadError(
             "The preview URL is unavailable for Neon Auth sign-in.",
+            DyadErrorKind.Precondition,
           );
         await neonPreviewDomainService.ensureTrustedDomain({
           appId: app.id,

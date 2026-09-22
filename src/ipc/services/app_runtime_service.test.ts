@@ -167,6 +167,7 @@ vi.mock("@/ipc/utils/start_proxy_server", () => ({
 
 import {
   ensureProxyForRunningApp,
+  appRuntimeService,
   executeApp,
   startCloudSandboxLogStream,
   type AppRuntimeOutput,
@@ -1012,6 +1013,43 @@ describe("executeApp", () => {
           await reconcileRunningSupabasePreview(42);
         }
       }
+
+      it("allows a late ready URL to recover after the startup wait times out", async () => {
+        const request = seed();
+        const controller = new AbortController();
+        runningApps.get(42)!.proxyAbortController = controller;
+        await expect(
+          appRuntimeService.waitForReady(42, { timeoutMs: 0 }),
+        ).rejects.toThrow("Timed out");
+        expect(controller.signal.aborted).toBe(false);
+        await ensureProxyForRunningApp(request);
+        await appRuntimeService.waitForReady(42);
+        await runningApps.get(42)?.previewAuthRegistration?.settled;
+        expect(runningApps.get(42)?.proxyUrl).toBe(
+          "http://app-42.localhost:42142",
+        );
+      });
+
+      it("publishes an already-running preview without waiting for provider registration", async () => {
+        const request = seed();
+        ensure.mockImplementation(() => new Promise<void>(() => {}));
+        await ensureProxyForRunningApp(request);
+        safeSendMock.mockClear();
+        try {
+          await appRuntimeService.start({ appId: 42, output: request.output });
+          expect(safeSendMock).toHaveBeenCalledWith(
+            expect.anything(),
+            "app:output",
+            expect.objectContaining({
+              previewAuth: { provider, state: "pending" },
+            }),
+          );
+        } finally {
+          const registration = runningApps.get(42)?.previewAuthRegistration;
+          registration?.controller.abort();
+          await registration?.settled;
+        }
+      });
 
       it("opens the preview with the actual port while registration is pending, then clears the banner", async () => {
         let finish!: () => void;

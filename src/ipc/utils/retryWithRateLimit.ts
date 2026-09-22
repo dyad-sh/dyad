@@ -1,5 +1,5 @@
 import log from "electron-log";
-import { setTimeout as delayWithSignal } from "node:timers/promises";
+import { abortableDelay } from "./abortable";
 
 export const logger = log.scope("retryWithRateLimit");
 
@@ -105,6 +105,7 @@ export async function retryWithRateLimit<T>(
       }
       return result;
     } catch (error: any) {
+      options?.signal?.throwIfAborted();
       lastError = error;
 
       // Only retry on rate limit errors
@@ -146,11 +147,7 @@ export async function retryWithRateLimit<T>(
         );
       }
 
-      if (options?.signal) {
-        await delayWithSignal(delay, undefined, { signal: options.signal });
-      } else {
-        await new Promise((resolve) => setTimeout(resolve, delay));
-      }
+      await abortableDelay(delay, options?.signal);
     }
   }
 
@@ -189,6 +186,9 @@ export async function fetchWithRetry(
       return response;
     },
     context,
-    { ...retryOptions, signal: init?.signal ?? retryOptions?.signal },
+    {
+      ...retryOptions,
+      signal: init?.signal ?? retryOptions?.signal ?? undefined,
+    },
   );
 }

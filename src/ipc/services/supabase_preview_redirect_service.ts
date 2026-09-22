@@ -6,8 +6,6 @@ import { ensureSupabaseAuthRedirectUrls } from "@/supabase_admin/supabase_manage
 import { getAppPreviewHostname } from "../../../shared/preview_hostname";
 import { abortable } from "../utils/abortable";
 
-export const SUPABASE_PREVIEW_REGISTRATION_TIMEOUT_MS = 10_000;
-
 export interface SupabasePreviewTarget {
   projectId: string;
   organizationSlug: string | null;
@@ -47,22 +45,16 @@ export async function ensureSupabasePreviewRedirects({
   ) {
     throw new DyadError("Invalid app preview origin", DyadErrorKind.Validation);
   }
-  const registrationSignal = AbortSignal.any([
-    signal,
-    AbortSignal.timeout(SUPABASE_PREVIEW_REGISTRATION_TIMEOUT_MS),
-  ]);
+  signal.throwIfAborted();
   await abortable(
-    (async () => {
-      registrationSignal.throwIfAborted();
-      await ensureSupabaseAuthRedirectUrls({
-        // A selected Supabase branch has its own project ref and Auth config.
-        projectId: target.projectId,
-        organizationSlug: target.organizationSlug,
-        // The bare origin is not matched by /** (which requires a slash).
-        redirectUrls: [origin, `${origin}/**`],
-        signal: registrationSignal,
-      });
-    })(),
-    registrationSignal,
+    ensureSupabaseAuthRedirectUrls({
+      // A selected Supabase branch has its own project ref and Auth config.
+      projectId: target.projectId,
+      organizationSlug: target.organizationSlug,
+      // The bare origin is not matched by /** (which requires a slash).
+      redirectUrls: [origin, `${origin}/**`],
+      signal,
+    }),
+    signal,
   );
 }

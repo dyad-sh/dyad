@@ -417,7 +417,7 @@ describe("transition scenarios", () => {
       url: { ...url },
     });
     expect(readyResult.state).toBe(ready);
-    expect(commandsOf(readyResult)).toHaveLength(1);
+    expect(commandsOf(readyResult)).toEqual([]);
 
     const starting: RunState = {
       type: "starting",
@@ -811,7 +811,10 @@ it("updates registration progress without changing the preview URL", () => {
   expect(registered.state).toEqual(state);
   if (registered.kind !== "applied")
     throw new Error("Expected registration to finish");
-  expect(registered.commands).not.toContainEqual(
-    expect.objectContaining({ type: "reload" }),
-  );
+  expect(registered.commands).toEqual([]);
+  for (const result of [registering, switched]) {
+    if (result.kind !== "applied")
+      throw new Error("Expected auth status update");
+    expect(result.commands).toEqual([]);
+  }
 });

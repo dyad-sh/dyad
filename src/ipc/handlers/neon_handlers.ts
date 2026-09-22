@@ -67,6 +67,7 @@ function createLockedHandler<
     input: z.infer<TInput>,
   ) => Promise<z.infer<TOutput>>,
   resources: AppOperationRequest["resources"] = NEON_APP_MUTATION_RESOURCES,
+  refuseWhenRecording = "change this app's database",
 ): void {
   createTypedHandler(
     contract,
@@ -79,7 +80,7 @@ function createLockedHandler<
       // mutation sits on a spinner for up to the 30-minute cap with nothing on
       // screen saying why. It also rewrites the `.env.local` the session has
       // swapped for its isolated branch.
-      "change this app's database",
+      refuseWhenRecording,
     ),
   );
 }
@@ -919,28 +920,33 @@ export function registerNeonHandlers() {
   );
 
   // Do not use log handler because there's sensitive data in the response
-  createLockedHandler(neonContracts.getBranchEnvVars, async (_, params) => {
-    const { appId, branchType } = params;
+  createLockedHandler(
+    neonContracts.getBranchEnvVars,
+    async (_, params) => {
+      const { appId, branchType } = params;
 
-    const appRows = await db
-      .select()
-      .from(apps)
-      .where(eq(apps.id, appId))
-      .limit(1);
-    if (appRows.length === 0) {
-      throw new DyadError(
-        `App with ID ${appId} not found`,
-        DyadErrorKind.NotFound,
-      );
-    }
-    // Provision-on-view: resolveNeonBranchEnvVars ensures Neon Auth is active
-    // and (for Next.js) a per-branch cookie secret exists, so the previewed
-    // values match what gets injected into .env.local / Vercel.
-    const { databaseUrl, neonAuthBaseUrl, neonAuthCookieSecret } =
-      await resolveNeonBranchEnvVars({ appData: appRows[0], branchType });
+      const appRows = await db
+        .select()
+        .from(apps)
+        .where(eq(apps.id, appId))
+        .limit(1);
+      if (appRows.length === 0) {
+        throw new DyadError(
+          `App with ID ${appId} not found`,
+          DyadErrorKind.NotFound,
+        );
+      }
+      // Provision-on-view: resolveNeonBranchEnvVars ensures Neon Auth is active
+      // and (for Next.js) a per-branch cookie secret exists, so the previewed
+      // values match what gets injected into .env.local / Vercel.
+      const { databaseUrl, neonAuthBaseUrl, neonAuthCookieSecret } =
+        await resolveNeonBranchEnvVars({ appData: appRows[0], branchType });
 
-    return { databaseUrl, neonAuthBaseUrl, neonAuthCookieSecret };
-  });
+      return { databaseUrl, neonAuthBaseUrl, neonAuthCookieSecret };
+    },
+    [readAppResource("app-path"), "provider", "runtime-config"],
+    "load database environment variables",
+  );
 
   // Persist which Neon branch the unified database section deploys/syncs
   // against. This is a lightweight view/deploy preference, intentionally

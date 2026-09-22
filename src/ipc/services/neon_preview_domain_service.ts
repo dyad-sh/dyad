@@ -3,10 +3,12 @@ import { db } from "@/db";
 import { apps } from "@/db/schema";
 import { getDyadAppPath } from "@/paths/paths";
 import type { AppRunInvocationRef } from "@/app_run/state";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { getAppPreviewHostname } from "../../../shared/preview_hostname";
 import { readEnvVarsOrEmpty } from "../utils/app_env_var_utils";
 import { ensureNeonAuthTrustedDomain } from "../utils/neon_utils";
 import { abortable } from "../utils/abortable";
+import { retryOnLocked } from "../utils/retryOnLocked";
 
 export interface NeonPreviewTarget {
   projectId: string;
@@ -23,7 +25,11 @@ export async function resolveNeonPreviewTarget(
   if (!env.some(({ key, value }) => key === "NEON_AUTH_BASE_URL" && value))
     return null;
   const branchId = app.neonActiveBranchId ?? app.neonDevelopmentBranchId;
-  if (!branchId) throw new Error("The active Neon Auth branch is unavailable.");
+  if (!branchId)
+    throw new DyadError(
+      "The active Neon Auth branch is unavailable.",
+      DyadErrorKind.Precondition,
+    );
   return { projectId: app.neonProjectId, branchId };
 }
 
@@ -32,7 +38,7 @@ export class NeonPreviewDomainService {
 
   constructor(private readonly register = ensureNeonAuthTrustedDomain) {}
 
-  ensureTrustedDomain(input: {
+  async ensureTrustedDomain(input: {
     appId: number;
     processId: number;
     invocationRef?: AppRunInvocationRef;
@@ -40,14 +46,18 @@ export class NeonPreviewDomainService {
     origin: string;
     signal: AbortSignal;
   }): Promise<void> {
-    const url = new URL(input.origin);
+    const url = URL.parse(input.origin);
     if (
+      !url ||
       url.protocol !== "http:" ||
       url.hostname !== getAppPreviewHostname(input.appId) ||
       !url.port ||
       url.origin !== input.origin
     ) {
-      return Promise.reject(new Error("Invalid app preview origin"));
+      throw new DyadError(
+        "Invalid app preview origin",
+        DyadErrorKind.Validation,
+      );
     }
     const key = JSON.stringify([
       input.appId,
@@ -64,7 +74,12 @@ export class NeonPreviewDomainService {
     const work = (async () => {
       signal.throwIfAborted();
       await abortable(
-        this.register({ ...input.target, origin: input.origin, signal }),
+        retryOnLocked(
+          () =>
+            this.register({ ...input.target, origin: input.origin, signal }),
+          "Register Neon preview origin",
+          { signal },
+        ),
         signal,
       );
       signal.throwIfAborted();

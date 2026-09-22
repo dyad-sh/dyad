@@ -474,23 +474,45 @@ describe("sandbox capabilities", () => {
   });
 
   it.each([
-    '"a".localeCompare("b", "de");',
-    'new Intl.NumberFormat("de").format(1);',
-    'new Intl.DateTimeFormat("en-US", { timeZone: "America/Los_Angeles" });',
-  ])("rejects unsupported locale/time-zone arguments: %s", async (script) => {
-    if (!isSandboxSupportedPlatform()) return;
-    await expect(runSandboxScript({ appPath, script })).rejects.toThrow(
-      /en-US|UTC/,
-    );
-  });
+    [
+      '"a".localeCompare("b", "de");',
+      "TypeError: Intl currently supports only the `en-US` locale",
+    ],
+    [
+      'new Intl.NumberFormat("de").format(1);',
+      "TypeError: Intl currently supports only the `en-US` locale",
+    ],
+    [
+      'new Intl.DateTimeFormat("en-US", { timeZone: "America/Los_Angeles" });',
+      "TypeError: Intl.DateTimeFormat currently supports only the `UTC` timeZone",
+    ],
+  ])(
+    "rejects unsupported locale/time-zone arguments: %s",
+    async (script, message) => {
+      if (!isSandboxSupportedPlatform()) return;
+      await expect(runSandboxScript({ appPath, script })).rejects.toThrow(
+        message,
+      );
+    },
+  );
 
-  it.each(["1n", 'new Map([["key", 1]])', "new Set([1])"])(
+  it.each([
+    ["1n", "BigInt values cannot cross the structured host boundary"],
+    [
+      'new Map([["key", 1]])',
+      "Map and Set values cannot cross the structured host boundary",
+    ],
+    [
+      "new Set([1])",
+      "Map and Set values cannot cross the structured host boundary",
+    ],
+  ])(
     "rejects non-structured values at return and host-call boundaries: %s",
-    async (expression) => {
+    async (expression, message) => {
       if (!isSandboxSupportedPlatform()) return;
       await expect(
         runSandboxScript({ appPath, script: `${expression};` }),
-      ).rejects.toThrow(/BigInt|Map|Set|structured/i);
+      ).rejects.toThrow(message);
       let called = false;
       await expect(
         executeSandboxScriptInProcess({
@@ -502,10 +524,35 @@ describe("sandbox capabilities", () => {
             },
           },
         }),
-      ).rejects.toThrow(/BigInt|Map|Set|structured/i);
+      ).rejects.toThrow(message);
       expect(called).toBe(false);
     },
   );
+
+  it("preserves sparse host-call arrays but renders holes as null in final output", async () => {
+    if (!isSandboxSupportedPlatform()) return;
+    const script = "const items = [1, 2, 3]; delete items[1];";
+    const result = await runSandboxScript({
+      appPath,
+      script: `${script} items;`,
+    });
+    expect(result.value).toBe("[\n  1,\n  null,\n  3\n]");
+
+    let received: unknown;
+    await executeSandboxScriptInProcess({
+      appPath,
+      script: `${script} send(items);`,
+      capabilities: {
+        send: (value) => {
+          received = value;
+        },
+      },
+    });
+    const expected = [1, 2, 3];
+    delete expected[1];
+    expect(received).toStrictEqual(expected);
+    expect(Object.hasOwn(received as number[], 1)).toBe(false);
+  });
 
   it.each(["\ud800", { ["\ud800"]: 1 }])(
     "rejects lone surrogates in host-returned strings and keys: %j",

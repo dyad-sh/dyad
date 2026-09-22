@@ -186,6 +186,8 @@ Unsupported / unavailable:
 
 Return only plain structured data (strings, numbers, booleans, null/undefined, arrays, and plain objects). Convert Map/Set to arrays or plain objects and BigInt to a string before returning or passing to host functions. Strings and object keys must not contain lone UTF-16 surrogates.
 
+Deleting an array element leaves a hole without changing its length. Host functions receive sparse arrays with those holes preserved, but final JSON output renders holes as null. Prefer dense arrays when returning data or passing it to host functions.
+
 Avoid returning shared references:
 
 \`\`\`

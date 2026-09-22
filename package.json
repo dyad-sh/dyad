@@ -90,7 +90,7 @@
     "@tanstack/react-router": "^1.114.34",
     "@types/uuid": "^10.0.0",
     "@typescript/typescript6": "6.0.2",
-    "@vercel/sdk": "^1.28.33",
+    "@vercel/sdk": "^1.28.35",
     "@vitejs/plugin-react": "^4.3.4",
     "@vscode/ripgrep": "^1.17.0",
     "@xterm/addon-clipboard": "^0.2.0",

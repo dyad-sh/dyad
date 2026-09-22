@@ -637,7 +637,7 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
       results.push({ ...result, file });
       resultsByFile.set(file, results);
     }
-    const sections: string[] = [];
+    const agentDetails: string[] = [];
     const summary: string[] = [];
     let failedFiles = 0;
     let unverifiedFiles = 0;
@@ -652,12 +652,12 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
         if (run.isFreeFlakeRun) run.state.flakeCheckUsed = false;
         unverifiedFiles += 1;
         summary.push(`${run.testFile}: no runnable tests — not verified`);
-        sections.push(reportNoRunnableTests(run.testFile, args.grep));
+        agentDetails.push(reportNoRunnableTests(run.testFile, args.grep));
       } else if (outcome.kind === "passed") {
         summary.push(
           `${run.testFile}: passed — ${outcome.passed} passed, ${outcome.skipped} skipped${scope}`,
         );
-        sections.push(
+        agentDetails.push(
           `${run.testFile}: ${reportPassed({ ...run, outcome, res: fileResult, currentEditCount, grep: args.grep })}`,
         );
       } else {
@@ -665,7 +665,7 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
         summary.push(
           `${run.testFile}: failed — ${outcome.passed} passed, ${outcome.failed} failed, ${outcome.skipped} skipped${scope}`,
         );
-        sections.push(
+        agentDetails.push(
           await reportFailure({
             ...run,
             ctx,
@@ -677,9 +677,9 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
         );
       }
     }
-    const body = [summary.join("\n"), isolationLine(res), ...sections].join(
-      "\n\n",
-    );
+    // Show each file once in chat; detailed reports and retry instructions
+    // belong only in the model's tool response.
+    const body = [summary.join("\n"), isolationLine(res)].join("\n\n");
     const title =
       failedFiles > 0
         ? `Tests failed in ${failedFiles} file(s)`
@@ -691,6 +691,6 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
     if (unverifiedFiles > 0 && failedFiles === 0)
       completeWarning(ctx, title, body);
     else completeStatus(ctx, title, body);
-    return body;
+    return [body, ...agentDetails].join("\n\n");
   },
 };

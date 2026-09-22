@@ -169,6 +169,52 @@ describe("runTestsTool", () => {
       },
     );
 
+    it.each([undefined, ".*", "does a thing"])(
+      "shows each passing file once and keeps rerun guidance in the tool response (grep: %s)",
+      async (grep) => {
+        runner.mockResolvedValue({
+          appId: 1,
+          results: [
+            {
+              file: a,
+              status: "passed",
+              tests: [
+                { title: "does a thing", status: "passed" },
+                { title: "disabled", status: "inconclusive" },
+              ],
+            },
+            { file: b, status: "passed" },
+          ],
+          isolation: { mode: "neon-branch" },
+        });
+        const ctx = makeCtx();
+        const out = await runTestsTool.execute(
+          { testFiles: [a, b], grep },
+          ctx,
+        );
+        const scope = grep ? ` (matching /${grep}/ only)` : "";
+        const summary = `${a}: passed — 1 passed, 1 skipped${scope}\n${b}: passed — 1 passed, 0 skipped${scope}`;
+        const isolation =
+          "Tests ran against a temporary copy of the database — your real data was not touched.";
+
+        expect(ctx.onXmlComplete).toHaveBeenCalledExactlyOnceWith(
+          `<dyad-status title="${grep ? "Matching tests passed" : "Tests passed"}">\n${summary}\n\n${isolation}\n</dyad-status>`,
+        );
+        expect(emittedXml(ctx)).not.toContain("do NOT run");
+        expect(out).toContain(summary);
+        expect(out).toContain(isolation);
+        for (const file of [a, b]) {
+          expect(out).toContain(
+            grep
+              ? `${file}: The tests matching /${grep}/ passed`
+              : `${file}: All runnable tests passed`,
+          );
+        }
+        expect(out).toContain("do NOT run");
+        expect(runner).toHaveBeenCalledTimes(1);
+      },
+    );
+
     it("normalizes and deduplicates the selection before running", async () => {
       const ctx = makeCtx();
       await runTestsTool.execute(
@@ -243,6 +289,26 @@ describe("runTestsTool", () => {
       expect(out).toContain(`${c}: no runnable tests — not verified`);
       expect(out).toContain(`${d}: no runnable tests — not verified`);
       expect(out).toContain("2 attempt(s) remain");
+      expect(out).toContain("checkout broke");
+      expect(ctx.onXmlComplete).toHaveBeenCalledExactlyOnceWith(
+        `<dyad-status title="Tests failed in 1 file(s)">\n${a}: passed — 1 passed, 0 skipped\n${b}: failed — 0 passed, 1 failed, 0 skipped\n${c}: no runnable tests — not verified\n${d}: no runnable tests — not verified\n\nTests ran against the app's current database.\n</dyad-status>`,
+      );
+      expect(emittedXml(ctx)).not.toContain("do NOT run");
+      expect(emittedXml(ctx)).not.toContain("call run_tests again");
+    });
+
+    it("keeps no-tests retry guidance out of the visible warning", async () => {
+      runner.mockResolvedValue({ appId: 1, results: [] });
+      const ctx = makeCtx();
+      const out = await runTestsTool.execute({}, ctx);
+
+      expect(ctx.onXmlComplete).toHaveBeenCalledExactlyOnceWith(
+        `<dyad-output type="warning" message="Test batch finished — some files not verified">\n${a}: no runnable tests — not verified\n${b}: no runnable tests — not verified\n\nTests ran against the app's current database.\n</dyad-output>`,
+      );
+      expect(emittedXml(ctx)).not.toContain("Un-skip");
+      expect(out).toContain(
+        "Un-skip it (or add a real `test()`), then run again.",
+      );
     });
 
     it("rejects all files when one is blocked without spending other files' flake allowance", async () => {

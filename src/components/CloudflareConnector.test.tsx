@@ -566,7 +566,12 @@ describe("a connected Worker", () => {
     cloudflare.disconnect.mockResolvedValue(undefined);
     renderConnector();
 
-    expect(await screen.findByTestId("cloudflare-config-missing")).toBeTruthy();
+    const warning = await screen.findByTestId("cloudflare-config-missing");
+    // Also shown when the branch cannot be read, so it does not claim the
+    // config is gone.
+    expect(warning.textContent).toMatch(
+      /Dyad cannot find a Wrangler config for worker on main\./,
+    );
     expect(screen.queryByText("No Cloudflare Worker found")).toBeNull();
     // Cloudflare cannot build it, so the card must not say that it deploys.
     expect(screen.queryByText(/Deploys whenever/)).toBeNull();

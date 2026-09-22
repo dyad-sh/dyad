@@ -252,10 +252,10 @@ function ConnectedAccount({ appId }: { appId: number }) {
               className={warningClass}
               data-testid="cloudflare-config-missing"
             >
-              {folder.label} no longer has a Wrangler config on{" "}
-              {status.data.branch}, so Cloudflare cannot build it, but its
-              deploy rule is still there. Restore the config, or disconnect{" "}
-              {folder.label} to remove the rule.
+              Dyad cannot find a Wrangler config for {folder.label} on{" "}
+              {status.data.branch}. If the config is gone, Cloudflare cannot
+              build it either, but its deploy rule is still there: restore the
+              config, or disconnect {folder.label} to remove the rule.
             </div>
           )}
           <DeploymentCard
@@ -344,18 +344,18 @@ function ConnectedAccount({ appId }: { appId: number }) {
   );
 }
 
-/**
- * Every deployable folder and whether it is connected. A list rather than a
- * dropdown because the folders are not alternatives: each deploys to its own
- * Worker, and any number of them can be connected at once.
- */
-/** A folder shown in the tab. `target` is null once its Wrangler config is gone. */
+/** A folder shown in the tab. `target` is null when Dyad cannot find its Wrangler config. */
 interface DeployFolder {
   rootDirectory: string;
   label: string;
   target: CloudflareTargetSummary | null;
 }
 
+/**
+ * Every deployable folder and whether it is connected. A list rather than a
+ * dropdown because the folders are not alternatives: each deploys to its own
+ * Worker, and any number of them can be connected at once.
+ */
 function TargetList({
   folders,
   connections,

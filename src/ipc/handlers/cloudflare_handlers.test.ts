@@ -46,11 +46,10 @@ vi.mock("./github_handlers", () => ({
 vi.mock("../utils/git_utils", () => ({
   execGit: async (args: string[]) => {
     if (args[0] === "ls-tree") {
-      return {
-        exitCode: 0,
-        stdout: holder.committedFiles.join("\0"),
-        stderr: "",
-      };
+      // As git does, fails for a branch that does not exist locally.
+      return holder.refs[args[args.length - 1]]
+        ? { exitCode: 0, stdout: holder.committedFiles.join("\0"), stderr: "" }
+        : { exitCode: 128, stdout: "", stderr: "Not a valid object name" };
     }
     if (args[0] === "show") {
       // "refs/heads/<branch>:<path>", the file as committed on the branch.
@@ -1131,6 +1130,15 @@ describe("disconnecting", () => {
 });
 
 describe("the app's status", () => {
+  it("says the branch could not be read, rather than that there is no Worker", async () => {
+    // A repository imported with another default branch has no local "main".
+    delete holder.refs["refs/heads/main"];
+    await expect(handlers.handleGetAppStatus(appId)).rejects.toMatchObject({
+      kind: "precondition",
+      message: 'Could not read the "main" branch of this app\'s repository.',
+    });
+  });
+
   it("lists targets with the Worker name their config declares", async () => {
     const status = await handlers.handleGetAppStatus(appId);
     expect(status).toMatchObject({

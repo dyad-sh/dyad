@@ -52,6 +52,19 @@ describe("waiting for Cloudflare to see the repository", () => {
     expect(duringSecondMinute).toBeGreaterThanOrEqual(3);
   });
 
+  it("keeps asking after the first check fails", async () => {
+    // GitHub or Cloudflare briefly unreachable; the query does not retry.
+    checkRepoAccess.mockRejectedValueOnce(new Error("GitHub unreachable"));
+    const { result } = renderAccessCheck(
+      new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+    );
+
+    await wait(13_000);
+
+    expect(checkRepoAccess.mock.calls.length).toBeGreaterThanOrEqual(3);
+    expect(result.current.data).toEqual({ hasAccess: false });
+  });
+
   it("asks often again when the prompt is opened a second time", async () => {
     // The same client, so what the first wait cached is still there.
     const queryClient = new QueryClient();

@@ -131,8 +131,8 @@ test("waits for Cloudflare to get access to the repository, then continues", asy
   po,
 }, testInfo) => {
   const fakeLlmPort = FAKE_LLM_BASE_PORT + testInfo.parallelIndex;
-  await fakeCloudflare(fakeLlmPort, "revoke-github-access", { method: "POST" });
   await po.setUp({ autoApprove: true });
+  await fakeCloudflare(fakeLlmPort, "revoke-github-access", { method: "POST" });
   await po.sendPrompt("tc=cloudflare-worker");
 
   await po.previewPanel.selectPreviewMode("publish");

@@ -94,8 +94,9 @@ export function useCloudflareRepoAccess({
     queryKey: queryKeys.cloudflare.repoAccess({ appId, accountId }),
     queryFn: () => ipc.cloudflare.checkRepoAccess({ appId, accountId }),
     ...ALWAYS_REFETCH,
+    // A failed check is not an answer, so it keeps asking until access is seen.
     refetchInterval: (query) =>
-      query.state.data?.hasAccess !== false
+      query.state.data?.hasAccess === true
         ? false
         : Date.now() - waitingSince < REPO_ACCESS_FAST_WINDOW_MS
           ? REPO_ACCESS_POLL_MS

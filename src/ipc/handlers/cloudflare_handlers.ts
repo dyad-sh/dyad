@@ -156,7 +156,12 @@ async function listCommittedTargets(
     appPath,
   );
   if (result.exitCode !== 0) {
-    return [];
+    // An empty list would tell the user the app has no Worker.
+    logger.warn(`Could not list the files on ${branch}:`, result.stderr);
+    throw new DyadError(
+      `Could not read the "${branch}" branch of this app's repository.`,
+      DyadErrorKind.Precondition,
+    );
   }
   return detectCloudflareTargets(result.stdout.split("\0").filter(Boolean));
 }

@@ -141,7 +141,7 @@ describe("selected file batches", () => {
     "e2e-tests/nested/e2e-tests/b.spec.ts",
   ];
 
-  function mockReports() {
+  function mockReports(casesInSecondFile = 1) {
     h.spawnStreaming.mockImplementation(async (options) => {
       const selectors = (options.args as string[]).filter((arg) =>
         arg.startsWith("^"),
@@ -165,10 +165,11 @@ describe("selected file batches", () => {
             file: options.args.includes("--list")
               ? file.slice("e2e-tests/".length)
               : path.resolve(APP_PATH, file),
-            specs: [
-              {
-                title: "checks login",
-                line: 3,
+            specs: Array.from(
+              { length: file === selected[1] ? casesInSecondFile : 1 },
+              (_, index) => ({
+                title: `checks login ${index}`,
+                line: 3 + index * 4,
                 tests: options.args.includes("--list")
                   ? [{ expectedStatus: "passed" }]
                   : [
@@ -177,8 +178,15 @@ describe("selected file batches", () => {
                         results: [{ status: "passed", duration: 10 }],
                       },
                     ],
-              },
-            ],
+              }),
+            ).filter(
+              (spec) =>
+                options.args.includes("--list") ||
+                !selectors.some((selector) => /:\d+$/.test(selector)) ||
+                selectors.some((selector) =>
+                  selector.endsWith(`:${spec.line}`),
+                ),
+            ),
           })),
         }),
       );
@@ -257,6 +265,49 @@ describe("selected file batches", () => {
     }
     expect(rotatePreviewView).toHaveBeenCalledTimes(3);
   });
+
+  it.each(["cancel", "timeout"])(
+    "preserves complete files and marks partially executed preview files after %s",
+    async (reason) => {
+      mockReports(2);
+      const report = h.spawnStreaming.getMockImplementation()!;
+      let executions = 0;
+      h.spawnStreaming.mockImplementation(async (options) => {
+        if (!options.args.includes("--list") && ++executions === 3) {
+          return {
+            code: 1,
+            stdout: "",
+            stderr: "",
+            aborted: reason === "cancel",
+            timedOut: reason === "timeout",
+          };
+        }
+        return report(options);
+      });
+      const result = await runAppTestsCore({
+        appId: 1,
+        testFiles: selected,
+        previewCdpEndpoint: CDP_ENDPOINT,
+        rotatePreviewView: vi.fn().mockResolvedValue(undefined),
+        timeoutMs: 600_000,
+      });
+      expect(result.infraError?.message).toMatch(
+        reason === "cancel" ? /stopped/ : /10-minute limit/,
+      );
+      expect(result.results).toHaveLength(2);
+      expect(result.results[0]).toMatchObject({
+        file: selected[0],
+        status: "passed",
+      });
+      expect(result.results[0].incomplete).toBeUndefined();
+      expect(result.results[1]).toMatchObject({
+        file: selected[1],
+        status: "passed",
+        incomplete: true,
+      });
+      expect(result.results[1].tests).toHaveLength(1);
+    },
+  );
 
   it.each([
     { testFiles: [] },

@@ -6,8 +6,7 @@ import type { RunAppTestsResult } from "@/ipc/types/tests";
 vi.mock("@/ipc/handlers/tests_handlers", () => ({
   runAppTestsWithIsolation: vi.fn(),
   getRunningTestBaseUrl: vi.fn(),
-  normalizeRunTestFile: (f: string) =>
-    path.posix.normalize(f.replace(/\\/g, "/")),
+  normalizeRunTestFile: vi.fn(),
   listSpecFiles: vi.fn(),
   readSpecTestCases: vi.fn(),
 }));
@@ -23,6 +22,7 @@ import {
   getRunningTestBaseUrl,
   listSpecFiles,
   readSpecTestCases,
+  normalizeRunTestFile,
 } from "@/ipc/handlers/tests_handlers";
 import { readTestScreenshotDataUrl } from "@/ipc/utils/test_screenshot";
 import { readSettings } from "@/main/settings";
@@ -117,6 +117,11 @@ describe("runTestsTool", () => {
     screenshot.mockReset();
     specLister.mockReset();
     caseLister.mockReset();
+    vi.mocked(normalizeRunTestFile)
+      .mockReset()
+      .mockImplementation((file) =>
+        path.posix.normalize(file.replace(/\\/g, "/")),
+      );
     baseUrl.mockReturnValue("http://localhost:3000");
     screenshot.mockResolvedValue(null);
     // The spec the tests target exists on disk, so pre-flight resolution lets
@@ -262,6 +267,40 @@ describe("runTestsTool", () => {
       expect(runner).not.toHaveBeenCalled();
     });
 
+    it.each(["whole suite", "explicit selection", "only unsupported"])(
+      "handles unsupported discovered paths for %s",
+      async (selection) => {
+        const unsupported = "e2e-tests/checkout:mobile.spec.ts";
+        vi.mocked(normalizeRunTestFile).mockImplementation((file) =>
+          file === unsupported ? null : file,
+        );
+        specLister.mockResolvedValue(
+          selection === "only unsupported" ? [unsupported] : [a, unsupported],
+        );
+        const ctx = makeCtx();
+        const out = await runTestsTool.execute(
+          selection === "explicit selection"
+            ? { testFiles: [a, unsupported] }
+            : {},
+          ctx,
+        );
+        expect(out).toContain(unsupported);
+        expect(out).toContain("Rename these files");
+        if (selection === "whole suite") {
+          expect(out).toContain("Unsupported spec paths skipped");
+          expect(out).toContain(`${a}: passed`);
+          expect(runner).toHaveBeenCalledExactlyOnceWith(
+            expect.objectContaining({ testFiles: [a] }),
+          );
+        } else {
+          expect(runner).not.toHaveBeenCalled();
+          expect(ctx.testRunCount).toBeUndefined();
+          expect(ctx.testRunAttempts.size).toBe(0);
+          expect(out).not.toContain(`- ${unsupported}`);
+        }
+      },
+    );
+
     it("accounts for passing, failing, skipped, and empty files independently", async () => {
       specLister.mockResolvedValue([a, b, c, d]);
       runner.mockResolvedValue({
@@ -332,6 +371,23 @@ describe("runTestsTool", () => {
       expect(runner).not.toHaveBeenCalled();
     });
 
+    it.each(["server down", "turn limit"])(
+      "reports the spec attempt cap before %s without consuming allowances",
+      async (blocker) => {
+        const ctx = makeCtx();
+        ctx.testRunAttempts.set(b, { attempts: 4 });
+        if (blocker === "server down") baseUrl.mockReturnValue(null);
+        else ctx.testRunCount = 10;
+        const out = await runTestsTool.execute({ flakeCheck: true }, ctx);
+        expect(out).toContain(`${b}: Attempt limit reached`);
+        expect(out).not.toContain("dev server isn't running");
+        expect(out).not.toContain("Turn-level test run limit reached");
+        expect(runner).not.toHaveBeenCalled();
+        expect(ctx.testRunAttempts.get(a)).toBeUndefined();
+        expect(ctx.testRunAttempts.get(b)).toEqual({ attempts: 4 });
+      },
+    );
+
     it.each([false, true])(
       "filters across files without resetting budgets (whole suite: %s)",
       async (wholeSuite) => {
@@ -385,6 +441,79 @@ describe("runTestsTool", () => {
       expect(out).toContain("test-results/a/error-context.md");
       expect(out).toContain("test-results/b/error-context.md");
     });
+
+    it("bounds expanded failure diagnostics and images across a large batch", async () => {
+      const files = Array.from(
+        { length: 12 },
+        (_, index) => `e2e-tests/spec-${index}.spec.ts`,
+      );
+      specLister.mockResolvedValue(files);
+      screenshot.mockResolvedValue("data:image/png;base64,ABC");
+      runner.mockResolvedValue({
+        appId: 1,
+        results: files.map((file, index) => ({
+          ...failResult(
+            `ERROR-${index}: ${"x".repeat(8000)}`,
+            `test-results/spec-${index}/test-failed.png`,
+          ).results[0],
+          file,
+        })),
+      });
+      const ctx = makeCtx();
+      const out = String(await runTestsTool.execute({}, ctx));
+      expect(ctx.appendUserMessage).toHaveBeenCalledTimes(2);
+      expect(screenshot).toHaveBeenCalledTimes(2);
+      expect(out.match(/Error \(truncated/g)).toHaveLength(2);
+      expect(out.match(/x{4000}/g)).toHaveLength(2);
+      expect(out).not.toContain("x".repeat(4001));
+      for (const [index, file] of files.entries()) {
+        expect(out).toContain(`${file}: failed`);
+        expect(out).toContain(`test-results/spec-${index}/error-context.md`);
+        expect(ctx.testRunAttempts.get(file)?.attempts).toBe(1);
+      }
+    });
+
+    it.each(["infra", "cancel", "incomplete"])(
+      "reports observed per-file results without verification or attempts after %s",
+      async (reason) => {
+        specLister.mockResolvedValue([a, b, c, d]);
+        const controller = new AbortController();
+        const ctx = makeCtx();
+        ctx.abortSignal = controller.signal;
+        runner.mockImplementation(async () => {
+          if (reason === "cancel") controller.abort();
+          return {
+            appId: 1,
+            results: [
+              { file: "a.spec.ts", status: "passed" },
+              { file: b, status: "passed", incomplete: true },
+              { file: c, status: "failed", error: "assertion failed" },
+            ],
+            ...(reason === "infra"
+              ? { infraError: { message: "deadline exceeded" } }
+              : {}),
+          };
+        });
+        const out = await runTestsTool.execute({ flakeCheck: true }, ctx);
+        expect(out).toContain(
+          `${a}: observed 1 passed, 0 failed, 0 skipped — not verified`,
+        );
+        expect(out).toContain(
+          `${b}: observed 1 passed, 0 failed, 0 skipped (file incomplete) — not verified`,
+        );
+        expect(out).toContain(
+          `${c}: observed 0 passed, 1 failed, 0 skipped — not verified`,
+        );
+        expect(out).toContain(`${d}: no results returned — not verified`);
+        expect(out).toContain("select a smaller batch");
+        for (const file of [a, b, c, d])
+          expect(ctx.testRunAttempts.get(file)).toEqual({
+            attempts: 0,
+            flakeCheckUsed: false,
+          });
+        expect(ctx.testRunCount).toBe(1);
+      },
+    );
 
     it.each(["infra", "throw", "cancel"])(
       "refunds all flake allowances and never verifies partial results after %s",

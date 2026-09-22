@@ -106,6 +106,8 @@ export type TestCaseResult = z.infer<typeof TestCaseResultSchema>;
 export const TestResultSchema = z.object({
   file: z.string(),
   status: TestRunStatusSchema,
+  /** Some selected cases in this file never finished; these results are partial. */
+  incomplete: z.boolean().optional(),
   durationMs: z.number().optional(),
   /** Error text on failure (assertion or infra). */
   error: z.string().optional(),
@@ -185,10 +187,11 @@ export const RunAppTestsResultSchema = z.object({
   appId: z.number(),
   results: z.array(TestResultSchema),
   /**
-   * Set when the entire run failed before producing per-test results (e.g.
+   * Set when the run encountered an infrastructure or cleanup error (e.g.
    * Playwright/browser missing and bootstrap declined, dev server down, spawn
    * error, or an isolated test database could not be set up). Renders as an
-   * amber, panel-level "inconclusive" banner.
+   * amber, panel-level "inconclusive" banner. Completed results may accompany
+   * this warning; incomplete file results are marked separately.
    */
   infraError: z
     .object({
@@ -466,7 +469,7 @@ export const TestsRunStatePayloadSchema = z.object({
   wasStopped: z.boolean().optional(),
   /** Single spec targeted by the panel. */
   testFile: z.string().optional(),
-  /** Selected specs; absent with testFile means the whole suite. */
+  /** Selected specs; omitting both testFiles and testFile means the whole suite. */
   testFiles: z.array(z.string()).optional(),
   /** With testFile: only the test at this 1-based line was run. */
   testLine: z.number().optional(),

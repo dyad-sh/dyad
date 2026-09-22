@@ -22,6 +22,7 @@ import {
   MAX_ATTEMPTS,
   MAX_RUNS_PER_TURN,
   MAX_ERROR_CHARS,
+  MAX_DETAILED_FAILURE_FILES,
   RUN_TIMEOUT_MS,
   SLOW_MO_RUN_TIMEOUT_MS,
   Classification,
@@ -67,8 +68,19 @@ type RunTestsArgs = z.infer<typeof runTestsSchema>;
 async function resolveSpecPaths(
   ctx: AgentContext,
   requested?: string[],
-): Promise<{ testFiles: string[]; specs: string[] } | { error: string }> {
-  const specs = await listSpecFiles(ctx.appPath);
+): Promise<
+  | { testFiles: string[]; specs: string[]; selectionNote: string }
+  | { error: string }
+> {
+  const listedSpecs = await listSpecFiles(ctx.appPath);
+  const specs = listedSpecs.filter(
+    (file) => normalizeRunTestFile(file) !== null,
+  );
+  const unsupported = listedSpecs.filter((file) => !specs.includes(file));
+  const selectionNote =
+    unsupported.length > 0
+      ? `Unsupported spec paths${requested ? "" : " skipped"}: ${unsupported.join(", ")}. Rename these files to supported paths under e2e-tests/ before running them.`
+      : "";
   const existing = new Set(specs);
   const files = new Set<string>();
   const missing: string[] = [];
@@ -78,7 +90,7 @@ async function resolveSpecPaths(
     else files.add(normalized);
   }
   if (missing.length === 0 && files.size > 0) {
-    return { testFiles: [...files], specs };
+    return { testFiles: [...files], specs, selectionNote };
   }
 
   const specList =
@@ -95,6 +107,7 @@ async function resolveSpecPaths(
       : "There are no specs to run.",
     "I did NOT start a run — no test environment was set up and this did NOT count as a fix attempt. No part of the batch ran.",
     specList,
+    selectionNote,
     suggestions.length > 0
       ? `Closest match by filename: ${[...new Set(suggestions)].join(", ")}`
       : "",
@@ -345,8 +358,16 @@ function reportNoRunnableTests(testFile: string, grep?: string): string {
 function reportInfraFailure(
   ctx: AgentContext,
   outcome: Classification,
+  resultsSummary = "",
 ): string {
-  const body = `Test run could not complete — this is an infrastructure problem, NOT a test failure, and did NOT count as a fix attempt.\n\n${outcome.message ?? "Unknown error."}\n\nFix the environment (or ask the user), then call run_tests again.`;
+  const body = [
+    `Test run could not complete — this is an infrastructure problem, NOT a test failure, and did NOT count as a fix attempt.`,
+    outcome.message ?? "Unknown error.",
+    resultsSummary,
+    "No file was granted verification. Fix the environment (or ask the user), then call run_tests again. For a timeout, select a smaller batch with testFiles rather than repeating the whole suite.",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
   completeWarning(ctx, "Test run couldn't complete", body);
   return body;
 }
@@ -410,6 +431,7 @@ function reportPassed(params: {
 async function attachFailureArtifacts(
   ctx: AgentContext,
   results: TestResult[],
+  attachImage = true,
 ): Promise<string> {
   const shot = findFirstScreenshot(results);
   if (!shot) return "";
@@ -422,6 +444,9 @@ async function attachFailureArtifacts(
     .split(path.sep)
     .join("/");
   const screenshotPath = rel.split(path.sep).join("/");
+  if (!attachImage) {
+    return `\nArtifacts from THIS run:\n- Page snapshot: ${errorContext}\n- Screenshot: ${screenshotPath} (not attached; batch detail limit)`;
+  }
   const dataUrl = await readTestScreenshotDataUrl(
     ctx.appPath,
     shot.screenshotPath,
@@ -455,6 +480,7 @@ async function reportFailure(params: {
   isFreeFlakeRun: boolean;
   currentEditCount: number;
   runTargetKey: string;
+  includeDetails: boolean;
 }): Promise<string> {
   const { ctx, key, state, res, outcome, isFreeFlakeRun } = params;
 
@@ -470,7 +496,14 @@ async function reportFailure(params: {
   state.lastRunTargetKey = params.runTargetKey;
   const remaining = Math.max(0, MAX_ATTEMPTS - state.attempts);
 
-  const artifactLines = await attachFailureArtifacts(ctx, res.results);
+  const artifactLines = await attachFailureArtifacts(
+    ctx,
+    res.results,
+    params.includeDetails,
+  );
+  if (!params.includeDetails) {
+    return `${key}: failure attempt ${state.attempts} of ${MAX_ATTEMPTS}; ${remaining} attempt(s) remain. ${remaining === 0 ? "Stop fixing this spec and summarize for the user." : "Read this file's artifacts before making a targeted fix."} Error details omitted to keep the batch report bounded.${artifactLines}`;
+  }
   const firstError = firstFailureError(res.results);
 
   const noProgressNote = unchanged
@@ -492,7 +525,7 @@ async function reportFailure(params: {
     `Test run FAILED (attempt ${state.attempts} of ${MAX_ATTEMPTS} for ${key}). ${outcome.passed} passed, ${outcome.failed} failed${skippedNote}.`,
     noProgressNote,
     inconclusiveHint,
-    listFailedTests(res.results).join("\n"),
+    truncateError(listFailedTests(res.results).join("\n")),
     firstError
       ? `\nError (truncated to last ${MAX_ERROR_CHARS} chars):\n\`\`\`\n${truncateError(firstError)}\n\`\`\``
       : "",
@@ -545,22 +578,24 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
     }
     const resolved = await resolveSpecPaths(ctx, args.testFiles);
     if ("error" in resolved) return resolved.error;
-    const { testFiles, specs } = resolved;
+    const { testFiles, specs, selectionNote } = resolved;
+    const withSelectionNote = (body: string) =>
+      [selectionNote, body].filter(Boolean).join("\n\n");
+    if (selectionNote)
+      completeWarning(ctx, "Unsupported test paths", selectionNote);
     const selections = [];
     for (const testFile of testFiles) {
       const key = specKey(testFile);
       let runTargetKey = WHOLE_FILE;
       if (args.grep) {
         const validated = await validateGrep(ctx, testFile, args.grep);
-        if ("error" in validated) return validated.error;
+        if ("error" in validated) return withSelectionNote(validated.error);
         runTargetKey = validated.targetKey ?? `grep:${args.grep}`;
       }
       selections.push({ testFile, key, runTargetKey });
     }
     // Read the shared counters after all asynchronous preflight work. Nothing
     // can interleave admission checks and reservation of this batch's slot.
-    const runBlocked = guardTurnRunLimit(ctx) ?? guardDevServerRunning(ctx);
-    if (runBlocked) return runBlocked;
     const targets = selections.map((selection) => {
       const state: TestRunAttemptState = ctx.testRunAttempts.get(
         selection.key,
@@ -580,17 +615,21 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
     if (refusals.length > 0) {
       const body = `Batch not started; no files ran. Blocked files:\n\n${refusals.join("\n\n")}\n\nSelect only eligible files for the next call.`;
       completeWarning(ctx, "Test batch blocked", body);
-      return body;
+      return withSelectionNote(body);
     }
+    const runBlocked = guardTurnRunLimit(ctx) ?? guardDevServerRunning(ctx);
+    if (runBlocked) return withSelectionNote(runBlocked);
     if (ctx.abortSignal?.aborted) {
-      return reportInfraFailure(ctx, {
-        kind: "infra",
-        passed: 0,
-        failed: 0,
-        skipped: 0,
-        allInconclusive: false,
-        message: "Test run stopped.",
-      });
+      return withSelectionNote(
+        reportInfraFailure(ctx, {
+          kind: "infra",
+          passed: 0,
+          failed: 0,
+          skipped: 0,
+          allInconclusive: false,
+          message: "Test run stopped.",
+        }),
+      );
     }
 
     const runs = targets.map((target) => {
@@ -615,21 +654,8 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
       const message = error instanceof Error ? error.message : String(error);
       const body = `Test run could not complete — an unexpected error occurred in the test infrastructure, NOT a test failure, and this did NOT count as a fix attempt.\n\n${message}\n\nFix the environment (or ask the user), then call run_tests again.`;
       completeWarning(ctx, "Test run couldn't complete", body);
-      return body;
+      return withSelectionNote(body);
     }
-    // Never grant verification or charge a file for an incomplete batch,
-    // including a preview run that returned partial results before cancellation.
-    const batchOutcome = classify(res);
-    if (batchOutcome.kind === "infra" || ctx.abortSignal?.aborted) {
-      refundFlakeChecks();
-      return reportInfraFailure(
-        ctx,
-        ctx.abortSignal?.aborted
-          ? { ...batchOutcome, kind: "infra", message: "Test run stopped." }
-          : batchOutcome,
-      );
-    }
-
     const resultsByFile = new Map<string, TestResult[]>();
     for (const result of res.results) {
       const file = reconcileResultFile(result.file, specs);
@@ -637,6 +663,36 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
       results.push({ ...result, file });
       resultsByFile.set(file, results);
     }
+    // Never grant verification or charge a file for an incomplete batch,
+    // including a preview run that returned partial results before cancellation.
+    const batchOutcome = classify(res);
+    if (batchOutcome.kind === "infra" || ctx.abortSignal?.aborted) {
+      refundFlakeChecks();
+      const observedResults = testFiles.map((file) => {
+        const results = resultsByFile.get(file) ?? [];
+        if (results.length === 0)
+          return `${file}: no results returned — not verified`;
+        // Report observations only; never pass these through the accounting
+        // helpers or infer a whole-file pass from an interrupted report.
+        const observed = classify({
+          appId: res.appId,
+          results: results.map(
+            ({ incomplete: _incomplete, ...result }) => result,
+          ),
+        });
+        return `${file}: observed ${observed.passed} passed, ${observed.failed} failed, ${observed.skipped} skipped${results.some((result) => result.incomplete) ? " (file incomplete)" : ""} — not verified`;
+      });
+      return withSelectionNote(
+        reportInfraFailure(
+          ctx,
+          ctx.abortSignal?.aborted
+            ? { ...batchOutcome, kind: "infra", message: "Test run stopped." }
+            : batchOutcome,
+          `Results returned before the batch warning:\n${observedResults.join("\n")}`,
+        ),
+      );
+    }
+
     const agentDetails: string[] = [];
     const summary: string[] = [];
     let failedFiles = 0;
@@ -673,6 +729,7 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
             res: fileResult,
             currentEditCount,
             grep: args.grep,
+            includeDetails: failedFiles <= MAX_DETAILED_FAILURE_FILES,
           }),
         );
       }
@@ -691,6 +748,6 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
     if (unverifiedFiles > 0 && failedFiles === 0)
       completeWarning(ctx, title, body);
     else completeStatus(ctx, title, body);
-    return [body, ...agentDetails].join("\n\n");
+    return withSelectionNote([body, ...agentDetails].join("\n\n"));
   },
 };

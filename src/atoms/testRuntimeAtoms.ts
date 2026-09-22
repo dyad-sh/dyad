@@ -333,9 +333,9 @@ export const applyTestRunFinishedAtom = atom(
           return prev;
         }
         const nextResults = { ...prev.results };
-        // A preview batch may return completed cases followed by an infra
-        // failure. Its partial report cannot establish a whole-file pass.
-        for (const r of res.infraError ? [] : res.results) {
+        // Infrastructure/cleanup warnings do not invalidate completed results.
+        // Main marks files whose selected cases did not all finish separately.
+        for (const r of res.results) {
           const key = reconcileResultFile(r.file, specFiles);
           const mapped = { ...r, file: key };
           if (isPartialRun) {
@@ -347,6 +347,14 @@ export const applyTestRunFinishedAtom = atom(
             });
           } else {
             nextResults[key] = mapped;
+          }
+          if (r.incomplete) {
+            const result = nextResults[key];
+            nextResults[key] = {
+              ...result,
+              incomplete: true,
+              status: result.status === "passed" ? "partial" : result.status,
+            };
           }
         }
         return {

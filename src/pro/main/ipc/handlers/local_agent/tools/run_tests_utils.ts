@@ -21,6 +21,8 @@ export const RUN_TIMEOUT_MS = 10 * 60_000;
 export const SLOW_MO_RUN_TIMEOUT_MS = 20 * 60_000;
 /** Cap on the error text echoed back to the model (matches askAiToFix). */
 export const MAX_ERROR_CHARS = 4000;
+/** Expand errors and attach at most this many screenshots per batch. */
+export const MAX_DETAILED_FAILURE_FILES = 2;
 
 export function specKey(testFile: string): string {
   return normalizeRunTestFile(testFile) ?? testFile;
@@ -47,14 +49,17 @@ export function classify(res: RunAppTestsResult): Classification {
   const runnerError = res.results.find(
     (r) => r.file === PLAYWRIGHT_REPORT_ERROR_FILE,
   );
-  if (res.infraError || runnerError) {
+  if (res.infraError || runnerError || res.results.some((r) => r.incomplete)) {
     return {
       kind: "infra",
       passed: 0,
       failed: 0,
       skipped: 0,
       allInconclusive: false,
-      message: res.infraError?.message ?? runnerError?.error,
+      message:
+        res.infraError?.message ??
+        runnerError?.error ??
+        "Some selected test cases did not finish.",
     };
   }
   if (res.results.length === 0) {

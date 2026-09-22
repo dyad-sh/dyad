@@ -318,7 +318,7 @@ export interface RunAppTestsCoreOptions {
   appId: number;
   /** Panel single-file target. Omit both selectors to run the whole suite. */
   testFile?: string;
-  /** Selected spec files; omitted with testFile means the whole suite. */
+  /** Selected spec files; omitting both selectors means the whole suite. */
   testFiles?: string[];
   /**
    * When set (with testFile), runs only the test at this 1-based line via
@@ -463,6 +463,7 @@ async function runPreviewTestBatch({
 }): Promise<RunAppTestsResult> {
   const deadline = timeoutMs === undefined ? undefined : Date.now() + timeoutMs;
   const casesByFile = new Map<string, TestCaseResult[]>();
+  const remainingCasesByFile = new Map<string, number>();
   const resultsRoot = path.join(appPath, "test-results");
   fs.mkdirSync(resultsRoot, { recursive: true });
   for (const entry of fs.readdirSync(resultsRoot, { withFileTypes: true })) {
@@ -579,6 +580,12 @@ async function runPreviewTestBatch({
     }
 
     const runnable = discovered.filter((test) => !test.skipped);
+    for (const test of runnable) {
+      remainingCasesByFile.set(
+        test.file,
+        (remainingCasesByFile.get(test.file) ?? 0) + 1,
+      );
+    }
     for (const skipped of discovered.filter((test) => test.skipped)) {
       const cases = casesByFile.get(skipped.file) ?? [];
       cases.push({
@@ -715,6 +722,10 @@ async function runPreviewTestBatch({
       const cases = casesByFile.get(executed.file) ?? [];
       cases.push(executed.test);
       casesByFile.set(executed.file, cases);
+      remainingCasesByFile.set(
+        target.file,
+        remainingCasesByFile.get(target.file)! - 1,
+      );
     }
   } finally {
     try {
@@ -734,7 +745,11 @@ async function runPreviewTestBatch({
         `Couldn't restore a clean preview after the test run: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
-    result.results = aggregatePreviewCases(casesByFile);
+    result.results = aggregatePreviewCases(casesByFile).map((fileResult) =>
+      (remainingCasesByFile.get(fileResult.file) ?? 0) > 0
+        ? { ...fileResult, incomplete: true }
+        : fileResult,
+    );
   }
 
   const passed = result.results.filter(

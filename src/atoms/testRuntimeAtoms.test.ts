@@ -243,7 +243,7 @@ describe("test runtime atoms", () => {
     expect(state.isolation).toEqual({ mode: "neon-branch" });
   });
 
-  it("applyTestRunFinishedAtom surfaces an infra error as runError", () => {
+  it("preserves completed results alongside an environment restore warning", () => {
     const store = createStore();
     store.set(applyTestRunStartedAtom, { appId: 1, source: "panel" });
     store.set(applyTestRunFinishedAtom, {
@@ -251,18 +251,68 @@ describe("test runtime atoms", () => {
       res: {
         appId: 1,
         results: [{ file: "e2e-tests/a.spec.ts", status: "passed" }],
-        infraError: { message: "bootstrap failed" },
+        infraError: { message: "Could not restore .env.local" },
       },
       isPartialRun: false,
     });
     const state = store.get(testRunStateByAppIdAtom).get(1)!;
     expect(state.phase).toBe("idle");
-    expect(state.results).toEqual({});
+    expect(state.results["e2e-tests/a.spec.ts"]?.status).toBe("passed");
     expect(state.runError).toEqual({
-      message: "bootstrap failed",
+      message: "Could not restore .env.local",
       kind: "infra",
     });
   });
+
+  it.each([false, true])(
+    "keeps completed cases and marks interrupted files partial (filtered: %s)",
+    (isPartialRun) => {
+      const store = createStore();
+      const files = [
+        "e2e-tests/a.spec.ts",
+        "e2e-tests/b.spec.ts",
+        "e2e-tests/c.spec.ts",
+      ];
+      store.set(setTestSpecsForAppAtom, {
+        appId: 1,
+        // The static parser need not know every dynamically declared case.
+        specs: files.map((file) => ({ file, tests: [] })),
+      });
+      store.set(applyTestRunStartedAtom, {
+        appId: 1,
+        source: "panel",
+        testFiles: files,
+      });
+      store.set(applyTestRunFinishedAtom, {
+        appId: 1,
+        isPartialRun,
+        res: {
+          appId: 1,
+          results: [
+            {
+              file: "a.spec.ts",
+              status: "passed",
+              tests: [{ title: "done", line: 3, status: "passed" }],
+            },
+            {
+              file: "b.spec.ts",
+              status: "passed",
+              incomplete: true,
+              tests: [{ title: "first case", line: 3, status: "passed" }],
+            },
+          ],
+          infraError: { message: "Test run stopped." },
+        },
+      });
+      const state = store.get(testRunStateByAppIdAtom).get(1)!;
+      expect(state.results[files[0]].status).toBe("passed");
+      expect(state.results[files[1]].status).toBe("partial");
+      expect(state.results[files[1]].tests?.[0].status).toBe("passed");
+      expect(state.results[files[2]]).toBeUndefined();
+      expect(state.runError?.message).toBe("Test run stopped.");
+      expect(state.runningFiles).toEqual([]);
+    },
+  );
 
   it("merges grep-targeted run results instead of replacing the whole file", () => {
     const store = createStore();

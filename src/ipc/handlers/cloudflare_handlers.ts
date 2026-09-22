@@ -471,13 +471,22 @@ async function handleGetAppStatus(appId: number): Promise<CloudflareAppStatus> {
   const appPath = getDyadAppPath(app.path);
   const branch = app.githubBranch ?? DEFAULT_BRANCH;
 
-  const [synced, targets, rows] = await Promise.all([
+  const [synced, listing, rows] = await Promise.all([
     isBranchSynced(appPath, branch),
-    listCommittedTargets(appPath, branch),
+    listCommittedTargets(appPath, branch).then(
+      (targets) => ({ targets, error: null }),
+      (error: unknown) => ({ targets: [] as CloudflareTarget[], error }),
+    ),
     db.query.cloudflareAppConnections.findMany({
       where: eq(cloudflareAppConnections.appId, appId),
     }),
   ]);
+  // A connected folder has to stay reachable to be disconnected, so only an
+  // app with nothing connected is told the branch could not be read.
+  if (listing.error && rows.length === 0) {
+    throw listing.error;
+  }
+  const { targets } = listing;
 
   const targetSummaries = await Promise.all(
     targets.map(async (target) => {

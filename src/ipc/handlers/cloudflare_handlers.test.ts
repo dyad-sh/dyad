@@ -1139,6 +1139,17 @@ describe("the app's status", () => {
     });
   });
 
+  it("still lists a connected folder when the branch cannot be read", async () => {
+    // Disconnecting does not need the branch, so the folder must stay reachable.
+    await handlers.handleConnectWorker({ appId, ...CONNECT });
+    delete holder.refs["refs/heads/main"];
+
+    const status = await handlers.handleGetAppStatus(appId);
+
+    expect(status.targets).toEqual([]);
+    expect(status.connections.map((c) => c.rootDirectory)).toEqual(["worker"]);
+  });
+
   it("lists targets with the Worker name their config declares", async () => {
     const status = await handlers.handleGetAppStatus(appId);
     expect(status).toMatchObject({

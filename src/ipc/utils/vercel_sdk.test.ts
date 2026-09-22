@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CreateProjectProjectsResourceConfig$inboundSchema } from "@vercel/sdk/models/createprojecthasprojectsresponse1.js";
+import { CreateProjectProjectsResourceConfig$inboundSchema } from "@vercel/sdk/models/createprojecttargets.js";
 
 describe("Vercel SDK project response compatibility", () => {
   it("accepts the basic build machine returned by Vercel", () => {

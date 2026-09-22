@@ -259,6 +259,8 @@ function ConnectedAccount({ appId }: { appId: number }) {
             </div>
           )}
           <DeploymentCard
+            // Each folder's Disconnect state is its own.
+            key={connection.rootDirectory}
             appId={appId}
             connection={connection}
             targetLabel={folder.label}

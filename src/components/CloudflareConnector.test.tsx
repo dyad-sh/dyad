@@ -740,6 +740,30 @@ describe("an app with several Workers", () => {
     expect(cloudflare.disconnect).toHaveBeenCalledTimes(1);
   });
 
+  it("does not show one folder's failed disconnect under another", async () => {
+    cloudflare.getAppStatus.mockResolvedValue(
+      appStatus({
+        targets: [TARGET, CRON_TARGET],
+        connections: [
+          CONNECTION,
+          { ...CONNECTION, rootDirectory: "cron", workerName: "shop-cron" },
+        ],
+      }),
+    );
+    cloudflare.disconnect.mockRejectedValue(new Error("Cloudflare refused"));
+    renderConnector();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Disconnect worker" }),
+    );
+    expect(await screen.findByText(/Cloudflare refused/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /^cron/ }));
+
+    await screen.findByRole("button", { name: "Disconnect cron" });
+    expect(screen.queryByText(/Cloudflare refused/)).toBeNull();
+  });
+
   it("keeps showing a folder's deployment when a later status check fails", async () => {
     let calls = 0;
     cloudflare.getAppStatus.mockImplementation(async () => {

@@ -69,10 +69,12 @@ export function toCloudflareDyadError(error: unknown, action: string): Error {
           : error.status === 429
             ? DyadErrorKind.RateLimited
             : DyadErrorKind.External;
-    return new DyadError(`${action}: ${error.message}`, kind);
+    return new DyadError(`${action}: ${error.message}`, kind, { cause: error });
   }
   const message = error instanceof Error ? error.message : String(error);
-  return new DyadError(`${action}: ${message}`, DyadErrorKind.External);
+  return new DyadError(`${action}: ${message}`, DyadErrorKind.External, {
+    cause: error,
+  });
 }
 
 /**

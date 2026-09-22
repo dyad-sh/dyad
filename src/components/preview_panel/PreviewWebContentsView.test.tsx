@@ -1,9 +1,10 @@
 import { act, render, screen } from "@testing-library/react";
+import type { PreviewAuthStatus } from "@/app_run/state";
 import type { ReactElement, ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
-  neonAuthWarning: undefined as string | undefined,
+  previewAuth: undefined as PreviewAuthStatus | undefined,
   overlayActiveAtom: Symbol("overlayActiveAtom"),
   previewModeAtom: Symbol("previewModeAtom"),
   previewNativeViewAppIdAtom: Symbol("previewNativeViewAppIdAtom"),
@@ -71,7 +72,7 @@ vi.mock("@/components/ui/tooltip", async () => {
 
 vi.mock("@/hooks/useAppRun", () => ({
   useCurrentAppUrl: () => ({
-    neonAuthWarning: h.neonAuthWarning,
+    previewAuth: h.previewAuth,
     appUrl: "http://app-1.localhost:42101/",
     originalUrl: "http://app-1.localhost:42101/",
     mode: "local",
@@ -121,7 +122,7 @@ vi.mock("./PreviewLoadingScreen", () => ({
 import { PreviewWebContentsView } from "./PreviewWebContentsView";
 
 beforeEach(() => {
-  h.neonAuthWarning = undefined;
+  h.previewAuth = undefined;
   h.testRunPhase = "running";
   h.overlayActive = true;
   h.setTestSetupOverlayActive.mockReset();
@@ -234,28 +235,54 @@ describe("PreviewWebContentsView screenshot fallback", () => {
   });
 });
 
-it("renders the app's persistent authentication warning above the native surface", () => {
-  h.neonAuthWarning = "Neon registration failed for this app.";
-  h.testRunPhase = "idle";
-  const view = render(<PreviewWebContentsView loading={false} />);
-  expect(screen.getByRole("status").textContent).toContain(h.neonAuthWarning);
-  expect(
-    (
-      screen.getByRole("button", {
-        name: "Restart and retry",
-      }) as HTMLButtonElement
-    ).disabled,
-  ).toBe(false);
-  h.testRunPhase = "running";
-  view.rerender(<PreviewWebContentsView loading={false} />);
-  expect(
-    (
-      screen.getByRole("button", {
-        name: "Restart and retry",
-      }) as HTMLButtonElement
-    ).disabled,
-  ).toBe(true);
-  h.neonAuthWarning = undefined;
-  view.rerender(<PreviewWebContentsView loading={false} />);
-  expect(screen.queryByTestId("neon-auth-warning")).toBeNull();
-});
+it.each(["neon", "supabase"] as const)(
+  "shows %s registration above the native surface and removes it on success",
+  (provider) => {
+    h.previewAuth = { provider, state: "pending" };
+    const view = render(<PreviewWebContentsView loading={false} />);
+    expect(screen.getByRole("status").textContent).toContain(
+      "in the background",
+    );
+    expect(
+      screen.queryByRole("button", { name: "Restart and retry" }),
+    ).toBeNull();
+    h.previewAuth = undefined;
+    view.rerender(<PreviewWebContentsView loading={false} />);
+    expect(screen.queryByRole("status")).toBeNull();
+  },
+);
+
+it.each(["neon", "supabase"] as const)(
+  "renders a persistent %s warning above the native surface",
+  (provider) => {
+    h.previewAuth = {
+      provider,
+      state: "error",
+      message: "Registration failed for this app.",
+    };
+    h.testRunPhase = "idle";
+    const view = render(<PreviewWebContentsView loading={false} />);
+    expect(screen.getByRole("status").textContent).toContain(
+      h.previewAuth.message,
+    );
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Restart and retry",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
+    h.testRunPhase = "running";
+    view.rerender(<PreviewWebContentsView loading={false} />);
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Restart and retry",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    h.previewAuth = undefined;
+    view.rerender(<PreviewWebContentsView loading={false} />);
+    expect(screen.queryByTestId("preview-auth-banner")).toBeNull();
+  },
+);

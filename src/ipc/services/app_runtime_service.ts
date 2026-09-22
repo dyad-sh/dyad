@@ -9,7 +9,14 @@ import log from "electron-log";
 import { eq } from "drizzle-orm";
 
 import { getAppPreviewHostname } from "../../../shared/preview_hostname";
-import { ensureSupabasePreviewRedirects } from "./supabase_preview_redirect_service";
+import {
+  ensureSupabasePreviewRedirects,
+  resolveSupabasePreviewTarget,
+} from "./supabase_preview_redirect_service";
+import {
+  samePreviewAuthTarget,
+  type PreviewAuthTarget,
+} from "./preview_auth_target";
 import { abortable } from "../utils/abortable";
 import {
   neonPreviewDomainService,
@@ -27,7 +34,7 @@ import {
 } from "@/lib/schemas";
 import type { AppRuntimeOutput } from "@/ipc/types/app_runtime";
 import type { ConsoleEntry } from "@/ipc/types/supabase";
-import type { AppRunInvocationRef } from "@/app_run/state";
+import type { AppRunInvocationRef, PreviewAuthStatus } from "@/app_run/state";
 import {
   CancellationTombstones,
   createInvocationRef,
@@ -283,8 +290,8 @@ function emitPnpmMinimumReleaseAgeWarning({
 }
 
 interface PreviewAuthContext {
-  target: NeonPreviewTarget | null;
-  warning?: string;
+  target: PreviewAuthTarget | null;
+  status?: PreviewAuthStatus;
   signal?: AbortSignal;
 }
 
@@ -293,17 +300,27 @@ async function resolvePreviewAuthContext(
   isNeon: boolean,
   neonAuthTarget?: NeonPreviewTarget | null,
 ): Promise<PreviewAuthContext> {
-  const neonPreview: PreviewAuthContext = { target: neonAuthTarget ?? null };
-  if (isNeon && neonAuthTarget === undefined) {
-    try {
-      neonPreview.target = await resolveNeonPreviewTarget(appId);
-    } catch (error) {
-      neonPreview.warning =
-        "Could not determine this app's Neon Auth branch. Login may fail. Restart and retry.";
-      logger.warn(neonPreview.warning, error);
+  const previewAuth: PreviewAuthContext = { target: null };
+  try {
+    if (isNeon) {
+      const target =
+        neonAuthTarget === undefined
+          ? await resolveNeonPreviewTarget(appId)
+          : neonAuthTarget;
+      if (target) previewAuth.target = { provider: "neon", ...target };
+    } else {
+      const target = await resolveSupabasePreviewTarget(appId);
+      if (target) previewAuth.target = { provider: "supabase", ...target };
     }
+  } catch (error) {
+    previewAuth.status = {
+      provider: isNeon ? "neon" : "supabase",
+      state: "error",
+      message: `Could not determine this app's ${isNeon ? "Neon Auth branch" : "Supabase project"}. Authentication redirects may fail. Restart and retry.`,
+    };
+    logger.warn(previewAuth.status.message, error);
   }
-  return neonPreview;
+  return previewAuth;
 }
 
 export async function executeApp({
@@ -327,14 +344,14 @@ export async function executeApp({
   startCommand?: string | null;
   invocationRef?: AppRunInvocationRef;
 }): Promise<void> {
-  const neonPreview = await resolvePreviewAuthContext(
+  const authPreview = await resolvePreviewAuthContext(
     appId,
     isNeon,
     neonAuthTarget,
   );
   const settings = readSettings();
   previewAbortSignal?.throwIfAborted();
-  neonPreview.signal = previewAbortSignal;
+  authPreview.signal = previewAbortSignal;
   const runtimeMode = settings.runtimeMode2 ?? "host";
 
   if (runtimeMode === "docker") {
@@ -346,7 +363,7 @@ export async function executeApp({
       installCommand,
       startCommand,
       invocationRef,
-      neonPreview,
+      authPreview,
     });
   } else if (runtimeMode === "cloud") {
     await executeAppInCloud({
@@ -356,7 +373,7 @@ export async function executeApp({
       installCommand,
       startCommand,
       invocationRef,
-      neonPreview,
+      authPreview,
     });
   } else {
     notifyPnpmVersionMigrationAvailable({ appPath, appId, output });
@@ -368,7 +385,7 @@ export async function executeApp({
       installCommand,
       startCommand,
       invocationRef,
-      neonPreview,
+      authPreview,
     });
   }
 }
@@ -417,7 +434,7 @@ export function emitProxyServerStarted({
   originalUrl,
   mode,
   invocationRef,
-  neonAuthWarning,
+  previewAuth,
 }: {
   appId: number;
   output: AppRuntimeOutput;
@@ -425,14 +442,14 @@ export function emitProxyServerStarted({
   originalUrl: string;
   mode: RuntimeMode2;
   invocationRef?: AppRunInvocationRef;
-  neonAuthWarning?: string;
+  previewAuth?: PreviewAuthStatus;
 }) {
   output.send({
     type: "stdout",
     message: `[dyad-proxy-server]started=[${proxyUrl}] original=[${originalUrl}] mode=[${mode}]`,
     appId,
     invocationRef,
-    neonAuthWarning,
+    previewAuth,
   });
 }
 
@@ -442,14 +459,40 @@ export async function reconcileRunningNeonPreview(
   target?: NeonPreviewTarget | null,
   outputOverride?: AppRuntimeOutput,
 ): Promise<void> {
+  return reconcileRunningPreviewAuth(
+    appId,
+    target ? { provider: "neon", ...target } : target,
+    outputOverride,
+  );
+}
+
+/** Caller owns provider admission; captures the target before background work. */
+export async function reconcileRunningSupabasePreview(appId: number) {
   const appInfo = runningApps.get(appId);
-  if (!appInfo?.proxyUrl || !appInfo.originalUrl) return;
-  if (target !== undefined) appInfo.neonAuthTarget = target;
-  if (target === null) appInfo.neonAuthWarning = undefined;
+  if (!appInfo) return;
+  const target = await resolveSupabasePreviewTarget(appId);
+  if (runningApps.get(appId) !== appInfo) return;
+  await reconcileRunningPreviewAuth(
+    appId,
+    target ? { provider: "supabase", ...target } : null,
+  );
+}
+
+async function reconcileRunningPreviewAuth(
+  appId: number,
+  target?: PreviewAuthTarget | null,
+  outputOverride?: AppRuntimeOutput,
+): Promise<void> {
+  const appInfo = runningApps.get(appId);
+  if (!appInfo) return;
+  if (target !== undefined) appInfo.previewAuthTarget = target;
+  if (target === null) appInfo.previewAuth = undefined;
+  if (!appInfo.proxyUrl) return;
   const output = outputOverride ?? appInfo.output;
-  if (!output) return;
-  await registerPreviewOrigin(appId, appInfo, appInfo.proxyUrl, target);
+  await registerPreviewOrigin(appId, appInfo, appInfo.proxyUrl, target, output);
   if (
+    !output ||
+    !appInfo.originalUrl ||
     runningApps.get(appId) !== appInfo ||
     appInfo.proxyAbortController?.signal.aborted ||
     appInfo.previewAbortSignal?.aborted
@@ -462,7 +505,7 @@ export async function reconcileRunningNeonPreview(
     originalUrl: appInfo.originalUrl,
     mode: appInfo.mode,
     invocationRef: appInfo.invocationRef,
-    neonAuthWarning: appInfo.neonAuthWarning,
+    previewAuth: appInfo.previewAuth,
   });
 }
 
@@ -470,75 +513,122 @@ async function registerPreviewOrigin(
   appId: number,
   appInfo: RunningAppInfo,
   proxyUrl: string,
-  target = appInfo.neonAuthTarget,
+  target = appInfo.previewAuthTarget,
   output = appInfo.output,
 ) {
-  await registerSupabasePreviewOrigin(appId, appInfo, proxyUrl, output);
-  if (!target || runningApps.get(appId) !== appInfo) return;
-  const controller = (appInfo.proxyAbortController ??= new AbortController());
-  const signal = appInfo.previewAbortSignal
-    ? AbortSignal.any([controller.signal, appInfo.previewAbortSignal])
-    : controller.signal;
-  try {
-    await neonPreviewDomainService.ensure({
-      appId,
-      processId: appInfo.processId,
-      invocationRef: appInfo.invocationRef,
-      target,
-      origin: new URL(proxyUrl).origin,
-      signal,
-    });
-    if (runningApps.get(appId) === appInfo && !signal.aborted)
-      appInfo.neonAuthWarning = undefined;
-  } catch (error) {
-    if (runningApps.get(appId) !== appInfo || signal.aborted) return;
-    appInfo.neonAuthWarning =
-      "Neon could not register this app's preview address. Login and authentication redirects may fail. Restart and retry.";
-    logger.warn("Neon preview registration failed for app " + appId, error);
-  }
-}
+  if (runningApps.get(appId) !== appInfo) return;
+  const previous = appInfo.previewAuthRegistration;
+  const origin = new URL(proxyUrl).origin;
+  if (
+    target &&
+    previous &&
+    !previous.controller.signal.aborted &&
+    previous.origin === origin &&
+    previous.invocationRef === appInfo.invocationRef &&
+    previous.output === output &&
+    samePreviewAuthTarget(previous.target, target)
+  )
+    return;
 
-/** Caller owns provider admission; also covers linking an already-running app. */
-export async function reconcileRunningSupabasePreview(appId: number) {
-  const appInfo = runningApps.get(appId);
-  if (!appInfo?.proxyUrl) return;
-  await registerSupabasePreviewOrigin(appId, appInfo, appInfo.proxyUrl);
-}
-
-async function registerSupabasePreviewOrigin(
-  appId: number,
-  appInfo: RunningAppInfo,
-  proxyUrl: string,
-  output = appInfo.output,
-) {
-  const controller = (appInfo.proxyAbortController ??= new AbortController());
-  const signal = appInfo.previewAbortSignal
-    ? AbortSignal.any([controller.signal, appInfo.previewAbortSignal])
-    : controller.signal;
-  if (runningApps.get(appId) !== appInfo || signal.aborted) return;
-  try {
-    await ensureSupabasePreviewRedirects({
-      appId,
-      origin: new URL(proxyUrl).origin,
-      signal,
-    });
-  } catch (error) {
-    if (runningApps.get(appId) !== appInfo || signal.aborted) return;
-    logger.warn(
-      "Supabase preview redirect registration failed for app " + appId,
-      error,
-    );
-    // Keep the preview usable, but expose a fixed, actionable message in its
-    // console. Raw provider errors can contain credentials or private data.
-    output?.send({
-      type: "stderr",
-      appId,
-      invocationRef: appInfo.invocationRef,
-      message:
-        "[supabase-auth] Could not register this app's preview redirect URLs. Authentication redirects may fail. Check your Supabase connection and restart the app to retry, or add " +
-        `${new URL(proxyUrl).origin} and ${new URL(proxyUrl).origin}/** in Supabase Authentication > URL Configuration > Redirect URLs.`,
-    });
+  previous?.controller.abort();
+  appInfo.previewAuthRegistration = undefined;
+  if (!target) {
+    if (appInfo.previewAuth?.state === "pending")
+      appInfo.previewAuth = undefined;
+    await previous?.settled;
+    return;
   }
+  const controller = (appInfo.proxyAbortController ??= new AbortController());
+  const registrationController = new AbortController();
+  const signal = AbortSignal.any([
+    controller.signal,
+    registrationController.signal,
+    ...(appInfo.previewAbortSignal ? [appInfo.previewAbortSignal] : []),
+  ]);
+  if (signal.aborted) return;
+  const invocationRef = appInfo.invocationRef;
+  const registration = {
+    target,
+    origin,
+    invocationRef,
+    output,
+    controller: registrationController,
+    settled: Promise.resolve(),
+  };
+  const current = () =>
+    runningApps.get(appId) === appInfo &&
+    appInfo.previewAuthRegistration === registration &&
+    appInfo.invocationRef === invocationRef &&
+    samePreviewAuthTarget(appInfo.previewAuthTarget, target) &&
+    !signal.aborted;
+
+  // Startup/provider admission captures an immutable target. Ownership of this
+  // additive remote mutation then belongs to the runtime: stop drains it, and
+  // branch reconciliation cancels and drains the previous registration. Never
+  // reread mutable provider configuration from the background continuation.
+  appInfo.previewAuthRegistration = registration;
+  appInfo.previewAuth = { provider: target.provider, state: "pending" };
+  registration.settled = Promise.resolve()
+    .then(async () => {
+      await previous?.settled;
+      if (!current()) return;
+      await abortable(
+        target.provider === "neon"
+          ? neonPreviewDomainService.ensureTrustedDomain({
+              appId,
+              processId: appInfo.processId,
+              invocationRef,
+              target: {
+                projectId: target.projectId,
+                branchId: target.branchId,
+              },
+              origin,
+              signal,
+            })
+          : ensureSupabasePreviewRedirects({ appId, target, origin, signal }),
+        signal,
+      );
+    })
+    .catch((error) => {
+      if (!current()) return;
+      // Provider errors may contain credentials or private data. Only publish
+      // fixed, actionable copy to the renderer.
+      appInfo.previewAuth = {
+        provider: target.provider,
+        state: "error",
+        message:
+          target.provider === "neon"
+            ? "Neon could not register this app's preview address. OAuth sign-in and authentication redirects may not work. Restart and retry."
+            : "Supabase could not register this app's preview redirect URLs. Authentication redirects may not work. Check your Supabase connection, then restart and retry.",
+      };
+      logger.warn(
+        `${target.provider} preview registration failed for app ${appId}`,
+        error,
+      );
+    })
+    .then(() => {
+      if (!current()) return;
+      if (appInfo.previewAuth?.state === "pending")
+        appInfo.previewAuth = undefined;
+      if (output && appInfo.proxyUrl === proxyUrl && appInfo.originalUrl) {
+        emitProxyServerStarted({
+          appId,
+          output,
+          proxyUrl,
+          originalUrl: appInfo.originalUrl,
+          mode: appInfo.mode,
+          invocationRef,
+          previewAuth: appInfo.previewAuth,
+        });
+      }
+    })
+    .catch((error) =>
+      logger.warn("Failed to publish preview auth status", error),
+    )
+    .finally(() => {
+      if (appInfo.previewAuthRegistration === registration)
+        appInfo.previewAuthRegistration = undefined;
+    });
 }
 
 export async function ensureProxyForRunningApp({
@@ -593,7 +683,7 @@ export async function ensureProxyForRunningApp({
         originalUrl,
         mode,
         invocationRef,
-        neonAuthWarning: appInfo.neonAuthWarning,
+        previewAuth: appInfo.previewAuth,
       });
       return;
     }
@@ -645,9 +735,9 @@ export async function ensureProxyForRunningApp({
       appInfo.authBootstrapToken = authBootstrapToken;
       const proxyUrl = await readyUrl;
       if (!current()) return;
+      appInfo.proxyUrl = proxyUrl;
       await registerPreviewOrigin(appId, appInfo, proxyUrl, undefined, output);
       if (!current()) return;
-      appInfo.proxyUrl = proxyUrl;
       emitProxyServerStarted({
         appId,
         output,
@@ -655,7 +745,7 @@ export async function ensureProxyForRunningApp({
         originalUrl,
         mode,
         invocationRef,
-        neonAuthWarning: appInfo.neonAuthWarning,
+        previewAuth: appInfo.previewAuth,
       });
     } catch (error) {
       if (!current()) return;
@@ -681,7 +771,7 @@ export async function ensureProxyForRunningApp({
 }
 
 async function executeAppLocalNode({
-  neonPreview,
+  authPreview,
   appPath,
   appId,
   output,
@@ -691,7 +781,7 @@ async function executeAppLocalNode({
   invocationRef,
   ignoredBuildsSelfHealAttempted = false,
 }: {
-  neonPreview: PreviewAuthContext;
+  authPreview: PreviewAuthContext;
   appPath: string;
   appId: number;
   output: AppRuntimeOutput;
@@ -768,9 +858,9 @@ Details: ${details || "n/a"}
   const currentProcessId = processCounter.increment();
   runningApps.set(appId, {
     proxyAbortController: new AbortController(),
-    previewAbortSignal: neonPreview.signal,
-    neonAuthTarget: neonPreview.target,
-    neonAuthWarning: neonPreview.warning,
+    previewAbortSignal: authPreview.signal,
+    previewAuthTarget: authPreview.target,
+    previewAuth: authPreview.status,
     process: spawnedProcess,
     processId: currentProcessId,
     invocationRef,
@@ -816,7 +906,7 @@ Details: ${details || "n/a"}
               startCommand,
               invocationRef,
               ignoredBuildsSelfHealAttempted: true,
-              neonPreview,
+              authPreview,
             });
             return true;
           }
@@ -1123,7 +1213,7 @@ async function selfHealDeniedPnpmBuilds({
 }
 
 async function executeAppInDocker({
-  neonPreview,
+  authPreview,
   appPath,
   appId,
   output,
@@ -1133,7 +1223,7 @@ async function executeAppInDocker({
   invocationRef,
   ignoredBuildsSelfHealAttempted = false,
 }: {
-  neonPreview: PreviewAuthContext;
+  authPreview: PreviewAuthContext;
   appPath: string;
   appId: number;
   output: AppRuntimeOutput;
@@ -1311,9 +1401,9 @@ ${errorOutput || "(empty)"}`,
   const currentProcessId = processCounter.increment();
   runningApps.set(appId, {
     proxyAbortController: new AbortController(),
-    previewAbortSignal: neonPreview.signal,
-    neonAuthTarget: neonPreview.target,
-    neonAuthWarning: neonPreview.warning,
+    previewAbortSignal: authPreview.signal,
+    previewAuthTarget: authPreview.target,
+    previewAuth: authPreview.status,
     process,
     processId: currentProcessId,
     invocationRef,
@@ -1364,7 +1454,7 @@ ${errorOutput || "(empty)"}`,
               startCommand,
               invocationRef,
               ignoredBuildsSelfHealAttempted: true,
-              neonPreview,
+              authPreview,
             });
             return true;
           }
@@ -1373,7 +1463,7 @@ ${errorOutput || "(empty)"}`,
 }
 
 async function executeAppInCloud({
-  neonPreview,
+  authPreview,
   appPath,
   appId,
   output,
@@ -1381,7 +1471,7 @@ async function executeAppInCloud({
   startCommand,
   invocationRef,
 }: {
-  neonPreview: PreviewAuthContext;
+  authPreview: PreviewAuthContext;
   appPath: string;
   appId: number;
   output: AppRuntimeOutput;
@@ -1438,9 +1528,9 @@ async function executeAppInCloud({
   const cloudLogAbortController = new AbortController();
   runningApps.set(appId, {
     proxyAbortController: new AbortController(),
-    previewAbortSignal: neonPreview.signal,
-    neonAuthTarget: neonPreview.target,
-    neonAuthWarning: neonPreview.warning,
+    previewAbortSignal: authPreview.signal,
+    previewAuthTarget: authPreview.target,
+    previewAuth: authPreview.status,
     process: null,
     processId: currentProcessId,
     invocationRef,
@@ -1803,7 +1893,7 @@ export class AppRuntimeService {
             appId,
             output,
             proxyUrl: existing.proxyUrl,
-            neonAuthWarning: existing.neonAuthWarning,
+            previewAuth: existing.previewAuth,
             originalUrl: existing.originalUrl,
             mode: existing.mode,
             invocationRef: invocationRef ?? existing.invocationRef,
@@ -2122,12 +2212,12 @@ export class AppRuntimeService {
     invocationRef?: AppRunInvocationRef;
     appInfo: RunningAppInfo;
   }): Promise<void> {
-    const neonPreview = await resolvePreviewAuthContext(
+    const authPreview = await resolvePreviewAuthContext(
       input.appId,
       input.isNeon,
     );
-    input.appInfo.neonAuthTarget = neonPreview.target;
-    input.appInfo.neonAuthWarning = neonPreview.warning;
+    input.appInfo.previewAuthTarget = authPreview.target;
+    input.appInfo.previewAuth = authPreview.status;
     const sandboxId = input.appInfo.cloudSandboxId!;
     input.appInfo.cloudLogAbortController?.abort();
     const result = await this.dependencies.restartSandbox(sandboxId);

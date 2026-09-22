@@ -1,5 +1,9 @@
 import { neonPreviewDomainService } from "./neon_preview_domain_service";
-import { ensureSupabasePreviewRedirects } from "./supabase_preview_redirect_service";
+import {
+  ensureSupabasePreviewRedirects,
+  resolveSupabasePreviewTarget,
+} from "./supabase_preview_redirect_service";
+import type { PreviewAuthTarget } from "./preview_auth_target";
 import {
   reconcileRunningNeonPreview,
   reconcileRunningSupabasePreview,
@@ -59,11 +63,14 @@ const {
 
 vi.mock("@/ipc/services/neon_preview_domain_service", () => ({
   resolveNeonPreviewTarget: vi.fn().mockResolvedValue(null),
-  neonPreviewDomainService: { ensure: vi.fn().mockResolvedValue(undefined) },
+  neonPreviewDomainService: {
+    ensureTrustedDomain: vi.fn().mockResolvedValue(undefined),
+  },
 }));
 
 vi.mock("@/ipc/services/supabase_preview_redirect_service", () => ({
   ensureSupabasePreviewRedirects: vi.fn().mockResolvedValue(undefined),
+  resolveSupabasePreviewTarget: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock("node:child_process", () => ({
@@ -268,7 +275,13 @@ async function waitForAssertion(assertion: () => void): Promise<void> {
 }
 
 describe("executeApp", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await Promise.all(
+      [...runningApps.values()].map((appInfo) => {
+        appInfo.proxyAbortController?.abort();
+        return appInfo.previewAuthRegistration?.settled;
+      }),
+    );
     runningApps.clear();
     processCounter.value = 0;
     getPnpmMinimumReleaseAgeSupportMock.mockReset();
@@ -296,9 +309,10 @@ describe("executeApp", () => {
     spawnMock.mockReset();
     killPortMock.mockReset();
     killPortMock.mockResolvedValue(undefined);
-    vi.mocked(neonPreviewDomainService.ensure)
+    vi.mocked(neonPreviewDomainService.ensureTrustedDomain)
       .mockReset()
       .mockResolvedValue(undefined);
+    vi.mocked(resolveSupabasePreviewTarget).mockReset().mockResolvedValue(null);
     vi.mocked(ensureSupabasePreviewRedirects)
       .mockReset()
       .mockResolvedValue(undefined);
@@ -955,50 +969,260 @@ describe("executeApp", () => {
     }
   });
 
-  it("registers Supabase callbacks before publishing the actual preview URL, including duplicate startup logs", async () => {
-    let finish!: () => void;
-    vi.mocked(ensureSupabasePreviewRedirects).mockImplementationOnce(
-      () =>
-        new Promise<void>((resolve) => {
-          finish = resolve;
-        }),
-    );
-    runningApps.set(42, {
-      process: null,
-      processId: 8,
-      mode: "host",
-      lastViewedAt: 0,
+  describe.each(["neon", "supabase"] as const)(
+    "%s preview auth registration",
+    (provider) => {
+      const target: PreviewAuthTarget =
+        provider === "neon"
+          ? { provider, projectId: "project", branchId: "active" }
+          : { provider, projectId: "project", organizationSlug: "org" };
+      const ensure =
+        provider === "neon"
+          ? vi.mocked(neonPreviewDomainService.ensureTrustedDomain)
+          : vi.mocked(ensureSupabasePreviewRedirects);
+
+      function seed() {
+        const output = createOutput();
+        runningApps.set(42, {
+          process: null,
+          processId: 8,
+          mode: "host",
+          lastViewedAt: 0,
+          output,
+          previewAuthTarget: target,
+        });
+        return {
+          appId: 42,
+          output,
+          originalUrl: "http://localhost:32142",
+          mode: "host" as const,
+        };
+      }
+
+      async function reconcile(next: PreviewAuthTarget | null) {
+        if (provider === "neon") {
+          await reconcileRunningNeonPreview(
+            42,
+            next?.provider === "neon" ? next : null,
+          );
+        } else {
+          vi.mocked(resolveSupabasePreviewTarget).mockResolvedValueOnce(
+            next?.provider === "supabase" ? next : null,
+          );
+          await reconcileRunningSupabasePreview(42);
+        }
+      }
+
+      it("opens the preview with the actual port while registration is pending, then clears the banner", async () => {
+        let finish!: () => void;
+        ensure.mockImplementationOnce(
+          () =>
+            new Promise<void>((resolve) => {
+              finish = resolve;
+            }),
+        );
+        const request = seed();
+        startProxyMock.mockImplementation(async (_url, opts) => {
+          opts.onStarted("http://app-42.localhost:42999");
+          opts.onStarted("http://app-42.localhost:42142");
+          return { terminate: vi.fn() };
+        });
+        await Promise.all([
+          ensureProxyForRunningApp(request),
+          ensureProxyForRunningApp(request),
+        ]);
+        await vi.waitFor(() => expect(ensure).toHaveBeenCalledOnce());
+        expect(runningApps.get(42)?.proxyUrl).toBe(
+          "http://app-42.localhost:42999",
+        );
+        expect(safeSendMock).toHaveBeenCalledOnce();
+        expect(safeSendMock).toHaveBeenLastCalledWith(
+          expect.anything(),
+          "app:output",
+          expect.objectContaining({
+            previewAuth: { provider, state: "pending" },
+          }),
+        );
+        expect(ensure).toHaveBeenCalledWith(
+          expect.objectContaining({
+            origin: "http://app-42.localhost:42999",
+            target: expect.objectContaining({ projectId: "project" }),
+          }),
+        );
+        // Repeated dev-server logs reuse the proxy and the pending registration.
+        await ensureProxyForRunningApp(request);
+        expect(ensure).toHaveBeenCalledOnce();
+        const registration = runningApps.get(42)!.previewAuthRegistration!;
+        finish();
+        await registration.settled;
+        expect(startProxyMock).toHaveBeenCalledOnce();
+        expect(safeSendMock).toHaveBeenLastCalledWith(
+          expect.anything(),
+          "app:output",
+          expect.objectContaining({ previewAuth: undefined }),
+        );
+        expect(runningApps.get(42)?.proxyUrl).toBe(
+          "http://app-42.localhost:42999",
+        );
+      });
+
+      it("keeps the preview open after failure and clears the warning on a successful retry", async () => {
+        const request = seed();
+        ensure.mockRejectedValueOnce(new Error("private upstream details"));
+        await ensureProxyForRunningApp(request);
+        await runningApps.get(42)?.previewAuthRegistration?.settled;
+        expect(runningApps.get(42)?.proxyUrl).toBe(
+          "http://app-42.localhost:42142",
+        );
+        expect(safeSendMock).toHaveBeenLastCalledWith(
+          expect.anything(),
+          "app:output",
+          expect.objectContaining({
+            previewAuth: {
+              provider,
+              state: "error",
+              message: expect.stringMatching(/restart and retry/i),
+            },
+          }),
+        );
+        expect(JSON.stringify(safeSendMock.mock.calls)).not.toContain(
+          "private upstream details",
+        );
+        await reconcile(target);
+        await runningApps.get(42)?.previewAuthRegistration?.settled;
+        expect(ensure).toHaveBeenCalledTimes(2);
+        expect(runningApps.get(42)?.previewAuth).toBeUndefined();
+        expect(safeSendMock).toHaveBeenLastCalledWith(
+          expect.anything(),
+          "app:output",
+          expect.objectContaining({ previewAuth: undefined }),
+        );
+        expect(startProxyMock).toHaveBeenCalledOnce();
+      });
+
+      it("cancels the old provider target and ignores its late failure after switching", async () => {
+        let failOld!: (error: Error) => void;
+        let finishNew!: () => void;
+        ensure
+          .mockImplementationOnce(
+            () =>
+              new Promise<void>((_resolve, reject) => {
+                failOld = reject;
+              }),
+          )
+          .mockImplementationOnce(
+            () =>
+              new Promise<void>((resolve) => {
+                finishNew = resolve;
+              }),
+          );
+        await ensureProxyForRunningApp(seed());
+        await vi.waitFor(() => expect(ensure).toHaveBeenCalledOnce());
+        const oldSignal = ensure.mock.calls[0][0].signal;
+        const next: PreviewAuthTarget =
+          target.provider === "neon"
+            ? { ...target, branchId: "new" }
+            : { ...target, projectId: "new-project" };
+        await reconcile(next);
+        expect(oldSignal.aborted).toBe(true);
+        await vi.waitFor(() => expect(ensure).toHaveBeenCalledTimes(2));
+        const { provider: _provider, ...expectedTarget } = next;
+        expect(ensure).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            target: expect.objectContaining(expectedTarget),
+          }),
+        );
+        safeSendMock.mockClear();
+        failOld(new Error("Old project failed"));
+        await Promise.resolve();
+        expect(runningApps.get(42)?.previewAuth).toEqual({
+          provider,
+          state: "pending",
+        });
+        expect(safeSendMock).not.toHaveBeenCalled();
+        const registration = runningApps.get(42)!.previewAuthRegistration!;
+        finishNew();
+        await registration.settled;
+        expect(runningApps.get(42)?.previewAuth).toBeUndefined();
+        expect(safeSendMock).toHaveBeenCalledOnce();
+      });
+
+      it.each(["pending", "error"])(
+        "clears %s registration when the provider is disconnected",
+        async (state) => {
+          if (state === "pending")
+            ensure.mockImplementationOnce(() => new Promise(() => {}));
+          else ensure.mockRejectedValueOnce(new Error("Failed"));
+          await ensureProxyForRunningApp(seed());
+          await vi.waitFor(() => expect(ensure).toHaveBeenCalledOnce());
+          if (state === "error")
+            await runningApps.get(42)?.previewAuthRegistration?.settled;
+          await reconcile(null);
+          expect(runningApps.get(42)?.previewAuthRegistration).toBeUndefined();
+          expect(runningApps.get(42)?.previewAuthTarget).toBeNull();
+          expect(safeSendMock).toHaveBeenLastCalledWith(
+            expect.anything(),
+            "app:output",
+            expect.objectContaining({ previewAuth: undefined }),
+          );
+          if (state === "pending")
+            expect(ensure.mock.calls[0][0].signal.aborted).toBe(true);
+        },
+      );
+
+      it.each(["runtime", "isolated-test", "replacement"])(
+        "ignores late completion after %s cancellation",
+        async (source) => {
+          let finish!: () => void;
+          ensure.mockImplementationOnce(
+            () =>
+              new Promise<void>((resolve) => {
+                finish = resolve;
+              }),
+          );
+          const externalAbort = new AbortController();
+          const request = seed();
+          const info = runningApps.get(42)!;
+          if (source === "isolated-test")
+            info.previewAbortSignal = externalAbort.signal;
+          await ensureProxyForRunningApp(request);
+          await vi.waitFor(() => expect(ensure).toHaveBeenCalledOnce());
+          const registration = info.previewAuthRegistration!;
+          const signal = ensure.mock.calls[0][0].signal;
+          safeSendMock.mockClear();
+          if (source === "runtime") info.proxyAbortController!.abort();
+          else if (source === "isolated-test") externalAbort.abort();
+          else seed();
+          finish();
+          await registration.settled;
+          if (source !== "replacement") expect(signal.aborted).toBe(true);
+          expect(safeSendMock).not.toHaveBeenCalled();
+          expect(info.previewAuthRegistration).toBeUndefined();
+        },
+      );
+    },
+  );
+
+  it("captures the Supabase association before starting the runtime", async () => {
+    vi.mocked(resolveSupabasePreviewTarget).mockResolvedValueOnce({
+      projectId: "branch-ref",
+      organizationSlug: "org",
     });
-    startProxyMock.mockImplementation(async (_url, opts) => {
-      opts.onStarted("http://app-42.localhost:42999");
-      return { terminate: vi.fn() };
-    });
-    const request = {
+    spawnMock.mockReturnValueOnce(new FakeChildProcess(123));
+    await executeApp({
+      appPath: "/tmp/app",
       appId: 42,
       output: createOutput(),
-      originalUrl: "http://localhost:32142",
-      mode: "host" as const,
-    };
-    const first = ensureProxyForRunningApp(request);
-    const duplicate = ensureProxyForRunningApp(request);
-    await vi.waitFor(() =>
-      expect(ensureSupabasePreviewRedirects).toHaveBeenCalledTimes(1),
-    );
-    expect(ensureSupabasePreviewRedirects).toHaveBeenCalledWith(
-      expect.objectContaining({
-        appId: 42,
-        origin: "http://app-42.localhost:42999",
-      }),
-    );
-    expect(runningApps.get(42)?.proxyUrl).toBeUndefined();
-    expect(safeSendMock).not.toHaveBeenCalled();
-    finish();
-    await Promise.all([first, duplicate]);
-    expect(runningApps.get(42)?.proxyUrl).toBe("http://app-42.localhost:42999");
-    expect(startProxyMock).toHaveBeenCalledTimes(1);
+      isNeon: false,
+    });
+    expect(runningApps.get(42)?.previewAuthTarget).toEqual({
+      provider: "supabase",
+      projectId: "branch-ref",
+      organizationSlug: "org",
+    });
   });
 
-  it("opens the preview after a Supabase registration failure and retries when the running project is reconciled", async () => {
+  it("keeps an association change made before the proxy is ready", async () => {
     const output = createOutput();
     runningApps.set(42, {
       process: null,
@@ -1007,193 +1231,28 @@ describe("executeApp", () => {
       lastViewedAt: 0,
       output,
     });
-    vi.mocked(ensureSupabasePreviewRedirects).mockRejectedValueOnce(
-      new Error("private upstream details"),
-    );
+    vi.mocked(resolveSupabasePreviewTarget).mockResolvedValueOnce({
+      projectId: "new-project",
+      organizationSlug: "new-org",
+    });
+    await reconcileRunningSupabasePreview(42);
     await ensureProxyForRunningApp({
       appId: 42,
       output,
       originalUrl: "http://localhost:32142",
       mode: "host",
     });
-    expect(runningApps.get(42)?.proxyUrl).toBe("http://app-42.localhost:42142");
-    expect(safeSendMock).toHaveBeenCalledWith(
-      expect.anything(),
-      "app:output",
+    await runningApps.get(42)?.previewAuthRegistration?.settled;
+    expect(ensureSupabasePreviewRedirects).toHaveBeenCalledWith(
       expect.objectContaining({
-        type: "stderr",
-        message: expect.stringContaining("[supabase-auth]"),
+        target: {
+          provider: "supabase",
+          projectId: "new-project",
+          organizationSlug: "new-org",
+        },
       }),
     );
-    expect(JSON.stringify(safeSendMock.mock.calls)).not.toContain(
-      "private upstream details",
-    );
-    await reconcileRunningSupabasePreview(42);
-    expect(ensureSupabasePreviewRedirects).toHaveBeenCalledTimes(2);
   });
-
-  it("does not publish a preview or auth warning after stopping during Supabase registration", async () => {
-    let fail!: (error: Error) => void;
-    vi.mocked(ensureSupabasePreviewRedirects).mockImplementationOnce(
-      () =>
-        new Promise<void>((_resolve, reject) => {
-          fail = reject;
-        }),
-    );
-    runningApps.set(42, {
-      process: null,
-      processId: 8,
-      mode: "host",
-      lastViewedAt: 0,
-    });
-    const startup = ensureProxyForRunningApp({
-      appId: 42,
-      output: createOutput(),
-      originalUrl: "http://localhost:32142",
-      mode: "host",
-    });
-    await vi.waitFor(() =>
-      expect(ensureSupabasePreviewRedirects).toHaveBeenCalledTimes(1),
-    );
-    runningApps.get(42)!.proxyAbortController!.abort();
-    fail(new Error("Stopped"));
-    await startup;
-    expect(runningApps.get(42)?.proxyUrl).toBeUndefined();
-    expect(safeSendMock).not.toHaveBeenCalled();
-  });
-
-  it("waits for Neon reconciliation on the actual origin and serializes duplicate startup callbacks", async () => {
-    let finish!: () => void;
-    vi.mocked(neonPreviewDomainService.ensure).mockImplementation(
-      () =>
-        new Promise<void>((resolve) => {
-          finish = resolve;
-        }),
-    );
-    const output = createOutput();
-    runningApps.set(42, {
-      process: null,
-      processId: 8,
-      mode: "host",
-      lastViewedAt: 0,
-      neonAuthTarget: { projectId: "project", branchId: "active" },
-    });
-    startProxyMock.mockImplementation(async (_url, opts) => {
-      opts.onStarted("http://app-42.localhost:42999");
-      opts.onStarted("http://app-42.localhost:42142");
-      return { terminate: vi.fn() };
-    });
-    const request = {
-      appId: 42,
-      output,
-      originalUrl: "http://localhost:32142",
-      mode: "host" as const,
-    };
-    const startup = ensureProxyForRunningApp(request);
-    const duplicate = ensureProxyForRunningApp(request);
-    await vi.waitFor(() =>
-      expect(neonPreviewDomainService.ensure).toHaveBeenCalledTimes(1),
-    );
-    expect(runningApps.get(42)?.proxyUrl).toBeUndefined();
-    expect(safeSendMock).not.toHaveBeenCalled();
-    expect(neonPreviewDomainService.ensure).toHaveBeenCalledWith(
-      expect.objectContaining({
-        origin: "http://app-42.localhost:42999",
-        target: { projectId: "project", branchId: "active" },
-      }),
-    );
-    finish();
-    await Promise.all([startup, duplicate]);
-    expect(startProxyMock).toHaveBeenCalledTimes(1);
-    expect(safeSendMock).toHaveBeenCalledTimes(1);
-    expect(runningApps.get(42)?.proxyUrl).toBe("http://app-42.localhost:42999");
-  });
-
-  it("opens with a persistent warning on registration timeout, then clears it on successful retry", async () => {
-    const output = createOutput();
-    runningApps.set(42, {
-      process: null,
-      processId: 8,
-      mode: "host",
-      output,
-      lastViewedAt: 0,
-      neonAuthTarget: { projectId: "project", branchId: "active" },
-    });
-    vi.mocked(neonPreviewDomainService.ensure).mockRejectedValueOnce(
-      new DOMException("Timed out", "TimeoutError"),
-    );
-    const request = {
-      appId: 42,
-      output,
-      originalUrl: "http://localhost:32142",
-      mode: "host" as const,
-    };
-    await ensureProxyForRunningApp(request);
-    expect(runningApps.get(42)?.proxyUrl).toBe("http://app-42.localhost:42142");
-    expect(runningApps.get(42)?.neonAuthWarning).toContain("Restart and retry");
-    expect(safeSendMock).toHaveBeenLastCalledWith(
-      expect.anything(),
-      "app:output",
-      expect.objectContaining({
-        neonAuthWarning: expect.stringContaining("Restart and retry"),
-      }),
-    );
-    await reconcileRunningNeonPreview(42, {
-      projectId: "project",
-      branchId: "new-active",
-    });
-    expect(runningApps.get(42)?.neonAuthWarning).toBeUndefined();
-    expect(neonPreviewDomainService.ensure).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        target: { projectId: "project", branchId: "new-active" },
-      }),
-    );
-    expect(safeSendMock).toHaveBeenLastCalledWith(
-      expect.anything(),
-      "app:output",
-      expect.objectContaining({ neonAuthWarning: undefined }),
-    );
-    expect(startProxyMock).toHaveBeenCalledTimes(1);
-  });
-
-  it.each(["runtime", "isolated-test"])(
-    "does not publish readiness after %s cancellation during Neon registration",
-    async (source) => {
-      const externalAbort = new AbortController();
-      let finish!: () => void;
-      vi.mocked(neonPreviewDomainService.ensure).mockImplementation(
-        () =>
-          new Promise<void>((resolve) => {
-            finish = resolve;
-          }),
-      );
-      runningApps.set(42, {
-        process: null,
-        processId: 8,
-        previewAbortSignal:
-          source === "isolated-test" ? externalAbort.signal : undefined,
-        mode: "host",
-        lastViewedAt: 0,
-        neonAuthTarget: { projectId: "project", branchId: "active" },
-      });
-      const work = ensureProxyForRunningApp({
-        appId: 42,
-        output: createOutput(),
-        originalUrl: "http://localhost:32142",
-        mode: "host",
-      });
-      await vi.waitFor(() =>
-        expect(neonPreviewDomainService.ensure).toHaveBeenCalled(),
-      );
-      if (source === "runtime")
-        runningApps.get(42)!.proxyAbortController!.abort();
-      else externalAbort.abort();
-      finish();
-      await work;
-      expect(safeSendMock).not.toHaveBeenCalled();
-      expect(runningApps.get(42)?.proxyUrl).toBeUndefined();
-    },
-  );
 
   it("starts the proxy on the deterministic port without killing the occupant", async () => {
     const terminate = vi.fn();
@@ -1224,7 +1283,7 @@ describe("executeApp", () => {
         authBootstrapToken: expect.any(String),
       }),
     );
-    expect(neonPreviewDomainService.ensure).not.toHaveBeenCalled();
+    expect(neonPreviewDomainService.ensureTrustedDomain).not.toHaveBeenCalled();
     const proxyOptions = startProxyMock.mock.calls[0][1];
     expect(proxyOptions.authBootstrapToken).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,

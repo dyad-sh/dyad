@@ -1,5 +1,6 @@
 import type { RuntimeMode2 } from "@/lib/schemas";
 import type { AppRunRemoteSnapshot } from "./transport";
+import type { PreviewAuthStatus } from "./state";
 
 export interface AppExit {
   appId: number;
@@ -10,14 +11,14 @@ export interface AppExit {
 export type AppUrlState =
   | {
       appUrl: string;
-      neonAuthWarning?: string;
+      previewAuth?: PreviewAuthStatus;
       appId: number;
       originalUrl: string;
       mode: RuntimeMode2;
     }
   | {
       appUrl: null;
-      neonAuthWarning?: undefined;
+      previewAuth?: undefined;
       appId: null;
       originalUrl: null;
       mode: null;
@@ -39,9 +40,7 @@ export function selectRemoteAppUrl(state: AppRunRemoteSnapshot): AppUrlState {
   }
   return {
     appUrl: state.url.appUrl,
-    ...(state.url.neonAuthWarning
-      ? { neonAuthWarning: state.url.neonAuthWarning }
-      : {}),
+    ...(state.url.previewAuth ? { previewAuth: state.url.previewAuth } : {}),
     appId: state.appId,
     originalUrl: state.url.originalUrl,
     mode: state.url.mode,

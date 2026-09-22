@@ -70,21 +70,37 @@ describe("MainAppRuntimeOutput", () => {
   });
 });
 
-it("carries Neon warnings into authoritative readiness and clears them on recovery", () => {
-  const send = vi.fn();
-  const output = new MainAppRuntimeOutput(
-    7,
-    { kind: "app-run", entityKey: 7, operationId: "run-1" },
-    { send },
-  );
-  const event = {
-    type: "stdout" as const,
-    appId: 7,
-    message:
-      "[dyad-proxy-server]started=[http://app-7.localhost:42107] original=[http://localhost:32107] mode=[host]",
-  };
-  output.send({ ...event, neonAuthWarning: "Restart and retry" });
-  expect(send.mock.calls[0][0].url.neonAuthWarning).toBe("Restart and retry");
-  output.send(event);
-  expect(send.mock.calls[1][0].url.neonAuthWarning).toBeUndefined();
-});
+it.each(["neon", "supabase"] as const)(
+  "carries %s status into authoritative readiness and clears it on recovery",
+  (provider) => {
+    const send = vi.fn();
+    const output = new MainAppRuntimeOutput(
+      7,
+      { kind: "app-run", entityKey: 7, operationId: "run-1" },
+      { send },
+    );
+    const event = {
+      type: "stdout" as const,
+      appId: 7,
+      message:
+        "[dyad-proxy-server]started=[http://app-7.localhost:42107] original=[http://localhost:32107] mode=[host]",
+    };
+    output.send({ ...event, previewAuth: { provider, state: "pending" } });
+    expect(send.mock.calls[0][0].url.previewAuth).toEqual({
+      provider,
+      state: "pending",
+    });
+    send.mockClear();
+    output.send({
+      ...event,
+      previewAuth: { provider, state: "error", message: "Restart and retry" },
+    });
+    expect(send.mock.calls[0][0].url.previewAuth).toEqual({
+      provider,
+      state: "error",
+      message: "Restart and retry",
+    });
+    output.send(event);
+    expect(send.mock.calls[1][0].url.previewAuth).toBeUndefined();
+  },
+);

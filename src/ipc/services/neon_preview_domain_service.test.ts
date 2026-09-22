@@ -47,8 +47,8 @@ describe("Neon preview domain registration", () => {
         }),
     );
     const service = new NeonPreviewDomainService(register);
-    const first = service.ensure(input());
-    const second = service.ensure(input());
+    const first = service.ensureTrustedDomain(input());
+    const second = service.ensureTrustedDomain(input());
     expect(register).toHaveBeenCalledTimes(1);
     expect(register).toHaveBeenCalledWith({
       projectId: "project",
@@ -63,36 +63,63 @@ describe("Neon preview domain registration", () => {
   it("reconciles changed branches, invocations, and restarts", async () => {
     const register = vi.fn().mockResolvedValue(null);
     const service = new NeonPreviewDomainService(register);
-    await service.ensure(input());
-    await service.ensure(input("br-temporary"));
-    await service.ensure({ ...input(), processId: 2 });
-    await service.ensure(input());
+    await service.ensureTrustedDomain(input());
+    await service.ensureTrustedDomain(input("br-temporary"));
+    await service.ensureTrustedDomain({ ...input(), processId: 2 });
+    await service.ensureTrustedDomain(input());
     expect(register).toHaveBeenCalledTimes(4);
     expect(register.mock.calls[1][0].branchId).toBe("br-temporary");
   });
 
-  it("bounds registration, aborts the request, and permits recovery", async () => {
+  it("waits for the provider without imposing a registration deadline", async () => {
+    const timeout = vi.spyOn(AbortSignal, "timeout");
+    let done!: () => void;
+    const register = vi.fn(
+      () =>
+        new Promise<null>((resolve) => {
+          done = () => resolve(null);
+        }),
+    );
+    try {
+      const service = new NeonPreviewDomainService(register);
+      const request = input();
+      const work = service.ensureTrustedDomain(request);
+      expect(register).toHaveBeenCalledWith(
+        expect.objectContaining({ signal: request.signal }),
+      );
+      expect(timeout).not.toHaveBeenCalled();
+      done();
+      await expect(work).resolves.toBeUndefined();
+    } finally {
+      timeout.mockRestore();
+    }
+  });
+
+  it("allows an explicit retry after a provider failure", async () => {
     const register = vi
       .fn()
-      .mockImplementationOnce(() => new Promise(() => {}))
+      .mockRejectedValueOnce(new Error("Network error"))
       .mockResolvedValue(null);
-    const service = new NeonPreviewDomainService(register, 15);
-    await expect(service.ensure(input())).rejects.toMatchObject({
-      name: "TimeoutError",
-    });
-    expect(register.mock.calls[0][0].signal.aborted).toBe(true);
-    await expect(service.ensure(input())).resolves.toBeUndefined();
+    const service = new NeonPreviewDomainService(register);
+    await expect(service.ensureTrustedDomain(input())).rejects.toThrow(
+      "Network error",
+    );
+    await expect(service.ensureTrustedDomain(input())).resolves.toBeUndefined();
+    expect(register).toHaveBeenCalledTimes(2);
   });
 
   it("cancels credential/request waits and never starts already-cancelled work", async () => {
     const register = vi.fn(() => new Promise<null>(() => {}));
     const service = new NeonPreviewDomainService(register);
     const controller = new AbortController();
-    const work = service.ensure({ ...input(), signal: controller.signal });
+    const work = service.ensureTrustedDomain({
+      ...input(),
+      signal: controller.signal,
+    });
     controller.abort(new Error("Stopped"));
     await expect(work).rejects.toThrow("Stopped");
     await expect(
-      service.ensure({ ...input(), signal: controller.signal }),
+      service.ensureTrustedDomain({ ...input(), signal: controller.signal }),
     ).rejects.toThrow("Stopped");
     expect(register).toHaveBeenCalledTimes(1);
   });
@@ -106,7 +133,10 @@ describe("Neon preview domain registration", () => {
   ])("rejects a non-preview origin %s", async (origin) => {
     const register = vi.fn();
     await expect(
-      new NeonPreviewDomainService(register).ensure({ ...input(), origin }),
+      new NeonPreviewDomainService(register).ensureTrustedDomain({
+        ...input(),
+        origin,
+      }),
     ).rejects.toThrow("Invalid app preview origin");
     expect(register).not.toHaveBeenCalled();
   });

@@ -11,10 +11,10 @@ import {
 } from "./cloud_sandbox_provider";
 import { readSettings } from "../../main/settings";
 import { endRecordingForApp } from "../services/recording_registry";
-import type { AppRunInvocationRef } from "@/app_run/state";
+import type { AppRunInvocationRef, PreviewAuthStatus } from "@/app_run/state";
 import type { AppRuntimeOutput } from "@/ipc/types/app_runtime";
 import { killProcessTreeSync } from "./kill_process_tree_sync";
-import type { NeonPreviewTarget } from "../services/neon_preview_domain_service";
+import type { PreviewAuthTarget } from "../services/preview_auth_target";
 
 const logger = log.scope("process_manager");
 
@@ -38,8 +38,17 @@ export interface RunningAppInfo {
   lastViewedAt: number;
   /** Proxy URL for the running app, set when the proxy server starts */
   proxyUrl?: string;
-  neonAuthTarget?: NeonPreviewTarget | null;
-  neonAuthWarning?: string;
+  previewAuthTarget?: PreviewAuthTarget | null;
+  previewAuth?: PreviewAuthStatus;
+  /** Runtime-owned registration; cancelled and drained on stop or replacement. */
+  previewAuthRegistration?: {
+    target: PreviewAuthTarget;
+    origin: string;
+    invocationRef?: AppRunInvocationRef;
+    output?: AppRuntimeOutput;
+    controller: AbortController;
+    settled: Promise<void>;
+  };
   proxyStartup?: Promise<void>;
   proxyStartupError?: Error;
   proxyAbortController?: AbortController;
@@ -200,10 +209,13 @@ export async function stopAppByInfo(
   options: { recordingOwnedRestart?: boolean } = {},
 ): Promise<void> {
   appInfo.proxyAbortController?.abort();
+  appInfo.previewAuthRegistration?.controller.abort();
   if (options.recordingOwnedRestart) {
     appInfo.recordingOwnedRestart = true;
   }
   try {
+    if (appInfo.previewAuthRegistration)
+      await appInfo.previewAuthRegistration.settled;
     stopCloudSandboxFileSync(appId);
 
     if (appInfo.mode === "cloud") {
@@ -248,6 +260,7 @@ export function removeAppIfCurrentProcess(
   const currentAppInfo = runningApps.get(appId);
   if (currentAppInfo && currentAppInfo.process === process) {
     currentAppInfo.proxyAbortController?.abort();
+    currentAppInfo.previewAuthRegistration?.controller.abort();
     if (currentAppInfo.proxyWorker) {
       void currentAppInfo.proxyWorker.terminate();
       currentAppInfo.proxyWorker = undefined;
@@ -464,6 +477,7 @@ export function stopAllAppsSync(): void {
     if (!appInfo) continue;
 
     appInfo.proxyAbortController?.abort();
+    appInfo.previewAuthRegistration?.controller.abort();
     if (appInfo.proxyWorker) {
       void appInfo.proxyWorker.terminate();
       appInfo.proxyWorker = undefined;

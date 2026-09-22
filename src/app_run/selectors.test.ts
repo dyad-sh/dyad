@@ -17,7 +17,7 @@ describe("app-run remote selectors", () => {
   it("exposes ready and reloading URLs as a running-server signal", () => {
     const url = {
       appUrl: "http://app-7.localhost:4200",
-      neonAuthWarning: "Restart and retry",
+      previewAuth: { provider: "supabase", state: "pending" } as const,
       originalUrl: "http://localhost:3200",
       mode: "host" as const,
     };

@@ -1,4 +1,4 @@
-import { NeonAuthWarning } from "./NeonAuthWarning";
+import { PreviewAuthBanner } from "./PreviewAuthBanner";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
 import { useMutation } from "@tanstack/react-query";
@@ -69,7 +69,7 @@ interface LoadFailure {
  */
 export const PreviewWebContentsView = ({ loading }: { loading: boolean }) => {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
-  const { appUrl, mode, neonAuthWarning } = useCurrentAppUrl(selectedAppId);
+  const { appUrl, mode, previewAuth } = useCurrentAppUrl(selectedAppId);
   const { settings } = useSettings();
   const setPreviewNativeViewAppId = useSetAtom(previewNativeViewAppIdAtom);
   const isNativeOverlayActive = useAtomValue(previewNativeOverlayActiveAtom);
@@ -275,8 +275,8 @@ export const PreviewWebContentsView = ({ loading }: { loading: boolean }) => {
 
   return (
     <div className="flex flex-col h-full">
-      <NeonAuthWarning
-        message={neonAuthWarning}
+      <PreviewAuthBanner
+        status={previewAuth}
         onRetry={() => runAppLifecycleInBackground("restart", restartApp())}
         disabled={loading || isTestRunActive}
       />

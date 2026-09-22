@@ -734,11 +734,24 @@ it("updates and clears the warning even when the proxy URL is unchanged", () => 
     type: "PROXY_READY",
     appId: APP_ID,
     invocationRef: CURRENT_REF,
-    url: { ...makeUrl(1), neonAuthWarning: "Restart and retry" },
+    url: {
+      ...makeUrl(1),
+      previewAuth: {
+        provider: "supabase",
+        state: "error",
+        message: "Restart and retry",
+      },
+    },
   });
   expect(warning.state).not.toBe(state);
   expect(warning.state).toMatchObject({
-    url: { neonAuthWarning: "Restart and retry" },
+    url: {
+      previewAuth: {
+        provider: "supabase",
+        state: "error",
+        message: "Restart and retry",
+      },
+    },
   });
   const recovered = transition(warning.state, {
     type: "PROXY_READY",
@@ -747,4 +760,58 @@ it("updates and clears the warning even when the proxy URL is unchanged", () => 
     url: makeUrl(1),
   });
   expect(recovered.state).toEqual(state);
+});
+
+it("updates registration progress without changing the preview URL", () => {
+  const state: RunState = {
+    type: "ready",
+    appId: APP_ID,
+    invocationRef: CURRENT_REF,
+    url: makeUrl(1),
+  };
+  const registering = transition(state, {
+    type: "PROXY_READY",
+    appId: APP_ID,
+    invocationRef: CURRENT_REF,
+    url: {
+      ...makeUrl(1),
+      previewAuth: { provider: "supabase", state: "pending" },
+    },
+  });
+  expect(registering.state).not.toBe(state);
+  expect(registering.state).toMatchObject({
+    url: { previewAuth: { provider: "supabase", state: "pending" } },
+  });
+  const duplicate = transition(registering.state, {
+    type: "PROXY_READY",
+    appId: APP_ID,
+    invocationRef: CURRENT_REF,
+    url: {
+      ...makeUrl(1),
+      previewAuth: { provider: "supabase", state: "pending" },
+    },
+  });
+  expect(duplicate.state).toBe(registering.state);
+  const switched = transition(registering.state, {
+    type: "PROXY_READY",
+    appId: APP_ID,
+    invocationRef: CURRENT_REF,
+    url: { ...makeUrl(1), previewAuth: { provider: "neon", state: "pending" } },
+  });
+  expect(switched.state).not.toBe(registering.state);
+  expect(switched.state).toMatchObject({
+    url: { previewAuth: { provider: "neon" } },
+  });
+  const registered = transition(registering.state, {
+    type: "PROXY_READY",
+    appId: APP_ID,
+    invocationRef: CURRENT_REF,
+    url: makeUrl(1),
+  });
+  expect(registered.state).toEqual(state);
+  if (registered.kind !== "applied")
+    throw new Error("Expected registration to finish");
+  expect(registered.commands).not.toContainEqual(
+    expect.objectContaining({ type: "reload" }),
+  );
 });

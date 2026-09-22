@@ -466,10 +466,10 @@ export function registerSupabaseHandlers() {
         // resolved anything the create guard is holding.
         if (projectId) {
           unlinkedProjectsByApp.delete(appId);
-          const { reconcileRunningSupabasePreview } =
-            await import("../services/app_runtime_service");
-          await reconcileRunningSupabasePreview(appId);
         }
+        const { reconcileRunningSupabasePreview } =
+          await import("../services/app_runtime_service");
+        await reconcileRunningSupabasePreview(appId);
 
         logger.info(
           `Associated app ${appId} with Supabase project ${projectId} (organization: ${organizationSlug})${parentProjectId ? ` and parent project ${parentProjectId}` : ""}`,
@@ -505,6 +505,10 @@ export function registerSupabaseHandlers() {
             supabaseOrganizationSlug: null,
           })
           .where(eq(apps.id, app));
+
+        const { reconcileRunningSupabasePreview } =
+          await import("../services/app_runtime_service");
+        await reconcileRunningSupabasePreview(app);
 
         logger.info(`Removed Supabase project association for app ${app}`);
       },

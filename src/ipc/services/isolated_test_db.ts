@@ -264,7 +264,7 @@ export async function prepareIsolatedTestDatabase({
         throw new Error(
           "The preview URL is unavailable for Neon Auth sign-in.",
         );
-      await neonPreviewDomainService.ensure({
+      await neonPreviewDomainService.ensureTrustedDomain({
         appId: app.id,
         processId: info.processId,
         invocationRef: info.invocationRef,

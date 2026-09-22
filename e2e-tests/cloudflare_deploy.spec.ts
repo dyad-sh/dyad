@@ -55,6 +55,13 @@ async function fakeCloudflare(port: number, path: string, init?: RequestInit) {
   return res;
 }
 
+// The fake is shared by every test in the worker, so each starts clean.
+test.beforeEach(async ({}, testInfo) => {
+  await fakeCloudflare(FAKE_LLM_BASE_PORT + testInfo.parallelIndex, "reset", {
+    method: "POST",
+  });
+});
+
 async function cloudflareState(port: number) {
   const res = await fakeCloudflare(port, "state");
   return (await res.json()) as {
@@ -124,9 +131,8 @@ test("waits for Cloudflare to get access to the repository, then continues", asy
   po,
 }, testInfo) => {
   const fakeLlmPort = FAKE_LLM_BASE_PORT + testInfo.parallelIndex;
-  await po.setUp({ autoApprove: true });
-  // After setUp, which resets the fake to the usual access.
   await fakeCloudflare(fakeLlmPort, "revoke-github-access", { method: "POST" });
+  await po.setUp({ autoApprove: true });
   await po.sendPrompt("tc=cloudflare-worker");
 
   await po.previewPanel.selectPreviewMode("publish");

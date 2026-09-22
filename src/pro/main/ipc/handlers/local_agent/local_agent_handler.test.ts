@@ -1412,6 +1412,63 @@ describe("handleLocalAgentStream", () => {
   });
 
   describe("MCP result limits", () => {
+    it.each([true, false])(
+      "records direct MCP failure evidence only after execution (approved=%s)",
+      async (approved) => {
+        const { event } = createFakeEvent();
+        mockSettings = buildTestSettings({ enableDyadPro: true });
+        mockChatData = buildTestChat();
+        mockMcpServers = [{ id: 42, name: "srv" }];
+        const execute = vi
+          .fn()
+          .mockRejectedValue(new Error("Archive service unavailable"));
+        mockMcpToolSet = {
+          archive: {
+            description: "Generate an archive",
+            inputSchema: { type: "object" },
+            execute,
+          },
+        };
+        mockRequireMcpToolConsent.mockResolvedValue({ approved });
+        const history: { tool: string; args: string; outcome: string }[] = [];
+        vi.mocked(buildAgentToolSet).mockImplementationOnce((ctx) => {
+          ctx.shellReviewContext = { tools: [], history };
+          return {};
+        });
+        mockStreamTextImpl = (options) => ({
+          fullStream: (async function* () {
+            try {
+              await options.tools.srv__archive.execute(
+                {},
+                { toolCallId: "archive-call", messages: [] },
+              );
+            } catch {
+              /* Expected failure. */
+            }
+            yield { type: "text-delta", text: "Done" };
+          })(),
+          response: Promise.resolve({ messages: [] }),
+          steps: Promise.resolve([{ toolCalls: [] }]),
+        });
+        await handleLocalAgentStream(
+          event,
+          { chatId: 1, prompt: "Archive the app" },
+          new AbortController(),
+          {
+            placeholderMessageId: 10,
+            systemPrompt: "You are helpful",
+            dyadRequestId,
+          },
+        );
+        expect(history).toHaveLength(1);
+        expect(history[0].tool).toBe("srv__archive");
+        expect(history[0].outcome).toContain(
+          approved ? "Execution failed" : "not eligible for shell fallback",
+        );
+        expect(execute).toHaveBeenCalledTimes(approved ? 1 : 0);
+      },
+    );
+
     it("bounds direct MCP tool output before it reaches XML or model history", async () => {
       const { event } = createFakeEvent();
       mockSettings = buildTestSettings({ enableDyadPro: true });

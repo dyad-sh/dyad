@@ -501,7 +501,11 @@ describe("a connected Worker", () => {
     });
     renderConnector();
 
-    expect(await screen.findByText(/was deleted or rolled/)).toBeTruthy();
+    const notice = await screen.findByTestId("cloudflare-token-revoked");
+    // It outlives a new token until the next deploy, so it speaks of the
+    // token last used and says when it goes away.
+    expect(notice.textContent).toMatch(/token last used for this deployment/);
+    expect(notice.textContent).toMatch(/clears on the next deploy/);
   });
 
   it("does not show a reconnected folder the status of the connection it replaced", async () => {

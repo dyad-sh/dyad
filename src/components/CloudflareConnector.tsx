@@ -805,10 +805,12 @@ function DeploymentCard({
         </div>
       )}
       {status.data?.tokenRevoked && (
-        <div className={warningClass}>
-          The Cloudflare API token this deployment uses was deleted or rolled.
-          Disconnect Cloudflare under Settings &gt; Integrations, then add a new
-          token here. Your Workers stay connected.
+        <div className={warningClass} data-testid="cloudflare-token-revoked">
+          The Cloudflare API token last used for this deployment was deleted or
+          rolled. Disconnect Cloudflare under Settings &gt; Integrations, then
+          add a new token here. Your Workers stay connected. Once a new token is
+          added, this notice clears on the next deploy, when a sync next pushes
+          a change to GitHub.
         </div>
       )}
       {state === "failed" && status.data && status.data.logTail.length > 0 && (

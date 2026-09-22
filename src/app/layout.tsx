@@ -32,6 +32,7 @@ import { useShortcut } from "@/hooks/useShortcut";
 import { useIsMac } from "@/hooks/useChatModeToggle";
 import { ReleaseNotesDialog } from "@/components/ReleaseNotesDialog";
 import { ForceCloseDialog } from "@/components/ForceCloseDialog";
+import { HelpDialog } from "@/components/HelpDialog";
 import { SubscriptionStatusBanner } from "@/components/SubscriptionStatusBanner";
 import { ImageGenerationProvider } from "@/image_generation/ImageGenerationProvider";
 import {
@@ -210,12 +211,27 @@ function RootLayoutContent({ children }: { children: ReactNode }) {
                   richColors
                   expand
                   duration={settings?.isTestMode ? 500 : undefined}
+                  // Sonner's own 24px, plus the screenshot bar when one is up,
+                  // so toasts stack above the bar instead of covering its
+                  // buttons.
+                  offset={{
+                    bottom: "calc(24px + var(--layout-bottom-bar-height))",
+                  }}
+                  // Sonner switches to this one under a 600px viewport, which
+                  // an 800px window reaches at 150% zoom.
+                  mobileOffset={{
+                    bottom: "calc(16px + var(--layout-bottom-bar-height))",
+                  }}
                 />
                 {/* Next to the Toaster on purpose: it is what keeps these
                     toasts from being painted underneath the native preview. */}
                 <PreviewNativeOverlayGuard />
                 <ReleaseNotesDialog />
                 <ForceCloseDialog />
+                {/* Outside the sidebar, whose hover handlers would otherwise
+                    hear the screenshot bar's pointer events through React's
+                    tree and keep the sidebar expanded. */}
+                <HelpDialog />
               </SidebarProvider>
             </DeepLinkProvider>
           </ThemeProvider>

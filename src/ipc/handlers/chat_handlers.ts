@@ -16,7 +16,7 @@ import {
 import type { WebContents } from "electron";
 import {
   rendererMessageColumns,
-  toRendererMessage,
+  toRendererMessages,
 } from "../utils/renderer_chat_message";
 import { createChatForApp } from "../utils/chat_creation_utils";
 import {
@@ -168,7 +168,7 @@ export function registerChatHandlers() {
       chatMode: normalizeStoredChatMode(chat.chatMode),
       modelSelection: chat.modelSelection ?? null,
       referencedApps: await getReferencedAppsForDisplay(chat.referencedAppIds),
-      messages: chat.messages.map(toRendererMessage),
+      messages: toRendererMessages(chat.messages),
     };
   });
 

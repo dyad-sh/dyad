@@ -27,6 +27,7 @@ import {
   type McpConsentValue,
 } from "../types/mcp";
 import { findAvailablePort } from "../utils/port_utils";
+import { readSettings, tryWriteSettings } from "../../main/settings";
 import net from "node:net";
 import { safeStorage } from "electron";
 import {
@@ -35,6 +36,28 @@ import {
 } from "./mcp_error_classifiers";
 
 const logger = log.scope("mcp_handlers");
+
+// Adding a plugin by hand is a clear signal the user wants it, so a stored
+// "don't suggest again" for it no longer applies. The chat card never
+// reaches this for such a plugin, because opted-out plugins are not offered.
+// Best-effort: the add has already succeeded by the time this runs, so a
+// settings problem here must not turn it into a failure.
+function clearNeverSuggestPlugin(slug: string) {
+  try {
+    const slugs = readSettings().neverSuggestPluginSlugs;
+    if (!slugs?.includes(slug)) return;
+    tryWriteSettings(
+      {
+        neverSuggestPluginSlugs: slugs.filter(
+          (candidate) => candidate !== slug,
+        ),
+      },
+      "clearing a plugin's never-suggest choice",
+    );
+  } catch (error) {
+    logger.warn("Failed to clear a plugin's never-suggest choice", error);
+  }
+}
 
 // EADDRINUSE on either stack disqualifies the port; a stack that's
 // unavailable system-wide (e.g. IPv6 disabled) is OK if the other is
@@ -197,6 +220,7 @@ export function registerMcpHandlers() {
         .from(mcpServers)
         .where(eq(mcpServers.catalogSlug, slug));
       if (existing.length > 0) {
+        clearNeverSuggestPlugin(slug);
         return toMcpServer(existing[0]);
       }
 
@@ -265,8 +289,10 @@ export function registerMcpHandlers() {
             DyadErrorKind.NotFound,
           );
         }
+        clearNeverSuggestPlugin(slug);
         return toMcpServer(row);
       }
+      clearNeverSuggestPlugin(slug);
       return toMcpServer(created);
     },
   );

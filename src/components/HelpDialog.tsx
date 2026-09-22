@@ -37,20 +37,23 @@ import {
   type Diagnostics,
   type ScreenshotOutcome,
 } from "@/lib/issueBody";
+import { createPortal } from "react-dom";
 import { IssueForm } from "./IssueForm";
 import { ScreenshotField } from "./ScreenshotField";
 import { ReportDisclosures } from "./ReportDisclosures";
+import { ScreenshotCaptureBar } from "./ScreenshotCaptureBar";
 
 const UPLOAD_URL_ENDPOINT = "https://upload-logs.dyad.sh/generate-upload-url";
 
 /**
- * How long the dialog gets to leave the screen before the capture. Its close
- * animation runs 200ms, and a capture taken right at the end of it catches
- * the dialog half-faded over the window.
+ * How long the screenshot bar gets to leave the screen before the capture.
+ * Taking it out of the layout reflows the preview above it, and the native
+ * preview view follows that reflow a frame or more later; a capture taken
+ * straight away catches the old bounds.
  */
-const DIALOG_CLOSE_DELAY_MS = 500;
+const CAPTURE_DELAY_MS = 500;
 
-type DialogScreen = "main" | "form";
+type DialogScreen = "main" | "form" | "filed";
 
 /**
  * Why a captured screenshot is no longer available. Shown to the reporter and
@@ -89,7 +92,7 @@ function classifyCaptureFailure(reason: string): string {
   return "other";
 }
 
-const SCREEN_ORDER: DialogScreen[] = ["main", "form"];
+const SCREEN_ORDER: DialogScreen[] = ["main", "form", "filed"];
 
 const screenVariants = {
   enter: (direction: number) => ({
@@ -189,6 +192,10 @@ export function HelpDialog() {
   );
   const [captureId, setCaptureId] = useState<string | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
+  // The report has asked for a screenshot and the dialog has stepped aside so
+  // the reporter can go to wherever the bug is first. Only meaningful while
+  // the dialog is closed: it opening again, for any reason, ends the wait.
+  const [awaitingCapture, setAwaitingCapture] = useState(false);
   const [isFiling, setIsFiling] = useState(false);
   // Fixed when the report starts. Reading it from the dialog atom would let it
   // change under the reporter, because closing the dialog for a capture drops
@@ -224,10 +231,6 @@ export function HelpDialog() {
   // sending the reporter's chat and codebase a second time and leaving the
   // first copy on the service with no issue pointing at it.
   const uploadedSession = useRef<string | null>(null);
-  // Set when the dialog hides itself for a capture, and consumed by the
-  // re-read effect below. A flag rather than `isCapturing`, which can strand
-  // true on a capture that never lands and would then suppress it forever.
-  const hidingForCapture = useRef(false);
   // Where this report came from. A ref because the screenshot events fire from
   // callbacks that outlive the render which started the report.
   const reportSource = useRef<ReportSource>("report-bug");
@@ -294,6 +297,7 @@ export function HelpDialog() {
     setScreenshotPreview(null);
     showCapture(null);
     setIsCapturing(false);
+    setAwaitingCapture(false);
     setIsFiling(false);
   };
 
@@ -314,7 +318,8 @@ export function HelpDialog() {
   // A kept draft can sit closed while the reporter goes back and reproduces
   // the bug, so its diagnostics are read again on the way in. The old snapshot
   // stays up until the new one lands, so there is never a gap with nothing to
-  // show or send.
+  // show or send. A screenshot is the same case: the dialog steps aside
+  // precisely so the reporter can go and reproduce the bug first.
   const wasOpen = useRef(isOpen);
   useEffect(() => {
     // Only the dialog coming back counts. A draft that starts while the
@@ -322,14 +327,16 @@ export function HelpDialog() {
     const reopened = isOpen && !wasOpen.current;
     wasOpen.current = isOpen;
     if (!reopened || !reportOpen) return;
-    // The dialog hid itself for a screenshot rather than the reporter
-    // leaving, so re-reading now would cost three shell commands a retake.
-    if (hidingForCapture.current) {
-      hidingForCapture.current = false;
-      return;
-    }
     setDiagnosticsRun((run) => run + 1);
   }, [isOpen, reportOpen]);
+
+  // However the dialog comes back -- the capture landing, the bar's Cancel,
+  // the sidebar's Help button, a crash report -- it comes back to the form,
+  // and the bar has nothing left to wait for. Keyed on the dialog opening
+  // rather than on who opened it, so no path can leave the bar behind.
+  useEffect(() => {
+    if (isOpen) setAwaitingCapture(false);
+  }, [isOpen]);
 
   // A route change can unmount the dialog while a draft still holds a capture
   // and an upload is in flight. Neither should outlive the screen.
@@ -603,16 +610,38 @@ export function HelpDialog() {
       });
   };
 
+  /**
+   * Asks for a screenshot. The dialog steps aside and the bar takes its
+   * place, so the reporter can go to wherever the bug is before capturing.
+   * Both the first capture and a retake come through here: one flow.
+   */
+  const requestScreenshot = () => {
+    if (isCapturing) return;
+    posthog.capture("screenshot-prompt:bar-opened", {
+      source: reportSource.current,
+    });
+    setAwaitingCapture(true);
+    onClose();
+  };
+
+  /** The bar's way back to the form without a screenshot. */
+  const cancelCaptureBar = () => {
+    posthog.capture("screenshot-prompt:bar-cancelled", {
+      source: reportSource.current,
+    });
+    setAwaitingCapture(false);
+    setHelpDialog({ open: true });
+  };
+
   const captureScreenshot = () => {
     if (isCapturing) return;
     const token = captureToken.current;
+    // The bar renders nothing while this is set, so it stays out of the
+    // picture.
     setIsCapturing(true);
-    hidingForCapture.current = true;
     posthog.capture("screenshot-prompt:capture-attempt", {
       source: reportSource.current,
     });
-    // The dialog hides so that it stays out of the picture.
-    onClose();
     setTimeout(async () => {
       try {
         const capture = await ipc.system.takeScreenshot();
@@ -652,10 +681,12 @@ export function HelpDialog() {
         // reporter may have filed, or started a report that owns the flag.
         if (captureToken.current === token) {
           setIsCapturing(false);
+          // The form picks up where the reporter left it, with the capture
+          // or the reason there is none. Opening also ends the wait.
           setHelpDialog({ open: true });
         }
       }
-    }, DIALOG_CLOSE_DELAY_MS);
+    }, CAPTURE_DELAY_MS);
   };
 
   const removeScreenshot = () => {
@@ -816,6 +847,12 @@ export function HelpDialog() {
     captureToken.current++;
     setIsFiling(false);
     setReportOpen(false);
+    if (outgoingScreenshot.status === "captured") {
+      // The image is only on the clipboard, so the report is not finished
+      // until it is pasted. Stays up for when the reporter looks back here.
+      navigateTo("filed");
+      return;
+    }
     onClose();
   };
 
@@ -912,7 +949,7 @@ export function HelpDialog() {
               previewSrc={screenshotPreview}
               isCapturing={isCapturing}
               locked={isFiling}
-              onCapture={captureScreenshot}
+              onCapture={requestScreenshot}
               onRemove={removeScreenshot}
             />
           }
@@ -951,12 +988,46 @@ export function HelpDialog() {
     </AnimatedScreen>
   );
 
+  const renderFiledScreen = () => (
+    <AnimatedScreen screenKey="filed" direction={direction}>
+      <DialogHeader>
+        <DialogTitle>{t("home:report.filedHeading")}</DialogTitle>
+      </DialogHeader>
+      <DialogDescription>
+        {t("home:report.filedPasteBody", { shortcut: "Cmd/Ctrl + V" })}
+      </DialogDescription>
+      {screenshotPreview && (
+        <img
+          src={screenshotPreview}
+          alt={t("home:report.screenshotAlt")}
+          className="mt-4 w-full max-h-48 object-contain rounded-md border bg-(--background-lightest)"
+        />
+      )}
+      <Button onClick={onClose} className="mt-4 w-full">
+        {t("home:report.filedDone")}
+      </Button>
+    </AnimatedScreen>
+  );
+
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
 
+  // Up only while there is something to wait for and nothing else on screen
+  // to do it: the dialog is away, and the capture itself is not running.
+  const captureBar =
+    awaitingCapture && !isOpen && !isCapturing ? (
+      <ScreenshotCaptureBar
+        onCapture={captureScreenshot}
+        onCancel={cancelCaptureBar}
+      />
+    ) : null;
+
   return (
     <>
+      {/* Straight under the body, so no ancestor's transform can pin the
+          bar's fixed position to anything but the window. */}
+      {captureBar && createPortal(captureBar, document.body)}
       <Dialog open={isOpen} onOpenChange={dismissDialog}>
         <DialogContent
           className={
@@ -968,6 +1039,7 @@ export function HelpDialog() {
           <AnimatePresence mode="wait" custom={direction}>
             {screen === "main" && renderMainScreen()}
             {screen === "form" && renderFormScreen()}
+            {screen === "filed" && renderFiledScreen()}
           </AnimatePresence>
         </DialogContent>
       </Dialog>

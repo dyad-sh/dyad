@@ -7,6 +7,7 @@ const SOURCE_ROOT = path.resolve(process.cwd(), "src");
 const MACHINE_DIRECTORIES = [
   "app_run",
   "chat_stream",
+  "components/chat/scroll",
   "connection_flow",
   "coolify_deploy",
   "deep_link_window_readiness",
@@ -230,9 +231,11 @@ function importedMachineFor(
   filePath: string,
   source: string,
 ): MachineDirectory | undefined {
-  const aliasMatch = /^@\/([^/]+)(?:\/|$)/.exec(source);
-  if (aliasMatch) {
-    return MACHINE_DIRECTORIES.find((machine) => machine === aliasMatch[1]);
+  if (source.startsWith("@/")) {
+    return MACHINE_DIRECTORIES.find(
+      (machine) =>
+        source === `@/${machine}` || source.startsWith(`@/${machine}/`),
+    );
   }
   if (!source.startsWith(".")) return undefined;
   const resolved = path.resolve(path.dirname(filePath), source);
@@ -1049,21 +1052,7 @@ describe("state-machine boundaries", () => {
       const machineRoot = path.join(SOURCE_ROOT, machine);
       for (const filePath of productionFiles(machineRoot)) {
         for (const source of importsIn(filePath)) {
-          const aliasMatch = /^@\/([^/]+)(?:\/|$)/.exec(source);
-          if (aliasMatch) {
-            expect(
-              !MACHINE_DIRECTORIES.includes(
-                aliasMatch[1] as (typeof MACHINE_DIRECTORIES)[number],
-              ) || aliasMatch[1] === machine,
-              `${path.relative(SOURCE_ROOT, filePath)} imports ${source}`,
-            ).toBe(true);
-            continue;
-          }
-          if (!source.startsWith(".")) continue;
-          const resolved = path.resolve(path.dirname(filePath), source);
-          const importedMachine = MACHINE_DIRECTORIES.find((candidate) =>
-            resolved.startsWith(path.join(SOURCE_ROOT, candidate) + path.sep),
-          );
+          const importedMachine = importedMachineFor(filePath, source);
           expect(
             importedMachine === undefined || importedMachine === machine,
             `${path.relative(SOURCE_ROOT, filePath)} imports ${source}`,

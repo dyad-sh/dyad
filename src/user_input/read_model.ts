@@ -35,6 +35,14 @@ type UserInputOutcome =
 const MAX_SETTLED_TOMBSTONES = 1_000;
 const QUESTIONNAIRE_CONFIRMATION_MS = 2_000;
 
+// Request kinds whose human response can arm a follow-up turn instead of
+// settling. Mirrors `followUpPromptFor` in the main transition.
+function descriptorArmsFollowUp(
+  kind: UserInputDescriptorPayload["kind"],
+): boolean {
+  return kind === "integration" || kind === "plugin-suggestion";
+}
+
 export type UserInputRequest =
   | {
       status: "awaiting" | "armed" | "due";
@@ -262,7 +270,7 @@ export function getUserInputReadModel({
           armed &&
           armed.revision === revisions.get(requestId) &&
           (projected.status === "awaiting" || projected.status === "armed") &&
-          projected.descriptor.kind === "integration"
+          descriptorArmsFollowUp(projected.descriptor.kind)
         ) {
           next.set(requestId, {
             ...projected,
@@ -325,7 +333,7 @@ export function getUserInputReadModel({
                 if (
                   !entry ||
                   entry.status !== "awaiting" ||
-                  entry.descriptor.kind !== "integration"
+                  !descriptorArmsFollowUp(entry.descriptor.kind)
                 ) {
                   return current;
                 }

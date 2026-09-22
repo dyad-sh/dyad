@@ -30,13 +30,15 @@ import {
   formatAsTranscript,
   type CompactionMessage,
 } from "./compaction_storage";
-import { getPostCompactionMessages } from "./compaction_utils";
+import {
+  buildCompactionBlock,
+  getPostCompactionMessages,
+} from "./compaction_utils";
 import {
   getProviderOptions,
   getAiHeaders,
   DYAD_INTERNAL_REQUEST_ID_HEADER,
 } from "@/ipc/utils/provider_options";
-import { escapeXmlContent } from "../../../../shared/xmlEscape";
 import { isDyadProEnabled } from "@/lib/schemas";
 import {
   normalizeModelSelection,
@@ -313,9 +315,7 @@ export async function performCompaction(
 
     // Create the compaction indicator message
     // Include relative backup path so the AI can read the full original conversation later
-    const compactionMessageContent = `<dyad-compaction title="Conversation compacted" state="finished">
-${escapeXmlContent(summary)}
-</dyad-compaction>
+    const compactionMessageContent = `${buildCompactionBlock(summary)}
 
 If you need to retrieve earlier parts of the conversation history, you can read the backup file at: ${backupPath}
 Note: This file may be large. Read only the sections you need or use grep to search for specific content rather than reading the entire file.`;

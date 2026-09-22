@@ -1,5 +1,21 @@
 import { describe, it, expect } from "vitest";
-import { getPostCompactionMessages } from "@/ipc/handlers/compaction/compaction_utils";
+import {
+  buildCompactionBlock,
+  extractCompactionBlocks,
+  getPostCompactionMessages,
+} from "@/ipc/handlers/compaction/compaction_utils";
+
+it("extracts complete producer blocks, excluding escaped content and unfinished tags", () => {
+  const first = buildCompactionBlock(
+    "Summary with <dyad-compaction>quoted tags</dyad-compaction>",
+  );
+  const second = buildCompactionBlock("");
+  expect(
+    extractCompactionBlocks(`Before\n${first}\nBetween\n${second}\nAfter`),
+  ).toEqual([first, second]);
+  expect(extractCompactionBlocks(first.slice(0, -1))).toEqual([]);
+  expect(extractCompactionBlocks("Plain text")).toEqual([]);
+});
 
 type Msg = { id: number; role: string; isCompactionSummary: boolean | null };
 

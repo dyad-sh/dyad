@@ -4,6 +4,7 @@ import {
   ISSUE_URL_CEILING,
   MIN_DESCRIPTION_LENGTH,
   PROSE_BUDGET,
+  SCREENSHOT_PASTE_REMINDER,
   SCREENSHOT_REASON_LIMIT,
   applyDescriptionEdit,
   buildIssueBody,
@@ -460,6 +461,39 @@ describe("diagnostics field caps", () => {
   });
 });
 
+describe("screenshot paste reminder", () => {
+  const bodyWith = (
+    screenshot: Parameters<typeof buildIssueBody>[0]["screenshot"],
+  ) =>
+    buildIssueBody({
+      description: "the preview goes blank",
+      screenshot,
+      diagnostics: null,
+      sessionId: null,
+    });
+
+  it("asks the reporter to paste, right under the status line", () => {
+    const lines = bodyWith({ status: "captured" }).split("\n");
+    const status = lines.findIndex((line) =>
+      line.startsWith("Screenshot status: captured"),
+    );
+
+    // In the Screenshot section, where the paste belongs, and before the
+    // sections that follow it.
+    expect(lines[status + 1]).toBe("");
+    expect(lines[status + 2]).toBe(SCREENSHOT_PASTE_REMINDER);
+  });
+
+  it("asks for nothing when there is no screenshot to paste", () => {
+    expect(bodyWith({ status: "declined" })).not.toContain(
+      SCREENSHOT_PASTE_REMINDER,
+    );
+    expect(
+      bodyWith({ status: "capture-failed", reason: "no window" }),
+    ).not.toContain(SCREENSHOT_PASTE_REMINDER);
+  });
+});
+
 describe("issue URL budget", () => {
   // GitHub answers 500 past ~6,860 characters and 414 past ~8,500, so the
   // worst case the form can produce has to stay under the ceiling by
@@ -503,6 +537,22 @@ describe("issue URL budget", () => {
     } as unknown as ModelSelection,
     userBudget,
   };
+
+  it("keeps a maxed-out report with a captured screenshot under the ceiling", () => {
+    // The captured path carries the paste reminder, so it is measured on its
+    // own rather than assumed shorter than a failed capture's reason.
+    const url = buildIssueUrl({
+      title: ISSUE_TITLE,
+      labels: ["bug", "pro"],
+      body: buildIssueBody({
+        description: applyDescriptionEdit("", "界".repeat(4_000)).value,
+        screenshot: { status: "captured" },
+        diagnostics: worstCaseDiagnostics,
+        sessionId: "v2:0199c3f1-2a5b-7c8d-9e0f-1a2b3c4d5e6f",
+      }),
+    });
+    expect(url.length).toBeLessThan(ISSUE_URL_CEILING);
+  });
 
   it.each([
     ["ASCII", "d"],

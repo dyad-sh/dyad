@@ -62,27 +62,33 @@ export function usePluginConnect() {
 
   // Sole owner of the shared connect slot: claims it for the duration
   // of `fn`. Buttons that start a connect flow disable while the slot
-  // is held, so only one flow can run at a time.
-  const withConnectSlot = async (serverId: number, fn: () => Promise<void>) => {
+  // is held, so only one flow can run at a time. Resolves to `fn`'s
+  // result, or undefined when it threw.
+  const withConnectSlot = async <T>(
+    serverId: number,
+    fn: () => Promise<T>,
+  ): Promise<T | undefined> => {
     setConnectingServerId(serverId);
     try {
-      await fn();
+      return await fn();
     } catch (err) {
       // The mutations inside surface their own error toasts; catching
       // here keeps an unexpected rejection from escaping into the
       // fire-and-forget click handlers. Logged so a non-mutation
       // failure is still visible when debugging.
       console.error("Connect flow failed", err);
+      return undefined;
     } finally {
       setConnectingServerId(null);
     }
   };
 
-  // The OAuth flow itself; callers hold the connect slot.
+  // The OAuth flow itself; callers hold the connect slot. Resolves to
+  // whether the flow succeeded.
   const autoConnect = async (
     serverId: number,
     opts?: { showToast?: boolean; callbackPort?: number },
-  ) => {
+  ): Promise<boolean> => {
     // Clear any prior feedback so a stale "discovery_failed" alert
     // can't sit next to a fresh error toast on the retry path.
     setConnectFeedback(null);
@@ -95,7 +101,7 @@ export function usePluginConnect() {
     });
     if (result.success) {
       showSuccess("OAuth connection successful");
-      return;
+      return true;
     }
     const message = result.error ?? "OAuth flow failed";
     if (result.errorKind === "discovery_failed") {
@@ -115,12 +121,23 @@ export function usePluginConnect() {
     } else {
       showError(message);
     }
+    return false;
   };
 
   const runAutoConnect = async (
     serverId: number,
     opts?: { showToast?: boolean; callbackPort?: number },
   ) => withConnectSlot(serverId, () => autoConnect(serverId, opts));
+
+  // OAuth for a row that was just created, holding the connect slot so
+  // no other flow can start meanwhile. Resolves to whether it succeeded.
+  const connectNewServer = async (created: McpServer): Promise<boolean> =>
+    (await runAutoConnect(created.id, {
+      showToast: true,
+      callbackPort:
+        created.oauthCallbackPort ??
+        (typeof callbackPort === "number" ? callbackPort : undefined),
+    })) === true;
 
   // Reports a 401 right after an add, ahead of the tool discovery that
   // the new row triggers. The alert itself comes from that discovery.
@@ -243,6 +260,7 @@ export function usePluginConnect() {
     connectingServerId,
     disconnectingServerId,
     feedbackFor,
+    connectNewServer,
     onServerCreated,
     onConnect,
     onDisconnect,

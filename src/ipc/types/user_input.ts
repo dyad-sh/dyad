@@ -78,6 +78,19 @@ export const UserInputDescriptorSchema = z.discriminatedUnion("kind", [
     testTitle: z.string(),
     classifier: z.literal("none"),
   }),
+  // The agent asks the user to connect a catalog plugin it needs for its
+  // next step. `followUpPrompt` resumes the task on a fresh turn once the
+  // plugin is connected, since a turn only collects MCP tools at its start.
+  DescriptorBaseSchema.extend({
+    kind: z.literal("plugin-suggestion"),
+    slug: z.string(),
+    serverName: z.string(),
+    serverDescription: z.string().nullable().optional(),
+    needsOAuth: z.boolean(),
+    reason: z.string(),
+    classifier: z.literal("none"),
+    followUpPrompt: z.string(),
+  }),
 ]);
 
 export const UserInputResponseSchema = z.discriminatedUnion("kind", [
@@ -99,6 +112,10 @@ export const UserInputResponseSchema = z.discriminatedUnion("kind", [
     kind: z.literal("test-assertions"),
     specPath: z.string().nullable(),
     appliedCount: z.number(),
+  }),
+  z.object({
+    kind: z.literal("plugin-suggestion"),
+    outcome: z.enum(["connected", "declined", "never"]),
   }),
   z.object({ kind: z.literal("follow-up-dispatched") }),
 ]);

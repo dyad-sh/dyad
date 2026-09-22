@@ -18,6 +18,9 @@ import {
 } from "@/testing/handler_test_harness";
 import { windowRegistry } from "@/window_infrastructure/main/window_registry";
 import { WindowSessionIdSchema } from "@/window_infrastructure/types";
+import * as playwrightBootstrap from "../utils/playwright_bootstrap";
+import * as spawnStreamingUtils from "../utils/spawn_streaming";
+import { runningApps } from "../utils/process_manager";
 
 // Every app folder lives under one throwaway base so the delete handler runs
 // against real directories (its path guards resolve symlinks on disk).
@@ -32,7 +35,10 @@ const { browserWindowFromWebContentsMock } = vi.hoisted(() => ({
 
 vi.mock("electron", () => ({
   ipcMain: { handle: vi.fn(), on: vi.fn() },
-  BrowserWindow: { fromWebContents: browserWindowFromWebContentsMock },
+  BrowserWindow: {
+    fromWebContents: browserWindowFromWebContentsMock,
+    getAllWindows: vi.fn(() => []),
+  },
   app: {
     getPath: vi.fn(() =>
       path.join(os.tmpdir(), "dyad-tests-handler-user-data"),
@@ -48,6 +54,8 @@ vi.mock("@/paths/paths", async (importOriginal) => {
   const base = nodePath.join(nodeOs.tmpdir(), "dyad-tests-handler-tests");
   return {
     ...actual,
+    getUserDataPath: () =>
+      nodePath.join(nodeOs.tmpdir(), "dyad-tests-handler-user-data"),
     getDyadAppPath: (appPath: string) =>
       nodePath.isAbsolute(appPath) ? appPath : nodePath.join(base, appPath),
   };
@@ -84,6 +92,12 @@ vi.mock("../services/git_service", () => ({
 
 const queueCloudSandboxSnapshotSyncMock = vi.hoisted(() => vi.fn());
 const prepareIsolatedTestDatabaseMock = vi.hoisted(() => vi.fn());
+const startTestCaseLifecycleServerMock = vi.hoisted(() => vi.fn());
+vi.mock("../services/test_case_lifecycle_server", () => ({
+  startTestCaseLifecycleServer: startTestCaseLifecycleServerMock,
+  TEST_CASE_ENDPOINT_ENV: "DYAD_TEST_CASE_ENDPOINT",
+  TEST_CASE_TOKEN_ENV: "DYAD_TEST_CASE_TOKEN",
+}));
 const broadcastToRegisteredWindowsMock = vi.hoisted(() => vi.fn());
 // Partially mocked: this module is pulled in transitively by the runtime
 // service, so replacing it wholesale breaks whenever an unrelated export is
@@ -127,6 +141,7 @@ describe("tests handlers", () => {
     removeFileAndCommitMock.mockClear();
     queueCloudSandboxSnapshotSyncMock.mockClear();
     prepareIsolatedTestDatabaseMock.mockReset();
+    startTestCaseLifecycleServerMock.mockReset();
     broadcastToRegisteredWindowsMock.mockClear();
     browserWindowFromWebContentsMock.mockReset();
     harness = setupHandlerTestHarness();
@@ -153,6 +168,159 @@ describe("tests handlers", () => {
   }
 
   describe("tests:run", () => {
+    it.each([
+      { outcome: "cancelled", message: "Test run stopped." },
+      {
+        outcome: "timed out",
+        message:
+          "The test run exceeded the 3-minute limit and was stopped before it could finish.",
+      },
+      {
+        outcome: "missing server",
+        message:
+          "Start the app before running tests — the dev server isn't running.",
+      },
+      {
+        outcome: "completed",
+        message: "Per-test database isolation failed: cleanup failed",
+      },
+    ])(
+      "handles lifecycle cleanup failure after a $outcome run",
+      async ({ outcome, message }) => {
+        const appId = seedApp("app");
+        harness.db
+          .update(apps)
+          .set({ testingEnabled: true })
+          .where(eq(apps.id, appId))
+          .run();
+        const controller = new AbortController();
+        let failure: Error | undefined;
+        const close = vi.fn(async () => {
+          failure = new Error("cleanup failed");
+        });
+        startTestCaseLifecycleServerMock.mockResolvedValue({
+          env: {},
+          close,
+          get failure() {
+            return failure;
+          },
+        });
+        const teardown = vi.fn().mockResolvedValue({ envRestored: true });
+        prepareIsolatedTestDatabaseMock.mockResolvedValue({
+          isolation: { mode: "neon-branch" },
+          testCaseLifecycle: { beforeEach: vi.fn(), afterEach: vi.fn() },
+          teardown,
+        });
+        const bootstrap = vi
+          .spyOn(playwrightBootstrap, "ensurePlaywrightBootstrap")
+          .mockImplementation(async () => {
+            if (outcome === "cancelled") controller.abort();
+            return { installed: false, previewRouted: true };
+          });
+        const appPath = path.join(TEMP_BASE, "app");
+        const packagePath = path.join(
+          appPath,
+          "node_modules",
+          "@playwright",
+          "test",
+          "package.json",
+        );
+        fs.mkdirSync(path.dirname(packagePath), { recursive: true });
+        fs.writeFileSync(packagePath, "{}");
+        const spawn = vi
+          .spyOn(spawnStreamingUtils, "spawnStreaming")
+          .mockImplementation(async ({ signal, timeoutMs, env }) => {
+            expect(signal?.aborted).toBe(false);
+            expect(timeoutMs).toBe(180_000);
+            const reportPath = path.join(
+              appPath,
+              env!.PLAYWRIGHT_JSON_OUTPUT_NAME!,
+            );
+            fs.mkdirSync(path.dirname(reportPath), { recursive: true });
+            fs.writeFileSync(
+              reportPath,
+              JSON.stringify({
+                suites: [
+                  {
+                    file: path.join(appPath, "e2e-tests/test.spec.ts"),
+                    specs: [
+                      {
+                        title: "passes",
+                        tests: [
+                          {
+                            status: "expected",
+                            results: [{ status: "passed", duration: 10 }],
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              }),
+            );
+            return {
+              code: outcome === "timed out" ? 124 : 0,
+              stdout: "",
+              stderr: "",
+              aborted: false,
+              timedOut: outcome === "timed out",
+            };
+          });
+        if (outcome !== "missing server")
+          runningApps.set(appId, { proxyUrl: "http://localhost:42100" } as any);
+        try {
+          const result = await runAppTestsWithIsolation({
+            event: { sender: {} } as any,
+            appId,
+            source: "panel",
+            externalSignal: controller.signal,
+            timeoutMs: 60_000,
+          });
+          expect(result.infraError?.message).toBe(message);
+          expect(spawn).toHaveBeenCalledTimes(
+            outcome === "timed out" || outcome === "completed" ? 1 : 0,
+          );
+          if (outcome === "completed") {
+            expect(result.results).toEqual([
+              expect.objectContaining({ status: "passed" }),
+            ]);
+          }
+          expect(close).toHaveBeenCalledTimes(1);
+          expect(teardown).toHaveBeenCalledTimes(1);
+        } finally {
+          runningApps.delete(appId);
+          bootstrap.mockRestore();
+          spawn.mockRestore();
+        }
+      },
+    );
+
+    it("retains the run result and restores isolation when lifecycle close rejects", async () => {
+      const appId = seedApp("app");
+      harness.db
+        .update(apps)
+        .set({ testingEnabled: true })
+        .where(eq(apps.id, appId))
+        .run();
+      const teardown = vi.fn().mockResolvedValue({ envRestored: true });
+      const close = vi
+        .fn()
+        .mockRejectedValue(new Error("lifecycle close failed"));
+      startTestCaseLifecycleServerMock.mockResolvedValue({ env: {}, close });
+      prepareIsolatedTestDatabaseMock.mockResolvedValue({
+        isolation: { mode: "neon-branch" },
+        testCaseLifecycle: { beforeEach: vi.fn(), afterEach: vi.fn() },
+        teardown,
+      });
+      const result = await runAppTestsWithIsolation({
+        event: { sender: {} } as any,
+        appId,
+        source: "panel",
+      });
+      expect(close).toHaveBeenCalledTimes(1);
+      expect(teardown).toHaveBeenCalledTimes(1);
+      expect(result.infraError?.message).toContain("dev server isn't running");
+    });
     it("assigns preview activation to the invoking window session", async () => {
       const appId = seedApp("app");
       harness.db

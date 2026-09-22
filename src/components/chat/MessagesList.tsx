@@ -35,8 +35,8 @@ import { getExtraRevertedCommits } from "./revertImpact";
 interface MessagesListProps {
   chatId: number | null;
   messages: Message[];
-  messagesEndRef: React.RefObject<HTMLDivElement | null>;
-  onAtBottomChange?: (atBottom: boolean) => void;
+  contentRef?: React.RefCallback<HTMLDivElement>;
+  onContentHeightChange?: () => void;
 }
 
 // Memoize ChatMessage at module level to prevent recreation on every render
@@ -45,7 +45,6 @@ const MemoizedChatMessage = React.memo(ChatMessage);
 // Context type for Virtuoso
 interface FooterContext {
   messages: Message[];
-  messagesEndRef: React.RefObject<HTMLDivElement | null>;
   isStreaming: boolean;
   isUndoLoading: boolean;
   isRetryLoading: boolean;
@@ -123,7 +122,6 @@ function FooterComponent({ context }: { context?: FooterContext }) {
 
   const {
     messages,
-    messagesEndRef,
     isStreaming,
     isUndoLoading,
     isRetryLoading,
@@ -570,7 +568,6 @@ function FooterComponent({ context }: { context?: FooterContext }) {
           </div>
         </div>
       )}
-      <div ref={messagesEndRef} />
       {renderSetupBanner()}
     </>
   );
@@ -581,11 +578,19 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
     {
       chatId: selectedChatId,
       messages: persistedMessages,
-      messagesEndRef,
-      onAtBottomChange,
+      contentRef,
+      onContentHeightChange,
     },
     ref,
   ) {
+    const setScrollerRef = useCallback(
+      (element: HTMLElement | Window | null) => {
+        if (element instanceof Window) return;
+        if (typeof ref === "function") ref(element as HTMLDivElement | null);
+        else if (ref) ref.current = element as HTMLDivElement | null;
+      },
+      [ref],
+    );
     const appId = useAtomValue(selectedAppIdAtom);
     const { refreshVersions } = useVersions(appId);
     const {
@@ -687,7 +692,6 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
     const footerContext = useMemo<FooterContext>(
       () => ({
         messages: persistedMessages,
-        messagesEndRef,
         isStreaming,
         isUndoLoading,
         isRetryLoading,
@@ -704,7 +708,6 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
       }),
       [
         persistedMessages,
-        messagesEndRef,
         isStreaming,
         isUndoLoading,
         isRetryLoading,
@@ -752,46 +755,50 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
 
     // In test mode, render all messages without virtualization
     // so E2E tests can query all messages in the DOM
-    if (isTestMode) {
+    if (
+      isTestMode &&
+      sessionStorage.getItem("dyad:e2e:virtualized-chat") !== "true"
+    ) {
       return (
         <div
           className="absolute inset-0 p-4 pb-0 pr-0 overflow-y-auto"
           ref={ref}
           data-testid="messages-list"
         >
-          {messages.map((message, index) => {
-            const isLastMessage = index === messages.length - 1;
-            return (
-              <div className="px-4" key={message.id}>
-                <ChatMessage
-                  message={message}
-                  isLastMessage={isLastMessage}
-                  isCancelledPrompt={cancelledPromptIndices.has(index)}
-                />
-              </div>
-            );
-          })}
-          <FooterComponent context={footerContext} />
+          <div ref={contentRef}>
+            {messages.map((message, index) => {
+              const isLastMessage = index === messages.length - 1;
+              return (
+                <div className="px-4" key={message.id}>
+                  <ChatMessage
+                    message={message}
+                    isLastMessage={isLastMessage}
+                    isCancelledPrompt={cancelledPromptIndices.has(index)}
+                  />
+                </div>
+              );
+            })}
+            <FooterComponent context={footerContext} />
+          </div>
         </div>
       );
     }
 
     return (
       <div
-        className="absolute inset-0 overflow-y-auto p-4 pb-0 mb-2 pr-0"
-        ref={ref}
+        className="absolute inset-0 overflow-hidden p-4 pb-0 mb-2 pr-0"
         data-testid="messages-list"
       >
         <Virtuoso
+          initialTopMostItemIndex={{ index: "LAST", align: "end" }}
+          scrollerRef={setScrollerRef}
+          totalListHeightChanged={onContentHeightChange}
           data={messages}
           increaseViewportBy={{ top: 1000, bottom: 500 }}
-          initialTopMostItemIndex={messages.length - 1}
           itemContent={itemContent}
           components={{ Footer: FooterComponent }}
           context={footerContext}
-          atBottomThreshold={80}
-          atBottomStateChange={onAtBottomChange}
-          followOutput={(isAtBottom) => (isAtBottom ? "auto" : false)}
+          followOutput={false}
         />
       </div>
     );

@@ -701,6 +701,24 @@ export default Index;
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
 
+    // Large, fast updates to ONE assistant row, through the real SSE/IPC path.
+    // Keep streaming long enough to exercise user scroll-away and reattachment.
+    if (userTextContent.includes("[scroll-bursts]")) {
+      res.write(createStreamChunk("", "assistant"));
+      for (let burst = 0; burst < 80; burst++) {
+        if (res.destroyed) return;
+        const text = Array.from(
+          { length: 12 },
+          (_, line) => `Burst ${burst}, line ${line}: streaming paragraph.\n\n`,
+        ).join("");
+        res.write(createStreamChunk(text));
+        if (await waitForDelayOrDisconnect(res, 120)) return;
+      }
+      res.write(createStreamChunk("Stream finished.", "assistant", true));
+      res.end();
+      return;
+    }
+
     // Two parallel tool calls in a single assistant message (slow + fast).
     // The AI SDK runs the executes concurrently, so the fast tool's result
     // streams back before the slow tool's.

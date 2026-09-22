@@ -188,6 +188,42 @@ describe("useCopyToClipboard", () => {
     });
   });
 
+  describe("dyad-suggest-plugin", () => {
+    // A settled message holds the pending card followed by its terminal
+    // card, so the pair must copy as one entry.
+    it("copies a settled suggestion once, with its name and reason", async () => {
+      const out = await copy(
+        '<dyad-suggest-plugin slug="vercel" name="Vercel" reason="Read the build logs." request-id="r1" outcome="pending"></dyad-suggest-plugin>\n<dyad-suggest-plugin slug="vercel" name="Vercel" reason="Read the build logs." outcome="connected"></dyad-suggest-plugin>',
+      );
+      expect(out.match(/Suggested plugin/g)).toHaveLength(1);
+      expect(out).toContain("### Suggested plugin: Vercel");
+      expect(out).toContain("Read the build logs.");
+    });
+
+    it("copies a suggestion the user opted out of", async () => {
+      const out = await copy(
+        '<dyad-suggest-plugin slug="vercel" name="Vercel" reason="Read the build logs." outcome="never"></dyad-suggest-plugin>',
+      );
+      expect(out).toContain("### Suggested plugin: Vercel");
+    });
+
+    it("copies a declined suggestion", async () => {
+      const out = await copy(
+        '<dyad-suggest-plugin slug="vercel" name="Vercel" reason="Read the build logs." outcome="declined"></dyad-suggest-plugin>',
+      );
+      expect(out).toContain("### Suggested plugin: Vercel");
+    });
+
+    it("omits a dismissed suggestion and its pending card, which were never shown", async () => {
+      const out = await copy(
+        'Before\n<dyad-suggest-plugin slug="vercel" name="Vercel" reason="Read the build logs." request-id="r1" outcome="pending"></dyad-suggest-plugin>\n<dyad-suggest-plugin slug="vercel" name="Vercel" reason="Read the build logs." outcome="dismissed"></dyad-suggest-plugin>\nAfter',
+      );
+      expect(out).not.toContain("Suggested plugin");
+      expect(out).toContain("Before");
+      expect(out).toContain("After");
+    });
+  });
+
   describe("prose normalization — runs of newlines outside ``` still collapse", () => {
     it("collapses 3+ consecutive newlines in plain markdown prose", async () => {
       const out = await copy("Para 1\n\n\n\n\nPara 2");

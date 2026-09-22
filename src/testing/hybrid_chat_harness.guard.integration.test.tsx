@@ -1,9 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { screen } from "@testing-library/react";
 
 import { setupHybridChatHarness } from "@/testing/hybrid_chat_harness";
 import { h } from "@/testing/hybrid.setup";
+import { ipc } from "@/ipc/types";
 
 type TestWindow = Window &
   typeof globalThis & {
@@ -15,6 +16,44 @@ type TestWindow = Window &
   };
 
 describe("hybrid chat harness guards", () => {
+  it.each([undefined, "missing"])(
+    "isolates Node status from the host and restores the previous override (%s)",
+    async (previousStatus) => {
+      vi.stubEnv("DYAD_DEV_NODEJS_STATUS", previousStatus);
+      try {
+        const harness = await setupHybridChatHarness({
+          electronMock: h,
+          settings: { isTestMode: true },
+        });
+        const shell = await import("@/ipc/utils/runShellCommand");
+        const probe = vi
+          .spyOn(shell, "runShellCommand")
+          .mockRejectedValue(
+            new Error(
+              "Host Node/pnpm probes must not run in the hybrid harness",
+            ),
+          );
+        try {
+          await expect(ipc.system.getNodejsStatus()).resolves.toMatchObject({
+            nodeVersion: expect.any(String),
+            pnpmVersion: expect.any(String),
+            source: "system",
+            nodePath: "node",
+          });
+          expect(probe).not.toHaveBeenCalled();
+          await harness.bridge.settleInFlight();
+        } finally {
+          probe.mockRestore();
+          await harness.dispose();
+        }
+        expect(process.env.DYAD_DEV_NODEJS_STATUS).toBe(previousStatus);
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    },
+    60_000,
+  );
+
   it("mounts non-chat surfaces without pulling preview UI into the DOM", async () => {
     const surfaceCases = [
       {

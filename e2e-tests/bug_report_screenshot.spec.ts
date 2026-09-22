@@ -123,11 +123,30 @@ test("report a bug with a chat session and a screenshot", async ({ po }) => {
       po.page.getByRole("checkbox", { name: "Chat session" }),
     ).toBeChecked();
 
-    // The dialog hides itself for the capture, then comes back showing it.
+    // The dialog steps aside and leaves a bar in its place, so the reporter
+    // can go to wherever the bug is before capturing.
     await po.page.getByRole("button", { name: /Add a screenshot/ }).click();
+    const bar = po.page.getByTestId("screenshot-capture-bar");
+    await expect(bar).toBeVisible();
+    await expect(description).not.toBeVisible();
+    // Only once the dialog is fully gone, so its own focus handling has
+    // already run and cannot take focus back afterwards.
+    await expect(po.page.getByRole("dialog")).toHaveCount(0);
+    // Keyboard users land on the way forward, not on the page body.
+    await expect(
+      bar.getByRole("button", { name: "Capture screenshot" }),
+    ).toBeFocused();
+
+    // The bar survives the reporter moving around the app.
+    await po.navigation.goToSettingsTab();
+    await expect(bar).toBeVisible();
+
+    // Capturing brings the form back with the screenshot on it.
+    await bar.getByRole("button", { name: "Capture screenshot" }).click();
     await expect(
       po.page.getByAltText("Screenshot of the Dyad window"),
     ).toBeVisible({ timeout: Timeout.MEDIUM });
+    await expect(bar).not.toBeVisible();
     // The image travels on the clipboard, so the reporter has to be told.
     await expect(
       po.page.getByText(/in the GitHub issue to attach it/),
@@ -141,6 +160,14 @@ test("report a bug with a chat session and a screenshot", async ({ po }) => {
     expect(params.get("labels")).toContain("bug");
     const body = params.get("body") ?? "";
     expect(body).toContain("Screenshot status: captured");
+    // The reporter is reminded to paste in both places they might look: in
+    // the issue itself, and back in Dyad once the browser has opened.
+    expect(body).toContain("Paste your screenshot here");
+    await expect(
+      po.page.getByText("Did you paste your screenshot?"),
+    ).toBeVisible();
+    await po.page.getByRole("button", { name: "Done" }).click();
+    await expect(po.page.getByRole("dialog")).toHaveCount(0);
     expect(body).toContain("The generated page is blank.");
     // The session the reporter uploaded is the one the issue points at.
     expect(body).toContain("v2:e2e-session");

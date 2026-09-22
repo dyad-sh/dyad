@@ -1,6 +1,27 @@
 /**
  * Shared utilities for context compaction.
  */
+import { escapeXmlContent } from "../../../../shared/xmlEscape";
+
+export const COMPACTION_TAG = "dyad-compaction";
+
+/** Both persisted summaries and inline indicators must use the same block. */
+export function buildCompactionBlock(summary?: string): string {
+  const text = summary?.trim() ? summary : "Conversation compacted.";
+  return `<${COMPACTION_TAG} title="Conversation compacted" state="finished">\n${escapeXmlContent(text)}\n</${COMPACTION_TAG}>`;
+}
+
+/** Extract complete blocks using the same tag as the persisted/inline builder. */
+export function extractCompactionBlocks(content: string): string[] {
+  return (
+    content.match(
+      new RegExp(
+        `<${COMPACTION_TAG}\\b[^>]*>[\\s\\S]*?<\\/${COMPACTION_TAG}>`,
+        "g",
+      ),
+    ) ?? []
+  );
+}
 
 /**
  * Filter messages to only include those after the latest compaction boundary.

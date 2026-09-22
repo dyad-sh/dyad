@@ -791,10 +791,12 @@ export async function executeSupabaseSql({
   supabaseProjectId,
   query,
   organizationSlug,
+  signal,
 }: {
   supabaseProjectId: string;
   query: string;
   organizationSlug: string | null;
+  signal?: AbortSignal;
 }): Promise<string> {
   if (IS_TEST_BUILD) {
     return "{}";
@@ -802,8 +804,21 @@ export async function executeSupabaseSql({
 
   const supabase = await getSupabaseClient({ organizationSlug });
   const result = await retryWithRateLimit(
-    () => supabase.runQuery(supabaseProjectId, query),
+    async () => {
+      const { data, response } = await supabase.client.post(
+        "/v1/projects/{ref}/database/query",
+        {
+          params: { path: { ref: supabaseProjectId } },
+          body: { query },
+          signal,
+        },
+      );
+      if (response.status !== 200 && response.status !== 201)
+        throw await createResponseError(response, "run query");
+      return data;
+    },
     `Execute SQL on ${supabaseProjectId}`,
+    { signal },
   );
   return JSON.stringify(result);
 }

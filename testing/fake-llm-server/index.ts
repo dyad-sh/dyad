@@ -301,6 +301,32 @@ export function createFakeLlmApp(getPort: () => number) {
   });
 
   app.get("/api/mcp-catalog", (req, res) => {
+    // `?featured=slug,slug` marks entries featured for the one test that
+    // needs a suggestable plugin (local_agent_suggest_plugin.spec.ts).
+    // Default responses stay unfeatured so suggest_plugin is absent from
+    // every other local-agent request snapshot.
+    const featured = new Set(
+      String(req.query.featured ?? "")
+        .split(",")
+        .map((slug) => slug.trim())
+        .filter((slug) => slug.length > 0),
+    );
+    // `?mcpPort=N` moves the http entries off their default port so a
+    // spec can run its own fake MCP server without contending with
+    // mcp_catalog.spec.ts in another worker.
+    const mcpPort = parseInt(String(req.query.mcpPort ?? ""), 10);
+    const withFeatured = <T extends { slug?: string; url?: string }>(
+      server: T,
+    ): T => {
+      let next = server;
+      if (server.slug && featured.has(server.slug)) {
+        next = { ...next, featured: true };
+      }
+      if (Number.isInteger(mcpPort) && server.url?.includes(":3002/")) {
+        next = { ...next, url: server.url.replace(":3002/", `:${mcpPort}/`) };
+      }
+      return next;
+    };
     // The URLs below hardcode the ports that mcp_catalog.spec.ts spawns
     // its fake MCP servers on (4010 for OAuth, 3002 for http). Keep them
     // in sync with that spec.
@@ -356,7 +382,7 @@ export function createFakeLlmApp(getPort: () => number) {
           args: ["server.mjs"],
         },
         { slug: "e2e-broken" },
-      ],
+      ].map(withFeatured),
     });
   });
 

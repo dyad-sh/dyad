@@ -67,7 +67,13 @@ export function useNotificationHandler() {
       string,
       Extract<
         UserInputDescriptorPayload,
-        { kind: "agent-consent" | "mcp-consent" | "questionnaire" }
+        {
+          kind:
+            | "agent-consent"
+            | "mcp-consent"
+            | "questionnaire"
+            | "plugin-suggestion";
+        }
       >
     >(),
   );
@@ -164,6 +170,8 @@ export function useNotificationHandler() {
       requestId?: string;
       sourceLabel?: string;
       tagPrefix: string;
+      /** Notification text; defaults to the tool-approval wording. */
+      body?: string;
     }) => {
       // Skip if notifications are disabled
       if (!notificationsEnabledRef.current) return;
@@ -237,7 +245,9 @@ export function useNotificationHandler() {
       showNativeNotification({
         chatId: id,
         title,
-        body: `"${params.toolName}" wants to run. Click to review and approve.`,
+        body:
+          params.body ??
+          `"${params.toolName}" wants to run. Click to review and approve.`,
         // Correlate one native notification to one main-process waiter.
         tag: params.requestId
           ? `${params.tagPrefix}-${params.requestId}`
@@ -255,6 +265,7 @@ export function useNotificationHandler() {
       requestId: string;
       sourceLabel?: string;
       tagPrefix: string;
+      body?: string;
     }) => {
       activeConsentNotificationRequestsRef.current.add(params.requestId);
       handleConsentRequest(params)
@@ -436,6 +447,16 @@ export function useNotificationHandler() {
           sourceLabel: `${descriptor.questions.length} questions`,
           tagPrefix: "dyad-plan-questionnaire",
         });
+      } else if (descriptor.kind === "plugin-suggestion") {
+        // Agent-initiated and turn-blocking, like a consent request, so a
+        // user who switched away learns the agent is waiting on them.
+        startConsentNotification({
+          chatId: descriptor.chatId,
+          toolName: `Connect ${descriptor.serverName}`,
+          requestId: descriptor.requestId,
+          tagPrefix: "dyad-plugin-suggestion",
+          body: `Dyad wants to connect the ${descriptor.serverName} plugin. Click to review.`,
+        });
       } else if (descriptor.classifier !== "racing") {
         startConsentNotification({
           chatId: descriptor.chatId,
@@ -481,7 +502,9 @@ export function useNotificationHandler() {
           ? "dyad-agent-consent"
           : descriptor.kind === "mcp-consent"
             ? "dyad-mcp-consent"
-            : "dyad-plan-questionnaire",
+            : descriptor.kind === "plugin-suggestion"
+              ? "dyad-plugin-suggestion"
+              : "dyad-plan-questionnaire",
         requestId,
       );
     });
@@ -507,6 +530,7 @@ export function useNotificationHandler() {
         else if (
           (tag.startsWith("dyad-agent-consent-") ||
             tag.startsWith("dyad-mcp-consent-") ||
+            tag.startsWith("dyad-plugin-suggestion-") ||
             tag.startsWith("dyad-plan-questionnaire-")) &&
           currentChatId
         ) {

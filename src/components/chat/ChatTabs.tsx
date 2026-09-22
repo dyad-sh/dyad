@@ -93,6 +93,7 @@ import {
   earlyChatTabRemovalEvents,
 } from "@/app_wiring/early_renderer_events";
 import type { ChatTabPresentationState } from "@/window_infrastructure/types";
+import { restoreChatScrollPosition } from "./scroll/restore";
 
 const MIN_VISIBLE_TAB_WIDTH_PX = 160;
 const TAB_GAP_PX = 4;
@@ -136,7 +137,7 @@ export function restoreMessagesScrollTop(
     if (!shouldContinue()) return;
     const viewport = getMessagesScrollViewport();
     if (viewport) {
-      viewport.scrollTop = scrollTop;
+      restoreChatScrollPosition(viewport, scrollTop);
       if (
         scrollTop === 0 ||
         viewport.scrollHeight >= scrollTop + viewport.clientHeight

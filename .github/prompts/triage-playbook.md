@@ -118,7 +118,7 @@ after payment, or charged more than expected.
 **Assessment:** `needs_human`
 
 **Tell the reporter:** someone from the Dyad team will check the account. Ask
-for the session id (**Help** > **Upload Chat Session**) and roughly how many
+for the session id (**Help** > **Report a Bug** with **Chat session** on, or **Help** > **Upload Chat Session** on older versions) and roughly how many
 credits were affected. Never promise a refund or credit adjustment.
 
 **Source:** #3394, #3611, #3658, #4140, #4354, #3610.
@@ -132,7 +132,8 @@ credits were affected. Never promise a refund or credit adjustment.
 **Assessment:** `external_service`
 
 **Tell the reporter:** open **Settings**, go to Integrations, click **Disconnect
-from Neon**, then open **Manage app** and connect to Neon again.
+from Neon**, then click your app's name in the title bar and connect to
+Neon again.
 
 **Source:** #4316. Verified on 1.11.0.
 
@@ -177,9 +178,9 @@ app's git history is broken.
 
 **Assessment:** `environment_setup`
 
-**Tell the reporter:** open **Manage app**, click the overflow menu (three dots,
-top right), and choose **Copy app** without history. Or use **Import App** on
-the home screen to import the folder again.
+**Tell the reporter:** click your app's name in the title bar, click the overflow
+menu (three dots, top right), and choose **Copy app** without history. Or use
+**Import App** on the home screen to import the folder again.
 
 **Source:** #4241, #3657, #3552. Verified on 1.10.0.
 
@@ -248,8 +249,9 @@ happens.
 **Assessment:** `needs_human`
 
 **Tell the reporter:** update to the latest version (stability work landed in
-1.7.0). Then, if it happens again, open **Help** > **Upload Chat Session** and
-paste the session id here. If logs are trimmed, the team may ask for the `main`
+1.7.0). Then, if it happens again, open **Help** > **Report a Bug** with
+**Chat session** on (or **Help** > **Upload Chat Session** on older versions).
+If logs are trimmed, the team may ask for the `main`
 log file from `%APPDATA%\dyad\logs` on Windows.
 
 **Source:** #3490, #4294, #3863, #3980.

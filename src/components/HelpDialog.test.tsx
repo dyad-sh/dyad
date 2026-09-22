@@ -11,7 +11,7 @@ import { useEffect } from "react";
 import { HelpDialog } from "./HelpDialog";
 import { helpDialogAtom } from "@/atoms/helpDialogAtom";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
-import { PROSE_BUDGET } from "@/lib/issueBody";
+import { PROSE_BUDGET, SCREENSHOT_PASTE_REMINDER } from "@/lib/issueBody";
 
 const mocks = vi.hoisted(() => ({
   getSystemDebugInfo: vi.fn(),
@@ -60,24 +60,34 @@ vi.mock("react-i18next", async () => {
   const home = (await import("@/i18n/locales/en/home.json")).default;
   const common = (await import("@/i18n/locales/en/common.json")).default;
   const bundles: Record<string, unknown> = { home, common };
-  const t = (key: string, vars?: Record<string, string>) => {
-    // Matches the app's defaultNS, so an unprefixed key resolves the same
-    // here as it would at runtime.
-    const [ns, path] = key.includes(":") ? key.split(":") : ["common", key];
-    const value = path
-      .split(".")
-      .reduce<unknown>(
-        (node, part) => (node as Record<string, unknown>)?.[part],
-        bundles[ns],
+  // An unprefixed key is looked up in the hook's namespaces in order, then in
+  // the app's defaultNS, as it would be at runtime.
+  const translator =
+    (hookNs: string[]) => (key: string, vars?: Record<string, string>) => {
+      const [prefix, path] = key.includes(":") ? key.split(":") : [null, key];
+      const lookup = (ns: string) =>
+        path
+          .split(".")
+          .reduce<unknown>(
+            (node, part) => (node as Record<string, unknown>)?.[part],
+            bundles[ns],
+          );
+      const value = (prefix ? [prefix] : [...hookNs, "common"])
+        .map(lookup)
+        .find((found) => typeof found === "string");
+      if (typeof value !== "string")
+        throw new Error(`Missing i18n key: ${key}`);
+      // i18next substitutes {{name}}; without it a placeholder would render
+      // literally here and the test would pass on copy no reporter ever sees.
+      return value.replace(/\{\{(\w+)\}\}/g, (match, name: string) =>
+        vars && name in vars ? vars[name] : match,
       );
-    if (typeof value !== "string") throw new Error(`Missing i18n key: ${key}`);
-    // i18next substitutes {{name}}; without it a placeholder would render
-    // literally here and the test would pass on copy no reporter ever sees.
-    return value.replace(/\{\{(\w+)\}\}/g, (match, name: string) =>
-      vars && name in vars ? vars[name] : match,
-    );
+    };
+  return {
+    useTranslation: (ns?: string | string[]) => ({
+      t: translator(Array.isArray(ns) ? ns : ns ? [ns] : []),
+    }),
   };
-  return { useTranslation: () => ({ t }) };
 });
 
 vi.mock("@/hooks/useSettings", () => ({
@@ -234,8 +244,30 @@ async function openForm(description = "the preview goes blank") {
 const submit = () =>
   fireEvent.click(screen.getByRole("button", { name: /Create GitHub issue/ }));
 
-const addScreenshot = async () => {
+const captureBar = () => screen.queryByTestId("screenshot-capture-bar");
+
+/** Presses Capture on the bar the form leaves behind when it steps aside. */
+const captureFromBar = async () => {
+  fireEvent.click(
+    await screen.findByRole("button", { name: /Capture screenshot/ }),
+  );
+};
+
+/** Asks for a screenshot from the form and starts the capture from the bar. */
+const askForScreenshot = async () => {
   fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));
+  await captureFromBar();
+};
+
+/** Asks for a retake from the form and starts the capture from the bar. */
+const askForRetake = async () => {
+  fireEvent.click(screen.getByRole("button", { name: /Retake/ }));
+  await captureFromBar();
+};
+
+/** A screenshot, asked for and captured, back on the form. */
+const addScreenshot = async () => {
+  await askForScreenshot();
   return screen.findByAltText("Screenshot of the Dyad window");
 };
 
@@ -378,7 +410,7 @@ describe("HelpDialog report flow", () => {
     fireEvent.click(await screen.findByText("Report a Bug"));
 
     submit();
-    fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));
+    await askForScreenshot();
     await screen.findByAltText("Screenshot of the Dyad window");
     submit();
 
@@ -1564,7 +1596,7 @@ describe("HelpDialog disclosures", () => {
     });
 
     // The dialog closes and reopens for the capture.
-    fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));
+    await askForScreenshot();
     await screen.findByAltText("Screenshot of the Dyad window");
 
     submit();
@@ -1586,7 +1618,7 @@ describe("HelpDialog disclosures", () => {
         .hasAttribute("data-checked"),
     ).toBe(true);
 
-    fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));
+    await askForScreenshot();
     await screen.findByAltText("Screenshot of the Dyad window");
 
     // The reporter agreed to send the session; it must not quietly withdraw.
@@ -1726,7 +1758,7 @@ describe("HelpDialog screenshot", () => {
     );
 
     await openForm("first report");
-    fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));
+    await askForScreenshot();
     await waitFor(() => expect(mocks.takeScreenshot).toHaveBeenCalled());
 
     // The reporter reopens Help mid-capture and starts over.
@@ -1751,7 +1783,7 @@ describe("HelpDialog screenshot", () => {
     );
 
     await openForm("first report");
-    fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));
+    await askForScreenshot();
     await waitFor(() => expect(mocks.takeScreenshot).toHaveBeenCalled());
 
     fireEvent.click(screen.getByText("reopen-help"));
@@ -1851,7 +1883,7 @@ describe("HelpDialog screenshot", () => {
 
     await openForm();
     await addScreenshot();
-    fireEvent.click(screen.getByRole("button", { name: /Retake/ }));
+    await askForRetake();
     // The first capture's preview is still on screen, so waiting for the alt
     // text alone would race the retake.
     await waitFor(() =>
@@ -1892,7 +1924,7 @@ describe("HelpDialog screenshot", () => {
     mocks.takeScreenshot.mockReturnValue(new Promise(() => {}));
 
     await openForm("first report");
-    fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));
+    await askForScreenshot();
     await waitFor(() => expect(mocks.takeScreenshot).toHaveBeenCalled());
 
     // A crash starts a fresh report without passing through Back.
@@ -1916,15 +1948,14 @@ describe("HelpDialog screenshot", () => {
       .mockReturnValueOnce(new Promise(() => {}));
 
     await openForm("first report");
-    fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));
+    await askForScreenshot();
     await waitFor(() => expect(mocks.takeScreenshot).toHaveBeenCalled());
 
     fireEvent.click(screen.getByText("reopen-help"));
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
     fireEvent.click(await screen.findByText("Report a Bug"));
-    fireEvent.click(
-      await screen.findByRole("button", { name: /Add a screenshot/ }),
-    );
+    await screen.findByRole("button", { name: /Add a screenshot/ });
+    await askForScreenshot();
     await waitFor(() => expect(mocks.takeScreenshot).toHaveBeenCalledTimes(2));
 
     await act(async () => {
@@ -1962,7 +1993,7 @@ describe("HelpDialog screenshot", () => {
     );
 
     await openForm();
-    fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));
+    await askForScreenshot();
     await waitFor(() => expect(mocks.takeScreenshot).toHaveBeenCalled());
 
     fireEvent.click(screen.getByText("reopen-help"));
@@ -1993,7 +2024,7 @@ describe("HelpDialog screenshot", () => {
 
     await openForm();
     await addScreenshot();
-    fireEvent.click(screen.getByRole("button", { name: /Retake/ }));
+    await askForRetake();
     await waitFor(() =>
       expect(
         (
@@ -2053,7 +2084,7 @@ describe("HelpDialog screenshot", () => {
     );
 
     await openForm();
-    fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));
+    await askForScreenshot();
 
     // The generic line is translated and the OS reason is not, so they render
     // separately -- but the reason still has to reach the reporter.
@@ -2073,7 +2104,7 @@ describe("HelpDialog screenshot", () => {
 
     await openForm();
     await addScreenshot();
-    fireEvent.click(screen.getByRole("button", { name: /Retake/ }));
+    await askForRetake();
     await waitFor(() => expect(mocks.takeScreenshot).toHaveBeenCalledTimes(2));
 
     // The first image is still on the clipboard and still in main, so losing
@@ -2135,18 +2166,19 @@ describe("HelpDialog screenshot", () => {
     );
   });
 
-  it("does not re-read diagnostics just to take a screenshot", async () => {
+  it("re-reads diagnostics once a screenshot brings the form back", async () => {
     await openForm();
     await waitFor(() =>
       expect(mocks.getSystemDebugInfo).toHaveBeenCalledTimes(1),
     );
 
     await addScreenshot();
-    fireEvent.click(screen.getByRole("button", { name: /Retake/ }));
-    await screen.findByAltText("Screenshot of the Dyad window");
 
-    // Hiding for a capture is not the reporter going away to reproduce a bug.
-    expect(mocks.getSystemDebugInfo).toHaveBeenCalledTimes(1);
+    // The form stepped aside so the reporter could go and reproduce the bug,
+    // which is exactly when the diagnostics it showed may have gone stale.
+    await waitFor(() =>
+      expect(mocks.getSystemDebugInfo).toHaveBeenCalledTimes(2),
+    );
   });
 
   it("leaves a newer report's screenshot alone when an older restore works", async () => {
@@ -2237,7 +2269,7 @@ describe("HelpDialog screenshot", () => {
     mocks.uploadToSignedUrl.mockReturnValue(new Promise(() => {}));
 
     await openForm("a slow one");
-    fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));
+    await askForScreenshot();
     await waitFor(() => expect(mocks.takeScreenshot).toHaveBeenCalled());
 
     fireEvent.click(screen.getByText("reopen-help"));
@@ -2268,7 +2300,7 @@ describe("HelpDialog screenshot", () => {
     );
     await openForm();
 
-    fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));
+    await askForScreenshot();
 
     expect(await screen.findByRole("alert")).toBeTruthy();
     expect(posthogClient.capture).toHaveBeenCalledWith(
@@ -2279,5 +2311,336 @@ describe("HelpDialog screenshot", () => {
     submit();
     await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalled());
     expect(bodyOfOpenedIssue()).toContain("Screenshot status: capture-failed");
+  });
+});
+
+describe("HelpDialog screenshot bar", () => {
+  it("steps aside and leaves the bar in its place", async () => {
+    await openForm("half-written report");
+
+    fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));
+
+    // The reporter is free to go wherever the bug is: the dialog is gone and
+    // nothing has been captured yet.
+    expect(captureBar()).toBeTruthy();
+    expect(screen.queryByLabelText(/What happened/)).toBeNull();
+    expect(mocks.takeScreenshot).not.toHaveBeenCalled();
+    expect(posthogClient.capture).toHaveBeenCalledWith(
+      "screenshot-prompt:bar-opened",
+      { source: "report-bug" },
+    );
+  });
+
+  it("captures from the bar and brings the form back with it", async () => {
+    await openForm("half-written report");
+
+    await addScreenshot();
+
+    expect(captureBar()).toBeNull();
+    expect(screen.getByDisplayValue("half-written report")).toBeTruthy();
+  });
+
+  it("keeps the bar out of the picture while it captures", async () => {
+    let release = (_: unknown) => {};
+    mocks.takeScreenshot.mockReturnValue(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+    await openForm();
+
+    await askForScreenshot();
+
+    // Gone from the moment the button is pressed, before the delayed capture
+    // runs: a bar left up for the capture would be in the screenshot.
+    expect(captureBar()).toBeNull();
+    expect(screen.queryByLabelText(/What happened/)).toBeNull();
+
+    release({ dataUrl: "data:image/png;base64,AAAA", captureId: "capture-1" });
+    expect(
+      await screen.findByAltText("Screenshot of the Dyad window"),
+    ).toBeTruthy();
+  });
+
+  it("goes back to the form without a screenshot from the bar", async () => {
+    await openForm("half-written report");
+    fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));
+
+    fireEvent.click(screen.getByRole("button", { name: /Back to report/ }));
+
+    expect(await screen.findByDisplayValue("half-written report")).toBeTruthy();
+    expect(captureBar()).toBeNull();
+    expect(screen.queryByAltText("Screenshot of the Dyad window")).toBeNull();
+    expect(mocks.takeScreenshot).not.toHaveBeenCalled();
+    expect(posthogClient.capture).toHaveBeenCalledWith(
+      "screenshot-prompt:bar-cancelled",
+      { source: "report-bug" },
+    );
+
+    submit();
+    await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalled());
+    expect(bodyOfOpenedIssue()).toContain("Screenshot status: declined");
+  });
+
+  it("dismisses the bar when Help is opened from the sidebar", async () => {
+    await openForm("half-written report");
+    fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));
+
+    fireEvent.click(screen.getByText("reopen-help"));
+
+    // Back on the form they left, with the bar gone: it only had something to
+    // wait for while the dialog was away.
+    expect(await screen.findByDisplayValue("half-written report")).toBeTruthy();
+    expect(captureBar()).toBeNull();
+    expect(mocks.takeScreenshot).not.toHaveBeenCalled();
+  });
+
+  it("does not bring the bar back once the dialog has been reopened", async () => {
+    await openForm("half-written report");
+    fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));
+    fireEvent.click(screen.getByText("reopen-help"));
+    await screen.findByDisplayValue("half-written report");
+
+    // The reporter closes the dialog by hand this time. That is an ordinary
+    // dismissal that keeps the draft, not a request for a screenshot.
+    fireEvent.click(screen.getByText("mock-dialog-dismiss"));
+
+    expect(captureBar()).toBeNull();
+    expect(screen.queryByLabelText(/What happened/)).toBeNull();
+  });
+
+  it("re-reads diagnostics when Help is reopened over the bar", async () => {
+    await openForm();
+    await waitFor(() =>
+      expect(mocks.getSystemDebugInfo).toHaveBeenCalledTimes(1),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));
+
+    fireEvent.click(screen.getByText("reopen-help"));
+
+    // Same as any other time the reporter went away and came back.
+    await waitFor(() =>
+      expect(mocks.getSystemDebugInfo).toHaveBeenCalledTimes(2),
+    );
+  });
+
+  it("lets a crash report replace a draft waiting for its screenshot", async () => {
+    await openForm("half-written report");
+    fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));
+
+    fireEvent.click(screen.getByText("force-close-report"));
+
+    const field = (await screen.findByLabelText(
+      /What happened/,
+    )) as HTMLTextAreaElement;
+    expect(field.value).toBe("");
+    expect(captureBar()).toBeNull();
+  });
+
+  it("takes a retake through the bar as well", async () => {
+    await openForm();
+    await addScreenshot();
+
+    fireEvent.click(screen.getByRole("button", { name: /Retake/ }));
+
+    expect(captureBar()).toBeTruthy();
+    expect(screen.queryByLabelText(/What happened/)).toBeNull();
+
+    await captureFromBar();
+    expect(
+      await screen.findByAltText("Screenshot of the Dyad window"),
+    ).toBeTruthy();
+    expect(mocks.takeScreenshot).toHaveBeenCalledTimes(2);
+  });
+
+  it("brings the form back with the reason when the capture fails", async () => {
+    mocks.takeScreenshot.mockRejectedValueOnce(new Error("no window"));
+    await openForm("half-written report");
+
+    await askForScreenshot();
+
+    expect(await screen.findByText(/Could not take a screenshot/)).toBeTruthy();
+    expect(screen.getByText("no window")).toBeTruthy();
+    expect(screen.getByDisplayValue("half-written report")).toBeTruthy();
+    expect(captureBar()).toBeNull();
+  });
+
+  it("leaves no bar behind when the reporter backs out of the report", async () => {
+    await openForm();
+    fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));
+    fireEvent.click(screen.getByText("reopen-help"));
+    await screen.findByLabelText(/What happened/);
+
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    fireEvent.click(screen.getByText("mock-dialog-dismiss"));
+
+    expect(captureBar()).toBeNull();
+  });
+
+  it("pushes the rest of the app up by its height for as long as it is up", async () => {
+    const barHeight = () =>
+      document.documentElement.style.getPropertyValue(
+        "--layout-bottom-bar-height",
+      );
+    await openForm();
+    expect(barHeight()).toBe("");
+
+    fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));
+
+    // jsdom lays nothing out, so the value is only ever 0px here. That it is
+    // set at all is the point: the sidebar and the main panel read it.
+    expect(barHeight()).toBe("0px");
+
+    fireEvent.click(screen.getByRole("button", { name: /Back to report/ }));
+    await screen.findByLabelText(/What happened/);
+
+    expect(barHeight()).toBe("");
+  });
+
+  it("puts keyboard focus on Capture when the bar appears", async () => {
+    await openForm();
+    fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));
+
+    // The dialog took focus with it, and the bar is last in tab order.
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: /Capture screenshot/ }),
+    );
+  });
+
+  it("goes back to the report on Escape from the bar", async () => {
+    await openForm("half-written report");
+    fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));
+
+    fireEvent.keyDown(
+      screen.getByRole("button", { name: /Capture screenshot/ }),
+      { key: "Escape" },
+    );
+
+    expect(await screen.findByDisplayValue("half-written report")).toBeTruthy();
+    expect(captureBar()).toBeNull();
+    expect(mocks.takeScreenshot).not.toHaveBeenCalled();
+  });
+
+  it("keeps its Escape from the rest of the page's Escape listeners", async () => {
+    // Stands in for the fullscreen code view, which listens on the window.
+    const pageListener = vi.fn();
+    window.addEventListener("keydown", pageListener);
+    try {
+      await openForm();
+      fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));
+
+      fireEvent.keyDown(
+        screen.getByRole("button", { name: /Capture screenshot/ }),
+        { key: "Escape" },
+      );
+
+      await screen.findByLabelText(/What happened/);
+      expect(pageListener).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener("keydown", pageListener);
+    }
+  });
+
+  it("describes the instructions to the focused Capture button", async () => {
+    await openForm();
+    fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));
+
+    // Focus lands on the button, so that is where a screen reader has to
+    // hear why the dialog went and what to do next.
+    const capture = screen.getByRole("button", { name: /Capture screenshot/ });
+    const described = document.getElementById(
+      capture.getAttribute("aria-describedby") ?? "",
+    );
+    expect(described?.textContent).toContain("Go to where the bug is.");
+    expect(described?.textContent).toContain("Your report is saved");
+  });
+
+  it("renders straight under the body", async () => {
+    await openForm();
+    fireEvent.click(screen.getByRole("button", { name: /Add a screenshot/ }));
+
+    // No ancestor's transform can then pin the bar's fixed position to
+    // anything but the window.
+    expect(captureBar()?.parentElement).toBe(document.body);
+  });
+});
+
+describe("HelpDialog closing step", () => {
+  it("stays up after filing to ask whether the screenshot was pasted", async () => {
+    await openForm();
+    await addScreenshot();
+    await fileIt();
+
+    // Asked, not asserted: Dyad cannot see the issue, and the reporter may
+    // read this before pasting, after forgetting, or after doing it right.
+    expect(
+      await screen.findByText("Did you paste your screenshot?"),
+    ).toBeTruthy();
+    const body = screen.getByText(/Press Cmd\/Ctrl \+ V in the GitHub issue/);
+    expect(body.textContent).toContain("edit the issue and paste it there");
+    expect(body.textContent).toContain("you are all set");
+    // What is on the clipboard, so the reporter knows what they are pasting.
+    expect(screen.getByAltText("Screenshot of the Dyad window")).toBeTruthy();
+    expect(screen.queryByLabelText(/What happened/)).toBeNull();
+  });
+
+  it("puts the same reminder where the paste happens, in the issue", async () => {
+    await openForm();
+    await addScreenshot();
+    await fileIt();
+
+    expect(bodyOfOpenedIssue()).toContain(SCREENSHOT_PASTE_REMINDER);
+  });
+
+  it("closes on Done and starts the next visit from the top", async () => {
+    await openForm("the preview goes blank");
+    await addScreenshot();
+    await fileIt();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Done" }));
+    expect(screen.queryByText("Did you paste your screenshot?")).toBeNull();
+
+    fireEvent.click(screen.getByText("reopen-help"));
+    expect(await screen.findByText("Need help with Dyad?")).toBeTruthy();
+    expect(screen.queryByDisplayValue("the preview goes blank")).toBeNull();
+  });
+
+  it("has nothing to say when the report had no screenshot", async () => {
+    await openForm();
+    await fileIt();
+
+    await waitFor(() =>
+      expect(screen.queryByLabelText(/What happened/)).toBeNull(),
+    );
+    expect(screen.queryByText("Did you paste your screenshot?")).toBeNull();
+    expect(bodyOfOpenedIssue()).not.toContain(SCREENSHOT_PASTE_REMINDER);
+  });
+
+  it("skips it when the screenshot could not be put back on the clipboard", async () => {
+    mocks.recopyScreenshot.mockResolvedValue({ copied: false });
+    await openForm();
+    await addScreenshot();
+    await fileIt();
+
+    // Nothing is on the clipboard to paste, so asking for it would mislead.
+    await waitFor(() =>
+      expect(screen.queryByLabelText(/What happened/)).toBeNull(),
+    );
+    expect(screen.queryByText("Did you paste your screenshot?")).toBeNull();
+  });
+
+  it("lets a crash report take over from the closing step", async () => {
+    await openForm();
+    await addScreenshot();
+    await fileIt();
+    await screen.findByText("Did you paste your screenshot?");
+
+    fireEvent.click(screen.getByText("force-close-report"));
+
+    const field = (await screen.findByLabelText(
+      /What happened/,
+    )) as HTMLTextAreaElement;
+    expect(field.value).toBe("");
+    expect(screen.queryByAltText("Screenshot of the Dyad window")).toBeNull();
   });
 });

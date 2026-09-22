@@ -84,6 +84,33 @@ function unreachable(value: never): never {
   throw new Error(`Unreachable user-input value: ${String(value)}`);
 }
 
+/**
+ * The prompt that resumes the conversation on a fresh turn after this
+ * response, or null when the response settles the request in place.
+ */
+function followUpPromptFor(
+  descriptor: UserInputDescriptor,
+  response: UserInputResponse,
+): string | null {
+  if (descriptor.kind === "integration" && response.kind === "integration") {
+    if (response.completed && response.provider) {
+      return `Continue. I have completed the ${response.provider} integration.`;
+    }
+    if (!response.completed && response.provider === null) {
+      return SKIP_DATABASE_INTEGRATION_PROMPT;
+    }
+    return null;
+  }
+  if (
+    descriptor.kind === "plugin-suggestion" &&
+    response.kind === "plugin-suggestion" &&
+    response.outcome === "connected"
+  ) {
+    return descriptor.followUpPrompt;
+  }
+  return null;
+}
+
 export function transition(
   state: UserInputState,
   event: UserInputEvent,
@@ -144,17 +171,8 @@ export function transition(
       const persist: UserInputCommand[] = isAlways(event.response)
         ? [{ type: "persist-always", descriptor, response: event.response }]
         : [];
-      const integrationFollowUpPrompt =
-        descriptor.kind === "integration" &&
-        event.response.kind === "integration"
-          ? event.response.completed && event.response.provider
-            ? `Continue. I have completed the ${event.response.provider} integration.`
-            : !event.response.completed && event.response.provider === null
-              ? SKIP_DATABASE_INTEGRATION_PROMPT
-              : null
-          : null;
-      if (integrationFollowUpPrompt) {
-        const followUpPrompt = integrationFollowUpPrompt;
+      const followUpPrompt = followUpPromptFor(descriptor, event.response);
+      if (followUpPrompt) {
         return applied(
           {
             status: "armed",

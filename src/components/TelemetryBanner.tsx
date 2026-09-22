@@ -26,8 +26,14 @@ export function PrivacyBanner() {
 
   return (
     <div
-      className="fixed bottom-0 z-50 border-t border-border bg-(--background-lightest)/95 px-4 py-2 shadow-[0_-2px_8px_rgba(0,0,0,0.08)] backdrop-blur-sm transition-[left] duration-200 ease-linear"
-      style={{ left: leftOffset, right: 12 }}
+      className="fixed z-50 border-t border-border bg-(--background-lightest)/95 px-4 py-2 shadow-[0_-2px_8px_rgba(0,0,0,0.08)] backdrop-blur-sm transition-[left] duration-200 ease-linear"
+      // Sits on top of the screenshot bar when one is up, so neither covers
+      // the other's buttons.
+      style={{
+        left: leftOffset,
+        right: 12,
+        bottom: "var(--layout-bottom-bar-height)",
+      }}
     >
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm leading-5 text-muted-foreground">

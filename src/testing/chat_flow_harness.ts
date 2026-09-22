@@ -52,6 +52,7 @@ import {
   stopAppByInfo,
   stopAppGarbageCollection,
 } from "@/ipc/utils/process_manager";
+import { clearMcpCatalogCacheForTests } from "@/ipc/shared/remote_mcp_catalog";
 import { configureTrustedRenderer } from "@/ipc/utils/renderer_security";
 import { writeSettings } from "@/main/settings";
 import type { UserSettings } from "@/lib/schemas";
@@ -91,6 +92,7 @@ const HARNESS_ENV_KEYS = [
   "FAKE_LLM_FIXTURES_DIR",
   "FAKE_LLM_QUIET",
   "DYAD_LANGUAGE_MODEL_CATALOG_URL",
+  "DYAD_MCP_CATALOG_URL",
   "DYAD_ENGINE_URL",
   "DYAD_GATEWAY_URL",
   "DYAD_USER_INFO_URL",
@@ -339,6 +341,14 @@ export async function setupChatFlowHarness(
     if (options.useFakeCatalog !== false) {
       process.env.DYAD_LANGUAGE_MODEL_CATALOG_URL = `${fakeLlmUrl}/api/language-model-catalog`;
     }
+    // Local-agent turns read the MCP catalog to decide whether
+    // suggest_plugin is available. Always keep that off the real network,
+    // whatever the model-catalog option says: a live catalog would offer
+    // real plugins to a headless run, and a suggestion parks the turn until
+    // someone answers. A test that serves its own catalog keeps its URL.
+    // The clear drops anything a previous harness in this process cached.
+    process.env.DYAD_MCP_CATALOG_URL ??= `${fakeLlmUrl}/api/mcp-catalog`;
+    clearMcpCatalogCacheForTests();
     // Always fake the Dyad Pro user-info endpoint: any test that configures an
     // auto API key would otherwise send get-user-budget requests to the real
     // api.dyad.sh.

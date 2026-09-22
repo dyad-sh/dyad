@@ -9,6 +9,7 @@ const CUSTOM_TAG_NAMES = [
   "dyad-add-dependency",
   "dyad-execute-sql",
   "dyad-add-integration",
+  "dyad-suggest-plugin",
   "dyad-output",
   "dyad-problem-report",
   "dyad-chat-summary",
@@ -169,6 +170,22 @@ export const useCopyToClipboard = () => {
 
       case "dyad-add-integration": {
         return `### Add Database Integration\n\n`;
+      }
+
+      case "dyad-suggest-plugin": {
+        // Only settled outcomes appear in a transcript: a pending card is
+        // superseded by its terminal card, and a dismissed one never
+        // rendered.
+        if (
+          attributes.outcome !== "connected" &&
+          attributes.outcome !== "declined" &&
+          attributes.outcome !== "never"
+        ) {
+          return "";
+        }
+        const pluginName = attributes.name || attributes.slug || "";
+        const reason = attributes.reason || "";
+        return `### Suggested plugin: ${pluginName}\n\n${reason ? `${reason}\n\n` : ""}`;
       }
 
       case "dyad-codebase-context": {

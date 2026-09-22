@@ -11,7 +11,7 @@ import { apps, chats } from "../../db/schema";
 import { eq } from "drizzle-orm";
 import {
   rendererMessageColumns,
-  toRendererMessage,
+  toRendererMessages,
 } from "../utils/renderer_chat_message";
 import type { ChatResponseChunk } from "../types/chat";
 import { getWindowProductController } from "../../window_infrastructure/main/window_product_controller";
@@ -270,7 +270,7 @@ export function registerWindowInfrastructureHandlers(): void {
                   entityKey: interest.chatId,
                   operationId: `window-bootstrap:${event.sender.id}`,
                 },
-                messages: chat.messages.map(toRendererMessage),
+                messages: toRendererMessages(chat.messages),
               },
             ] satisfies ChatResponseChunk[])
           : [];

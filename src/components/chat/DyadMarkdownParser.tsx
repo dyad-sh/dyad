@@ -15,6 +15,7 @@ import { DyadReadChat } from "./DyadReadChat";
 import { DyadExploreCode } from "./DyadExploreCode";
 import { DyadExploreChatHistory } from "./DyadExploreChatHistory";
 import { DyadAddIntegration } from "./DyadAddIntegration";
+import { DyadSuggestPlugin } from "./DyadSuggestPlugin";
 import { DyadEnableNitro } from "./DyadEnableNitro";
 import { DyadEdit } from "./DyadEdit";
 import { DyadSearchReplace } from "./DyadSearchReplace";
@@ -879,6 +880,25 @@ function renderCustomTag(
         >
           {content}
         </DyadAddIntegration>
+      );
+
+    case "dyad-suggest-plugin":
+      return (
+        <DyadSuggestPlugin
+          slug={attributes.slug || ""}
+          name={attributes.name}
+          reason={attributes.reason || ""}
+          requestId={attributes["request-id"]}
+          outcome={
+            attributes.outcome === "pending" ||
+            attributes.outcome === "connected" ||
+            attributes.outcome === "declined" ||
+            attributes.outcome === "never" ||
+            attributes.outcome === "dismissed"
+              ? attributes.outcome
+              : undefined
+          }
+        />
       );
 
     case "dyad-enable-nitro":

@@ -271,6 +271,19 @@ describe("context compaction (integration)", () => {
     // The agent still completes the response in the same turn.
     expect(contents).toContain("END OF COMPACTED TURN.");
 
+    const summaryRow = messages.find((message) => message.isCompactionSummary);
+    expect(summaryRow).toBeDefined();
+    const reloaded = await ipc.chat.getChat(chatId);
+    expect(reloaded.messages.map((message) => message.id)).toEqual(
+      messages
+        .filter((message) => !message.isCompactionSummary)
+        .map((message) => message.id),
+    );
+    expect(
+      reloaded.messages.map((message) => message.content).join("\n"),
+    ).toContain("Key Decisions Made");
+    expect(screen.getAllByText("Conversation compacted")).toHaveLength(1);
+
     await sendTurn("[dump] hi", chatId);
     const dump = harness.getServerDump({ type: "all-messages" });
     expect(dump.text).toContain("Key Decisions Made");

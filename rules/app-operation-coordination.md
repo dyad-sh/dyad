@@ -142,3 +142,25 @@ preparing to record, so an unmarked restart ended the session it was setting up
 and deleted the temporary Neon branch ~200ms after creating it. Mark such stops
 (`stopAppByInfo(appId, appInfo, { recordingOwnedRestart: true })`) rather than
 assuming map-entry ordering distinguishes them.
+
+## Clearing data on temporary Neon test branches
+
+Preserve `neon_auth.project_config` and `neon_auth.jwks` when clearing test data;
+they configure the auth service, and deleting them causes signup to fail with
+`404 Project config not found`. Clear user/session data with one `TRUNCATE ...
+RESTRICT` so unexpected foreign keys cannot cascade into that configuration.
+
+Also preserve extension-owned tables (`pg_depend.deptype = 'e'`) and migration
+bookkeeping. Verify the connection hostname belongs to the temporary branch
+before exposing the cleanup callback.
+
+Lifecycle shutdown must drain provider mutations before releasing its claims.
+In particular, don't abort a Supabase user-creation response before persisting
+the returned ID; cancel retries and surface a slow drain so recovery stays possible.
+
+When shutdown aborts lifecycle hooks, ignore only the specific shutdown abort
+reason, not every error raised while closing. Final cleanup can still fail.
+Preserve explicit run cancellation and existing infrastructure errors, including
+timeouts, in the final result. Log genuine lifecycle failures separately and
+report them as the run's infrastructure error only when no earlier error or
+cancellation takes precedence.

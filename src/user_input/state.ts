@@ -66,6 +66,16 @@ export type UserInputDescriptor =
       proposalId: string;
       testTitle: string;
       classifier: "none";
+    })
+  | (DescriptorBase & {
+      kind: "plugin-suggestion";
+      slug: string;
+      serverName: string;
+      serverDescription?: string | null;
+      needsOAuth: boolean;
+      reason: string;
+      classifier: "none";
+      followUpPrompt: string;
     });
 
 export type NewUserInputDescriptor = UserInputDescriptor extends infer D
@@ -91,6 +101,13 @@ export type UserInputResponse =
       kind: "test-assertions";
       specPath: string | null;
       appliedCount: number;
+    }
+  // `connected` arms the descriptor's follow-up so the agent resumes on a
+  // turn that can see the new plugin's tools; `declined` and `never` settle
+  // in place, and `never` also persists the opt-out for that plugin.
+  | {
+      kind: "plugin-suggestion";
+      outcome: "connected" | "declined" | "never";
     };
 
 export type UserInputParkValue =

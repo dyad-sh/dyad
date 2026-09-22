@@ -6,6 +6,14 @@ import {
 } from "./fixture_templates";
 
 describe("generateTestUserFixtureSource", () => {
+  it.each(["neon-better-auth", "supabase-password"] as const)(
+    "explains per-case credential availability for %s",
+    (mode) => {
+      expect(generateTestUserFixtureSource(mode)).toContain(
+        "unavailable at module scope or in beforeAll",
+      );
+    },
+  );
   it("generates a Better Auth (Neon) sign-in helper", () => {
     const source = generateTestUserFixtureSource("neon-better-auth");
     expect(source).toContain("export async function signIn(page: Page)");

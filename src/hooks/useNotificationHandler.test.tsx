@@ -11,6 +11,10 @@ const mocks = vi.hoisted(() => ({
         chatSummary?: string;
       }) => void)
     | undefined,
+  requestedListener: undefined as ((descriptor: unknown) => void) | undefined,
+  settledListener: undefined as
+    | ((event: { requestId: string; outcome: string }) => void)
+    | undefined,
   resolveAppNameForAppId: vi.fn(),
   resolveChatSummary: vi.fn(),
 }));
@@ -48,9 +52,17 @@ vi.mock("../ipc/types", () => ({
   ipc: {
     events: {
       userInput: {
-        onRequested: () => vi.fn(),
+        onRequested: (listener: (descriptor: unknown) => void) => {
+          mocks.requestedListener = listener;
+          return vi.fn();
+        },
         onClassified: () => vi.fn(),
-        onSettled: () => vi.fn(),
+        onSettled: (
+          listener: (event: { requestId: string; outcome: string }) => void,
+        ) => {
+          mocks.settledListener = listener;
+          return vi.fn();
+        },
       },
     },
     windowInfrastructure: {
@@ -94,6 +106,8 @@ class FakeNotification {
 describe("useNotificationHandler", () => {
   beforeEach(() => {
     mocks.completionListener = undefined;
+    mocks.requestedListener = undefined;
+    mocks.settledListener = undefined;
     mocks.resolveChatSummary.mockReset();
     mocks.resolveAppNameForAppId.mockReset();
     mocks.resolveChatSummary.mockResolvedValue({
@@ -134,6 +148,49 @@ describe("useNotificationHandler", () => {
         tag: "dyad-chat-complete-42",
       },
     });
+
+    unmount();
+  });
+
+  it("notifies when the agent parks on a plugin suggestion", async () => {
+    const { unmount } = renderHook(() => useNotificationHandler());
+    expect(mocks.requestedListener).toBeDefined();
+
+    act(() => {
+      mocks.requestedListener?.({
+        kind: "plugin-suggestion",
+        requestId: "plugin-suggestion:1",
+        chatId: 42,
+        deadlineAt: 0,
+        slug: "vercel",
+        serverName: "Vercel",
+        needsOAuth: true,
+        reason: "Read the build logs.",
+        classifier: "none",
+        followUpPrompt: "Continue.",
+      });
+    });
+
+    await waitFor(() => expect(FakeNotification.instances).toHaveLength(1));
+    const notification = FakeNotification.instances[0];
+    expect(notification).toMatchObject({
+      title: "Notes",
+      options: {
+        body: "Dyad wants to connect the Vercel plugin. Click to review.",
+        tag: "dyad-plugin-suggestion-plugin-suggestion:1",
+        // Blocks the turn until answered, so it must not auto-dismiss.
+        requireInteraction: true,
+      },
+    });
+
+    // Answering the card in the app closes the OS notification.
+    act(() => {
+      mocks.settledListener?.({
+        requestId: "plugin-suggestion:1",
+        outcome: "human",
+      });
+    });
+    expect(notification.close).toHaveBeenCalled();
 
     unmount();
   });

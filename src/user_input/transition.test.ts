@@ -239,4 +239,83 @@ describe("user-input transition", () => {
       prompt: SKIP_DATABASE_INTEGRATION_PROMPT,
     });
   });
+
+  it("arms a plugin suggestion's own follow-up on connect and settles on decline", () => {
+    const suggestion: UserInputDescriptor = {
+      kind: "plugin-suggestion",
+      requestId: "plugin-suggestion:1",
+      chatId: 12,
+      deadlineAt: 1_800_000,
+      slug: "vercel",
+      serverName: "Vercel",
+      needsOAuth: true,
+      reason: "Read the build logs.",
+      classifier: "none",
+      followUpPrompt: "Continue. I have connected the Vercel plugin.",
+    };
+    const awaiting = transition(
+      { status: "idle" },
+      { type: "requested", descriptor: suggestion, deadlineMs: 1_800_000 },
+    ).state;
+
+    const connected = transition(awaiting, {
+      type: "human-decided",
+      requestId: suggestion.requestId,
+      response: { kind: "plugin-suggestion", outcome: "connected" },
+    });
+    expect(connected.kind).toBe("applied");
+    if (connected.kind !== "applied") throw new Error("Expected arm");
+    expect(connected.state).toMatchObject({
+      status: "armed",
+      followUpPrompt: suggestion.followUpPrompt,
+    });
+    expect(connected.commands).toContainEqual({
+      type: "broadcast-armed",
+      descriptor: suggestion,
+      followUpPrompt: suggestion.followUpPrompt,
+    });
+    // Arming must also release the parked tool, or the agent stays blocked.
+    expect(connected.commands).toContainEqual({
+      type: "resolve-park",
+      requestId: suggestion.requestId,
+      value: { kind: "plugin-suggestion", outcome: "connected" },
+    });
+    const due = transition(connected.state, {
+      type: "stream-finished",
+      chatId: suggestion.chatId,
+    });
+    expect(due.kind).toBe("applied");
+    if (due.kind !== "applied") throw new Error("Expected due");
+    expect(due.commands).toContainEqual({
+      type: "broadcast-follow-up-due",
+      requestId: suggestion.requestId,
+      chatId: suggestion.chatId,
+      prompt: suggestion.followUpPrompt,
+    });
+
+    const declined = transition(awaiting, {
+      type: "human-decided",
+      requestId: suggestion.requestId,
+      response: { kind: "plugin-suggestion", outcome: "declined" },
+    });
+    expect(declined.kind).toBe("applied");
+    if (declined.kind !== "applied") throw new Error("Expected settle");
+    expect(declined.state).toMatchObject({
+      status: "settled",
+      outcome: "human",
+    });
+    expect(declined.commands).toContainEqual({
+      type: "resolve-park",
+      requestId: suggestion.requestId,
+      value: { kind: "plugin-suggestion", outcome: "declined" },
+    });
+
+    // Opting out for good also settles in place; main persists the choice.
+    const never = transition(awaiting, {
+      type: "human-decided",
+      requestId: suggestion.requestId,
+      response: { kind: "plugin-suggestion", outcome: "never" },
+    });
+    expect(never.state).toMatchObject({ status: "settled", outcome: "human" });
+  });
 });

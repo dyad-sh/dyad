@@ -428,15 +428,15 @@ export function ChatMessageAnnotationLayer({
       <button
         ref={setPopoverRef}
         type="button"
-        aria-label={t("annotations.commentOnSelection")}
-        className="fixed z-50 flex size-8 animate-in items-center justify-center rounded-full bg-primary text-primary-foreground shadow-md ring-offset-background transition duration-150 ease-out fade-in-0 zoom-in-95 hover:bg-primary/90 hover:shadow-lg active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:animate-none motion-reduce:transition-none"
-        style={{ left: floating.x, top: floating.y }}
+        className="fixed z-50 flex h-8 animate-in items-center justify-center gap-1.5 rounded-full bg-primary px-3 text-xs font-medium whitespace-nowrap text-primary-foreground shadow-md ring-offset-background transition duration-150 ease-out fade-in-0 zoom-in-95 hover:bg-primary/90 hover:shadow-lg active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:animate-none motion-reduce:transition-none"
+        style={{ left: floating.x + 15, top: floating.y }}
         // Keep the browser from collapsing the selection on mousedown, so the
         // text stays visibly highlighted while the comment is being written.
         onMouseDown={(event) => event.preventDefault()}
         onClick={() => setShowEditor(true)}
       >
-        <MessageSquare className="size-4" />
+        <MessageSquare className="size-4 shrink-0" aria-hidden="true" />
+        <span>{t("annotations.addToChat")}</span>
       </button>
     );
   }

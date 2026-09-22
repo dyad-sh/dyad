@@ -163,6 +163,13 @@ vi.mock("@/ipc/shared/remote_mcp_catalog", async (importOriginal) => ({
 
 const getClientMock = vi.fn();
 const disposeMock = vi.fn(async () => {});
+let neverSuggestSlugs: string[] | undefined;
+const writeSettingsMock = vi.fn();
+vi.mock("@/main/settings", () => ({
+  readSettings: () => ({ neverSuggestPluginSlugs: neverSuggestSlugs }),
+  tryWriteSettings: (settings: unknown) => writeSettingsMock(settings),
+}));
+
 vi.mock("@/ipc/utils/mcp_manager", () => ({
   mcpManager: {
     getClient: getClientMock,
@@ -627,6 +634,23 @@ describe("mcp catalog handlers", () => {
     });
     expect(result.id).toBe(7);
     expect(lastInsertPayload).toBeNull();
+  });
+
+  it("forgets a stored never-suggest choice when the user adds the plugin", async () => {
+    neverSuggestSlugs = ["stripe", "figma"];
+    try {
+      await invoke("mcp:add-from-catalog", { slug: "figma" });
+      expect(writeSettingsMock).toHaveBeenCalledWith({
+        neverSuggestPluginSlugs: ["stripe"],
+      });
+
+      // Nothing stored for this plugin: settings are left alone.
+      writeSettingsMock.mockClear();
+      await invoke("mcp:add-from-catalog", { slug: "context7" });
+      expect(writeSettingsMock).not.toHaveBeenCalled();
+    } finally {
+      neverSuggestSlugs = undefined;
+    }
   });
 
   it("rejects unknown slugs", async () => {

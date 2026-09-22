@@ -30,7 +30,6 @@ import {
 import { cn } from "@/lib/utils";
 import { ChatList } from "./ChatList";
 import { AppList } from "./AppList";
-import { HelpDialog } from "./HelpDialog";
 import { helpDialogAtom } from "@/atoms/helpDialogAtom";
 import { SettingsList } from "./SettingsList";
 import { LibraryList } from "./LibraryList";
@@ -234,7 +233,8 @@ export function AppSidebar() {
   return (
     <Sidebar
       collapsible="icon"
-      className="shadow-lg"
+      // Ends above the screenshot bar when one is up, like the main panel.
+      className="shadow-lg h-[calc(100vh-var(--layout-bottom-bar-height))]"
       onMouseEnter={() => {
         isPointerOverSidebar.current = true;
         cancelPendingCollapse();
@@ -276,7 +276,7 @@ export function AppSidebar() {
             />
           </div>
           {/* Right Column: Contextual sub-list (only visible when expanded) */}
-          <div className="relative h-[calc(100vh-112px)] w-[224px] overflow-hidden border-l border-sidebar-border">
+          <div className="relative h-[calc(100vh-112px-var(--layout-bottom-bar-height))] w-[224px] overflow-hidden border-l border-sidebar-border">
             <AnimatePresence initial={false}>
               {selectedItem === "Apps" && !showSelectedAppChats && (
                 <motion.div
@@ -322,7 +322,6 @@ export function AppSidebar() {
               isExpanded={state === "expanded"}
               onClick={() => setHelpDialog({ open: true })}
             />
-            <HelpDialog />
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>

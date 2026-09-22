@@ -60,6 +60,7 @@ import {
   checkRls,
   createTempTestUser,
   deleteTempTestUser,
+  getServiceRoleKey,
   reconcileOrphanTestUsers,
 } from "./supabase_test_user";
 import { DyadErrorKind } from "@/errors/dyad_error";
@@ -111,6 +112,56 @@ beforeEach(() => {
 });
 
 describe("createTempTestUser", () => {
+  it("records a user created while cancellation is draining the request", async () => {
+    const controller = new AbortController();
+    let finish!: (response: Response) => void;
+    let started!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        (_url, init) =>
+          new Promise<Response>((resolve) => {
+            expect(init.signal).toBeUndefined();
+            finish = resolve;
+            started();
+          }),
+      ),
+    );
+    const creating = createTempTestUser(makeApp(), {
+      signal: controller.signal,
+    });
+    await ready;
+    controller.abort();
+    finish(new Response(JSON.stringify({ id: UUID })));
+    expect((await creating).userId).toBe(UUID);
+    expect(mocks.set).toHaveBeenCalledWith({ supabaseTestUserId: UUID });
+  });
+  it("reuses a run-scoped admin key across every case's create and delete", async () => {
+    const adminKey = await getServiceRoleKey({
+      projectId: "proj-1",
+      organizationSlug: "org-1",
+    });
+    const fetchSpy = mockFetch(
+      (_url, init) =>
+        new Response(
+          JSON.stringify(init.method === "POST" ? { id: UUID } : {}),
+          { status: 200 },
+        ),
+    );
+    for (let index = 0; index < 2; index++) {
+      const user = await createTempTestUser(makeApp(), { adminKey });
+      await deleteTempTestUser(makeApp({ supabaseTestUserId: user.userId }), {
+        adminKey,
+      });
+    }
+    expect(mocks.getProjectApiKeys).toHaveBeenCalledTimes(1);
+    expect(fetchSpy).toHaveBeenCalledTimes(4);
+    for (const [, init] of fetchSpy.mock.calls)
+      expect(init.headers.apikey).toBe(SECRET_KEY);
+  });
   it("creates a confirmed admin user and persists the id immediately", async () => {
     const fetchSpy = mockFetch(
       () => new Response(JSON.stringify({ id: UUID })),

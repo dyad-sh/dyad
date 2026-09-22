@@ -525,6 +525,55 @@ describe("post-batch preview teardown", () => {
 });
 
 describe("ordinary runs are untouched", () => {
+  it("routes database-isolated headless runs through the fixture and forces one worker", async () => {
+    await runAppTestsCore({ appId: 1, isolateTestCases: true, parallel: true });
+    expect(h.ensurePlaywrightBootstrap).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ensurePreviewShim: false,
+        isolateTestCases: true,
+      }),
+    );
+    expect(lastSpawn().args).toContain("--workers=1");
+    expect(lastSpawn().args).not.toContain("--fully-parallel");
+  });
+
+  it("refuses isolated cases when the app's imports bypass the fixture", async () => {
+    h.ensurePlaywrightBootstrap.mockResolvedValueOnce({
+      installed: false,
+      previewRouted: false,
+    });
+    const result = await runAppTestsCore({ appId: 1, isolateTestCases: true });
+    expect(result.infraError?.message).toContain(
+      "Per-test database isolation requires",
+    );
+    expect(h.spawnStreaming).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])(
+    "scales explicit run budgets for isolation (%s)",
+    async (isolateTestCases) => {
+      h.spawnStreaming.mockResolvedValueOnce({
+        code: 1,
+        stdout: "",
+        stderr: "",
+        timedOut: true,
+      });
+      const result = await runAppTestsCore({
+        appId: 1,
+        isolateTestCases,
+        timeoutMs: 600_000,
+      });
+      expect(h.spawnStreaming).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          timeoutMs: isolateTestCases ? 1_800_000 : 600_000,
+        }),
+      );
+      expect(result.infraError?.message).toContain(
+        isolateTestCases ? "30-minute" : "10-minute",
+      );
+    },
+  );
+
   it("never sets the endpoint env var or requests the shim", async () => {
     await runAppTestsCore({ appId: 1 });
 

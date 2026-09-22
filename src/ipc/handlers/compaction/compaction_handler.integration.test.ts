@@ -77,6 +77,7 @@ vi.mock("./compaction_storage", () => ({
 }));
 
 import { performCompaction } from "./compaction_handler";
+import { buildCompactionBlock } from "./compaction_utils";
 
 function textStream(chunks: string[]): AsyncIterable<string> {
   return {
@@ -139,6 +140,30 @@ describe("performCompaction", () => {
         where: eq(messages.chatId, chatId),
       })
       .then((rows) => rows.filter((message) => message.isCompactionSummary));
+
+  it.each(["", "  \n  ", "Summary with <xml> & details"])(
+    "persists the canonical inline block for summary %j",
+    async (summary) => {
+      mockStreamText.mockReturnValue({ textStream: textStream([summary]) });
+      const result = await performCompaction(
+        { sender: {} } as never,
+        chatId,
+        "/tmp/test-app",
+        "request-id",
+        undefined,
+        { createdAtStrategy: "now" },
+      );
+      expect(result.success).toBe(true);
+      const summaries = await loadSummaryMessages();
+      expect(summaries).toHaveLength(1);
+      expect(
+        summaries[0].content.split(buildCompactionBlock(summary)),
+      ).toHaveLength(2);
+      if (!summary.trim())
+        expect(summaries[0].content).toContain("Conversation compacted.");
+      else expect(summaries[0].content).toContain("&lt;xml&gt; &amp; details");
+    },
+  );
 
   it("aborts mid-summary without persisting or broadcasting and retains the pending mark", async () => {
     const controller = new AbortController();

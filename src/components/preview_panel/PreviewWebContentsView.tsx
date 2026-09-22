@@ -30,7 +30,10 @@ import { useSettings } from "@/hooks/useSettings";
 import { ipc } from "@/ipc/types";
 import type { PreviewViewNavigationState } from "@/ipc/types";
 import { formatPreviewAddressPath } from "./previewAddressPath";
-import { resolvePreviewBrowserUrl } from "./previewBrowserUrl";
+import {
+  LOCAL_PREVIEW_BROWSER_HINT,
+  resolvePreviewBrowserUrl,
+} from "./previewBrowserUrl";
 import { PreviewLoadingScreen } from "./PreviewLoadingScreen";
 import { PREVIEW_TOOLBAR_BUTTON_CLASSES } from "./previewToolbarStyles";
 import {
@@ -385,7 +388,9 @@ export const PreviewWebContentsView = ({ loading }: { loading: boolean }) => {
           >
             <ExternalLink size={14} />
           </TooltipTrigger>
-          <TooltipContent>Open in browser</TooltipContent>
+          <TooltipContent>
+            Open in browser{!isCloudMode && `. ${LOCAL_PREVIEW_BROWSER_HINT}`}
+          </TooltipContent>
         </Tooltip>
 
         <div className="flex shrink-0 items-center gap-1.5">

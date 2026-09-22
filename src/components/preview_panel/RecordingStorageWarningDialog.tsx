@@ -18,8 +18,7 @@ interface RecordingStorageWarningDialogProps {
 /**
  * Confirmation shown before a recording session starts.
  *
- * Setup clears the preview's cookies and local storage so the recording begins
- * from the signed-out state the generated spec replays from. That is the same
+ * Setup clears the preview's app-scoped cookies and local storage. That is the same
  * browser session the user's own preview uses, so it also drops whatever they
  * had built up there — their preview login, anything the app persisted locally
  * — with no undo. Asking first is the difference between a documented step and
@@ -40,10 +39,12 @@ export function RecordingStorageWarningDialog({
             Start recording from a clean slate?
           </AlertDialogTitle>
           <AlertDialogDescription>
-            Recording starts from a signed-out browser, so Dyad clears the
-            preview's cookies and local storage first. You'll be signed out of
-            this app's preview and anything it stored there will be gone. Other
-            apps stay signed in. Your app's code and database aren't touched.
+            Dyad clears this preview's cookies and local storage before
+            recording. This usually signs you out and removes anything the app
+            stored in the browser. Other apps' storage is left alone. Shared
+            localhost cookies from older Dyad versions are kept and may leave
+            you signed in; sign out in the preview first if needed. Your app's
+            code and database aren't touched.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

@@ -1,3 +1,6 @@
+export const LOCAL_PREVIEW_BROWSER_HINT =
+  "If this address does not load in your browser, open it in Chrome or Firefox. Older Safari versions may not resolve app preview addresses.";
+
 export async function resolvePreviewBrowserUrl(input: {
   isCloudMode: boolean;
   selectedAppId: number | null;

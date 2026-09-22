@@ -34,6 +34,10 @@ subprocess to settle before returning or throwing. `Promise.all` rejects early
 and can release the claim while sibling processes are still mutating or reading
 the protected resource; use an all-settled barrier and rethrow afterward.
 
+Start a provider request's timeout after acquiring its shared project lock, so
+other apps' queued updates do not consume its API budget. Keep caller cancellation
+active during both admission and retry backoff, and cancel backoff timers on abort.
+
 App deletion closes coordinator admission before draining admitted work. Every
 new app-scoped main-process mutation must therefore use the coordinator unless
 it is already owned and drained by a domain-specific actor fence. Deletion-only

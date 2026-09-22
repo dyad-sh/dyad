@@ -1,4 +1,5 @@
 import log from "electron-log";
+import { abortableDelay } from "./abortable";
 
 export const logger = log.scope("retryWithRateLimit");
 
@@ -67,6 +68,7 @@ const RETRY_CONFIG = {
 };
 
 export interface RetryWithRateLimitOptions {
+  signal?: AbortSignal;
   /** Maximum number of retries */
   maxRetries?: number;
   /** Base delay in ms for exponential backoff */
@@ -95,6 +97,7 @@ export async function retryWithRateLimit<T>(
   let lastError: any;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    options?.signal?.throwIfAborted();
     try {
       const result = await operation();
       if (attempt > 0) {
@@ -102,6 +105,7 @@ export async function retryWithRateLimit<T>(
       }
       return result;
     } catch (error: any) {
+      options?.signal?.throwIfAborted();
       lastError = error;
 
       // Only retry on rate limit errors
@@ -143,7 +147,7 @@ export async function retryWithRateLimit<T>(
         );
       }
 
-      await new Promise((resolve) => setTimeout(resolve, delay));
+      await abortableDelay(delay, options?.signal);
     }
   }
 
@@ -182,6 +186,9 @@ export async function fetchWithRetry(
       return response;
     },
     context,
-    retryOptions,
+    {
+      ...retryOptions,
+      signal: init?.signal ?? retryOptions?.signal ?? undefined,
+    },
   );
 }

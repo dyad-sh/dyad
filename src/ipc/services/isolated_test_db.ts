@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import log from "electron-log";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 import { getDyadAppPath } from "../../paths/paths";
 import { apps } from "../../db/schema";
@@ -261,8 +262,9 @@ export async function prepareIsolatedTestDatabase({
     if (branch.neonAuthBaseUrl) {
       const info = runningApps.get(app.id);
       if (!info?.proxyUrl)
-        throw new Error(
+        throw new DyadError(
           "The preview URL is unavailable for Neon Auth sign-in.",
+          DyadErrorKind.Precondition,
         );
       await neonPreviewDomainService.ensureTrustedDomain({
         appId: app.id,

@@ -2321,7 +2321,8 @@ async function waitForAppReady(
       setTimeout(resolve, APP_READY_POLL_MS);
     });
   }
-  runningApps.get(appId)?.proxyAbortController?.abort();
+  // The dev process is still running. Keep its proxy lifetime alive so a late
+  // ready URL can recover after a slow first install/build.
   throw new DyadError(
     "Timed out waiting for the app preview to become ready",
     DyadErrorKind.External,

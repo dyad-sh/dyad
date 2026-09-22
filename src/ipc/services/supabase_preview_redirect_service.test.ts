@@ -11,7 +11,6 @@ vi.mock("@/supabase_admin/supabase_management_client", () => ({
 import {
   ensureSupabasePreviewRedirects,
   resolveSupabasePreviewTarget,
-  SUPABASE_PREVIEW_REGISTRATION_TIMEOUT_MS,
 } from "./supabase_preview_redirect_service";
 
 const input = () => ({
@@ -87,17 +86,16 @@ describe("Supabase preview redirect registration", () => {
     expect(mocks.register).not.toHaveBeenCalled();
   });
 
-  it("bounds registration and allows a subsequent retry", async () => {
+  it("leaves the timeout budget to the project-locked registration", async () => {
     const controller = new AbortController();
-    const timeout = vi
-      .spyOn(AbortSignal, "timeout")
-      .mockReturnValueOnce(controller.signal);
+    const timeout = vi.spyOn(AbortSignal, "timeout");
     mocks.register.mockReturnValueOnce(new Promise(() => {}));
-    const work = ensureSupabasePreviewRedirects(input());
+    const work = ensureSupabasePreviewRedirects({
+      ...input(),
+      signal: controller.signal,
+    });
     await vi.waitFor(() => expect(mocks.register).toHaveBeenCalledTimes(1));
-    expect(timeout).toHaveBeenCalledWith(
-      SUPABASE_PREVIEW_REGISTRATION_TIMEOUT_MS,
-    );
+    expect(timeout).not.toHaveBeenCalled();
     controller.abort(new DOMException("Timed out", "TimeoutError"));
     await expect(work).rejects.toMatchObject({ name: "TimeoutError" });
     expect(mocks.register.mock.calls[0][0].signal.aborted).toBe(true);

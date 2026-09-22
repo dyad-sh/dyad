@@ -1,4 +1,5 @@
 import log from "electron-log";
+import { abortableDelay } from "./abortable";
 
 import { isRateLimitError } from "./retryWithRateLimit";
 
@@ -44,16 +45,19 @@ export async function retryOnLocked<T>(
   context: string,
   {
     retryBranchWithChildError = false,
-  }: { retryBranchWithChildError?: boolean } = {},
+    signal,
+  }: { retryBranchWithChildError?: boolean; signal?: AbortSignal } = {},
 ): Promise<T> {
   let lastError: any;
 
   for (let attempt = 0; attempt <= RETRY_CONFIG.maxRetries; attempt++) {
+    signal?.throwIfAborted();
     try {
       const result = await operation();
       logger.info(`${context}: Success after ${attempt + 1} attempts`);
       return result;
     } catch (error: any) {
+      signal?.throwIfAborted();
       lastError = error;
 
       // Only retry on locked (423) or rate-limit (429) errors
@@ -78,13 +82,13 @@ export async function retryOnLocked<T>(
       // Calculate delay with exponential backoff and jitter
       const baseDelay = RETRY_CONFIG.baseDelay * Math.pow(2, attempt);
       const jitter = baseDelay * RETRY_CONFIG.jitterFactor * Math.random();
-      const delay = Math.min(baseDelay + jitter, RETRY_CONFIG.maxDelay);
+      const delayMs = Math.min(baseDelay + jitter, RETRY_CONFIG.maxDelay);
 
       logger.warn(
-        `${context}: Retryable Neon API error (locked/rate-limited, attempt ${attempt + 1}/${RETRY_CONFIG.maxRetries + 1}), retrying in ${Math.round(delay)}ms`,
+        `${context}: Retryable Neon API error (locked/rate-limited, attempt ${attempt + 1}/${RETRY_CONFIG.maxRetries + 1}), retrying in ${Math.round(delayMs)}ms`,
       );
 
-      await new Promise((resolve) => setTimeout(resolve, delay));
+      await abortableDelay(delayMs, signal);
     }
   }
 

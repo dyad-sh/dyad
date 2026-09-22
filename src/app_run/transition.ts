@@ -9,12 +9,19 @@ import type {
 import { sameInvocationRef } from "@/state_machines/invocation_ref";
 import { ignore as ignoreTransition } from "@/state_machines/types";
 
-function sameRunUrl(left: RunUrl | null, right: RunUrl): boolean {
+function samePreviewLocation(left: RunUrl | null, right: RunUrl): boolean {
   return (
     left !== null &&
     left.appUrl === right.appUrl &&
     left.originalUrl === right.originalUrl &&
-    left.mode === right.mode &&
+    left.mode === right.mode
+  );
+}
+
+function sameRunUrl(left: RunUrl | null, right: RunUrl): boolean {
+  return (
+    left !== null &&
+    samePreviewLocation(left, right) &&
     left.previewAuth?.provider === right.previewAuth?.provider &&
     left.previewAuth?.state === right.previewAuth?.state &&
     (left.previewAuth?.state === "error"
@@ -268,24 +275,18 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
             commands: [],
           };
         case "ready":
-          return {
-            kind: "applied",
-            state: sameRunUrl(state.url, event.url)
-              ? state
-              : { ...state, url: event.url },
-            commands: [
-              { type: "applyUrl", appId: state.appId, url: event.url },
-            ],
-          };
         case "reloading":
+          if (sameRunUrl(state.url, event.url)) {
+            return ignore(state, "no-change");
+          }
           return {
             kind: "applied",
-            state: sameRunUrl(state.url, event.url)
-              ? state
-              : { ...state, url: event.url },
-            commands: [
-              { type: "applyUrl", appId: state.appId, url: event.url },
-            ],
+            state: { ...state, url: event.url },
+            // Auth progress changes presentation only. applyUrl increments the
+            // preview epoch and would remount an otherwise unchanged preview.
+            commands: samePreviewLocation(state.url, event.url)
+              ? []
+              : [{ type: "applyUrl", appId: state.appId, url: event.url }],
           };
         case "stopping":
           // A proxy line while stopping is stale by construction; applying

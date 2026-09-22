@@ -15,3 +15,24 @@ export function abortable<T>(
     void work.then(resolve, reject).then(cleanup);
   });
 }
+
+/** Cancel the timer as well as the wait so cancelled retries do not linger. */
+export function abortableDelay(
+  ms: number,
+  signal?: AbortSignal,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    signal?.throwIfAborted();
+    const cleanup = () => signal?.removeEventListener("abort", onAbort);
+    const timer = setTimeout(() => {
+      cleanup();
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      cleanup();
+      reject(signal?.reason);
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}

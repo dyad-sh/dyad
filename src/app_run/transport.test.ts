@@ -32,7 +32,11 @@ const restartOptions = {
 };
 const url = {
   appUrl: "http://app-42.localhost:42142",
-  neonAuthWarning: "Registration failed. Restart and retry.",
+  previewAuth: {
+    provider: "supabase",
+    state: "error",
+    message: "Registration failed. Restart and retry.",
+  } as const,
   originalUrl: "http://localhost:5173",
   mode: "host" as const,
 };

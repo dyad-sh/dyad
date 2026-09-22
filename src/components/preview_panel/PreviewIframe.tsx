@@ -1,4 +1,4 @@
-import { NeonAuthWarning } from "./NeonAuthWarning";
+import { PreviewAuthBanner } from "./PreviewAuthBanner";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
 import { useCurrentAppUrl } from "@/hooks/useAppRun";
@@ -122,7 +122,7 @@ export const PreviewIframe = ({
   const { t } = useTranslation("home");
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const isPreviewOpen = useAtomValue(isPreviewOpenAtom);
-  const { appUrl, mode, neonAuthWarning } = useCurrentAppUrl(selectedAppId);
+  const { appUrl, mode, previewAuth } = useCurrentAppUrl(selectedAppId);
   const appRunManager = useAppRunRemoteManager();
   const selectedChatId = useAtomValue(selectedChatIdAtom);
   const { streamMessage } = useStreamChat();
@@ -1096,8 +1096,8 @@ export const PreviewIframe = ({
 
   return (
     <div className="flex flex-col h-full">
-      <NeonAuthWarning
-        message={neonAuthWarning}
+      <PreviewAuthBanner
+        status={previewAuth}
         onRetry={onRestart}
         disabled={loading || recorder.isRecording}
       />

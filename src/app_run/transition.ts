@@ -15,7 +15,14 @@ function sameRunUrl(left: RunUrl | null, right: RunUrl): boolean {
     left.appUrl === right.appUrl &&
     left.originalUrl === right.originalUrl &&
     left.mode === right.mode &&
-    left.neonAuthWarning === right.neonAuthWarning
+    left.previewAuth?.provider === right.previewAuth?.provider &&
+    left.previewAuth?.state === right.previewAuth?.state &&
+    (left.previewAuth?.state === "error"
+      ? left.previewAuth.message
+      : undefined) ===
+      (right.previewAuth?.state === "error"
+        ? right.previewAuth.message
+        : undefined)
   );
 }
 

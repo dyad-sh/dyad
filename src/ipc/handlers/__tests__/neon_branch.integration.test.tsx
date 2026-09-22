@@ -165,7 +165,10 @@ describe("Neon branch actions (integration)", () => {
   it("reconciles the bound preview when connecting Neon Auth and switching its active branch", async () => {
     const app = await createNextApp("preview-domains");
     const origin = `http://app-${app.appId}.localhost:43999`;
-    const registration = vi.spyOn(neonPreviewDomainService, "ensure");
+    const registration = vi.spyOn(
+      neonPreviewDomainService,
+      "ensureTrustedDomain",
+    );
     const send = vi.fn();
     runningApps.set(app.appId, {
       process: null,
@@ -211,7 +214,7 @@ describe("Neon branch actions (integration)", () => {
       expect(runningApps.get(app.appId)?.proxyUrl).toBe(origin);
       expect(send).toHaveBeenCalledWith(
         expect.objectContaining({
-          neonAuthWarning: undefined,
+          previewAuth: undefined,
           message: expect.stringContaining(origin),
         }),
       );

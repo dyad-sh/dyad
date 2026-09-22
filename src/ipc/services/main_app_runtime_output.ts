@@ -101,8 +101,7 @@ export class MainAppRuntimeOutput implements AppRuntimeOutput {
     if (output.message.includes(PROXY_PREFIX)) {
       const url = parseProxyReady(output.message);
       if (url) {
-        if (output.neonAuthWarning)
-          url.neonAuthWarning = output.neonAuthWarning;
+        if (output.previewAuth) url.previewAuth = output.previewAuth;
         this.producer.send({ type: "PROXY_READY", invocationRef, url });
       }
     }

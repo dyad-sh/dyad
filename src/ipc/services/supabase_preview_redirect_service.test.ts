@@ -10,12 +10,14 @@ vi.mock("@/supabase_admin/supabase_management_client", () => ({
 
 import {
   ensureSupabasePreviewRedirects,
+  resolveSupabasePreviewTarget,
   SUPABASE_PREVIEW_REGISTRATION_TIMEOUT_MS,
 } from "./supabase_preview_redirect_service";
 
 const input = () => ({
   appId: 9,
   origin: "http://app-9.localhost:42999",
+  target: { projectId: "branch-ref", organizationSlug: "org" },
   signal: new AbortController().signal,
 });
 
@@ -32,7 +34,10 @@ describe("Supabase preview redirect registration", () => {
   afterEach(() => vi.restoreAllMocks());
 
   it("uses the linked branch and actual bound port for existing apps", async () => {
+    expect(await resolveSupabasePreviewTarget(9)).toEqual(input().target);
+    mocks.findApp.mockClear();
     await ensureSupabasePreviewRedirects(input());
+    expect(mocks.findApp).not.toHaveBeenCalled();
     expect(mocks.register).toHaveBeenCalledWith({
       projectId: "branch-ref",
       organizationSlug: "org",
@@ -48,7 +53,7 @@ describe("Supabase preview redirect registration", () => {
     "skips missing or unlinked apps: %j",
     async (app) => {
       mocks.findApp.mockResolvedValue(app);
-      await ensureSupabasePreviewRedirects(input());
+      expect(await resolveSupabasePreviewTarget(9)).toBeNull();
       expect(mocks.register).not.toHaveBeenCalled();
     },
   );
@@ -71,25 +76,14 @@ describe("Supabase preview redirect registration", () => {
     expect(mocks.register).not.toHaveBeenCalled();
   });
 
-  it("does not register after cancellation while reading the association", async () => {
-    let finish!: (app: unknown) => void;
-    mocks.findApp.mockReturnValueOnce(
-      new Promise((resolve) => {
-        finish = resolve;
-      }),
-    );
+  it("does not register after cancellation", async () => {
     const controller = new AbortController();
+    controller.abort(new Error("Stopped"));
     const work = ensureSupabasePreviewRedirects({
       ...input(),
       signal: controller.signal,
     });
-    controller.abort(new Error("Stopped"));
     await expect(work).rejects.toThrow("Stopped");
-    finish({
-      supabaseProjectId: "old-project",
-      supabaseOrganizationSlug: "org",
-    });
-    await Promise.resolve();
     expect(mocks.register).not.toHaveBeenCalled();
   });
 

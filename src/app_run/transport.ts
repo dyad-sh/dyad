@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { RuntimeMode2Schema } from "@/lib/schemas";
-import { DyadErrorKind } from "@/errors/dyad_error";
-import type { RunState } from "./state";
+import { RuntimeMode2Schema } from "../lib/schemas";
+import { DyadErrorKind } from "../errors/dyad_error";
+import type { PreviewAuthStatus, RunState } from "./state";
 import { APP_RUN_INVOCATION_KIND } from "./state";
 
 const finiteTimestampSchema = z.number().finite().nonnegative();
@@ -52,9 +52,34 @@ const restartOptionsSchema = z
   })
   .strict();
 
+export const PreviewAuthStatusSchema = z.discriminatedUnion("state", [
+  z
+    .object({
+      provider: z.enum(["neon", "supabase"]),
+      state: z.literal("pending"),
+    })
+    .strict(),
+  z
+    .object({
+      provider: z.enum(["neon", "supabase"]),
+      state: z.literal("error"),
+      message: z.string().max(2000),
+    })
+    .strict(),
+]);
+
+type AssertTrue<Value extends true> = Value;
+type _PreviewAuthStatusMatchesSchema = AssertTrue<
+  [z.infer<typeof PreviewAuthStatusSchema>] extends [PreviewAuthStatus]
+    ? [PreviewAuthStatus] extends [z.infer<typeof PreviewAuthStatusSchema>]
+      ? true
+      : false
+    : false
+>;
+
 const runUrlSchema = z
   .object({
-    neonAuthWarning: z.string().max(2000).optional(),
+    previewAuth: PreviewAuthStatusSchema.optional(),
     appUrl: z.string().min(1),
     originalUrl: z.string().min(1),
     mode: RuntimeMode2Schema,

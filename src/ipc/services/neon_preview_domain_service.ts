@@ -27,17 +27,12 @@ export async function resolveNeonPreviewTarget(
   return { projectId: app.neonProjectId, branchId };
 }
 
-export const NEON_PREVIEW_REGISTRATION_TIMEOUT_MS = 10_000;
-
 export class NeonPreviewDomainService {
   private readonly pending = new Map<string, Promise<void>>();
 
-  constructor(
-    private readonly register = ensureNeonAuthTrustedDomain,
-    private readonly timeoutMs = NEON_PREVIEW_REGISTRATION_TIMEOUT_MS,
-  ) {}
+  constructor(private readonly register = ensureNeonAuthTrustedDomain) {}
 
-  ensure(input: {
+  ensureTrustedDomain(input: {
     appId: number;
     processId: number;
     invocationRef?: AppRunInvocationRef;
@@ -63,10 +58,9 @@ export class NeonPreviewDomainService {
     ]);
     const existing = this.pending.get(key);
     if (existing) return abortable(existing, input.signal);
-    const signal = AbortSignal.any([
-      input.signal,
-      AbortSignal.timeout(this.timeoutMs),
-    ]);
+    // The runtime owns cancellation. Slow requests must not be abandoned on
+    // a timer: previews remain usable while registration runs in the background.
+    const signal = input.signal;
     const work = (async () => {
       signal.throwIfAborted();
       await abortable(

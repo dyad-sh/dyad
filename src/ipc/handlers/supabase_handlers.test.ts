@@ -80,8 +80,14 @@ describe("Supabase handlers", () => {
     registerSupabaseHandlers();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     activeRecordings.clear();
+    await Promise.all(
+      [...runningApps.values()].map((info) => {
+        info.proxyAbortController?.abort();
+        return info.previewAuthRegistration?.settled;
+      }),
+    );
     runningApps.clear();
     harness?.dispose();
   });
@@ -148,6 +154,55 @@ describe("Supabase handlers", () => {
     await harness.invokeHandler("supabase:unset-app-project", { app: 7 });
     expect(mocks.ensureSupabaseAuthRedirectUrls).toHaveBeenCalledTimes(2);
   });
+
+  it.each(["unset", "nullable association"])(
+    "connects without waiting for registration and cancels it on disconnect through %s",
+    async (disconnect) => {
+      harness.db.insert(apps).values({ id: 7, name: "App", path: "app" }).run();
+      const send = vi.fn();
+      runningApps.set(7, {
+        process: null,
+        processId: 1,
+        mode: "host",
+        lastViewedAt: 0,
+        proxyUrl: "http://app-7.localhost:42999",
+        originalUrl: "http://localhost:32107",
+        output: { send, enqueue: send, flush: vi.fn() },
+      });
+      mocks.ensureSupabaseAuthRedirectUrls.mockReturnValueOnce(
+        new Promise(() => {}),
+      );
+      await harness.invokeHandler("supabase:set-app-project", {
+        appId: 7,
+        projectId: "project",
+        organizationSlug: "org",
+      });
+      expect(send).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          previewAuth: { provider: "supabase", state: "pending" },
+        }),
+      );
+      await vi.waitFor(() =>
+        expect(mocks.ensureSupabaseAuthRedirectUrls).toHaveBeenCalledOnce(),
+      );
+      const signal =
+        mocks.ensureSupabaseAuthRedirectUrls.mock.calls[0][0].signal;
+      if (disconnect === "unset") {
+        await harness.invokeHandler("supabase:unset-app-project", { app: 7 });
+      } else {
+        await harness.invokeHandler("supabase:set-app-project", {
+          appId: 7,
+          projectId: null,
+          organizationSlug: null,
+        });
+      }
+      expect(signal.aborted).toBe(true);
+      expect(runningApps.get(7)?.previewAuthRegistration).toBeUndefined();
+      expect(send).toHaveBeenLastCalledWith(
+        expect.objectContaining({ previewAuth: undefined }),
+      );
+    },
+  );
 
   describe("supabase:redeploy-all-functions", () => {
     beforeEach(() => {

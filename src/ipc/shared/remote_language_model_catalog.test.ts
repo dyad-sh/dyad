@@ -113,6 +113,8 @@ describe("remote language model catalog", () => {
   });
 
   it("uses the fallback catalog on cold start when the remote fetch fails", async () => {
+    expect(SMALL_MODEL_NAME).toBe("gpt-6-luna");
+
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("outage")));
 
     const mod = await import("./remote_language_model_catalog");

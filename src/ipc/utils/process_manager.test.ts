@@ -72,6 +72,7 @@ describe("stopAppByInfo", () => {
       processId: 1,
       mode: "cloud",
       cloudSandboxId: "sandbox-1",
+      proxyAbortController: new AbortController(),
       lastViewedAt: Date.now(),
       cloudLogAbortController,
       proxyWorker,
@@ -86,6 +87,7 @@ describe("stopAppByInfo", () => {
     expect(unregisterRunningCloudSandboxMock).not.toHaveBeenCalled();
     expect(terminateProxyWorker).not.toHaveBeenCalled();
     expect(abortCloudLogs).not.toHaveBeenCalled();
+    expect(appInfo.proxyAbortController?.signal.aborted).toBe(false);
   });
 
   it("cancels and drains background auth registration before tearing down the app", async () => {
@@ -116,6 +118,7 @@ describe("stopAppByInfo", () => {
     expect(stopCloudSandboxFileSyncMock).not.toHaveBeenCalled();
     finish();
     await stop;
+    expect(stopCloudSandboxFileSyncMock).toHaveBeenCalledWith(1);
     expect(runningApps.has(1)).toBe(false);
   });
 

@@ -15,6 +15,8 @@ const path = require("path");
 const LISTEN_HOST = "127.0.0.1";
 const LISTEN_PORT = workerData.port;
 const PREVIEW_HOSTNAME = workerData.hostname;
+// Keep this worker-side check aligned with shared/preview_hostname.ts's
+// isAppPreviewHostname; the unbundled worker cannot import TypeScript.
 if (
   typeof PREVIEW_HOSTNAME !== "string" ||
   !/^app-([1-9]\d*)\.localhost$/.test(PREVIEW_HOSTNAME) ||
@@ -586,6 +588,13 @@ server.on("upgrade", (req, socket, _head) => {
   socket.on("close", () => upstreamSocket?.destroy());
   if (!hasPreviewAuthority(req)) {
     socket.end("HTTP/1.1 421 Misdirected Request\r\nConnection: close\r\n\r\n");
+    return;
+  }
+  // Browser WebSockets carry cookies without CORS preflight. Never turn a
+  // foreign Origin into a trusted upstream Origin. Non-browser clients may
+  // omit Origin, but browsers (including HMR) must use this preview's origin.
+  if (req.headers.origin && req.headers.origin !== previewOrigin) {
+    socket.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
     return;
   }
   let target;

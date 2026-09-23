@@ -1,3 +1,4 @@
+import home from "@/i18n/locales/en/home.json";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
 import { PreviewAuthBanner } from "./PreviewAuthBanner";
@@ -56,6 +57,7 @@ it.each(["neon", "supabase"] as const)(
     const retry = screen.getByRole("button", {
       name: "Restart and retry",
     }) as HTMLButtonElement;
+    expect(screen.getByRole("status").contains(retry)).toBe(false);
     expect(retry.disabled).toBe(true);
     fireEvent.click(retry);
     expect(onRetry).not.toHaveBeenCalled();
@@ -67,3 +69,10 @@ it.each(["neon", "supabase"] as const)(
     expect(screen.queryByRole("status")).toBeNull();
   },
 );
+
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({
+    t: (key: string) =>
+      key.split(".").reduce((value: any, part) => value?.[part], home) ?? key,
+  }),
+}));

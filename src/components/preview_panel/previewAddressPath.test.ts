@@ -2,11 +2,19 @@ import { describe, expect, it } from "vitest";
 import {
   PREVIEW_ADDRESS_PATH_ERROR,
   formatPreviewAddressPath,
+  getPreviewHost,
   normalizePreviewAddressPath,
   sameOriginStartPath,
 } from "./previewAddressPath";
 
 describe("previewAddressPath", () => {
+  it("formats hosts without throwing for missing or malformed preview URLs", () => {
+    expect(getPreviewHost("http://app-42.localhost:42142/path")).toBe(
+      "app-42.localhost:42142",
+    );
+    expect(getPreviewHost("invalid")).toBe("");
+    expect(getPreviewHost(undefined)).toBe("");
+  });
   it("formats preview URLs as relative paths", () => {
     expect(
       formatPreviewAddressPath("http://localhost:5173/about?x=1#top"),

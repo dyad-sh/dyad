@@ -1,3 +1,4 @@
+import home from "@/i18n/locales/en/home.json";
 import { act, render, screen } from "@testing-library/react";
 import type { PreviewAuthStatus } from "@/app_run/state";
 import type { ReactElement, ReactNode } from "react";
@@ -240,6 +241,12 @@ it.each(["neon", "supabase"] as const)(
   (provider) => {
     h.previewAuth = { provider, state: "pending" };
     const view = render(<PreviewWebContentsView loading={false} />);
+    expect(
+      screen
+        .getByTestId("preview-auth-banner")
+        .compareDocumentPosition(screen.getByTestId("preview-native-toolbar")) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(screen.getByRole("status").textContent).toContain(
       "in the background",
     );
@@ -286,3 +293,10 @@ it.each(["neon", "supabase"] as const)(
     expect(screen.queryByTestId("preview-auth-banner")).toBeNull();
   },
 );
+
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({
+    t: (key: string) =>
+      key.split(".").reduce((value: any, part) => value?.[part], home) ?? key,
+  }),
+}));

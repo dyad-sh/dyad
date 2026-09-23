@@ -5,6 +5,7 @@ import { Worker } from "node:worker_threads";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+const PREVIEW_HOSTNAME = "app-42.localhost";
 const WORKER_PATH = path.resolve(
   __dirname,
   "..",
@@ -83,7 +84,7 @@ describe("proxy worker Content-Security-Policy", () => {
     waitForStart: () => Promise<number>;
   } {
     const worker = new Worker(WORKER_PATH, {
-      workerData: { hostname: "app-42.localhost", ...workerData },
+      workerData: { hostname: PREVIEW_HOSTNAME, ...workerData },
     });
     cleanup.push(async () => {
       await worker.terminate();
@@ -154,7 +155,7 @@ describe("proxy worker Content-Security-Policy", () => {
           host: "127.0.0.1",
           path: "/",
           port: proxyPort,
-          headers: { Host: `app-42.localhost:${proxyPort}` },
+          headers: { Host: `${PREVIEW_HOSTNAME}:${proxyPort}` },
         },
         (res) => {
           const chunks: Buffer[] = [];

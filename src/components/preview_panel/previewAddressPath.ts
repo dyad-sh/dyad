@@ -6,6 +6,14 @@ export type PreviewAddressPathNormalizationResult =
   | { type: "valid"; path: string }
   | { type: "invalid"; message: string };
 
+export function getPreviewHost(url: string | null | undefined): string {
+  try {
+    return url ? new URL(url).host : "";
+  } catch {
+    return "";
+  }
+}
+
 export function formatPreviewAddressPath(url: string | null | undefined) {
   if (!url) {
     return "/";

@@ -31,6 +31,14 @@ ${SUPABASE_GRANTS_AND_RLS_RULE}
 ${SUPABASE_ROOT_RLS_RULE}
 ${SUPABASE_ROOT_NO_MANUAL_MIGRATIONS_RULE}`;
 
+export const SUPABASE_AUTH_BROWSER_EXAMPLE = `const callbackUrl = new URL('/auth/callback', window.location.origin).href;
+const resetUrl = new URL('/reset-password', window.location.origin).href;
+
+await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: callbackUrl } });
+await supabase.auth.signUp({ email, password, options: { emailRedirectTo: callbackUrl } });
+await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: callbackUrl } });
+await supabase.auth.resetPasswordForEmail(email, { redirectTo: resetUrl });`;
+
 export function getSupabaseAvailableSystemPrompt(supabaseClientCode: string) {
   return `
 # Supabase Instructions
@@ -54,17 +62,11 @@ ${supabaseClientCode}
 
 ${SUPABASE_AUTH_REDIRECT_RULE}
 
-Dyad registers the running preview's origin and paths in Supabase's Redirect URLs allowlist without changing Site URL. Deployment callback URLs must also be allowed in the project's URL Configuration. The callback path must exist in the app; adding a redirect option alone does not implement it. If the Auth UI uses a shared callback for sign-in and recovery, handle PASSWORD_RECOVERY by showing the password-update screen before ordinary signed-in navigation. For custom email templates, use the requested RedirectTo rather than a fixed SiteURL when constructing the return link. Ordinary Supabase login does not require creating an OAuth Server application.
+Dyad registers the running preview's origin and paths in Supabase's Redirect URLs allowlist. Deployment callback URLs must also be allowed in the project's URL Configuration. If the Auth UI uses a shared callback for sign-in and recovery, handle PASSWORD_RECOVERY by showing the password-update screen before ordinary signed-in navigation. For custom email templates, use the requested RedirectTo rather than a fixed SiteURL when constructing the return link. Ordinary Supabase login does not require creating an OAuth Server application.
 
 Browser examples (use the callback routes you actually implement):
 \`\`\`typescript
-const callbackUrl = new URL('/auth/callback', window.location.origin).href;
-const resetUrl = new URL('/reset-password', window.location.origin).href;
-
-await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: callbackUrl } });
-await supabase.auth.signUp({ email, password, options: { emailRedirectTo: callbackUrl } });
-await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: callbackUrl } });
-await supabase.auth.resetPasswordForEmail(email, { redirectTo: resetUrl });
+${SUPABASE_AUTH_BROWSER_EXAMPLE}
 \`\`\`
 
 When asked to add authentication or login feature to the app, always follow these steps:

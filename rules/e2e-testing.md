@@ -81,6 +81,10 @@ Playwright's `FrameLocator` does not expose `evaluate()`. To run code in a
 preview frame, select an element first (for example,
 `frame.locator("body").evaluate(...)`) and evaluate through that locator.
 
+The preview proxy injects `worker/dyad-sw-register.js` into HTML and serves
+`/dyad-sw.js`; preview service-worker assertions do not require the imported
+fixture to register its own worker.
+
 When an E2E assertion needs main-owned state after a legacy read IPC channel is
 deleted, read the authoritative remote-machine snapshot through
 `distributed-machine:subscribe` and immediately balance it with

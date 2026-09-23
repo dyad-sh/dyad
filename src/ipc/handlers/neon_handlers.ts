@@ -708,13 +708,12 @@ export function registerNeonHandlers() {
         })
         .where(eq(apps.id, appId));
 
-      if (appRecord.length > 0) {
-        await removeNeonEnvVars({ appPath: appRecord[0].path });
-      }
-
       const { reconcileRunningNeonPreview } =
         await import("../services/app_runtime_service");
       await reconcileRunningNeonPreview(appId, null);
+      if (appRecord.length > 0) {
+        await removeNeonEnvVars({ appPath: appRecord[0].path });
+      }
       logger.info(`Successfully unlinked Neon project from app ${appId}`);
       return { success: true };
     } catch (error: any) {

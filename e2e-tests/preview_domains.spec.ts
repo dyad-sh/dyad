@@ -42,8 +42,8 @@ test("app hostnames isolate sessions through restart, HMR, native preview and re
           credentials: "include",
         });
         localStorage.setItem("session-note", "kept");
-        location.reload();
       });
+    await po.previewPanel.clickPreviewRefresh();
     await expect(frame().getByTestId("auth-state")).toHaveText("Signed in");
   }
   const firstOrigin = await importRecorder("cookie-app-one");
@@ -114,6 +114,13 @@ test("app hostnames isolate sessions through restart, HMR, native preview and re
       electronApp.evaluate(() => (globalThis as any).__previewOpenedUrls),
     )
     .toEqual([firstOrigin]);
+  await po.previewPanel.clickPreviewMoreOptions();
+  await po.page.getByTestId("preview-open-dev-server-menu-item").click();
+  await expect
+    .poll(() =>
+      electronApp.evaluate(() => (globalThis as any).__previewOpenedUrls),
+    )
+    .toEqual([firstOrigin, expect.stringMatching(/^http:\/\/localhost:\d+/)]);
 
   await po.navigation.goToAppsTab();
   if (

@@ -1,9 +1,8 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { apps } from "@/db/schema";
-import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { ensureSupabaseAuthRedirectUrls } from "@/supabase_admin/supabase_management_client";
-import { getAppPreviewHostname } from "../../../shared/preview_hostname";
+import { assertAppPreviewOrigin } from "./preview_origin";
 import { abortable } from "../utils/abortable";
 
 export interface SupabasePreviewTarget {
@@ -35,16 +34,7 @@ export async function ensureSupabasePreviewRedirects({
   target: SupabasePreviewTarget;
   signal: AbortSignal;
 }): Promise<void> {
-  const url = URL.parse(origin);
-  if (
-    !url ||
-    url.protocol !== "http:" ||
-    url.hostname !== getAppPreviewHostname(appId) ||
-    !url.port ||
-    url.origin !== origin
-  ) {
-    throw new DyadError("Invalid app preview origin", DyadErrorKind.Validation);
-  }
+  assertAppPreviewOrigin(appId, origin);
   signal.throwIfAborted();
   await abortable(
     ensureSupabaseAuthRedirectUrls({

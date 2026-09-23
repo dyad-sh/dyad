@@ -37,8 +37,10 @@ export function previewTestNodeOptions(
 ): string {
   // NODE_OPTIONS is parsed by Node, not a shell. Forward slashes avoid Windows
   // backslash escaping; JSON quoting preserves spaces and embedded quotes.
-  const preload = path
-    .join(appPath, PREVIEW_DNS_RELATIVE_PATH)
-    .replaceAll("\\", "/");
+  const preloadPath = path.join(appPath, PREVIEW_DNS_RELATIVE_PATH);
+  const preload =
+    process.platform === "win32"
+      ? preloadPath.replaceAll("\\", "/")
+      : preloadPath;
   return `${existing ?? ""} --require ${JSON.stringify(preload)}`.trim();
 }

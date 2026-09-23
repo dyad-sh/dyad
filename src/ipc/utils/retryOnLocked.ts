@@ -54,6 +54,7 @@ export async function retryOnLocked<T>(
     signal?.throwIfAborted();
     try {
       const result = await operation();
+      signal?.throwIfAborted();
       logger.info(`${context}: Success after ${attempt + 1} attempts`);
       return result;
     } catch (error: any) {

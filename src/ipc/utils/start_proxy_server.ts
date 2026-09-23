@@ -20,6 +20,7 @@ export async function startProxy(
     onError?: (error: DyadError) => void;
     fixedHeaders?: Record<string, string>;
     authBootstrapToken: string;
+    signal?: AbortSignal;
   },
 ) {
   if (!/^https?:\/\//.test(targetOrigin))
@@ -47,6 +48,12 @@ export async function startProxy(
   );
 
   let started = false;
+  let reportedError = false;
+  const reportError = (error: DyadError) => {
+    if (reportedError || opts.signal?.aborted) return;
+    reportedError = true;
+    onError?.(error);
+  };
 
   worker.on("message", (m) => {
     logger.info("[proxy]", m);
@@ -56,7 +63,7 @@ export async function startProxy(
       onStarted?.(url);
     } else if (typeof m === "string" && m.startsWith("proxy-server-error")) {
       logger.error("[proxy] failed to bind:", m);
-      onError?.(
+      reportError(
         new DyadError(
           `Could not start the preview proxy: every port from ${port} to ${fallbackPortStart + PROXY_FALLBACK_MAX_ATTEMPTS - 1} is in use. Free up a port and restart the app.`,
           DyadErrorKind.Conflict,
@@ -66,7 +73,7 @@ export async function startProxy(
   });
   worker.on("error", (e) => {
     logger.error("[proxy] error:", e);
-    onError?.(
+    reportError(
       new DyadError(
         `Preview proxy failed: ${e.message}`,
         DyadErrorKind.External,
@@ -75,8 +82,8 @@ export async function startProxy(
   });
   worker.on("exit", (c) => {
     logger.info("[proxy] exit", c);
-    if (!started)
-      onError?.(
+    if (!started && !reportedError)
+      reportError(
         new DyadError(
           "Preview proxy exited before it was ready",
           DyadErrorKind.External,

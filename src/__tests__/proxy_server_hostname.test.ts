@@ -269,4 +269,23 @@ describe("app preview authority and forwarding", () => {
     await expect(once(ws, "open")).rejects.toThrow("421");
     expect(requests).toHaveLength(0);
   });
+
+  it.each([
+    "https://attacker.example",
+    "http://app-43.localhost:42143",
+    "null",
+  ])(
+    "rejects credentialed WebSockets from foreign Origin %s",
+    async (foreignOrigin) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${port}/hot`, {
+        headers: {
+          Host: `app-42.localhost:${port}`,
+          Origin: foreignOrigin,
+          Cookie: "session=42",
+        },
+      });
+      await expect(once(ws, "open")).rejects.toThrow("403");
+      expect(requests).toHaveLength(0);
+    },
+  );
 });

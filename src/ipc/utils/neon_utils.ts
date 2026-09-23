@@ -429,7 +429,7 @@ export async function ensureNeonAuthTrustedDomain({
     );
     if (
       reconcileTrustedDomains(
-        (current.data.domains ?? []).map((d) => d.domain),
+        (current.data?.domains ?? []).map((d) => d.domain),
         [origin],
       ).length
     )

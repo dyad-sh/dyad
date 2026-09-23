@@ -3,7 +3,5 @@
 - button "Dismiss error banner"
 - button "Show details"
 - text: Try restarting the app.
-- button "Copy":
-  - img
-  - text: ""
+- button "Copy"
 - button "Fix error with AI"

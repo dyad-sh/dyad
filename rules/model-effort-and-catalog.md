@@ -15,6 +15,11 @@ requested about 1055390 tokens`. Keep catalog output limits well under the
   large `write_file` truncates, the agent re-reads and retries, responses of
   exactly 4096 completion tokens. OpenAI-compatible paths send no default and
   are not affected.
+- **When changing a fixed internal model, synchronize both remote catalogs
+  before shipping:** the production catalog and
+  `testing/fake-llm-server/index.ts`. A successful remote fetch bypasses
+  `MODEL_OPTIONS`, so persona preflight rejects a model that exists only in the
+  app fallback catalog and E2E Explorer/Implementer spawns fail immediately.
 - **Effort is provider-specific on the engine (LiteLLM) path**, see
   `src/ipc/utils/thinking_utils.ts`: OpenAI gets `reasoning.effort`
   (`/responses`), Anthropic gets `output_config.effort` + adaptive thinking,

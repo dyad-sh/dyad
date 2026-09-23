@@ -189,6 +189,11 @@ export function useTestRunEvents() {
           startedAt,
           runId: payload.runId,
           source: payload.source,
+          // Forwarded, or the main process's authoritative value would clear
+          // the panel's optimistic one and the setup phase would show the
+          // generic copy for every run — including agent runs, which never set
+          // it locally at all.
+          sandboxed: payload.sandboxed,
         });
         return;
       }
@@ -225,6 +230,7 @@ export function useTestRunEvents() {
             startedAt,
             runId: payload.runId,
             source: payload.source,
+            sandboxed: payload.sandboxed,
           });
         }
         setRunState({
@@ -245,6 +251,7 @@ export function useTestRunEvents() {
                   // teardown accurately. The terminal `finished` event resends
                   // it, so this never becomes the badge's only source.
                   isolation: payload.isolation ?? prev.isolation,
+                  sandboxed: payload.sandboxed ?? prev.sandboxed,
                 },
         });
         return;

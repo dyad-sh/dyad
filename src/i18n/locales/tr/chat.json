@@ -80,7 +80,6 @@
   "cancelGeneration": "Üretimi iptal et",
   "stoppingGeneration": "Durduruluyor…",
   "cancellationEndingTestRun": "Test çalışması bitiriliyor.",
-  "cancellationRestoringTestApp": "Uygulamanızın veritabanı ve önizlemesi geri yükleniyor. Bu biraz zaman alabilir.",
   "cancellationCleaningTestData": "Bu çalışmaya ait test verileri temizleniyor.",
   "sendMessage": "Mesaj gönder",
   "loadingProposal": "Öneri yükleniyor...",
@@ -410,5 +409,7 @@
     "discard": "Vazgeç",
     "sending": "Gönderiliyor...",
     "send": "{{count}} gönder"
-  }
+  },
+  "cancellationRemovingTestDatabase": "Geçici test veritabanı kaldırılıyor. Bu işlem biraz zaman alabilir.",
+  "cancellationCleaningTestSandbox": "Bu çalıştırmanın test ortamı ve verileri temizleniyor."
 }

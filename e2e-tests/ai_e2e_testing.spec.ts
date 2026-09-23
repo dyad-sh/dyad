@@ -96,20 +96,25 @@ testSkipIfWindows(
   "reassures when tests run against an isolated Neon database copy",
   async ({ po }) => {
     await po.setUp({ autoApprove: true });
-    await po.navigation.goToTemplatesAndSelectTemplate("Next.js Template");
-    await po.chatActions.selectChatMode("build");
-    await po.sendPrompt("tc=basic", { timeout: Timeout.EXTRA_LONG });
-    // Connect a Neon project so runs get an isolated branch copy.
-    await po.appManagement.startDatabaseIntegrationSetup("neon");
-    await po.appManagement.clickConnectNeonButton();
-    await po.appManagement.selectNeonProject("Test Project");
-
-    // Connecting Neon navigates to the app-details page; go back to the app so
-    // the preview panel (and Tests panel within it) is mounted again.
-    await po.navigation.clickBackButton();
+    await po.importApp("recorder");
+    // This assertion needs a linked Neon app, not the integration installer.
+    // Use the recording suite's fixture so preview dependency installation
+    // cannot hold up provider setup before the Tests panel is even opened.
+    const appName = await po.appManagement.getCurrentAppName();
+    await po.page.evaluate(async (name) => {
+      await (window as any).electron.ipcRenderer.invoke(
+        "test:set-neon-auth-fixture",
+        { appName: name },
+      );
+    }, appName);
+    // Toggle through the panel to refresh the app query after the direct
+    // fixture write, then verify the disclosure with testing disabled again.
+    await po.previewPanel.selectPreviewMode("tests");
+    await po.previewPanel.clickEnableTesting();
+    await po.previewPanel.openTestingOptions();
+    await po.previewPanel.clickDisableTesting();
 
     // The gate now shows the calm, reassuring warning instead of the amber one.
-    await po.previewPanel.selectPreviewMode("tests");
     await expect(
       po.page
         .locator("#preview-panel")

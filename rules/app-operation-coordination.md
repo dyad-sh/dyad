@@ -34,6 +34,14 @@ subprocess to settle before returning or throwing. `Promise.all` rejects early
 and can release the claim while sibling processes are still mutating or reading
 the protected resource; use an all-settled barrier and rethrow afterward.
 
+Honor boolean process-settlement verdicts: `false` means cleanup must be deferred.
+Before returning or throwing, call `blockConflictingOperations` under the existing claim to reject queued/new conflicts and deletion until recovery.
+Deleting a Supabase user does not revoke issued JWTs; keep provider cleanup markers until test processes are confirmed stopped.
+
+Sanitize copied dotenv files throughout a disposable test workspace's lifetime.
+Preserve only provider-rewritten keys, never whole files, plus public Supabase
+URL/anon/publishable settings for RLS-scoped tests; strip privileged credentials.
+
 App deletion closes coordinator admission before draining admitted work. Every
 new app-scoped main-process mutation must therefore use the coordinator unless
 it is already owned and drained by a domain-specific actor fence. Deletion-only

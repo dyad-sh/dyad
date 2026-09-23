@@ -1,5 +1,7 @@
 // @vitest-environment node
 import fs from "node:fs";
+import type { ChildProcess } from "node:child_process";
+import { EventEmitter } from "node:events";
 import os from "node:os";
 import path from "node:path";
 import { execFile } from "node:child_process";
@@ -17,6 +19,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const h = vi.hoisted(() => ({
   spawnStreaming: vi.fn(),
   prepareIsolation: vi.fn(),
+  readSettings: vi.fn(),
+  createWorkspace: vi.fn(),
+  installDependencies: vi.fn(),
+  retainArtifacts: vi.fn(),
+  startRuntime: vi.fn(),
   broadcast: vi.fn(),
   getDyadAppPath: vi.fn(),
   // `previewRouted` is what tells the run its specs actually reach the shim;
@@ -43,6 +50,33 @@ vi.mock("electron", () => ({
 }));
 
 vi.mock("node-pty", () => ({ spawn: vi.fn() }));
+
+vi.mock("@/main/settings", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/main/settings")>()),
+  readSettings: h.readSettings,
+}));
+
+vi.mock("../services/e2e_test_workspace", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../services/e2e_test_workspace")>()),
+  createE2eTestWorkspace: h.createWorkspace,
+  installE2eTestWorkspaceDependencies: h.installDependencies,
+  retainE2eTestArtifacts: h.retainArtifacts,
+}));
+
+vi.mock("../services/e2e_test_runtime", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../services/e2e_test_runtime")>()),
+  startE2eTestRuntime: h.startRuntime,
+}));
+
+// Real behaviour, spied: the assertions below are about which run a child is
+// registered against, which a stub returning nothing could not show.
+vi.mock("../services/e2e_test_process_registry", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("../services/e2e_test_process_registry")
+    >();
+  return { ...actual, trackE2eTestProcess: vi.fn(actual.trackE2eTestProcess) };
+});
 
 vi.mock("../../db", () => ({
   db: { query: { apps: { findFirst: h.findFirst } } },
@@ -92,6 +126,7 @@ import {
   TEST_CASE_ENDPOINT_ENV,
   TEST_CASE_TOKEN_ENV,
 } from "../services/test_case_lifecycle_server";
+import { trackE2eTestProcess } from "../services/e2e_test_process_registry";
 
 const PROXY_URL = "http://localhost:42101/";
 const CDP_ENDPOINT = "http://127.0.0.1:51234";
@@ -101,7 +136,21 @@ const APP_PATH = path.join(os.tmpdir(), "dyad-tests-preview", "apps", "my-app");
 function runAppTestsCore(options: RunAppTestsCoreOptions) {
   return runAppTestsCoreWithoutToken({
     ...options,
-    ...(options.previewCdpEndpoint ? { previewCdpToken: CDP_TOKEN } : {}),
+    // Both arrive together in production: `runTestsWithPreviewAutomation`
+    // builds the token and the rotation from the same automation handle, and
+    // the route now refuses an endpoint without a way to point the view at this
+    // run's own server. Tests that care about the rotation still pass their own.
+    //
+    // The default is a convenience for tests about something ELSE, so it must
+    // not be read as the fail-closed contract: that path is exercised directly
+    // through `runAppTestsCoreWithoutToken` in "refuses the preview route with
+    // no way to point the view at the run".
+    ...(options.previewCdpEndpoint
+      ? {
+          previewCdpToken: CDP_TOKEN,
+          rotatePreviewView: options.rotatePreviewView ?? vi.fn(async () => {}),
+        }
+      : {}),
   });
 }
 
@@ -113,6 +162,25 @@ function lastSpawn() {
 }
 
 beforeEach(() => {
+  h.findFirst.mockReset().mockResolvedValue({
+    id: 1,
+    path: "my-app",
+    testingEnabled: true,
+  });
+  h.readSettings
+    .mockReset()
+    .mockReturnValue({ disableSandboxedE2eTests: true });
+  h.createWorkspace.mockReset().mockResolvedValue({
+    workspacePath: APP_PATH,
+    artifactPath: path.join(APP_PATH, "retained-artifacts"),
+    dispose: vi.fn().mockResolvedValue(undefined),
+  });
+  h.installDependencies.mockReset().mockResolvedValue(undefined);
+  h.retainArtifacts.mockReset().mockResolvedValue(undefined);
+  h.startRuntime.mockReset().mockResolvedValue({
+    baseUrl: "http://127.0.0.1:49999",
+    stop: vi.fn().mockResolvedValue(true),
+  });
   h.getDyadAppPath.mockReturnValue(APP_PATH);
   h.prepareIsolation.mockReset();
   h.broadcast.mockReset();
@@ -146,7 +214,7 @@ describe("selected file batches", () => {
     "e2e-tests/nested/e2e-tests/b.spec.ts",
   ];
 
-  it.each(["batch", "panel", "preview"])(
+  it.each(["batch", "panel", "preview", "sandbox"])(
     "runs real Playwright from a symlinked app directory (%s)",
     async (mode) => {
       const root = fs.mkdtempSync(path.join(os.tmpdir(), "dyad-symlink-run-"));
@@ -168,7 +236,9 @@ describe("selected file batches", () => {
           path.join(physical, selected[0]),
           'const { test, expect } = require("@playwright/test");\ntest("works", () => { expect(1).toBe(1); });\ntest.skip("disabled", () => {});\n',
         );
-        h.getDyadAppPath.mockReturnValue(linked);
+        h.getDyadAppPath.mockReturnValue(
+          mode === "sandbox" ? APP_PATH : linked,
+        );
         h.spawnStreaming.mockImplementation(async (options) => {
           const { stdout, stderr } = await promisify(execFile)(
             process.execPath,
@@ -184,6 +254,13 @@ describe("selected file batches", () => {
 
         const result = await runAppTestsCore({
           appId: 1,
+          ...(mode === "sandbox"
+            ? {
+                appPath: linked,
+                baseUrl: "http://127.0.0.1:49999",
+                skipBootstrap: true,
+              }
+            : {}),
           ...(mode === "panel"
             ? { testFile: selected[0], testLine: 2 }
             : { testFiles: [selected[0]] }),
@@ -196,6 +273,12 @@ describe("selected file batches", () => {
         });
 
         expect(result.infraError).toBeUndefined();
+        if (mode === "sandbox") {
+          expect(h.ensurePlaywrightBootstrap).not.toHaveBeenCalled();
+          expect(lastSpawn().env.DYAD_TEST_BASE_URL).toBe(
+            "http://127.0.0.1:49999",
+          );
+        }
         expect(result.results).toHaveLength(1);
         expect(result.results[0].file).toBe(selected[0]);
         expect(result.results[0].incomplete).toBeUndefined();
@@ -441,7 +524,9 @@ describe("selected file batches", () => {
 
   it("owns one batch setup and announces the same selection throughout", async () => {
     mockReports();
-    const teardown = vi.fn().mockResolvedValue({ envRestored: true });
+    const teardown = vi
+      .fn()
+      .mockResolvedValue({ envRestored: true, remoteCleanupCompleted: true });
     h.prepareIsolation.mockResolvedValue({
       isolation: { mode: "neon-branch" },
       teardown,
@@ -467,89 +552,120 @@ describe("selected file batches", () => {
     expect(new Set(events.map((event) => event.runId)).size).toBe(1);
   });
 
-  it("provisions and cleans up each case and retry across selected files", async () => {
-    mockReports();
-    const reportSpawn = h.spawnStreaming.getMockImplementation()!;
-    const lifecycleCalls: string[] = [];
-    let userNumber = 0;
-    h.prepareIsolation.mockResolvedValue({
-      isolation: { mode: "neon-branch" },
-      testCaseLifecycle: {
-        beforeEach: vi.fn(async () => {
-          lifecycleCalls.push("before");
-          return { DYAD_TEST_USER_EMAIL: `user-${++userNumber}@dyad.test` };
+  it.each(["preview", "sandbox"])(
+    "provisions and cleans up each case and retry across selected files (%s)",
+    async (route) => {
+      h.readSettings.mockReturnValue({
+        disableSandboxedE2eTests: route === "preview",
+      });
+      h.findFirst.mockImplementation(async () => ({
+        id: 1,
+        path: "my-app",
+        testingEnabled: true,
+        supabaseProjectId: "project",
+      }));
+      mockReports();
+      const reportSpawn = h.spawnStreaming.getMockImplementation()!;
+      const lifecycleCalls: string[] = [];
+      let userNumber = 0;
+      h.prepareIsolation.mockResolvedValue({
+        isolation: { mode: "neon-branch" },
+        testCaseLifecycle: {
+          beforeEach: vi.fn(async () => {
+            lifecycleCalls.push("before");
+            return { DYAD_TEST_USER_EMAIL: `user-${++userNumber}@dyad.test` };
+          }),
+          afterEach: vi.fn(async () => {
+            lifecycleCalls.push("after");
+          }),
+        },
+        teardown: vi.fn(async () => {
+          lifecycleCalls.push("teardown");
+          return { envRestored: true, remoteCleanupCompleted: true };
         }),
-        afterEach: vi.fn(async () => {
-          lifecycleCalls.push("after");
-        }),
-      },
-      teardown: vi.fn(async () => {
-        lifecycleCalls.push("teardown");
-        return { envRestored: true };
-      }),
-    });
-    const emails: string[] = [];
-    h.spawnStreaming.mockImplementation(async (options) => {
-      expect(options.args).toContain("--workers=1");
-      expect(options.args).not.toContain("--fully-parallel");
-      // Exercise the fixture's protocol for a case, its retry, then another file.
-      for (const attempt of ["file-a-case", "file-a-retry", "file-b-case"]) {
-        for (const phase of ["before", "after"]) {
-          const response = await fetch(
-            `${options.env[TEST_CASE_ENDPOINT_ENV]}/${phase}/${attempt}`,
-            {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${options.env[TEST_CASE_TOKEN_ENV]}`,
+      });
+      const emails: string[] = [];
+      h.spawnStreaming.mockImplementation(async (options) => {
+        expect(options.args).toContain("--workers=1");
+        expect(options.args).not.toContain("--fully-parallel");
+        // Exercise the fixture's protocol for a case, its retry, then another file.
+        for (const attempt of ["file-a-case", "file-a-retry", "file-b-case"]) {
+          for (const phase of ["before", "after"]) {
+            const response = await fetch(
+              `${options.env[TEST_CASE_ENDPOINT_ENV]}/${phase}/${attempt}`,
+              {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${options.env[TEST_CASE_TOKEN_ENV]}`,
+                },
               },
-            },
-          );
-          expect(response.status).toBe(200);
-          const credentials = await response.json();
-          if (phase === "before") emails.push(credentials.DYAD_TEST_USER_EMAIL);
+            );
+            expect(response.status).toBe(200);
+            const credentials = await response.json();
+            if (phase === "before")
+              emails.push(credentials.DYAD_TEST_USER_EMAIL);
+          }
         }
+        return reportSpawn(options);
+      });
+
+      const result = await runAppTestsWithIsolation({
+        appId: 1,
+        event: { sender: {} } as any,
+        source: "agent",
+        testFiles: selected,
+        parallel: true,
+      });
+
+      expect(result.infraError).toBeUndefined();
+      expect(result.results.map((result) => result.file)).toEqual(selected);
+      expect(h.prepareIsolation).toHaveBeenCalledTimes(1);
+      expect(h.prepareIsolation).toHaveBeenCalledWith(
+        expect.objectContaining({ perTestCase: true }),
+      );
+      if (route === "sandbox") {
+        expect(h.createWorkspace).toHaveBeenCalledTimes(1);
+        expect(h.installDependencies).toHaveBeenCalledTimes(1);
+        expect(h.startRuntime).toHaveBeenCalledTimes(1);
+        expect(h.prepareIsolation).toHaveBeenCalledWith(
+          expect.objectContaining({
+            appPathOverride: APP_PATH,
+            restartApp: false,
+          }),
+        );
+        expect(h.retainArtifacts).toHaveBeenCalledWith(expect.anything(), {
+          replacesEveryResult: false,
+        });
+      } else {
+        expect(h.createWorkspace).not.toHaveBeenCalled();
       }
-      return reportSpawn(options);
-    });
-
-    const result = await runAppTestsWithIsolation({
-      appId: 1,
-      event: { sender: {} } as any,
-      source: "agent",
-      testFiles: selected,
-      parallel: true,
-    });
-
-    expect(result.infraError).toBeUndefined();
-    expect(result.results.map((result) => result.file)).toEqual(selected);
-    expect(h.prepareIsolation).toHaveBeenCalledTimes(1);
-    expect(h.prepareIsolation).toHaveBeenCalledWith(
-      expect.objectContaining({ perTestCase: true }),
-    );
-    expect(h.ensurePlaywrightBootstrap).toHaveBeenCalledWith(
-      expect.objectContaining({ isolateTestCases: true }),
-    );
-    expect(emails).toEqual([
-      "user-1@dyad.test",
-      "user-2@dyad.test",
-      "user-3@dyad.test",
-    ]);
-    expect(lifecycleCalls).toEqual([
-      "before",
-      "after",
-      "before",
-      "after",
-      "before",
-      "after",
-      "teardown",
-    ]);
-  });
+      expect(h.ensurePlaywrightBootstrap).toHaveBeenCalledWith(
+        expect.objectContaining({ isolateTestCases: true }),
+      );
+      expect(emails).toEqual([
+        "user-1@dyad.test",
+        "user-2@dyad.test",
+        "user-3@dyad.test",
+      ]);
+      expect(lifecycleCalls).toEqual([
+        "before",
+        "after",
+        "before",
+        "after",
+        "before",
+        "after",
+        "teardown",
+      ]);
+    },
+  );
 
   it.each(["cancel", "timeout"])(
     "cleans up the entire batch after %s",
     async (reason) => {
       const controller = new AbortController();
-      const teardown = vi.fn().mockResolvedValue({ envRestored: true });
+      const teardown = vi
+        .fn()
+        .mockResolvedValue({ envRestored: true, remoteCleanupCompleted: true });
       h.prepareIsolation.mockResolvedValue({
         isolation: { mode: "neon-branch" },
         teardown,
@@ -902,6 +1018,47 @@ describe("preview runs", () => {
         /^--output=.*0001[\\/]artifacts$/.test(arg),
       ),
     ).toBe(true);
+  });
+
+  it("registers every preview runner against this run, not globally", async () => {
+    // Both facts matter. Registration is what lets quit tree-kill the runner
+    // and its browser; the OWNER is what stops another app's concurrent run
+    // from settling — and so SIGKILLing — this one's processes during its own
+    // cleanup.
+    const rotatePreviewView = mockPreviewBatch();
+    const signal = new AbortController().signal;
+
+    await runAppTestsCore({
+      appId: 1,
+      previewCdpEndpoint: CDP_ENDPOINT,
+      rotatePreviewView,
+      signal,
+    });
+
+    expect(h.spawnStreaming).toHaveBeenCalledTimes(2);
+    for (const [options] of h.spawnStreaming.mock.calls) {
+      const child = new EventEmitter() as unknown as ChildProcess;
+      options.onProcess?.(child);
+      expect(vi.mocked(trackE2eTestProcess)).toHaveBeenCalledWith(
+        child,
+        signal,
+      );
+    }
+  });
+
+  it("refuses the preview route with no way to point the view at the run", async () => {
+    // Fail-closed. `waitForPreviewView` does not check which page a sandboxed
+    // run's view is showing, so the rotation is the only thing aiming it at
+    // this run's own server — without one the specs would drive the user's
+    // real preview, and the real database, and pass.
+    const result = await runAppTestsCoreWithoutToken({
+      appId: 1,
+      previewCdpEndpoint: CDP_ENDPOINT,
+      previewCdpToken: CDP_TOKEN,
+    });
+
+    expect(result.infraError?.message).toMatch(/can't point the preview/i);
+    expect(h.spawnStreaming).not.toHaveBeenCalled();
   });
 });
 

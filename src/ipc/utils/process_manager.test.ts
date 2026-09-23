@@ -42,6 +42,7 @@ vi.mock("../services/recording_registry", () => ({
 import type { ChildProcess } from "node:child_process";
 
 import {
+  forceKillProcessTree,
   getRunningAppProcessPids,
   removeAppIfCurrentProcess,
   runningApps,
@@ -276,5 +277,82 @@ describe("stopAllAppsSync", () => {
     stopAllAppsSync();
 
     expect(runningApps.has(1)).toBe(false);
+  });
+});
+
+describe("forceKillProcessTree", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  /** A child whose `close`/`error` listeners the test drives by hand. */
+  function fakeChild({
+    pid,
+    exitCode = null,
+  }: {
+    pid: number | undefined;
+    exitCode?: number | null;
+  }) {
+    const listeners = new Map<string, (...args: unknown[]) => void>();
+    return {
+      child: {
+        pid,
+        exitCode,
+        signalCode: null,
+        once: (event: string, listener: (...args: unknown[]) => void) => {
+          listeners.set(event, listener);
+        },
+      } as unknown as ChildProcess,
+      emit: (event: string) => listeners.get(event)?.(),
+      listens: (event: string) => listeners.has(event),
+    };
+  }
+
+  it("resolves true once the tree closes", async () => {
+    const { child, emit } = fakeChild({ pid: 111 });
+    const settled = forceKillProcessTree(child, 50);
+    emit("close");
+
+    await expect(settled).resolves.toBe(true);
+    expect(treeKillMock).toHaveBeenCalledWith(111, "SIGKILL");
+  });
+
+  it("resolves false when the tree outlives the window", async () => {
+    const { child } = fakeChild({ pid: 111 });
+
+    await expect(forceKillProcessTree(child, 10)).resolves.toBe(false);
+    expect(treeKillMock).toHaveBeenCalledWith(111, "SIGKILL");
+  });
+
+  it("resolves false when the child reports an error instead", async () => {
+    const { child, emit } = fakeChild({ pid: 111 });
+    const settled = forceKillProcessTree(child, 50);
+    emit("error");
+
+    await expect(settled).resolves.toBe(false);
+  });
+
+  it("signals but does not confirm when the root shell has already exited", async () => {
+    // The E2E runtime spawns a shell, and `npm run dev` forks a server that
+    // routinely outlives it. The signal still goes out — reading the root's
+    // exit as "the tree is gone" would skip SIGKILL for exactly the survivor
+    // holding the sandbox — but a descendant that daemonized is unreachable
+    // from this pid and emits no `close`, so this cannot claim confirmation.
+    // Since `killProcess` runs first, an exited root is the COMMON case; a
+    // `true` here would make the caller's guard decorative.
+    const { child, listens } = fakeChild({ pid: 111, exitCode: 0 });
+
+    await expect(forceKillProcessTree(child, 50)).resolves.toBe(false);
+    expect(treeKillMock).toHaveBeenCalledWith(111, "SIGKILL");
+    // No `close` is coming for a root that already exited, so it must not wait
+    // for one.
+    expect(listens("close")).toBe(false);
+  });
+
+  it("reports failure for a child that never started", async () => {
+    const { child } = fakeChild({ pid: undefined });
+
+    await expect(forceKillProcessTree(child, 50)).resolves.toBe(false);
+    expect(treeKillMock).not.toHaveBeenCalled();
   });
 });

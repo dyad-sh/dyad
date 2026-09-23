@@ -464,6 +464,16 @@
       "proFeatureTitle": "Açıklayıcı bir Pro Özelliğidir",
       "proFeatureDescription": "Dyad Pro ile ekran görüntülerine açıklama ekleme yeteneğinin kilidini açın ve iş akışınızı geliştirin.",
       "getDyadPro": "Dyad Pro'yu Edinin"
+    },
+    "testGate": {
+      "settingsUnavailable": "Dyad ayarlarınızı yükleyemediği için testlerin nasıl çalıştırılacağını belirleyemiyor.",
+      "retry": "Yeniden dene",
+      "startApp": "Testleri çalıştırmak için uygulamayı başlatın.",
+      "start": "Başlat",
+      "neonRefusalRuntime": "Bu uygulama için testler çalıştırılamıyor: yalıtılmış test sunucuları henüz {{runtime}} çalışma ortamında kullanılamıyor ve Dyad, Neon testlerini gerçek veritabanınızda çalıştırmaz. Testleri çalıştırmak için host çalışma ortamına geçin.",
+      "neonRefusalDisabled": "Bu uygulama için testler çalıştırılamıyor: yalıtılmış test sunucuları Ayarlar bölümünde kapalı ve Dyad, Neon testlerini gerçek veritabanınızda çalıştırmaz. Testleri çalıştırmak için bunları açın.",
+      "turnOnSandbox": "Aç",
+      "openSettings": "Ayarları aç"
     }
   },
   "integrations": {

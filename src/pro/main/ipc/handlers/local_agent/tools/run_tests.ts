@@ -13,7 +13,11 @@ import {
   listSpecFiles,
   readSpecTestCases,
 } from "@/ipc/handlers/tests_handlers";
-import { readTestScreenshotDataUrl } from "@/ipc/utils/test_screenshot";
+import {
+  readTestErrorContext,
+  readTestScreenshotDataUrl,
+} from "@/ipc/utils/test_screenshot";
+import { usesSandboxedE2eTests } from "@/lib/e2eSandbox";
 import { reconcileResultFile } from "@/lib/testResultUtils";
 import { readSettings } from "@/main/settings";
 import type { RunAppTestsResult, TestResult } from "@/ipc/types/tests";
@@ -215,8 +219,13 @@ function guardTurnRunLimit(ctx: AgentContext): string | null {
   return body;
 }
 
-/** Tests need the dev server; being down does not count as an attempt. */
+/**
+ * The non-sandboxed path runs Playwright against the user's preview, so it
+ * needs one. A sandboxed run serves the app itself from its own copy on its own
+ * port and never touches the preview. Being down does not count as an attempt.
+ */
 function guardDevServerRunning(ctx: AgentContext): string | null {
+  if (usesSandboxedE2eTests(readSettings())) return null;
   if (getRunningTestBaseUrl(ctx.appId)) return null;
   const body =
     "The app's dev server isn't running, so the tests can't execute. Ask the user to start the app with the Run button in the preview panel, then call run_tests again. This did NOT count as a fix attempt.";
@@ -436,18 +445,29 @@ async function attachFailureArtifacts(
   const rel = path.isAbsolute(shot.screenshotPath)
     ? path.relative(ctx.appPath, shot.screenshotPath)
     : shot.screenshotPath;
-  const errorContext = path
-    .join(path.dirname(rel), "error-context.md")
-    .split(path.sep)
-    .join("/");
+  // A sandboxed run retains its artifacts under `<userData>/test-artifacts`,
+  // outside the app. `read_file` goes through `safeJoin` and rejects anything
+  // escaping the app directory, so handing the model a `../../..` path would
+  // guarantee its first diagnostic step fails.
+  const readableByAgent = !rel.startsWith("..") && !path.isAbsolute(rel);
   const screenshotPath = rel.split(path.sep).join("/");
   if (!attachImage) {
-    return `\nArtifacts from THIS run:\n- Page snapshot: ${errorContext}\n- Screenshot: ${screenshotPath} (not attached; batch detail limit)`;
+    const artifactPath = readableByAgent ? screenshotPath : shot.screenshotPath;
+    const errorContext = path
+      .join(path.dirname(artifactPath), "error-context.md")
+      .split(path.sep)
+      .join("/");
+    const scopeNote = readableByAgent
+      ? ""
+      : " (retained outside the app; read_file cannot open these paths)";
+    return `\nArtifacts from THIS run${scopeNote}:\n- Page snapshot: ${errorContext}\n- Screenshot: ${artifactPath} (not attached; batch detail limit)`;
   }
-  const dataUrl = await readTestScreenshotDataUrl(
-    ctx.appPath,
-    shot.screenshotPath,
-  );
+  const [dataUrl, inlineSnapshot] = await Promise.all([
+    readTestScreenshotDataUrl(ctx.appPath, shot.screenshotPath, ctx.appId),
+    readableByAgent
+      ? Promise.resolve(null)
+      : readTestErrorContext(ctx.appPath, shot.screenshotPath, ctx.appId),
+  ]);
   if (dataUrl) {
     ctx.appendUserMessage([
       {
@@ -460,10 +480,25 @@ async function attachFailureArtifacts(
   // Only promise the image when it was actually attached — the read can fail
   // (missing/oversized/escaping file), and the model would otherwise burn a
   // turn looking for an attachment that never arrives.
-  const screenshotLine = dataUrl
-    ? `\n- Screenshot: ${screenshotPath} (attached to the next message as an image)`
-    : `\n- Screenshot: ${screenshotPath} (could NOT be attached as an image — rely on the page snapshot instead)`;
-  return `\nArtifacts from THIS run (other test-results directories are stale — do not read them):\n- Page snapshot: ${errorContext}  ← read this first with read_file; it shows what was actually on the page${screenshotLine}`;
+  const attachmentNote = dataUrl
+    ? "attached to the next message as an image"
+    : "could NOT be attached as an image — rely on the page snapshot instead";
+
+  if (readableByAgent) {
+    const errorContext = path
+      .join(path.dirname(rel), "error-context.md")
+      .split(path.sep)
+      .join("/");
+    return `\nArtifacts from THIS run (other test-results directories are stale — do not read them):\n- Page snapshot: ${errorContext}  ← read this first with read_file; it shows what was actually on the page\n- Screenshot: ${screenshotPath} (${attachmentNote})`;
+  }
+
+  // Out-of-app artifacts: inline the snapshot rather than name a path the model
+  // cannot open, and don't print the traversal path at all — it's meaningless
+  // to the agent and misleading as a location.
+  const snapshotSection = inlineSnapshot
+    ? `\n- Page snapshot (the page state when the test failed; inlined because this run's artifacts live outside the app and read_file cannot reach them):\n\n${inlineSnapshot}\n`
+    : "\n- Page snapshot: unavailable for this run.";
+  return `\nArtifacts from THIS run:${snapshotSection}\n- Screenshot: ${attachmentNote}.`;
 }
 
 async function reportFailure(params: {
@@ -508,12 +543,12 @@ async function reportFailure(params: {
     : "";
 
   const inconclusiveHint = outcome.allInconclusive
-    ? "\nThese are locator/timeout/strict-mode errors (e.g. a selector that matched nothing, matched a hidden element, or matched more than one element). That is almost always a LOCATOR bug in the test — make the selector more precise (exact text/role, filter to the visible element, scope to a container). Only if error-context.md shows the page never rendered is it the app or environment.\n"
+    ? "\nThese are locator/timeout/strict-mode errors (e.g. a selector that matched nothing, matched a hidden element, or matched more than one element). That is almost always a LOCATOR bug in the test — make the selector more precise (exact text/role, filter to the visible element, scope to a container). Only if the page snapshot shows the page never rendered is it the app or environment.\n"
     : "";
 
   const nextStep =
     remaining > 0
-      ? `Next: read error-context.md, decide whether the TEST or the APP is wrong, make one targeted fix, then call run_tests again. ${remaining} attempt(s) remain for this spec this turn.`
+      ? `Next: use the page snapshot from the artifacts above, decide whether the TEST or the APP is wrong, make one targeted fix, then call run_tests again. ${remaining} attempt(s) remain for this spec this turn.`
       : `You have now used all ${MAX_ATTEMPTS} attempts for this spec. Stop and summarize the situation for the user.`;
 
   const skippedNote =
@@ -544,16 +579,17 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
 - By default each whole file runs. For managed Neon and Supabase apps, database data and auth users are isolated per test case and retry, including across files. Seed each case independently. The batch follows the Tests panel's headed, parallel, and slow-motion preferences; preview and database-isolated runs remain sequential.
 - Call \`run_tests\` sequentially for the same app: wait for each call to finish before starting the next. Overlapping calls cancel earlier runs; they do not run in parallel.
 - Only add \`grep\` when you have a specific reason to narrow the run. One regex applies to Playwright's full hierarchical test titles across all selected files. Filtered runs stay sequential. A filtered pass verifies only matched tests; a file with no runnable matches is not verified.
-- Requires the app's dev server to be running (the user starts it with the Run button in the preview panel).
-- Results name each file and its pass/fail/no-tests outcome. Failures include error text and current artifact paths; read error-context.md with read_file, make a targeted fix, then rerun the relevant files.
+- Runs in an isolated copy of the app served on its own port, so the preview does not need to be running. Docker/cloud runtimes and disabled sandboxing require the dev server. Each batch shares one snapshot and clean dependency install; batch affected specs to amortize setup.
+- Results name each file and its pass/fail/no-tests outcome. Failures include error text and current artifact paths; read error-context.md with read_file (or the inline snapshot for sandbox artifacts), make a targeted fix, then rerun the relevant files.
 - You get ${MAX_ATTEMPTS} failure attempts per spec per turn. A whole-file pass resets only that file's budget; a filtered pass does not. Infrastructure failures and incomplete runs do not consume failure attempts or grant verification.
 - If you suspect a failure is flaky, rerun with \`flakeCheck: true\`: once per file, without consuming a failure attempt.
 - Never rerun a target that already passed without an app change. If any selected file is blocked by a retry guard, the entire batch is refused with the blocked paths; select eligible files explicitly instead.
 - At most ${MAX_RUNS_PER_TURN} batches may start per turn, including infrastructure failures. Each batch has one 10-minute execution deadline, or 20 minutes with slow motion, tripled for per-test database isolation. Refused requests do not consume a run.`,
   inputSchema: runTestsSchema,
   defaultConsent: "always",
-  // Isolation swaps the app's env file and restarts the dev server, so this
-  // must be excluded from read-only / plan modes.
+  // A run writes Playwright's config/deps into the app and provisions remote
+  // test data (a throwaway Neon branch or Supabase user), so this must be
+  // excluded from read-only / plan modes.
   modifiesState: true,
   isEnabled: (ctx) => ctx.testingEnabled,
 

@@ -153,6 +153,12 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 - Keep `run_tests` guidance explicit about sequential calls for the same app,
   even across different specs: `runAppTestsWithIsolation` aborts the prior run
   and waits for its cleanup before starting the replacement.
+- `run_tests` only short-circuits on its dev-server pre-check when sandboxing is
+  off — a sandboxed run serves the app itself and needs no preview. A test that
+  relies on that short-circuit for a fast deterministic outcome must set
+  `disableSandboxedE2eTests: true` in its settings; otherwise the tool performs a
+  real sandboxed run and fails differently on every machine (`spawn pnpm ENOENT`
+  without pnpm, a download failure without network, a timeout locally).
 - Snapshot teardown is best-effort and must not delay a cancelled or timed-out
   turn. Start cleanup without awaiting it; the marked-directory startup sweep
   remains the fallback for interrupted cleanup.

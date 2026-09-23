@@ -9,15 +9,26 @@ import {
 /**
  * What happened when we offered to take a screenshot. Recorded in the issue
  * body so a maintainer can tell an issue with no image from a reporter who
- * declined, and so the two cases can be counted separately after the fact.
+ * declined, and so the cases can be counted separately after the fact.
  */
-export type ScreenshotStatus = "captured" | "declined" | "capture-failed";
+export type ScreenshotStatus =
+  | "uploaded"
+  | "captured"
+  | "declined"
+  | "capture-failed";
 
-export interface ScreenshotOutcome {
-  status: ScreenshotStatus;
-  /** Failure message from takeScreenshot, only set for "capture-failed". */
-  reason?: string;
-}
+export type ScreenshotOutcome =
+  /** Sent to the screenshot bucket and embedded in the body. */
+  | { status: "uploaded"; url: string }
+  /**
+   * Taken, but travelling on the clipboard for the reporter to paste. This
+   * is the fallback: the upload was tried first, and `uploadError` says why
+   * it did not happen.
+   */
+  | { status: "captured"; uploadError?: string }
+  | { status: "declined" }
+  /** `reason` is the failure message from takeScreenshot, when there is one. */
+  | { status: "capture-failed"; reason?: string };
 
 // =============================================================================
 // Size budget
@@ -73,11 +84,41 @@ const DIAGNOSTIC_FIELD_LIMIT = 120;
 const UPDATER_LOG_ENCODED_LIMIT = 600;
 
 /**
- * Capture failures put their raw message in the body. Every other input is
- * capped, so leaving this one open would mean the ceiling rests on error
- * strings staying short rather than on anything enforced.
+ * Capture and upload failures put their raw message in the body. Every other
+ * input is capped, so leaving this one open would mean the ceiling rests on
+ * error strings staying short rather than on anything enforced.
  */
 export const SCREENSHOT_REASON_LIMIT = 200;
+
+/**
+ * Longest screenshot URL the body will embed. The upload service returns
+ * `https://storage.googleapis.com/<bucket>/<uuid>.png`, around 100
+ * characters; this is the ceiling the size budget is pinned against, so a
+ * longer one is refused before upload rather than clipped into a broken link.
+ */
+export const SCREENSHOT_URL_LIMIT = 300;
+
+/**
+ * Whether an upload service response names a URL the body may embed. A
+ * markdown image is rendered by whoever opens the issue, so this is checked
+ * on the way in rather than trusted from the network.
+ */
+export function isEmbeddableScreenshotUrl(url: unknown): url is string {
+  if (typeof url !== "string" || url.length > SCREENSHOT_URL_LIMIT) {
+    return false;
+  }
+  try {
+    const parsed = new URL(url);
+    return (
+      parsed.protocol === "https:" &&
+      // Nothing that would end the markdown link early or smuggle text past
+      // it; a real object URL has none of these.
+      !/[\s()<>[\]]/.test(url)
+    );
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Cost of a string in the query string ISSUE_URL_CEILING is measured against.
@@ -268,10 +309,22 @@ const SCREENSHOT_STATUS_PREFIX = "Screenshot status:";
 export const SCREENSHOT_PASTE_REMINDER =
   "**Paste your screenshot here with Cmd/Ctrl + V, replacing this line.**";
 
+/** Alt text of the embedded image. */
+export const SCREENSHOT_ALT = "Screenshot of the Dyad window";
+
 export function formatScreenshotStatusLine(outcome: ScreenshotOutcome): string {
   switch (outcome.status) {
-    case "captured":
-      return `${SCREENSHOT_STATUS_PREFIX} captured (reporter captured a screenshot in Dyad; if no image is attached, ask them to paste it)`;
+    case "uploaded":
+      return `${SCREENSHOT_STATUS_PREFIX} uploaded`;
+    case "captured": {
+      const why = outcome.uploadError
+        ? `upload failed: ${clampToEncoded(
+            outcome.uploadError,
+            SCREENSHOT_REASON_LIMIT,
+          )}; `
+        : "";
+      return `${SCREENSHOT_STATUS_PREFIX} captured (${why}reporter captured a screenshot in Dyad; if no image is attached, ask them to paste it)`;
+    }
     case "declined":
       return `${SCREENSHOT_STATUS_PREFIX} declined`;
     case "capture-failed":
@@ -437,6 +490,10 @@ export function buildIssueBody({
     "## Screenshot",
     formatScreenshotStatusLine(screenshot),
   ];
+
+  if (screenshot.status === "uploaded") {
+    sections.push("", `![${SCREENSHOT_ALT}](${screenshot.url})`);
+  }
 
   // The image is on the reporter's clipboard, not in this body, and this is
   // the one place they are looking when the paste has to happen. Left behind,

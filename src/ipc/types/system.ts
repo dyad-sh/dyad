@@ -413,6 +413,38 @@ export const systemContracts = {
     output: z.object({ uploaded: z.boolean() }),
   }),
 
+  /**
+   * Sends a capture to the screenshot bucket, so the issue can embed it
+   * instead of asking the reporter to paste. The bytes never pass through the
+   * renderer: main holds the full-resolution image and PUTs it directly.
+   */
+  uploadScreenshot: defineContract({
+    channel: "upload-screenshot",
+    input: z.object({
+      /** Which capture to send. Two reports can be open at once. */
+      captureId: z.string().min(1),
+      /** Signed write URL from the upload service. */
+      url: z.string(),
+      /**
+       * Headers the signature covers. The service names them, main forwards
+       * them; GCS rejects the PUT if any is missing or altered.
+       */
+      headers: z.record(z.string(), z.string()),
+      /** Names this upload so it can be cancelled while it is in flight. */
+      uploadId: z.string().min(1),
+    }),
+    output: z.object({
+      uploaded: z.boolean(),
+      /**
+       * Why not, when not. "cancelled" is the reporter backing out, not a
+       * fault. "missing" means main no longer holds the capture. "too-large"
+       * means the PNG is over the size the signed URL allows, which the
+       * service would reject anyway -- checked here so nothing is sent.
+       */
+      reason: z.enum(["cancelled", "missing", "too-large"]).optional(),
+    }),
+  }),
+
   discardScreenshot: defineContract({
     channel: "discard-screenshot",
     // A capture is a full-resolution picture of the window. Once the report it
@@ -446,9 +478,9 @@ export const systemContracts = {
   takeScreenshot: defineContract({
     channel: "take-screenshot",
     input: z.void(),
-    // The image is written to the clipboard for pasting into GitHub, and
-    // returned as a data URL so the reporter can see what was captured
-    // before the report is filed.
+    // Main keeps the full image under `captureId` until the report is filed.
+    // The data URL is a preview, so the reporter can see what was captured
+    // -- and what they are about to make public -- before it leaves.
     output: z.object({ dataUrl: z.string(), captureId: z.string() }),
   }),
 

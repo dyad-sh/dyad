@@ -34,6 +34,7 @@ import {
   buildIssueBody,
   buildIssueUrl,
   formatDiagnosticsSections,
+  isEmbeddableScreenshotUrl,
   type Diagnostics,
   type ScreenshotOutcome,
 } from "@/lib/issueBody";
@@ -44,6 +45,29 @@ import { ReportDisclosures } from "./ReportDisclosures";
 import { ScreenshotCaptureBar } from "./ScreenshotCaptureBar";
 
 const UPLOAD_URL_ENDPOINT = "https://upload-logs.dyad.sh/generate-upload-url";
+
+/**
+ * The service that signs screenshot uploads (dyad-sh/dyad-image-uploader).
+ * Separate from the chat-session uploader above: that one holds private
+ * data, this one writes to a public bucket. The default is the Cloud Run
+ * address until the service gets a real hostname. Overridable at build time
+ * so a local copy of the service, pointed at a bucket you own, can stand in:
+ * VITE_IMAGE_UPLOAD_SERVICE_ORIGIN=http://localhost:8080
+ */
+const IMAGE_UPLOAD_SERVICE_ORIGIN =
+  // tsconfig.app.json does not load vite/client, so `env` is untyped here.
+  (import.meta as { env?: Record<string, string | undefined> }).env
+    ?.VITE_IMAGE_UPLOAD_SERVICE_ORIGIN ||
+  "https://dyad-image-uploader-git-697714312563.us-west1.run.app";
+const SCREENSHOT_UPLOAD_URL_ENDPOINT = `${IMAGE_UPLOAD_SERVICE_ORIGIN}/generate-screenshot-upload-url`;
+
+/**
+ * How long to wait for a signed URL before falling back to the clipboard. A
+ * service that is down fails fast on its own; this is for one that accepts
+ * the connection and never answers, which would otherwise hold the report
+ * on "Preparing" until the reporter gave up.
+ */
+const SCREENSHOT_MINT_TIMEOUT_MS = 10_000;
 
 /**
  * How long the screenshot bar gets to leave the screen before the capture.
@@ -65,6 +89,28 @@ const SCREENSHOT_LOST_REASON =
 
 /** Which entry point a report came from, carried on every event it emits. */
 type ReportSource = "report-bug" | "force-close";
+
+/**
+ * Where a screenshot upload gave up. Reported through telemetry as a fixed
+ * set of values, and the message goes into the issue body so a maintainer
+ * can see why an image had to be pasted.
+ */
+type ScreenshotUploadFailure =
+  | "mint-failed"
+  | "put-failed"
+  | "capture-missing"
+  | "too-large"
+  | "cancelled";
+
+class ScreenshotUploadError extends Error {
+  constructor(
+    readonly failure: ScreenshotUploadFailure,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ScreenshotUploadError";
+  }
+}
 
 /** Everything needed to file, snapshotted when the reporter submits. */
 interface OutgoingReport {
@@ -527,6 +573,97 @@ export function HelpDialog() {
   };
 
   /**
+   * Sends the capture to the screenshot bucket and returns the public URL the
+   * issue embeds. Throws a ScreenshotUploadError when it could not, which is
+   * the caller's cue to fall back to the clipboard.
+   *
+   * Nothing leaves the machine until the PUT: the signed URL is fetched
+   * first, and the token is checked between, so a reporter who backs out
+   * during the session upload never has their window published.
+   */
+  const uploadScreenshot = async (
+    captureId: string,
+    token: number,
+  ): Promise<string> => {
+    let minted: {
+      uploadUrl?: unknown;
+      publicUrl?: unknown;
+      requiredHeaders?: unknown;
+    };
+    try {
+      const response = await fetch(SCREENSHOT_UPLOAD_URL_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contentType: "image/png" }),
+        signal: AbortSignal.timeout(SCREENSHOT_MINT_TIMEOUT_MS),
+      });
+      if (!response.ok) {
+        throw new Error(`upload service answered ${response.status}`);
+      }
+      minted = await response.json();
+    } catch (error) {
+      throw new ScreenshotUploadError(
+        "mint-failed",
+        `Failed to get a screenshot upload URL: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+    if (captureToken.current !== token) {
+      throw new ScreenshotUploadError("cancelled", "Report was abandoned");
+    }
+    // The URL goes into a public issue as a markdown image, so the service's
+    // answer is checked rather than trusted.
+    if (
+      typeof minted.uploadUrl !== "string" ||
+      !isEmbeddableScreenshotUrl(minted.publicUrl)
+    ) {
+      throw new ScreenshotUploadError(
+        "mint-failed",
+        "Upload service returned an unusable screenshot URL",
+      );
+    }
+    const headers =
+      minted.requiredHeaders && typeof minted.requiredHeaders === "object"
+        ? (minted.requiredHeaders as Record<string, string>)
+        : {};
+
+    const uploadId = crypto.randomUUID();
+    activeUpload.current = uploadId;
+    let result: Awaited<ReturnType<typeof ipc.system.uploadScreenshot>>;
+    try {
+      result = await ipc.system.uploadScreenshot({
+        captureId,
+        url: minted.uploadUrl,
+        headers,
+        uploadId,
+      });
+    } catch (error) {
+      throw new ScreenshotUploadError(
+        "put-failed",
+        error instanceof Error ? error.message : String(error),
+      );
+    } finally {
+      if (activeUpload.current === uploadId) activeUpload.current = null;
+    }
+    if (result.uploaded) return minted.publicUrl;
+    switch (result.reason) {
+      case "missing":
+        throw new ScreenshotUploadError(
+          "capture-missing",
+          "The screenshot was no longer available to upload",
+        );
+      case "too-large":
+        throw new ScreenshotUploadError(
+          "too-large",
+          "The screenshot is larger than the upload service allows",
+        );
+      default:
+        throw new ScreenshotUploadError("cancelled", "Upload was cancelled");
+    }
+  };
+
+  /**
    * The form is offering an image main no longer holds -- either the restore
    * failed, or it succeeded and main dropped it on the way out. Either way it
    * cannot be produced again, so the form must stop promising it. Marked
@@ -765,9 +902,50 @@ export function HelpDialog() {
     // inside the clipboard write below is still too late to take it back.
     if (captureToken.current !== token) return;
 
-    // Put the capture back on the clipboard now: the reporter pastes it into
-    // GitHub next, and anything they copied since would have replaced it.
     let outgoingScreenshot = report.screenshot;
+
+    // Send the capture to the screenshot bucket, so the issue embeds it and
+    // there is nothing to paste. The reporter saw the image on the form and
+    // kept it there; this is the moment it becomes public.
+    if (outgoingScreenshot.status === "captured" && report.captureId) {
+      posthog.capture("screenshot-prompt:upload-attempt", {
+        source: reportSource.current,
+      });
+      try {
+        const url = await uploadScreenshot(report.captureId, token);
+        if (captureToken.current !== token) return;
+        outgoingScreenshot = { status: "uploaded", url };
+        // Main dropped the capture once it was in the bucket. The preview
+        // stays on the form, since the reporter is still looking at it.
+        if (activeCapture.current === report.captureId) {
+          activeCapture.current = null;
+        }
+        posthog.capture("screenshot-prompt:uploaded", {
+          source: reportSource.current,
+        });
+      } catch (error) {
+        console.error("Failed to upload the screenshot:", error);
+        if (captureToken.current !== token) return;
+        const failure =
+          error instanceof ScreenshotUploadError ? error.failure : "other";
+        posthog.capture("screenshot-prompt:upload-failed", {
+          source: reportSource.current,
+          failure,
+        });
+        // The clipboard path below takes over. Recorded in the issue, so a
+        // maintainer can see why this one had to be pasted -- and so the
+        // fallback rate can be counted.
+        outgoingScreenshot = {
+          status: "captured",
+          uploadError: error instanceof Error ? error.message : String(error),
+        };
+        tellReporter(t("home:report.screenshotUploadFailed"));
+      }
+    }
+
+    // Fallback: put the capture back on the clipboard now. The reporter
+    // pastes it into GitHub next, and anything they copied since would have
+    // replaced it.
     // Always ask main rather than remembering a previous restore: a cache
     // would have to assume the image is still on the clipboard, and the
     // reporter can copy anything at any time. Being wrong that way tells a
@@ -850,6 +1028,7 @@ export function HelpDialog() {
     if (outgoingScreenshot.status === "captured") {
       // The image is only on the clipboard, so the report is not finished
       // until it is pasted. Stays up for when the reporter looks back here.
+      // An uploaded one is already in the issue, so there is nothing to ask.
       navigateTo("filed");
       return;
     }

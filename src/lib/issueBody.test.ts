@@ -12,6 +12,9 @@ import {
   describesSomething,
   formatDiagnosticsSections,
   formatScreenshotStatusLine,
+  isEmbeddableScreenshotUrl,
+  SCREENSHOT_ALT,
+  SCREENSHOT_URL_LIMIT,
 } from "./issueBody";
 import { type SystemDebugInfo } from "@/ipc/types";
 import { type UserBudgetInfo } from "@/ipc/types/system";
@@ -458,6 +461,118 @@ describe("diagnostics field caps", () => {
     });
 
     expect(url.length).toBeLessThan(ISSUE_URL_CEILING);
+  });
+});
+
+describe("uploaded screenshot", () => {
+  const url =
+    "https://storage.googleapis.com/dyad-issue-screenshots/0199c3f1-2a5b-7c8d-9e0f-1a2b3c4d5e6f.png";
+  const bodyWith = (
+    screenshot: Parameters<typeof buildIssueBody>[0]["screenshot"],
+  ) =>
+    buildIssueBody({
+      description: "the preview goes blank",
+      screenshot,
+      diagnostics: null,
+      sessionId: null,
+    });
+
+  it("records the upload on the status line", () => {
+    expect(formatScreenshotStatusLine({ status: "uploaded", url })).toBe(
+      "Screenshot status: uploaded",
+    );
+  });
+
+  it("embeds the image right under the status line, with nothing to paste", () => {
+    const lines = bodyWith({ status: "uploaded", url }).split("\n");
+    const status = lines.indexOf("Screenshot status: uploaded");
+
+    expect(status).toBeGreaterThan(-1);
+    expect(lines[status + 1]).toBe("");
+    expect(lines[status + 2]).toBe(`![${SCREENSHOT_ALT}](${url})`);
+    expect(lines).not.toContain(SCREENSHOT_PASTE_REMINDER);
+  });
+
+  it("says why an image had to be pasted when the upload failed", () => {
+    const line = formatScreenshotStatusLine({
+      status: "captured",
+      uploadError: "upload service answered 503",
+    });
+
+    // Still "captured", so the maintainer's cue to ask for the image and the
+    // count of clipboard hand-offs both keep working; the reason is extra.
+    expect(line).toContain(
+      "Screenshot status: captured (upload failed: upload service answered 503; ",
+    );
+    expect(line).toContain("ask them to paste it");
+  });
+
+  it("caps an upload failure message like a capture failure", () => {
+    const line = formatScreenshotStatusLine({
+      status: "captured",
+      uploadError: "x".repeat(2_000),
+    });
+
+    expect(line.length).toBeLessThan(400);
+  });
+
+  it("keeps the ceiling with the longest URL it will embed", () => {
+    const longest = "https://h.test/" + "a".repeat(SCREENSHOT_URL_LIMIT - 15);
+    expect(isEmbeddableScreenshotUrl(longest)).toBe(true);
+
+    const built = buildIssueUrl({
+      title: ISSUE_TITLE,
+      labels: ["bug", "pro"],
+      body: buildIssueBody({
+        description: applyDescriptionEdit("", "d".repeat(PROSE_BUDGET)).value,
+        screenshot: { status: "uploaded", url: longest },
+        diagnostics: {
+          debugInfo: {
+            ...debugInfo,
+            logs: "log line\n".repeat(2_000),
+            updaterLogs: "updater line\n".repeat(2_000),
+          },
+          settings: null,
+          selectedModel: null,
+          userBudget,
+        },
+        sessionId: "v2:0199c3f1-2a5b-7c8d-9e0f-1a2b3c4d5e6f",
+      }),
+    });
+
+    expect(built.length).toBeLessThan(ISSUE_URL_CEILING);
+  });
+});
+
+describe("isEmbeddableScreenshotUrl", () => {
+  it("accepts what the upload service hands back", () => {
+    expect(
+      isEmbeddableScreenshotUrl(
+        "https://storage.googleapis.com/dyad-issue-screenshots/8b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d.png",
+      ),
+    ).toBe(true);
+  });
+
+  it("refuses anything that is not an https URL", () => {
+    expect(isEmbeddableScreenshotUrl(undefined)).toBe(false);
+    expect(isEmbeddableScreenshotUrl(42)).toBe(false);
+    expect(isEmbeddableScreenshotUrl("not a url")).toBe(false);
+    expect(isEmbeddableScreenshotUrl("http://storage.test/a.png")).toBe(false);
+    expect(isEmbeddableScreenshotUrl("javascript:alert(1)")).toBe(false);
+  });
+
+  it("refuses a URL that could break out of the markdown image", () => {
+    expect(isEmbeddableScreenshotUrl("https://h.test/a.png)")).toBe(false);
+    expect(isEmbeddableScreenshotUrl("https://h.test/a.png) text")).toBe(false);
+    expect(isEmbeddableScreenshotUrl("https://h.test/<a>.png")).toBe(false);
+  });
+
+  it("refuses a URL the size budget was not pinned against", () => {
+    expect(
+      isEmbeddableScreenshotUrl(
+        "https://h.test/" + "a".repeat(SCREENSHOT_URL_LIMIT),
+      ),
+    ).toBe(false);
   });
 });
 

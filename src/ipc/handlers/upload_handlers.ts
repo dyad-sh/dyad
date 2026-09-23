@@ -4,6 +4,7 @@ import { createTypedHandler } from "./base";
 import { systemContracts } from "../types/system";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
+import { discardCapture, getCapture } from "@/ipc/utils/screenshot_captures";
 
 const logger = log.scope("upload_handlers");
 
@@ -22,25 +23,119 @@ function isTestUploadUrl(value: string): boolean {
   }
 }
 
+/** Signed URLs are https. E2E builds also accept the loopback stand-in. */
+function assertSignedUrl(url: unknown): asserts url is string {
+  const isSignedUrl =
+    typeof url === "string" &&
+    (url.startsWith("https://") || (IS_TEST_BUILD && isTestUploadUrl(url)));
+  if (!isSignedUrl) {
+    throw new DyadError(
+      "Invalid signed URL provided",
+      DyadErrorKind.Validation,
+    );
+  }
+}
+
+/**
+ * Headers a signed URL may bind. Anything else the renderer asks main to send
+ * is dropped rather than forwarded: this process holds the reporter's
+ * cookies and tokens for nothing, but it should not become a way to attach
+ * arbitrary headers to a request either.
+ */
+const SIGNED_HEADER = /^(content-type|x-goog-[a-z0-9-]+)$/i;
+
 /** In-flight uploads, so a report that is abandoned can stop sending. */
 const uploads = new Map<string, AbortController>();
+
+/**
+ * Bound on the screenshot PUT. Matches the life of the signed URL it goes
+ * to: a transfer still running past that is rejected by GCS anyway, so
+ * giving up here only turns a certain failure into a prompt one.
+ */
+const SCREENSHOT_PUT_TIMEOUT_MS = 2 * 60 * 1000;
+
+/**
+ * PUTs a body to a signed URL, tracked under `uploadId` so it can be aborted.
+ *
+ * Aborting destroys the socket, which stops a large body mid-stream but
+ * cannot recall bytes the kernel already sent -- a small body is on its way
+ * out before anyone can press anything.
+ *
+ * With `timeoutMs`, a transfer that outlives it is abandoned and reported
+ * as a failure, which is distinct from a cancel: the caller falls back
+ * rather than treating it as the reporter's choice.
+ */
+async function putToSignedUrl({
+  url,
+  headers,
+  body,
+  uploadId,
+  timeoutMs,
+}: {
+  url: string;
+  headers: Record<string, string>;
+  body: string | Buffer;
+  uploadId: string;
+  timeoutMs?: number;
+}): Promise<{ uploaded: boolean }> {
+  const controller = new AbortController();
+  uploads.set(uploadId, controller);
+  let timedOut = false;
+  const timer =
+    timeoutMs === undefined
+      ? null
+      : setTimeout(() => {
+          timedOut = true;
+          controller.abort();
+        }, timeoutMs);
+  let response;
+  try {
+    response = await fetch(url, {
+      method: "PUT",
+      headers,
+      body,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (timedOut) {
+      throw new Error(`Upload timed out after ${timeoutMs! / 1000}s`);
+    }
+    // A reporter backing out is an outcome, not a fault. Rethrowing would
+    // publish an AbortError to the exception telemetry, so the more often
+    // the cancel works the more broken the uploader would look. It is still
+    // told apart from a finished upload, which the caller goes on to cite.
+    if (controller.signal.aborted) {
+      logger.debug("Upload aborted before it finished");
+      return { uploaded: false };
+    }
+    throw error;
+  } finally {
+    if (timer) clearTimeout(timer);
+    uploads.delete(uploadId);
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      `Upload failed with status ${response.status}: ${response.statusText}`,
+    );
+  }
+  return { uploaded: true };
+}
+
+/** Upper bound of an `x-goog-content-length-range: min,max` header, if set. */
+function maxBytesAllowed(headers: Record<string, string>): number | null {
+  const range = headers["x-goog-content-length-range"];
+  if (!range) return null;
+  const max = Number(range.split(",")[1]);
+  return Number.isFinite(max) ? max : null;
+}
 
 export function registerUploadHandlers() {
   createTypedHandler(systemContracts.uploadToSignedUrl, async (_, params) => {
     const { url, contentType, data, uploadId } = params;
     logger.debug("IPC: upload-to-signed-url called");
 
-    // Validate the signed URL. E2E builds also accept a loopback address so a
-    // test can stand in for the upload service.
-    const isSignedUrl =
-      typeof url === "string" &&
-      (url.startsWith("https://") || (IS_TEST_BUILD && isTestUploadUrl(url)));
-    if (!isSignedUrl) {
-      throw new DyadError(
-        "Invalid signed URL provided",
-        DyadErrorKind.Validation,
-      );
-    }
+    assertSignedUrl(url);
 
     // Validate content type
     if (!contentType || typeof contentType !== "string") {
@@ -50,43 +145,58 @@ export function registerUploadHandlers() {
       );
     }
 
-    // Perform the upload to the signed URL. Aborting destroys the socket, which
-    // stops a large body mid-stream but cannot recall bytes the kernel already
-    // sent -- a small body is on its way out before anyone can press anything.
-    const controller = new AbortController();
-    uploads.set(uploadId, controller);
-    let response;
-    try {
-      response = await fetch(url, {
-        method: "PUT",
-        headers: {
-          "Content-Type": contentType,
-        },
-        body: JSON.stringify(data),
-        signal: controller.signal,
-      });
-    } catch (error) {
-      // A reporter backing out is an outcome, not a fault. Rethrowing would
-      // publish an AbortError to the exception telemetry, so the more often
-      // the cancel works the more broken the uploader would look. It is still
-      // told apart from a finished upload, which the caller goes on to cite.
-      if (controller.signal.aborted) {
-        logger.debug("Upload aborted before it finished");
-        return { uploaded: false };
-      }
-      throw error;
-    } finally {
-      uploads.delete(uploadId);
+    const result = await putToSignedUrl({
+      url,
+      headers: { "Content-Type": contentType },
+      body: JSON.stringify(data),
+      uploadId,
+    });
+    if (result.uploaded) {
+      logger.debug("Successfully uploaded data to signed URL");
+    }
+    return result;
+  });
+
+  createTypedHandler(systemContracts.uploadScreenshot, async (_, params) => {
+    const { captureId, url, headers, uploadId } = params;
+    logger.debug("IPC: upload-screenshot called");
+
+    assertSignedUrl(url);
+
+    const forwarded: Record<string, string> = {};
+    for (const [name, value] of Object.entries(headers)) {
+      if (SIGNED_HEADER.test(name)) forwarded[name] = value;
     }
 
-    if (!response.ok) {
-      throw new Error(
-        `Upload failed with status ${response.status}: ${response.statusText}`,
-      );
+    const image = getCapture(captureId);
+    if (!image) return { uploaded: false, reason: "missing" as const };
+
+    // Encoding blocks this process for the whole PNG pass. A capture of a
+    // large window takes a noticeable fraction of a second, once per report,
+    // which is tolerable; it happens here rather than at capture time so a
+    // screenshot the reporter removes costs nothing.
+    const png = image.toPNG();
+    const max = maxBytesAllowed(forwarded);
+    if (max !== null && png.length > max) {
+      logger.warn(`Screenshot is ${png.length} bytes, over the ${max} allowed`);
+      return { uploaded: false, reason: "too-large" as const };
     }
 
-    logger.debug("Successfully uploaded data to signed URL");
-    return { uploaded: true };
+    const result = await putToSignedUrl({
+      url,
+      headers: forwarded,
+      body: png,
+      uploadId,
+      timeoutMs: SCREENSHOT_PUT_TIMEOUT_MS,
+    });
+    if (result.uploaded) {
+      // The image is in the bucket now; nothing will paste it. Kept on a
+      // failure, so the clipboard fallback still has something to restore.
+      discardCapture(captureId);
+      logger.debug("Successfully uploaded screenshot to signed URL");
+      return { uploaded: true };
+    }
+    return { uploaded: false, reason: "cancelled" as const };
   });
 
   createTypedHandler(systemContracts.cancelUpload, async (_, params) => {

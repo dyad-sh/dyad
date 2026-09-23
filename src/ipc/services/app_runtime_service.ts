@@ -347,6 +347,7 @@ async function initializeRunningPreviewAuth(
   if (
     runningApps.get(appId) !== appInfo ||
     appInfo.previewAuthTargetRevision !== targetRevision ||
+    appInfo.stopRequested ||
     appInfo.proxyAbortController?.signal.aborted ||
     options.signal?.aborted
   )
@@ -558,7 +559,7 @@ async function registerPreviewOrigin(
   target = appInfo.previewAuthTarget,
   output = appInfo.output,
 ) {
-  if (runningApps.get(appId) !== appInfo) return;
+  if (runningApps.get(appId) !== appInfo || appInfo.stopRequested) return;
   const previous = appInfo.previewAuthRegistration;
   const origin = new URL(proxyUrl).origin;
   if (
@@ -696,15 +697,23 @@ export async function ensureProxyForRunningApp({
     return;
   // Install the promise before the first asynchronous boundary: dev servers
   // can print their URL more than once before the proxy has bound.
-  if (appInfo.proxyStartup) {
+  while (appInfo.proxyStartup) {
     await appInfo.proxyStartup;
-    return;
+    if (
+      appInfo.proxyWorker &&
+      appInfo.proxyUrl &&
+      appInfo.originalUrl === originalUrl &&
+      appInfo.proxyAuthToken ===
+        (mode === "cloud" ? appInfo.cloudPreviewAuthToken : undefined)
+    )
+      return;
   }
   const proxyAuthToken =
     mode === "cloud" ? appInfo.cloudPreviewAuthToken : undefined;
   const startup = Promise.resolve().then(async () => {
     if (
       runningApps.get(appId) !== appInfo ||
+      appInfo.stopRequested ||
       appInfo.proxyAbortController?.signal.aborted ||
       appInfo.previewAbortSignal?.aborted
     )
@@ -738,6 +747,7 @@ export async function ensureProxyForRunningApp({
     const current = () =>
       runningApps.get(appId) === appInfo &&
       appInfo.proxyAbortController === controller &&
+      !appInfo.stopRequested &&
       !signal.aborted;
     if (appInfo.proxyWorker) await appInfo.proxyWorker.terminate();
     if (!current()) return;
@@ -760,6 +770,7 @@ export async function ensureProxyForRunningApp({
         port: getAppProxyPort(appId),
         hostname: getAppPreviewHostname(appId),
         authBootstrapToken,
+        signal,
         onStarted: resolveReady,
         onError: rejectReady,
         fixedHeaders:
@@ -768,7 +779,6 @@ export async function ensureProxyForRunningApp({
             : undefined,
       });
       if (!current()) {
-        await worker.terminate();
         return;
       }
       appInfo.proxyWorker = worker;
@@ -800,8 +810,17 @@ export async function ensureProxyForRunningApp({
         message: "[dyad-proxy-server] " + appInfo.proxyStartupError.message,
       });
       controller.abort();
-      if (worker) await worker.terminate();
-      if (appInfo.proxyWorker === worker) appInfo.proxyWorker = undefined;
+    } finally {
+      // Cancellation can win during launch, readiness, or registration. The
+      // local handle still belongs to this attempt even after map replacement.
+      if (worker && !current()) {
+        await worker.terminate();
+        if (appInfo.proxyWorker === worker) {
+          appInfo.proxyWorker = undefined;
+          appInfo.proxyUrl = undefined;
+          appInfo.authBootstrapToken = undefined;
+        }
+      }
     }
   });
   appInfo.proxyStartup = startup;
@@ -2035,7 +2054,11 @@ export class AppRuntimeService {
   async stop(appId: number): Promise<void> {
     // Cancellation must reach pending credential/API waits before waiting for
     // the startup operation to release its runtime claims.
-    this.dependencies.getRunningApp(appId)?.proxyAbortController?.abort();
+    const stoppingApp = this.dependencies.getRunningApp(appId);
+    if (stoppingApp) {
+      stoppingApp.stopRequested = true;
+      stoppingApp.proxyAbortController?.abort();
+    }
     logger.log(
       `Attempting to stop app ${appId}. Current running apps: ${runningApps.size}`,
     );
@@ -2074,6 +2097,8 @@ export class AppRuntimeService {
           `Failed to stop app ${appId}: ${errorMessage(error)}`,
           DyadErrorKind.External,
         );
+      } finally {
+        appInfo.stopRequested = false;
       }
     });
   }
@@ -2348,12 +2373,9 @@ async function waitForAppReady(
       );
     }
     if (appInfo.proxyStartupError) throw appInfo.proxyStartupError;
-    if (appInfo.proxyAbortController?.signal.aborted) {
-      throw new DyadError(
-        "Preview startup was cancelled",
-        DyadErrorKind.Precondition,
-      );
-    }
+    // Release startup admission for an intentional Stop without presenting it
+    // as a failed Run. Proxy regeneration has its own transient cancellation.
+    if (appInfo.stopRequested) return;
     if (appInfo.proxyUrl) {
       return;
     }

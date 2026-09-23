@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   getSupabaseAvailableSystemPrompt,
   SUPABASE_AUTH_REDIRECT_RULE,
+  SUPABASE_AUTH_BROWSER_EXAMPLE,
 } from "./supabase_prompt";
 
 describe("Supabase auth redirect guidance", () => {
@@ -31,16 +32,13 @@ describe("Supabase auth redirect guidance", () => {
         signInWithOtp: vi.fn(),
         resetPasswordForEmail: vi.fn(),
       };
-      const example = prompt.match(
-        /Browser examples[\s\S]*?```typescript\n([\s\S]*?)```/,
-      )?.[1];
-      expect(example).toBeDefined();
+      expect(prompt).toContain(SUPABASE_AUTH_BROWSER_EXAMPLE);
       const run = new Function(
         "window",
         "supabase",
         "email",
         "password",
-        `return (async () => { ${example} })();`,
+        `return (async () => { ${SUPABASE_AUTH_BROWSER_EXAMPLE} })();`,
       );
       await run(
         { location: { origin } },

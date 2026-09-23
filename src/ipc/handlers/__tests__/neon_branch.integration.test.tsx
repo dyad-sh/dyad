@@ -40,6 +40,8 @@ import {
 import { h } from "@/testing/hybrid.setup";
 import { runningApps } from "@/ipc/utils/process_manager";
 import { neonPreviewDomainService } from "@/ipc/services/neon_preview_domain_service";
+import * as appEnvVars from "@/ipc/utils/app_env_var_utils";
+import { ipc } from "@/ipc/types";
 
 type TestApp = {
   appId: number;
@@ -165,10 +167,9 @@ describe("Neon branch actions (integration)", () => {
   it("reconciles the bound preview when connecting Neon Auth and switching its active branch", async () => {
     const app = await createNextApp("preview-domains");
     const origin = `http://app-${app.appId}.localhost:43999`;
-    const registration = vi.spyOn(
-      neonPreviewDomainService,
-      "ensureTrustedDomain",
-    );
+    const registration = vi
+      .spyOn(neonPreviewDomainService, "ensureTrustedDomain")
+      .mockResolvedValue(undefined);
     const send = vi.fn();
     runningApps.set(app.appId, {
       process: null,
@@ -195,6 +196,8 @@ describe("Neon branch actions (integration)", () => {
           }),
         ),
       );
+      await runningApps.get(app.appId)?.previewAuthRegistration?.settled;
+      send.mockClear();
       await harness.selectFromBaseUiSelect(
         await screen.findByTestId("neon-branch-select"),
         /^main\b/i,
@@ -212,17 +215,67 @@ describe("Neon branch actions (integration)", () => {
         ),
       );
       expect(runningApps.get(app.appId)?.proxyUrl).toBe(origin);
-      expect(send).toHaveBeenCalledWith(
-        expect.objectContaining({
-          previewAuth: undefined,
-          message: expect.stringContaining(origin),
-        }),
+      await waitFor(() =>
+        expect(send).toHaveBeenCalledWith(
+          expect.objectContaining({
+            previewAuth: undefined,
+            message: expect.stringContaining(origin),
+          }),
+        ),
       );
     } finally {
+      await runningApps.get(app.appId)?.previewAuthRegistration?.settled;
       runningApps.delete(app.appId);
       registration.mockRestore();
     }
   }, 90_000);
+
+  it("clears the running Neon target even if unlink cannot clean the environment file", async () => {
+    const app = await createNextApp("unlink-preview");
+    await harness.db
+      .update(apps)
+      .set({ neonProjectId: "project" })
+      .where(eq(apps.id, app.appId));
+    const cleanupEnv = vi
+      .spyOn(appEnvVars, "removeNeonEnvVars")
+      .mockRejectedValueOnce(new Error("env is read-only"));
+    const controller = new AbortController();
+    const target = {
+      provider: "neon" as const,
+      projectId: "project",
+      branchId: "branch",
+    };
+    const send = vi.fn();
+    runningApps.set(app.appId, {
+      process: null,
+      processId: 99,
+      mode: "host",
+      lastViewedAt: 0,
+      proxyUrl: `http://app-${app.appId}.localhost:43999`,
+      originalUrl: "http://localhost:32999",
+      previewAuthTarget: target,
+      previewAuth: { provider: "neon", state: "pending" },
+      previewAuthRegistration: {
+        target,
+        origin: `http://app-${app.appId}.localhost:43999`,
+        controller,
+        settled: Promise.resolve(),
+      },
+      output: { send, enqueue: send, flush: vi.fn() },
+    });
+    try {
+      await expect(
+        ipc.neon.unsetAppProject({ appId: app.appId }),
+      ).rejects.toThrow("env is read-only");
+      expect((await appRow(app.appId))?.neonProjectId).toBeNull();
+      expect(controller.signal.aborted).toBe(true);
+      expect(runningApps.get(app.appId)?.previewAuthTarget).toBeNull();
+      expect(runningApps.get(app.appId)?.previewAuth).toBeUndefined();
+    } finally {
+      runningApps.delete(app.appId);
+      cleanupEnv.mockRestore();
+    }
+  });
 
   it("updates Neon env vars and preserves per-branch auth secrets when switching branches", async () => {
     const app = await createNextApp("neon-branch");

@@ -12,7 +12,12 @@ import {
 } from "./preview_dns";
 
 it("resolves callback, promise and Playwright API requests in launched Node, preserving other DNS and NODE_OPTIONS", async () => {
-  const dir = await mkdtemp(path.join(os.tmpdir(), "dyad dns "));
+  const dir = await mkdtemp(
+    path.join(
+      os.tmpdir(),
+      process.platform === "win32" ? "dyad dns " : 'dyad dns \\ " ',
+    ),
+  );
   const server = http.createServer((req, res) => res.end(req.headers.host));
   try {
     await new Promise<void>((resolve) =>
@@ -33,9 +38,12 @@ const { request } = require('playwright');
   assert.equal((await dns.promises.lookup('192.0.2.1')).address, '192.0.2.1');
   await assert.rejects(dns.promises.lookup('app-42.localhost.invalid'));
   const api = await request.newContext();
-  const response = await api.get(process.env.DYAD_TEST_BASE_URL);
-  assert.equal(await response.text(), 'app-42.localhost:${port}');
-  await api.dispose();
+  try {
+    const response = await api.get(process.env.DYAD_TEST_BASE_URL);
+    assert.equal(await response.text(), 'app-42.localhost:${port}');
+  } finally {
+    await api.dispose();
+  }
 })().catch(error => { console.error(error); process.exitCode = 1; });`;
     const result = await promisify(execFile)(process.execPath, ["-e", script], {
       cwd: process.cwd(),

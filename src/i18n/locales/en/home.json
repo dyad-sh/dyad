@@ -454,7 +454,9 @@
       "proFeatureTitle": "Annotator is a Pro Feature",
       "proFeatureDescription": "Unlock the ability to annotate screenshots and enhance your workflow with Dyad Pro.",
       "getDyadPro": "Get Dyad Pro"
-    }
+    },
+    "openDevServer": "Open dev server address",
+    "openDevServerDescription": "For browsers that cannot open the preview address. Shares browser storage with other localhost apps."
   },
   "integrations": {
     "github": {
@@ -701,7 +703,8 @@
       "redeploySucceededWithPruning_other": "Redeployed {{count}} edge functions and removed remote-only functions: {{functions}}",
       "redeployPrunedOnly": "Removed remote-only edge functions: {{functions}}",
       "noFunctionsToRedeploy": "No local edge functions found to redeploy",
-      "redeployFailed": "Edge function redeployment finished with issues: {{error}}"
+      "redeployFailed": "Edge function redeployment finished with issues: {{error}}",
+      "previewRedirectNotice": "Dyad automatically adds local preview URLs to the Auth redirect allowlist for {{project}}. These entries remain after disconnecting or deleting an app because teammates may use the same URLs. Remove unused entries in Supabase → Authentication → URL Configuration."
     },
     "neon": {
       "title": "Neon Integration",
@@ -889,5 +892,10 @@
       "neonUnavailable": "Neon is unavailable because a Supabase project is already connected. Only one database integration can be active at a time.",
       "chooseOne": "Choose one database integration. Connecting either Supabase or Neon will lock out the other for this app."
     }
+  },
+  "previewAuth": {
+    "neonPending": "Registering this app's preview address with Neon in the background. OAuth sign-in and authentication redirects may not work until registration finishes.",
+    "supabasePending": "Registering this app's preview redirect URLs with Supabase in the background. Authentication redirects may not work until registration finishes.",
+    "retry": "Restart and retry"
   }
 }

@@ -437,7 +437,9 @@
       "proFeatureTitle": "El Anotador es una Función Pro",
       "proFeatureDescription": "Desbloquea la capacidad de anotar capturas de pantalla y mejora tu flujo de trabajo con Dyad Pro.",
       "getDyadPro": "Consigue Dyad Pro"
-    }
+    },
+    "openDevServer": "Abrir dirección del servidor de desarrollo",
+    "openDevServerDescription": "Para navegadores que no pueden abrir la dirección de vista previa. Comparte el almacenamiento del navegador con otras apps en localhost."
   },
   "integrations": {
     "github": {
@@ -679,7 +681,8 @@
       "redeploySucceededWithPruning_other": "Se volvieron a desplegar {{count}} funciones Edge y se eliminaron las funciones remotas: {{functions}}",
       "redeployPrunedOnly": "Se eliminaron las funciones Edge que solo existían de forma remota: {{functions}}",
       "noFunctionsToRedeploy": "No se encontraron funciones Edge locales para volver a desplegar",
-      "redeployFailed": "El despliegue de las funciones Edge finalizó con problemas: {{error}}"
+      "redeployFailed": "El despliegue de las funciones Edge finalizó con problemas: {{error}}",
+      "previewRedirectNotice": "Dyad añade automáticamente las URL de vista previa locales a la lista de redirecciones de Auth de {{project}}. Estas entradas permanecen al desconectar o eliminar una app porque otros miembros del equipo pueden usar las mismas URL. Elimina las entradas que no se usen en Supabase → Authentication → URL Configuration."
     },
     "neon": {
       "title": "Integración con Neon",
@@ -831,5 +834,10 @@
       "neonUnavailable": "Neon no está disponible porque ya hay un proyecto de Supabase conectado. Solo puede haber una integración de base de datos activa a la vez.",
       "chooseOne": "Elige una integración de base de datos. Conectar Supabase o Neon bloqueará la otra para esta aplicación."
     }
+  },
+  "previewAuth": {
+    "neonPending": "Registrando la dirección de vista previa de esta app en Neon en segundo plano. El inicio de sesión OAuth y las redirecciones de autenticación podrían no funcionar hasta que termine el registro.",
+    "supabasePending": "Registrando las URL de redirección de vista previa de esta app en Supabase en segundo plano. Las redirecciones de autenticación podrían no funcionar hasta que termine el registro.",
+    "retry": "Reiniciar y reintentar"
   }
 }

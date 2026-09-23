@@ -633,6 +633,14 @@ export function SupabaseConnector({ appId }: { appId: number }) {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
+            <p
+              className="text-sm text-muted-foreground"
+              data-testid="supabase-preview-redirect-notice"
+            >
+              {t("integrations.supabase.previewRedirectNotice", {
+                project: app.supabaseProjectName,
+              })}
+            </p>
             <div className="space-y-2">
               <Label htmlFor="supabase-branch-select">
                 {t("integrations.supabase.databaseBranch")}

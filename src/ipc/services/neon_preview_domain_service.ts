@@ -4,7 +4,7 @@ import { apps } from "@/db/schema";
 import { getDyadAppPath } from "@/paths/paths";
 import type { AppRunInvocationRef } from "@/app_run/state";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { getAppPreviewHostname } from "../../../shared/preview_hostname";
+import { assertAppPreviewOrigin } from "./preview_origin";
 import { readEnvVarsOrEmpty } from "../utils/app_env_var_utils";
 import { ensureNeonAuthTrustedDomain } from "../utils/neon_utils";
 import { abortable } from "../utils/abortable";
@@ -46,19 +46,7 @@ export class NeonPreviewDomainService {
     origin: string;
     signal: AbortSignal;
   }): Promise<void> {
-    const url = URL.parse(input.origin);
-    if (
-      !url ||
-      url.protocol !== "http:" ||
-      url.hostname !== getAppPreviewHostname(input.appId) ||
-      !url.port ||
-      url.origin !== input.origin
-    ) {
-      throw new DyadError(
-        "Invalid app preview origin",
-        DyadErrorKind.Validation,
-      );
-    }
+    assertAppPreviewOrigin(input.appId, input.origin);
     const key = JSON.stringify([
       input.appId,
       input.processId,

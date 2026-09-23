@@ -44,6 +44,7 @@ describe("recording storage cleanup", () => {
   });
   it.each([
     "not a URL",
+    "https://app-42.localhost:42142",
     "http://localhost:42142",
     "http://app-42.localhost.evil:42142",
     "http://child.app-42.localhost:42142",

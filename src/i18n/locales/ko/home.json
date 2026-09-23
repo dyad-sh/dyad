@@ -434,7 +434,9 @@
       "proFeatureTitle": "어노테이터는 Pro 기능입니다",
       "proFeatureDescription": "Dyad Pro로 스크린샷에 주석을 달고 작업 흐름을 개선하는 기능을 잠금 해제하세요.",
       "getDyadPro": "Dyad Pro 받기"
-    }
+    },
+    "openDevServer": "개발 서버 주소 열기",
+    "openDevServerDescription": "미리보기 주소를 열 수 없는 브라우저용입니다. 다른 localhost 앱과 브라우저 저장소를 공유합니다."
   },
   "integrations": {
     "github": {
@@ -681,7 +683,8 @@
       "redeploySucceededWithPruning_other": "Edge Function {{count}}개를 다시 배포하고 원격 전용 함수를 제거했습니다: {{functions}}",
       "redeployPrunedOnly": "원격에만 있던 Edge Function을 제거했습니다: {{functions}}",
       "noFunctionsToRedeploy": "다시 배포할 로컬 Edge Function이 없습니다",
-      "redeployFailed": "Edge Function 재배포가 문제와 함께 완료되었습니다: {{error}}"
+      "redeployFailed": "Edge Function 재배포가 문제와 함께 완료되었습니다: {{error}}",
+      "previewRedirectNotice": "Dyad는 {{project}}의 Auth 리디렉션 허용 목록에 로컬 미리보기 URL을 자동으로 추가합니다. 팀원이 같은 URL을 사용할 수 있으므로 앱을 연결 해제하거나 삭제해도 항목이 유지됩니다. 사용하지 않는 항목은 Supabase → Authentication → URL Configuration에서 삭제하세요."
     },
     "neon": {
       "title": "Neon 연동",
@@ -869,5 +872,10 @@
       "neonUnavailable": "이미 Supabase 프로젝트가 연결되어 있어 Neon을 사용할 수 없습니다. 한 번에 하나의 데이터베이스 연동만 활성화할 수 있습니다.",
       "chooseOne": "데이터베이스 연동을 하나만 선택하세요. Supabase 또는 Neon 중 하나를 연결하면 이 앱에서 다른 하나는 사용할 수 없게 됩니다."
     }
+  },
+  "previewAuth": {
+    "neonPending": "백그라운드에서 이 앱의 미리보기 주소를 Neon에 등록하고 있습니다. 등록이 완료될 때까지 OAuth 로그인과 인증 리디렉션이 작동하지 않을 수 있습니다.",
+    "supabasePending": "백그라운드에서 이 앱의 미리보기 리디렉션 URL을 Supabase에 등록하고 있습니다. 등록이 완료될 때까지 인증 리디렉션이 작동하지 않을 수 있습니다.",
+    "retry": "다시 시작하고 재시도"
   }
 }

@@ -325,6 +325,26 @@ describe("syncActiveNeonAuthCookieSecretFromEnv", () => {
 });
 
 describe("ensureNeonAuthTrustedDomain cancellation", () => {
+  it("preserves the conflict when the recovery listing has no data", async () => {
+    const { getNeonClient } =
+      await import("@/neon_admin/neon_management_client");
+    const { ensureNeonAuthTrustedDomain } = await import("./neon_utils");
+    const conflict = { response: { status: 409 } };
+    vi.mocked(getNeonClient).mockResolvedValue({
+      listBranchNeonAuthTrustedDomains: vi
+        .fn()
+        .mockResolvedValueOnce({ data: { domains: [] } })
+        .mockResolvedValueOnce({}),
+      addBranchNeonAuthTrustedDomain: vi.fn().mockRejectedValue(conflict),
+    } as any);
+    await expect(
+      ensureNeonAuthTrustedDomain({
+        projectId: "project",
+        branchId: "branch",
+        origin: "http://app-42.localhost:42142",
+      }),
+    ).rejects.toBe(conflict);
+  });
   it("does not list or mutate domains after credentials arrive for a cancelled request", async () => {
     const { getNeonClient } =
       await import("@/neon_admin/neon_management_client");

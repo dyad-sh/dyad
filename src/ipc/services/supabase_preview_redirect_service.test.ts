@@ -49,11 +49,10 @@ describe("Supabase preview redirect registration", () => {
   });
 
   it.each([undefined, { supabaseProjectId: null }])(
-    "skips missing or unlinked apps: %j",
+    "resolves no target for missing or unlinked apps: %j",
     async (app) => {
       mocks.findApp.mockResolvedValue(app);
       expect(await resolveSupabasePreviewTarget(9)).toBeNull();
-      expect(mocks.register).not.toHaveBeenCalled();
     },
   );
 

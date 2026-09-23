@@ -6,6 +6,7 @@ import type { RunningAppInfo } from "@/ipc/utils/process_manager";
 import { runningApps } from "@/ipc/utils/process_manager";
 import {
   AppRuntimeService,
+  appRuntimeService,
   getAppRuntimeOperationResources,
   reconcileRunningSupabasePreview,
   type AppRuntimeOutput,
@@ -124,6 +125,49 @@ function createHarness() {
 describe("AppRuntimeService", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("lets Stop release pending startup readiness without failing Run", async () => {
+    const harness = createHarness();
+    const coordinator = new AppOperationCoordinator();
+    const { output } = createOutput();
+    harness.dependencies.runSerialized = (appId, lifecycle, operation) =>
+      coordinator.run(
+        {
+          appId,
+          operation: lifecycle,
+          resources: getAppRuntimeOperationResources(lifecycle),
+        },
+        operation,
+      );
+    vi.mocked(harness.dependencies.startProcess).mockImplementation(
+      async () => {
+        const appInfo: RunningAppInfo = {
+          process: null,
+          processId: 1,
+          mode: "host",
+          lastViewedAt: 0,
+          proxyAbortController: new AbortController(),
+        };
+        harness.setRunning(appInfo);
+        runningApps.set(APP_ID, appInfo);
+      },
+    );
+    vi.mocked(harness.dependencies.waitForReady).mockImplementation((appId) =>
+      appRuntimeService.waitForReady(appId, { timeoutMs: 1000 }),
+    );
+    const start = harness.service.start({ appId: APP_ID, output });
+    try {
+      await vi.waitFor(() =>
+        expect(harness.dependencies.waitForReady).toHaveBeenCalledOnce(),
+      );
+      const stop = harness.service.stop(APP_ID);
+      await expect(start).resolves.toBeUndefined();
+      await expect(stop).resolves.toBeUndefined();
+      expect(harness.dependencies.stopProcess).toHaveBeenCalledOnce();
+    } finally {
+      runningApps.delete(APP_ID);
+    }
   });
 
   it("claims only the resources each lifecycle operation touches", () => {

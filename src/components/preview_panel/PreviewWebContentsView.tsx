@@ -29,7 +29,7 @@ import { runAppLifecycleInBackground, useRunApp } from "@/hooks/useRunApp";
 import { useSettings } from "@/hooks/useSettings";
 import { ipc } from "@/ipc/types";
 import type { PreviewViewNavigationState } from "@/ipc/types";
-import { formatPreviewAddressPath } from "./previewAddressPath";
+import { formatPreviewAddressPath, getPreviewHost } from "./previewAddressPath";
 import {
   LOCAL_PREVIEW_BROWSER_HINT,
   resolvePreviewBrowserUrl,
@@ -352,7 +352,7 @@ export const PreviewWebContentsView = ({ loading }: { loading: boolean }) => {
             className="truncate text-xs text-muted-foreground"
             data-testid="preview-native-path"
           >
-            {appUrl ? new URL(appUrl).host : ""}
+            {getPreviewHost(appUrl)}
             {currentPath}
           </span>
           <span

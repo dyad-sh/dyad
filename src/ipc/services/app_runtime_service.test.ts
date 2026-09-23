@@ -1522,11 +1522,94 @@ describe("executeApp", () => {
     expect(killPortMock).not.toHaveBeenCalledWith(42142, "tcp");
   });
 
+  it("rebinds a changed upstream announced while proxy startup is pending", async () => {
+    let ready!: (url: string) => void;
+    const terminate = vi.fn();
+    startProxyMock.mockImplementationOnce(async (_url, opts) => {
+      ready = opts.onStarted;
+      return { terminate };
+    });
+    runningApps.set(42, {
+      process: null,
+      processId: 1,
+      mode: "host",
+      lastViewedAt: 0,
+    });
+    const request = {
+      appId: 42,
+      output: createOutput(),
+      mode: "host" as const,
+      originalUrl: "http://localhost:3000",
+    };
+    const first = ensureProxyForRunningApp(request);
+    await vi.waitFor(() => expect(ready).toBeDefined());
+    const second = ensureProxyForRunningApp({
+      ...request,
+      originalUrl: "http://localhost:3001",
+    });
+    const duplicate = ensureProxyForRunningApp({
+      ...request,
+      originalUrl: "http://localhost:3001",
+    });
+    ready("http://app-42.localhost:42142");
+    await Promise.all([first, second, duplicate]);
+    expect(startProxyMock).toHaveBeenCalledTimes(2);
+    expect(terminate).toHaveBeenCalledOnce();
+    expect(runningApps.get(42)?.originalUrl).toBe("http://localhost:3001");
+  });
+
+  it("terminates a worker when readiness is cancelled, then allows a fresh lifecycle", async () => {
+    const terminate = vi.fn();
+    startProxyMock.mockImplementationOnce(async () => ({ terminate }));
+    const controller = new AbortController();
+    const info = {
+      process: null,
+      processId: 1,
+      mode: "host" as const,
+      lastViewedAt: 0,
+      previewAbortSignal: controller.signal,
+    };
+    runningApps.set(42, info);
+    const request = {
+      appId: 42,
+      output: createOutput(),
+      mode: "host" as const,
+      originalUrl: "http://localhost:3000",
+    };
+    const startup = ensureProxyForRunningApp(request);
+    await vi.waitFor(() => expect(startProxyMock).toHaveBeenCalledOnce());
+    controller.abort();
+    await startup;
+    expect(terminate).toHaveBeenCalledOnce();
+    expect(runningApps.get(42)?.proxyWorker).toBeUndefined();
+    expect(runningApps.get(42)?.proxyUrl).toBeUndefined();
+  });
+
+  it("waits through proxy regeneration but releases startup admission for Stop", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    runningApps.set(42, {
+      process: null,
+      processId: 1,
+      mode: "host",
+      lastViewedAt: 0,
+      proxyAbortController: controller,
+    });
+    const readiness = appRuntimeService.waitForReady(42, { timeoutMs: 1000 });
+    runningApps.get(42)!.proxyAbortController = new AbortController();
+    runningApps.get(42)!.proxyUrl = "http://app-42.localhost:42142";
+    await expect(readiness).resolves.toBeUndefined();
+    runningApps.get(42)!.proxyUrl = undefined;
+    runningApps.get(42)!.stopRequested = true;
+    await expect(appRuntimeService.waitForReady(42)).resolves.toBeUndefined();
+  });
+
   it("discards a late proxy callback from a replaced process", async () => {
+    const terminate = vi.fn();
     let onStarted: ((proxyUrl: string) => void) | undefined;
     startProxyMock.mockImplementation(async (_originalUrl, opts) => {
       onStarted = opts.onStarted;
-      return { terminate: vi.fn() };
+      return { terminate };
     });
     const oldRef = {
       kind: "app-run",
@@ -1565,6 +1648,7 @@ describe("executeApp", () => {
 
     onStarted?.("http://app-42.localhost:42142");
     await startup;
+    expect(terminate).toHaveBeenCalledOnce();
 
     expect(safeSendMock).not.toHaveBeenCalledWith(
       event.sender,

@@ -433,7 +433,9 @@
       "proFeatureTitle": "标注器是 Pro 功能",
       "proFeatureDescription": "解锁截图标注功能，使用 Dyad Pro 提升您的工作流程。",
       "getDyadPro": "获取 Dyad Pro"
-    }
+    },
+    "openDevServer": "打开开发服务器地址",
+    "openDevServerDescription": "适用于无法打开预览地址的浏览器。与其他 localhost 应用共享浏览器存储。"
   },
   "integrations": {
     "github": {
@@ -675,7 +677,8 @@
       "redeploySucceededWithPruning_other": "已重新部署 {{count}} 个边缘函数，并移除仅存在于远程的函数：{{functions}}",
       "redeployPrunedOnly": "已移除仅存在于远程的边缘函数：{{functions}}",
       "noFunctionsToRedeploy": "未找到可重新部署的本地边缘函数",
-      "redeployFailed": "边缘函数重新部署完成，但出现问题：{{error}}"
+      "redeployFailed": "边缘函数重新部署完成，但出现问题：{{error}}",
+      "previewRedirectNotice": "Dyad 会自动将本地预览 URL 添加到 {{project}} 的 Auth 重定向允许列表。由于团队成员可能使用相同的 URL，断开连接或删除应用后，这些条目仍会保留。请在 Supabase → Authentication → URL Configuration 中删除不再使用的条目。"
     },
     "neon": {
       "title": "Neon 集成",
@@ -831,5 +834,10 @@
       "neonUnavailable": "Neon 不可用，因为已连接 Supabase 项目。一次只能激活一个数据库集成。",
       "chooseOne": "请选择一个数据库集成。连接 Supabase 或 Neon 中任一个，将锁定本应用的另一个集成。"
     }
+  },
+  "previewAuth": {
+    "neonPending": "正在后台向 Neon 注册此应用的预览地址。注册完成前，OAuth 登录和身份验证重定向可能无法正常工作。",
+    "supabasePending": "正在后台向 Supabase 注册此应用的预览重定向 URL。注册完成前，身份验证重定向可能无法正常工作。",
+    "retry": "重启并重试"
   }
 }

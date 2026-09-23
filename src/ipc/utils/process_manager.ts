@@ -53,6 +53,8 @@ export interface RunningAppInfo {
   };
   proxyStartup?: Promise<void>;
   proxyStartupError?: Error;
+  /** Releases a pending readiness wait for a queued, intentional Stop. */
+  stopRequested?: boolean;
   proxyAbortController?: AbortController;
   previewAbortSignal?: AbortSignal;
   /**
@@ -240,6 +242,16 @@ export async function stopAppByInfo(
     appInfo.cloudLogAbortController = undefined;
     unregisterRunningCloudSandbox({ appId });
     runningApps.delete(appId);
+  } catch (error) {
+    // A failed cloud teardown retains the running app. Drain the cancelled
+    // startup before allowing later URL output/restart to rebuild its proxy.
+    await appInfo.proxyStartup;
+    if (runningApps.get(appId) === appInfo) {
+      appInfo.proxyAbortController = new AbortController();
+      appInfo.previewAuthRegistration = undefined;
+      appInfo.proxyStartupError = undefined;
+    }
+    throw error;
   } finally {
     // The marker only has to outlive the kill, whose `close` listener runs
     // inside the await above. Left latched on a stop that threw, it would sit

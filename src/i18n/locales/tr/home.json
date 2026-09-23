@@ -409,7 +409,9 @@
       "proFeatureTitle": "Açıklayıcı bir Pro Özelliğidir",
       "proFeatureDescription": "Dyad Pro ile ekran görüntülerine açıklama ekleme yeteneğinin kilidini açın ve iş akışınızı geliştirin.",
       "getDyadPro": "Dyad Pro'yu Edinin"
-    }
+    },
+    "openDevServer": "Geliştirme sunucusu adresini aç",
+    "openDevServerDescription": "Önizleme adresini açamayan tarayıcılar içindir. Tarayıcı depolamasını diğer localhost uygulamalarıyla paylaşır."
   },
   "integrations": {
     "github": {
@@ -656,7 +658,8 @@
       "redeploySucceededWithPruning_other": "{{count}} edge işlevi yeniden dağıtıldı ve yalnızca uzak olan işlevler kaldırıldı: {{functions}}",
       "redeployPrunedOnly": "Yalnızca uzak olan edge işlevleri kaldırıldı: {{functions}}",
       "noFunctionsToRedeploy": "Yeniden dağıtılacak yerel edge işlevi bulunamadı",
-      "redeployFailed": "Edge işlevi yeniden dağıtımı sorunlarla tamamlandı: {{error}}"
+      "redeployFailed": "Edge işlevi yeniden dağıtımı sorunlarla tamamlandı: {{error}}",
+      "previewRedirectNotice": "Dyad, yerel önizleme URL'lerini {{project}} projesinin Auth yönlendirme izin listesine otomatik olarak ekler. Ekip arkadaşları aynı URL'leri kullanabileceğinden uygulamanın bağlantısı kesildikten veya uygulama silindikten sonra bu kayıtlar korunur. Kullanılmayan kayıtları Supabase → Authentication → URL Configuration bölümünden kaldırın."
     },
     "neon": {
       "title": "Neon Entegrasyonu",
@@ -844,5 +847,10 @@
       "neonUnavailable": "Supabase projesi zaten bağlı olduğundan Neon kullanılamıyor. Aynı anda yalnızca bir veritabanı entegrasyonu etkin olabilir.",
       "chooseOne": "Bir veritabanı entegrasyonu seçin. Supabase veya Neon'dan birini bağlamak, bu uygulama için diğerini devre dışı bırakır."
     }
+  },
+  "previewAuth": {
+    "neonPending": "Bu uygulamanın önizleme adresi arka planda Neon'a kaydediliyor. Kayıt tamamlanana kadar OAuth oturum açma ve kimlik doğrulama yönlendirmeleri çalışmayabilir.",
+    "supabasePending": "Bu uygulamanın önizleme yönlendirme URL'leri arka planda Supabase'e kaydediliyor. Kayıt tamamlanana kadar kimlik doğrulama yönlendirmeleri çalışmayabilir.",
+    "retry": "Yeniden başlat ve tekrar dene"
   }
 }

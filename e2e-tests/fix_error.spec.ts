@@ -4,10 +4,12 @@ import { expect } from "@playwright/test";
 testSkipIfWindows("fix error with AI", async ({ po }) => {
   await po.setUp({ autoApprove: true });
   await po.sendPrompt("tc=create-error");
+  await po.previewPanel.expectPreviewIframeIsVisible(Timeout.EXTRA_LONG);
 
-  await po.previewPanel.snapshotPreviewErrorBanner({
-    name: "fix-error-with-AI-1.aria.yml",
-  });
+  await po.snapshotStableAria(
+    po.previewPanel.locatePreviewErrorBanner(),
+    "fix-error-with-AI-1.aria.yml",
+  );
 
   await po.previewPanel.collapsePreviewErrorBanner();
   await expect(po.previewPanel.locatePreviewErrorBanner()).toBeVisible();
@@ -20,9 +22,10 @@ testSkipIfWindows("fix error with AI", async ({ po }) => {
     timeout: Timeout.MEDIUM,
   });
   await po.page.getByRole("button", { name: "Show details" }).click();
-  await po.previewPanel.snapshotPreviewErrorBanner({
-    name: "fix-error-with-AI-2.aria.yml",
-  });
+  await po.snapshotStableAria(
+    po.previewPanel.locatePreviewErrorBanner(),
+    "fix-error-with-AI-2.aria.yml",
+  );
 
   await po.previewPanel.clickFixErrorWithAI();
   await po.chatActions.waitForChatCompletion();

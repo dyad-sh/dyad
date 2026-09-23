@@ -292,6 +292,11 @@ function emitPnpmMinimumReleaseAgeWarning({
 interface PreviewAuthContext {
   target: PreviewAuthTarget | null;
   status?: PreviewAuthStatus;
+}
+
+interface PreviewAuthOptions {
+  isNeon: boolean;
+  neonAuthTarget?: NeonPreviewTarget | null;
   signal?: AbortSignal;
 }
 
@@ -323,6 +328,38 @@ async function resolvePreviewAuthContext(
   return previewAuth;
 }
 
+async function initializeRunningPreviewAuth(
+  appId: number,
+  appInfo: RunningAppInfo,
+  options: PreviewAuthOptions,
+): Promise<void> {
+  // Publish the runtime before reading the association, so provider changes
+  // can reconcile it even during this lookup. Neon configuration is protected
+  // by the caller's runtime-config claim; Supabase is a single DB snapshot.
+  // Do not acquire provider admission inside the runtime operation: a queued
+  // provider writer may itself be waiting for our runtime-config claim.
+  const targetRevision = appInfo.previewAuthTargetRevision;
+  const authPreview = await resolvePreviewAuthContext(
+    appId,
+    options.isNeon,
+    options.neonAuthTarget,
+  );
+  if (
+    runningApps.get(appId) !== appInfo ||
+    appInfo.previewAuthTargetRevision !== targetRevision ||
+    appInfo.proxyAbortController?.signal.aborted ||
+    options.signal?.aborted
+  )
+    return;
+  // The dev server can publish its URL while the lookup is pending.
+  await reconcileRunningPreviewAuth(
+    appId,
+    authPreview.target,
+    undefined,
+    authPreview.status,
+  );
+}
+
 export async function executeApp({
   neonAuthTarget,
   previewAbortSignal,
@@ -344,14 +381,13 @@ export async function executeApp({
   startCommand?: string | null;
   invocationRef?: AppRunInvocationRef;
 }): Promise<void> {
-  const authPreview = await resolvePreviewAuthContext(
-    appId,
+  const previewAuthOptions: PreviewAuthOptions = {
     isNeon,
     neonAuthTarget,
-  );
+    signal: previewAbortSignal,
+  };
   const settings = readSettings();
   previewAbortSignal?.throwIfAborted();
-  authPreview.signal = previewAbortSignal;
   const runtimeMode = settings.runtimeMode2 ?? "host";
 
   if (runtimeMode === "docker") {
@@ -363,7 +399,7 @@ export async function executeApp({
       installCommand,
       startCommand,
       invocationRef,
-      authPreview,
+      previewAuthOptions,
     });
   } else if (runtimeMode === "cloud") {
     await executeAppInCloud({
@@ -373,7 +409,7 @@ export async function executeApp({
       installCommand,
       startCommand,
       invocationRef,
-      authPreview,
+      previewAuthOptions,
     });
   } else {
     notifyPnpmVersionMigrationAvailable({ appPath, appId, output });
@@ -385,7 +421,7 @@ export async function executeApp({
       installCommand,
       startCommand,
       invocationRef,
-      authPreview,
+      previewAuthOptions,
     });
   }
 }
@@ -482,11 +518,17 @@ async function reconcileRunningPreviewAuth(
   appId: number,
   target?: PreviewAuthTarget | null,
   outputOverride?: AppRuntimeOutput,
+  initialStatus?: PreviewAuthStatus,
 ): Promise<void> {
   const appInfo = runningApps.get(appId);
   if (!appInfo) return;
-  if (target !== undefined) appInfo.previewAuthTarget = target;
-  if (target === null) appInfo.previewAuth = undefined;
+  if (target !== undefined) {
+    appInfo.previewAuthTarget = target;
+    appInfo.previewAuthTargetRevision =
+      (appInfo.previewAuthTargetRevision ?? 0) + 1;
+    if (target === null || initialStatus !== undefined)
+      appInfo.previewAuth = initialStatus;
+  }
   if (!appInfo.proxyUrl) return;
   const output = outputOverride ?? appInfo.output;
   await registerPreviewOrigin(appId, appInfo, appInfo.proxyUrl, target, output);
@@ -562,10 +604,10 @@ async function registerPreviewOrigin(
     samePreviewAuthTarget(appInfo.previewAuthTarget, target) &&
     !signal.aborted;
 
-  // Startup/provider admission captures an immutable target. Ownership of this
-  // additive remote mutation then belongs to the runtime: stop drains it, and
-  // branch reconciliation cancels and drains the previous registration. Never
-  // reread mutable provider configuration from the background continuation.
+  // Startup or provider reconciliation captures an immutable target. Ownership
+  // of this additive remote mutation then belongs to the runtime: stop drains
+  // it, and branch reconciliation cancels and drains the previous registration.
+  // Never reread mutable provider configuration from the background continuation.
   appInfo.previewAuthRegistration = registration;
   appInfo.previewAuth = { provider: target.provider, state: "pending" };
   registration.settled = Promise.resolve()
@@ -771,7 +813,7 @@ export async function ensureProxyForRunningApp({
 }
 
 async function executeAppLocalNode({
-  authPreview,
+  previewAuthOptions,
   appPath,
   appId,
   output,
@@ -781,7 +823,7 @@ async function executeAppLocalNode({
   invocationRef,
   ignoredBuildsSelfHealAttempted = false,
 }: {
-  authPreview: PreviewAuthContext;
+  previewAuthOptions: PreviewAuthOptions;
   appPath: string;
   appId: number;
   output: AppRuntimeOutput;
@@ -856,18 +898,17 @@ Details: ${details || "n/a"}
   }
 
   const currentProcessId = processCounter.increment();
-  runningApps.set(appId, {
+  const appInfo: RunningAppInfo = {
     proxyAbortController: new AbortController(),
-    previewAbortSignal: authPreview.signal,
-    previewAuthTarget: authPreview.target,
-    previewAuth: authPreview.status,
+    previewAbortSignal: previewAuthOptions.signal,
     process: spawnedProcess,
     processId: currentProcessId,
     invocationRef,
     mode: "host",
     output,
     lastViewedAt: Date.now(),
-  });
+  };
+  runningApps.set(appId, appInfo);
 
   listenToProcess({
     process: spawnedProcess,
@@ -906,12 +947,13 @@ Details: ${details || "n/a"}
               startCommand,
               invocationRef,
               ignoredBuildsSelfHealAttempted: true,
-              authPreview,
+              previewAuthOptions,
             });
             return true;
           }
         : undefined,
   });
+  await initializeRunningPreviewAuth(appId, appInfo, previewAuthOptions);
 }
 
 let cloudSandboxSyncUpdateListenerRegistered = false;
@@ -1213,7 +1255,7 @@ async function selfHealDeniedPnpmBuilds({
 }
 
 async function executeAppInDocker({
-  authPreview,
+  previewAuthOptions,
   appPath,
   appId,
   output,
@@ -1223,7 +1265,7 @@ async function executeAppInDocker({
   invocationRef,
   ignoredBuildsSelfHealAttempted = false,
 }: {
-  authPreview: PreviewAuthContext;
+  previewAuthOptions: PreviewAuthOptions;
   appPath: string;
   appId: number;
   output: AppRuntimeOutput;
@@ -1399,11 +1441,9 @@ ${errorOutput || "(empty)"}`,
   }
 
   const currentProcessId = processCounter.increment();
-  runningApps.set(appId, {
+  const appInfo: RunningAppInfo = {
     proxyAbortController: new AbortController(),
-    previewAbortSignal: authPreview.signal,
-    previewAuthTarget: authPreview.target,
-    previewAuth: authPreview.status,
+    previewAbortSignal: previewAuthOptions.signal,
     process,
     processId: currentProcessId,
     invocationRef,
@@ -1411,7 +1451,8 @@ ${errorOutput || "(empty)"}`,
     output,
     containerName,
     lastViewedAt: Date.now(),
-  });
+  };
+  runningApps.set(appId, appInfo);
 
   // Mirrors the host path: custom `install && start` chains run strict pnpm
   // inside the container, so an ERR_PNPM_IGNORED_BUILDS exit needs the same
@@ -1454,16 +1495,17 @@ ${errorOutput || "(empty)"}`,
               startCommand,
               invocationRef,
               ignoredBuildsSelfHealAttempted: true,
-              authPreview,
+              previewAuthOptions,
             });
             return true;
           }
         : undefined,
   });
+  await initializeRunningPreviewAuth(appId, appInfo, previewAuthOptions);
 }
 
 async function executeAppInCloud({
-  authPreview,
+  previewAuthOptions,
   appPath,
   appId,
   output,
@@ -1471,7 +1513,7 @@ async function executeAppInCloud({
   startCommand,
   invocationRef,
 }: {
-  authPreview: PreviewAuthContext;
+  previewAuthOptions: PreviewAuthOptions;
   appPath: string;
   appId: number;
   output: AppRuntimeOutput;
@@ -1526,11 +1568,9 @@ async function executeAppInCloud({
   }
 
   const cloudLogAbortController = new AbortController();
-  runningApps.set(appId, {
+  const appInfo: RunningAppInfo = {
     proxyAbortController: new AbortController(),
-    previewAbortSignal: authPreview.signal,
-    previewAuthTarget: authPreview.target,
-    previewAuth: authPreview.status,
+    previewAbortSignal: previewAuthOptions.signal,
     process: null,
     processId: currentProcessId,
     invocationRef,
@@ -1542,7 +1582,8 @@ async function executeAppInCloud({
     cloudLogAbortController,
     lastViewedAt: Date.now(),
     originalUrl: resolvedPreviewUrl,
-  });
+  };
+  runningApps.set(appId, appInfo);
   registerRunningCloudSandbox({
     appId,
     appPath,
@@ -1553,6 +1594,7 @@ async function executeAppInCloud({
   // raced that upload cannot leave the new preview permanently stale.
   queueCloudSandboxSnapshotSync({ appId, fullSync: true, immediate: true });
 
+  await initializeRunningPreviewAuth(appId, appInfo, previewAuthOptions);
   await ensureProxyForRunningApp({
     appId,
     output,
@@ -1798,7 +1840,9 @@ export function getAppRuntimeOperationResources(
 ): AppOperationRequest["resources"] {
   if (lifecycle === "stop") return ["runtime"];
 
-  // Start, restart, and rebuild intentionally omit repository admission.
+  // Start, restart, and rebuild omit repository and provider admission.
+  // Provider-only writers (including chat's Supabase function reconciliation)
+  // remain admitted; auth target capture yields to newer provider changes.
   // Repository-only writers (checkpoints, commit/discard, branch operations,
   // and agent/test writes) may therefore interleave throughout install and
   // readiness. Preview-generated tracked changes may be checkpointed
@@ -1813,7 +1857,6 @@ export function getAppRuntimeOperationResources(
     readAppResource("app-path"),
     "runtime",
     readAppResource("runtime-config"),
-    "provider",
   ];
 }
 
@@ -1991,7 +2034,7 @@ export class AppRuntimeService {
 
   async stop(appId: number): Promise<void> {
     // Cancellation must reach pending credential/API waits before waiting for
-    // the startup operation to release its runtime/provider claims.
+    // the startup operation to release its runtime claims.
     this.dependencies.getRunningApp(appId)?.proxyAbortController?.abort();
     logger.log(
       `Attempting to stop app ${appId}. Current running apps: ${runningApps.size}`,
@@ -2212,12 +2255,9 @@ export class AppRuntimeService {
     invocationRef?: AppRunInvocationRef;
     appInfo: RunningAppInfo;
   }): Promise<void> {
-    const authPreview = await resolvePreviewAuthContext(
-      input.appId,
-      input.isNeon,
-    );
-    input.appInfo.previewAuthTarget = authPreview.target;
-    input.appInfo.previewAuth = authPreview.status;
+    await initializeRunningPreviewAuth(input.appId, input.appInfo, {
+      isNeon: input.isNeon,
+    });
     const sandboxId = input.appInfo.cloudSandboxId!;
     input.appInfo.cloudLogAbortController?.abort();
     const result = await this.dependencies.restartSandbox(sandboxId);

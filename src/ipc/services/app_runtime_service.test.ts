@@ -1,4 +1,7 @@
-import { neonPreviewDomainService } from "./neon_preview_domain_service";
+import {
+  neonPreviewDomainService,
+  resolveNeonPreviewTarget,
+} from "./neon_preview_domain_service";
 import {
   ensureSupabasePreviewRedirects,
   resolveSupabasePreviewTarget,
@@ -197,6 +200,14 @@ class FakeChildProcess extends EventEmitter {
   }
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
 function createEvent(): Electron.IpcMainInvokeEvent {
   const sender = {
     isDestroyed: () => false,
@@ -313,6 +324,7 @@ describe("executeApp", () => {
     vi.mocked(neonPreviewDomainService.ensureTrustedDomain)
       .mockReset()
       .mockResolvedValue(undefined);
+    vi.mocked(resolveNeonPreviewTarget).mockReset().mockResolvedValue(null);
     vi.mocked(resolveSupabasePreviewTarget).mockReset().mockResolvedValue(null);
     vi.mocked(ensureSupabasePreviewRedirects)
       .mockReset()
@@ -1241,10 +1253,13 @@ describe("executeApp", () => {
     },
   );
 
-  it("captures the Supabase association before starting the runtime", async () => {
-    vi.mocked(resolveSupabasePreviewTarget).mockResolvedValueOnce({
-      projectId: "branch-ref",
-      organizationSlug: "org",
+  it("captures the Supabase association after publishing the runtime", async () => {
+    vi.mocked(resolveSupabasePreviewTarget).mockImplementationOnce(async () => {
+      expect(runningApps.get(42)?.process).toBeDefined();
+      return {
+        projectId: "branch-ref",
+        organizationSlug: "org",
+      };
     });
     spawnMock.mockReturnValueOnce(new FakeChildProcess(123));
     await executeApp({
@@ -1257,6 +1272,179 @@ describe("executeApp", () => {
       provider: "supabase",
       projectId: "branch-ref",
       organizationSlug: "org",
+    });
+  });
+
+  it("captures a provider switch that completes during cloud setup", async () => {
+    const upload =
+      deferred<Awaited<ReturnType<typeof uploadCloudSandboxFiles>>>();
+    const oldTarget = { projectId: "old-project", organizationSlug: "org" };
+    const nextTarget = { projectId: "new-project", organizationSlug: "org" };
+    vi.mocked(resolveSupabasePreviewTarget).mockResolvedValue(oldTarget);
+    readSettingsMock.mockReturnValue({ runtimeMode2: "cloud" });
+    vi.mocked(createCloudSandbox).mockResolvedValueOnce({
+      sandboxId: "sb-1",
+      previewUrl: "https://preview.example.test",
+      previewAuthToken: "preview-token",
+    });
+    vi.mocked(buildCloudSandboxFileMap).mockResolvedValueOnce({});
+    vi.mocked(uploadCloudSandboxFiles)
+      .mockClear()
+      .mockReturnValueOnce(upload.promise);
+    const startup = executeApp({
+      appPath: "/tmp/cloud-app",
+      appId: 42,
+      output: createOutput(),
+      isNeon: false,
+    });
+    try {
+      await vi.waitFor(() =>
+        expect(uploadCloudSandboxFiles).toHaveBeenCalled(),
+      );
+      expect(runningApps.has(42)).toBe(false);
+      vi.mocked(resolveSupabasePreviewTarget).mockResolvedValue(nextTarget);
+      await reconcileRunningSupabasePreview(42);
+    } finally {
+      upload.resolve({});
+      await startup;
+    }
+    expect(runningApps.get(42)?.previewAuthTarget).toEqual({
+      provider: "supabase",
+      ...nextTarget,
+    });
+    await runningApps.get(42)?.previewAuthRegistration?.settled;
+    expect(ensureSupabasePreviewRedirects).toHaveBeenCalledWith(
+      expect.objectContaining({
+        target: { provider: "supabase", ...nextTarget },
+      }),
+    );
+  });
+
+  it.each(["switch", "disconnect", "replacement"] as const)(
+    "ignores a late startup target lookup after a provider %s",
+    async (change) => {
+      const lookup = deferred<{
+        projectId: string;
+        organizationSlug: string;
+      }>();
+      vi.mocked(resolveSupabasePreviewTarget).mockReturnValueOnce(
+        lookup.promise,
+      );
+      spawnMock.mockReturnValueOnce(new FakeChildProcess(123));
+      const output = createOutput();
+      const startup = executeApp({
+        appPath: "/tmp/app",
+        appId: 42,
+        output,
+        isNeon: false,
+      });
+      const nextTarget =
+        change === "switch"
+          ? { projectId: "new-project", organizationSlug: "org" }
+          : null;
+      try {
+        await vi.waitFor(() =>
+          expect(resolveSupabasePreviewTarget).toHaveBeenCalledOnce(),
+        );
+        expect(runningApps.has(42)).toBe(true);
+        if (change === "replacement") {
+          runningApps.set(42, {
+            process: null,
+            processId: 99,
+            mode: "host",
+            lastViewedAt: 0,
+          });
+        } else {
+          vi.mocked(resolveSupabasePreviewTarget).mockResolvedValueOnce(
+            nextTarget,
+          );
+          await reconcileRunningSupabasePreview(42);
+        }
+      } finally {
+        lookup.resolve({ projectId: "old-project", organizationSlug: "org" });
+        await startup;
+      }
+      expect(runningApps.get(42)?.previewAuthTarget).toEqual(
+        nextTarget
+          ? { provider: "supabase", ...nextTarget }
+          : change === "replacement"
+            ? undefined
+            : null,
+      );
+      await ensureProxyForRunningApp({
+        appId: 42,
+        output,
+        originalUrl: "http://localhost:32142",
+        mode: "host",
+      });
+      await runningApps.get(42)?.previewAuthRegistration?.settled;
+      if (nextTarget) {
+        expect(ensureSupabasePreviewRedirects).toHaveBeenCalledExactlyOnceWith(
+          expect.objectContaining({
+            target: { provider: "supabase", ...nextTarget },
+          }),
+        );
+      } else {
+        expect(ensureSupabasePreviewRedirects).not.toHaveBeenCalled();
+      }
+    },
+  );
+
+  it("registers the target when the proxy becomes ready during its lookup", async () => {
+    const lookup = deferred<{
+      projectId: string;
+      organizationSlug: string;
+    }>();
+    vi.mocked(resolveSupabasePreviewTarget).mockReturnValueOnce(lookup.promise);
+    spawnMock.mockReturnValueOnce(new FakeChildProcess(123));
+    const output = createOutput();
+    const startup = executeApp({
+      appPath: "/tmp/app",
+      appId: 42,
+      output,
+      isNeon: false,
+    });
+    try {
+      await vi.waitFor(() =>
+        expect(resolveSupabasePreviewTarget).toHaveBeenCalledOnce(),
+      );
+      await ensureProxyForRunningApp({
+        appId: 42,
+        output,
+        originalUrl: "http://localhost:32142",
+        mode: "host",
+      });
+      expect(ensureSupabasePreviewRedirects).not.toHaveBeenCalled();
+    } finally {
+      lookup.resolve({ projectId: "project", organizationSlug: "org" });
+      await startup;
+    }
+    await runningApps.get(42)?.previewAuthRegistration?.settled;
+    expect(ensureSupabasePreviewRedirects).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        target: {
+          provider: "supabase",
+          projectId: "project",
+          organizationSlug: "org",
+        },
+      }),
+    );
+  });
+
+  it("preserves an isolated Neon target without resolving the app's active branch", async () => {
+    spawnMock.mockReturnValueOnce(new FakeChildProcess(123));
+    await executeApp({
+      appPath: "/tmp/app",
+      appId: 42,
+      output: createOutput(),
+      isNeon: true,
+      neonAuthTarget: { projectId: "project", branchId: "test-branch" },
+    });
+    expect(resolveNeonPreviewTarget).not.toHaveBeenCalled();
+    expect(runningApps.get(42)?.previewAuthTarget).toEqual({
+      provider: "neon",
+      projectId: "project",
+      branchId: "test-branch",
     });
   });
 

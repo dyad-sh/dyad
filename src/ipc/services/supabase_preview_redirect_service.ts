@@ -11,7 +11,7 @@ export interface SupabasePreviewTarget {
   organizationSlug: string | null;
 }
 
-/** Caller holds provider admission through startup or project association. */
+/** Single DB snapshot; startup must yield to newer provider reconciliation. */
 export async function resolveSupabasePreviewTarget(
   appId: number,
 ): Promise<SupabasePreviewTarget | null> {

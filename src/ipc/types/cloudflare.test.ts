@@ -20,7 +20,16 @@ describe("cloudflare contract invalidations", () => {
   it("refreshes the app record when a Worker is connected", () => {
     const scopes = cloudflareContracts.connectWorker.invalidates!(
       connectInput,
-      { status: "connected" } as never,
+      {
+        status: "connected",
+        connection: {
+          rootDirectory: "",
+          accountId: connectInput.accountId,
+          workerName: "demo",
+          workerUrl: "https://demo.acme.workers.dev",
+          dashboardUrl: "https://dash.cloudflare.com/demo",
+        },
+      },
     );
     expect(scopes).toEqual([appScope]);
   });

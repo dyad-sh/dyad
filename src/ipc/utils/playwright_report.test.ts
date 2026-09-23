@@ -137,6 +137,22 @@ describe("parsePlaywrightReport", () => {
     expect(result.file).toBe("tests/a.spec.ts");
   });
 
+  it.each(["a.spec.ts", "nested/a.spec.ts", "/apps/my-app/tests/a.spec.ts"])(
+    "resolves report paths against config.rootDir: %s",
+    (file) => {
+      const report: PwReport = {
+        config: { rootDir: "/apps/my-app/tests" },
+        suites: specResult(file, "passed"),
+      };
+      const [result] = parsePlaywrightReport(report, appPath);
+      expect(result.file).toBe(
+        file.startsWith("nested/")
+          ? "tests/nested/a.spec.ts"
+          : "tests/a.spec.ts",
+      );
+    },
+  );
+
   it("aggregates a file with both assertion and infra failures as failed", () => {
     const report: PwReport = {
       suites: [

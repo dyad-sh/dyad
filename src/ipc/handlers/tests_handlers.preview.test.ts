@@ -141,7 +141,7 @@ describe("selected file batches", () => {
     "e2e-tests/nested/e2e-tests/b.spec.ts",
   ];
 
-  function mockReports(casesInSecondFile = 1) {
+  function mockReports(casesInSecondFile = 1, includeSkipped = false) {
     h.spawnStreaming.mockImplementation(async (options) => {
       const selectors = (options.args as string[]).filter((arg) =>
         arg.startsWith("^"),
@@ -162,24 +162,33 @@ describe("selected file batches", () => {
           config: { rootDir: path.join(APP_PATH, "e2e-tests") },
           suites: files.map((file) => ({
             title: file,
-            file: options.args.includes("--list")
-              ? file.slice("e2e-tests/".length)
-              : path.resolve(APP_PATH, file),
-            specs: Array.from(
-              { length: file === selected[1] ? casesInSecondFile : 1 },
-              (_, index) => ({
-                title: `checks login ${index}`,
-                line: 3 + index * 4,
-                tests: options.args.includes("--list")
-                  ? [{ expectedStatus: "passed" }]
-                  : [
-                      {
-                        status: "expected",
-                        results: [{ status: "passed", duration: 10 }],
-                      },
-                    ],
-              }),
-            ).filter(
+            file: file.slice("e2e-tests/".length),
+            specs: [
+              ...(includeSkipped && file === selected[0]
+                ? [
+                    {
+                      title: "disabled case",
+                      line: 1,
+                      tests: [{ expectedStatus: "skipped" }],
+                    },
+                  ]
+                : []),
+              ...Array.from(
+                { length: file === selected[1] ? casesInSecondFile : 1 },
+                (_, index) => ({
+                  title: `checks login ${index}`,
+                  line: 3 + index * 4,
+                  tests: options.args.includes("--list")
+                    ? [{ expectedStatus: "passed" }]
+                    : [
+                        {
+                          status: "expected",
+                          results: [{ status: "passed", duration: 10 }],
+                        },
+                      ],
+                }),
+              ),
+            ].filter(
               (spec) =>
                 options.args.includes("--list") ||
                 !selectors.some((selector) => /:\d+$/.test(selector)) ||
@@ -308,6 +317,27 @@ describe("selected file batches", () => {
       expect(result.results[1].tests).toHaveLength(1);
     },
   );
+
+  it("keeps skipped and executed cases in one preview file result", async () => {
+    mockReports(1, true);
+    const result = await runAppTestsCore({
+      appId: 1,
+      testFiles: selected,
+      previewCdpEndpoint: CDP_ENDPOINT,
+      rotatePreviewView: vi.fn().mockResolvedValue(undefined),
+    });
+
+    expect(result.infraError).toBeUndefined();
+    expect(result.results.map((result) => result.file)).toEqual(selected);
+    expect(result.results[0].tests).toEqual([
+      expect.objectContaining({
+        title: "disabled case",
+        status: "inconclusive",
+      }),
+      expect.objectContaining({ title: "checks login 0", status: "passed" }),
+    ]);
+    expect(h.spawnStreaming).toHaveBeenCalledTimes(3);
+  });
 
   it.each([
     { testFiles: [] },

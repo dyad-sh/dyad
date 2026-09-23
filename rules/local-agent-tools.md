@@ -181,6 +181,7 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 
 ## User-visible tool output
 
+- For terminal-output tools such as `run_tests`, include preflight warnings in the single final `onXmlComplete` card. Multiple completions overwrite the tool activity's XML or append duplicate fallback cards; test both the final card and model-visible return value.
 - Treat model-generated code as untrusted executable input whenever its prompt
   contains app-, tool-, or user-controlled text. Model provenance plus a
   one-statement/shape check is not a security boundary: before writing or

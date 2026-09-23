@@ -286,6 +286,10 @@ describe("runTestsTool", () => {
         );
         expect(out).toContain(unsupported);
         expect(out).toContain("Rename these files");
+        expect(ctx.onXmlComplete).toHaveBeenCalledTimes(1);
+        expect(vi.mocked(ctx.onXmlComplete).mock.calls[0][0]).toContain(
+          unsupported,
+        );
         if (selection === "whole suite") {
           expect(out).toContain("Unsupported spec paths skipped");
           expect(out).toContain(`${a}: passed`);
@@ -298,6 +302,110 @@ describe("runTestsTool", () => {
           expect(ctx.testRunAttempts.size).toBe(0);
           expect(out).not.toContain(`- ${unsupported}`);
         }
+      },
+    );
+
+    it.each(["valid", "missing", "unsupported"])(
+      "does not warn about unrelated unsupported paths in an explicit %s selection",
+      async (selection) => {
+        const unrelated = "e2e-tests/unrelated:mobile.spec.ts";
+        const requested = "e2e-tests/selected:mobile.spec.ts";
+        vi.mocked(normalizeRunTestFile).mockImplementation((file) =>
+          file.includes(":") ? null : file,
+        );
+        specLister.mockResolvedValue([a, unrelated, requested]);
+        const ctx = makeCtx();
+        const out = await runTestsTool.execute(
+          {
+            testFiles: [
+              selection === "valid"
+                ? a
+                : selection === "missing"
+                  ? c
+                  : requested,
+            ],
+          },
+          ctx,
+        );
+
+        expect(out).not.toContain(unrelated);
+        expect(emittedXml(ctx)).not.toContain(unrelated);
+        expect(ctx.onXmlComplete).toHaveBeenCalledTimes(1);
+        if (selection === "unsupported") {
+          expect(out).toContain(`Unsupported spec paths: ${requested}`);
+        } else {
+          expect(out).not.toContain("Unsupported spec paths");
+          expect(emittedXml(ctx)).not.toContain("Unsupported spec paths");
+        }
+        if (selection === "valid") {
+          expect(runner).toHaveBeenCalledExactlyOnceWith(
+            expect.objectContaining({ testFiles: [a] }),
+          );
+        } else {
+          expect(runner).not.toHaveBeenCalled();
+        }
+      },
+    );
+
+    it.each([
+      ["passed", "Tests passed"],
+      ["failed", "Tests failed"],
+      ["empty", "some files not verified"],
+      ["infra", "Test run couldn't complete"],
+      ["throw", "Test run couldn't complete"],
+      ["cancel", "Test run couldn't complete"],
+      ["invalid grep", "Invalid grep pattern"],
+      ["attempt limit", "Test batch blocked"],
+      ["turn limit", "Test run limit reached"],
+      ["stopped server", "App isn't running"],
+    ])(
+      "includes a suite selection warning in one final card when %s",
+      async (outcome, title) => {
+        const unsupported = "e2e-tests/checkout:mobile.spec.ts";
+        vi.mocked(normalizeRunTestFile).mockImplementation((file) =>
+          file === unsupported ? null : file,
+        );
+        specLister.mockResolvedValue([a, unsupported]);
+        const ctx = makeCtx();
+        switch (outcome) {
+          case "failed":
+            runner.mockResolvedValue(failResult("checkout broke"));
+            break;
+          case "empty":
+            runner.mockResolvedValue({ appId: 1, results: [] });
+            break;
+          case "infra":
+            runner.mockResolvedValue(infraResult);
+            break;
+          case "throw":
+            runner.mockRejectedValue(new Error("runner unavailable"));
+            break;
+          case "cancel":
+            ctx.abortSignal = AbortSignal.abort();
+            break;
+          case "attempt limit":
+            ctx.testRunAttempts.set(a, { attempts: 4 });
+            break;
+          case "turn limit":
+            ctx.testRunCount = 10;
+            break;
+          case "stopped server":
+            baseUrl.mockReturnValue(null);
+            break;
+        }
+        const out = await runTestsTool.execute(
+          outcome === "invalid grep" ? { grep: "(" } : {},
+          ctx,
+        );
+
+        expect(ctx.onXmlComplete).toHaveBeenCalledTimes(1);
+        const xml = vi.mocked(ctx.onXmlComplete).mock.calls[0][0];
+        expect(xml).toContain(title);
+        const note = `Unsupported spec paths skipped: ${unsupported}`;
+        expect(xml).toContain(note);
+        expect(out).toContain(note);
+        expect(xml.match(/Unsupported spec paths/g)).toHaveLength(1);
+        expect(out.match(/Unsupported spec paths/g)).toHaveLength(1);
       },
     );
 

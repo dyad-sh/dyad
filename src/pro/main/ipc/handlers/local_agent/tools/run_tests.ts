@@ -76,7 +76,9 @@ async function resolveSpecPaths(
   const specs = listedSpecs.filter(
     (file) => normalizeRunTestFile(file) !== null,
   );
-  const unsupported = listedSpecs.filter((file) => !specs.includes(file));
+  const unsupported = (requested ?? listedSpecs).filter(
+    (file) => normalizeRunTestFile(file) === null,
+  );
   const selectionNote =
     unsupported.length > 0
       ? `Unsupported spec paths${requested ? "" : " skipped"}: ${unsupported.join(", ")}. Rename these files to supported paths under e2e-tests/ before running them.`
@@ -186,7 +188,6 @@ async function validateGrep(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const body = `\`${grep}\` isn't a valid regular expression (${message}), so I did NOT start a run — this did NOT count as a fix attempt.\n\nPass a valid regex for \`grep\` (it's matched against test titles, like Playwright's --grep), or omit it to run the whole file.`;
-    completeWarning(ctx, "Invalid grep pattern", body);
     return { error: body };
   }
 
@@ -211,7 +212,6 @@ function guardAttemptLimit(
 function guardTurnRunLimit(ctx: AgentContext): string | null {
   if ((ctx.testRunCount ?? 0) < MAX_RUNS_PER_TURN) return null;
   const body = `Turn-level test run limit reached: you have already started ${MAX_RUNS_PER_TURN} test batches this turn. Stop now and summarize what passed, what still fails, and what you recommend next.`;
-  completeWarning(ctx, "Test run limit reached", body);
   return body;
 }
 
@@ -220,7 +220,6 @@ function guardDevServerRunning(ctx: AgentContext): string | null {
   if (getRunningTestBaseUrl(ctx.appId)) return null;
   const body =
     "The app's dev server isn't running, so the tests can't execute. Ask the user to start the app with the Run button in the preview panel, then call run_tests again. This did NOT count as a fix attempt.";
-  completeWarning(ctx, "App isn't running", body);
   return body;
 }
 
@@ -356,7 +355,6 @@ function reportNoRunnableTests(testFile: string, grep?: string): string {
 
 /** Uncounted; fileEditCountAtLastRun stays as-is so the next run isn't blocked. */
 function reportInfraFailure(
-  ctx: AgentContext,
   outcome: Classification,
   resultsSummary = "",
 ): string {
@@ -368,7 +366,6 @@ function reportInfraFailure(
   ]
     .filter(Boolean)
     .join("\n\n");
-  completeWarning(ctx, "Test run couldn't complete", body);
   return body;
 }
 
@@ -581,15 +578,19 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
     const { testFiles, specs, selectionNote } = resolved;
     const withSelectionNote = (body: string) =>
       [selectionNote, body].filter(Boolean).join("\n\n");
-    if (selectionNote)
-      completeWarning(ctx, "Unsupported test paths", selectionNote);
+    const warn = (title: string, body: string) => {
+      const message = withSelectionNote(body);
+      completeWarning(ctx, title, message);
+      return message;
+    };
     const selections = [];
     for (const testFile of testFiles) {
       const key = specKey(testFile);
       let runTargetKey = WHOLE_FILE;
       if (args.grep) {
         const validated = await validateGrep(ctx, testFile, args.grep);
-        if ("error" in validated) return withSelectionNote(validated.error);
+        if ("error" in validated)
+          return warn("Invalid grep pattern", validated.error);
         runTargetKey = validated.targetKey ?? `grep:${args.grep}`;
       }
       selections.push({ testFile, key, runTargetKey });
@@ -614,14 +615,16 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
     );
     if (refusals.length > 0) {
       const body = `Batch not started; no files ran. Blocked files:\n\n${refusals.join("\n\n")}\n\nSelect only eligible files for the next call.`;
-      completeWarning(ctx, "Test batch blocked", body);
-      return withSelectionNote(body);
+      return warn("Test batch blocked", body);
     }
-    const runBlocked = guardTurnRunLimit(ctx) ?? guardDevServerRunning(ctx);
-    if (runBlocked) return withSelectionNote(runBlocked);
+    const turnLimit = guardTurnRunLimit(ctx);
+    if (turnLimit) return warn("Test run limit reached", turnLimit);
+    const devServerBlocked = guardDevServerRunning(ctx);
+    if (devServerBlocked) return warn("App isn't running", devServerBlocked);
     if (ctx.abortSignal?.aborted) {
-      return withSelectionNote(
-        reportInfraFailure(ctx, {
+      return warn(
+        "Test run couldn't complete",
+        reportInfraFailure({
           kind: "infra",
           passed: 0,
           failed: 0,
@@ -653,8 +656,7 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
       refundFlakeChecks();
       const message = error instanceof Error ? error.message : String(error);
       const body = `Test run could not complete — an unexpected error occurred in the test infrastructure, NOT a test failure, and this did NOT count as a fix attempt.\n\n${message}\n\nFix the environment (or ask the user), then call run_tests again.`;
-      completeWarning(ctx, "Test run couldn't complete", body);
-      return withSelectionNote(body);
+      return warn("Test run couldn't complete", body);
     }
     const resultsByFile = new Map<string, TestResult[]>();
     for (const result of res.results) {
@@ -682,9 +684,9 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
         });
         return `${file}: observed ${observed.passed} passed, ${observed.failed} failed, ${observed.skipped} skipped${results.some((result) => result.incomplete) ? " (file incomplete)" : ""} — not verified`;
       });
-      return withSelectionNote(
+      return warn(
+        "Test run couldn't complete",
         reportInfraFailure(
-          ctx,
           ctx.abortSignal?.aborted
             ? { ...batchOutcome, kind: "infra", message: "Test run stopped." }
             : batchOutcome,
@@ -746,8 +748,8 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
             ? "Matching tests passed"
             : "Tests passed";
     if (unverifiedFiles > 0 && failedFiles === 0)
-      completeWarning(ctx, title, body);
-    else completeStatus(ctx, title, body);
+      completeWarning(ctx, title, withSelectionNote(body));
+    else completeStatus(ctx, title, withSelectionNote(body));
     return withSelectionNote([body, ...agentDetails].join("\n\n"));
   },
 };

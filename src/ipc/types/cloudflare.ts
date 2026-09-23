@@ -195,6 +195,8 @@ export const cloudflareContracts = {
     channel: "cloudflare:connect-worker",
     input: ConnectCloudflareWorkerParamsSchema,
     output: ConnectCloudflareWorkerResultSchema,
+    // The app record carries which destinations it is connected to.
+    invalidates: (input) => [{ family: "app", appId: input.appId }],
   }),
 
   getDeploymentStatus: defineContract({
@@ -207,6 +209,7 @@ export const cloudflareContracts = {
     channel: "cloudflare:disconnect",
     input: CloudflareTargetParamsSchema,
     output: z.void(),
+    invalidates: (input) => [{ family: "app", appId: input.appId }],
   }),
 } as const;
 

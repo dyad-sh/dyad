@@ -200,6 +200,7 @@ export type {
 // App types
 export type {
   App,
+  DeploymentProvidersInUse,
   CreateAppParams,
   CreateAppResult,
   CopyAppParams,

@@ -1324,6 +1324,11 @@ async function handleCloneRepoFromUrl(
           supabaseProjectName: null,
           supabaseOrganizationSlug: null,
           vercelTeamSlug: null,
+          deploymentProvidersInUse: {
+            vercel: false,
+            cloudflare: false,
+            coolify: false,
+          },
         },
         hasAiRules,
         autoUpgradeWarning,

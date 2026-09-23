@@ -41,6 +41,20 @@ export const AppBaseSchema = z.object({
 });
 
 /**
+ * Which publishing destinations the app is connected to in Dyad: a Vercel
+ * project on the app row, or a Cloudflare or Coolify connection row. It says
+ * nothing about whether the deployment is still live on the other side.
+ */
+export const DeploymentProvidersInUseSchema = z.object({
+  vercel: z.boolean(),
+  cloudflare: z.boolean(),
+  coolify: z.boolean(),
+});
+export type DeploymentProvidersInUse = z.infer<
+  typeof DeploymentProvidersInUseSchema
+>;
+
+/**
  * Schema for a full App object as returned from the database with computed fields.
  * Used for getApp which returns the full app with resolved paths and files.
  */
@@ -50,6 +64,7 @@ export const AppSchema = AppBaseSchema.extend({
   supabaseProjectName: z.string().nullable(),
   vercelTeamSlug: z.string().nullable(),
   resolvedPath: z.string().optional(),
+  deploymentProvidersInUse: DeploymentProvidersInUseSchema,
 });
 
 export type App = z.infer<typeof AppSchema>;

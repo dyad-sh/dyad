@@ -3,6 +3,7 @@ import { VercelConnector } from "@/components/VercelConnector";
 import { CoolifyConnector } from "@/components/CoolifyConnector";
 import { CloudflareConnector } from "@/components/CloudflareConnector";
 import { ipc } from "@/ipc/types";
+import type { DeploymentProvidersInUse } from "@/ipc/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSettings } from "@/hooks/useSettings";
@@ -23,6 +24,48 @@ interface AppSummary {
   name: string;
   githubOrg: string | null;
   githubRepo: string | null;
+  deploymentProvidersInUse: DeploymentProvidersInUse;
+}
+
+export type DeploymentTab = "vercel" | "cloudflare" | "own-server";
+
+const PROVIDER_FOR_TAB: Record<DeploymentTab, keyof DeploymentProvidersInUse> =
+  {
+    vercel: "vercel",
+    cloudflare: "cloudflare",
+    "own-server": "coolify",
+  };
+
+/** The tabs on screen, in display order. */
+export function visibleDeploymentTabs({
+  showCloudflare,
+  showOwnServer,
+}: {
+  showCloudflare: boolean;
+  showOwnServer: boolean;
+}): DeploymentTab[] {
+  return [
+    "vercel",
+    ...(showCloudflare ? (["cloudflare"] as const) : []),
+    ...(showOwnServer ? (["own-server"] as const) : []),
+  ];
+}
+
+/**
+ * The tab the card opens on: the first one, in display order, whose
+ * destination this app is connected to, or the first tab when it is
+ * connected to none of them.
+ *
+ * Only tabs on screen are candidates, so a destination the user has not
+ * turned on cannot be chosen even when the app is connected to it. When a
+ * destination stops being optional its tab is always on screen and this
+ * needs no change.
+ */
+export function chooseDefaultDeploymentTab(
+  tabs: readonly DeploymentTab[],
+  inUse: DeploymentProvidersInUse,
+): DeploymentTab {
+  return tabs.find((tab) => inUse[PROVIDER_FOR_TAB[tab]]) ?? tabs[0];
 }
 
 function VercelDashboardLink() {
@@ -155,7 +198,18 @@ export function DeploymentSection({
         <CardTitle>Deployment</CardTitle>
       </CardHeader>
       <CardContent>
-        <Tabs defaultValue="vercel">
+        {/* The default is read once, when the tabs mount, and the tab then
+            belongs to the user: connecting or disconnecting something from
+            inside a tab never moves them. Keyed by app because this component
+            stays mounted when the selected app changes, and the next app
+            gets its own choice. */}
+        <Tabs
+          key={appId}
+          defaultValue={chooseDefaultDeploymentTab(
+            visibleDeploymentTabs({ showCloudflare, showOwnServer }),
+            app.deploymentProvidersInUse,
+          )}
+        >
           <TabsList>
             <TabsTrigger value="vercel">Vercel</TabsTrigger>
             {showCloudflare && (

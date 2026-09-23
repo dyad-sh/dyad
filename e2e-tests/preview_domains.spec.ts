@@ -11,6 +11,18 @@ test("app hostnames isolate sessions through restart, HMR, native preview and re
   electronApp,
 }) => {
   await po.setUp({ autoApprove: true });
+  await po.navigation.goToSettingsTab();
+  const domainSwitch = po.page.getByRole("switch", {
+    name: "App-specific localhost domains",
+  });
+  await expect(domainSwitch).not.toBeChecked();
+  await domainSwitch.click();
+  await expect
+    .poll(
+      async () => (await po.settings.recordSettings()).enableAppPreviewDomains,
+    )
+    .toBe(true);
+  await po.navigation.goToAppsTab();
   async function importRecorder(name: string) {
     await po.page.getByRole("button", { name: "Import App" }).click();
     await eph.stubDialog(electronApp, "showOpenDialog", {

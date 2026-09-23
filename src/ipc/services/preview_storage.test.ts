@@ -42,10 +42,26 @@ describe("recording storage cleanup", () => {
       ["http://app-42.localhost:42142/auth", "session"],
     ]);
   });
+  it("clears ordinary localhost storage and its shared cookies", async () => {
+    mocks.get.mockResolvedValue([
+      { name: "session", domain: "localhost", path: "/" },
+      { name: "session", domain: "app-42.localhost", path: "/" },
+    ]);
+    await clearPreviewStorage("http://localhost:42142");
+    expect(mocks.clear).toHaveBeenCalledWith({
+      origins: ["http://localhost:42142"],
+      originMatchingMode: "origin-in-all-contexts",
+      dataTypes: ["localStorage", "indexedDB", "serviceWorkers", "cache"],
+    });
+    expect(mocks.remove.mock.calls).toEqual([
+      ["http://localhost:42142/", "session"],
+    ]);
+  });
+
   it.each([
     "not a URL",
     "https://app-42.localhost:42142",
-    "http://localhost:42142",
+    "http://localhost.evil:42142",
     "http://app-42.localhost.evil:42142",
     "http://child.app-42.localhost:42142",
   ])("refuses ambiguous cleanup for %s", async (origin) => {

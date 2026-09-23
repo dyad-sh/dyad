@@ -72,6 +72,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   runTypeScriptForWholeProject: false,
   enableMultiWindow: false,
   enableClaudeCodeSubscription: false,
+  enableAppPreviewDomains: false,
   enableExplorerSubagent: true,
   enableAutoReview: false,
   enableReviewButton: false,

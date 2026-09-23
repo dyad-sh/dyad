@@ -10,6 +10,7 @@ import {
   trackedTestBranchId,
 } from "../utils/neon_test_branch";
 import { createNeonTestAccount } from "../utils/neon_test_account";
+import { retryOnLocked } from "../utils/retryOnLocked";
 import { createNeonTestDataCleaner } from "../utils/neon_test_data";
 import { TEST_CASE_HOOK_TIMEOUT_MS } from "./test_case_lifecycle_server";
 import {
@@ -33,6 +34,7 @@ import {
 } from "../utils/app_env_var_utils";
 import { detectFrameworkType } from "../utils/framework_utils";
 import {
+  ensureNeonAuthTrustedDomain,
   ensureNeonAuthTrustedOrigin,
 } from "../utils/neon_utils";
 import { runningApps, stopAppByInfo } from "../utils/process_manager";
@@ -379,14 +381,32 @@ export async function prepareIsolatedTestDatabase({
             "The preview URL is unavailable for Neon Auth sign-in.",
             DyadErrorKind.Precondition,
           );
-        await neonPreviewDomainService.ensureTrustedDomain({
-          appId: app.id,
-          processId: info.processId,
-          invocationRef: info.invocationRef,
-          target: { projectId: app.neonProjectId!, branchId: branch.branchId },
-          origin: new URL(info.proxyUrl).origin,
-          signal: signal ?? new AbortController().signal,
-        });
+        const previewUrl = new URL(info.proxyUrl);
+        const target = {
+          projectId: app.neonProjectId!,
+          branchId: branch.branchId,
+        };
+        if (previewUrl.hostname === "localhost") {
+          // Legacy previews still need to trust the temporary test branch.
+          await retryOnLocked(
+            () => ensureNeonAuthTrustedDomain({
+              ...target,
+              origin: previewUrl.origin,
+              signal,
+            }),
+            "Register Neon test preview origin",
+            { signal },
+          );
+        } else {
+          await neonPreviewDomainService.ensureTrustedDomain({
+            appId: app.id,
+            processId: info.processId,
+            invocationRef: info.invocationRef,
+            target,
+            origin: previewUrl.origin,
+            signal: signal ?? new AbortController().signal,
+          });
+        }
       }
       try {
         const account = !perTestCase

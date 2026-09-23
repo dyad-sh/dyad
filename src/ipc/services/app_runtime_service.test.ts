@@ -309,6 +309,7 @@ describe("executeApp", () => {
     readSettingsMock.mockReset();
     readSettingsMock.mockReturnValue({
       runtimeMode2: "host",
+      enableAppPreviewDomains: true,
     });
     readPnpmIgnoredBuildsMock.mockReset();
     readPnpmIgnoredBuildsMock.mockResolvedValue([]);
@@ -1281,7 +1282,10 @@ describe("executeApp", () => {
     const oldTarget = { projectId: "old-project", organizationSlug: "org" };
     const nextTarget = { projectId: "new-project", organizationSlug: "org" };
     vi.mocked(resolveSupabasePreviewTarget).mockResolvedValue(oldTarget);
-    readSettingsMock.mockReturnValue({ runtimeMode2: "cloud" });
+    readSettingsMock.mockReturnValue({
+      runtimeMode2: "cloud",
+      enableAppPreviewDomains: true,
+    });
     vi.mocked(createCloudSandbox).mockResolvedValueOnce({
       sandboxId: "sb-1",
       previewUrl: "https://preview.example.test",
@@ -1479,6 +1483,61 @@ describe("executeApp", () => {
       }),
     );
   });
+
+  it.each([undefined, false, true])(
+    "selects the preview hostname for preference %s without registering localhost auth",
+    async (enabled) => {
+      readSettingsMock.mockReturnValue({
+        runtimeMode2: "host",
+        enableAppPreviewDomains: enabled,
+      });
+      const output = createOutput();
+      runningApps.set(42, {
+        process: null,
+        processId: 1,
+        mode: "host",
+        lastViewedAt: 0,
+        previewAuthTarget: { provider: "neon", projectId: "p", branchId: "b" },
+      });
+      const start = () =>
+        ensureProxyForRunningApp({
+          appId: 42,
+          output,
+          originalUrl: "http://localhost:32142",
+          mode: "host",
+        });
+      await start();
+      await runningApps.get(42)?.previewAuthRegistration?.settled;
+      const hostname = enabled ? "app-42.localhost" : "localhost";
+      expect(runningApps.get(42)?.proxyUrl).toBe(`http://${hostname}:42142`);
+      expect(
+        neonPreviewDomainService.ensureTrustedDomain,
+      ).toHaveBeenCalledTimes(enabled ? 1 : 0);
+
+      // A preference change leaves the running proxy at its existing address.
+      readSettingsMock.mockReturnValue({ enableAppPreviewDomains: !enabled });
+      await start();
+      expect(startProxyMock).toHaveBeenCalledTimes(1);
+      expect(runningApps.get(42)?.proxyUrl).toBe(`http://${hostname}:42142`);
+    },
+  );
+
+  it.each([undefined, false])(
+    "skips preview auth lookups when domains are %s",
+    async (enabled) => {
+      readSettingsMock.mockReturnValue({ enableAppPreviewDomains: enabled });
+      spawnMock.mockReturnValue(new FakeChildProcess(42));
+      await executeApp({
+        appId: 42,
+        appPath: "/tmp/app",
+        output: createOutput(),
+        isNeon: false,
+      });
+      await reconcileRunningSupabasePreview(42);
+      expect(resolveSupabasePreviewTarget).not.toHaveBeenCalled();
+      expect(ensureSupabasePreviewRedirects).not.toHaveBeenCalled();
+    },
+  );
 
   it("starts the proxy on the deterministic port without killing the occupant", async () => {
     const terminate = vi.fn();

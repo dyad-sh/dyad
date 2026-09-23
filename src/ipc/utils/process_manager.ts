@@ -20,6 +20,8 @@ const logger = log.scope("process_manager");
 
 // Define a type for the value stored in runningApps
 export interface RunningAppInfo {
+  /** Preview address choice captured at startup; settings changes need a restart. */
+  previewHostname?: string;
   process: ChildProcess | null;
   processId: number;
   /** Correlation identity of the run/restart that owns this producer. */

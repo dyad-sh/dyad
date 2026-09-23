@@ -41,9 +41,10 @@ export function RecordingStorageWarningDialog({
           <AlertDialogDescription>
             Dyad clears this preview's cookies and local storage before
             recording. This usually signs you out and removes anything the app
-            stored in the browser. Other apps' storage is left alone. Shared
-            localhost cookies from older Dyad versions are kept and may leave
-            you signed in; sign out in the preview first if needed. Your app's
+            stored in the browser. With app-specific localhost addresses, other
+            apps' storage is left alone; shared localhost cookies are kept and
+            may leave you signed in. With ordinary localhost addresses, cookies
+            are shared, so this may also sign you out of other apps. Your app's
             code and database aren't touched.
           </AlertDialogDescription>
         </AlertDialogHeader>

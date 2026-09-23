@@ -38,6 +38,7 @@ import { BlockUnsafeNpmPackagesSwitch } from "@/components/BlockUnsafeNpmPackage
 import { CloudSandboxExperimentSwitch } from "@/components/CloudSandboxExperimentSwitch";
 import { MultiWindowExperimentSwitch } from "@/components/MultiWindowExperimentSwitch";
 import { ClaudeCodeSubscriptionExperimentSwitch } from "@/components/ClaudeCodeSubscriptionExperimentSwitch";
+import { AppPreviewDomainsSwitch } from "@/components/AppPreviewDomainsSwitch";
 import { TestRunInPreviewSwitch } from "@/components/TestRunInPreviewSwitch";
 import { AutoApproveSqlSwitch } from "@/components/AutoApproveSqlSwitch";
 import { AutoApproveMcpSwitch } from "@/components/AutoApproveMcpSwitch";
@@ -249,6 +250,10 @@ export default function SettingsPage() {
             </div>
             <div id={SETTING_IDS.enableClaudeCodeSubscription}>
               <ClaudeCodeSubscriptionExperimentSwitch />
+            </div>
+
+            <div id={SETTING_IDS.enableAppPreviewDomains}>
+              <AppPreviewDomainsSwitch />
             </div>
 
             <div id={SETTING_IDS.enableTestRunInPreview}>

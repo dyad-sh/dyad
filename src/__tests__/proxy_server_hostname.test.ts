@@ -147,6 +147,37 @@ describe("app preview authority and forwarding", () => {
     });
   });
 
+  it("serves ordinary localhost when app domains are disabled", async () => {
+    await worker.terminate();
+    worker = new Worker(workerPath, {
+      workerData: {
+        targetOrigin: upstreamOrigin,
+        hostname: "localhost",
+        port: 0,
+        authBootstrapToken: "capability",
+      },
+    });
+    origin = await new Promise<string>((resolve, reject) => {
+      worker.on("error", reject);
+      worker.on("message", (message) => {
+        if (
+          typeof message === "string" &&
+          message.startsWith("proxy-server-start url=")
+        )
+          resolve(message.slice("proxy-server-start url=".length));
+      });
+    });
+    port = Number(new URL(origin).port);
+    expect(new URL(origin).hostname).toBe("localhost");
+    const response = await request("/api", {
+      Host: `localhost:${port}`,
+      Origin: origin,
+    });
+    expect(response.status).toBe(200);
+    expect(JSON.parse(response.body).headers.origin).toBe(upstreamOrigin);
+    expect((await request("/api")).status).toBe(421);
+  });
+
   it.each([
     "app-43.localhost",
     "localhost",

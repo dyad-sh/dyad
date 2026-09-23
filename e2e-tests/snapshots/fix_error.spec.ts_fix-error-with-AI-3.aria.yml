@@ -8,8 +8,8 @@
 - button "Restore to this point"
 - paragraph:
   - text: "Fix error: Error Line 6 error Stack trace: Index ("
-  - link "http://app-[[id]].localhost:[[port]]/src/pages/Index.tsx:6:6":
-    - /url: http://app-[[id]].localhost:[[port]]/src/pages/Index.tsx:6:6
+  - link "http://localhost:[[port]]/src/pages/Index.tsx:6:6":
+    - /url: http://localhost:[[port]]/src/pages/Index.tsx:6:6
   - text: )
 - paragraph: Fixing the error...
 - 'button "Index.tsx src/pages/Index.tsx Edit Summary: Fix the runtime error"'

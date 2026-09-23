@@ -295,6 +295,7 @@ interface PreviewAuthContext {
 }
 
 interface PreviewAuthOptions {
+  hostname: string;
   isNeon: boolean;
   neonAuthTarget?: NeonPreviewTarget | null;
   signal?: AbortSignal;
@@ -333,6 +334,7 @@ async function initializeRunningPreviewAuth(
   appInfo: RunningAppInfo,
   options: PreviewAuthOptions,
 ): Promise<void> {
+  if (options.hostname === "localhost") return;
   // Publish the runtime before reading the association, so provider changes
   // can reconcile it even during this lookup. Neon configuration is protected
   // by the caller's runtime-config claim; Supabase is a single DB snapshot.
@@ -382,12 +384,15 @@ export async function executeApp({
   startCommand?: string | null;
   invocationRef?: AppRunInvocationRef;
 }): Promise<void> {
+  const settings = readSettings();
   const previewAuthOptions: PreviewAuthOptions = {
+    hostname: settings.enableAppPreviewDomains
+      ? getAppPreviewHostname(appId)
+      : "localhost",
     isNeon,
     neonAuthTarget,
     signal: previewAbortSignal,
   };
-  const settings = readSettings();
   previewAbortSignal?.throwIfAborted();
   const runtimeMode = settings.runtimeMode2 ?? "host";
 
@@ -507,6 +512,13 @@ export async function reconcileRunningNeonPreview(
 export async function reconcileRunningSupabasePreview(appId: number) {
   const appInfo = runningApps.get(appId);
   if (!appInfo) return;
+  if (
+    appInfo.previewHostname === "localhost" ||
+    (appInfo.proxyUrl
+      ? new URL(appInfo.proxyUrl).hostname === "localhost"
+      : !appInfo.previewHostname && !readSettings().enableAppPreviewDomains)
+  )
+    return;
   const target = await resolveSupabasePreviewTarget(appId);
   if (runningApps.get(appId) !== appInfo) return;
   await reconcileRunningPreviewAuth(
@@ -560,6 +572,13 @@ async function registerPreviewOrigin(
   output = appInfo.output,
 ) {
   if (runningApps.get(appId) !== appInfo || appInfo.stopRequested) return;
+  // The opt-in is applied when starting the proxy. Use its actual address so
+  // changing the setting does not alter an already-running preview's auth.
+  if (
+    appInfo.previewHostname === "localhost" ||
+    new URL(proxyUrl).hostname !== getAppPreviewHostname(appId)
+  )
+    return;
   const previous = appInfo.previewAuthRegistration;
   const origin = new URL(proxyUrl).origin;
   if (
@@ -695,6 +714,10 @@ export async function ensureProxyForRunningApp({
         !sameInvocationRef(appInfo.invocationRef, invocationRef)))
   )
     return;
+  const hostname = (appInfo.previewHostname ??= readSettings()
+    .enableAppPreviewDomains
+    ? getAppPreviewHostname(appId)
+    : "localhost");
   // Install the promise before the first asynchronous boundary: dev servers
   // can print their URL more than once before the proxy has bound.
   while (appInfo.proxyStartup) {
@@ -702,6 +725,7 @@ export async function ensureProxyForRunningApp({
     if (
       appInfo.proxyWorker &&
       appInfo.proxyUrl &&
+      new URL(appInfo.proxyUrl).hostname === hostname &&
       appInfo.originalUrl === originalUrl &&
       appInfo.proxyAuthToken ===
         (mode === "cloud" ? appInfo.cloudPreviewAuthToken : undefined)
@@ -721,6 +745,7 @@ export async function ensureProxyForRunningApp({
     if (
       appInfo.proxyWorker &&
       appInfo.proxyUrl &&
+      new URL(appInfo.proxyUrl).hostname === hostname &&
       appInfo.originalUrl === originalUrl &&
       appInfo.proxyAuthToken === proxyAuthToken &&
       appInfo.authBootstrapToken
@@ -768,7 +793,7 @@ export async function ensureProxyForRunningApp({
     try {
       worker = await startProxy(originalUrl, {
         port: getAppProxyPort(appId),
-        hostname: getAppPreviewHostname(appId),
+        hostname,
         authBootstrapToken,
         signal,
         onStarted: resolveReady,
@@ -920,6 +945,7 @@ Details: ${details || "n/a"}
   const appInfo: RunningAppInfo = {
     proxyAbortController: new AbortController(),
     previewAbortSignal: previewAuthOptions.signal,
+    previewHostname: previewAuthOptions.hostname,
     process: spawnedProcess,
     processId: currentProcessId,
     invocationRef,
@@ -1463,6 +1489,7 @@ ${errorOutput || "(empty)"}`,
   const appInfo: RunningAppInfo = {
     proxyAbortController: new AbortController(),
     previewAbortSignal: previewAuthOptions.signal,
+    previewHostname: previewAuthOptions.hostname,
     process,
     processId: currentProcessId,
     invocationRef,
@@ -1590,6 +1617,7 @@ async function executeAppInCloud({
   const appInfo: RunningAppInfo = {
     proxyAbortController: new AbortController(),
     previewAbortSignal: previewAuthOptions.signal,
+    previewHostname: previewAuthOptions.hostname,
     process: null,
     processId: currentProcessId,
     invocationRef,
@@ -2280,7 +2308,18 @@ export class AppRuntimeService {
     invocationRef?: AppRunInvocationRef;
     appInfo: RunningAppInfo;
   }): Promise<void> {
+    const hostname = readSettings().enableAppPreviewDomains
+      ? getAppPreviewHostname(input.appId)
+      : "localhost";
+    input.appInfo.previewHostname = hostname;
+    if (hostname === "localhost") {
+      input.appInfo.previewAuthRegistration?.controller.abort();
+      await input.appInfo.previewAuthRegistration?.settled;
+      input.appInfo.previewAuth = undefined;
+      input.appInfo.previewAuthTarget = null;
+    }
     await initializeRunningPreviewAuth(input.appId, input.appInfo, {
+      hostname,
       isNeon: input.isNeon,
     });
     const sandboxId = input.appInfo.cloudSandboxId!;

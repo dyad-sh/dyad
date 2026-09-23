@@ -803,7 +803,7 @@ export async function runAppTestsCore({
   // Preserve the manual-run unlimited budget and scale explicit agent caps.
   if (isolateTestCases && timeoutMs !== undefined) timeoutMs *= 3;
   const app = await getApp(appId);
-  const appPath = getDyadAppPath(app.path);
+  let appPath = getDyadAppPath(app.path);
   const emit = (chunk: string, phase: "setup" | "running") =>
     onOutput?.(chunk, phase);
   const selection = normalizeRunTestSelection({
@@ -844,6 +844,9 @@ export async function runAppTestsCore({
   // (headed, parallel, the env var the shim reads) has to follow.
   let previewEndpoint = previewCdpEndpoint;
   try {
+    // Node's child cwd and Playwright's report roots resolve directory symlinks.
+    // Use that same physical root for exact selectors and report file keys.
+    appPath = await fs.promises.realpath(appPath);
     const result = await ensurePlaywrightBootstrap({
       appPath,
       signal,

@@ -2,19 +2,23 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * Covers how a preview run reaches the Playwright CLI: which flags are dropped,
  * and the endpoint env var the generated fixture shim keys off. The heavy
  * dependencies (database, child processes, Playwright install) are mocked so
- * this stays a unit test of the argument/env construction.
+ * most cases stay unit tests of argument/env construction. The symlink cases
+ * run the real Playwright CLI with browser-free specs to verify path semantics.
  */
 
 const h = vi.hoisted(() => ({
   spawnStreaming: vi.fn(),
   prepareIsolation: vi.fn(),
   broadcast: vi.fn(),
+  getDyadAppPath: vi.fn(),
   // `previewRouted` is what tells the run its specs actually reach the shim;
   // without it every case below would degrade to an ordinary browser run.
   ensurePlaywrightBootstrap: vi.fn(async () => ({
@@ -69,8 +73,7 @@ vi.mock("../utils/process_manager", async (importOriginal) => ({
 
 vi.mock("@/paths/paths", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/paths/paths")>()),
-  getDyadAppPath: (appPath: string) =>
-    path.join(os.tmpdir(), "dyad-tests-preview", "apps", appPath),
+  getDyadAppPath: h.getDyadAppPath,
 }));
 
 import {
@@ -82,6 +85,7 @@ import {
 import {
   PREVIEW_CDP_ENDPOINT_ENV,
   PREVIEW_CDP_TOKEN_ENV,
+  DYAD_CONFIG_FILENAME,
 } from "../utils/playwright_bootstrap";
 import { buildWindowsCommandInvocation } from "../utils/windows_command";
 import {
@@ -109,6 +113,7 @@ function lastSpawn() {
 }
 
 beforeEach(() => {
+  h.getDyadAppPath.mockReturnValue(APP_PATH);
   h.prepareIsolation.mockReset();
   h.broadcast.mockReset();
   h.spawnStreaming.mockReset().mockResolvedValue({
@@ -141,6 +146,78 @@ describe("selected file batches", () => {
     "e2e-tests/nested/e2e-tests/b.spec.ts",
   ];
 
+  it.each(["batch", "panel", "preview"])(
+    "runs real Playwright from a symlinked app directory (%s)",
+    async (mode) => {
+      const root = fs.mkdtempSync(path.join(os.tmpdir(), "dyad-symlink-run-"));
+      try {
+        const physical = path.join(root, "physical");
+        const linked = path.join(root, "linked");
+        fs.mkdirSync(path.join(physical, "e2e-tests"), { recursive: true });
+        fs.symlinkSync(physical, linked, "junction");
+        fs.symlinkSync(
+          path.join(process.cwd(), "node_modules"),
+          path.join(physical, "node_modules"),
+          "junction",
+        );
+        fs.writeFileSync(
+          path.join(physical, DYAD_CONFIG_FILENAME),
+          'export default { testDir: "./e2e-tests" };',
+        );
+        fs.writeFileSync(
+          path.join(physical, selected[0]),
+          'const { test, expect } = require("@playwright/test");\ntest("works", () => { expect(1).toBe(1); });\ntest.skip("disabled", () => {});\n',
+        );
+        h.getDyadAppPath.mockReturnValue(linked);
+        h.spawnStreaming.mockImplementation(async (options) => {
+          const { stdout, stderr } = await promisify(execFile)(
+            process.execPath,
+            options.args,
+            {
+              cwd: options.cwd,
+              env: { ...process.env, ...options.env },
+              timeout: 15_000,
+            },
+          );
+          return { code: 0, stdout, stderr, aborted: false, timedOut: false };
+        });
+
+        const result = await runAppTestsCore({
+          appId: 1,
+          ...(mode === "panel"
+            ? { testFile: selected[0], testLine: 2 }
+            : { testFiles: [selected[0]] }),
+          ...(mode === "preview"
+            ? {
+                previewCdpEndpoint: CDP_ENDPOINT,
+                rotatePreviewView: vi.fn().mockResolvedValue(undefined),
+              }
+            : {}),
+        });
+
+        expect(result.infraError).toBeUndefined();
+        expect(result.results).toHaveLength(1);
+        expect(result.results[0].file).toBe(selected[0]);
+        expect(result.results[0].incomplete).toBeUndefined();
+        expect(result.results[0].tests).toContainEqual(
+          expect.objectContaining({ title: "works", status: "passed" }),
+        );
+        if (mode !== "panel") {
+          expect(result.results[0].tests).toHaveLength(2);
+          expect(result.results[0].tests).toContainEqual(
+            expect.objectContaining({
+              title: "disabled",
+              status: "inconclusive",
+            }),
+          );
+        }
+      } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+      }
+    },
+    30_000,
+  );
+
   function mockReports(casesInSecondFile = 1, includeSkipped = false) {
     h.spawnStreaming.mockImplementation(async (options) => {
       const selectors = (options.args as string[]).filter((arg) =>
@@ -149,17 +226,17 @@ describe("selected file batches", () => {
       const files = candidates.filter((file) =>
         selectors.some((selector) =>
           new RegExp(selector.replace(/:\d+$/, "")).test(
-            path.resolve(APP_PATH, file),
+            path.resolve(options.cwd, file),
           ),
         ),
       );
       const reportFile = options.env.PLAYWRIGHT_JSON_OUTPUT_NAME as string;
-      const reportPath = path.resolve(APP_PATH, reportFile);
+      const reportPath = path.resolve(options.cwd, reportFile);
       fs.mkdirSync(path.dirname(reportPath), { recursive: true });
       fs.writeFileSync(
         reportPath,
         JSON.stringify({
-          config: { rootDir: path.join(APP_PATH, "e2e-tests") },
+          config: { rootDir: path.join(options.cwd, "e2e-tests") },
           suites: files.map((file) => ({
             title: file,
             file: file.slice("e2e-tests/".length),
@@ -525,7 +602,7 @@ function mockPreviewBatch() {
   h.spawnStreaming.mockImplementation(async (options) => {
     const reportPath = options.env.PLAYWRIGHT_JSON_OUTPUT_NAME as string;
     fs.mkdirSync(path.dirname(reportPath), { recursive: true });
-    const specFile = path.join(APP_PATH, "e2e-tests/auth.spec.ts");
+    const specFile = path.join(options.cwd, "e2e-tests/auth.spec.ts");
     fs.writeFileSync(
       reportPath,
       JSON.stringify({
@@ -707,7 +784,7 @@ describe("preview runs", () => {
             suites: [
               {
                 title: "e2e-tests/auth.spec.ts",
-                file: path.join(APP_PATH, "e2e-tests/auth.spec.ts"),
+                file: path.join(options.cwd, "e2e-tests/auth.spec.ts"),
                 specs: [
                   {
                     title: percentTitle,
@@ -748,7 +825,7 @@ describe("preview runs", () => {
         JSON.stringify({
           suites: [
             {
-              file: path.join(APP_PATH, "e2e-tests/auth.spec.ts"),
+              file: path.join(options.cwd, "e2e-tests/auth.spec.ts"),
               specs: [
                 {
                   title,

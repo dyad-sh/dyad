@@ -290,9 +290,9 @@ late output from overwriting the current stream.
 Test-run `infraError` can accompany completed results (for example when restoring
 `.env.local` fails). Preserve those results; use each file's `incomplete` marker
 to prevent interrupted preview reports from becoming whole-file passes.
-Playwright discovery and execution reports must both resolve file paths against
-`config.rootDir` before converting to app-relative keys. Otherwise skipped and
-executed cases split into duplicate files, and incomplete-file tracking fails.
+Canonicalize the app root before constructing Playwright selectors and report keys.
+Resolve discovery and execution paths against `config.rootDir`, then make them app-relative.
+Mixed logical/physical roots or differing report keys break selection, split cases, and lose incomplete status.
 
 When one IPC producer needs stronger presentation semantics (for example, a persistent multiline error toast), carry that intent as an explicit optional event field and scope it at the producer. Do not infer global renderer behavior from message shape such as the presence of a newline; shared toast/event consumers serve unrelated features and tests.
 

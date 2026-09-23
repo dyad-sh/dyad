@@ -1055,6 +1055,50 @@ describe("buildPlaywrightConfig", () => {
 });
 
 describe("ensurePlaywrightBootstrap", () => {
+  it("adds Playwright with npm for an npm-only member under a pnpm-signaled root", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "dyad-pw-mixed-"));
+    tempDirs.push(root);
+    const appPath = path.join(root, "apps", "web");
+    fs.mkdirSync(appPath, { recursive: true });
+    fs.mkdirSync(path.join(root, ".git"));
+    fs.writeFileSync(
+      path.join(root, "package.json"),
+      JSON.stringify({ private: true, workspaces: ["apps/*"] }),
+    );
+    fs.writeFileSync(
+      path.join(root, "pnpm-workspace.yaml"),
+      'packages:\n  - "packages/*"\n',
+    );
+    fs.writeFileSync(
+      path.join(root, "pnpm-lock.yaml"),
+      "lockfileVersion: '9.0'\n",
+    );
+    fs.writeFileSync(path.join(appPath, "package.json"), '{"private":true}');
+    fs.writeFileSync(
+      path.join(appPath, DYAD_CONFIG_FILENAME),
+      "export default { use: { channel: 'chrome' } };",
+    );
+    h.spawnStreaming.mockResolvedValue({
+      code: 0,
+      stdout: "",
+      stderr: "",
+      aborted: false,
+      timedOut: false,
+    });
+    await ensurePlaywrightBootstrap({ appPath });
+    expect(h.spawnStreaming).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: "npm",
+        cwd: root,
+        args: expect.arrayContaining(["-w", "apps/web", "@playwright/test"]),
+      }),
+    );
+    expect(
+      h.spawnStreaming.mock.calls.some(
+        ([options]) => options.command === "pnpm",
+      ),
+    ).toBe(false);
+  });
   beforeEach(() => {
     const exists = fs.existsSync.bind(fs);
     // Keep app fixtures real while hiding machine-installed Chrome/Edge.
@@ -1466,6 +1510,20 @@ describe("detectSystemBrowserChannel", () => {
 });
 
 describe("isPlaywrightBrowserInstalled", () => {
+  it("reuses the hoisted package's browser marker for workspace members", () => {
+    const { appPath } = makeAppWithBrowserMarker({
+      packageVersion: "1.2.3",
+      executableExists: true,
+    });
+    const member = path.join(appPath, "packages", "app");
+    fs.mkdirSync(member, { recursive: true });
+    expect(isPlaywrightBrowserInstalled(member)).toBe(true);
+    fs.writeFileSync(
+      path.join(appPath, "node_modules", "@playwright", "test", "package.json"),
+      JSON.stringify({ version: "1.2.4" }),
+    );
+    expect(isPlaywrightBrowserInstalled(member)).toBe(false);
+  });
   it("accepts a marker only when the Playwright version and executable match", () => {
     const { appPath, executablePath } = makeAppWithBrowserMarker({
       packageVersion: "1.2.3",

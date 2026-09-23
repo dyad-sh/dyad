@@ -229,7 +229,7 @@ vi.mock("@/ipc/utils/window_broadcast", async (importOriginal) => {
 });
 
 // Imported after the mocks so the handler module picks them up.
-const { registerTestsHandlers, runAppTestsWithIsolation } =
+const { registerTestsHandlers, runAppTestsWithIsolation, endTestsForApp } =
   await import("./tests_handlers");
 
 describe("tests handlers", () => {
@@ -2522,6 +2522,51 @@ describe("tests handlers", () => {
         .map((payload) => payload.state);
       expect(supersededStates).not.toContain("stopping");
       expect(supersededStates).not.toContain("cleaning-up");
+    });
+
+    it("bounds deletion's wait for a queued run without releasing unfinished cleanup", async () => {
+      const appId = seedTestableApp("app");
+      let finishPrepare!: () => void;
+      prepareIsolatedTestDatabaseMock.mockReturnValueOnce(
+        new Promise((resolve) => {
+          finishPrepare = () =>
+            resolve({
+              isolation: { mode: "none" },
+              infraError: { message: "setup cancelled" },
+              teardown: vi.fn().mockResolvedValue({
+                envRestored: true,
+                remoteCleanupCompleted: true,
+              }),
+            });
+        }),
+      );
+      const firstRun = runAppTestsWithIsolation({
+        event: { sender: {} } as any,
+        appId,
+        source: "panel",
+      });
+      await vi.waitFor(() =>
+        expect(prepareIsolatedTestDatabaseMock).toHaveBeenCalledTimes(1),
+      );
+      const secondRun = runAppTestsWithIsolation({
+        event: { sender: {} } as any,
+        appId,
+        source: "panel",
+      });
+      vi.useFakeTimers();
+      try {
+        const rejection = expect(endTestsForApp(appId)).rejects.toThrow(
+          "Tests are still shutting down",
+        );
+        await vi.advanceTimersByTimeAsync(30_000);
+        await rejection;
+        expect(prepareIsolatedTestDatabaseMock).toHaveBeenCalledTimes(1);
+      } finally {
+        vi.useRealTimers();
+        finishPrepare();
+        await Promise.all([firstRun, secondRun]);
+      }
+      await expect(endTestsForApp(appId)).resolves.toBeUndefined();
     });
 
     it("attributes a queued run's stop to its own generation", async () => {

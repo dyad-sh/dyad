@@ -124,6 +124,9 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
   only after confirming that the app belongs to that npm/pnpm workspace, then
   install from the applicable workspace root. An unrelated ancestor lockfile
   must not turn a child install into `npm ci`.
+  When both manifests exist, the one containing this app takes precedence over
+  the other manager's lockfile. Resolve bootstrap browser markers beside the
+  installed Playwright package too, including hoisted workspace packages.
 - A detached superproject worktree does not populate Git submodules. Materialize
   initialized live submodules from local state without fetching so isolated
   builds retain both their inputs and Git boundary; leave live-uninitialized

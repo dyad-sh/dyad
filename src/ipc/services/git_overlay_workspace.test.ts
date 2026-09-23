@@ -1,12 +1,15 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import type { ChildProcess } from "node:child_process";
+import * as bufferedProcess from "@/ipc/utils/buffered_process";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   collectPackageAnchoredExcludedPaths,
   parseGitOverlayPaths,
   secureGitOverlaySymlinks,
+  listGitOverlayTrackedPaths,
 } from "./git_overlay_workspace";
 
 const originalPlatform = process.platform;
@@ -24,7 +27,43 @@ function status(...fields: string[]): string {
   return `${fields.join("\0")}\0`;
 }
 
+it("streams complete tracked paths beyond the diagnostic output limit", async () => {
+  const entry = "source/" + "a".repeat(200) + ".ts";
+  const count = 25_000;
+  vi.spyOn(bufferedProcess, "runBufferedProcess").mockImplementationOnce(
+    async (options) => {
+      const child = {} as ChildProcess;
+      for (let i = 0; i < count; i++) {
+        options.onStdout?.(entry.slice(0, 100), child);
+        options.onStdout?.(entry.slice(100) + "\0", child);
+      }
+      return {
+        code: 0,
+        signal: null,
+        stdout: "",
+        stderr: "",
+        stdoutTruncated: true,
+        stderrTruncated: false,
+        aborted: false,
+        timedOut: false,
+      };
+    },
+  );
+  const paths = await listGitOverlayTrackedPaths(process.cwd());
+  expect(paths).toHaveLength(count);
+  expect(paths.every((value) => value === entry)).toBe(true);
+});
+
 describe("parseGitOverlayPaths exclusions", () => {
+  it("collapses descendants while retaining similarly named siblings", () => {
+    expect(
+      parseGitOverlayPaths(
+        status("?? dir/", "?? dir/nested/file.ts", "?? dir-other/file.ts"),
+        "",
+        new Set(),
+      ),
+    ).toEqual(["dir", "dir-other/file.ts"]);
+  });
   it("drops installed environments at any depth", () => {
     // Node resolves up through every ancestor, so a sibling or parent
     // `node_modules` is as reachable from the app as its own — and a copied
@@ -81,50 +120,66 @@ describe("parseGitOverlayPaths exclusions", () => {
 });
 
 describe("secureGitOverlaySymlinks", () => {
-  it("does not fail a Windows workspace when a dangling link needs privileges", async (ctx) => {
-    const root = await fs.mkdtemp(
-      path.join(os.tmpdir(), "dyad-overlay-link-test-"),
-    );
-    const sourceRoot = path.join(root, "source");
-    const workspaceRoot = path.join(root, "workspace");
-    await Promise.all([
-      fs.mkdir(sourceRoot, { recursive: true }),
-      fs.mkdir(workspaceRoot, { recursive: true }),
-    ]);
-    const linkPath = path.join(workspaceRoot, "generated-link");
-    // The fixture needs a REAL dangling link, and creating one on Windows
-    // requires Developer Mode or elevation — the very privilege this test is
-    // about not having. Without the guard the setup itself throws EPERM and
-    // the test fails on a privilege-less runner for a reason unrelated to the
-    // behaviour under test.
-    try {
-      await fs.symlink(path.join(sourceRoot, "generated-target"), linkPath);
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
-      if (code !== "EPERM" && code !== "EACCES") throw error;
-      await fs.rm(root, { recursive: true, force: true });
-      ctx.skip();
-      return;
-    }
-    Object.defineProperty(process, "platform", {
-      configurable: true,
-      value: "win32",
-    });
-    vi.spyOn(fs, "symlink").mockRejectedValueOnce(
-      Object.assign(new Error("privilege not held"), { code: "EPERM" }),
-    );
-
-    try {
-      await expect(
-        secureGitOverlaySymlinks(sourceRoot, workspaceRoot),
-      ).resolves.toBeUndefined();
-      await expect(fs.lstat(linkPath)).rejects.toMatchObject({
-        code: "ENOENT",
+  for (const existingTarget of [false, true]) {
+    it(`handles Windows symlink privilege failures (existing target: ${existingTarget})`, async (ctx) => {
+      const root = await fs.mkdtemp(
+        path.join(os.tmpdir(), "dyad-overlay-link-test-"),
+      );
+      const sourceRoot = path.join(root, "source");
+      const workspaceRoot = path.join(root, "workspace");
+      await Promise.all([
+        fs.mkdir(sourceRoot, { recursive: true }),
+        fs.mkdir(workspaceRoot, { recursive: true }),
+      ]);
+      const linkPath = path.join(workspaceRoot, "generated-link");
+      if (existingTarget) {
+        await fs.writeFile(
+          path.join(sourceRoot, "generated-target"),
+          "live source",
+        );
+        await fs.writeFile(
+          path.join(workspaceRoot, "generated-target"),
+          "isolated copy",
+        );
+      }
+      // The fixture needs a REAL dangling link, and creating one on Windows
+      // requires Developer Mode or elevation — the very privilege this test is
+      // about not having. Without the guard the setup itself throws EPERM and
+      // the test fails on a privilege-less runner for a reason unrelated to the
+      // behaviour under test.
+      try {
+        await fs.symlink(path.join(sourceRoot, "generated-target"), linkPath);
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code !== "EPERM" && code !== "EACCES") throw error;
+        await fs.rm(root, { recursive: true, force: true });
+        ctx.skip();
+        return;
+      }
+      Object.defineProperty(process, "platform", {
+        configurable: true,
+        value: "win32",
       });
-    } finally {
-      await fs.rm(root, { recursive: true, force: true });
-    }
-  });
+      vi.spyOn(fs, "symlink").mockRejectedValueOnce(
+        Object.assign(new Error("privilege not held"), { code: "EPERM" }),
+      );
+
+      try {
+        await expect(
+          secureGitOverlaySymlinks(sourceRoot, workspaceRoot),
+        ).resolves.toBeUndefined();
+        if (existingTarget) {
+          expect(await fs.readFile(linkPath, "utf8")).toBe("isolated copy");
+        } else {
+          await expect(fs.lstat(linkPath)).rejects.toMatchObject({
+            code: "ENOENT",
+          });
+        }
+      } finally {
+        await fs.rm(root, { recursive: true, force: true });
+      }
+    });
+  }
 });
 
 describe("package-root-anchored output exclusions", () => {

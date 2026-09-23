@@ -1594,7 +1594,9 @@ export function TestsPanel() {
               isCleaningUp
                 ? isRemovingTestDatabase
                   ? "Removing the temporary test database"
-                  : "Cleaning up test data"
+                  : runState.sandboxed
+                    ? "Cleaning up the test sandbox"
+                    : "Cleaning up test data"
                 : showStopping
                   ? "Stopping tests"
                   : "Stop running tests"
@@ -1801,6 +1803,13 @@ export function TestsPanel() {
           {/* Settings never arrived. Rendered before the gates below because
           none of them can be evaluated without settings, and this is the only
           banner that explains the disabled Run button in that state. */}
+          {sandboxAvailable === undefined &&
+            settingsLoading &&
+            specs.length > 0 && (
+              <p role="status" className="text-xs text-muted-foreground">
+                {t("preview.testGate.settingsLoading")}
+              </p>
+            )}
           {settingsUnavailable && specs.length > 0 && (
             <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 text-sm text-amber-800 dark:text-amber-200">
               <AlertTriangle size={15} className="shrink-0" />

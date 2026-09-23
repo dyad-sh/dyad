@@ -466,6 +466,7 @@
       "getDyadPro": "Dyad Pro'yu Edinin"
     },
     "testGate": {
+      "settingsLoading": "Ayarlar yükleniyor…",
       "settingsUnavailable": "Dyad ayarlarınızı yükleyemediği için testlerin nasıl çalıştırılacağını belirleyemiyor.",
       "retry": "Yeniden dene",
       "startApp": "Testleri çalıştırmak için uygulamayı başlatın.",

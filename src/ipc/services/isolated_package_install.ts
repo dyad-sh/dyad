@@ -258,11 +258,16 @@ export async function resolvePackageManager(
 ): Promise<PackageManagerResolution> {
   const support = await getPnpmMinimumReleaseAgeSupport();
   const sourceInstallPath = await findPackageManagerRoot(appPath, repoRoot);
+  const membership =
+    sourceInstallPath !== appPath
+      ? await workspaceMembershipFor(sourceInstallPath, appPath)
+      : null;
   return {
-    packageManager: choosePackageManagerForApp(
-      sourceInstallPath,
-      support.available,
-    ),
+    packageManager: membership
+      ? membership === "pnpm" && support.available
+        ? "pnpm"
+        : "npm"
+      : choosePackageManagerForApp(sourceInstallPath, support.available),
     sourceInstallPath,
   };
 }

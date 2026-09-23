@@ -541,7 +541,7 @@ const BaseUserSettingsFields = {
   // that a warm project would not. That install, not the snapshot, is what
   // makes a run noticeably slower. Off by default — the sandbox is the
   // intended path — and turning it on runs the tests against the normal
-  // preview with the missing isolation disclosed. Neon apps are refused rather
+  // preview with the missing isolation disclosed. Neon-only apps are refused rather
   // than run against the real database either way.
   disableSandboxedE2eTests: z.boolean().optional(),
   autoExpandPreviewPanel: z.boolean().optional(),

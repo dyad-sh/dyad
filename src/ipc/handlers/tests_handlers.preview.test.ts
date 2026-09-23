@@ -1043,6 +1043,7 @@ describe("preview runs", () => {
         child,
         signal,
       );
+      child.emit("close", 0, null);
     }
   });
 

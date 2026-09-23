@@ -241,40 +241,58 @@ http
       await expect(runtime.stop()).resolves.toBe(true);
 
       // The verdict has to mean something: the port really is free again.
-      const reclaimed = await allocateE2eTestPort();
-      try {
-        expect(reclaimed).toBe(port);
-      } finally {
-        releaseE2eTestPort(reclaimed);
-      }
+      const probe = net.createServer();
+      await new Promise<void>((resolve, reject) => {
+        probe.once("error", reject);
+        probe.listen(port, "127.0.0.1", resolve);
+      });
+      await new Promise<void>((resolve, reject) =>
+        probe.close((error) => (error ? reject(error) : resolve())),
+      );
     } finally {
       await runtime?.stop();
       fs.rmSync(root, { recursive: true, force: true });
     }
   }, 60_000);
 
-  it("prefers the address serving this run's own workspace", async () => {
-    // The nonce is the only positive proof available: it lives in this run's
-    // sandbox, so a server returning it is serving a filesystem nothing else on
-    // the machine has. A decoy holds `127.0.0.1` — the address readiness tries
-    // FIRST — and answers `/` without the nonce, so the assertion fails unless
-    // the `owned` preference actually picks the real server on `::1`.
-    // The decoy is bound by the child, AFTER the port was allocated — which is
-    // the only window this can happen in: allocation probes both loopbacks, so
-    // a port something already holds is never handed out.
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "dyad-e2e-owned-"));
-    fs.mkdirSync(path.join(root, "public"), { recursive: true });
-    fs.writeFileSync(
-      path.join(root, "server.mjs"),
-      `import fs from "node:fs";
+  for (const startDelay of [0, 300]) {
+    it(`prefers the address serving this run's own workspace (delay: ${startDelay}ms)`, async (ctx) => {
+      const probe = net.createServer();
+      const ipv6Available = await new Promise<boolean>((resolve, reject) => {
+        probe.once("error", (error: NodeJS.ErrnoException) => {
+          if (
+            ["EAFNOSUPPORT", "EADDRNOTAVAIL", "EPROTONOSUPPORT"].includes(
+              error.code ?? "",
+            )
+          )
+            resolve(false);
+          else reject(error);
+        });
+        probe.listen(0, "::1", () => probe.close(() => resolve(true)));
+      });
+      if (!ipv6Available) {
+        ctx.skip();
+        return;
+      }
+      // The nonce is the only positive proof available: it lives in this run's
+      // sandbox, so a server returning it is serving a filesystem nothing else on
+      // the machine has. A decoy holds `127.0.0.1` — the address readiness tries
+      // FIRST — and answers `/` without the nonce, so the assertion fails unless
+      // the `owned` preference actually picks the real server on `::1`.
+      // The decoy is bound by the child, AFTER the port was allocated — which is
+      // the only window this can happen in: allocation probes both loopbacks, so
+      // a port something already holds is never handed out.
+      const root = fs.mkdtempSync(path.join(os.tmpdir(), "dyad-e2e-owned-"));
+      fs.mkdirSync(path.join(root, "public"), { recursive: true });
+      fs.writeFileSync(
+        path.join(root, "server.mjs"),
+        `import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 const port = Number(process.argv[2]);
-// The real one first, serving this run's own files. Bound BEFORE the decoy so
-// readiness can never poll a window in which only the decoy answers — it
-// probes 127.0.0.1 first, and a lone answer there would be latched as the
-// address to confirm.
-http
+// A decoy answers first; the real server can appear during confirmation.
+http.createServer((_request, response) => response.end("not the sandbox"))
+  .listen(port, "127.0.0.1", () => setTimeout(() => http
   .createServer((request, response) => {
     const name = decodeURIComponent(request.url.slice(1));
     const file = path.join(process.cwd(), "public", name);
@@ -284,33 +302,28 @@ http
     }
     response.end("sandbox");
   })
-  .listen(port, "::1", () => {
-    // Answers, but serves nothing of the workspace: a stranger on the v4
-    // loopback, and only once the real server is already reachable.
-    http
-      .createServer((_request, response) => response.end("not the sandbox"))
-      .listen(port, "127.0.0.1");
-  });
+  .listen(port, "::1"), ${startDelay}));
 `,
-    );
-    let runtime: Awaited<ReturnType<typeof startE2eTestRuntime>> | undefined;
-    try {
-      runtime = await startE2eTestRuntime({
-        workspacePath: root,
-        installCommand: NO_OP_INSTALL_COMMAND,
-        startCommand: `"${process.execPath}" server.mjs {port}`,
-      });
-      // `127.0.0.1` is probed first and answered first, so picking `[::1]` can
-      // only be the nonce preference at work.
-      expect(runtime.baseUrl).toMatch(/^http:\/\/\[::1\]:\d+$/);
-      await expect(
-        fetch(runtime.baseUrl).then((response) => response.text()),
-      ).resolves.toBe("sandbox");
-    } finally {
-      await runtime?.stop();
-      fs.rmSync(root, { recursive: true, force: true });
-    }
-  }, 60_000);
+      );
+      let runtime: Awaited<ReturnType<typeof startE2eTestRuntime>> | undefined;
+      try {
+        runtime = await startE2eTestRuntime({
+          workspacePath: root,
+          installCommand: NO_OP_INSTALL_COMMAND,
+          startCommand: `"${process.execPath}" server.mjs {port}`,
+        });
+        // `127.0.0.1` is probed first and answered first, so picking `[::1]` can
+        // only be the nonce preference at work.
+        expect(runtime.baseUrl).toMatch(/^http:\/\/\[::1\]:\d+$/);
+        await expect(
+          fetch(runtime.baseUrl).then((response) => response.text()),
+        ).resolves.toBe("sandbox");
+      } finally {
+        await runtime?.stop();
+        fs.rmSync(root, { recursive: true, force: true });
+      }
+    }, 60_000);
+  }
 });
 
 describe("allocateE2eTestPort", () => {

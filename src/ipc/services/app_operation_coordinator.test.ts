@@ -502,6 +502,9 @@ describe("AppOperationCoordinator", () => {
       "Shutdown unconfirmed",
     );
     expect(removeApp).not.toHaveBeenCalled();
+    expect(() => coordinator.beginAppDeletion(1)).toThrow(
+      AppDeletionInProgressError,
+    );
     deletion.release();
     expect(() => coordinator.beginAppDeletion(1)).toThrow(
       "Shutdown unconfirmed",

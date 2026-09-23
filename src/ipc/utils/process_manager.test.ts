@@ -21,7 +21,7 @@ const {
 vi.mock("tree-kill", () => ({
   default: (pid: number, signal: string, callback?: (err?: Error) => void) => {
     treeKillMock(pid, signal);
-    callback?.(undefined);
+    callback?.(treeKillMock.mock.results.at(-1)?.value);
   },
 }));
 
@@ -322,6 +322,18 @@ describe("forceKillProcessTree", () => {
 
     await expect(forceKillProcessTree(child, 10)).resolves.toBe(false);
     expect(treeKillMock).toHaveBeenCalledWith(111, "SIGKILL");
+  });
+
+  it("returns an unconfirmed verdict immediately when signalling fails", async () => {
+    const { child } = fakeChild({ pid: 111 });
+    treeKillMock.mockReturnValueOnce(new Error("permission denied"));
+    vi.useFakeTimers();
+    try {
+      await expect(forceKillProcessTree(child)).resolves.toBe(false);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("resolves false when the child reports an error instead", async () => {

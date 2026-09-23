@@ -730,7 +730,7 @@ export async function waitForPreviewView(
     const showsTarget = url
       ? !!status.currentUrl && sameOrigin(status.currentUrl, url)
       : status.exists;
-    if (showsTarget && !status.isLoading) {
+    if (showsTarget && (!url || !status.isLoading)) {
       return { ok: true };
     }
 

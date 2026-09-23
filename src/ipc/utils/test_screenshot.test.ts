@@ -5,15 +5,22 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/paths/paths", () => ({ getUserDataPath: vi.fn() }));
+vi.mock("@/paths/paths", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/paths/paths")>()),
+  getUserDataPath: vi.fn(),
+}));
 
 import { getUserDataPath } from "@/paths/paths";
 import { E2E_TEST_ARTIFACT_DIR } from "@/ipc/services/e2e_test_workspace";
-import { readTestScreenshotDataUrl } from "./test_screenshot";
+import {
+  readTestScreenshotDataUrl,
+  readTestErrorContext,
+} from "./test_screenshot";
 
 const roots: string[] = [];
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(
     roots
       .splice(0)
@@ -32,6 +39,27 @@ const PNG = Buffer.from(
   "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000a49444154789c6360000002000100ffff03000006000557bfabd40000000049454e44ae426082",
   "hex",
 );
+
+it("rejects a page snapshot that shrinks while being read", async () => {
+  const root = await tempRoot();
+  const appPath = path.join(root, "app");
+  vi.mocked(getUserDataPath).mockReturnValue(path.join(root, "user-data"));
+  const dir = path.join(appPath, "test-results", "failed");
+  await fs.mkdir(dir, { recursive: true });
+  const context = path.join(dir, "error-context.md");
+  await fs.writeFile(context, "page snapshot");
+  const handle = await fs.open(context, "r");
+  const read = handle.read.bind(handle);
+  vi.spyOn(handle, "read").mockImplementationOnce(async (...args: any[]) => {
+    const result = await (read as any)(...args);
+    await fs.truncate(context, 1);
+    return result;
+  });
+  vi.spyOn(fs, "open").mockResolvedValueOnce(handle);
+  expect(
+    await readTestErrorContext(appPath, path.join(dir, "test-failed-1.png"), 7),
+  ).toBeNull();
+});
 
 describe("readTestScreenshotDataUrl", () => {
   it("serves a retained artifact whose root sits inside the app directory", async () => {

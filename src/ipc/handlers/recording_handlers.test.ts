@@ -625,6 +625,52 @@ describe("recording:start / recording:stop", () => {
     expect(activeRecordings.has(1)).toBe(false);
   });
 
+  it.each([
+    {
+      cleanupProvider: "neon",
+      resource: "temporary database",
+      failedSetup: false,
+    },
+    {
+      cleanupProvider: "supabase-test-user",
+      resource: "temporary Supabase test user",
+      failedSetup: false,
+    },
+    {
+      cleanupProvider: "supabase-test-user",
+      resource: "temporary Supabase test user",
+      failedSetup: true,
+    },
+  ])(
+    "reports pending $cleanupProvider cleanup (failed setup: $failedSetup)",
+    async ({ cleanupProvider, resource, failedSetup }) => {
+      mocks.prepareIsolatedTestDatabase.mockResolvedValue(
+        makePrepared({
+          cleanupProvider,
+          ...(failedSetup ? { infraError: { message: "Setup failed" } } : {}),
+          teardown: vi.fn().mockResolvedValue({
+            envRestored: true,
+            remoteCleanupCompleted: false,
+          }),
+        }),
+      );
+      const { event } = makeEvent();
+      await startHandler(event, { appId: 1 });
+      if (!failedSetup) await stopHandler(event, { appId: 1 });
+      await vi.waitFor(() =>
+        expect(mocks.safeSend).toHaveBeenCalledWith(
+          event.sender,
+          "recording:ended",
+          expect.objectContaining({
+            reason: "error",
+            message: expect.stringContaining(resource),
+          }),
+        ),
+      );
+      expect(activeRecordings.has(1)).toBe(false);
+    },
+  );
+
   it("refuses when the preview stopped while isolation was being set up", async () => {
     const prepared = makePrepared();
     // A recording queued behind another app operation can reach this point long

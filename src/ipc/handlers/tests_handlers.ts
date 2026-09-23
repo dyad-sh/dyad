@@ -310,7 +310,26 @@ export async function endTestsForApp(appId: number): Promise<void> {
   const run = testRunControllers.get(appId);
   if (!run) return;
   run.controller.abort();
-  await run.done;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      run.done,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(
+          () =>
+            reject(
+              new DyadError(
+                "Tests are still shutting down. Wait for test cleanup to finish, then try deleting the app again.",
+                DyadErrorKind.Precondition,
+              ),
+            ),
+          30_000,
+        );
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function getApp(appId: number) {
@@ -1319,15 +1338,6 @@ export async function runAppTestsCore({
 }
 
 /**
- * The non-sandboxed path, taken when the sandbox isn't available (Docker/cloud
- * runtime) or the user opted out of it. Keeps the pre-sandbox behavior —
- * bootstrap and run against the normal preview — with the missing runtime
- * isolation disclosed on the result rather than losing E2E testing entirely.
- * Neon apps are the one exception: without a sandbox there is no throwaway
- * branch to point the app at, so the only way to run would be against the
- * user's real database, and this fails closed instead.
- */
-/**
  * Run the tests through the preview panel when a window has been reserved for
  * it, and in an ordinary browser otherwise.
  *
@@ -1601,6 +1611,15 @@ async function runTestsWithPreviewAutomation({
   return result;
 }
 
+/**
+ * The non-sandboxed path, taken when the sandbox isn't available (Docker/cloud
+ * runtime) or the user opted out of it. Keeps the pre-sandbox behavior —
+ * bootstrap and run against the normal preview — with the missing runtime
+ * isolation disclosed on the result rather than losing E2E testing entirely.
+ * Neon-only apps are the one exception: without a sandbox there is no throwaway
+ * branch to point the app at, so the only way to run would be against the
+ * user's real database, and this fails closed instead.
+ */
 async function runTestsAgainstNormalPreview({
   appId,
   disclosure,

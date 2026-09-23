@@ -9,7 +9,7 @@ import { Switch } from "@/components/ui/switch";
  * against the normal preview.
  */
 export function SandboxedE2eTestsSwitch() {
-  const { settings, updateSettings } = useSettings();
+  const { settings, updateSettings, loading } = useSettings();
   const enabled = !settings?.disableSandboxedE2eTests;
   return (
     <div className="flex items-center space-x-2">
@@ -22,12 +22,24 @@ export function SandboxedE2eTestsSwitch() {
         // from a state nobody has read yet.
         disabled={!settings}
         onCheckedChange={(checked) => {
-          updateSettings({ disableSandboxedE2eTests: !checked });
+          void updateSettings({ disableSandboxedE2eTests: !checked }).catch(
+            () => {},
+          );
         }}
       />
       <Label htmlFor="enable-sandboxed-e2e-tests">
         Run E2E Tests in an Isolated Sandbox
       </Label>
+      {!settings && (
+        <span
+          role={loading ? "status" : "alert"}
+          className="text-xs text-muted-foreground"
+        >
+          {loading
+            ? "Loading settings…"
+            : "Couldn't load settings. Reopen Settings to try again."}
+        </span>
+      )}
     </div>
   );
 }

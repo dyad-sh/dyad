@@ -179,6 +179,7 @@ async function runWorkspaceGit(
   args: string[],
   signal?: AbortSignal,
   allowedExitCodes: readonly number[] = [0],
+  onStdout?: (chunk: string) => void,
 ) {
   const { env, gitLocation } = getGitProcessEnvironment();
   const result = await runBufferedProcess({
@@ -188,6 +189,8 @@ async function runWorkspaceGit(
     env,
     signal,
     maxOutputBytes: MAX_GIT_OUTPUT_BYTES,
+    onStdout,
+    captureOutputOnSuccess: !onStdout,
   });
   if (result.aborted) {
     throw new DyadError("Operation cancelled.", DyadErrorKind.UserCancelled);
@@ -195,7 +198,7 @@ async function runWorkspaceGit(
   if (result.timedOut) {
     throw new Error(`Git command timed out: git ${args.join(" ")}`);
   }
-  if (result.stdoutTruncated || result.stderrTruncated) {
+  if ((!onStdout && result.stdoutTruncated) || result.stderrTruncated) {
     throw new Error(
       `Git command output exceeded the snapshot limit: git ${args.join(" ")}`,
     );
@@ -208,6 +211,30 @@ async function runWorkspaceGit(
     );
   }
   return result;
+}
+
+/** Stream NUL-delimited paths so large indexes do not hit the diagnostic cap. */
+export async function listGitOverlayTrackedPaths(
+  cwd: string,
+  signal?: AbortSignal,
+  pathspecs: string[] = [],
+): Promise<string[]> {
+  const paths: string[] = [];
+  let pending = "";
+  await runWorkspaceGit(
+    cwd,
+    ["ls-files", "-z", "--", ...pathspecs],
+    signal,
+    [0],
+    (chunk) => {
+      const fields = (pending + chunk).split("\0");
+      pending = fields.pop()!;
+      for (const field of fields) if (field) paths.push(field);
+    },
+  );
+  if (pending)
+    throw new Error("Git returned an incomplete tracked path listing");
+  return paths;
 }
 
 function pathIsInside(rootPath: string, candidatePath: string): boolean {
@@ -355,12 +382,16 @@ export function parseGitOverlayPaths(
   const sorted = [...paths].sort(
     (left, right) => left.length - right.length || left.localeCompare(right),
   );
-  return sorted.filter(
-    (candidate, index) =>
-      !sorted
-        .slice(0, index)
-        .some((parent) => candidate.startsWith(`${parent}/`)),
-  );
+  return sorted.filter((candidate) => {
+    for (
+      let slash = candidate.indexOf("/");
+      slash >= 0;
+      slash = candidate.indexOf("/", slash + 1)
+    ) {
+      if (paths.has(candidate.slice(0, slash))) return false;
+    }
+    return true;
+  });
 }
 
 function toNativePath(relativePath: string): string {
@@ -793,15 +824,28 @@ export async function secureGitOverlaySymlinks(
         process.platform === "win32" && targetStat.isDirectory()
           ? mappedTarget
           : path.relative(path.dirname(realEntryPath), mappedTarget) || ".";
-      await fs.symlink(
-        linkTarget,
-        entry.entryPath,
-        targetStat.isDirectory()
-          ? process.platform === "win32"
-            ? "junction"
-            : "dir"
-          : "file",
-      );
+      try {
+        await fs.symlink(
+          linkTarget,
+          entry.entryPath,
+          targetStat.isDirectory()
+            ? process.platform === "win32"
+              ? "junction"
+              : "dir"
+            : "file",
+        );
+      } catch (error) {
+        if (
+          process.platform !== "win32" ||
+          targetStat.isDirectory() ||
+          !WINDOWS_SYMLINK_PRIVILEGE_ERRORS.has(
+            (error as NodeJS.ErrnoException).code ?? "",
+          )
+        )
+          throw error;
+        // Copy from the isolated target, never from the live checkout.
+        await fs.copyFile(mappedTarget, entry.entryPath);
+      }
     }
   }
 }
@@ -902,12 +946,11 @@ async function removeExcludedTargetRoots(
     targetRelativePath ? path.posix.join(targetRelativePath, entry) : entry,
   );
   if (excludedPaths.length === 0) return excludedTargetRootNames;
-  const tracked = await runWorkspaceGit(
+  const trackedPaths = await listGitOverlayTrackedPaths(
     sourceRepoPath,
-    ["ls-files", "-z", "--", ...excludedPaths],
     signal,
+    excludedPaths,
   );
-  const trackedPaths = tracked.stdout.split("\0").filter(Boolean);
   const removedRootNames = new Set<string>();
   await settleAll(
     excludedRootNames.map(async (entry, index) => {
@@ -952,12 +995,7 @@ async function removeAlwaysExcludedRoots(
   worktreePath: string,
   signal?: AbortSignal,
 ): Promise<string[]> {
-  const tracked = await runWorkspaceGit(
-    sourceRepoPath,
-    ["ls-files", "-z"],
-    signal,
-  );
-  const trackedPaths = tracked.stdout.split("\0").filter(Boolean);
+  const trackedPaths = await listGitOverlayTrackedPaths(sourceRepoPath, signal);
   const roots = new Set<string>();
   for (const trackedPath of trackedPaths) {
     const segments = trackedPath.split("/");
@@ -1149,15 +1187,12 @@ async function materializeInitializedSubmodules({
       workspaceRepoPath,
       toNativePath(relativePath),
     );
-    const childTargetRelativePath = !targetRelativePath
-      ? ""
-      : relativePath === targetRelativePath
+    const childTargetRelativePath =
+      relativePath === targetRelativePath
         ? ""
-        : relativePath.startsWith(`${targetRelativePath}/`)
-          ? ""
-          : targetRelativePath.startsWith(`${relativePath}/`)
-            ? targetRelativePath.slice(relativePath.length + 1)
-            : "__outside_target_app__";
+        : targetRelativePath.startsWith(`${relativePath}/`)
+          ? targetRelativePath.slice(relativePath.length + 1)
+          : "__outside_target_app__";
     registeredWorktrees.push({
       sourceRepoPath: realSubmodulePath,
       snapshotPath: snapshotSubmodulePath,

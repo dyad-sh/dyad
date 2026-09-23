@@ -276,6 +276,7 @@ export function useTestRunEvents() {
                   runningFiles: [],
                   runningTests: [],
                   isolation: payload.isolation ?? prev.isolation,
+                  sandboxed: payload.sandboxed ?? prev.sandboxed,
                 },
         });
         return;
@@ -295,6 +296,7 @@ export function useTestRunEvents() {
             isolation: payload.isolation,
           },
           isPartialRun: testLine != null || !!payload.grep,
+          sandboxed: payload.sandboxed,
           expectedStartedAt: runStartedAt,
           expectedRunId: runId,
         });

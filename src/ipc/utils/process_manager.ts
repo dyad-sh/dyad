@@ -205,6 +205,7 @@ export function forceKillProcessTree(
     treeKill(pid, "SIGKILL", (err: Error | undefined) => {
       if (err) {
         logger.warn(`tree-kill SIGKILL error for PID ${pid}: ${err.message}`);
+        settle(false);
       }
       // An exited root has already emitted its `close`, so there is nothing
       // left here to observe — and a descendant that daemonized or was

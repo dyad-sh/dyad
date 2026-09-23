@@ -265,6 +265,7 @@
     "publish": "发布",
     "tests": "测试",
     "testGate": {
+      "settingsLoading": "正在加载设置…",
       "settingsUnavailable": "Dyad 无法加载你的设置，因此无法确定测试将如何运行。",
       "retry": "重试",
       "startApp": "启动应用以运行测试。",

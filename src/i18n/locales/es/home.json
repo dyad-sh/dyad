@@ -268,6 +268,7 @@
     "publish": "Publicar",
     "tests": "Pruebas",
     "testGate": {
+      "settingsLoading": "Cargando configuración…",
       "settingsUnavailable": "Dyad no pudo cargar tu configuración, así que no puede saber cómo se ejecutarían las pruebas.",
       "retry": "Reintentar",
       "startApp": "Inicia la aplicación para ejecutar las pruebas.",

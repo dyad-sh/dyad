@@ -77,8 +77,9 @@ async function tempRoot() {
 }
 
 async function ensureGitRepo(appPath: string): Promise<void> {
-  const hasGit = await fs
-    .stat(path.join(appPath, ".git"))
+  const hasGit = await execFileAsync("git", ["rev-parse", "--show-toplevel"], {
+    cwd: appPath,
+  })
     .then(() => true)
     .catch(() => false);
   if (hasGit) return;
@@ -136,6 +137,46 @@ async function createE2eTestWorkspace(
 }
 
 describe("E2E test workspace", () => {
+  it("preserves live output-named source inside a submodule below the app", async () => {
+    const root = await tempRoot();
+    const source = path.join(root, "library");
+    const appPath = path.join(root, "app");
+    vi.mocked(getUserDataPath).mockReturnValue(path.join(root, "data"));
+    await fs.mkdir(path.join(source, "dist"), { recursive: true });
+    await fs.writeFile(path.join(source, "dist", "source.ts"), "committed");
+    await ensureGitRepo(source);
+    await ensureGitRepo(appPath);
+    await execFileAsync(
+      "git",
+      [
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        source,
+        "library",
+      ],
+      { cwd: appPath },
+    );
+    await execFileAsync("git", ["commit", "-am", "add library"], {
+      cwd: appPath,
+    });
+    await fs.writeFile(
+      path.join(appPath, "library", "dist", "source.ts"),
+      "live edit",
+    );
+    const workspace = await createE2eTestWorkspace({ appId: 7, appPath });
+    try {
+      expect(
+        await fs.readFile(
+          path.join(workspace.workspacePath, "library", "dist", "source.ts"),
+          "utf8",
+        ),
+      ).toBe("live edit");
+    } finally {
+      await workspace.dispose();
+    }
+  });
   it("captures live Git state while excluding heavyweight roots", async () => {
     const root = await tempRoot();
     const appPath = path.join(root, "app");

@@ -508,13 +508,13 @@ export function WorkflowSettings() {
       <div id={SETTING_IDS.sandboxedE2eTests} className="space-y-1.5">
         <SandboxedE2eTestsSwitch />
         <p className={hint}>
-          Run each E2E test in a throwaway copy of your app with its own server,
-          so tests never touch your preview. Neon apps also get a temporary
-          database; Supabase apps still use your real project, isolated by a
-          throwaway test user. Each run installs dependencies from scratch, so
-          turn this off if that makes runs too slow — tests then run against
-          your normal preview, and apps using Neon won't run at all rather than
-          test against your real data.
+          Run each E2E batch in a throwaway copy of your app with its own
+          server, so tests never touch your preview. Neon apps also get a
+          temporary database; Supabase apps still use your real project,
+          isolated by a throwaway test user. Each run installs dependencies from
+          scratch, so turn this off if that makes runs too slow — tests then run
+          against your normal preview, and Neon-only apps won't run at all
+          rather than test against your real data.
         </p>
       </div>
 

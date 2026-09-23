@@ -646,7 +646,7 @@ describe("TestsPanel", () => {
     ).toBe(true);
   });
 
-  it("explains nothing, and allows nothing, while settings are still loading", async () => {
+  it("shows neutral loading feedback while settings disable Run", async () => {
     // Two different defaults on purpose. No banner: `usesSandboxedE2eTests`
     // answers false for absent settings, so an amber refusal would flash on
     // every mount for a state that may not apply at all. But Run stays
@@ -669,6 +669,9 @@ describe("TestsPanel", () => {
     expect(screen.queryByText("Start the app to run tests.")).toBeNull();
     expect(screen.queryByText(/Dyad won't run Neon tests/)).toBeNull();
     expect(screen.queryByText(/couldn't load your settings/)).toBeNull();
+    expect(screen.getByRole("status").textContent).toContain(
+      "Loading settings",
+    );
   });
 
   it("says why Run is disabled when settings fail to load", async () => {
@@ -943,7 +946,7 @@ describe("TestsPanel", () => {
       expect(screen.getByText(/Cleaning up the test sandbox/)).toBeTruthy();
       expect(screen.queryByText(/Restoring/i)).toBeNull();
       expect(
-        screen.getByRole("button", { name: "Cleaning up test data" })
+        screen.getByRole("button", { name: "Cleaning up the test sandbox" })
           .textContent,
       ).toContain("Cleaning up…");
     });

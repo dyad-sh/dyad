@@ -302,10 +302,10 @@ export class AppOperationCoordinator {
       const block = state.blocks.values().next().value;
       if (block) throw block.error;
     };
-    assertSafeToDelete();
     if (state.deletion) {
       throw new AppDeletionInProgressError(appId);
     }
+    assertSafeToDelete();
 
     const token = Symbol(`app-deletion:${appId}`);
     state.deletion = { token, drainWaiters: new Set() };

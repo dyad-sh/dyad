@@ -482,7 +482,9 @@ async function attachFailureArtifacts(
   // turn looking for an attachment that never arrives.
   const attachmentNote = dataUrl
     ? "attached to the next message as an image"
-    : "could NOT be attached as an image — rely on the page snapshot instead";
+    : inlineSnapshot || readableByAgent
+      ? "could NOT be attached as an image — rely on the page snapshot instead"
+      : "could NOT be attached as an image; use the reported test error to investigate";
 
   if (readableByAgent) {
     const errorContext = path

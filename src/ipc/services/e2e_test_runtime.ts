@@ -573,8 +573,12 @@ async function waitForReady({
         // The proof can still arrive during the window — a dev server that is
         // mid-startup may answer `/` from memory before its static handler is
         // wired up.
-        if (ownershipNonce && (await probeAddress(answered)) === "owned") {
-          return answered;
+        if (ownershipNonce) {
+          for (const host of READINESS_HOSTS) {
+            const candidateUrl = `http://${host}:${port}`;
+            if ((await probeAddress(candidateUrl)) === "owned")
+              return candidateUrl;
+          }
         }
       }
       return answered;

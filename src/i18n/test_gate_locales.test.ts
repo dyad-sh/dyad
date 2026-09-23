@@ -6,8 +6,35 @@ import ko from "./locales/ko/home.json";
 import ptBR from "./locales/pt-BR/home.json";
 import zhCN from "./locales/zh-CN/home.json";
 import tr from "./locales/tr/home.json";
+import enChat from "./locales/en/chat.json";
+import esChat from "./locales/es/chat.json";
+import koChat from "./locales/ko/chat.json";
+import ptBRChat from "./locales/pt-BR/chat.json";
+import zhCNChat from "./locales/zh-CN/chat.json";
+import trChat from "./locales/tr/chat.json";
 
 const LOCALES = { es, ko, "pt-BR": ptBR, "zh-CN": zhCN, tr };
+const CHAT_LOCALES = {
+  en: enChat,
+  es: esChat,
+  ko: koChat,
+  "pt-BR": ptBRChat,
+  "zh-CN": zhCNChat,
+  tr: trChat,
+};
+
+it.each(Object.entries(CHAT_LOCALES))(
+  "%s translates test cleanup statuses",
+  (_locale, catalog) => {
+    for (const key of [
+      "cancellationRemovingTestDatabase",
+      "cancellationCleaningTestSandbox",
+    ] as const) {
+      expect(catalog[key]).toEqual(expect.any(String));
+      expect(catalog[key].trim().length).toBeGreaterThan(0);
+    }
+  },
+);
 
 /**
  * Scoped to the Tests panel's run-gate block on purpose. The catalogs as a

@@ -269,7 +269,13 @@ export async function readTestErrorContext(
       if (bytesRead === 0) break;
       offset += bytesRead;
     }
-    const text = buf.subarray(0, offset).toString("utf8");
+    if (offset !== size || (await handle.stat()).size !== stats.size) {
+      logger.warn(
+        `Page snapshot ${realPath} changed while being read; skipping`,
+      );
+      return null;
+    }
+    const text = buf.toString("utf8");
     return stats.size > size ? `${text}\n…(truncated)` : text;
   } catch (error) {
     logger.warn(`Failed to read page snapshot ${realPath}: ${error}`);

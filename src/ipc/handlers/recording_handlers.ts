@@ -501,15 +501,22 @@ export function registerRecordingHandlers() {
                   // was silently dropping it, which is how a leak becomes
                   // invisible until the user finds it themselves.
                   endReason = "error";
-                  endMessage =
-                    "Dyad couldn't finish cleaning up the temporary database it created for this recording. Your app settings were restored; Dyad will retry the cleanup on next startup.";
+                  const resource =
+                    prepared?.cleanupProvider === "supabase-test-user"
+                      ? "temporary Supabase test user"
+                      : "temporary database";
+                  endMessage = `Dyad couldn't finish cleaning up the ${resource} it created for this recording. Your app settings were restored; Dyad will retry the cleanup on next startup.`;
                 }
                 clearRegistration();
                 // A setup failure normally has no live recorder to notify. The
                 // exception is failed teardown: even before capture started,
                 // the app may still point at its temporary database branch and
                 // the renderer must surface that recovery error.
-                if (started || !summary.envRestored) {
+                if (
+                  started ||
+                  !summary.envRestored ||
+                  !remoteCleanupCompleted
+                ) {
                   safeSend(event.sender, "recording:ended", {
                     appId,
                     sessionId,

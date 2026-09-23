@@ -40,7 +40,7 @@ Deleting a Supabase user does not revoke issued JWTs; keep provider cleanup mark
 
 Sanitize copied dotenv files throughout a disposable test workspace's lifetime.
 Preserve only provider-rewritten keys, never whole files, plus public Supabase
-URL/anon/publishable settings for RLS-scoped tests; strip privileged credentials.
+URL/anon/publishable settings for RLS-scoped tests; strip privileged database credentials.
 
 App deletion closes coordinator admission before draining admitted work. Every
 new app-scoped main-process mutation must therefore use the coordinator unless

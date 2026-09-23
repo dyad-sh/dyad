@@ -89,7 +89,10 @@ async function playwrightInstallCommand(appPath: string): Promise<{
   const membership = viaWorkspaceRoot
     ? await workspaceMembershipFor(lockRoot, appPath)
     : null;
-  if (has(lockRoot, "pnpm-lock.yaml") || membership === "pnpm") {
+  if (
+    membership === "pnpm" ||
+    (membership !== "npm" && has(lockRoot, "pnpm-lock.yaml"))
+  ) {
     return {
       command: "pnpm",
       args: [
@@ -1354,6 +1357,14 @@ const BROWSER_MARKER = path.join(
   ".dyad-playwright-chromium-installed",
 );
 
+function playwrightInstallRoot(appPath: string): string {
+  const packageJsonPath = resolveNodeModulePackageJsonPathSync(appPath, [
+    "@playwright",
+    "test",
+  ]);
+  return path.resolve(path.dirname(packageJsonPath), "../../..");
+}
+
 function playwrightPackageVersion(appPath: string): string | null {
   try {
     const packageJson = JSON.parse(
@@ -1397,6 +1408,11 @@ function chromiumExecutablePath(appPath: string): string | null {
 }
 
 export function isPlaywrightBrowserInstalled(appPath: string): boolean {
+  try {
+    appPath = playwrightInstallRoot(appPath);
+  } catch {
+    return false;
+  }
   const markerPath = path.join(appPath, BROWSER_MARKER);
   if (!fs.existsSync(markerPath)) {
     return false;
@@ -1430,6 +1446,7 @@ export function isPlaywrightBrowserInstalled(appPath: string): boolean {
 
 function markBrowserInstalled(appPath: string): void {
   try {
+    appPath = playwrightInstallRoot(appPath);
     const marker = {
       playwrightVersion: playwrightPackageVersion(appPath),
       executablePath: chromiumExecutablePath(appPath),

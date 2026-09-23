@@ -330,12 +330,14 @@ export const applyTestRunFinishedAtom = atom(
       isPartialRun,
       expectedStartedAt,
       expectedRunId,
+      sandboxed,
     }: {
       appId: number;
       res: RunAppTestsResult;
       isPartialRun: boolean;
       expectedStartedAt?: number;
       expectedRunId?: number;
+      sandboxed?: boolean;
     },
   ) => {
     // Playwright reports a spec's `file` relative to its own rootDir, which
@@ -391,6 +393,7 @@ export const applyTestRunFinishedAtom = atom(
             ? { message: res.infraError.message, kind: "infra" }
             : undefined,
           isolation: res.isolation,
+          sandboxed: sandboxed ?? prev.sandboxed,
         };
       },
     });

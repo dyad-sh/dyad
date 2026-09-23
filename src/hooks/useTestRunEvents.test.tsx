@@ -85,6 +85,27 @@ function makeWrapper() {
 }
 
 describe("useTestRunEvents", () => {
+  it.each(["panel", "agent"])(
+    "merges the authoritative terminal sandbox flag for %s runs",
+    (source) => {
+      const { store, Wrapper } = makeWrapper();
+      renderHook(() => useTestRunEvents(), { wrapper: Wrapper });
+      act(() =>
+        emitRunState({ appId: 1, source, state: "started", sandboxed: true }),
+      );
+      expect(store.get(testRunStateByAppIdAtom).get(1)?.sandboxed).toBe(true);
+      act(() =>
+        emitRunState({
+          appId: 1,
+          source,
+          state: "finished",
+          sandboxed: false,
+          results: [],
+        }),
+      );
+      expect(store.get(testRunStateByAppIdAtom).get(1)?.sandboxed).toBe(false);
+    },
+  );
   beforeEach(() => {
     outputListeners.clear();
     runStateListeners.clear();

@@ -265,6 +265,7 @@
     "publish": "Publicar",
     "tests": "Testes",
     "testGate": {
+      "settingsLoading": "Carregando configurações…",
       "settingsUnavailable": "O Dyad não conseguiu carregar suas configurações, então não sabe como os testes seriam executados.",
       "retry": "Tentar novamente",
       "startApp": "Inicie o app para executar os testes.",

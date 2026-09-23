@@ -55,11 +55,12 @@ be limited to the last Git commit.
 
 1. The user presses Run while their normal preview is running.
 2. Setup progress reports distinct steps: preparing Playwright if necessary,
-   capturing the current app, installing clean dependencies, creating isolated
-   data, and starting the test
+   capturing the current app, creating isolated data, installing clean
+   dependencies, and starting the test
    server.
 3. The normal preview remains available and is neither stopped nor restarted.
-4. Playwright targets the sandbox server URL only.
+4. Playwright's default base URL targets the sandbox server. This does not
+   restrict explicit navigation or network access to other origins.
 5. Stop terminates Playwright, then the sandbox server, then remote test-data
    resources, and finally deletes the sandbox directory.
 6. Test results remain visible through the existing result model. Artifacts
@@ -282,8 +283,8 @@ Refactor the E2E handler into explicit stages with one cleanup stack:
 register run/cancellation owner
   -> bootstrap Playwright in real app (when required)
   -> snapshot workspace
-  -> install clean dependencies in workspace (standard apps)
   -> prepare isolated test data in workspace
+  -> install clean dependencies in workspace (standard apps)
   -> start test runtime
   -> run Playwright against explicit baseUrl
   -> retain artifacts
@@ -455,7 +456,7 @@ The feature is complete when:
 
 - the real app environment is byte-identical before, during, and after E2E;
 - the normal preview process and URL do not change during E2E;
-- Playwright can only reach the sandbox server URL supplied to its config;
+- Playwright's configured base URL targets the sandbox server; tests may still navigate to other origins;
 - current uncommitted and relevant untracked files are tested;
 - test writes and reports do not pollute the real app;
 - Stop and app shutdown leave no child process, sandbox, test user, or Neon

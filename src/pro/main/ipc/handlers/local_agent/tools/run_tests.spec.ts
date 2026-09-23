@@ -1023,6 +1023,7 @@ describe("runTestsTool", () => {
     );
 
     expect(out).toContain("Page snapshot: unavailable for this run.");
+    expect(out).not.toContain("rely on the page snapshot instead");
     expect(out).not.toContain("error-context.md");
   });
 

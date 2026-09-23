@@ -4,6 +4,7 @@ import type { ModelMessage } from "ai";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { SMALL_MODEL_NAME } from "@/ipc/shared/language_model_constants";
 
 import { appOperationCoordinator } from "@/ipc/services/app_operation_coordinator";
 import { runExploreCodeSubagent } from "./explore_code_subagent";
@@ -234,17 +235,17 @@ describe("runExploreCodeSubagent", () => {
     });
 
     expect(mocks.getModelClient).toHaveBeenCalledWith(
-      { provider: "openai", name: "gpt-5.6-luna" },
+      { provider: "openai", name: SMALL_MODEL_NAME },
       expect.objectContaining({
         selectedModel: {
           provider: "openai",
-          name: "gpt-5.6-luna",
+          name: SMALL_MODEL_NAME,
           effortLevel: "medium",
         },
       }),
       {
         provider: "openai",
-        name: "gpt-5.6-luna",
+        name: SMALL_MODEL_NAME,
         effortLevel: "medium",
       },
     );

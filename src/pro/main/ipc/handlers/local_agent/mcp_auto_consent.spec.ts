@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { SMALL_MODEL_NAME } from "@/ipc/shared/language_model_constants";
 
 const mocks = vi.hoisted(() => ({
   streamText: vi.fn(),
@@ -42,7 +43,7 @@ describe("classifyMcpToolConsent", () => {
     expect(d.decision).toBe("allow");
     expect(d.reason).toBe("safe read");
     expect(mocks.getModelClient).toHaveBeenCalledWith(
-      { name: "gpt-5.6-luna", provider: "openai" },
+      { name: SMALL_MODEL_NAME, provider: "openai" },
       baseInput.settings,
     );
   });

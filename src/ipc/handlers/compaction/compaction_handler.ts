@@ -12,6 +12,7 @@ import { db } from "@/db";
 import { chats, messages } from "@/db/schema";
 import { readSettings } from "@/main/settings";
 import { getChatInferenceSettings } from "@/ipc/services/chat_inference_settings";
+import { SMALL_MODEL_NAME } from "@/ipc/shared/language_model_constants";
 import type { UserSettings } from "@/lib/schemas";
 import { getModelClient } from "@/ipc/utils/get_model_client";
 import {
@@ -57,7 +58,7 @@ const logger = log.scope("compaction_handler");
 // reachable through the Dyad Engine gateway.
 const PRO_COMPACTION_MODEL = {
   provider: "openai",
-  name: "gpt-5.6-luna",
+  name: SMALL_MODEL_NAME,
 } as const;
 
 export interface CompactionResult {

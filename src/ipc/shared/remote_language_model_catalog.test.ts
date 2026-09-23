@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { GPT_5_5_MODEL_NAME } from "./language_model_constants";
+import {
+  GPT_5_5_MODEL_NAME,
+  SMALL_MODEL_NAME,
+} from "./language_model_constants";
 
 type RemoteAlias = {
   id: string;
@@ -118,6 +121,9 @@ describe("remote language model catalog", () => {
     expect(catalog.source).toBe("fallback");
     expect(catalog.version).toBeUndefined();
     expect(catalog.codexClientVersion).toBeUndefined();
+    expect(catalog.modelsByProvider.openai).toContainEqual(
+      expect.objectContaining({ apiName: SMALL_MODEL_NAME }),
+    );
     expect(
       (await mod.resolveBuiltinModelAlias("dyad/auto/openai"))?.apiName,
     ).toBe(GPT_5_5_MODEL_NAME);

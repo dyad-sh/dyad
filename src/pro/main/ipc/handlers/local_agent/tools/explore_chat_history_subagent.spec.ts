@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { streamText } from "ai";
+import { SMALL_MODEL_NAME } from "@/ipc/shared/language_model_constants";
 
 import { DyadErrorKind } from "@/errors/dyad_error";
 import {
@@ -196,17 +197,17 @@ describe("runExploreChatHistorySubagent", () => {
       "submit_report",
     ]);
     expect(mocks.getModelClient).toHaveBeenCalledWith(
-      { provider: "openai", name: "gpt-5.6-luna" },
+      { provider: "openai", name: SMALL_MODEL_NAME },
       expect.objectContaining({
         selectedModel: {
           provider: "openai",
-          name: "gpt-5.6-luna",
+          name: SMALL_MODEL_NAME,
           effortLevel: "medium",
         },
       }),
       {
         provider: "openai",
-        name: "gpt-5.6-luna",
+        name: SMALL_MODEL_NAME,
         effortLevel: "medium",
       },
     );

@@ -18,6 +18,7 @@ import { getAiHeaders, getProviderOptions } from "@/ipc/utils/provider_options";
 import { withLock } from "@/ipc/utils/lock_utils";
 import { fastTextOutput } from "@/ipc/utils/stream_text_utils";
 import { getBuiltinLanguageModelCatalog } from "@/ipc/shared/remote_language_model_catalog";
+import { SMALL_MODEL_NAME } from "@/ipc/shared/language_model_constants";
 import {
   appOperationCoordinator,
   readAppResource,
@@ -66,9 +67,9 @@ import type { ImplementerJoinSummary } from "./subagent_failure_reporting";
 export { SUBAGENT_NONTERMINAL_STATUSES } from "./state";
 
 const MODELS = {
-  explorer: { provider: "openai", name: "gpt-5.6-luna", effort: "high" },
+  explorer: { provider: "openai", name: SMALL_MODEL_NAME, effort: "high" },
   reviewer: { provider: "openai", name: "gpt-5.6-sol", effort: "medium" },
-  implementer: { provider: "openai", name: "gpt-5.6-luna", effort: "high" },
+  implementer: { provider: "openai", name: SMALL_MODEL_NAME, effort: "high" },
 } as const;
 const MAX_DURABLE_REPORT_CHARS = 100_000;
 const MAX_ACTIVITY_XML_CHARS = 200_000;

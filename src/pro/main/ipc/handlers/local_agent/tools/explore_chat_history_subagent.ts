@@ -2,6 +2,7 @@ import { streamText, stepCountIs, type ModelMessage, type ToolSet } from "ai";
 import log from "electron-log";
 
 import { getChatInferenceSettings } from "@/ipc/services/chat_inference_settings";
+import { SMALL_MODEL_NAME } from "@/ipc/shared/language_model_constants";
 import { resolveModelSelection } from "@/ipc/utils/model_effort";
 import { getModelPreferenceKey } from "@/lib/modelEffort";
 import { cleanMessage } from "@/ipc/utils/ai_messages_utils";
@@ -29,9 +30,8 @@ import {
 
 const logger = log.scope("explore_chat_history_subagent");
 
-// Kept in one place so the explorer's model can change independently of
-// explore_code's. Both currently use the same Engine model.
-const SUBAGENT_MODEL = { provider: "openai", name: "gpt-5.6-luna" } as const;
+// Shared with the other latency-sensitive Dyad tasks through SMALL_MODEL_NAME.
+const SUBAGENT_MODEL = { provider: "openai", name: SMALL_MODEL_NAME } as const;
 // Max model turns. The chat-history corpus is small; benchmark runs
 // converged in well under this (mean 5 searches + 3 reads).
 const SUBAGENT_MAX_STEPS = 10;

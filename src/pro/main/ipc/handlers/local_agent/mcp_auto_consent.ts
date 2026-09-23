@@ -2,6 +2,7 @@ import { streamText } from "ai";
 import { z } from "zod";
 import log from "electron-log";
 import { getModelClient } from "@/ipc/utils/get_model_client";
+import { SMALL_MODEL_NAME } from "@/ipc/shared/language_model_constants";
 import type { LargeLanguageModel, UserSettings } from "@/lib/schemas";
 import { buildMcpConsentSystemPrompt } from "@/prompts/mcp_consent_policy";
 import type { McpAutoApproveResult } from "@/ipc/utils/mcp_consent";
@@ -17,7 +18,7 @@ const logger = log.scope("mcp-auto-consent");
 
 // Fixed classifier model routed through the Dyad Pro engine gateway.
 const MCP_CONSENT_MODEL: LargeLanguageModel = {
-  name: "gpt-5.6-luna",
+  name: SMALL_MODEL_NAME,
   provider: "openai",
 };
 

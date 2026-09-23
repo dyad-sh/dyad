@@ -9,6 +9,8 @@ import {
   markAndDeleteTempTestBranch,
 } from "../utils/neon_test_branch";
 import { createNeonTestAccount } from "../utils/neon_test_account";
+import { ensureNeonAuthTrustedDomain } from "../utils/neon_utils";
+import { retryOnLocked } from "../utils/retryOnLocked";
 import {
   neonPreviewDomainService,
   type NeonPreviewTarget,
@@ -266,14 +268,33 @@ export async function prepareIsolatedTestDatabase({
           "The preview URL is unavailable for Neon Auth sign-in.",
           DyadErrorKind.Precondition,
         );
-      await neonPreviewDomainService.ensureTrustedDomain({
-        appId: app.id,
-        processId: info.processId,
-        invocationRef: info.invocationRef,
-        target: { projectId: app.neonProjectId!, branchId: branch.branchId },
-        origin: new URL(info.proxyUrl).origin,
-        signal: signal ?? new AbortController().signal,
-      });
+      const previewUrl = new URL(info.proxyUrl);
+      const target = {
+        projectId: app.neonProjectId!,
+        branchId: branch.branchId,
+      };
+      if (previewUrl.hostname === "localhost") {
+        // Legacy previews still need to trust the temporary test branch.
+        await retryOnLocked(
+          () =>
+            ensureNeonAuthTrustedDomain({
+              ...target,
+              origin: previewUrl.origin,
+              signal,
+            }),
+          "Register Neon test preview origin",
+          { signal },
+        );
+      } else {
+        await neonPreviewDomainService.ensureTrustedDomain({
+          appId: app.id,
+          processId: info.processId,
+          invocationRef: info.invocationRef,
+          target,
+          origin: previewUrl.origin,
+          signal: signal ?? new AbortController().signal,
+        });
+      }
       try {
         const account = await createNeonTestAccount({
           neonAuthBaseUrl: branch.neonAuthBaseUrl,

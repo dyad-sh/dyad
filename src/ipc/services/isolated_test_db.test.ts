@@ -451,47 +451,53 @@ describe("prepareIsolatedTestDatabase — auth provisioning", () => {
     return vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("ok"));
   }
 
-  it("provisions a Neon Better Auth account when the branch has auth", async () => {
-    mocks.createTempTestBranch.mockResolvedValue({
-      branchId: "test-br",
-      databaseUrl: "postgres://temp",
-      neonAuthBaseUrl: "https://auth",
-      cookieSecret: "secret",
-    });
-    const fetchSpy = withServerUp();
-    try {
-      const prepared = await prepareIsolatedTestDatabase({
-        app: makeApp({ neonProjectId: "proj-1" }),
-        emit,
-        runtimeMode: "host",
-      });
-
-      expect(mocks.createNeonTestAccount).toHaveBeenCalledWith({
-        neonAuthBaseUrl: "https://auth",
-        appId: 1,
-      });
-      expect(mocks.ensureNeonAuthTrustedDomain).toHaveBeenCalledWith({
-        projectId: "proj-1",
+  it.each(["localhost", "app-1.localhost"])(
+    "provisions a Neon Better Auth account on %s when the branch has auth",
+    async (hostname) => {
+      mocks.createTempTestBranch.mockResolvedValue({
         branchId: "test-br",
-        origin: "http://app-1.localhost:42100",
-        signal: expect.any(AbortSignal),
+        databaseUrl: "postgres://temp",
+        neonAuthBaseUrl: "https://auth",
+        cookieSecret: "secret",
       });
-      expect(
-        mocks.ensureNeonAuthTrustedDomain.mock.invocationCallOrder[0],
-      ).toBeLessThan(mocks.createNeonTestAccount.mock.invocationCallOrder[0]);
-      expect(prepared.testCredentials).toEqual({
-        DYAD_TEST_USER_EMAIL: "neon-test@dyad.test",
-        DYAD_TEST_USER_PASSWORD: "neon-pw",
-      });
-      expect(prepared.authSetup).toEqual({
-        mode: "neon-better-auth",
-        email: "neon-test@dyad.test",
-        password: "neon-pw",
-      });
-    } finally {
-      fetchSpy.mockRestore();
-    }
-  });
+      const fetchSpy = withServerUp();
+      mocks.runningApps.set(1, { proxyUrl: `http://${hostname}:42100` });
+      const signal = new AbortController().signal;
+      try {
+        const prepared = await prepareIsolatedTestDatabase({
+          app: makeApp({ neonProjectId: "proj-1" }),
+          emit,
+          runtimeMode: "host",
+          signal,
+        });
+
+        expect(mocks.createNeonTestAccount).toHaveBeenCalledWith({
+          neonAuthBaseUrl: "https://auth",
+          appId: 1,
+        });
+        expect(mocks.ensureNeonAuthTrustedDomain).toHaveBeenCalledWith({
+          projectId: "proj-1",
+          branchId: "test-br",
+          origin: `http://${hostname}:42100`,
+          signal: expect.any(AbortSignal),
+        });
+        expect(
+          mocks.ensureNeonAuthTrustedDomain.mock.invocationCallOrder[0],
+        ).toBeLessThan(mocks.createNeonTestAccount.mock.invocationCallOrder[0]);
+        expect(prepared.testCredentials).toEqual({
+          DYAD_TEST_USER_EMAIL: "neon-test@dyad.test",
+          DYAD_TEST_USER_PASSWORD: "neon-pw",
+        });
+        expect(prepared.authSetup).toEqual({
+          mode: "neon-better-auth",
+          email: "neon-test@dyad.test",
+          password: "neon-pw",
+        });
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    },
+  );
 
   it("continues unauthenticated when Neon account provisioning fails", async () => {
     mocks.createTempTestBranch.mockResolvedValue({

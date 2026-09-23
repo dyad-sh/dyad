@@ -409,6 +409,7 @@ function PreviewNodeRequirement({
   onSelectNodeFolder: () => Promise<void>;
 }) {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
+  const { settings } = useSettings();
   const [isCheckingAgain, setIsCheckingAgain] = useState(false);
   const [isInstallingManagedNode, setIsInstallingManagedNode] = useState(false);
   const [isCancellingManagedNode, setIsCancellingManagedNode] = useState(false);
@@ -523,7 +524,7 @@ function PreviewNodeRequirement({
             <span className="truncate text-xs text-muted-foreground">
               {appName ?? "Your app"}
               {selectedAppId
-                ? ` · ${getAppPreviewHostname(selectedAppId)}`
+                ? ` · ${settings?.enableAppPreviewDomains ? getAppPreviewHostname(selectedAppId) : "localhost"}`
                 : ""}
             </span>
           </div>

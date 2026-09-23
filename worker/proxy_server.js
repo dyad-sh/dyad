@@ -19,8 +19,9 @@ const PREVIEW_HOSTNAME = workerData.hostname;
 // isAppPreviewHostname; the unbundled worker cannot import TypeScript.
 if (
   typeof PREVIEW_HOSTNAME !== "string" ||
-  !/^app-([1-9]\d*)\.localhost$/.test(PREVIEW_HOSTNAME) ||
-  !Number.isSafeInteger(Number(PREVIEW_HOSTNAME.split(".")[0].slice(4)))
+  (PREVIEW_HOSTNAME !== "localhost" &&
+    (!/^app-([1-9]\d*)\.localhost$/.test(PREVIEW_HOSTNAME) ||
+      !Number.isSafeInteger(Number(PREVIEW_HOSTNAME.split(".")[0].slice(4)))))
 ) {
   throw new Error("Invalid preview hostname");
 }

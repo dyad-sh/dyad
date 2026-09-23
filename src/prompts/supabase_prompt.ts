@@ -62,7 +62,7 @@ ${supabaseClientCode}
 
 ${SUPABASE_AUTH_REDIRECT_RULE}
 
-Dyad registers the running preview's origin and paths in Supabase's Redirect URLs allowlist. Deployment callback URLs must also be allowed in the project's URL Configuration. If the Auth UI uses a shared callback for sign-in and recovery, handle PASSWORD_RECOVERY by showing the password-update screen before ordinary signed-in navigation. For custom email templates, use the requested RedirectTo rather than a fixed SiteURL when constructing the return link. Ordinary Supabase login does not require creating an OAuth Server application.
+When app-specific localhost domains are enabled, Dyad registers the running preview's origin and paths in Supabase's Redirect URLs allowlist. With ordinary localhost previews, configure the preview callback URLs in that allowlist as needed. Deployment callback URLs must also be allowed in the project's URL Configuration. If the Auth UI uses a shared callback for sign-in and recovery, handle PASSWORD_RECOVERY by showing the password-update screen before ordinary signed-in navigation. For custom email templates, use the requested RedirectTo rather than a fixed SiteURL when constructing the return link. Ordinary Supabase login does not require creating an OAuth Server application.
 
 Browser examples (use the callback routes you actually implement):
 \`\`\`typescript

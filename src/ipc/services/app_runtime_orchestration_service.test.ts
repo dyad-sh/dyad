@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { readSettings } from "@/main/settings";
 
 import type { AppRunInvocationRef } from "@/app_run/state";
 import type { RuntimeMode2 } from "@/lib/schemas";
@@ -25,6 +26,11 @@ import {
 vi.mock("./supabase_preview_redirect_service", () => ({
   ensureSupabasePreviewRedirects: vi.fn().mockResolvedValue(undefined),
   resolveSupabasePreviewTarget: vi.fn().mockResolvedValue(null),
+}));
+
+vi.mock("@/main/settings", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/main/settings")>()),
+  readSettings: vi.fn(() => ({ enableAppPreviewDomains: true })),
 }));
 
 const APP_ID = 42;
@@ -125,7 +131,47 @@ function createHarness() {
 describe("AppRuntimeService", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(readSettings).mockReturnValue({
+      ...readSettings(),
+      enableAppPreviewDomains: true,
+    });
   });
+
+  it.each([false, true])(
+    "applies domain preference %s to an in-place cloud restart",
+    async (enabled) => {
+      vi.mocked(readSettings).mockReturnValue({
+        ...readSettings(),
+        enableAppPreviewDomains: enabled,
+      });
+      const harness = createHarness();
+      const { output } = createOutput();
+      const appInfo: RunningAppInfo = {
+        process: null,
+        processId: 8,
+        mode: "cloud",
+        lastViewedAt: 0,
+        cloudSandboxId: "sandbox",
+        previewHostname: enabled ? "localhost" : "app-42.localhost",
+        previewAuth: { provider: "supabase", state: "pending" },
+        output,
+      };
+      harness.setRunning(appInfo);
+      vi.mocked(harness.dependencies.restartSandbox).mockResolvedValue({
+        previewUrl: "https://preview.example.test",
+        previewAuthToken: "preview-token",
+      });
+      await harness.service.restart({ appId: APP_ID, output });
+      expect(appInfo.previewHostname).toBe(
+        enabled ? "app-42.localhost" : "localhost",
+      );
+      expect(harness.dependencies.ensureProxy).toHaveBeenCalledOnce();
+      if (!enabled) {
+        expect(appInfo.previewAuth).toBeUndefined();
+        expect(resolveSupabasePreviewTarget).not.toHaveBeenCalled();
+      }
+    },
+  );
 
   it("lets Stop release pending startup readiness without failing Run", async () => {
     const harness = createHarness();

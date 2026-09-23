@@ -44,6 +44,7 @@ export const SETTING_IDS = {
   enableCodeExplorer: "setting-enable-code-explorer",
   runTypeScriptForWholeProject: "setting-run-typescript-for-whole-project",
   enableMultiWindow: "setting-enable-multi-window",
+  enableAppPreviewDomains: "setting-enable-app-preview-domains",
   enableExplorerSubagent: "setting-enable-explorer-subagent",
   enableAutoReview: "setting-enable-auto-review",
   enableReviewButton: "setting-enable-review-button",
@@ -530,6 +531,15 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
       "context menu",
       "experiment",
     ],
+    sectionId: SECTION_IDS.experiments,
+    sectionLabel: "Experiments",
+  },
+  {
+    id: SETTING_IDS.enableAppPreviewDomains,
+    label: "App-specific localhost domains",
+    description:
+      "Use app-<id>.localhost preview addresses to keep each app's cookies separate. Restart running apps to apply changes",
+    keywords: ["preview", "localhost", "domain", "hostname", "cookies", "auth"],
     sectionId: SECTION_IDS.experiments,
     sectionLabel: "Experiments",
   },

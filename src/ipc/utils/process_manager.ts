@@ -39,6 +39,8 @@ export interface RunningAppInfo {
   /** Proxy URL for the running app, set when the proxy server starts */
   proxyUrl?: string;
   previewAuthTarget?: PreviewAuthTarget | null;
+  /** Fences startup lookups against provider switches, including disconnects. */
+  previewAuthTargetRevision?: number;
   previewAuth?: PreviewAuthStatus;
   /** Runtime-owned registration; cancelled and drained on stop or replacement. */
   previewAuthRegistration?: {

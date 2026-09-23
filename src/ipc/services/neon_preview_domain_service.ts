@@ -15,7 +15,7 @@ export interface NeonPreviewTarget {
   branchId: string;
 }
 
-/** Capture under runtime-config/provider admission, before spawning the app. */
+/** Capture under runtime-config admission so the association and env agree. */
 export async function resolveNeonPreviewTarget(
   appId: number,
 ): Promise<NeonPreviewTarget | null> {

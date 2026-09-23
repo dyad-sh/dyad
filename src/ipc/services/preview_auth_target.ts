@@ -1,7 +1,7 @@
 import type { NeonPreviewTarget } from "./neon_preview_domain_service";
 import type { SupabasePreviewTarget } from "./supabase_preview_redirect_service";
 
-/** Captured under provider admission; background registration never rereads it. */
+/** Runtime snapshot; background registration never rereads provider configuration. */
 export type PreviewAuthTarget =
   | ({ provider: "neon" } & NeonPreviewTarget)
   | ({ provider: "supabase" } & SupabasePreviewTarget);

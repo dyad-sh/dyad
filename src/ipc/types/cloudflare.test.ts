@@ -9,19 +9,29 @@ import { cloudflareContracts } from "./cloudflare";
  */
 describe("cloudflare contract invalidations", () => {
   const appScope = { family: "app", appId: 7 };
+  const connectInput = {
+    appId: 7,
+    accountId: "a".repeat(32),
+    rootDirectory: "",
+    workerName: "demo",
+    mode: "create",
+  } as const;
 
   it("refreshes the app record when a Worker is connected", () => {
     const scopes = cloudflareContracts.connectWorker.invalidates!(
-      {
-        appId: 7,
-        accountId: "a".repeat(32),
-        rootDirectory: "",
-        workerName: "demo",
-        mode: "create",
-      },
+      connectInput,
       { status: "connected" } as never,
     );
-    expect(scopes).toContainEqual(appScope);
+    expect(scopes).toEqual([appScope]);
+  });
+
+  it("refreshes nothing when the Worker belongs to another repository", () => {
+    // A conflict is reported before anything is written.
+    const scopes = cloudflareContracts.connectWorker.invalidates!(
+      connectInput,
+      { status: "conflict", existingRepo: "acme/other" },
+    );
+    expect(scopes).toEqual([]);
   });
 
   it("refreshes the app record when a Worker is disconnected", () => {
@@ -29,6 +39,6 @@ describe("cloudflare contract invalidations", () => {
       { appId: 7, rootDirectory: "" },
       undefined,
     );
-    expect(scopes).toContainEqual(appScope);
+    expect(scopes).toEqual([appScope]);
   });
 });

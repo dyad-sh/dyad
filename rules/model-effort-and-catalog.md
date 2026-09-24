@@ -54,6 +54,6 @@ requested about 1055390 tokens`. Keep catalog output limits well under the
 - **Auto entries can be engine-only products, not provider model aliases.**
   When adding a direct-inference source, hide and reject engine-only choices
   (such as Super Value); never let them fall through generic premium Auto aliases.
-- **BYO helper calls must not require a second provider's key.** Use the selected
-  chat model for compaction, explorers, consent classification, and subagents;
-  inherit accepted settings for child calls and resolve stored chats for standalone calls.
+- **BYO applies to main-chat inference, not Pro auxiliary tasks.** Keep fixed
+  helper/persona models and route Pro BYO helpers through the engine using a
+  request-only settings snapshot; never require another provider key or mutate the main-chat source.

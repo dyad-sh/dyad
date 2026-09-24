@@ -298,7 +298,7 @@ describe("performCompaction", () => {
     );
   });
 
-  it("uses the accepted BYO chat model for compaction without an OpenAI key", async () => {
+  it("uses engine-backed Luna for Pro BYO compaction without an OpenAI key", async () => {
     const accepted = {
       selectedModel: { provider: "anthropic", name: "test-model" },
       enableDyadPro: true,
@@ -320,12 +320,12 @@ describe("performCompaction", () => {
     );
     expect(result.success).toBe(true);
     expect(mockGetModelClient).toHaveBeenCalledWith(
-      expect.objectContaining({ provider: "anthropic", name: "test-model" }),
+      expect.objectContaining({ provider: "openai", name: SMALL_MODEL_NAME }),
       expect.objectContaining({
         providerSettings: accepted.providerSettings,
-        proModelUsage: "api-key",
+        proModelUsage: "pro",
       }),
-      expect.objectContaining({ provider: "anthropic", name: "test-model" }),
+      expect.objectContaining({ provider: "openai", name: SMALL_MODEL_NAME }),
     );
   });
 

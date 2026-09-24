@@ -141,8 +141,10 @@ export function ProModeSelector() {
               {settings?.proModelUsage === "api-key" && (
                 <p className="text-xs text-muted-foreground">
                   Provider charges apply separately. While Dyad Pro is on, each
-                  AI request also uses Dyad credits. Local models use the lower
-                  Dyad rate.
+                  main-chat request also uses Dyad credits (lower rate for local
+                  models). Pro helper tasks use cloud models through Dyad and
+                  consume Pro credits at normal model rates, even with local
+                  chat models.
                 </p>
               )}
             </div>

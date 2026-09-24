@@ -3,6 +3,7 @@
  * Orchestrates the compaction of long conversations to stay within context limits.
  */
 
+import { getAuxiliarySettings } from "@/lib/auxiliaryModel";
 import { IpcMainInvokeEvent } from "electron";
 import { streamText, ModelMessage } from "ai";
 import log from "electron-log";
@@ -209,18 +210,19 @@ export async function performCompaction(
           : await resolveDefaultModelSelection(storedSettings);
     // Stored connections describe an earlier turn, not this auxiliary request.
     const { connection: _connection, ...modelIdentity } = selectedModel;
-    const compactionModel =
-      isDyadProEnabled(storedSettings) &&
-      storedSettings.proModelUsage !== "api-key"
-        ? await resolveModelSelection({
-            model: PRO_COMPACTION_MODEL,
-            preferredEffortLevel:
-              storedSettings.modelEffortPreferences?.[
-                getModelPreferenceKey(PRO_COMPACTION_MODEL)
-              ],
-          })
-        : modelIdentity;
-    const settings = { ...storedSettings, selectedModel: compactionModel };
+    const compactionModel = isDyadProEnabled(storedSettings)
+      ? await resolveModelSelection({
+          model: PRO_COMPACTION_MODEL,
+          preferredEffortLevel:
+            storedSettings.modelEffortPreferences?.[
+              getModelPreferenceKey(PRO_COMPACTION_MODEL)
+            ],
+        })
+      : modelIdentity;
+    const settings = {
+      ...getAuxiliarySettings(storedSettings),
+      selectedModel: compactionModel,
+    };
     logger.info(`Starting compaction for chat ${chatId}`);
 
     // Load all messages for the chat

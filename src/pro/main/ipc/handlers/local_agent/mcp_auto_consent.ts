@@ -2,7 +2,7 @@ import { streamText } from "ai";
 import { z } from "zod";
 import log from "electron-log";
 import { getModelClient } from "@/ipc/utils/get_model_client";
-import { getAuxiliaryModel } from "@/lib/auxiliaryModel";
+import { getAuxiliarySettings } from "@/lib/auxiliaryModel";
 import { SMALL_MODEL_NAME } from "@/ipc/shared/language_model_constants";
 import type { LargeLanguageModel, UserSettings } from "@/lib/schemas";
 import { buildMcpConsentSystemPrompt } from "@/prompts/mcp_consent_policy";
@@ -89,8 +89,8 @@ export async function classifyMcpToolConsent(
   });
   try {
     const { modelClient } = await getModelClient(
-      getAuxiliaryModel(input.settings, MCP_CONSENT_MODEL),
-      input.settings,
+      MCP_CONSENT_MODEL,
+      getAuxiliarySettings(input.settings),
     );
 
     const stream = streamText({

@@ -48,16 +48,18 @@ describe("classifyMcpToolConsent", () => {
     );
   });
 
-  it("uses the selected BYO provider for consent classification", async () => {
+  it("uses the engine helper model for BYO consent classification", async () => {
     withText('{"reason":"safe read","decision":"allow"}');
     const settings = {
+      enableDyadPro: true,
+      providerSettings: { auto: { apiKey: { value: "pro-key" } } },
       proModelUsage: "api-key",
       selectedModel: { provider: "anthropic", name: "chosen-model" },
     };
     await classifyMcpToolConsent({ ...baseInput, settings: settings as any });
     expect(mocks.getModelClient).toHaveBeenCalledWith(
-      settings.selectedModel,
-      settings,
+      { provider: "openai", name: SMALL_MODEL_NAME },
+      { ...settings, proModelUsage: "pro" },
     );
   });
   it("parses a decision wrapped in prose/code fences", async () => {

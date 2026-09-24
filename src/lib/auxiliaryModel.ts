@@ -1,13 +1,10 @@
-import type { LargeLanguageModel, UserSettings } from "./schemas";
+import { isDyadProEnabled, type UserSettings } from "./schemas";
 
-/** BYO helpers use the chat's chosen provider, not an implicit second API key. */
-export function getAuxiliaryModel(
-  settings: UserSettings,
-  defaultModel: LargeLanguageModel,
-): LargeLanguageModel {
-  const { connection: _connection, ...model } =
-    settings.proModelUsage === "api-key"
-      ? settings.selectedModel
-      : defaultModel;
-  return model;
+/** Pro helpers retain their engine models even when main-chat inference uses BYO.
+ * Return a request-only snapshot; never change the user's billing-source setting.
+ */
+export function getAuxiliarySettings(settings: UserSettings): UserSettings {
+  return settings.proModelUsage === "api-key" && isDyadProEnabled(settings)
+    ? { ...settings, proModelUsage: "pro" }
+    : settings;
 }

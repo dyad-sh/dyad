@@ -1,3 +1,4 @@
+import { getAuxiliarySettings } from "@/lib/auxiliaryModel";
 import { preflightSubscriptionTurn } from "../services/subscription_turn_preflight";
 import { checkSubscriptionCredits } from "../services/codex_subscription_credit_check";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
@@ -511,6 +512,25 @@ describe("getModelClient", () => {
       undefined,
       true,
     );
+  });
+  test("routes BYO auxiliary Luna through the engine without OpenAI credentials or subscription fallback", async () => {
+    vi.mocked(getSubscriptionAccount).mockResolvedValue({
+      connected: true,
+      models: ["gpt-6-luna"],
+    } as any);
+    const settings = {
+      enableDyadPro: true,
+      proModelUsage: "api-key",
+      providerSettings: { auto: { apiKey: { value: "pro-key" } } },
+    } as unknown as UserSettings;
+    const result = await getModelClient(
+      { provider: "openai", name: "gpt-6-luna" },
+      getAuxiliarySettings(settings),
+    );
+    expect((result.modelClient.model as any).provider).toContain("dyad-engine");
+    expect(result.isEngineEnabled).toBe(true);
+    expect(createCodexSubscriptionModel).not.toHaveBeenCalled();
+    expect(settings.proModelUsage).toBe("api-key");
   });
   test("keeps the accepted turn source pinned", async () => {
     vi.mocked(getSubscriptionAccount).mockResolvedValue({

@@ -14,8 +14,7 @@ import {
 } from "@/db/schema";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import { getModelClient } from "@/ipc/utils/get_model_client";
-import { getAuxiliaryModel } from "@/lib/auxiliaryModel";
-import { resolveModelSelection } from "@/ipc/utils/model_effort";
+import { getAuxiliarySettings } from "@/lib/auxiliaryModel";
 import { getAiHeaders, getProviderOptions } from "@/ipc/utils/provider_options";
 import { withLock } from "@/ipc/utils/lock_utils";
 import { fastTextOutput } from "@/ipc/utils/stream_text_utils";
@@ -1787,16 +1786,6 @@ async function runModel(
     params.inferenceSettings,
   );
   const modelInfo = await getModelClient(settings.selectedModel, settings);
-  if (settings.proModelUsage === "api-key") {
-    await db
-      .update(agentThreads)
-      .set({
-        provider: modelInfo.runtimeModel.provider,
-        model: modelInfo.runtimeModel.name,
-        reasoningEffort: settings.selectedModel.effortLevel,
-      })
-      .where(eq(agentThreads.id, params.threadId));
-  }
   const history = await buildModelHistory(params.threadId, params.assignment);
   let streamError: unknown;
   const result = streamText({
@@ -1922,17 +1911,12 @@ async function personaModelSettings(
   const defaults = MODELS[persona];
   const settings = await getChatInferenceSettings(chatId, acceptedSettings);
   return {
-    ...settings,
-    selectedModel:
-      settings.proModelUsage === "api-key"
-        ? await resolveModelSelection({
-            model: getAuxiliaryModel(settings, defaults),
-          })
-        : {
-            provider: defaults.provider,
-            name: defaults.name,
-            effortLevel: defaults.effort,
-          },
+    ...getAuxiliarySettings(settings),
+    selectedModel: {
+      provider: defaults.provider,
+      name: defaults.name,
+      effortLevel: defaults.effort,
+    },
     thinkingBudget: defaults.effort,
   };
 }
@@ -1948,18 +1932,17 @@ async function preflightPersonaModel(
     chatId,
     acceptedSettings,
   );
-  if (settings.proModelUsage !== "api-key") {
-    const catalog = await getBuiltinLanguageModelCatalog();
-    const available = catalog.modelsByProvider[defaults.provider]?.some(
-      (model) => model.apiName === defaults.name,
+  const catalog = await getBuiltinLanguageModelCatalog();
+  const available = catalog.modelsByProvider[defaults.provider]?.some(
+    (model) => model.apiName === defaults.name,
+  );
+  if (!available) {
+    throw new DyadError(
+      `${persona} requires ${defaults.name}, which is not currently available. Check your Dyad Pro model access and try again.`,
+      DyadErrorKind.Precondition,
     );
-    if (!available) {
-      throw new DyadError(
-        `${persona} requires ${defaults.name}, which is not currently available. Check your Dyad Pro model access and try again.`,
-        DyadErrorKind.Precondition,
-      );
-    }
   }
+
   try {
     await getModelClient(settings.selectedModel, settings);
   } catch (error) {

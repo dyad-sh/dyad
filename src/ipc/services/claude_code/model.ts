@@ -19,7 +19,7 @@ import { chats, messages } from "@/db/schema";
 import type { AgentContext } from "@/pro/main/ipc/handlers/local_agent/tools/types";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { createDyadToolBridge } from "./tool_bridge";
-import { runClaudeTurn } from "./runtime";
+import { runClaudeTurn, safeClaudeDiagnostic } from "./runtime";
 import { claudeTextFilter } from "./text";
 import { startExternalModelUsage } from "../external_model_usage";
 import type { ExternalModelAdmission } from "../external_model_admission";
@@ -346,17 +346,27 @@ export class ClaudeCodeModel implements LanguageModelV3 {
       await queue;
       this.stepsExecuted =
         typeof result?.num_turns === "number" ? result.num_turns : 1;
-      if (
-        !started ||
-        !result ||
-        (!stopAfterTool &&
-          result.is_error &&
-          result.subtype !== "error_max_turns")
-      )
+      if (!started || !result)
         throw new DyadError(
           "Claude Code did not complete the turn",
           DyadErrorKind.External,
         );
+      if (
+        !stopAfterTool &&
+        result.is_error &&
+        result.subtype !== "error_max_turns"
+      ) {
+        const diagnostic =
+          typeof result.result === "string"
+            ? safeClaudeDiagnostic(result.result)
+            : undefined;
+        throw new DyadError(
+          diagnostic
+            ? `Claude Code: ${diagnostic}`
+            : "Claude Code did not complete the turn",
+          diagnostic ? DyadErrorKind.Precondition : DyadErrorKind.External,
+        );
+      }
       signal.throwIfAborted();
       completed = true;
       text(filter("", true));

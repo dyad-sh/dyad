@@ -645,6 +645,29 @@ it("preserves the primary turn failure when bridge cleanup also fails", async ()
   ).toMatchObject({ claudeSessionState: "interrupted" });
 });
 
+it("shows a failed Claude Code result in the chat error", async () => {
+  calls.run.mockImplementationOnce(async (turn) => {
+    await turn.onEvent({
+      type: "system",
+      subtype: "init",
+      tools: turn.dyadTools,
+      mcp_servers: [{ name: "dyad", status: "connected" }],
+    });
+    await turn.onEvent({
+      type: "result",
+      is_error: true,
+      subtype: "error_during_execution",
+      result:
+        "Claude Code could not refresh its OAuth token. Retry in a minute.",
+    });
+  });
+  const chatId = await ipc.chat.createChat({ appId: harness.appId });
+  const result = await harness.streamChat("Reply briefly", { chatId });
+  expect(JSON.stringify(result.event("chat:response:error"))).toContain(
+    "Claude Code could not refresh its OAuth token. Retry in a minute.",
+  );
+});
+
 it("does not publish a cancelled Claude turn before owned work drains", async () => {
   let entered!: () => void;
   let release!: () => void;

@@ -20,6 +20,11 @@ export async function resolveSubscriptionModel(
 ): Promise<ModelSelection> {
   const { connection: _legacyConnection, ...identity } = model;
   if (settings.proModelUsage === "api-key") {
+    if (model.provider === "auto" && ["value", "free-pro"].includes(model.name))
+      throw new DyadError(
+        "This Auto option requires Pro credits. Select Pro credits or choose an API-key or local model.",
+        DyadErrorKind.Validation,
+      );
     if (model.provider === "claude-code")
       throw new DyadError(
         "This chat uses Claude Code. Select Subscriptions, or choose an API-key model to start a new chat.",

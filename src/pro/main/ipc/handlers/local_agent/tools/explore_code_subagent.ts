@@ -1,3 +1,4 @@
+import { getAuxiliaryModel } from "@/lib/auxiliaryModel";
 import { withReferencedAppRead } from "./referenced_app_read";
 import { streamText, stepCountIs, type ModelMessage, type ToolSet } from "ai";
 import log from "electron-log";
@@ -117,25 +118,26 @@ export async function runExploreCodeSubagent({
     ctx.inferenceSettings,
   );
   assertDyadValueAvailable(storedSettings);
+  const auxiliaryModel = getAuxiliaryModel(storedSettings, SUBAGENT_MODEL);
   const selectedModel = await resolveModelSelection({
-    model: SUBAGENT_MODEL,
+    model: auxiliaryModel,
     preferredEffortLevel:
       storedSettings.modelEffortPreferences?.[
-        getModelPreferenceKey(SUBAGENT_MODEL)
+        getModelPreferenceKey(auxiliaryModel)
       ],
   });
   const settings = { ...storedSettings, selectedModel };
 
   const modelInfo = await getModelClient(
-    SUBAGENT_MODEL,
+    auxiliaryModel,
     settings,
     selectedModel,
   );
   const maxOutputTokens = Math.min(
-    (await getMaxTokens(SUBAGENT_MODEL)) ?? SUBAGENT_MAX_OUTPUT_TOKENS,
+    (await getMaxTokens(auxiliaryModel)) ?? SUBAGENT_MAX_OUTPUT_TOKENS,
     SUBAGENT_MAX_OUTPUT_TOKENS,
   );
-  const temperature = await getTemperature(SUBAGENT_MODEL);
+  const temperature = await getTemperature(auxiliaryModel);
   const intent: ExploreIntent = args.intent ?? "locate";
   const observations: SubagentObservation[] = [];
   const candidateRegistry = createCandidateRegistry();

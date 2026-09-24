@@ -170,6 +170,27 @@ describe("runExploreCodeSubagent", () => {
     expect(appOperationCoordinator.isBusy(987655, ["app-path"])).toBe(false);
   });
 
+  it("uses the accepted BYO model for code exploration and its token limits", async () => {
+    const ctx = createMockContext();
+    ctx.inferenceSettings = {
+      ...mocks.readSettings(),
+      proModelUsage: "api-key",
+      selectedModel: { provider: "anthropic", name: "chosen-model" },
+    };
+    await runExploreCodeSubagent({
+      args: { query: "find save", intent: "locate" },
+      ctx,
+    });
+    expect(mocks.getModelClient).toHaveBeenCalledWith(
+      { provider: "anthropic", name: "chosen-model" },
+      expect.objectContaining({ proModelUsage: "api-key" }),
+      expect.objectContaining({ provider: "anthropic", name: "chosen-model" }),
+    );
+    expect(mocks.getMaxTokens).toHaveBeenCalledWith({
+      provider: "anthropic",
+      name: "chosen-model",
+    });
+  });
   it.each(["build", "ask", "plan", "local-agent"] as const)(
     "inherits accepted %s billing settings instead of the live default",
     async (selectedChatMode) => {

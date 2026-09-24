@@ -124,6 +124,9 @@ it.each([true, false])(
       screen.getByRole("button", { name: "Your API keys & local" }),
     ).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByText(/Provider charges apply separately/)).toBeVisible();
+    expect(
+      screen.getByText(/Pro helper tasks use cloud models through Dyad/),
+    ).toBeVisible();
     await user.click(screen.getByRole("button", { name: "Pro credits" }));
     expect(mocks.update).toHaveBeenCalledExactlyOnceWith({
       proModelUsage: "pro",

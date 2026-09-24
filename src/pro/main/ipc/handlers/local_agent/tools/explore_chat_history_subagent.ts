@@ -1,4 +1,4 @@
-import { getAuxiliaryModel } from "@/lib/auxiliaryModel";
+import { getAuxiliarySettings } from "@/lib/auxiliaryModel";
 import { streamText, stepCountIs, type ModelMessage, type ToolSet } from "ai";
 import log from "electron-log";
 
@@ -64,7 +64,7 @@ export async function runExploreChatHistorySubagent({
     ctx.inferenceSettings,
   );
   assertHistoryExplorerAvailable(storedSettings, ctx);
-  const auxiliaryModel = getAuxiliaryModel(storedSettings, SUBAGENT_MODEL);
+  const auxiliaryModel = SUBAGENT_MODEL;
   const selectedModel = await resolveModelSelection({
     model: auxiliaryModel,
     preferredEffortLevel:
@@ -72,7 +72,7 @@ export async function runExploreChatHistorySubagent({
         getModelPreferenceKey(auxiliaryModel)
       ],
   });
-  const settings = { ...storedSettings, selectedModel };
+  const settings = { ...getAuxiliarySettings(storedSettings), selectedModel };
 
   const modelInfo = await getModelClient(
     auxiliaryModel,

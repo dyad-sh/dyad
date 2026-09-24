@@ -117,7 +117,7 @@ describe("runExploreChatHistorySubagent", () => {
     harness.dispose();
   });
 
-  it("uses the accepted BYO model for history exploration", async () => {
+  it("uses the engine helper model with BYO for history exploration", async () => {
     const ctx = makeAgentContext({ isDyadPro: true });
     ctx.inferenceSettings = {
       ...mocks.readSettings(),
@@ -126,9 +126,9 @@ describe("runExploreChatHistorySubagent", () => {
     };
     await runExploreChatHistorySubagent({ query: "find save discussion", ctx });
     expect(mocks.getModelClient).toHaveBeenCalledWith(
-      { provider: "google", name: "chosen-model" },
-      expect.objectContaining({ proModelUsage: "api-key" }),
-      expect.objectContaining({ provider: "google", name: "chosen-model" }),
+      { provider: "openai", name: SMALL_MODEL_NAME },
+      expect.objectContaining({ proModelUsage: "pro" }),
+      expect.objectContaining({ provider: "openai", name: SMALL_MODEL_NAME }),
     );
   });
   it.each(["build", "ask", "plan", "local-agent"] as const)(

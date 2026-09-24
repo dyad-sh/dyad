@@ -2,6 +2,7 @@ import addAuthenticationGuide from "./guides/add-authentication.md?raw";
 import addEmailVerificationGuide from "./guides/add-email-verification.md?raw";
 import addPasswordResetGuide from "./guides/add-password-reset.md?raw";
 import { filterGuideByFramework } from "./guides/filter_guide_by_framework";
+import { renderGuide } from "./guides/render_guide";
 import {
   NEON_NO_BROWSER_DATABASE_URL_RULE,
   NEON_NO_BROWSER_SERVERLESS_RULE,
@@ -41,6 +42,7 @@ export function getNeonAvailableSystemPrompt(
     nextjsMajorVersion?: number | null;
     isLocalAgentMode?: boolean;
     providerToolsAvailable?: boolean;
+    enableAppPreviewDomains?: boolean;
   },
 ): string {
   const emailVerification = options?.emailVerificationEnabled ?? false;
@@ -53,6 +55,7 @@ export function getNeonAvailableSystemPrompt(
     isLocalAgentMode,
     frameworkType,
     providerToolsAvailable,
+    options?.enableAppPreviewDomains ?? false,
   );
 
   if (frameworkType === "nextjs") {
@@ -88,6 +91,7 @@ function getSharedNeonPrompt(
   isLocalAgentMode: boolean,
   frameworkType: AppFrameworkType | null,
   providerToolsAvailable: boolean,
+  enableAppPreviewDomains: boolean,
 ): string {
   const addAuthenticationGuideBody = normalizeGuideNewlines(
     addAuthenticationGuide,
@@ -108,7 +112,7 @@ ${emailVerificationEnabled ? `\n**IMPORTANT:** Email verification is enabled. Af
 **IMPORTANT:** If the task involves password reset, forgot-password, or "reset my password" flows, you MUST call \`read_guide\` with guide="add-password-reset" BEFORE writing any password-reset code. Do NOT hand-roll a reset-token flow.`
     : `## Auth
 
-${filterGuideByFramework(addAuthenticationGuideBody, frameworkType)}
+${renderGuide(addAuthenticationGuideBody, frameworkType, { enableAppPreviewDomains })}
 ${emailVerificationEnabled ? `\n${filterGuideByFramework(addEmailVerificationGuideBody, frameworkType)}` : ""}
 ${filterGuideByFramework(addPasswordResetGuideBody, frameworkType)}`;
 

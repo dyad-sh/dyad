@@ -5,7 +5,8 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import addAuthentication from "@/prompts/guides/add-authentication.md?raw";
 import addEmailVerification from "@/prompts/guides/add-email-verification.md?raw";
 import addPasswordReset from "@/prompts/guides/add-password-reset.md?raw";
-import { filterGuideByFramework } from "@/prompts/guides/filter_guide_by_framework";
+import { renderGuide } from "@/prompts/guides/render_guide";
+import { readSettings } from "@/main/settings";
 
 /**
  * Registry of available guides. To add a new guide, import its .md file
@@ -48,6 +49,8 @@ export const readGuideTool: ToolDefinition<z.infer<typeof readGuideSchema>> = {
         DyadErrorKind.NotFound,
       );
     }
-    return filterGuideByFramework(content, ctx.frameworkType);
+    return renderGuide(content, ctx.frameworkType, {
+      enableAppPreviewDomains: readSettings().enableAppPreviewDomains,
+    });
   },
 };

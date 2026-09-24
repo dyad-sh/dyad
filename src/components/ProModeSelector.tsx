@@ -77,7 +77,7 @@ export function ProModeSelector() {
               </a>
             </div>
           )}
-          {hasProKey && (
+          {(hasProKey || settings?.proModelUsage === "api-key") && (
             <div className="space-y-2">
               <Label>Model usage</Label>
               <ToggleGroup
@@ -118,6 +118,7 @@ export function ProModeSelector() {
                 </ToggleGroupItem>
                 <ToggleGroupItem
                   value="pro"
+                  disabled={!hasProKey}
                   className="text-xs"
                   onClick={() => {
                     // Disconnected accounts display Pro even when the saved
@@ -139,8 +140,9 @@ export function ProModeSelector() {
               </ToggleGroup>
               {settings?.proModelUsage === "api-key" && (
                 <p className="text-xs text-muted-foreground">
-                  Provider charges apply separately. Pro features also use Dyad
-                  credits. Local models use the lower Dyad rate.
+                  Provider charges apply separately. While Dyad Pro is on, each
+                  AI request also uses Dyad credits. Local models use the lower
+                  Dyad rate.
                 </p>
               )}
             </div>

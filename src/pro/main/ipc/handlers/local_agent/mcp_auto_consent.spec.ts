@@ -48,6 +48,18 @@ describe("classifyMcpToolConsent", () => {
     );
   });
 
+  it("uses the selected BYO provider for consent classification", async () => {
+    withText('{"reason":"safe read","decision":"allow"}');
+    const settings = {
+      proModelUsage: "api-key",
+      selectedModel: { provider: "anthropic", name: "chosen-model" },
+    };
+    await classifyMcpToolConsent({ ...baseInput, settings: settings as any });
+    expect(mocks.getModelClient).toHaveBeenCalledWith(
+      settings.selectedModel,
+      settings,
+    );
+  });
   it("parses a decision wrapped in prose/code fences", async () => {
     withText('Here:\n```json\n{"reason":"x","decision":"ask"}\n```');
     const d = await classifyMcpToolConsent(baseInput);

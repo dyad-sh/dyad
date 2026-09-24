@@ -419,6 +419,7 @@ export async function getModelClient(
       model.name === AUTO_BALANCED_MODEL_NAME
         ? [AUTO_BALANCED_ALIAS]
         : AUTO_MODEL_ALIASES;
+    const candidateProviders = new Set<string>();
     for (const autoModelAlias of aliases) {
       const resolvedModel = await resolveBuiltinModelAlias(autoModelAlias);
       if (!resolvedModel) {
@@ -429,6 +430,7 @@ export async function getModelClient(
         (p) => p.id === resolvedModel.providerId,
       );
       const envVarName = providerInfo?.envVarName;
+      candidateProviders.add(providerInfo?.name ?? resolvedModel.providerId);
 
       const apiKey = getProviderApiKeyForRequest(
         settings.providerSettings?.[resolvedModel.providerId]?.apiKey?.value ||
@@ -476,8 +478,9 @@ export async function getModelClient(
       }
     }
     // If no models have API keys, throw an error
-    throw new Error(
-      "No API keys available for any model supported by the 'auto' provider.",
+    throw new DyadError(
+      `No API key is available for ${model.name === AUTO_BALANCED_MODEL_NAME ? "Auto (balanced)" : "Auto"}. Configure an API key for ${[...candidateProviders].join(" or ") || "a supported provider"} in Settings, or select Pro credits.`,
+      DyadErrorKind.Validation,
     );
   }
   const regular = getRegularModelClient(model, settings, providerConfig);

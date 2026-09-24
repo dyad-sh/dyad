@@ -1,5 +1,6 @@
 import { preflightSubscriptionTurn } from "../services/subscription_turn_preflight";
 import { checkSubscriptionCredits } from "../services/codex_subscription_credit_check";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import type { AutoModelCandidates } from "../services/auto_model_candidates";
 vi.mock("../services/codex_subscription_auth", () => ({
   getCodexSubscriptionCredentials: vi.fn(async () => ({})),
@@ -646,6 +647,26 @@ describe("getModelClient", () => {
           totalTokens: 110,
         });
       } else expect(report).not.toHaveBeenCalled();
+    },
+  );
+  test.each(["auto", "balanced"])(
+    "explains missing keys for BYO Auto %s as an expected error",
+    async (name) => {
+      const promise = getModelClient({ provider: "auto", name }, {
+        enableDyadPro: true,
+        proModelUsage: "api-key",
+        providerSettings: { auto: { apiKey: { value: "dyad-key" } } },
+      } as unknown as UserSettings);
+      await expect(promise).rejects.toBeInstanceOf(DyadError);
+      await expect(promise).rejects.toMatchObject({
+        kind: DyadErrorKind.Validation,
+      });
+      await expect(promise).rejects.toThrow(
+        "in Settings, or select Pro credits",
+      );
+      if (name === "balanced")
+        await expect(promise).rejects.toThrow("API key for OpenRouter");
+      expect(createCodexSubscriptionModel).not.toHaveBeenCalled();
     },
   );
   afterEach(() => {

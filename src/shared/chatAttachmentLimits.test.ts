@@ -5,6 +5,7 @@ import {
   MAX_CHAT_ATTACHMENT_BYTES,
   MAX_CHAT_ATTACHMENTS,
   MAX_CHAT_ATTACHMENTS_TOTAL_BYTES,
+  MAX_CHAT_PDF_ATTACHMENT_BYTES,
   validateChatAttachmentFiles,
   validateSerializedChatAttachments,
 } from "./chatAttachmentLimits";
@@ -146,5 +147,42 @@ describe("serialized chat attachment limits", () => {
       { name: "third.bin", data: remainingPlusOne },
     ]);
     expect(result).toMatchObject({ ok: false, code: "total-too-large" });
+  });
+});
+
+describe("PDF attachment limits", () => {
+  it("applies the lower PDF cap to picked files", () => {
+    expect(
+      validateChatAttachmentFiles([
+        { name: "spec.pdf", size: MAX_CHAT_PDF_ATTACHMENT_BYTES },
+      ]),
+    ).toMatchObject({ ok: true });
+    expect(
+      validateChatAttachmentFiles([
+        { name: "Spec.PDF", size: MAX_CHAT_PDF_ATTACHMENT_BYTES + 1 },
+      ]),
+    ).toEqual({
+      ok: false,
+      code: "file-too-large",
+      message:
+        '"Spec.PDF" is 5.0 MiB. Each PDF attachment must be 5 MiB or smaller.',
+    });
+    // Other files keep the general cap.
+    expect(
+      validateChatAttachmentFiles([
+        { name: "photo.png", size: MAX_CHAT_PDF_ATTACHMENT_BYTES + 1 },
+      ]),
+    ).toMatchObject({ ok: true });
+  });
+
+  it("applies the lower PDF cap to serialized attachments", () => {
+    expect(
+      validateSerializedChatAttachments([
+        {
+          name: "spec.pdf",
+          data: dataUrlForDecodedBytes(MAX_CHAT_PDF_ATTACHMENT_BYTES + 1),
+        },
+      ]),
+    ).toMatchObject({ ok: false, code: "file-too-large" });
   });
 });

@@ -287,6 +287,12 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 - When deleting old `.dyad/media` attachment files, also prune `attachments-manifest.json` entries under the `attachments-manifest:${appPath}` lock. Read-time filtering hides broken entries but still leaves stale logical names that force unnecessary suffixes like `notes-2.txt` on future uploads.
 - When registering `.dyad/media` files that may already exist (for example repeated `@media:` mentions), reuse an existing manifest entry for the same `storedFileName` before allocating a new logical name. Otherwise repeated references create noisy `attachments:*` aliases like `image-2.png`, `image-3.png`.
 
+## Inline attachment delivery
+
+- Chat-context images and PDFs are stored as base64 parts in the user message's `aiMessagesJson` and replayed in full on every later turn; nothing replaces them with placeholders. Only the 10 MB `MAX_AI_MESSAGES_SIZE` save guard drops them (and with it the whole structured message). Any capability check for inline parts must scan the full outgoing history (`messagesContainPdf`), not just the current turn, or switching models mid-chat breaks later turns.
+- Whether a model client can take inline PDFs is `modelClientSupportsPdfInput` in `get_model_client.ts`. Dyad Pro requests that are not OpenAI (Responses) or Anthropic (Messages) go through the Engine's `/chat/completions` route, whose schema accepted only `text`/`image_url` parts until dyad-llm-engine#187. Those models are tagged via `isDyadEngineChatCompletionsModel`.
+- The ChatGPT subscription (Codex) backend accepts Responses `input_file` PDFs but appears to send the model only extracted text (verified live 2026-09-24: text answers were correct, a text-free drawing got a made-up answer, ~65 input tokens). Don't rely on it for visual PDF content.
+
 ## Tool spec mock contexts
 
 - When adding a required field to `AgentContext` (in `tools/types.ts`), grep `src/pro/main/ipc/handlers/local_agent/tools/*.spec.ts` and update every mock context literal. The TS error appears as e.g. `Property 'nitroEnabled' is missing in type ... but required in type 'AgentContext'` and surfaces only via `npm run ts` — `npm run lint` does not catch it.

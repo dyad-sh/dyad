@@ -43,6 +43,7 @@ Detailed rules and learnings are in the `rules/` directory. Read the relevant fi
 | [rules/model-effort-and-catalog.md](rules/model-effort-and-catalog.md)     | Sending reasoning effort or output-token limits to models via the engine, editing the remote model catalog, or debugging 400s / truncation from a provider (Gemini thought signatures, OpenRouter context limits, Anthropic 4096 default) |
 
 | [rules/claude-code-backend.md](rules/claude-code-backend.md) | Claude Code backend, model picker, subscription usage, and tool presentation |
+| [rules/docker-runtime.md](rules/docker-runtime.md) | Running app code (installs, builds, type checks, tests, scripts) in Docker mode, the guest command runner, or pnpm config env vars |
 
 ## Project setup and lints
 

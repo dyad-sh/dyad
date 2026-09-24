@@ -8,6 +8,7 @@ import {
 } from "../ipc/utils/framework_utils";
 import type { AppFrameworkType } from "@/lib/framework_constants";
 import { isLocalAgentBackedMode, type ChatMode } from "@/lib/schemas";
+import { readSettings } from "@/main/settings";
 
 interface BuildNeonPromptAdditionsParams {
   projectId: string;
@@ -41,6 +42,7 @@ export async function buildNeonPromptAdditions({
       nextjsMajorVersion,
       isLocalAgentMode,
       providerToolsAvailable: Boolean(branchId),
+      enableAppPreviewDomains: readSettings().enableAppPreviewDomains,
     },
   );
 

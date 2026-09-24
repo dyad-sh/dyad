@@ -65,6 +65,28 @@ describe("getNeonAvailableSystemPrompt", () => {
       ).toMatchSnapshot();
     });
 
+    it.each([true, false, undefined])(
+      "renders preview cookie guidance for enableAppPreviewDomains=%s",
+      (enableAppPreviewDomains) => {
+        const prompt = getNeonAvailableSystemPrompt(
+          NEON_CLIENT_CODE,
+          "vite-nitro",
+          { enableAppPreviewDomains },
+        );
+
+        expect(prompt.includes("app-<numeric app ID>.localhost")).toBe(
+          enableAppPreviewDomains === true,
+        );
+        expect(prompt.includes("shared cookies across ports")).toBe(
+          enableAppPreviewDomains !== true,
+        );
+        expect(prompt).not.toContain("[[PREVIEW_COOKIE_GUIDANCE]]");
+        expect(prompt).toContain("MUST be discarded unconditionally");
+        expect(prompt).toContain("forward at most the first occurrence");
+        expect(prompt).toContain("Never set a shared `Domain=localhost`");
+      },
+    );
+
     it("local agent mode", () => {
       expect(
         getNeonAvailableSystemPrompt(NEON_CLIENT_CODE, "vite-nitro", {

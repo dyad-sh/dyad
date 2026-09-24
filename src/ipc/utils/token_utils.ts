@@ -5,6 +5,8 @@ import { getErrorMessage } from "@ai-sdk/provider";
 
 import { findLanguageModel } from "./findLanguageModel";
 
+export const DEFAULT_CONTEXT_WINDOW = 128_000;
+
 // Estimate tokens (4 characters per token)
 export const estimateTokens = (text: string): number => {
   return Math.ceil(text.length / 4);
@@ -63,12 +65,23 @@ export const estimateMessagesTokens = (messages: Message[]): number => {
   );
 };
 
-const DEFAULT_CONTEXT_WINDOW = 128_000;
+function isPositiveFiniteContextWindow(
+  value: number | undefined,
+): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
 
-export async function getContextWindow(model?: LargeLanguageModel) {
+export async function getContextWindow(
+  model?: LargeLanguageModel,
+): Promise<number | undefined> {
   const selectedModel = model ?? readSettings().selectedModel;
   const modelOption = await findLanguageModel(selectedModel);
-  return modelOption?.contextWindow || DEFAULT_CONTEXT_WINDOW;
+
+  if (isPositiveFiniteContextWindow(modelOption?.contextWindow)) {
+    return modelOption.contextWindow;
+  }
+
+  return DEFAULT_CONTEXT_WINDOW;
 }
 
 export async function getMaxTokens(
@@ -98,9 +111,13 @@ export async function getTemperature(
  * providers retain the historical 250k cap.
  */
 export function getCompactionThreshold(
-  contextWindow: number,
+  contextWindow: number | undefined,
   provider: string,
 ): number {
+  if (!isPositiveFiniteContextWindow(contextWindow)) {
+    return 0;
+  }
+
   const cap =
     provider === "google" ? 190_000 : provider === "openai" ? 220_000 : 250_000;
   return Math.min(cap, Math.max(0, contextWindow - 25_000));
@@ -111,8 +128,12 @@ export function getCompactionThreshold(
  */
 export function shouldTriggerCompaction(
   totalTokens: number,
-  contextWindow: number,
+  contextWindow: number | undefined,
   provider: string,
 ): boolean {
+  if (!isPositiveFiniteContextWindow(contextWindow)) {
+    return false;
+  }
+
   return totalTokens >= getCompactionThreshold(contextWindow, provider);
 }

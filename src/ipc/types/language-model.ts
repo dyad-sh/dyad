@@ -128,6 +128,12 @@ export const languageModelContracts = {
     output: LanguageModelProviderSchema,
   }),
 
+  refreshCustomProviderModels: defineContract({
+    channel: "refresh-custom-provider-models",
+    input: z.object({ providerId: z.string() }),
+    output: z.array(LanguageModelSchema),
+  }),
+
   editCustomProvider: defineContract({
     channel: "edit-custom-language-model-provider",
     input: CreateCustomLanguageModelProviderParamsSchema,

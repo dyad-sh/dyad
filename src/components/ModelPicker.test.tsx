@@ -293,6 +293,12 @@ vi.mock("@/hooks/useLanguageModelsByProviders", () => ({
           anthropic: mocks.anthropicModels,
           auto: [
             {
+              apiName: "value",
+              displayName: "Super Value",
+              description: "Uses the most cost-effective models available",
+              type: "cloud",
+            },
+            {
               apiName: "auto",
               displayName: "Auto",
               description: "Automatically selects a model",
@@ -1849,6 +1855,7 @@ describe("ModelPicker", () => {
     mocks.renderSubContent = true;
     render(<ModelPicker />);
     expect(screen.queryByText("Dyad Free")).toBeNull();
+    expect(screen.queryByText("Super Value")).toBeNull();
     expect(screen.queryAllByText("ChatGPT plan")).toHaveLength(0);
     expect(
       document.querySelector('[data-model-provider="openai"]'),

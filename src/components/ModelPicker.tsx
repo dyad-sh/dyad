@@ -494,7 +494,7 @@ export function ModelPicker() {
       ? modelsByProviders["auto"].filter((model) => {
           if (
             settings?.proModelUsage === "api-key" &&
-            model.apiName === FREE_PRO_MODEL_NAME
+            (model.apiName === FREE_PRO_MODEL_NAME || model.apiName === "value")
           ) {
             return false;
           }

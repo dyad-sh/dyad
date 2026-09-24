@@ -579,3 +579,17 @@ it("asks existing Claude Code chats to change model or source instead of ignorin
     ),
   ).rejects.toThrow("Select Subscriptions");
 });
+
+it.each(["value", "free-pro"])(
+  "rejects engine-only Auto %s in BYO before charging",
+  async (name) => {
+    await expect(
+      preflightWithAdmission(
+        { ...model, provider: "auto", name },
+        { ...settings, proModelUsage: "api-key" },
+        signal,
+      ),
+    ).rejects.toThrow("requires Pro credits");
+    expect(mocks.credits).not.toHaveBeenCalled();
+  },
+);

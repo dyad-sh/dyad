@@ -51,3 +51,6 @@ requested about 1055390 tokens`. Keep catalog output limits well under the
   query when the list changes.** Its normal idle polling interval is 30 minutes.
   If ChatGPT rejects a published client version with HTTP 400, retry the pinned
   version once; do not double-request on auth or transient network failures.
+- **Auto entries can be engine-only products, not provider model aliases.**
+  When adding a direct-inference source, hide and reject engine-only choices
+  (such as Super Value); never let them fall through generic premium Auto aliases.

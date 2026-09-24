@@ -190,9 +190,13 @@ export async function getModelClient(
       : await resolveSubscriptionModel(selectedModelSelection, settings),
   );
   const connection = modelSelection.connection;
-  if (connection === "api-key" && isFreeProModel(model))
+  if (
+    connection === "api-key" &&
+    model.provider === "auto" &&
+    ["value", "free-pro"].includes(model.name)
+  )
     throw new DyadError(
-      "Dyad Free is only available through Pro credits. Choose an API-key or local model.",
+      "This Auto option requires Pro credits. Select Pro credits or choose an API-key or local model.",
       DyadErrorKind.Validation,
     );
   if (connection === "subscription") {

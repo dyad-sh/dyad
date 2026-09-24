@@ -138,7 +138,8 @@ export function disconnectCodexSubscription() {
   credentialCache = undefined;
   celebrationPending = false;
   resetSubscriptionAccount();
-  writeSettings({ proModelUsage: "pro" });
+  if (readSettings().proModelUsage !== "api-key")
+    writeSettings({ proModelUsage: "pro" });
   stopLogin();
   refreshing = undefined;
   lastError = undefined;

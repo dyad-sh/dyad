@@ -512,3 +512,70 @@ it.each([true, false])(
     expect(Boolean(result.externalModelAdmission)).toBe(pro);
   },
 );
+
+it.each([
+  "openai",
+  "anthropic",
+  "google",
+  "openrouter",
+  "azure",
+  "vertex",
+  "bedrock",
+  "xai",
+  "minimax",
+  "ollama",
+  "lmstudio",
+  "custom",
+  "auto",
+])(
+  "keeps BYO %s direct even with a connected subscription",
+  async (provider) => {
+    const result = await preflightWithAdmission(
+      { ...model, provider, connection: "pro" },
+      { ...settings, proModelUsage: "api-key" },
+      signal,
+    );
+    expect(result.model).toMatchObject({ provider, connection: "api-key" });
+    expect(result.externalModelAdmission).toBeDefined();
+    expect(mocks.credits).toHaveBeenCalledWith("test-key", signal);
+    expect(mocks.account).not.toHaveBeenCalled();
+    expect(mocks.credentials).not.toHaveBeenCalled();
+  },
+);
+it("does not check Dyad credits for BYO with Pro off", async () => {
+  const result = await preflightWithAdmission(
+    model,
+    { ...settings, proModelUsage: "api-key", enableDyadPro: false },
+    signal,
+  );
+  expect(result.model.connection).toBe("api-key");
+  expect(result.externalModelAdmission).toBeUndefined();
+  expect(mocks.credits).not.toHaveBeenCalled();
+});
+it("rejects exhausted BYO credits without falling back to a subscription", async () => {
+  const { SubscriptionBillingError } =
+    await import("@/shared/subscription_billing_error");
+  const error = new SubscriptionBillingError("OUT_OF_CREDITS");
+  mocks.credits.mockRejectedValue(error);
+  await expect(
+    preflightWithAdmission(
+      model,
+      { ...settings, proModelUsage: "api-key" },
+      signal,
+    ),
+  ).rejects.toBe(error);
+  expect(mocks.credentials).not.toHaveBeenCalled();
+});
+it("asks existing Claude Code chats to change model or source instead of ignoring BYO", async () => {
+  await expect(
+    preflightWithAdmission(
+      { ...model, provider: "claude-code" },
+      {
+        ...settings,
+        proModelUsage: "api-key",
+        enableClaudeCodeSubscription: true,
+      },
+      signal,
+    ),
+  ).rejects.toThrow("Select Subscriptions");
+});

@@ -58,6 +58,7 @@ export function usesChatGPTSubscription(
 ): boolean {
   return Boolean(
     settings.proModelUsage !== "pro" &&
+    settings.proModelUsage !== "api-key" &&
     subscription.connected &&
     model.provider === "openai" &&
     subscription.models.includes(model.name),

@@ -235,6 +235,7 @@ export function ModelPicker() {
   const useClaudeCode =
     !!settings?.enableClaudeCodeSubscription &&
     settings.proModelUsage !== "pro" &&
+    settings.proModelUsage !== "api-key" &&
     !!claudeStatus.data?.connected &&
     !!claudeStatus.data?.compatible;
   const requiresNewChat = (model: LargeLanguageModel) =>
@@ -491,6 +492,12 @@ export function ModelPicker() {
   const catalogAutoModels =
     !loading && modelsByProviders && modelsByProviders["auto"]
       ? modelsByProviders["auto"].filter((model) => {
+          if (
+            settings?.proModelUsage === "api-key" &&
+            model.apiName === FREE_PRO_MODEL_NAME
+          ) {
+            return false;
+          }
           if (model.apiName === FREE_PRO_MODEL_NAME) {
             return dyadProEnabled && !isTrial && !isLoadingTrialStatus;
           }
@@ -589,6 +596,7 @@ export function ModelPicker() {
   const isVisibleCatalogModel = (providerId: string, model: LanguageModel) =>
     !(
       dyadProEnabled &&
+      settings.proModelUsage !== "api-key" &&
       providerId === "openrouter" &&
       isFreeOpenRouterModelName(model.apiName)
     );
@@ -638,6 +646,11 @@ export function ModelPicker() {
   );
   const recentModelCandidates = effectiveRecentModels.flatMap<RecentModelEntry>(
     (recentModel) => {
+      if (
+        recentModel.provider === "claude-code" &&
+        settings.proModelUsage === "api-key"
+      )
+        return [];
       if (useClaudeCode && !recentModel.customModelId) {
         const catalogModel = modelsByProviders?.[recentModel.provider]?.find(
           (model) => model.apiName === recentModel.name,
@@ -1582,6 +1595,7 @@ export function ModelPicker() {
           <ClaudeCodeSubscriptionMenu
             enabled={
               !!settings.enableClaudeCodeSubscription &&
+              settings.proModelUsage !== "api-key" &&
               settings.proModelUsage !== "pro"
             }
             onEnabledChange={(enabled) =>

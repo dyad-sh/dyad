@@ -124,7 +124,7 @@ const mocks = vi.hoisted(() => ({
     resetTime: new Date("2026-06-26T00:00:00Z").getTime(),
   },
   settings: {
-    proModelUsage: "subscription" as "subscription" | "pro",
+    proModelUsage: "subscription" as "subscription" | "pro" | "api-key",
     enableDyadPro: true,
     providerSettings: {
       auto: {
@@ -1842,6 +1842,22 @@ describe("ModelPicker", () => {
     });
     expect(mocks.setChatMode).not.toHaveBeenCalled();
     expect(mocks.setChatModelSelection).not.toHaveBeenCalled();
+  });
+
+  it("shows direct models without subscription or Dyad Free labels in BYO mode", () => {
+    mocks.settings.proModelUsage = "api-key";
+    mocks.renderSubContent = true;
+    render(<ModelPicker />);
+    expect(screen.queryByText("Dyad Free")).toBeNull();
+    expect(screen.queryAllByText("ChatGPT plan")).toHaveLength(0);
+    expect(
+      document.querySelector('[data-model-provider="openai"]'),
+    ).not.toBeNull();
+    expect(
+      document.querySelector(
+        '[data-model-provider="openrouter"][data-model-name="openrouter/free"]',
+      ),
+    ).not.toBeNull();
   });
 
   it("shows Dyad Free quota as unavailable when the quota fetch fails", () => {

@@ -26,6 +26,11 @@ import {
 } from "@/utils/dotenv_redaction";
 import { runBufferedProcess } from "./buffered_process";
 import {
+  appendGitConfigEnv,
+  getDockerModeGitHardeningConfig,
+} from "./git_hardening";
+import { isDockerRuntimeActive } from "@/ipc/services/docker_runtime/runtime_mode";
+import {
   collectGitLaunchDiagnostics,
   getGitLaunchTelemetryProperties,
 } from "./git_launch_diagnostics";
@@ -166,8 +171,18 @@ function getWindowsSanitizedEnv():
 
 /** Build caller overrides for Dugite without bypassing Dyad's platform fixes. */
 function getSanitizedGitEnv(
-  callerEnv?: Record<string, string | undefined>,
+  rawCallerEnv?: Record<string, string | undefined>,
 ): Record<string, string | undefined> {
+  const callerEnv = isDockerRuntimeActive()
+    ? appendGitConfigEnv(
+        {
+          ...rawCallerEnv,
+          GIT_CONFIG_COUNT:
+            rawCallerEnv?.GIT_CONFIG_COUNT ?? process.env.GIT_CONFIG_COUNT,
+        },
+        getDockerModeGitHardeningConfig(),
+      )
+    : rawCallerEnv;
   const sanitizedEnv = getWindowsSanitizedEnv();
 
   if (sanitizedEnv) {

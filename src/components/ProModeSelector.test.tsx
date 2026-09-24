@@ -94,3 +94,35 @@ it.each(["click", "keyboard"])(
     });
   },
 );
+
+it("selects BYO without requiring keys or changing the selected model", async () => {
+  mocks.connected = false;
+  const user = userEvent.setup();
+  render(<ProModeSelector />);
+  await user.click(screen.getByRole("button", { name: "Pro" }));
+  await user.click(
+    screen.getByRole("button", { name: "Your API keys & local" }),
+  );
+  expect(mocks.update).toHaveBeenCalledExactlyOnceWith({
+    proModelUsage: "api-key",
+  });
+});
+
+it.each([true, false])(
+  "keeps BYO selected with subscription connected=%s and explains billing",
+  async (connected) => {
+    mocks.connected = connected;
+    mocks.usage = "api-key";
+    const user = userEvent.setup();
+    render(<ProModeSelector />);
+    await user.click(screen.getByRole("button", { name: "Pro" }));
+    expect(
+      screen.getByRole("button", { name: "Your API keys & local" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText(/Provider charges apply separately/)).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Pro credits" }));
+    expect(mocks.update).toHaveBeenCalledExactlyOnceWith({
+      proModelUsage: "pro",
+    });
+  },
+);

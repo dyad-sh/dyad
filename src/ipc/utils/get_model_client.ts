@@ -206,6 +206,11 @@ export async function getModelClient(
       : await resolveSubscriptionModel(selectedModelSelection, settings),
   );
   const connection = modelSelection.connection;
+  if (connection === "api-key" && isFreeProModel(model))
+    throw new DyadError(
+      "Dyad Free is only available through Pro credits. Choose an API-key or local model.",
+      DyadErrorKind.Validation,
+    );
   if (connection === "subscription") {
     if (modelSelection.provider === "claude-code") {
       return {
@@ -290,7 +295,10 @@ export async function getModelClient(
   // Direct providers retain their transport while Engine bills reported usage.
   if (
     isDyadProEnabledForRequest &&
-    (isLocalProvider || providerConfig.type === "custom")
+    model.provider !== "auto" &&
+    (connection === "api-key" ||
+      isLocalProvider ||
+      providerConfig.type === "custom")
   ) {
     const regular = getRegularModelClient(
       model,
@@ -318,7 +326,11 @@ export async function getModelClient(
   }
 
   // Handle Dyad Pro override
-  if (isDyadProEnabledForRequest && !isLocalProvider) {
+  if (
+    isDyadProEnabledForRequest &&
+    !isLocalProvider &&
+    connection !== "api-key"
+  ) {
     const dyadEngineUrl = process.env.DYAD_ENGINE_URL;
     // Check if the selected provider supports Dyad Pro (has a gateway prefix) OR
     // we're using local engine.
@@ -370,7 +382,7 @@ export async function getModelClient(
       };
     } else {
       throw new DyadError(
-        "This provider is not available through Pro credits. Turn off Dyad Pro to use your own API key.",
+        "This provider is not available through Pro credits. Select Your API keys & local in the Pro menu.",
         DyadErrorKind.Validation,
       );
     }
@@ -390,13 +402,23 @@ export async function getModelClient(
       return {
         modelClient: {
           model: createFallback({
-            models: FREE_OPENROUTER_MODEL_NAMES.map(
-              (name: string) =>
-                getRegularModelClient(
-                  { provider: "openrouter", name },
-                  settings,
-                  openRouterProvider,
-                ).modelClient.model,
+            models: await Promise.all(
+              FREE_OPENROUTER_MODEL_NAMES.map(
+                async (name: string) =>
+                  (
+                    await getModelClient(
+                      { provider: "openrouter", name },
+                      settings,
+                      {
+                        ...modelSelection,
+                        provider: "openrouter",
+                        name,
+                        connection: "api-key",
+                      },
+                      context,
+                    )
+                  ).modelClient.model,
+              ),
             ),
           }),
           builtinProviderId: "openrouter",
@@ -405,7 +427,11 @@ export async function getModelClient(
         isEngineEnabled: false,
       };
     }
-    for (const autoModelAlias of AUTO_MODEL_ALIASES) {
+    const aliases =
+      model.name === AUTO_BALANCED_MODEL_NAME
+        ? [AUTO_BALANCED_ALIAS]
+        : AUTO_MODEL_ALIASES;
+    for (const autoModelAlias of aliases) {
       const resolvedModel = await resolveBuiltinModelAlias(autoModelAlias);
       if (!resolvedModel) {
         continue;
@@ -452,6 +478,12 @@ export async function getModelClient(
             ...(connection ? { connection } : {}),
           },
           settings,
+          {
+            ...modelSelection,
+            provider: resolvedModel.providerId,
+            name: resolvedModel.apiName,
+          },
+          context,
         );
       }
     }
@@ -797,6 +829,7 @@ function getRegularModelClient(
     case "openrouter": {
       const provider = createOpenAICompatible({
         name: "openrouter",
+        includeUsage,
         baseURL: "https://openrouter.ai/api/v1",
         apiKey,
         headers: getOpenRouterAppAttributionHeaders(),
@@ -819,6 +852,7 @@ function getRegularModelClient(
         logger.info(`Using test Azure base URL: ${testAzureBaseUrl}`);
         const provider = createOpenAICompatible({
           name: "azure-test",
+          includeUsage,
           baseURL: testAzureBaseUrl,
           apiKey: "fake-api-key-for-testing",
           ...getModelClientFetchOption(),
@@ -931,6 +965,7 @@ function getRegularModelClient(
     case "minimax": {
       const provider = createOpenAICompatible({
         name: "minimax",
+        includeUsage,
         baseURL: "https://api.minimax.io/v1",
         apiKey,
         ...getModelClientFetchOption(),

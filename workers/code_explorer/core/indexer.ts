@@ -41,6 +41,7 @@ export function buildIndex(
     edgesIn: new Map(),
   };
   const declarationToNode = new Map<string, string>();
+  const fileNodeIds = new Map<string, string>();
 
   for (const { program } of projects) {
     const checker = program.getTypeChecker();
@@ -64,6 +65,7 @@ export function buildIndex(
       walkDeclarations(ts, checker, index, declarationToNode, sourceFile, [
         fileNode.id,
       ]);
+      fileNodeIds.set(sourceFile.fileName, fileNode.id);
     }
   }
 
@@ -71,7 +73,8 @@ export function buildIndex(
     const checker = program.getTypeChecker();
     for (const sourceFile of program.getSourceFiles()) {
       if (!isInProjectSource(appPath, sourceFile.fileName)) continue;
-      walkEdges(ts, checker, index, declarationToNode, sourceFile);
+      const fileNodeId = fileNodeIds.get(sourceFile.fileName);
+      walkEdges(ts, checker, index, declarationToNode, sourceFile, fileNodeId);
     }
   }
 
@@ -115,9 +118,11 @@ function walkEdges(
   node: import("typescript").Node,
   currentNodeId?: string,
 ): void {
-  const ownNode = declarationToNode.get(
-    declarationKey(node.getSourceFile().fileName, node.getStart()),
-  );
+  const ownNode = ts.isSourceFile(node)
+    ? undefined
+    : declarationToNode.get(
+        declarationKey(node.getSourceFile().fileName, node.getStart()),
+      );
   const activeNodeId = ownNode ?? currentNodeId;
 
   if (activeNodeId) {

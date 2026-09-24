@@ -17,7 +17,10 @@ import {
   readTestErrorContext,
   readTestScreenshotDataUrl,
 } from "@/ipc/utils/test_screenshot";
-import { usesSandboxedE2eTests } from "@/lib/e2eSandbox";
+import {
+  runsTestsHeadlessInDocker,
+  usesSandboxedE2eTests,
+} from "@/lib/e2eSandbox";
 import { reconcileResultFile } from "@/lib/testResultUtils";
 import { readSettings } from "@/main/settings";
 import type { RunAppTestsResult, TestResult } from "@/ipc/types/tests";
@@ -323,11 +326,12 @@ async function runSpecs(
   // Honor the modes the user picked in the Tests panel — including slow motion,
   // so a user watching the agent's runs gets the same pace as their own. With
   // the preview experiment enabled, headed mode drives Dyad's native preview
-  // view. A preview or narrowed run must stay serial.
+  // view. A preview or narrowed run must stay serial. Docker mode always runs
+  // headless inside the container.
   const settings = readSettings();
-  const preview =
-    (settings.enableTestRunInPreview ?? false) &&
-    (settings.testHeaded ?? false);
+  const headed =
+    !runsTestsHeadlessInDocker(settings) && (settings.testHeaded ?? false);
+  const preview = (settings.enableTestRunInPreview ?? false) && headed;
   const slowMo = settings.testSlowMo ?? false;
   return runAppTestsWithIsolation({
     event: ctx.event,
@@ -335,7 +339,7 @@ async function runSpecs(
     testFiles,
     grep,
     source: "agent",
-    headed: settings.testHeaded ?? false,
+    headed,
     // Deliberately not gated on `preview`: the runner already drops
     // `--fully-parallel` while the preview endpoint is live, and it clears that
     // endpoint when a preview run falls back to an ordinary browser. Deciding
@@ -581,7 +585,7 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
 - By default each whole file runs. For managed Neon and Supabase apps, database data and auth users are isolated per test case and retry, including across files. Seed each case independently. The batch follows the Tests panel's headed, parallel, and slow-motion preferences; preview and database-isolated runs remain sequential.
 - Call \`run_tests\` sequentially for the same app: wait for each call to finish before starting the next. Overlapping calls cancel earlier runs; they do not run in parallel.
 - Only add \`grep\` when you have a specific reason to narrow the run. One regex applies to Playwright's full hierarchical test titles across all selected files. Filtered runs stay sequential. A filtered pass verifies only matched tests; a file with no runnable matches is not verified.
-- Runs in an isolated copy of the app served on its own port, so the preview does not need to be running. Docker/cloud runtimes and disabled sandboxing require the dev server. Each batch shares one snapshot and clean dependency install; batch affected specs to amortize setup.
+- Runs in an isolated copy of the app served on its own port, so the preview does not need to be running. Docker/cloud runtimes and disabled sandboxing require the dev server. In Docker runtime the tests run headless inside the container, whatever the headed preference. Each batch shares one snapshot and clean dependency install; batch affected specs to amortize setup.
 - Results name each file and its pass/fail/no-tests outcome. Failures include error text and current artifact paths; read error-context.md with read_file (or the inline snapshot for sandbox artifacts), make a targeted fix, then rerun the relevant files.
 - You get ${MAX_ATTEMPTS} failure attempts per spec per turn. A whole-file pass resets only that file's budget; a filtered pass does not. Infrastructure failures and incomplete runs do not consume failure attempts or grant verification.
 - If you suspect a failure is flaky, rerun with \`flakeCheck: true\`: once per file, without consuming a failure attempt.

@@ -6,13 +6,42 @@ export const TEST_CASE_ENDPOINT_ENV = "DYAD_TEST_CASE_ENDPOINT";
 export const TEST_CASE_TOKEN_ENV = "DYAD_TEST_CASE_TOKEN";
 
 /**
+ * The name a Docker test container uses to reach this server, or null where
+ * it has none.
+ *
+ * The test container shares the dev server container's network namespace (so
+ * the app keeps its localhost origin), which rules out `--add-host`. Docker
+ * Desktop (macOS, Windows) still resolves `host.docker.internal` through its
+ * own DNS and forwards it to the host's loopback, so the server can stay bound
+ * to 127.0.0.1. Docker Engine on Linux offers neither: reaching the host would
+ * need a host-gateway entry and a non-loopback bind, so it is unsupported.
+ */
+export function dockerGuestLifecycleHost(
+  platform: NodeJS.Platform = process.platform,
+): string | null {
+  return platform === "darwin" || platform === "win32"
+    ? "host.docker.internal"
+    : null;
+}
+
+/**
  * Run-scoped bridge from Playwright's auto fixture to main-owned provider hooks.
  * Privileged database/admin credentials never enter the Playwright process.
  * The caller holds the app's provider/runtime claims until close() has drained.
  */
 export async function startTestCaseLifecycleServer(
   lifecycle: TestCaseLifecycle,
-  { onSlowShutdown }: { onSlowShutdown?: () => void } = {},
+  {
+    onSlowShutdown,
+    advertisedHost = "127.0.0.1",
+  }: {
+    onSlowShutdown?: () => void;
+    /**
+     * Host name the runner is told to connect to. The server always listens on
+     * loopback; a Docker guest reaches it through {@link dockerGuestLifecycleHost}.
+     */
+    advertisedHost?: string;
+  } = {},
 ) {
   const token = randomBytes(32).toString("hex");
   let closing = false;
@@ -114,7 +143,7 @@ export async function startTestCaseLifecycleServer(
   }
   return {
     env: {
-      [TEST_CASE_ENDPOINT_ENV]: `http://127.0.0.1:${address.port}`,
+      [TEST_CASE_ENDPOINT_ENV]: `http://${advertisedHost}:${address.port}`,
       [TEST_CASE_TOKEN_ENV]: token,
     },
     get failure() {

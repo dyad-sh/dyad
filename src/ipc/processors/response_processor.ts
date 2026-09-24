@@ -344,6 +344,7 @@ export async function processFullResponseActions(
           packages: dyadAddDependencyPackages,
           message: message,
           appPath,
+          appId: chatWithApp.app.id,
         });
         warningMessages.push(...addDependencyResult.warningMessages);
         installedOrUpdatedDependencyPackages = dyadAddDependencyPackages;

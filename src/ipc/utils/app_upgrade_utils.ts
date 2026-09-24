@@ -5,13 +5,20 @@ import { gitAddAll, gitCommit } from "./git_utils";
 import { simpleSpawn } from "./simpleSpawn";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
+  CommandExecutionError,
   isPnpmIgnoredBuildsError,
+  parsePnpmIgnoredBuildsFromOutput,
   PNPM_PM_ON_FAIL_IGNORE_ARG,
 } from "./socket_firewall";
 import {
   recordAndReportDeniedPnpmBuilds,
   resolvePnpmIgnoredBuilds,
 } from "./pnpm_denied_builds";
+import { isDockerRuntimeActive } from "@/ipc/services/docker_runtime/runtime_mode";
+import {
+  resolveAppIdForPath,
+  runPackageManagerCommandInGuest,
+} from "./docker_package_manager";
 
 export const logger = log.scope("app_upgrade_utils");
 
@@ -51,6 +58,8 @@ export function isComponentTaggerUpgradeNeeded(appPath: string): boolean {
 
 type ApplyComponentTaggerOptions = {
   installDependencies?: boolean;
+  /** Needed to install in Docker mode; looked up from the path when omitted. */
+  appId?: number;
 };
 
 // Unlike the app-runtime self-heal, this does NOT remove node_modules before
@@ -63,17 +72,25 @@ export async function selfHealDeniedPnpmBuildsFromError({
   appPath,
   error,
   source,
+  installedInGuest = false,
 }: {
   appPath: string;
   error: unknown;
   source: "self-heal";
+  /**
+   * The install ran in the Docker guest, so node_modules/.modules.yaml is in
+   * its volume and any host copy is a stale Local-mode install.
+   */
+  installedInGuest?: boolean;
 }): Promise<boolean> {
   if (!isPnpmIgnoredBuildsError(error)) {
     return false;
   }
 
   const errorOutput = error instanceof Error ? error.message : String(error);
-  const ignoredBuilds = await resolvePnpmIgnoredBuilds(appPath, errorOutput);
+  const ignoredBuilds = installedInGuest
+    ? parsePnpmIgnoredBuildsFromOutput(errorOutput)
+    : await resolvePnpmIgnoredBuilds(appPath, errorOutput);
   const { deniedBuilds } = await recordAndReportDeniedPnpmBuilds({
     appPath,
     ignoredBuilds,
@@ -82,30 +99,102 @@ export async function selfHealDeniedPnpmBuildsFromError({
   return deniedBuilds.length > 0;
 }
 
+// Only Dyad's own fixed install commands are routed to the guest; they are
+// plain words, so splitting on whitespace is their exact argv.
+const STATIC_COMMAND_PATTERN = /^[A-Za-z0-9@._=:/ -]+$/;
+
+function splitStaticCommand(command: string): {
+  command: string;
+  args: string[];
+} {
+  if (!STATIC_COMMAND_PATTERN.test(command)) {
+    throw new DyadError(
+      `Cannot run '${command}' in the Docker runtime: it is not a plain argument list`,
+      DyadErrorKind.Internal,
+    );
+  }
+  const [executable, ...args] = command.trim().split(/\s+/);
+  return { command: executable, args };
+}
+
+/**
+ * {@link simpleSpawn} for Docker mode: runs the package-manager command in
+ * the guest (it executes dependency lifecycle scripts) and reports failures in
+ * the same `STDOUT`/`STDERR` shape.
+ */
+async function guestSimpleSpawn({
+  appId,
+  command,
+  cwd,
+  errorPrefix,
+}: {
+  appId: number;
+  command: string;
+  cwd: string;
+  errorPrefix: string;
+}): Promise<void> {
+  try {
+    await runPackageManagerCommandInGuest({
+      appId,
+      appPath: cwd,
+      invocation: splitStaticCommand(command),
+    });
+  } catch (error) {
+    if (error instanceof CommandExecutionError) {
+      throw new DyadError(
+        `${errorPrefix}: ${error.message}\n\nSTDOUT:\n${error.stdout}\n\nSTDERR:\n${error.stderr}`,
+        DyadErrorKind.External,
+      );
+    }
+    throw error;
+  }
+}
+
+/**
+ * Runs one of Dyad's package-manager commands for an app upgrade: on the
+ * host, or in the guest in Docker mode (`appId` is looked up from `cwd` when
+ * omitted). A pnpm ERR_PNPM_IGNORED_BUILDS failure is recorded as denials and
+ * retried once.
+ */
 export async function simpleSpawnWithDeniedPnpmBuildSelfHeal({
   command,
   cwd,
   successMessage,
   errorPrefix,
+  appId,
 }: {
   command: string;
   cwd: string;
   successMessage: string;
   errorPrefix: string;
+  appId?: number;
 }): Promise<void> {
+  const guestAppId = isDockerRuntimeActive()
+    ? (appId ?? (await resolveAppIdForPath(cwd)))
+    : undefined;
+  const spawn = async () => {
+    if (guestAppId === undefined) {
+      await simpleSpawn({ command, cwd, successMessage, errorPrefix });
+      return;
+    }
+    await guestSimpleSpawn({ appId: guestAppId, command, cwd, errorPrefix });
+    logger.info(successMessage);
+  };
+
   try {
-    await simpleSpawn({ command, cwd, successMessage, errorPrefix });
+    await spawn();
   } catch (error) {
     const healed = await selfHealDeniedPnpmBuildsFromError({
       appPath: cwd,
       error,
       source: "self-heal",
+      installedInGuest: guestAppId !== undefined,
     });
     if (!healed) {
       throw error;
     }
 
-    await simpleSpawn({ command, cwd, successMessage, errorPrefix });
+    await spawn();
   }
 }
 
@@ -113,7 +202,7 @@ export async function applyComponentTagger(
   appPath: string,
   options: ApplyComponentTaggerOptions = {},
 ) {
-  const { installDependencies = true } = options;
+  const { installDependencies = true, appId } = options;
   const packageJsonPath = path.join(appPath, "package.json");
   const viteConfigPath = findViteConfigPath(appPath);
 
@@ -197,10 +286,20 @@ export async function applyComponentTagger(
         successMessage:
           "component-tagger dependency installed successfully with pnpm",
         errorPrefix: "Failed to install dependency via pnpm",
+        appId,
       });
     } catch (pnpmErr) {
-      logger.info("pnpm install failed, falling back to npm", pnpmErr);
+      // Docker mode installs only with the guest's pnpm (as its dev server
+      // does): an npm install would leave an npm-shaped node_modules the next
+      // pnpm install purges, and there is no host fallback.
+      const dockerMode = isDockerRuntimeActive();
+      if (!dockerMode) {
+        logger.info("pnpm install failed, falling back to npm", pnpmErr);
+      }
       try {
+        if (dockerMode) {
+          throw pnpmErr;
+        }
         await simpleSpawn({
           command:
             "npm install --save-dev --legacy-peer-deps @dyad-sh/react-vite-component-tagger",
@@ -218,6 +317,9 @@ export async function applyComponentTagger(
           await fs.promises.writeFile(viteConfigPath, originalViteContent);
         } catch (rollbackErr) {
           logger.error("Failed to rollback vite config changes", rollbackErr);
+        }
+        if (dockerMode) {
+          throw npmErr;
         }
         throw new DyadError(
           "Failed to install component tagger dependency",

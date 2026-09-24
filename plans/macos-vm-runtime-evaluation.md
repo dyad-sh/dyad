@@ -13,7 +13,7 @@ current `docker` runtime mode (`runtimeMode2: "docker"`)?
 `container` CLI all use the same `Virtualization.framework` hypervisor. Docker Desktop and
 OrbStack also share files with virtiofs, the same way a VM Dyad built itself would. The
 per-operation costs are about the same, so a Dyad-owned VM would only be faster where we
-change *where files live* and *how often work is repeated*. We can make those changes in the
+change _where files live_ and _how often work is repeated_. We can make those changes in the
 existing Docker mode for much less effort. Neither would beat `host` mode, which stays the
 fastest.
 
@@ -40,14 +40,14 @@ Other code that checks the Docker mode: `process_manager.ts` (stop/volume remova
 
 ## Where Docker mode's time actually goes (hypotheses, not yet measured)
 
-| Cost | Why | Would a native VM fix it? |
-|---|---|---|
+| Cost                                                | Why                                                                                                                                                                                                                                        | Would a native VM fix it?                                                                            |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
 | `node_modules` written to the host through virtiofs | `/app` is a bind mount, so every one of ~10–50k files `pnpm install` creates goes through the VM↔host file-sharing layer. Vite then resolves and stats modules over the same path. This is usually the biggest slowdown for Node on macOS. | Only if the VM keeps `node_modules` on its own disk, and Docker can do that too with a named volume. |
-| pnpm store can't hardlink | The store is a separate volume (`/app/.pnpm-store`) from `/app` (bind mount). They're different filesystems, so pnpm has to **copy** every package on every clean install. | Same fix is available in Docker (put the store and `node_modules` on the same volume). |
-| `docker build` every start plus one image per app | Cheap once cached, but it adds a daemon round-trip on each start. The Dockerfile is also written into the user's repo. | Use one shared, pre-built runtime image instead. That's a Docker-side fix. |
-| Docker Desktop cold start / idle RAM | The daemon VM has to be running, and it reserves GBs of memory. | **Yes.** This is where a per-app lightweight VM (Apple `container`) or a Dyad-managed VM helps. |
-| Port forwarding / HMR websocket | User-space proxy hop | Barely noticeable either way. |
-| File-watch events (HMR) | fsevents → inotify bridging through virtiofs | Same mechanism either way. |
+| pnpm store can't hardlink                           | The store is a separate volume (`/app/.pnpm-store`) from `/app` (bind mount). They're different filesystems, so pnpm has to **copy** every package on every clean install.                                                                 | Same fix is available in Docker (put the store and `node_modules` on the same volume).               |
+| `docker build` every start plus one image per app   | Cheap once cached, but it adds a daemon round-trip on each start. The Dockerfile is also written into the user's repo.                                                                                                                     | Use one shared, pre-built runtime image instead. That's a Docker-side fix.                           |
+| Docker Desktop cold start / idle RAM                | The daemon VM has to be running, and it reserves GBs of memory.                                                                                                                                                                            | **Yes.** This is where a per-app lightweight VM (Apple `container`) or a Dyad-managed VM helps.      |
+| Port forwarding / HMR websocket                     | User-space proxy hop                                                                                                                                                                                                                       | Barely noticeable either way.                                                                        |
+| File-watch events (HMR)                             | fsevents → inotify bridging through virtiofs                                                                                                                                                                                               | Same mechanism either way.                                                                           |
 
 Side note (a correctness issue, not speed): the comment at `app_runtime_service.ts:917` says
 "Docker installs use the container volume, not host node_modules", but the run command puts
@@ -61,6 +61,7 @@ Dyad's Problems panel / `tsc` processor (`src/ipc/processors/tsc.ts`), the code 
 the local agent's build/lint tools run **on the host** and read the app's `node_modules`. So the
 main speed fix, keeping `node_modules` inside the VM or volume, removes the types those tools need.
 This applies to Docker and a native VM equally. Options:
+
 - Keep a host-side `node_modules` install for type info only (install twice; this defeats part of the win).
 - Move type-checking/lint into the guest (a big change; all tool paths would have to become runtime-aware).
 - Accept the virtiofs cost (today's behavior).
@@ -81,6 +82,7 @@ choice of hypervisor.
 - Nothing is run inside the container.
 
 What this means:
+
 - In Docker mode, host tools and the container share one `node_modules` directory: Dyad's host
   package manager writes to it, and the container reads it. A host `pnpm add` into a tree the
   container installed (linux-musl) could relink or replace platform-specific packages and break the
@@ -95,6 +97,7 @@ What this means:
 ## Options compared
 
 ### A. Improve Docker mode (lowest cost)
+
 - One shared `dyad-runtime:node22` image, built or pulled once. Don't build per app, and don't
   write a `Dockerfile.dyad` into the user's repo.
 - Store and `node_modules` on the same named volume (so pnpm can hardlink again), and handle the
@@ -106,17 +109,20 @@ What this means:
 - Complexity: small, and it stays inside the existing code paths.
 
 ### B. Apple `container` CLI as an alternative engine (medium cost)
+
 - Apple's open-source tool (Containerization framework). Each container gets its own lightweight
   VM with fast boot, uses OCI images, and has Docker-like `run -v -p` flags.
 - Dyad would add a small `ContainerEngine` abstraction (docker | apple-container) under the
   existing Docker code path.
 - Limits: Apple silicon only; full networking needs macOS 26; the project is still pre-1.0 and its
-  CLI surface is still changing. *(Check the current version and macOS requirements before starting.)*
+  CLI surface is still changing. _(Check the current version and macOS requirements before starting.)_
 - Benefits: no Docker Desktop, no always-on daemon VM. File sharing is still virtiofs, so the
   `node_modules` issue is the same as today.
 
 ### C. Dyad-managed Linux VM via Virtualization.framework (high cost)
+
 Needs all of the following:
+
 - A signed Swift helper with the `com.apple.security.virtualization` entitlement, added to the
   Electron Forge signing/notarization pipeline.
 - Shipping and updating a Linux kernel plus rootfs (~100–300 MB download), including Node/pnpm
@@ -136,6 +142,7 @@ Needs all of the following:
   would be somewhat better than Docker Desktop and about the same as B.
 
 ### D. macOS guest VMs
+
 Not a good fit. The images are tens of GB, boot is slow, Apple's license allows only 2 concurrent
 guests, and the apps are Linux/Node web apps anyway.
 
@@ -152,6 +159,7 @@ guests, and the apps are Linux/Node web apps anyway.
    requirement that neither Docker nor Apple `container` can meet.
 
 ## Open questions for the user
+
 - Why do users pick Docker mode today? Isolation, reproducibility, or avoiding a local Node
   install? The answer changes which option is worth building.
 - Is it OK for macOS-only runtime features to diverge from Windows?

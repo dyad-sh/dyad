@@ -1,11 +1,50 @@
 # Design sketch: never run app code on the host
 
-Status: design sketch only, no code. Date: 2026-09-24. Companion to
-`macos-vm-runtime-evaluation.md`.
+Status: implemented for Docker mode on branch `feat/no-host-execution` (see "As built"
+below; the rest of this document is the original design, kept for context). Date:
+2026-09-24. Companion to `macos-vm-runtime-evaluation.md`.
+
+## As built
+
+Differences from the design further down:
+
+- **Throwaway containers, not a long-lived workspace container.** Every guest command is its
+  own `docker run --rm --init` (`src/ipc/services/docker_runtime/guest_command.ts`). They all
+  use the same image and mount policy, and share the app's `dyad-nm-<appId>` volume. Cancelling
+  or timing out is `docker rm -f <name>`, with no process tracking inside the container. Test
+  runs join the dev server's network with `--network container:dyad-app-<id>`. Each start
+  costs ~170ms instead of ~29ms for `docker exec`, which doesn't matter at these sizes.
+- **Identity mounts.** On macOS/Linux, host paths are mounted at the same path in the guest.
+  Compiler diagnostics, stack traces and test reports need no path translation. On Windows,
+  drive paths are mounted under `/host/<drive>/` (`toGuestPath` / `fromGuestPath`).
+- **Mount policy** (`buildGuestInvocation`): the app dir (or one snapshot worktree) read-write;
+  `node_modules` (plus the pnpm store, so pnpm can hardlink) on the app's volume; `.git`
+  hidden by a tmpfs (directory) or a read-only empty file (worktree pointer); a shared
+  Playwright browser volume. Nothing else from the host.
+- **Environment:** the guest gets only a fixed base plus the keys each call site passes, by
+  name (`-e KEY`, with the value read from the Docker client's environment), so secrets never
+  appear in argv. The host environment is never forwarded.
+- **Image:** Dyad-owned `dyad-runtime:<hash>` (node:22-bookworm-slim plus managed pnpm), built
+  once from a Dyad-owned build context; no `Dockerfile.dyad` is written into the app any more.
+  `dyad-runtime-playwright:<hash>` adds Chromium system libraries and is built the first time
+  tests run.
+- **Code explorer / Supabase dependency analysis** use only Dyad's bundled TypeScript in Docker
+  mode, instead of running as a guest helper.
+- **Git hardening** applies to every host Git process in Docker mode, through `GIT_CONFIG_*`
+  appended after Dyad's auth entries (`src/ipc/utils/git_hardening.ts`). Hiding `.git` from the
+  guest is the primary control.
+- **Not supported in Docker mode:** watching tests in the preview pane, pre-commit hooks, and
+  Capacitor.
+- **Canary:** `docker_isolation.docker.test.ts` (opt-in with `DYAD_DOCKER_TESTS=1`) runs a hostile
+  install script against a real daemon and checks the host saw none of its escapes.
+- **Known limits:** guest egress is unrestricted, and the guest can reach host services through
+  `host.docker.internal`. That needs a VM or firewall to fix. On Linux Docker Engine, files
+  the guest creates in the app dir are owned by root (same as before this change).
 
 ## Goal and threat model
 
 "App code" means anything the app's repo or its dependencies can control:
+
 - `package.json` scripts and dependency lifecycle scripts
 - executable config files: `vite.config.*`, `playwright.config.*`, `eslint.config.*`, `postcss.config.*`, `tailwind.config.*`
 - test specs
@@ -21,17 +60,17 @@ On macOS, Docker containers already run inside a Linux VM, so Docker mode alread
 **dev server** off the host. A native VM wouldn't add a stronger boundary. The problem is that
 many Dyad features run app code on the host **no matter which runtime is selected**:
 
-| Host execution path | Where | What runs |
-|---|---|---|
-| Playwright bootstrap and runner | `playwright_bootstrap.ts` ~1719, `tests_handlers.ts` ~400/1191 | host `pnpm add` (lifecycle scripts), host `node` running the app's `@playwright/test`, `playwright.config.ts`, and specs |
-| Sandboxed E2E dev server | `e2e_test_runtime.ts` ~678 (`shell: true`) | the app's install/start commands on the host (host runtime only) |
-| `run_build` agent tool | `run_build.ts` ~359 | `npm/pnpm run build` on the host |
-| `run_pre_commit` agent tool | `run_pre_commit.ts` | the repo's pre-commit hook on the host |
-| Add dependency | `executeAddDependency`, `isolated_package_install.ts` | host package manager plus lifecycle scripts |
-| Type checks / code explorer | `tsc.ts`, `code_explorer.ts` (`getTypeScriptCompilerPath`) | loads the **app's own** `node_modules/typescript` into a host Node process |
-| Claude Code (Subscription) backend | `claude_code/runtime.ts` ~317/365 | **Not an execution path**: built-in tools are off (`--tools ""`), hooks disabled, and only Dyad MCP tools are allowed. But `cwd` = the app dir and there's no `--setting-sources`, so the app's `.claude/settings*.json` is still loaded (`env` / `apiKeyHelper`, not yet confirmed exploitable). |
-| git | `git_utils.ts` ~922 disables hooks for auto-commits only | other git commands (checkout, status, push…) respect repo hooks and `.git/config` |
-| Deploy builds (Cloudflare/Nitro) | `cloudflare_deploy/*`, `nitro_setup.ts` | **not audited yet** |
+| Host execution path                | Where                                                          | What runs                                                                                                                                                                                                                                                                                         |
+| ---------------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Playwright bootstrap and runner    | `playwright_bootstrap.ts` ~1719, `tests_handlers.ts` ~400/1191 | host `pnpm add` (lifecycle scripts), host `node` running the app's `@playwright/test`, `playwright.config.ts`, and specs                                                                                                                                                                          |
+| Sandboxed E2E dev server           | `e2e_test_runtime.ts` ~678 (`shell: true`)                     | the app's install/start commands on the host (host runtime only)                                                                                                                                                                                                                                  |
+| `run_build` agent tool             | `run_build.ts` ~359                                            | `npm/pnpm run build` on the host                                                                                                                                                                                                                                                                  |
+| `run_pre_commit` agent tool        | `run_pre_commit.ts`                                            | the repo's pre-commit hook on the host                                                                                                                                                                                                                                                            |
+| Add dependency                     | `executeAddDependency`, `isolated_package_install.ts`          | host package manager plus lifecycle scripts                                                                                                                                                                                                                                                       |
+| Type checks / code explorer        | `tsc.ts`, `code_explorer.ts` (`getTypeScriptCompilerPath`)     | loads the **app's own** `node_modules/typescript` into a host Node process                                                                                                                                                                                                                        |
+| Claude Code (Subscription) backend | `claude_code/runtime.ts` ~317/365                              | **Not an execution path**: built-in tools are off (`--tools ""`), hooks disabled, and only Dyad MCP tools are allowed. But `cwd` = the app dir and there's no `--setting-sources`, so the app's `.claude/settings*.json` is still loaded (`env` / `apiKeyHelper`, not yet confirmed exploitable). |
+| git                                | `git_utils.ts` ~922 disables hooks for auto-commits only       | other git commands (checkout, status, push…) respect repo hooks and `.git/config`                                                                                                                                                                                                                 |
+| Deploy builds (Cloudflare/Nitro)   | `cloudflare_deploy/*`, `nitro_setup.ts`                        | **not audited yet**                                                                                                                                                                                                                                                                               |
 
 **Container escape that exists today in Docker mode:** `docker run -v <appPath>:/app` mounts the
 whole repo **including `.git/`**. Code in the container can write `core.fsmonitor=<cmd>` into
@@ -44,6 +83,7 @@ file combined with a later host git command that doesn't disable hooks works the
 
 Add a single `Executor` interface: `exec(argv, { cwd, env, signal, onOutput }) → { code }`, with
 two implementations:
+
 - `HostExecutor`: used only for Dyad-owned binaries (git with hardened flags, ripgrep, `node --version`).
 - `GuestExecutor`: for anything that touches app code. It runs `docker exec` today, or a vsock
   agent in a future VM.
@@ -58,7 +98,7 @@ rule on `child_process` / `utilityProcess` outside the executor module (with an 
 - The guest gets the working tree **without `.git`**: mask it with an empty tmpfs over
   `/app/.git`, or mount a copy that excludes it. `node_modules` and the pnpm store live on a
   guest-only volume (this also fixes the pnpm hardlink and virtiofs speed issues from the other doc).
-- Nothing the guest writes should be *executed* by the host. The host may *read* guest output as
+- Nothing the guest writes should be _executed_ by the host. The host may _read_ guest output as
   data: source edits, test JSON, build logs.
 
 ### 3. Harden host git
@@ -71,15 +111,15 @@ as well, use isomorphic-git for data-only operations.)
 
 ### 4. Move tools into the guest
 
-| Feature | In isolated mode |
-|---|---|
-| Install / add dependency | `pnpm add` in the guest |
-| Dev server | guest (already true for Docker) |
-| `run_build`, lint | guest; the host parses the output |
-| Type checks | Either run `tsc --noEmit` in the guest and parse the diagnostics, or keep the host code explorer but load **Dyad's bundled TypeScript**, never the app's. Reading `.d.ts` files is data, running `typescript/lib/tsc.js` is code. That also needs a host-readable (read-only) view of guest `node_modules`, or the explorer loses dependency types. |
-| E2E tests | Playwright plus headless Chromium **in the guest image**, pointed at the guest-local dev server. "Watch in preview" is **not supported in Docker mode** (exposing Electron CDP to the guest would be a path back to the host). |
-| Pre-commit hook | **Not supported in Docker mode.** Host commits always run with hooks off. |
-| Claude Code / Codex subscription backends | Stay on the host: neither runs app code (Codex is direct HTTPS, and Claude Code has built-in tools off). Their tool calls are Dyad tools, which go through the Executor. Add `--setting-sources ""` to Claude Code. |
+| Feature                                   | In isolated mode                                                                                                                                                                                                                                                                                                                                    |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Install / add dependency                  | `pnpm add` in the guest                                                                                                                                                                                                                                                                                                                             |
+| Dev server                                | guest (already true for Docker)                                                                                                                                                                                                                                                                                                                     |
+| `run_build`, lint                         | guest; the host parses the output                                                                                                                                                                                                                                                                                                                   |
+| Type checks                               | Either run `tsc --noEmit` in the guest and parse the diagnostics, or keep the host code explorer but load **Dyad's bundled TypeScript**, never the app's. Reading `.d.ts` files is data, running `typescript/lib/tsc.js` is code. That also needs a host-readable (read-only) view of guest `node_modules`, or the explorer loses dependency types. |
+| E2E tests                                 | Playwright plus headless Chromium **in the guest image**, pointed at the guest-local dev server. "Watch in preview" is **not supported in Docker mode** (exposing Electron CDP to the guest would be a path back to the host).                                                                                                                      |
+| Pre-commit hook                           | **Not supported in Docker mode.** Host commits always run with hooks off.                                                                                                                                                                                                                                                                           |
+| Claude Code / Codex subscription backends | Stay on the host: neither runs app code (Codex is direct HTTPS, and Claude Code has built-in tools off). Their tool calls are Dyad tools, which go through the Executor. Add `--setting-sources ""` to Claude Code.                                                                                                                                 |
 
 ### 5. Network and secrets
 
@@ -100,6 +140,7 @@ webview's `sandbox`, `contextIsolation` and no `nodeIntegration`, and needs its 
 
 Build a "hostile app" fixture where every vector touches a marker file on the host
 (`~/.dyad-canary-*`):
+
 - `postinstall`, `prepare`
 - `vite.config` / `playwright.config` / `eslint.config` top-level code
 - a fake `node_modules/typescript/lib/typescript.js`
@@ -133,7 +174,7 @@ rule from step 1 so new host `spawn` calls fail review.
 1. **A long-lived workspace container per app**, e.g.
    `docker run -d --name dyad-ws-<id> … sleep infinity`, with `--init` (tini) as PID 1.
    The dev server, installs and tools all start inside it with `docker exec`. Today the
-   container *is* the dev server (`run --rm`), so every restart pays container start
+   container _is_ the dev server (`run --rm`), so every restart pays container start
    and `docker build`.
    Mounts:
    - `<appPath>:/app` (read-write) with an empty tmpfs over `/app/.git`
@@ -152,35 +193,35 @@ rule from step 1 so new host `spawn` calls fail review.
    - **Env allowlist:** the app's `.env`/config and `PORT`, never Dyad's provider keys/tokens.
    - **Guest down:** start the workspace container on demand (the VM boot takes ~12s, so show
      it as "Starting runtime…").
-3. **Trusted Dyad helpers that run in the guest.** Some tools are Dyad's own code that *loads*
+3. **Trusted Dyad helpers that run in the guest.** Some tools are Dyad's own code that _loads_
    app code (the code explorer loads the app's `typescript`). Ship the helper as a plain Node
    script mounted read-only, run it with `node /dyad/lib/<helper>.js`, and talk JSON over stdio.
    A compromised guest can only make the helper return wrong answers. The host treats the
    answers as untrusted data and validates them against a schema.
 4. **Snapshots stay on the host.** Isolated builds (`run_build`, "git-worktree-overlay") and
    sandboxed E2E (`createE2eTestWorkspace`) already create git snapshots under Dyad's sandbox
-   root. Git is trusted host work and runs with hooks disabled. Only *executing inside* the
+   root. Git is trusted host work and runs with hooks disabled. Only _executing inside_ the
    snapshot moves: the guest sees it at `/dyad-sandboxes/<run>`. Each snapshot gets its own
    `node_modules` volume (or `/tmp` in the guest), not the live app's.
 
 ### Tool by tool
 
-| Tool | Today | In the guest | Difficulty |
-|---|---|---|---|
-| Dev server | `docker run --rm` or host spawn | `exec` in the workspace container. Report "ready" only after the watcher is ready (see the race in the measurements below). | Low |
-| Install / add dependency (`executeAddDependency`, `isolated_package_install.ts`) | host pnpm/npm | same argv through `GuestExecutor`. `package.json` and the lockfile come back through the bind mount. | Low |
-| `run_build` (`run_build.ts` ~359) | host `pnpm run build`, in place or in a snapshot | `exec` in `/app` or `/dyad-sandboxes/<run>` | Low |
-| Type checks (`tsc.ts`) | spawns the app's `tsc` with `--incremental --tsBuildInfoFile <host cache>` | same CLI through `exec`. Keep the buildinfo in the guest (e.g. `/app/node_modules/.cache/dyad-tsc`) and map diagnostic paths back. | Low–medium |
-| Code explorer (`code_explorer.ts` ~413, `utilityProcess.fork`) | worker loads the app's TS compiler on the host | the same worker as a guest helper over a stdio JSON protocol instead of a utilityProcess MessagePort | Medium |
-| Lint | host | `exec` | Low |
-| Playwright bootstrap and run (`playwright_bootstrap.ts`, `tests_handlers.ts`) | host `pnpm add`, host `node cli.js`, host Chromium | `pnpm add` and `node …/cli.js` in the guest. Chromium is baked into the image (Playwright's Ubuntu base, not Alpine). Results JSON is written to the snapshot and read by the host as data. | Medium |
-| Test-case lifecycle bridge (`test_case_lifecycle_server.ts`) | host HTTP server on loopback, token in env | Keep it on the host (it holds the DB/admin credentials, which is correct). Expose **only this port** to the guest (e.g. `host.docker.internal:<port>` plus a firewall rule allowing just that port), with the existing per-run token. | Medium |
-| Watching tests in the preview pane (preview CDP endpoint) | Playwright connects to Electron over CDP | **Not supported in Docker mode (decided).** Tests run headless in the guest, and the UI hides the option. | — |
-| Sandboxed E2E dev server (`e2e_test_runtime.ts` ~678) | host `spawn(..., {shell:true})` in the snapshot | `exec` in `/dyad-sandboxes/<run>` on a run-scoped port that's published or reached inside the guest | Medium |
-| Pre-commit (`run_pre_commit.ts`) | hook runs on the host against the real `.git` | **Not supported in Docker mode (decided).** Don't offer the agent tool. Host commits keep hooks off. | — |
-| Claude Code / Codex subscription backends | Codex: direct HTTPS to `chatgpt.com/backend-api/codex/responses`, no CLI. Claude Code: CLI as an inference-only client, tools off. | **Stay on the host.** Their tool calls are Dyad tools, which route through the Executor. Harden Claude Code with `--setting-sources ""` (in every mode) so the app repo's `.claude/settings*.json` isn't loaded. | Low |
-| grep / read_file / list_files | host ripgrep and fs | stay on the host: Dyad's own binaries only *reading* files | — |
-| Deploy builds (Cloudflare/Nitro) | not audited | probably `exec` | Audit |
+| Tool                                                                             | Today                                                                                                                              | In the guest                                                                                                                                                                                                                          | Difficulty |
+| -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| Dev server                                                                       | `docker run --rm` or host spawn                                                                                                    | `exec` in the workspace container. Report "ready" only after the watcher is ready (see the race in the measurements below).                                                                                                           | Low        |
+| Install / add dependency (`executeAddDependency`, `isolated_package_install.ts`) | host pnpm/npm                                                                                                                      | same argv through `GuestExecutor`. `package.json` and the lockfile come back through the bind mount.                                                                                                                                  | Low        |
+| `run_build` (`run_build.ts` ~359)                                                | host `pnpm run build`, in place or in a snapshot                                                                                   | `exec` in `/app` or `/dyad-sandboxes/<run>`                                                                                                                                                                                           | Low        |
+| Type checks (`tsc.ts`)                                                           | spawns the app's `tsc` with `--incremental --tsBuildInfoFile <host cache>`                                                         | same CLI through `exec`. Keep the buildinfo in the guest (e.g. `/app/node_modules/.cache/dyad-tsc`) and map diagnostic paths back.                                                                                                    | Low–medium |
+| Code explorer (`code_explorer.ts` ~413, `utilityProcess.fork`)                   | worker loads the app's TS compiler on the host                                                                                     | the same worker as a guest helper over a stdio JSON protocol instead of a utilityProcess MessagePort                                                                                                                                  | Medium     |
+| Lint                                                                             | host                                                                                                                               | `exec`                                                                                                                                                                                                                                | Low        |
+| Playwright bootstrap and run (`playwright_bootstrap.ts`, `tests_handlers.ts`)    | host `pnpm add`, host `node cli.js`, host Chromium                                                                                 | `pnpm add` and `node …/cli.js` in the guest. Chromium is baked into the image (Playwright's Ubuntu base, not Alpine). Results JSON is written to the snapshot and read by the host as data.                                           | Medium     |
+| Test-case lifecycle bridge (`test_case_lifecycle_server.ts`)                     | host HTTP server on loopback, token in env                                                                                         | Keep it on the host (it holds the DB/admin credentials, which is correct). Expose **only this port** to the guest (e.g. `host.docker.internal:<port>` plus a firewall rule allowing just that port), with the existing per-run token. | Medium     |
+| Watching tests in the preview pane (preview CDP endpoint)                        | Playwright connects to Electron over CDP                                                                                           | **Not supported in Docker mode (decided).** Tests run headless in the guest, and the UI hides the option.                                                                                                                             | —          |
+| Sandboxed E2E dev server (`e2e_test_runtime.ts` ~678)                            | host `spawn(..., {shell:true})` in the snapshot                                                                                    | `exec` in `/dyad-sandboxes/<run>` on a run-scoped port that's published or reached inside the guest                                                                                                                                   | Medium     |
+| Pre-commit (`run_pre_commit.ts`)                                                 | hook runs on the host against the real `.git`                                                                                      | **Not supported in Docker mode (decided).** Don't offer the agent tool. Host commits keep hooks off.                                                                                                                                  | —          |
+| Claude Code / Codex subscription backends                                        | Codex: direct HTTPS to `chatgpt.com/backend-api/codex/responses`, no CLI. Claude Code: CLI as an inference-only client, tools off. | **Stay on the host.** Their tool calls are Dyad tools, which route through the Executor. Harden Claude Code with `--setting-sources ""` (in every mode) so the app repo's `.claude/settings*.json` isn't loaded.                      | Low        |
+| grep / read_file / list_files                                                    | host ripgrep and fs                                                                                                                | stay on the host: Dyad's own binaries only _reading_ files                                                                                                                                                                            | —          |
+| Deploy builds (Cloudflare/Nitro)                                                 | not audited                                                                                                                        | probably `exec`                                                                                                                                                                                                                       | Audit      |
 
 ### Guest image
 
@@ -208,31 +249,33 @@ Setup: Mac mini M4 (10 cores, 16 GB). Colima 0.10.1 with `--vm-type vz --mount-t
 `scaffold/` (Vite 8, React, shadcn, ~34k files in `node_modules`). pnpm 11.22.0 on both sides.
 Script: `devbench.mjs` in the session scratchpad; the page is loaded with Playwright Chromium on the host.
 Layouts compared:
+
 - **host**: everything runs natively on the Mac.
 - **bind**: today's Docker mode. The app folder is mounted from the Mac, so `node_modules` is
   written to the Mac through virtiofs, and the pnpm store is on a separate volume.
 - **vol**: the proposed layout. Source is still mounted from the Mac, but `node_modules` and
   the pnpm store share one volume on the VM's disk.
 
-| Operation | host | bind (today) | vol (proposed) |
-|---|---|---|---|
-| `pnpm install`, cold store (incl. downloads) | 4.8s | 11.6s | 4.9s |
-| `pnpm install`, warm store | 2.8–3.0s | 9.0–9.3s | 3.3–3.7s |
-| Dev server: start → HTTP 200 | 0.56–0.62s | 0.71–1.22s | 0.67–0.87s |
-| First page load (fresh browser) | 92–158ms | 169–817ms | 113–260ms |
-| Reload | 34ms | 35ms | 35ms |
-| HMR, edit → text visible (median) | 188ms | 285ms | 285ms |
-| `tsc --noEmit` (via `docker exec`) | 1.35–1.93s | 2.44–2.72s | 2.05–2.22s |
-| `vite build` | 0.62–1.12s | 1.17–1.27s | 0.83–0.87s |
-| `eslint .` | 0.64–1.30s | 1.28–1.55s | 0.85–1.00s |
-| `docker exec` fixed cost per call | – | ~29ms | ~29ms |
-| VM boot: first create / restart | – | 24s / 12s | 24s / 12s |
+| Operation                                    | host       | bind (today) | vol (proposed) |
+| -------------------------------------------- | ---------- | ------------ | -------------- |
+| `pnpm install`, cold store (incl. downloads) | 4.8s       | 11.6s        | 4.9s           |
+| `pnpm install`, warm store                   | 2.8–3.0s   | 9.0–9.3s     | 3.3–3.7s       |
+| Dev server: start → HTTP 200                 | 0.56–0.62s | 0.71–1.22s   | 0.67–0.87s     |
+| First page load (fresh browser)              | 92–158ms   | 169–817ms    | 113–260ms      |
+| Reload                                       | 34ms       | 35ms         | 35ms           |
+| HMR, edit → text visible (median)            | 188ms      | 285ms        | 285ms          |
+| `tsc --noEmit` (via `docker exec`)           | 1.35–1.93s | 2.44–2.72s   | 2.05–2.22s     |
+| `vite build`                                 | 0.62–1.12s | 1.17–1.27s   | 0.83–0.87s     |
+| `eslint .`                                   | 0.64–1.30s | 1.28–1.55s   | 0.85–1.00s     |
+| `docker exec` fixed cost per call            | –          | ~29ms        | ~29ms          |
+| VM boot: first create / restart              | –          | 24s / 12s    | 24s / 12s      |
 
 Takeaways:
+
 - **Today's Docker mode costs about 3x on installs** because of the virtiofs `node_modules` and the
   pnpm copy fallback. The proposed layout is within about 10–20% of the Mac.
 - **Tools run from the guest are +0–0.7s each** (tsc was the worst at about +0.6s). Build and
-  lint in `vol` were sometimes *faster* than on the Mac, which is noise at this size. The ~29ms
+  lint in `vol` were sometimes _faster_ than on the Mac, which is noise at this size. The ~29ms
   exec cost doesn't matter.
 - **HMR adds about 100ms** (185 → 285ms) in both container layouts. The fsevents→inotify bridge is the
   cost, so moving `node_modules` doesn't change it.

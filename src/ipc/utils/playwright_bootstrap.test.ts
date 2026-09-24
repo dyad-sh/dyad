@@ -10,11 +10,30 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
   spawnStreaming: vi.fn(),
+  runGuestCheck: vi.fn(),
+  runGuestStreaming: vi.fn(),
 }));
 
 vi.mock("./spawn_streaming", () => ({
   spawnStreaming: h.spawnStreaming,
 }));
+
+vi.mock(
+  "@/ipc/services/docker_runtime/guest_command",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("@/ipc/services/docker_runtime/guest_command")
+    >()),
+    // Pass the request through so assertions read what the guest would run.
+    appGuestInput: async (input: Record<string, unknown>) => input,
+    // The installed-check (`test -f`) is split out so tests can answer it
+    // separately from the installs.
+    runGuestStreaming: (input: { command: string }, options: unknown) =>
+      input.command === "test"
+        ? h.runGuestCheck(input, options)
+        : h.runGuestStreaming(input, options),
+  }),
+);
 
 import {
   buildPlaywrightConfig,
@@ -81,6 +100,8 @@ function makeAppWithBrowserMarker({
 
 afterEach(() => {
   h.spawnStreaming.mockReset();
+  h.runGuestCheck.mockReset();
+  h.runGuestStreaming.mockReset();
   for (const dir of tempDirs.splice(0)) {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -1506,6 +1527,169 @@ describe("detectSystemBrowserChannel", () => {
   it("returns a supported channel or null", () => {
     const channel = detectSystemBrowserChannel();
     expect([null, "chrome", "msedge"]).toContain(channel);
+  });
+});
+
+describe("ensurePlaywrightBootstrap in Docker mode", () => {
+  const ok = {
+    code: 0,
+    stdout: "",
+    stderr: "",
+    aborted: false,
+    timedOut: false,
+  };
+
+  function makeDockerApp(): string {
+    const appPath = fs.mkdtempSync(path.join(os.tmpdir(), "dyad-pw-docker-"));
+    tempDirs.push(appPath);
+    fs.writeFileSync(path.join(appPath, "package.json"), '{"private":true}');
+    fs.writeFileSync(
+      path.join(appPath, "pnpm-lock.yaml"),
+      "lockfileVersion: '9.0'\n",
+    );
+    return appPath;
+  }
+
+  beforeEach(() => {
+    const exists = fs.existsSync.bind(fs);
+    // Pretend the host has Chrome installed: Docker mode must ignore it, since
+    // the guest can't reach host browsers.
+    vi.spyOn(fs, "existsSync").mockImplementation((file) =>
+      tempDirs.some((dir) => String(file).startsWith(dir + path.sep))
+        ? exists(file)
+        : /chrome/i.test(String(file)),
+    );
+    h.runGuestStreaming.mockResolvedValue(ok);
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it("checks and installs Playwright and Chromium in the guest", async () => {
+    const appPath = makeDockerApp();
+    // A stale Local-mode install on the host: the guest's answer wins.
+    const staleManifest = path.join(
+      appPath,
+      "node_modules",
+      "@playwright",
+      "test",
+      "package.json",
+    );
+    fs.mkdirSync(path.dirname(staleManifest), { recursive: true });
+    fs.writeFileSync(staleManifest, '{"version":"1.0.0"}');
+    h.runGuestCheck.mockResolvedValue({ ...ok, code: 1 });
+    h.runGuestStreaming.mockResolvedValueOnce(ok).mockResolvedValueOnce({
+      ...ok,
+      stdout: "Chromium downloaded to /ms-playwright/chromium-1\n",
+    });
+
+    const result = await ensurePlaywrightBootstrap({
+      appPath,
+      docker: { appId: 42 },
+    });
+
+    expect(h.spawnStreaming).not.toHaveBeenCalled();
+    expect(h.runGuestCheck).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appId: 42,
+        appPath,
+        command: "test",
+        args: [
+          "-f",
+          path.posix.join(
+            appPath,
+            "node_modules/@playwright/test/package.json",
+          ),
+        ],
+        image: "playwright",
+      }),
+      expect.anything(),
+    );
+    const [install, browser] = h.runGuestStreaming.mock.calls.map(
+      ([input]) => input,
+    );
+    expect(install).toMatchObject({
+      appId: 42,
+      appPath,
+      cwd: appPath,
+      command: "pnpm",
+      image: "playwright",
+    });
+    expect(install.args).toEqual(
+      expect.arrayContaining(["add", "--save-dev", "@playwright/test"]),
+    );
+    // No host environment is forwarded to package-manager installs.
+    expect(install.env).toBeUndefined();
+    expect(browser).toMatchObject({
+      command: "node",
+      args: [
+        path.posix.join(appPath, "node_modules/@playwright/test/cli.js"),
+        "install",
+        "chromium",
+      ],
+      image: "playwright",
+    });
+    expect(result.installed).toBe(true);
+    // The config targets the guest's bundled Chromium, not the host's Chrome.
+    const config = fs.readFileSync(
+      path.join(appPath, DYAD_CONFIG_FILENAME),
+      "utf8",
+    );
+    expect(config).not.toContain("channel:");
+    // No browser marker: that lives under node_modules, which the host must not
+    // treat as the app's real install in Docker mode.
+    expect(
+      fs.existsSync(
+        path.join(
+          appPath,
+          "node_modules",
+          ".dyad-playwright-chromium-installed",
+        ),
+      ),
+    ).toBe(false);
+  });
+
+  it("skips the package install when the guest already has it", async () => {
+    const appPath = makeDockerApp();
+    h.runGuestCheck.mockResolvedValue(ok);
+
+    const result = await ensurePlaywrightBootstrap({
+      appPath,
+      docker: { appId: 42 },
+    });
+
+    expect(h.runGuestStreaming).toHaveBeenCalledTimes(1);
+    expect(h.runGuestStreaming.mock.calls[0][0].args).toContain("chromium");
+    expect(h.spawnStreaming).not.toHaveBeenCalled();
+    expect(result.installed).toBe(false);
+  });
+
+  it("switches a Dyad-generated config off the host's browser channel", async () => {
+    const appPath = makeDockerApp();
+    fs.writeFileSync(
+      path.join(appPath, DYAD_CONFIG_FILENAME),
+      buildPlaywrightConfig("chrome"),
+    );
+    h.runGuestCheck.mockResolvedValue(ok);
+
+    await ensurePlaywrightBootstrap({ appPath, docker: { appId: 42 } });
+
+    expect(
+      fs.readFileSync(path.join(appPath, DYAD_CONFIG_FILENAME), "utf8"),
+    ).toBe(buildPlaywrightConfig(null));
+  });
+
+  it("reports a guest that couldn't start instead of reinstalling", async () => {
+    const appPath = makeDockerApp();
+    h.runGuestCheck.mockResolvedValue({
+      ...ok,
+      code: 125,
+      stderr: "Cannot connect to the Docker daemon",
+    });
+
+    await expect(
+      ensurePlaywrightBootstrap({ appPath, docker: { appId: 42 } }),
+    ).rejects.toThrow("Cannot connect to the Docker daemon");
+    expect(h.runGuestStreaming).not.toHaveBeenCalled();
+    expect(h.spawnStreaming).not.toHaveBeenCalled();
   });
 });
 

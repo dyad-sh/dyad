@@ -1,5 +1,9 @@
+import type { TypeScriptCompilerPolicy } from "./typescript_compiler_policy";
+
 export interface CodeExplorerWorkerInput {
   appPath: string;
+  /** Set by the host from the runtime mode; never by the caller. */
+  compilerPolicy: TypeScriptCompilerPolicy;
   query: string;
   tsconfigPath?: string;
   tsBuildInfoCacheDir?: string;

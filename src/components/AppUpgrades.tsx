@@ -5,9 +5,13 @@ import { Terminal } from "lucide-react";
 import { ipc, type AppUpgrade } from "@/ipc/types";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
+import { useSettings } from "@/hooks/useSettings";
+import { CAPACITOR_DOCKER_UNSUPPORTED_MESSAGE } from "@/components/CapacitorControls";
 
 export function AppUpgrades({ appId }: { appId: number | null }) {
   const queryClient = useQueryClient();
+  const { settings } = useSettings();
+  const isDockerMode = settings?.runtimeMode2 === "docker";
 
   const {
     data: upgrades,
@@ -105,58 +109,74 @@ export function AppUpgrades({ appId }: { appId: number | null }) {
         </div>
       ) : (
         <div className="space-y-4">
-          {currentUpgrades.map((upgrade: AppUpgrade) => (
-            <div
-              key={upgrade.id}
-              className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg flex justify-between items-start"
-            >
-              <div className="flex-grow">
-                <h4 className="font-semibold text-gray-800 dark:text-gray-200">
-                  {upgrade.title}
-                </h4>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                  {upgrade.description}
-                </p>
-                {mutationError && upgradingVariables === upgrade.id && (
-                  <Alert
-                    variant="destructive"
-                    className="mt-3 dark:bg-destructive/15"
-                  >
-                    <Terminal className="h-4 w-4" />
-                    <AlertTitle className="dark:text-red-200">
-                      Upgrade Failed
-                    </AlertTitle>
-                    <AlertDescription className="text-xs text-red-400 dark:text-red-300">
-                      {(mutationError as Error).message}{" "}
-                      <a
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          ipc.system.openExternalUrl(
-                            upgrade.manualUpgradeUrl ?? "https://dyad.sh/docs",
-                          );
-                        }}
-                        className="underline font-medium hover:dark:text-red-200"
-                      >
-                        Manual Upgrade Instructions
-                      </a>
-                    </AlertDescription>
-                  </Alert>
-                )}
-              </div>
-              <Button
-                onClick={() => handleUpgrade(upgrade.id)}
-                disabled={isUpgrading && upgradingVariables === upgrade.id}
-                className="ml-4 flex-shrink-0"
-                size="sm"
-                data-testid={`app-upgrade-${upgrade.id}`}
+          {currentUpgrades.map((upgrade: AppUpgrade) => {
+            const unsupportedInDocker =
+              isDockerMode && upgrade.id === "capacitor";
+            return (
+              <div
+                key={upgrade.id}
+                className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg flex justify-between items-start"
               >
-                {isUpgrading && upgradingVariables === upgrade.id ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : null}
-                Upgrade
-              </Button>
-            </div>
-          ))}
+                <div className="flex-grow">
+                  <h4 className="font-semibold text-gray-800 dark:text-gray-200">
+                    {upgrade.title}
+                  </h4>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                    {upgrade.description}
+                  </p>
+                  {unsupportedInDocker && (
+                    <p
+                      className="text-sm text-amber-700 dark:text-amber-400 mt-2"
+                      data-testid={`app-upgrade-${upgrade.id}-docker-unsupported`}
+                    >
+                      {CAPACITOR_DOCKER_UNSUPPORTED_MESSAGE}
+                    </p>
+                  )}
+                  {mutationError && upgradingVariables === upgrade.id && (
+                    <Alert
+                      variant="destructive"
+                      className="mt-3 dark:bg-destructive/15"
+                    >
+                      <Terminal className="h-4 w-4" />
+                      <AlertTitle className="dark:text-red-200">
+                        Upgrade Failed
+                      </AlertTitle>
+                      <AlertDescription className="text-xs text-red-400 dark:text-red-300">
+                        {(mutationError as Error).message}{" "}
+                        <a
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            ipc.system.openExternalUrl(
+                              upgrade.manualUpgradeUrl ??
+                                "https://dyad.sh/docs",
+                            );
+                          }}
+                          className="underline font-medium hover:dark:text-red-200"
+                        >
+                          Manual Upgrade Instructions
+                        </a>
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                </div>
+                <Button
+                  onClick={() => handleUpgrade(upgrade.id)}
+                  disabled={
+                    unsupportedInDocker ||
+                    (isUpgrading && upgradingVariables === upgrade.id)
+                  }
+                  className="ml-4 flex-shrink-0"
+                  size="sm"
+                  data-testid={`app-upgrade-${upgrade.id}`}
+                >
+                  {isUpgrading && upgradingVariables === upgrade.id ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : null}
+                  Upgrade
+                </Button>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

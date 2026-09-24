@@ -11,6 +11,7 @@ import { createTypedHandler } from "./base";
 import { capacitorContracts } from "../types/capacitor";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { getPackageManagerCommandEnv } from "../utils/socket_firewall";
+import { assertSupportedOutsideDocker } from "../services/docker_runtime/runtime_mode";
 
 const logger = log.scope("capacitor_handlers");
 
@@ -39,6 +40,8 @@ function isCapacitorInstalled(appPath: string): boolean {
   );
 }
 
+// Sync and open run the app's build and Capacitor tooling (`npm run build`,
+// `npx cap …`), so they are refused in Docker mode rather than run on the host.
 export function registerCapacitorHandlers() {
   createTypedHandler(capacitorContracts.isCapacitor, async (_, params) => {
     const app = await getApp(params.appId);
@@ -61,6 +64,7 @@ export function registerCapacitorHandlers() {
   });
 
   createTypedHandler(capacitorContracts.syncCapacitor, async (_, params) => {
+    assertSupportedOutsideDocker("capacitor");
     const app = await getApp(params.appId);
     const appPath = getDyadAppPath(app.path);
 
@@ -91,6 +95,7 @@ export function registerCapacitorHandlers() {
   });
 
   createTypedHandler(capacitorContracts.openIos, async (_, params) => {
+    assertSupportedOutsideDocker("capacitor");
     const app = await getApp(params.appId);
     const appPath = getDyadAppPath(app.path);
 
@@ -116,6 +121,7 @@ export function registerCapacitorHandlers() {
   });
 
   createTypedHandler(capacitorContracts.openAndroid, async (_, params) => {
+    assertSupportedOutsideDocker("capacitor");
     const app = await getApp(params.appId);
     const appPath = getDyadAppPath(app.path);
 

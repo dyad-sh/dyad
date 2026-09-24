@@ -17,6 +17,10 @@ vi.mock("@/ipc/services/app_operation_coordinator", () => ({
   readAppResource: vi.fn((resource: string) => ({ resource, mode: "read" })),
 }));
 
+vi.mock("@/ipc/services/docker_runtime/runtime_mode", () => ({
+  isDockerRuntimeActive: vi.fn(() => false),
+}));
+
 import {
   accumulateBuildOutput,
   copySnapshotEntriesOnWindows,
@@ -55,6 +59,7 @@ const safeViteFacts: BuildProjectFacts = {
   nextMajorVersion: null,
   previewRunning: true,
   previewInDocker: false,
+  buildInGuest: false,
   nextDevOutputIsolated: false,
   hasBuildLifecycleHooks: false,
 };
@@ -495,6 +500,27 @@ describe("run_build", () => {
       selectBuildExecutionMode({
         ...safeViteFacts,
         previewInDocker: true,
+      }),
+    ).toBe("isolated");
+  });
+
+  it("builds a guest build beside a Docker preview by the ordinary rules", () => {
+    const dockerFacts = {
+      ...safeViteFacts,
+      previewInDocker: true,
+      buildInGuest: true,
+    };
+    expect(selectBuildExecutionMode(dockerFacts)).toBe("in-place");
+    expect(
+      selectBuildExecutionMode({
+        ...dockerFacts,
+        hasBuildLifecycleHooks: true,
+      }),
+    ).toBe("isolated");
+    expect(
+      selectBuildExecutionMode({
+        ...dockerFacts,
+        buildScript: "tsc -b && vite build",
       }),
     ).toBe("isolated");
   });

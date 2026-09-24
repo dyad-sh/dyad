@@ -13,6 +13,7 @@ import {
   getTypeScriptCompilerPath,
   resolveTypeScriptPackageJsonPathSync,
 } from "../../shared/node_module_resolution";
+import type { TypeScriptCompilerPolicy } from "../../shared/typescript_compiler_policy";
 import {
   buildCodeExplorerIndex,
   searchCodeExplorerIndex,
@@ -131,8 +132,28 @@ function assertCompatibleCompiler(
 
 export function resolveCodeExplorerCompiler(
   appPath: string,
+  policy: TypeScriptCompilerPolicy,
   loaders: CodeExplorerCompilerLoaders = defaultCompilerLoaders,
 ): ResolvedCodeExplorerCompiler {
+  if (policy === "bundled-only") {
+    // Docker runtime: the app's TypeScript package is app-controlled code, so
+    // it is never resolved or required on the host.
+    let bundledCandidate: unknown;
+    try {
+      bundledCandidate = loaders.loadBundled();
+      assertCompatibleCompiler(bundledCandidate, "Bundled TypeScript 6");
+    } catch (error) {
+      throw new Error(
+        `Failed to load the bundled TypeScript compiler: ${error}`,
+      );
+    }
+    return {
+      module: bundledCandidate,
+      source: "bundled-ts6",
+      version: compilerVersion(bundledCandidate),
+    };
+  }
+
   let localPackagePath: string;
   try {
     // Resolve first so a project without TypeScript never receives the fallback.
@@ -199,7 +220,7 @@ interface CachedIndex {
 
 // One host process serves every explorer session, so both caches are keyed —
 // different apps may resolve different TypeScript installs, and the index
-// cache holds one entry per appPath+tsconfig within the byte budget above.
+// cache holds one entry per policy+appPath+tsconfig within the byte budget above.
 const typeScriptCache = new Map<string, ResolvedCodeExplorerCompiler>();
 const indexCache = new Map<string, CachedIndex>();
 
@@ -207,13 +228,13 @@ export async function processCodeExplorer(
   input: CodeExplorerWorkerInput,
 ): Promise<CodeExplorerWorkerOutput> {
   try {
-    const compiler = loadCachedTypeScript(input.appPath);
+    const compiler = loadCachedTypeScript(input.appPath, input.compilerPolicy);
     const output = await processCodeExplorerWithTypeScript(
       compiler.module,
       input,
       compiler,
     );
-    if (!output.success && compiler.source === "bundled-ts6") {
+    if (!output.success && compiler.fallbackReason !== undefined) {
       return {
         success: false,
         error: `${output.error} (Code Explorer used bundled TypeScript ${compiler.version} because the local compiler API was incompatible)`,
@@ -251,9 +272,14 @@ function getBundledCompilerNotes(
   compiler: ResolvedCodeExplorerCompiler,
   built: BuiltCodeExplorerIndex,
 ): string[] {
-  const notes = [
-    `Warning: Code Explorer used bundled TypeScript ${compiler.version} because the app-local compiler API was incompatible. Results are best-effort.`,
-  ];
+  // Without a fallback reason the bundled compiler was required by policy,
+  // not a degraded substitute, so only its config diagnostics are notable.
+  const notes =
+    compiler.fallbackReason === undefined
+      ? []
+      : [
+          `Warning: Code Explorer used bundled TypeScript ${compiler.version} because the app-local compiler API was incompatible. Results are best-effort.`,
+        ];
   if (built.configDiagnostics.length === 0) {
     return notes;
   }
@@ -287,13 +313,17 @@ export function clearCodeExplorerWorkerCachesForTests(): void {
   indexCache.clear();
 }
 
-function loadCachedTypeScript(appPath: string): ResolvedCodeExplorerCompiler {
-  const cached = typeScriptCache.get(appPath);
+function loadCachedTypeScript(
+  appPath: string,
+  policy: TypeScriptCompilerPolicy,
+): ResolvedCodeExplorerCompiler {
+  const key = `${policy}\0${appPath}`;
+  const cached = typeScriptCache.get(key);
   if (cached) {
     return cached;
   }
-  const compiler = resolveCodeExplorerCompiler(appPath);
-  typeScriptCache.set(appPath, compiler);
+  const compiler = resolveCodeExplorerCompiler(appPath, policy);
+  typeScriptCache.set(key, compiler);
   return compiler;
 }
 
@@ -301,7 +331,9 @@ function getCachedIndex(
   ts: typeof import("typescript"),
   input: CodeExplorerWorkerInput,
 ): BuiltCodeExplorerIndex {
-  const key = `${input.appPath}\0${input.tsconfigPath ?? ""}`;
+  // The policy selects the compiler that built the index, so switching runtime
+  // modes never reuses an index built by the app-local compiler.
+  const key = `${input.compilerPolicy}\0${input.appPath}\0${input.tsconfigPath ?? ""}`;
   const cached = indexCache.get(key);
   if (cached && isCacheFresh(ts, input, cached)) {
     cached.lastUsedAt = Date.now();

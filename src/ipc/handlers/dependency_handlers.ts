@@ -64,6 +64,7 @@ export function registerDependencyHandlers() {
         packages,
         message,
         appPath: getDyadAppPath(app.path),
+        appId: app.id,
       });
     },
   );

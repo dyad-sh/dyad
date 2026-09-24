@@ -13,6 +13,13 @@ import {
   type BufferedProcessResult,
 } from "@/ipc/utils/buffered_process";
 import { isVersionAtLeast } from "@/shared/version_utils";
+import { isDockerRuntimeActive } from "@/ipc/services/docker_runtime/runtime_mode";
+import {
+  appGuestInput,
+  fromGuestPath,
+  runGuestBuffered,
+  toGuestPath,
+} from "@/ipc/services/docker_runtime/guest_command";
 import {
   isMissingPathError,
   resolveTypeScriptPackageJsonPath,
@@ -147,6 +154,8 @@ export function toProblemReportError(
 
 const TSC_TIMEOUT_MS = 5 * 60 * 1000;
 const TSC_MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
+const GUEST_PROBE_TIMEOUT_MS = 60 * 1000;
+const GUEST_PROBE_MAX_OUTPUT_BYTES = 64 * 1024;
 const CONFIG_NAMES = ["tsconfig.app.json", "tsconfig.json"] as const;
 const versionCache = new Map<string, string>();
 
@@ -477,7 +486,7 @@ async function getTypeScriptVersion(
   return match[1];
 }
 
-function getBuildInfoPath({
+function getBuildInfoKey({
   appPath,
   configPath,
   version,
@@ -486,28 +495,268 @@ function getBuildInfoPath({
   configPath: string;
   version: string;
 }): string {
-  const key = createHash("sha256")
+  return createHash("sha256")
     .update(`${appPath}\0${configPath}\0${version}`)
     .digest("hex");
-  return path.join(getTypeScriptCachePath(), `${key}.tsbuildinfo`);
+}
+
+/** A resolved TypeScript CLI plus where and how it runs. */
+interface TypeScriptCheckRunner {
+  version: string;
+  /** App directory as the CLI sees it; its diagnostics are relative to it. */
+  cliAppPath: string;
+  /** tsconfig path as the CLI sees it. */
+  cliConfigPath: string;
+  buildInfoPath: string;
+  run(args: string[]): Promise<BufferedProcessResult>;
+  toHostPath(cliPath: string): string;
+}
+
+async function createHostRunner(
+  appPath: string,
+  configPath: () => Promise<string>,
+): Promise<TypeScriptCheckRunner> {
+  const cli = await resolveTypeScriptCli(appPath);
+  const resolvedConfigPath = await configPath();
+  const version = await getTypeScriptVersion(cli, appPath);
+  const buildInfoPath = path.join(
+    getTypeScriptCachePath(),
+    `${getBuildInfoKey({ appPath, configPath: resolvedConfigPath, version })}.tsbuildinfo`,
+  );
+  await fs.mkdir(path.dirname(buildInfoPath), { recursive: true });
+  return {
+    version,
+    cliAppPath: appPath,
+    cliConfigPath: resolvedConfigPath,
+    buildInfoPath,
+    run: (args) => runCli(cli, appPath, args),
+    toHostPath: (cliPath) => cliPath,
+  };
+}
+
+/**
+ * Resolves the app's TypeScript CLI inside the Docker runtime. Dyad authors
+ * this script; it only reads `typescript/package.json` as data (it never loads
+ * the package) and walks ancestor `node_modules` like
+ * {@link resolveTypeScriptPackageJsonPath} does on the host. `argv[1]` is the
+ * buildinfo directory to create, which lives in the app's node_modules volume
+ * because Dyad's host cache is not mounted into the guest.
+ */
+const GUEST_TYPESCRIPT_PROBE = `
+const fs = require("fs");
+const path = require("path");
+function findPackageJson(dir) {
+  for (;;) {
+    const candidate = path.join(dir, "node_modules", "typescript", "package.json");
+    try {
+      fs.accessSync(candidate);
+      return candidate;
+    } catch (error) {
+      if (error.code !== "ENOENT" && error.code !== "ENOTDIR") throw error;
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+function probe() {
+  const packageJsonPath = findPackageJson(process.cwd());
+  if (!packageJsonPath) return { status: "not-installed" };
+  let meta;
+  try {
+    meta = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+  } catch (error) {
+    return { status: "unreadable", packageJsonPath, error: String(error) };
+  }
+  const bin = meta && meta.bin && meta.bin.tsc;
+  if (typeof bin !== "string") return { status: "no-cli", packageJsonPath };
+  const entryPath = path.resolve(path.dirname(packageJsonPath), bin);
+  try {
+    fs.accessSync(entryPath);
+  } catch (error) {
+    return { status: "missing-cli", entryPath, error: String(error) };
+  }
+  fs.mkdirSync(process.argv[1], { recursive: true });
+  return { status: "ok", entryPath, version: meta.version };
+}
+process.stdout.write(JSON.stringify(probe()));
+`;
+
+type GuestProbeResult =
+  | { status: "not-installed" }
+  | { status: "unreadable"; packageJsonPath: string; error: string }
+  | { status: "no-cli"; packageJsonPath: string }
+  | { status: "missing-cli"; entryPath: string; error: string }
+  | { status: "ok"; entryPath: string; version: string };
+
+function parseGuestProbeResult(stdout: string): GuestProbeResult {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    throw new Error(
+      `Unexpected output while resolving TypeScript in the Docker runtime: ${stdout.slice(0, 300)}`,
+    );
+  }
+  const result = parsed as Record<string, unknown> | null;
+  const isString = (key: string) => typeof result?.[key] === "string";
+  switch (result?.status) {
+    case "not-installed":
+      return { status: "not-installed" };
+    case "unreadable":
+      if (isString("packageJsonPath")) {
+        return result as GuestProbeResult;
+      }
+      break;
+    case "no-cli":
+      if (isString("packageJsonPath")) {
+        return result as GuestProbeResult;
+      }
+      break;
+    case "missing-cli":
+      if (isString("entryPath")) {
+        return result as GuestProbeResult;
+      }
+      break;
+    case "ok":
+      if (
+        isString("entryPath") &&
+        isString("version") &&
+        /^\d+\.\d+\.\d+/.test(result.version as string)
+      ) {
+        return result as GuestProbeResult;
+      }
+      break;
+  }
+  throw new Error(
+    `Unexpected result while resolving TypeScript in the Docker runtime: ${stdout.slice(0, 300)}`,
+  );
+}
+
+function describeGuestResultFailure(result: BufferedProcessResult): string {
+  if (result.timedOut) return "timed out";
+  if (result.aborted || result.signal) {
+    return `terminated${result.signal ? ` with ${result.signal}` : ""}`;
+  }
+  return (
+    result.stderr.trim() ||
+    result.stdout.trim() ||
+    `exit code ${result.code}`
+  ).slice(0, 1000);
+}
+
+/**
+ * Docker mode: the app's TypeScript package is app-controlled code and its
+ * live `node_modules` exists only in the container volume, so both resolution
+ * and the check itself run in the guest. Only the host-side precondition
+ * classification below treats a guest answer as "not installed"; Docker and
+ * spawn failures surface as ordinary errors.
+ */
+async function createGuestRunner(
+  appId: number,
+  appPath: string,
+  configPath: () => Promise<string>,
+): Promise<TypeScriptCheckRunner> {
+  const guestAppPath = toGuestPath(appPath);
+  const guestBuildInfoDir = path.posix.join(
+    guestAppPath,
+    "node_modules",
+    ".cache",
+    "dyad-tsc",
+  );
+  const runGuest = async (
+    command: string,
+    args: string[],
+    limits: { timeoutMs: number; maxOutputBytes: number },
+  ) =>
+    runGuestBuffered(await appGuestInput({ appId, appPath, command, args }), {
+      ...limits,
+      // The scheduler must not release its memory-heavy-work slot until the
+      // container's client process and its stdio have actually closed.
+      waitForCloseAfterForceKill: true,
+    });
+
+  const probeResult = await runGuest(
+    "node",
+    ["-e", GUEST_TYPESCRIPT_PROBE, guestBuildInfoDir],
+    {
+      timeoutMs: GUEST_PROBE_TIMEOUT_MS,
+      maxOutputBytes: GUEST_PROBE_MAX_OUTPUT_BYTES,
+    },
+  );
+  if (
+    probeResult.code !== 0 ||
+    probeResult.signal ||
+    probeResult.timedOut ||
+    probeResult.aborted ||
+    probeResult.stdoutTruncated ||
+    probeResult.stderrTruncated
+  ) {
+    throw new Error(
+      `Failed to resolve TypeScript in the Docker runtime: ${describeGuestResultFailure(probeResult)}`,
+    );
+  }
+
+  const probe = parseGuestProbeResult(probeResult.stdout.trim());
+  switch (probe.status) {
+    case "not-installed":
+      throw new TypeCheckPreconditionError(
+        "typescript-not-found",
+        `Failed to load TypeScript from ${appPath}: package is not installed`,
+      );
+    case "unreadable":
+      throw new TypeCheckPreconditionError(
+        "typescript-not-found",
+        `Failed to read TypeScript package metadata at ${fromGuestPath(probe.packageJsonPath)}`,
+        { cause: new Error(probe.error) },
+      );
+    case "no-cli":
+      throw new TypeCheckPreconditionError(
+        "typescript-not-found",
+        `No local TypeScript CLI declared in ${fromGuestPath(probe.packageJsonPath)}`,
+      );
+    case "missing-cli":
+      throw new TypeCheckPreconditionError(
+        "typescript-not-found",
+        `No local TypeScript CLI found at ${fromGuestPath(probe.entryPath)}`,
+        { cause: new Error(probe.error) },
+      );
+  }
+
+  const resolvedConfigPath = await configPath();
+  const { entryPath, version } = probe;
+  const buildInfoPath = path.posix.join(
+    guestBuildInfoDir,
+    `${getBuildInfoKey({ appPath, configPath: resolvedConfigPath, version })}.tsbuildinfo`,
+  );
+  return {
+    version,
+    cliAppPath: guestAppPath,
+    cliConfigPath: toGuestPath(resolvedConfigPath),
+    buildInfoPath,
+    run: (args) =>
+      runGuest("node", [entryPath, ...args], {
+        timeoutMs: TSC_TIMEOUT_MS,
+        maxOutputBytes: TSC_MAX_OUTPUT_BYTES,
+      }),
+    toHostPath: (cliPath) => fromGuestPath(cliPath),
+  };
 }
 
 export async function runTypeScriptCheck({
+  appId,
   appPath,
 }: {
+  appId: number;
   appPath: string;
 }): Promise<ProblemReport> {
   return typescriptUtilityProcessScheduler.runExclusive("tsc", async () => {
     try {
-      const cli = await resolveTypeScriptCli(appPath);
-      const configPath = await findTypeScriptConfig(appPath);
-      const version = await getTypeScriptVersion(cli, appPath);
-      const buildInfoPath = getBuildInfoPath({
-        appPath,
-        configPath,
-        version,
-      });
-      await fs.mkdir(path.dirname(buildInfoPath), { recursive: true });
+      const findConfig = () => findTypeScriptConfig(appPath);
+      const runner = isDockerRuntimeActive()
+        ? await createGuestRunner(appId, appPath, findConfig)
+        : await createHostRunner(appPath, findConfig);
+      const { version, cliAppPath, cliConfigPath } = runner;
 
       logger.info(`Starting TypeScript ${version} CLI check for ${appPath}`);
       // Defensive "off" toggles: keep the bounded diagnostics parser from being
@@ -537,10 +786,10 @@ export async function runTypeScriptCheck({
       // a full, non-incremental check. Incremental caching is a perf
       // optimization, not a correctness need.
       if (isVersionAtLeast(version, "4.0.0")) {
-        args.push("--incremental", "--tsBuildInfoFile", buildInfoPath);
+        args.push("--incremental", "--tsBuildInfoFile", runner.buildInfoPath);
       }
-      args.push("--project", configPath);
-      const result = await runCli(cli, appPath, args);
+      args.push("--project", cliConfigPath);
+      const result = await runner.run(args);
 
       if (result.timedOut) {
         throw new Error(`Type check timed out after ${TSC_TIMEOUT_MS / 1000}s`);
@@ -563,10 +812,12 @@ export async function runTypeScriptCheck({
       }
 
       const output = [result.stdout, result.stderr].filter(Boolean).join("\n");
+      // Parse in the CLI's own path space; the Docker guest may see the app
+      // at a different path than the host (Windows).
       const parsed = parseTypeScriptDiagnosticsDetailed(
         output,
-        appPath,
-        configPath,
+        cliAppPath,
+        cliConfigPath,
       );
       if (parsed.skippedLines.length > 0) {
         const preview = parsed.skippedLines
@@ -578,13 +829,17 @@ export async function runTypeScriptCheck({
         );
       }
       const outcome = parsed.problems.some((problem) =>
-        isTypeScriptConfigDiagnostic(problem, configPath),
+        isTypeScriptConfigDiagnostic(problem, cliConfigPath),
       )
         ? "incomplete"
         : "errors";
+      const hostProblems = parsed.problems.map((problem) => ({
+        ...problem,
+        absoluteFilePath: runner.toHostPath(problem.absoluteFilePath),
+      }));
 
       return {
-        ...(await addSnippets(parsed.problems, appPath)),
+        ...(await addSnippets(hostProblems, appPath)),
         outcome,
       };
     } catch (error) {

@@ -50,6 +50,7 @@ import { getFilesRecursively } from "../utils/file_utils";
 import {
   runningApps,
   stopAppByInfo,
+  removeDockerVolumesForApp,
   setCurrentlySelectedAppId,
   startAppGarbageCollection,
 } from "../utils/process_manager";
@@ -157,6 +158,7 @@ import {
 import type { AppSearchResult } from "@/lib/schemas";
 import { endTestsForApp } from "./tests_handlers";
 import { removeE2eTestArtifactsForApp } from "../services/e2e_test_workspace";
+import { isDockerRuntimeActive } from "../services/docker_runtime/runtime_mode";
 
 import {
   getRgExecutablePath,
@@ -577,6 +579,13 @@ async function deleteAppById(
       `App ${appId} was deleted but its retained test artifacts could not be removed: ${error}`,
     ),
   );
+
+  // Docker mode keeps the app's dependencies in volumes keyed by app ID. App
+  // IDs can be reused, so a leftover volume would hand this app's packages to
+  // a future app. Best-effort: resolves even when Docker is unavailable.
+  if (isDockerRuntimeActive()) {
+    await removeDockerVolumesForApp(appId);
+  }
 
   // Only after the deletion has committed — the throw above skips this. Doing
   // it earlier means a deletion that then fails leaves a live app pointed at a

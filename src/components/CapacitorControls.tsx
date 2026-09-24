@@ -25,6 +25,12 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { queryKeys } from "@/lib/queryKeys";
+import { useSettings } from "@/hooks/useSettings";
+
+// Mirrors the main process's refusal (runtime_mode.ts), which this renderer
+// module cannot import.
+export const CAPACITOR_DOCKER_UNSUPPORTED_MESSAGE =
+  "Capacitor isn't available in Docker mode: it runs your app's build tooling on your computer instead of inside the container. Switch the runtime to Local to use it.";
 
 interface CapacitorControlsProps {
   appId: number;
@@ -40,6 +46,8 @@ export function CapacitorControls({ appId }: CapacitorControlsProps) {
   } | null>(null);
   const [iosStatus, setIosStatus] = useState<CapacitorStatus>("idle");
   const [androidStatus, setAndroidStatus] = useState<CapacitorStatus>("idle");
+  const { settings } = useSettings();
+  const isDockerMode = settings?.runtimeMode2 === "docker";
 
   // Check if Capacitor is installed
   const { data: isCapacitor, isLoading } = useQuery({
@@ -147,14 +155,20 @@ export function CapacitorControls({ appId }: CapacitorControlsProps) {
             </Button>
           </CardTitle>
           <CardDescription>
-            Sync and open your Capacitor mobile projects
+            {isDockerMode ? (
+              <span data-testid="capacitor-docker-unsupported">
+                {CAPACITOR_DOCKER_UNSUPPORTED_MESSAGE}
+              </span>
+            ) : (
+              "Sync and open your Capacitor mobile projects"
+            )}
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 gap-2">
             <Button
               onClick={() => syncAndOpenIosMutation.mutate()}
-              disabled={syncAndOpenIosMutation.isPending}
+              disabled={isDockerMode || syncAndOpenIosMutation.isPending}
               variant="outline"
               size="sm"
               className="flex items-center gap-2 h-10"
@@ -172,7 +186,7 @@ export function CapacitorControls({ appId }: CapacitorControlsProps) {
 
             <Button
               onClick={() => syncAndOpenAndroidMutation.mutate()}
-              disabled={syncAndOpenAndroidMutation.isPending}
+              disabled={isDockerMode || syncAndOpenAndroidMutation.isPending}
               variant="outline"
               size="sm"
               className="flex items-center gap-2 h-10"

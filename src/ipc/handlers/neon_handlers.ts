@@ -133,7 +133,7 @@ export function registerNeonHandlers() {
     // Vite apps need a Nitro server layer to safely host server-only Neon code
     // (DATABASE_URL, neon client, auth secrets). Add it before any Neon API
     // calls so a Nitro failure won't orphan a Neon project.
-    const nitroSetup = await ensureNitroIfVite(resolvedAppPath);
+    const nitroSetup = await ensureNitroIfVite(resolvedAppPath, { appId });
     const nitroWarnings = nitroSetup.warningMessages;
     let nitroRolledBack = false;
     const rollbackNitroOnce = async () => {
@@ -556,7 +556,7 @@ export function registerNeonHandlers() {
       // Vite apps need a Nitro server layer to safely host server-only Neon
       // code. Run this after Neon validation but before linking so a Nitro
       // failure leaves the app unlinked.
-      nitroSetup = await ensureNitroIfVite(resolvedAppPath);
+      nitroSetup = await ensureNitroIfVite(resolvedAppPath, { appId });
 
       if (!branchesResponse.data.branches) {
         throw new DyadError(

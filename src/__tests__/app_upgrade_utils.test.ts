@@ -1,11 +1,35 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import {
   isComponentTaggerUpgradeNeeded,
   applyComponentTagger,
+  simpleSpawnWithDeniedPnpmBuildSelfHeal,
 } from "../ipc/utils/app_upgrade_utils";
 import { simpleSpawn } from "../ipc/utils/simpleSpawn";
 import { gitAddAll, gitCommit } from "../ipc/utils/git_utils";
+import { CommandExecutionError } from "../ipc/utils/socket_firewall";
+
+const docker = vi.hoisted(() => ({
+  active: false,
+  resolveAppIdForPath: vi.fn(),
+  runPackageManagerCommandInGuest: vi.fn(),
+  resolvePnpmIgnoredBuilds: vi.fn(),
+  recordAndReportDeniedPnpmBuilds: vi.fn(),
+}));
+
+vi.mock("@/ipc/services/docker_runtime/runtime_mode", () => ({
+  isDockerRuntimeActive: () => docker.active,
+}));
+
+vi.mock("../ipc/utils/docker_package_manager", () => ({
+  resolveAppIdForPath: docker.resolveAppIdForPath,
+  runPackageManagerCommandInGuest: docker.runPackageManagerCommandInGuest,
+}));
+
+vi.mock("../ipc/utils/pnpm_denied_builds", () => ({
+  resolvePnpmIgnoredBuilds: docker.resolvePnpmIgnoredBuilds,
+  recordAndReportDeniedPnpmBuilds: docker.recordAndReportDeniedPnpmBuilds,
+}));
 
 vi.mock(
   "node:fs",
@@ -203,5 +227,122 @@ describe("applyComponentTagger", () => {
     // Check git was still committed
     expect(gitAddAll).toHaveBeenCalled();
     expect(gitCommit).toHaveBeenCalled();
+  });
+});
+
+describe("in Docker mode", () => {
+  const mockPath = "/mock/app";
+  const viteConfig = `
+      import { defineConfig } from 'vite';
+      import react from '@vitejs/plugin-react';
+      export default defineConfig({ plugins: [react()] });
+    `;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    docker.active = true;
+    docker.resolveAppIdForPath.mockResolvedValue(9);
+    docker.runPackageManagerCommandInGuest.mockResolvedValue({
+      stdout: "",
+      stderr: "",
+    });
+    vi.spyOn(fs, "existsSync").mockReturnValue(true);
+    vi.spyOn(fs.promises, "readFile").mockResolvedValue(viteConfig);
+    vi.spyOn(fs.promises, "writeFile").mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    docker.active = false;
+  });
+
+  it("installs the component tagger in the guest, never on the host", async () => {
+    await applyComponentTagger(mockPath, { appId: 4 });
+
+    expect(simpleSpawn).not.toHaveBeenCalled();
+    expect(docker.runPackageManagerCommandInGuest).toHaveBeenCalledWith({
+      appId: 4,
+      appPath: mockPath,
+      invocation: {
+        command: "pnpm",
+        args: [
+          "--config.pm-on-fail=ignore",
+          "add",
+          "--ignore-workspace-root-check",
+          "-D",
+          "@dyad-sh/react-vite-component-tagger",
+        ],
+      },
+    });
+    expect(gitCommit).toHaveBeenCalled();
+  });
+
+  it("does not fall back to npm and rolls back when the guest install fails", async () => {
+    docker.runPackageManagerCommandInGuest.mockRejectedValue(
+      new CommandExecutionError({
+        message: "failed",
+        stderr: "ERR_PNPM_FETCH_404",
+      }),
+    );
+
+    await expect(applyComponentTagger(mockPath, { appId: 4 })).rejects.toThrow(
+      /Failed to install dependency via pnpm: failed[\s\S]*ERR_PNPM_FETCH_404/,
+    );
+    expect(simpleSpawn).not.toHaveBeenCalled();
+    expect(fs.promises.writeFile).toHaveBeenLastCalledWith(
+      expect.stringContaining("vite.config"),
+      viteConfig,
+    );
+  });
+
+  it("looks up the app ID and self-heals ignored builds from the guest output", async () => {
+    docker.runPackageManagerCommandInGuest
+      .mockRejectedValueOnce(
+        new CommandExecutionError({
+          message: "failed",
+          stdout:
+            "ERR_PNPM_IGNORED_BUILDS\nIgnored build scripts: esbuild@0.25.0.",
+        }),
+      )
+      .mockResolvedValueOnce({ stdout: "", stderr: "" });
+    docker.recordAndReportDeniedPnpmBuilds.mockResolvedValue({
+      deniedBuilds: [{ packageName: "esbuild", packageSpec: "esbuild@0.25.0" }],
+    });
+
+    await simpleSpawnWithDeniedPnpmBuildSelfHeal({
+      command: "pnpm --config.pm-on-fail=ignore install",
+      cwd: mockPath,
+      successMessage: "ok",
+      errorPrefix: "Failed",
+    });
+
+    expect(docker.resolveAppIdForPath).toHaveBeenCalledWith(mockPath);
+    // Host node_modules/.modules.yaml is not the guest install's.
+    expect(docker.resolvePnpmIgnoredBuilds).not.toHaveBeenCalled();
+    expect(docker.recordAndReportDeniedPnpmBuilds).toHaveBeenCalledWith({
+      appPath: mockPath,
+      ignoredBuilds: [
+        { packageName: "esbuild", packageSpec: "esbuild@0.25.0" },
+      ],
+      source: "self-heal",
+    });
+    expect(docker.runPackageManagerCommandInGuest).toHaveBeenCalledTimes(2);
+    expect(docker.runPackageManagerCommandInGuest).toHaveBeenCalledWith(
+      expect.objectContaining({ appId: 9 }),
+    );
+    expect(simpleSpawn).not.toHaveBeenCalled();
+  });
+
+  it("refuses commands that are not plain argument lists", async () => {
+    await expect(
+      simpleSpawnWithDeniedPnpmBuildSelfHeal({
+        command: "npx cap add ios && npx cap add android",
+        cwd: mockPath,
+        successMessage: "ok",
+        errorPrefix: "Failed",
+        appId: 4,
+      }),
+    ).rejects.toThrow(/not a plain argument list/);
+    expect(docker.runPackageManagerCommandInGuest).not.toHaveBeenCalled();
+    expect(simpleSpawn).not.toHaveBeenCalled();
   });
 });

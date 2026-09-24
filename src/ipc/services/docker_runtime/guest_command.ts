@@ -100,15 +100,25 @@ export async function resolveGitMask(hostRoot: string): Promise<GitMask> {
   return { kind: "file", guestPath, emptyFileHostPath };
 }
 
-/** Values Dyad sets for every guest package-manager invocation. */
+/**
+ * Values Dyad sets for every guest package-manager invocation. pnpm 11 reads
+ * only `pnpm_config_*` for its own settings and ignores `npm_config_*`, so
+ * pnpm settings are given in both spellings (npm still reads the latter).
+ */
 export const GUEST_BASE_ENV: Readonly<Record<string, string>> = {
   CI: "true",
   COREPACK_ENABLE_PROJECT_SPEC: "0",
   COREPACK_ENABLE_STRICT: "0",
   npm_config_package_manager_strict: "false",
+  pnpm_config_package_manager_strict: "false",
   npm_config_pm_on_fail: "ignore",
+  pnpm_config_pm_on_fail: "ignore",
   PLAYWRIGHT_BROWSERS_PATH: GUEST_PLAYWRIGHT_BROWSERS_PATH,
 };
+
+function storeDirEnv(storeDir: string): Record<string, string> {
+  return { npm_config_store_dir: storeDir, pnpm_config_store_dir: storeDir };
+}
 
 export interface GuestInvocationInput {
   appId: number;
@@ -140,6 +150,8 @@ export interface GuestInvocationInput {
   publishPorts?: number[];
   containerName?: string;
   role?: "job" | "app";
+  /** Keep stdin attached (`docker run -i`) for commands that answer prompts. */
+  interactive?: boolean;
 }
 
 export interface GuestInvocation {
@@ -177,6 +189,7 @@ export function buildGuestInvocation(
     "run",
     "--rm",
     "--init",
+    ...(input.interactive ? ["-i"] : []),
     "--name",
     containerName,
     "--label",
@@ -198,13 +211,13 @@ export function buildGuestInvocation(
       `type=volume,source=${volume},target=${guestRoot}/node_modules`,
     );
     // Same filesystem as node_modules, so pnpm hardlinks instead of copying.
-    env.npm_config_store_dir = `${guestRoot}/node_modules/.pnpm-store`;
+    Object.assign(env, storeDirEnv(`${guestRoot}/node_modules/.pnpm-store`));
   } else {
     args.push(
       "--mount",
       `type=volume,source=${volume},target=${GUEST_APP_DEPS_MOUNT}`,
     );
-    env.npm_config_store_dir = `${GUEST_APP_DEPS_MOUNT}/.pnpm-store`;
+    Object.assign(env, storeDirEnv(`${GUEST_APP_DEPS_MOUNT}/.pnpm-store`));
   }
 
   if (input.gitMask.kind === "directory") {

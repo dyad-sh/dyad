@@ -7,6 +7,7 @@ import type {
   SupabaseDependencyAnalysisInput,
   SupabaseDependencyAnalysisOutput,
 } from "../../shared/supabase_dependency_analysis_types";
+import type { TypeScriptCompilerPolicy } from "../../shared/typescript_compiler_policy";
 import { analyzeSupabaseDependencies } from "./analyze";
 
 const REQUIRED_APIS = [
@@ -36,33 +37,64 @@ function isCompatible(
   );
 }
 
-function loadCompiler(appPath: string): typeof import("typescript") | null {
-  let packageJsonPath: string;
-  try {
-    packageJsonPath = resolveTypeScriptPackageJsonPathSync(appPath);
-  } catch {
-    return null;
-  }
-  try {
-    const local = require(
-      fs.realpathSync(getTypeScriptCompilerPath(packageJsonPath)),
-    ) as unknown;
-    if (isCompatible(local)) return local;
-  } catch {
-    // TS7 does not expose the legacy JavaScript compiler API.
-  }
-  const bundled = require("@typescript/typescript6") as unknown;
+export interface SupabaseCompilerLoaders {
+  resolveLocalPackage(appPath: string): string;
+  loadLocal(packageJsonPath: string): unknown;
+  loadBundled(): unknown;
+}
+
+const defaultCompilerLoaders: SupabaseCompilerLoaders = {
+  resolveLocalPackage: resolveTypeScriptPackageJsonPathSync,
+  loadLocal: (packageJsonPath) =>
+    require(fs.realpathSync(getTypeScriptCompilerPath(packageJsonPath))),
+  loadBundled: () => require("@typescript/typescript6"),
+};
+
+function loadBundledCompiler(
+  loaders: SupabaseCompilerLoaders,
+): typeof import("typescript") {
+  const bundled = loaders.loadBundled();
   if (!isCompatible(bundled)) {
     throw new Error("Bundled TypeScript compiler API is unavailable");
   }
   return bundled;
 }
 
+export function loadSupabaseAnalysisCompiler(
+  appPath: string,
+  policy: TypeScriptCompilerPolicy,
+  loaders: SupabaseCompilerLoaders = defaultCompilerLoaders,
+): typeof import("typescript") | null {
+  // The analysis only parses source files, which the bundled compiler does
+  // for any project. Never resolve the app's own TypeScript in this mode: it
+  // is app-controlled code.
+  if (policy === "bundled-only") {
+    return loadBundledCompiler(loaders);
+  }
+
+  let packageJsonPath: string;
+  try {
+    packageJsonPath = loaders.resolveLocalPackage(appPath);
+  } catch {
+    return null;
+  }
+  try {
+    const local = loaders.loadLocal(packageJsonPath);
+    if (isCompatible(local)) return local;
+  } catch {
+    // TS7 does not expose the legacy JavaScript compiler API.
+  }
+  return loadBundledCompiler(loaders);
+}
+
 export async function processSupabaseDependencyAnalysis(
   input: SupabaseDependencyAnalysisInput,
 ): Promise<SupabaseDependencyAnalysisOutput> {
   try {
-    const compiler = loadCompiler(input.appPath);
+    const compiler = loadSupabaseAnalysisCompiler(
+      input.appPath,
+      input.compilerPolicy,
+    );
     if (!compiler) {
       return {
         success: true,

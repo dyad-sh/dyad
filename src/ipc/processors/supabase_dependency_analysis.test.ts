@@ -7,6 +7,14 @@ vi.mock("electron", () => ({
   utilityProcess: { fork: (...args: unknown[]) => forkMock(...args) },
 }));
 
+const { isDockerRuntimeActiveMock } = vi.hoisted(() => ({
+  isDockerRuntimeActiveMock: vi.fn(() => false),
+}));
+
+vi.mock("@/ipc/services/docker_runtime/runtime_mode", () => ({
+  isDockerRuntimeActive: isDockerRuntimeActiveMock,
+}));
+
 import { runSupabaseDependencyAnalysis } from "./supabase_dependency_analysis";
 import { typescriptUtilityProcessScheduler } from "./typescript_utility_process_scheduler";
 
@@ -19,6 +27,7 @@ describe("runSupabaseDependencyAnalysis", () => {
   let child: FakeUtilityProcess;
 
   beforeEach(() => {
+    isDockerRuntimeActiveMock.mockReturnValue(false);
     child = new FakeUtilityProcess();
     forkMock.mockReset().mockReturnValue(child);
   });
@@ -36,6 +45,7 @@ describe("runSupabaseDependencyAnalysis", () => {
     child.emit("spawn");
     expect(child.postMessage).toHaveBeenCalledWith({
       appPath: "/app",
+      compilerPolicy: "local-or-bundled",
       changedSharedModulePaths: ["supabase/functions/_shared/util.ts"],
     });
     child.emit("message", {
@@ -55,6 +65,30 @@ describe("runSupabaseDependencyAnalysis", () => {
     await expect(result).resolves.toEqual({
       kind: "partial",
       functionNames: ["alpha"],
+    });
+  });
+
+  it("restricts the worker to the bundled compiler in Docker mode", async () => {
+    isDockerRuntimeActiveMock.mockReturnValue(true);
+    const result = runSupabaseDependencyAnalysis({
+      appPath: "/app",
+      changedSharedModulePaths: [],
+    });
+    await vi.waitFor(() => expect(forkMock).toHaveBeenCalledOnce());
+    child.emit("spawn");
+    expect(child.postMessage).toHaveBeenCalledWith({
+      appPath: "/app",
+      compilerPolicy: "bundled-only",
+      changedSharedModulePaths: [],
+    });
+    child.emit("message", {
+      success: true,
+      data: { kind: "partial", functionNames: [] },
+    });
+    child.emit("exit", 0);
+    await expect(result).resolves.toEqual({
+      kind: "partial",
+      functionNames: [],
     });
   });
 

@@ -799,6 +799,23 @@ describe("runTestsTool", () => {
     );
   });
 
+  it("runs headless in the Docker container whatever the headed preference", async () => {
+    settingsReader.mockReturnValue({
+      runtimeMode2: "docker",
+      enableTestRunInPreview: true,
+      testHeaded: true,
+    } as ReturnType<typeof readSettings>);
+    baseUrl.mockReturnValue("http://localhost:42101/");
+    runner.mockResolvedValue(passedResult);
+    await runTestsTool.execute(
+      { testFiles: ["e2e-tests/a.spec.ts"] },
+      makeCtx(),
+    );
+    expect(runner).toHaveBeenCalledWith(
+      expect.objectContaining({ headed: false, preview: false }),
+    );
+  });
+
   it("keeps headless tests out of the preview when the experiment is enabled", async () => {
     settingsReader.mockReturnValue({
       enableTestRunInPreview: true,

@@ -32,7 +32,10 @@ export function registerProblemsHandlers() {
 
       appPath = getDyadAppPath(app.path);
 
-      const problemReport = await runTypeScriptCheck({ appPath });
+      const problemReport = await runTypeScriptCheck({
+        appId: params.appId,
+        appPath,
+      });
 
       return problemReport;
     } catch (error) {

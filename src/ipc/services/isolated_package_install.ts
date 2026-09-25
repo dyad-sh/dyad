@@ -5,6 +5,10 @@ import path from "node:path";
 import { glob } from "glob";
 import { parse as parseYaml } from "yaml";
 
+import {
+  runGuestStreaming,
+  snapshotGuestInput,
+} from "@/ipc/services/docker_runtime/guest_command";
 import { choosePackageManagerForApp } from "@/ipc/utils/package_manager_selection";
 import { spawnStreaming } from "@/ipc/utils/spawn_streaming";
 import {
@@ -255,8 +259,18 @@ export async function findPackageManagerRoot(
 export async function resolvePackageManager(
   appPath: string,
   repoRoot = appPath,
+  {
+    pnpmAvailable,
+  }: {
+    /**
+     * Skips probing the host's pnpm. A guest install runs the runtime image's
+     * pinned pnpm, so the host's pnpm has no bearing on it.
+     */
+    pnpmAvailable?: boolean;
+  } = {},
 ): Promise<PackageManagerResolution> {
-  const support = await getPnpmMinimumReleaseAgeSupport();
+  const pnpmIsAvailable =
+    pnpmAvailable ?? (await getPnpmMinimumReleaseAgeSupport()).available;
   const sourceInstallPath = await findPackageManagerRoot(appPath, repoRoot);
   const membership =
     sourceInstallPath !== appPath
@@ -264,10 +278,10 @@ export async function resolvePackageManager(
       : null;
   return {
     packageManager: membership
-      ? membership === "pnpm" && support.available
+      ? membership === "pnpm" && pnpmIsAvailable
         ? "pnpm"
         : "npm"
-      : choosePackageManagerForApp(sourceInstallPath, support.available),
+      : choosePackageManagerForApp(sourceInstallPath, pnpmIsAvailable),
     sourceInstallPath,
   };
 }
@@ -305,10 +319,21 @@ export function getCleanInstallArgs({
 const LOCKFILE_OUT_OF_SYNC_PATTERN =
   /ERR_PNPM_OUTDATED_LOCKFILE|frozen-lockfile|can only install packages when your package\.json|Missing: .+ from lock file|lockfile is not up to date/i;
 
+/**
+ * Runs the install inside the Docker runtime instead of on the host. The
+ * snapshot root is the Dyad-owned worktree mounted into the guest; `cwd` must
+ * be inside it.
+ */
+export interface GuestSnapshotInstallTarget {
+  appId: number;
+  snapshotRoot: string;
+}
+
 export async function runCleanPackageInstall({
   cwd,
   packageManager,
-  env = getPackageManagerCommandEnv(),
+  env,
+  guest,
   signal,
   timeoutMs,
   onOutput,
@@ -319,9 +344,13 @@ export async function runCleanPackageInstall({
   /**
    * The environment the install and its lifecycle scripts run under. Defaults
    * to the package-manager environment every other caller wants; the sandbox
-   * passes one with the inherited database credentials removed.
+   * passes one with the inherited database credentials removed. For a guest
+   * install these are the ONLY variables that enter the container (on top of
+   * the guest's fixed base), so never pass the host environment wholesale.
    */
   env?: NodeJS.ProcessEnv;
+  /** When set, the install and its lifecycle scripts run in the guest. */
+  guest?: GuestSnapshotInstallTarget;
   signal?: AbortSignal;
   timeoutMs: number;
   onOutput?: (chunk: string) => void;
@@ -340,17 +369,32 @@ export async function runCleanPackageInstall({
     .then((stat) => stat.isFile())
     .catch(() => false);
   const startedAt = Date.now();
-  const spawnInstall = (frozen: boolean, budgetMs: number) =>
-    spawnStreaming({
+  const spawnInstall = async (frozen: boolean, budgetMs: number) => {
+    const args = getCleanInstallArgs({ packageManager, hasLockfile: frozen });
+    if (guest) {
+      return runGuestStreaming(
+        await snapshotGuestInput({
+          appId: guest.appId,
+          snapshotRoot: guest.snapshotRoot,
+          cwd,
+          command: packageManager,
+          args,
+          env,
+        }),
+        { signal, timeoutMs: budgetMs, onOutput, onProcess },
+      );
+    }
+    return spawnStreaming({
       command: packageManager,
-      args: getCleanInstallArgs({ packageManager, hasLockfile: frozen }),
+      args,
       cwd,
-      env,
+      env: env ?? getPackageManagerCommandEnv(),
       signal,
       timeoutMs: budgetMs,
       onOutput,
       onProcess,
     });
+  };
 
   const result = await spawnInstall(hasLockfile, timeoutMs);
   if (

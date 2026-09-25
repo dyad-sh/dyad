@@ -184,7 +184,10 @@ export const runTypeChecksTool: ToolDefinition<
 
     let problemReport: ProblemReport;
     try {
-      problemReport = await runTypeScriptCheck({ appPath: ctx.appPath });
+      problemReport = await runTypeScriptCheck({
+        appId: ctx.appId,
+        appPath: ctx.appPath,
+      });
     } catch (error) {
       if (!isDyadError(error) || error.kind !== DyadErrorKind.Precondition) {
         throw error;

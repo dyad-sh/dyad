@@ -7,6 +7,7 @@ import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { ServerResponse } from "node:http";
 import {
+  dockerGuestLifecycleHost,
   startTestCaseLifecycleServer,
   TEST_CASE_ENDPOINT_ENV,
   TEST_CASE_TOKEN_ENV,
@@ -51,6 +52,41 @@ async function setup(onSlowShutdown?: () => void) {
 }
 
 describe("test case lifecycle bridge", () => {
+  it("advertises a guest-reachable host while staying bound to loopback", async () => {
+    const server = await startTestCaseLifecycleServer(
+      { beforeEach: vi.fn(async () => ({})), afterEach: vi.fn(async () => {}) },
+      { advertisedHost: "host.docker.internal" },
+    );
+    servers.push(server);
+    const endpoint = new URL(server.env[TEST_CASE_ENDPOINT_ENV]);
+    expect(endpoint.hostname).toBe("host.docker.internal");
+    // Still loopback-only on the host, and still token-gated.
+    const unauthorized = await fetch(
+      `http://127.0.0.1:${endpoint.port}/before/case-1`,
+      { method: "POST" },
+    );
+    expect(unauthorized.status).toBe(403);
+    const authorized = await fetch(
+      `http://127.0.0.1:${endpoint.port}/before/case-1`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${server.env[TEST_CASE_TOKEN_ENV]}` },
+      },
+    );
+    expect(authorized.status).toBe(200);
+  });
+
+  it.each([
+    ["darwin", "host.docker.internal"],
+    ["win32", "host.docker.internal"],
+    ["linux", null],
+  ] as const)(
+    "names the host a Docker guest can reach on %s",
+    (platform, host) => {
+      expect(dockerGuestLifecycleHost(platform)).toBe(host);
+    },
+  );
+
   it.each([false, true])(
     "ignores shutdown cancellation but retains final cleanup failures (cleanup fails: %s)",
     async (cleanupFails) => {

@@ -132,6 +132,7 @@ export interface EnsureNitroResult {
  */
 export async function ensureNitroOnViteApp(
   appPath: string,
+  { appId }: { appId?: number } = {},
 ): Promise<EnsureNitroResult> {
   const rulesBackup = await appendNitroRules(appPath);
   let nitroConfigResult: { filePath: string; wasCreated: boolean } | null =
@@ -196,6 +197,7 @@ export async function ensureNitroOnViteApp(
     const result = await installPackages({
       packages: NITRO_DEPENDENCIES,
       appPath,
+      appId,
     });
     // After the install, because the backup taken here is what a rollback
     // restores: taken earlier it would also revert the dependencies the
@@ -226,12 +228,13 @@ export async function ensureNitroOnViteApp(
  */
 export async function ensureNitroIfVite(
   resolvedAppPath: string,
+  options: { appId?: number } = {},
 ): Promise<EnsureNitroResult> {
   if (detectFrameworkType(resolvedAppPath) !== "vite") {
     return { warningMessages: [], rollback: async () => {} };
   }
   try {
-    return await ensureNitroOnViteApp(resolvedAppPath);
+    return await ensureNitroOnViteApp(resolvedAppPath, options);
   } catch (nitroError: unknown) {
     const message =
       nitroError instanceof Error ? nitroError.message : String(nitroError);

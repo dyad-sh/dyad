@@ -58,3 +58,23 @@ export function isNeonOnlyApp(
 ): boolean {
   return Boolean(app && !app.supabaseProjectId && app.neonProjectId);
 }
+
+/**
+ * Whether test runs execute headless inside the Docker guest, where watching
+ * them — a visible browser or the preview panel — isn't offered: the guest has
+ * no display, and exposing the preview's automation endpoint to it would be a
+ * path back into the host.
+ */
+export function runsTestsHeadlessInDocker(
+  settings: Pick<UserSettings, "runtimeMode2"> | null | undefined,
+): boolean {
+  return settings?.runtimeMode2 === "docker";
+}
+
+/**
+ * Renderer copy for {@link runsTestsHeadlessInDocker}: the counterpart of the
+ * main process's `dockerUnsupportedMessage("preview-test-watching")`, which
+ * the renderer can't import. Covers the headed browser as well as the preview.
+ */
+export const DOCKER_TEST_WATCHING_UNSUPPORTED_MESSAGE =
+  "Watching tests isn't supported in Docker mode. Tests run headless inside the container.";

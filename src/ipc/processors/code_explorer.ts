@@ -8,6 +8,8 @@ import type {
   CodeExplorerResult,
   CodeExplorerWorkerInput,
 } from "../../../shared/code_explorer_types";
+import type { TypeScriptCompilerPolicy } from "../../../shared/typescript_compiler_policy";
+import { isDockerRuntimeActive } from "@/ipc/services/docker_runtime/runtime_mode";
 import log from "electron-log";
 import { getTypeScriptCachePath } from "@/paths/paths";
 import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
@@ -34,6 +36,15 @@ export interface CodeExplorerAvailability {
   tsconfigPath: string | null;
 }
 
+/**
+ * Docker mode never loads the app's own TypeScript package on the host: it is
+ * app-controlled code, and the host copy of `node_modules` is stale anyway
+ * (the live one is in a container volume).
+ */
+export function getCodeExplorerCompilerPolicy(): TypeScriptCompilerPolicy {
+  return isDockerRuntimeActive() ? "bundled-only" : "local-or-bundled";
+}
+
 export function isCodeExplorerReady(appPath: string): boolean {
   return getCodeExplorerAvailability(appPath).ready;
 }
@@ -44,14 +55,17 @@ export function isCodeExplorerReady(appPath: string): boolean {
 export function getCodeExplorerAvailability(
   appPath: string,
 ): CodeExplorerAvailability {
-  try {
-    resolveTypeScriptPackageJsonPathSync(appPath);
-  } catch {
-    return {
-      ready: false,
-      reason: "typescript_not_installed",
-      tsconfigPath: null,
-    };
+  // The bundled compiler needs no app install; a tsconfig is enough.
+  if (getCodeExplorerCompilerPolicy() === "local-or-bundled") {
+    try {
+      resolveTypeScriptPackageJsonPathSync(appPath);
+    } catch {
+      return {
+        ready: false,
+        reason: "typescript_not_installed",
+        tsconfigPath: null,
+      };
+    }
   }
 
   const tsconfigPath = discoverTsconfigPath(appPath);
@@ -234,6 +248,12 @@ let hostGeneration = 0;
 let nextRequestId = 1;
 let idleTimer: NodeJS.Timeout | undefined;
 const pendingRequests = new Map<number, PendingRequest>();
+// The policy the current host generation has served. A host that loaded an
+// app-local compiler keeps that module (and anything it did at load time) in
+// its heap, so it must not serve a bundled-only request afterwards.
+let hostCompilerPolicy:
+  | { generation: number; policy: TypeScriptCompilerPolicy }
+  | undefined;
 const typeScriptFingerprintByAppPath = new Map<string, string>();
 // Per-key serial queues preserve the previous per-session semantics: queries
 // against the same app+tsconfig never overlap (a rebuild-heavy query would
@@ -246,11 +266,21 @@ const lastCrashAtByKey = new Map<string, number>();
 const unavailableKeys = new Set<string>();
 
 export async function runCodeExplorer(
-  input: CodeExplorerWorkerInput,
+  input: Omit<
+    CodeExplorerWorkerInput,
+    "compilerPolicy" | "tsBuildInfoCacheDir"
+  >,
 ): Promise<CodeExplorerResult> {
+  const compilerPolicy = getCodeExplorerCompilerPolicy();
   const workerInput: CodeExplorerWorkerInput = {
     ...input,
-    tsBuildInfoCacheDir: getTypeScriptCachePath(),
+    compilerPolicy,
+    // Separate incremental state per compiler so switching runtime modes does
+    // not make each compiler discard the other's buildinfo.
+    tsBuildInfoCacheDir:
+      compilerPolicy === "bundled-only"
+        ? path.join(getTypeScriptCachePath(), "bundled-only")
+        : getTypeScriptCachePath(),
   };
   const key = explorerKey(workerInput);
   if (unavailableKeys.has(key)) {
@@ -264,7 +294,11 @@ export async function runCodeExplorer(
       typescriptUtilityProcessScheduler.runExclusive(
         "code-explorer",
         async () => {
-          await recycleHostIfTypeScriptChanged(workerInput.appPath);
+          await recycleHostIfCompilerPolicyChanged(compilerPolicy);
+          await recycleHostIfTypeScriptChanged(
+            workerInput.appPath,
+            compilerPolicy,
+          );
           return sendToHost(key, workerInput);
         },
       ),
@@ -314,9 +348,17 @@ export function getTypeScriptInstallationFingerprint(appPath: string): string {
   }
 }
 
-async function recycleHostIfTypeScriptChanged(appPath: string): Promise<void> {
+async function recycleHostIfTypeScriptChanged(
+  appPath: string,
+  compilerPolicy: TypeScriptCompilerPolicy,
+): Promise<void> {
   const normalizedAppPath = path.resolve(appPath);
-  const nextFingerprint = getTypeScriptInstallationFingerprint(appPath);
+  // The bundled compiler never changes within a Dyad process, and the app's
+  // install must not be probed as a compiler source in that mode.
+  const nextFingerprint =
+    compilerPolicy === "bundled-only"
+      ? "bundled-only"
+      : getTypeScriptInstallationFingerprint(appPath);
   const previousFingerprint =
     typeScriptFingerprintByAppPath.get(normalizedAppPath);
   typeScriptFingerprintByAppPath.set(normalizedAppPath, nextFingerprint);
@@ -335,8 +377,24 @@ async function recycleHostIfTypeScriptChanged(appPath: string): Promise<void> {
   await host.stop();
 }
 
+async function recycleHostIfCompilerPolicyChanged(
+  compilerPolicy: TypeScriptCompilerPolicy,
+): Promise<void> {
+  if (
+    !host ||
+    hostCompilerPolicy?.generation !== host.generation ||
+    hostCompilerPolicy.policy === compilerPolicy
+  ) {
+    return;
+  }
+  logger.info(
+    `Recycling code explorer host after the compiler policy changed to ${compilerPolicy}`,
+  );
+  await host.stop();
+}
+
 function explorerKey(input: CodeExplorerWorkerInput): string {
-  return `${path.resolve(input.appPath)}\0${input.tsconfigPath ?? ""}`;
+  return `${input.compilerPolicy}\0${path.resolve(input.appPath)}\0${input.tsconfigPath ?? ""}`;
 }
 
 function keyUnavailableError(): DyadError {
@@ -358,6 +416,10 @@ async function sendToHost(
 
   clearIdleTimer();
   const hostForRequest = getHost();
+  hostCompilerPolicy = {
+    generation: hostForRequest.generation,
+    policy: input.compilerPolicy,
+  };
   await hostForRequest.ready;
 
   return new Promise((resolve, reject) => {

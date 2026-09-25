@@ -1,3 +1,4 @@
+import type { ChildProcess } from "node:child_process";
 import log from "electron-log";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
@@ -6,6 +7,11 @@ import {
   runBufferedProcess,
 } from "./buffered_process";
 import { getPackageManagerCommandEnv } from "./socket_firewall";
+import { isDockerRuntimeActive } from "@/ipc/services/docker_runtime/runtime_mode";
+import {
+  appGuestInput,
+  runGuestBuffered,
+} from "@/ipc/services/docker_runtime/guest_command";
 
 const logger = log.scope("portal_migration");
 const MIGRATION_CREATED_MESSAGE = "Migration created at";
@@ -30,44 +36,57 @@ export async function runPortalMigrationCommand({
 
   let result;
   try {
-    result = await runBufferedProcess({
-      command: "npm run migrate:create -- --skip-empty",
-      cwd: appPath,
-      env: getPackageManagerCommandEnv(),
-      timeoutMs,
-      onStdout: (output, child) => {
-        logger.info(`migrate:create stdout: ${output}`);
-        const searchableOutput = stdoutSearchTail + output;
-        createdMigration ||= searchableOutput.includes(
-          MIGRATION_CREATED_MESSAGE,
-        );
+    const onStdout = (output: string, child: ChildProcess) => {
+      logger.info(`migrate:create stdout: ${output}`);
+      const searchableOutput = stdoutSearchTail + output;
+      createdMigration ||= searchableOutput.includes(MIGRATION_CREATED_MESSAGE);
 
-        // Drizzle prompts once per ambiguous rename, so answer every
-        // occurrence. Skip matches that end inside the carried-over tail:
-        // those were already answered when they first streamed in.
-        let promptIndex = searchableOutput.indexOf(MIGRATION_RENAME_PROMPT);
-        while (promptIndex !== -1) {
-          const promptEnd = promptIndex + MIGRATION_RENAME_PROMPT.length;
-          if (promptEnd > stdoutSearchTail.length) {
-            child.stdin?.write("\r\n");
-            logger.info(
-              `App ${appId} (PID: ${child.pid}) wrote enter to stdin to automatically respond to drizzle migrate input`,
-            );
-          }
-          promptIndex = searchableOutput.indexOf(
-            MIGRATION_RENAME_PROMPT,
-            promptEnd,
+      // Drizzle prompts once per ambiguous rename, so answer every
+      // occurrence. Skip matches that end inside the carried-over tail:
+      // those were already answered when they first streamed in.
+      let promptIndex = searchableOutput.indexOf(MIGRATION_RENAME_PROMPT);
+      while (promptIndex !== -1) {
+        const promptEnd = promptIndex + MIGRATION_RENAME_PROMPT.length;
+        if (promptEnd > stdoutSearchTail.length) {
+          child.stdin?.write("\r\n");
+          logger.info(
+            `App ${appId} (PID: ${child.pid}) wrote enter to stdin to automatically respond to drizzle migrate input`,
           );
         }
-
-        stdoutSearchTail = searchableOutput.slice(
-          -MIGRATION_SEARCH_TAIL_LENGTH,
+        promptIndex = searchableOutput.indexOf(
+          MIGRATION_RENAME_PROMPT,
+          promptEnd,
         );
-      },
-      onStderr: (output) => {
-        logger.warn(`migrate:create stderr: ${output}`);
-      },
-    });
+      }
+
+      stdoutSearchTail = searchableOutput.slice(-MIGRATION_SEARCH_TAIL_LENGTH);
+    };
+    const onStderr = (output: string) => {
+      logger.warn(`migrate:create stderr: ${output}`);
+    };
+    // migrate:create is an app script, so in Docker mode it runs in the
+    // container. stdin stays attached so rename prompts can be answered.
+    result = isDockerRuntimeActive()
+      ? await runGuestBuffered(
+          {
+            ...(await appGuestInput({
+              appId,
+              appPath,
+              command: "npm",
+              args: ["run", "migrate:create", "--", "--skip-empty"],
+            })),
+            interactive: true,
+          },
+          { timeoutMs, onStdout, onStderr },
+        )
+      : await runBufferedProcess({
+          command: "npm run migrate:create -- --skip-empty",
+          cwd: appPath,
+          env: getPackageManagerCommandEnv(),
+          timeoutMs,
+          onStdout,
+          onStderr,
+        });
   } catch (error) {
     if (error instanceof BufferedProcessSpawnError) {
       logger.error(`Failed to spawn migrate:create for app ${appId}:`, error);

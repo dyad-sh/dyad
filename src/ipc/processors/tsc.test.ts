@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -17,6 +18,7 @@ import {
   toProblemReportError,
   TypeCheckPreconditionError,
 } from "./tsc";
+import { toGuestPath } from "@/ipc/services/docker_runtime/guest_command";
 
 const { runBufferedProcessMock } = vi.hoisted(() => ({
   runBufferedProcessMock: vi.fn(),
@@ -27,6 +29,34 @@ vi.mock("@/ipc/utils/buffered_process", async (importOriginal) => {
     await importOriginal<typeof import("@/ipc/utils/buffered_process")>();
   return { ...actual, runBufferedProcess: runBufferedProcessMock };
 });
+
+const { isDockerRuntimeActiveMock, runGuestBufferedMock, appGuestInputMock } =
+  vi.hoisted(() => ({
+    isDockerRuntimeActiveMock: vi.fn(() => false),
+    runGuestBufferedMock: vi.fn(),
+    appGuestInputMock: vi.fn(async (input: Record<string, unknown>) => ({
+      ...input,
+    })),
+  }));
+
+vi.mock("@/ipc/services/docker_runtime/runtime_mode", () => ({
+  isDockerRuntimeActive: isDockerRuntimeActiveMock,
+}));
+
+vi.mock(
+  "@/ipc/services/docker_runtime/guest_command",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("@/ipc/services/docker_runtime/guest_command")
+      >();
+    return {
+      ...actual,
+      appGuestInput: appGuestInputMock,
+      runGuestBuffered: runGuestBufferedMock,
+    };
+  },
+);
 
 vi.mock("@/paths/paths", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/paths/paths")>();
@@ -276,7 +306,7 @@ describe("runTypeScriptCheck", () => {
       }),
     );
 
-    await expect(runTypeScriptCheck({ appPath })).resolves.toEqual({
+    await expect(runTypeScriptCheck({ appId: 1, appPath })).resolves.toEqual({
       outcome: "errors",
       problems: [
         {
@@ -344,7 +374,7 @@ describe("runTypeScriptCheck", () => {
       mockVersion("4.2.0");
       runBufferedProcessMock.mockResolvedValueOnce(processResult());
 
-      await runTypeScriptCheck({ appPath });
+      await runTypeScriptCheck({ appId: 1, appPath });
 
       const args = typeCheckArgs();
       expect(args).toContain("--explainFiles");
@@ -355,7 +385,7 @@ describe("runTypeScriptCheck", () => {
       mockVersion("5.5.3");
       runBufferedProcessMock.mockResolvedValueOnce(processResult());
 
-      await runTypeScriptCheck({ appPath });
+      await runTypeScriptCheck({ appId: 1, appPath });
 
       const args = typeCheckArgs();
       expect(args).toContain("--explainFiles");
@@ -367,7 +397,7 @@ describe("runTypeScriptCheck", () => {
         mockVersion(legacyVersion);
         runBufferedProcessMock.mockResolvedValueOnce(processResult());
 
-        await runTypeScriptCheck({ appPath });
+        await runTypeScriptCheck({ appId: 1, appPath });
 
         const args = typeCheckArgs();
         expect(args).not.toContain("--explainFiles");
@@ -385,7 +415,7 @@ describe("runTypeScriptCheck", () => {
       mockVersion("3.9.10");
       runBufferedProcessMock.mockResolvedValueOnce(processResult());
 
-      await runTypeScriptCheck({ appPath });
+      await runTypeScriptCheck({ appId: 1, appPath });
 
       const args = typeCheckArgs();
       expect(args).not.toContain("--incremental");
@@ -399,7 +429,7 @@ describe("runTypeScriptCheck", () => {
       mockVersion("4.0.5");
       runBufferedProcessMock.mockResolvedValueOnce(processResult());
 
-      await runTypeScriptCheck({ appPath });
+      await runTypeScriptCheck({ appId: 1, appPath });
 
       const args = typeCheckArgs();
       expect(args).toContain("--incremental");
@@ -423,7 +453,7 @@ describe("runTypeScriptCheck", () => {
         }),
       );
 
-      const report = await runTypeScriptCheck({ appPath });
+      const report = await runTypeScriptCheck({ appId: 1, appPath });
 
       const args = typeCheckArgs();
       expect(args).not.toContain("--explainFiles");
@@ -448,7 +478,7 @@ describe("runTypeScriptCheck", () => {
         }),
       );
 
-      const report = await runTypeScriptCheck({ appPath });
+      const report = await runTypeScriptCheck({ appId: 1, appPath });
 
       expect(report.outcome).toBe("errors");
       expect(report.problems.some((p) => p.code === 5023)).toBe(false);
@@ -471,7 +501,7 @@ describe("runTypeScriptCheck", () => {
       runBufferedProcessMock.mockResolvedValueOnce(processResult());
 
       await expect(
-        runTypeScriptCheck({ appPath: packagePath }),
+        runTypeScriptCheck({ appId: 1, appPath: packagePath }),
       ).resolves.toEqual({ problems: [], outcome: "passed" });
       const args = runBufferedProcessMock.mock.calls[1][0].args as string[];
       expect(args[0]).toBe(
@@ -527,7 +557,9 @@ describe("runTypeScriptCheck", () => {
     const typescript5Path = await installTypeScript("5.9.3");
     mockVersion("5.9.3");
     runBufferedProcessMock.mockResolvedValueOnce(processResult());
-    await expect(runTypeScriptCheck({ appPath })).resolves.toMatchObject({
+    await expect(
+      runTypeScriptCheck({ appId: 1, appPath }),
+    ).resolves.toMatchObject({
       outcome: "passed",
     });
 
@@ -537,7 +569,9 @@ describe("runTypeScriptCheck", () => {
 
     mockVersion("7.0.2");
     runBufferedProcessMock.mockResolvedValueOnce(processResult());
-    await expect(runTypeScriptCheck({ appPath })).resolves.toMatchObject({
+    await expect(
+      runTypeScriptCheck({ appId: 1, appPath }),
+    ).resolves.toMatchObject({
       outcome: "passed",
     });
     expect(runBufferedProcessMock).toHaveBeenLastCalledWith(
@@ -566,7 +600,7 @@ describe("runTypeScriptCheck", () => {
     mockVersion();
     runBufferedProcessMock.mockResolvedValueOnce(processResult());
 
-    await expect(runTypeScriptCheck({ appPath })).resolves.toEqual({
+    await expect(runTypeScriptCheck({ appId: 1, appPath })).resolves.toEqual({
       problems: [],
       outcome: "passed",
     });
@@ -579,7 +613,7 @@ describe("runTypeScriptCheck", () => {
     mockVersion("6.0.1");
     runBufferedProcessMock.mockResolvedValueOnce(processResult());
 
-    await expect(runTypeScriptCheck({ appPath })).resolves.toEqual({
+    await expect(runTypeScriptCheck({ appId: 1, appPath })).resolves.toEqual({
       problems: [],
       outcome: "passed",
     });
@@ -595,7 +629,9 @@ describe("runTypeScriptCheck", () => {
       }),
     );
 
-    await expect(runTypeScriptCheck({ appPath })).resolves.toMatchObject({
+    await expect(
+      runTypeScriptCheck({ appId: 1, appPath }),
+    ).resolves.toMatchObject({
       outcome: "incomplete",
       problems: [
         {
@@ -619,7 +655,9 @@ describe("runTypeScriptCheck", () => {
       }),
     );
 
-    await expect(runTypeScriptCheck({ appPath })).resolves.toMatchObject({
+    await expect(
+      runTypeScriptCheck({ appId: 1, appPath }),
+    ).resolves.toMatchObject({
       outcome: "incomplete",
       problems: [
         {
@@ -636,7 +674,7 @@ describe("runTypeScriptCheck", () => {
       processResult({ code: 2, stdoutTruncated: true }),
     );
 
-    await expect(runTypeScriptCheck({ appPath })).rejects.toThrow(
+    await expect(runTypeScriptCheck({ appId: 1, appPath })).rejects.toThrow(
       "diagnostic output exceeded",
     );
   });
@@ -646,7 +684,9 @@ describe("runTypeScriptCheck", () => {
       path.join(appPath, "node_modules", "typescript", typeScriptBinPath),
     );
 
-    await expect(runTypeScriptCheck({ appPath })).rejects.toMatchObject({
+    await expect(
+      runTypeScriptCheck({ appId: 1, appPath }),
+    ).rejects.toMatchObject({
       typeCheckKind: "typescript-not-found",
     });
     expect(runBufferedProcessMock).not.toHaveBeenCalled();
@@ -657,7 +697,9 @@ describe("runTypeScriptCheck", () => {
       recursive: true,
     });
 
-    await expect(runTypeScriptCheck({ appPath })).rejects.toMatchObject({
+    await expect(
+      runTypeScriptCheck({ appId: 1, appPath }),
+    ).rejects.toMatchObject({
       typeCheckKind: "typescript-not-found",
       cause: { code: "ENOENT" },
     });
@@ -672,7 +714,9 @@ describe("runTypeScriptCheck", () => {
     );
     runBufferedProcessMock.mockRejectedValueOnce(spawnError);
 
-    await expect(runTypeScriptCheck({ appPath })).rejects.toBe(spawnError);
+    await expect(runTypeScriptCheck({ appId: 1, appPath })).rejects.toBe(
+      spawnError,
+    );
     expect(getTypeCheckPreconditionKind(spawnError)).toBeUndefined();
     expect(shouldFilterTelemetryException(spawnError)).toBe(false);
   });
@@ -680,9 +724,305 @@ describe("runTypeScriptCheck", () => {
   it("prefers tsconfig.app.json and reports missing configs", async () => {
     await fs.rm(path.join(appPath, "tsconfig.app.json"));
 
-    await expect(runTypeScriptCheck({ appPath })).rejects.toMatchObject({
+    await expect(
+      runTypeScriptCheck({ appId: 1, appPath }),
+    ).rejects.toMatchObject({
       typeCheckKind: "tsconfig-not-found",
     });
     expect(runBufferedProcessMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("runTypeScriptCheck in Docker mode", () => {
+  let appPath: string;
+  const guestEntryPath = "/app/node_modules/.pnpm/typescript/bin/tsc";
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    clearTypeScriptVersionCacheForTests();
+    isDockerRuntimeActiveMock.mockReturnValue(true);
+    appPath = await fs.realpath(
+      await fs.mkdtemp(path.join(os.tmpdir(), "dyad-tsc-docker-")),
+    );
+    // The live node_modules is in a container volume; nothing on the host.
+    await fs.writeFile(path.join(appPath, "tsconfig.app.json"), "{}");
+    await fs.mkdir(path.join(appPath, "src"));
+    await fs.writeFile(
+      path.join(appPath, "src", "App.ts"),
+      "const before = 1;\nconst value: string = 1;\nconst after = 2;\n",
+    );
+  });
+
+  afterEach(async () => {
+    isDockerRuntimeActiveMock.mockReturnValue(false);
+    await fs.rm(appPath, { recursive: true, force: true });
+  });
+
+  function mockProbe(result: unknown) {
+    runGuestBufferedMock.mockResolvedValueOnce(
+      processResult({ stdout: JSON.stringify(result) }),
+    );
+  }
+
+  function guestCall(index: number) {
+    const input = runGuestBufferedMock.mock.calls[index][0] as {
+      appId: number;
+      appPath: string;
+      command: string;
+      args: string[];
+      env?: unknown;
+    };
+    return input;
+  }
+
+  it("resolves and runs the app's CLI in the guest, never on the host", async () => {
+    mockProbe({ status: "ok", entryPath: guestEntryPath, version: "5.9.3" });
+    runGuestBufferedMock.mockResolvedValueOnce(
+      processResult({
+        code: 2,
+        stdout:
+          "src/App.ts(2,7): error TS2322: Type 'number' is not assignable to type 'string'.\n",
+      }),
+    );
+
+    await expect(runTypeScriptCheck({ appId: 42, appPath })).resolves.toEqual({
+      outcome: "errors",
+      problems: [
+        {
+          file: "src/App.ts",
+          line: 2,
+          column: 7,
+          code: 2322,
+          message: "Type 'number' is not assignable to type 'string'.",
+          snippet:
+            "const before = 1;\nconst value: string = 1; // <-- TypeScript compiler error here\nconst after = 2;",
+        },
+      ],
+    });
+
+    expect(runBufferedProcessMock).not.toHaveBeenCalled();
+    expect(runGuestBufferedMock).toHaveBeenCalledTimes(2);
+    for (const [input, options] of runGuestBufferedMock.mock.calls) {
+      expect(input).toMatchObject({ appId: 42, appPath, command: "node" });
+      expect(input.env).toBeUndefined();
+      expect(options).toMatchObject({ waitForCloseAfterForceKill: true });
+    }
+    const buildInfoDir = path.posix.join(
+      toGuestPath(appPath),
+      "node_modules",
+      ".cache",
+      "dyad-tsc",
+    );
+    expect(guestCall(0).args).toEqual(["-e", expect.any(String), buildInfoDir]);
+    const args = guestCall(1).args;
+    expect(args[0]).toBe(guestEntryPath);
+    expect(args).toEqual(
+      expect.arrayContaining([
+        "--explainFiles",
+        "--noEmit",
+        "--incremental",
+        "--project",
+        toGuestPath(path.join(appPath, "tsconfig.app.json")),
+      ]),
+    );
+    const tsBuildInfoPath = args[args.indexOf("--tsBuildInfoFile") + 1];
+    expect(path.posix.dirname(tsBuildInfoPath)).toBe(buildInfoDir);
+    expect(path.posix.basename(tsBuildInfoPath)).toMatch(
+      /^[a-f0-9]{64}\.tsbuildinfo$/,
+    );
+    expect(runGuestBufferedMock.mock.calls[1][1]).toMatchObject({
+      timeoutMs: 5 * 60 * 1000,
+      maxOutputBytes: 4 * 1024 * 1024,
+    });
+  });
+
+  it("does not read host files through a guest-planted symlink", async () => {
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), "dyad-secret-"));
+    await fs.writeFile(path.join(outside, "id_rsa"), "PRIVATE KEY LINE\n");
+    await fs.symlink(
+      path.join(outside, "id_rsa"),
+      path.join(appPath, "src", "leak.ts"),
+    );
+    mockProbe({ status: "ok", entryPath: guestEntryPath, version: "5.9.3" });
+    // Guest code controls the compiler output, so it can name the symlink.
+    runGuestBufferedMock.mockResolvedValueOnce(
+      processResult({
+        code: 2,
+        stdout: "src/leak.ts(1,1): error TS1000: fake\n",
+      }),
+    );
+
+    const report = await runTypeScriptCheck({ appId: 42, appPath });
+
+    expect(report.problems).toEqual([
+      expect.objectContaining({ file: "src/leak.ts", line: 1 }),
+    ]);
+    expect(JSON.stringify(report)).not.toContain("PRIVATE KEY");
+    await fs.rm(outside, { recursive: true, force: true });
+  });
+
+  it("uses the guest-reported version to gate flags", async () => {
+    mockProbe({ status: "ok", entryPath: guestEntryPath, version: "3.9.10" });
+    runGuestBufferedMock.mockResolvedValueOnce(processResult());
+
+    await expect(runTypeScriptCheck({ appId: 42, appPath })).resolves.toEqual({
+      problems: [],
+      outcome: "passed",
+    });
+    const args = guestCall(1).args;
+    expect(args).not.toContain("--explainFiles");
+    expect(args).not.toContain("--incremental");
+    expect(args).not.toContain("--tsBuildInfoFile");
+  });
+
+  it("classifies a TypeScript package missing from the guest as not installed", async () => {
+    mockProbe({ status: "not-installed" });
+
+    await expect(
+      runTypeScriptCheck({ appId: 42, appPath }),
+    ).rejects.toMatchObject({ typeCheckKind: "typescript-not-found" });
+    expect(runGuestBufferedMock).toHaveBeenCalledOnce();
+    expect(runBufferedProcessMock).not.toHaveBeenCalled();
+  });
+
+  it("classifies a missing CLI entry as not installed", async () => {
+    mockProbe({
+      status: "missing-cli",
+      entryPath: guestEntryPath,
+      error: "ENOENT",
+    });
+
+    await expect(
+      runTypeScriptCheck({ appId: 42, appPath }),
+    ).rejects.toMatchObject({ typeCheckKind: "typescript-not-found" });
+  });
+
+  it("surfaces a Docker failure instead of reporting a missing installation", async () => {
+    const dockerError = new BufferedProcessSpawnError(
+      "spawn docker ENOENT",
+      "",
+      "",
+    );
+    runGuestBufferedMock.mockRejectedValueOnce(dockerError);
+
+    const error = await runTypeScriptCheck({ appId: 42, appPath }).catch(
+      (caught: unknown) => caught,
+    );
+    expect(error).toBe(dockerError);
+    expect(getTypeCheckPreconditionKind(error)).toBeUndefined();
+  });
+
+  it("surfaces a failed guest probe as an error, not a precondition", async () => {
+    runGuestBufferedMock.mockResolvedValueOnce(
+      processResult({
+        code: 125,
+        stderr: "docker: Error response from daemon: volume is in use",
+      }),
+    );
+
+    const error = await runTypeScriptCheck({ appId: 42, appPath }).catch(
+      (caught: unknown) => caught,
+    );
+    expect((error as Error).message).toContain(
+      "Failed to resolve TypeScript in the Docker runtime",
+    );
+    expect(getTypeCheckPreconditionKind(error)).toBeUndefined();
+  });
+
+  it("rejects malformed probe output", async () => {
+    mockProbe({ status: "ok", entryPath: guestEntryPath, version: "latest" });
+
+    const error = await runTypeScriptCheck({ appId: 42, appPath }).catch(
+      (caught: unknown) => caught,
+    );
+    expect((error as Error).message).toContain("Unexpected result");
+    expect(getTypeCheckPreconditionKind(error)).toBeUndefined();
+  });
+
+  it("reports a missing tsconfig without starting the check", async () => {
+    await fs.rm(path.join(appPath, "tsconfig.app.json"));
+    mockProbe({ status: "ok", entryPath: guestEntryPath, version: "5.9.3" });
+
+    await expect(
+      runTypeScriptCheck({ appId: 42, appPath }),
+    ).rejects.toMatchObject({ typeCheckKind: "tsconfig-not-found" });
+    expect(runGuestBufferedMock).toHaveBeenCalledOnce();
+  });
+
+  describe("guest probe script", () => {
+    async function captureProbeScript(): Promise<string> {
+      mockProbe({ status: "not-installed" });
+      await runTypeScriptCheck({ appId: 42, appPath }).catch(() => undefined);
+      return guestCall(0).args[1];
+    }
+
+    // The script is Dyad-authored and only reads package metadata, so running
+    // it on the host here is safe; production runs it in the guest.
+    function runProbe(script: string, cwd: string, buildInfoDir: string) {
+      return JSON.parse(
+        execFileSync(process.execPath, ["-e", script, buildInfoDir], {
+          cwd,
+          encoding: "utf8",
+        }),
+      );
+    }
+
+    it("reports an absent package", async () => {
+      const script = await captureProbeScript();
+      expect(
+        runProbe(script, appPath, path.join(appPath, "buildinfo")),
+      ).toEqual({ status: "not-installed" });
+    });
+
+    it("resolves a hoisted CLI without loading the package", async () => {
+      const script = await captureProbeScript();
+      const packagePath = path.join(appPath, "node_modules", "typescript");
+      await fs.mkdir(path.join(packagePath, "bin"), { recursive: true });
+      await fs.writeFile(
+        path.join(packagePath, "package.json"),
+        JSON.stringify({
+          name: "typescript",
+          version: "5.9.3",
+          main: "./lib/typescript.js",
+          bin: { tsc: "./bin/tsc" },
+        }),
+      );
+      await fs.writeFile(
+        path.join(packagePath, "bin", "tsc"),
+        "throw new Error('the CLI must not run during the probe');",
+      );
+      await fs.mkdir(path.join(packagePath, "lib"));
+      await fs.writeFile(
+        path.join(packagePath, "lib", "typescript.js"),
+        "throw new Error('the package must not load during the probe');",
+      );
+      const workspacePath = path.join(appPath, "packages", "web");
+      await fs.mkdir(workspacePath, { recursive: true });
+      const buildInfoDir = path.join(appPath, "node_modules", ".cache", "t");
+
+      expect(runProbe(script, workspacePath, buildInfoDir)).toEqual({
+        status: "ok",
+        entryPath: path.join(packagePath, "bin", "tsc"),
+        version: "5.9.3",
+      });
+      await expect(fs.stat(buildInfoDir)).resolves.toBeTruthy();
+    });
+
+    it("reports a package without a tsc bin", async () => {
+      const script = await captureProbeScript();
+      const packagePath = path.join(appPath, "node_modules", "typescript");
+      await fs.mkdir(packagePath, { recursive: true });
+      await fs.writeFile(
+        path.join(packagePath, "package.json"),
+        JSON.stringify({ name: "typescript", version: "7.0.0" }),
+      );
+
+      expect(
+        runProbe(script, appPath, path.join(appPath, "buildinfo")),
+      ).toEqual({
+        status: "no-cli",
+        packageJsonPath: path.join(packagePath, "package.json"),
+      });
+    });
   });
 });

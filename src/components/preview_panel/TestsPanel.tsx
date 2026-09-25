@@ -89,8 +89,10 @@ import { cn } from "@/lib/utils";
 import { showError, showInfo, showSuccess } from "@/lib/toast";
 import { findCaseResult, statusLabel, testKey } from "@/lib/testResultUtils";
 import {
+  DOCKER_TEST_WATCHING_UNSUPPORTED_MESSAGE,
   isNeonOnlyApp,
   refusesUnsandboxedTestRun,
+  runsTestsHeadlessInDocker,
   usesSandboxedE2eTests,
 } from "@/lib/e2eSandbox";
 import { usePreviewIframeController } from "@/preview_iframe/usePreviewIframe";
@@ -734,7 +736,10 @@ export function TestsPanel() {
   // agent's run_tests tool honors the same choice the user makes here.
   // When enabled, runs open a visible browser window so the user can watch the
   // test drive the app, instead of running headless.
-  const headed = settings?.testHeaded ?? false;
+  // Docker mode runs tests headless in the container, whatever the setting
+  // says; the preference is kept for when the user switches back to Local.
+  const headlessInDocker = runsTestsHeadlessInDocker(settings);
+  const headed = !headlessInDocker && (settings?.testHeaded ?? false);
   // When enabled, a file's independent tests run concurrently instead of
   // serially (Playwright `--fully-parallel` with multiple workers).
   const parallel = settings?.testParallel ?? false;
@@ -1489,15 +1494,17 @@ export function TestsPanel() {
                   <div className="space-y-0.5">
                     <Label htmlFor="test-option-headed">Show the browser</Label>
                     <p className="text-xs leading-relaxed text-muted-foreground">
-                      {previewRunEnabled
-                        ? "Watch tests run in the preview panel."
-                        : "Open a browser window while tests run."}
+                      {headlessInDocker
+                        ? DOCKER_TEST_WATCHING_UNSUPPORTED_MESSAGE
+                        : previewRunEnabled
+                          ? "Watch tests run in the preview panel."
+                          : "Open a browser window while tests run."}
                     </p>
                   </div>
                   <Switch
                     id="test-option-headed"
                     checked={headed}
-                    disabled={isRunning}
+                    disabled={isRunning || headlessInDocker}
                     aria-label={
                       headed
                         ? "Switch to headless mode"

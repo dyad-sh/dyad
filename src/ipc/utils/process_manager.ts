@@ -14,6 +14,10 @@ import { endRecordingForApp } from "../services/recording_registry";
 import type { AppRunInvocationRef } from "@/app_run/state";
 import type { AppRuntimeOutput } from "@/ipc/types/app_runtime";
 import { killProcessTreeSync } from "./kill_process_tree_sync";
+import {
+  getAppNodeModulesVolumeName,
+  getLegacyAppPnpmStoreVolumeName,
+} from "../services/docker_runtime/names";
 
 const logger = log.scope("process_manager");
 
@@ -231,14 +235,18 @@ export function stopDockerContainer(containerName: string): Promise<void> {
 }
 
 /**
- * Removes Docker named volumes used for an app's dependencies.
+ * Removes the Docker volumes holding an app's dependencies (its
+ * container-only node_modules and pnpm store).
  * Best-effort: resolves even if volumes don't exist.
  */
 export function removeDockerVolumesForApp(appId: number): Promise<void> {
   return new Promise<void>((resolve) => {
-    const pnpmVolume = `dyad-pnpm-${appId}`;
+    const volumes = [
+      getAppNodeModulesVolumeName(appId),
+      getLegacyAppPnpmStoreVolumeName(appId),
+    ];
 
-    const rm = spawn("docker", ["volume", "rm", "-f", pnpmVolume], {
+    const rm = spawn("docker", ["volume", "rm", "-f", ...volumes], {
       stdio: "pipe",
     });
     rm.on("close", () => resolve());

@@ -5,6 +5,11 @@ import log from "electron-log/main";
 import { globSync } from "glob";
 import { spawnStreaming } from "./spawn_streaming";
 import {
+  appGuestInput,
+  runGuestStreaming,
+  toGuestPath,
+} from "@/ipc/services/docker_runtime/guest_command";
+import {
   findPackageManagerRoot,
   workspaceMembershipFor,
 } from "@/ipc/services/isolated_package_install";
@@ -60,17 +65,22 @@ function findRepoRoot(appPath: string): string {
  * project with npm artifacts and a dependency tree that diverges from the dev
  * server's. Defaults to npm when no lockfile is recognized.
  */
-async function playwrightInstallCommand(appPath: string): Promise<{
+async function playwrightInstallCommand(
+  appPath: string,
+  { appOnly = false }: { appOnly?: boolean } = {},
+): Promise<{
   command: string;
   args: string[];
   cwd: string;
   /** Whether the add lands in a workspace root above the app. */
   viaWorkspaceRoot: boolean;
 }> {
-  const installRoot = await findPackageManagerRoot(
-    appPath,
-    findRepoRoot(appPath),
-  );
+  // The Docker guest mounts only the app directory, so a workspace root above
+  // it doesn't exist there: the app installs as a standalone project, exactly
+  // as the Docker dev server installs it.
+  const installRoot = appOnly
+    ? appPath
+    : await findPackageManagerRoot(appPath, findRepoRoot(appPath));
   const has = (directory: string, file: string) =>
     fs.existsSync(path.join(directory, file));
   const ownsLockfile =
@@ -1704,6 +1714,113 @@ function ensureTestScript(appPath: string): void {
 }
 
 /**
+ * The app's Playwright CLI as the Docker guest sees it. In Docker mode the
+ * app's `node_modules` is a container-only volume, so this path exists only
+ * inside the guest; anything the host finds at `<app>/node_modules` is a stale
+ * leftover from Local mode and must never be resolved or executed.
+ */
+export function guestPlaywrightCliPath(appPath: string): string {
+  return path.posix.join(
+    toGuestPath(appPath),
+    "node_modules",
+    "@playwright",
+    "test",
+    "cli.js",
+  );
+}
+
+/** `docker run` exits 125–127 when the container itself couldn't start. */
+function isGuestStartFailure(code: number | null): boolean {
+  return code === null || code >= 125;
+}
+
+/**
+ * Whether `@playwright/test` is installed in the app's guest `node_modules`.
+ * Asked in the guest because the host can't see that volume. Streamed so the
+ * one-time build of the Playwright image shows its progress.
+ */
+async function isPlaywrightInstalledInGuest({
+  appId,
+  appPath,
+  signal,
+  onOutput,
+}: {
+  appId: number;
+  appPath: string;
+  signal?: AbortSignal;
+  onOutput?: (chunk: string) => void;
+}): Promise<boolean> {
+  const result = await runGuestStreaming(
+    await appGuestInput({
+      appId,
+      appPath,
+      command: "test",
+      args: [
+        "-f",
+        path.posix.join(
+          toGuestPath(appPath),
+          "node_modules",
+          "@playwright",
+          "test",
+          "package.json",
+        ),
+      ],
+      image: "playwright",
+    }),
+    // Generous: the first call may build the Playwright image.
+    { signal, onOutput, timeoutMs: 20 * 60 * 1000 },
+  );
+  if (result.aborted) {
+    throw new DyadError("Test setup cancelled.", DyadErrorKind.Precondition);
+  }
+  if (result.timedOut || isGuestStartFailure(result.code)) {
+    const detail = (result.stderr.trim() || result.stdout.trim()).slice(-1500);
+    throw new DyadError(
+      `Couldn't start the Docker test container.${detail ? `\n${detail}` : ""}`,
+      DyadErrorKind.External,
+    );
+  }
+  return result.code === 0;
+}
+
+/**
+ * Installs the app's Playwright Chromium into the guest's shared browser
+ * volume. Returns whether a download actually happened.
+ */
+async function installGuestBrowser({
+  appId,
+  appPath,
+  signal,
+  onOutput,
+}: {
+  appId: number;
+  appPath: string;
+  signal?: AbortSignal;
+  onOutput?: (chunk: string) => void;
+}): Promise<boolean> {
+  const installBrowser = await runGuestStreaming(
+    await appGuestInput({
+      appId,
+      appPath,
+      command: "node",
+      args: [guestPlaywrightCliPath(appPath), "install", "chromium"],
+      image: "playwright",
+    }),
+    { signal, onOutput, timeoutMs: 10 * 60 * 1000 },
+  );
+  if (installBrowser.aborted) {
+    throw new DyadError("Test setup cancelled.", DyadErrorKind.Precondition);
+  }
+  if (installBrowser.code !== 0) {
+    throw new DyadError(
+      "Couldn't download the test browser. Check your connection and try again.",
+      DyadErrorKind.External,
+    );
+  }
+  return /downloaded to/i.test(installBrowser.stdout + installBrowser.stderr);
+}
+
+/**
  * Ensures Playwright is installed and the app is configured to run tests.
  * Streams install output through `onOutput`. Cancellable via `signal`.
  *
@@ -1722,6 +1839,7 @@ export async function ensurePlaywrightBootstrap({
   onOutput,
   ensurePreviewShim: writePreviewShim,
   isolateTestCases,
+  docker,
 }: {
   appPath: string;
   signal?: AbortSignal;
@@ -1736,6 +1854,12 @@ export async function ensurePlaywrightBootstrap({
   ensurePreviewShim?: boolean;
   /** Install the automatic database lifecycle fixture for every case/retry. */
   isolateTestCases?: boolean;
+  /**
+   * Docker runtime: the package and browser installs, and the checks for them,
+   * run in the guest. The host only writes Dyad's own config files; it never
+   * resolves, requires, or executes anything from the app's `node_modules`.
+   */
+  docker?: { appId: number };
 }): Promise<{ installed: boolean; previewRouted: boolean }> {
   // Yarn Plug'n'Play has no node_modules, so the installed-check below and the
   // direct Playwright CLI runner can't work with it: every run would reinstall
@@ -1751,31 +1875,55 @@ export async function ensurePlaywrightBootstrap({
     );
   }
 
-  const install = await playwrightInstallCommand(appPath);
+  const install = await playwrightInstallCommand(appPath, {
+    appOnly: !!docker,
+  });
   // Which "installed?" question to ask depends on where the add lands. For a
   // workspace member npm hoists to the root and leaves no member symlink, so
   // the exact-directory check would answer false forever and re-run the add on
   // every single test run.
-  const packageInstalled = install.viaWorkspaceRoot
-    ? canResolvePlaywrightRunner(appPath)
-    : isPlaywrightInstalled(appPath);
+  const packageInstalled = docker
+    ? await isPlaywrightInstalledInGuest({
+        appId: docker.appId,
+        appPath,
+        signal,
+        onOutput,
+      })
+    : install.viaWorkspaceRoot
+      ? canResolvePlaywrightRunner(appPath)
+      : isPlaywrightInstalled(appPath);
 
   if (!packageInstalled) {
     onOutput?.("Installing @playwright/test...\n");
     const { command, args } = install;
-    const installDep = await spawnStreaming({
-      command,
-      args,
-      cwd: install.cwd,
-      signal,
-      onOutput,
-      // Disable Corepack's project spec so a stale `packageManager` pin can't
-      // fail the install before @playwright/test lands, mirroring the other
-      // Dyad-managed package-manager paths (executeAddDependency, runtime).
-      env: getPackageManagerCommandEnv(),
-      // Don't let a stuck registry/network hang the whole test flow forever.
-      timeoutMs: 5 * 60 * 1000,
-    });
+    // Don't let a stuck registry/network hang the whole test flow forever.
+    const timeoutMs = 5 * 60 * 1000;
+    const installDep = docker
+      ? // The guest's base environment already carries the Corepack guards.
+        await runGuestStreaming(
+          await appGuestInput({
+            appId: docker.appId,
+            appPath,
+            cwd: install.cwd,
+            command,
+            args,
+            image: "playwright",
+          }),
+          { signal, onOutput, timeoutMs },
+        )
+      : await spawnStreaming({
+          command,
+          args,
+          cwd: install.cwd,
+          signal,
+          onOutput,
+          // Disable Corepack's project spec so a stale `packageManager` pin
+          // can't fail the install before @playwright/test lands, mirroring the
+          // other Dyad-managed package-manager paths (executeAddDependency,
+          // runtime).
+          env: getPackageManagerCommandEnv(),
+          timeoutMs,
+        });
     if (installDep.aborted) {
       throw new DyadError("Test setup cancelled.", DyadErrorKind.Precondition);
     }
@@ -1792,13 +1940,29 @@ export async function ensurePlaywrightBootstrap({
   // Dyad's config lives under its own name and every run selects it with
   // `--config`, so whatever the app's own playwright.config.ts says (or whether
   // it exists at all) is irrelevant here — we only ever manage our own file.
-  const detectedChannel = detectSystemBrowserChannel();
+  // A Docker run drives the guest's bundled Chromium: the host's browsers
+  // don't exist in the container.
+  const detectedChannel = docker ? null : detectSystemBrowserChannel();
   let usesChannel: boolean;
   if (!hasDyadPlaywrightConfig(appPath)) {
     usesChannel = detectedChannel !== null;
     writePlaywrightConfig(appPath, usesChannel ? detectedChannel : null);
   } else {
     usesChannel = configUsesChannel(appPath);
+    if (docker && usesChannel) {
+      if (isDyadGeneratedConfig(appPath)) {
+        // The mirror of the upgrade below, under the same sentinel guard.
+        writePlaywrightConfig(appPath, null);
+        usesChannel = false;
+        onOutput?.(
+          "Docker mode runs tests in the container's bundled Chromium, not your installed browser.\n",
+        );
+      } else {
+        onOutput?.(
+          `Your ${DYAD_CONFIG_FILENAME} selects a browser \`channel\`, which isn't installed in the Docker container. Remove it if the tests can't launch a browser.\n`,
+        );
+      }
+    }
     // Upgrade a bundled config to the system browser when one is now available,
     // so existing apps stop needing the big download. Skipped once the sentinel
     // is gone: the user has made the file their own.
@@ -1845,7 +2009,17 @@ export async function ensurePlaywrightBootstrap({
   // there). Only needed when we're NOT driving a system browser or Dyad's
   // already-running Electron preview.
   let downloadedBrowser = false;
-  if (
+  if (docker) {
+    // No host-side marker: it would live under node_modules, which the host
+    // can't see in Docker mode. Browsers go to a shared volume, where
+    // Playwright's own install is a quick no-op once the revision is present.
+    downloadedBrowser = await installGuestBrowser({
+      appId: docker.appId,
+      appPath,
+      signal,
+      onOutput,
+    });
+  } else if (
     !(writePreviewShim && previewRouted) &&
     !usesChannel &&
     !isPlaywrightBrowserInstalled(appPath)

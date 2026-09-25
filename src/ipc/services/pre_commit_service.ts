@@ -11,6 +11,10 @@ import {
   type BufferedProcessResult,
 } from "@/ipc/utils/buffered_process";
 import { getPackageManagerCommandEnv } from "@/ipc/utils/socket_firewall";
+import {
+  assertSupportedOutsideDocker,
+  isDockerRuntimeActive,
+} from "@/ipc/services/docker_runtime/runtime_mode";
 
 export const PRE_COMMIT_TIMEOUT_MS = 10 * 60_000;
 export const PRE_COMMIT_STAGING_TIMEOUT_MS = 60_000;
@@ -100,6 +104,7 @@ async function runCommitHook({
   signal?: AbortSignal;
   timeoutMs: number;
 }): Promise<BufferedProcessResult> {
+  assertSupportedOutsideDocker("pre-commit-hooks");
   const author = await getGitAuthor();
   const { env: gitEnv, gitLocation } = getGitProcessEnvironment();
   return runBufferedProcess({
@@ -117,10 +122,16 @@ async function runCommitHook({
   });
 }
 
+/**
+ * Hooks are repository scripts, so Docker mode reports none: callers then
+ * skip them (commits go ahead without hooks) instead of running them on the
+ * host.
+ */
 async function isGitHookAvailable(
   appPath: string,
   hookName: GitHookName,
 ): Promise<boolean> {
+  if (isDockerRuntimeActive()) return false;
   const hookPath = await resolveGitPath(appPath, `hooks/${hookName}`);
   if (!hookPath) return false;
 

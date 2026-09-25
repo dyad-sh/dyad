@@ -4,14 +4,17 @@ import { DyadErrorKind } from "@/errors/dyad_error";
 import { BufferedProcessSpawnError } from "./buffered_process";
 import { runPortalMigrationCommand } from "./portal_migration";
 
-const { logger, runBufferedProcessMock } = vi.hoisted(() => ({
-  logger: {
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  },
-  runBufferedProcessMock: vi.fn(),
-}));
+const { logger, runBufferedProcessMock, runGuestBufferedMock, dockerMode } =
+  vi.hoisted(() => ({
+    runGuestBufferedMock: vi.fn(),
+    dockerMode: { active: false },
+    logger: {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    },
+    runBufferedProcessMock: vi.fn(),
+  }));
 
 vi.mock("electron-log", () => ({
   default: {
@@ -21,6 +24,18 @@ vi.mock("electron-log", () => ({
 
 vi.mock("./socket_firewall", () => ({
   getPackageManagerCommandEnv: () => ({ PATH: "/managed" }),
+}));
+
+vi.mock("@/ipc/services/docker_runtime/runtime_mode", () => ({
+  isDockerRuntimeActive: () => dockerMode.active,
+}));
+
+vi.mock("@/ipc/services/docker_runtime/guest_command", () => ({
+  appGuestInput: async (input: Record<string, unknown>) => ({
+    ...input,
+    kind: "app-guest-input",
+  }),
+  runGuestBuffered: runGuestBufferedMock,
 }));
 
 vi.mock("./buffered_process", async () => {
@@ -37,6 +52,43 @@ vi.mock("./buffered_process", async () => {
 describe("runPortalMigrationCommand", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    dockerMode.active = false;
+  });
+
+  it("runs the app's migrate script in the container in Docker mode", async () => {
+    dockerMode.active = true;
+    const write = vi.fn();
+    const child = { pid: 9, stdin: { write } } as unknown as ChildProcess;
+    runGuestBufferedMock.mockImplementation(async (_input, options) => {
+      options.onStdout?.("Migration created at drizzle/0002.sql\n", child);
+      options.onStdout?.("created or renamed from another\n", child);
+      return {
+        code: 0,
+        signal: null,
+        stdout: "Migration created at drizzle/0002.sql",
+        stderr: "",
+        stdoutTruncated: false,
+        stderrTruncated: false,
+        aborted: false,
+        timedOut: false,
+      };
+    });
+
+    await runPortalMigrationCommand({ appId: 3, appPath: "/apps/portal" });
+
+    expect(runBufferedProcessMock).not.toHaveBeenCalled();
+    expect(runGuestBufferedMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appId: 3,
+        appPath: "/apps/portal",
+        command: "npm",
+        args: ["run", "migrate:create", "--", "--skip-empty"],
+        interactive: true,
+      }),
+      expect.objectContaining({ timeoutMs: expect.any(Number) }),
+    );
+    // Rename prompts are still answered through the guest's attached stdin.
+    expect(write).toHaveBeenCalledWith("\r\n");
   });
 
   it("answers each rename prompt exactly once, including split ones", async () => {

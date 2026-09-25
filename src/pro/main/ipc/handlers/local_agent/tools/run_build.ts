@@ -10,6 +10,12 @@ import {
   readAppResource,
 } from "@/ipc/services/app_operation_coordinator";
 import {
+  appGuestInput,
+  runGuestStreaming,
+  snapshotGuestInput,
+} from "@/ipc/services/docker_runtime/guest_command";
+import { isDockerRuntimeActive } from "@/ipc/services/docker_runtime/runtime_mode";
+import {
   copyGitOverlayEntriesOnWindows,
   createGitOverlayWorkspace,
   isGitOverlayWorkspaceActive,
@@ -67,6 +73,11 @@ export interface BuildProjectFacts {
   nextMajorVersion: number | null;
   previewRunning: boolean;
   previewInDocker: boolean;
+  /**
+   * The install and build run in the Docker runtime (Docker mode), against the
+   * app's container-only dependency volume rather than host `node_modules`.
+   */
+  buildInGuest: boolean;
   nextDevOutputIsolated: boolean;
   hasBuildLifecycleHooks: boolean;
 }
@@ -75,7 +86,12 @@ export function selectBuildExecutionMode(
   facts: BuildProjectFacts,
 ): BuildExecutionMode {
   if (!facts.previewRunning) return "in-place";
-  if (facts.hasBuildLifecycleHooks || facts.previewInDocker) return "isolated";
+  if (facts.hasBuildLifecycleHooks) return "isolated";
+  // A host build beside a Docker preview must not reuse the live dependency
+  // tree, which the container may have filled with Linux-native packages. A
+  // guest build reads the same volume the preview uses, so only the ordinary
+  // preview-interference rules below apply to it.
+  if (facts.previewInDocker && !facts.buildInGuest) return "isolated";
   if (facts.frameworkType === "vite" && facts.buildScript === "vite build") {
     return "in-place";
   }
@@ -153,6 +169,7 @@ export async function gatherBuildProjectFacts(
     nextMajorVersion: detectNextJsMajorVersion(ctx.appPath),
     previewRunning,
     previewInDocker: runningApp?.mode === "docker",
+    buildInGuest: isDockerRuntimeActive(),
     hasBuildLifecycleHooks,
     nextDevOutputIsolated:
       !previewRunning ||
@@ -343,19 +360,46 @@ export function createBuildOutputPreview(
   };
 }
 
+/**
+ * Where a guest build runs: the live app directory (its dependency volume
+ * mounted at `node_modules`), or a snapshot worktree mounted as a whole.
+ */
+type GuestBuildTarget =
+  | { kind: "app"; appId: number; appPath: string }
+  | { kind: "snapshot"; appId: number; snapshotRoot: string };
+
 async function runBuildProcess({
   cwd,
   packageManager,
+  guest,
   signal,
   timeoutMs,
   onOutput,
 }: {
   cwd: string;
   packageManager: "npm" | "pnpm";
+  guest?: GuestBuildTarget;
   signal?: AbortSignal;
   timeoutMs: number;
   onOutput: (chunk: string) => void;
 }) {
+  if (guest) {
+    const command = { cwd, command: packageManager, args: ["run", "build"] };
+    return runGuestStreaming(
+      guest.kind === "app"
+        ? await appGuestInput({
+            ...command,
+            appId: guest.appId,
+            appPath: guest.appPath,
+          })
+        : await snapshotGuestInput({
+            ...command,
+            appId: guest.appId,
+            snapshotRoot: guest.snapshotRoot,
+          }),
+      { signal, timeoutMs, onOutput },
+    );
+  }
   return spawnStreaming({
     command: packageManager,
     args: ["run", "build"],
@@ -417,7 +461,9 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
   modifiesState: true,
 
   getConsentPreview: () =>
-    "Runs the app's current package.json build lifecycle (prebuild, build, and postbuild). An isolated build may prepare a temporary Git worktree and install dependencies first. This executes project and dependency code with your user account. The temporary worktree protects the live preview from ordinary build output, but is not a security sandbox.",
+    isDockerRuntimeActive()
+      ? "Runs the app's current package.json build lifecycle (prebuild, build, and postbuild) inside the Docker runtime. An isolated build may prepare a temporary Git worktree and install dependencies first. Project and dependency code runs inside the container, not on your computer."
+      : "Runs the app's current package.json build lifecycle (prebuild, build, and postbuild). An isolated build may prepare a temporary Git worktree and install dependencies first. This executes project and dependency code with your user account. The temporary worktree protects the live preview from ordinary build output, but is not a security sandbox.",
 
   buildXml: (_args, isComplete) =>
     isComplete
@@ -505,11 +551,18 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
             "snapshot setup";
           try {
             let packageManager: "npm" | "pnpm";
+            let guest: GuestBuildTarget | undefined;
             if (mode === "isolated") {
               snapshot = await createSnapshot(ctx.appPath, abortScope.signal);
+              const snapshotGuest = facts.buildInGuest
+                ? { appId: ctx.appId, snapshotRoot: snapshot.worktreePath }
+                : undefined;
+              guest = snapshotGuest && { kind: "snapshot", ...snapshotGuest };
               const resolution = await resolvePackageManager(
                 snapshot.sourceAppPath,
                 snapshot.sourceRepoPath,
+                // The guest image always ships pnpm; the host's is irrelevant.
+                snapshotGuest ? { pnpmAvailable: true } : undefined,
               );
               packageManager = resolution.packageManager;
               const snapshotInstallPath = path.join(
@@ -530,6 +583,7 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
               const installResult = await runCleanPackageInstall({
                 cwd: snapshotInstallPath,
                 packageManager,
+                guest: snapshotGuest,
                 signal: abortScope.signal,
                 timeoutMs: Math.max(1, abortScope.deadlineAt - Date.now()),
                 onOutput: installOutputPreview.append,
@@ -564,6 +618,12 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
                 return body;
               }
               state.mutationCountAtLastSetupFailure = undefined;
+            } else if (facts.buildInGuest) {
+              // The Docker preview always installs the dependency volume with
+              // pnpm, and host `node_modules` is a stale Local-mode leftover
+              // that must not steer the choice.
+              packageManager = "pnpm";
+              guest = { kind: "app", appId: ctx.appId, appPath: ctx.appPath };
             } else {
               packageManager = (await resolvePackageManager(ctx.appPath))
                 .packageManager;
@@ -581,6 +641,7 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
             const result = await runBuildProcess({
               cwd: snapshot?.path ?? ctx.appPath,
               packageManager,
+              guest,
               signal: abortScope.signal,
               timeoutMs: Math.max(1, abortScope.deadlineAt - Date.now()),
               onOutput: buildOutputPreview.append,

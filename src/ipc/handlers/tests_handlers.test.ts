@@ -141,6 +141,7 @@ const installE2eTestWorkspaceDependenciesMock = vi.hoisted(() => vi.fn());
 const retainE2eTestArtifactsMock = vi.hoisted(() => vi.fn());
 const startE2eTestRuntimeMock = vi.hoisted(() => vi.fn());
 const spawnStreamingMock = vi.hoisted(() => vi.fn());
+const runGuestStreamingMock = vi.hoisted(() => vi.fn());
 const settleE2eTestProcessesMock = vi.hoisted(() => vi.fn());
 const broadcastToRegisteredWindowsMock = vi.hoisted(() => vi.fn());
 // Partially mocked: this module is pulled in transitively by the runtime
@@ -212,6 +213,15 @@ vi.mock("../utils/telemetry", async (importOriginal) => {
 });
 vi.mock("../utils/spawn_streaming", () => ({
   spawnStreaming: spawnStreamingMock,
+}));
+// Docker-mode runs go through the guest runner; the command it would run is
+// passed through so tests can read it.
+vi.mock("../services/docker_runtime/guest_command", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../services/docker_runtime/guest_command")
+  >()),
+  appGuestInput: vi.fn(async (input: unknown) => input),
+  runGuestStreaming: runGuestStreamingMock,
 }));
 vi.mock("../services/e2e_test_process_registry", async (importOriginal) => ({
   ...(await importOriginal<
@@ -292,6 +302,13 @@ describe("tests handlers", () => {
       stop: vi.fn().mockResolvedValue(true),
     });
     spawnStreamingMock.mockReset();
+    runGuestStreamingMock.mockReset().mockResolvedValue({
+      code: 1,
+      stdout: "",
+      stderr: "no report",
+      aborted: false,
+      timedOut: false,
+    });
     settleE2eTestProcessesMock.mockReset().mockResolvedValue(true);
     spawnStreamingMock.mockResolvedValue({
       code: 1,
@@ -1972,7 +1989,10 @@ describe("tests handlers", () => {
           disableSandboxedE2eTests: route === "disabled",
           runtimeMode2: route === "docker" ? "docker" : "host",
         }));
-        runningApps.set(appId, { proxyUrl: "http://localhost:32100" } as any);
+        runningApps.set(appId, {
+          proxyUrl: "http://localhost:32100",
+          mode: route === "docker" ? "docker" : "host",
+        } as any);
         const teardown = vi.fn().mockResolvedValue({
           envRestored: true,
           remoteCleanupCompleted: true,
@@ -1982,7 +2002,10 @@ describe("tests handlers", () => {
           teardown,
         });
         const externalController = new AbortController();
-        spawnStreamingMock.mockImplementation(async () => {
+        // Docker mode runs Playwright in the guest, never on the host.
+        const runner =
+          route === "docker" ? runGuestStreamingMock : spawnStreamingMock;
+        runner.mockImplementation(async () => {
           if (outcome === "spawn-error") throw new Error("spawn failed");
           if (outcome === "stop") externalController.abort();
           return {
@@ -2028,8 +2051,13 @@ describe("tests handlers", () => {
             ),
           ).toBe(false);
           expect(settleE2eTestProcessesMock).toHaveBeenCalledWith(
-            spawnStreamingMock.mock.calls[0][0].signal,
+            route === "docker"
+              ? runGuestStreamingMock.mock.calls[0][1].signal
+              : spawnStreamingMock.mock.calls[0][0].signal,
           );
+          if (route === "docker") {
+            expect(spawnStreamingMock).not.toHaveBeenCalled();
+          }
         } finally {
           finishSettlement(true);
           await run;
@@ -2072,7 +2100,10 @@ describe("tests handlers", () => {
           disableSandboxedE2eTests: route === "disabled",
           runtimeMode2: route === "disabled" ? "host" : route,
         }));
-        runningApps.set(appId, { proxyUrl: "http://localhost:32100" } as any);
+        runningApps.set(appId, {
+          proxyUrl: "http://localhost:32100",
+          mode: route === "disabled" ? "host" : route,
+        } as any);
         const teardown = vi.fn(async () => {
           harness.db
             .update(apps)
@@ -2087,7 +2118,9 @@ describe("tests handlers", () => {
           teardown,
         });
         const externalController = new AbortController();
-        spawnStreamingMock.mockImplementation(async () => {
+        const runner =
+          route === "docker" ? runGuestStreamingMock : spawnStreamingMock;
+        runner.mockImplementation(async () => {
           externalController.abort();
           return {
             code: 1,
@@ -2251,7 +2284,10 @@ describe("tests handlers", () => {
           ...structuredClone(DEFAULT_SETTINGS),
           runtimeMode2: "docker",
         }));
-        runningApps.set(appId, { proxyUrl: "http://localhost:32100" } as any);
+        runningApps.set(appId, {
+          proxyUrl: "http://localhost:32100",
+          mode: "docker",
+        } as any);
         return appId;
       }
 
@@ -2271,7 +2307,15 @@ describe("tests handlers", () => {
           source: "panel",
         });
 
-        expect(spawnStreamingMock).toHaveBeenCalled();
+        // In the guest, against the dev server container's network.
+        expect(runGuestStreamingMock).toHaveBeenCalledWith(
+          expect.objectContaining({
+            image: "playwright",
+            joinNetworkOf: `dyad-app-${appId}`,
+          }),
+          expect.anything(),
+        );
+        expect(spawnStreamingMock).not.toHaveBeenCalled();
         expect(createE2eTestWorkspaceMock).not.toHaveBeenCalled();
         expect(startE2eTestRuntimeMock).not.toHaveBeenCalled();
         expect(result.isolation).toMatchObject({
@@ -2297,6 +2341,7 @@ describe("tests handlers", () => {
         expect(result.infraError?.message).toMatch(/real database/i);
         expect(prepareIsolatedTestDatabaseMock).not.toHaveBeenCalled();
         expect(spawnStreamingMock).not.toHaveBeenCalled();
+        expect(runGuestStreamingMock).not.toHaveBeenCalled();
       });
 
       it("tells isolation the real runtime rather than claiming host", async () => {

@@ -71,6 +71,17 @@ import {
   resolvePnpmIgnoredBuilds,
 } from "@/ipc/utils/pnpm_denied_builds";
 import {
+  assertDockerAvailable,
+  forceRemoveContainer,
+} from "@/ipc/services/docker_runtime/docker_cli";
+import { ensureRuntimeImage } from "@/ipc/services/docker_runtime/runtime_image";
+import {
+  buildGuestInvocation,
+  getAppDevServerContainerName,
+  prepareGuestMounts,
+  resolveGitMask,
+} from "@/ipc/services/docker_runtime/guest_command";
+import {
   getManagedPnpmMajorVersion,
   isPnpmVersionMigrationNeeded,
 } from "@/ipc/utils/pnpm_migration";
@@ -962,132 +973,54 @@ async function executeAppInDocker({
   invocationRef?: AppRunInvocationRef;
   ignoredBuildsSelfHealAttempted?: boolean;
 }): Promise<void> {
-  const containerName = `dyad-app-${appId}`;
+  const containerName = getAppDevServerContainerName(appId);
 
-  try {
-    await new Promise<void>((resolve, reject) => {
-      const checkDocker = spawn("docker", ["--version"], { stdio: "pipe" });
-      checkDocker.on("close", (code) => {
-        if (code === 0) {
-          resolve();
-        } else {
-          reject(new Error("Docker is not available"));
-        }
-      });
-      checkDocker.on("error", () => {
-        reject(new Error("Docker is not available"));
-      });
-    });
-  } catch {
-    throw new Error(
-      "Docker is required but not available. Please install Docker Desktop and ensure it's running.",
-    );
-  }
+  await assertDockerAvailable();
+  // A container that outlived its client (a crash, or a restart racing the
+  // previous stop) would otherwise hold the name and the published port.
+  await forceRemoveContainer(containerName);
 
-  try {
-    await new Promise<void>((resolve) => {
-      const stopContainer = spawn("docker", ["stop", containerName], {
-        stdio: "pipe",
-      });
-      stopContainer.on("close", () => {
-        const removeContainer = spawn("docker", ["rm", containerName], {
-          stdio: "pipe",
-        });
-        removeContainer.on("close", () => resolve());
-        removeContainer.on("error", () => resolve());
-      });
-      stopContainer.on("error", () => resolve());
-    });
-  } catch (error) {
-    logger.info(
-      `Docker container ${containerName} not found. Ignoring error: ${error}`,
-    );
-  }
-
-  const dockerfilePath = path.join(appPath, "Dockerfile.dyad");
-  if (!fs.existsSync(dockerfilePath)) {
-    const dockerfileContent = `FROM node:22-alpine
-
-# Install pnpm
-RUN npm install -g pnpm
-`;
-
-    try {
-      await fs.promises.writeFile(dockerfilePath, dockerfileContent, "utf-8");
-    } catch (error) {
-      logger.error(`Failed to create Dockerfile for app ${appId}:`, error);
-      throw new DyadError(
-        `Failed to create Dockerfile: ${error}`,
-        DyadErrorKind.External,
-      );
-    }
-  }
-
-  const buildProcess = spawn(
-    "docker",
-    ["build", "-f", "Dockerfile.dyad", "-t", `dyad-app-${appId}`, "."],
-    {
-      cwd: appPath,
-      stdio: "pipe",
-    },
+  const imageTag = await ensureRuntimeImage("base", (message) =>
+    output.send({ type: "stdout", message, appId }),
   );
-
-  let buildError = "";
-  buildProcess.stderr?.on("data", (data) => {
-    buildError += data.toString();
-  });
-
-  await new Promise<void>((resolve, reject) => {
-    buildProcess.on("close", (code) => {
-      if (code === 0) {
-        resolve();
-      } else {
-        reject(new Error(`Docker build failed: ${buildError}`));
-      }
-    });
-    buildProcess.on("error", (err) => {
-      reject(new Error(`Docker build process error: ${err.message}`));
-    });
-  });
 
   const port = getAppPort(appId);
-  const process = spawn(
-    "docker",
-    [
-      "run",
-      "--rm",
-      "--name",
-      containerName,
-      "-p",
-      `${port}:${port}`,
-      "-v",
-      `${appPath}:/app`,
-      "-v",
-      `dyad-pnpm-${appId}:/app/.pnpm-store`,
-      "-e",
-      "PNPM_STORE_PATH=/app/.pnpm-store",
-      "-w",
-      "/app",
-      `dyad-app-${appId}`,
-      "sh",
-      "-c",
-      (
-        await getCommand({
-          runtimeMode: "docker",
-          appId,
-          appPath,
-          installCommand,
-          startCommand,
-          onPnpmMinimumReleaseAgeWarning: (message) =>
-            emitPnpmMinimumReleaseAgeWarning({ appId, output, message }),
-        })
-      ).command,
-    ],
-    {
-      stdio: "pipe",
-      detached: false,
-    },
+  const command = (
+    await getCommand({
+      runtimeMode: "docker",
+      appId,
+      appPath,
+      installCommand,
+      startCommand,
+      onPnpmMinimumReleaseAgeWarning: (message) =>
+        emitPnpmMinimumReleaseAgeWarning({ appId, output, message }),
+    })
+  ).command;
+  await prepareGuestMounts(
+    { appId, hostRoot: appPath, nodeModules: "app-volume" },
+    imageTag,
   );
+  const invocation = buildGuestInvocation(
+    {
+      appId,
+      hostRoot: appPath,
+      cwd: appPath,
+      command: "sh",
+      args: ["-c", command],
+      nodeModules: "app-volume",
+      image: "base",
+      gitMask: await resolveGitMask(appPath),
+      publishPorts: [port],
+      containerName,
+      role: "app",
+    },
+    imageTag,
+  );
+  const process = spawn(invocation.command, invocation.args, {
+    env: invocation.clientEnv,
+    stdio: "pipe",
+    detached: false,
+  });
 
   if (!process.pid) {
     let errorOutput = "";
@@ -1146,7 +1079,9 @@ ${errorOutput || "(empty)"}`,
   listenToProcess({
     process,
     appId,
-    appPath,
+    // The install ran in the container volume, so the host has no
+    // node_modules/.modules.yaml to read ignored builds from.
+    appPath: undefined,
     isNeon,
     output,
     invocationRef,

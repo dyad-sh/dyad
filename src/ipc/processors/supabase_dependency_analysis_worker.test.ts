@@ -1,8 +1,12 @@
 import * as fs from "node:fs/promises";
+import { createRequire } from "node:module";
 import * as os from "node:os";
 import * as path from "node:path";
-import { describe, expect, it } from "vitest";
-import { processSupabaseDependencyAnalysis } from "../../../workers/supabase_dependency_analysis/supabase_dependency_analysis_worker";
+import { describe, expect, it, vi } from "vitest";
+import {
+  loadSupabaseAnalysisCompiler,
+  processSupabaseDependencyAnalysis,
+} from "../../../workers/supabase_dependency_analysis/supabase_dependency_analysis_worker";
 
 describe("Supabase dependency analysis worker", () => {
   it("distinguishes a missing TypeScript install from an incompatible compiler API", async () => {
@@ -13,6 +17,7 @@ describe("Supabase dependency analysis worker", () => {
       await expect(
         processSupabaseDependencyAnalysis({
           appPath,
+          compilerPolicy: "local-or-bundled",
           changedSharedModulePaths: [],
         }),
       ).resolves.toEqual({
@@ -58,6 +63,7 @@ describe("Supabase dependency analysis worker", () => {
       await expect(
         processSupabaseDependencyAnalysis({
           appPath,
+          compilerPolicy: "local-or-bundled",
           changedSharedModulePaths: ["supabase/functions/_shared/util.ts"],
         }),
       ).resolves.toEqual({
@@ -116,6 +122,7 @@ describe("Supabase dependency analysis worker", () => {
       await expect(
         processSupabaseDependencyAnalysis({
           appPath,
+          compilerPolicy: "local-or-bundled",
           changedSharedModulePaths: ["supabase/functions/_shared/util.ts"],
         }),
       ).resolves.toEqual({
@@ -125,5 +132,72 @@ describe("Supabase dependency analysis worker", () => {
     } finally {
       await fs.rm(appPath, { recursive: true, force: true });
     }
+  });
+
+  describe("bundled-only compiler policy", () => {
+    it("never resolves or loads the app's TypeScript", () => {
+      const bundled = createRequire(import.meta.url)(
+        "@typescript/typescript6",
+      ) as unknown;
+      const loaders = {
+        resolveLocalPackage: vi.fn(() => "/app/node_modules/typescript"),
+        loadLocal: vi.fn(),
+        loadBundled: vi.fn(() => bundled),
+      };
+
+      expect(
+        loadSupabaseAnalysisCompiler("/app", "bundled-only", loaders),
+      ).toBe(bundled);
+      expect(loaders.resolveLocalPackage).not.toHaveBeenCalled();
+      expect(loaders.loadLocal).not.toHaveBeenCalled();
+    });
+
+    it("analyzes with the bundled compiler even when an app-local compiler exists", async () => {
+      const appPath = await fs.mkdtemp(
+        path.join(os.tmpdir(), "dyad-supabase-bundled-only-analysis-"),
+      );
+      const marker = "__dyadSupabaseLocalTypeScriptLoaded";
+      try {
+        const write = async (relativePath: string, contents: string) => {
+          const filePath = path.join(appPath, relativePath);
+          await fs.mkdir(path.dirname(filePath), { recursive: true });
+          await fs.writeFile(filePath, contents);
+        };
+        await write(
+          "node_modules/typescript/package.json",
+          JSON.stringify({
+            name: "typescript",
+            version: "5.9.0",
+            main: "./lib/typescript.js",
+          }),
+        );
+        await write(
+          "node_modules/typescript/lib/typescript.js",
+          `globalThis.${marker} = true; module.exports = require("@typescript/typescript6");`,
+        );
+        await write(
+          "supabase/functions/_shared/util.ts",
+          "export const value = 1;",
+        );
+        await write(
+          "supabase/functions/alpha/index.ts",
+          "import '../_shared/util.ts';",
+        );
+
+        await expect(
+          processSupabaseDependencyAnalysis({
+            appPath,
+            compilerPolicy: "bundled-only",
+            changedSharedModulePaths: ["supabase/functions/_shared/util.ts"],
+          }),
+        ).resolves.toEqual({
+          success: true,
+          data: { kind: "partial", functionNames: ["alpha"] },
+        });
+        expect((globalThis as Record<string, unknown>)[marker]).toBeUndefined();
+      } finally {
+        await fs.rm(appPath, { recursive: true, force: true });
+      }
+    });
   });
 });

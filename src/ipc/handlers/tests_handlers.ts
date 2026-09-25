@@ -52,9 +52,21 @@ import { broadcastToRegisteredWindows } from "@/ipc/utils/window_broadcast";
 import { windowRegistry } from "@/window_infrastructure/main/window_registry";
 import { spawnStreaming } from "../utils/spawn_streaming";
 import {
+  appGuestInput,
+  fromGuestPath,
+  getAppDevServerContainerName,
+  runGuestStreaming,
+  toGuestPath,
+} from "../services/docker_runtime/guest_command";
+import {
+  dockerUnsupportedMessage,
+  isDockerRuntimeActive,
+} from "../services/docker_runtime/runtime_mode";
+import {
   canResolvePlaywrightRunner,
   configSetsTimeout,
   ensurePlaywrightBootstrap,
+  guestPlaywrightCliPath,
   DYAD_CONFIG_FILENAME,
   PREVIEW_CDP_ENDPOINT_ENV,
   PREVIEW_CDP_TOKEN_ENV,
@@ -108,10 +120,14 @@ import {
   type E2eTestRuntime,
 } from "../services/e2e_test_runtime";
 import { readTestScreenshotDataUrl } from "../utils/test_screenshot";
-import { startTestCaseLifecycleServer } from "../services/test_case_lifecycle_server";
+import {
+  dockerGuestLifecycleHost,
+  startTestCaseLifecycleServer,
+} from "../services/test_case_lifecycle_server";
 import { isRecordingActive } from "../services/recording_registry";
 import { readSettings } from "@/main/settings";
 import { resolveNodeModulePackageJsonPathSync } from "../../../shared/node_module_resolution";
+import { getAppPort } from "../../../shared/ports";
 import {
   refusesUnsandboxedTestRun,
   usesSandboxedE2eTests,
@@ -177,8 +193,16 @@ function escapeRegExpForSelector(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function exactTestFileSelector(appPath: string, file: string): string {
-  return `^${escapeRegExpForSelector(path.resolve(appPath, file))}$`;
+/**
+ * `toRunnerPath` maps the host path to where the runner sees it: identity on
+ * the host, the guest mount in Docker mode.
+ */
+function exactTestFileSelector(
+  appPath: string,
+  file: string,
+  toRunnerPath: (hostPath: string) => string = (hostPath) => hostPath,
+): string {
+  return `^${escapeRegExpForSelector(toRunnerPath(path.resolve(appPath, file)))}$`;
 }
 
 function isNoTestsFoundOutput(output: string): boolean {
@@ -350,6 +374,45 @@ export function getRunningTestBaseUrl(appId: number): string | null {
   return runningApps.get(appId)?.proxyUrl ?? null;
 }
 
+/**
+ * The dev server as a Docker test container sees it. The container joins the
+ * dev server container's network namespace, so the server is on its own
+ * localhost port — the same origin it has on the host, which keeps Vite's
+ * allowed-hosts check and localhost-keyed auth redirects working.
+ */
+function dockerTestBaseUrl(
+  appId: number,
+): { baseUrl: string } | { error: string } {
+  const running = runningApps.get(appId);
+  if (!running) {
+    return {
+      error:
+        "Start the app before running tests — the dev server isn't running.",
+    };
+  }
+  if (running.mode !== "docker") {
+    return {
+      error:
+        "The app is still running outside Docker. Restart it so it runs in the container, then run the tests again.",
+    };
+  }
+  return { baseUrl: `http://localhost:${getAppPort(appId)}` };
+}
+
+/** Report paths written by the guest, as the host sees them. */
+function resultPathsFromGuest(results: TestResult[]): TestResult[] {
+  const fromGuest = (file: string | undefined) =>
+    file === undefined ? undefined : fromGuestPath(file);
+  return results.map((result) => ({
+    ...result,
+    screenshotPath: fromGuest(result.screenshotPath),
+    tests: result.tests?.map((test) => ({
+      ...test,
+      screenshotPath: fromGuest(test.screenshotPath),
+    })),
+  }));
+}
+
 function emitOutput(
   event: IpcMainInvokeEvent,
   appId: number,
@@ -515,6 +578,11 @@ export interface RunAppTestsCoreOptions {
   previewCdpToken?: string;
   /** Replaces the native preview with a fresh session before/after tests. */
   rotatePreviewView?: (timeoutMs?: number) => Promise<void>;
+  /**
+   * Run bootstrap and Playwright inside the Docker guest instead of on the
+   * host. Defaults to the current runtime setting.
+   */
+  docker?: boolean;
 }
 
 function appendRequestedTestTarget(
@@ -522,12 +590,13 @@ function appendRequestedTestTarget(
   appPath: string,
   normalizedTestFiles: string[] | undefined,
   testLine: number | undefined,
+  toRunnerPath?: (hostPath: string) => string,
 ): void {
   if (normalizedTestFiles) {
     for (const file of normalizedTestFiles) {
       // Select this exact path, including on Windows, without matching a
       // similarly named extension or a nested e2e-tests directory.
-      const escapedFile = exactTestFileSelector(appPath, file);
+      const escapedFile = exactTestFileSelector(appPath, file, toRunnerPath);
       args.push(
         testLine && Number.isInteger(testLine) && testLine > 0
           ? `${escapedFile}:${testLine}`
@@ -949,6 +1018,7 @@ export async function runAppTestsCore({
   previewCdpEndpoint,
   previewCdpToken,
   rotatePreviewView,
+  docker = isDockerRuntimeActive(),
 }: RunAppTestsCoreOptions): Promise<RunAppTestsResult> {
   // One worker plus provider provisioning/cleanup makes isolated suites slower.
   // Preserve the manual-run unlimited budget and scale explicit agent caps.
@@ -978,8 +1048,28 @@ export async function runAppTestsCore({
 
   const normalizedTestFiles = selection.files;
 
+  // Tests in Docker mode run headless in the guest. Exposing the preview's CDP
+  // endpoint to the guest would be a way back into the host.
+  if (docker && previewCdpEndpoint) {
+    return {
+      appId,
+      results: [],
+      infraError: {
+        message: dockerUnsupportedMessage("preview-test-watching"),
+      },
+    };
+  }
+
   // Gate: the dev server must be running so baseURL resolves.
-  const baseUrl = explicitBaseUrl ?? getRunningTestBaseUrl(appId);
+  let baseUrl = explicitBaseUrl ?? null;
+  if (!baseUrl && docker) {
+    const dockerBase = dockerTestBaseUrl(appId);
+    if ("error" in dockerBase) {
+      return { appId, results: [], infraError: { message: dockerBase.error } };
+    }
+    baseUrl = dockerBase.baseUrl;
+  }
+  baseUrl ??= getRunningTestBaseUrl(appId);
   if (!baseUrl) {
     return {
       appId,
@@ -1046,6 +1136,7 @@ export async function runAppTestsCore({
         onOutput: (chunk) => emit(chunk, "setup"),
         ensurePreviewShim: !!previewCdpEndpoint,
         isolateTestCases,
+        docker: docker ? { appId } : undefined,
       });
       installed = result.installed;
       fixtureRouted = result.previewRouted;
@@ -1136,6 +1227,21 @@ export async function runAppTestsCore({
   } catch {
     // ignore
   }
+  // A guest-written report can be owned by the container's user (Docker on
+  // Linux), which the host may be unable to delete. Refuse rather than risk
+  // presenting the previous run's results as this one's.
+  if (docker && fs.existsSync(resultsJsonPath)) {
+    return {
+      appId,
+      results: [],
+      infraError: {
+        message: `Couldn't clear the previous test report at ${resultsJsonPath}. Delete it and run the tests again.`,
+      },
+    };
+  }
+  const toRunnerPath = docker
+    ? (hostPath: string) => toGuestPath(hostPath)
+    : undefined;
 
   // Pass args as an array (never a shell string) so a test path can't be
   // interpreted as a shell command. A line suffix (`file:line`) targets a
@@ -1147,7 +1253,13 @@ export async function runAppTestsCore({
   // one that honors DYAD_TEST_BASE_URL, so it's passed explicitly rather than
   // Dyad taking over the canonical config name.
   const args = ["test", "--config", DYAD_CONFIG_FILENAME];
-  appendRequestedTestTarget(args, appPath, normalizedTestFiles, testLine);
+  appendRequestedTestTarget(
+    args,
+    appPath,
+    normalizedTestFiles,
+    testLine,
+    toRunnerPath,
+  );
   // `-g <regex>` narrows the run to the tests whose title matches (same as the
   // Playwright CLI). Passed as a separate array arg, never a shell string, so
   // the pattern can't be interpreted as a shell command or smuggle a flag.
@@ -1161,7 +1273,13 @@ export async function runAppTestsCore({
   // It overrides the headless default (and the CI=true env set below).
   // Unconditional: a preview run returned above, so from here on this is always
   // an ordinary browser run with a browser of its own to make headed.
-  if (headed) {
+  if (headed && docker) {
+    // The guest has no display to open a window on.
+    emit(
+      "Tests run headless inside the Docker container, so there's no browser window to show.\n",
+      "setup",
+    );
+  } else if (headed) {
     args.push("--headed");
   }
   // Override the generated config's serial defaults (`workers: 1`,
@@ -1187,29 +1305,58 @@ export async function runAppTestsCore({
 
   let run;
   try {
-    run = await spawnStreaming({
-      ...playwrightCliInvocationForApp(appPath, args),
-      cwd: appPath,
-      env: getPackageManagerCommandEnv({
-        ...runnerBaseEnv,
-        ...testEnv,
-        [TEST_BASE_URL_ENV]: baseUrl,
-        // PREVIEW_CDP_ENDPOINT_ENV is deliberately not set here. A preview run
-        // returned above; leaving the variable unset is what keeps the
-        // generated fixture shim inert so this run launches its own browser.
-        // Left unset at full speed so the config's `|| 0` fallback applies.
-        ...(slowMo ? { [TEST_SLOW_MO_ENV]: String(SLOW_MO_DELAY_MS) } : {}),
-        PLAYWRIGHT_JSON_OUTPUT_NAME: TEST_RESULTS_JSON,
-        // Non-interactive: never try to open/serve an HTML report.
-        CI: "true",
-      }),
-      signal,
-      timeoutMs,
-      onOutput: (chunk) => emit(chunk, "running"),
-      // Quit tree-kills the runner synchronously; the signal path alone would
-      // leave a headless browser and the sandbox cwd behind.
-      onProcess: (child) => trackE2eTestProcess(child, signal),
-    });
+    run = docker
+      ? await runGuestStreaming(
+          await appGuestInput({
+            appId,
+            appPath,
+            command: "node",
+            args: [guestPlaywrightCliPath(appPath), ...args],
+            // Exactly what the runner needs. The host environment — Dyad's
+            // provider keys and database credentials — never enters the guest.
+            env: {
+              ...testEnv,
+              [TEST_BASE_URL_ENV]: baseUrl,
+              ...(slowMo
+                ? { [TEST_SLOW_MO_ENV]: String(SLOW_MO_DELAY_MS) }
+                : {}),
+              PLAYWRIGHT_JSON_OUTPUT_NAME: TEST_RESULTS_JSON,
+              // Non-interactive, as on the host: never open an HTML report.
+              CI: "true",
+            },
+            image: "playwright",
+            joinNetworkOf: getAppDevServerContainerName(appId),
+          }),
+          {
+            signal,
+            timeoutMs,
+            onOutput: (chunk) => emit(chunk, "running"),
+            onProcess: (child) => trackE2eTestProcess(child, signal),
+          },
+        )
+      : await spawnStreaming({
+          ...playwrightCliInvocationForApp(appPath, args),
+          cwd: appPath,
+          env: getPackageManagerCommandEnv({
+            ...runnerBaseEnv,
+            ...testEnv,
+            [TEST_BASE_URL_ENV]: baseUrl,
+            // PREVIEW_CDP_ENDPOINT_ENV is deliberately not set here. A preview run
+            // returned above; leaving the variable unset is what keeps the
+            // generated fixture shim inert so this run launches its own browser.
+            // Left unset at full speed so the config's `|| 0` fallback applies.
+            ...(slowMo ? { [TEST_SLOW_MO_ENV]: String(SLOW_MO_DELAY_MS) } : {}),
+            PLAYWRIGHT_JSON_OUTPUT_NAME: TEST_RESULTS_JSON,
+            // Non-interactive: never try to open/serve an HTML report.
+            CI: "true",
+          }),
+          signal,
+          timeoutMs,
+          onOutput: (chunk) => emit(chunk, "running"),
+          // Quit tree-kills the runner synchronously; the signal path alone would
+          // leave a headless browser and the sandbox cwd behind.
+          onProcess: (child) => trackE2eTestProcess(child, signal),
+        });
   } catch (error) {
     // A spawn failure (e.g. Node missing from PATH) rejects rather than exiting
     // non-zero. Surface it as a structured infra error in the Tests panel
@@ -1243,7 +1390,13 @@ export async function runAppTestsCore({
   if (fs.existsSync(resultsJsonPath)) {
     try {
       const raw = fs.readFileSync(resultsJsonPath, "utf8");
-      results = parsePlaywrightReport(JSON.parse(raw), appPath);
+      // The guest reports its own paths; keys are made relative to the same
+      // root, and screenshot paths mapped back to the host.
+      results = docker
+        ? resultPathsFromGuest(
+            parsePlaywrightReport(JSON.parse(raw), toGuestPath(appPath)),
+          )
+        : parsePlaywrightReport(JSON.parse(raw), appPath);
       parseOk = true;
     } catch (error) {
       logger.error(`Failed to parse Playwright report: ${error}`);
@@ -1535,7 +1688,24 @@ async function runTestsWithPreviewAutomation({
     | undefined;
   try {
     if (testCaseLifecycle) {
+      // A Docker test container reaches the host-side bridge by name, which
+      // only Docker Desktop provides for a container joined to the dev
+      // server's network.
+      const guestHost = coreOptions.docker
+        ? dockerGuestLifecycleHost()
+        : undefined;
+      if (guestHost === null) {
+        return {
+          appId,
+          results: [],
+          infraError: {
+            message:
+              "Per-test database isolation isn't available in Docker mode on this platform yet: the test container can't reach Dyad's isolation service. Switch the runtime to Local to run tests for this app.",
+          },
+        };
+      }
       caseServer = await startTestCaseLifecycleServer(testCaseLifecycle, {
+        advertisedHost: guestHost,
         onSlowShutdown: () =>
           emit(
             "Waiting for the database provider to finish cancelled test setup or cleanup. New runs remain blocked until it settles.\n",
@@ -1788,6 +1958,9 @@ async function runTestsAgainstNormalPreview({
             timeoutMs,
             onOutput: emit,
             testEnv: prepared.testCredentials,
+            // The route's own runtime, not a fresh settings read: a toggle
+            // flipped mid-run must not move Playwright between host and guest.
+            docker: runtimeMode === "docker",
           },
         });
         return { ...result, isolation };
@@ -2020,6 +2193,16 @@ export async function runAppTestsWithIsolation({
     };
   }
 
+  // ONE routing decision for the whole run: read here, announced by `started`
+  // below, and reused by the branch far down that actually picks a route. The
+  // run waits for the prior lifecycle in between, which can take minutes —
+  // re-reading Settings after that wait would let a toggle flipped mid-wait
+  // send the run one way while the panel has already told the user the other,
+  // either promising a multi-minute sandbox setup that never happens or
+  // omitting that explanation for a run that does it.
+  const routingSettings = readSettings();
+  const runtimeMode = routingSettings.runtimeMode2 ?? "host";
+
   // Resolve the preview target before the expensive isolation setup too: a
   // missing experiment flag or window is a dead end, and the user shouldn't pay
   // for a Neon branch to find out.
@@ -2027,7 +2210,10 @@ export async function runAppTestsWithIsolation({
   // Set when the preview was asked for and refused before the run's output
   // stream exists; reported through `emit` as soon as it does.
   let previewFellBackToBrowser: string | undefined;
-  if (preview) {
+  // Docker mode never hands the guest the preview's CDP endpoint, so a preview
+  // request runs headless in the container instead.
+  const previewUnsupported = preview && runtimeMode === "docker";
+  if (preview && !previewUnsupported) {
     previewWindow = BrowserWindow.fromWebContents(event.sender) ?? undefined;
     if (!previewWindow) {
       return {
@@ -2137,15 +2323,6 @@ export async function runAppTestsWithIsolation({
     once: true,
   });
 
-  // ONE routing decision for the whole run: read here, announced by `started`
-  // immediately below, and reused by the branch far down that actually picks a
-  // route. The run waits for the prior lifecycle in between, which can take
-  // minutes — re-reading Settings after that wait would let a toggle flipped
-  // mid-wait send the run one way while the panel has already told the user the
-  // other, either promising a multi-minute sandbox setup that never happens or
-  // omitting that explanation for a run that does it.
-  const routingSettings = readSettings();
-
   // Publish the new generation before it waits for the prior teardown. A Stop
   // can target this queued run immediately; the renderer must know that its
   // progress belongs to the replacement rather than dropping it behind the
@@ -2191,9 +2368,11 @@ export async function runAppTestsWithIsolation({
   const emit = (chunk: string, phase: "setup" | "running") =>
     emitOutput(event, appId, runId, chunk, phase);
 
-  if (previewFellBackToBrowser) {
+  if (previewFellBackToBrowser || previewUnsupported) {
     emit(
-      `The preview panel can't host this run (${previewFellBackToBrowser}); running the tests in a separate browser instead.\n`,
+      previewUnsupported
+        ? `${dockerUnsupportedMessage("preview-test-watching")}\n`
+        : `The preview panel can't host this run (${previewFellBackToBrowser}); running the tests in a separate browser instead.\n`,
       "setup",
     );
     // The renderer switched to the native view optimistically on click, so it
@@ -2330,7 +2509,6 @@ export async function runAppTestsWithIsolation({
     // opt-out. Both routes take the same
     // non-sandboxed path, and both fail closed for Neon rather than running
     // against the user's real database.
-    const runtimeMode = routingSettings.runtimeMode2 ?? "host";
     const sandboxUnavailable = usesSandboxedE2eTests(routingSettings)
       ? null
       : runtimeMode !== "host"
@@ -2847,6 +3025,8 @@ export async function runAppTestsWithIsolation({
               timeoutMs,
               onOutput: emit,
               testEnv: prepared.testCredentials,
+              // The sandbox is host-only.
+              docker: false,
             },
           });
 

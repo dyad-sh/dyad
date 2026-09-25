@@ -138,7 +138,7 @@ describe("TypeScript utility process exclusion", () => {
             finishTypeCheck = resolve;
           }),
       );
-    const typeCheck = runTypeScriptCheck({ appPath });
+    const typeCheck = runTypeScriptCheck({ appId: 1, appPath });
     await vi.waitFor(() => expect(firstExplorer.kill).toHaveBeenCalledOnce());
     expect(children).toHaveLength(1);
     expect(runBufferedProcessMock).not.toHaveBeenCalled();

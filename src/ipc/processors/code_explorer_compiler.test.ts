@@ -31,7 +31,11 @@ describe("resolveCodeExplorerCompiler", () => {
   it("uses a compatible app-local compiler", () => {
     const compilerLoaders = loaders();
 
-    const result = resolveCodeExplorerCompiler("/app", compilerLoaders);
+    const result = resolveCodeExplorerCompiler(
+      "/app",
+      "local-or-bundled",
+      compilerLoaders,
+    );
 
     expect(result).toEqual({
       module: compatibleCompiler,
@@ -46,7 +50,11 @@ describe("resolveCodeExplorerCompiler", () => {
       loadLocal: vi.fn(() => ({ version: "7.0.0" })),
     });
 
-    const result = resolveCodeExplorerCompiler("/app", compilerLoaders);
+    const result = resolveCodeExplorerCompiler(
+      "/app",
+      "local-or-bundled",
+      compilerLoaders,
+    );
 
     expect(result.source).toBe("bundled-ts6");
     expect(result.module).toBe(bundledCompiler);
@@ -60,7 +68,11 @@ describe("resolveCodeExplorerCompiler", () => {
       }),
     });
 
-    const result = resolveCodeExplorerCompiler("/app", compilerLoaders);
+    const result = resolveCodeExplorerCompiler(
+      "/app",
+      "local-or-bundled",
+      compilerLoaders,
+    );
 
     expect(result.source).toBe("bundled-ts6");
     expect(result.fallbackReason).toContain("no CommonJS API");
@@ -74,7 +86,11 @@ describe("resolveCodeExplorerCompiler", () => {
       })),
     });
 
-    const result = resolveCodeExplorerCompiler("/app", compilerLoaders);
+    const result = resolveCodeExplorerCompiler(
+      "/app",
+      "local-or-bundled",
+      compilerLoaders,
+    );
 
     expect(result.source).toBe("bundled-ts6");
     expect(result.fallbackReason).toContain("getConfigFileParsingDiagnostics");
@@ -87,11 +103,43 @@ describe("resolveCodeExplorerCompiler", () => {
       }),
     });
 
-    expect(() => resolveCodeExplorerCompiler("/app", compilerLoaders)).toThrow(
-      "it is not installed",
-    );
+    expect(() =>
+      resolveCodeExplorerCompiler("/app", "local-or-bundled", compilerLoaders),
+    ).toThrow("it is not installed");
     expect(compilerLoaders.loadLocal).not.toHaveBeenCalled();
     expect(compilerLoaders.loadBundled).not.toHaveBeenCalled();
+  });
+
+  it("never resolves or loads the app-local compiler under bundled-only", () => {
+    const compilerLoaders = loaders();
+
+    const result = resolveCodeExplorerCompiler(
+      "/app",
+      "bundled-only",
+      compilerLoaders,
+    );
+
+    expect(result).toEqual({
+      module: bundledCompiler,
+      source: "bundled-ts6",
+      version: bundledCompiler.version,
+    });
+    expect(compilerLoaders.resolveLocalPackage).not.toHaveBeenCalled();
+    expect(compilerLoaders.loadPackageVersion).not.toHaveBeenCalled();
+    expect(compilerLoaders.loadLocal).not.toHaveBeenCalled();
+  });
+
+  it("does not require an app install under bundled-only", () => {
+    const compilerLoaders = loaders({
+      resolveLocalPackage: vi.fn(() => {
+        throw new Error("module not found");
+      }),
+    });
+
+    expect(
+      resolveCodeExplorerCompiler("/app", "bundled-only", compilerLoaders)
+        .module,
+    ).toBe(bundledCompiler);
   });
 
   it("validates the full API surface consumed by Code Explorer", () => {
@@ -140,7 +188,7 @@ describe("resolveCodeExplorerCompiler", () => {
         typeScriptLinkPath,
         symlinkType,
       );
-      const first = resolveCodeExplorerCompiler(appPath);
+      const first = resolveCodeExplorerCompiler(appPath, "local-or-bundled");
 
       await fs.rm(typeScriptLinkPath, { recursive: true });
       await fs.symlink(
@@ -150,7 +198,7 @@ describe("resolveCodeExplorerCompiler", () => {
         typeScriptLinkPath,
         symlinkType,
       );
-      const second = resolveCodeExplorerCompiler(appPath);
+      const second = resolveCodeExplorerCompiler(appPath, "local-or-bundled");
 
       expect(first.source).toBe("local");
       expect(second.source).toBe("local");

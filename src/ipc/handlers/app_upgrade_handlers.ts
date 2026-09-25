@@ -21,6 +21,7 @@ import {
   getManagedPnpmMajorVersion,
   isPnpmVersionMigrationNeeded,
 } from "../utils/pnpm_migration";
+import { assertSupportedOutsideDocker } from "../services/docker_runtime/runtime_mode";
 import { queryInvalidationBus } from "@/window_infrastructure/main/query_invalidation_bus";
 
 export const logger = log.scope("app_upgrade_handlers");
@@ -106,6 +107,10 @@ async function applyCapacitor({
   appName: string;
   appPath: string;
 }) {
+  // `cap init` / `cap add` run the app's Capacitor tooling and config, which
+  // must not run on the host in Docker mode.
+  assertSupportedOutsideDocker("capacitor");
+
   // Install Capacitor dependencies
   try {
     await simpleSpawnWithDeniedPnpmBuildSelfHeal({
@@ -221,7 +226,7 @@ export function registerAppUpgradeHandlers() {
       const appPath = getDyadAppPath(app.path);
 
       if (upgradeId === "component-tagger") {
-        await applyComponentTagger(appPath);
+        await applyComponentTagger(appPath, { appId });
       } else if (upgradeId === "capacitor") {
         await applyCapacitor({ appName: app.name, appPath });
       } else if (upgradeId === "pnpm-version-migration") {

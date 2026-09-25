@@ -84,6 +84,41 @@ describe("exploreCode", () => {
     ).toBe(true);
   });
 
+  it("never loads the app-local compiler under the bundled-only policy", async () => {
+    const marker = "__dyadCodeExplorerLocalTypeScriptLoaded";
+    const appPath = createTempProject({
+      "node_modules/typescript/package.json": JSON.stringify({
+        name: "typescript",
+        version: "5.9.0",
+        main: "./lib/typescript.js",
+      }),
+      "node_modules/typescript/lib/typescript.js": `globalThis.${marker} = true;\nmodule.exports = {};\n`,
+      "tsconfig.json": JSON.stringify({
+        compilerOptions: { target: "ES2022", module: "ESNext" },
+        include: ["src/**/*.ts"],
+      }),
+      "src/docker.ts": "export function dockerModeSymbol() {}\n",
+    });
+
+    const output = await processCodeExplorer({
+      appPath,
+      compilerPolicy: "bundled-only",
+      query: "docker mode symbol",
+    });
+
+    expect((globalThis as Record<string, unknown>)[marker]).toBeUndefined();
+    expect(output.success).toBe(true);
+    if (output.success) {
+      expect(output.data.files.map((file) => file.path)).toContain(
+        "src/docker.ts",
+      );
+      // The bundled compiler is required by policy, not a degraded fallback.
+      expect(output.data.notes).not.toContainEqual(
+        expect.stringContaining("app-local compiler API was incompatible"),
+      );
+    }
+  });
+
   it("indexes with bundled TypeScript 6 when an installed TS7 package has no legacy API", async () => {
     const appPath = createTempProject({
       "node_modules/typescript/package.json": JSON.stringify({
@@ -100,6 +135,7 @@ describe("exploreCode", () => {
 
     const output = await processCodeExplorer({
       appPath,
+      compilerPolicy: "local-or-bundled",
       query: "bundled fallback symbol",
     });
 
@@ -134,6 +170,7 @@ describe("exploreCode", () => {
 
     const output = await processCodeExplorer({
       appPath,
+      compilerPolicy: "local-or-bundled",
       query: "bundled fallback symbol",
     });
 
@@ -160,6 +197,7 @@ describe("exploreCode", () => {
 
     const output = await processCodeExplorer({
       appPath,
+      compilerPolicy: "local-or-bundled",
       query: "missing config",
     });
 
@@ -303,6 +341,7 @@ describe("exploreCode", () => {
 
     const first = await processCodeExplorerWithTypeScript(ts, {
       appPath,
+      compilerPolicy: "local-or-bundled",
       query: "new feature panel",
       maxFiles: 4,
       maxDepth: 1,
@@ -326,6 +365,7 @@ describe("exploreCode", () => {
 
     const second = await processCodeExplorerWithTypeScript(ts, {
       appPath,
+      compilerPolicy: "local-or-bundled",
       query: "new feature panel",
       maxFiles: 4,
       maxDepth: 1,

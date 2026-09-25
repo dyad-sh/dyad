@@ -70,6 +70,7 @@ export const addDependencyTool: ToolDefinition<
             packages: args.packages,
             message,
             appPath: ctx.appPath,
+            appId: ctx.appId,
           }),
       );
       for (const warningMessage of result.warningMessages) {

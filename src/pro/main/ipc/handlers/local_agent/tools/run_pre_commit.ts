@@ -13,6 +13,10 @@ import {
 } from "@/ipc/utils/buffered_process";
 import { appOperationCoordinator } from "@/ipc/services/app_operation_coordinator";
 import {
+  assertSupportedOutsideDocker,
+  isDockerRuntimeActive,
+} from "@/ipc/services/docker_runtime/runtime_mode";
+import {
   formatPreCommitOutput,
   isPreCommitHookAvailable,
   PRE_COMMIT_STAGING_TIMEOUT_MS,
@@ -315,10 +319,13 @@ export const runPreCommitTool: ToolDefinition<
   inputSchema: runPreCommitSchema,
   defaultConsent: "always",
   modifiesState: true,
+  // The hook is a repository script: in Docker mode it would run on the host.
+  isEnabled: () => !isDockerRuntimeActive(),
   isDiscoverable: (ctx) => ctx.preCommitHookAvailable === true,
   getConsentPreview: () => "Stage all changes and run the pre-commit hook",
 
   execute: async (_args, ctx) => {
+    assertSupportedOutsideDocker("pre-commit-hooks");
     return appOperationCoordinator.run(
       {
         appId: ctx.appId,

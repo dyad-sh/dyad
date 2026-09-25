@@ -5,6 +5,7 @@ import type {
   SupabaseDependencyAnalysisOutput,
   SupabaseFunctionImpact,
 } from "../../../shared/supabase_dependency_analysis_types";
+import { isDockerRuntimeActive } from "@/ipc/services/docker_runtime/runtime_mode";
 import { typescriptUtilityProcessScheduler } from "./typescript_utility_process_scheduler";
 
 const TIMEOUT_MS = 60_000;
@@ -117,10 +118,18 @@ function runWorker(
 }
 
 export function runSupabaseDependencyAnalysis(
-  input: SupabaseDependencyAnalysisInput,
+  input: Omit<SupabaseDependencyAnalysisInput, "compilerPolicy">,
 ): Promise<SupabaseFunctionImpact> {
+  const workerInput: SupabaseDependencyAnalysisInput = {
+    ...input,
+    // The app's own TypeScript package is app code; Docker mode must not load
+    // it on the host.
+    compilerPolicy: isDockerRuntimeActive()
+      ? "bundled-only"
+      : "local-or-bundled",
+  };
   return typescriptUtilityProcessScheduler.runExclusive(
     "supabase-dependency-analysis",
-    () => runWorker(input),
+    () => runWorker(workerInput),
   );
 }

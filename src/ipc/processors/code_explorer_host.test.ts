@@ -29,11 +29,20 @@ vi.mock("@/paths/paths", () => ({
   getTypeScriptCachePath: () => "/tmp/code-explorer-test-cache",
 }));
 
+const { isDockerRuntimeActiveMock } = vi.hoisted(() => ({
+  isDockerRuntimeActiveMock: vi.fn(() => false),
+}));
+
+vi.mock("@/ipc/services/docker_runtime/runtime_mode", () => ({
+  isDockerRuntimeActive: isDockerRuntimeActiveMock,
+}));
+
 vi.mock("@/ipc/utils/telemetry", () => ({
   sendTelemetryEvent: (...args: unknown[]) => sendTelemetryEventMock(...args),
 }));
 
 import {
+  getCodeExplorerAvailability,
   getTypeScriptInstallationFingerprint,
   runCodeExplorer,
 } from "./code_explorer";
@@ -208,5 +217,107 @@ describe("code explorer host telemetry", () => {
     expect(JSON.stringify(sendTelemetryEventMock.mock.calls)).not.toContain(
       "sensitive diagnostic report",
     );
+  });
+});
+
+describe("code explorer compiler policy", () => {
+  let child: FakeUtilityProcess;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    child = Object.assign(new EventEmitter(), {
+      postMessage: vi.fn(),
+      kill: vi.fn(() => true),
+    });
+    forkMock.mockReturnValue(child);
+  });
+
+  afterEach(() => {
+    isDockerRuntimeActiveMock.mockReturnValue(false);
+  });
+
+  async function postedInput(appPath: string, { exit = true } = {}) {
+    const forkCount = forkMock.mock.calls.length;
+    const request = runCodeExplorer({ appPath, query: "entry point" });
+    await vi.waitFor(() =>
+      expect(forkMock).toHaveBeenCalledTimes(forkCount + 1),
+    );
+    child.emit("spawn");
+    await vi.waitFor(() => expect(child.postMessage).toHaveBeenCalledOnce());
+    const message = child.postMessage.mock.calls[0][0];
+    child.emit("message", {
+      requestId: message.requestId,
+      success: true,
+      data: { notes: [] },
+    });
+    await request;
+    if (exit) {
+      child.emit("exit", 0);
+    }
+    return message.input;
+  }
+
+  it("lets Local mode load the app's compiler", async () => {
+    await expect(postedInput("/tmp/local-mode-app")).resolves.toMatchObject({
+      compilerPolicy: "local-or-bundled",
+      tsBuildInfoCacheDir: "/tmp/code-explorer-test-cache",
+    });
+  });
+
+  it("restricts Docker mode to the bundled compiler with separate incremental state", async () => {
+    isDockerRuntimeActiveMock.mockReturnValue(true);
+
+    await expect(postedInput("/tmp/docker-mode-app")).resolves.toMatchObject({
+      compilerPolicy: "bundled-only",
+      tsBuildInfoCacheDir: path.join(
+        "/tmp/code-explorer-test-cache",
+        "bundled-only",
+      ),
+    });
+  });
+
+  it("replaces a host that served Local mode before serving Docker mode", async () => {
+    const localChild = child;
+    localChild.kill.mockImplementation(() => {
+      queueMicrotask(() => localChild.emit("exit", 0));
+      return true;
+    });
+    await postedInput("/tmp/policy-switch-app", { exit: false });
+
+    const dockerChild: FakeUtilityProcess = Object.assign(new EventEmitter(), {
+      postMessage: vi.fn(),
+      kill: vi.fn(() => true),
+    });
+    child = dockerChild;
+    forkMock.mockReturnValue(dockerChild);
+    isDockerRuntimeActiveMock.mockReturnValue(true);
+
+    // A different app: its own install fingerprint has not changed, so only
+    // the policy switch can recycle the host.
+    const input = await postedInput("/tmp/policy-switch-other-app");
+    expect(localChild.kill).toHaveBeenCalledOnce();
+    expect(localChild.postMessage).toHaveBeenCalledOnce();
+    expect(forkMock).toHaveBeenCalledTimes(2);
+    expect(input).toMatchObject({ compilerPolicy: "bundled-only" });
+  });
+
+  it("does not require a host TypeScript install in Docker mode", () => {
+    const appPath = fs.mkdtempSync(
+      path.join(os.tmpdir(), "code-explorer-docker-availability-"),
+    );
+    tempDirs.push(appPath);
+    fs.writeFileSync(path.join(appPath, "tsconfig.json"), "{}");
+
+    expect(getCodeExplorerAvailability(appPath)).toMatchObject({
+      ready: false,
+      reason: "typescript_not_installed",
+    });
+
+    isDockerRuntimeActiveMock.mockReturnValue(true);
+    expect(getCodeExplorerAvailability(appPath)).toEqual({
+      ready: true,
+      reason: null,
+      tsconfigPath: "tsconfig.json",
+    });
   });
 });

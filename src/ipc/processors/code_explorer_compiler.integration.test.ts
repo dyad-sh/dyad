@@ -21,7 +21,7 @@ describe("Code Explorer compiler error classification", () => {
 
     let resolutionError: unknown;
     try {
-      resolveCodeExplorerCompiler("/app", compilerLoaders);
+      resolveCodeExplorerCompiler("/app", "local-or-bundled", compilerLoaders);
     } catch (error) {
       resolutionError = error;
     }

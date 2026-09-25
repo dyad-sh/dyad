@@ -50,6 +50,7 @@ import { getFilesRecursively } from "../utils/file_utils";
 import {
   runningApps,
   stopAppByInfo,
+  removeDockerVolumesForApp,
   setCurrentlySelectedAppId,
   startAppGarbageCollection,
 } from "../utils/process_manager";
@@ -577,6 +578,12 @@ async function deleteAppById(
       `App ${appId} was deleted but its retained test artifacts could not be removed: ${error}`,
     ),
   );
+
+  // Docker mode keeps the app's dependencies in volumes keyed by app ID. App
+  // IDs can be reused, so a leftover volume would hand this app's packages to
+  // a future app. Unconditional: the app may have run in Docker mode before
+  // the user switched runtimes. Best-effort: resolves when Docker is absent.
+  await removeDockerVolumesForApp(appId);
 
   // Only after the deletion has committed — the throw above skips this. Doing
   // it earlier means a deletion that then fails leaves a live app pointed at a

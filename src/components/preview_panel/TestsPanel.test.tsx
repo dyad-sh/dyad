@@ -332,6 +332,42 @@ describe("TestsPanel", () => {
       });
     });
 
+    it("runs headless in the container and says why in Docker mode", async () => {
+      mocks.settings = {
+        ...experimentOn,
+        testHeaded: true,
+        runtimeMode2: "docker",
+      };
+      mocks.runAppTests.mockResolvedValue({ appId: 1, results: [] });
+      const { store } = renderPanel();
+
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Open test options" }),
+      );
+      const headedToggle = await screen.findByRole("switch", {
+        name: "Switch to headed mode",
+      });
+      expect(headedToggle.getAttribute("aria-checked")).toBe("false");
+      expect(headedToggle.hasAttribute("data-disabled")).toBe(true);
+      expect(
+        screen.getByText(
+          "Watching tests isn't supported in Docker mode. Tests run headless inside the container.",
+        ),
+      ).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: "Close" }));
+
+      await act(async () => {
+        fireEvent.click(await screen.findByText("Run all"));
+      });
+
+      expect(store.get(previewNativeViewAppIdAtom)).not.toBe(1);
+      await waitFor(() => {
+        expect(mocks.runAppTests).toHaveBeenCalledWith(
+          expect.objectContaining({ headed: false, preview: false }),
+        );
+      });
+    });
+
     it("leaves headless runs out of the preview", async () => {
       mocks.settings = experimentOn;
       mocks.runAppTests.mockResolvedValue({ appId: 1, results: [] });

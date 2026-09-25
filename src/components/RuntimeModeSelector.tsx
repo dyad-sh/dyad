@@ -139,7 +139,13 @@ export function RuntimeModeSelector() {
           >
             Docker Desktop
           </button>{" "}
-          to be installed and running
+          to be installed and running.
+          <div className="mt-1">
+            Your app&apos;s code, dependency installs, builds, type checks and
+            tests run inside the container, not on your computer. Pre-commit
+            hooks, Capacitor, and watching tests in the preview aren&apos;t
+            available in this mode.
+          </div>
         </div>
       )}
       {isCloudMode && hasCloudSandboxAccess && (

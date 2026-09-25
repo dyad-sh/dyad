@@ -73,7 +73,7 @@ export const enableNitroTool: ToolDefinition<
           resources: [readAppResource("app-path"), "repository-worktree"],
           refuseWhenRecording: "enable Nitro",
         },
-        () => ensureNitroOnViteApp(ctx.appPath),
+        () => ensureNitroOnViteApp(ctx.appPath, { appId: ctx.appId }),
       );
       for (const warningMessage of result.warningMessages) {
         ctx.onWarningMessage?.(warningMessage);

@@ -24,7 +24,13 @@ const {
   readEffectiveSettingsMock,
   dbUpdateSetMock,
   dbUpdateWhereMock,
+  isDockerRuntimeActiveMock,
+  resolveAppIdForPathMock,
+  runPackageManagerCommandInGuestMock,
 } = vi.hoisted(() => ({
+  isDockerRuntimeActiveMock: vi.fn(),
+  resolveAppIdForPathMock: vi.fn(),
+  runPackageManagerCommandInGuestMock: vi.fn(),
   commitPnpmAllowBuildsConfigIfChangedMock: vi.fn(),
   ensureSocketFirewallInstalledMock: vi.fn(),
   getPnpmMinimumReleaseAgeSupportMock: vi.fn(),
@@ -67,6 +73,15 @@ vi.mock("@/ipc/utils/socket_firewall", async () => {
   };
 });
 
+vi.mock("@/ipc/services/docker_runtime/runtime_mode", () => ({
+  isDockerRuntimeActive: isDockerRuntimeActiveMock,
+}));
+
+vi.mock("@/ipc/utils/docker_package_manager", () => ({
+  resolveAppIdForPath: resolveAppIdForPathMock,
+  runPackageManagerCommandInGuest: runPackageManagerCommandInGuestMock,
+}));
+
 vi.mock("@/ipc/utils/pnpm_denied_builds", () => ({
   resolvePnpmIgnoredBuilds: resolvePnpmIgnoredBuildsMock,
   recordAndReportDeniedPnpmBuilds: recordAndReportDeniedPnpmBuildsMock,
@@ -75,6 +90,7 @@ vi.mock("@/ipc/utils/pnpm_denied_builds", () => ({
 describe("executeAddDependency", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    isDockerRuntimeActiveMock.mockReturnValue(false);
     dbUpdateSetMock.mockReturnValue({
       where: dbUpdateWhereMock,
     });
@@ -854,6 +870,173 @@ describe("executeAddDependency", () => {
       content: expect.stringContaining(
         "Note: build scripts for core-js were not run",
       ),
+    });
+  });
+  describe("in Docker mode", () => {
+    const message = (packages: string) =>
+      ({
+        id: 1,
+        content: `<dyad-add-dependency packages="${packages}"></dyad-add-dependency>`,
+      }) as any;
+
+    beforeEach(() => {
+      isDockerRuntimeActiveMock.mockReturnValue(true);
+      resolveAppIdForPathMock.mockResolvedValue(42);
+    });
+
+    it("runs pnpm in the guest with the firewall and never on the host", async () => {
+      runPackageManagerCommandInGuestMock.mockResolvedValueOnce({
+        stdout: "installed in guest",
+        stderr: "",
+      });
+
+      const result = await executeAddDependency({
+        packages: ["react"],
+        message: message("react"),
+        appPath: "/tmp/app",
+        appId: 7,
+      });
+
+      expect(runCommandMock).not.toHaveBeenCalled();
+      expect(ensureSocketFirewallInstalledMock).not.toHaveBeenCalled();
+      expect(getPnpmMinimumReleaseAgeSupportMock).not.toHaveBeenCalled();
+      expect(resolveAppIdForPathMock).not.toHaveBeenCalled();
+      expect(runPackageManagerCommandInGuestMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          appId: 7,
+          appPath: "/tmp/app",
+          // The bare command: the guest runner adds the firewall itself.
+          invocation: {
+            command: "pnpm",
+            args: [
+              ...PNPM_INSTALL_POLICY_ARGS,
+              "add",
+              "--ignore-workspace-root-check",
+              "react",
+            ],
+          },
+          useSocketFirewall: true,
+          timeoutMs: ADD_DEPENDENCY_INSTALL_TIMEOUT_MS,
+        }),
+      );
+      expect(result.installResults).toContain("installed in guest");
+    });
+
+    it("looks up the app ID from the path and honors the firewall setting", async () => {
+      readEffectiveSettingsMock.mockResolvedValue({
+        blockUnsafeNpmPackages: false,
+      });
+      runPackageManagerCommandInGuestMock.mockResolvedValueOnce({
+        stdout: "",
+        stderr: "",
+      });
+
+      await executeAddDependency({
+        packages: ["react"],
+        message: message("react"),
+        appPath: "/tmp/app",
+      });
+
+      expect(resolveAppIdForPathMock).toHaveBeenCalledWith("/tmp/app");
+      expect(runPackageManagerCommandInGuestMock).toHaveBeenCalledWith(
+        expect.objectContaining({ appId: 42, useSocketFirewall: false }),
+      );
+    });
+
+    it("rebuilds promoted packages in the guest", async () => {
+      commitPnpmAllowBuildsConfigIfChangedMock.mockResolvedValue({
+        promotedPackages: ["esbuild"],
+      });
+      runPackageManagerCommandInGuestMock.mockResolvedValue({
+        stdout: "",
+        stderr: "",
+      });
+
+      await executeAddDependency({
+        packages: ["react"],
+        message: message("react"),
+        appPath: "/tmp/app",
+        appId: 7,
+      });
+
+      expect(runPackageManagerCommandInGuestMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          invocation: { command: "pnpm", args: ["rebuild", "esbuild"] },
+        }),
+      );
+      expect(runCommandMock).not.toHaveBeenCalled();
+    });
+
+    it("surfaces the firewall warning when the guest cannot run the firewall", async () => {
+      runPackageManagerCommandInGuestMock.mockImplementationOnce(
+        async ({ onSocketFirewallUnavailable }) => {
+          onSocketFirewallUnavailable();
+          return { stdout: "installed", stderr: "" };
+        },
+      );
+
+      const result = await executeAddDependency({
+        packages: ["react"],
+        message: message("react"),
+        appPath: "/tmp/app",
+        appId: 7,
+      });
+
+      expect(result.warningMessages).toEqual([SOCKET_FIREWALL_WARNING_MESSAGE]);
+    });
+
+    it("reads ignored builds from the guest output, not host node_modules", async () => {
+      runPackageManagerCommandInGuestMock.mockResolvedValueOnce({
+        stdout: "Ignored build scripts: core-js@3.49.0.",
+        stderr: "",
+      });
+      recordAndReportDeniedPnpmBuildsMock.mockResolvedValue({
+        deniedBuilds: [
+          { packageName: "core-js", packageSpec: "core-js@3.49.0" },
+        ],
+      });
+
+      const result = await executeAddDependency({
+        packages: ["core-js"],
+        message: message("core-js"),
+        appPath: "/tmp/app",
+        appId: 7,
+      });
+
+      expect(resolvePnpmIgnoredBuildsMock).not.toHaveBeenCalled();
+      expect(recordAndReportDeniedPnpmBuildsMock).toHaveBeenCalledWith({
+        appPath: "/tmp/app",
+        ignoredBuilds: [
+          { packageName: "core-js", packageSpec: "core-js@3.49.0" },
+        ],
+        source: "add-dependency",
+      });
+      expect(result.installResults).toContain(
+        "Note: build scripts for core-js were not run",
+      );
+    });
+
+    it("keeps the command error details when the guest install fails", async () => {
+      runPackageManagerCommandInGuestMock.mockRejectedValueOnce(
+        new CommandExecutionError({
+          message: "Command failed in the Docker runtime (exit code 1)",
+          stderr: "ERR_PNPM_FETCH_404 react-nope not found",
+          exitCode: 1,
+        }),
+      );
+
+      await expect(
+        executeAddDependency({
+          packages: ["react-nope"],
+          message: message("react-nope"),
+          appPath: "/tmp/app",
+          appId: 7,
+        }),
+      ).rejects.toMatchObject({
+        name: "ExecuteAddDependencyError",
+        displaySummary: "ERR_PNPM_FETCH_404 react-nope not found",
+      });
+      expect(runCommandMock).not.toHaveBeenCalled();
     });
   });
 });

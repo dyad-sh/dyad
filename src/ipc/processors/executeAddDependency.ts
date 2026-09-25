@@ -15,8 +15,18 @@ import {
   getCommandExecutionDisplayDetails,
   getPackageManagerCommandEnv,
   getPnpmMinimumReleaseAgeSupport,
+  parsePnpmIgnoredBuildsFromOutput,
   runCommand,
+  SOCKET_FIREWALL_WARNING_MESSAGE,
+  type CommandExecutionResult,
+  type PackageManager,
 } from "@/ipc/utils/socket_firewall";
+import { isDockerRuntimeActive } from "@/ipc/services/docker_runtime/runtime_mode";
+import {
+  resolveAppIdForPath,
+  runPackageManagerCommandInGuest,
+  type PackageManagerInvocation,
+} from "@/ipc/utils/docker_package_manager";
 import {
   recordAndReportDeniedPnpmBuilds,
   resolvePnpmIgnoredBuilds,
@@ -302,25 +312,67 @@ export class ExecuteAddDependencyError extends Error {
   }
 }
 
+type PackageManagerRunner = (
+  invocation: PackageManagerInvocation,
+) => Promise<CommandExecutionResult>;
+
+/**
+ * Where package-manager commands run. In Docker mode they run in the guest
+ * (they execute dependency lifecycle scripts), with the Socket firewall
+ * applied there; on the host they run as before.
+ */
+function createPackageManagerRunner({
+  appPath,
+  guestAppId,
+  useSocketFirewall,
+  onSocketFirewallUnavailable,
+}: {
+  appPath: string;
+  guestAppId: number | undefined;
+  useSocketFirewall: boolean;
+  onSocketFirewallUnavailable: () => void;
+}): {
+  run: PackageManagerRunner;
+  build: (
+    invocationFor: (useSocketFirewall: boolean) => PackageManagerInvocation,
+  ) => PackageManagerInvocation;
+} {
+  if (guestAppId !== undefined) {
+    return {
+      // The guest runner applies the firewall itself.
+      build: (invocationFor) => invocationFor(false),
+      run: (invocation) =>
+        runPackageManagerCommandInGuest({
+          appId: guestAppId,
+          appPath,
+          invocation,
+          useSocketFirewall,
+          timeoutMs: ADD_DEPENDENCY_INSTALL_TIMEOUT_MS,
+          onSocketFirewallUnavailable,
+        }),
+    };
+  }
+  return {
+    build: (invocationFor) => invocationFor(useSocketFirewall),
+    run: (invocation) =>
+      runCommand(invocation.command, invocation.args, {
+        cwd: appPath,
+        env: getPackageManagerCommandEnv(),
+        timeoutMs: ADD_DEPENDENCY_INSTALL_TIMEOUT_MS,
+      }),
+  };
+}
+
 async function runAddDependencyCommand(
-  command: { command: string; args: string[] },
-  appPath: string,
+  command: PackageManagerInvocation,
+  runPackageManager: PackageManagerRunner,
 ): Promise<{
   succeeded: boolean;
   installResults: string;
   lastError: unknown;
 }> {
   try {
-    const options = {
-      cwd: appPath,
-      env: getPackageManagerCommandEnv(),
-      timeoutMs: ADD_DEPENDENCY_INSTALL_TIMEOUT_MS,
-    };
-    const { stdout, stderr } = await runCommand(
-      command.command,
-      command.args,
-      options,
-    );
+    const { stdout, stderr } = await runPackageManager(command);
     return {
       succeeded: true,
       installResults: stdout + (stderr ? `\n${stderr}` : ""),
@@ -345,7 +397,7 @@ function formatDeniedBuildsNote(packageNames: string[]): string {
 }
 
 async function rebuildPromotedPnpmBuilds(
-  appPath: string,
+  runPackageManager: PackageManagerRunner,
   packageNames: string[],
 ): Promise<void> {
   if (packageNames.length === 0) {
@@ -353,10 +405,9 @@ async function rebuildPromotedPnpmBuilds(
   }
 
   try {
-    await runCommand("pnpm", ["rebuild", ...packageNames], {
-      cwd: appPath,
-      env: getPackageManagerCommandEnv(),
-      timeoutMs: ADD_DEPENDENCY_INSTALL_TIMEOUT_MS,
+    await runPackageManager({
+      command: "pnpm",
+      args: ["rebuild", ...packageNames],
     });
   } catch {
     // Best effort: if the build is still broken, the install should not regress.
@@ -366,17 +417,24 @@ async function rebuildPromotedPnpmBuilds(
 export async function installPackages({
   packages,
   appPath,
+  appId,
   dev = false,
 }: {
   packages: string[];
   appPath: string;
+  /** Needed in Docker mode; looked up from `appPath` when omitted. */
+  appId?: number;
   dev?: boolean;
 }): Promise<ExecuteAddDependencyResult> {
   let parsedSpecs: ParsedPackageSpec[];
   let installedDependencyNames: Set<string>;
+  let guestAppId: number | undefined;
   try {
     parsedSpecs = parsePackageSpecs(packages);
     installedDependencyNames = await readInstalledDependencyNames(appPath);
+    if (isDockerRuntimeActive()) {
+      guestAppId = appId ?? (await resolveAppIdForPath(appPath));
+    }
   } catch (error) {
     throw new ExecuteAddDependencyError({
       error,
@@ -404,7 +462,8 @@ export async function installPackages({
   const warningMessages: string[] = [];
 
   let useSocketFirewall = settings.blockUnsafeNpmPackages !== false;
-  if (useSocketFirewall) {
+  // The guest probes the firewall inside the container instead.
+  if (useSocketFirewall && guestAppId === undefined) {
     const socketFirewall = await ensureSocketFirewallInstalled();
     if (!socketFirewall.available) {
       useSocketFirewall = false;
@@ -413,24 +472,43 @@ export async function installPackages({
       }
     }
   }
-
-  const pnpmSupport = await getPnpmMinimumReleaseAgeSupport();
-  // Choose from the app's own signals (packageManager field, lockfiles,
-  // node_modules shape) so add-dependency and the run command agree on the
-  // package manager — a pnpm add against an npm-shaped app would purge its
-  // node_modules and write a lockfile the run command ignores.
-  const signal = getPackageManagerSignal(appPath);
-  const packageManager = choosePackageManagerFromSignal({
-    signal,
-    pnpmAvailable: pnpmSupport.available,
+  const packageManagerRunner = createPackageManagerRunner({
+    appPath,
+    guestAppId,
+    useSocketFirewall,
+    onSocketFirewallUnavailable: () => {
+      if (!warningMessages.includes(SOCKET_FIREWALL_WARNING_MESSAGE)) {
+        warningMessages.push(SOCKET_FIREWALL_WARNING_MESSAGE);
+      }
+    },
   });
-  if (
-    signalPrefersPnpm(signal) &&
-    !pnpmSupport.minimumReleaseAgeSupported &&
-    pnpmSupport.warningMessage &&
-    shouldShowPnpmMinimumReleaseAgeWarning(settings)
-  ) {
-    warningMessages.push(pnpmSupport.warningMessage);
+
+  let packageManager: PackageManager;
+  if (guestAppId !== undefined) {
+    // The Docker dev server always installs with the runtime image's pinned
+    // pnpm (which supports minimumReleaseAge), so add-dependency matches it.
+    // Host node_modules is not the app's install in this mode, so its shape
+    // is no signal.
+    packageManager = "pnpm";
+  } else {
+    const pnpmSupport = await getPnpmMinimumReleaseAgeSupport();
+    // Choose from the app's own signals (packageManager field, lockfiles,
+    // node_modules shape) so add-dependency and the run command agree on the
+    // package manager — a pnpm add against an npm-shaped app would purge its
+    // node_modules and write a lockfile the run command ignores.
+    const signal = getPackageManagerSignal(appPath);
+    packageManager = choosePackageManagerFromSignal({
+      signal,
+      pnpmAvailable: pnpmSupport.available,
+    });
+    if (
+      signalPrefersPnpm(signal) &&
+      !pnpmSupport.minimumReleaseAgeSupported &&
+      pnpmSupport.warningMessage &&
+      shouldShowPnpmMinimumReleaseAgeWarning(settings)
+    ) {
+      warningMessages.push(pnpmSupport.warningMessage);
+    }
   }
   const promotedPackages =
     packageManager === "pnpm"
@@ -441,11 +519,13 @@ export async function installPackages({
     ...(packagesToInstall.length > 0
       ? [
           {
-            invocation: buildAddDependencyCommand(
-              packagesToInstall,
-              packageManager,
-              useSocketFirewall,
-              { dev },
+            invocation: packageManagerRunner.build((withFirewall) =>
+              buildAddDependencyCommand(
+                packagesToInstall,
+                packageManager,
+                withFirewall,
+                { dev },
+              ),
             ),
             packages: packagesToInstall,
           },
@@ -454,11 +534,13 @@ export async function installPackages({
     ...(exactPackages.length > 0
       ? [
           {
-            invocation: buildAddDependencyCommand(
-              exactPackages,
-              packageManager,
-              useSocketFirewall,
-              { dev, saveExact: true },
+            invocation: packageManagerRunner.build((withFirewall) =>
+              buildAddDependencyCommand(
+                exactPackages,
+                packageManager,
+                withFirewall,
+                { dev, saveExact: true },
+              ),
             ),
             packages: exactPackages,
           },
@@ -467,10 +549,12 @@ export async function installPackages({
     ...(updatePackages.length > 0
       ? [
           {
-            invocation: buildUpdateDependencyCommand(
-              updatePackages,
-              packageManager,
-              useSocketFirewall,
+            invocation: packageManagerRunner.build((withFirewall) =>
+              buildUpdateDependencyCommand(
+                updatePackages,
+                packageManager,
+                withFirewall,
+              ),
             ),
             packages: updatePackages,
           },
@@ -482,7 +566,10 @@ export async function installPackages({
   const completedPackages: string[] = [];
   for (const command of commands) {
     const { succeeded, installResults, lastError } =
-      await runAddDependencyCommand(command.invocation, appPath);
+      await runAddDependencyCommand(
+        command.invocation,
+        packageManagerRunner.run,
+      );
     if (!succeeded && lastError) {
       throw new ExecuteAddDependencyError({
         error: lastError,
@@ -498,11 +585,17 @@ export async function installPackages({
   }
   const installResults = commandResults.join("\n");
 
-  await rebuildPromotedPnpmBuilds(appPath, promotedPackages);
+  await rebuildPromotedPnpmBuilds(packageManagerRunner.run, promotedPackages);
 
   let installResultsWithPolicyNotes = installResults;
   if (packageManager === "pnpm") {
-    const ignoredBuilds = await resolvePnpmIgnoredBuilds(appPath);
+    // In Docker mode node_modules/.modules.yaml lives in the guest volume (a
+    // host copy would be a stale Local-mode install), so read the ignored
+    // builds from the guest's (non-PTY) install output.
+    const ignoredBuilds =
+      guestAppId !== undefined
+        ? parsePnpmIgnoredBuildsFromOutput(installResults)
+        : await resolvePnpmIgnoredBuilds(appPath);
     // Promotions were already applied (and rebuilt) by the pre-install
     // commitPnpmAllowBuildsConfigIfChanged call above, so this record pass
     // only ever adds denials for builds the install just ignored.
@@ -530,14 +623,17 @@ export async function executeAddDependency({
   packages,
   message,
   appPath,
+  appId,
 }: {
   packages: string[];
   message: Message;
   appPath: string;
+  appId?: number;
 }): Promise<ExecuteAddDependencyResult> {
   const { installResults, warningMessages } = await installPackages({
     packages,
     appPath,
+    appId,
   });
 
   // Update the message content with the installation results

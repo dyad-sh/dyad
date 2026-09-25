@@ -1790,7 +1790,9 @@ export function TestsPanel() {
                 <ShieldCheck size={15} className="shrink-0 mt-0.5" />
                 <span className="flex-1">
                   Each test case gets its own temporary account, which is
-                  removed afterward.
+                  removed afterward. Tests may change real data in tables
+                  without Row-Level Security (RLS). Enable backups before
+                  running tests.
                 </span>
               </div>
             )}
@@ -2134,7 +2136,7 @@ function EnableTestingScreen({
           <AlertTriangle size={15} className="shrink-0 mt-0.5" />
           <span>
             {hasSupabaseIsolation
-              ? "Each test case gets its own temporary account, which is removed afterward."
+              ? "Each test case gets its own temporary account, which is removed afterward. Tests may change real data in tables without Row-Level Security (RLS). Enable backups before running tests."
               : hasManagedDatabase
                 ? "Dyad can't isolate this database in the current setup. These tests can create, update, or delete current data, so we strongly recommend enabling data backups before running them."
                 : "These tests can create, update, or delete real data, and Dyad can't isolate a custom or non-database backend. We strongly recommend enabling data backups before running tests, in case they do something unintended."}

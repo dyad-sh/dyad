@@ -7,6 +7,7 @@ import { apps } from "../../db/schema";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
 import { fetchWithRetry } from "@/ipc/utils/retryWithRateLimit";
+import { retryTestDatabaseCleanup } from "./test_database_cleanup_retry";
 import { appOperationCoordinator } from "@/ipc/services/app_operation_coordinator";
 import {
   executeSupabaseSql,
@@ -485,12 +486,17 @@ async function cleanUpRowsOwnedBy({
 FROM information_schema.columns
 WHERE table_schema = 'public'
   AND column_name IN (${OWNER_COLUMNS.map((c) => `'${c}'`).join(", ")});`;
-    const raw = await executeSupabaseSql({
-      supabaseProjectId: projectId,
-      query: discoverQuery,
-      organizationSlug,
+    const raw = await retryTestDatabaseCleanup(
+      () =>
+        executeSupabaseSql({
+          supabaseProjectId: projectId,
+          query: discoverQuery,
+          organizationSlug,
+          signal,
+        }),
+      `Discover cleanup owner columns for test user ${userId}`,
       signal,
-    });
+    );
     const rows = JSON.parse(raw);
     if (!Array.isArray(rows) || rows.length === 0) {
       return;
@@ -519,12 +525,17 @@ WHERE table_schema = 'public'
         // relaxed to allow quotes, dollar signs, or backslashes. format(%I, %L)
         // is a second layer that quotes identifiers/values that already passed
         // regex validation.
-        await executeSupabaseSql({
-          supabaseProjectId: projectId,
-          query: `DO $dyad_cleanup$ BEGIN EXECUTE format('DELETE FROM public.%I WHERE %I = %L', '${table}', '${column}', '${userId}'); END $dyad_cleanup$;`,
-          organizationSlug,
+        await retryTestDatabaseCleanup(
+          () =>
+            executeSupabaseSql({
+              supabaseProjectId: projectId,
+              query: `DO $dyad_cleanup$ BEGIN EXECUTE format('DELETE FROM public.%I WHERE %I = %L', '${table}', '${column}', '${userId}'); END $dyad_cleanup$;`,
+              organizationSlug,
+              signal,
+            }),
+          `Clean up public.${table}.${column} for test user ${userId}`,
           signal,
-        });
+        );
       } catch (error) {
         signal?.throwIfAborted();
         logger.warn(
@@ -566,14 +577,19 @@ async function deleteUserBestEffort({
         projectId,
         organizationSlug,
       }));
-    const response = await fetchWithRetry(
-      `${projectUrl}/auth/v1/admin/users/${userId}`,
-      {
-        method: "DELETE",
-        signal,
-        headers: adminHeaders(adminKey),
-      },
+    const response = await retryTestDatabaseCleanup(
+      () =>
+        fetchWithRetry(
+          `${projectUrl}/auth/v1/admin/users/${userId}`,
+          {
+            method: "DELETE",
+            signal,
+            headers: adminHeaders(adminKey),
+          },
+          `Delete test user ${userId}`,
+        ),
       `Delete test user ${userId}`,
+      signal,
     );
     // A 404 means it's already gone — treat as success so we clear the column.
     if (!response.ok && response.status !== 404) {
@@ -583,6 +599,7 @@ async function deleteUserBestEffort({
     logger.info(`Deleted test user ${userId} for project ${projectId}`);
     return true;
   } catch (error) {
+    signal?.throwIfAborted();
     logger.warn(
       `Failed to delete test user ${userId} for project ${projectId} (will be retried on next launch if still tracked): ${error}`,
     );

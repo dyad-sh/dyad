@@ -166,6 +166,9 @@ Also preserve extension-owned tables (`pg_depend.deptype = 'e'`) and migration
 bookkeeping. Verify the connection hostname belongs to the temporary branch
 before exposing the cleanup callback.
 
+Use `retryTestDatabaseCleanup` for repeatable test cleanup; rate-limit retries do not cover network failures.
+Neon wraps fetch errors in `sourceError`, while native fetch uses `cause`; log the underlying code.
+
 Lifecycle shutdown must drain provider mutations before releasing its claims.
 In particular, don't abort a Supabase user-creation response before persisting
 the returned ID; cancel retries and surface a slow drain so recovery stays possible.

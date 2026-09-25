@@ -17,6 +17,11 @@ vi.mock("electron-log/main", () => ({
 }));
 
 import { ensurePreviewShim } from "../utils/playwright_bootstrap";
+import { retryTestDatabaseCleanup } from "../utils/test_database_cleanup_retry";
+
+vi.mock("electron-log", () => ({
+  default: { scope: () => ({ warn: vi.fn() }) },
+}));
 
 const servers: Awaited<ReturnType<typeof startTestCaseLifecycleServer>>[] = [];
 const directories: string[] = [];
@@ -33,7 +38,7 @@ async function setup(onSlowShutdown?: () => void) {
     beforeEach: vi.fn(async (_signal?: AbortSignal) => ({
       DYAD_TEST_USER_EMAIL: "new@dyad.test",
     })),
-    afterEach: vi.fn(async () => {}),
+    afterEach: vi.fn(async (_signal?: AbortSignal) => {}),
   };
   const server = await startTestCaseLifecycleServer(lifecycle, {
     onSlowShutdown,
@@ -51,6 +56,33 @@ async function setup(onSlowShutdown?: () => void) {
 }
 
 describe("test case lifecycle bridge", () => {
+  it("continues to the next case when a transient cleanup failure recovers", async () => {
+    const { lifecycle, server, request } = await setup();
+    const cleanup = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new TypeError("fetch failed", {
+          cause: Object.assign(new Error("socket hang up"), {
+            code: "ECONNRESET",
+          }),
+        }),
+      )
+      .mockResolvedValue(undefined);
+    lifecycle.afterEach.mockImplementation((signal) =>
+      retryTestDatabaseCleanup(cleanup, "Delete test user", signal),
+    );
+
+    for (const caseId of ["first", "second"]) {
+      expect((await request(`before/${caseId}`)).status).toBe(200);
+      expect((await request(`after/${caseId}`)).status).toBe(200);
+    }
+    expect(server.failure).toBeUndefined();
+    expect(lifecycle.beforeEach).toHaveBeenCalledTimes(2);
+    expect(cleanup).toHaveBeenCalledTimes(3);
+    await server.close();
+    expect(server.failure).toBeUndefined();
+  });
+
   it.each([false, true])(
     "ignores shutdown cancellation but retains final cleanup failures (cleanup fails: %s)",
     async (cleanupFails) => {

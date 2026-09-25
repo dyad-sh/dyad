@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   const where = vi.fn().mockResolvedValue(undefined);
@@ -387,6 +387,99 @@ describe("createTempTestUser", () => {
 });
 
 describe("deleteTempTestUser", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it.each([200, 404])(
+    "recovers from a lost deletion response followed by %s",
+    async (status) => {
+      vi.useFakeTimers();
+      const request = vi
+        .fn()
+        .mockRejectedValueOnce(
+          new TypeError("fetch failed", {
+            cause: Object.assign(new Error("socket hang up"), {
+              code: "ECONNRESET",
+            }),
+          }),
+        )
+        .mockResolvedValueOnce(new Response(null, { status }));
+      vi.stubGlobal("fetch", request);
+      const deleting = deleteTempTestUser(
+        makeApp({ supabaseTestUserId: UUID }),
+      );
+      await vi.advanceTimersByTimeAsync(0);
+      expect(mocks.set).not.toHaveBeenCalled();
+      await vi.runAllTimersAsync();
+      await expect(deleting).resolves.toBe(true);
+      expect(request).toHaveBeenCalledTimes(2);
+      expect(request.mock.calls[1]).toEqual(request.mock.calls[0]);
+      expect(mocks.set).toHaveBeenCalledWith({ supabaseTestUserId: null });
+    },
+  );
+
+  it("retains the test user for recovery when all network retries fail", async () => {
+    vi.useFakeTimers();
+    const request = vi.fn().mockRejectedValue(new TypeError("fetch failed"));
+    vi.stubGlobal("fetch", request);
+    const deleting = deleteTempTestUser(makeApp({ supabaseTestUserId: UUID }));
+    await vi.runAllTimersAsync();
+    await expect(deleting).resolves.toBe(false);
+    expect(request).toHaveBeenCalledTimes(4);
+    expect(mocks.set).not.toHaveBeenCalled();
+  });
+
+  it.each([401, 403, 500])(
+    "does not retry an HTTP %s rejection",
+    async (status) => {
+      const request = mockFetch(() => new Response("rejected", { status }));
+      await expect(
+        deleteTempTestUser(makeApp({ supabaseTestUserId: UUID })),
+      ).resolves.toBe(false);
+      expect(request).toHaveBeenCalledTimes(1);
+      expect(mocks.set).not.toHaveBeenCalled();
+    },
+  );
+
+  it("retries network failures in owner discovery and row deletion before deleting the user", async () => {
+    vi.useFakeTimers();
+    mocks.executeSupabaseSql
+      .mockRejectedValueOnce(new TypeError("fetch failed"))
+      .mockResolvedValueOnce(
+        JSON.stringify([{ table_name: "todos", column_name: "user_id" }]),
+      )
+      .mockRejectedValueOnce(new TypeError("fetch failed"))
+      .mockResolvedValueOnce("{}");
+    const request = mockFetch(() => new Response(null));
+    const deleting = deleteTempTestUser(makeApp({ supabaseTestUserId: UUID }));
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(request).not.toHaveBeenCalled();
+    await vi.runAllTimersAsync();
+    await expect(deleting).resolves.toBe(true);
+    expect(mocks.executeSupabaseSql).toHaveBeenCalledTimes(4);
+    const calls = mocks.executeSupabaseSql.mock.calls;
+    expect(calls[0]).toEqual(calls[1]);
+    expect(calls[2]).toEqual(calls[3]);
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(mocks.set).toHaveBeenCalledWith({ supabaseTestUserId: null });
+  });
+
+  it("preserves cancellation during deletion without clearing the recovery marker", async () => {
+    const controller = new AbortController();
+    const reason = new Error("Test case lifecycle is closing.");
+    const request = vi.fn().mockImplementation(async () => {
+      controller.abort(reason);
+      throw new TypeError("fetch failed");
+    });
+    vi.stubGlobal("fetch", request);
+    await expect(
+      deleteTempTestUser(makeApp({ supabaseTestUserId: UUID }), {
+        signal: controller.signal,
+      }),
+    ).rejects.toBe(reason);
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(mocks.set).not.toHaveBeenCalled();
+  });
+
   it("sweeps owned rows, deletes the user, and clears the column on success", async () => {
     // Discover query returns one owner column; subsequent DELETEs return ok.
     mocks.executeSupabaseSql.mockImplementation(

@@ -12,6 +12,7 @@ let userDataDir = "";
 import {
   buildGuestInvocation,
   fromGuestPath,
+  getGuestHostUser,
   GUEST_BASE_ENV,
   resolveGitMask,
   toGuestPath,
@@ -254,5 +255,32 @@ describe("resolveGitMask", () => {
     if (mask.kind !== "file") return;
     expect(mask.emptyFileHostPath.startsWith(userDataDir)).toBe(true);
     expect(fs.readFileSync(mask.emptyFileHostPath, "utf8")).toBe("");
+  });
+});
+
+describe("guest user on Linux", () => {
+  it("runs as the host user with a writable home when given one", () => {
+    const { args } = buildGuestInvocation(
+      baseInput(),
+      "img",
+      {},
+      {
+        uid: 1000,
+        gid: 1000,
+      },
+    );
+    expect(valuesAfter(args, "--user")).toEqual(["1000:1000"]);
+    expect(valuesAfter(args, "-e")).toContain("HOME=/tmp");
+  });
+
+  it("only applies on Linux, and never for root", () => {
+    expect(getGuestHostUser("darwin")).toBeUndefined();
+    expect(getGuestHostUser("win32")).toBeUndefined();
+    const linux = getGuestHostUser("linux");
+    if (process.getuid && process.getuid() !== 0) {
+      expect(linux).toEqual({ uid: process.getuid(), gid: process.getgid!() });
+    } else {
+      expect(linux).toBeUndefined();
+    }
   });
 });

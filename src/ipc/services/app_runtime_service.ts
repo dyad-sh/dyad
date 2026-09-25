@@ -78,6 +78,7 @@ import { ensureRuntimeImage } from "@/ipc/services/docker_runtime/runtime_image"
 import {
   buildGuestInvocation,
   getAppDevServerContainerName,
+  prepareGuestMounts,
   resolveGitMask,
 } from "@/ipc/services/docker_runtime/guest_command";
 import {
@@ -995,6 +996,10 @@ async function executeAppInDocker({
         emitPnpmMinimumReleaseAgeWarning({ appId, output, message }),
     })
   ).command;
+  await prepareGuestMounts(
+    { appId, hostRoot: appPath, nodeModules: "app-volume" },
+    imageTag,
+  );
   const invocation = buildGuestInvocation(
     {
       appId,

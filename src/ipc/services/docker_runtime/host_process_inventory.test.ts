@@ -42,8 +42,8 @@ const INVENTORY: Record<
   "src/pro/main/ipc/handlers/local_agent/tools/grep.ts": "dyad-owned",
   // process_manager spawns `docker stop` / `docker volume rm` only.
   "src/ipc/utils/process_manager.ts": "dyad-owned",
-  // Uses ripgrep for search; app deletion cleans Docker volumes.
-  "src/ipc/handlers/app_handlers.ts": "docker-routed",
+  // ripgrep for search, and `docker volume rm` when an app is deleted.
+  "src/ipc/handlers/app_handlers.ts": "dyad-owned",
 
   "src/ipc/services/app_runtime_service.ts": "docker-routed",
   "src/ipc/handlers/tests_handlers.ts": "docker-routed",

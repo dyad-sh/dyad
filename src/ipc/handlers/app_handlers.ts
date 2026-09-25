@@ -158,7 +158,6 @@ import {
 import type { AppSearchResult } from "@/lib/schemas";
 import { endTestsForApp } from "./tests_handlers";
 import { removeE2eTestArtifactsForApp } from "../services/e2e_test_workspace";
-import { isDockerRuntimeActive } from "../services/docker_runtime/runtime_mode";
 
 import {
   getRgExecutablePath,
@@ -582,10 +581,9 @@ async function deleteAppById(
 
   // Docker mode keeps the app's dependencies in volumes keyed by app ID. App
   // IDs can be reused, so a leftover volume would hand this app's packages to
-  // a future app. Best-effort: resolves even when Docker is unavailable.
-  if (isDockerRuntimeActive()) {
-    await removeDockerVolumesForApp(appId);
-  }
+  // a future app. Unconditional: the app may have run in Docker mode before
+  // the user switched runtimes. Best-effort: resolves when Docker is absent.
+  await removeDockerVolumesForApp(appId);
 
   // Only after the deletion has committed — the throw above skips this. Doing
   // it earlier means a deletion that then fails leaves a live app pointed at a

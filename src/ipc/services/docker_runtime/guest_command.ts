@@ -176,10 +176,34 @@ function assertInside(root: string, candidate: string) {
 const ENV_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 /** Pure translation from a host command to its `docker run` invocation. */
+/** The UID/GID guest commands run as; see {@link getGuestHostUser}. */
+export interface GuestHostUser {
+  uid: number;
+  gid: number;
+}
+
+/**
+ * On Linux, Docker Engine writes bind-mounted files with the container
+ * user's real UID, so a root guest would leave root-owned package.json,
+ * lockfiles and build output in the user's project. Guests there run as the
+ * host user instead. Docker Desktop (macOS/Windows) already maps ownership to
+ * the host user, and keeps root inside the container.
+ */
+export function getGuestHostUser(
+  platform: NodeJS.Platform = process.platform,
+): GuestHostUser | undefined {
+  if (platform !== "linux" || !process.getuid || !process.getgid) {
+    return undefined;
+  }
+  const uid = process.getuid();
+  return uid === 0 ? undefined : { uid, gid: process.getgid() };
+}
+
 export function buildGuestInvocation(
   input: GuestInvocationInput,
   imageTag: string,
   hostEnv: NodeJS.ProcessEnv = process.env,
+  hostUser: GuestHostUser | undefined = getGuestHostUser(),
 ): GuestInvocation {
   assertInside(input.hostRoot, input.cwd);
   const role = input.role ?? "job";
@@ -204,6 +228,8 @@ export function buildGuestInvocation(
     `dyad.app-id=${input.appId}`,
     "--label",
     `dyad.session=${DYAD_SESSION_ID}`,
+    "--label",
+    `dyad.pid=${process.pid}`,
     "--mount",
     `type=bind,source=${input.hostRoot},target=${guestRoot}`,
   ];
@@ -248,6 +274,12 @@ export function buildGuestInvocation(
     args.push("-p", `${port}:${port}`);
   }
 
+  if (hostUser) {
+    args.push("--user", `${hostUser.uid}:${hostUser.gid}`);
+    // No passwd entry exists for the host UID; give tools a writable home.
+    env.HOME = "/tmp";
+  }
+
   const clientEnv: NodeJS.ProcessEnv = { ...hostEnv };
   for (const [key, value] of Object.entries(env)) {
     args.push("-e", `${key}=${value}`);
@@ -273,11 +305,27 @@ export function buildGuestInvocation(
   return { command: "docker", args, clientEnv, containerName };
 }
 
+/**
+ * Whether the Dyad process that started a job may still own it. Another Dyad
+ * (a second release channel, or a test build without the single-instance
+ * lock) can run beside this one; only jobs whose owner has exited are stale.
+ */
+function isProcessAlive(pid: number): boolean {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    // EPERM: the process exists but belongs to another user.
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
 let staleJobSweep: Promise<void> | undefined;
 
 /**
- * Removes guest job containers left behind by a previous Dyad process (a crash
- * skips the per-job cleanup). Runs once per process.
+ * Removes guest job containers left behind by a Dyad process that has since
+ * exited (a crash skips the per-job cleanup). Runs once per process.
  */
 export function sweepStaleGuestJobs(): Promise<void> {
   staleJobSweep ??= (async () => {
@@ -292,13 +340,16 @@ export function sweepStaleGuestJobs(): Promise<void> {
         "--filter",
         "label=dyad.role=job",
         "--format",
-        '{{.ID}} {{.Label "dyad.session"}}',
+        '{{.ID}} {{.Label "dyad.session"}} {{.Label "dyad.pid"}}',
       ]);
       if (result.code !== 0) return;
       const stale = result.stdout
         .split("\n")
         .map((line) => line.trim().split(" "))
-        .filter(([id, session]) => id && session !== DYAD_SESSION_ID)
+        .filter(
+          ([id, session, pid]) =>
+            id && session !== DYAD_SESSION_ID && !isProcessAlive(Number(pid)),
+        )
         .map(([id]) => id);
       if (stale.length > 0) {
         logger.info(`Removing ${stale.length} stale Docker guest job(s)`);
@@ -311,12 +362,70 @@ export function sweepStaleGuestJobs(): Promise<void> {
   return staleJobSweep;
 }
 
+const ownedVolumes = new Map<string, Promise<void>>();
+
+/**
+ * Prepares the host and the volumes for a guest run:
+ * - Creates the `node_modules` mount point as the host user. Otherwise the
+ *   Docker daemon creates it (root-owned on Linux) and a later Local-mode
+ *   install cannot write to it.
+ * - On Linux, hands the app's volumes to the host UID once per process: fresh
+ *   named volumes (and ones written by older root guests) are root-owned, so
+ *   a non-root guest could not install into them.
+ */
+export async function prepareGuestMounts(
+  input: Pick<GuestInvocationInput, "appId" | "hostRoot" | "nodeModules">,
+  imageTag: string,
+  hostUser: GuestHostUser | undefined = getGuestHostUser(),
+): Promise<void> {
+  if (input.nodeModules === "app-volume") {
+    await fs.mkdir(path.join(input.hostRoot, "node_modules"), {
+      recursive: true,
+    });
+  }
+  if (!hostUser) return;
+  const owner = `${hostUser.uid}:${hostUser.gid}`;
+  for (const volume of [
+    getAppNodeModulesVolumeName(input.appId),
+    PLAYWRIGHT_BROWSERS_VOLUME,
+  ]) {
+    const key = `${volume}:${owner}`;
+    let pending = ownedVolumes.get(key);
+    if (!pending) {
+      pending = runDockerCli(
+        [
+          "run",
+          "--rm",
+          "--mount",
+          `type=volume,source=${volume},target=/volume`,
+          imageTag,
+          "chown",
+          "-R",
+          owner,
+          "/volume",
+        ],
+        { timeoutMs: 5 * 60_000 },
+      ).then((result) => {
+        if (result.code !== 0) {
+          ownedVolumes.delete(key);
+          logger.warn(
+            `Failed to hand Docker volume ${volume} to ${owner}: ${result.stderr}`,
+          );
+        }
+      });
+      ownedVolumes.set(key, pending);
+    }
+    await pending;
+  }
+}
+
 async function prepareGuestInvocation(
   input: GuestInvocationInput,
   onOutput?: (chunk: string) => void,
 ): Promise<GuestInvocation> {
   void sweepStaleGuestJobs();
   const imageTag = await ensureRuntimeImage(input.image, onOutput);
+  await prepareGuestMounts(input, imageTag);
   return buildGuestInvocation(input, imageTag);
 }
 

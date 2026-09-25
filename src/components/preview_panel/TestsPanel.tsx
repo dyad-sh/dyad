@@ -1776,11 +1776,8 @@ export function TestsPanel() {
             <div className="flex items-start gap-2 px-4 py-2 bg-teal-50 dark:bg-teal-900/20 border-b border-teal-200 dark:border-teal-800 text-sm text-teal-800 dark:text-teal-200">
               <ShieldCheck size={15} className="shrink-0 mt-0.5" />
               <span className="flex-1">
-                Neon test runs use a copy of your app and a temporary database.
-                Your preview keeps running against your real one. Each test and
-                retry starts with empty application and auth-user data,
-                including the first test. Seed required rows in each test or
-                beforeEach. Your original branch is unchanged.
+                Tests run in a temporary database, cleared between test cases.
+                Your real data and preview stay unchanged.
               </span>
             </div>
           )}
@@ -1792,10 +1789,8 @@ export function TestsPanel() {
               <div className="flex items-start gap-2 px-4 py-2 bg-teal-50 dark:bg-teal-900/20 border-b border-teal-200 dark:border-teal-800 text-sm text-teal-800 dark:text-teal-200">
                 <ShieldCheck size={15} className="shrink-0 mt-0.5" />
                 <span className="flex-1">
-                  Each test and retry gets a fresh Supabase test user. Seed
-                  required user data in each test or beforeEach; supported
-                  user-owned rows are cleaned up afterward. Isolation relies on
-                  Row-Level Security and may not cover every table.
+                  Each test case gets its own temporary account, which is
+                  removed afterward.
                 </span>
               </div>
             )}
@@ -2130,10 +2125,8 @@ function EnableTestingScreen({
         <div className="flex items-start gap-2 max-w-sm mb-5 px-3 py-2 rounded-md bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-800 text-left text-[13px] text-teal-800 dark:text-teal-200">
           <ShieldCheck size={15} className="shrink-0 mt-0.5" />
           <span>
-            Tests run against a temporary copy of your Neon database, so your
-            real data isn&apos;t touched. Each test and retry starts with empty
-            application and auth-user data, including the first test. Seed
-            required rows in each test or beforeEach.
+            Tests run in a temporary database, cleared between test cases. Your
+            real data and preview stay unchanged.
           </span>
         </div>
       ) : (
@@ -2141,7 +2134,7 @@ function EnableTestingScreen({
           <AlertTriangle size={15} className="shrink-0 mt-0.5" />
           <span>
             {hasSupabaseIsolation
-              ? "Each test and retry gets a fresh Supabase test user. Seed required user data in each test or beforeEach; supported user-owned rows are cleaned up afterward. Isolation relies on Row-Level Security, which may not cover every table. We strongly recommend enabling data backups before running tests, in case they do something unintended."
+              ? "Each test case gets its own temporary account, which is removed afterward."
               : hasManagedDatabase
                 ? "Dyad can't isolate this database in the current setup. These tests can create, update, or delete current data, so we strongly recommend enabling data backups before running them."
                 : "These tests can create, update, or delete real data, and Dyad can't isolate a custom or non-database backend. We strongly recommend enabling data backups before running tests, in case they do something unintended."}

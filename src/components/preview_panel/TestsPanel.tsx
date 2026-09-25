@@ -498,6 +498,7 @@ function TestCaseRow({
 
 interface FileRowProps {
   appId: number;
+  queued: boolean;
   file: string;
   tests: TestCase[];
   status: TestStatus;
@@ -522,6 +523,7 @@ interface FileRowProps {
 
 function FileRow({
   appId,
+  queued,
   file,
   tests,
   status,
@@ -537,6 +539,7 @@ function FileRow({
   caseResult,
   onAskAiToFix,
 }: FileRowProps) {
+  const { t } = useTranslation("home");
   const fileName = file.split("/").pop() ?? file;
   const hasTests = tests.length > 0;
   const isFailing = status === "failed" || status === "inconclusive";
@@ -554,7 +557,12 @@ function FileRow({
 
   return (
     <div className="border-b border-border/60 last:border-b-0">
-      <div className="group flex items-center gap-2 px-3 py-2">
+      <div
+        className={cn(
+          "group flex items-center gap-2 px-3 py-2",
+          queued && "bg-amber-50 dark:bg-amber-950/30",
+        )}
+      >
         <button
           onClick={toggle}
           disabled={!hasTests}
@@ -588,6 +596,11 @@ function FileRow({
               statusTextClass(status),
             )}
           >
+            {queued && (
+              <span className="mr-1.5 inline-block rounded bg-amber-100 px-1 font-medium text-amber-900 dark:bg-amber-900/50 dark:text-amber-200">
+                {t("preview.testQueued")}
+              </span>
+            )}
             {statusLabel(status)}
             {hasTests &&
               ` · ${tests.length} ${tests.length === 1 ? "test" : "tests"}`}
@@ -656,6 +669,17 @@ export function TestsPanel() {
   const runState = useAtomValue(currentTestRunStateAtom);
   const { data: testQueue } = useTestRunQueue(selectedAppId);
   const queuedCount = testQueue?.queuedRuns.length ?? 0;
+  const queuedFiles = useMemo(() => {
+    const files = new Set<string>();
+    for (const run of testQueue?.queuedRuns ?? []) {
+      const selection =
+        run.testFiles ??
+        (run.testFile ? [run.testFile] : specs.map((spec) => spec.file));
+      for (const file of selection)
+        files.add(file.replace(/\\/g, "/").replace(/^\.\//, ""));
+    }
+    return files;
+  }, [testQueue?.queuedRuns, specs]);
   const appUrl = useCurrentAppUrl(selectedAppId);
   const { state: previewIframeState } =
     usePreviewIframeController(selectedAppId);
@@ -1954,6 +1978,7 @@ export function TestsPanel() {
                 file={spec.file}
                 tests={spec.tests}
                 status={fileStatus(spec.file)}
+                queued={queuedFiles.has(spec.file)}
                 result={runState.results[spec.file]}
                 disabled={isRunning || testRunBlocked}
                 deleteDisabled={isRunning || isDeleting}

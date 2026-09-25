@@ -615,10 +615,15 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
         testFiles: args.testFiles,
         grep: args.grep,
         externalSignal: ctx.abortSignal,
-        onQueued: (position) =>
-          ctx.onXmlStream(
-            `<dyad-status title="${escapeXmlAttr(`Queued: ${args.testFiles?.join(", ") ?? "All tests"}`)}">Position ${position} in the queue. Waiting for the previous test run to finish.</dyad-status>`,
-          ),
+        // Root chat has one shared live preview, owned by the executing run.
+        // Its queue is shown separately in the Tests panel. Sub-agent tools
+        // have per-call activity cards, so their waiting status is safe to show.
+        onQueued: ctx.onToolActivity
+          ? (position) =>
+              ctx.onXmlStream(
+                `<dyad-status title="${escapeXmlAttr(`Queued: ${args.testFiles?.join(", ") ?? "All tests"}`)}">Position ${position} in the queue. Waiting for the previous test run to finish.</dyad-status>`,
+              )
+          : undefined,
       },
       async (queueRun) => {
         // Also fail closed for direct callers: a legacy testFile must never be
@@ -822,7 +827,9 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
       () => {
         const body =
           "Test run cancelled while queued. No tests ran, and this did NOT count as a fix attempt.";
-        completeStatus(ctx, "Tests cancelled", body);
+        // Completing root XML also clears the shared live preview. A request
+        // cancelled before it starts must leave the executing run's card alone.
+        if (ctx.onToolActivity) completeStatus(ctx, "Tests cancelled", body);
         return body;
       },
     ),

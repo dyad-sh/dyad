@@ -21,6 +21,7 @@ import {
 } from "@/atoms/testRuntimeAtoms";
 import { selectedFileAtom, stagedDiffFileAtom } from "@/atoms/viewAtoms";
 import { TestsPanel } from "./TestsPanel";
+import type { TestRunQueueSnapshot } from "@/ipc/types/tests";
 
 const mocks = vi.hoisted(() => ({
   listAppTests: vi.fn(),
@@ -39,7 +40,7 @@ const mocks = vi.hoisted(() => ({
   settingsLoading: false,
   refreshSettings: vi.fn(),
   navigate: vi.fn(),
-  queuedRuns: [] as { runId: number; source: "agent"; testFile: string }[],
+  queuedRuns: [] as TestRunQueueSnapshot["queuedRuns"],
 }));
 
 vi.mock("@/hooks/useTestRunQueue", () => ({
@@ -838,6 +839,97 @@ describe("TestsPanel", () => {
 
       await screen.findByText("signup.spec.ts");
       expect(screen.queryByText(/Your preview keeps running/)).toBeNull();
+    });
+  });
+
+  describe("queued test files", () => {
+    const otherFile = "e2e-tests/login.spec.ts";
+    const idleFile = "e2e-tests/profile.spec.ts";
+
+    beforeEach(() => {
+      mocks.listAppTests.mockResolvedValue({
+        specs: [SPEC_FILE, otherFile, idleFile].map((file) => ({
+          file,
+          tests: [{ title: "works", line: 4 }],
+        })),
+      });
+    });
+
+    it.each([
+      {
+        selection: { testFile: SPEC_FILE, testLine: 4 },
+        expected: [SPEC_FILE],
+      },
+      {
+        selection: { testFiles: [SPEC_FILE, otherFile] },
+        expected: [SPEC_FILE, otherFile],
+      },
+      { selection: {}, expected: [SPEC_FILE, otherFile, idleFile] },
+      {
+        selection: {
+          testFiles: ["./e2e-tests/signup.spec.ts", "e2e-tests\\login.spec.ts"],
+        },
+        expected: [SPEC_FILE, otherFile],
+      },
+    ])(
+      "highlights queued files for $selection",
+      async ({ selection, expected }) => {
+        mocks.queuedRuns = [{ runId: 2, source: "agent", ...selection }];
+        renderPanel();
+        await screen.findByText("signup.spec.ts");
+        for (const file of [SPEC_FILE, otherFile, idleFile]) {
+          const row = screen
+            .getByText(file.split("/").pop()!)
+            .closest("button")!.parentElement!;
+          expect(within(row).queryByText("Queued") !== null).toBe(
+            expected.includes(file),
+          );
+          expect(row.classList.contains("bg-amber-50")).toBe(
+            expected.includes(file),
+          );
+        }
+      },
+    );
+
+    it("retains running status for queued reruns and removes the label when dequeued", async () => {
+      mocks.queuedRuns = [
+        { runId: 2, source: "agent", testFiles: [SPEC_FILE, otherFile] },
+        { runId: 3, source: "panel", testFile: SPEC_FILE },
+      ];
+      const { store, rerender } = renderPanel();
+      await screen.findByText("signup.spec.ts");
+      act(() => {
+        store.set(
+          testRunStateByAppIdAtom,
+          new Map([
+            [
+              1,
+              {
+                ...EMPTY_TEST_RUN_STATE,
+                phase: "running",
+                runningFiles: [SPEC_FILE],
+              },
+            ],
+          ]),
+        );
+      });
+      const row = screen
+        .getByText("signup.spec.ts")
+        .closest("button")!.parentElement!;
+      expect(within(row).getByRole("img", { name: "Running" })).toBeTruthy();
+      expect(within(row).getAllByText("Queued")).toHaveLength(1);
+
+      // Finishing one queued batch must keep another queued rerun marked.
+      mocks.queuedRuns = [{ runId: 3, source: "panel", testFile: SPEC_FILE }];
+      rerender(<TestsPanel />);
+      expect(within(row).getByText("Queued")).toBeTruthy();
+      expect(screen.getAllByText("Queued")).toHaveLength(1);
+
+      mocks.queuedRuns = [];
+      rerender(<TestsPanel />);
+      expect(screen.queryByText("Queued")).toBeNull();
+      expect(row.classList.contains("bg-amber-50")).toBe(false);
+      expect(within(row).getByRole("img", { name: "Running" })).toBeTruthy();
     });
   });
 

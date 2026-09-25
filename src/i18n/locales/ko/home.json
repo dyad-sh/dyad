@@ -263,6 +263,7 @@
     "security": "보안",
     "publish": "게시",
     "tests": "테스트",
+    "testQueued": "대기 중",
     "testGate": {
       "settingsLoading": "설정을 불러오는 중…",
       "settingsUnavailable": "Dyad가 설정을 불러오지 못해 테스트가 어떻게 실행될지 알 수 없습니다.",

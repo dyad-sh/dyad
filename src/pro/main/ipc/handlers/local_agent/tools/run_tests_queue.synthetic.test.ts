@@ -285,8 +285,9 @@ describe("synthetic overlapping run_tests calls", () => {
       expect(
         getAppTestRunQueue(APP_ID).queuedRuns.map((run) => run.testFiles?.[0]),
       ).toEqual(SPECS.slice(1));
-      expect(emittedXml(contexts[1])).toContain("Position 1 in the queue");
-      expect(emittedXml(contexts[2])).toContain("Position 2 in the queue");
+      expect(emittedXml(contexts[0])).toContain(`Running ${SPECS[0]}`);
+      expect(emittedXml(contexts[1])).toBe("");
+      expect(emittedXml(contexts[2])).toBe("");
       expect(settled).toEqual([]);
       expect(prepared).toEqual([SPECS[0]]);
       expect(signals[0].aborted).toBe(false);
@@ -297,7 +298,13 @@ describe("synthetic overlapping run_tests calls", () => {
         expect(await calls[1]).toContain("cancelled while queued");
         expect(contexts[1].testRunCount ?? 0).toBe(0);
         expect(contexts[1].testRunAttempts.size).toBe(0);
-        expect(emittedXml(contexts[2])).toContain("Position 1 in the queue");
+        expect(emittedXml(contexts[1])).toBe("");
+        expect(emittedXml(contexts[2])).toBe("");
+        expect(
+          getAppTestRunQueue(APP_ID).queuedRuns.map(
+            (run) => run.testFiles?.[0],
+          ),
+        ).toEqual([SPECS[2]]);
         expect(signals[0].aborted).toBe(false);
         trace.push("B cancelled; A unaffected; C now first in queue");
       }

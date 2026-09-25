@@ -122,6 +122,94 @@ function addEdit(ctx: AgentContext, _file: string) {
 }
 
 describe("runTestsTool", () => {
+  it("keeps the running card through queue updates and cancellation, then shows the next run", async () => {
+    const files = [
+      "e2e-tests/a.spec.ts",
+      "e2e-tests/b.spec.ts",
+      "e2e-tests/c.spec.ts",
+    ];
+    specLister.mockResolvedValue(files);
+    const finishes: ((result: RunAppTestsResult) => void)[] = [];
+    runner.mockImplementation(
+      () => new Promise((resolve) => finishes.push(resolve)),
+    );
+    const ctx = makeCtx();
+    let preview = "";
+    vi.mocked(ctx.onXmlStream).mockImplementation((xml) => {
+      preview = xml;
+    });
+    vi.mocked(ctx.onXmlComplete).mockImplementation(() => {
+      preview = "";
+    });
+    const first = runTestsTool.execute({ testFiles: [files[0]] }, ctx);
+    await vi.waitFor(() => expect(runner).toHaveBeenCalledTimes(1));
+    expect(preview).toContain("Running " + files[0]);
+
+    const abort = new AbortController();
+    const second = runTestsTool.execute(
+      { testFiles: [files[1]] },
+      { ...ctx, abortSignal: abort.signal },
+    );
+    const third = runTestsTool.execute({ testFiles: [files[2]] }, ctx);
+    try {
+      expect(preview).toContain("Running " + files[0]);
+      expect(preview).not.toContain("Queued:");
+      abort.abort();
+      expect(await second).toContain("cancelled while queued");
+      expect(preview).toContain("Running " + files[0]);
+      expect(ctx.onXmlComplete).not.toHaveBeenCalled();
+    } finally {
+      finishes[0](passedResult);
+      await first;
+    }
+    await vi.waitFor(() => expect(runner).toHaveBeenCalledTimes(2));
+    try {
+      expect(preview).toContain("Running " + files[2]);
+      expect(preview).not.toContain(files[0]);
+    } finally {
+      finishes[1]({
+        appId: 1,
+        results: [{ file: files[2], status: "passed" }],
+      });
+      await third;
+    }
+    expect(preview).toBe("");
+  });
+
+  it("retains queued and cancelled cards for sub-agent tool activities", async () => {
+    let finish!: (result: RunAppTestsResult) => void;
+    runner.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const first = runTestsTool.execute(
+      { testFiles: ["e2e-tests/a.spec.ts"] },
+      makeCtx(),
+    );
+    await vi.waitFor(() => expect(runner).toHaveBeenCalledOnce());
+    const ctx = makeCtx();
+    ctx.onToolActivity = vi.fn(async () => {});
+    const abort = new AbortController();
+    ctx.abortSignal = abort.signal;
+    const second = runTestsTool.execute(
+      { testFiles: ["e2e-tests/a.spec.ts"] },
+      ctx,
+    );
+    try {
+      expect(emittedXml(ctx)).toContain("Queued:");
+      abort.abort();
+      await second;
+      expect(emittedXml(ctx)).toContain("Tests cancelled");
+    } finally {
+      abort.abort();
+      await second;
+      finish(passedResult);
+      await first;
+    }
+  });
+
   it("rechecks every file after an earlier queued batch finishes", async () => {
     let finish!: (result: RunAppTestsResult) => void;
     runner.mockImplementationOnce(
@@ -139,7 +227,7 @@ describe("runTestsTool", () => {
       { testFiles: [files[1], "e2e-tests/c.spec.ts"] },
       ctx,
     );
-    expect(emittedXml(ctx)).toContain("Queued:");
+    expect(emittedXml(ctx)).not.toContain("Queued:");
     expect(runner.mock.calls[0][0].testFiles).toEqual(files);
     finish({
       appId: 1,

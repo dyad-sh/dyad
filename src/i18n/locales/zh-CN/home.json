@@ -264,6 +264,7 @@
     "security": "安全",
     "publish": "发布",
     "tests": "测试",
+    "testQueued": "排队中",
     "testGate": {
       "settingsLoading": "正在加载设置…",
       "settingsUnavailable": "Dyad 无法加载你的设置，因此无法确定测试将如何运行。",

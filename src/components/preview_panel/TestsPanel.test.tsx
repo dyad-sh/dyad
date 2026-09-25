@@ -248,7 +248,7 @@ describe("TestsPanel", () => {
       renderPanel();
       expect(
         await screen.findByText(
-          "Each test case gets its own temporary account, which is removed afterward. Tests may change real data in tables without Row-Level Security (RLS). Enable backups before running tests.",
+          "Each test uses a temporary account, deleted afterward. Data in tables without RLS may change. Enable backups before testing.",
         ),
       ).toBeTruthy();
     },

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   const where = vi.fn().mockResolvedValue(undefined);
@@ -354,6 +354,61 @@ describe("createTempTestBranch", () => {
 });
 
 describe("deleteTempTestBranch", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it.each([false, true])(
+    "recovers from a lost branch deletion response (already deleted: %s)",
+    async (alreadyDeleted) => {
+      vi.useFakeTimers();
+      mocks.deleteProjectBranch.mockRejectedValueOnce(
+        Object.assign(new Error("socket hang up"), { code: "ECONNRESET" }),
+      );
+      if (alreadyDeleted)
+        mocks.deleteProjectBranch.mockRejectedValueOnce({
+          response: { status: 404 },
+        });
+      const deleting = deleteTempTestBranch(
+        makeApp({ neonTestBranchId: "dyad-cleanup-only:v1:test-br" }),
+      );
+      await vi.advanceTimersByTimeAsync(0);
+      expect(mocks.set).not.toHaveBeenCalled();
+      await vi.runAllTimersAsync();
+      await expect(deleting).resolves.toBe(true);
+      expect(mocks.deleteProjectBranch).toHaveBeenCalledTimes(2);
+      expect(mocks.deleteProjectBranch).toHaveBeenLastCalledWith(
+        "proj-1",
+        "test-br",
+      );
+      expect(mocks.set).toHaveBeenCalledWith({ neonTestBranchId: null });
+    },
+  );
+
+  it("keeps the branch recovery marker when network retries are exhausted", async () => {
+    vi.useFakeTimers();
+    mocks.deleteProjectBranch.mockRejectedValue(
+      Object.assign(new Error("timeout"), { code: "ECONNABORTED" }),
+    );
+    const deleting = deleteTempTestBranch(
+      makeApp({ neonTestBranchId: "test-br" }),
+    );
+    await vi.runAllTimersAsync();
+    await expect(deleting).resolves.toBe(false);
+    expect(mocks.deleteProjectBranch).toHaveBeenCalledTimes(4);
+    expect(mocks.set).not.toHaveBeenCalled();
+  });
+
+  it.each([401, 403])(
+    "does not retry a permanent HTTP %s branch deletion failure",
+    async (status) => {
+      mocks.deleteProjectBranch.mockRejectedValueOnce({ response: { status } });
+      await expect(
+        deleteTempTestBranch(makeApp({ neonTestBranchId: "test-br" })),
+      ).resolves.toBe(false);
+      expect(mocks.deleteProjectBranch).toHaveBeenCalledTimes(1);
+      expect(mocks.set).not.toHaveBeenCalled();
+    },
+  );
+
   it("deletes the branch and clears the column", async () => {
     await deleteTempTestBranch(makeApp({ neonTestBranchId: "test-br" }));
     expect(mocks.deleteProjectBranch).toHaveBeenCalledWith("proj-1", "test-br");

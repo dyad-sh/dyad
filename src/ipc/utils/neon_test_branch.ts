@@ -10,6 +10,7 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { readEnvVarsOrEmpty, updateNeonEnvVars } from "./app_env_var_utils";
 import { detectFrameworkType } from "./framework_utils";
 import { retryOnLocked } from "./retryOnLocked";
+import { retryTestDatabaseCleanup } from "./test_database_cleanup_retry";
 import { ensureNeonAuth, getOrCreateNeonAuthCookieSecret } from "./neon_utils";
 import {
   appOperationCoordinator,
@@ -472,8 +473,12 @@ async function deleteBranchBestEffort(
 ): Promise<boolean> {
   try {
     const neonClient = await getNeonClient();
-    await retryOnLocked(
-      () => neonClient.deleteProjectBranch(projectId, branchId),
+    await retryTestDatabaseCleanup(
+      () =>
+        retryOnLocked(
+          () => neonClient.deleteProjectBranch(projectId, branchId),
+          `Delete test branch ${branchId}`,
+        ),
       `Delete test branch ${branchId}`,
     );
     logger.info(`Deleted test branch ${branchId} for project ${projectId}`);

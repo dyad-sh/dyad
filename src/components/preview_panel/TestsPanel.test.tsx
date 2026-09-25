@@ -226,16 +226,18 @@ describe("TestsPanel", () => {
       mocks.app = { ...mocks.app, testingEnabled, neonProjectId: "project" };
       renderPanel();
       expect(
-        await screen.findByText(/Each test and retry starts with empty/),
+        await screen.findByText(
+          /Tests run in a temporary database, cleared between test cases/,
+        ),
       ).toBeTruthy();
       expect(
-        screen.getByText(/Seed required rows in each test or beforeEach/),
+        screen.getByText(/Your real data and preview stay unchanged/),
       ).toBeTruthy();
     },
   );
 
   it.each([false, true])(
-    "explains per-test Supabase users before running (enabled: %s)",
+    "explains Supabase test accounts and database backups before running (enabled: %s)",
     async (testingEnabled) => {
       mocks.app = {
         ...mocks.app,
@@ -246,10 +248,9 @@ describe("TestsPanel", () => {
       renderPanel();
       expect(
         await screen.findByText(
-          /Each test and retry gets a fresh Supabase test user/,
+          "Each test uses a temporary account, deleted afterward. Enable database backups before testing.",
         ),
       ).toBeTruthy();
-      expect(screen.getByText(/may not cover every table/)).toBeTruthy();
     },
   );
 
@@ -705,7 +706,7 @@ describe("TestsPanel", () => {
       renderPanel();
 
       expect(
-        await screen.findByText(/Your preview keeps running against your real/),
+        await screen.findByText(/Your real data and preview stay unchanged/),
       ).toBeTruthy();
       expect(screen.queryByText(/restart the preview/i)).toBeNull();
     });
@@ -716,7 +717,9 @@ describe("TestsPanel", () => {
       renderPanel();
 
       await screen.findByText("signup.spec.ts");
-      expect(screen.queryByText(/Your preview keeps running/)).toBeNull();
+      expect(
+        screen.queryByText(/Your real data and preview stay unchanged/),
+      ).toBeNull();
     });
 
     it("says why the run is refused when the sandbox is turned off", async () => {
@@ -830,7 +833,9 @@ describe("TestsPanel", () => {
       renderPanel();
 
       await screen.findByText("signup.spec.ts");
-      expect(screen.queryByText(/Your preview keeps running/)).toBeNull();
+      expect(
+        screen.queryByText(/Your real data and preview stay unchanged/),
+      ).toBeNull();
     });
   });
 

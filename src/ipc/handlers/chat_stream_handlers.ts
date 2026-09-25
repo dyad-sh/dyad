@@ -23,6 +23,7 @@ import {
   ModelMessage,
   TextPart,
   ImagePart,
+  FilePart,
   streamText,
   ToolSet,
   TextStreamPart,
@@ -194,6 +195,7 @@ import { readSettings, setSentinelActiveChat } from "@/main/settings";
 import { recordAppSizeForSession } from "@/main/last_session_store";
 import {
   buildLocalAgentAttachmentInfo,
+  buildInlinePdfFileParts,
   getInlineImageMimeType,
   hasScriptReadableAttachment,
   isTextFile,
@@ -2519,6 +2521,8 @@ This conversation includes one or more image attachments. When the user uploads 
                     attachmentDeliveryConfig.includeImageParts,
                   inlineTextAttachments:
                     attachmentDeliveryConfig.inlineTextAttachments,
+                  pdfFileParts:
+                    await buildInlinePdfFileParts(storedAttachments),
                 },
               );
             }
@@ -3414,9 +3418,11 @@ async function prepareMessageWithAttachments(
   {
     includeImageAttachments = true,
     inlineTextAttachments = true,
+    pdfFileParts = [],
   }: {
     includeImageAttachments?: boolean;
     inlineTextAttachments?: boolean;
+    pdfFileParts?: FilePart[];
   } = {},
 ): Promise<ModelMessage> {
   let textContent = message.content;
@@ -3441,7 +3447,7 @@ async function prepareMessageWithAttachments(
   }
 
   // For user messages with attachments, create a content array
-  const contentParts: (TextPart | ImagePart)[] = [];
+  const contentParts: (TextPart | ImagePart | FilePart)[] = [];
 
   // Add the text part first with possibly modified content
   contentParts.push({
@@ -3475,6 +3481,8 @@ async function prepareMessageWithAttachments(
       }
     }
   }
+
+  contentParts.push(...pdfFileParts);
 
   // Return the message with the content array
   return {

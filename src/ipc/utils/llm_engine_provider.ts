@@ -82,6 +82,14 @@ Creates a chat model for text generation.
   anthropic(modelId: ExampleChatModelId, chatParams: ChatParams): LanguageModel;
 }
 
+// The Engine's /chat/completions route only accepts text and image parts, so
+// callers need to know which transport a model uses before sending files.
+const engineChatCompletionsModels = new WeakSet<object>();
+
+export function isDyadEngineChatCompletionsModel(model: LanguageModel) {
+  return typeof model === "object" && engineChatCompletionsModels.has(model);
+}
+
 export function createDyadEngine(
   options: ExampleProviderSettings,
 ): DyadEngineProvider {
@@ -281,7 +289,9 @@ export function createDyadEngine(
       }),
     };
 
-    return new OpenAICompatibleChatLanguageModel(modelId, config);
+    const model = new OpenAICompatibleChatLanguageModel(modelId, config);
+    engineChatCompletionsModels.add(model);
+    return model;
   };
 
   const createFreeChatModel = (

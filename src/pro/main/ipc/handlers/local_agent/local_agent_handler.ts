@@ -49,7 +49,14 @@ import { isFreeProModel } from "@/lib/freeProModel";
 import { readSettings } from "@/main/settings";
 import { getDyadAppPath } from "@/paths/paths";
 import { detectFrameworkType } from "@/ipc/utils/framework_utils";
-import { getModelClient } from "@/ipc/utils/get_model_client";
+import {
+  getModelClient,
+  modelClientSupportsPdfInput,
+} from "@/ipc/utils/get_model_client";
+import {
+  messagesContainPdf,
+  PDF_INPUT_UNSUPPORTED_MESSAGE,
+} from "@/ipc/utils/chat_attachment_utils";
 import { safeSend } from "@/ipc/utils/safe_sender";
 import { sendChatChunk } from "@/ipc/utils/high_volume_delivery";
 import { broadcastToRegisteredWindows } from "@/ipc/utils/window_broadcast";
@@ -1250,6 +1257,15 @@ export async function handleLocalAgentStream(
       buildChatMessageHistory(chat.messages, {
         inferenceSource: currentInferenceSource() ?? undefined,
       });
+    if (
+      messagesContainPdf(messageHistory) &&
+      !modelClientSupportsPdfInput(modelClient)
+    ) {
+      throw new DyadError(
+        PDF_INPUT_UNSUPPORTED_MESSAGE,
+        DyadErrorKind.Validation,
+      );
+    }
     const latestUserMessage = [...messageHistory]
       .reverse()
       .find((message) => message.role === "user");

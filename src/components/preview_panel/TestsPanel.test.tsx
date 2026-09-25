@@ -237,7 +237,7 @@ describe("TestsPanel", () => {
   );
 
   it.each([false, true])(
-    "explains Supabase test accounts, data risks, and backups before running (enabled: %s)",
+    "explains Supabase test accounts and database backups before running (enabled: %s)",
     async (testingEnabled) => {
       mocks.app = {
         ...mocks.app,
@@ -248,7 +248,7 @@ describe("TestsPanel", () => {
       renderPanel();
       expect(
         await screen.findByText(
-          "Each test uses a temporary account, deleted afterward. Data in tables without RLS may change. Enable backups before testing.",
+          "Each test uses a temporary account, deleted afterward. Enable database backups before testing.",
         ),
       ).toBeTruthy();
     },

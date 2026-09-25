@@ -836,6 +836,31 @@ describe("runTypeScriptCheck in Docker mode", () => {
     });
   });
 
+  it("does not read host files through a guest-planted symlink", async () => {
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), "dyad-secret-"));
+    await fs.writeFile(path.join(outside, "id_rsa"), "PRIVATE KEY LINE\n");
+    await fs.symlink(
+      path.join(outside, "id_rsa"),
+      path.join(appPath, "src", "leak.ts"),
+    );
+    mockProbe({ status: "ok", entryPath: guestEntryPath, version: "5.9.3" });
+    // Guest code controls the compiler output, so it can name the symlink.
+    runGuestBufferedMock.mockResolvedValueOnce(
+      processResult({
+        code: 2,
+        stdout: "src/leak.ts(1,1): error TS1000: fake\n",
+      }),
+    );
+
+    const report = await runTypeScriptCheck({ appId: 42, appPath });
+
+    expect(report.problems).toEqual([
+      expect.objectContaining({ file: "src/leak.ts", line: 1 }),
+    ]);
+    expect(JSON.stringify(report)).not.toContain("PRIVATE KEY");
+    await fs.rm(outside, { recursive: true, force: true });
+  });
+
   it("uses the guest-reported version to gate flags", async () => {
     mockProbe({ status: "ok", entryPath: guestEntryPath, version: "3.9.10" });
     runGuestBufferedMock.mockResolvedValueOnce(processResult());

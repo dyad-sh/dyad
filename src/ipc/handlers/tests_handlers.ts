@@ -1321,6 +1321,8 @@ export async function runAppTestsCore({
                 ? { [TEST_SLOW_MO_ENV]: String(SLOW_MO_DELAY_MS) }
                 : {}),
               PLAYWRIGHT_JSON_OUTPUT_NAME: TEST_RESULTS_JSON,
+              // Non-interactive, as on the host: never open an HTML report.
+              CI: "true",
             },
             image: "playwright",
             joinNetworkOf: getAppDevServerContainerName(appId),

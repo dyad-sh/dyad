@@ -5,7 +5,7 @@ import log from "electron-log";
 import { getUserDataPath } from "@/paths/paths";
 import { PNPM_GLOBAL_INSTALL_PACKAGE } from "@/ipc/utils/socket_firewall";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { runDockerCli } from "./docker_cli";
+import { assertDockerAvailable, runDockerCli } from "./docker_cli";
 
 const logger = log.scope("docker_runtime_image");
 
@@ -108,6 +108,9 @@ export async function ensureRuntimeImage(
   if (!pending) {
     pending = (async () => {
       if (await imageExists(tag)) return;
+      // A stopped daemon also fails the inspect; report that as the user's
+      // setup problem rather than as a failed image build.
+      await assertDockerAvailable();
       await buildImage({
         tag,
         dockerfile:

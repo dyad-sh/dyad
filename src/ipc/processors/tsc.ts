@@ -314,13 +314,42 @@ export function parseTypeScriptDiagnostics(
     .problems;
 }
 
+/**
+ * Resolves symlinks and confirms the file is really inside the app. Needed
+ * when diagnostics come from the Docker guest: guest code controls both the
+ * compiler output and the files in the app directory, so a planted symlink
+ * named in a fake diagnostic would otherwise make the host read (and send to
+ * the model) a file outside the app.
+ */
+async function isRealPathInside(
+  appPath: string,
+  filePath: string,
+): Promise<boolean> {
+  try {
+    const [realAppPath, realFilePath] = await Promise.all([
+      fs.realpath(appPath),
+      fs.realpath(filePath),
+    ]);
+    return isPathInside(realAppPath, realFilePath);
+  } catch {
+    return false;
+  }
+}
+
 async function addSnippets(
   problems: ParsedDiagnostic[],
   appPath: string,
+  { untrustedOutput = false }: { untrustedOutput?: boolean } = {},
 ): Promise<ProblemReport> {
   const withSnippets = await Promise.all(
     problems.map(async ({ absoluteFilePath, ...problem }) => {
       if (!isPathInside(appPath, absoluteFilePath)) {
+        return problem;
+      }
+      if (
+        untrustedOutput &&
+        !(await isRealPathInside(appPath, absoluteFilePath))
+      ) {
         return problem;
       }
 
@@ -753,7 +782,8 @@ export async function runTypeScriptCheck({
   return typescriptUtilityProcessScheduler.runExclusive("tsc", async () => {
     try {
       const findConfig = () => findTypeScriptConfig(appPath);
-      const runner = isDockerRuntimeActive()
+      const inGuest = isDockerRuntimeActive();
+      const runner = inGuest
         ? await createGuestRunner(appId, appPath, findConfig)
         : await createHostRunner(appPath, findConfig);
       const { version, cliAppPath, cliConfigPath } = runner;
@@ -839,7 +869,9 @@ export async function runTypeScriptCheck({
       }));
 
       return {
-        ...(await addSnippets(hostProblems, appPath)),
+        ...(await addSnippets(hostProblems, appPath, {
+          untrustedOutput: inGuest,
+        })),
         outcome,
       };
     } catch (error) {

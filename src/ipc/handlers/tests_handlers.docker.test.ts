@@ -239,6 +239,7 @@ describe("runAppTestsCore in Docker mode", () => {
     expect(input.args).not.toContain("--headed");
     // Only the keys the runner needs: no host PATH, HOME, or provider keys.
     expect(input.env).toEqual({
+      CI: "true",
       DYAD_TEST_USER_EMAIL: "user@example.com",
       [TEST_BASE_URL_ENV]: `http://localhost:${getAppPort(1)}`,
       PLAYWRIGHT_JSON_OUTPUT_NAME: TEST_RESULTS_JSON,

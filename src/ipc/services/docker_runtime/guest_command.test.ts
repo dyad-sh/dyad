@@ -175,6 +175,16 @@ describe("buildGuestInvocation", () => {
     expect(args.slice(0, 4)).toEqual(["run", "--rm", "--init", "-i"]);
   });
 
+  it("does not set CI, which would make pnpm installs frozen-lockfile", () => {
+    const envArgs = valuesAfter(
+      buildGuestInvocation(baseInput(), "img").args,
+      "-e",
+    );
+    expect(envArgs.some((arg) => arg === "CI" || arg.startsWith("CI="))).toBe(
+      false,
+    );
+  });
+
   it("rejects environment names that could inject Docker flags", () => {
     expect(() =>
       buildGuestInvocation(

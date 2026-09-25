@@ -104,9 +104,13 @@ export async function resolveGitMask(hostRoot: string): Promise<GitMask> {
  * Values Dyad sets for every guest package-manager invocation. pnpm 11 reads
  * only `pnpm_config_*` for its own settings and ignores `npm_config_*`, so
  * pnpm settings are given in both spellings (npm still reads the latter).
+ *
+ * Deliberately no `CI`: with a lockfile present pnpm then defaults to
+ * `--frozen-lockfile`, so a package.json edited ahead of its lockfile (routine
+ * in a Dyad app) would fail every install. Commands that want CI behavior
+ * (Playwright runs) pass it themselves, as the host does.
  */
 export const GUEST_BASE_ENV: Readonly<Record<string, string>> = {
-  CI: "true",
   COREPACK_ENABLE_PROJECT_SPEC: "0",
   COREPACK_ENABLE_STRICT: "0",
   npm_config_package_manager_strict: "false",
@@ -279,8 +283,10 @@ export function sweepStaleGuestJobs(): Promise<void> {
   staleJobSweep ??= (async () => {
     try {
       const result = await runDockerCli([
+        // No -q: Docker ignores --format when -q is set, which would drop the
+        // session label and sweep this process's own live jobs.
         "ps",
-        "-aq",
+        "-a",
         "--filter",
         "label=dyad.managed=1",
         "--filter",

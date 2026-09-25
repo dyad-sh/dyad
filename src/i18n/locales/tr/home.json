@@ -465,6 +465,7 @@
       "proFeatureDescription": "Dyad Pro ile ekran görüntülerine açıklama ekleme yeteneğinin kilidini açın ve iş akışınızı geliştirin.",
       "getDyadPro": "Dyad Pro'yu Edinin"
     },
+    "testQueued": "Sırada",
     "testGate": {
       "settingsLoading": "Ayarlar yükleniyor…",
       "settingsUnavailable": "Dyad ayarlarınızı yükleyemediği için testlerin nasıl çalıştırılacağını belirleyemiyor.",

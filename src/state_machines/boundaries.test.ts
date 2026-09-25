@@ -18,6 +18,7 @@ const MACHINE_DIRECTORIES = [
   "plan_handoff",
   "preview_iframe",
   "screenshot",
+  "test_run_queue",
   "version_preview",
   "voice_to_text",
   "user_input",

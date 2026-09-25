@@ -31,7 +31,6 @@ import {
   Settings2,
 } from "lucide-react";
 import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
-import { previewNativeViewAppIdAtom } from "@/atoms/previewAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useCurrentAppUrl } from "@/hooks/useAppRun";
 import { selectedFileAtom } from "@/atoms/viewAtoms";
@@ -41,8 +40,6 @@ import {
   recordingStartRequestAtom,
 } from "@/atoms/recorderAtoms";
 import {
-  applyTestRunFinishedAtom,
-  applyTestRunStartedAtom,
   currentTestRunOutputAtom,
   currentTestSpecsAtom,
   currentTestRunStateAtom,
@@ -53,6 +50,7 @@ import {
 } from "@/atoms/testRuntimeAtoms";
 import type { TestCase, TestCaseResult, FileAttachment } from "@/ipc/types";
 import { ipc } from "@/ipc/types";
+import { useTestRunQueue } from "@/hooks/useTestRunQueue";
 import { useDeleteAppTest } from "@/hooks/useDeleteAppTest";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { useSwitchToPublishableKey } from "@/hooks/useLegacySupabaseKey";
@@ -500,6 +498,7 @@ function TestCaseRow({
 
 interface FileRowProps {
   appId: number;
+  queued: boolean;
   file: string;
   tests: TestCase[];
   status: TestStatus;
@@ -524,6 +523,7 @@ interface FileRowProps {
 
 function FileRow({
   appId,
+  queued,
   file,
   tests,
   status,
@@ -539,6 +539,7 @@ function FileRow({
   caseResult,
   onAskAiToFix,
 }: FileRowProps) {
+  const { t } = useTranslation("home");
   const fileName = file.split("/").pop() ?? file;
   const hasTests = tests.length > 0;
   const isFailing = status === "failed" || status === "inconclusive";
@@ -556,7 +557,12 @@ function FileRow({
 
   return (
     <div className="border-b border-border/60 last:border-b-0">
-      <div className="group flex items-center gap-2 px-3 py-2">
+      <div
+        className={cn(
+          "group flex items-center gap-2 px-3 py-2",
+          queued && "bg-amber-50 dark:bg-amber-950/30",
+        )}
+      >
         <button
           onClick={toggle}
           disabled={!hasTests}
@@ -590,6 +596,11 @@ function FileRow({
               statusTextClass(status),
             )}
           >
+            {queued && (
+              <span className="mr-1.5 inline-block rounded bg-amber-100 px-1 font-medium text-amber-900 dark:bg-amber-900/50 dark:text-amber-200">
+                {t("preview.testQueued")}
+              </span>
+            )}
             {statusLabel(status)}
             {hasTests &&
               ` · ${tests.length} ${tests.length === 1 ? "test" : "tests"}`}
@@ -656,13 +667,25 @@ export function TestsPanel() {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const specs = useAtomValue(currentTestSpecsAtom);
   const runState = useAtomValue(currentTestRunStateAtom);
+  const { data: testQueue } = useTestRunQueue(selectedAppId);
+  const queuedCount = testQueue?.queuedRuns.length ?? 0;
+  const queuedFiles = useMemo(() => {
+    const files = new Set<string>();
+    for (const run of testQueue?.queuedRuns ?? []) {
+      const selection =
+        run.testFiles ??
+        (run.testFile ? [run.testFile] : specs.map((spec) => spec.file));
+      for (const file of selection)
+        files.add(file.replace(/\\/g, "/").replace(/^\.\//, ""));
+    }
+    return files;
+  }, [testQueue?.queuedRuns, specs]);
   const appUrl = useCurrentAppUrl(selectedAppId);
   const { state: previewIframeState } =
     usePreviewIframeController(selectedAppId);
   const setSpecs = useSetAtom(setTestSpecsForAppAtom);
   const setRunState = useSetAtom(setTestRunStateForAppAtom);
   const setPreviewMode = useSetAtom(previewModeAtom);
-  const setPreviewNativeViewAppId = useSetAtom(previewNativeViewAppIdAtom);
   const setSelectedFile = useSetAtom(selectedFileAtom);
   const clearStagedDiff = useSetAtom(clearStagedDiffAtom);
   // For lazy, subscription-free reads of the streamed output (askAiToFix runs
@@ -809,7 +832,7 @@ export function TestsPanel() {
   // Owns the run's whole lifecycle, teardown included. Gates every action that
   // must not interleave with it (Run, Record, Delete), because the per-app lock
   // is still held during `cleaning-up`.
-  const isRunning = runState.phase !== "idle";
+  const isRunning = runState.phase !== "idle" || testQueue?.activeRun != null;
   // Narrower: tests are executing or their completed results are waiting for
   // teardown to finish. A stopped run cannot produce more results, so only
   // that cleanup path drops the per-test spinners.
@@ -904,12 +927,6 @@ export function TestsPanel() {
     prevRunRef.current = { appId: selectedAppId, phase: runState.phase };
   }, [selectedAppId, runState.phase]);
 
-  // Run-state transitions shared with the root-level agent-run subscriber
-  // (useTestRunEvents), so panel- and agent-initiated runs show the same
-  // spinners/cleared-output chrome.
-  const applyRunStarted = useSetAtom(applyTestRunStartedAtom);
-  const applyRunFinished = useSetAtom(applyTestRunFinishedAtom);
-
   // One-click swap of an app's generated Supabase client off the legacy anon
   // key it was created with. Offered beside the setup warning that detected it.
   // Shares the connector card's mutation so both surfaces stay on one code path
@@ -977,24 +994,6 @@ export function TestsPanel() {
       const appId = selectedAppId;
       const isSingleTest = file != null && line != null;
       const preview = runsInPreviewWebContentsView;
-      if (preview) {
-        setPreviewNativeViewAppId(appId);
-        setPreviewMode("preview");
-      }
-      const startedAt = Date.now();
-
-      applyRunStarted({
-        appId,
-        testFile: file,
-        testLine: line,
-        startedAt,
-        source: "panel",
-        // Read here, at the click, from the same helper the main process routes
-        // on. Reading it again while the run is in flight would let a Settings
-        // toggle relabel a run that already chose its path.
-        sandboxed: sandboxAvailable === true,
-      });
-
       try {
         const res = await ipc.tests.runAppTests({
           appId,
@@ -1011,49 +1010,17 @@ export function TestsPanel() {
           slowMo,
           preview,
         });
-        applyRunFinished({
-          appId,
-          res,
-          isPartialRun: isSingleTest,
-          expectedStartedAt: startedAt,
-        });
+        // Lifecycle and results arrive through the root event subscriber.
+        // Preflight refusals have no started event, so surface them here too.
+        if (res.infraError) showError(res.infraError.message);
       } catch (err) {
-        setRunState({
-          appId,
-          update: (prev) =>
-            prev.startedAt === startedAt
-              ? {
-                  ...prev,
-                  phase: "idle",
-                  runningFiles: [],
-                  runningTests: [],
-                  runError: {
-                    message: err instanceof Error ? err.message : String(err),
-                    kind: "unknown",
-                  },
-                }
-              : prev,
-        });
+        showError(err instanceof Error ? err.message : String(err));
       }
     },
-    [
-      selectedAppId,
-      applyRunStarted,
-      applyRunFinished,
-      setRunState,
-      headed,
-      parallel,
-      slowMo,
-      // Settings resolve after mount, so without this the click keeps
-      // dispatching the sandbox expectation from before they loaded.
-      sandboxAvailable,
-      runsInPreviewWebContentsView,
-      setPreviewMode,
-      setPreviewNativeViewAppId,
-    ],
+    [selectedAppId, headed, parallel, slowMo, runsInPreviewWebContentsView],
   );
 
-  // Agent-initiated runs (the tests:run-state lifecycle) are consumed by the
+  // Both sources' tests:run-state lifecycle events are consumed by the
   // root-level useTestRunEvents subscriber — NOT here — so the terminal
   // "finished" event still lands when this panel is unmounted mid-run.
 
@@ -1081,7 +1048,8 @@ export function TestsPanel() {
     if (
       stopRequestRef.current?.appId === request.appId &&
       stopRequestRef.current.startedAt === request.startedAt &&
-      stopRequestRef.current.runId === request.runId
+      stopRequestRef.current.runId === request.runId &&
+      queuedCount === 0
     ) {
       return;
     }
@@ -1094,13 +1062,14 @@ export function TestsPanel() {
       }
       showError(error);
     });
-  }, [selectedAppId, runState.runId, runState.startedAt]);
+  }, [selectedAppId, runState.runId, runState.startedAt, queuedCount]);
 
   // The kill is under way. Covers the optimistic latch and the authoritative
   // phase, so the label survives a remount mid-stop and covers agent runs the
   // user stopped from the chat.
   const showStopping =
     isStopping || (stopRequestedForActiveRun && !isCleaningUp);
+  const canCancelQueued = queuedCount > 0 && (showStopping || isCleaningUp);
 
   // User-initiated: hand the failure back into an Agent-mode chat turn so the
   // agent can read the failure, fix it, and re-run it with the run_tests tool.
@@ -1583,41 +1552,58 @@ export function TestsPanel() {
             </button>
           </span>
         )}
+        {queuedCount > 0 && (
+          <span
+            className="text-xs text-muted-foreground"
+            role="status"
+            title={testQueue?.queuedRuns
+              .map(
+                (run, index) =>
+                  `${index + 1}. ${run.testFile ?? run.testFiles?.join(", ") ?? "All tests"}`,
+              )
+              .join("\n")}
+          >
+            {queuedCount} {queuedCount === 1 ? "run" : "runs"} queued
+          </span>
+        )}
         {isRunning ? (
-          // During `cleaning-up` the tests are already gone and only the
-          // isolation teardown remains, so there is nothing left to stop. The
-          // button reports that state instead of offering a dead action.
+          // Cleanup cannot be interrupted, but pending requests can still be
+          // cancelled before they create another test environment.
           <button
             onClick={stop}
-            disabled={showStopping || isCleaningUp}
+            disabled={(showStopping || isCleaningUp) && queuedCount === 0}
             aria-label={
-              isCleaningUp
-                ? isRemovingTestDatabase
-                  ? "Removing the temporary test database"
-                  : runState.sandboxed
-                    ? "Cleaning up the test sandbox"
-                    : "Cleaning up test data"
-                : showStopping
-                  ? "Stopping tests"
-                  : "Stop running tests"
+              canCancelQueued
+                ? "Cancel queued tests"
+                : isCleaningUp
+                  ? isRemovingTestDatabase
+                    ? "Removing the temporary test database"
+                    : runState.sandboxed
+                      ? "Cleaning up the test sandbox"
+                      : "Cleaning up test data"
+                  : showStopping
+                    ? "Stopping tests"
+                    : "Stop running tests"
             }
             className={cn(
               "flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md",
-              showStopping || isCleaningUp
+              (showStopping || isCleaningUp) && !canCancelQueued
                 ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 cursor-default"
                 : "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/60 cursor-pointer",
             )}
           >
-            {showStopping || isCleaningUp ? (
+            {(showStopping || isCleaningUp) && !canCancelQueued ? (
               <Loader2 size={14} className="animate-spin" />
             ) : (
               <Square size={14} />
             )}
-            {isCleaningUp
-              ? "Cleaning up…"
-              : showStopping
-                ? "Stopping…"
-                : "Stop"}
+            {canCancelQueued
+              ? "Cancel queued"
+              : isCleaningUp
+                ? "Cleaning up…"
+                : showStopping
+                  ? "Stopping…"
+                  : "Stop"}{" "}
           </button>
         ) : (
           testingEnabled &&
@@ -1987,6 +1973,7 @@ export function TestsPanel() {
                 file={spec.file}
                 tests={spec.tests}
                 status={fileStatus(spec.file)}
+                queued={queuedFiles.has(spec.file)}
                 result={runState.results[spec.file]}
                 disabled={isRunning || testRunBlocked}
                 deleteDisabled={isRunning || isDeleting}

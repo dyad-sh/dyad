@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { userInputContracts, userInputEvents } from "../types/user_input";
 import { supabaseEvents } from "../types/supabase";
 import { gitEvents } from "../types/github";
+import { testsContracts, testsEvents } from "../types/tests";
 import {
   previewViewEvents,
   previewViewSendContracts,
@@ -23,6 +24,15 @@ describe("user-input preload channels", () => {
       expect(VALID_INVOKE_CHANNELS).toContain(contract.channel);
     }
     for (const event of Object.values(userInputEvents)) {
+      expect(VALID_RECEIVE_CHANNELS).toContain(event.channel);
+    }
+  });
+});
+
+describe("test queue preload channels", () => {
+  it("allows the queue snapshot and lifecycle subscriptions", () => {
+    expect(VALID_INVOKE_CHANNELS).toContain(testsContracts.getRunQueue.channel);
+    for (const event of Object.values(testsEvents)) {
       expect(VALID_RECEIVE_CHANNELS).toContain(event.channel);
     }
   });

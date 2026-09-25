@@ -267,6 +267,7 @@
     "security": "Seguridad",
     "publish": "Publicar",
     "tests": "Pruebas",
+    "testQueued": "En cola",
     "testGate": {
       "settingsLoading": "Cargando configuración…",
       "settingsUnavailable": "Dyad no pudo cargar tu configuración, así que no puede saber cómo se ejecutarían las pruebas.",

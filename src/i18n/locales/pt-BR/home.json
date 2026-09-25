@@ -264,6 +264,7 @@
     "security": "Segurança",
     "publish": "Publicar",
     "tests": "Testes",
+    "testQueued": "Na fila",
     "testGate": {
       "settingsLoading": "Carregando configurações…",
       "settingsUnavailable": "O Dyad não conseguiu carregar suas configurações, então não sabe como os testes seriam executados.",

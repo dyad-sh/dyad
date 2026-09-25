@@ -267,6 +267,7 @@
     "security": "Security",
     "publish": "Publish",
     "tests": "Tests",
+    "testQueued": "Queued",
     "testGate": {
       "settingsLoading": "Loading settings…",
       "settingsUnavailable": "Dyad couldn't load your settings, so it can't tell how tests would run.",

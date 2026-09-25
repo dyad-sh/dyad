@@ -153,9 +153,11 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 - Do not run a host-side production build while the active preview uses a cloud
   sandbox. Refuse with guidance to switch to the Host runtime until build
   execution is supported inside the active cloud sandbox.
-- Keep `run_tests` guidance explicit about sequential calls for the same app,
-  even across different specs: `runAppTestsWithIsolation` aborts the prior run
-  and waits for its cleanup before starting the replacement.
+- Same-app `run_tests` calls share a main-owned FIFO with panel runs. Keep
+  attempt guards, execution, cleanup, and result accounting inside the queue
+  slot; never cancel an earlier run just because a new request arrives. Queued
+  calls create no test environment. Caller cancellation removes only its own
+  request, while the Tests panel Stop clears the app queue and stops its active run.
 - `run_tests` only short-circuits on its dev-server pre-check when sandboxing is
   off — a sandboxed run serves the app itself and needs no preview. A test that
   relies on that short-circuit for a fast deterministic outcome must set

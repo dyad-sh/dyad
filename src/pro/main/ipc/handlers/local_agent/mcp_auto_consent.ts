@@ -2,6 +2,7 @@ import { streamText } from "ai";
 import { z } from "zod";
 import log from "electron-log";
 import { getModelClient } from "@/ipc/utils/get_model_client";
+import { getAuxiliarySettings } from "@/lib/auxiliaryModel";
 import { SMALL_MODEL_NAME } from "@/ipc/shared/language_model_constants";
 import type { LargeLanguageModel, UserSettings } from "@/lib/schemas";
 import { buildMcpConsentSystemPrompt } from "@/prompts/mcp_consent_policy";
@@ -16,7 +17,7 @@ import {
 
 const logger = log.scope("mcp-auto-consent");
 
-// Fixed classifier model routed through the Dyad Pro engine gateway.
+// Default classifier model; BYO uses the selected model instead.
 const MCP_CONSENT_MODEL: LargeLanguageModel = {
   name: SMALL_MODEL_NAME,
   provider: "openai",
@@ -89,7 +90,7 @@ export async function classifyMcpToolConsent(
   try {
     const { modelClient } = await getModelClient(
       MCP_CONSENT_MODEL,
-      input.settings,
+      getAuxiliarySettings(input.settings),
     );
 
     const stream = streamText({

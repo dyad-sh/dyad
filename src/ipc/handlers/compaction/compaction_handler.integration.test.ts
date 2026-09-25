@@ -298,6 +298,37 @@ describe("performCompaction", () => {
     );
   });
 
+  it("uses engine-backed Luna for Pro BYO compaction without an OpenAI key", async () => {
+    const accepted = {
+      selectedModel: { provider: "anthropic", name: "test-model" },
+      enableDyadPro: true,
+      proModelUsage: "api-key",
+      selectedChatMode: "local-agent",
+      providerSettings: {
+        auto: { apiKey: { value: "dyad-key" } },
+        anthropic: { apiKey: { value: "anthropic-key" } },
+      },
+    } as unknown as import("@/lib/schemas").UserSettings;
+    mockStreamText.mockReturnValue({ textStream: textStream(["Summary"]) });
+    const result = await performCompaction(
+      { sender: {} } as never,
+      chatId,
+      "/tmp/test-app",
+      "request-id",
+      undefined,
+      { settingsOverride: accepted },
+    );
+    expect(result.success).toBe(true);
+    expect(mockGetModelClient).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: "openai", name: SMALL_MODEL_NAME }),
+      expect.objectContaining({
+        providerSettings: accepted.providerSettings,
+        proModelUsage: "pro",
+      }),
+      expect.objectContaining({ provider: "openai", name: SMALL_MODEL_NAME }),
+    );
+  });
+
   it("pins the benchmarked compaction model for Dyad Pro users", async () => {
     settingsState.current = {
       selectedModel: { provider: "anthropic", name: "test-model" },

@@ -105,7 +105,7 @@ describe("ChatErrorBox subscription billing errors", () => {
   it.each([
     [
       "OUT_OF_CREDITS",
-      "Add credits to continue using your subscription.",
+      "Add credits to continue using Pro features.",
       "Get more credits",
       "https://academy.dyad.sh/subscription",
     ],

@@ -77,26 +77,33 @@ export function ProModeSelector() {
               </a>
             </div>
           )}
-          {hasProKey && (
+          {(hasProKey || settings?.proModelUsage === "api-key") && (
             <div className="space-y-2">
               <Label>Model usage</Label>
               <ToggleGroup
                 aria-label="Model usage"
                 variant="outline"
                 size="sm"
-                className="w-full"
+                orientation="vertical"
+                className="w-full flex-col items-stretch gap-1 [&>button]:rounded-md [&>button]:border [&>button]:flex-none"
                 value={[
-                  subscriptionConnected && settings?.proModelUsage !== "pro"
-                    ? "subscription"
-                    : "pro",
+                  settings?.proModelUsage === "api-key"
+                    ? "api-key"
+                    : subscriptionConnected && settings?.proModelUsage !== "pro"
+                      ? "subscription"
+                      : "pro",
                 ]}
                 onValueChange={(value) => {
                   if (
                     value[0] === "pro" ||
+                    value[0] === "api-key" ||
                     (value[0] === "subscription" && subscriptionConnected)
                   )
                     void updateSettings({
-                      proModelUsage: value[0] as "pro" | "subscription",
+                      proModelUsage: value[0] as
+                        | "pro"
+                        | "subscription"
+                        | "api-key",
                     });
                 }}
               >
@@ -111,6 +118,7 @@ export function ProModeSelector() {
                 </ToggleGroupItem>
                 <ToggleGroupItem
                   value="pro"
+                  disabled={!hasProKey}
                   className="text-xs"
                   onClick={() => {
                     // Disconnected accounts display Pro even when the saved
@@ -118,6 +126,7 @@ export function ProModeSelector() {
                     // Clicking that selected toggle emits an empty value.
                     if (
                       !subscriptionConnected &&
+                      settings?.proModelUsage !== "api-key" &&
                       settings?.proModelUsage !== "pro"
                     )
                       void updateSettings({ proModelUsage: "pro" });
@@ -125,7 +134,19 @@ export function ProModeSelector() {
                 >
                   Pro credits
                 </ToggleGroupItem>
+                <ToggleGroupItem value="api-key" className="text-xs">
+                  Your API keys & local
+                </ToggleGroupItem>
               </ToggleGroup>
+              {settings?.proModelUsage === "api-key" && (
+                <p className="text-xs text-muted-foreground">
+                  Provider charges apply separately. While Dyad Pro is on, each
+                  main-chat request also uses Dyad credits (lower rate for local
+                  models). Pro helper tasks use cloud models through Dyad and
+                  consume Pro credits at normal model rates, even with local
+                  chat models.
+                </p>
+              )}
             </div>
           )}
           <SelectorRow

@@ -14,6 +14,7 @@ import {
 } from "@/db/schema";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import { getModelClient } from "@/ipc/utils/get_model_client";
+import { getAuxiliarySettings } from "@/lib/auxiliaryModel";
 import { getAiHeaders, getProviderOptions } from "@/ipc/utils/provider_options";
 import { withLock } from "@/ipc/utils/lock_utils";
 import { fastTextOutput } from "@/ipc/utils/stream_text_utils";
@@ -1908,8 +1909,9 @@ async function personaModelSettings(
   acceptedSettings?: UserSettings,
 ) {
   const defaults = MODELS[persona];
+  const settings = await getChatInferenceSettings(chatId, acceptedSettings);
   return {
-    ...(await getChatInferenceSettings(chatId, acceptedSettings)),
+    ...getAuxiliarySettings(settings),
     selectedModel: {
       provider: defaults.provider,
       name: defaults.name,
@@ -1925,6 +1927,11 @@ async function preflightPersonaModel(
   acceptedSettings?: UserSettings,
 ): Promise<void> {
   const defaults = MODELS[persona];
+  const settings = await personaModelSettings(
+    persona,
+    chatId,
+    acceptedSettings,
+  );
   const catalog = await getBuiltinLanguageModelCatalog();
   const available = catalog.modelsByProvider[defaults.provider]?.some(
     (model) => model.apiName === defaults.name,
@@ -1935,16 +1942,12 @@ async function preflightPersonaModel(
       DyadErrorKind.Precondition,
     );
   }
+
   try {
-    const settings = await personaModelSettings(
-      persona,
-      chatId,
-      acceptedSettings,
-    );
     await getModelClient(settings.selectedModel, settings);
   } catch (error) {
     throw new DyadError(
-      `${persona} could not start because ${defaults.name} is not configured. Check your Dyad Pro model access and try again.`,
+      `${persona} could not start because ${settings.selectedModel.name} is not configured. Check your selected model and credentials and try again.`,
       DyadErrorKind.Precondition,
       { cause: error },
     );

@@ -250,6 +250,32 @@ describe("before a Worker can be connected", () => {
     expect(focusWindow).toHaveBeenCalledTimes(1);
   });
 
+  it("reports a failed manual check and clears it on the next one", async () => {
+    cloudflare.checkRepoAccess.mockResolvedValue({
+      hasAccess: false,
+      githubInstallationsUrl: INSTALLATIONS_URL,
+    });
+    renderConnector();
+    const check = await screen.findByRole("button", { name: "Check Again" });
+
+    cloudflare.checkRepoAccess.mockRejectedValueOnce(
+      new Error("Authentication error"),
+    );
+    fireEvent.click(check);
+
+    const error = await screen.findByTestId("cloudflare-repo-access-error");
+    expect(error.textContent).toContain("Authentication error");
+    // The prompt itself stays, since a failed check is not an answer.
+    expect(screen.getByTestId("cloudflare-repo-access")).toBeTruthy();
+
+    fireEvent.click(check);
+
+    await waitFor(() =>
+      expect(screen.queryByTestId("cloudflare-repo-access-error")).toBeNull(),
+    );
+    expect(screen.getByTestId("cloudflare-repo-access")).toBeTruthy();
+  });
+
   it("leaves the window alone when access was never missing", async () => {
     renderConnector();
 

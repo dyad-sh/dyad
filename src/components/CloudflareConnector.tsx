@@ -481,15 +481,19 @@ function RepoAccessPrompt({
   /** Where the repository is added to an install Cloudflare already has. */
   githubInstallationsUrl: string;
   /** Asks Cloudflare again right away. */
-  onCheck: () => Promise<unknown>;
+  onCheck: () => Promise<{ error: Error | null }>;
 }) {
-  // Only a check the user asked for shows progress. The background poll
-  // would otherwise flicker the button every few seconds.
+  // Only a check the user asked for shows progress and reports a failure.
+  // The background poll keeps the prompt as it is, so a passing network
+  // problem does not replace it with an error every few seconds.
   const [checking, setChecking] = useState(false);
+  const [checkError, setCheckError] = useState<Error | null>(null);
   const check = async () => {
     setChecking(true);
+    setCheckError(null);
     try {
-      await onCheck();
+      const result = await onCheck();
+      setCheckError(result.error);
     } finally {
       setChecking(false);
     }
@@ -535,6 +539,14 @@ function RepoAccessPrompt({
           )}
           Check Again
         </Button>
+        {checkError && (
+          <div
+            className={`${errorClass} mt-2`}
+            data-testid="cloudflare-repo-access-error"
+          >
+            {errorMessage(checkError)}
+          </div>
+        )}
       </div>
     </div>
   );

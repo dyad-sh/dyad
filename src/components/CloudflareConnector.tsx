@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { ExternalLink, Loader2 } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { ExternalLink, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -45,6 +45,9 @@ function deployTriggerText(target: { rootDirectory: string; label: string }) {
     ? "Deploys whenever a sync pushes new commits to GitHub."
     : `Deploys whenever a sync pushes changes inside ${target.label} to GitHub.`;
 }
+
+/** How long a requested check shows its spinner at the least. */
+const RECHECK_MIN_SPIN_MS = 400;
 
 const noticeClass =
   "bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md p-3 text-sm text-blue-800 dark:text-blue-200";
@@ -162,6 +165,59 @@ function TokenForm() {
 // Account, target and readiness
 // ---------------------------------------------------------------------------
 
+/**
+ * Re-runs a check the tab otherwise repeats on its own schedule. Only a check
+ * asked for here shows progress or reports a failure, so background refetches
+ * leave what is on screen alone.
+ */
+function RecheckButton({
+  label,
+  onCheck,
+  className,
+}: {
+  label: string;
+  onCheck: () => Promise<{ error: Error | null }>;
+  className?: string;
+}) {
+  const [checking, setChecking] = useState(false);
+  const [checkError, setCheckError] = useState<Error | null>(null);
+  const check = async () => {
+    setChecking(true);
+    setCheckError(null);
+    try {
+      // A check that returns instantly barely shows, so the spinner stays
+      // long enough to confirm the click landed.
+      const [result] = await Promise.all([
+        onCheck(),
+        new Promise((resolve) => setTimeout(resolve, RECHECK_MIN_SPIN_MS)),
+      ]);
+      setCheckError(result.error);
+    } finally {
+      setChecking(false);
+    }
+  };
+  return (
+    <div className={className}>
+      <Button size="sm" variant="ghost" onClick={check} disabled={checking}>
+        {checking ? (
+          <Loader2 className="h-3 w-3 animate-spin" />
+        ) : (
+          <RefreshCw className="h-3 w-3" />
+        )}
+        {label}
+      </Button>
+      {checkError && (
+        <div
+          className={`${errorClass} mt-2 text-left`}
+          data-testid="cloudflare-recheck-error"
+        >
+          {errorMessage(checkError)}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ConnectedAccount({ appId }: { appId: number }) {
   const accounts = useCloudflareAccounts();
   const status = useCloudflareAppStatus({ appId });
@@ -219,8 +275,13 @@ function ConnectedAccount({ appId }: { appId: number }) {
         <p>
           Dyad deploys folders that contain a Wrangler config (wrangler.jsonc,
           wrangler.json or wrangler.toml). Add a Worker to this app, then sync
-          it to GitHub.
+          it to GitHub and click Refresh.
         </p>
+        <RecheckButton
+          label="Refresh"
+          className="mt-3"
+          onCheck={() => status.refetch()}
+        />
       </div>
     );
   }
@@ -233,9 +294,31 @@ function ConnectedAccount({ appId }: { appId: number }) {
   const connection = connections.find(
     (candidate) => candidate.rootDirectory === folder.rootDirectory,
   );
+  // Looks for Wrangler configs added since the tab opened. While the Worker
+  // form is up it sits on the form's own row; otherwise it gets a row here.
+  const rescan = (
+    <RecheckButton
+      label="Refresh"
+      className="text-right"
+      onCheck={() => status.refetch()}
+    />
+  );
+  const settingUp =
+    !connection &&
+    target !== null &&
+    accountList !== undefined &&
+    accountList.length > 0 &&
+    status.data.synced &&
+    accountId !== null;
 
   return (
     <div className="space-y-4" data-testid="cloudflare-connector">
+      <p className="text-sm text-gray-600 dark:text-gray-400">
+        {folders.length > 1 &&
+          "Each folder here deploys to its own Worker, and each connected one deploys when a sync pushes changes to it. "}
+        Dyad finds deployable Cloudflare apps on its own, but you can click
+        Refresh to pick up recent changes.
+      </p>
       {folders.length > 1 && (
         <TargetList
           folders={folders}
@@ -243,6 +326,17 @@ function ConnectedAccount({ appId }: { appId: number }) {
           selected={folder.rootDirectory}
           onSelect={setChosenTarget}
         />
+      )}
+      {!settingUp && (
+        <div
+          className="flex items-center justify-between gap-2 -mt-2"
+          data-testid="cloudflare-target-rescan"
+        >
+          <span className="text-sm text-gray-600 dark:text-gray-400 truncate">
+            {folders.length === 1 ? folder.label : ""}
+          </span>
+          {rescan}
+        </div>
       )}
 
       {connection ? (
@@ -336,6 +430,7 @@ function ConnectedAccount({ appId }: { appId: number }) {
               accountId={accountId}
               target={target}
               connections={status.data.connections}
+              toolbar={rescan}
             />
           ) : null}
         </>
@@ -369,10 +464,6 @@ function TargetList({
 }) {
   return (
     <div className="space-y-2" data-testid="cloudflare-target-list">
-      <p className="text-sm text-gray-600 dark:text-gray-400">
-        Each folder here deploys to its own Worker, and each connected one
-        deploys when a sync pushes changes to it.
-      </p>
       <ul className="border rounded-md divide-y">
         {folders.map((target) => {
           const connection = connections.find(
@@ -419,11 +510,14 @@ function TargetSetup({
   accountId,
   target,
   connections,
+  toolbar,
 }: {
   appId: number;
   accountId: string;
   target: CloudflareTargetSummary;
   connections: CloudflareConnection[];
+  /** Shown at the end of the form's first row. */
+  toolbar: ReactNode;
 }) {
   const access = useCloudflareRepoAccess({ appId, accountId });
   const workers = useCloudflareWorkers({ accountId });
@@ -454,6 +548,7 @@ function TargetSetup({
       inUseWorkerNames={connections
         .filter((connection) => connection.accountId === accountId)
         .map((connection) => connection.workerName)}
+      toolbar={toolbar}
     />
   );
 }
@@ -506,6 +601,7 @@ function WorkerForm({
   target,
   workers,
   inUseWorkerNames,
+  toolbar,
 }: {
   appId: number;
   accountId: string;
@@ -513,6 +609,7 @@ function WorkerForm({
   workers: CloudflareWorkerSummary[];
   /** Workers another folder of this app already deploys to. */
   inUseWorkerNames: string[];
+  toolbar: ReactNode;
 }) {
   // A Worker holds one script, so one already deployed from another folder is
   // not a choice here. It still counts as a taken name.
@@ -627,6 +724,7 @@ function WorkerForm({
         >
           Use existing Worker
         </Button>
+        <div className="ml-auto">{toolbar}</div>
       </div>
 
       {mode === "create" ? (

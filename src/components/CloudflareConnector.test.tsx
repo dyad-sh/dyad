@@ -5,6 +5,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -207,6 +208,102 @@ describe("before a Worker can be connected", () => {
       expect.stringContaining("github.com/apps/cloudflare-workers-and-pages"),
     ]);
     expect(screen.queryByTestId("cloudflare-worker-form")).toBeNull();
+  });
+});
+
+describe("an app with no Wrangler config", () => {
+  beforeEach(() => {
+    cloudflare.getAppStatus.mockResolvedValue(appStatus({ targets: [] }));
+  });
+
+  it("looks for a config again when asked, without waiting", async () => {
+    renderConnector();
+    const check = await screen.findByRole("button", { name: "Refresh" });
+    expect(screen.getByTestId("cloudflare-no-targets")).toBeTruthy();
+    expect(cloudflare.getAppStatus).toHaveBeenCalledTimes(1);
+
+    // The user has since added a Worker and synced it.
+    cloudflare.getAppStatus.mockResolvedValue(appStatus());
+    fireEvent.click(check);
+
+    expect(await screen.findByTestId("cloudflare-worker-form")).toBeTruthy();
+    expect(cloudflare.getAppStatus).toHaveBeenCalledTimes(2);
+    expect(screen.queryByTestId("cloudflare-no-targets")).toBeNull();
+  });
+
+  it("reports a failed check and clears it on the next one", async () => {
+    renderConnector();
+    const check = await screen.findByRole("button", { name: "Refresh" });
+
+    cloudflare.getAppStatus.mockRejectedValueOnce(
+      new Error("Could not read the branch"),
+    );
+    fireEvent.click(check);
+
+    const error = await screen.findByTestId("cloudflare-recheck-error");
+    expect(error.textContent).toContain("Could not read the branch");
+    expect(screen.getByTestId("cloudflare-no-targets")).toBeTruthy();
+
+    fireEvent.click(check);
+
+    await waitFor(() =>
+      expect(screen.queryByTestId("cloudflare-recheck-error")).toBeNull(),
+    );
+    expect(screen.getByTestId("cloudflare-no-targets")).toBeTruthy();
+  });
+});
+
+describe("an app whose Wrangler configs are already listed", () => {
+  it("picks up a folder added since, when asked", async () => {
+    renderConnector();
+    expect(await screen.findByTestId("cloudflare-worker-form")).toBeTruthy();
+    expect(screen.queryByTestId("cloudflare-target-list")).toBeNull();
+    expect(cloudflare.getAppStatus).toHaveBeenCalledTimes(1);
+
+    cloudflare.getAppStatus.mockResolvedValue(
+      appStatus({
+        targets: [
+          TARGET,
+          {
+            rootDirectory: "api",
+            configPath: "api/wrangler.toml",
+            label: "api",
+            suggestedWorkerName: "shop-api-api",
+          },
+        ],
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+
+    const list = await screen.findByTestId("cloudflare-target-list");
+    expect(list.textContent).toContain("api");
+    expect(cloudflare.getAppStatus).toHaveBeenCalledTimes(2);
+  });
+
+  it("puts the button on the Worker form's first row while a folder is being set up", async () => {
+    renderConnector();
+    const form = await screen.findByTestId("cloudflare-worker-form");
+
+    expect(within(form).getByRole("button", { name: "Refresh" })).toBeTruthy();
+    expect(screen.queryByTestId("cloudflare-target-rescan")).toBeNull();
+    // The button is explained even when there is no folder list, but the
+    // list is not described.
+    const text = screen.getByTestId("cloudflare-connector").textContent;
+    expect(text).toMatch(/click Refresh/);
+    expect(text).not.toMatch(/Each folder here/);
+  });
+
+  it("gives the button its own row, naming the only folder, once it is connected", async () => {
+    cloudflare.getAppStatus.mockResolvedValue(
+      appStatus({ connections: [CONNECTION] }),
+    );
+    renderConnector();
+    await screen.findByTestId("cloudflare-connector");
+
+    const row = screen.getByTestId("cloudflare-target-rescan");
+    expect(row.textContent).toContain(TARGET.label);
+    expect(within(row).getByRole("button", { name: "Refresh" })).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "Refresh" })).toHaveLength(1);
   });
 });
 
@@ -653,8 +750,10 @@ describe("an app with several Workers", () => {
     expect(list.textContent).toContain("Connected to shop-api");
     expect(list.textContent).toContain("cron");
     expect(list.textContent).toContain("Not connected");
-    // Both can be connected; the list says so rather than implying a choice.
-    expect(list.textContent).toMatch(/each connected one deploys/);
+    // Both can be connected; the tab says so rather than implying a choice.
+    expect(screen.getByTestId("cloudflare-connector").textContent).toMatch(
+      /each connected one deploys/,
+    );
   });
 
   it("opens on the first folder, showing its deployment", async () => {

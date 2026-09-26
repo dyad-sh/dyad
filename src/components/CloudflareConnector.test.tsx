@@ -35,8 +35,9 @@ const cloudflare = vi.hoisted(() => ({
   disconnect: vi.fn(),
 }));
 const openExternalUrl = vi.hoisted(() => vi.fn());
+const focusWindow = vi.hoisted(() => vi.fn());
 vi.mock("@/ipc/types", () => ({
-  ipc: { cloudflare, system: { openExternalUrl } },
+  ipc: { cloudflare, system: { openExternalUrl, focusWindow } },
 }));
 
 const showWarning = vi.hoisted(() => vi.fn());
@@ -44,6 +45,7 @@ vi.mock("@/lib/toast", () => ({ showWarning }));
 
 const { CloudflareConnector } = await import("./CloudflareConnector");
 
+const INSTALLATIONS_URL = "https://github.com/settings/installations";
 const TARGET = {
   rootDirectory: "worker",
   configPath: "worker/wrangler.jsonc",
@@ -87,7 +89,10 @@ beforeEach(() => {
   cloudflare.listAccounts.mockResolvedValue([{ id: "acct-1", name: "Acme" }]);
   cloudflare.listWorkers.mockResolvedValue([]);
   cloudflare.getAppStatus.mockResolvedValue(appStatus());
-  cloudflare.checkRepoAccess.mockResolvedValue({ hasAccess: true });
+  cloudflare.checkRepoAccess.mockResolvedValue({
+    hasAccess: true,
+    githubInstallationsUrl: INSTALLATIONS_URL,
+  });
   cloudflare.getDeploymentStatus.mockResolvedValue({
     state: "live",
     commitHash: "abc1234def",
@@ -189,24 +194,93 @@ describe("before a Worker can be connected", () => {
     expect(screen.queryByTestId("cloudflare-worker-form")).toBeNull();
   });
 
-  it("offers both ways to grant access when Cloudflare cannot see the repository", async () => {
-    cloudflare.checkRepoAccess.mockResolvedValue({ hasAccess: false });
+  it("offers the dashboard first and GitHub's install settings second when Cloudflare cannot see the repository", async () => {
+    cloudflare.checkRepoAccess.mockResolvedValue({
+      hasAccess: false,
+      githubInstallationsUrl:
+        "https://github.com/organizations/acme/settings/installations",
+    });
     renderConnector();
 
     fireEvent.click(
       await screen.findByRole("button", {
-        name: "Connect GitHub on Cloudflare",
+        name: "Open Cloudflare Dashboard",
       }),
     );
     fireEvent.click(
-      screen.getByRole("button", { name: "Add This Repository on GitHub" }),
+      screen.getByRole("button", {
+        name: "Manage Repository Access on GitHub",
+      }),
     );
 
     expect(openExternalUrl.mock.calls.map((call) => call[0])).toEqual([
-      expect.stringContaining("dash.cloudflare.com"),
-      expect.stringContaining("github.com/apps/cloudflare-workers-and-pages"),
+      "https://dash.cloudflare.com/?to=/:account/workers-and-pages/create",
+      "https://github.com/organizations/acme/settings/installations",
     ]);
+    // Check Again comes after both ways of granting access.
+    const buttons = screen
+      .getAllByRole("button")
+      .map((button) => button.textContent);
+    expect(buttons.indexOf("Check Again")).toBeGreaterThan(
+      buttons.indexOf("Manage Repository Access on GitHub"),
+    );
     expect(screen.queryByTestId("cloudflare-worker-form")).toBeNull();
+    expect(focusWindow).not.toHaveBeenCalled();
+  });
+
+  it("checks again when asked, without waiting for the next poll", async () => {
+    cloudflare.checkRepoAccess.mockResolvedValue({
+      hasAccess: false,
+      githubInstallationsUrl: INSTALLATIONS_URL,
+    });
+    renderConnector();
+
+    const check = await screen.findByRole("button", { name: "Check Again" });
+    expect(cloudflare.checkRepoAccess).toHaveBeenCalledTimes(1);
+
+    cloudflare.checkRepoAccess.mockResolvedValue({
+      hasAccess: true,
+      githubInstallationsUrl: INSTALLATIONS_URL,
+    });
+    fireEvent.click(check);
+
+    expect(await screen.findByTestId("cloudflare-worker-form")).toBeTruthy();
+    expect(cloudflare.checkRepoAccess).toHaveBeenCalledTimes(2);
+    // The user is in a browser when this happens, and Cloudflare says nothing.
+    expect(focusWindow).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports a failed manual check and clears it on the next one", async () => {
+    cloudflare.checkRepoAccess.mockResolvedValue({
+      hasAccess: false,
+      githubInstallationsUrl: INSTALLATIONS_URL,
+    });
+    renderConnector();
+    const check = await screen.findByRole("button", { name: "Check Again" });
+
+    cloudflare.checkRepoAccess.mockRejectedValueOnce(
+      new Error("Authentication error"),
+    );
+    fireEvent.click(check);
+
+    const error = await screen.findByTestId("cloudflare-repo-access-error");
+    expect(error.textContent).toContain("Authentication error");
+    // The prompt itself stays, since a failed check is not an answer.
+    expect(screen.getByTestId("cloudflare-repo-access")).toBeTruthy();
+
+    fireEvent.click(check);
+
+    await waitFor(() =>
+      expect(screen.queryByTestId("cloudflare-repo-access-error")).toBeNull(),
+    );
+    expect(screen.getByTestId("cloudflare-repo-access")).toBeTruthy();
+  });
+
+  it("leaves the window alone when access was never missing", async () => {
+    renderConnector();
+
+    expect(await screen.findByTestId("cloudflare-worker-form")).toBeTruthy();
+    expect(focusWindow).not.toHaveBeenCalled();
   });
 });
 

@@ -3,7 +3,7 @@
 When adding a new toggle/setting to the Settings page:
 
 1. Add the field to `UserSettingsSchema` in `src/lib/schemas.ts`
-2. Add the default value in `DEFAULT_SETTINGS` in `src/main/settings.ts`. If renderer code also needs the default, export a narrowly scoped, side-effect-free constant from `src/shared/settings_defaults.ts` and reuse that constant in `DEFAULT_SETTINGS`; importing `src/main/settings.ts` pulls electron/node into the renderer bundle.
+2. For a setting with a permanent built-in default, add its value to `DEFAULT_SETTINGS` in `src/main/settings.ts`. If renderer code also needs the default, export a narrowly scoped, side-effect-free constant from `src/shared/settings_defaults.ts` and reuse that constant in `DEFAULT_SETTINGS`; importing `src/main/settings.ts` pulls electron/node into the renderer bundle.
 3. Add a `SETTING_IDS` entry and search index entry in `src/lib/settingsSearchIndex.ts`
 4. Create a switch component (e.g., `src/components/MySwitch.tsx`) - follow `AutoApproveSwitch.tsx` as a template
 5. Import and add the switch to the relevant section in `src/pages/settings.tsx`
@@ -21,6 +21,10 @@ For settings worth tracking in telemetry:
 For settings whose default can be overridden remotely:
 
 - Prefer leaving the raw stored field unset until the user explicitly changes it, then compute the effective value as `stored value ?? remote default ?? built-in fallback`. Do not persist remote-applied defaults into `user-settings.json`.
+
+For experiments that may later become enabled by default:
+
+- Add an optional boolean to `BaseUserSettingsFields`, but leave it out of `DEFAULT_SETTINGS` while it defaults off. `undefined` is already falsey; persisting `false` would override a later default of `true` for existing users. Check the effective flag consistently wherever the experiment changes runtime behavior or generated guidance.
 
 For schema-validated settings:
 

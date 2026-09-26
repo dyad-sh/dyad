@@ -1,4 +1,3 @@
-import { useState } from "react";
 import {
   useMutation,
   useQuery,
@@ -20,9 +19,7 @@ const SYNC_POLL_MS = 4_000;
  * How often to ask Cloudflare whether it can see the repository yet: quickly
  * while the user is likely mid-grant, then slowly for a prompt left open.
  */
-const REPO_ACCESS_POLL_MS = 4_000;
-const REPO_ACCESS_SLOW_POLL_MS = 15_000;
-const REPO_ACCESS_FAST_WINDOW_MS = 60_000;
+const REPO_ACCESS_POLL_MS = 10_000;
 /** A push starts a build Dyad is not told about, so an idle card still polls. */
 const IDLE_STATUS_POLL_MS = 15_000;
 const ACTIVE_STATUS_POLL_MS = 5_000;
@@ -88,19 +85,17 @@ export function useCloudflareRepoAccess({
   appId: number;
   accountId: string;
 }) {
-  // Timed from when the prompt appears, so each wait starts out quick.
-  const [waitingSince] = useState(() => Date.now());
   return useQuery({
     queryKey: queryKeys.cloudflare.repoAccess({ appId, accountId }),
     queryFn: () => ipc.cloudflare.checkRepoAccess({ appId, accountId }),
     ...ALWAYS_REFETCH,
     // A failed check is not an answer, so it keeps asking until access is seen.
     refetchInterval: (query) =>
-      query.state.data?.hasAccess === true
-        ? false
-        : Date.now() - waitingSince < REPO_ACCESS_FAST_WINDOW_MS
-          ? REPO_ACCESS_POLL_MS
-          : REPO_ACCESS_SLOW_POLL_MS,
+      query.state.data?.hasAccess === true ? false : REPO_ACCESS_POLL_MS,
+    // The user grants access in a browser that usually covers Dyad, and a
+    // covered or minimized window counts as hidden. The poll has to run then,
+    // or Dyad could never notice and come forward while they are away.
+    refetchIntervalInBackground: true,
   });
 }
 

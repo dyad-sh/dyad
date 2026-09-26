@@ -342,6 +342,8 @@ export async function getAccountSubdomain(
 export interface GithubRepoIdentity {
   ownerId: string;
   ownerLogin: string;
+  /** GitHub keeps app installs under the user's or the organization's settings. */
+  ownerType: "User" | "Organization";
   repoId: string;
   repoName: string;
 }

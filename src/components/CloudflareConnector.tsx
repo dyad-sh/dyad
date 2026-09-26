@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { ExternalLink, Loader2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ExternalLink, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -29,7 +29,6 @@ import {
 } from "@/hooks/useCloudflareDeploy";
 import {
   CLOUDFLARE_CONNECT_GITHUB_URL,
-  CLOUDFLARE_GITHUB_APP_URL,
   buildCloudflareTokenTemplateUrl,
   isDeploymentInProgress,
   isValidWorkerName,
@@ -427,6 +426,18 @@ function TargetSetup({
 }) {
   const access = useCloudflareRepoAccess({ appId, accountId });
   const workers = useCloudflareWorkers({ accountId });
+  // Access arrives while the user is off in a browser, and Cloudflare gives
+  // no sign of it there. Dyad comes forward so they know to come back.
+  const wasBlocked = useRef(false);
+  const hasAccess = access.data?.hasAccess;
+  useEffect(() => {
+    if (hasAccess === false) {
+      wasBlocked.current = true;
+    } else if (hasAccess === true && wasBlocked.current) {
+      wasBlocked.current = false;
+      ipc.system.focusWindow();
+    }
+  }, [hasAccess]);
 
   if (access.isLoading || workers.isLoading) {
     return (
@@ -443,7 +454,12 @@ function TargetSetup({
     ) : null;
   }
   if (!access.data.hasAccess) {
-    return <RepoAccessPrompt />;
+    return (
+      <RepoAccessPrompt
+        githubInstallationsUrl={access.data.githubInstallationsUrl}
+        onCheck={() => access.refetch()}
+      />
+    );
   }
   return (
     <WorkerForm
@@ -458,40 +474,68 @@ function TargetSetup({
   );
 }
 
-function RepoAccessPrompt() {
+function RepoAccessPrompt({
+  githubInstallationsUrl,
+  onCheck,
+}: {
+  /** Where the repository is added to an install Cloudflare already has. */
+  githubInstallationsUrl: string;
+  /** Asks Cloudflare again right away. */
+  onCheck: () => Promise<unknown>;
+}) {
+  // Only a check the user asked for shows progress. The background poll
+  // would otherwise flicker the button every few seconds.
+  const [checking, setChecking] = useState(false);
+  const check = async () => {
+    setChecking(true);
+    try {
+      await onCheck();
+    } finally {
+      setChecking(false);
+    }
+  };
   return (
     <div className={warningClass} data-testid="cloudflare-repo-access">
       <p className="font-medium mb-1">
         Cloudflare needs access to this GitHub repository
       </p>
       <p>
-        If you have never connected Cloudflare to GitHub, open Workers &amp;
-        Pages in the Cloudflare dashboard, choose Create, then Import a
-        repository, and connect GitHub. Choosing "All repositories" means you
-        will not be asked again for future apps. If Cloudflare is already
-        connected, add this repository to it on GitHub.
+        Click the button below to go to the Cloudflare dashboard. Then connect
+        GitHub and grant access to this repository or to all repositories.
       </p>
-      <div className="flex flex-wrap gap-2 mt-3">
+      <div className="mt-3">
         <Button
           size="sm"
           onClick={() =>
             ipc.system.openExternalUrl(CLOUDFLARE_CONNECT_GITHUB_URL)
           }
         >
-          Connect GitHub on Cloudflare
+          Open Cloudflare Dashboard
         </Button>
+      </div>
+      <p className="mt-3">
+        If Cloudflare is already connected to GitHub, give it access to this
+        repository.
+      </p>
+      <div className="mt-2">
         <Button
           size="sm"
           variant="outline"
-          onClick={() => ipc.system.openExternalUrl(CLOUDFLARE_GITHUB_APP_URL)}
+          onClick={() => ipc.system.openExternalUrl(githubInstallationsUrl)}
         >
-          Add This Repository on GitHub
+          Manage Repository Access on GitHub
         </Button>
       </div>
-      <p className="flex items-center gap-2 mt-3 text-xs">
-        <Loader2 className="h-3 w-3 animate-spin" />
-        Waiting for access. This continues on its own once it is granted.
-      </p>
+      <div className="mt-3">
+        <Button size="sm" variant="ghost" onClick={check} disabled={checking}>
+          {checking ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <RefreshCw className="h-3 w-3" />
+          )}
+          Check Again
+        </Button>
+      </div>
     </div>
   );
 }

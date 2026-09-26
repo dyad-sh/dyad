@@ -15,10 +15,7 @@ import { isDeploymentInProgress } from "@/cloudflare_deploy/build_config";
 
 /** An unsynced app is about to be synced; notice when it has been. */
 const SYNC_POLL_MS = 4_000;
-/**
- * How often to ask Cloudflare whether it can see the repository yet: quickly
- * while the user is likely mid-grant, then slowly for a prompt left open.
- */
+/** How often to ask Cloudflare whether it can see the repository yet. */
 const REPO_ACCESS_POLL_MS = 10_000;
 /** A push starts a build Dyad is not told about, so an idle card still polls. */
 const IDLE_STATUS_POLL_MS = 15_000;

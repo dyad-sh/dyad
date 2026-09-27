@@ -219,7 +219,8 @@ function RecheckButton({
       </div>
       {checkError && (
         <div
-          className={`${errorClass} basis-full text-left`}
+          className={`${errorClass} mt-2 basis-full text-left`}
+          role="alert"
           data-testid="cloudflare-recheck-error"
         >
           {errorMessage(checkError)}
@@ -305,15 +306,10 @@ function ConnectedAccount({ appId }: { appId: number }) {
   const connection = connections.find(
     (candidate) => candidate.rootDirectory === folder.rootDirectory,
   );
-  // Looks for Wrangler configs added since the tab opened. While the Worker
-  // form is up it sits on the form's own row; otherwise it gets a row here.
-  const rescan = (
-    <RecheckButton
-      label="Refresh"
-      className="ml-auto"
-      onCheck={() => status.refetch()}
-    />
-  );
+  // Looks for Wrangler configs added since the tab opened. While a folder is
+  // being set up, TargetSetup shows the button instead and refreshes its own
+  // Cloudflare queries along with this one.
+  const refreshStatus = () => status.refetch();
   const settingUp =
     !connection &&
     target !== null &&
@@ -343,10 +339,16 @@ function ConnectedAccount({ appId }: { appId: number }) {
           className="flex flex-wrap items-center justify-between gap-2 -mt-2"
           data-testid="cloudflare-target-rescan"
         >
-          <span className="text-sm text-gray-600 dark:text-gray-400 truncate">
-            {folders.length === 1 ? folder.label : ""}
-          </span>
-          {rescan}
+          {folders.length === 1 && (
+            <span className="text-sm text-gray-600 dark:text-gray-400 truncate">
+              {folder.label}
+            </span>
+          )}
+          <RecheckButton
+            label="Refresh"
+            className="ml-auto"
+            onCheck={refreshStatus}
+          />
         </div>
       )}
 
@@ -441,7 +443,7 @@ function ConnectedAccount({ appId }: { appId: number }) {
               accountId={accountId}
               target={target}
               connections={status.data.connections}
-              toolbar={rescan}
+              onRefresh={refreshStatus}
             />
           ) : null}
         </>
@@ -521,18 +523,31 @@ function TargetSetup({
   accountId,
   target,
   connections,
-  toolbar,
+  onRefresh,
 }: {
   appId: number;
   accountId: string;
   target: CloudflareTargetSummary;
   connections: CloudflareConnection[];
-  /** Shown at the end of the form's first row. */
-  toolbar: ReactNode;
+  /** Re-reads the app's folders; the setup adds its own queries to it. */
+  onRefresh: () => Promise<{ error: Error | null }>;
 }) {
   const access = useCloudflareRepoAccess({ appId, accountId });
   const workers = useCloudflareWorkers({ accountId });
 
+  // Refresh sits beside whatever this view shows, including an error from
+  // one of these queries, so it has to retry them as well.
+  const refresh = async () => {
+    const results = await Promise.all([
+      onRefresh(),
+      access.refetch(),
+      workers.refetch(),
+    ]);
+    return { error: results.find((result) => result.error)?.error ?? null };
+  };
+  const toolbar = (
+    <RecheckButton label="Refresh" className="ml-auto" onCheck={refresh} />
+  );
   // Until the form is up, the toolbar gets a row of its own here.
   const toolbarRow = (
     <div

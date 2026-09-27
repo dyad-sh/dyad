@@ -291,12 +291,21 @@ describe("an app whose Wrangler configs are already listed", () => {
     expect(screen.queryByTestId("cloudflare-worker-form")).toBeNull();
   });
 
-  it("keeps the button when the folder's setup cannot reach Cloudflare", async () => {
-    cloudflare.listWorkers.mockRejectedValue(new Error("Cloudflare is down"));
+  it("keeps the button when the folder's setup cannot reach Cloudflare, and retries from it", async () => {
+    cloudflare.listWorkers.mockRejectedValueOnce(
+      new Error("Cloudflare is down"),
+    );
     renderConnector();
 
     await screen.findByText("Cloudflare is down");
-    expect(screen.getAllByRole("button", { name: "Refresh" })).toHaveLength(1);
+    expect(cloudflare.listWorkers).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+
+    expect(await screen.findByTestId("cloudflare-worker-form")).toBeTruthy();
+    expect(cloudflare.listWorkers).toHaveBeenCalledTimes(2);
+    expect(cloudflare.checkRepoAccess).toHaveBeenCalledTimes(2);
+    expect(cloudflare.getAppStatus).toHaveBeenCalledTimes(2);
   });
 
   it("shows a failed check's error inside the Worker form", async () => {

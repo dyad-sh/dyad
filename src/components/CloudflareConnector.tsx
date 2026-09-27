@@ -171,11 +171,9 @@ function TokenForm() {
  * leave what is on screen alone.
  */
 function RecheckButton({
-  label,
   onCheck,
   className,
 }: {
-  label: string;
   onCheck: () => Promise<{ error: Error | null }>;
   className?: string;
 }) {
@@ -214,7 +212,7 @@ function RecheckButton({
           ) : (
             <RefreshCw className="h-3 w-3" />
           )}
-          {label}
+          Refresh
         </Button>
       </div>
       {checkError && (
@@ -289,11 +287,7 @@ function ConnectedAccount({ appId }: { appId: number }) {
           wrangler.json or wrangler.toml). Add a Worker to this app, then sync
           it to GitHub and click Refresh.
         </p>
-        <RecheckButton
-          label="Refresh"
-          className="mt-3"
-          onCheck={() => status.refetch()}
-        />
+        <RecheckButton className="mt-3" onCheck={() => status.refetch()} />
       </div>
     );
   }
@@ -306,10 +300,15 @@ function ConnectedAccount({ appId }: { appId: number }) {
   const connection = connections.find(
     (candidate) => candidate.rootDirectory === folder.rootDirectory,
   );
-  // Looks for Wrangler configs added since the tab opened. While a folder is
-  // being set up, TargetSetup shows the button instead and refreshes its own
-  // Cloudflare queries along with this one.
+  // Looks for Wrangler configs added since the tab opened, and re-reads the
+  // accounts, since the button can sit beside an accounts error. While a
+  // folder is being set up, TargetSetup shows the button instead and adds its
+  // own queries.
   const refreshStatus = () => status.refetch();
+  const refresh = async () => {
+    const results = await Promise.all([refreshStatus(), accounts.refetch()]);
+    return { error: results.find((result) => result.error)?.error ?? null };
+  };
   const settingUp =
     !connection &&
     target !== null &&
@@ -344,11 +343,7 @@ function ConnectedAccount({ appId }: { appId: number }) {
               {folder.label}
             </span>
           )}
-          <RecheckButton
-            label="Refresh"
-            className="ml-auto"
-            onCheck={refreshStatus}
-          />
+          <RecheckButton className="ml-auto" onCheck={refresh} />
         </div>
       )}
 
@@ -545,9 +540,7 @@ function TargetSetup({
     ]);
     return { error: results.find((result) => result.error)?.error ?? null };
   };
-  const toolbar = (
-    <RecheckButton label="Refresh" className="ml-auto" onCheck={refresh} />
-  );
+  const toolbar = <RecheckButton className="ml-auto" onCheck={refresh} />;
   // Until the form is up, the toolbar gets a row of its own here.
   const toolbarRow = (
     <div

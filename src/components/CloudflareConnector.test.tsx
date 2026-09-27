@@ -179,8 +179,8 @@ describe("before a Worker can be connected", () => {
     expect(cloudflare.checkRepoAccess).not.toHaveBeenCalled();
   });
 
-  it("shows why the accounts could not be listed when a folder needs setting up", async () => {
-    cloudflare.listAccounts.mockRejectedValue(
+  it("shows why the accounts could not be listed when a folder needs setting up, and retries from Refresh", async () => {
+    cloudflare.listAccounts.mockRejectedValueOnce(
       new Error("Authentication error"),
     );
     renderConnector();
@@ -188,6 +188,13 @@ describe("before a Worker can be connected", () => {
     const error = await screen.findByTestId("cloudflare-accounts-error");
     expect(error.textContent).toContain("Authentication error");
     expect(screen.queryByTestId("cloudflare-worker-form")).toBeNull();
+    expect(cloudflare.listAccounts).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+
+    expect(await screen.findByTestId("cloudflare-worker-form")).toBeTruthy();
+    expect(cloudflare.listAccounts).toHaveBeenCalledTimes(2);
+    expect(cloudflare.getAppStatus).toHaveBeenCalledTimes(2);
   });
 
   it("offers both ways to grant access when Cloudflare cannot see the repository", async () => {

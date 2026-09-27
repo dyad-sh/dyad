@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { McpServer } from "@/ipc/types";
 import type { CatalogInput } from "@/ipc/types/mcp_catalog";
@@ -202,6 +202,60 @@ describe("PluginSetupSection", () => {
       id: 1,
       headersJson: { "X-Other": "1", "X-Workspace": "ws-acme" },
     });
+  });
+
+  it("clears the optional form after a successful save", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(
+      <PluginSetupSection
+        server={makeServer({ transport: "stdio", url: null, enabled: true })}
+        inputs={[
+          {
+            kind: "env",
+            name: "ACCOUNT_ID",
+            label: "Account ID",
+            optional: true,
+          },
+        ]}
+        isSaving={false}
+        onSave={onSave}
+        variant="optional"
+      />,
+    );
+
+    fillInputs(["123"]);
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    const input = document.querySelector<HTMLInputElement>("input")!;
+    await waitFor(() => expect(input.value).toBe(""));
+    expect(onSave).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps typed optional values when the save fails", async () => {
+    const onSave = vi.fn().mockRejectedValue(new Error("save failed"));
+    render(
+      <PluginSetupSection
+        server={makeServer({ transport: "stdio", url: null, enabled: true })}
+        inputs={[
+          {
+            kind: "env",
+            name: "ACCOUNT_ID",
+            label: "Account ID",
+            optional: true,
+          },
+        ]}
+        isSaving={false}
+        onSave={onSave}
+        variant="optional"
+      />,
+    );
+
+    fillInputs(["123"]);
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    const input = document.querySelector<HTMLInputElement>("input")!;
+    expect(input.value).toBe("123");
   });
 
   it("locks the optional form when disabled", () => {

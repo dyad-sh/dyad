@@ -91,6 +91,9 @@ export function PluginSetupSection({
     if (wroteHeader) update.headersJson = headers;
     if (wroteEnv) update.envJson = env;
     await onSave(update);
+    // The optional form stays mounted while other inputs are unfilled, so
+    // clear what was typed rather than keep it around after saving.
+    if (!isSetup) setValues({});
   };
 
   return (

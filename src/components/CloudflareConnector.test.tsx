@@ -41,7 +41,8 @@ vi.mock("@/ipc/types", () => ({
 }));
 
 const showWarning = vi.hoisted(() => vi.fn());
-vi.mock("@/lib/toast", () => ({ showWarning }));
+const showError = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/toast", () => ({ showWarning, showError }));
 
 const { CloudflareConnector } = await import("./CloudflareConnector");
 
@@ -238,7 +239,7 @@ describe("an app with no Wrangler config", () => {
     expect(screen.queryByTestId("cloudflare-no-targets")).toBeNull();
   });
 
-  it("reports a failed check and clears it on the next one", async () => {
+  it("reports a failed check in a toast and keeps the notice", async () => {
     renderConnector();
     const check = await screen.findByRole("button", { name: "Refresh" });
 
@@ -247,15 +248,10 @@ describe("an app with no Wrangler config", () => {
     );
     fireEvent.click(check);
 
-    const error = await screen.findByTestId("cloudflare-recheck-error");
-    expect(error.textContent).toContain("Could not read the branch");
-    expect(screen.getByTestId("cloudflare-no-targets")).toBeTruthy();
-
-    fireEvent.click(check);
-
     await waitFor(() =>
-      expect(screen.queryByTestId("cloudflare-recheck-error")).toBeNull(),
+      expect(showError).toHaveBeenCalledWith("Could not read the branch"),
     );
+    expect(showError).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId("cloudflare-no-targets")).toBeTruthy();
   });
 });
@@ -328,7 +324,7 @@ describe("an app whose Wrangler configs are already listed", () => {
     await waitFor(() => expect(refresh.hasAttribute("disabled")).toBe(false));
 
     expect(screen.getAllByText("Cloudflare is down")).toHaveLength(1);
-    expect(screen.queryByTestId("cloudflare-recheck-error")).toBeNull();
+    expect(showError).not.toHaveBeenCalled();
   });
 
   it("does not repeat the accounts error when a retry fails again", async () => {
@@ -346,7 +342,7 @@ describe("an app whose Wrangler configs are already listed", () => {
     await waitFor(() => expect(refresh.hasAttribute("disabled")).toBe(false));
 
     expect(screen.getAllByText("Authentication error")).toHaveLength(1);
-    expect(screen.queryByTestId("cloudflare-recheck-error")).toBeNull();
+    expect(showError).not.toHaveBeenCalled();
   });
 
   it("leaves the accounts alone when refreshing a connected folder", async () => {
@@ -369,18 +365,18 @@ describe("an app whose Wrangler configs are already listed", () => {
     await waitFor(() => expect(refresh.hasAttribute("disabled")).toBe(false));
 
     expect(cloudflare.listAccounts).toHaveBeenCalledTimes(accountCalls);
-    expect(screen.queryByTestId("cloudflare-recheck-error")).toBeNull();
+    expect(showError).not.toHaveBeenCalled();
   });
 
-  it("shows a failed check's error inside the Worker form", async () => {
+  it("reports a failed check from the Worker form in a toast", async () => {
     renderConnector();
     const form = await screen.findByTestId("cloudflare-worker-form");
 
     cloudflare.getAppStatus.mockRejectedValueOnce(new Error("Branch gone"));
     fireEvent.click(within(form).getByRole("button", { name: "Refresh" }));
 
-    const error = await within(form).findByTestId("cloudflare-recheck-error");
-    expect(error.textContent).toContain("Branch gone");
+    await waitFor(() => expect(showError).toHaveBeenCalledWith("Branch gone"));
+    expect(screen.getByTestId("cloudflare-worker-form")).toBeTruthy();
     expect(cloudflare.connectWorker).not.toHaveBeenCalled();
   });
 

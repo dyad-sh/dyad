@@ -11,6 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ipc } from "@/ipc/types";
+import { showError } from "@/lib/toast";
 import type {
   CloudflareConnection,
   CloudflareTargetSummary,
@@ -191,10 +192,8 @@ function RecheckButton({
   className?: string;
 }) {
   const [checking, setChecking] = useState(false);
-  const [checkError, setCheckError] = useState<Error | null>(null);
   const check = async () => {
     setChecking(true);
-    setCheckError(null);
     try {
       // A check that returns instantly barely shows, so the spinner stays
       // long enough to confirm the click landed.
@@ -202,42 +201,30 @@ function RecheckButton({
         onCheck(),
         new Promise((resolve) => setTimeout(resolve, RECHECK_MIN_SPIN_MS)),
       ]);
-      setCheckError(result.error);
+      // A toast, because this button can move or unmount when the refresh
+      // changes the view, and a toast does not linger beside newer data.
+      if (result.error) showError(errorMessage(result.error));
     } finally {
       setChecking(false);
     }
   };
-  // The error is a sibling of the button's wrapper so that, in a wrapping
-  // flex row, it takes a full line of its own instead of squeezing in beside
-  // the other controls.
   return (
-    <>
-      <div className={className}>
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          onClick={check}
-          disabled={checking}
-        >
-          {checking ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
-          ) : (
-            <RefreshCw className="h-3 w-3" />
-          )}
-          Refresh
-        </Button>
-      </div>
-      {checkError && (
-        <div
-          className={`${errorClass} mt-2 basis-full text-left`}
-          role="alert"
-          data-testid="cloudflare-recheck-error"
-        >
-          {errorMessage(checkError)}
-        </div>
-      )}
-    </>
+    <div className={className}>
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        onClick={check}
+        disabled={checking}
+      >
+        {checking ? (
+          <Loader2 className="h-3 w-3 animate-spin" />
+        ) : (
+          <RefreshCw className="h-3 w-3" />
+        )}
+        Refresh
+      </Button>
+    </div>
   );
 }
 

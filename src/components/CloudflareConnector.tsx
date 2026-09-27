@@ -196,25 +196,36 @@ function RecheckButton({
       setChecking(false);
     }
   };
+  // The error is a sibling of the button's wrapper so that, in a wrapping
+  // flex row, it takes a full line of its own instead of squeezing in beside
+  // the other controls.
   return (
-    <div className={className}>
-      <Button size="sm" variant="ghost" onClick={check} disabled={checking}>
-        {checking ? (
-          <Loader2 className="h-3 w-3 animate-spin" />
-        ) : (
-          <RefreshCw className="h-3 w-3" />
-        )}
-        {label}
-      </Button>
+    <>
+      <div className={className}>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={check}
+          disabled={checking}
+        >
+          {checking ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <RefreshCw className="h-3 w-3" />
+          )}
+          {label}
+        </Button>
+      </div>
       {checkError && (
         <div
-          className={`${errorClass} mt-2 text-left`}
+          className={`${errorClass} basis-full text-left`}
           data-testid="cloudflare-recheck-error"
         >
           {errorMessage(checkError)}
         </div>
       )}
-    </div>
+    </>
   );
 }
 
@@ -299,7 +310,7 @@ function ConnectedAccount({ appId }: { appId: number }) {
   const rescan = (
     <RecheckButton
       label="Refresh"
-      className="text-right"
+      className="ml-auto"
       onCheck={() => status.refetch()}
     />
   );
@@ -329,7 +340,7 @@ function ConnectedAccount({ appId }: { appId: number }) {
       )}
       {!settingUp && (
         <div
-          className="flex items-center justify-between gap-2 -mt-2"
+          className="flex flex-wrap items-center justify-between gap-2 -mt-2"
           data-testid="cloudflare-target-rescan"
         >
           <span className="text-sm text-gray-600 dark:text-gray-400 truncate">
@@ -522,22 +533,42 @@ function TargetSetup({
   const access = useCloudflareRepoAccess({ appId, accountId });
   const workers = useCloudflareWorkers({ accountId });
 
+  // Until the form is up, the toolbar gets a row of its own here.
+  const toolbarRow = (
+    <div
+      className="flex flex-wrap justify-end gap-2 -mt-2"
+      data-testid="cloudflare-target-rescan"
+    >
+      {toolbar}
+    </div>
+  );
   if (access.isLoading || workers.isLoading) {
     return (
-      <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-        <Loader2 className="h-4 w-4 animate-spin" />
-        Checking Cloudflare...
-      </div>
+      <>
+        {toolbarRow}
+        <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Checking Cloudflare...
+        </div>
+      </>
     );
   }
   if (!access.data || !workers.data) {
     const error = access.error ?? workers.error;
-    return error ? (
-      <div className={errorClass}>{errorMessage(error)}</div>
-    ) : null;
+    return (
+      <>
+        {toolbarRow}
+        {error && <div className={errorClass}>{errorMessage(error)}</div>}
+      </>
+    );
   }
   if (!access.data.hasAccess) {
-    return <RepoAccessPrompt />;
+    return (
+      <>
+        {toolbarRow}
+        <RepoAccessPrompt />
+      </>
+    );
   }
   return (
     <WorkerForm
@@ -706,7 +737,7 @@ function WorkerForm({
         if (canSubmit) submit(false);
       }}
     >
-      <div className="flex gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Button
           type="button"
           size="sm"
@@ -724,7 +755,7 @@ function WorkerForm({
         >
           Use existing Worker
         </Button>
-        <div className="ml-auto">{toolbar}</div>
+        {toolbar}
       </div>
 
       {mode === "create" ? (

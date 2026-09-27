@@ -278,6 +278,37 @@ describe("an app whose Wrangler configs are already listed", () => {
     const list = await screen.findByTestId("cloudflare-target-list");
     expect(list.textContent).toContain("api");
     expect(cloudflare.getAppStatus).toHaveBeenCalledTimes(2);
+    // The button sits inside the Worker form but must not submit it.
+    expect(cloudflare.connectWorker).not.toHaveBeenCalled();
+  });
+
+  it("keeps the button while the folder's setup is waiting on Cloudflare", async () => {
+    cloudflare.checkRepoAccess.mockResolvedValue({ hasAccess: false });
+    renderConnector();
+
+    await screen.findByTestId("cloudflare-repo-access");
+    expect(screen.getAllByRole("button", { name: "Refresh" })).toHaveLength(1);
+    expect(screen.queryByTestId("cloudflare-worker-form")).toBeNull();
+  });
+
+  it("keeps the button when the folder's setup cannot reach Cloudflare", async () => {
+    cloudflare.listWorkers.mockRejectedValue(new Error("Cloudflare is down"));
+    renderConnector();
+
+    await screen.findByText("Cloudflare is down");
+    expect(screen.getAllByRole("button", { name: "Refresh" })).toHaveLength(1);
+  });
+
+  it("shows a failed check's error inside the Worker form", async () => {
+    renderConnector();
+    const form = await screen.findByTestId("cloudflare-worker-form");
+
+    cloudflare.getAppStatus.mockRejectedValueOnce(new Error("Branch gone"));
+    fireEvent.click(within(form).getByRole("button", { name: "Refresh" }));
+
+    const error = await within(form).findByTestId("cloudflare-recheck-error");
+    expect(error.textContent).toContain("Branch gone");
+    expect(cloudflare.connectWorker).not.toHaveBeenCalled();
   });
 
   it("puts the button on the Worker form's first row while a folder is being set up", async () => {

@@ -7,9 +7,10 @@ import {
   getRemoteMcpCatalog,
   peekRemoteMcpCatalog,
 } from "@/ipc/shared/remote_mcp_catalog";
-import type {
-  HttpCatalogEntry,
-  McpCatalogEntry,
+import {
+  isRequiredInput,
+  type HttpCatalogEntry,
+  type McpCatalogEntry,
 } from "@/ipc/types/mcp_catalog";
 import { oauthStateHasTokens } from "@/ipc/utils/mcp_oauth_provider";
 import { readSettings, tryWriteSettings } from "@/main/settings";
@@ -135,8 +136,8 @@ async function readCatalog(cachedOnly: boolean): Promise<McpCatalogEntry[]> {
  * chat or asked never to be offered again. Only one-click entries qualify:
  * http transport with nothing to configure, so the chat card can add and
  * connect them without a detour through the setup page. stdio entries need
- * the run-locally consent dialog and entries with `inputs` need the setup
- * page; both stay in the Plugins catalog for now.
+ * the run-locally consent dialog and entries with required `inputs` need
+ * the setup page; both stay in the Plugins catalog for now.
  *
  * With `cachedOnly`, an unfetched catalog yields an empty list instead of
  * waiting on the network.
@@ -162,7 +163,7 @@ export async function collectSuggestablePlugins({
       (entry): entry is HttpCatalogEntry =>
         entry.featured === true &&
         entry.transport === "http" &&
-        (entry.inputs?.length ?? 0) === 0 &&
+        !(entry.inputs ?? []).some(isRequiredInput) &&
         !declined?.has(entry.slug) &&
         !neverSuggest.has(entry.slug),
     )

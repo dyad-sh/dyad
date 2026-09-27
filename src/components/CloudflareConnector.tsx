@@ -166,6 +166,19 @@ function TokenForm() {
 // ---------------------------------------------------------------------------
 
 /**
+ * The failure a Refresh reports. A query with no data already shows its error
+ * in the view, so only a query that kept earlier data is reported.
+ */
+function hiddenRefetchError(
+  results: { data?: unknown; error: Error | null }[],
+): Error | null {
+  return (
+    results.find((result) => result.error && result.data !== undefined)
+      ?.error ?? null
+  );
+}
+
+/**
  * Re-runs a check the tab otherwise repeats on its own schedule. Only a check
  * asked for here shows progress or reports a failure, so background refetches
  * leave what is on screen alone.
@@ -301,13 +314,15 @@ function ConnectedAccount({ appId }: { appId: number }) {
     (candidate) => candidate.rootDirectory === folder.rootDirectory,
   );
   // Looks for Wrangler configs added since the tab opened, and re-reads the
-  // accounts, since the button can sit beside an accounts error. While a
-  // folder is being set up, TargetSetup shows the button instead and adds its
-  // own queries.
+  // accounts when they are part of the view. While a folder is being set up,
+  // TargetSetup shows the button instead and adds its own queries.
   const refreshStatus = () => status.refetch();
   const refresh = async () => {
-    const results = await Promise.all([refreshStatus(), accounts.refetch()]);
-    return { error: results.find((result) => result.error)?.error ?? null };
+    const results = await Promise.all([
+      refreshStatus(),
+      ...(connection ? [] : [accounts.refetch()]),
+    ]);
+    return { error: hiddenRefetchError(results) };
   };
   const settingUp =
     !connection &&
@@ -525,7 +540,7 @@ function TargetSetup({
   target: CloudflareTargetSummary;
   connections: CloudflareConnection[];
   /** Re-reads the app's folders; the setup adds its own queries to it. */
-  onRefresh: () => Promise<{ error: Error | null }>;
+  onRefresh: () => Promise<{ data?: unknown; error: Error | null }>;
 }) {
   const access = useCloudflareRepoAccess({ appId, accountId });
   const workers = useCloudflareWorkers({ accountId });
@@ -538,7 +553,7 @@ function TargetSetup({
       access.refetch(),
       workers.refetch(),
     ]);
-    return { error: results.find((result) => result.error)?.error ?? null };
+    return { error: hiddenRefetchError(results) };
   };
   const toolbar = <RecheckButton className="ml-auto" onCheck={refresh} />;
   // Until the form is up, the toolbar gets a row of its own here.

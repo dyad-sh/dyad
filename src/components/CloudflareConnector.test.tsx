@@ -315,6 +315,63 @@ describe("an app whose Wrangler configs are already listed", () => {
     expect(cloudflare.getAppStatus).toHaveBeenCalledTimes(2);
   });
 
+  it("does not repeat an error the setup already shows when a retry fails again", async () => {
+    cloudflare.listWorkers.mockRejectedValue(new Error("Cloudflare is down"));
+    renderConnector();
+    await screen.findByText("Cloudflare is down");
+
+    const refresh = screen.getByRole("button", { name: "Refresh" });
+    fireEvent.click(refresh);
+    await waitFor(() =>
+      expect(cloudflare.listWorkers).toHaveBeenCalledTimes(2),
+    );
+    await waitFor(() => expect(refresh.hasAttribute("disabled")).toBe(false));
+
+    expect(screen.getAllByText("Cloudflare is down")).toHaveLength(1);
+    expect(screen.queryByTestId("cloudflare-recheck-error")).toBeNull();
+  });
+
+  it("does not repeat the accounts error when a retry fails again", async () => {
+    cloudflare.listAccounts.mockRejectedValue(
+      new Error("Authentication error"),
+    );
+    renderConnector();
+    await screen.findByTestId("cloudflare-accounts-error");
+
+    const refresh = screen.getByRole("button", { name: "Refresh" });
+    fireEvent.click(refresh);
+    await waitFor(() =>
+      expect(cloudflare.listAccounts).toHaveBeenCalledTimes(2),
+    );
+    await waitFor(() => expect(refresh.hasAttribute("disabled")).toBe(false));
+
+    expect(screen.getAllByText("Authentication error")).toHaveLength(1);
+    expect(screen.queryByTestId("cloudflare-recheck-error")).toBeNull();
+  });
+
+  it("leaves the accounts alone when refreshing a connected folder", async () => {
+    cloudflare.getAppStatus.mockResolvedValue(
+      appStatus({ connections: [CONNECTION] }),
+    );
+    // A revoked token fails the accounts call; the connected view does not use it.
+    cloudflare.listAccounts.mockRejectedValue(
+      new Error("Authentication error"),
+    );
+    renderConnector();
+    await screen.findByText("Live");
+    const accountCalls = cloudflare.listAccounts.mock.calls.length;
+
+    const refresh = screen.getByRole("button", { name: "Refresh" });
+    fireEvent.click(refresh);
+    await waitFor(() =>
+      expect(cloudflare.getAppStatus).toHaveBeenCalledTimes(2),
+    );
+    await waitFor(() => expect(refresh.hasAttribute("disabled")).toBe(false));
+
+    expect(cloudflare.listAccounts).toHaveBeenCalledTimes(accountCalls);
+    expect(screen.queryByTestId("cloudflare-recheck-error")).toBeNull();
+  });
+
   it("shows a failed check's error inside the Worker form", async () => {
     renderConnector();
     const form = await screen.findByTestId("cloudflare-worker-form");

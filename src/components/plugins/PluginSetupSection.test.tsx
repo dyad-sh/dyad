@@ -258,6 +258,29 @@ describe("PluginSetupSection", () => {
     expect(input.value).toBe("123");
   });
 
+  it("locks the fields while a save is in flight", () => {
+    render(
+      <PluginSetupSection
+        server={makeServer({ transport: "stdio", url: null, enabled: true })}
+        inputs={[
+          {
+            kind: "env",
+            name: "ACCOUNT_ID",
+            label: "Account ID",
+            optional: true,
+          },
+        ]}
+        isSaving
+        onSave={vi.fn()}
+        variant="optional"
+      />,
+    );
+
+    const input = document.querySelector<HTMLInputElement>("input")!;
+    expect(input.disabled).toBe(true);
+    expect(screen.getByRole("button", { name: "Saving…" })).toBeTruthy();
+  });
+
   it("locks the optional form when disabled", () => {
     render(
       <PluginSetupSection

@@ -119,7 +119,7 @@ export function PluginSetupSection({
               <Label htmlFor={fieldId}>{labelOf(input, isSetup)}</Label>
               <Input
                 id={fieldId}
-                disabled={disabled}
+                disabled={disabled || isSaving}
                 type={isSecret(input) ? "password" : "text"}
                 autoComplete="off"
                 spellCheck={false}

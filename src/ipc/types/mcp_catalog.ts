@@ -21,15 +21,24 @@ export const CatalogInputSchema = z.discriminatedUnion("kind", [
     name: z.string().min(1),
     prefix: z.string().optional(),
     label: z.string().min(1),
+    optional: z.boolean().optional(),
   }),
   z.object({
     kind: z.literal("env"),
     name: z.string().min(1),
     label: z.string().min(1),
+    optional: z.boolean().optional(),
   }),
 ]);
 
 export type CatalogInput = z.infer<typeof CatalogInputSchema>;
+
+// An input the user must fill before the server is set up. `optional`
+// only exists on header and env inputs; a client that predates the flag
+// strips it and treats the field as required, which is the safe default.
+export function isRequiredInput(input: CatalogInput): boolean {
+  return !("optional" in input && input.optional === true);
+}
 
 const baseEntry = {
   slug: z

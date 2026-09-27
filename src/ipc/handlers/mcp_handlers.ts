@@ -1,5 +1,6 @@
 import log from "electron-log";
 import { getRemoteMcpCatalog } from "@/ipc/shared/remote_mcp_catalog";
+import { isRequiredInput } from "@/ipc/types/mcp_catalog";
 import { db } from "../../db";
 import { mcpServers, mcpToolConsents } from "../../db/schema";
 import { eq, and, isNotNull } from "drizzle-orm";
@@ -246,10 +247,11 @@ export function registerMcpHandlers() {
         );
       }
 
-      // An entry that declares inputs needs the user to fill them on the
-      // setup page first, so it's added disabled and doesn't connect or
-      // spawn until configured.
-      const needsSetup = (entry.inputs?.length ?? 0) > 0;
+      // An entry that declares required inputs needs the user to fill
+      // them on the setup page first, so it's added disabled and doesn't
+      // connect or spawn until configured. Optional-only inputs don't
+      // hold it back; they can be set later from the server's editor.
+      const needsSetup = (entry.inputs ?? []).some(isRequiredInput);
       const values =
         entry.transport === "stdio"
           ? {

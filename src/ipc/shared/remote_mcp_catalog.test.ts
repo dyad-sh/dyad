@@ -115,6 +115,39 @@ describe("remote_mcp_catalog", () => {
     }
   });
 
+  it("carries an input's optional flag through", async () => {
+    mockCatalogResponse([
+      {
+        ...VALID_ENTRY,
+        slug: "mailtrap",
+        transport: "stdio",
+        url: undefined,
+        command: "npx",
+        args: ["-y", "mcp-mailtrap@0.9.0"],
+        inputs: [
+          { kind: "env", name: "MAILTRAP_API_TOKEN", label: "API token" },
+          {
+            kind: "env",
+            name: "MAILTRAP_ACCOUNT_ID",
+            label: "Account ID",
+            optional: true,
+          },
+        ],
+      },
+    ]);
+    const entries = await getRemoteMcpCatalog();
+    expect(entries.map((e) => e.slug)).toEqual(["mailtrap"]);
+    expect(entries[0].inputs).toEqual([
+      { kind: "env", name: "MAILTRAP_API_TOKEN", label: "API token" },
+      {
+        kind: "env",
+        name: "MAILTRAP_ACCOUNT_ID",
+        label: "Account ID",
+        optional: true,
+      },
+    ]);
+  });
+
   it("drops an entry whose input kind this client doesn't know", async () => {
     // A whole entry drops if any input kind is unrecognized, so a newer
     // field type can't cause a half-configured add on this client.

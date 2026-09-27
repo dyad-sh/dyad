@@ -133,6 +133,104 @@ describe("PluginSetupSection", () => {
     );
   });
 
+  it("lets an optional input stay blank and skips writing it", () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const inputs: CatalogInput[] = [
+      { kind: "env", name: "API_TOKEN", label: "Token" },
+      { kind: "env", name: "ACCOUNT_ID", label: "Account ID", optional: true },
+    ];
+    render(
+      <PluginSetupSection
+        server={makeServer({ transport: "stdio", url: null })}
+        inputs={inputs}
+        isSaving={false}
+        onSave={onSave}
+      />,
+    );
+
+    expect(screen.getByText("Account ID (optional)")).toBeTruthy();
+    const button = screen.getByRole<HTMLButtonElement>("button", {
+      name: "Save & enable",
+    });
+    expect(button.disabled).toBe(true);
+
+    fillInputs(["tok-123"]);
+    expect(button.disabled).toBe(false);
+    fireEvent.click(button);
+
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({
+        enabled: true,
+        envJson: { API_TOKEN: "tok-123" },
+      }),
+    );
+  });
+
+  it("in optional mode, saves a filled value without enabling the server", () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const inputs: CatalogInput[] = [
+      {
+        kind: "header",
+        name: "X-Workspace",
+        prefix: "ws-",
+        label: "Workspace",
+        optional: true,
+      },
+    ];
+    render(
+      <PluginSetupSection
+        server={makeServer({ enabled: true, headersJson: { "X-Other": "1" } })}
+        inputs={inputs}
+        isSaving={false}
+        onSave={onSave}
+        variant="optional"
+      />,
+    );
+
+    expect(screen.getByText("Optional settings")).toBeTruthy();
+    // The heading already says these are optional.
+    expect(screen.getByText("Workspace")).toBeTruthy();
+    const button = screen.getByRole<HTMLButtonElement>("button", {
+      name: "Save",
+    });
+    expect(button.disabled).toBe(true);
+
+    fillInputs(["acme"]);
+    fireEvent.click(button);
+
+    expect(onSave).toHaveBeenCalledWith({
+      id: 1,
+      headersJson: { "X-Other": "1", "X-Workspace": "ws-acme" },
+    });
+  });
+
+  it("locks the optional form when disabled", () => {
+    render(
+      <PluginSetupSection
+        server={makeServer({ transport: "stdio", url: null })}
+        inputs={[
+          {
+            kind: "env",
+            name: "ACCOUNT_ID",
+            label: "Account ID",
+            optional: true,
+          },
+        ]}
+        isSaving={false}
+        onSave={vi.fn()}
+        variant="optional"
+        disabled
+      />,
+    );
+
+    fillInputs(["123"]);
+    const input = document.querySelector<HTMLInputElement>("input")!;
+    expect(input.disabled).toBe(true);
+    expect(
+      screen.getByRole<HTMLButtonElement>("button", { name: "Save" }).disabled,
+    ).toBe(true);
+  });
+
   it("keeps Save disabled until every input is filled", () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     const inputs: CatalogInput[] = [

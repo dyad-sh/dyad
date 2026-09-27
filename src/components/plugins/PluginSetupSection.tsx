@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import type { CatalogInput } from "@/ipc/types/mcp_catalog";
+import { isRequiredInput, type CatalogInput } from "@/ipc/types/mcp_catalog";
 import type { McpServer } from "@/ipc/types";
 import type { McpServerUpdate } from "@/ipc/types/mcp";
 import { useOauthCallbackPort } from "./AddPluginDialog";
@@ -15,10 +15,12 @@ function keyOf(input: CatalogInput): string {
   return input.kind;
 }
 
-function labelOf(input: CatalogInput): string {
+function labelOf(input: CatalogInput, markOptional: boolean): string {
   if (input.kind === "oauthClientId") return "Client ID";
   if (input.kind === "oauthClientSecret") return "Client secret";
-  return input.label;
+  return markOptional && !isRequiredInput(input)
+    ? `${input.label} (optional)`
+    : input.label;
 }
 
 // The client ID is a public identifier; keys and secrets are masked.
@@ -27,25 +29,35 @@ function isSecret(input: CatalogInput): boolean {
 }
 
 /**
- * Collects the values a catalog entry declares it needs, writes each to
- * its column, and enables the server. Shown while a field-requiring
- * server is still disabled.
+ * Collects the values a catalog entry declares it needs and writes each
+ * to its column. In "setup" mode it also enables the server and is shown
+ * until the required inputs are filled. In "optional" mode it only saves
+ * values, for optional inputs left blank during setup.
  */
 export function PluginSetupSection({
   server,
   inputs,
   isSaving,
   onSave,
+  variant = "setup",
+  disabled = false,
 }: {
   server: McpServer;
   inputs: CatalogInput[];
   isSaving: boolean;
   onSave: (update: McpServerUpdate) => Promise<void>;
+  variant?: "setup" | "optional";
+  disabled?: boolean;
 }) {
   const [values, setValues] = useState<Record<string, string>>({});
-  const allFilled = inputs.every((input) =>
-    (values[keyOf(input)] ?? "").trim(),
-  );
+  const isSetup = variant === "setup";
+  const isFilled = (input: CatalogInput) =>
+    !!(values[keyOf(input)] ?? "").trim();
+  // Setup needs every required input; a blank optional one is simply not
+  // written. The optional form saves as soon as anything is typed.
+  const canSave = isSetup
+    ? inputs.every((input) => !isRequiredInput(input) || isFilled(input))
+    : inputs.some(isFilled);
   // Only OAuth-client setups need a redirect URI registered at the
   // provider; the port matches the one the connect flow will bind.
   const callbackPort = useOauthCallbackPort();
@@ -54,7 +66,9 @@ export function PluginSetupSection({
   );
 
   const save = async () => {
-    const update: McpServerUpdate = { id: server.id, enabled: true };
+    const update: McpServerUpdate = isSetup
+      ? { id: server.id, enabled: true }
+      : { id: server.id };
     const headers: Record<string, string> = { ...server.headersJson };
     const env: Record<string, string> = { ...server.envJson };
     let wroteHeader = false;
@@ -81,10 +95,16 @@ export function PluginSetupSection({
 
   return (
     <div
-      className="mt-4 rounded-lg border border-amber-500/40 bg-amber-50/50 p-4 dark:bg-amber-900/10"
-      data-testid="plugin-setup"
+      className={
+        isSetup
+          ? "mt-4 rounded-lg border border-amber-500/40 bg-amber-50/50 p-4 dark:bg-amber-900/10"
+          : "mt-6 rounded-lg border p-4"
+      }
+      data-testid={isSetup ? "plugin-setup" : "plugin-optional-settings"}
     >
-      <div className="text-sm font-medium">Finish setup</div>
+      <div className="text-sm font-medium">
+        {isSetup ? "Finish setup" : "Optional settings"}
+      </div>
       <div className="mt-3 space-y-3">
         {inputs.map((input) => {
           const key = keyOf(input);
@@ -93,9 +113,10 @@ export function PluginSetupSection({
           const fieldId = `setup-${server.id}-${key}`;
           return (
             <div key={key} className="space-y-1">
-              <Label htmlFor={fieldId}>{labelOf(input)}</Label>
+              <Label htmlFor={fieldId}>{labelOf(input, isSetup)}</Label>
               <Input
                 id={fieldId}
+                disabled={disabled}
                 type={isSecret(input) ? "password" : "text"}
                 autoComplete="off"
                 spellCheck={false}
@@ -119,9 +140,9 @@ export function PluginSetupSection({
       <Button
         className="mt-3"
         onClick={() => void save().catch(() => {})}
-        disabled={!allFilled || isSaving}
+        disabled={!canSave || isSaving || disabled}
       >
-        {isSaving ? "Saving…" : "Save & enable"}
+        {isSaving ? "Saving…" : isSetup ? "Save & enable" : "Save"}
       </Button>
     </div>
   );

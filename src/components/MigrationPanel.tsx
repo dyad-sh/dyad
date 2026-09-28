@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { ipc } from "@/ipc/types";
 import { Button } from "@/components/ui/button";
@@ -29,9 +29,17 @@ import { MigrationSqlPreviewDialog } from "./MigrationSqlPreviewDialog";
 
 interface MigrationPanelProps {
   appId: number;
+  onVerified?: () => void;
+  onBusyChange?: (busy: boolean) => void;
+  autoPreview?: boolean;
 }
 
-export const MigrationPanelBody = ({ appId }: MigrationPanelProps) => {
+export const MigrationPanelBody = ({
+  appId,
+  onVerified,
+  onBusyChange,
+  autoPreview = false,
+}: MigrationPanelProps) => {
   const { t } = useTranslation("home");
   const { app } = useLoadApp(appId);
   const { projectInfo, branches } = useNeon(appId);
@@ -40,15 +48,36 @@ export const MigrationPanelBody = ({ appId }: MigrationPanelProps) => {
 
   const previewMutation = useMutation({
     mutationFn: () => ipc.migration.preview({ appId }),
+    onSuccess: (result) => {
+      if (onVerified && result.statements.length === 0) {
+        setPreviewOpen(false);
+        onVerified();
+      }
+    },
   });
 
   const migrateMutation = useMutation({
     mutationFn: (migrationId: string) =>
       ipc.migration.migrate({ appId, migrationId }),
+    onSuccess: (result) => {
+      if (result.success) onVerified?.();
+    },
   });
 
   const [previewOpen, setPreviewOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const didAutoPreview = useRef(false);
+  useEffect(() => {
+    if (autoPreview && !didAutoPreview.current) {
+      didAutoPreview.current = true;
+      setPreviewOpen(true);
+      previewMutation.mutate();
+    }
+  }, [autoPreview, previewMutation.mutate]);
+  useEffect(() => {
+    onBusyChange?.(previewMutation.isPending || migrateMutation.isPending);
+  }, [previewMutation.isPending, migrateMutation.isPending, onBusyChange]);
+  useEffect(() => () => onBusyChange?.(false), [onBusyChange]);
   const previewHasDataLoss = previewMutation.data?.hasDataLoss ?? false;
 
   const productionBranch = branches.find(

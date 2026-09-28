@@ -18,6 +18,7 @@ import {
   handleUserRepos,
   handleRepo,
   handleRepoBranches,
+  handleRepoBranch,
   handleOrgRepos,
   handleGitPush,
   handleGetPushEvents,
@@ -745,6 +746,7 @@ export function createFakeLlmApp(getPort: () => number) {
   app.post("/github/api/user/repos", handleUserRepos);
   app.get("/github/api/repos/:owner/:repo", handleRepo);
   app.get("/github/api/repos/:owner/:repo/branches", handleRepoBranches);
+  app.get("/github/api/repos/:owner/:repo/branches/:branch", handleRepoBranch);
   app.get(
     "/github/api/repos/:owner/:repo/collaborators",
     handleRepoCollaborators,

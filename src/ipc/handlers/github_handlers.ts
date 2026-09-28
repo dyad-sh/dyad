@@ -21,7 +21,12 @@ import {
   GitStateError,
   GIT_ERROR_CODES,
   isMissingRemoteBranchError,
+  execGit,
 } from "../utils/git_utils";
+import {
+  appOperationCoordinator,
+  readAppResource,
+} from "../services/app_operation_coordinator";
 import { gitService } from "../services/git_service";
 import * as schema from "../../db/schema";
 import fs from "node:fs";
@@ -1356,6 +1361,9 @@ async function handleCloneRepoFromUrl(
 
 // --- Registration ---
 export function registerGithubHandlers() {
+  createTypedHandler(githubContracts.verifyConnection, (_, params) =>
+    verifyGithubConnection(params),
+  );
   // The GitHub device flow is started/cancelled through the generic
   // connection-flow IPC (per-provider registry, invocation-correlated), so no
   // github-specific start handler remains.
@@ -1409,6 +1417,103 @@ export function registerGithubHandlers() {
     githubContracts.cloneRepoFromUrl,
     async (event, params) => {
       return handleCloneRepoFromUrl(event, params);
+    },
+  );
+}
+
+/** Verify both the local connection and the branch on GitHub, not just saved metadata. */
+export async function verifyGithubConnection({
+  appId,
+  requireSynced = false,
+}: {
+  appId: number;
+  requireSynced?: boolean;
+}) {
+  return appOperationCoordinator.run(
+    {
+      appId,
+      operation: "github:verify-connection",
+      resources: [
+        readAppResource("app-path"),
+        readAppResource("metadata"),
+        readAppResource("repository"),
+      ],
+      refuseWhenRecording: "verify the GitHub repository",
+    },
+    async () => {
+      const token = readSettings().githubAccessToken?.value;
+      if (!token)
+        throw new DyadError(
+          "Reconnect your GitHub account to continue.",
+          DyadErrorKind.Auth,
+        );
+      const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+      if (!app?.githubOrg || !app.githubRepo) {
+        throw new DyadError(
+          "Create or connect a GitHub repository first.",
+          DyadErrorKind.Precondition,
+        );
+      }
+      const appPath = getDyadAppPath(app.path);
+      const branch = app.githubBranch || "main";
+      const remote = await execGit(["remote", "get-url", "origin"], appPath);
+      const expected =
+        `${getGitHubGitBase()}/${app.githubOrg}/${app.githubRepo}`.toLowerCase();
+      const remoteUrl = remote.stdout
+        .trim()
+        .replace(/\.git\/?$/, "")
+        .replace(/\/$/, "")
+        .toLowerCase();
+      if (remote.exitCode !== 0 || remoteUrl !== expected) {
+        throw new DyadError(
+          "The local GitHub remote does not match this app. Reconnect the repository in Publish.",
+          DyadErrorKind.Precondition,
+        );
+      }
+      const current = await execGit(["branch", "--show-current"], appPath);
+      if (current.exitCode !== 0 || current.stdout.trim() !== branch) {
+        throw new DyadError(
+          "Switch to the connected GitHub branch before deploying.",
+          DyadErrorKind.Precondition,
+        );
+      }
+      const response = await fetch(
+        `${getGitHubApiBase()}/repos/${encodeURIComponent(app.githubOrg)}/${encodeURIComponent(app.githubRepo)}/branches/${encodeURIComponent(branch)}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/vnd.github+json",
+          },
+        },
+      );
+      if (!response.ok) {
+        throw new DyadError(
+          "Could not verify the GitHub repository and branch. Check access and sync your code, then retry.",
+          DyadErrorKind.Precondition,
+        );
+      }
+      const remoteBranch = (await response.json()) as {
+        commit?: { sha?: string };
+      };
+      if (!remoteBranch.commit?.sha)
+        throw new DyadError(
+          "The GitHub branch has no commit. Sync your code first.",
+          DyadErrorKind.Precondition,
+        );
+      if (requireSynced) {
+        const head = await execGit(["rev-parse", "HEAD"], appPath);
+        if (
+          head.exitCode !== 0 ||
+          head.stdout.trim() !== remoteBranch.commit.sha ||
+          !(await isGitStatusClean({ path: appPath }))
+        ) {
+          throw new DyadError(
+            "The latest code has not reached GitHub yet. Sync your changes and retry.",
+            DyadErrorKind.Precondition,
+          );
+        }
+      }
+      return { owner: app.githubOrg, repo: app.githubRepo, branch };
     },
   );
 }

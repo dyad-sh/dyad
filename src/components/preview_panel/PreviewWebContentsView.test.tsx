@@ -115,6 +115,9 @@ vi.mock("./usePreviewNativeOverlay", () => ({
 vi.mock("./PreviewLoadingScreen", () => ({
   PreviewLoadingScreen: () => null,
 }));
+vi.mock("./DeployButton", () => ({
+  DeployButton: () => <button aria-label="Deploy" />,
+}));
 
 import { PreviewWebContentsView } from "./PreviewWebContentsView";
 
@@ -138,6 +141,13 @@ beforeEach(() => {
 });
 
 describe("PreviewWebContentsView screenshot fallback", () => {
+  it("places Deploy immediately before Open in browser", () => {
+    render(<PreviewWebContentsView loading={false} />);
+    expect(
+      screen.getByRole("button", { name: "Open in browser" })
+        .previousElementSibling,
+    ).toBe(screen.getByRole("button", { name: "Deploy" }));
+  });
   it("renders the latest in-memory screenshot while the native view is hidden", () => {
     render(<PreviewWebContentsView loading={false} />);
 

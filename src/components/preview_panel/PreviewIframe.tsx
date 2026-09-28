@@ -98,6 +98,7 @@ import {
 } from "./previewAddressPath";
 import { getPreviewToolbarActionVisibility } from "./previewToolbarLayout";
 import { PREVIEW_TOOLBAR_BUTTON_CLASSES } from "./previewToolbarStyles";
+import { DeployButton } from "./DeployButton";
 import { usePreviewIframe } from "@/preview_iframe/usePreviewIframe";
 import {
   selectCanGoBack,
@@ -1477,6 +1478,7 @@ export const PreviewIframe = ({
             </Tooltip>
           </div>
 
+          <DeployButton appId={selectedAppId} />
           {showOpenBrowser && (
             <Tooltip>
               <TooltipTrigger

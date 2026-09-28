@@ -32,6 +32,7 @@ import { formatPreviewAddressPath } from "./previewAddressPath";
 import { resolvePreviewBrowserUrl } from "./previewBrowserUrl";
 import { PreviewLoadingScreen } from "./PreviewLoadingScreen";
 import { PREVIEW_TOOLBAR_BUTTON_CLASSES } from "./previewToolbarStyles";
+import { DeployButton } from "./DeployButton";
 import {
   boundsEqual,
   computePreviewViewBounds,
@@ -364,6 +365,7 @@ export const PreviewWebContentsView = ({ loading }: { loading: boolean }) => {
           )}
         </div>
 
+        <DeployButton appId={selectedAppId} />
         <Tooltip>
           <TooltipTrigger
             render={

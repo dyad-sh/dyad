@@ -137,6 +137,18 @@ export const CloneRepoResultSchema = z.union([
 // the connection-flow contracts (`connection_flow.ts`) — it is driven by the
 // flowId-correlated state machine shared with Supabase/Neon.
 export const githubContracts = {
+  verifyConnection: defineContract({
+    channel: "github:verify-connection",
+    input: z.object({
+      appId: z.number(),
+      requireSynced: z.boolean().optional(),
+    }),
+    output: z.object({
+      owner: z.string(),
+      repo: z.string(),
+      branch: z.string(),
+    }),
+  }),
   listRepos: defineContract({
     channel: "github:list-repos",
     input: z.void(),

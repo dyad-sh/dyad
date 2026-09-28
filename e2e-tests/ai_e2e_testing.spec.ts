@@ -118,7 +118,7 @@ testSkipIfWindows(
     await expect(
       po.page
         .locator("#preview-panel")
-        .getByText(/temporary copy of your Neon database/),
+        .getByText(/Tests run in a temporary database/),
     ).toBeVisible({ timeout: Timeout.MEDIUM });
   },
 );

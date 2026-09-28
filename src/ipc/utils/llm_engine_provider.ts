@@ -24,6 +24,8 @@ import {
   normalizeProviderApiKeyInput,
 } from "@/lib/providerApiKey";
 
+import { withAnthropicPreservedThinking } from "./anthropic_preserved_thinking";
+
 const logger = log.scope("llm_engine_provider");
 
 export type ExampleChatModelId = string & {};
@@ -262,10 +264,14 @@ export function createDyadEngine(
         };
 
         // Use the provided fetch or default fetch
+        const fetchFn =
+          providerId === "anthropic"
+            ? withAnthropicPreservedThinking(options.fetch)
+            : options.fetch || fetch;
         return fetchWithRequestLogging(
           modifiedRequestId ?? "engine",
           describeRequestUrl(requestInput),
-          () => (options.fetch || fetch)(requestInput, modifiedInit),
+          () => fetchFn(requestInput, modifiedInit),
         );
       } catch (e) {
         logger.error("Error parsing request body", e);

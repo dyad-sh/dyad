@@ -1,3 +1,4 @@
+import { withAnthropicPreservedThinking } from "./anthropic_preserved_thinking";
 import type { ExternalModelAdmission } from "../services/external_model_admission";
 import {
   AUTO_DYAD_PRO_MODEL_ALIASES,
@@ -700,7 +701,9 @@ function getRegularModelClient(
     case "anthropic": {
       const provider = createAnthropic({
         apiKey,
-        ...getModelClientFetchOption(),
+        fetch: withAnthropicPreservedThinking(
+          getModelClientFetchOption().fetch,
+        ),
       });
       return {
         modelClient: {

@@ -51,3 +51,13 @@ requested about 1055390 tokens`. Keep catalog output limits well under the
   query when the list changes.** Its normal idle polling interval is 30 minutes.
   If ChatGPT rejects a published client version with HTTP 400, retry the pinned
   version once; do not double-request on auth or transient network failures.
+- **Anthropic preserved thinking requires the beta header and wire option together:**
+  `thinking-binding-controls-2026-08-01` plus
+  `thinking.block_binding.prefix_mismatch_behavior: "drop_block"`. The pinned
+  AI SDK omits these controls/diagnostics; use the shared fetch wrapper after
+  serialization and inspect `input_transformations` on SSE `message_start`
+  (and fallback `message_delta`), not only parsed SDK metadata.
+- **A mode switch does not permanently disable new thinking.** Live Opus 5.5
+  requests through the Engine dropped old-prefix blocks but retained blocks
+  produced under the new prefix on later append-only turns. Check dropped
+  **paths**, not just a nonzero drop count; old blocks may be dropped repeatedly.

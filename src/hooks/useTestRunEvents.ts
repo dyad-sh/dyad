@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   appendTestRunOutputAtom,
   applyTestRunFinishedAtom,
@@ -10,6 +10,11 @@ import {
   type TestRunPhase,
 } from "@/atoms/testRuntimeAtoms";
 import { ipc } from "@/ipc/types";
+import type {
+  ActiveTestRunSnapshot,
+  TestOutputPayload,
+  TestsRunStatePayload,
+} from "@/ipc/types/tests";
 import { queryKeys } from "@/lib/queryKeys";
 import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import { previewNativeViewAppIdAtom } from "@/atoms/previewAtoms";
@@ -56,6 +61,10 @@ export function useTestRunEvents() {
       { runId: number; source: "panel" | "agent"; startedAt: number }
     >(),
   );
+  const lastLifecycleByAppId = useRef(new Map<number, number>());
+  const hydrateActiveRun = useRef<(snapshot: ActiveTestRunSnapshot) => void>(
+    () => {},
+  );
   const pendingOutputRef = useRef(new Map<number, string>());
   const outputFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -88,7 +97,7 @@ export function useTestRunEvents() {
       }
     };
 
-    const unsubscribeOutput = ipc.events.tests.onOutput((payload) => {
+    const onOutput = (payload: TestOutputPayload) => {
       // Correlate late output with the run that produced it, even after the
       // queue has advanced to a new request.
       if (
@@ -119,9 +128,16 @@ export function useTestRunEvents() {
             ? prev
             : { ...prev, phase: payload.phase },
       });
-    });
+    };
 
-    const unsubscribeRunState = ipc.events.tests.onRunState((payload) => {
+    const onRunState = (payload: TestsRunStatePayload) => {
+      lastLifecycleByAppId.current.set(
+        payload.appId,
+        Math.max(
+          lastLifecycleByAppId.current.get(payload.appId) ?? 0,
+          payload.runId,
+        ),
+      );
       const { appId, testFile, testFiles, testLine } = payload;
       if (payload.state === "preview-fallback") {
         if (activeRunByAppId.current.get(appId)?.runId !== payload.runId) {
@@ -280,8 +296,28 @@ export function useTestRunEvents() {
         // The run already finished against the cached list above. A failed
         // refresh only means its result may remain unreconciled until later.
         .catch(() => {});
-    });
+    };
+    const unsubscribeOutput = ipc.events.tests.onOutput(onOutput);
+    const unsubscribeRunState = ipc.events.tests.onRunState(onRunState);
+    hydrateActiveRun.current = (snapshot) => {
+      const { run, phase, output } = snapshot;
+      // A live start/progress/finish wins over an older bootstrap, including
+      // a terminal event received before this window knew the run existed.
+      if ((lastLifecycleByAppId.current.get(run.appId) ?? 0) >= run.runId)
+        return;
+      onRunState({ ...run, state: "started", preview: false });
+      onOutput({
+        appId: run.appId,
+        runId: run.runId,
+        chunk: output,
+        phase: phase === "setup" ? "setup" : "running",
+      });
+      if (phase === "stopping" || phase === "cleaning-up")
+        onRunState({ ...run, state: phase });
+      flushPendingOutput(run.appId);
+    };
     return () => {
+      hydrateActiveRun.current = () => {};
       unsubscribeOutput();
       unsubscribeRunState();
       if (outputFlushTimerRef.current) {
@@ -298,4 +334,16 @@ export function useTestRunEvents() {
     setSpecs,
     queryClient,
   ]);
+  // Subscribe above before reading the current lifecycle. The snapshot is only
+  // a bootstrap; subsequent progress continues through the permanent subscriber.
+  const { data: activeSnapshot, isFetchedAfterMount } = useQuery({
+    queryKey: queryKeys.tests.activeRun({ appId: selectedAppId }),
+    enabled: selectedAppId !== null,
+    staleTime: 0,
+    queryFn: () => ipc.tests.getActiveRun({ appId: selectedAppId! }),
+  });
+  useEffect(() => {
+    if (isFetchedAfterMount && activeSnapshot)
+      hydrateActiveRun.current(activeSnapshot);
+  }, [activeSnapshot, isFetchedAfterMount]);
 }

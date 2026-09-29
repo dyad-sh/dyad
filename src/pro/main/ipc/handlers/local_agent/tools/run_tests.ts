@@ -606,6 +606,9 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
       : `Run tests: ${selection}`;
   },
 
+  // Eligibility is deliberately checked at execution, after earlier queued
+  // results update retry budgets and while this call owns the live tool card.
+  // Requests can become ineligible while waiting; a refusal spends no run.
   execute: async (args, ctx: AgentContext) =>
     withAppTestRun(
       {

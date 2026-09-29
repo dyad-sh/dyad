@@ -1,31 +1,69 @@
-import { afterEach, expect, it } from "vitest";
-import fs from "node:fs";
+import { afterEach, expect, it, vi } from "vitest";
+import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { createTestRunArtifactsDir } from "./test_run_artifacts";
+const { warn } = vi.hoisted(() => ({ warn: vi.fn() }));
+vi.mock("electron-log", () => ({ default: { scope: () => ({ warn }) } }));
+import {
+  createTestRunArtifactsDir,
+  pruneTestRunArtifacts,
+} from "./test_run_artifacts";
 
 const roots: string[] = [];
-afterEach(() => {
+afterEach(async () => {
+  vi.restoreAllMocks();
   for (const root of roots.splice(0))
-    fs.rmSync(root, { recursive: true, force: true });
+    await fs.rm(root, { recursive: true, force: true });
+});
+async function makeRoot() {
+  const root = await fs.mkdtemp(
+    path.join(os.tmpdir(), "dyad-queue-artifacts-"),
+  );
+  roots.push(root);
+  return root;
+}
+
+it("allocates without pruning and expires only old, explicitly owned runs when asked", async () => {
+  const root = await makeRoot();
+  const old = await createTestRunArtifactsDir(root);
+  await fs.writeFile(path.join(old, "error-context.md"), "old failure");
+  await fs.utimes(old, new Date(0), new Date(0));
+  const user = path.join(
+    root,
+    "test-results",
+    "dyad-run-00000000-0000-4000-8000-000000000000",
+  );
+  const legacy = path.join(root, "test-results", "dyad-preview-user-notes");
+  for (const dir of [user, legacy]) {
+    await fs.mkdir(dir);
+    await fs.utimes(dir, new Date(0), new Date(0));
+  }
+  const recent = await createTestRunArtifactsDir(root);
+  await fs.writeFile(path.join(recent, "error-context.md"), "recent failure");
+  expect(await fs.readFile(path.join(old, "error-context.md"), "utf8")).toBe(
+    "old failure",
+  );
+  await pruneTestRunArtifacts(root);
+  await expect(fs.stat(old)).rejects.toMatchObject({ code: "ENOENT" });
+  expect((await fs.stat(user)).isDirectory()).toBe(true);
+  expect((await fs.stat(legacy)).isDirectory()).toBe(true);
+  expect(await fs.readFile(path.join(recent, "error-context.md"), "utf8")).toBe(
+    "recent failure",
+  );
 });
 
-it("preserves the previous run's failure artifacts and prunes only old Dyad directories", () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "dyad-queue-artifacts-"));
-  roots.push(root);
-  const first = createTestRunArtifactsDir(root);
-  fs.writeFileSync(path.join(first, "error-context.md"), "first failure");
-  const old = path.join(root, "test-results", "dyad-preview-old");
-  const user = path.join(root, "test-results", "user-results");
-  fs.mkdirSync(old);
-  fs.mkdirSync(user);
-  fs.utimesSync(old, new Date(0), new Date(0));
-  fs.utimesSync(user, new Date(0), new Date(0));
-  const second = createTestRunArtifactsDir(root);
-  expect(second).not.toBe(first);
-  expect(fs.readFileSync(path.join(first, "error-context.md"), "utf8")).toBe(
-    "first failure",
+it("logs listing failures without preventing subsequent artifact allocation", async () => {
+  const root = await makeRoot();
+  warn.mockClear();
+  const error = Object.assign(new Error("permission denied"), {
+    code: "EACCES",
+  });
+  vi.spyOn(fs, "readdir").mockRejectedValueOnce(error);
+  await expect(pruneTestRunArtifacts(root)).resolves.toBeUndefined();
+  expect(warn).toHaveBeenCalledWith(
+    "Could not prune old test artifacts",
+    error,
   );
-  expect(fs.existsSync(old)).toBe(false);
-  expect(fs.existsSync(user)).toBe(true);
+  const directory = await createTestRunArtifactsDir(root);
+  expect((await fs.stat(directory)).isDirectory()).toBe(true);
 });

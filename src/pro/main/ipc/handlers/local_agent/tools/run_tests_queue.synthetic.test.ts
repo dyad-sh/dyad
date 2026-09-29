@@ -117,6 +117,7 @@ describe("synthetic overlapping run_tests calls", () => {
   let processGates: ReturnType<typeof gate>[];
   let cleanupGates: ReturnType<typeof gate>[];
   let calls: Promise<unknown>[];
+  let tearingDown = false;
 
   beforeEach(() => {
     fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "dyad-test-queue-"));
@@ -147,11 +148,13 @@ describe("synthetic overlapping run_tests calls", () => {
     processGates = SPECS.map(gate);
     cleanupGates = SPECS.map(gate);
     calls = [];
+    tearingDown = false;
   });
 
   afterEach(async () => {
     // Release held work even if an assertion fails; no live queue or temporary
     // environment should escape the scenario.
+    tearingDown = true;
     stopAppTestsForApp(APP_ID);
     for (const pending of [...processGates, ...cleanupGates]) pending.release();
     await Promise.allSettled(calls);
@@ -222,7 +225,7 @@ describe("synthetic overlapping run_tests calls", () => {
         started.push(spec);
         trace.push(`running ${spec}`);
         await processGates[index].promise;
-        expect(signal?.aborted).toBe(false);
+        if (!tearingDown) expect(signal?.aborted).toBe(false);
         const failed = scenario === "A fails" && index === 0;
         const reportPath = env!.PLAYWRIGHT_JSON_OUTPUT_NAME!;
         reportPaths.push(reportPath);

@@ -32,6 +32,9 @@ describe("user-input preload channels", () => {
 describe("test queue preload channels", () => {
   it("allows the queue snapshot and lifecycle subscriptions", () => {
     expect(VALID_INVOKE_CHANNELS).toContain(testsContracts.getRunQueue.channel);
+    expect(VALID_INVOKE_CHANNELS).toContain(
+      testsContracts.getActiveRun.channel,
+    );
     for (const event of Object.values(testsEvents)) {
       expect(VALID_RECEIVE_CHANNELS).toContain(event.channel);
     }

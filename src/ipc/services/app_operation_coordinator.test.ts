@@ -17,6 +17,40 @@ function deferred<T = void>() {
 }
 
 describe("AppOperationCoordinator", () => {
+  it("detaches abort listeners when a safety fence rejects queued work", async () => {
+    const coordinator = new AppOperationCoordinator();
+    const release = deferred();
+    const controller = new AbortController();
+    const detach = vi.spyOn(controller.signal, "removeEventListener");
+    const active = coordinator.run(
+      { appId: 1, operation: "active", resources: ["runtime"] },
+      () => release.promise,
+    );
+    const execute = vi.fn(async () => {});
+    const queued = coordinator.run(
+      {
+        appId: 1,
+        operation: "queued",
+        resources: ["runtime"],
+        signal: controller.signal,
+      },
+      execute,
+    );
+    const unblock = coordinator.blockConflictingOperations(
+      { appId: 1, operation: "unsafe-cleanup", resources: ["runtime"] },
+      "Recovery required",
+    );
+    try {
+      await expect(queued).rejects.toThrow("Recovery required");
+      expect(detach).toHaveBeenCalledWith("abort", expect.any(Function));
+      controller.abort();
+    } finally {
+      release.resolve();
+      await active;
+      unblock();
+    }
+    expect(execute).not.toHaveBeenCalled();
+  });
   it("cancels queued admission without releasing an active operation's resources", async () => {
     const coordinator = new AppOperationCoordinator();
     const release = deferred();
@@ -48,6 +82,7 @@ describe("AppOperationCoordinator", () => {
     expect(drained).not.toHaveBeenCalled();
     release.resolve();
     await Promise.all([active, drain]);
+    expect(execute).not.toHaveBeenCalled();
     expect(drained).toHaveBeenCalledOnce();
     deletion.release();
   });

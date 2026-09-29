@@ -68,7 +68,8 @@ export class TestRunQueue {
     onQueued?: (position: number) => void;
   }): Promise<Result> {
     const { request, signal } = options;
-    if (signal?.aborted) return Promise.resolve(options.cancelled());
+    if (signal?.aborted)
+      return Promise.resolve().then(() => options.cancelled());
     if (this.runs.has(request.runId))
       return Promise.reject(new Error("Duplicate test run identity"));
     return new Promise<Result>((resolve, reject) => {
@@ -120,6 +121,7 @@ export class TestRunQueue {
         }
         if (result.kind === "applied") {
           for (const [index, run] of result.state.queuedRuns.entries()) {
+            if (previous.queuedRuns[index]?.runId === run.runId) continue;
             try {
               this.runs.get(run.runId)?.onQueued?.(index + 1);
             } catch (error) {

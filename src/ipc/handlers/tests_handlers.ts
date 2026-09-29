@@ -32,6 +32,7 @@ import type {
   TestIsolation,
   TestResult,
   TestsRunStatePayload,
+  ActiveTestRunSnapshot,
 } from "../types/tests";
 import {
   detectLegacyPlaywrightSpecs,
@@ -125,7 +126,10 @@ import {
   stopAllAppTestRuns,
   drainAppTestRuns,
 } from "../services/test_run_queue_service";
-import { createTestRunArtifactsDir } from "../utils/test_run_artifacts";
+import {
+  createTestRunArtifactsDir,
+  pruneTestRunArtifacts,
+} from "../utils/test_run_artifacts";
 
 const logger = log.scope("tests_handlers");
 
@@ -338,6 +342,9 @@ export function getRunningTestBaseUrl(appId: number): string | null {
   return runningApps.get(appId)?.proxyUrl ?? null;
 }
 
+// Read-only replay of the active lifecycle; queue ownership remains authoritative.
+const activeRunSnapshots = new Map<number, ActiveTestRunSnapshot>();
+
 function emitOutput(
   event: IpcMainInvokeEvent,
   appId: number,
@@ -345,6 +352,14 @@ function emitOutput(
   chunk: string,
   phase: "setup" | "running",
 ): void {
+  const current = activeRunSnapshots.get(appId);
+  if (current?.run.runId === runId) {
+    activeRunSnapshots.set(appId, {
+      ...current,
+      phase: current.phase === "setup" ? phase : current.phase,
+      output: (current.output + chunk).slice(-100_000),
+    });
+  }
   broadcastToRegisteredWindows(event.sender, "tests:output", {
     appId,
     runId,
@@ -368,6 +383,28 @@ function emitRunState(
         ),
       }
     : payload;
+  const current = activeRunSnapshots.get(payload.appId);
+  if (payload.state === "started") {
+    activeRunSnapshots.set(payload.appId, {
+      run: emittedPayload,
+      phase: "setup",
+      output: "",
+    });
+  } else if (current?.run.runId === payload.runId) {
+    if (payload.state === "finished") activeRunSnapshots.delete(payload.appId);
+    else
+      activeRunSnapshots.set(payload.appId, {
+        ...current,
+        run: {
+          ...current.run,
+          ...emittedPayload,
+          preview:
+            payload.state === "preview-fallback" ? false : current.run.preview,
+        },
+        phase:
+          payload.state === "preview-fallback" ? current.phase : payload.state,
+      });
+  }
   broadcastToRegisteredWindows(event.sender, "tests:run-state", emittedPayload);
 }
 
@@ -591,7 +628,7 @@ async function runPreviewTestBatch({
   const deadline = timeoutMs === undefined ? undefined : Date.now() + timeoutMs;
   const casesByFile = new Map<string, TestCaseResult[]>();
   const remainingCasesByFile = new Map<string, number>();
-  const batchDir = createTestRunArtifactsDir(appPath);
+  const batchDir = await createTestRunArtifactsDir(appPath);
 
   const remainingTimeout = (): number | undefined => {
     if (deadline === undefined) return undefined;
@@ -892,6 +929,16 @@ async function runPreviewTestBatch({
     slow_mo: Boolean(slowMo),
   });
 
+  if (
+    !normalizedTestFiles &&
+    testLine == null &&
+    !grep &&
+    !signal?.aborted &&
+    !result.infraError &&
+    result.results.length > 0
+  ) {
+    await pruneTestRunArtifacts(appPath);
+  }
   return result;
 }
 
@@ -1103,7 +1150,7 @@ export async function runAppTestsCore({
   }
 
   // 2. Run the tests. Use list reporter for live stdout + json for parsing.
-  const artifactsDir = createTestRunArtifactsDir(appPath);
+  const artifactsDir = await createTestRunArtifactsDir(appPath);
   const resultsJsonPath = path.join(artifactsDir, "results.json");
 
   // Pass args as an array (never a shell string) so a test path can't be
@@ -1307,6 +1354,15 @@ export async function runAppTestsCore({
     slow_mo: Boolean(slowMo),
   });
 
+  if (
+    !normalizedTestFiles &&
+    testLine == null &&
+    !grep &&
+    !signal?.aborted &&
+    results.length > 0
+  ) {
+    await pruneTestRunArtifacts(appPath);
+  }
   return { appId, results };
 }
 
@@ -1995,6 +2051,7 @@ async function executeAppTestsWithIsolation(
     return {
       appId,
       results: [],
+      preflightRefused: true,
       infraError: { message: selection.error },
     };
   }
@@ -2009,6 +2066,7 @@ async function executeAppTestsWithIsolation(
     return {
       appId,
       results: [],
+      preflightRefused: true,
       infraError: {
         message: "Stop the recording session before running tests.",
       },
@@ -2028,6 +2086,7 @@ async function executeAppTestsWithIsolation(
       return {
         appId,
         results: [],
+        preflightRefused: true,
         infraError: { message: "Couldn't find the window to preview in." },
       };
     }
@@ -2964,6 +3023,10 @@ async function moveFileWithFallback(src: string, dst: string): Promise<void> {
 }
 
 export function registerTestsHandlers() {
+  createTypedHandler(
+    testsContracts.getActiveRun,
+    async (_event, { appId }) => activeRunSnapshots.get(appId) ?? null,
+  );
   createTypedHandler(testsContracts.getRunQueue, async (_event, { appId }) =>
     getAppTestRunQueue(appId),
   );

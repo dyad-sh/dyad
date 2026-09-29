@@ -1,9 +1,11 @@
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { createStore, Provider } from "jotai";
+import { createStore, Provider, useAtomValue } from "jotai";
 import type { PropsWithChildren } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  currentTestRunStateAtom,
+  currentTestRunOutputAtom,
   setTestRunStateForAppAtom,
   testRunOutputByAppIdAtom,
   testRunStateByAppIdAtom,
@@ -26,18 +28,23 @@ const OTHER_WINDOW_SESSION_ID = WindowSessionIdSchema.parse(
   "10000000-0000-4000-8000-000000000002",
 );
 
-const { outputListeners, runStateListeners, listAppTestsMock } = vi.hoisted(
-  () => ({
-    outputListeners: new Set<(payload: unknown) => void>(),
-    runStateListeners: new Set<(payload: unknown) => void>(),
-    listAppTestsMock: vi.fn(),
-  }),
-);
+const {
+  outputListeners,
+  runStateListeners,
+  listAppTestsMock,
+  getActiveRunMock,
+} = vi.hoisted(() => ({
+  outputListeners: new Set<(payload: unknown) => void>(),
+  runStateListeners: new Set<(payload: unknown) => void>(),
+  listAppTestsMock: vi.fn(),
+  getActiveRunMock: vi.fn(),
+}));
 
 vi.mock("@/ipc/types", () => ({
   ipc: {
     tests: {
       listAppTests: listAppTestsMock,
+      getActiveRun: getActiveRunMock,
     },
     events: {
       tests: {
@@ -109,6 +116,7 @@ describe("useTestRunEvents", () => {
   beforeEach(() => {
     outputListeners.clear();
     runStateListeners.clear();
+    getActiveRunMock.mockReset().mockResolvedValue(null);
     listAppTestsMock.mockReset();
     listAppTestsMock.mockResolvedValue({ specs: [] });
     configureChatTabWindowSession(PRIMARY_WINDOW_SESSION_ID, {
@@ -242,7 +250,127 @@ describe("useTestRunEvents", () => {
     },
   );
 
-  it("applies panel results from main after the originating panel unmounts", async () => {
+  it.each(["setup", "running", "cleaning-up"] as const)(
+    "bootstraps a new renderer during %s without activating another preview",
+    async (phase) => {
+      const { store, Wrapper } = makeWrapper();
+      store.set(selectedAppIdAtom, 1);
+      getActiveRunMock.mockResolvedValue({
+        run: {
+          appId: 1,
+          runId: 42,
+          source: "agent",
+          state: "started",
+          testFile: "e2e-tests/a.spec.ts",
+          sandboxed: true,
+          preview: true,
+          previewOwnerWindowSessionId: getActiveWindowSessionId(),
+        },
+        phase,
+        output: "Earlier setup output\n",
+      });
+      renderHook(() => useTestRunEvents(), { wrapper: Wrapper });
+      await waitFor(() =>
+        expect(store.get(testRunStateByAppIdAtom).get(1)?.phase).toBe(phase),
+      );
+      expect(store.get(testRunStateByAppIdAtom).get(1)?.runningFiles).toContain(
+        "e2e-tests/a.spec.ts",
+      );
+      expect(store.get(testRunOutputByAppIdAtom).get(1)).toContain(
+        "Earlier setup output",
+      );
+      expect(store.get(previewNativeViewAppIdAtom)).toBeNull();
+      await act(async () =>
+        emitRunState({
+          appId: 1,
+          runId: 42,
+          source: "agent",
+          state: "finished",
+          results: [],
+        }),
+      );
+      expect(store.get(testRunStateByAppIdAtom).get(1)?.phase).toBe("idle");
+    },
+  );
+
+  it("does not resurrect a run that finished while its bootstrap was in flight", async () => {
+    const { store, Wrapper } = makeWrapper();
+    store.set(selectedAppIdAtom, 1);
+    let finish!: (value: unknown) => void;
+    getActiveRunMock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    renderHook(() => useTestRunEvents(), { wrapper: Wrapper });
+    await waitFor(() => expect(getActiveRunMock).toHaveBeenCalledOnce());
+    await act(async () => {
+      emitRunState({
+        appId: 1,
+        runId: 42,
+        source: "agent",
+        state: "finished",
+        results: [],
+      });
+      finish({
+        run: { appId: 1, runId: 42, source: "agent", state: "started" },
+        phase: "running",
+        output: "stale",
+      });
+    });
+    expect(store.get(testRunStateByAppIdAtom).get(1)?.phase ?? "idle").toBe(
+      "idle",
+    );
+  });
+
+  it("retains progress for a panel mounted after started and results after that panel unmounts", async () => {
+    const { store, Wrapper } = makeWrapper();
+    store.set(selectedAppIdAtom, 1);
+    renderHook(() => useTestRunEvents(), { wrapper: Wrapper });
+    act(() => {
+      emitRunState({
+        appId: 1,
+        source: "agent",
+        state: "started",
+        testFile: "e2e-tests/a.spec.ts",
+      });
+      emitOutput({ appId: 1, phase: "running", chunk: "Executing test" });
+    });
+    const panel = renderHook(
+      () => ({
+        state: useAtomValue(currentTestRunStateAtom),
+        output: useAtomValue(currentTestRunOutputAtom),
+      }),
+      { wrapper: Wrapper },
+    );
+    expect(panel.result.current.state.phase).toBe("running");
+    expect(panel.result.current.state.runningFiles).toContain(
+      "e2e-tests/a.spec.ts",
+    );
+    await waitFor(() =>
+      expect(panel.result.current.output).toContain("Executing test"),
+    );
+    panel.unmount();
+    await act(async () =>
+      emitRunState({
+        appId: 1,
+        source: "agent",
+        state: "finished",
+        testFile: "e2e-tests/a.spec.ts",
+        results: [{ file: "e2e-tests/a.spec.ts", status: "passed" }],
+      }),
+    );
+    const remounted = renderHook(() => useAtomValue(currentTestRunStateAtom), {
+      wrapper: Wrapper,
+    });
+    expect(remounted.result.current.phase).toBe("idle");
+    expect(
+      remounted.result.current.results["e2e-tests/a.spec.ts"]?.status,
+    ).toBe("passed");
+  });
+
+  it("relays panel started and finished events through the root subscriber", async () => {
     const { store, Wrapper } = makeWrapper();
     renderHook(() => useTestRunEvents(), { wrapper: Wrapper });
     await act(async () => {

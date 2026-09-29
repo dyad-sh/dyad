@@ -640,6 +640,33 @@ describe("tests handlers", () => {
       expect(installE2eTestWorkspaceDependenciesMock).toHaveBeenCalledOnce();
     });
 
+    it("marks refusals before lifecycle publication without marking cancellation", async () => {
+      const appId = seedApp("app");
+      const options = {
+        event: { sender: {} } as any,
+        appId,
+        source: "panel" as const,
+      };
+      const refused = await runAppTestsWithIsolation({
+        ...options,
+        testFile: "../outside.spec.ts",
+      });
+      expect(refused.preflightRefused).toBe(true);
+      expect(refused.infraError).toBeDefined();
+      const cancelled = await runAppTestsWithIsolation({
+        ...options,
+        externalSignal: AbortSignal.abort(),
+      });
+      expect(cancelled.preflightRefused).toBeUndefined();
+      expect(cancelled.infraError?.message).toContain("stopped");
+      expect(
+        broadcastToRegisteredWindowsMock.mock.calls.filter(
+          (call) => call[1] === "tests:run-state",
+        ),
+      ).toEqual([]);
+      expect(ensurePlaywrightBootstrapMock).not.toHaveBeenCalled();
+    });
+
     it("refuses atomically when a recording starts at coordinator admission", async () => {
       const appId = seedApp("app");
       harness.db
@@ -2382,6 +2409,57 @@ describe("tests handlers", () => {
       // And it is not terminal: `finished` still lands after the teardown.
       expect(statesWhenTeardownRan).not.toContain("finished");
       expect(runStates()).toContain("finished");
+    });
+
+    it("replays bounded active output for new windows and releases it on finish", async () => {
+      const appId = seedTestableApp("app");
+      prepareIsolatedTestDatabaseMock.mockResolvedValue({
+        isolation: { mode: "none" },
+        teardown: vi.fn().mockResolvedValue({
+          envRestored: true,
+          remoteCleanupCompleted: true,
+        }),
+      });
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      spawnStreamingMock.mockImplementationOnce(async ({ onOutput }) => {
+        onOutput("x".repeat(110_000));
+        await gate;
+        return {
+          code: 1,
+          stdout: "",
+          stderr: "no report",
+          aborted: false,
+          timedOut: false,
+        };
+      });
+      const run = runAppTestsWithIsolation({
+        event: { sender: {} } as any,
+        appId,
+        source: "panel",
+        testFile: "e2e-tests/a.spec.ts",
+      });
+      try {
+        await vi.waitFor(() =>
+          expect(spawnStreamingMock).toHaveBeenCalledOnce(),
+        );
+        const snapshot = await harness.invokeHandler("tests:get-active-run", {
+          appId,
+        });
+        expect(snapshot).toMatchObject({
+          run: { appId, source: "panel", testFile: "e2e-tests/a.spec.ts" },
+          phase: "running",
+        });
+        expect(snapshot).toHaveProperty("output", "x".repeat(100_000));
+      } finally {
+        release();
+        await run;
+      }
+      expect(
+        await harness.invokeHandler("tests:get-active-run", { appId }),
+      ).toBeNull();
     });
 
     it("announces the sandbox deletion even with no isolation to tear down", async () => {

@@ -19,6 +19,21 @@ const request = (runId: number) => ({
 });
 
 describe("test run queue", () => {
+  it("rejects asynchronously when an already-aborted request cannot deliver cancellation", async () => {
+    const queue = createQueue();
+    const execute = vi.fn(async () => "unexpected");
+    const result = queue.enqueue({
+      request: request(1),
+      signal: AbortSignal.abort(),
+      execute,
+      cancelled: () => {
+        throw new Error("delivery failed");
+      },
+    });
+    await expect(result).rejects.toThrow("delivery failed");
+    expect(execute).not.toHaveBeenCalled();
+    expect(queue.getSnapshot()).toEqual({ activeRun: null, queuedRuns: [] });
+  });
   it("executes FIFO and holds the slot through cleanup and result accounting", async () => {
     const queue = createQueue();
     const cleanup = gate();
@@ -233,11 +248,18 @@ describe("test run queue", () => {
       cancelled: () => "cancelled",
       execute: async () => "third",
     });
-    expect(onQueued).toHaveBeenLastCalledWith(2);
+    expect(onQueued).toHaveBeenCalledExactlyOnceWith(2);
+    const fourth = queue.enqueue({
+      request: request(4),
+      cancelled: () => "cancelled",
+      execute: async () => "fourth",
+    });
+    expect(onQueued).toHaveBeenCalledExactlyOnceWith(2);
     abort.abort();
     expect(onQueued).toHaveBeenLastCalledWith(1);
+    expect(onQueued).toHaveBeenCalledTimes(2);
     cleanup.resolve();
-    await Promise.all([first, second, third]);
+    await Promise.all([first, second, third, fourth]);
   });
 
   it("honors cancellation reentered from admission publication before execution", async () => {
@@ -278,10 +300,18 @@ describe("test run queue", () => {
       },
       execute: async () => "second",
     });
+    const executeThird = vi.fn(async () => "third");
+    const third = queue.enqueue({
+      request: request(3),
+      cancelled: () => "cancelled",
+      execute: executeThird,
+    });
     abort.abort();
     await expect(second).rejects.toThrow("delivery failed");
+    expect(executeThird).not.toHaveBeenCalled();
     cleanup.resolve();
-    await first;
+    expect(await Promise.all([first, third])).toEqual(["first", "third"]);
+    expect(executeThird).toHaveBeenCalledOnce();
     expect(queue.getSnapshot().activeRun).toBeNull();
   });
 });

@@ -291,6 +291,7 @@ export class AppOperationCoordinator {
     state.blocks.add(block);
     state.queue = state.queue.filter((pending) => {
       if (!requestsConflict(block.request, pending.request)) return true;
+      pending.detachAbort();
       pending.reject(block.error);
       return false;
     });

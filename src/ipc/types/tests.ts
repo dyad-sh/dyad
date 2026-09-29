@@ -186,6 +186,8 @@ export type TestIsolation = z.infer<typeof TestIsolationSchema>;
 
 export const RunAppTestsResultSchema = z.object({
   appId: z.number(),
+  /** Refused before lifecycle publication; only these errors need a caller toast. */
+  preflightRefused: z.boolean().optional(),
   results: z.array(TestResultSchema),
   /**
    * Set when the run encountered an infrastructure or cleanup error (e.g.
@@ -382,67 +384,6 @@ export type TestRunQueueSnapshot = AssertQueueShape<
 >;
 export type TestRunQueueWireState = AssertQueueWire<TestRunQueueState>;
 
-export const testsContracts = {
-  getRunQueue: defineContract({
-    channel: "tests:get-run-queue",
-    input: z.object({ appId: z.number() }),
-    output: TestRunQueueSchema,
-  }),
-  applyTestAssertions: defineContract({
-    channel: "tests:apply-assertions",
-    input: ApplyTestAssertionsParamsSchema,
-    output: ApplyTestAssertionsResultSchema,
-  }),
-
-  discardTestAssertions: defineContract({
-    channel: "tests:discard-assertions",
-    input: DiscardTestAssertionsParamsSchema,
-    output: z.object({ ok: z.literal(true) }),
-  }),
-
-  listAppTests: defineContract({
-    channel: "tests:list",
-    input: ListAppTestsParamsSchema,
-    output: ListAppTestsResultSchema,
-  }),
-
-  runAppTests: defineContract({
-    channel: "tests:run",
-    input: RunAppTestsParamsSchema,
-    output: RunAppTestsResultSchema,
-  }),
-
-  stopAppTests: defineContract({
-    channel: "tests:stop",
-    input: StopAppTestsParamsSchema,
-    output: z.object({ ok: z.literal(true) }),
-  }),
-
-  getTestScreenshot: defineContract({
-    channel: "tests:screenshot",
-    input: GetTestScreenshotParamsSchema,
-    output: GetTestScreenshotResultSchema,
-  }),
-
-  deleteAppTest: defineContract({
-    channel: "tests:delete",
-    input: DeleteAppTestParamsSchema,
-    output: DeleteAppTestResultSchema,
-  }),
-
-  detectLegacyTests: defineContract({
-    channel: "tests:detect-legacy",
-    input: DetectLegacyTestsParamsSchema,
-    output: DetectLegacyTestsResultSchema,
-  }),
-
-  migrateLegacyTests: defineContract({
-    channel: "tests:migrate-legacy",
-    input: MigrateLegacyTestsParamsSchema,
-    output: MigrateLegacyTestsResultSchema,
-  }),
-} as const;
-
 // =============================================================================
 // Tests Events (main -> renderer streamed output)
 // =============================================================================
@@ -520,6 +461,80 @@ export const TestsRunStatePayloadSchema = z.object({
   sandboxed: z.boolean().optional(),
 });
 export type TestsRunStatePayload = z.infer<typeof TestsRunStatePayloadSchema>;
+
+/** Bounded active-run replay for a renderer opened after the start event. */
+export const ActiveTestRunSnapshotSchema = z.object({
+  run: TestsRunStatePayloadSchema,
+  phase: z.enum(["setup", "running", "stopping", "cleaning-up"]),
+  output: z.string(),
+});
+export type ActiveTestRunSnapshot = z.infer<typeof ActiveTestRunSnapshotSchema>;
+
+export const testsContracts = {
+  getActiveRun: defineContract({
+    channel: "tests:get-active-run",
+    input: z.object({ appId: z.number() }),
+    output: ActiveTestRunSnapshotSchema.nullable(),
+  }),
+  getRunQueue: defineContract({
+    channel: "tests:get-run-queue",
+    input: z.object({ appId: z.number() }),
+    output: TestRunQueueSchema,
+  }),
+  applyTestAssertions: defineContract({
+    channel: "tests:apply-assertions",
+    input: ApplyTestAssertionsParamsSchema,
+    output: ApplyTestAssertionsResultSchema,
+  }),
+
+  discardTestAssertions: defineContract({
+    channel: "tests:discard-assertions",
+    input: DiscardTestAssertionsParamsSchema,
+    output: z.object({ ok: z.literal(true) }),
+  }),
+
+  listAppTests: defineContract({
+    channel: "tests:list",
+    input: ListAppTestsParamsSchema,
+    output: ListAppTestsResultSchema,
+  }),
+
+  runAppTests: defineContract({
+    channel: "tests:run",
+    input: RunAppTestsParamsSchema,
+    output: RunAppTestsResultSchema,
+  }),
+
+  stopAppTests: defineContract({
+    channel: "tests:stop",
+    input: StopAppTestsParamsSchema,
+    output: z.object({ ok: z.literal(true) }),
+  }),
+
+  getTestScreenshot: defineContract({
+    channel: "tests:screenshot",
+    input: GetTestScreenshotParamsSchema,
+    output: GetTestScreenshotResultSchema,
+  }),
+
+  deleteAppTest: defineContract({
+    channel: "tests:delete",
+    input: DeleteAppTestParamsSchema,
+    output: DeleteAppTestResultSchema,
+  }),
+
+  detectLegacyTests: defineContract({
+    channel: "tests:detect-legacy",
+    input: DetectLegacyTestsParamsSchema,
+    output: DetectLegacyTestsResultSchema,
+  }),
+
+  migrateLegacyTests: defineContract({
+    channel: "tests:migrate-legacy",
+    input: MigrateLegacyTestsParamsSchema,
+    output: MigrateLegacyTestsResultSchema,
+  }),
+} as const;
 
 export const testsEvents = {
   queueState: defineEvent({

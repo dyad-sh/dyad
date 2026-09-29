@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import path from "node:path";
 import type { AgentContext } from "./types";
 import type { RunAppTestsResult } from "@/ipc/types/tests";
@@ -37,6 +37,18 @@ import {
 } from "@/ipc/utils/test_screenshot";
 import { readSettings } from "@/main/settings";
 import { runTestsTool } from "./run_tests";
+import {
+  stopAppTestsForApp,
+  drainAppTestRuns,
+} from "@/ipc/services/test_run_queue_service";
+
+const pendingRunnerResults = new Set<(result: RunAppTestsResult) => void>();
+afterEach(async () => {
+  stopAppTestsForApp(1);
+  for (const finish of pendingRunnerResults) finish({ appId: 1, results: [] });
+  await drainAppTestRuns(1);
+  pendingRunnerResults.clear();
+});
 
 const runner = vi.mocked(runAppTestsWithIsolation);
 const baseUrl = vi.mocked(getRunningTestBaseUrl);
@@ -131,7 +143,11 @@ describe("runTestsTool", () => {
     specLister.mockResolvedValue(files);
     const finishes: ((result: RunAppTestsResult) => void)[] = [];
     runner.mockImplementation(
-      () => new Promise((resolve) => finishes.push(resolve)),
+      () =>
+        new Promise((resolve) => {
+          finishes.push(resolve);
+          pendingRunnerResults.add(resolve);
+        }),
     );
     const ctx = makeCtx();
     let preview = "";
@@ -182,6 +198,7 @@ describe("runTestsTool", () => {
       () =>
         new Promise((resolve) => {
           finish = resolve;
+          pendingRunnerResults.add(resolve);
         }),
     );
     const first = runTestsTool.execute(
@@ -216,6 +233,7 @@ describe("runTestsTool", () => {
       () =>
         new Promise((resolve) => {
           finish = resolve;
+          pendingRunnerResults.add(resolve);
         }),
     );
     const ctx = makeCtx();
@@ -246,6 +264,7 @@ describe("runTestsTool", () => {
       () =>
         new Promise((resolve) => {
           finish = resolve;
+          pendingRunnerResults.add(resolve);
         }),
     );
     const first = runTestsTool.execute(

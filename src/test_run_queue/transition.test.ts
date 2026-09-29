@@ -29,6 +29,42 @@ const events: TestRunQueueEvent[] = [
 ];
 
 describe("test run queue transitions", () => {
+  it("starts idle requests and preserves FIFO ordering without executing queued work", () => {
+    const started = transition(EMPTY_TEST_RUN_QUEUE, {
+      type: "enqueue",
+      request: first,
+    });
+    expect(started).toMatchObject({
+      kind: "applied",
+      state: { activeRun: { ...first, stopping: false }, queuedRuns: [] },
+      commands: [{ type: "execute", runId: 1 }],
+    });
+    const queued = transition(started.state, {
+      type: "enqueue",
+      request: second,
+    });
+    expect(queued).toMatchObject({
+      kind: "applied",
+      state: { queuedRuns: [second] },
+      commands: [],
+    });
+    const third = { ...first, runId: 3 };
+    expect(
+      transition(queued.state, { type: "enqueue", request: third }),
+    ).toMatchObject({
+      kind: "applied",
+      state: { queuedRuns: [second, third] },
+      commands: [],
+    });
+    for (const state of states) {
+      for (const type of ["cancel", "settled"] as const) {
+        const stale = transition(state, { type, runId: 99 });
+        expect(stale.kind).toBe("ignored");
+        expect(stale.state).toBe(state);
+        expect(stale).not.toHaveProperty("commands");
+      }
+    }
+  });
   it("is total across idle, active, stopping, and queued states without mutating snapshots", () => {
     for (const state of states) {
       for (const event of events) {
@@ -57,6 +93,9 @@ describe("test run queue transitions", () => {
   });
   it("offers Stop exactly while requests are admitted", () => {
     for (const state of states) {
+      // A queued-only state is unreachable: admission starts an idle queue,
+      // and settlement promotes its next request atomically.
+      if (state.activeRun === null) expect(state.queuedRuns).toEqual([]);
       expect(selectCapabilities(state).canStop).toBe(state.activeRun !== null);
       const result = transition(state, { type: "stop" });
       if (selectCapabilities(state).canStop)

@@ -41,11 +41,12 @@ const mocks = vi.hoisted(() => ({
   refreshSettings: vi.fn(),
   navigate: vi.fn(),
   queuedRuns: [] as TestRunQueueSnapshot["queuedRuns"],
+  activeRun: null as TestRunQueueSnapshot["activeRun"],
 }));
 
 vi.mock("@/hooks/useTestRunQueue", () => ({
   useTestRunQueue: () => ({
-    data: { activeRun: null, queuedRuns: mocks.queuedRuns },
+    data: { activeRun: mocks.activeRun, queuedRuns: mocks.queuedRuns },
   }),
 }));
 
@@ -89,7 +90,11 @@ vi.mock("react-i18next", async () => {
     unknown
   >;
   const t = (key: string, options?: Record<string, unknown>) => {
-    const value = key
+    const lookupKey =
+      options?.count === undefined
+        ? key
+        : key + (options.count === 1 ? "_one" : "_other");
+    const value = lookupKey
       .split(".")
       .reduce<unknown>(
         (node, segment) =>
@@ -204,6 +209,8 @@ describe("TestsPanel", () => {
     mocks.settings = {};
     mocks.app = { id: 1, testingEnabled: true };
     mocks.queuedRuns = [];
+    mocks.activeRun = null;
+    mocks.runAppTests.mockResolvedValue({ appId: 1, results: [] });
   });
 
   it.each([
@@ -845,6 +852,78 @@ describe("TestsPanel", () => {
         screen.queryByText(/Your real data and preview stay unchanged/),
       ).toBeNull();
     });
+  });
+
+  describe("run submission", () => {
+    it("prevents duplicate submissions before main acknowledges the first click", async () => {
+      let finish!: (result: { appId: number; results: [] }) => void;
+      mocks.runAppTests.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve;
+          }),
+      );
+      renderPanel();
+      const run = await screen.findByRole("button", { name: "Run all tests" });
+      fireEvent.click(run);
+      fireEvent.click(run);
+      await waitFor(() => expect(mocks.runAppTests).toHaveBeenCalledOnce());
+      expect((run as HTMLButtonElement).disabled).toBe(true);
+      await act(async () => finish({ appId: 1, results: [] }));
+      await waitFor(() =>
+        expect((run as HTMLButtonElement).disabled).toBe(false),
+      );
+    });
+
+    it("allows panel runs to queue while an agent run owns the app", async () => {
+      mocks.activeRun = { runId: 10, source: "agent", stopping: false };
+      renderPanel();
+      const run = await screen.findByRole("button", {
+        name: "Queue all tests",
+      });
+      expect((run as HTMLButtonElement).disabled).toBe(false);
+      expect(
+        screen.getByRole("button", { name: "Stop running tests" }),
+      ).toBeTruthy();
+      const remove = screen.getByRole("button", {
+        name: "Delete test file: signup.spec.ts",
+      }) as HTMLButtonElement;
+      expect(remove.disabled).toBe(true);
+      fireEvent.click(run);
+      await waitFor(() => expect(mocks.runAppTests).toHaveBeenCalledOnce());
+    });
+
+    it.each([
+      { message: "Test run stopped.", refused: false },
+      { message: "Test run stopped before execution.", refused: false },
+      { message: "Setup failed", refused: false },
+      {
+        message: "Stop the recording session before running tests.",
+        refused: true,
+      },
+    ])(
+      "toasts only preflight refusals: $message",
+      async ({ message, refused }) => {
+        mocks.runAppTests.mockResolvedValue({
+          appId: 1,
+          results: [],
+          infraError: { message },
+          preflightRefused: refused,
+        });
+        renderPanel();
+        const run = await screen.findByRole("button", {
+          name: "Run all tests",
+        });
+        fireEvent.click(run);
+        await waitFor(() => expect(mocks.runAppTests).toHaveBeenCalledOnce());
+        await waitFor(() =>
+          expect((run as HTMLButtonElement).disabled).toBe(false),
+        );
+        if (refused)
+          expect(mocks.showError).toHaveBeenCalledExactlyOnceWith(message);
+        else expect(mocks.showError).not.toHaveBeenCalled();
+      },
+    );
   });
 
   describe("queued test files", () => {

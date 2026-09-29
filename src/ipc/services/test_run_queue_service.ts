@@ -17,7 +17,8 @@ const deletingApps = new Set<number>();
 // Composition root: the queue knows no IPC, provider, or agent modules.
 // Each callback owns the complete lifecycle, including agent result accounting.
 const testRunQueues = new Map<number, TestRunQueue>();
-const testRunGenerationByAppId = new Map<number, number>();
+// Process-wide identities survive idle-queue eviction without retaining app IDs.
+let nextTestRunId = 0;
 
 export function withAppTestRun<Result>(
   options: Omit<TestRunRequest, "runId"> & {
@@ -34,8 +35,7 @@ export function withAppTestRun<Result>(
     return Promise.reject(
       new DyadError("App is being deleted", DyadErrorKind.Precondition),
     );
-  const runId = (testRunGenerationByAppId.get(appId) ?? 0) + 1;
-  testRunGenerationByAppId.set(appId, runId);
+  const runId = ++nextTestRunId;
   let queue = testRunQueues.get(appId);
   if (!queue) {
     queue = new TestRunQueue({

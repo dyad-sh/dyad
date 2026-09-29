@@ -30,13 +30,18 @@ function reportRetentionError(error: unknown): void {
 }
 
 /** Only a completed whole-suite run may expire old, explicitly owned artifacts. */
-export async function pruneTestRunArtifacts(appPath: string): Promise<void> {
+export async function pruneTestRunArtifacts(
+  appPath: string,
+  currentRunDirectory: string,
+): Promise<void> {
   const root = path.join(appPath, "test-results");
   const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
   try {
     for (const entry of await fs.readdir(root, { withFileTypes: true })) {
       if (!entry.isDirectory() || !RUN_DIRECTORY.test(entry.name)) continue;
       const directory = path.join(root, entry.name);
+      if (path.resolve(directory) === path.resolve(currentRunDirectory))
+        continue;
       try {
         const info = await fs.lstat(directory);
         if (

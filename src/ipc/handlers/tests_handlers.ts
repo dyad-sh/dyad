@@ -937,7 +937,7 @@ async function runPreviewTestBatch({
     !result.infraError &&
     result.results.length > 0
   ) {
-    await pruneTestRunArtifacts(appPath);
+    await pruneTestRunArtifacts(appPath, batchDir);
   }
   return result;
 }
@@ -1361,7 +1361,7 @@ export async function runAppTestsCore({
     !signal?.aborted &&
     results.length > 0
   ) {
-    await pruneTestRunArtifacts(appPath);
+    await pruneTestRunArtifacts(appPath, artifactsDir);
   }
   return { appId, results };
 }

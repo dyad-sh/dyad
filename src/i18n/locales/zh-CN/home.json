@@ -272,7 +272,6 @@
     "allTests": "所有测试",
     "queueAll": "全部加入队列",
     "queueAllTests": "将所有测试加入队列",
-    "testRunsQueued": "{{count}} 次运行排队中",
     "testGate": {
       "settingsLoading": "正在加载设置…",
       "settingsUnavailable": "Dyad 无法加载你的设置，因此无法确定测试将如何运行。",

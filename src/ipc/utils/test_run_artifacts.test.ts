@@ -43,7 +43,7 @@ it("allocates without pruning and expires only old, explicitly owned runs when a
   expect(await fs.readFile(path.join(old, "error-context.md"), "utf8")).toBe(
     "old failure",
   );
-  await pruneTestRunArtifacts(root);
+  await pruneTestRunArtifacts(root, recent);
   await expect(fs.stat(old)).rejects.toMatchObject({ code: "ENOENT" });
   expect((await fs.stat(user)).isDirectory()).toBe(true);
   expect((await fs.stat(legacy)).isDirectory()).toBe(true);
@@ -59,11 +59,26 @@ it("logs listing failures without preventing subsequent artifact allocation", as
     code: "EACCES",
   });
   vi.spyOn(fs, "readdir").mockRejectedValueOnce(error);
-  await expect(pruneTestRunArtifacts(root)).resolves.toBeUndefined();
+  const current = await createTestRunArtifactsDir(root);
+  await expect(pruneTestRunArtifacts(root, current)).resolves.toBeUndefined();
   expect(warn).toHaveBeenCalledWith(
     "Could not prune old test artifacts",
     error,
   );
   const directory = await createTestRunArtifactsDir(root);
   expect((await fs.stat(directory)).isDirectory()).toBe(true);
+});
+
+it("preserves the current run even when its directory predates the retention cutoff", async () => {
+  const root = await makeRoot();
+  const previous = await createTestRunArtifactsDir(root);
+  const current = await createTestRunArtifactsDir(root);
+  await fs.writeFile(path.join(current, "results.json"), "current results");
+  for (const directory of [previous, current])
+    await fs.utimes(directory, new Date(0), new Date(0));
+  await pruneTestRunArtifacts(root, current);
+  await expect(fs.stat(previous)).rejects.toMatchObject({ code: "ENOENT" });
+  expect(await fs.readFile(path.join(current, "results.json"), "utf8")).toBe(
+    "current results",
+  );
 });

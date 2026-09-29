@@ -36,23 +36,33 @@ test("benchmark page: themes, chart inspection, filtering, sorting, mobile and d
     const models = await page.locator("#table tbody tr").count();
     assert(models >= 20);
     assert.equal(await page.locator("#tiles .tile").count(), 3);
-    assert.match(
-      await page.locator("#table tbody tr").first().innerText(),
-      /GPT-6 Sol[\s\S]*94\.3%/,
-    );
-    assert.match(
-      await page
-        .locator("#table tbody tr")
-        .filter({ hasText: "GPT-6 Luna" })
-        .innerText(),
-      /86\.9%/,
+    const rows = await page.evaluate("DATA.rows");
+    const leader = rows
+      .filter((r) => r.overall != null)
+      .sort((a, b) => b.overall - a.overall)[0];
+    const firstRow = await page.locator("#table tbody tr").first().innerText();
+    assert(firstRow.includes(leader.name));
+    assert(firstRow.includes((leader.overall * 100).toFixed(1) + "%"));
+    const luna = rows.find((r) => r.slug === "gpt-6-luna");
+    const lunaScore = (luna.overall * 100).toFixed(1) + "%";
+    assert(
+      (
+        await page
+          .locator("#table tbody tr")
+          .filter({ hasText: "GPT-6 Luna" })
+          .innerText()
+      ).includes(lunaScore),
     );
     const n = await page.locator(".pt").count();
     assert.equal(await page.locator(".key-item").count(), n);
+    assert.equal(
+      n,
+      rows.filter((r) => r.overall != null && r.costVerified && r.totalCost > 0)
+        .length,
+    );
     await page.locator('.key-item[data-slug="gpt-6-luna"]').click();
-    assert.match(
-      await page.locator("#chart-detail").innerText(),
-      /GPT-6 Luna[\s\S]*86\.9%/,
+    assert(
+      (await page.locator("#chart-detail").innerText()).includes(lunaScore),
     );
     await page.locator('.pt[data-slug="gpt-6-sol"]').focus();
     await page.keyboard.press("Enter");
@@ -76,7 +86,7 @@ test("benchmark page: themes, chart inspection, filtering, sorting, mobile and d
     assert.equal(await page.locator(".pt").count(), 0);
     assert.match(
       await page.locator("#chart").innerText(),
-      /Select a scored model/,
+      /Select a model with complete scores and verified costs/,
     );
     await page.locator("#all").click();
     assert.equal(await page.locator("#table tbody tr").count(), models);
@@ -96,8 +106,9 @@ test("benchmark page: themes, chart inspection, filtering, sorting, mobile and d
     const videos = await page
       .locator(".demo video")
       .evaluateAll((nodes) => nodes.map((n) => n.getAttribute("src")));
-    assert.equal(videos.length, 4);
+    assert(videos.length >= 5);
     assert(videos.includes("demo-deepseek-v4.1-flash-all-apps.mp4"));
+    assert(videos.includes("demo-claude-sonnet-5-5-all-apps.mp4"));
     assert.equal(
       await page.locator('.demo a[href*="deskhero-repeat1"]').count(),
       2,

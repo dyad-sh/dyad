@@ -57,7 +57,9 @@ Deno.serve(() => new Response(message));
 
   await po.appManagement.startDatabaseIntegrationSetup("supabase");
   await po.appManagement.clickConnectSupabaseButton();
-  await expect(po.page.getByText("Fake Supabase Project")).toBeVisible({
+  await expect(
+    po.page.getByText("Fake Supabase Project", { exact: true }),
+  ).toBeVisible({
     timeout: Timeout.MEDIUM,
   });
   await po.navigation.clickBackButton();

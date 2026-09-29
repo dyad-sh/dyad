@@ -773,13 +773,13 @@ describe("preview runs", () => {
       try {
         await runAppTestsCore({ appId: 1, previewCdpEndpoint });
         expect(lastSpawn().env.DYAD_TEST_BASE_URL).toBe(PROXY_URL);
+        // Match the runner's native resolution: realpathSync can retain Windows
+        // 8.3 aliases (RUNNER~1) that fs.promises.realpath expands (runneradmin).
+        const canonicalAppPath = await fs.promises.realpath(APP_PATH);
         expect(lastSpawn().env.NODE_OPTIONS).toBe(
           `--no-warnings --require ${JSON.stringify(
             path
-              .join(
-                fs.realpathSync(APP_PATH),
-                "e2e-tests/fixtures/dyad/preview-dns.cjs",
-              )
+              .join(canonicalAppPath, "e2e-tests/fixtures/dyad/preview-dns.cjs")
               .replaceAll("\\", "/"),
           )}`,
         );

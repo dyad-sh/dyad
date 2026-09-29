@@ -115,18 +115,6 @@ export const CheckCloudflareRepoAccessParamsSchema = z.object({
   accountId: CloudflareAccountIdSchema,
 });
 
-export const CheckCloudflareRepoAccessResultSchema = z.object({
-  hasAccess: z.boolean(),
-  /**
-   * GitHub's installed-apps settings for the repository's owner, where the
-   * Cloudflare app can be given this repository.
-   */
-  githubInstallationsUrl: z.string(),
-});
-export type CheckCloudflareRepoAccessResult = z.infer<
-  typeof CheckCloudflareRepoAccessResultSchema
->;
-
 export const CloudflareTargetParamsSchema = z.object({
   appId: z.number(),
   rootDirectory: z.string(),
@@ -200,7 +188,7 @@ export const cloudflareContracts = {
   checkRepoAccess: defineContract({
     channel: "cloudflare:check-repo-access",
     input: CheckCloudflareRepoAccessParamsSchema,
-    output: CheckCloudflareRepoAccessResultSchema,
+    output: z.object({ hasAccess: z.boolean() }),
   }),
 
   connectWorker: defineContract({

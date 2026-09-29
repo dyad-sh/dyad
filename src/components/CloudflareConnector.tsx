@@ -584,15 +584,7 @@ function TargetSetup({
     );
   }
   if (!access.data.hasAccess) {
-    return (
-      <>
-        {toolbarRow}
-        <RepoAccessPrompt
-          githubInstallationsUrl={access.data.githubInstallationsUrl}
-          onCheck={() => access.refetch()}
-        />
-      </>
-    );
+    return <RepoAccessPrompt toolbar={toolbar} />;
   }
   return (
     <WorkerForm
@@ -609,78 +601,31 @@ function TargetSetup({
 }
 
 function RepoAccessPrompt({
-  githubInstallationsUrl,
-  onCheck,
+  toolbar,
 }: {
-  /** Where the repository is added to an install Cloudflare already has. */
-  githubInstallationsUrl: string;
-  /** Asks Cloudflare again right away. */
-  onCheck: () => Promise<{ error: Error | null }>;
+  /** The setup's Refresh, shown beside the dashboard button. */
+  toolbar: ReactNode;
 }) {
-  // Only a check the user asked for shows progress and reports a failure.
-  // The background poll keeps the prompt as it is, so a passing network
-  // problem does not replace it with an error every few seconds.
-  const [checking, setChecking] = useState(false);
-  const [checkError, setCheckError] = useState<Error | null>(null);
-  const check = async () => {
-    setChecking(true);
-    setCheckError(null);
-    try {
-      const result = await onCheck();
-      setCheckError(result.error);
-    } finally {
-      setChecking(false);
-    }
-  };
   return (
-    <div className={warningClass} data-testid="cloudflare-repo-access">
+    <div className={noticeClass} data-testid="cloudflare-repo-access">
       <p className="font-medium mb-1">
         Cloudflare needs access to this GitHub repository
       </p>
       <p>
-        Click the button below to go to the Cloudflare dashboard. Then connect
-        GitHub and grant access to this repository or to all repositories.
+        Connect GitHub in the Cloudflare dashboard and grant access to this
+        repository, or to all repositories.
       </p>
-      <div className="mt-3">
+      <div className="flex flex-wrap items-center gap-2 mt-3">
         <Button
           size="sm"
+          className="bg-blue-600 hover:bg-blue-700 text-white"
           onClick={() =>
             ipc.system.openExternalUrl(CLOUDFLARE_CONNECT_GITHUB_URL)
           }
         >
           Open Cloudflare Dashboard
         </Button>
-      </div>
-      <p className="mt-3">
-        If Cloudflare is already connected to GitHub, give it access to this
-        repository.
-      </p>
-      <div className="mt-2">
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => ipc.system.openExternalUrl(githubInstallationsUrl)}
-        >
-          Manage Repository Access on GitHub
-        </Button>
-      </div>
-      <div className="mt-3">
-        <Button size="sm" variant="ghost" onClick={check} disabled={checking}>
-          {checking ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
-          ) : (
-            <RefreshCw className="h-3 w-3" />
-          )}
-          Check Again
-        </Button>
-        {checkError && (
-          <div
-            className={`${errorClass} mt-2`}
-            data-testid="cloudflare-repo-access-error"
-          >
-            {errorMessage(checkError)}
-          </div>
-        )}
+        {toolbar}
       </div>
     </div>
   );

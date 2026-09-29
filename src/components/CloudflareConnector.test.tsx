@@ -47,7 +47,6 @@ vi.mock("@/lib/toast", () => ({ showWarning, showError }));
 
 const { CloudflareConnector } = await import("./CloudflareConnector");
 
-const INSTALLATIONS_URL = "https://github.com/settings/installations";
 const TARGET = {
   rootDirectory: "worker",
   configPath: "worker/wrangler.jsonc",
@@ -93,7 +92,6 @@ beforeEach(() => {
   cloudflare.getAppStatus.mockResolvedValue(appStatus());
   cloudflare.checkRepoAccess.mockResolvedValue({
     hasAccess: true,
-    githubInstallationsUrl: INSTALLATIONS_URL,
   });
   cloudflare.getDeploymentStatus.mockResolvedValue({
     state: "live",
@@ -203,53 +201,43 @@ describe("before a Worker can be connected", () => {
     expect(cloudflare.getAppStatus).toHaveBeenCalledTimes(2);
   });
 
-  it("offers the dashboard first and GitHub's install settings second when Cloudflare cannot see the repository", async () => {
-    cloudflare.checkRepoAccess.mockResolvedValue({
-      hasAccess: false,
-      githubInstallationsUrl:
-        "https://github.com/organizations/acme/settings/installations",
-    });
+  it("sends the user to the Cloudflare dashboard, with Refresh on the same row", async () => {
+    cloudflare.checkRepoAccess.mockResolvedValue({ hasAccess: false });
     renderConnector();
 
+    const card = await screen.findByTestId("cloudflare-repo-access");
     fireEvent.click(
-      await screen.findByRole("button", {
-        name: "Open Cloudflare Dashboard",
-      }),
-    );
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: "Manage Repository Access on GitHub",
-      }),
+      within(card).getByRole("button", { name: "Open Cloudflare Dashboard" }),
     );
 
-    expect(openExternalUrl.mock.calls.map((call) => call[0])).toEqual([
+    expect(openExternalUrl).toHaveBeenCalledWith(
       "https://dash.cloudflare.com/?to=/:account/workers-and-pages/create",
-      "https://github.com/organizations/acme/settings/installations",
-    ]);
-    // Check Again comes after both ways of granting access.
-    const buttons = screen
-      .getAllByRole("button")
-      .map((button) => button.textContent);
-    expect(buttons.indexOf("Check Again")).toBeGreaterThan(
-      buttons.indexOf("Manage Repository Access on GitHub"),
     );
+    // The card's only actions: the dashboard, then Refresh.
+    expect(
+      within(card)
+        .getAllByRole("button")
+        .map((button) => button.textContent),
+    ).toEqual(["Open Cloudflare Dashboard", "Refresh"]);
+    expect(screen.getAllByRole("button", { name: "Refresh" })).toHaveLength(1);
+    expect(screen.queryByTestId("cloudflare-target-rescan")).toBeNull();
     expect(screen.queryByTestId("cloudflare-worker-form")).toBeNull();
     expect(focusWindow).not.toHaveBeenCalled();
   });
 
-  it("checks again when asked, without waiting for the next poll", async () => {
+  it("checks access again from Refresh, without waiting for the next poll", async () => {
     cloudflare.checkRepoAccess.mockResolvedValue({
       hasAccess: false,
-      githubInstallationsUrl: INSTALLATIONS_URL,
     });
     renderConnector();
 
-    const check = await screen.findByRole("button", { name: "Check Again" });
+    // Refresh shows in a row while the setup loads, then moves into the card.
+    const card = await screen.findByTestId("cloudflare-repo-access");
+    const check = within(card).getByRole("button", { name: "Refresh" });
     expect(cloudflare.checkRepoAccess).toHaveBeenCalledTimes(1);
 
     cloudflare.checkRepoAccess.mockResolvedValue({
       hasAccess: true,
-      githubInstallationsUrl: INSTALLATIONS_URL,
     });
     fireEvent.click(check);
 
@@ -259,29 +247,23 @@ describe("before a Worker can be connected", () => {
     expect(focusWindow).toHaveBeenCalledTimes(1);
   });
 
-  it("reports a failed manual check and clears it on the next one", async () => {
+  it("reports a failed access check from Refresh in a toast", async () => {
     cloudflare.checkRepoAccess.mockResolvedValue({
       hasAccess: false,
-      githubInstallationsUrl: INSTALLATIONS_URL,
     });
     renderConnector();
-    const check = await screen.findByRole("button", { name: "Check Again" });
+    const card = await screen.findByTestId("cloudflare-repo-access");
+    const check = within(card).getByRole("button", { name: "Refresh" });
 
     cloudflare.checkRepoAccess.mockRejectedValueOnce(
       new Error("Authentication error"),
     );
     fireEvent.click(check);
 
-    const error = await screen.findByTestId("cloudflare-repo-access-error");
-    expect(error.textContent).toContain("Authentication error");
-    // The prompt itself stays, since a failed check is not an answer.
-    expect(screen.getByTestId("cloudflare-repo-access")).toBeTruthy();
-
-    fireEvent.click(check);
-
     await waitFor(() =>
-      expect(screen.queryByTestId("cloudflare-repo-access-error")).toBeNull(),
+      expect(showError).toHaveBeenCalledWith("Authentication error"),
     );
+    // The prompt itself stays, since a failed check is not an answer.
     expect(screen.getByTestId("cloudflare-repo-access")).toBeTruthy();
   });
 

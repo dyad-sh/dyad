@@ -14,7 +14,6 @@ import { createTypedHandler } from "./base";
 import { getGitHubApiBase } from "./github_handlers";
 import {
   cloudflareContracts,
-  type CheckCloudflareRepoAccessResult,
   type CloudflareAppStatus,
   type CloudflareConnection,
   type CloudflareDeploymentStatus,
@@ -59,7 +58,6 @@ import {
 import {
   buildCloudflareWorkerDashboardUrl,
   buildDeployRule,
-  buildGithubInstallationsUrl,
   isBuildTokenRevokedLog,
   isValidWorkerName,
   pnpmVersionForBuild,
@@ -335,7 +333,7 @@ async function getGithubRepoIdentity(app: AppRow): Promise<GithubRepoIdentity> {
   const repo = (await response.json()) as {
     id?: number;
     name?: string;
-    owner?: { id?: number; login?: string; type?: string };
+    owner?: { id?: number; login?: string };
   };
   if (repo.id === undefined || repo.owner?.id === undefined) {
     throw new DyadError(
@@ -343,10 +341,9 @@ async function getGithubRepoIdentity(app: AppRow): Promise<GithubRepoIdentity> {
       DyadErrorKind.External,
     );
   }
-  const identity: GithubRepoIdentity = {
+  const identity = {
     ownerId: String(repo.owner.id),
     ownerLogin: repo.owner.login ?? app.githubOrg,
-    ownerType: repo.owner.type === "Organization" ? "Organization" : "User",
     repoId: String(repo.id),
     repoName: repo.name ?? app.githubRepo,
   };
@@ -527,7 +524,7 @@ async function handleCheckRepoAccess({
 }: {
   appId: number;
   accountId: string;
-}): Promise<CheckCloudflareRepoAccessResult> {
+}): Promise<{ hasAccess: boolean }> {
   const token = requireToken();
   const app = await requireApp(appId);
   const repo = await getGithubRepoIdentity(app);
@@ -538,10 +535,7 @@ async function handleCheckRepoAccess({
       repo,
       app.githubBranch ?? DEFAULT_BRANCH,
     );
-    return {
-      hasAccess,
-      githubInstallationsUrl: buildGithubInstallationsUrl(repo),
-    };
+    return { hasAccess };
   } catch (error) {
     throw toCloudflareDyadError(
       error,

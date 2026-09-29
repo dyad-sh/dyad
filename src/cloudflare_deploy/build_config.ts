@@ -45,34 +45,15 @@ export function buildCloudflareTokenTemplateUrl(): string {
 }
 
 /**
- * The dashboard's create page, whose "Import a repository" flow is where
- * GitHub gets connected to a Cloudflare account. Cloudflare's deep links use
- * a literal ":account" that the dashboard fills in after sign-in.
+ * The dashboard's create page, where GitHub is connected to a Cloudflare
+ * account and repositories are added to that connection. Cloudflare's deep
+ * links use a literal ":account" that the dashboard fills in after sign-in.
  *
- * Connecting must start here. Installing the GitHub App from GitHub itself
- * does not link it to any Cloudflare account. Only adding a repository to an
- * install Cloudflare already knows can be done on GitHub alone.
+ * Access has to be granted from here. Installing the GitHub App from GitHub
+ * itself does not link it to any Cloudflare account.
  */
 export const CLOUDFLARE_CONNECT_GITHUB_URL =
   "https://dash.cloudflare.com/?to=/:account/workers-and-pages/create";
-
-/**
- * GitHub's list of installed apps for the repository's owner, where the
- * Cloudflare app's repository access is changed. It lists the app only if it
- * is installed, so it cannot create the unlinked install that the app's own
- * install page would.
- */
-export function buildGithubInstallationsUrl({
-  ownerLogin,
-  ownerType,
-}: {
-  ownerLogin: string;
-  ownerType: "User" | "Organization";
-}): string {
-  return ownerType === "Organization"
-    ? `https://github.com/organizations/${encodeURIComponent(ownerLogin)}/settings/installations`
-    : "https://github.com/settings/installations";
-}
 
 export function buildCloudflareWorkerDashboardUrl({
   accountId,

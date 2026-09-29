@@ -19,7 +19,6 @@ const holder = vi.hoisted(() => ({
   githubCalls: 0,
   githubOffline: false,
   githubStatus: null as number | null,
-  githubOwnerType: "User" as string | undefined,
   localPnpmVersion: "11.4.2" as string | undefined,
 }));
 
@@ -162,7 +161,7 @@ async function fakeFetch(
       JSON.stringify({
         id: 501,
         name: "shop",
-        owner: { id: 77, login: "acme", type: holder.githubOwnerType },
+        owner: { id: 77, login: "acme" },
       }),
     );
   }
@@ -340,7 +339,6 @@ beforeEach(() => {
   holder.githubCalls = 0;
   holder.githubOffline = false;
   holder.githubStatus = null;
-  holder.githubOwnerType = "User";
   handlers.clearGithubIdentityCache();
   holder.files = {
     "worker/wrangler.jsonc": `{ "name": "shop-api" }`,
@@ -1182,33 +1180,11 @@ describe("the app's status", () => {
   it("reports whether Cloudflare can see the repository", async () => {
     expect(
       await handlers.handleCheckRepoAccess({ appId, accountId: ACCOUNT }),
-    ).toMatchObject({ hasAccess: true });
+    ).toEqual({ hasAccess: true });
     cloudflare.visibleRepoIds.clear();
     expect(
       await handlers.handleCheckRepoAccess({ appId, accountId: ACCOUNT }),
-    ).toMatchObject({ hasAccess: false });
-  });
-
-  it("points at the owner's GitHub install settings for adding the repository", async () => {
-    expect(
-      (await handlers.handleCheckRepoAccess({ appId, accountId: ACCOUNT }))
-        .githubInstallationsUrl,
-    ).toBe("https://github.com/settings/installations");
-
-    holder.githubOwnerType = "Organization";
-    handlers.clearGithubIdentityCache();
-    expect(
-      (await handlers.handleCheckRepoAccess({ appId, accountId: ACCOUNT }))
-        .githubInstallationsUrl,
-    ).toBe("https://github.com/organizations/acme/settings/installations");
-
-    // Older GitHub responses without an owner type get the personal page.
-    holder.githubOwnerType = undefined;
-    handlers.clearGithubIdentityCache();
-    expect(
-      (await handlers.handleCheckRepoAccess({ appId, accountId: ACCOUNT }))
-        .githubInstallationsUrl,
-    ).toBe("https://github.com/settings/installations");
+    ).toEqual({ hasAccess: false });
   });
 });
 

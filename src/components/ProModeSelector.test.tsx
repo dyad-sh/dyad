@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   claudeConnected: false,
   claudeEnabled: false,
   usage: undefined as string | undefined,
+  hasProKey: true,
   update: vi.fn(),
 }));
 vi.mock("@/hooks/useSettings", () => ({
@@ -16,7 +17,9 @@ vi.mock("@/hooks/useSettings", () => ({
       enableDyadPro: true,
       enableClaudeCodeSubscription: mocks.claudeEnabled,
       proModelUsage: mocks.usage,
-      providerSettings: { auto: { apiKey: { value: "test-pro" } } },
+      providerSettings: {
+        auto: { apiKey: { value: mocks.hasProKey ? "test-pro" : "" } },
+      },
     },
     updateSettings: mocks.update,
   }),
@@ -37,6 +40,7 @@ beforeEach(() => {
   mocks.claudeConnected = false;
   mocks.claudeEnabled = false;
   mocks.usage = undefined;
+  mocks.hasProKey = true;
   vi.clearAllMocks();
 });
 it("allows subscription usage when only Claude Code is connected", async () => {
@@ -91,6 +95,71 @@ it.each(["click", "keyboard"])(
     }
     expect(mocks.update).toHaveBeenCalledExactlyOnceWith({
       proModelUsage: "pro",
+    });
+  },
+);
+
+it("selects BYO without requiring keys or changing the selected model", async () => {
+  mocks.connected = false;
+  const user = userEvent.setup();
+  render(<ProModeSelector />);
+  await user.click(screen.getByRole("button", { name: "Pro" }));
+  await user.click(
+    screen.getByRole("button", { name: "Your API keys & local" }),
+  );
+  expect(mocks.update).toHaveBeenCalledExactlyOnceWith({
+    proModelUsage: "api-key",
+  });
+});
+
+it.each([true, false])(
+  "keeps BYO selected with subscription connected=%s and explains billing",
+  async (connected) => {
+    mocks.connected = connected;
+    mocks.usage = "api-key";
+    const user = userEvent.setup();
+    render(<ProModeSelector />);
+    await user.click(screen.getByRole("button", { name: "Pro" }));
+    expect(
+      screen.getByRole("button", { name: "Your API keys & local" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText(/Provider charges apply separately/)).toBeVisible();
+    expect(
+      screen.getByText(/Pro helper tasks use cloud models through Dyad/),
+    ).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Pro credits" }));
+    expect(mocks.update).toHaveBeenCalledExactlyOnceWith({
+      proModelUsage: "pro",
+    });
+  },
+);
+
+it.each(["chatgpt", "claude"])(
+  "allows leaving BYO for %s after the Pro key is removed",
+  async (subscription) => {
+    mocks.hasProKey = false;
+    mocks.usage = "api-key";
+    mocks.connected = subscription === "chatgpt";
+    mocks.claudeEnabled = subscription === "claude";
+    mocks.claudeConnected = subscription === "claude";
+    const user = userEvent.setup();
+    render(<ProModeSelector />);
+    await user.click(screen.getByRole("button", { name: "Pro" }));
+    expect(
+      screen.getByRole("button", { name: "Your API keys & local" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Pro credits" })).toBeDisabled();
+    expect(
+      screen.getByRole("switch", { name: "Enable Dyad Pro" }),
+    ).toHaveAttribute("aria-disabled", "true");
+    await user.click(
+      screen.getByRole("button", {
+        name:
+          subscription === "chatgpt" ? "ChatGPT Subscription" : "Subscriptions",
+      }),
+    );
+    expect(mocks.update).toHaveBeenCalledExactlyOnceWith({
+      proModelUsage: "subscription",
     });
   },
 );

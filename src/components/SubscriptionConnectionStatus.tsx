@@ -153,6 +153,7 @@ export function SubscriptionLimitBanner() {
   if (
     !settings ||
     settings.proModelUsage === "pro" ||
+    settings.proModelUsage === "api-key" ||
     !status.data?.connected ||
     !status.data.limitReached
   )

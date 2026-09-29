@@ -172,7 +172,9 @@ describe("synthetic overlapping run_tests calls", () => {
       let environmentsInUse = 0;
       let maxEnvironmentsInUse = 0;
       const envPath = path.join(h.appPath, ".env.local");
-      const canonicalAppPath = fs.realpathSync(h.appPath);
+      // Match the runner's native realpath resolution: realpathSync can retain
+      // Windows short-path aliases (e.g. RUNNER~1) that the async API expands.
+      const canonicalAppPath = await fs.promises.realpath(h.appPath);
 
       h.prepare.mockImplementation(async ({ signal }) => {
         const spec = getAppTestRunQueue(APP_ID).activeRun!.testFiles![0];

@@ -1,0 +1,576 @@
+{
+  "version": 1,
+  "suiteHash": "27385d1205063aca0fa5c489d5f29c8f21e58fa0a54a89e63b54a9a3292c9b16",
+  "finishedAt": "2026-09-29T23:32:42.631Z",
+  "judges": "Refresh verdicts when automated evidence changes or judgments are missing; retain valid unchanged judgments",
+  "judgeCounts": {
+    "preserved": 145,
+    "refreshed": 196,
+    "not_required": 7
+  },
+  "checkpoints": 348,
+  "unavailable": [
+    {
+      "cell": "auto-sidekick-relay-crm-dl-v1-r1",
+      "m": 1,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "auto-sidekick-relay-crm-dl-v1-r1",
+      "m": 2,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "auto-sidekick-relay-crm-dl-v3-r2",
+      "m": 1,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "auto-sidekick-relay-crm-dl-v3-r2",
+      "m": 2,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "auto-sidekick-relay-crm-dl-v3-r3",
+      "m": 1,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "auto-sidekick-relay-crm-dl-v3-r3",
+      "m": 2,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "auto-sidekick-relay-crm-dl-v3b-r1",
+      "m": 1,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "auto-sidekick-relay-crm-dl-v3b-r1",
+      "m": 2,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "auto-sidekick-relay-crm-dl-v3b-r1",
+      "m": 3,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "auto-sidekick-relay-crm-dl-v3c-r1",
+      "m": 1,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "auto-sidekick-relay-crm-dl-v3c-r1",
+      "m": 2,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "auto-sidekick-relay-crm-dl-v3c-r1",
+      "m": 3,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "auto-sidekick-todo-ab-v1-r1",
+      "m": 1,
+      "reason": "unknown app"
+    },
+    {
+      "cell": "auto-sidekick-todo-ab-v1-r2",
+      "m": 1,
+      "reason": "unknown app"
+    },
+    {
+      "cell": "auto-sidekick-todo-ab-v1-r3",
+      "m": 1,
+      "reason": "unknown app"
+    },
+    {
+      "cell": "auto-sidekick-todo-ab-v2-r1",
+      "m": 1,
+      "reason": "unknown app"
+    },
+    {
+      "cell": "auto-sidekick-todo-ab-v2-r2",
+      "m": 1,
+      "reason": "unknown app"
+    },
+    {
+      "cell": "auto-sidekick-todo-ab-v2-r3",
+      "m": 1,
+      "reason": "unknown app"
+    },
+    {
+      "cell": "claude-sonnet-5-5-deskhero-medium",
+      "m": 1,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "deepseek_deepseek-v4-flash-0731-deskhero-xhigh",
+      "m": 1,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "deepseek_deepseek-v4-flash-0731-deskhero-xhigh",
+      "m": 2,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "deepseek_deepseek-v4-flash-0731-deskhero-xhigh",
+      "m": 3,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "deepseek_deepseek-v4-flash-0731-portalis-xhigh",
+      "m": 1,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "deepseek_deepseek-v4-flash-0731-portalis-xhigh",
+      "m": 2,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "deepseek_deepseek-v4-flash-0731-portalis-xhigh",
+      "m": 3,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "deepseek_deepseek-v4-flash-0731-relay-crm-xhigh",
+      "m": 1,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "deepseek_deepseek-v4-flash-0731-relay-crm-xhigh",
+      "m": 2,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "deepseek_deepseek-v4-flash-0731-relay-crm-xhigh",
+      "m": 3,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "gemini-3.8-flash-portalis-high",
+      "m": 1,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "gemini-3.8-flash-portalis-high",
+      "m": 2,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "gemini-3.8-flash-portalis-high",
+      "m": 3,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "gpt-5.6-luna-deskhero-xhigh",
+      "m": 1,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "gpt-5.6-luna-deskhero-xhigh",
+      "m": 2,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "gpt-5.6-luna-deskhero-xhigh",
+      "m": 3,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "gpt-5.6-luna-portalis-xhigh",
+      "m": 1,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "gpt-5.6-luna-portalis-xhigh",
+      "m": 2,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "gpt-5.6-luna-portalis-xhigh",
+      "m": 3,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "gpt-5.6-luna-relay-crm-dl-v3c-r2",
+      "m": 1,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "gpt-5.6-luna-relay-crm-dl-v3c-r2",
+      "m": 2,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "gpt-5.6-luna-relay-crm-dl-v3c-r2",
+      "m": 3,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "gpt-5.6-luna-relay-crm-xhigh",
+      "m": 1,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "gpt-5.6-luna-relay-crm-xhigh",
+      "m": 2,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "gpt-5.6-luna-relay-crm-xhigh",
+      "m": 3,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "gpt-5.6-terra-deskhero-xhigh",
+      "m": 1,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "gpt-5.6-terra-deskhero-xhigh",
+      "m": 2,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "gpt-5.6-terra-deskhero-xhigh",
+      "m": 3,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "gpt-5.6-terra-portalis-xhigh",
+      "m": 1,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "gpt-5.6-terra-portalis-xhigh",
+      "m": 2,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "gpt-5.6-terra-portalis-xhigh",
+      "m": 3,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "gpt-5.6-terra-relay-crm-xhigh",
+      "m": 1,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "gpt-5.6-terra-relay-crm-xhigh",
+      "m": 2,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "gpt-5.6-terra-relay-crm-xhigh",
+      "m": 3,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "meta_muse-spark-1.3-portalis",
+      "m": 1,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "meta_muse-spark-1.3-portalis",
+      "m": 2,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "meta_muse-spark-1.3-relay-crm",
+      "m": 1,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "meta_muse-spark-1.3-relay-crm",
+      "m": 2,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "x-ai_grok-4.6-relay-crm-high",
+      "m": 1,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "x-ai_grok-4.6-relay-crm-high",
+      "m": 2,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "x-ai_grok-4.6-relay-crm-high",
+      "m": 3,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "x-ai_grok-4.7-deskhero-high-r4",
+      "m": 1,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "x-ai_grok-4.7-deskhero-r3",
+      "m": 1,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "x-ai_grok-4.7-portalis-high-r4",
+      "m": 1,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "x-ai_grok-4.7-portalis-high-r4",
+      "m": 2,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "x-ai_grok-4.7-portalis-r3",
+      "m": 1,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "x-ai_grok-4.7-relay-crm-high-r4",
+      "m": 1,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "x-ai_grok-4.7-relay-crm-r3",
+      "m": 1,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "xiaomi_mimo-v2.6-pro-deskhero-r5",
+      "m": 1,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "xiaomi_mimo-v2.6-pro-deskhero-r6",
+      "m": 1,
+      "reason": "archived checkout missing"
+    },
+    {
+      "cell": "xiaomi_mimo-v2.6-pro-portalis-r5",
+      "m": 1,
+      "reason": "archived checkout missing"
+    }
+  ],
+  "accounting": {
+    "pricingHash": "d4bc07543c055ced5daae2bdb2b19630305065bb7f5bc1eb1e7938f70db4b974",
+    "counts": {
+      "verified": 138,
+      "partial": 17,
+      "unverified": 2
+    }
+  },
+  "models": [
+    {
+      "model": "GPT-6.1 Sol",
+      "slug": "gpt-6.1-sol",
+      "previousScore": 0.9301526292335115,
+      "score": 0.97375,
+      "previousCost": 3.52,
+      "cost": 3.52,
+      "costVerified": true
+    },
+    {
+      "model": "Claude Sonnet 5.5",
+      "slug": "claude-sonnet-5-5",
+      "previousScore": 0.9278799019607843,
+      "score": 0.9591176470588235,
+      "previousCost": 4.05,
+      "cost": 4.05,
+      "costVerified": true
+    },
+    {
+      "model": "GPT-6 Luna",
+      "slug": "gpt-6-luna",
+      "previousScore": 0.8688418498712616,
+      "score": 0.8887315557536146,
+      "previousCost": 1.02,
+      "cost": 1.07,
+      "costVerified": true
+    },
+    {
+      "model": "GPT-6 Sol",
+      "slug": "gpt-6-sol",
+      "previousScore": 0.9427233115468409,
+      "score": 0.9536546840958605,
+      "previousCost": 10.12,
+      "cost": 10.46,
+      "costVerified": true
+    },
+    {
+      "model": "Claude Opus 5.5",
+      "slug": "claude-opus-5-5",
+      "previousScore": 0.9335692959001781,
+      "score": 0.9599964349376114,
+      "previousCost": 14.29,
+      "cost": 14.29,
+      "costVerified": true
+    },
+    {
+      "model": "grok-4.7",
+      "slug": "x-ai_grok-4.7",
+      "previousScore": 0.7957352941176471,
+      "score": 0.8432720588235293,
+      "previousCost": 8.48,
+      "cost": 8.48,
+      "costVerified": true
+    },
+    {
+      "model": "mimo-v2.6-pro",
+      "slug": "xiaomi_mimo-v2.6-pro",
+      "previousScore": null,
+      "score": null,
+      "previousCost": 0.57,
+      "cost": 0.57,
+      "costVerified": false
+    },
+    {
+      "model": "DeepSeek V4.1 Flash",
+      "slug": "deepseek_deepseek-v4.1-flash",
+      "previousScore": 0.8852806248762132,
+      "score": 0.9135526836997426,
+      "previousCost": 0.66,
+      "cost": 0.66,
+      "costVerified": true
+    },
+    {
+      "model": "GPT 5.6 Terra",
+      "slug": "gpt-5.6-terra",
+      "previousScore": 0.6069585561497326,
+      "score": 0.6113335561497326,
+      "previousCost": 6.13,
+      "cost": 6.05,
+      "costVerified": true
+    },
+    {
+      "model": "GPT 5.6 Luna",
+      "slug": "gpt-5.6-luna",
+      "previousScore": 0.6053390522875817,
+      "score": 0.6078390522875817,
+      "previousCost": 0.57,
+      "cost": 0.57,
+      "costVerified": true
+    },
+    {
+      "model": "GPT 5.6 Sol",
+      "slug": "gpt-5.6-sol",
+      "previousScore": 0.9047386858783918,
+      "score": 0.9309274113685877,
+      "previousCost": 20.27,
+      "cost": 20.16,
+      "costVerified": false
+    },
+    {
+      "model": "GPT 6 Astra",
+      "slug": "gpt-6-astra",
+      "previousScore": 0.9398872549019607,
+      "score": 0.9471789215686274,
+      "previousCost": 24.13,
+      "cost": 25.43,
+      "costVerified": true
+    },
+    {
+      "model": "Claude Sonnet 5",
+      "slug": "claude-sonnet-5",
+      "previousScore": 0.5694256288373934,
+      "score": 0.6050383739354327,
+      "previousCost": 14.72,
+      "cost": 14.66,
+      "costVerified": true
+    },
+    {
+      "model": "Claude Opus 5",
+      "slug": "claude-opus-5",
+      "previousScore": 0.8663507625272331,
+      "score": 0.9061791938997822,
+      "previousCost": 23.66,
+      "cost": 23.66,
+      "costVerified": true
+    },
+    {
+      "model": "Claude Fable 5",
+      "slug": "claude-fable-5",
+      "previousScore": 0.8553854723707665,
+      "score": 0.8957898841354724,
+      "previousCost": 33.77,
+      "cost": 33.77,
+      "costVerified": true
+    },
+    {
+      "model": "Claude Fable 5.1",
+      "slug": "claude-fable-5-1",
+      "previousScore": 0.8978843582887701,
+      "score": 0.9266221033868093,
+      "previousCost": 46.9,
+      "cost": 46.9,
+      "costVerified": true
+    },
+    {
+      "model": "Grok 4.5",
+      "slug": "x-ai_grok-4.5",
+      "previousScore": 0.48284419828537467,
+      "score": 0.5253319433834139,
+      "previousCost": 4.94,
+      "cost": 4.82,
+      "costVerified": true
+    },
+    {
+      "model": "Grok 4.6",
+      "slug": "x-ai_grok-4.6",
+      "previousScore": 0.8613295242339359,
+      "score": 0.9290009867583396,
+      "previousCost": 11.79,
+      "cost": 11.59,
+      "costVerified": true
+    },
+    {
+      "model": "GLM 5.3",
+      "slug": "z-ai_glm-5.3",
+      "previousScore": 0.7470332526950173,
+      "score": 0.7703053115185469,
+      "previousCost": 11.38,
+      "cost": 11.38,
+      "costVerified": true
+    },
+    {
+      "model": "GLM 5.3 Flash",
+      "slug": "z-ai_glm-5.3-flash",
+      "previousScore": 0.4213346702317291,
+      "score": 0.44064839572192516,
+      "previousCost": 1.99,
+      "cost": 1.99,
+      "costVerified": true
+    },
+    {
+      "model": "Gemini 3.8 Flash",
+      "slug": "gemini-3.8-flash",
+      "previousScore": 0.7468134071810542,
+      "score": 0.7367364294202529,
+      "previousCost": 9.23,
+      "cost": 9.23,
+      "costVerified": true
+    },
+    {
+      "model": "Muse Spark 1.3",
+      "slug": "meta_muse-spark-1.3",
+      "previousScore": 0.7680162443765385,
+      "score": 0.8201742212036329,
+      "previousCost": 41.73,
+      "cost": 41.73,
+      "costVerified": true
+    },
+    {
+      "model": "Auto Sidekick",
+      "slug": "auto-sidekick",
+      "previousScore": 0.6029713627875393,
+      "score": 0.6174435001273236,
+      "previousCost": 21.67,
+      "cost": 21.67,
+      "costVerified": true
+    }
+  ]
+}

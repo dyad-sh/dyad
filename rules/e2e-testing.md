@@ -404,3 +404,10 @@ When adding E2E test fixtures that need a `.dyad` directory for testing:
 
 - `write_app_blueprint` fixture args must include at least one entry in `visuals` (`.min(1)` in the tool schema). An empty `visuals: []` fails tool validation silently: the blueprint card still renders from the streamed XML tag and "Approve Plan" is clickable, but approval fails with "Blueprint data is unavailable. Please regenerate the plan." because the plan never reached the renderer atom.
 - After a rename/approval, the title bar's `data-app-path` can update a beat later than `data-app-name`. Assert the name AND the path inside a single `expect(async () => {...}).toPass()` poll instead of reading `getCurrentAppPath()` once after the name matches.
+
+## Benchmark harness interactions
+
+- A union locator (`a.or(b)`) is strict: a valid empty list can render both its container and empty-state element. Select a visible alternative, then separately assert no rows; do not mistake the two different test IDs for duplicate IDs.
+- Open a menu before counting its lazily mounted options. For mutations, wait for the request or persisted API state before navigating away; an immediate `goto` can abort a correct save, an optimistic UI change is not proof of a committed write, and `toHaveCount(0)` before list hydration can falsely pass.
+- Benchmark rescoring must use unchanged checkpoint tags and cloned snapshots. Preserve previous artifacts. If a judge consumes test outcomes, refresh its verdict when that evidence changes; retain only verdicts based on unchanged evidence. Infrastructure failures or missing judges are unscored, not model-quality zeros.
+- Do not wait for `response.finished()` on a successful 204 mutation response: Chromium/Playwright can leave that wait pending even after the server committed. Wait for the response headers and then assert persisted state; include 204 as well as JSON responses in helper regression tests.

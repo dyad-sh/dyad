@@ -1,3 +1,4 @@
+import { deleteThroughUI } from "../interactions";
 // Deskhero — checkpoint 1 CUJ suite (design/app-2-deskhero.md, M1 CUJ table +
 // M1 security probes). 9 CUJs + 3 probes.
 //
@@ -135,10 +136,12 @@ test.describe("deskhero checkpoint 1", () => {
       priority: "low",
     });
     await r1.page.goto(`/tickets/${t2Id}`);
-    await r1.page.getByTestId("ticket-delete").click();
-    // A confirm control may or may not exist; click it if present.
-    const confirm = r1.page.getByTestId("ticket-delete-confirm");
-    if (await confirm.count()) await confirm.first().click();
+    await deleteThroughUI(
+      r1.page,
+      "ticket-delete",
+      "ticket-delete-confirm",
+      `/api/tickets/${t2Id}`,
+    );
     await r1.page.goto("/tickets");
     await expect(
       r1.page.getByTestId("ticket-row").filter({ hasText: doomed }),

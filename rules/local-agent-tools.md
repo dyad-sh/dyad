@@ -158,6 +158,7 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
   slot; never cancel an earlier run just because a new request arrives. Queued
   calls create no test environment. Caller cancellation removes only its own
   request, while the Tests panel Stop clears the app queue and stops its active run.
+- Synthetic `run_tests` subprocess mocks must match selectors against `fs.realpathSync(appPath)`, as the real runner canonicalizes its workspace. Use a linked-directory fixture to catch macOS temporary-path and Windows path-case aliases on Linux too.
 - `run_tests` only short-circuits on its dev-server pre-check when sandboxing is
   off — a sandboxed run serves the app itself and needs no preview. A test that
   relies on that short-circuit for a fast deterministic outcome must set

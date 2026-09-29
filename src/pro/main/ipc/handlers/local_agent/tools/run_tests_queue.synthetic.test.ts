@@ -113,12 +113,19 @@ function emittedXml(ctx: AgentContext): string {
 }
 
 describe("synthetic overlapping run_tests calls", () => {
+  let fixtureRoot: string;
   let processGates: ReturnType<typeof gate>[];
   let cleanupGates: ReturnType<typeof gate>[];
   let calls: Promise<unknown>[];
 
   beforeEach(() => {
-    h.appPath = fs.mkdtempSync(path.join(os.tmpdir(), "dyad-test-queue-"));
+    fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "dyad-test-queue-"));
+    const realAppPath = path.join(fixtureRoot, "app");
+    fs.mkdirSync(realAppPath);
+    h.appPath = path.join(fixtureRoot, "linked-app");
+    // Exercise canonicalization on every platform, including Linux where the
+    // system temporary directory usually has no symlink or path-case alias.
+    fs.symlinkSync(realAppPath, h.appPath, "junction");
     fs.mkdirSync(path.join(h.appPath, "e2e-tests"));
     for (const spec of SPECS) {
       fs.writeFileSync(
@@ -149,7 +156,7 @@ describe("synthetic overlapping run_tests calls", () => {
     for (const pending of [...processGates, ...cleanupGates]) pending.release();
     await Promise.allSettled(calls);
     h.runningApps.clear();
-    fs.rmSync(h.appPath, { recursive: true, force: true, maxRetries: 3 });
+    fs.rmSync(fixtureRoot, { recursive: true, force: true, maxRetries: 3 });
   });
 
   it.each(["FIFO", "cancel queued B", "A fails"])(
@@ -165,6 +172,7 @@ describe("synthetic overlapping run_tests calls", () => {
       let environmentsInUse = 0;
       let maxEnvironmentsInUse = 0;
       const envPath = path.join(h.appPath, ".env.local");
+      const canonicalAppPath = fs.realpathSync(h.appPath);
 
       h.prepare.mockImplementation(async ({ signal }) => {
         const spec = getAppTestRunQueue(APP_ID).activeRun!.testFiles![0];
@@ -201,7 +209,7 @@ describe("synthetic overlapping run_tests calls", () => {
         // Identify the requested spec from the actual escaped Playwright argv.
         const index = SPECS.findIndex((spec) =>
           args?.includes(
-            `^${path.resolve(h.appPath, spec).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
+            `^${path.resolve(canonicalAppPath, spec).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
           ),
         );
         expect(index).toBeGreaterThanOrEqual(0);
@@ -222,7 +230,7 @@ describe("synthetic overlapping run_tests calls", () => {
             suites: [
               {
                 title: spec,
-                file: path.join(h.appPath, spec),
+                file: path.join(canonicalAppPath, spec),
                 specs: [
                   {
                     title: "synthetic case",

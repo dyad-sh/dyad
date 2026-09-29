@@ -120,6 +120,7 @@ import {
   PREVIEW_CDP_ENDPOINT_ENV,
   PREVIEW_CDP_TOKEN_ENV,
   DYAD_CONFIG_FILENAME,
+  ensurePreviewDnsPreload,
 } from "../utils/playwright_bootstrap";
 import { buildWindowsCommandInvocation } from "../utils/windows_command";
 import {
@@ -236,6 +237,9 @@ describe("selected file batches", () => {
           path.join(physical, selected[0]),
           'const { test, expect } = require("@playwright/test");\ntest("works", () => { expect(1).toBe(1); });\ntest.skip("disabled", () => {});\n',
         );
+        // Bootstrap is mocked (or already completed for the sandbox path),
+        // but these cases launch real Node processes that load its DNS helper.
+        ensurePreviewDnsPreload(physical);
         h.getDyadAppPath.mockReturnValue(
           mode === "sandbox" ? APP_PATH : linked,
         );
@@ -772,7 +776,10 @@ describe("preview runs", () => {
         expect(lastSpawn().env.NODE_OPTIONS).toBe(
           `--no-warnings --require ${JSON.stringify(
             path
-              .join(APP_PATH, "e2e-tests/fixtures/dyad/preview-dns.cjs")
+              .join(
+                fs.realpathSync(APP_PATH),
+                "e2e-tests/fixtures/dyad/preview-dns.cjs",
+              )
               .replaceAll("\\", "/"),
           )}`,
         );

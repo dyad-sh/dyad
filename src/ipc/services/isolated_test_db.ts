@@ -389,11 +389,12 @@ export async function prepareIsolatedTestDatabase({
         if (previewUrl.hostname === "localhost") {
           // Legacy previews still need to trust the temporary test branch.
           await retryOnLocked(
-            () => ensureNeonAuthTrustedDomain({
-              ...target,
-              origin: previewUrl.origin,
-              signal,
-            }),
+            () =>
+              ensureNeonAuthTrustedDomain({
+                ...target,
+                origin: previewUrl.origin,
+                signal,
+              }),
             "Register Neon test preview origin",
             { signal },
           );

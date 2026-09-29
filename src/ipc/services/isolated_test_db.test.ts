@@ -292,15 +292,20 @@ describe("per-case database isolation", () => {
     );
   });
 
-  it.each([true, false])(
-    "resets only the temporary Neon database before and after cases (auth: %s)",
-    async (withAuth) => {
+  it.each([
+    [true, "localhost"],
+    [false, "localhost"],
+    [true, "app-1.localhost"],
+    [false, "app-1.localhost"],
+  ] as const)(
+    "resets only the temporary Neon database before and after cases (auth: %s, host: %s)",
+    async (withAuth, hostname) => {
       mocks.createTempTestBranch.mockResolvedValue({
         branchId: "temporary",
         databaseUrl: "postgres://temporary",
         ...(withAuth ? { neonAuthBaseUrl: "https://auth" } : {}),
       });
-      mocks.runningApps.set(1, { proxyUrl: "http://localhost:42100" });
+      mocks.runningApps.set(1, { proxyUrl: `http://${hostname}:42100` });
       const fetchSpy = vi
         .spyOn(globalThis, "fetch")
         .mockResolvedValue(new Response("ok"));
@@ -348,6 +353,18 @@ describe("per-case database isolation", () => {
           "running",
         );
         if (withAuth) {
+          expect(mocks.ensureNeonAuthTrustedDomain).toHaveBeenCalledWith(
+            expect.objectContaining({
+              projectId: "project",
+              branchId: "temporary",
+              origin: `http://${hostname}:42100`,
+            }),
+          );
+          expect(
+            mocks.ensureNeonAuthTrustedDomain.mock.invocationCallOrder[0],
+          ).toBeLessThan(
+            mocks.createNeonTestAccount.mock.invocationCallOrder[0],
+          );
           for (let index = 0; index < 2; index++) {
             expect(
               mocks.clearNeonTestData.mock.invocationCallOrder[index * 2],
@@ -937,6 +954,12 @@ describe("prepareIsolatedTestDatabase — auth provisioning", () => {
           email: "neon-test@dyad.test",
           password: "neon-pw",
         });
+        await prepared.authorizeRuntimeOrigin?.("http://127.0.0.1:49999");
+        expect(mocks.ensureNeonAuthTrustedOrigin).toHaveBeenCalledWith({
+          projectId: "proj-1",
+          branchId: "test-br",
+          origin: "http://127.0.0.1:49999",
+        });
       } finally {
         fetchSpy.mockRestore();
       }
@@ -964,7 +987,8 @@ describe("prepareIsolatedTestDatabase — auth provisioning", () => {
       expect(mocks.ensureNeonAuthTrustedDomain).toHaveBeenCalledWith({
         projectId: "proj-1",
         branchId: "test-br",
-        origin: "http://localhost:42100",
+        origin: "http://app-1.localhost:42100",
+        signal: expect.any(AbortSignal),
       });
       // The ordering is the point: an account provisioned before its origin is
       // trusted can be signed into from nowhere, and asserting only that both

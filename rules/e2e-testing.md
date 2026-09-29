@@ -350,6 +350,12 @@ If a targeted E2E fails before launch with `ENOENT: no such file or directory, s
 - In package-manager E2E shims, execute the resolved `pnpm` path directly. CI setup can provide a shell wrapper, and running that wrapper through `process.execPath` makes Node parse shell syntax instead of invoking pnpm.
 - Fake package-manager shims must parse subcommands across the full argv, not only `argv[0]`. Dyad can invoke `pnpm` as `pnpm --config.pm-on-fail=ignore --config.confirmModulesPurge=false --config.strictDepBuilds=false install`, so fake pnpm scripts should recognize config-prefixed `install`, `run dev`, and `--version`.
 
+## Dialog focus and native scroll readiness
+
+- After opening the Add Plugin dialog, wait for its initial Name field to be focused before filling other inputs. Base UI autofocus can otherwise redirect a fast Command fill into Name.
+- In virtualized-chat E2Es, wait for native wheel/PageUp movement to settle before recording a reading anchor; a gap threshold alone can pass mid-animation. Bound the settling wait and retain subsequent no-drift assertions.
+- Do not combine the chat scroll controller with Virtuoso `initialTopMostItemIndex: LAST`: its index-scroll operation retries on size changes until 150ms of quiet, so fast streaming can keep jumping to bottom after user scroll-away. Let the controller own initial positioning too.
+
 ## Waiting for button state transitions
 
 When clicking a button that triggers an async operation and changes its text/state (e.g., "Run Security Review" → "Running Security Review..."), wait for the loading state to appear and disappear rather than just waiting for the original button to be hidden:

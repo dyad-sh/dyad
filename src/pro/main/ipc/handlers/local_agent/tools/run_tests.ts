@@ -20,6 +20,7 @@ import {
 } from "@/ipc/utils/test_screenshot";
 import { usesSandboxedE2eTests } from "@/lib/e2eSandbox";
 import { reconcileResultFile } from "@/lib/testResultUtils";
+import { getAppTestRunQueue } from "@/ipc/services/test_run_queue_service";
 import type { TestRunExecution } from "@/test_run_queue/controller";
 import { readSettings } from "@/main/settings";
 import type { RunAppTestsResult, TestResult } from "@/ipc/types/tests";
@@ -181,6 +182,17 @@ async function validateGrep(
   testFile: string,
   grep: string,
 ): Promise<{ ok: true; targetKey: string | null } | { error: string }> {
+  const error = invalidGrepMessage(grep);
+  if (error) return { error };
+
+  const cases = await readSpecTestCases(ctx.appPath, testFile);
+  return {
+    ok: true,
+    targetKey: targetKeyFromKnownCases(testFile, grep, cases),
+  };
+}
+
+function invalidGrepMessage(grep: string): string | null {
   // The Playwright spawn uses `node.exe` with `shell: false` (see
   // buildPlaywrightCliInvocation in tests_handlers.ts), so `grep` reaches
   // Playwright as a direct argv element — no cmd.exe `"%VAR%"` expansion or
@@ -194,14 +206,10 @@ async function validateGrep(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const body = `\`${grep}\` isn't a valid regular expression (${message}), so I did NOT start a run — this did NOT count as a fix attempt.\n\nPass a valid regex for \`grep\` (it's matched against test titles, like Playwright's --grep), or omit it to run the whole file.`;
-    return { error: body };
+    return body;
   }
 
-  const cases = await readSpecTestCases(ctx.appPath, testFile);
-  return {
-    ok: true,
-    targetKey: targetKeyFromKnownCases(testFile, grep, cases),
-  };
+  return null;
 }
 
 /** Refuse without running once the per-spec fix-attempt cap is hit. */
@@ -606,11 +614,31 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
       : `Run tests: ${selection}`;
   },
 
-  // Eligibility is deliberately checked at execution, after earlier queued
-  // results update retry budgets and while this call owns the live tool card.
-  // Requests can become ineligible while waiting; a refusal spends no run.
-  execute: async (args, ctx: AgentContext) =>
-    withAppTestRun(
+  execute: async (args, ctx: AgentContext) => {
+    // Reject malformed input before admission without clearing another run's
+    // shared root live card. Sub-agent cards are specific to this invocation.
+    const refuseInput = (title: string, body: string) => {
+      if (ctx.onToolActivity || !getAppTestRunQueue(ctx.appId).activeRun)
+        completeWarning(ctx, title, body);
+      return body;
+    };
+    // Direct callers must also fail closed: a legacy testFile must never be
+    // stripped into an empty object and accidentally select the whole suite.
+    const parsed = runTestsSchema.safeParse(args);
+    if (!parsed.success)
+      return refuseInput(
+        "Invalid test selection",
+        `Invalid run_tests arguments: ${parsed.error.message}. Use testFiles with a nonempty list, or omit it to run all specs. Nothing ran.`,
+      );
+    if (args.grep) {
+      const error = invalidGrepMessage(args.grep);
+      if (error) return refuseInput("Invalid grep pattern", error);
+    }
+
+    // Filesystem selections and retry eligibility are resolved under the queue
+    // slot: preceding work may change spec files, results, or the turn budget.
+    // Requests can become ineligible while waiting; a refusal spends no run.
+    return withAppTestRun(
       {
         appId: ctx.appId,
         event: ctx.event,
@@ -629,14 +657,6 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
           : undefined,
       },
       async (queueRun) => {
-        // Also fail closed for direct callers: a legacy testFile must never be
-        // stripped into an empty object and accidentally select the whole suite.
-        const parsed = runTestsSchema.safeParse(args);
-        if (!parsed.success) {
-          const body = `Invalid run_tests arguments: ${parsed.error.message}. Use testFiles with a nonempty list, or omit it to run all specs. Nothing ran.`;
-          completeWarning(ctx, "Invalid test selection", body);
-          return body;
-        }
         const resolved = await resolveSpecPaths(ctx, args.testFiles);
         if ("error" in resolved) return resolved.error;
         const { testFiles, specs, selectionNote } = resolved;
@@ -835,5 +855,6 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
         if (ctx.onToolActivity) completeStatus(ctx, "Tests cancelled", body);
         return body;
       },
-    ),
+    );
+  },
 };

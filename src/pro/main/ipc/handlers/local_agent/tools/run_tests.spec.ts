@@ -38,6 +38,7 @@ import {
 import { readSettings } from "@/main/settings";
 import { runTestsTool } from "./run_tests";
 import {
+  getAppTestRunQueue,
   stopAppTestsForApp,
   drainAppTestRuns,
 } from "@/ipc/services/test_run_queue_service";
@@ -191,6 +192,38 @@ describe("runTestsTool", () => {
     }
     expect(preview).toBe("");
   });
+
+  it.each([false, true])(
+    "refuses malformed queued input immediately (sub-agent: %s)",
+    async (subAgent) => {
+      runner.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            pendingRunnerResults.add(resolve);
+          }),
+      );
+      const activeCtx = makeCtx();
+      const first = runTestsTool.execute(
+        { testFiles: ["e2e-tests/a.spec.ts"] },
+        activeCtx,
+      );
+      await vi.waitFor(() => expect(runner).toHaveBeenCalledOnce());
+      const before = getAppTestRunQueue(1);
+      const ctx = subAgent ? makeCtx() : activeCtx;
+      if (subAgent) ctx.onToolActivity = vi.fn(async () => {});
+      const firstWarning = await runTestsTool.execute({ testFiles: [] }, ctx);
+      const secondWarning = await runTestsTool.execute({ grep: "(" }, ctx);
+      expect(firstWarning).toContain("Invalid run_tests arguments");
+      expect(secondWarning).toContain("isn't a valid regular expression");
+      expect(getAppTestRunQueue(1)).toEqual(before);
+      expect(specLister).toHaveBeenCalledOnce();
+      expect(runner).toHaveBeenCalledOnce();
+      expect(ctx.onXmlComplete).toHaveBeenCalledTimes(subAgent ? 2 : 0);
+      expect(ctx.testRunCount ?? 0).toBe(subAgent ? 0 : 1);
+      for (const finish of pendingRunnerResults) finish(passedResult);
+      await first;
+    },
+  );
 
   it("retains queued and cancelled cards for sub-agent tool activities", async () => {
     let finish!: (result: RunAppTestsResult) => void;
@@ -537,7 +570,7 @@ describe("runTestsTool", () => {
       ["turn limit", "Test run limit reached"],
       ["stopped server", "App isn't running"],
     ])(
-      "includes a suite selection warning in one final card when %s",
+      "reports selection warnings after valid input in one final card when %s",
       async (outcome, title) => {
         const unsupported = "e2e-tests/checkout:mobile.spec.ts";
         vi.mocked(normalizeRunTestFile).mockImplementation((file) =>
@@ -587,6 +620,12 @@ describe("runTestsTool", () => {
         expect(ctx.onXmlComplete).toHaveBeenCalledTimes(1);
         const xml = vi.mocked(ctx.onXmlComplete).mock.calls[0][0];
         expect(xml).toContain(title);
+        if (outcome === "invalid grep") {
+          expect(specLister).not.toHaveBeenCalled();
+          expect(out).not.toContain("Unsupported spec paths");
+          expect(xml).not.toContain("Unsupported spec paths");
+          return;
+        }
         const note = `Unsupported spec paths skipped: ${unsupported}`;
         expect(xml).toContain(note);
         expect(out).toContain(note);

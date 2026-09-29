@@ -158,13 +158,68 @@ describe("Anthropic preserved thinking", () => {
     expect(cancel).toHaveBeenCalledWith("stop");
   });
 
-  it("leaves errors intact", async () => {
-    const response = new Response("upstream failure", { status: 400 });
+  it.each(["claude-sonnet-4", "claude-opus-5-5"])(
+    "retries %s once with the original request when controls are rejected",
+    async (model) => {
+      const rejection = Response.json(
+        { error: { message: "Unsupported thinking.block_binding" } },
+        { status: 400 },
+      );
+      const fetchFn = vi.fn().mockResolvedValue(rejection);
+      const init = {
+        headers: { "anthropic-beta": "existing-beta" },
+        body: JSON.stringify({ model, thinking: { type: "adaptive" } }),
+        signal: new AbortController().signal,
+      };
+      const result = await withAnthropicPreservedThinking(fetchFn)(
+        "https://example.test/messages",
+        init,
+      );
+      expect(result).toBe(rejection);
+      expect(fetchFn).toHaveBeenCalledTimes(2);
+      expect(fetchFn).toHaveBeenLastCalledWith(
+        "https://example.test/messages",
+        init,
+      );
+      expect(
+        new Headers(fetchFn.mock.calls[0][1].headers).get("anthropic-beta"),
+      ).toContain(THINKING_BINDING_BETA);
+    },
+  );
+
+  it("retries a rejected beta header and returns the successful response", async () => {
+    const success = Response.json({ content: [] });
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(`Invalid beta: ${THINKING_BINDING_BETA}`, { status: 400 }),
+      )
+      .mockResolvedValueOnce(success);
     expect(
-      await withAnthropicPreservedThinking(async () => response)(
-        "https://example.test",
-        { body: JSON.stringify({ thinking: { type: "adaptive" } }) },
-      ),
-    ).toBe(response);
+      await withAnthropicPreservedThinking(fetchFn)("https://example.test", {
+        body: JSON.stringify({ thinking: { type: "enabled" } }),
+      }),
+    ).toBe(success);
+    expect(fetchFn).toHaveBeenCalledTimes(2);
   });
+
+  it.each([400, 401, 429, 500])(
+    "leaves unrelated errors intact (%s)",
+    async (status) => {
+      const response = new Response(
+        status === 400 ? "invalid max_tokens" : "block_binding unavailable",
+        { status },
+      );
+      const fetchFn = vi.fn(async () => response);
+      expect(
+        await withAnthropicPreservedThinking(fetchFn)("https://example.test", {
+          body: JSON.stringify({ thinking: { type: "adaptive" } }),
+        }),
+      ).toBe(response);
+      expect(fetchFn).toHaveBeenCalledTimes(1);
+      expect(await response.text()).toBe(
+        status === 400 ? "invalid max_tokens" : "block_binding unavailable",
+      );
+    },
+  );
 });

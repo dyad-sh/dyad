@@ -5,7 +5,10 @@ import { filterGuideByFramework } from "../prompts/guides/filter_guide_by_framew
 
 const getCachedEmailPasswordConfig = vi.fn();
 const getNeonContext = vi.fn();
+const readSettings = vi.fn();
 const normalizeGuideNewlines = (guide: string) => guide.replace(/\r\n/g, "\n");
+
+vi.mock("@/main/settings", () => ({ readSettings }));
 
 vi.mock("./neon_management_client", () => ({
   getCachedEmailPasswordConfig,
@@ -33,7 +36,31 @@ vi.mock("../ipc/utils/framework_utils", () => ({
 describe("buildNeonPromptAdditions", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    readSettings.mockReturnValue({});
   });
+
+  it.each([true, false, undefined])(
+    "uses the preview domains setting (%s) for inline authentication guidance",
+    async (enableAppPreviewDomains) => {
+      readSettings.mockReturnValue({ enableAppPreviewDomains });
+      const { buildNeonPromptAdditions } =
+        await import("./neon_prompt_context");
+      const prompt = await buildNeonPromptAdditions({
+        projectId: "project-123",
+        frameworkType: "vite-nitro",
+        includeContext: false,
+        isLocalAgentMode: false,
+      });
+
+      expect(prompt.includes("app-<numeric app ID>.localhost")).toBe(
+        enableAppPreviewDomains === true,
+      );
+      expect(prompt.includes("shared cookies across ports")).toBe(
+        enableAppPreviewDomains !== true,
+      );
+      expect(prompt).not.toContain("[[PREVIEW_COOKIE_GUIDANCE]]");
+    },
+  );
 
   it("includes Neon project context for non-local-agent prompts", async () => {
     getCachedEmailPasswordConfig.mockResolvedValue({

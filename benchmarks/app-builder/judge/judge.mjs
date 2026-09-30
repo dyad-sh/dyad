@@ -13,6 +13,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { testEvidence, evidenceHash } from "./evidence.mjs";
+import { normalizeRecordedUsage, priceOf } from "../proxy/accounting.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BENCH = path.resolve(__dirname, "..");
@@ -34,6 +36,13 @@ const argOf = (f) => {
 const CELL = argOf("--cell");
 const M = Number(argOf("--milestone"));
 if (!CELL || !M) throw new Error("--cell and --milestone required");
+if (!/^[a-zA-Z0-9_.-]+$/.test(CELL) || ![1, 2, 3].includes(M))
+  throw new Error("Invalid cell or milestone");
+const DATA = path.resolve(argOf("--data") ?? BENCH);
+const SCORES = path.resolve(
+  argOf("--scores") ?? path.join(DATA, "results/s-score"),
+);
+const OUT = path.resolve(argOf("--out") ?? path.join(DATA, "results/judge"));
 // Cell ids are `<model>-<app>` and, for the reasoning-effort sweep,
 // `<model>-<app>-<effort>`. Anchoring on endsWith() silently mis-resolved
 // every suffixed cell to relay-crm and judged deskhero/portalis apps against
@@ -54,7 +63,7 @@ function judgesFor(_cellId) {
 }
 
 // ---- input assembly -------------------------------------------------------
-const checkout = path.join(BENCH, "results", "s-cell", "checkouts", CELL);
+const checkout = path.join(DATA, "results", "s-cell", "checkouts", CELL);
 if (!fs.existsSync(checkout)) throw new Error(`no checkout at ${checkout}`);
 const git = (...a) =>
   execFileSync("git", ["-C", checkout, ...a], { encoding: "utf8" });
@@ -139,15 +148,10 @@ function fileTree() {
 }
 
 function testResults() {
-  const p = path.join(BENCH, "results", "s-score", `${CELL}-ckpt${M}-a1.json`);
+  const p = path.join(SCORES, `${CELL}-ckpt${M}-a1.json`);
   if (!fs.existsSync(p)) return null;
   const r = JSON.parse(fs.readFileSync(p, "utf8"));
-  return {
-    buildStatus: r.buildStatus,
-    cujPassed: r.cujPassed,
-    cujTotal: r.cujTotal,
-    failures: r.failures,
-  };
+  return testEvidence(r);
 }
 
 const prompt = fs.readFileSync(
@@ -245,17 +249,7 @@ const pricing = JSON.parse(
 );
 function costOf(model, usage) {
   if (!usage) return null;
-  const key = Object.keys(pricing.models).find((k) => model.includes(k));
-  if (!key) return null;
-  const p = pricing.models[key];
-  const cached = usage.prompt_tokens_details?.cached_tokens ?? 0;
-  const uncached = Math.max(0, (usage.prompt_tokens ?? 0) - cached);
-  return (
-    (uncached * p.input +
-      cached * p.cachedInput +
-      (usage.completion_tokens ?? 0) * p.output) /
-    1e6
-  );
+  return priceOf(model, normalizeRecordedUsage({ raw: usage }), pricing);
 }
 
 const judges = judgesFor(CELL);
@@ -275,9 +269,7 @@ for (const model of judges) {
       verdict = parseVerdict(r.text);
       if (!verdict) {
         const dbg = path.join(
-          BENCH,
-          "results",
-          "judge",
+          OUT,
           `debug-${CELL}-m${M}-${model.replace(/[^a-z0-9.-]/gi, "_")}-a${attempt}.txt`,
         );
         fs.mkdirSync(path.dirname(dbg), { recursive: true });
@@ -286,6 +278,7 @@ for (const model of judges) {
       }
     } catch (e) {
       error = String(e);
+      if (/HTTP (401|402|403|407)\b/.test(error)) break;
     }
   }
   perJudge.push({
@@ -326,9 +319,12 @@ const out = {
   inputChars: userContent.length,
   base: BASE,
   head: HEAD,
+  checkpointSha: git("rev-parse", HEAD).trim(),
+  testResults: tests,
+  testResultsHash: evidenceHash(tests),
   judgedAt: new Date().toISOString(),
 };
-const outPath = path.join(BENCH, "results", "judge", `${CELL}-m${M}.json`);
+const outPath = path.join(OUT, `${CELL}-m${M}.json`);
 fs.mkdirSync(path.dirname(outPath), { recursive: true });
 fs.writeFileSync(outPath, JSON.stringify(out, null, 2));
 console.log(

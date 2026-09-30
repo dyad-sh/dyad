@@ -57,7 +57,7 @@ for M in $MILESTONES; do
     DATABASE_URL="$DATABASE_URL" \
     NEON_AUTH_BASE_URL="$AUTH_URL" \
     NEON_AUTH_COOKIE_SECRET="$(openssl rand -hex 32)" \
-    NODE_EXTRA_CA_CERTS="$BENCH/neon-sim/certs/ca.pem" \
+    NODE_EXTRA_CA_CERTS="${APPBENCH_CA_BUNDLE:-$BENCH/neon-sim/certs/ca.pem}" \
     "$BENCH/cuj-tests/score-checkpoint.sh"
 
     echo "[s-score] m$M attempt $ATTEMPT:"

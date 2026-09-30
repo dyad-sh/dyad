@@ -1,8 +1,11 @@
+import home from "@/i18n/locales/en/home.json";
 import { act, render, screen } from "@testing-library/react";
+import type { PreviewAuthStatus } from "@/app_run/state";
 import type { ReactElement, ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
+  previewAuth: undefined as PreviewAuthStatus | undefined,
   overlayActiveAtom: Symbol("overlayActiveAtom"),
   previewModeAtom: Symbol("previewModeAtom"),
   previewNativeViewAppIdAtom: Symbol("previewNativeViewAppIdAtom"),
@@ -70,8 +73,9 @@ vi.mock("@/components/ui/tooltip", async () => {
 
 vi.mock("@/hooks/useAppRun", () => ({
   useCurrentAppUrl: () => ({
-    appUrl: "http://localhost:42101/",
-    originalUrl: "http://localhost:42101/",
+    previewAuth: h.previewAuth,
+    appUrl: "http://app-1.localhost:42101/",
+    originalUrl: "http://app-1.localhost:42101/",
     mode: "local",
   }),
 }));
@@ -119,6 +123,7 @@ vi.mock("./PreviewLoadingScreen", () => ({
 import { PreviewWebContentsView } from "./PreviewWebContentsView";
 
 beforeEach(() => {
+  h.previewAuth = undefined;
   h.testRunPhase = "running";
   h.overlayActive = true;
   h.setTestSetupOverlayActive.mockReset();
@@ -230,3 +235,68 @@ describe("PreviewWebContentsView screenshot fallback", () => {
     expect(screen.queryByTestId("preview-native-screenshot")).toBeNull();
   });
 });
+
+it.each(["neon", "supabase"] as const)(
+  "shows %s registration above the native surface and removes it on success",
+  (provider) => {
+    h.previewAuth = { provider, state: "pending" };
+    const view = render(<PreviewWebContentsView loading={false} />);
+    expect(
+      screen
+        .getByTestId("preview-auth-banner")
+        .compareDocumentPosition(screen.getByTestId("preview-native-toolbar")) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toContain(
+      "in the background",
+    );
+    expect(
+      screen.queryByRole("button", { name: "Restart and retry" }),
+    ).toBeNull();
+    h.previewAuth = undefined;
+    view.rerender(<PreviewWebContentsView loading={false} />);
+    expect(screen.queryByRole("status")).toBeNull();
+  },
+);
+
+it.each(["neon", "supabase"] as const)(
+  "renders a persistent %s warning above the native surface",
+  (provider) => {
+    h.previewAuth = {
+      provider,
+      state: "error",
+      message: "Registration failed for this app.",
+    };
+    h.testRunPhase = "idle";
+    const view = render(<PreviewWebContentsView loading={false} />);
+    expect(screen.getByRole("status").textContent).toContain(
+      h.previewAuth.message,
+    );
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Restart and retry",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
+    h.testRunPhase = "running";
+    view.rerender(<PreviewWebContentsView loading={false} />);
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Restart and retry",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    h.previewAuth = undefined;
+    view.rerender(<PreviewWebContentsView loading={false} />);
+    expect(screen.queryByTestId("preview-auth-banner")).toBeNull();
+  },
+);
+
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({
+    t: (key: string) =>
+      key.split(".").reduce((value: any, part) => value?.[part], home) ?? key,
+  }),
+}));

@@ -1,3 +1,6 @@
+const costLabel = (value, verified = true) =>
+  (verified ? "" : "≥") + "$" + value.toFixed(2);
+import { scoreArtifacts } from "./scoring.mjs";
 // Generates RESULTS.md + scatter-{light,dark}.svg from the current results/
 // tree, across all app columns present. Rerun after any scoring pass:
 //   node benchmarks/app-builder/report.mjs
@@ -9,6 +12,24 @@ const BENCH = path.dirname(fileURLToPath(import.meta.url));
 const R = (...p) => path.join(BENCH, "results", ...p);
 
 const MODELS = [
+  { name: "GPT-6.1 Sol", slug: "gpt-6.1-sol", vendor: "OpenAI" },
+  {
+    name: "Claude Sonnet 5.5",
+    slug: "claude-sonnet-5-5",
+    vendor: "Anthropic",
+    headlineSuffix: "-medium-r2",
+  },
+  { name: "GPT-6 Luna", slug: "gpt-6-luna", vendor: "OpenAI" },
+  { name: "GPT-6 Sol", slug: "gpt-6-sol", vendor: "OpenAI" },
+  { name: "Claude Opus 5.5", slug: "claude-opus-5-5", vendor: "Anthropic" },
+  { name: "grok-4.7", slug: "x-ai_grok-4.7", vendor: "xAI" },
+  { name: "mimo-v2.6-pro", slug: "xiaomi_mimo-v2.6-pro", vendor: "Xiaomi" },
+  { name: "mimo-v2.6-flash", slug: "xiaomi_mimo-v2.6-flash", vendor: "Xiaomi" },
+  {
+    name: "deepseek-v4.1-flash",
+    slug: "deepseek_deepseek-v4.1-flash",
+    vendor: "DeepSeek",
+  },
   { name: "gpt-5.6-terra", slug: "gpt-5.6-terra", vendor: "OpenAI" },
   { name: "gpt-5.6-luna", slug: "gpt-5.6-luna", vendor: "OpenAI" },
   { name: "gpt-5.6-sol", slug: "gpt-5.6-sol", vendor: "OpenAI" },
@@ -83,6 +104,8 @@ const VENDOR_COLOR = {
     "Z-AI": "#c2366b",
     Google: "#946200",
     Meta: "#0e7c86",
+    DeepSeek: "#5b62bf",
+    Xiaomi: "#b46300",
   },
   dark: {
     OpenAI: "#3987e5",
@@ -92,13 +115,33 @@ const VENDOR_COLOR = {
     "Z-AI": "#e0568f",
     Google: "#e3a72f",
     Meta: "#2cc4d9",
+    DeepSeek: "#9299ed",
+    Xiaomi: "#ffad42",
   },
 };
 
-// Cells replaced by a labelled rerun (APPBENCH_RUN_LABEL). Only for runs lost
-// to a provider/harness fault — never to a bad score — and the original run's
-// artifacts stay on disk. Each entry records why.
+// Cells replaced by a labelled rerun (APPBENCH_RUN_LABEL). Provider/harness
+// recoveries and explicitly user-selected repeats are documented below.
+// Original artifacts stay on disk.
 const CELL_OVERRIDES = {
+  // User-selected Deskhero repeats (2026-09-22); original scored artifacts preserved.
+  "gpt-6-sol-deskhero": "gpt-6-sol-deskhero-repeat1",
+  "gpt-6-luna-deskhero": "gpt-6-luna-deskhero-repeat1",
+  // r6 recovery after interrupted/context-overflow r5; all score/judge pairs validated.
+  "xiaomi_mimo-v2.6-pro-portalis": "xiaomi_mimo-v2.6-pro-portalis-r6",
+  // r6 high recovered from prior transport failure; build and all score/judge pairs validated.
+  "xiaomi_mimo-v2.6-pro-relay-crm-high":
+    "xiaomi_mimo-v2.6-pro-relay-crm-high-r6",
+  // Preserved r5 build; CA-related font-fetch scoring failures repaired and all scores/judges validated.
+  "xiaomi_mimo-v2.6-pro-relay-crm": "xiaomi_mimo-v2.6-pro-relay-crm-r5",
+  // Budget-blocked Grok high retry; r5 scores/judges validated.
+  "x-ai_grok-4.7-relay-crm-high": "x-ai_grok-4.7-relay-crm-high-r5",
+  "x-ai_grok-4.7-deskhero-high": "x-ai_grok-4.7-deskhero-high-r5",
+  "x-ai_grok-4.7-portalis-high": "x-ai_grok-4.7-portalis-high-r5",
+  // Credential-lifetime infrastructure retry; r4 scores/judges validated.
+  "x-ai_grok-4.7-relay-crm": "x-ai_grok-4.7-relay-crm-r4",
+  "x-ai_grok-4.7-deskhero": "x-ai_grok-4.7-deskhero-r4",
+  "x-ai_grok-4.7-portalis": "x-ai_grok-4.7-portalis-r4",
   // Run 1 lost milestone 3 on its 3rd request to a Vertex-side 400
   // ("Corrupted thought signature" via LiteLLM); the eval's stream-error
   // assertion then failed before the checkout was archived → unscorable.
@@ -116,73 +159,7 @@ function scoreCell(slug, app, cellOverride) {
   const cfg = APPS[app];
   const id = cellOverride ?? `${slug}-${app}`;
   const cell = CELL_OVERRIDES[id] ?? id;
-  const sumPath = R("s-cell", `${cell}.summary.json`);
-  if (!fs.existsSync(sumPath)) return null;
-  const sum = JSON.parse(fs.readFileSync(sumPath));
-  const minutes = Math.round(
-    sum.milestones.reduce((a, m) => a + m.durationMs, 0) / 60000,
-  );
-  const cost = sum.milestones.reduce((a, m) => a + m.estimatedUsd, 0);
-  let cujP = 0,
-    cujT = 0,
-    prP = 0,
-    prT = 0,
-    judge = 0,
-    scored = 0;
-  const fails = [];
-  for (const ck of [1, 2, 3]) {
-    cujT += cfg.cujs[ck];
-    prT += cfg.probes[ck];
-    const f = R("s-score", `${cell}-ckpt${ck}-a1.json`);
-    if (!fs.existsSync(f)) continue;
-    scored++;
-    const x = JSON.parse(fs.readFileSync(f));
-    if (x.buildStatus === "harness_error") {
-      // Scorer infrastructure failure (e.g. Playwright browser GC'd): the
-      // checkpoint is unscored, not zero — a zero here blames the model for
-      // the harness. scored-- keeps the composite null until a rescore.
-      scored--;
-      continue;
-    }
-    if (x.buildStatus !== "ok") {
-      // Non-building checkpoint: zero credit (its failures list is empty
-      // because the suite never ran — do NOT count that as passing).
-      fails.push(`${x.buildStatus}@${app}:ckpt${ck}`);
-      continue;
-    }
-    const probeFails = x.failures.filter(cfg.isProbe).length;
-    cujP += cfg.cujs[ck] - (x.failures.length - probeFails);
-    prP += cfg.probes[ck] - probeFails;
-    fails.push(...x.failures.map((id) => `${id}@${app}:ckpt${ck}`));
-    const jf = R("judge", `${cell}-m${ck}.json`);
-    if (fs.existsSync(jf)) judge += JSON.parse(fs.readFileSync(jf)).judgeScore;
-  }
-  // Divide by the number of CHECKPOINTS, not by the number that produced a
-  // judge verdict. A checkpoint that fails to build scores zero on all three
-  // components, judge included — averaging over survivors instead handed a cell
-  // whose M2 and M3 did not compile the full 15% judge weight from its one
-  // surviving checkpoint (luna/portalis read 7.0% that way, 3.5% correctly).
-  // The judge does score a non-building diff — it gave those two checkpoints
-  // 0.425 and 0.5 — which is precisely why they must not be averaged in.
-  const judgeAvg = scored ? judge / scored : 0;
-  // Composite only when all 3 checkpoints are scored — a mid-scoring cell
-  // would otherwise count its unscored checkpoints as zeros.
-  const composite =
-    scored === 3
-      ? 0.6 * (cujP / cujT) + 0.25 * (prP / prT) + 0.15 * judgeAvg
-      : null;
-  return {
-    minutes,
-    cost,
-    cujP,
-    cujT,
-    prP,
-    prT,
-    judgeAvg,
-    composite,
-    fails,
-    scored,
-  };
+  return scoreArtifacts(BENCH, cell, app, cfg);
 }
 
 const appNames = Object.keys(APPS);
@@ -205,12 +182,19 @@ const rows = MODELS.map((m) => {
   // read "built" — and sorted it to the top of the table above models that
   // had actually completed all three.
   const overall =
-    scoredApps.length === present.length && present.length > 0
+    scoredApps.length === present.length && present.length >= 3
       ? scoredApps.reduce((s, x) => s + x.composite, 0) / scoredApps.length
       : null;
   const totalCost = present.reduce((s, x) => s + x.cost, 0);
   const totalMin = present.reduce((s, x) => s + x.minutes, 0);
-  return { ...m, perApp, overall, totalCost, totalMin };
+  return {
+    ...m,
+    perApp,
+    overall,
+    totalCost,
+    totalMin,
+    costVerified: present.every((x) => x.costVerified),
+  };
 })
   // A model registered ahead of its first run has no cells at all; showing it
   // as a row of n/a implies it was measured and scored nothing.
@@ -229,7 +213,7 @@ function scatter(mode) {
   const maxCost = Math.max(...rows.map((r) => r.totalCost), 1);
   const xMax = Math.ceil(maxCost / 10) * 10;
   const yMin = 80,
-    yMax = 96;
+    yMax = 100;
   const X = (c) => M.l + ((W - M.l - M.r) * c) / xMax;
   const Y = (s) =>
     M.t + (H - M.t - M.b) * (1 - (s * 100 - yMin) / (yMax - yMin));
@@ -248,7 +232,7 @@ function scatter(mode) {
   }
   let flip = false;
   for (const r of rows) {
-    if (r.overall === null) continue;
+    if (r.overall === null || !r.costVerified) continue;
     const c = VENDOR_COLOR[mode][r.vendor];
     flip = !flip;
     els.push(
@@ -278,8 +262,9 @@ const pct = (x) => (x === null ? "—" : `${(100 * x).toFixed(1)}%`);
 const appCol = (r, a) => {
   const x = r.perApp[a];
   if (!x) return "—";
-  if (x.composite === null) return `built ($${x.cost.toFixed(2)})`;
-  return `${pct(x.composite)} ($${x.cost.toFixed(2)})`;
+  if (x.composite === null)
+    return `unscored (${costLabel(x.cost, x.costVerified)})`;
+  return `${pct(x.composite)} (${costLabel(x.cost, x.costVerified)})`;
 };
 // Only columns that actually have results: registering an app in APPS ahead of
 // its first run must not add a column of "n/a" to the headline table.
@@ -298,13 +283,13 @@ const tableHeader =
 const table = rows
   .map(
     (r) =>
-      `| ${r.name} | ${liveApps.map((a) => appCol(r, a)).join(" | ")} | ${r.totalMin} min | $${r.totalCost.toFixed(2)} | **${pct(r.overall)}** |`,
+      `| ${r.name} | ${liveApps.map((a) => appCol(r, a)).join(" | ")} | ${r.totalMin} min | ${costLabel(r.totalCost, r.costVerified)} | **${pct(r.overall)}** |`,
   )
   .join("\n");
 const failDetail = rows
   .map((r) => {
     const fails = appNames.flatMap((a) => r.perApp[a]?.fails ?? []);
-    return `- **${r.name}**: ${fails.length ? fails.join(", ") : "clean sweep"}`;
+    return `- **${r.name}**: ${fails.length ? fails.join(", ") : r.overall == null ? "incomplete / unscored" : "clean sweep"}`;
   })
   .join("\n");
 
@@ -317,6 +302,17 @@ const failDetail = rows
 // a nonsense value the engine also accepts — so it sweeps low/high/xhigh.
 // Hard-coding one shared tier list would invent cells that were never run.
 const EFFORT_MODELS = [
+  { slug: "x-ai_grok-4.7", label: "grok-4.7", tiers: ["default", "high"] },
+  {
+    slug: "xiaomi_mimo-v2.6-pro",
+    label: "mimo-v2.6-pro",
+    tiers: ["default", "high"],
+  },
+  {
+    slug: "xiaomi_mimo-v2.6-flash",
+    label: "mimo-v2.6-flash",
+    tiers: ["default", "high"],
+  },
   { slug: "gpt-5.6-luna", tiers: ["medium", "high", "xhigh"] },
   { slug: "gpt-5.6-terra", tiers: ["medium", "high", "xhigh"] },
   // grok-4.6's product default IS medium (catalog effortSettings), so its
@@ -339,7 +335,9 @@ const EFFORT_MODELS = [
 ];
 // A cell id carries no suffix only for a model's product default.
 const effortSuffix = (slug, tier) =>
-  tier === "medium" && !slug.startsWith("deepseek") ? "" : `-${tier}`;
+  tier === "default" || (tier === "medium" && !slug.startsWith("deepseek"))
+    ? ""
+    : `-${tier}`;
 // Effort cells were only run for the apps that existed at the time; scope the
 // sweep's columns to the apps it actually covers rather than to every
 // registered app, or later apps show up as a wall of n/a.
@@ -367,10 +365,12 @@ for (const m of EFFORT_MODELS) {
       model: m.label ?? m.slug,
       effort: e,
       cells,
-      overall: done.length
-        ? done.reduce((s, c) => s + c.composite, 0) / done.length
-        : null,
+      overall:
+        done.length === cells.length && done.length >= 3
+          ? done.reduce((s, c) => s + c.composite, 0) / done.length
+          : null,
       cost: cells.filter(Boolean).reduce((s, c) => s + c.cost, 0),
+      costVerified: cells.filter(Boolean).every((c) => c.costVerified),
       minutes: cells.filter(Boolean).reduce((s, c) => s + c.minutes, 0),
     });
   }
@@ -378,7 +378,7 @@ for (const m of EFFORT_MODELS) {
 const effortSection = effortRows.length
   ? `## Reasoning-effort sweep (luna + terra)
 
-The main table runs every model at the product default (medium for every
+The main table generally runs models at the product default (medium for every
 model except gpt-6-astra, whose default became \`low\` in Dyad's catalog on
 2026-09-04; its headline row is the low cells and its medium run is the
 non-default tier below). This sweep
@@ -393,7 +393,7 @@ and are reported separately from the headline matrix.
 ${effortRows
   .map(
     (r) =>
-      `| ${r.model} | ${r.effort} | ${r.cells.map((c) => (c ? pct(c.composite) : "n/a")).join(" | ")} | $${r.cost.toFixed(2)} | ${Math.round(r.minutes)} min | **${pct(r.overall)}** |`,
+      `| ${r.model} | ${r.effort} | ${r.cells.map((c) => (c ? pct(c.composite) : "n/a")).join(" | ")} | ${costLabel(r.cost, r.costVerified)} | ${Math.round(r.minutes)} min | **${pct(r.overall)}** |`,
   )
   .join("\n")}
 
@@ -409,14 +409,16 @@ fs.writeFileSync(
   path.join(BENCH, "RESULTS.md"),
   `# App-Builder Benchmark — Results
 
-Run: 2026-07-29 · 7 models × up to 3 apps (Relay CRM, Deskhero, Portalis) ×
-3 milestones each, N=1, Dyad local-agent mode at product-default reasoning
-effort (medium, recorded per request). Per checkpoint: fixed Playwright CUJ
+Updated: ${new Date().toISOString().slice(0, 10)} · ${rows.length} registered model results.
+Three primary apps (Relay CRM, Deskhero, Portalis), three milestones each.
+Dyad local-agent mode; effort settings and local catalog pins are disclosed below. Per checkpoint: fixed Playwright CUJ
 suites + adversarial security probes against pinned UI contracts, plus an LLM
 judge (gpt-5.6-sol, single judge, input-capped). Composite per app =
 60% CUJ + 25% probes + 15% judge; overall = mean of scored app composites.
-Costs are list-price dollars from exact per-request token counts
-(cached/uncached/cache-write split) captured at the wire.
+Costs use the pinned list-price book and recorded per-request token counts
+(cached/uncached/cache-write split). ≥ marks incomplete usage: a known-token
+lower bound, excluded from cost/value charts. Judge and tool-service fees are excluded.
+See [the harness and accounting audit](AUDIT.md) for repairs and rescore provenance.
 
 ${tableHeader}
 ${table}
@@ -426,11 +428,21 @@ ${table}
   <img alt="Overall composite score versus total build cost across all apps" src="scatter-light.svg">
 </picture>
 
+<details><summary>Historical Deskhero repeat notes — before the scoring/accounting repair</summary>
+
+${fs.existsSync(path.join(BENCH, "RESULTS-sol-deskhero-repeat1.md")) ? fs.readFileSync(path.join(BENCH, "RESULTS-sol-deskhero-repeat1.md"), "utf8") + "\n" : ""}
+${fs.existsSync(path.join(BENCH, "RESULTS-luna-deskhero-repeat1.md")) ? fs.readFileSync(path.join(BENCH, "RESULTS-luna-deskhero-repeat1.md"), "utf8") + "\n" : ""}
+</details>
+
 ${effortSection}## Per-model failures
 
 ${failDetail}
 
 ## Caveats (disclosed by design)
+
+- GPT-6.1 Sol: official API default medium via a benchmark-local 2026-09-29 catalog pin; absent from Dyad's live catalog at launch, so not a verified Dyad product default. 128000 output cap. Cache-write costs recovered from preserved raw Responses usage and verified against milestone ledger boundaries; no generated-app edits or build reruns.
+
+- Sonnet 5.5: explicitly medium effort via a benchmark-local 2026-09-28 catalog pin (not a verified Dyad default; Anthropic API default is high), 128000 output cap. Fresh r2 cells follow an early recorder repair: engine message_stop usage had overwritten cache-token counts; the interrupted first attempt is preserved and excluded.
 
 - N=1 per cell. Judge is gpt-5.6-sol for all candidates (user decision;
   same-vendor bias toward the gpt-5.6 family — bounded by the 15% judge weight).

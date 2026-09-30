@@ -38,8 +38,13 @@ export interface RunErrorInfo {
   kind?: DyadErrorKind;
 }
 
+export type PreviewAuthStatus =
+  | { provider: "neon" | "supabase"; state: "pending" }
+  | { provider: "neon" | "supabase"; state: "error"; message: string };
+
 /** A ready dev-server URL as reported by the dyad proxy server. */
 export interface RunUrl {
+  previewAuth?: PreviewAuthStatus;
   appUrl: string;
   originalUrl: string;
   mode: RuntimeMode2;

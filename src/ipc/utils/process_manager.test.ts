@@ -72,6 +72,7 @@ describe("stopAppByInfo", () => {
       processId: 1,
       mode: "cloud",
       cloudSandboxId: "sandbox-1",
+      proxyAbortController: new AbortController(),
       lastViewedAt: Date.now(),
       cloudLogAbortController,
       proxyWorker,
@@ -86,6 +87,39 @@ describe("stopAppByInfo", () => {
     expect(unregisterRunningCloudSandboxMock).not.toHaveBeenCalled();
     expect(terminateProxyWorker).not.toHaveBeenCalled();
     expect(abortCloudLogs).not.toHaveBeenCalled();
+    expect(appInfo.proxyAbortController?.signal.aborted).toBe(false);
+  });
+
+  it("cancels and drains background auth registration before tearing down the app", async () => {
+    const controller = new AbortController();
+    let finish!: () => void;
+    const appInfo: RunningAppInfo = {
+      process: null,
+      processId: 1,
+      mode: "host",
+      lastViewedAt: 0,
+      previewAuthRegistration: {
+        controller,
+        target: {
+          provider: "supabase",
+          projectId: "project",
+          organizationSlug: "org",
+        },
+        origin: "http://app-1.localhost:42101",
+        settled: new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+      },
+    };
+    runningApps.set(1, appInfo);
+    const stop = stopAppByInfo(1, appInfo);
+    expect(controller.signal.aborted).toBe(true);
+    expect(runningApps.get(1)).toBe(appInfo);
+    expect(stopCloudSandboxFileSyncMock).not.toHaveBeenCalled();
+    finish();
+    await stop;
+    expect(stopCloudSandboxFileSyncMock).toHaveBeenCalledWith(1);
+    expect(runningApps.has(1)).toBe(false);
   });
 
   it("removes cloud apps after sandbox teardown succeeds", async () => {

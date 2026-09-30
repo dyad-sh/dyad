@@ -11,14 +11,17 @@ import {
 } from "./cloud_sandbox_provider";
 import { readSettings } from "../../main/settings";
 import { endRecordingForApp } from "../services/recording_registry";
-import type { AppRunInvocationRef } from "@/app_run/state";
+import type { AppRunInvocationRef, PreviewAuthStatus } from "@/app_run/state";
 import type { AppRuntimeOutput } from "@/ipc/types/app_runtime";
 import { killProcessTreeSync } from "./kill_process_tree_sync";
+import type { PreviewAuthTarget } from "../services/preview_auth_target";
 
 const logger = log.scope("process_manager");
 
 // Define a type for the value stored in runningApps
 export interface RunningAppInfo {
+  /** Preview address choice captured at startup; settings changes need a restart. */
+  previewHostname?: string;
   process: ChildProcess | null;
   processId: number;
   /** Correlation identity of the run/restart that owns this producer. */
@@ -37,6 +40,25 @@ export interface RunningAppInfo {
   lastViewedAt: number;
   /** Proxy URL for the running app, set when the proxy server starts */
   proxyUrl?: string;
+  previewAuthTarget?: PreviewAuthTarget | null;
+  /** Fences startup lookups against provider switches, including disconnects. */
+  previewAuthTargetRevision?: number;
+  previewAuth?: PreviewAuthStatus;
+  /** Runtime-owned registration; cancelled and drained on stop or replacement. */
+  previewAuthRegistration?: {
+    target: PreviewAuthTarget;
+    origin: string;
+    invocationRef?: AppRunInvocationRef;
+    output?: AppRuntimeOutput;
+    controller: AbortController;
+    settled: Promise<void>;
+  };
+  proxyStartup?: Promise<void>;
+  proxyStartupError?: Error;
+  /** Releases a pending readiness wait for a queued, intentional Stop. */
+  stopRequested?: boolean;
+  proxyAbortController?: AbortController;
+  previewAbortSignal?: AbortSignal;
   /**
    * Capability embedded in proxied HTML and returned only to the trusted
    * renderer. Auth bootstrap messages must echo it before the preview will
@@ -260,10 +282,14 @@ export async function stopAppByInfo(
   appInfo: RunningAppInfo,
   options: { recordingOwnedRestart?: boolean } = {},
 ): Promise<void> {
+  appInfo.proxyAbortController?.abort();
+  appInfo.previewAuthRegistration?.controller.abort();
   if (options.recordingOwnedRestart) {
     appInfo.recordingOwnedRestart = true;
   }
   try {
+    if (appInfo.previewAuthRegistration)
+      await appInfo.previewAuthRegistration.settled;
     stopCloudSandboxFileSync(appId);
 
     if (appInfo.mode === "cloud") {
@@ -286,6 +312,16 @@ export async function stopAppByInfo(
     appInfo.cloudLogAbortController = undefined;
     unregisterRunningCloudSandbox({ appId });
     runningApps.delete(appId);
+  } catch (error) {
+    // A failed cloud teardown retains the running app. Drain the cancelled
+    // startup before allowing later URL output/restart to rebuild its proxy.
+    await appInfo.proxyStartup;
+    if (runningApps.get(appId) === appInfo) {
+      appInfo.proxyAbortController = new AbortController();
+      appInfo.previewAuthRegistration = undefined;
+      appInfo.proxyStartupError = undefined;
+    }
+    throw error;
   } finally {
     // The marker only has to outlive the kill, whose `close` listener runs
     // inside the await above. Left latched on a stop that threw, it would sit
@@ -307,6 +343,8 @@ export function removeAppIfCurrentProcess(
 ): void {
   const currentAppInfo = runningApps.get(appId);
   if (currentAppInfo && currentAppInfo.process === process) {
+    currentAppInfo.proxyAbortController?.abort();
+    currentAppInfo.previewAuthRegistration?.controller.abort();
     if (currentAppInfo.proxyWorker) {
       void currentAppInfo.proxyWorker.terminate();
       currentAppInfo.proxyWorker = undefined;
@@ -522,6 +560,8 @@ export function stopAllAppsSync(): void {
     const appInfo = runningApps.get(appId);
     if (!appInfo) continue;
 
+    appInfo.proxyAbortController?.abort();
+    appInfo.previewAuthRegistration?.controller.abort();
     if (appInfo.proxyWorker) {
       void appInfo.proxyWorker.terminate();
       appInfo.proxyWorker = undefined;

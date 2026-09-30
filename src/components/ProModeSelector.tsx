@@ -103,7 +103,7 @@ export function ProModeSelector() {
                 <ToggleGroupItem
                   value="subscription"
                   disabled={!subscriptionConnected}
-                  className="text-xs"
+                  className="text-xs aria-pressed:bg-primary aria-pressed:text-primary-foreground aria-pressed:hover:bg-primary aria-pressed:hover:text-primary-foreground"
                 >
                   {settings?.enableClaudeCodeSubscription
                     ? "Subscriptions"
@@ -111,7 +111,7 @@ export function ProModeSelector() {
                 </ToggleGroupItem>
                 <ToggleGroupItem
                   value="pro"
-                  className="text-xs"
+                  className="text-xs aria-pressed:bg-primary aria-pressed:text-primary-foreground aria-pressed:hover:bg-primary aria-pressed:hover:text-primary-foreground"
                   onClick={() => {
                     // Disconnected accounts display Pro even when the saved
                     // preference still requires subscription credentials.

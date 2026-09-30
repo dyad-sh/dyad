@@ -10,9 +10,13 @@ import {
   trackedTestBranchId,
 } from "../utils/neon_test_branch";
 import { createNeonTestAccount } from "../utils/neon_test_account";
-import { createNeonTestDataCleaner } from "../utils/neon_test_data";
 import { retryOnLocked } from "../utils/retryOnLocked";
+import { createNeonTestDataCleaner } from "../utils/neon_test_data";
 import { TEST_CASE_HOOK_TIMEOUT_MS } from "./test_case_lifecycle_server";
+import {
+  neonPreviewDomainService,
+  type NeonPreviewTarget,
+} from "./neon_preview_domain_service";
 import {
   checkRls,
   createTempTestUser,
@@ -332,7 +336,14 @@ export async function prepareIsolatedTestDatabase({
     //    it's serving again before Playwright points at it.
     if (restartApp) {
       emit("Starting the app against the isolated test database…\n", "setup");
-      const processId = await restartAppInPlace({ app, appPath });
+      const processId = await restartAppInPlace({
+        app,
+        appPath,
+        signal,
+        neonAuthTarget: branch.neonAuthBaseUrl
+          ? { projectId: app.neonProjectId!, branchId: branch.branchId }
+          : null,
+      });
       await waitForServerReady(app.id, signal, processId);
     }
 
@@ -357,41 +368,48 @@ export async function prepareIsolatedTestDatabase({
 
     // 6. Trust the preview origin for Neon Auth. Recordings get an account now;
     //    test runs create one in beforeEach after clearing the database. Auth
-    //    setup remains best-effort for recordings, but tests fail closed.
+    //    account setup remains best-effort for recordings, but tests fail closed.
     let testCredentials: Record<string, string> | undefined;
     let authSetup: IsolationAuthSetup | undefined;
     if (branch.neonAuthBaseUrl) {
-      try {
-        // Neon Auth validates the browser's Origin on sign-in, and a temporary
-        // branch gets its own Auth configuration rather than inheriting the
-        // development branch's trusted origins. The recorder drives the app
-        // through the preview proxy, so that origin has to be registered here
-        // — before credentials are handed out — or account creation succeeds
-        // and sign-in is rejected as an invalid origin.
-        //
-        // Not for a sandboxed run: it never starts the normal preview, so the
-        // proxy URL legitimately does not exist, and demanding one would throw
-        // into the catch below and silently drop sign-in for every auth-gated
-        // spec. That path registers the origin it actually serves on through
-        // `authorizeRuntimeOrigin`, once its server has chosen a port.
-        if (restartApp) {
-          const proxyUrl = runningApps.get(app.id)?.proxyUrl;
-          if (!proxyUrl) {
-            throw new Error(
-              "The preview proxy URL is unavailable for Neon Auth sign-in.",
-            );
-          }
+      // Sandboxed runs authorize their own server through authorizeRuntimeOrigin.
+      // Preview origin registration is required before provisioning credentials.
+      if (restartApp) {
+        const info = runningApps.get(app.id);
+        if (!info?.proxyUrl)
+          throw new DyadError(
+            "The preview URL is unavailable for Neon Auth sign-in.",
+            DyadErrorKind.Precondition,
+          );
+        const previewUrl = new URL(info.proxyUrl);
+        const target = {
+          projectId: app.neonProjectId!,
+          branchId: branch.branchId,
+        };
+        if (previewUrl.hostname === "localhost") {
+          // Legacy previews still need to trust the temporary test branch.
           await retryOnLocked(
             () =>
               ensureNeonAuthTrustedDomain({
-                projectId: neonProjectId,
-                branchId: branch.branchId,
-                origin: new URL(proxyUrl).origin,
+                ...target,
+                origin: previewUrl.origin,
+                signal,
               }),
-            `Trust preview origin for Neon test branch ${branch.branchId}`,
+            "Register Neon test preview origin",
+            { signal },
           );
+        } else {
+          await neonPreviewDomainService.ensureTrustedDomain({
+            appId: app.id,
+            processId: info.processId,
+            invocationRef: info.invocationRef,
+            target,
+            origin: previewUrl.origin,
+            signal: signal ?? new AbortController().signal,
+          });
         }
-
+      }
+      try {
         const account = !perTestCase
           ? await createNeonTestAccount({
               neonAuthBaseUrl: branch.neonAuthBaseUrl,
@@ -837,9 +855,13 @@ async function restoreEnvFile(
 async function restartAppInPlace({
   app,
   appPath,
+  neonAuthTarget,
+  signal,
 }: {
   app: AppRow;
   appPath: string;
+  neonAuthTarget?: NeonPreviewTarget | null;
+  signal?: AbortSignal;
 }): Promise<number | undefined> {
   return appRunActorService.executeAlreadyLockedExternalRestart(
     app.id,
@@ -858,6 +880,8 @@ async function restartAppInPlace({
         appId: app.id,
         output,
         isNeon: !!app.neonProjectId,
+        neonAuthTarget,
+        previewAbortSignal: signal,
         installCommand: app.installCommand,
         startCommand: app.startCommand,
         invocationRef,

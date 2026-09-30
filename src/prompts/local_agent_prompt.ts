@@ -14,6 +14,7 @@ import {
   getImplementerTestWritingGuidance,
 } from "./system_prompt";
 import {
+  SUPABASE_AUTH_REDIRECT_RULE,
   SUPABASE_EDGE_FUNCTION_JWT_RULE,
   SUPABASE_GRANTS_AND_RLS_RULE,
   SUPABASE_IMPLEMENTER_NO_MANUAL_MIGRATIONS_RULE,
@@ -806,6 +807,7 @@ function implementerProviderGuidance(
     return `<provider_invariants provider="supabase">
 - The app is associated with Supabase. Use its existing Supabase client and Supabase Auth conventions for database, authentication, and server-function code.
 ${SUPABASE_SERVICE_ROLE_BROWSER_RULE}
+${SUPABASE_AUTH_REDIRECT_RULE}
 ${SUPABASE_GRANTS_AND_RLS_RULE}
 ${SUPABASE_IMPLEMENTER_RLS_RULE}
 ${SUPABASE_IMPLEMENTER_NO_MANUAL_MIGRATIONS_RULE}

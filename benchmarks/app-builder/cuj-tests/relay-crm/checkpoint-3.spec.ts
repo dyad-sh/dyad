@@ -93,6 +93,7 @@ test.describe("relay-crm checkpoint 3", () => {
       .click();
     await owner.page.getByTestId("contact-delete-button").click();
     await owner.page.getByTestId("contact-delete-confirm").click();
+    await settleAfterSubmit(owner.page);
     await owner.page.goto("/contacts");
     await expect(
       owner.page.getByTestId("contact-row").filter({ hasText: TEMP }),
@@ -157,6 +158,8 @@ test.describe("relay-crm checkpoint 3", () => {
         .filter({ hasText: DEAL })
         .first(),
     ).toBeVisible({ timeout: 15_000 });
+    // An optimistic card move is not evidence that the PATCH has completed.
+    await settleAfterSubmit(owner.page);
     await owner.page.reload();
     await expect(
       owner.page
@@ -324,6 +327,7 @@ test.describe("relay-crm checkpoint 3", () => {
       .first()
       .getByTestId("deal-card-stage-select")
       .selectOption("proposal");
+    await settleAfterSubmit(owner.page);
     await owner.page.goto(`/contacts/${adaContactId}`);
     await expect(async () => {
       const count = await owner.page.getByTestId("activity-item").count();

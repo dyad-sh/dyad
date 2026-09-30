@@ -120,6 +120,7 @@ import {
   PREVIEW_CDP_ENDPOINT_ENV,
   PREVIEW_CDP_TOKEN_ENV,
   DYAD_CONFIG_FILENAME,
+  ensurePreviewDnsPreload,
 } from "../utils/playwright_bootstrap";
 import { buildWindowsCommandInvocation } from "../utils/windows_command";
 import {
@@ -128,7 +129,7 @@ import {
 } from "../services/test_case_lifecycle_server";
 import { trackE2eTestProcess } from "../services/e2e_test_process_registry";
 
-const PROXY_URL = "http://localhost:42101/";
+const PROXY_URL = "http://app-1.localhost:42101/";
 const CDP_ENDPOINT = "http://127.0.0.1:51234";
 const CDP_TOKEN = "test-preview-token";
 const APP_PATH = path.join(os.tmpdir(), "dyad-tests-preview", "apps", "my-app");
@@ -236,6 +237,9 @@ describe("selected file batches", () => {
           path.join(physical, selected[0]),
           'const { test, expect } = require("@playwright/test");\ntest("works", () => { expect(1).toBe(1); });\ntest.skip("disabled", () => {});\n',
         );
+        // Bootstrap is mocked (or already completed for the sandbox path),
+        // but these cases launch real Node processes that load its DNS helper.
+        ensurePreviewDnsPreload(physical);
         h.getDyadAppPath.mockReturnValue(
           mode === "sandbox" ? APP_PATH : linked,
         );
@@ -762,6 +766,29 @@ function mockPreviewBatch() {
 }
 
 describe("preview runs", () => {
+  it.each([undefined, CDP_ENDPOINT])(
+    "passes app DNS preload and preserves NODE_OPTIONS for endpoint %s",
+    async (previewCdpEndpoint) => {
+      vi.stubEnv("NODE_OPTIONS", "--no-warnings");
+      try {
+        await runAppTestsCore({ appId: 1, previewCdpEndpoint });
+        expect(lastSpawn().env.DYAD_TEST_BASE_URL).toBe(PROXY_URL);
+        // Match the runner's native resolution: realpathSync can retain Windows
+        // 8.3 aliases (RUNNER~1) that fs.promises.realpath expands (runneradmin).
+        const canonicalAppPath = await fs.promises.realpath(APP_PATH);
+        expect(lastSpawn().env.NODE_OPTIONS).toBe(
+          `--no-warnings --require ${JSON.stringify(
+            path
+              .join(canonicalAppPath, "e2e-tests/fixtures/dyad/preview-dns.cjs")
+              .replaceAll("\\", "/"),
+          )}`,
+        );
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    },
+  );
+
   it("keeps exact titles out of the Windows batch-file transport", () => {
     const titleGrep = "^shows 100% progress\non completion$";
     const invocation = buildPlaywrightCliInvocation(

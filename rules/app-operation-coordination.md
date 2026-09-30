@@ -42,6 +42,10 @@ Sanitize copied dotenv files throughout a disposable test workspace's lifetime.
 Preserve only provider-rewritten keys, never whole files, plus public Supabase
 URL/anon/publishable settings for RLS-scoped tests; strip privileged database credentials.
 
+Start a provider request's timeout after acquiring its shared project lock, so
+other apps' queued updates do not consume its API budget. Keep caller cancellation
+active during both admission and retry backoff, and cancel backoff timers on abort.
+
 App deletion closes coordinator admission before draining admitted work. Every
 new app-scoped main-process mutation must therefore use the coordinator unless
 it is already owned and drained by a domain-specific actor fence. Deletion-only
@@ -57,9 +61,14 @@ release until the destructive mutation commits or aborts.
 
 Spawning the long-lived install/dev child is not the end of runtime startup.
 Retain app-path and runtime-config admission until the preview is ready. Start,
-restart, and rebuild intentionally do not claim the repository, so repository-only
-writers may interleave throughout install and readiness. This includes chat
-checkpoints, commit/discard operations, switch/pull/merge/rebase, and agent or
+restart, and rebuild intentionally do not claim the repository or provider. Auth
+targets are read after publishing the runtime so provider reconciliation can
+find it; discard a startup lookup if a newer provider reconciliation changed
+the target, including a disconnect. Never nest provider admission inside runtime
+admission: a provider writer may also be waiting for runtime-config. Provider-only
+work such as Local Agent Supabase function reconciliation remains admitted, and
+repository-only writers may interleave throughout install and readiness. This
+includes chat checkpoints, commit/discard operations, switch/pull/merge/rebase, and agent or
 test file writes. Operations that also write runtime-config remain excluded;
 some restore/checkout paths do, while repository-only GitHub branch operations
 do not.

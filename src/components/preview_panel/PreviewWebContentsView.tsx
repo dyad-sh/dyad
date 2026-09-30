@@ -1,3 +1,4 @@
+import { PreviewAuthBanner } from "./PreviewAuthBanner";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
 import { useMutation } from "@tanstack/react-query";
@@ -28,8 +29,11 @@ import { runAppLifecycleInBackground, useRunApp } from "@/hooks/useRunApp";
 import { useSettings } from "@/hooks/useSettings";
 import { ipc } from "@/ipc/types";
 import type { PreviewViewNavigationState } from "@/ipc/types";
-import { formatPreviewAddressPath } from "./previewAddressPath";
-import { resolvePreviewBrowserUrl } from "./previewBrowserUrl";
+import { formatPreviewAddressPath, getPreviewHost } from "./previewAddressPath";
+import {
+  LOCAL_PREVIEW_BROWSER_HINT,
+  resolvePreviewBrowserUrl,
+} from "./previewBrowserUrl";
 import { PreviewLoadingScreen } from "./PreviewLoadingScreen";
 import { PREVIEW_TOOLBAR_BUTTON_CLASSES } from "./previewToolbarStyles";
 import {
@@ -68,7 +72,7 @@ interface LoadFailure {
  */
 export const PreviewWebContentsView = ({ loading }: { loading: boolean }) => {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
-  const { appUrl, originalUrl, mode } = useCurrentAppUrl(selectedAppId);
+  const { appUrl, mode, previewAuth } = useCurrentAppUrl(selectedAppId);
   const { settings } = useSettings();
   const setPreviewNativeViewAppId = useSetAtom(previewNativeViewAppIdAtom);
   const isNativeOverlayActive = useAtomValue(previewNativeOverlayActiveAtom);
@@ -244,7 +248,7 @@ export const PreviewWebContentsView = ({ loading }: { loading: boolean }) => {
       const url = await resolvePreviewBrowserUrl({
         isCloudMode,
         selectedAppId,
-        originalUrl,
+        appUrl,
         createCloudSandboxShareLink,
       });
       await ipc.system.openExternalUrl(url);
@@ -259,7 +263,7 @@ export const PreviewWebContentsView = ({ loading }: { loading: boolean }) => {
 
   const openBrowserDisabled = isCloudMode
     ? isCreatingCloudSandboxShareLink
-    : !originalUrl;
+    : !appUrl;
 
   // The main process refuses navigation and reloads while a run drives the
   // page, so leaving these enabled makes them read as broken. Restart isn't
@@ -274,6 +278,11 @@ export const PreviewWebContentsView = ({ loading }: { loading: boolean }) => {
 
   return (
     <div className="flex flex-col h-full">
+      <PreviewAuthBanner
+        status={previewAuth}
+        onRetry={() => runAppLifecycleInBackground("restart", restartApp())}
+        disabled={loading || isTestRunActive}
+      />
       <div
         className="flex min-w-0 items-center gap-1.5 border-b px-2 py-1.5"
         data-testid="preview-native-toolbar"
@@ -343,6 +352,7 @@ export const PreviewWebContentsView = ({ loading }: { loading: boolean }) => {
             className="truncate text-xs text-muted-foreground"
             data-testid="preview-native-path"
           >
+            {getPreviewHost(appUrl)}
             {currentPath}
           </span>
           <span
@@ -378,7 +388,9 @@ export const PreviewWebContentsView = ({ loading }: { loading: boolean }) => {
           >
             <ExternalLink size={14} />
           </TooltipTrigger>
-          <TooltipContent>Open in browser</TooltipContent>
+          <TooltipContent>
+            Open in browser{!isCloudMode && `. ${LOCAL_PREVIEW_BROWSER_HINT}`}
+          </TooltipContent>
         </Tooltip>
 
         <div className="flex shrink-0 items-center gap-1.5">

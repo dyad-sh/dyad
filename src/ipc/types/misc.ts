@@ -9,6 +9,7 @@ import { ConsoleEntrySchema } from "./supabase";
 import { ProblemReportSchema } from "./agent";
 import { ChatStreamInvocationRefSchema } from "./chat";
 import { AppRunInvocationRefSchema } from "./app";
+import { PreviewAuthStatusSchema } from "../../app_run/transport";
 
 // =============================================================================
 // Portal Schemas
@@ -415,6 +416,7 @@ export type { DeepLinkData } from "../deep_link_data";
 // =============================================================================
 
 export const AppOutputSchema = z.object({
+  previewAuth: PreviewAuthStatusSchema.optional(),
   type: z.enum([
     "stdout",
     "stderr",

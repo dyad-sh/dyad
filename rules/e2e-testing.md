@@ -59,6 +59,8 @@ DEBUG=pw:browser PLAYWRIGHT_HTML_OPEN=never npm run e2e
 
 ## PageObject sub-component pattern
 
+Test builds skip `shell.openExternal` in the `open-external-url` handler. To assert the browser-opening URL, capture that IPC handler with `ipcMain.removeHandler`/`ipcMain.handle`; stubbing `shell.openExternal` never sees the preview toolbar action.
+
 The `PageObject` (aliased as `po` in tests) delegates most methods to sub-component page objects. Don't call methods directly on `po` unless they are explicitly defined on `PageObject` itself:
 
 ```ts
@@ -78,6 +80,10 @@ Key sub-components: `po.appManagement`, `po.navigation`, `po.chatActions`, `po.p
 Playwright's `FrameLocator` does not expose `evaluate()`. To run code in a
 preview frame, select an element first (for example,
 `frame.locator("body").evaluate(...)`) and evaluate through that locator.
+
+The preview proxy injects `worker/dyad-sw-register.js` into HTML and serves
+`/dyad-sw.js`; preview service-worker assertions do not require the imported
+fixture to register its own worker.
 
 When an E2E assertion needs main-owned state after a legacy read IPC channel is
 deleted, read the authoritative remote-machine snapshot through
@@ -274,7 +280,7 @@ If a targeted E2E fails before launch with `ENOENT: no such file or directory, s
 - **GitHub sync success assertions**: Scope "Successfully pushed to GitHub!" assertions to `getByTestId("github-connected-repo")`; the same text can also appear in a toast, causing Playwright strict-mode failures.
 - **GitHub fake device flow**: After clicking "Connect to GitHub", setup-repo UI assertions can race the fake auth polling loop. The setup section may render just after a 5s default assertion timeout, so use a medium timeout for "Set up your GitHub repo" / "Create new repo" assertions that depend on connection success.
 - **GitHub URL import app names**: Blurring the repository URL auto-fills the optional app-name input from the repo slug. When a test needs a custom name, blur the URL input and wait for that auto-fill before replacing the app-name value; filling immediately can concatenate the generated and custom names.
-- **Supabase connection flows**: After clicking the Supabase connect button in E2E, wait for the connected project UI (for example the fake project name) before navigating away or snapshotting. The connect helper can return before renderer state reflects the new integration.
+- **Supabase connection flows**: After clicking the Supabase connect button in E2E, wait for the connected project UI before navigating away or snapshotting. Match the project label with `getByText(name, { exact: true })`: the preview redirect notice also contains the project name, so substring matching violates strict mode. The connect helper can return before renderer state reflects the new integration.
 - **Returning from database integration setup**: The Back button can return to the Apps/Home route instead of the selected app chat. Call `po.navigation.goToChatTab()` before sending an app-scoped prompt; otherwise the home input creates a new app and can trigger unrelated blueprint preconditions.
 - **Uncommitted-files banner after manual commit**: Commit-triggered app screenshots write under `.dyad/screenshot`. If native-git banner tests still show one uncommitted change after a successful commit, inspect whether Dyad-managed `.dyad/` files are being excluded from Git status before blaming query invalidation.
 - **Runtime baselines after generated commits**: Preview visibility can precede the asynchronous `.dyad/screenshot/<commit>.png` write. Before amending runtime artifacts into a clean baseline, poll for the screenshot file; checking and committing immediately can leave a later untracked `.dyad/`.
@@ -404,3 +410,10 @@ When adding E2E test fixtures that need a `.dyad` directory for testing:
 
 - `write_app_blueprint` fixture args must include at least one entry in `visuals` (`.min(1)` in the tool schema). An empty `visuals: []` fails tool validation silently: the blueprint card still renders from the streamed XML tag and "Approve Plan" is clickable, but approval fails with "Blueprint data is unavailable. Please regenerate the plan." because the plan never reached the renderer atom.
 - After a rename/approval, the title bar's `data-app-path` can update a beat later than `data-app-name`. Assert the name AND the path inside a single `expect(async () => {...}).toPass()` poll instead of reading `getCurrentAppPath()` once after the name matches.
+
+## Benchmark harness interactions
+
+- A union locator (`a.or(b)`) is strict: a valid empty list can render both its container and empty-state element. Select a visible alternative, then separately assert no rows; do not mistake the two different test IDs for duplicate IDs.
+- Open a menu before counting its lazily mounted options. For mutations, wait for the request or persisted API state before navigating away; an immediate `goto` can abort a correct save, an optimistic UI change is not proof of a committed write, and `toHaveCount(0)` before list hydration can falsely pass.
+- Benchmark rescoring must use unchanged checkpoint tags and cloned snapshots. Preserve previous artifacts. If a judge consumes test outcomes, refresh its verdict when that evidence changes; retain only verdicts based on unchanged evidence. Infrastructure failures or missing judges are unscored, not model-quality zeros.
+- Do not wait for `response.finished()` on a successful 204 mutation response: Chromium/Playwright can leave that wait pending even after the server committed. Wait for the response headers and then assert persisted state; include 204 as well as JSON responses in helper regression tests.

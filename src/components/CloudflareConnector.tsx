@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ExternalLink, Loader2, RefreshCw } from "lucide-react";
+import { useAtomValue } from "jotai";
+import { ExternalLink, Loader2, RefreshCw, Sparkles } from "lucide-react";
+import { selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { AgentModeRequiredDialog } from "@/components/preview_panel/AgentModeRequiredDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,13 +14,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ipc } from "@/ipc/types";
-import { showError } from "@/lib/toast";
+import { showError, showInfo } from "@/lib/toast";
 import type {
   CloudflareConnection,
   CloudflareTargetSummary,
   CloudflareWorkerSummary,
 } from "@/ipc/types";
+import { useChatMode } from "@/hooks/useChatMode";
 import { useSettings } from "@/hooks/useSettings";
+import { useStreamChat } from "@/hooks/useStreamChat";
 import {
   useCloudflareAccounts,
   useCloudflareAppStatus,
@@ -35,6 +40,7 @@ import {
   isValidWorkerName,
   type CloudflareDeploymentState,
 } from "@/cloudflare_deploy/build_config";
+import { buildCloudflareDeployFixPrompt } from "@/cloudflare_deploy/fix_prompt";
 
 /**
  * When a target deploys. A sync that pushes nothing never reaches Cloudflare,
@@ -367,7 +373,7 @@ function ConnectedAccount({ appId }: { appId: number }) {
             appId={appId}
             connection={connection}
             targetLabel={folder.label}
-            hasConfig={target !== null}
+            configPath={target?.configPath ?? null}
           />
         </>
       ) : !target ? null : !accountList ? (
@@ -862,14 +868,15 @@ function DeploymentCard({
   appId,
   connection,
   targetLabel,
-  hasConfig,
+  configPath,
 }: {
   appId: number;
   connection: CloudflareConnection;
   targetLabel: string;
-  /** False once the folder's Wrangler config has left the branch. */
-  hasConfig: boolean;
+  /** Null once the folder's Wrangler config has left the branch. */
+  configPath: string | null;
 }) {
+  const hasConfig = configPath !== null;
   const status = useCloudflareDeploymentStatus({
     appId,
     rootDirectory: connection.rootDirectory,
@@ -879,6 +886,81 @@ function DeploymentCard({
   const disconnect = useDisconnectCloudflareWorker();
   const state = status.data?.state;
   const inProgress = state !== undefined && isDeploymentInProgress(state);
+
+  const chatId = useAtomValue(selectedChatIdAtom);
+  const { streamMessage } = useStreamChat();
+  const { selectedMode } = useChatMode(chatId);
+  // The fix is an edit to the config or the code, which Build and Agent mode
+  // both make. Ask and Plan mode cannot, so the request has to leave them.
+  const canWriteInCurrentMode =
+    selectedMode === "build" || selectedMode === "local-agent";
+  // Open while the Agent-mode confirmation for the fix is showing.
+  const [fixNeedsAgentMode, setFixNeedsAgentMode] = useState(false);
+  // A revoked token is fixed with a new token, not with code, and the notice
+  // above the log already says how.
+  const canFixWithAI =
+    state === "failed" &&
+    status.data !== undefined &&
+    !status.data.tokenRevoked;
+
+  // Hand the build log to the chat, in its own mode unless a switch was
+  // confirmed, so the AI can fix the config or code.
+  const doFixWithAI = ({ inAgentMode }: { inAgentMode: boolean }) => {
+    if (!status.data) return;
+    if (chatId == null) {
+      showInfo("Open a chat to ask the AI to fix this deployment.");
+      return;
+    }
+    streamMessage({
+      prompt: buildCloudflareDeployFixPrompt({
+        workerName: connection.workerName,
+        rootDirectory: connection.rootDirectory,
+        configPath,
+        logTail: status.data.logTail,
+      }),
+      chatId,
+      ...(inAgentMode ? { requestedChatMode: "local-agent" as const } : {}),
+    });
+    showInfo("Sent to chat — asking the AI to fix the deployment…");
+  };
+
+  const handleFixWithAI = () => {
+    if (canWriteInCurrentMode) {
+      doFixWithAI({ inAgentMode: false });
+    } else {
+      setFixNeedsAgentMode(true);
+    }
+  };
+
+  const stateLine = (
+    <div
+      className="flex items-center gap-2 text-sm"
+      data-testid="cloudflare-deployment-state"
+    >
+      {(status.isLoading || inProgress) && (
+        <Loader2 className="h-4 w-4 animate-spin" />
+      )}
+      <span>
+        {status.isLoading
+          ? "Checking deployment..."
+          : state
+            ? STATE_LABELS[state]
+            : "Deployment status unavailable"}
+      </span>
+      {status.data?.commitHash && (
+        <span className="text-xs text-gray-500 dark:text-gray-400 font-mono">
+          {status.data.commitHash.slice(0, 7)}
+        </span>
+      )}
+    </div>
+  );
+  // A failure with nothing to show or do for it stays a plain status line.
+  const failureCard =
+    state === "failed" &&
+    status.data &&
+    (status.data.logTail.length > 0 || canFixWithAI)
+      ? status.data
+      : null;
 
   return (
     <div className="space-y-3" data-testid="cloudflare-deployment">
@@ -908,26 +990,36 @@ function DeploymentCard({
         </Button>
       </div>
 
-      <div
-        className="flex items-center gap-2 text-sm"
-        data-testid="cloudflare-deployment-state"
-      >
-        {(status.isLoading || inProgress) && (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        )}
-        <span>
-          {status.isLoading
-            ? "Checking deployment..."
-            : state
-              ? STATE_LABELS[state]
-              : "Deployment status unavailable"}
-        </span>
-        {status.data?.commitHash && (
-          <span className="text-xs text-gray-500 dark:text-gray-400 font-mono">
-            {status.data.commitHash.slice(0, 7)}
-          </span>
-        )}
-      </div>
+      {failureCard ? (
+        // The failed status, its fix and its log are one thing, framed apart
+        // from the folder's own controls below.
+        <div
+          className="rounded-md border p-2 space-y-2"
+          data-testid="cloudflare-build-failure"
+        >
+          {failureCard.logTail.length > 0 && (
+            <pre className="text-xs bg-gray-100 dark:bg-gray-800 rounded-md p-2 max-h-48 overflow-auto whitespace-pre-wrap">
+              {failureCard.logTail.join("\n")}
+            </pre>
+          )}
+          <div className="flex items-center justify-between gap-3">
+            {canFixWithAI && (
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleFixWithAI}
+                data-testid="cloudflare-fix-with-ai"
+              >
+                <Sparkles className="h-4 w-4 mr-1" />
+                Fix with AI
+              </Button>
+            )}
+            {stateLine}
+          </div>
+        </div>
+      ) : (
+        stateLine
+      )}
 
       {status.error && (
         <div className={errorClass}>{errorMessage(status.error)}</div>
@@ -955,12 +1047,6 @@ function DeploymentCard({
           a change to GitHub.
         </div>
       )}
-      {state === "failed" && status.data && status.data.logTail.length > 0 && (
-        <pre className="text-xs bg-gray-100 dark:bg-gray-800 rounded-md p-2 max-h-48 overflow-auto whitespace-pre-wrap">
-          {status.data.logTail.join("\n")}
-        </pre>
-      )}
-
       {hasConfig && !status.data?.ruleDeploys && !status.data?.ruleMissing && (
         <p className="text-xs text-gray-500 dark:text-gray-400">
           {deployTriggerText({
@@ -987,6 +1073,18 @@ function DeploymentCard({
       {disconnect.error && (
         <div className={errorClass}>{errorMessage(disconnect.error)}</div>
       )}
+
+      <AgentModeRequiredDialog
+        open={fixNeedsAgentMode}
+        onOpenChange={(open) => {
+          if (!open) setFixNeedsAgentMode(false);
+        }}
+        action="deploy"
+        onContinue={() => {
+          setFixNeedsAgentMode(false);
+          doFixWithAI({ inAgentMode: true });
+        }}
+      />
     </div>
   );
 }

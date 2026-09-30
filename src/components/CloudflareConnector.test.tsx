@@ -211,7 +211,8 @@ describe("before a Worker can be connected", () => {
     );
 
     expect(openExternalUrl).toHaveBeenCalledWith(
-      "https://dash.cloudflare.com/?to=/:account/workers-and-pages/create",
+      // The account chosen in Dyad, so access is not granted on another one.
+      "https://dash.cloudflare.com/acct-1/workers-and-pages/create",
     );
     // The card's only actions: the dashboard, then Refresh.
     expect(

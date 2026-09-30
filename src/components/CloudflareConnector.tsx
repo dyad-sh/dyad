@@ -29,7 +29,7 @@ import {
   useSaveCloudflareToken,
 } from "@/hooks/useCloudflareDeploy";
 import {
-  CLOUDFLARE_CONNECT_GITHUB_URL,
+  buildCloudflareConnectGithubUrl,
   buildCloudflareTokenTemplateUrl,
   isDeploymentInProgress,
   isValidWorkerName,
@@ -584,7 +584,7 @@ function TargetSetup({
     );
   }
   if (!access.data.hasAccess) {
-    return <RepoAccessPrompt toolbar={toolbar} />;
+    return <RepoAccessPrompt accountId={accountId} toolbar={toolbar} />;
   }
   return (
     <WorkerForm
@@ -601,8 +601,10 @@ function TargetSetup({
 }
 
 function RepoAccessPrompt({
+  accountId,
   toolbar,
 }: {
+  accountId: string;
   /** The setup's Refresh, shown beside the dashboard button. */
   toolbar: ReactNode;
 }) {
@@ -620,7 +622,9 @@ function RepoAccessPrompt({
           size="sm"
           className="bg-blue-600 hover:bg-blue-700 text-white"
           onClick={() =>
-            ipc.system.openExternalUrl(CLOUDFLARE_CONNECT_GITHUB_URL)
+            ipc.system.openExternalUrl(
+              buildCloudflareConnectGithubUrl({ accountId }),
+            )
           }
         >
           Open Cloudflare Dashboard

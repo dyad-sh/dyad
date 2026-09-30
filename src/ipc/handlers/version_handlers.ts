@@ -189,6 +189,69 @@ function appendWarning(existing: string, addition: string): string {
   return existing ? `${existing}\n${addition}` : addition;
 }
 
+interface SupabaseRedeployTarget {
+  appPath: string;
+  supabaseProjectId: string;
+  supabaseOrganizationSlug: string | null;
+}
+
+/**
+ * Redeploy every function after a revert/restore has released its exclusive
+ * claims. Running the upload inside them would block other chats, checkpoints
+ * and test setup for its whole duration; the deploy takes its own
+ * `supabase-functions` claim and releases its preparation claims once the
+ * restored tree is captured. Returns a warning for the command notification.
+ */
+async function redeploySupabaseFunctionsAfterRevert(
+  appId: number,
+  target: SupabaseRedeployTarget | null,
+): Promise<string | undefined> {
+  if (!target) return undefined;
+  try {
+    logger.info(
+      `Re-deploying all Supabase edge functions for app ${appId} after revert`,
+    );
+    const settings = readSettings();
+    const deployErrors = await deployAllSupabaseFunctions({
+      appId,
+      appPath: target.appPath,
+      supabaseProjectId: target.supabaseProjectId,
+      supabaseOrganizationSlug: target.supabaseOrganizationSlug,
+      skipPruneEdgeFunctions: settings.skipPruneEdgeFunctions ?? false,
+    });
+    if (deployErrors.length > 0) {
+      // The code has been reverted; only function deployment is out of sync.
+      const warning = `Some Supabase functions failed to deploy after revert: ${deployErrors.join(", ")}`;
+      logger.warn(warning);
+      return warning;
+    }
+    logger.info(
+      `Successfully re-deployed all Supabase edge functions for app ${appId}`,
+    );
+    return undefined;
+  } catch (error) {
+    const warning = `Error re-deploying Supabase edge functions after revert: ${error}`;
+    logger.warn(warning);
+    return warning;
+  }
+}
+
+function withRedeployWarning<
+  Result extends ReturnType<typeof versionCommandResult>,
+>(result: Result, warning: string | undefined, prefix = ""): Result {
+  if (!warning) return result;
+  return {
+    ...result,
+    notification:
+      result.notification?.kind === "warning"
+        ? {
+            kind: "warning",
+            message: appendWarning(result.notification.message, warning),
+          }
+        : { kind: "warning", message: `${prefix}${warning}` },
+  };
+}
+
 const INTERRUPTED_GENERATION_WARNING =
   "An in-progress generation was cancelled during this restore attempt. Re-submit its prompt to continue.";
 const INTERRUPTED_CHECKPOINT_NOTICE =
@@ -517,6 +580,7 @@ async function revertCodebaseToVersion({
     { repositoryOutcome: "target-applied" }
   > & { nextStep: "chat-mutation" };
   preservedInterruptedChanges: boolean;
+  supabaseRedeploy: SupabaseRedeployTarget | null;
 }> {
   let successMessage = "Restored version";
   let warningMessage = "";
@@ -810,42 +874,14 @@ async function revertCodebaseToVersion({
       );
     }
   }
-  // Re-deploy all Supabase edge functions after reverting
-  if (app.supabaseProjectId) {
-    try {
-      logger.info(
-        `Re-deploying all Supabase edge functions for app ${appId} after revert`,
-      );
-      const settings = readSettings();
-      const deployErrors = await deployAllSupabaseFunctions({
+  // Callers redeploy Supabase functions after releasing their claims.
+  const supabaseRedeploy: SupabaseRedeployTarget | null = app.supabaseProjectId
+    ? {
         appPath,
         supabaseProjectId: app.supabaseProjectId,
         supabaseOrganizationSlug: app.supabaseOrganizationSlug ?? null,
-        skipPruneEdgeFunctions: settings.skipPruneEdgeFunctions ?? false,
-      });
-
-      if (deployErrors.length > 0) {
-        warningMessage = appendWarning(
-          warningMessage,
-          `Some Supabase functions failed to deploy after revert: ${deployErrors.join(", ")}`,
-        );
-        logger.warn(warningMessage);
-        // Note: We don't fail the revert operation if function deployment fails
-        // The code has been successfully reverted, but functions may be out of sync
-      } else {
-        logger.info(
-          `Successfully re-deployed all Supabase edge functions for app ${appId}`,
-        );
       }
-    } catch (error) {
-      warningMessage = appendWarning(
-        warningMessage,
-        `Error re-deploying Supabase edge functions after revert: ${error}`,
-      );
-      logger.warn(warningMessage);
-      // Continue with the revert operation even if function deployment fails
-    }
-  }
+    : null;
   // The restored working tree no longer matches any existing CLI transcript.
   // Keep visible history, but require a fresh explicit session after undo.
   await db
@@ -873,6 +909,7 @@ async function revertCodebaseToVersion({
     warningMessage,
     restoreCompletion,
     preservedInterruptedChanges,
+    supabaseRedeploy,
   };
 }
 
@@ -1064,10 +1101,11 @@ export function registerVersionHandlers() {
       currentChatMessageId,
       targetBranchName,
     } = params;
+    let supabaseRedeploy = null as SupabaseRedeployTarget | null;
     // A recording holds repository, provider and runtime-config for its whole
     // session, so this would queue invisibly behind it for up to the 30-minute
     // cap. It is also rewriting the tree the recording is capturing against.
-    return appOperationCoordinator.run(
+    const result = await appOperationCoordinator.run(
       {
         appId,
         operation: "revert-version",
@@ -1130,6 +1168,7 @@ export function registerVersionHandlers() {
         });
         let { successMessage, warningMessage, restoreCompletion } =
           revertResult;
+        supabaseRedeploy = revertResult.supabaseRedeploy;
         if (revertResult.preservedInterruptedChanges) {
           successMessage = `${successMessage} ${INTERRUPTED_CHECKPOINT_NOTICE}`;
           if (warningMessage) {
@@ -1236,6 +1275,10 @@ export function registerVersionHandlers() {
           affectedChatId,
         });
       },
+    );
+    return withRedeployWarning(
+      result,
+      await redeploySupabaseFunctionsAfterRevert(appId, supabaseRedeploy),
     );
   };
   versionPreviewHandlerBridge.revertVersion = (params, onRestoreProgress) =>
@@ -1407,6 +1450,8 @@ export function registerVersionHandlers() {
       : undefined;
     let releaseStreamAdmissionBlock: (() => void) | undefined;
     let releaseRecordingBlock: (() => void) | undefined;
+    let supabaseRedeploy = null as SupabaseRedeployTarget | null;
+    let restoreResult: ReturnType<typeof versionCommandResult>;
 
     // Wrap phases 2 and 3 in a single try/finally so the admission block is
     // always released, even if `withLock` were to throw synchronously before
@@ -1461,7 +1506,7 @@ export function registerVersionHandlers() {
       // or commits a recoverable checkpoint when preserving an interrupted
       // turn — if the work tree is dirty, so a stray write can't be silently
       // clobbered.
-      return await appOperationCoordinator.run(
+      restoreResult = await appOperationCoordinator.run(
         {
           appId,
           operation: "restore-to-message",
@@ -1616,6 +1661,7 @@ export function registerVersionHandlers() {
             });
             successMessage = result.successMessage;
             warningMessage = result.warningMessage;
+            supabaseRedeploy = result.supabaseRedeploy;
             if (result.preservedInterruptedChanges) {
               successMessage = `${successMessage} ${INTERRUPTED_CHECKPOINT_NOTICE}`;
               if (warningMessage) {
@@ -1821,6 +1867,13 @@ export function registerVersionHandlers() {
       releaseActorAdmissionBlock?.();
       releaseRecordingBlock?.();
     }
+    // After the admission blocks are released: new turns need not wait for
+    // the upload.
+    return withRedeployWarning(
+      restoreResult,
+      await redeploySupabaseFunctionsAfterRevert(appId, supabaseRedeploy),
+      "Code restored, but: ",
+    );
   };
   versionPreviewHandlerBridge.restoreToMessage = (
     params,

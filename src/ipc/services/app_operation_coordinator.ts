@@ -183,13 +183,17 @@ function canBypassBlockedOperation(
   const blockerResources = new Set(
     directBlockers.flatMap((blocker) => [
       ...blocker.request.resources.map(({ resource }) => resource),
-      ...(blocker.request.releasedResources ?? []),
+      ...(blocked.request.allowCompatibleQueueBypass
+        ? (blocker.request.releasedResources ?? [])
+        : []),
     ]),
   );
-  // The session may relax fairness only inside domains it owns or explicitly
-  // released after snapshot preparation. A later deploy is still excluded by
-  // its retained function claim, so its queued preparation must not re-block
-  // the editing/testing domains the snapshot owner just released.
+  // The session may relax fairness only inside domains it owns. Domains a
+  // snapshot owner released also count when the blocked operation is itself a
+  // long-lived owner (a later deploy still excluded by the retained function
+  // claim): its queued preparation must not re-block the editing/testing
+  // domains just released. Ordinary exclusive work such as a revert keeps its
+  // fairness and is not overtaken for the length of an upload.
   // Otherwise a repository writer blocked by the session could reorder two
   // operations that conflict only on an unrelated resource such as chat data.
   const bypassedConflictResources = conflictingResources(

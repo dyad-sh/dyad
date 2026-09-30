@@ -59,13 +59,18 @@ function deploymentSignal(signal?: AbortSignal): AbortSignal {
 
 /** Retain deployment ownership after callers release their snapshot preparation claims. */
 export async function withSupabaseFunctionDeployment<T>(
-  target: { appId: number; supabaseProjectId: string; signal?: AbortSignal },
+  target: {
+    appId: number;
+    supabaseProjectId: string;
+    signal?: AbortSignal;
+    operation?: string;
+  },
   operation: (context: AppOperationContext, appPath: string) => Promise<T>,
 ): Promise<T> {
   return appOperationCoordinator.run(
     {
       appId: target.appId,
-      operation: "deploy app Supabase functions",
+      operation: target.operation ?? "deploy app Supabase functions",
       resources: [
         readAppResource("app-path"),
         readAppResource("provider"),
@@ -1514,7 +1519,9 @@ export async function captureSupabaseSharedFiles(
 function toUploadFile(file: ZipFileEntry): SupabaseUploadFile {
   return Object.freeze({
     relativePath: file.relativePath,
-    content: new Blob([new Uint8Array(file.content)], {
+    // Blob copies the bytes; fs.readFile buffers are never SharedArrayBuffer
+    // backed, so skip the intermediate Uint8Array copy.
+    content: new Blob([file.content as Uint8Array<ArrayBuffer>], {
       type: guessMimeType(file.relativePath),
     }),
   });

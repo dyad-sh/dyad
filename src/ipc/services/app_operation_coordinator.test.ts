@@ -47,6 +47,7 @@ describe("AppOperationCoordinator", () => {
       {
         appId: 1,
         operation: "next deploy",
+        allowCompatibleQueueBypass: true,
         resources: [
           readAppResource("app-path"),
           readAppResource("repository"),
@@ -85,6 +86,61 @@ describe("AppOperationCoordinator", () => {
       await Promise.all([deploy, queuedDeploy, drain]);
       deletion.release();
     }
+  });
+
+  it("does not let released domains overtake a queued exclusive revert", async () => {
+    const coordinator = new AppOperationCoordinator();
+    const captured = deferred();
+    const upload = deferred();
+    const deploy = coordinator.run(
+      {
+        appId: 1,
+        operation: "deploy",
+        allowCompatibleQueueBypass: true,
+        resources: [
+          readAppResource("app-path"),
+          readAppResource("repository"),
+          readAppResource("provider"),
+          "supabase-functions",
+        ],
+      },
+      async ({ releaseResources }) => {
+        releaseResources(["repository", "provider"]);
+        captured.resolve();
+        await upload.promise;
+      },
+    );
+    await captured.promise;
+    const order: string[] = [];
+    const revert = coordinator.run(
+      {
+        appId: 1,
+        operation: "revert",
+        resources: [
+          readAppResource("app-path"),
+          "provider",
+          "supabase-functions",
+          "repository",
+        ],
+      },
+      async () => {
+        order.push("revert");
+      },
+    );
+    const checkpoint = coordinator.run(
+      { appId: 1, operation: "checkpoint", resources: ["repository"] },
+      async () => {
+        order.push("checkpoint");
+      },
+    );
+    try {
+      await Promise.resolve();
+      expect(order).toEqual([]);
+    } finally {
+      upload.resolve();
+      await Promise.all([deploy, revert, checkpoint]);
+    }
+    expect(order).toEqual(["revert", "checkpoint"]);
   });
 
   it("rejects resource release from a settled operation context", async () => {

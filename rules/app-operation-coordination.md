@@ -118,9 +118,11 @@ become a fairness barrier for later ref-only snapshots such as New Chat. Use
 this flag only on a long-lived owner: bypass is allowed only while every direct
 blocker of the queued operation opts in and the later operation is compatible
 with those blockers. Every conflict being bypassed must also be on a resource
-owned by those blockers (or explicitly released by their snapshot preparation), so a repository session cannot reorder operations in
-an unrelated domain such as chat content. Normal writer fairness resumes when
-the owner releases.
+owned by those blockers, so a repository session cannot reorder operations in
+an unrelated domain such as chat content. Domains a snapshot owner released
+count as owned only when the queued operation also opts in (a later deploy):
+ordinary exclusive work such as a revert must not be overtaken for the length
+of an upload. Normal writer fairness resumes when the owner releases.
 
 For cross-app operations, apply recording refusal per app according to that
 app's claims, not to the whole operation indiscriminately. For example, moving

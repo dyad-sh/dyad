@@ -3,10 +3,6 @@
  */
 
 import log from "electron-log";
-import { eq } from "drizzle-orm";
-import { db } from "@/db";
-import { apps } from "@/db/schema";
-import { getDyadAppPath } from "@/paths/paths";
 import {
   gitCommit,
   gitAddAll,
@@ -25,7 +21,10 @@ import {
   type AgentContext,
 } from "../tools/types";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { deleteSupabaseFunction } from "@/supabase_admin/supabase_management_client";
+import {
+  deleteSupabaseFunction,
+  withSupabaseFunctionDeployment,
+} from "@/supabase_admin/supabase_management_client";
 import {
   appOperationCoordinator,
   readAppResource,
@@ -131,32 +130,15 @@ export async function deployAllFunctionsIfNeeded(
   const supabaseProjectId = ctx.supabaseProjectId;
 
   try {
-    return await appOperationCoordinator.run(
+    return await withSupabaseFunctionDeployment(
       {
         appId: ctx.appId,
-        operation: "reconcile Local Agent Supabase functions",
-        resources: [
-          readAppResource("app-path"),
-          "provider",
-          readAppResource("repository"),
-          "supabase-functions",
-        ],
+        supabaseProjectId,
         signal: ctx.abortSignal,
-        allowCompatibleQueueBypass: true,
-        refuseWhenRecording: "deploy Supabase functions",
+        operation: "reconcile Local Agent Supabase functions",
       },
-      async (operation) => {
+      async (operation, appPath) => {
         try {
-          const app = await db.query.apps.findFirst({
-            where: eq(apps.id, ctx.appId),
-          });
-          if (!app || app.supabaseProjectId !== supabaseProjectId) {
-            throw new DyadError(
-              "This app's Supabase project changed before deployment. Run the request again against the current project.",
-              DyadErrorKind.Precondition,
-            );
-          }
-          const appPath = getDyadAppPath(app.path);
           const deferred = await reconcileDeferredFunctionOperations({
             pendingDeploys: ctx.pendingFunctionDeploys,
             pendingDeletes: ctx.pendingFunctionDeletes ?? [],
@@ -170,8 +152,10 @@ export async function deployAllFunctionsIfNeeded(
           const deleteErrors: string[] = [];
           let deletesProcessed = false;
           const deleteDeferredFunctions = async () => {
-            ctx.abortSignal?.throwIfAborted();
+            // Check completion first: a late cancel after deletes already ran
+            // must not turn a finished deployment into a reported failure.
             if (deletesProcessed) return;
+            ctx.abortSignal?.throwIfAborted();
             deletesProcessed = true;
             operation.releaseResources(["repository", "provider"]);
             for (const functionName of settings.skipPruneEdgeFunctions

@@ -50,9 +50,15 @@ vi.mock("../../../../../../main/settings", () => ({
   readSettings: mocks.readSettings,
 }));
 
-vi.mock("@/supabase_admin/supabase_management_client", () => ({
-  deleteSupabaseFunction: mocks.deleteSupabaseFunction,
-}));
+vi.mock("@/supabase_admin/supabase_management_client", async () => {
+  const actual = await vi.importActual<
+    typeof import("@/supabase_admin/supabase_management_client")
+  >("@/supabase_admin/supabase_management_client");
+  return {
+    ...actual,
+    deleteSupabaseFunction: mocks.deleteSupabaseFunction,
+  };
+});
 
 import {
   commitAllChanges,
@@ -233,6 +239,42 @@ describe("deployAllFunctionsIfNeeded", () => {
     } finally {
       releaseUpload();
       await deploy;
+      access.mockRestore();
+    }
+  });
+
+  it("keeps a completed deployment successful when cancelled after deferred deletes ran", async () => {
+    const access = vi.spyOn(fs, "access").mockImplementation(async (target) => {
+      if (String(target).includes(`${path.sep}gone${path.sep}`)) {
+        throw Object.assign(new Error("missing"), { code: "ENOENT" });
+      }
+    });
+    const abortController = new AbortController();
+    mocks.deployAffectedSupabaseFunctions.mockImplementationOnce(
+      async ({ onSnapshotCaptured }) => {
+        await onSnapshotCaptured();
+        // Stop lands after activation, before the finalizer's fallback call.
+        abortController.abort();
+        return [];
+      },
+    );
+    try {
+      const result = await deployAllFunctionsIfNeeded({
+        appId: 13,
+        appPath: "/apps/test",
+        supabaseProjectId: "project-id",
+        supabaseOrganizationSlug: null,
+        isSharedModulesChanged: false,
+        sharedServerModulePaths: [],
+        pendingFunctionDeploys: ["alpha"],
+        pendingFunctionDeletes: ["gone"],
+        abortSignal: abortController.signal,
+        onXmlStream: vi.fn(),
+        onXmlComplete: vi.fn(),
+      });
+      expect(result).toEqual({ success: true });
+      expect(mocks.deleteSupabaseFunction).toHaveBeenCalledOnce();
+    } finally {
       access.mockRestore();
     }
   });

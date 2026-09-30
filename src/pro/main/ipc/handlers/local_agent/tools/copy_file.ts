@@ -3,6 +3,10 @@ import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
 import { executeCopyFile } from "@/ipc/utils/copy_file_utils";
 import { queueCloudSandboxSnapshotSync } from "@/ipc/utils/cloud_sandbox_provider";
 import { isPathGitVisible } from "./tool_invocation";
+import {
+  deferFunctionSyncIfRecording,
+  RECORDING_DEFERRED_FUNCTION_SYNC_NOTE,
+} from "./supabase_function_sync";
 
 const copyFileSchema = z.object({
   from: z
@@ -68,6 +72,12 @@ export const copyFileTool: ToolDefinition<z.infer<typeof copyFileSchema>> = {
     });
 
     if (result.deployError) {
+      if (
+        result.failedFunctionDeploy &&
+        deferFunctionSyncIfRecording(ctx, result.failedFunctionDeploy, "deploy")
+      ) {
+        return `Successfully copied ${args.from} to ${args.to}. ${RECORDING_DEFERRED_FUNCTION_SYNC_NOTE}`;
+      }
       return `File copied, but failed to deploy Supabase function: ${result.deployError}`;
     }
 

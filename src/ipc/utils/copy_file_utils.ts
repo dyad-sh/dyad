@@ -33,6 +33,8 @@ export interface CopyFileResult {
   skippedFunctionDeploy?: string;
   /** Error from Supabase function deployment, if any */
   deployError?: unknown;
+  /** Function whose deployment produced `deployError` */
+  failedFunctionDeploy?: string;
 }
 
 /**
@@ -74,7 +76,9 @@ export async function executeCopyFile({
         ...(readsMedia ? [readAppResource("media")] : []),
         "repository",
       ],
-      signal,
+      // No signal here: Build mode applies the rest of a response's file
+      // mutations after Stop, so cancelling only the copy would leave the
+      // response half-applied. Cancellation applies to the deploy below.
     },
     async () => {
       const app = await db.query.apps.findFirst({
@@ -199,6 +203,10 @@ export async function executeCopyFile({
     return publicResult;
   } catch (deployError) {
     logger.error("Failed to deploy Supabase function after copy:", deployError);
-    return { ...publicResult, deployError };
+    return {
+      ...publicResult,
+      deployError,
+      failedFunctionDeploy: deployRequest.functionName,
+    };
   }
 }

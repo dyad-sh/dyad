@@ -99,10 +99,14 @@ jobs:
 
           prompt: ${{ steps.render-prompt.outputs.prompt }}
 
+          # Path rules are absolute ("//" + workspace). Relative rules resolve
+          # against the shell's current directory, so after the model runs
+          # `cd tmp/pr-review` a relative Edit rule stops matching and both
+          # output writes are denied (dyad-sh/dyad PR #4712 review run).
           claude_args: |
             --model claude-opus-5-5
             --setting-sources user
-            --allowedTools "Read,Glob,Grep,Edit(tmp/pr-review/**)"
+            --allowedTools "Read,Glob,Grep,Edit(/${{ github.workspace }}/tmp/pr-review/claude-review.md),Edit(/${{ github.workspace }}/tmp/pr-review/claude-findings.json)"
 
       - name: Verify Claude review outputs
         run: |

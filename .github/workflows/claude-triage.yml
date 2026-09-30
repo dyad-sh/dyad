@@ -71,13 +71,14 @@ jobs:
           #   anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: ${{ steps.render-prompt.outputs.prompt }}
-          # Write/Edit are scoped to the single decision file, relative to the
-          # workspace. The old absolute /tmp pattern never matched the workspace
-          # path, so writes were denied unless the model happened to use echo.
+          # Write/Edit are scoped to the single decision file. Path rules are
+          # absolute ("//" + workspace): relative rules resolve against the
+          # shell's current directory and stop matching after a `cd`, and a
+          # bare /tmp pattern never matched the workspace path.
           claude_args: |
             --model claude-opus-5
             --setting-sources user
-            --allowedTools "Bash(echo:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*),Bash(gh release view:*),Bash(gh release list:*),Read(src/**),Read(docs/**),Read(.github/prompts/**),Read(tmp/issue-triage/**),Grep,Glob,Write(tmp/issue-triage/triage.json),Edit(tmp/issue-triage/triage.json)"
+            --allowedTools "Bash(echo:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*),Bash(gh release view:*),Bash(gh release list:*),Read(/${{ github.workspace }}/src/**),Read(/${{ github.workspace }}/docs/**),Read(/${{ github.workspace }}/.github/prompts/**),Read(/${{ github.workspace }}/tmp/issue-triage/**),Grep,Glob,Write(/${{ github.workspace }}/tmp/issue-triage/triage.json),Edit(/${{ github.workspace }}/tmp/issue-triage/triage.json)"
 
       # Always leave a file behind so the apply job can post a fallback comment
       # and label the issue when the agent produced nothing.

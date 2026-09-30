@@ -812,7 +812,6 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
         data-testid="messages-list"
       >
         <Virtuoso
-          initialTopMostItemIndex={{ index: "LAST", align: "end" }}
           scrollerRef={setScrollerRef}
           totalListHeightChanged={onContentHeightChange}
           data={messages}

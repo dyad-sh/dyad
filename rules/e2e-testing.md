@@ -360,6 +360,11 @@ If a targeted E2E fails before launch with `ENOENT: no such file or directory, s
 
 - After opening the Add Plugin dialog, wait for its initial Name field to be focused before filling other inputs. Base UI autofocus can otherwise redirect a fast Command fill into Name.
 
+## Native scroll readiness
+
+- In virtualized-chat E2Es, wait for native wheel/PageUp movement to settle before recording a reading anchor; a gap threshold alone can pass mid-animation. Bound the settling wait and retain subsequent no-drift assertions.
+- Do not combine the chat scroll controller with Virtuoso `initialTopMostItemIndex: LAST`: its index-scroll operation retries on size changes until 150ms of quiet, so fast streaming can keep jumping to bottom after user scroll-away. Let the controller own initial positioning too.
+
 ## Waiting for button state transitions
 
 When clicking a button that triggers an async operation and changes its text/state (e.g., "Run Security Review" → "Running Security Review..."), wait for the loading state to appear and disappear rather than just waiting for the original button to be hidden:

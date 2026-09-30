@@ -130,6 +130,7 @@ export function restoreLocalStorageSnapshot(
 export function restoreMessagesScrollTop(
   scrollTop: number,
   shouldContinue: () => boolean,
+  following = false,
 ): void {
   let remainingFrames = SCROLL_RESTORE_MAX_FRAMES;
   let stableFrames = 0;
@@ -137,7 +138,7 @@ export function restoreMessagesScrollTop(
     if (!shouldContinue()) return;
     const viewport = getMessagesScrollViewport();
     if (viewport) {
-      restoreChatScrollPosition(viewport, scrollTop);
+      restoreChatScrollPosition(viewport, scrollTop, following);
       if (
         scrollTop === 0 ||
         viewport.scrollHeight >= scrollTop + viewport.clientHeight
@@ -589,6 +590,9 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
       return {
         draftInput: store.get(chatInputValuesByIdAtom).get(chatId) ?? "",
         scrollTop: messages.scrollTop,
+        scrollAtBottom:
+          messages.scrollHeight - messages.clientHeight - messages.scrollTop <=
+          4,
         selectedFile: store.get(selectedFileAtom),
         editorCursor: store.get(editorCursorAtom),
         stagedDiffFile: store.get(stagedDiffFileAtom),
@@ -643,6 +647,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
           scrollRestoreGeneration === scrollRestoreGenerationRef.current &&
           (options.chatId === undefined ||
             store.get(selectedChatIdAtom) === options.chatId),
+        presentation.scrollAtBottom,
       );
       if (options.restoreComponents !== false) {
         requestAnimationFrame(() => {

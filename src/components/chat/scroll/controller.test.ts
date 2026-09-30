@@ -206,6 +206,16 @@ describe("chat follow controller", () => {
     expect(h.scroller.scrollTop).toBe(2400);
   });
 
+  it("restores bottom intent even when remeasurement changes the old pixel offset", () => {
+    const h = setup();
+    restoreChatScrollPosition(h.scroller, 300, true);
+    h.flush();
+    h.grow(4000);
+    h.flush();
+    expect(h.scroller.scrollTop).toBe(3800);
+    expect(h.onFollowing).toHaveBeenLastCalledWith(true);
+  });
+
   it("preserves an explicitly restored tab position across queued frames and later growth", () => {
     const h = setup();
     restoreChatScrollPosition(h.scroller, 300);

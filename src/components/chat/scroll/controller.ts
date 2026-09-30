@@ -1,6 +1,9 @@
 import type { ChatScrollEvent, ChatScrollState } from "./state";
 import { transition } from "./transition";
-import { CHAT_SCROLL_RESTORE_EVENT } from "./restore";
+import {
+  CHAT_SCROLL_RESTORE_EVENT,
+  type ChatScrollRestorePosition,
+} from "./restore";
 
 export interface FrameScheduler {
   request(callback: () => void): number;
@@ -253,9 +256,14 @@ export function createChatScrollController(
     else onScroll();
   };
   const onRestore = (event: Event) => {
-    const top = (event as CustomEvent<number>).detail;
+    const { top, following } = (event as CustomEvent<ChatScrollRestorePosition>)
+      .detail;
     if (!Number.isFinite(top)) return;
     event.preventDefault();
+    if (following) {
+      follow();
+      return;
+    }
     pause();
     scroller.scrollTo({ top, behavior: "instant" });
     lastPosition = position();

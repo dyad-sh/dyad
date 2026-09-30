@@ -364,6 +364,7 @@ If a targeted E2E fails before launch with `ENOENT: no such file or directory, s
 
 - In virtualized-chat E2Es, wait for native wheel/PageUp movement to settle before recording a reading anchor; a gap threshold alone can pass mid-animation. Bound the settling wait and retain subsequent no-drift assertions.
 - Do not combine the chat scroll controller with Virtuoso `initialTopMostItemIndex: LAST`: its index-scroll operation retries on size changes until 150ms of quiet, so fast streaming can keep jumping to bottom after user scroll-away. Let the controller own initial positioning too.
+- When testing initial virtualized-chat positioning, sample after animation-frame callbacks and check CSS visibility/opacity; geometry alone can count hidden measurement rows. Cover both opening a long chat at the bottom and restoring a deliberate top-of-history reading position.
 
 ## Waiting for button state transitions
 

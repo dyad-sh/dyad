@@ -10,6 +10,10 @@ import {
 } from "react";
 import { Virtuoso } from "react-virtuoso";
 import ChatMessage from "./ChatMessage";
+import {
+  CHAT_SCROLL_RESTORE_EVENT,
+  type ChatScrollRestorePosition,
+} from "./scroll/restore";
 import { OpenRouterSetupBanner, SetupBanner } from "../SetupBanner";
 
 import { useStreamChat } from "@/hooks/useStreamChat";
@@ -601,13 +605,39 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
     },
     ref,
   ) {
+    const initialScroller = useRef<HTMLElement | null>(null);
+    const [initialPositionReady, setInitialPositionReady] = useState(false);
+    const revealRestoredPosition = useCallback((event: Event) => {
+      if (!(event as CustomEvent<ChatScrollRestorePosition>).detail.following)
+        setInitialPositionReady(true);
+    }, []);
+    const revealScrolledPosition = useCallback(() => {
+      if ((initialScroller.current?.scrollTop ?? 0) > 0)
+        setInitialPositionReady(true);
+    }, []);
     const setScrollerRef = useCallback(
       (element: HTMLElement | Window | null) => {
         if (element instanceof Window) return;
+        initialScroller.current?.removeEventListener(
+          "scroll",
+          revealScrolledPosition,
+        );
+        initialScroller.current?.removeEventListener(
+          CHAT_SCROLL_RESTORE_EVENT,
+          revealRestoredPosition,
+        );
+        initialScroller.current = element;
+        element?.addEventListener("scroll", revealScrolledPosition, {
+          passive: true,
+        });
+        element?.addEventListener(
+          CHAT_SCROLL_RESTORE_EVENT,
+          revealRestoredPosition,
+        );
         if (typeof ref === "function") ref(element as HTMLDivElement | null);
         else if (ref) ref.current = element as HTMLDivElement | null;
       },
-      [ref],
+      [ref, revealScrolledPosition, revealRestoredPosition],
     );
     const appId = useAtomValue(selectedAppIdAtom);
     const { refreshVersions } = useVersions(appId);
@@ -812,6 +842,19 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
         data-testid="messages-list"
       >
         <Virtuoso
+          // Keep the measurement-only top window hidden until the controller
+          // positions the chat (or all messages fit). Never hide it again after
+          // initial positioning, including explicit top-of-history restoration.
+          style={{
+            visibility:
+              initialPositionReady || messages.length === 0
+                ? "visible"
+                : "hidden",
+          }}
+          rangeChanged={({ endIndex }) => {
+            if (endIndex === messages.length - 1) setInitialPositionReady(true);
+            else revealScrolledPosition();
+          }}
           scrollerRef={setScrollerRef}
           totalListHeightChanged={onContentHeightChange}
           data={messages}

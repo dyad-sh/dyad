@@ -41,20 +41,9 @@ Background and before/after examples of why this pattern exists:
   `createProductionRemoteMachineManifest` accepts only that capability or an
   exact `defineLegacyRemoteMachineCompatibility` capability from the
   production legacy-definition inventory.
-- `src/distributed_machines/boundary_inventory.test.ts` derives production
-  definitions and semantic dispatch, waiter, subscription, fence, and routing
-  boundaries from the TypeScript AST. Definitions and production manifest
-  capabilities are exact symbol inventories. Noisy implementation boundaries
-  are aggregated by exact owning file and count, so private function/class
-  renames do not create inventory churn while additions, deletions, and file
-  moves still fail review-visible tests. Do not classify a migrated adapter as
-  unsafe or widen an unsafe list to make the test pass.
-- Every unsafe compatibility entry lives in
-  `compatibilityBoundaryInventory` with its machine, exact file, mechanism,
-  expected boundary count, rationale, and conditional follow-up owner. File
-  moves, removals, and boundary-count changes require an explicit inventory
-  change. The mechanism-specific views are derived from those complete metadata
-  entries rather than from path-prefix allowlists.
+- Prefer behavioral tests for distributed-machine guarantees over repository-wide
+  inventories of file paths, symbol names, or dispatch/enqueue counts. A stream
+  controller enqueue is not a distributed-machine boundary.
 - New remote intents declare authorization, key/intent relationship, refusal
   mapping, retry/idempotency, completion, observed revision, acceptance/input
   disposition, and wire/snapshot budgets through
@@ -651,17 +640,6 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   markers still exist does not prevent an undeclared boundary crossing.
   Classify calls through the owning API (for example, Jotai stores and hooks),
   not an expected import directory; domain values may be local or re-exported.
-- When a boundary inventory compares TypeScript source markers, canonicalize
-  line endings, whitespace, and formatter-added trailing commas before matching.
-  Raw multiline strings fail on CRLF checkouts and become stale after harmless
-  formatter reflows.
-- Cache parsed TypeScript source files across semantic boundary-inventory
-  assertions. Re-parsing the full production tree for every exact inventory can
-  exceed the test timeout only under full-suite concurrency, hiding an
-  otherwise deterministic inventory result behind a load-dependent failure.
-- When adding an intentional completion-aware `dispatch` or `enqueue` framework
-  path, classify it in the boundary inventory separately from raw compatibility
-  escape hatches; do not widen the raw allowlist to make the inventory pass.
 - Keep host-only distributed-machine definitions outside shared machine
   directories (for example, under `src/ipc/services/` for a main-owned actor).
   Shared machine directories are scanned as renderer-reachable code and may

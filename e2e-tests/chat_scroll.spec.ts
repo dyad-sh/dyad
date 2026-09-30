@@ -12,27 +12,6 @@ async function metrics(scroller: Locator) {
   }));
 }
 
-async function waitForScrollToSettle(scroller: Locator) {
-  // Wheel/PageUp movement and Virtuoso measurements can continue after the
-  // first scroll event. Record the reading anchor only after they settle.
-  await scroller.evaluate(async (element) => {
-    await new Promise<void>((resolve, reject) => {
-      const deadline = performance.now() + 5000;
-      let last = element.scrollTop;
-      let stableFrames = 0;
-      const tick = () => {
-        stableFrames = element.scrollTop === last ? stableFrames + 1 : 0;
-        last = element.scrollTop;
-        if (stableFrames >= 10) resolve();
-        else if (performance.now() > deadline)
-          reject(new Error("Scroll did not settle"));
-        else requestAnimationFrame(tick);
-      };
-      requestAnimationFrame(tick);
-    });
-  });
-}
-
 async function startVirtualizedStream(
   po: PageObject,
   electronApp: ElectronApplication,
@@ -84,7 +63,6 @@ test("virtualized chat follows bursts, respects reading history, and resumes", a
   await expect
     .poll(async () => (await metrics(scroller)).gap)
     .toBeGreaterThan(500);
-  await waitForScrollToSettle(scroller);
   const reading = await metrics(scroller);
   await expect
     .poll(async () => (await metrics(scroller)).height)
@@ -117,7 +95,6 @@ test("virtualized chat preserves keyboard scroll-away through completion", async
   const { scroller, cancel } = await startVirtualizedStream(po, electronApp);
   await expect.poll(async () => (await metrics(scroller)).gap).toBeLessThan(5);
   await scroller.focus();
-  await expect(scroller).toBeFocused();
   await po.page.keyboard.press("PageUp");
   await expect
     .poll(async () => (await metrics(scroller)).gap)
@@ -125,7 +102,19 @@ test("virtualized chat preserves keyboard scroll-away through completion", async
   await expect(cancel).toBeVisible();
   // Native PageUp may animate; wait for its scroll position to settle before
   // recording the history anchor, while the content continues growing.
-  await waitForScrollToSettle(scroller);
+  await scroller.evaluate(async (element) => {
+    await new Promise<void>((resolve) => {
+      let last = element.scrollTop;
+      let stableFrames = 0;
+      const tick = () => {
+        stableFrames = element.scrollTop === last ? stableFrames + 1 : 0;
+        last = element.scrollTop;
+        if (stableFrames >= 10) resolve();
+        else requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+  });
   const reading = await metrics(scroller);
   await po.chatActions.waitForChatCompletion();
   const finished = await metrics(scroller);

@@ -15,11 +15,23 @@ import {
   resetSupabaseDeployQueuesForTests,
 } from "./supabase_deploy_queue";
 import { deployAllSupabaseFunctions } from "./supabase_utils";
+import { executeCopyFile } from "@/ipc/utils/copy_file_utils";
+import { appOperationCoordinator } from "@/ipc/services/app_operation_coordinator";
+
+const { findApp, gitAdd } = vi.hoisted(() => ({
+  findApp: vi.fn(),
+  gitAdd: vi.fn(),
+}));
+vi.mock("@/paths/paths", () => ({ getDyadAppPath: (value: string) => value }));
+vi.mock("@/ipc/utils/git_utils", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/ipc/utils/git_utils")>()),
+  gitAdd,
+}));
 
 vi.mock("@/db", () => ({
   db: {
     query: {
-      apps: { findFirst: async () => ({ supabaseProjectId: "project" }) },
+      apps: { findFirst: findApp },
     },
   },
 }));
@@ -39,6 +51,8 @@ describe("captured Supabase deployment inputs", () => {
   let appPath: string;
   beforeEach(async () => {
     appPath = await fs.mkdtemp(path.join(os.tmpdir(), "dyad-deploy-snapshot-"));
+    findApp.mockResolvedValue({ path: appPath, supabaseProjectId: "project" });
+    gitAdd.mockReset();
     for (const name of ["alpha", "beta", "_shared"]) {
       await fs.mkdir(path.join(appPath, "supabase/functions", name), {
         recursive: true,
@@ -55,6 +69,54 @@ describe("captured Supabase deployment inputs", () => {
     vi.restoreAllMocks();
     resetSupabaseDeployQueuesForTests();
     await fs.rm(appPath, { recursive: true, force: true });
+  });
+
+  it("deploys a copied function from its current path after a queued app move", async () => {
+    let finishStaging!: () => void;
+    gitAdd.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishStaging = resolve;
+        }),
+    );
+    await fs.writeFile(path.join(appPath, "source.ts"), "copied after move");
+    const uploads: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url, init: RequestInit) => {
+        const files = (init.body as FormData).getAll("file") as File[];
+        uploads.push(
+          await files.find((file) => file.name === "alpha/index.ts")!.text(),
+        );
+        return new Response(JSON.stringify({ slug: "alpha" }), { status: 201 });
+      }),
+    );
+    const copying = executeCopyFile({
+      from: "source.ts",
+      to: "supabase/functions/alpha/index.ts",
+      appId: 7745,
+    });
+    await vi.waitFor(() => expect(gitAdd).toHaveBeenCalledOnce());
+    const moving = appOperationCoordinator.run(
+      {
+        appId: 7745,
+        operation: "move app",
+        resources: ["app-path", "repository"],
+      },
+      async () => {
+        const movedPath = `${appPath}-moved`;
+        await fs.rename(appPath, movedPath);
+        appPath = movedPath;
+        findApp.mockResolvedValue({
+          path: appPath,
+          supabaseProjectId: "project",
+        });
+      },
+    );
+    finishStaging();
+    const [result] = await Promise.all([copying, moving]);
+    expect(result.deployError).toBeUndefined();
+    expect(uploads).toEqual(["copied after move"]);
   });
 
   it("uploads captured function and shared bytes after the source tree is replaced", async () => {

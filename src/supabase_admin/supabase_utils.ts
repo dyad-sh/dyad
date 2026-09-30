@@ -226,9 +226,9 @@ export async function deployAffectedSupabaseFunctions({
   if (appId !== undefined) {
     return withSupabaseFunctionDeployment(
       { appId, supabaseProjectId, signal },
-      (operation) =>
+      (operation, currentAppPath) =>
         deployAffectedSupabaseFunctions({
-          appPath,
+          appPath: currentAppPath,
           supabaseProjectId,
           supabaseOrganizationSlug,
           skipPruneEdgeFunctions,
@@ -332,9 +332,9 @@ export async function deploySupabaseFunctions({
   if (appId !== undefined) {
     return withSupabaseFunctionDeployment(
       { appId, supabaseProjectId, signal },
-      (operation) =>
+      (operation, currentAppPath) =>
         deploySupabaseFunctions({
-          appPath,
+          appPath: currentAppPath,
           supabaseProjectId,
           supabaseOrganizationSlug,
           skipPruneEdgeFunctions,

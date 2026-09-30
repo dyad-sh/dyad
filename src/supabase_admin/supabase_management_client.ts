@@ -25,6 +25,7 @@ import {
   readAppResource,
   type AppOperationContext,
 } from "@/ipc/services/app_operation_coordinator";
+import { getDyadAppPath } from "@/paths/paths";
 
 const fsPromises = fs.promises;
 
@@ -59,7 +60,7 @@ function deploymentSignal(signal?: AbortSignal): AbortSignal {
 /** Retain deployment ownership after callers release their snapshot preparation claims. */
 export async function withSupabaseFunctionDeployment<T>(
   target: { appId: number; supabaseProjectId: string; signal?: AbortSignal },
-  operation: (context: AppOperationContext) => Promise<T>,
+  operation: (context: AppOperationContext, appPath: string) => Promise<T>,
 ): Promise<T> {
   return appOperationCoordinator.run(
     {
@@ -88,7 +89,7 @@ export async function withSupabaseFunctionDeployment<T>(
           DyadErrorKind.Precondition,
         );
       }
-      return operation(context);
+      return operation(context, getDyadAppPath(app.path));
     },
   );
 }
@@ -1282,15 +1283,18 @@ export async function deploySupabaseFunction({
   if (appId !== undefined) {
     return withSupabaseFunctionDeployment(
       { appId, supabaseProjectId, signal },
-      async (context) => {
+      async (context, currentAppPath) => {
         const captured =
           snapshot ??
-          (await captureSupabaseFunction({ appPath, functionName }));
+          (await captureSupabaseFunction({
+            appPath: currentAppPath,
+            functionName,
+          }));
         context.releaseResources(["repository", "provider"]);
         return deploySupabaseFunction({
           supabaseProjectId,
           functionName,
-          appPath,
+          appPath: currentAppPath,
           organizationSlug,
           bundleOnly,
           snapshot: captured,

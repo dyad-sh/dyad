@@ -6,6 +6,7 @@ import log from "electron-log";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { apps } from "@/db/schema";
+import { getDyadAppPath } from "@/paths/paths";
 import {
   gitCommit,
   gitAddAll,
@@ -155,18 +156,23 @@ export async function deployAllFunctionsIfNeeded(
               DyadErrorKind.Precondition,
             );
           }
+          const appPath = getDyadAppPath(app.path);
           const deferred = await reconcileDeferredFunctionOperations({
             pendingDeploys: ctx.pendingFunctionDeploys,
             pendingDeletes: ctx.pendingFunctionDeletes ?? [],
             functionExists: (functionName) =>
-              supabaseFunctionEntryExists(ctx.appPath, functionName),
+              supabaseFunctionEntryExists(appPath, functionName),
           });
           const settings = readSettings();
           const preservedDeletes = settings.skipPruneEdgeFunctions
             ? deferred.deletes
             : [];
           const deleteErrors: string[] = [];
+          let deletesProcessed = false;
           const deleteDeferredFunctions = async () => {
+            ctx.abortSignal?.throwIfAborted();
+            if (deletesProcessed) return;
+            deletesProcessed = true;
             operation.releaseResources(["repository", "provider"]);
             for (const functionName of settings.skipPruneEdgeFunctions
               ? []
@@ -190,31 +196,40 @@ export async function deployAllFunctionsIfNeeded(
           };
           let deployErrors: string[] = [];
           if (ctx.isSharedModulesChanged || deferred.deploys.length > 0) {
-            deployErrors = await deployAffectedSupabaseFunctions({
-              appPath: ctx.appPath,
-              supabaseProjectId,
-              supabaseOrganizationSlug: ctx.supabaseOrganizationSlug ?? null,
-              skipPruneEdgeFunctions: settings.skipPruneEdgeFunctions ?? false,
-              sharedModulesChanged: ctx.isSharedModulesChanged,
-              changedSharedModulePaths: ctx.sharedServerModulePaths,
-              pendingFunctionDeploys: deferred.deploys,
-              onSnapshotCaptured: deleteDeferredFunctions,
-              signal: ctx.abortSignal,
-              onProgress: (progress: SupabaseDeployProgress) => {
-                const statusXml = renderSupabaseDeployStatus(progress);
-                if (
-                  progress.phase === "finished" ||
-                  progress.phase === "failed"
-                ) {
-                  ctx.onXmlComplete(statusXml);
-                } else {
-                  ctx.onXmlStream(statusXml);
-                }
-              },
-            });
-          } else {
-            await deleteDeferredFunctions();
+            try {
+              deployErrors = await deployAffectedSupabaseFunctions({
+                appPath,
+                supabaseProjectId,
+                supabaseOrganizationSlug: ctx.supabaseOrganizationSlug ?? null,
+                skipPruneEdgeFunctions:
+                  settings.skipPruneEdgeFunctions ?? false,
+                sharedModulesChanged: ctx.isSharedModulesChanged,
+                changedSharedModulePaths: ctx.sharedServerModulePaths,
+                pendingFunctionDeploys: deferred.deploys,
+                onSnapshotCaptured: deleteDeferredFunctions,
+                signal: ctx.abortSignal,
+                onProgress: (progress: SupabaseDeployProgress) => {
+                  const statusXml = renderSupabaseDeployStatus(progress);
+                  if (
+                    progress.phase === "finished" ||
+                    progress.phase === "failed"
+                  ) {
+                    ctx.onXmlComplete(statusXml);
+                  } else {
+                    ctx.onXmlStream(statusXml);
+                  }
+                },
+              });
+            } catch (error) {
+              ctx.abortSignal?.throwIfAborted();
+              deployErrors.push(
+                `Failed to prepare Supabase functions: ${error}`,
+              );
+            }
           }
+          // Inventory/shared capture can fail before invoking the callback.
+          // Confirmed removals must still run under deployment ownership.
+          await deleteDeferredFunctions();
 
           if (
             preservedDeletes.length > 0 ||

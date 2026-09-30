@@ -6,6 +6,9 @@ export const THINKING_BINDING_BETA = "thinking-binding-controls-2026-08-01";
 
 // The pinned AI SDK doesn't yet expose block_binding or input_transformations.
 // Apply the wire option after SDK serialization, on both BYOK and Engine paths.
+// Sonnet 4 (claude-sonnet-4-20250514) rejects this beta with "invalid beta flag"
+// through the Engine. Dyad does not support that model, so no compatibility
+// retry is provided; provider errors are returned unchanged.
 export function withAnthropicPreservedThinking(
   fetchFn: FetchFunction = fetch,
 ): FetchFunction {
@@ -27,28 +30,7 @@ export function withAnthropicPreservedThinking(
       headers,
       body: JSON.stringify(body),
     });
-    if (!response.ok) {
-      // Some older models or Engine upstreams do not support these controls.
-      // Retry only an explicit rejection of the injected feature, never an
-      // unrelated validation/auth error or a request that started streaming.
-      if (response.status === 400) {
-        const error = await response
-          .clone()
-          .text()
-          .catch(() => "");
-        if (
-          /block_binding|prefix_mismatch_behavior|thinking-binding-controls-2026-08-01/i.test(
-            error,
-          )
-        ) {
-          logger.debug(
-            "Preserved-thinking controls rejected; retrying without controls",
-          );
-          return fetchFn(input, init);
-        }
-      }
-      return response;
-    }
+    if (!response.ok) return response;
 
     const report = (message: Record<string, unknown>) => {
       if (!Array.isArray(message.input_transformations)) return;

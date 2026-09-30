@@ -158,50 +158,25 @@ describe("Anthropic preserved thinking", () => {
     expect(cancel).toHaveBeenCalledWith("stop");
   });
 
-  it.each(["claude-sonnet-4", "claude-opus-5-5"])(
-    "retries %s once with the original request when controls are rejected",
-    async (model) => {
-      const rejection = Response.json(
-        { error: { message: "Unsupported thinking.block_binding" } },
-        { status: 400 },
-      );
-      const fetchFn = vi.fn().mockResolvedValue(rejection);
-      const init = {
-        headers: { "anthropic-beta": "existing-beta" },
-        body: JSON.stringify({ model, thinking: { type: "adaptive" } }),
-        signal: new AbortController().signal,
-      };
+  it.each([
+    "Unsupported thinking.block_binding",
+    `Invalid beta: ${THINKING_BINDING_BETA}`,
+    "invalid beta flag",
+  ])(
+    "returns rejected controls unchanged without retrying: %s",
+    async (message) => {
+      const rejection = new Response(message, { status: 400 });
+      const fetchFn = vi.fn(async () => rejection);
       const result = await withAnthropicPreservedThinking(fetchFn)(
         "https://example.test/messages",
-        init,
+        { body: JSON.stringify({ thinking: { type: "adaptive" } }) },
       );
       expect(result).toBe(rejection);
-      expect(fetchFn).toHaveBeenCalledTimes(2);
-      expect(fetchFn).toHaveBeenLastCalledWith(
-        "https://example.test/messages",
-        init,
-      );
-      expect(
-        new Headers(fetchFn.mock.calls[0][1].headers).get("anthropic-beta"),
-      ).toContain(THINKING_BINDING_BETA);
+      expect(fetchFn).toHaveBeenCalledTimes(1);
+      expect(result.bodyUsed).toBe(false);
+      expect(await result.text()).toBe(message);
     },
   );
-
-  it("retries a rejected beta header and returns the successful response", async () => {
-    const success = Response.json({ content: [] });
-    const fetchFn = vi
-      .fn()
-      .mockResolvedValueOnce(
-        new Response(`Invalid beta: ${THINKING_BINDING_BETA}`, { status: 400 }),
-      )
-      .mockResolvedValueOnce(success);
-    expect(
-      await withAnthropicPreservedThinking(fetchFn)("https://example.test", {
-        body: JSON.stringify({ thinking: { type: "enabled" } }),
-      }),
-    ).toBe(success);
-    expect(fetchFn).toHaveBeenCalledTimes(2);
-  });
 
   it.each([400, 401, 429, 500])(
     "leaves unrelated errors intact (%s)",

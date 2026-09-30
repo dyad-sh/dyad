@@ -45,6 +45,7 @@ export const copyFileTool: ToolDefinition<z.infer<typeof copyFileSchema>> = {
       appId: ctx.appId,
       isSharedModulesChanged: ctx.isSharedModulesChanged,
       allowDeploySideEffects: ctx.allowDeploySideEffects,
+      signal: ctx.abortSignal,
     });
 
     if (result.sharedModuleChanged) {

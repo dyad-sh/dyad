@@ -8,6 +8,7 @@ export const APP_OPERATION_RESOURCES = [
   "media", // Uploaded, generated, and screenshot files in the media library.
   "metadata", // General app fields not owned by a more specific resource.
   "provider", // Supabase/Neon associations and provider lifecycle state.
+  "supabase-functions", // Captured function deployments and project reassociation.
   "repository", // Umbrella for Git refs plus the index and working tree.
   "repository-ref", // Git HEAD and refs, excluding index and working-tree files.
   "repository-worktree", // Git index and working-tree files.
@@ -37,6 +38,11 @@ export class AppDeletionInProgressError extends Error {
 export interface AppOperationAccess {
   resource: AppOperationResource;
   mode: AppOperationAccessMode;
+}
+
+export interface AppOperationContext {
+  /** Drop preparation claims while retaining ownership of the remaining work. */
+  releaseResources(resources: readonly AppOperationResource[]): void;
 }
 
 export interface AppOperationRequest {
@@ -82,6 +88,8 @@ interface NormalizedAppOperationRequest {
   operation: string;
   resources: readonly AppOperationAccess[];
   allowCompatibleQueueBypass?: boolean;
+  /** Snapshot preparation domains this owner explicitly released. */
+  releasedResources?: readonly AppOperationResource[];
 }
 
 interface PendingOperation {
@@ -173,11 +181,15 @@ function canBypassBlockedOperation(
     requestsConflict(blocker.request, blocked.request),
   );
   const blockerResources = new Set(
-    directBlockers.flatMap((blocker) =>
-      blocker.request.resources.map(({ resource }) => resource),
-    ),
+    directBlockers.flatMap((blocker) => [
+      ...blocker.request.resources.map(({ resource }) => resource),
+      ...(blocker.request.releasedResources ?? []),
+    ]),
   );
-  // The session may relax fairness only inside domains it currently owns.
+  // The session may relax fairness only inside domains it owns or explicitly
+  // released after snapshot preparation. A later deploy is still excluded by
+  // its retained function claim, so its queued preparation must not re-block
+  // the editing/testing domains the snapshot owner just released.
   // Otherwise a repository writer blocked by the session could reorder two
   // operations that conflict only on an unrelated resource such as chat data.
   const bypassedConflictResources = conflictingResources(
@@ -210,7 +222,7 @@ export class AppOperationCoordinator {
 
   run<Result>(
     request: AppOperationRequest,
-    operation: () => Promise<Result>,
+    operation: (context: AppOperationContext) => Promise<Result>,
   ): Promise<Result> {
     const cancelled = () =>
       new DyadError("App operation cancelled", DyadErrorKind.UserCancelled);
@@ -258,7 +270,34 @@ export class AppOperationCoordinator {
       };
       const pending: PendingOperation = {
         request: normalizedRequest,
-        execute: operation,
+        execute: async () => {
+          let active = true;
+          try {
+            return await operation({
+              releaseResources: (resources) => {
+                if (!active) throw new Error("App operation already settled");
+                const released = new Set(
+                  normalizeResources(resources).map(({ resource }) => resource),
+                );
+                pending.request = {
+                  ...pending.request,
+                  releasedResources: [
+                    ...(pending.request.releasedResources ?? []),
+                    ...pending.request.resources
+                      .filter(({ resource }) => released.has(resource))
+                      .map(({ resource }) => resource),
+                  ],
+                  resources: pending.request.resources.filter(
+                    ({ resource }) => !released.has(resource),
+                  ),
+                };
+                this.pump(request.appId, state);
+              },
+            });
+          } finally {
+            active = false;
+          }
+        },
         resolve: (result) => resolve(result as Result),
         reject,
         detachAbort: () =>

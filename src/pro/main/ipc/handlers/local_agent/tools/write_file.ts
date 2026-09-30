@@ -93,10 +93,12 @@ export const writeFileTool: ToolDefinition<z.infer<typeof writeFileSchema>> = {
       } else if (!ctx.isSharedModulesChanged) {
         try {
           await deploySupabaseFunction({
+            appId: ctx.appId,
             supabaseProjectId: ctx.supabaseProjectId,
             functionName,
             appPath: ctx.appPath,
             organizationSlug: ctx.supabaseOrganizationSlug ?? null,
+            signal: ctx.abortSignal,
           });
         } catch (error) {
           return `File written, but failed to deploy Supabase function: ${error}`;

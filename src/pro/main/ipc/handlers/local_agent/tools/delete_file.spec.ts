@@ -257,6 +257,7 @@ describe("deleteFileTool", () => {
         filepath: "supabase/functions/hello-world/index.ts",
       });
       expect(deleteSupabaseFunction).toHaveBeenCalledWith({
+        appId: 1,
         supabaseProjectId: "project-id",
         functionName: "hello-world",
         organizationSlug: null,
@@ -325,6 +326,7 @@ describe("deleteFileTool", () => {
       );
 
       expect(deploySupabaseFunction).toHaveBeenCalledWith({
+        appId: 1,
         supabaseProjectId: "project-id",
         functionName: "hello-world",
         appPath: "/test/app",

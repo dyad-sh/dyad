@@ -445,7 +445,7 @@ describe("runPreCommitTool", () => {
     expect(mocks.deleteSupabaseFunction).not.toHaveBeenCalled();
   });
 
-  it("deletes a Supabase function removed by the hook instead of queueing a deploy", async () => {
+  it("defers hook-removed Supabase functions to finalization instead of racing an active deployment", async () => {
     const removedEntryPoint = path.join(
       repo,
       "supabase",
@@ -487,11 +487,8 @@ describe("runPreCommitTool", () => {
 
     await runPreCommitTool.execute({}, ctx);
 
-    expect(mocks.deleteSupabaseFunction).toHaveBeenCalledWith({
-      supabaseProjectId: "project-id",
-      functionName: "removed",
-      organizationSlug: "org-slug",
-    });
+    expect(mocks.deleteSupabaseFunction).not.toHaveBeenCalled();
+    expect(ctx.pendingFunctionDeletes).toEqual(["removed"]);
     expect(ctx.pendingFunctionDeploys).toEqual([]);
   });
 

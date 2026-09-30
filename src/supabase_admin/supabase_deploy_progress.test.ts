@@ -118,6 +118,67 @@ describe("deployAllSupabaseFunctions progress", () => {
     expect(progressEvents.at(-1)?.phase).toBe("finished");
   });
 
+  it("captures the entire batch before upload and keeps shared bytes stable across later edits", async () => {
+    const sharedPath = path.join(appPath, "supabase/functions/_shared");
+    await fs.mkdir(sharedPath, { recursive: true });
+    await fs.writeFile(path.join(sharedPath, "common.ts"), "original shared");
+    for (const name of ["gamma", "delta", "epsilon", "zeta"]) {
+      await fs.mkdir(path.join(appPath, "supabase/functions", name));
+      await fs.writeFile(
+        path.join(appPath, "supabase/functions", name, "index.ts"),
+        "original function",
+      );
+    }
+    await deployAllSupabaseFunctions({
+      appPath,
+      supabaseProjectId: "project-id",
+      supabaseOrganizationSlug: null,
+      skipPruneEdgeFunctions: true,
+      onSnapshotCaptured: async () => {
+        expect(deploySupabaseFunction).not.toHaveBeenCalled();
+        await fs.rm(path.join(appPath, "supabase"), { recursive: true });
+      },
+    });
+    const captured = vi
+      .mocked(deploySupabaseFunction)
+      .mock.calls.map(([args]) => args.snapshot!);
+    expect(captured).toHaveLength(6);
+    const shared = captured[0].files.find(
+      (file) => file.relativePath === "_shared/common.ts",
+    )!;
+    expect(await shared.content.text()).toBe("original shared");
+    for (const snapshot of captured) {
+      expect(
+        snapshot.files.find(
+          (file) => file.relativePath === "_shared/common.ts",
+        ),
+      ).toBe(shared);
+      expect(
+        snapshot.files.some(
+          (file) => file.relativePath === snapshot.entrypointPath,
+        ),
+      ).toBe(true);
+    }
+  });
+
+  it("never activates or prunes a batch cancelled after snapshot capture", async () => {
+    const controller = new AbortController();
+    await expect(
+      deployAllSupabaseFunctions({
+        appPath,
+        supabaseProjectId: "project-id",
+        supabaseOrganizationSlug: null,
+        skipPruneEdgeFunctions: false,
+        signal: controller.signal,
+        onSnapshotCaptured: () => controller.abort(new Error("Stopped")),
+      }),
+    ).rejects.toThrow("Stopped");
+    expect(deploySupabaseFunction).not.toHaveBeenCalled();
+    expect(bulkUpdateFunctions).not.toHaveBeenCalled();
+    expect(listSupabaseFunctions).not.toHaveBeenCalled();
+    expect(deleteSupabaseFunction).not.toHaveBeenCalled();
+  });
+
   it("emits failed instead of finished when bulk activation fails", async () => {
     const progressEvents: SupabaseDeployProgress[] = [];
     vi.mocked(bulkUpdateFunctions).mockRejectedValue(

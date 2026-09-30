@@ -1075,6 +1075,7 @@ export function registerVersionHandlers() {
           readAppResource("app-path"),
           "chat-content",
           "provider",
+          "supabase-functions",
           "repository",
           "runtime-config",
         ],
@@ -1470,6 +1471,7 @@ export function registerVersionHandlers() {
                 "chat-content",
                 "chat-membership",
                 "provider",
+                "supabase-functions",
                 "repository",
                 "runtime-config",
               ]
@@ -1845,6 +1847,7 @@ export function registerVersionHandlers() {
         resources: [
           readAppResource("app-path"),
           "provider",
+          "supabase-functions",
           "repository",
           "runtime-config",
         ],

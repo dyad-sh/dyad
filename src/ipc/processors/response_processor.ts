@@ -150,9 +150,11 @@ export async function processFullResponseActions(
   {
     chatSummary,
     messageId,
+    signal,
   }: {
     chatSummary: string | undefined;
     messageId: number;
+    signal?: AbortSignal;
   },
 ): Promise<{
   updatedFiles?: boolean;
@@ -429,6 +431,8 @@ export async function processFullResponseActions(
       if (isServerFunction(filePath)) {
         try {
           await deleteSupabaseFunction({
+            appId: chatWithApp.app.id,
+            signal,
             supabaseProjectId: chatWithApp.app.supabaseProjectId!,
             functionName: extractFunctionNameFromPath(filePath),
             organizationSlug: chatWithApp.app.supabaseOrganizationSlug ?? null,
@@ -483,6 +487,8 @@ export async function processFullResponseActions(
       if (isServerFunction(tag.from)) {
         try {
           await deleteSupabaseFunction({
+            appId: chatWithApp.app.id,
+            signal,
             supabaseProjectId: chatWithApp.app.supabaseProjectId!,
             functionName: extractFunctionNameFromPath(tag.from),
             organizationSlug: chatWithApp.app.supabaseOrganizationSlug ?? null,
@@ -500,6 +506,8 @@ export async function processFullResponseActions(
         if (!sharedModulesChanged) {
           try {
             await deploySupabaseFunction({
+              appId: chatWithApp.app.id,
+              signal,
               supabaseProjectId: chatWithApp.app.supabaseProjectId!,
               functionName,
               appPath,
@@ -555,6 +563,8 @@ export async function processFullResponseActions(
           if (!sharedModulesChanged) {
             try {
               await deploySupabaseFunction({
+                appId: chatWithApp.app.id,
+                signal,
                 supabaseProjectId: chatWithApp.app.supabaseProjectId!,
                 functionName,
                 appPath,
@@ -587,6 +597,7 @@ export async function processFullResponseActions(
           from: tag.from,
           to: tag.to,
           appId: chatWithApp.app.id,
+          signal,
           isSharedModulesChanged: sharedModulesChanged,
         });
 
@@ -645,6 +656,8 @@ export async function processFullResponseActions(
         if (!sharedModulesChanged) {
           try {
             await deploySupabaseFunction({
+              appId: chatWithApp.app.id,
+              signal,
               supabaseProjectId: chatWithApp.app.supabaseProjectId!,
               functionName,
               appPath,
@@ -671,6 +684,8 @@ export async function processFullResponseActions(
       try {
         const settings = readSettings();
         const deployErrors = await deployAffectedSupabaseFunctions({
+          appId: chatWithApp.app.id,
+          signal,
           appPath,
           supabaseProjectId: chatWithApp.app.supabaseProjectId,
           supabaseOrganizationSlug:

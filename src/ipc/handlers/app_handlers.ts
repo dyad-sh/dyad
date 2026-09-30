@@ -1514,6 +1514,7 @@ export function registerAppHandlers() {
           );
           const settings = readSettings();
           const deployErrors = await deployAllSupabaseFunctions({
+            appId,
             appPath,
             supabaseProjectId: app.supabaseProjectId,
             supabaseOrganizationSlug: app.supabaseOrganizationSlug ?? null,
@@ -1538,6 +1539,7 @@ export function registerAppHandlers() {
         try {
           const functionName = extractFunctionNameFromPath(filePath);
           await deploySupabaseFunction({
+            appId,
             supabaseProjectId: app.supabaseProjectId,
             functionName,
             appPath,

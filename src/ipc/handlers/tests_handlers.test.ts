@@ -586,12 +586,12 @@ describe("tests handlers", () => {
         .spyOn(appOperationCoordinator, "run")
         .mockImplementation((request, operation) => {
           requests.push(request);
-          return originalRun(request, async () => {
+          return originalRun(request, async (context) => {
             const isPrepare =
               request.operation === "prepare-e2e-test-workspace";
             if (isPrepare) prepareClaimActive = true;
             try {
-              return await operation();
+              return await operation(context);
             } finally {
               if (isPrepare) prepareClaimActive = false;
             }

@@ -164,10 +164,12 @@ CRITICAL REQUIREMENTS FOR USING THIS TOOL:
           }
         } else if (!ctx.isSharedModulesChanged) {
           await deploySupabaseFunction({
+            appId: ctx.appId,
             supabaseProjectId: ctx.supabaseProjectId,
             functionName,
             appPath: ctx.appPath,
             organizationSlug: ctx.supabaseOrganizationSlug ?? null,
+            signal: ctx.abortSignal,
           });
         } else {
           ctx.pendingFunctionDeploys.push(functionName);

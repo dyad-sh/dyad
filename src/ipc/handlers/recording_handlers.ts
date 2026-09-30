@@ -193,6 +193,7 @@ export function registerRecordingHandlers() {
           readAppResource("repository-ref"),
           "repository-worktree",
           "provider",
+          "supabase-functions",
           "runtime",
           "runtime-config",
           "test-files",

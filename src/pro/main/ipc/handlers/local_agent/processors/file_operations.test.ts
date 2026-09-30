@@ -11,6 +11,11 @@ const mocks = vi.hoisted(() => ({
   deployAffectedSupabaseFunctions: vi.fn(),
   deleteSupabaseFunction: vi.fn(),
   readSettings: vi.fn(),
+  findApp: vi.fn(),
+}));
+
+vi.mock("@/db", () => ({
+  db: { query: { apps: { findFirst: mocks.findApp } } },
 }));
 
 vi.mock("electron-log", () => ({
@@ -150,6 +155,82 @@ describe("deployAllFunctionsIfNeeded", () => {
     mocks.readSettings.mockReturnValue({ skipPruneEdgeFunctions: false });
     mocks.deployAffectedSupabaseFunctions.mockResolvedValue([]);
     mocks.deleteSupabaseFunction.mockResolvedValue(undefined);
+    mocks.findApp.mockResolvedValue({ supabaseProjectId: "project-id" });
+  });
+
+  it("rejects a stale project captured by an earlier chat before any remote effects", async () => {
+    mocks.findApp.mockResolvedValueOnce({
+      supabaseProjectId: "replacement-project",
+    });
+    const result = await deployAllFunctionsIfNeeded({
+      appId: 1,
+      appPath: "/apps/test",
+      supabaseProjectId: "project-id",
+      supabaseOrganizationSlug: null,
+      isSharedModulesChanged: false,
+      sharedServerModulePaths: [],
+      pendingFunctionDeploys: ["alpha"],
+      pendingFunctionDeletes: ["beta"],
+      onXmlStream: vi.fn(),
+      onXmlComplete: vi.fn(),
+    });
+    expect(result).toMatchObject({
+      success: false,
+      error: expect.stringContaining("project changed"),
+    });
+    expect(mocks.deployAffectedSupabaseFunctions).not.toHaveBeenCalled();
+    expect(mocks.deleteSupabaseFunction).not.toHaveBeenCalled();
+  });
+
+  it("releases preparation claims after capture and retains same-app deployment exclusion", async () => {
+    const { appOperationCoordinator } =
+      await import("@/ipc/services/app_operation_coordinator");
+    const access = vi.spyOn(fs, "access").mockResolvedValue(undefined);
+    let releaseUpload!: () => void;
+    let captured!: () => void;
+    const snapshotCaptured = new Promise<void>((resolve) => {
+      captured = resolve;
+    });
+    mocks.deployAffectedSupabaseFunctions.mockImplementationOnce(
+      async ({ onSnapshotCaptured }) => {
+        await onSnapshotCaptured();
+        captured();
+        await new Promise<void>((resolve) => {
+          releaseUpload = resolve;
+        });
+        return [];
+      },
+    );
+    const deploy = deployAllFunctionsIfNeeded({
+      appId: 12,
+      appPath: "/apps/test",
+      supabaseProjectId: "project-id",
+      supabaseOrganizationSlug: null,
+      isSharedModulesChanged: false,
+      sharedServerModulePaths: [],
+      pendingFunctionDeploys: ["alpha"],
+      pendingFunctionDeletes: [],
+      onXmlStream: vi.fn(),
+      onXmlComplete: vi.fn(),
+    });
+    await snapshotCaptured;
+    try {
+      await appOperationCoordinator.run(
+        {
+          appId: 12,
+          operation: "tests",
+          resources: ["provider", "repository-worktree"],
+        },
+        async () => {},
+      );
+      expect(appOperationCoordinator.isBusy(12, ["supabase-functions"])).toBe(
+        true,
+      );
+    } finally {
+      releaseUpload();
+      await deploy;
+      access.mockRestore();
+    }
   });
 
   it("delegates shared changes and skipped direct function deploys to the shared deploy helper", async () => {

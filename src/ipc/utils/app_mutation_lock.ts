@@ -1,6 +1,7 @@
 import {
   appOperationCoordinator,
   type AppOperationRequest,
+  type AppOperationContext,
 } from "../services/app_operation_coordinator";
 
 /**
@@ -12,8 +13,13 @@ import {
 export function createAppOperationHandler<Event, Input, Output>(
   operation: string,
   resources: AppOperationRequest["resources"],
-  handler: (event: Event, input: Input) => Promise<Output>,
+  handler: (
+    event: Event,
+    input: Input,
+    operation: AppOperationContext,
+  ) => Promise<Output>,
   refuseWhenRecording?: string,
+  options?: Pick<AppOperationRequest, "allowCompatibleQueueBypass">,
 ): (event: Event, input: Input) => Promise<Output> {
   return (event, input) =>
     appOperationCoordinator.run(
@@ -22,7 +28,8 @@ export function createAppOperationHandler<Event, Input, Output>(
         operation,
         resources,
         refuseWhenRecording,
+        ...options,
       },
-      () => handler(event, input),
+      (context) => handler(event, input, context),
     );
 }

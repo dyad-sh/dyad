@@ -262,7 +262,7 @@ export function registerSupabaseHandlers() {
     supabaseContracts.createProject,
     createAppOperationHandler(
       "create-supabase-project",
-      ["provider"],
+      ["provider", "supabase-functions"],
       async (event, params) => {
         const { appId, name, organizationSlug, region } = params;
         // Fail before creating, rather than orphaning a project the user then
@@ -449,7 +449,7 @@ export function registerSupabaseHandlers() {
     supabaseContracts.setAppProject,
     createAppOperationHandler(
       "set-supabase-project",
-      ["provider"],
+      ["provider", "supabase-functions"],
       async (_, params) => {
         const { projectId, appId, parentProjectId, organizationSlug } = params;
         await assertNoNeonProject(appId);
@@ -491,7 +491,7 @@ export function registerSupabaseHandlers() {
       {
         appId: app,
         operation: "unset-supabase-project",
-        resources: ["provider"],
+        resources: ["provider", "supabase-functions"],
         // Same reason as the connect above: a recording holds `provider` for
         // its whole session, so this would queue invisibly behind it.
         refuseWhenRecording: "disconnect this app's Supabase project",
@@ -599,8 +599,13 @@ export function registerSupabaseHandlers() {
     supabaseContracts.redeployAllFunctions,
     createAppOperationHandler(
       "redeploy-all-supabase-functions",
-      [readAppResource("app-path"), "provider", readAppResource("repository")],
-      async (event, { appId, operationId }) => {
+      [
+        readAppResource("app-path"),
+        "provider",
+        readAppResource("repository"),
+        "supabase-functions",
+      ],
+      async (event, { appId, operationId }, operation) => {
         const app = await db.query.apps.findFirst({
           where: eq(apps.id, appId),
         });
@@ -624,6 +629,8 @@ export function registerSupabaseHandlers() {
           supabaseProjectId: app.supabaseProjectId,
           supabaseOrganizationSlug: app.supabaseOrganizationSlug ?? null,
           skipPruneEdgeFunctions: settings.skipPruneEdgeFunctions ?? false,
+          onSnapshotCaptured: () =>
+            operation.releaseResources(["repository", "provider"]),
           onSummary: (nextSummary) => {
             summary = nextSummary;
           },
@@ -638,6 +645,8 @@ export function registerSupabaseHandlers() {
 
         return { ...summary, errors };
       },
+      "deploy Supabase functions",
+      { allowCompatibleQueueBypass: true },
     ),
   );
 

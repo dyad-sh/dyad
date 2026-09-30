@@ -3,6 +3,9 @@
  */
 
 import log from "electron-log";
+import { eq } from "drizzle-orm";
+import { db } from "@/db";
+import { apps } from "@/db/schema";
 import {
   gitCommit,
   gitAddAll,
@@ -113,6 +116,7 @@ export async function deployAllFunctionsIfNeeded(
     | "pendingFunctionDeletes"
     | "onXmlStream"
     | "onXmlComplete"
+    | "abortSignal"
   >,
 ): Promise<FileOperationResult> {
   if (
@@ -130,11 +134,27 @@ export async function deployAllFunctionsIfNeeded(
       {
         appId: ctx.appId,
         operation: "reconcile Local Agent Supabase functions",
-        resources: [readAppResource("app-path"), "provider"],
+        resources: [
+          readAppResource("app-path"),
+          "provider",
+          readAppResource("repository"),
+          "supabase-functions",
+        ],
+        signal: ctx.abortSignal,
+        allowCompatibleQueueBypass: true,
         refuseWhenRecording: "deploy Supabase functions",
       },
-      async () => {
+      async (operation) => {
         try {
+          const app = await db.query.apps.findFirst({
+            where: eq(apps.id, ctx.appId),
+          });
+          if (!app || app.supabaseProjectId !== supabaseProjectId) {
+            throw new DyadError(
+              "This app's Supabase project changed before deployment. Run the request again against the current project.",
+              DyadErrorKind.Precondition,
+            );
+          }
           const deferred = await reconcileDeferredFunctionOperations({
             pendingDeploys: ctx.pendingFunctionDeploys,
             pendingDeletes: ctx.pendingFunctionDeletes ?? [],
@@ -146,22 +166,28 @@ export async function deployAllFunctionsIfNeeded(
             ? deferred.deletes
             : [];
           const deleteErrors: string[] = [];
-          for (const functionName of settings.skipPruneEdgeFunctions
-            ? []
-            : deferred.deletes) {
-            try {
-              await deleteSupabaseFunction({
-                supabaseProjectId,
-                functionName,
-                organizationSlug: ctx.supabaseOrganizationSlug ?? null,
-              });
-            } catch (error) {
-              // Deferred queues can contain a function that was created and removed
-              // before root finalization, or one another path already removed.
-              if (isSupabaseFunctionNotFoundError(error)) continue;
-              deleteErrors.push(`${functionName}: ${error}`);
+          const deleteDeferredFunctions = async () => {
+            operation.releaseResources(["repository", "provider"]);
+            for (const functionName of settings.skipPruneEdgeFunctions
+              ? []
+              : deferred.deletes) {
+              try {
+                ctx.abortSignal?.throwIfAborted();
+                await deleteSupabaseFunction({
+                  supabaseProjectId,
+                  functionName,
+                  organizationSlug: ctx.supabaseOrganizationSlug ?? null,
+                  signal: ctx.abortSignal,
+                });
+              } catch (error) {
+                ctx.abortSignal?.throwIfAborted();
+                // Deferred queues can contain a function that was created and removed
+                // before root finalization, or one another path already removed.
+                if (isSupabaseFunctionNotFoundError(error)) continue;
+                deleteErrors.push(`${functionName}: ${error}`);
+              }
             }
-          }
+          };
           let deployErrors: string[] = [];
           if (ctx.isSharedModulesChanged || deferred.deploys.length > 0) {
             deployErrors = await deployAffectedSupabaseFunctions({
@@ -172,6 +198,8 @@ export async function deployAllFunctionsIfNeeded(
               sharedModulesChanged: ctx.isSharedModulesChanged,
               changedSharedModulePaths: ctx.sharedServerModulePaths,
               pendingFunctionDeploys: deferred.deploys,
+              onSnapshotCaptured: deleteDeferredFunctions,
+              signal: ctx.abortSignal,
               onProgress: (progress: SupabaseDeployProgress) => {
                 const statusXml = renderSupabaseDeployStatus(progress);
                 if (
@@ -184,6 +212,8 @@ export async function deployAllFunctionsIfNeeded(
                 }
               },
             });
+          } else {
+            await deleteDeferredFunctions();
           }
 
           if (

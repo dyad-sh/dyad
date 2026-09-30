@@ -113,9 +113,11 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
                 } else {
                   try {
                     await deleteSupabaseFunction({
+                      appId: ctx.appId,
                       supabaseProjectId: ctx.supabaseProjectId,
                       functionName,
                       organizationSlug: ctx.supabaseOrganizationSlug ?? null,
+                      signal: ctx.abortSignal,
                     });
                   } catch (error) {
                     logger.warn(
@@ -133,10 +135,12 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
                 } else if (!ctx.isSharedModulesChanged) {
                   try {
                     await deploySupabaseFunction({
+                      appId: ctx.appId,
                       supabaseProjectId: ctx.supabaseProjectId,
                       functionName,
                       appPath: ctx.appPath,
                       organizationSlug: ctx.supabaseOrganizationSlug ?? null,
+                      signal: ctx.abortSignal,
                     });
                   } catch (error) {
                     return `File renamed, but failed to deploy Supabase function: ${error}`;

@@ -85,6 +85,7 @@ describe.runIf(process.platform !== "win32")(
         filepath: "supabase/functions/hello-world/index.ts",
       });
       expect(deploySupabaseFunction).toHaveBeenCalledWith({
+        appId: 987654,
         supabaseProjectId: "project-id",
         functionName: "hello-world",
         appPath,

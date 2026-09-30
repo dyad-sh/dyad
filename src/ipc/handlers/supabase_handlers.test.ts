@@ -8,6 +8,7 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { SUPABASE_PROJECT_CREATED_BUT_UNLINKED } from "@/ipc/types";
 import { queryInvalidationBus } from "@/window_infrastructure/main/query_invalidation_bus";
 import { activeRecordings } from "@/ipc/services/recording_registry";
+import { appOperationCoordinator } from "@/ipc/services/app_operation_coordinator";
 import { SupabaseManagementAPIError } from "@dyad-sh/supabase-management-js";
 import { RateLimitError } from "@/ipc/utils/retryWithRateLimit";
 import { runningApps } from "@/ipc/utils/process_manager";
@@ -276,6 +277,70 @@ describe("Supabase handlers", () => {
           total: 2,
         }),
       );
+    });
+
+    it("admits builds, checkpoints and tests during upload but drains before disconnect", async () => {
+      let finishUpload!: () => void;
+      let captured!: () => void;
+      const snapshotCaptured = new Promise<void>((resolve) => {
+        captured = resolve;
+      });
+      mocks.deployAllSupabaseFunctions.mockImplementationOnce(
+        async ({ onSnapshotCaptured }) => {
+          await onSnapshotCaptured();
+          captured();
+          await new Promise<void>((resolve) => {
+            finishUpload = resolve;
+          });
+          return [];
+        },
+      );
+      const deploy = harness.invokeHandler("supabase:redeploy-all-functions", {
+        appId: 7,
+        operationId: "concurrent",
+      });
+      await snapshotCaptured;
+      try {
+        await Promise.all([
+          appOperationCoordinator.run(
+            {
+              appId: 7,
+              operation: "build",
+              resources: ["repository-worktree"],
+            },
+            async () => {},
+          ),
+          appOperationCoordinator.run(
+            { appId: 7, operation: "checkpoint", resources: ["repository"] },
+            async () => {},
+          ),
+          appOperationCoordinator.run(
+            {
+              appId: 7,
+              operation: "tests",
+              resources: ["provider", "test-files"],
+            },
+            async () => {},
+          ),
+        ]);
+        const disconnect = harness.invokeHandler("supabase:unset-app-project", {
+          app: 7,
+        });
+        await Promise.resolve();
+        expect(
+          harness.db.query.apps.findFirst({ where: eq(apps.id, 7) }).sync()
+            ?.supabaseProjectId,
+        ).toBe("project-1");
+        finishUpload();
+        await Promise.all([deploy, disconnect]);
+        expect(
+          harness.db.query.apps.findFirst({ where: eq(apps.id, 7) }).sync()
+            ?.supabaseProjectId,
+        ).toBeNull();
+      } finally {
+        finishUpload();
+        await deploy;
+      }
     });
 
     it("rejects an app without a connected Supabase project", async () => {

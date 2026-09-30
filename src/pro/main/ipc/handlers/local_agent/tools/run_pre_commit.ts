@@ -21,7 +21,6 @@ import {
 } from "@/ipc/services/pre_commit_service";
 import { queueCloudSandboxSnapshotSync } from "@/ipc/utils/cloud_sandbox_provider";
 import { getPackageManagerCommandEnv } from "@/ipc/utils/socket_firewall";
-import { deleteSupabaseFunction } from "@/supabase_admin/supabase_management_client";
 import {
   extractFunctionNameFromPath,
   isServerFunction,
@@ -247,31 +246,21 @@ async function scheduleHookGeneratedFileSideEffects(
         `Pre-commit removed local Supabase function(s) ${removedFunctionNames.join(", ")}, but Dyad kept their remote deployments because "Keep extra Supabase edge functions" is enabled.`,
       );
     } else {
-      const deletedFunctionNames: string[] = [];
+      // Reconcile under the root finalizer's deployment claim. A hook may run
+      // while an older captured deployment is still uploading; deleting here
+      // could let that older activation recreate the removed function.
+      ctx.pendingFunctionDeletes ??= [];
       for (const functionName of removedFunctionNames) {
-        try {
-          await deleteSupabaseFunction({
-            supabaseProjectId: ctx.supabaseProjectId,
-            functionName,
-            organizationSlug: ctx.supabaseOrganizationSlug ?? null,
-          });
-          ctx.pendingFunctionDeploys = ctx.pendingFunctionDeploys.filter(
-            (pendingName) => pendingName !== functionName,
-          );
-          deletedFunctionNames.push(functionName);
-        } catch (deleteError) {
-          logger.warn(
-            `Failed to delete Supabase function ${functionName} removed by pre-commit:`,
-            deleteError,
-          );
-          ctx.onWarningMessage?.(
-            `Pre-commit removed Supabase function ${functionName}, but Dyad could not delete its remote deployment: ${deleteError}`,
-          );
+        if (!ctx.pendingFunctionDeletes.includes(functionName)) {
+          ctx.pendingFunctionDeletes.push(functionName);
         }
+        ctx.pendingFunctionDeploys = ctx.pendingFunctionDeploys.filter(
+          (pendingName) => pendingName !== functionName,
+        );
       }
-      if (deletedFunctionNames.length > 0) {
+      if (removedFunctionNames.length > 0) {
         notes.push(
-          `Dyad removed the corresponding remote Supabase function deployment(s): ${deletedFunctionNames.join(", ")}.`,
+          `Dyad queued remote Supabase function deletion(s) for turn finalization: ${removedFunctionNames.join(", ")}.`,
         );
       }
     }

@@ -14,6 +14,7 @@ actually touches; never use a raw numeric `appId` with `withLock`.
 | `media`               | Files in the app media collection.                                                                                                                            |
 | `metadata`            | Read-modify-write app metadata fields.                                                                                                                        |
 | `provider`            | Neon/Supabase associations and provider lifecycle state.                                                                                                      |
+| `supabase-functions`  | Captured Supabase function deployments, project reassociation, and recording exclusion. Tests use `provider` independently after snapshot capture.            |
 | `repository`          | Umbrella claim for both repository subresources below. Existing general repository operations should keep using it.                                           |
 | `repository-ref`      | Git HEAD and refs. A read captures a stable commit without excluding a working-tree-only session such as E2E execution or recording.                          |
 | `repository-worktree` | Git index and working-tree files. Test and recording sessions write this while reading `repository-ref`, keeping code stable without blocking HEAD snapshots. |
@@ -23,7 +24,10 @@ actually touches; never use a raw numeric `appId` with `withLock`.
 
 For one app, operations acquire all resources atomically, so callers must
 declare the full set up front rather than nesting another operation for that
-app. Cross-app operations may compose per-app acquisitions only in ascending
+app. Snapshot workflows may use the callback's `releaseResources` to drop
+preparation claims after capturing every input; keep the remaining claims and
+deletion admission until all network work settles. Released claims cannot be
+reacquired through that context. Cross-app operations may compose per-app acquisitions only in ascending
 numeric app-ID order, after deduplicating the IDs, so every caller uses the
 same global order. Use direct unlocked service primitives only when the outer
 operation already owns the required resources, and document that ownership at
@@ -97,7 +101,7 @@ global `withLock(appId, ...)` pattern from returning.
 
 ## Sessions that hold claims for a user-controlled duration
 
-A recording session holds `repository-worktree`, `provider`, `runtime`,
+A recording session holds `repository-worktree`, `provider`, `supabase-functions`, `runtime`,
 `runtime-config` and `test-files` until the user ends it (capped at 30 minutes),
 while retaining read access to `repository-ref`. The
 coordinator queues conflicting work with **no timeout** — read-vs-write counts
@@ -114,7 +118,7 @@ become a fairness barrier for later ref-only snapshots such as New Chat. Use
 this flag only on a long-lived owner: bypass is allowed only while every direct
 blocker of the queued operation opts in and the later operation is compatible
 with those blockers. Every conflict being bypassed must also be on a resource
-owned by those blockers, so a repository session cannot reorder operations in
+owned by those blockers (or explicitly released by their snapshot preparation), so a repository session cannot reorder operations in
 an unrelated domain such as chat content. Normal writer fairness resumes when
 the owner releases.
 

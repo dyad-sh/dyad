@@ -122,6 +122,7 @@ describe.runIf(process.platform !== "win32")(
         deletedPaths: ["source.ts"],
       });
       expect(deploySupabaseFunction).toHaveBeenCalledWith({
+        appId: 123456,
         supabaseProjectId: "project-id",
         functionName: "hello-world",
         appPath,

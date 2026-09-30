@@ -3185,6 +3185,7 @@ This conversation includes one or more image attachments. When the user uploads 
             {
               chatSummary,
               messageId: placeholderAssistantMessage.id,
+              signal: abortController.signal,
             }, // Use placeholder ID
           );
 

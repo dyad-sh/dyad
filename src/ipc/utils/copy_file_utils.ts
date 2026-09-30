@@ -49,12 +49,14 @@ export async function executeCopyFile({
   appId,
   isSharedModulesChanged,
   allowDeploySideEffects,
+  signal,
 }: {
   from: string;
   to: string;
   appId: number;
   isSharedModulesChanged?: boolean;
   allowDeploySideEffects?: boolean;
+  signal?: AbortSignal;
 }): Promise<CopyFileResult> {
   const normalizedSource = from.replaceAll("\\", "/");
   const readsMedia =
@@ -62,7 +64,7 @@ export async function executeCopyFile({
     path.isAbsolute(from) ||
     normalizedSource === DYAD_MEDIA_DIR_NAME ||
     normalizedSource.startsWith(`${DYAD_MEDIA_DIR_NAME}/`);
-  return appOperationCoordinator.run(
+  const result = await appOperationCoordinator.run(
     {
       appId,
       operation: "copy-app-file",
@@ -72,6 +74,7 @@ export async function executeCopyFile({
         ...(readsMedia ? [readAppResource("media")] : []),
         "repository",
       ],
+      signal,
     },
     async () => {
       const app = await db.query.apps.findFirst({
@@ -159,7 +162,9 @@ export async function executeCopyFile({
       // Deploy Supabase function if applicable
       const effectiveSharedModulesChanged =
         isSharedModulesChanged || sharedModuleChanged;
-      let deployError: unknown;
+      let deployRequest:
+        | Parameters<typeof deploySupabaseFunction>[0]
+        | undefined;
       let skippedFunctionDeploy: string | undefined;
       if (supabaseProjectId && isServerFunction(operationPath)) {
         const functionName = extractFunctionNameFromPath(operationPath);
@@ -167,20 +172,14 @@ export async function executeCopyFile({
           !effectiveSharedModulesChanged &&
           allowDeploySideEffects !== false
         ) {
-          try {
-            await deploySupabaseFunction({
-              supabaseProjectId,
-              functionName,
-              appPath,
-              organizationSlug: supabaseOrganizationSlug ?? null,
-            });
-          } catch (error) {
-            logger.error(
-              "Failed to deploy Supabase function after copy:",
-              error,
-            );
-            deployError = error;
-          }
+          deployRequest = {
+            appId,
+            supabaseProjectId,
+            functionName,
+            appPath,
+            organizationSlug: supabaseOrganizationSlug ?? null,
+            signal,
+          };
         } else {
           skippedFunctionDeploy = functionName;
         }
@@ -189,8 +188,17 @@ export async function executeCopyFile({
       return {
         sharedModuleChanged,
         skippedFunctionDeploy,
-        deployError,
+        deployRequest,
       };
     },
   );
+  const { deployRequest, ...publicResult } = result;
+  if (!deployRequest) return publicResult;
+  try {
+    await deploySupabaseFunction(deployRequest);
+    return publicResult;
+  } catch (deployError) {
+    logger.error("Failed to deploy Supabase function after copy:", deployError);
+    return { ...publicResult, deployError };
+  }
 }

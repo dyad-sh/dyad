@@ -382,6 +382,7 @@ When creating hooks/components that call IPC handlers:
   and still receives its unhandled scopes. Omitted origin-handled metadata must
   default to no handled scopes; only declare `originHandles` when every caller
   of that contract performs the matching local cache update/invalidation.
+- A tab-scoped event subscription must refresh its IPC snapshot on remount (`staleTime: 0`), since events may be missed while the tab is closed. Apply complete event snapshots directly and prevent an older in-flight bootstrap from overwriting them.
 - Wrap reads in `useQuery`, using keys from `queryKeys` factory (see above), async `queryFn` that calls the relevant domain client (e.g., `appClient.getApp(...)`) or unified `ipc` namespace, and conditionally use `enabled`/`initialData`/`meta` as needed.
 - Wrap writes in `useMutation`; validate inputs locally, call the domain client, and invalidate related queries on success. Use shared utilities (e.g., toast helpers) in `onError`.
 - When a mutation changes fields exposed by both `apps.detail(...)` and `apps.all` (for example linking or unlinking a GitHub repository), invalidate both query families. Refreshing only the detail query can leave parent pages that derive conditional UI from the apps list stale.

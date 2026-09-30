@@ -36,8 +36,9 @@ const cloudflare = vi.hoisted(() => ({
   disconnect: vi.fn(),
 }));
 const openExternalUrl = vi.hoisted(() => vi.fn());
+const focusWindow = vi.hoisted(() => vi.fn());
 vi.mock("@/ipc/types", () => ({
-  ipc: { cloudflare, system: { openExternalUrl } },
+  ipc: { cloudflare, system: { openExternalUrl, focusWindow } },
 }));
 
 const showWarning = vi.hoisted(() => vi.fn());
@@ -89,7 +90,9 @@ beforeEach(() => {
   cloudflare.listAccounts.mockResolvedValue([{ id: "acct-1", name: "Acme" }]);
   cloudflare.listWorkers.mockResolvedValue([]);
   cloudflare.getAppStatus.mockResolvedValue(appStatus());
-  cloudflare.checkRepoAccess.mockResolvedValue({ hasAccess: true });
+  cloudflare.checkRepoAccess.mockResolvedValue({
+    hasAccess: true,
+  });
   cloudflare.getDeploymentStatus.mockResolvedValue({
     state: "live",
     commitHash: "abc1234def",
@@ -198,24 +201,78 @@ describe("before a Worker can be connected", () => {
     expect(cloudflare.getAppStatus).toHaveBeenCalledTimes(2);
   });
 
-  it("offers both ways to grant access when Cloudflare cannot see the repository", async () => {
+  it("sends the user to the Cloudflare dashboard, with Refresh on the same row", async () => {
     cloudflare.checkRepoAccess.mockResolvedValue({ hasAccess: false });
     renderConnector();
 
+    const card = await screen.findByTestId("cloudflare-repo-access");
     fireEvent.click(
-      await screen.findByRole("button", {
-        name: "Connect GitHub on Cloudflare",
-      }),
-    );
-    fireEvent.click(
-      screen.getByRole("button", { name: "Add This Repository on GitHub" }),
+      within(card).getByRole("button", { name: "Open Cloudflare Dashboard" }),
     );
 
-    expect(openExternalUrl.mock.calls.map((call) => call[0])).toEqual([
-      expect.stringContaining("dash.cloudflare.com"),
-      expect.stringContaining("github.com/apps/cloudflare-workers-and-pages"),
-    ]);
+    expect(openExternalUrl).toHaveBeenCalledWith(
+      // The account chosen in Dyad, so access is not granted on another one.
+      "https://dash.cloudflare.com/acct-1/workers-and-pages/create",
+    );
+    // The card's only actions: the dashboard, then Refresh.
+    expect(
+      within(card)
+        .getAllByRole("button")
+        .map((button) => button.textContent),
+    ).toEqual(["Open Cloudflare Dashboard", "Refresh"]);
+    expect(screen.getAllByRole("button", { name: "Refresh" })).toHaveLength(1);
+    expect(screen.queryByTestId("cloudflare-target-rescan")).toBeNull();
     expect(screen.queryByTestId("cloudflare-worker-form")).toBeNull();
+    expect(focusWindow).not.toHaveBeenCalled();
+  });
+
+  it("checks access again from Refresh, without waiting for the next poll", async () => {
+    cloudflare.checkRepoAccess.mockResolvedValue({
+      hasAccess: false,
+    });
+    renderConnector();
+
+    // Refresh shows in a row while the setup loads, then moves into the card.
+    const card = await screen.findByTestId("cloudflare-repo-access");
+    const check = within(card).getByRole("button", { name: "Refresh" });
+    expect(cloudflare.checkRepoAccess).toHaveBeenCalledTimes(1);
+
+    cloudflare.checkRepoAccess.mockResolvedValue({
+      hasAccess: true,
+    });
+    fireEvent.click(check);
+
+    expect(await screen.findByTestId("cloudflare-worker-form")).toBeTruthy();
+    expect(cloudflare.checkRepoAccess).toHaveBeenCalledTimes(2);
+    // The user is in a browser when this happens, and Cloudflare says nothing.
+    expect(focusWindow).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports a failed access check from Refresh in a toast", async () => {
+    cloudflare.checkRepoAccess.mockResolvedValue({
+      hasAccess: false,
+    });
+    renderConnector();
+    const card = await screen.findByTestId("cloudflare-repo-access");
+    const check = within(card).getByRole("button", { name: "Refresh" });
+
+    cloudflare.checkRepoAccess.mockRejectedValueOnce(
+      new Error("Authentication error"),
+    );
+    fireEvent.click(check);
+
+    await waitFor(() =>
+      expect(showError).toHaveBeenCalledWith("Authentication error"),
+    );
+    // The prompt itself stays, since a failed check is not an answer.
+    expect(screen.getByTestId("cloudflare-repo-access")).toBeTruthy();
+  });
+
+  it("leaves the window alone when access was never missing", async () => {
+    renderConnector();
+
+    expect(await screen.findByTestId("cloudflare-worker-form")).toBeTruthy();
+    expect(focusWindow).not.toHaveBeenCalled();
   });
 });
 

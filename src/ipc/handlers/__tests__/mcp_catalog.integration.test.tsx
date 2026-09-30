@@ -375,6 +375,47 @@ describe("Plugins catalog (integration)", () => {
     }
   }, 40_000);
 
+  it("adds an entry whose only inputs are optional enabled right away", async () => {
+    const previousPayload = catalogPayload;
+    catalogPayload = {
+      servers: [
+        {
+          slug: "integration-optional-env",
+          name: "Integration Optional Env Server",
+          category: "Testing",
+          transport: "stdio",
+          command: "npx",
+          args: ["-y", "@dyad-sh/e2e-nonexistent-mcp@1.0.0"],
+          inputs: [
+            {
+              kind: "env",
+              name: "ACCOUNT_ID",
+              label: "Account ID",
+              optional: true,
+            },
+          ],
+        },
+      ],
+    };
+    clearMcpCatalogCacheForTests();
+    try {
+      // Nothing is required before first use, so there is no setup step
+      // to hold the server disabled behind.
+      const created = await ipc.mcp.addFromCatalog({
+        slug: "integration-optional-env",
+        expectedStdioConfig: {
+          command: "npx",
+          args: ["-y", "@dyad-sh/e2e-nonexistent-mcp@1.0.0"],
+        },
+      });
+      expect(created.enabled).toBe(true);
+      expect(created.transport).toBe("stdio");
+    } finally {
+      catalogPayload = previousPayload;
+      clearMcpCatalogCacheForTests();
+    }
+  }, 40_000);
+
   it("adds an oauth entry disabled, then setup stores encrypted client credentials", async () => {
     const previousPayload = catalogPayload;
     catalogPayload = {

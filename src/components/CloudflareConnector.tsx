@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ExternalLink, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,8 +29,7 @@ import {
   useSaveCloudflareToken,
 } from "@/hooks/useCloudflareDeploy";
 import {
-  CLOUDFLARE_CONNECT_GITHUB_URL,
-  CLOUDFLARE_GITHUB_APP_URL,
+  buildCloudflareConnectGithubUrl,
   buildCloudflareTokenTemplateUrl,
   isDeploymentInProgress,
   isValidWorkerName,
@@ -531,6 +530,18 @@ function TargetSetup({
 }) {
   const access = useCloudflareRepoAccess({ appId, accountId });
   const workers = useCloudflareWorkers({ accountId });
+  // Access arrives while the user is off in a browser, and Cloudflare gives
+  // no sign of it there. Dyad comes forward so they know to come back.
+  const wasBlocked = useRef(false);
+  const hasAccess = access.data?.hasAccess;
+  useEffect(() => {
+    if (hasAccess === false) {
+      wasBlocked.current = true;
+    } else if (hasAccess === true && wasBlocked.current) {
+      wasBlocked.current = false;
+      ipc.system.focusWindow();
+    }
+  }, [hasAccess]);
 
   // Refresh sits beside whatever this view shows, including an error from
   // one of these queries, so it has to retry them as well.
@@ -573,12 +584,7 @@ function TargetSetup({
     );
   }
   if (!access.data.hasAccess) {
-    return (
-      <>
-        {toolbarRow}
-        <RepoAccessPrompt />
-      </>
-    );
+    return <RepoAccessPrompt accountId={accountId} toolbar={toolbar} />;
   }
   return (
     <WorkerForm
@@ -594,40 +600,37 @@ function TargetSetup({
   );
 }
 
-function RepoAccessPrompt() {
+function RepoAccessPrompt({
+  accountId,
+  toolbar,
+}: {
+  accountId: string;
+  /** The setup's Refresh, shown beside the dashboard button. */
+  toolbar: ReactNode;
+}) {
   return (
-    <div className={warningClass} data-testid="cloudflare-repo-access">
+    <div className={noticeClass} data-testid="cloudflare-repo-access">
       <p className="font-medium mb-1">
         Cloudflare needs access to this GitHub repository
       </p>
       <p>
-        If you have never connected Cloudflare to GitHub, open Workers &amp;
-        Pages in the Cloudflare dashboard, choose Create, then Import a
-        repository, and connect GitHub. Choosing "All repositories" means you
-        will not be asked again for future apps. If Cloudflare is already
-        connected, add this repository to it on GitHub.
+        Connect GitHub in the Cloudflare dashboard and grant access to this
+        repository, or to all repositories.
       </p>
-      <div className="flex flex-wrap gap-2 mt-3">
+      <div className="flex flex-wrap items-center gap-2 mt-3">
         <Button
           size="sm"
+          className="bg-blue-600 hover:bg-blue-700 text-white"
           onClick={() =>
-            ipc.system.openExternalUrl(CLOUDFLARE_CONNECT_GITHUB_URL)
+            ipc.system.openExternalUrl(
+              buildCloudflareConnectGithubUrl({ accountId }),
+            )
           }
         >
-          Connect GitHub on Cloudflare
+          Open Cloudflare Dashboard
         </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => ipc.system.openExternalUrl(CLOUDFLARE_GITHUB_APP_URL)}
-        >
-          Add This Repository on GitHub
-        </Button>
+        {toolbar}
       </div>
-      <p className="flex items-center gap-2 mt-3 text-xs">
-        <Loader2 className="h-3 w-3 animate-spin" />
-        Waiting for access. This continues on its own once it is granted.
-      </p>
     </div>
   );
 }

@@ -44,13 +44,22 @@ export function buildCloudflareTokenTemplateUrl(): string {
   return url.toString();
 }
 
-/** Where a user connects Cloudflare to GitHub for the first time. */
-export const CLOUDFLARE_CONNECT_GITHUB_URL =
-  "https://dash.cloudflare.com/?to=/:account/workers/workers-and-pages";
-
-/** Where a user adds a repository to an existing Cloudflare GitHub install. */
-export const CLOUDFLARE_GITHUB_APP_URL =
-  "https://github.com/apps/cloudflare-workers-and-pages/installations/new";
+/**
+ * The create page of the account Dyad is checking, where GitHub is connected
+ * to that account and repositories are added to the connection. Naming the
+ * account keeps the user from granting access on another one the dashboard
+ * happens to open.
+ *
+ * Access has to be granted from here. Installing the GitHub App from GitHub
+ * itself does not link it to any Cloudflare account.
+ */
+export function buildCloudflareConnectGithubUrl({
+  accountId,
+}: {
+  accountId: string;
+}): string {
+  return `https://dash.cloudflare.com/${encodeURIComponent(accountId)}/workers-and-pages/create`;
+}
 
 export function buildCloudflareWorkerDashboardUrl({
   accountId,

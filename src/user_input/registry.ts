@@ -44,7 +44,7 @@ const MAX_SETTLED_TOMBSTONES = 1_000;
 export interface PendingUserInputSnapshot {
   status: "awaiting" | "armed" | "due";
   descriptor: UserInputDescriptor;
-  deadlineAt: number;
+  deadlineAt: number | null;
   classifier?: "none" | "racing" | "review";
   classifierReason?: string;
   followUpPrompt?: string;
@@ -118,12 +118,12 @@ export function createUserInputRegistry(deps: {
     persistAlways: deps.persistAlways ?? (() => undefined),
   });
 
-  function deadlineMs(kind: UserInputDescriptor["kind"]): number {
+  function deadlineMs(kind: UserInputDescriptor["kind"]): number | null {
+    if (kind === "questionnaire") return null;
     if (kind === "integration") return INTEGRATION_DEADLINE_MS;
     // Connecting a plugin can include a browser OAuth step.
     if (kind === "plugin-suggestion") return INTEGRATION_DEADLINE_MS;
-    if (kind === "test-assertions" || kind === "questionnaire")
-      return REVIEW_DEADLINE_MS;
+    if (kind === "test-assertions") return REVIEW_DEADLINE_MS;
     return CONSENT_DEADLINE_MS;
   }
 
@@ -321,13 +321,13 @@ export function createUserInputRegistry(deps: {
           DyadErrorKind.Conflict,
         );
       const ms =
-        options?.deadline === "review"
+        input.kind !== "questionnaire" && options?.deadline === "review"
           ? REVIEW_DEADLINE_MS
           : deadlineMs(input.kind);
       const descriptor = {
         ...input,
         requestId,
-        deadlineAt: deps.clock.now() + ms,
+        deadlineAt: ms === null ? null : deps.clock.now() + ms,
       } as UserInputDescriptor;
 
       const previous = states.get(requestId);

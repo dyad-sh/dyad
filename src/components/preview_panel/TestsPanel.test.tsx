@@ -21,6 +21,7 @@ import {
 } from "@/atoms/testRuntimeAtoms";
 import { selectedFileAtom, stagedDiffFileAtom } from "@/atoms/viewAtoms";
 import { TestsPanel } from "./TestsPanel";
+import type { TestRunQueueSnapshot } from "@/ipc/types/tests";
 
 const mocks = vi.hoisted(() => ({
   listAppTests: vi.fn(),
@@ -39,6 +40,14 @@ const mocks = vi.hoisted(() => ({
   settingsLoading: false,
   refreshSettings: vi.fn(),
   navigate: vi.fn(),
+  queuedRuns: [] as TestRunQueueSnapshot["queuedRuns"],
+  activeRun: null as TestRunQueueSnapshot["activeRun"],
+}));
+
+vi.mock("@/hooks/useTestRunQueue", () => ({
+  useTestRunQueue: () => ({
+    data: { activeRun: mocks.activeRun, queuedRuns: mocks.queuedRuns },
+  }),
 }));
 
 vi.mock("@/ipc/types", () => ({
@@ -81,7 +90,11 @@ vi.mock("react-i18next", async () => {
     unknown
   >;
   const t = (key: string, options?: Record<string, unknown>) => {
-    const value = key
+    const lookupKey =
+      options?.count === undefined
+        ? key
+        : key + (options.count === 1 ? "_one" : "_other");
+    const value = lookupKey
       .split(".")
       .reduce<unknown>(
         (node, segment) =>
@@ -195,6 +208,9 @@ describe("TestsPanel", () => {
     });
     mocks.settings = {};
     mocks.app = { id: 1, testingEnabled: true };
+    mocks.queuedRuns = [];
+    mocks.activeRun = null;
+    mocks.runAppTests.mockResolvedValue({ appId: 1, results: [] });
   });
 
   it.each([
@@ -259,7 +275,7 @@ describe("TestsPanel", () => {
       enableTestRunInPreview: true,
     };
 
-    it("runs headed mode in the preview and brings the native view forward", async () => {
+    it("requests headed preview without activating it before main starts the run", async () => {
       mocks.settings = { ...experimentOn, testHeaded: true };
       mocks.runAppTests.mockResolvedValue({ appId: 1, results: [] });
       const { store } = renderPanel();
@@ -269,8 +285,7 @@ describe("TestsPanel", () => {
         fireEvent.click(button);
       });
 
-      expect(store.get(previewNativeViewAppIdAtom)).toBe(1);
-      expect(store.get(previewModeAtom)).toBe("preview");
+      expect(store.get(previewNativeViewAppIdAtom)).toBeNull();
       await waitFor(() => {
         expect(mocks.runAppTests).toHaveBeenCalledWith(
           expect.objectContaining({ appId: 1, preview: true, parallel: false }),
@@ -839,7 +854,183 @@ describe("TestsPanel", () => {
     });
   });
 
+  describe("run submission", () => {
+    it("prevents duplicate submissions before main acknowledges the first click", async () => {
+      let finish!: (result: { appId: number; results: [] }) => void;
+      mocks.runAppTests.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve;
+          }),
+      );
+      renderPanel();
+      const run = await screen.findByRole("button", { name: "Run all tests" });
+      fireEvent.click(run);
+      fireEvent.click(run);
+      await waitFor(() => expect(mocks.runAppTests).toHaveBeenCalledOnce());
+      expect((run as HTMLButtonElement).disabled).toBe(true);
+      await act(async () => finish({ appId: 1, results: [] }));
+      await waitFor(() =>
+        expect((run as HTMLButtonElement).disabled).toBe(false),
+      );
+    });
+
+    it("allows panel runs to queue while an agent run owns the app", async () => {
+      mocks.activeRun = { runId: 10, source: "agent", stopping: false };
+      renderPanel();
+      const run = await screen.findByRole("button", {
+        name: "Queue all tests",
+      });
+      expect((run as HTMLButtonElement).disabled).toBe(false);
+      expect(
+        screen.getByRole("button", { name: "Stop running tests" }),
+      ).toBeTruthy();
+      const remove = screen.getByRole("button", {
+        name: "Delete test file: signup.spec.ts",
+      }) as HTMLButtonElement;
+      expect(remove.disabled).toBe(true);
+      fireEvent.click(run);
+      await waitFor(() => expect(mocks.runAppTests).toHaveBeenCalledOnce());
+    });
+
+    it.each([
+      { message: "Test run stopped.", refused: false },
+      { message: "Test run stopped before execution.", refused: false },
+      { message: "Setup failed", refused: false },
+      {
+        message: "Stop the recording session before running tests.",
+        refused: true,
+      },
+    ])(
+      "toasts only preflight refusals: $message",
+      async ({ message, refused }) => {
+        mocks.runAppTests.mockResolvedValue({
+          appId: 1,
+          results: [],
+          infraError: { message },
+          preflightRefused: refused,
+        });
+        renderPanel();
+        const run = await screen.findByRole("button", {
+          name: "Run all tests",
+        });
+        fireEvent.click(run);
+        await waitFor(() => expect(mocks.runAppTests).toHaveBeenCalledOnce());
+        await waitFor(() =>
+          expect((run as HTMLButtonElement).disabled).toBe(false),
+        );
+        if (refused)
+          expect(mocks.showError).toHaveBeenCalledExactlyOnceWith(message);
+        else expect(mocks.showError).not.toHaveBeenCalled();
+      },
+    );
+  });
+
+  describe("queued test files", () => {
+    const otherFile = "e2e-tests/login.spec.ts";
+    const idleFile = "e2e-tests/profile.spec.ts";
+
+    beforeEach(() => {
+      mocks.listAppTests.mockResolvedValue({
+        specs: [SPEC_FILE, otherFile, idleFile].map((file) => ({
+          file,
+          tests: [{ title: "works", line: 4 }],
+        })),
+      });
+    });
+
+    it.each([
+      {
+        selection: { testFile: SPEC_FILE, testLine: 4 },
+        expected: [SPEC_FILE],
+      },
+      {
+        selection: { testFiles: [SPEC_FILE, otherFile] },
+        expected: [SPEC_FILE, otherFile],
+      },
+      { selection: {}, expected: [SPEC_FILE, otherFile, idleFile] },
+      {
+        selection: {
+          testFiles: ["./e2e-tests/signup.spec.ts", "e2e-tests\\login.spec.ts"],
+        },
+        expected: [SPEC_FILE, otherFile],
+      },
+    ])(
+      "highlights queued files for $selection",
+      async ({ selection, expected }) => {
+        mocks.queuedRuns = [{ runId: 2, source: "agent", ...selection }];
+        renderPanel();
+        await screen.findByText("signup.spec.ts");
+        for (const file of [SPEC_FILE, otherFile, idleFile]) {
+          const row = screen
+            .getByText(file.split("/").pop()!)
+            .closest("button")!.parentElement!;
+          expect(within(row).queryByText("Queued") !== null).toBe(
+            expected.includes(file),
+          );
+          expect(row.classList.contains("bg-amber-50")).toBe(
+            expected.includes(file),
+          );
+        }
+      },
+    );
+
+    it("retains running status for queued reruns and removes the label when dequeued", async () => {
+      mocks.queuedRuns = [
+        { runId: 2, source: "agent", testFiles: [SPEC_FILE, otherFile] },
+        { runId: 3, source: "panel", testFile: SPEC_FILE },
+      ];
+      const { store, rerender } = renderPanel();
+      await screen.findByText("signup.spec.ts");
+      act(() => {
+        store.set(
+          testRunStateByAppIdAtom,
+          new Map([
+            [
+              1,
+              {
+                ...EMPTY_TEST_RUN_STATE,
+                phase: "running",
+                runningFiles: [SPEC_FILE],
+              },
+            ],
+          ]),
+        );
+      });
+      const row = screen
+        .getByText("signup.spec.ts")
+        .closest("button")!.parentElement!;
+      expect(within(row).getByRole("img", { name: "Running" })).toBeTruthy();
+      expect(within(row).getAllByText("Queued")).toHaveLength(1);
+
+      // Finishing one queued batch must keep another queued rerun marked.
+      mocks.queuedRuns = [{ runId: 3, source: "panel", testFile: SPEC_FILE }];
+      rerender(<TestsPanel />);
+      expect(within(row).getByText("Queued")).toBeTruthy();
+      expect(screen.getAllByText("Queued")).toHaveLength(1);
+
+      mocks.queuedRuns = [];
+      rerender(<TestsPanel />);
+      expect(screen.queryByText("Queued")).toBeNull();
+      expect(row.classList.contains("bg-amber-50")).toBe(false);
+      expect(within(row).getByRole("img", { name: "Running" })).toBeTruthy();
+    });
+  });
+
   describe("stopping a run", () => {
+    it("shows pending requests and lets Stop cancel them during active cleanup", () => {
+      mocks.queuedRuns = [{ runId: 2, source: "agent", testFile: SPEC_FILE }];
+      mocks.stopAppTests.mockResolvedValue({ ok: true });
+      const { store } = renderPanel();
+      setPhase(store, { phase: "cleaning-up", runId: 1 });
+      expect(screen.getByRole("status").textContent).toBe("1 run queued");
+      const button = screen.getByRole("button", {
+        name: "Cancel queued tests",
+      }) as HTMLButtonElement;
+      expect(button.disabled).toBe(false);
+      fireEvent.click(button);
+      expect(mocks.stopAppTests).toHaveBeenCalledWith({ appId: 1 });
+    });
     /** Put the panel's app into `phase` as if a run had reached it. */
     function setPhase(
       store: ReturnType<typeof createStore>,

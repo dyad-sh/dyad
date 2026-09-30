@@ -136,14 +136,17 @@ export function transition(
       descriptor: event.descriptor,
       classifier: event.descriptor.classifier,
     };
-    commands.push(
-      { type: "broadcast-requested", descriptor: event.descriptor },
-      {
+    commands.push({
+      type: "broadcast-requested",
+      descriptor: event.descriptor,
+    });
+    if (event.deadlineMs !== null) {
+      commands.push({
         type: "schedule-deadline",
         requestId: event.descriptor.requestId,
         ms: event.deadlineMs,
-      },
-    );
+      });
+    }
     return applied(
       JSON.stringify(state) === JSON.stringify(next) ? state : next,
       commands,

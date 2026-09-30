@@ -1,17 +1,20 @@
 import { useEffect, useRef } from "react";
-import { useAtomValue, useSetAtom, useStore } from "jotai";
-import { useQueryClient } from "@tanstack/react-query";
+import { useAtomValue, useSetAtom } from "jotai";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   appendTestRunOutputAtom,
   applyTestRunFinishedAtom,
   applyTestRunStartedAtom,
-  EMPTY_TEST_RUN_STATE,
   setTestRunStateForAppAtom,
   setTestSpecsForAppAtom,
-  testRunStateByAppIdAtom,
   type TestRunPhase,
 } from "@/atoms/testRuntimeAtoms";
 import { ipc } from "@/ipc/types";
+import type {
+  ActiveTestRunSnapshot,
+  TestOutputPayload,
+  TestsRunStatePayload,
+} from "@/ipc/types/tests";
 import { queryKeys } from "@/lib/queryKeys";
 import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import { previewNativeViewAppIdAtom } from "@/atoms/previewAtoms";
@@ -33,9 +36,9 @@ const PHASE_ORDER: Record<TestRunPhase, number> = {
  * at the app root — NOT in TestsPanel — because the panel unmounts whenever the
  * user leaves the Tests tab, and an unmount-gated subscription would drop
  * output or terminal "finished" events (see rules/electron-ipc.md: never gate
- * global-state cleanup on a component's lifetime). TestsPanel writes its own
- * optimistic start/result state, while this subscriber attaches the
- * authoritative main-process generation and covers remounts/other windows.
+ * global-state cleanup on a component's lifetime). Main owns start and finish
+ * for both sources; submitting a queued panel request must not replace the
+ * active run's progress or results.
  */
 export function useTestRunEvents() {
   const appendOutput = useSetAtom(appendTestRunOutputAtom);
@@ -43,7 +46,6 @@ export function useTestRunEvents() {
   const applyFinished = useSetAtom(applyTestRunFinishedAtom);
   const setRunState = useSetAtom(setTestRunStateForAppAtom);
   const setSpecs = useSetAtom(setTestSpecsForAppAtom);
-  const store = useStore();
   const setPreviewMode = useSetAtom(previewModeAtom);
   const setPreviewNativeViewAppId = useSetAtom(previewNativeViewAppIdAtom);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
@@ -58,6 +60,10 @@ export function useTestRunEvents() {
       number,
       { runId: number; source: "panel" | "agent"; startedAt: number }
     >(),
+  );
+  const lastLifecycleByAppId = useRef(new Map<number, number>());
+  const hydrateActiveRun = useRef<(snapshot: ActiveTestRunSnapshot) => void>(
+    () => {},
   );
   const pendingOutputRef = useRef(new Map<number, string>());
   const outputFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
@@ -91,10 +97,9 @@ export function useTestRunEvents() {
       }
     };
 
-    const unsubscribeOutput = ipc.events.tests.onOutput((payload) => {
-      // A replacement run is announced before it waits for the prior teardown.
-      // Output from that teardown can therefore arrive afterward; only the
-      // producer's generation proves which run owns the chunk.
+    const onOutput = (payload: TestOutputPayload) => {
+      // Correlate late output with the run that produced it, even after the
+      // queue has advanced to a new request.
       if (
         activeRunByAppId.current.get(payload.appId)?.runId !== payload.runId
       ) {
@@ -123,18 +128,24 @@ export function useTestRunEvents() {
             ? prev
             : { ...prev, phase: payload.phase },
       });
-    });
+    };
 
-    const unsubscribeRunState = ipc.events.tests.onRunState((payload) => {
+    const onRunState = (payload: TestsRunStatePayload) => {
+      lastLifecycleByAppId.current.set(
+        payload.appId,
+        Math.max(
+          lastLifecycleByAppId.current.get(payload.appId) ?? 0,
+          payload.runId,
+        ),
+      );
       const { appId, testFile, testFiles, testLine } = payload;
       if (payload.state === "preview-fallback") {
         if (activeRunByAppId.current.get(appId)?.runId !== payload.runId) {
           return;
         }
         // The run asked for the native preview and couldn't have it, so it is
-        // executing in a separate browser window. Handled for panel runs too
-        // (unlike "finished" below, which the panel applies itself): the panel
-        // switched to the native view optimistically on click, and leaving it
+        // executing in a separate browser window. The started event opened
+        // the native view; leaving it
         // up would show a dead "Test view" with Back/Reload/Restart all locked
         // by a run happening somewhere the user can't see.
         if (
@@ -151,17 +162,7 @@ export function useTestRunEvents() {
         if (activeRun && payload.runId < activeRun.runId) {
           return;
         }
-        const currentState =
-          store.get(testRunStateByAppIdAtom).get(appId) ?? EMPTY_TEST_RUN_STATE;
-        // The initiating TestsPanel writes setup synchronously before invoking
-        // main. Preserve that timestamp so its awaited result can still use it
-        // as a local stale-write guard; other windows start from this event.
-        const startedAt =
-          payload.source === "panel" &&
-          currentState.phase !== "idle" &&
-          currentState.runId === undefined
-            ? (currentState.startedAt ?? Date.now())
-            : Date.now();
+        const startedAt = Date.now();
         activeRunByAppId.current.set(appId, {
           runId: payload.runId,
           source: payload.source,
@@ -172,7 +173,6 @@ export function useTestRunEvents() {
         // attached to the invoking window's native view. App selection alone
         // cannot identify that owner when two windows show the same app.
         if (
-          payload.source === "agent" &&
           payload.preview &&
           payload.previewOwnerWindowSessionId === getActiveWindowSessionId() &&
           payload.appId === selectedAppIdRef.current
@@ -197,10 +197,7 @@ export function useTestRunEvents() {
         });
         return;
       }
-      // Progress-only states, consumed for BOTH sources. The panel writes its
-      // own start/finish state directly, but the process kill and the
-      // isolation teardown happen entirely in the main process, so a
-      // panel-initiated run has no other way to learn it is in one of them.
+      // Progress-only states, consumed for both panel and agent runs.
       // The PHASE_ORDER guard keeps a run moving forward only: `idle` means the
       // run already finished, so a late event must not restore a spinner.
       if (payload.state === "stopping" || payload.state === "cleaning-up") {
@@ -210,9 +207,8 @@ export function useTestRunEvents() {
           return;
         }
         if (!activeRun || payload.runId > activeRun.runId) {
-          // A renderer can mount after `started`, or a queued replacement can
-          // publish Stop while this window still projects the prior teardown.
-          // Bootstrap the replacement from the correlated progress payload.
+          // A renderer can mount after `started`. Bootstrap the active run
+          // from its correlated progress payload.
           const startedAt = Date.now();
           activeRun = {
             runId: payload.runId,
@@ -260,30 +256,6 @@ export function useTestRunEvents() {
       if (!activeRun || activeRun.runId !== payload.runId) {
         return;
       }
-      if (payload.source === "panel") {
-        // The initiating panel merges the invoke result, but a remounted or
-        // peer window has no such continuation. End its progress state without
-        // fabricating results; the origin's result merge remains authoritative.
-        setRunState({
-          appId,
-          update: (prev) =>
-            prev.runId !== payload.runId
-              ? prev
-              : {
-                  ...prev,
-                  phase: "idle",
-                  wasStopped: false,
-                  runningFiles: [],
-                  runningTests: [],
-                  isolation: payload.isolation ?? prev.isolation,
-                  sandboxed: payload.sandboxed ?? prev.sandboxed,
-                },
-        });
-        return;
-      }
-      if (activeRun.source !== "agent") {
-        return;
-      }
       const runId = activeRun.runId;
       const runStartedAt = activeRun.startedAt;
       const finish = () =>
@@ -324,8 +296,28 @@ export function useTestRunEvents() {
         // The run already finished against the cached list above. A failed
         // refresh only means its result may remain unreconciled until later.
         .catch(() => {});
-    });
+    };
+    const unsubscribeOutput = ipc.events.tests.onOutput(onOutput);
+    const unsubscribeRunState = ipc.events.tests.onRunState(onRunState);
+    hydrateActiveRun.current = (snapshot) => {
+      const { run, phase, output } = snapshot;
+      // A live start/progress/finish wins over an older bootstrap, including
+      // a terminal event received before this window knew the run existed.
+      if ((lastLifecycleByAppId.current.get(run.appId) ?? 0) >= run.runId)
+        return;
+      onRunState({ ...run, state: "started", preview: false });
+      onOutput({
+        appId: run.appId,
+        runId: run.runId,
+        chunk: output,
+        phase: phase === "setup" ? "setup" : "running",
+      });
+      if (phase === "stopping" || phase === "cleaning-up")
+        onRunState({ ...run, state: phase });
+      flushPendingOutput(run.appId);
+    };
     return () => {
+      hydrateActiveRun.current = () => {};
       unsubscribeOutput();
       unsubscribeRunState();
       if (outputFlushTimerRef.current) {
@@ -340,7 +332,18 @@ export function useTestRunEvents() {
     applyFinished,
     setRunState,
     setSpecs,
-    store,
     queryClient,
   ]);
+  // Subscribe above before reading the current lifecycle. The snapshot is only
+  // a bootstrap; subsequent progress continues through the permanent subscriber.
+  const { data: activeSnapshot, isFetchedAfterMount } = useQuery({
+    queryKey: queryKeys.tests.activeRun({ appId: selectedAppId }),
+    enabled: selectedAppId !== null,
+    staleTime: 0,
+    queryFn: () => ipc.tests.getActiveRun({ appId: selectedAppId! }),
+  });
+  useEffect(() => {
+    if (isFetchedAfterMount && activeSnapshot)
+      hydrateActiveRun.current(activeSnapshot);
+  }, [activeSnapshot, isFetchedAfterMount]);
 }

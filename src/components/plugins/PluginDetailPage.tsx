@@ -21,7 +21,7 @@ import { CatalogBadge } from "./CatalogBadge";
 import { OauthPlaintextStorageAlert } from "./OauthPlaintextStorageAlert";
 import { KeyValueEditor, arrayToJsonObject } from "./KeyValueEditor";
 import { PluginSetupSection } from "./PluginSetupSection";
-import { serverNeedsSetup } from "./pluginSetup";
+import { serverNeedsSetup, unfilledOptionalInputs } from "./pluginSetup";
 import { usePluginConnect, type ConnectFeedback } from "./usePluginConnect";
 
 // Keyed on the full kind union so adding a feedback kind forces a
@@ -148,6 +148,15 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
         i.kind === "env" ||
         i.kind === "oauthClientSecret",
     );
+  // Optional inputs left blank during setup stay offered by their catalog
+  // label, so filling one later doesn't require knowing its variable or
+  // header name. Blocked like setup when the map it writes can't be read.
+  const optionalInputs = setupIncomplete
+    ? []
+    : unfilledOptionalInputs(s, setupInputs);
+  const optionalBlockedByUnreadable =
+    (s.headersUnreadable && optionalInputs.some((i) => i.kind === "header")) ||
+    (s.envUnreadable && optionalInputs.some((i) => i.kind === "env"));
 
   const onSetToolConsent = async (
     toolName: string,
@@ -356,6 +365,22 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
                 }}
               />
             </div>
+          )}
+
+          {optionalInputs.length > 0 && !optionalBlockedByUnreadable && (
+            // Sits under the editor it writes to, so that editor's storage
+            // warning covers it too. Locked like the editor while disabled.
+            <PluginSetupSection
+              key={`optional-${s.id}`}
+              variant="optional"
+              server={s}
+              inputs={optionalInputs}
+              disabled={!s.enabled}
+              isSaving={isUpdatingServer}
+              onSave={async (update) => {
+                await updateServer(update);
+              }}
+            />
           )}
 
           <div className="mt-6">

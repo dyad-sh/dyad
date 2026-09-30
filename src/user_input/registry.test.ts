@@ -6,6 +6,7 @@ import {
 } from "../state_machines/testing";
 import type { UserInputCommand } from "./commands";
 import { createUserInputRegistry } from "./registry";
+import { userInputContracts } from "../ipc/types/user_input";
 
 function setup() {
   const clock = createFakeClock(1_000);
@@ -28,6 +29,70 @@ function setup() {
 }
 
 describe("user-input registry", () => {
+  it.each([undefined, { deadline: "review" as const }])(
+    "keeps questionnaires answerable indefinitely (options: %j)",
+    async (options) => {
+      const { registry, clock } = setup();
+      const requestId = registry.request(
+        {
+          kind: "questionnaire",
+          chatId: 1,
+          questions: [{ id: "q", type: "text", question: "What style?" }],
+          classifier: "none",
+        },
+        undefined,
+        options,
+      );
+      const park = registry.park(requestId);
+      expect(clock.pendingTimerCount()).toBe(0);
+      clock.advanceBy(7 * 24 * 60 * 60 * 1_000);
+      expect(registry.getPending()).toHaveLength(1);
+      expect(registry.getPending()[0].deadlineAt).toBeNull();
+      expect(() =>
+        userInputContracts.getPending.output.parse(registry.getPending()),
+      ).not.toThrow();
+      const response = {
+        kind: "questionnaire" as const,
+        answers: { q: "Minimal" },
+      };
+      await registry.respond(requestId, response);
+      await expect(park).resolves.toEqual(response);
+      expect(registry.getPending()).toEqual([]);
+    },
+  );
+
+  it.each(["dismiss", "abort", "dispose"])(
+    "still settles an untimed questionnaire on %s",
+    async (action) => {
+      const { registry, clock } = setup();
+      const requestId = registry.request({
+        kind: "questionnaire",
+        chatId: 1,
+        questions: [],
+        classifier: "none",
+      });
+      const controller = new AbortController();
+      const park = registry.park(requestId, controller.signal);
+      clock.advanceBy(1_800_001);
+      if (action === "dismiss") {
+        await registry.respond(requestId, {
+          kind: "questionnaire",
+          answers: null,
+        });
+        await expect(park).resolves.toEqual({
+          kind: "questionnaire",
+          answers: null,
+        });
+      } else {
+        if (action === "abort") controller.abort();
+        else registry.dispose();
+        await expect(park).resolves.toBeNull();
+      }
+      expect(registry.getPending()).toEqual([]);
+      expect(clock.pendingTimerCount()).toBe(0);
+    },
+  );
+
   it("uses its injected clock as the only deadline source", async () => {
     const { registry, clock, broadcast } = setup();
     const requestId = registry.request({

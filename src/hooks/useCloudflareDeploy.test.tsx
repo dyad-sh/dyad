@@ -1,4 +1,8 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  QueryClient,
+  QueryClientProvider,
+  focusManager,
+} from "@tanstack/react-query";
 import { act, cleanup, renderHook } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -34,22 +38,24 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  focusManager.setFocused(undefined);
   vi.useRealTimers();
 });
 
 describe("waiting for Cloudflare to see the repository", () => {
-  it("asks often for the first minute, then rarely", async () => {
+  it("asks at a steady pace for as long as it takes", async () => {
     renderAccessCheck(new QueryClient());
 
     await wait(60_000);
     const duringFirstMinute = checkRepoAccess.mock.calls.length;
-    expect(duringFirstMinute).toBeGreaterThanOrEqual(14);
+    expect(duringFirstMinute).toBeGreaterThanOrEqual(6);
+    expect(duringFirstMinute).toBeLessThanOrEqual(8);
 
     await wait(60_000);
     const duringSecondMinute =
       checkRepoAccess.mock.calls.length - duringFirstMinute;
-    expect(duringSecondMinute).toBeLessThanOrEqual(5);
-    expect(duringSecondMinute).toBeGreaterThanOrEqual(3);
+    expect(duringSecondMinute).toBeGreaterThanOrEqual(5);
+    expect(duringSecondMinute).toBeLessThanOrEqual(7);
   });
 
   it("keeps asking after the first check fails", async () => {
@@ -59,26 +65,20 @@ describe("waiting for Cloudflare to see the repository", () => {
       new QueryClient({ defaultOptions: { queries: { retry: false } } }),
     );
 
-    await wait(13_000);
+    await wait(25_000);
 
     expect(checkRepoAccess.mock.calls.length).toBeGreaterThanOrEqual(3);
     expect(result.current.data).toEqual({ hasAccess: false });
   });
 
-  it("asks often again when the prompt is opened a second time", async () => {
-    // The same client, so what the first wait cached is still there.
-    const queryClient = new QueryClient();
-    const first = renderAccessCheck(queryClient);
-    await wait(120_000);
-    first.unmount();
+  it("keeps asking while Dyad is hidden behind the browser", async () => {
+    // React Query skips interval refetches for a hidden document by default.
+    focusManager.setFocused(false);
+    renderAccessCheck(new QueryClient());
 
-    renderAccessCheck(queryClient);
-    const before = checkRepoAccess.mock.calls.length;
-    await wait(13_000);
+    await wait(60_000);
 
-    expect(checkRepoAccess.mock.calls.length - before).toBeGreaterThanOrEqual(
-      3,
-    );
+    expect(checkRepoAccess.mock.calls.length).toBeGreaterThanOrEqual(6);
   });
 
   it("stops asking once Cloudflare can see it", async () => {

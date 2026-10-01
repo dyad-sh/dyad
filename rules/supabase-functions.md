@@ -11,3 +11,5 @@
   valid local function set as authorization to prune every remote function.
   The app may be connected to a pre-existing production project; whole-set
   sync must fall back to a deploy-only no-op when no valid local functions exist.
+- Shared-module dependency-analysis fallbacks return a structured `SupabaseFallbackReason` (`shared/supabase_dependency_analysis_types.ts`) with app-relative paths. `src/supabase_admin/supabase_deploy_scope.ts` turns it into the Local Agent deploy card's collapsed-title suffix (`(fallback to all functions: <label>)`) and the body sentence; a new reason code must be handled in both of its switches. The final card is persisted to `aiMessagesJson`, so later agent turns see the explanation too.
+- `src/testing/hybrid.setup.ts` mocks dependency analysis as `dependency_analysis_failed`, so hybrid integration tests always see the fallback title suffix. `supabase_utils.test.ts` cases that reach the analyzer need TypeScript symlinked into the temp app's `node_modules`; otherwise they resolve `typescript_not_installed` instead of the case under test.

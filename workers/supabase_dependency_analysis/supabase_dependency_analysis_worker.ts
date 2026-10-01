@@ -66,7 +66,7 @@ export async function processSupabaseDependencyAnalysis(
     if (!compiler) {
       return {
         success: true,
-        data: { kind: "all", reason: "typescript_not_installed" },
+        data: { kind: "all", reason: { code: "typescript_not_installed" } },
       };
     }
     return {

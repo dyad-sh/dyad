@@ -14,6 +14,11 @@ import {
   supabaseFunctionEntryExists,
   type SupabaseDeployProgress,
 } from "../../../../../../supabase_admin/supabase_utils";
+import {
+  describeSupabaseDeployScope,
+  formatSupabaseDeployScopeTitleSuffix,
+  type SupabaseDeployScope,
+} from "../../../../../../supabase_admin/supabase_deploy_scope";
 import { readSettings } from "../../../../../../main/settings";
 import {
   escapeXmlAttr,
@@ -73,15 +78,19 @@ export async function reconcileDeferredFunctionOperations(params: {
   return { deploys: [...deploys], deletes: [...deletes] };
 }
 
-function renderSupabaseDeployStatus(progress: SupabaseDeployProgress): string {
+export function renderSupabaseDeployStatus(
+  progress: SupabaseDeployProgress,
+  scope?: SupabaseDeployScope,
+): string {
   const isComplete =
     progress.phase === "finished" || progress.phase === "failed";
   const title =
-    progress.phase === "finished"
+    (progress.phase === "finished"
       ? `Supabase functions deployed: ${progress.completed}/${progress.total} complete`
       : progress.phase === "failed"
         ? `Supabase functions failed to deploy: ${progress.completed}/${progress.total} complete`
-        : `Deploying Supabase functions: ${progress.completed}/${progress.total} complete (${progress.active} active, ${progress.queued} queued)`;
+        : `Deploying Supabase functions: ${progress.completed}/${progress.total} complete (${progress.active} active, ${progress.queued} queued)`) +
+    formatSupabaseDeployScopeTitleSuffix(scope);
   const state =
     progress.phase === "failed"
       ? "aborted"
@@ -89,6 +98,7 @@ function renderSupabaseDeployStatus(progress: SupabaseDeployProgress): string {
         ? "finished"
         : "pending";
   const content = [
+    ...(scope ? [describeSupabaseDeployScope(scope), ""] : []),
     `${progress.succeeded} succeeded`,
     `${progress.failed} failed`,
     `${progress.active} active`,
@@ -189,6 +199,7 @@ export async function deployAllFunctionsIfNeeded(
             }
           };
           let deployErrors: string[] = [];
+          let deployScope: SupabaseDeployScope | undefined;
           if (ctx.isSharedModulesChanged || deferred.deploys.length > 0) {
             try {
               deployErrors = await deployAffectedSupabaseFunctions({
@@ -202,8 +213,14 @@ export async function deployAllFunctionsIfNeeded(
                 pendingFunctionDeploys: deferred.deploys,
                 onSnapshotCaptured: deleteDeferredFunctions,
                 signal: ctx.abortSignal,
+                onScopeResolved: (scope) => {
+                  deployScope = scope;
+                },
                 onProgress: (progress: SupabaseDeployProgress) => {
-                  const statusXml = renderSupabaseDeployStatus(progress);
+                  const statusXml = renderSupabaseDeployStatus(
+                    progress,
+                    deployScope,
+                  );
                   if (
                     progress.phase === "finished" ||
                     progress.phase === "failed"

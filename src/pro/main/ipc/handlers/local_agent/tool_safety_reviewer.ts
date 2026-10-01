@@ -78,7 +78,17 @@ export async function reviewToolAction<D extends "ask" | "block">({
         maxRetries: 1,
         abortSignal: controller.signal,
         messages: [{ role: "user", content: payload }],
-        ...(tools ? { tools, stopWhen: stepCountIs(4) } : {}),
+        ...(tools
+          ? {
+              tools,
+              stopWhen: stepCountIs(4),
+              // Reserve the last round trip for a verdict instead of more inspection.
+              prepareStep: ({ stepNumber }) =>
+                stepNumber >= 3
+                  ? { toolChoice: "none", activeTools: [] }
+                  : undefined,
+            }
+          : {}),
       });
       const text = await stream.text;
       controller.signal.throwIfAborted();

@@ -129,10 +129,11 @@ it("uses Continue for Windows native stderr while preserving exit codes", () => 
     "utf16le",
   );
   expect(script).toContain("$ErrorActionPreference = 'Continue'");
-  expect(script).toContain("exit $LASTEXITCODE");
+  expect(script).toContain("$dyadShellSucceeded = $?");
+  expect(script).not.toContain("exit $LASTEXITCODE");
 });
 it.skipIf(process.platform !== "win32")(
-  "continues past native warnings and propagates nonzero native exit codes",
+  "continues past native warnings and reports the final successful cmdlet",
   async () => {
     const nodePath = process.execPath.replaceAll("'", "''");
     for (const code of [0, 7]) {
@@ -144,8 +145,8 @@ it.skipIf(process.platform !== "win32")(
       });
       expect(result.stdout).toContain("continued");
       expect(result.stderr).toContain("warning");
-      expect(result.code).toBe(code);
-      expect(result.status).toBe(code === 0 ? "completed" : "failed");
+      expect(result.code).toBe(0);
+      expect(result.status).toBe("completed");
     }
   },
 );
@@ -189,3 +190,28 @@ it("denies Dyad/provider secrets and startup injection case-insensitively", () =
     }),
   ).toEqual({ PATH: "/bin" });
 });
+
+it.skipIf(process.platform !== "win32")(
+  "uses the final PowerShell step rather than stale native exit codes",
+  async () => {
+    const nodePath = process.execPath.replaceAll("'", "''");
+    for (const [command, code] of [
+      [
+        `& '${nodePath}' -e 'process.exit(0)'; Get-Item __dyad_missing_file__`,
+        1,
+      ],
+      [`& '${nodePath}' -e 'process.exit(7)'; Write-Output ok`, 0],
+      [`& '${nodePath}' -e 'process.exit(7)'`, 1],
+      [`Write-Output ok; exit 7`, 7],
+    ] as const) {
+      const result = await runShellProcess({
+        command,
+        cwd: process.cwd(),
+        timeoutMs: 10000,
+        onOutput: vi.fn(),
+      });
+      expect(result.code).toBe(code);
+      expect(result.status).toBe(code === 0 ? "completed" : "failed");
+    }
+  },
+);

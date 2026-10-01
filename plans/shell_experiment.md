@@ -23,6 +23,7 @@ Use shared review infrastructure for MCP and shell commands, with separate polic
 - Let the reviewer obtain bounded, read-only app-file and path evidence when needed to understand scripts or destructive targets. Never execute commands to investigate them; block when effects remain unclear.
 - Reject shell equivalents only when a dedicated tool supports the actual operation, target, and required options. Local preview logs do not replace cloud logs. Permit fallback only after a recorded execution failure of the relevant tool—not permission denial, safety rejection, or disabled access. Review that fallback independently.
 - Use a 45-second shell review deadline, including evidence collection and model setup; MCP consent retains its eight-second deadline. Timeout, malformed output, unavailable model, or missing context prevents spawning and offers a distinct Review unavailable / Retry review flow. Cancellation propagates through review and execution.
+- Reserve the last model step for a verdict by disabling inspection tools. Retain content hashes across metadata-only reinspections and reconcile provider effects only after successful command completion, never after a failed partial update.
 - Review every invocation afresh. Generic “always allow” tool consent must never bypass review or a required one-time consequential-action approval.
 
 ## Execution, lifecycle, and presentation

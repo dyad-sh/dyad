@@ -177,3 +177,69 @@ it("surfaces actionable catalog overflow without starting paid inference", async
   expect(mocks.getModelClient).not.toHaveBeenCalled();
   expect(mocks.streamText).not.toHaveBeenCalled();
 });
+
+import { MockLanguageModelV3, simulateReadableStream } from "ai/test";
+import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
+import { z } from "zod";
+it("reserves a verdict step after six inspections across three tool rounds", async () => {
+  const actual = await vi.importActual<typeof import("ai")>("ai");
+  mocks.streamText.mockImplementation(actual.streamText);
+  const inspect = vi.fn(async () => "ordinary app file");
+  let calls = 0;
+  const model = new MockLanguageModelV3({
+    doStream: async (options) => {
+      calls++;
+      const inspecting = !!options.tools?.length;
+      const chunks: LanguageModelV3StreamPart[] = [
+        { type: "stream-start", warnings: [] },
+      ];
+      if (inspecting) {
+        for (let i = 0; i < 2; i++)
+          chunks.push({
+            type: "tool-call",
+            toolCallId: `inspect-${calls}-${i}`,
+            toolName: "inspect_app_path",
+            input: "{}",
+          });
+      } else {
+        chunks.push(
+          { type: "text-start", id: "verdict" },
+          {
+            type: "text-delta",
+            id: "verdict",
+            delta: '{"decision":"allow","reason":"Inspected six files"}',
+          },
+          { type: "text-end", id: "verdict" },
+        );
+      }
+      chunks.push({
+        type: "finish",
+        finishReason: {
+          unified: inspecting ? "tool-calls" : "stop",
+          raw: inspecting ? "tool_calls" : "stop",
+        },
+        usage: {
+          inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+          outputTokens: { total: 1, text: 1, reasoning: 0 },
+        },
+      });
+      return { stream: simulateReadableStream({ chunks }) };
+    },
+  });
+  mocks.getModelClient.mockResolvedValue({ modelClient: { model } });
+  const result = await reviewToolAction({
+    ...input,
+    prepare: async () => ({
+      payload: "inspect script",
+      tools: {
+        inspect_app_path: actual.tool({
+          inputSchema: z.object({}),
+          execute: inspect,
+        }),
+      },
+    }),
+  });
+  expect(result).toEqual({ decision: "allow", reason: "Inspected six files" });
+  expect(inspect).toHaveBeenCalledTimes(6);
+  expect(calls).toBe(4);
+});

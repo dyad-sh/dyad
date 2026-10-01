@@ -98,8 +98,9 @@ export function shellInvocation(command: string, platform = process.platform) {
     );
     // EncodedCommand preserves arbitrary quotes, newlines, and Unicode without cmd.exe.
     // Windows PowerShell 5.1 treats native stderr as error records. Continue lets
-    // warnings flow while LASTEXITCODE still determines native command failure.
-    const script = `[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)\n$ErrorActionPreference = 'Continue'\n${command}\n$dyadShellSucceeded = $?\nif ($null -ne $LASTEXITCODE) { exit $LASTEXITCODE }\nif (-not $dyadShellSucceeded) { exit 1 }\n`;
+    // warnings flow. Final $? includes cmdlets; LASTEXITCODE can be stale from
+    // an earlier native command. Explicit exit commands retain their own code.
+    const script = `[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)\n$ErrorActionPreference = 'Continue'\n${command}\n$dyadShellSucceeded = $?\nif ($dyadShellSucceeded) { exit 0 }\nexit 1\n`;
     return buildWindowsCommandInvocation(
       executable,
       [

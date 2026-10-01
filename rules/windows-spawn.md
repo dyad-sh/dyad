@@ -8,7 +8,7 @@ tree-kill helper can leave grandchildren reparented and running after Electron
 exits. Keep Windows quit cleanup on direct `taskkill.exe` argv and avoid
 `cmd.exe` for this path.
 
-- Windows PowerShell 5.1 turns piped native stderr into error records: avoid `$ErrorActionPreference = 'Stop'` in wrappers that must tolerate warnings, and propagate `$LASTEXITCODE`. Bound `-EncodedCommand` input before review; UTF-16/base64 expands it about 2.7 times against Windows' 32,767-character command-line limit.
+- Windows PowerShell 5.1 turns piped native stderr into error records: avoid `$ErrorActionPreference = 'Stop'` in wrappers that must tolerate warnings. Derive implicit exit status from the final `$?` (0/1), not stale `$LASTEXITCODE` from an earlier native command; explicit `exit` codes remain intact. Bound `-EncodedCommand` input before review; UTF-16/base64 expands it about 2.7 times against Windows' 32,767-character command-line limit.
 - Do not invoke `taskkill` for a root PID after its `exit` event; it can already be reused while pipes are draining. Windows tree-kill already uses `/T /F`, so an additional delayed force-kill is unnecessary.
 
 ## A bare command name becomes a `.cmd` shim

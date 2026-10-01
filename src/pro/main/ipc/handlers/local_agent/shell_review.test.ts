@@ -148,3 +148,30 @@ it("rejects hard-linked aliases of protected files before reading content", asyn
   await link(path.join(root, ".env"), path.join(root, "helper.txt"));
   await expect(inspect("helper.txt")).rejects.toThrow("hard links");
 });
+
+it("keeps a content hash through later metadata-only inspection", async () => {
+  const { root } = await setup();
+  const evidence = new Map();
+  const tool = buildShellInspectionTool(
+    root,
+    new AbortController().signal,
+    evidence,
+  );
+  const file = path.join(root, "script.js");
+  const timestamp = new Date(1700000000000);
+  const { utimes } = await import("node:fs/promises");
+  await writeFile(file, "safe");
+  await utimes(file, timestamp, timestamp);
+  await tool.execute!(
+    { path: "script.js", read: true },
+    { toolCallId: "read", messages: [] },
+  );
+  await tool.execute!(
+    { path: "script.js", read: false },
+    { toolCallId: "metadata", messages: [] },
+  );
+  expect(await revalidateShellInspectionEvidence(root, evidence)).toBe(true);
+  await writeFile(file, "evil");
+  await utimes(file, timestamp, timestamp);
+  expect(await revalidateShellInspectionEvidence(root, evidence)).toBe(false);
+});

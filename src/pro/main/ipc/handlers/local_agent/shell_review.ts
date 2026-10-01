@@ -108,7 +108,8 @@ export function buildShellInspectionTool(
       const inspected = { target, bytes: stat.size, modified: stat.mtimeMs };
       if (stat.isFile() && stat.nlink !== 1)
         throw new Error("Inspection requires a file without hard links");
-      if (!read) evidence?.set(relative, inspected);
+      // Metadata-only reinspection must never discard a previously read hash.
+      if (!read && !evidence?.has(relative)) evidence?.set(relative, inspected);
       if (!read)
         return {
           type: stat.isFile()

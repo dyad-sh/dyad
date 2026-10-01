@@ -244,8 +244,7 @@ export const runShellTool: ToolDefinition<z.infer<typeof schema>> = {
           result.executed &&
           !result.shutdownUnconfirmed &&
           changed &&
-          result.status !== "timed_out" &&
-          result.status !== "cancelled" &&
+          result.status === "completed" &&
           !ctx.abortSignal?.aborted
         ) {
           note = await scheduleHookGeneratedFileSideEffects(
@@ -257,13 +256,11 @@ export const runShellTool: ToolDefinition<z.infer<typeof schema>> = {
         }
         if (
           changed &&
-          (result.status === "timed_out" ||
-            result.status === "cancelled" ||
-            ctx.abortSignal?.aborted)
+          (result.status !== "completed" || ctx.abortSignal?.aborted)
         ) {
           note = [
             note,
-            "Automatic provider reconciliation was skipped because the command did not finish. Inspect partial edits before making provider changes.",
+            "Automatic provider reconciliation was skipped because the command did not complete successfully. Inspect partial edits before making provider changes.",
           ]
             .filter(Boolean)
             .join("\n");

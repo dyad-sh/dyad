@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, mkdir, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   review: vi.fn(),
   reconcile: vi.fn(),
   track: vi.fn(),
+  deleteFunctions: vi.fn(),
   settings: {
     enableShellTool: true,
     enableDyadPro: true,
@@ -23,7 +24,7 @@ vi.mock("./run_pre_commit", () => ({
     readFile(path.join(dir, "result.txt"), "utf8").catch(() => "absent"),
   tryCollectSupabaseFunctionEntryPoints: vi.fn(),
   scheduleHookGeneratedFileSideEffects: mocks.reconcile,
-  deleteHookRemovedFunctions: vi.fn(),
+  deleteHookRemovedFunctions: mocks.deleteFunctions,
 }));
 import { runShellTool } from "./run_shell";
 let directory: string;
@@ -517,4 +518,30 @@ it("requires fresh review if inspected files changed during approval", async () 
   });
   expect(mocks.track).not.toHaveBeenCalled();
   await expect(readFile(path.join(directory, "result.txt"))).rejects.toThrow();
+});
+
+it("does not reconcile or delete remote functions after a failed partial update", async () => {
+  ctx.supabaseProjectId = "project";
+  const entry = path.join(directory, "supabase/functions/hello/index.ts");
+  await mkdir(path.dirname(entry), { recursive: true });
+  await writeFile(entry, "export default () => 'hello';");
+  const remove =
+    process.platform === "win32"
+      ? "Remove-Item -Recurse -Force supabase/functions/hello"
+      : "rm -rf -- supabase/functions/hello";
+  const result = JSON.parse(
+    await runShellTool.execute(
+      {
+        command: `${remove}\n${writeCommand}\nexit 9`,
+        description: "Regenerate functions",
+      },
+      ctx,
+    ),
+  );
+  expect(result.status).toBe("failed");
+  expect(result.note).toContain("reconciliation was skipped");
+  expect(mocks.reconcile).not.toHaveBeenCalled();
+  expect(mocks.track).toHaveBeenCalled();
+  await expect(readFile(entry)).rejects.toThrow();
+  expect(mocks.deleteFunctions).toHaveBeenCalledWith(ctx, []);
 });

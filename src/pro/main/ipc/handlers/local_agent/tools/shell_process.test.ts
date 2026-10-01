@@ -149,3 +149,43 @@ it.skipIf(process.platform !== "win32")(
     }
   },
 );
+
+it("preserves cloud profiles, proxies, trust stores, and Windows context", () => {
+  const context = {
+    KUBECONFIG: "/config/kube",
+    AWS_PROFILE: "app",
+    AWS_REGION: "us-west-2",
+    AWS_ACCESS_KEY_ID: "cli-credential",
+    CLOUDSDK_CONFIG: "/config/gcloud",
+    CLOUDSDK_CORE_PROJECT: "app-project",
+    GOOGLE_APPLICATION_CREDENTIALS: "/config/google.json",
+    XDG_CONFIG_HOME: "/config",
+    HTTPS_PROXY: "http://proxy",
+    NO_PROXY: "localhost",
+    SSL_CERT_FILE: "/ca.pem",
+    NODE_EXTRA_CA_CERTS: "/node-ca.pem",
+    USERNAME: "user",
+    ProgramData: "C:\\ProgramData",
+    PSModulePath: "C:\\Modules",
+    APP_FEATURE: "enabled",
+  };
+  expect(shellEnvironment(context)).toEqual(context);
+});
+it("denies Dyad/provider secrets and startup injection case-insensitively", () => {
+  expect(
+    shellEnvironment({
+      DYAD_PRO_API_KEY: "secret",
+      dyad_engine_key: "secret",
+      ANTHROPIC_API_KEY: "secret",
+      GEMINI_API_KEY: "secret",
+      BASH_ENV: "/hook",
+      ENV: "/hook",
+      PROMPT_COMMAND: "hook",
+      node_options: "--require=/hook",
+      PYTHONSTARTUP: "/hook",
+      LD_PRELOAD: "/hook",
+      DYLD_INSERT_LIBRARIES: "/hook",
+      PATH: "/bin",
+    }),
+  ).toEqual({ PATH: "/bin" });
+});

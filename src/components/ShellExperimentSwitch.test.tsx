@@ -32,3 +32,16 @@ describe("Shell experiment", () => {
     expect(mocks.updateSettings).not.toHaveBeenCalled();
   });
 });
+
+it("explains automatic host execution and fallible AI review before opting in", () => {
+  render(<ShellExperimentSwitch />);
+  expect(
+    screen.getByText(/Enabling this experiment carries risk/).textContent,
+  ).toContain("an AI safety review can make mistakes");
+  expect(
+    screen.getByText(/Enabling this experiment carries risk/).textContent,
+  ).toContain("run automatically");
+  expect(
+    screen.getByText(/Enabling this experiment carries risk/).textContent,
+  ).toContain("run_shell consent to Ask");
+});

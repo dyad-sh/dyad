@@ -3,6 +3,7 @@ import { spawn, spawnSync } from "node:child_process";
 import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import treeKill from "tree-kill";
+import { PROVIDER_TO_ENV_VAR } from "@/ipc/shared/language_model_constants";
 import { BoundedOutputBuffer } from "@/ipc/utils/bounded_output_buffer";
 import { buildWindowsCommandInvocation } from "@/ipc/utils/windows_command";
 
@@ -42,31 +43,43 @@ function registerQuitCleanup() {
   });
 }
 
-/** Deliberate allowlist: never inherit engine keys or interpreter startup hooks. */
+/** Preserve host CLI configuration/authentication, excluding Dyad secrets and startup injection. */
 export function shellEnvironment(
   source: NodeJS.ProcessEnv = process.env,
 ): NodeJS.ProcessEnv {
-  const allowed = new Set([
-    "path",
-    "home",
-    "userprofile",
-    "systemroot",
-    "windir",
-    "comspec",
-    "temp",
-    "tmp",
-    "tmpdir",
-    "localappdata",
-    "appdata",
-    "programfiles",
-    "programfiles(x86)",
-    "lang",
-    "lc_all",
-    "lc_ctype",
-    "pathext",
+  const denied = new Set([
+    ...Object.values(PROVIDER_TO_ENV_VAR),
+    "GOOGLE_API_KEY",
+    "AZURE_OPENAI_API_KEY",
+    "BASH_ENV",
+    "ENV",
+    "PROMPT_COMMAND",
+    "SHELLOPTS",
+    "BASHOPTS",
+    "CDPATH",
+    "GLOBIGNORE",
+    "ZDOTDIR",
+    "NODE_OPTIONS",
+    "NODE_PATH",
+    "ELECTRON_RUN_AS_NODE",
+    "PYTHONSTARTUP",
+    "PYTHONPATH",
+    "RUBYOPT",
+    "RUBYLIB",
+    "PERL5OPT",
+    "PERL5LIB",
+    "LD_PRELOAD",
+    "LD_LIBRARY_PATH",
   ]);
   return Object.fromEntries(
-    Object.entries(source).filter(([key]) => allowed.has(key.toLowerCase())),
+    Object.entries(source).filter(([key]) => {
+      const normalized = key.toUpperCase();
+      return (
+        !denied.has(normalized) &&
+        !normalized.startsWith("DYAD_") &&
+        !normalized.startsWith("DYLD_")
+      );
+    }),
   );
 }
 
@@ -235,8 +248,10 @@ export function runShellProcess(
     child.once("exit", (code) => {
       exited = true;
       exitCode = code;
-      // Never target an exited Windows root PID, even while pipes are draining.
-      if (platform === "win32" && child.pid) activeShellPids.delete(child.pid);
+      // A late Unix exit must retire an unconfirmed root too, before PID reuse.
+      // Normal Unix groups remain registered until close so quit can stop descendants.
+      if ((platform === "win32" || settled) && child.pid)
+        activeShellPids.delete(child.pid);
     });
     child.stdout.on("data", (data: Buffer) => {
       stdout.append(data);

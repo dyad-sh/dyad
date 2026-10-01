@@ -75,7 +75,11 @@ export interface AgentContext {
   /** Host-recorded evidence for mandatory shell review, shared across tool calls. */
   shellReviewContext?: {
     tools: { name: string; description: string; available: boolean }[];
-    history: { tool: string; args: string; outcome: string }[];
+    history: {
+      tool: string;
+      args: string;
+      outcome: "returned" | "execution_failed" | "not_executed_or_denied";
+    }[];
   };
   /** Accepted root settings, including resolved mode and billing account. */
   inferenceSettings?: UserSettings;

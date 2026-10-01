@@ -1439,7 +1439,9 @@ describe("handleLocalAgentStream", () => {
           },
         };
         mockRequireMcpToolConsent.mockResolvedValue({ approved });
-        const history: { tool: string; args: string; outcome: string }[] = [];
+        const history: NonNullable<
+          AgentContext["shellReviewContext"]
+        >["history"] = [];
         vi.mocked(buildAgentToolSet).mockImplementationOnce((ctx) => {
           ctx.shellReviewContext = { tools: [], history };
           return {};
@@ -1472,7 +1474,7 @@ describe("handleLocalAgentStream", () => {
         expect(history).toHaveLength(1);
         expect(history[0].tool).toBe("srv__archive");
         expect(history[0].outcome).toContain(
-          approved ? "Execution failed" : "not eligible for shell fallback",
+          approved ? "execution_failed" : "not_executed_or_denied",
         );
         expect(execute).toHaveBeenCalledTimes(approved ? 1 : 0);
       },

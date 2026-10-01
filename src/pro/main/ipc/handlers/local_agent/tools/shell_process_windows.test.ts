@@ -2,14 +2,26 @@
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-const mocks = vi.hoisted(() => ({ spawn: vi.fn(), treeKill: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  spawn: vi.fn(),
+  spawnSync: vi.fn(),
+  treeKill: vi.fn(),
+  quit: undefined as undefined | (() => void),
+}));
+vi.mock("electron", () => ({
+  app: {
+    once: (_event: string, callback: () => void) => {
+      mocks.quit = callback;
+    },
+  },
+}));
 vi.mock("node:child_process", async (original) => {
   const actual = await original<typeof import("node:child_process")>();
   return {
     ...actual,
-    default: { ...actual, spawn: mocks.spawn, spawnSync: vi.fn() },
+    default: { ...actual, spawn: mocks.spawn, spawnSync: mocks.spawnSync },
     spawn: mocks.spawn,
-    spawnSync: vi.fn(),
+    spawnSync: mocks.spawnSync,
   };
 });
 vi.mock("tree-kill", () => ({ default: mocks.treeKill }));
@@ -141,4 +153,19 @@ it("bounds a hung Windows taskkill callback even after close", async () => {
     shutdownUnconfirmed: true,
   });
   expect(mocks.treeKill).toHaveBeenCalledTimes(1);
+});
+
+it("retires an unconfirmed Unix PID on late exit before quit cleanup", async () => {
+  const kill = vi.spyOn(process, "kill").mockImplementation(() => true);
+  const pending = runShellProcess(
+    { command: "sleep 30", cwd: "/app", timeoutMs: 1000, onOutput: vi.fn() },
+    "linux",
+  );
+  await vi.advanceTimersByTimeAsync(1000 + SHELL_SHUTDOWN_TIMEOUT_MS);
+  expect(await pending).toMatchObject({ shutdownUnconfirmed: true });
+  child.emit("exit", null);
+  kill.mockClear();
+  mocks.quit!();
+  expect(kill).not.toHaveBeenCalled();
+  expect(mocks.spawnSync).not.toHaveBeenCalled();
 });

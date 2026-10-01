@@ -595,7 +595,7 @@ describe("MCP shell fallback evidence", () => {
       });
       await expect(map.srv__hello({})).rejects.toThrow();
       expect(ctx.shellReviewContext.history[0].outcome).toContain(
-        approved ? "Execution failed" : "not eligible for shell fallback",
+        approved ? "execution_failed" : "not_executed_or_denied",
       );
       expect(execute).toHaveBeenCalledTimes(approved ? 1 : 0);
     },

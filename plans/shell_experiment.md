@@ -30,6 +30,7 @@ Use shared review infrastructure for MCP and shell commands, with separate polic
 - Run Bash without startup profiles and PowerShell without profiles or interactive prompts. Invoke the resolved executable directly with argument arrays, avoiding an intermediate `cmd.exe`.
 - Support foreground, noninteractive commands only. Reject background jobs, persistent servers, privilege escalation, and unrelated machine administration.
 - Avoid injecting Dyad credentials; pass only the host environment required for app commands. Keep command text out of general telemetry.
+- Preserve host CLI profiles, authentication configuration, proxy/CA settings, and Windows context with an environment denylist; strip Dyad/provider keys and interpreter startup injection.
 - Register shell execution as potentially mutating work before any asynchronous gap. Coordinate app access and retain ownership until the process tree has stopped; cancellation must not allow finalization or deletion to race surviving processes.
 - Reuse existing workspace fingerprinting and post-command reconciliation patterns so shell-generated edits participate in mutation accounting, pre-commit eligibility, Supabase handling, and automatic commits. Preserve and report partial edits after failure or cancellation.
 - Show the shell, exact command, review reason, bounded streamed output, and terminal status in chat. Blocked calls explain the reason or identify the dedicated tool to use.
@@ -62,6 +63,7 @@ Defaults remain off-by-default, root-only, and Host-runtime-only. App-related co
 - Keep credential theft, hidden/unintended sensitive uploads, permission bypass, opaque destructive effects, and unsupported execution boundaries blocked.
 - Show exact command and review reason before a one-time approval. Neither approval nor retry can be saved as Always allow.
 - Resolve shell consent after review to avoid blind or duplicate approvals. Retry means a fresh classification, never approval to execute without a verdict.
+- Explicitly disclose that opting in permits automatic unsandboxed host commands and fallible AI review. Users can choose Ask consent. Exclude raw agent tool results and errors from review; fallback evidence uses only host-recorded status and call arguments.
 - Keep review and approval outside app resource claims and mutation tracking. Cancel queued execution admission and revalidate inspected files before spawning. Path and runtime consumers hold read claims; arbitrary command mutations retain repository/provider/configuration exclusion.
 - Shrink large tool-catalog descriptions before rejecting review; preserve every name and availability flag. If names alone exceed the budget, explain how to reduce the MCP catalog before retrying.
 - Bound process shutdown to three seconds after cancellation/timeout, even if descendants retain pipes. Unconfirmed shutdown returns an explicit recovery result and fences conflicting app operations until Dyad restarts; it must never silently release unsafe mutations.

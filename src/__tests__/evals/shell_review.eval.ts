@@ -118,7 +118,7 @@ describe.skipIf(!hasDyadProKey())("gpt-6-luna shell policy (live)", () => {
                     {
                       tool: entry.tools?.[0],
                       args: "{}",
-                      outcome: `Execution failed (untrusted error details): ${entry.executionFailure}`,
+                      outcome: "execution_failed",
                     },
                   ]
                 : [],

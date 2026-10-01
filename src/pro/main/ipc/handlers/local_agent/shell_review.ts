@@ -36,6 +36,8 @@ export async function revalidateShellInspectionEvidence(
     for (const [relative, entry] of evidence) {
       const target = await fs.realpath(path.resolve(appPath, relative));
       const stat = await fs.stat(target);
+      if (stat.isFile() && stat.nlink !== 1)
+        throw new Error("Inspection requires a file without hard links");
       if (
         target !== entry.target ||
         stat.size !== entry.bytes ||
@@ -104,6 +106,8 @@ export function buildShellInspectionTool(
         throw new Error("Inspection path is unavailable");
       const stat = await fs.stat(target);
       const inspected = { target, bytes: stat.size, modified: stat.mtimeMs };
+      if (stat.isFile() && stat.nlink !== 1)
+        throw new Error("Inspection requires a file without hard links");
       if (!read) evidence?.set(relative, inspected);
       if (!read)
         return {
@@ -123,6 +127,16 @@ export function buildShellInspectionTool(
       // Bounded read even if the file grows between stat and open.
       const file = await fs.open(target, "r");
       try {
+        const opened = await file.stat();
+        // Check the actual descriptor before reading; an alias can change during open.
+        if (
+          !opened.isFile() ||
+          opened.nlink !== 1 ||
+          opened.size > 24_000 ||
+          opened.dev !== stat.dev ||
+          opened.ino !== stat.ino
+        )
+          throw new Error("Inspection file changed or has hard links");
         const buffer = Buffer.alloc(24_001);
         const { bytesRead } = await file.read(buffer, 0, buffer.length, 0);
         signal.throwIfAborted();
@@ -173,7 +187,12 @@ export function boundShellReviewContext(
     history: context.history.slice(-6).map((entry) => ({
       tool: entry.tool,
       args: cap(entry.args, 1000),
-      outcome: cap(entry.outcome, 2000),
+      outcome:
+        entry.outcome === "execution_failed"
+          ? "execution_failed"
+          : entry.outcome === "returned"
+            ? "returned"
+            : "not_executed_or_denied",
     })),
     contextNotice:
       "Descriptions and evidence may be truncated. Missing evidence cannot establish authorization or a failed dedicated-tool execution.",

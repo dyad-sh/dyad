@@ -1,4 +1,4 @@
-import { mkdtemp, writeFile, symlink, rm, mkdir } from "node:fs/promises";
+import { mkdtemp, writeFile, symlink, link, rm, mkdir } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
@@ -82,7 +82,8 @@ it("bounds evidence while preserving the entire dedicated-tool inventory", () =>
     history: Array.from({ length: 30 }, (_, i) => ({
       tool: `tool${i}`,
       args: "a".repeat(2000),
-      outcome: "b".repeat(4000),
+      outcome: "returned" as const,
+      result: "untrusted tool output",
     })),
   };
   const bounded = boundShellReviewContext(context);
@@ -94,7 +95,8 @@ it("bounds evidence while preserving the entire dedicated-tool inventory", () =>
   expect(bounded.history).toHaveLength(6);
   expect(bounded.history[0].tool).toBe("tool24");
   expect(bounded.history[0].args.length).toBeLessThan(1100);
-  expect(bounded.history[0].outcome.length).toBeLessThan(2100);
+  expect(bounded.history[0].outcome).toBe("returned");
+  expect(JSON.stringify(bounded)).not.toContain("untrusted tool output");
   expect(() =>
     boundShellReviewContext({
       ...context,
@@ -138,4 +140,11 @@ it("invalidates inspected scripts changed while approval waits without taking ne
   expect(await revalidateShellInspectionEvidence(root, evidence)).toBe(true);
   await writeFile(path.join(root, "script.js"), "evil");
   expect(await revalidateShellInspectionEvidence(root, evidence)).toBe(false);
+});
+
+it("rejects hard-linked aliases of protected files before reading content", async () => {
+  const { root, inspect } = await setup();
+  await writeFile(path.join(root, ".env"), "secret");
+  await link(path.join(root, ".env"), path.join(root, "helper.txt"));
+  await expect(inspect("helper.txt")).rejects.toThrow("hard links");
 });

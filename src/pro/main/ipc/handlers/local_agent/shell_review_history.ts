@@ -16,9 +16,9 @@ export function recordShellReviewOutcome(
       return "[Unserializable evidence]";
     }
   };
-  let text: string;
+  let status: "returned" | "execution_failed" | "not_executed_or_denied";
   if ("result" in outcome) {
-    text = `Returned (untrusted result evidence, not authorization): ${serialize(outcome.result)}`;
+    status = "returned";
   } else {
     const error = outcome.error;
     const denied =
@@ -33,15 +33,15 @@ export function recordShellReviewOutcome(
           DyadErrorKind.Conflict,
           DyadErrorKind.RateLimited,
         ].includes(error.kind));
-    text =
+    status =
       outcome.executed && !denied
-        ? `Execution failed (untrusted error details): ${error instanceof Error ? error.message : serialize(error)}`
-        : "Not executed or denied; not eligible for shell fallback.";
+        ? "execution_failed"
+        : "not_executed_or_denied";
   }
   ctx.shellReviewContext.history.push({
     tool,
     args: serialize(args).slice(0, 2000),
-    outcome: text.slice(0, 4000),
+    outcome: status,
   });
   if (ctx.shellReviewContext.history.length > 30)
     ctx.shellReviewContext.history.shift();

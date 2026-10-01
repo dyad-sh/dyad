@@ -888,8 +888,8 @@ function DeploymentCard({
   const inProgress = state !== undefined && isDeploymentInProgress(state);
 
   const chatId = useAtomValue(selectedChatIdAtom);
-  const { streamMessage } = useStreamChat();
-  const { selectedMode } = useChatMode(chatId);
+  const { streamMessage, isStreaming } = useStreamChat();
+  const { selectedMode, isLoading: isChatModeLoading } = useChatMode(chatId);
   // The fix is an edit to the config or the code, which Build and Agent mode
   // both make. Ask and Plan mode cannot, so the request has to leave them.
   const canWriteInCurrentMode =
@@ -905,13 +905,11 @@ function DeploymentCard({
 
   // Hand the build log to the chat, in its own mode unless a switch was
   // confirmed, so the AI can fix the config or code.
-  const doFixWithAI = ({ inAgentMode }: { inAgentMode: boolean }) => {
-    if (!status.data) return;
-    if (chatId == null) {
-      showInfo("Open a chat to ask the AI to fix this deployment.");
-      return;
-    }
-    streamMessage({
+  const doFixWithAI = async ({ inAgentMode }: { inAgentMode: boolean }) => {
+    if (!status.data || chatId == null) return;
+    // A refused send reports itself, so the confirmation is only for a send
+    // that went through.
+    const sent = await streamMessage({
       prompt: buildCloudflareDeployFixPrompt({
         workerName: connection.workerName,
         rootDirectory: connection.rootDirectory,
@@ -921,12 +919,18 @@ function DeploymentCard({
       chatId,
       ...(inAgentMode ? { requestedChatMode: "local-agent" as const } : {}),
     });
-    showInfo("Sent to chat — asking the AI to fix the deployment…");
+    if (sent) {
+      showInfo("Sent to chat — asking the AI to fix the deployment…");
+    }
   };
 
   const handleFixWithAI = () => {
+    if (chatId == null) {
+      showInfo("Open a chat to ask the AI to fix this deployment.");
+      return;
+    }
     if (canWriteInCurrentMode) {
-      doFixWithAI({ inAgentMode: false });
+      void doFixWithAI({ inAgentMode: false });
     } else {
       setFixNeedsAgentMode(true);
     }
@@ -1008,6 +1012,10 @@ function DeploymentCard({
                 type="button"
                 size="sm"
                 onClick={handleFixWithAI}
+                // The mode decides whether to ask first, so it has to be known.
+                // While a fix is already streaming, another click would only
+                // queue the same request again.
+                disabled={isChatModeLoading || isStreaming}
                 data-testid="cloudflare-fix-with-ai"
               >
                 <Sparkles className="h-4 w-4 mr-1" />
@@ -1082,7 +1090,7 @@ function DeploymentCard({
         action="deploy"
         onContinue={() => {
           setFixNeedsAgentMode(false);
-          doFixWithAI({ inAgentMode: true });
+          void doFixWithAI({ inAgentMode: true });
         }}
       />
     </div>

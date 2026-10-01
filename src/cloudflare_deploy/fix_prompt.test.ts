@@ -30,6 +30,24 @@ describe("buildCloudflareDeployFixPrompt", () => {
     expect(prompt).toContain("config is missing");
   });
 
+  it("uses a fence the log cannot close when it contains backticks", () => {
+    const prompt = buildCloudflareDeployFixPrompt({
+      workerName: "site",
+      rootDirectory: "",
+      configPath: "wrangler.toml",
+      logTail: [
+        'Or add the following to your "wrangler.toml" file:',
+        "```",
+        'main = "src/index.ts"',
+        "```",
+      ],
+    });
+
+    expect(prompt).toContain(
+      'Build log:\n````\nOr add the following to your "wrangler.toml" file:\n```\nmain = "src/index.ts"\n```\n````',
+    );
+  });
+
   it("leaves the log out when Cloudflare returned none", () => {
     const prompt = buildCloudflareDeployFixPrompt({
       workerName: "site",

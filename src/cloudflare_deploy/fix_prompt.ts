@@ -24,7 +24,19 @@ export function buildCloudflareDeployFixPrompt({
     `The Cloudflare Workers deployment of ${folder} to the Worker "${workerName}" failed. ${config} Find the cause in the config or the code and fix it.`,
   ];
   if (logTail.length > 0) {
-    sections.push(`Build log:\n\`\`\`\n${logTail.join("\n")}\n\`\`\``);
+    const log = logTail.join("\n");
+    // A fence can only be closed by a run at least as long as itself, and
+    // Wrangler's own hints contain triple-backtick runs.
+    const fence = "`".repeat(Math.max(3, longestBacktickRun(log) + 1));
+    sections.push(`Build log:\n${fence}\n${log}\n${fence}`);
   }
   return sections.join("\n\n");
+}
+
+function longestBacktickRun(text: string): number {
+  let longest = 0;
+  for (const run of text.match(/`+/g) ?? []) {
+    longest = Math.max(longest, run.length);
+  }
+  return longest;
 }

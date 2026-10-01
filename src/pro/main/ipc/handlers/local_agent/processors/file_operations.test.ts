@@ -168,6 +168,51 @@ describe("deployAllFunctionsIfNeeded", () => {
     });
   });
 
+  it("explains a dependency-analysis fallback in the deploy status", async () => {
+    mocks.deployAffectedSupabaseFunctions.mockImplementationOnce(
+      async ({ onScopeResolved, onProgress }) => {
+        onScopeResolved({
+          kind: "all",
+          reason: {
+            code: "unresolved_relative_import",
+            filePath: "supabase/functions/alpha/index.ts",
+            specifier: "../_shared/missing.ts",
+          },
+        });
+        onProgress({
+          phase: "finished",
+          total: 2,
+          active: 0,
+          queued: 0,
+          completed: 2,
+          succeeded: 2,
+          failed: 0,
+        });
+        return [];
+      },
+    );
+    const onXmlComplete = vi.fn();
+
+    await expect(
+      deployAllFunctionsIfNeeded({
+        appId: 1,
+        appPath: "/apps/test",
+        supabaseProjectId: "project-id",
+        supabaseOrganizationSlug: null,
+        isSharedModulesChanged: true,
+        sharedServerModulePaths: ["supabase/functions/_shared/foo.ts"],
+        pendingFunctionDeploys: [],
+        pendingFunctionDeletes: [],
+        onXmlStream: vi.fn(),
+        onXmlComplete,
+      }),
+    ).resolves.toEqual({ success: true });
+
+    expect(onXmlComplete).toHaveBeenCalledWith(
+      '<dyad-status title="Supabase functions deployed: 2/2 complete (fallback to all functions: unresolved import)" state="finished">\nRedeployed all functions because dependency analysis couldn\'t resolve "../_shared/missing.ts" imported from supabase/functions/alpha/index.ts.\n\n2 succeeded\n0 failed\n0 active\n0 queued\n</dyad-status>',
+    );
+  });
+
   it("rejects a stale project captured by an earlier chat before any remote effects", async () => {
     mocks.findApp.mockResolvedValueOnce({
       supabaseProjectId: "replacement-project",

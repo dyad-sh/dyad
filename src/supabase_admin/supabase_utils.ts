@@ -18,6 +18,11 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { runSupabaseDependencyAnalysis } from "@/ipc/processors/supabase_dependency_analysis";
 import type { SupabaseFunctionImpact } from "../../shared/supabase_dependency_analysis_types";
 
+import {
+  describeSupabaseFallbackReason,
+  type SupabaseDeployScope,
+} from "./supabase_deploy_scope";
+
 export type { SupabaseFunctionImpact } from "../../shared/supabase_dependency_analysis_types";
 
 const logger = log.scope("supabase_utils");
@@ -192,7 +197,13 @@ export async function getSupabaseFunctionsAffectedBySharedModules({
       "Supabase dependency analysis failed; deploying all functions",
       error,
     );
-    return { kind: "all", reason: "dependency_analysis_failed" };
+    return {
+      kind: "all",
+      reason: {
+        code: "dependency_analysis_failed",
+        detail: error instanceof Error ? error.message : String(error),
+      },
+    };
   }
 }
 
@@ -241,6 +252,8 @@ interface DeployAffectedSupabaseFunctionsArgs extends AppScopedDeployArgs {
   changedSharedModulePaths: string[];
   pendingFunctionDeploys: string[];
   onProgress?: (progress: SupabaseDeployProgress) => void;
+  /** Called with the chosen function set before any function deploys. */
+  onScopeResolved?: (scope: SupabaseDeployScope) => void;
 }
 
 /**
@@ -271,6 +284,7 @@ async function deployAffectedUnscoped({
   changedSharedModulePaths,
   pendingFunctionDeploys,
   onProgress,
+  onScopeResolved,
   onSnapshotCaptured,
   signal,
 }: Omit<DeployAffectedSupabaseFunctionsArgs, "appId">): Promise<string[]> {
@@ -293,7 +307,7 @@ async function deployAffectedUnscoped({
           })
         : ({
             kind: "all",
-            reason: "changed_shared_paths_missing",
+            reason: { code: "changed_shared_paths_missing" },
           } as const);
 
     if (impact.kind === "partial") {
@@ -305,6 +319,12 @@ async function deployAffectedUnscoped({
           ? `Shared modules changed, redeploying affected Supabase functions: ${functionNames.join(", ")}`
           : "Shared modules changed, no affected Supabase functions to bundle",
       );
+      onScopeResolved?.({
+        kind: "affected",
+        changedSharedModulePaths: Array.from(new Set(changedSharedModulePaths)),
+        affectedFunctionNames: impact.functionNames,
+        editedFunctionNames: Array.from(new Set(pendingFunctionDeploys)),
+      });
       return deploySupabaseFunctionsUnscoped({
         ...deployArgs,
         functionNames,
@@ -312,8 +332,9 @@ async function deployAffectedUnscoped({
     }
 
     logger.info(
-      `Shared module dependency analysis fell back to all functions: ${impact.reason}`,
+      `Shared module dependency analysis fell back to all functions (${impact.reason.code}): ${describeSupabaseFallbackReason(impact.reason)}`,
     );
+    onScopeResolved?.({ kind: "all", reason: impact.reason });
     return deploySupabaseFunctionsUnscoped(deployArgs);
   }
 
@@ -321,6 +342,7 @@ async function deployAffectedUnscoped({
   logger.info(
     `Redeploying pending Supabase functions: ${functionNames.join(", ")}`,
   );
+  onScopeResolved?.({ kind: "edited", functionNames });
   return deploySupabaseFunctionsUnscoped({
     ...deployArgs,
     functionNames,

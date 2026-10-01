@@ -17,7 +17,7 @@ describe("Supabase dependency analysis worker", () => {
         }),
       ).resolves.toEqual({
         success: true,
-        data: { kind: "all", reason: "typescript_not_installed" },
+        data: { kind: "all", reason: { code: "typescript_not_installed" } },
       });
     } finally {
       await fs.rm(appPath, { recursive: true, force: true });

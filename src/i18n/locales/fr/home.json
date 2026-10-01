@@ -1,4 +1,50 @@
 {
+  "heroTitle": "Que voulez-vous créer\u00a0?",
+  "heroSubtitle": "Décrivez votre idée. Atelier IA va la transformer en application fonctionnelle.",
+  "upgradeToPro": "Passer à Pro",
+  "manageAiSetup": "Gérer la configuration IA",
+  "connectAiToBuild": "Connecter une IA pour créer — prend une minute",
+  "featuredApps": "Applications à la une",
+  "seeMore": "Voir plus",
+  "newApp": "Nouvelle application",
+  "searchApps": "Rechercher des applications",
+  "loadingApps": "Chargement des applications...",
+  "noAppsFound": "Aucune application trouvée",
+  "favoriteApps": "Applications favorites",
+  "pinAppHint": "Ajoutez une application aux favoris pour l'épingler ici",
+  "collections": "Collections",
+  "empty": "Vide",
+  "errorLoadingApps": "Erreur lors du chargement des applications",
+  "otherApps": "Autres applications",
+  "templates": {
+    "pickDefaultTemplate": "Choisissez votre modèle par défaut",
+    "chooseStartingPoint": "Choisissez un point de départ pour votre nouveau projet.",
+    "loadingAdditional": " Chargement des modèles supplémentaires...",
+    "officialTemplates": "Modèles officiels",
+    "communityTemplates": "Modèles de la communauté",
+    "selected": "Sélectionné",
+    "official": "Officiel",
+    "experimental": "Expérimental",
+    "viewOnGithub": "Voir sur GitHub",
+    "createApp": "Créer l'application",
+    "connectNeonPrompt": "Veuillez connecter votre compte Neon pour utiliser ce modèle."
+  },
+  "chatInput": {
+    "askDyadToBuild": "Demandez à Atelier IA de créer {{typingText}}",
+    "sendMessageToApp": "Envoyer un message à {{appName}}...",
+    "ecommerceStore": "une boutique en ligne...",
+    "informationPage": "un site vitrine...",
+    "landingPage": "une page d'atterrissage...",
+    "voiceToText": "Saisie vocale",
+    "voiceToTextPro": "Saisie vocale (nécessite Pro)",
+    "stopRecording": "Arrêter l'enregistrement",
+    "transcribing": "Transcription en cours...",
+    "cancelGenerationUnavailable": "Annuler la génération (non disponible ici)",
+    "noAppSelected": "Aucune application sélectionnée",
+    "selectExistingApp": "Sélectionner une application existante",
+    "changeSelectedApp": "Changer d'application",
+    "deselectApp": "Désélectionner l'application"
+  },
   "openInNewWindow": "Ouvrir dans une nouvelle fenêtre",
   "mentionFileInChat": "Mentionner le fichier dans le chat",
   "buildingApp": "Construction de votre application",
@@ -267,6 +313,14 @@
     "security": "Sécurité",
     "publish": "Publier",
     "tests": "Tests",
+    "testQueued": "En file d'attente",
+    "testRunsQueued_one": "{{count}}\u00a0exécution en file d'attente",
+    "testRunsQueued_other": "{{count}}\u00a0exécutions en file d'attente",
+    "cancelQueued": "Annuler la file d'attente",
+    "cancelQueuedTests": "Annuler les tests en file d'attente",
+    "allTests": "Tous les tests",
+    "queueAll": "Tout mettre en file d'attente",
+    "queueAllTests": "Mettre tous les tests en file d'attente",
     "testGate": {
       "settingsLoading": "Chargement des paramètres…",
       "settingsUnavailable": "Dyad n'a pas pu charger vos paramètres et ne peut donc pas déterminer comment les tests s'exécuteraient.",
@@ -473,7 +527,9 @@
       "proFeatureTitle": "L'annotateur est une fonctionnalité Pro",
       "proFeatureDescription": "Débloquez la possibilité d'annoter des captures d'écran et améliorez votre flux de travail avec Dyad Pro.",
       "getDyadPro": "Passer à Dyad Pro"
-    }
+    },
+    "openDevServer": "Ouvrir l'adresse du serveur de développement",
+    "openDevServerDescription": "Pour les navigateurs ne pouvant pas ouvrir l'adresse de prévisualisation. Partage le stockage du navigateur avec les autres applications locales."
   },
   "integrations": {
     "github": {
@@ -720,7 +776,8 @@
       "redeploySucceededWithPruning_other": "{{count}} fonctions Edge redéployées et fonctions présentes uniquement à distance supprimées : {{functions}}",
       "redeployPrunedOnly": "Fonctions Edge présentes uniquement à distance supprimées : {{functions}}",
       "noFunctionsToRedeploy": "Aucune fonction Edge locale à redéployer",
-      "redeployFailed": "Le redéploiement des fonctions Edge s'est terminé avec des problèmes : {{error}}"
+      "redeployFailed": "Le redéploiement des fonctions Edge s'est terminé avec des problèmes : {{error}}",
+      "previewRedirectNotice": "Atelier IA ajoute automatiquement les URL de prévisualisation locale à la liste d'autorisations de redirection d'authentification pour {{project}}. Ces entrées restent après la déconnexion ou la suppression d'une application, car des collègues peuvent utiliser les mêmes URL. Supprimez les entrées inutilisées dans Supabase → Authentification → Configuration des URL."
     },
     "neon": {
       "title": "Intégration Neon",
@@ -908,5 +965,10 @@
       "neonUnavailable": "Neon est indisponible, car un projet Supabase est déjà connecté. Une seule intégration de base de données peut être active à la fois.",
       "chooseOne": "Choisissez une intégration de base de données. Connecter Supabase ou Neon bloquera l'autre pour cette application."
     }
+  },
+  "previewAuth": {
+    "neonPending": "Enregistrement en arrière-plan de l'adresse de prévisualisation de cette application auprès de Neon. La connexion OAuth et les redirections d'authentification peuvent ne pas fonctionner tant que l'enregistrement n'est pas terminé.",
+    "supabasePending": "Enregistrement en arrière-plan des URL de redirection de prévisualisation de cette application auprès de Supabase. Les redirections d'authentification peuvent ne pas fonctionner tant que l'enregistrement n'est pas terminé.",
+    "retry": "Redémarrer et réessayer"
   }
 }

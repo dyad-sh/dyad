@@ -11,6 +11,24 @@ const mocks = vi.hoisted(() => ({
   transcription: null as null | ((text: string) => void),
 }));
 
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({
+    t: (key: string) =>
+      ({
+        "home:chatInput.voiceToText": "Voice to text",
+        "home:chatInput.stopRecording": "Stop recording",
+        "home:chatInput.transcribing": "Transcribing...",
+        "home:chatInput.voiceToTextPro": "Voice to text (Pro only)",
+        "home:chatInput.cancelGeneration": "Cancel generation",
+        "home:chatInput.sendMessage": "Send message",
+        "chat:sendMessage": "Send message",
+        "home:chatInput.noAppSelected": "No app selected",
+        "home:chatInput.selectAppTooltip": "Select app to chat with",
+      })[key] ?? key,
+    i18n: { language: "en" },
+  }),
+}));
+
 vi.mock("jotai", async (importOriginal) => ({
   ...(await importOriginal<typeof import("jotai")>()),
   useAtom: (atom: { debugLabel?: string }) =>

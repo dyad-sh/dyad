@@ -14,7 +14,8 @@ const { _electron: electron } = require("playwright");
       "--enable-logging",
       "--user-data-dir=/tmp/dyad-e2e-tests",
     ],
-    executablePath: "../../out/Atelier IA-darwin-arm64/Atelier IA.app/Contents/MacOS/Atelier IA",
+    executablePath:
+      "../../out/Atelier IA-darwin-arm64/Atelier IA.app/Contents/MacOS/Atelier IA",
   });
   const context = await browser.context();
   await context.route("**/*", (route) => route.continue());

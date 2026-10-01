@@ -59,5 +59,13 @@
   "builtIn": "Integrado",
   "advanced": "Avanzado",
   "required": "Requerido",
-  "optional": "Opcional"
+  "optional": "Opcional",
+  "nav": {
+    "apps": "Aplicaciones",
+    "settings": "Configuración",
+    "library": "Biblioteca",
+    "templates": "Plantillas",
+    "plugins": "Plugins",
+    "help": "Ayuda"
+  }
 }

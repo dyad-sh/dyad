@@ -73,5 +73,13 @@
     "resumeSubscription": "Reprendre l'abonnement",
     "openActionError": "Impossible d'ouvrir Academy. Veuillez réessayer.",
     "dismiss": "Ignorer l'avis de facturation"
+  },
+  "nav": {
+    "apps": "Applications",
+    "settings": "Paramètres",
+    "library": "Bibliothèque",
+    "templates": "Modèles",
+    "plugins": "Extensions",
+    "help": "Aide"
   }
 }

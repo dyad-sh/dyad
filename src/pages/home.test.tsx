@@ -53,7 +53,18 @@ vi.mock("@/ipc/types", async (importOriginal) => ({
   ipc: { system: { openExternalUrl: mocks.openExternalUrl } },
 }));
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    t: (key: string) =>
+      ({
+        upgradeToPro: "Upgrade to Pro",
+        connectAiToBuild: "Connect AI to build — takes a minute",
+        manageAiSetup: "Manage AI setup",
+        heroTitle: "What do you want to build?",
+        heroSubtitle:
+          "Describe your idea. Atelier IA will turn it into a working app.",
+      })[key] ?? key,
+    i18n: { language: "en" },
+  }),
 }));
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => mocks.navigate,

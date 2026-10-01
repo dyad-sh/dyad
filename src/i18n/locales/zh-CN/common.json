@@ -73,5 +73,13 @@
     "resumeSubscription": "恢复订阅",
     "openActionError": "无法打开 Academy。请重试。",
     "dismiss": "关闭账单通知"
+  },
+  "nav": {
+    "apps": "应用",
+    "settings": "设置",
+    "library": "资料库",
+    "templates": "模板",
+    "plugins": "插件",
+    "help": "帮助"
   }
 }

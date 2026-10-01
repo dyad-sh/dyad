@@ -19,6 +19,7 @@ import {
   type ShellProcessResult,
 } from "./shell_process";
 import { trackWorkspaceMutation } from "./tool_invocation";
+import { serializeShellResultForModel } from "./shell_model_result";
 import {
   tryGetGitStateFingerprint,
   tryCollectSupabaseFunctionEntryPoints,
@@ -274,7 +275,11 @@ export const runShellTool: ToolDefinition<z.infer<typeof schema>> = {
             .join("\n");
         const body = `${decision.reason}\nExit code: ${result.code ?? "none"}\n${result.stdout}\n${result.stderr}${result.truncated ? "\n[Output truncated]" : ""}${note ? `\n${note}` : ""}`;
         present(result.status, body, true);
-        return JSON.stringify({ ...result, reason: decision.reason, note });
+        return serializeShellResultForModel({
+          ...result,
+          reason: decision.reason,
+          note,
+        });
       });
       await deleteHookRemovedFunctions(ctx, removedFunctionNames);
       return outcome;

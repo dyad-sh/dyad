@@ -146,9 +146,10 @@ export function selectPendingToolConsents(
         kind: "agent",
         allowAlways: descriptor.allowAlways,
         confirmation: descriptor.confirmation,
-        classifierReason: descriptor.confirmation
-          ? descriptor.toolDescription
-          : undefined,
+        classifierReason:
+          descriptor.confirmation === "shell-approval"
+            ? descriptor.toolDescription
+            : undefined,
         requestId: descriptor.requestId,
         chatId: descriptor.chatId,
         toolName: descriptor.toolName,

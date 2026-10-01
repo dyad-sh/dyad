@@ -409,5 +409,6 @@
     "discard": "Descartar",
     "sending": "Enviando...",
     "send": "Enviar {{count}}"
-  }
+  },
+  "safetyReviewUnavailable": "Revisión de seguridad no disponible"
 }

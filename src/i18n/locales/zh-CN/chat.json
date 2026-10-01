@@ -408,5 +408,6 @@
     "discard": "丢弃",
     "sending": "正在发送...",
     "send": "发送 {{count}} 条"
-  }
+  },
+  "safetyReviewUnavailable": "安全审查不可用"
 }

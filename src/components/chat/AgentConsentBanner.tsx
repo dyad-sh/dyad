@@ -134,7 +134,14 @@ export function AgentConsentBanner({
             </span>
           </p>
         )}
-        {classifierPending ? (
+        {consent.confirmation === "shell-review-retry" ? (
+          <div className="ml-6 mb-1.5 rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground">
+            <div className="font-medium">{t("safetyReviewUnavailable")}</div>
+            <div className="mt-0.5 whitespace-pre-wrap break-words">
+              {toolDescription}
+            </div>
+          </div>
+        ) : classifierPending ? (
           <div
             className="ml-6 mb-1.5 flex items-center gap-1.5 text-xs text-muted-foreground"
             role="status"

@@ -411,5 +411,6 @@
     "discard": "Discard",
     "sending": "Sending...",
     "send": "Send {{count}}"
-  }
+  },
+  "safetyReviewUnavailable": "Safety review unavailable"
 }

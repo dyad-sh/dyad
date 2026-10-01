@@ -545,3 +545,33 @@ it("does not reconcile or delete remote functions after a failed partial update"
   await expect(readFile(entry)).rejects.toThrow();
   expect(mocks.deleteFunctions).toHaveBeenCalledWith(ctx, []);
 });
+
+it("caps model output separately while retaining the chat display", async () => {
+  const stdout = "x".repeat(64000),
+    stderr = "y".repeat(64000);
+  const spy = vi.spyOn(shellProcess, "runShellProcess").mockResolvedValueOnce({
+    executed: true,
+    code: 0,
+    status: "completed",
+    stdout,
+    stderr,
+    truncated: false,
+  });
+  try {
+    const serialized = await runShellTool.execute(
+      { command: writeCommand, description: "test" },
+      ctx,
+    );
+    expect(Math.ceil(serialized.length / 4)).toBeLessThanOrEqual(20000);
+    const result = JSON.parse(serialized);
+    expect(result.truncated).toBe(true);
+    expect(result.stdout.length + result.stderr.length).toBeLessThan(
+      stdout.length + stderr.length,
+    );
+    const display = vi.mocked(ctx.onXmlComplete).mock.calls.at(-1)![0];
+    expect(display).toContain(stdout);
+    expect(display).toContain(stderr);
+  } finally {
+    spy.mockRestore();
+  }
+});

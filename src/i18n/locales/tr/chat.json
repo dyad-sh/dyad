@@ -411,5 +411,6 @@
     "send": "{{count}} gönder"
   },
   "cancellationRemovingTestDatabase": "Geçici test veritabanı kaldırılıyor. Bu işlem biraz zaman alabilir.",
-  "cancellationCleaningTestSandbox": "Bu çalıştırmanın test ortamı ve verileri temizleniyor."
+  "cancellationCleaningTestSandbox": "Bu çalıştırmanın test ortamı ve verileri temizleniyor.",
+  "safetyReviewUnavailable": "Güvenlik incelemesi kullanılamıyor"
 }

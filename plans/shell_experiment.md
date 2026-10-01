@@ -13,6 +13,7 @@ Use shared review infrastructure for MCP and shell commands, with separate polic
 - Expose `run_shell({ command, description, timeout_ms? })` only to the root Agent on Pro-funded turns using a local runtime. Exclude Build, Ask, Plan, sub-agents, Free-mode turns, Docker, and cloud runtimes.
 - Limit command text to 9,000 UTF-16 code units on Windows (to fit the encoded command line) and 16,000 elsewhere. Choose the shell automatically by OS. Fix the starting directory to the app directory; expose neither environment overrides nor a selectable executable.
 - Default execution timeout to 60 seconds, capped at five minutes. Return bounded output, exit status, and distinct blocked, cancelled, timed-out, and failed outcomes.
+- Cap the complete model-facing JSON result at 20,000 estimated tokens, including metadata and escaping, independently of the retained chat output. Preserve output tails and indicate model truncation.
 
 ## Review pattern and policy
 

@@ -411,5 +411,6 @@
     "discard": "버리기",
     "sending": "전송 중...",
     "send": "{{count}}개 전송"
-  }
+  },
+  "safetyReviewUnavailable": "안전 검토를 사용할 수 없음"
 }

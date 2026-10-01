@@ -8,6 +8,8 @@ vi.mock("react-i18next", () => ({
       ({
         changesDatabaseSchema: "Changes database schema",
         destructiveDataChange: "Destructive data change",
+        flaggedForReview: "Flagged for review",
+        safetyReviewUnavailable: "Safety review unavailable",
         aiReviewingRequest:
           "AI is reviewing this request to decide if it's safe to auto-approve…",
       })[key] ?? key,
@@ -149,7 +151,7 @@ it("offers a review retry without offering command approval", () => {
         toolName: "run_shell",
         allowAlways: false,
         confirmation: "shell-review-retry",
-        classifierReason: "Safety review timed out",
+        toolDescription: "Safety review timed out. Retry runs the check again.",
         inputPreview: "Bash: gcloud logging read severity=ERROR --limit=50",
       }}
       onDecision={vi.fn()}
@@ -160,4 +162,6 @@ it("offers a review retry without offering command approval", () => {
   expect(container.textContent).not.toContain("Always allow");
   expect(container.textContent).not.toContain("Allow once");
   expect(container.textContent).toContain("Safety review timed out");
+  expect(container.textContent).toContain("Safety review unavailable");
+  expect(container.textContent).not.toContain("Flagged for review");
 });

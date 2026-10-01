@@ -11,6 +11,15 @@ export const TOOL_REVIEW_TIMEOUT_MS = 8_000;
 export const SHELL_REVIEW_TIMEOUT_MS = 45_000;
 const logger = log.scope("tool-safety-reviewer");
 
+/** Fixed, actionable preparation failures safe to show without provider payloads. */
+export class ShellReviewCatalogTooLargeError extends Error {
+  constructor() {
+    super(
+      "The tool catalog is too large for safety review. Disconnect unused MCP servers or reduce their exposed tools, then retry.",
+    );
+  }
+}
+
 /** Policy-specific decisions share transport, cancellation, and fail-closed parsing. */
 export async function reviewToolAction<D extends "ask" | "block">({
   settings,
@@ -103,9 +112,11 @@ export async function reviewToolAction<D extends "ask" | "block">({
       ? "Tool safety review was cancelled."
       : timedOut
         ? "Tool safety review timed out."
-        : state.phase === "verdict"
-          ? "The safety reviewer returned an invalid verdict."
-          : `Tool safety review failed during ${state.phase}.`;
+        : error instanceof ShellReviewCatalogTooLargeError
+          ? error.message
+          : state.phase === "verdict"
+            ? "The safety reviewer returned an invalid verdict."
+            : `Tool safety review failed during ${state.phase}.`;
     // Fixed metadata avoids logging payloads or provider errors containing secrets.
     logger.warn(reason, {
       phase: state.phase,

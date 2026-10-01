@@ -1,10 +1,12 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { tool } from "ai";
 import { z } from "zod";
 import {
   reviewToolAction,
   SHELL_REVIEW_TIMEOUT_MS,
+  ShellReviewCatalogTooLargeError,
 } from "./tool_safety_reviewer";
 import { getRecentTurnsForConsent } from "./mcp_consent_context";
 import { buildShellReviewPrompt } from "@/prompts/shell_review_policy";
@@ -21,7 +23,53 @@ function isForbiddenInspectionSegment(part: string): boolean {
   );
 }
 
-export function buildShellInspectionTool(appPath: string, signal: AbortSignal) {
+type InspectionEvidence = Map<
+  string,
+  { target: string; bytes: number; modified: number; hash?: string }
+>;
+
+export async function revalidateShellInspectionEvidence(
+  appPath: string,
+  evidence: InspectionEvidence,
+): Promise<boolean> {
+  try {
+    for (const [relative, entry] of evidence) {
+      const target = await fs.realpath(path.resolve(appPath, relative));
+      const stat = await fs.stat(target);
+      if (
+        target !== entry.target ||
+        stat.size !== entry.bytes ||
+        stat.mtimeMs !== entry.modified
+      )
+        return false;
+      if (entry.hash) {
+        if (!stat.isFile() || stat.size > 24_000) return false;
+        const file = await fs.open(target, "r");
+        try {
+          const buffer = Buffer.alloc(24_001);
+          const { bytesRead } = await file.read(buffer, 0, buffer.length, 0);
+          if (
+            createHash("sha256")
+              .update(buffer.subarray(0, bytesRead))
+              .digest("hex") !== entry.hash
+          )
+            return false;
+        } finally {
+          await file.close();
+        }
+      }
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function buildShellInspectionTool(
+  appPath: string,
+  signal: AbortSignal,
+  evidence?: InspectionEvidence,
+) {
   let reads = 0;
   return tool({
     description:
@@ -55,6 +103,8 @@ export function buildShellInspectionTool(appPath: string, signal: AbortSignal) {
       )
         throw new Error("Inspection path is unavailable");
       const stat = await fs.stat(target);
+      const inspected = { target, bytes: stat.size, modified: stat.mtimeMs };
+      if (!read) evidence?.set(relative, inspected);
       if (!read)
         return {
           type: stat.isFile()
@@ -78,6 +128,12 @@ export function buildShellInspectionTool(appPath: string, signal: AbortSignal) {
         signal.throwIfAborted();
         if (bytesRead > 24_000)
           throw new Error("Inspection file exceeds budget");
+        evidence?.set(relative, {
+          ...inspected,
+          hash: createHash("sha256")
+            .update(buffer.subarray(0, bytesRead))
+            .digest("hex"),
+        });
         return {
           resolvedRelative,
           untrustedContent: buffer.subarray(0, bytesRead).toString("utf8"),
@@ -95,14 +151,23 @@ export function boundShellReviewContext(
 ) {
   const cap = (text: string, size: number) =>
     text.length > size ? `${text.slice(0, size)}…[truncated]` : text;
-  const tools = context.tools.map((entry) => ({
+  let tools = context.tools.map((entry) => ({
     name: entry.name,
     available: entry.available,
     description: cap(entry.description, 240),
   }));
-  // Never silently omit dedicated tools from the reviewer's alternatives.
+  // Degrade descriptions first; never omit names or availability of alternatives.
+  for (const size of [120, 60, 0]) {
+    if (JSON.stringify(tools).length <= 40_000) break;
+    tools = context.tools.map((entry) => ({
+      name: entry.name,
+      available: entry.available,
+      description:
+        entry.available && size > 0 ? cap(entry.description, size) : "",
+    }));
+  }
   if (JSON.stringify(tools).length > 40_000)
-    throw new Error("Tool catalog exceeds safety review budget");
+    throw new ShellReviewCatalogTooLargeError();
   return {
     tools,
     history: context.history.slice(-6).map((entry) => ({
@@ -115,12 +180,13 @@ export function boundShellReviewContext(
   };
 }
 
-export function reviewShellCommand(
+export async function reviewShellCommand(
   command: string,
   description: string,
   ctx: AgentContext,
 ) {
-  return reviewToolAction({
+  const evidence: InspectionEvidence = new Map();
+  const result = await reviewToolAction({
     settings: ctx.inferenceSettings ?? readSettings(),
     system: buildShellReviewPrompt(),
     fallback: "block",
@@ -143,9 +209,18 @@ export function reviewShellCommand(
           ...boundShellReviewContext(ctx.shellReviewContext),
         }),
         tools: {
-          inspect_app_path: buildShellInspectionTool(ctx.appPath, signal),
+          inspect_app_path: buildShellInspectionTool(
+            ctx.appPath,
+            signal,
+            evidence,
+          ),
         },
       };
     },
   });
+  return {
+    ...result,
+    revalidateInspection: () =>
+      revalidateShellInspectionEvidence(ctx.appPath, evidence),
+  };
 }

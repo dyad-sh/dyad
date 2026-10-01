@@ -62,4 +62,7 @@ Defaults remain off-by-default, root-only, and Host-runtime-only. App-related co
 - Keep credential theft, hidden/unintended sensitive uploads, permission bypass, opaque destructive effects, and unsupported execution boundaries blocked.
 - Show exact command and review reason before a one-time approval. Neither approval nor retry can be saved as Always allow.
 - Resolve shell consent after review to avoid blind or duplicate approvals. Retry means a fresh classification, never approval to execute without a verdict.
+- Keep review and approval outside app resource claims and mutation tracking. Cancel queued execution admission and revalidate inspected files before spawning. Path and runtime consumers hold read claims; arbitrary command mutations retain repository/provider/configuration exclusion.
+- Shrink large tool-catalog descriptions before rejecting review; preserve every name and availability flag. If names alone exceed the budget, explain how to reduce the MCP catalog before retrying.
+- Bound process shutdown to three seconds after cancellation/timeout, even if descendants retain pipes. Unconfirmed shutdown returns an explicit recovery result and fences conflicting app operations until Dyad restarts; it must never silently release unsafe mutations.
 - Run the synthetic shell policy corpus against gpt-6-luna using the production reviewer deadline and read-only inspection; never execute corpus commands.

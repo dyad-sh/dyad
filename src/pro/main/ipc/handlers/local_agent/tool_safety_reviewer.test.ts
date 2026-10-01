@@ -160,3 +160,20 @@ it("bounds stalled shell setup by its own deadline and never starts inference", 
     vi.useRealTimers();
   }
 });
+
+import { ShellReviewCatalogTooLargeError } from "./tool_safety_reviewer";
+it("surfaces actionable catalog overflow without starting paid inference", async () => {
+  const result = await reviewToolAction({
+    ...input,
+    prepare: async () => {
+      throw new ShellReviewCatalogTooLargeError();
+    },
+  });
+  expect(result).toMatchObject({
+    decision: "block",
+    unavailable: true,
+    reason: expect.stringContaining("Disconnect unused MCP servers"),
+  });
+  expect(mocks.getModelClient).not.toHaveBeenCalled();
+  expect(mocks.streamText).not.toHaveBeenCalled();
+});

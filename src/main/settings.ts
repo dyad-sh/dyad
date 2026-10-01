@@ -67,7 +67,6 @@ export const DEFAULT_SETTINGS: UserSettings = {
   isRunning: false,
   lastKnownPerformance: undefined,
   enableSandboxScriptExecution: true,
-  enableShellTool: false,
   enableMcpToolSearch: true,
   enableCodeExplorer: true,
   runTypeScriptForWholeProject: false,

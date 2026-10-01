@@ -310,6 +310,7 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 ## Mandatory shell review
 
 - Shell review is enforced inside `run_shell`, independently of saved tool consent. Keep platform guidance, reviewer execution context, and tool descriptions aligned; never let an “always” consent setting bypass classification or required one-time consequential-action approval.
+- Keep shell review, retry, and consent waits outside coordinator claims and mutation tracking. Use internal mutation tracking only after approval, cancel queued admission, and revalidate inspected files under execution claims so an approval wait cannot authorize a changed script.
 - Classifier deadlines must include context preparation and model-client setup, not only response streaming. Shell review gets 45 seconds for multiple inspection round trips; MCP's single verdict keeps its eight-second deadline. Race the whole operation against cancellation, and recheck the signal after setup so a late continuation cannot start inference or execution.
 - Safety-review outcome history must cover native tools and both direct and sandbox-hosted MCP calls. Record execution admission separately from consent/auth refusal so fallback cannot treat a denied call as a failed execution.
 

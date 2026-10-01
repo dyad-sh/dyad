@@ -100,5 +100,42 @@ it("bounds evidence while preserving the entire dedicated-tool inventory", () =>
       ...context,
       tools: Array(1000).fill(context.tools[0]),
     }),
-  ).toThrow("budget");
+  ).toThrow("Disconnect unused MCP servers");
+});
+
+it("shrinks large catalogs without losing tool availability", () => {
+  const tools = Array.from({ length: 200 }, (_, i) => ({
+    name: `mcp_tool_${i}`,
+    available: i % 2 === 0,
+    description: "d".repeat(1000),
+  }));
+  const bounded = boundShellReviewContext({ tools, history: [] });
+  expect(
+    bounded.tools.map(({ name, available }) => ({ name, available })),
+  ).toEqual(tools.map(({ name, available }) => ({ name, available })));
+  expect(JSON.stringify(bounded.tools).length).toBeLessThanOrEqual(40000);
+  expect(
+    bounded.tools
+      .filter((t) => !t.available)
+      .every((t) => t.description === ""),
+  ).toBe(true);
+});
+
+import { revalidateShellInspectionEvidence } from "./shell_review";
+it("invalidates inspected scripts changed while approval waits without taking new review locks", async () => {
+  const { root } = await setup();
+  const evidence = new Map();
+  const tool = buildShellInspectionTool(
+    root,
+    new AbortController().signal,
+    evidence,
+  );
+  await writeFile(path.join(root, "script.js"), "safe");
+  await tool.execute!(
+    { path: "script.js", read: true },
+    { toolCallId: "inspect", messages: [] },
+  );
+  expect(await revalidateShellInspectionEvidence(root, evidence)).toBe(true);
+  await writeFile(path.join(root, "script.js"), "evil");
+  expect(await revalidateShellInspectionEvidence(root, evidence)).toBe(false);
 });

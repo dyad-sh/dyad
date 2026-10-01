@@ -13,11 +13,12 @@ vi.mock("node:child_process", async (original) => {
   };
 });
 vi.mock("tree-kill", () => ({ default: mocks.treeKill }));
-import { runShellProcess } from "./shell_process";
+import { runShellProcess, SHELL_SHUTDOWN_TIMEOUT_MS } from "./shell_process";
 let child: EventEmitter & {
   pid: number;
   stdout: PassThrough;
   stderr: PassThrough;
+  unref: ReturnType<typeof vi.fn>;
 };
 beforeEach(() => {
   vi.useFakeTimers();
@@ -25,12 +26,14 @@ beforeEach(() => {
     pid: 12345,
     stdout: new PassThrough(),
     stderr: new PassThrough(),
+    unref: vi.fn(),
   });
   mocks.spawn.mockReturnValue(child);
   mocks.treeKill.mockImplementation((_pid, _signal, done) => done());
 });
 afterEach(() => {
   vi.clearAllMocks();
+  vi.restoreAllMocks();
   vi.useRealTimers();
 });
 it("never calls taskkill after normal Windows exit or close", async () => {
@@ -87,4 +90,55 @@ it("does not target an exited root while inherited pipes drain", async () => {
   child.emit("close", 0);
   await pending;
   expect(mocks.treeKill).not.toHaveBeenCalled();
+});
+
+it.each(["win32", "linux"] as const)(
+  "settles %s cancellation when descendants never close pipes",
+  async (platform) => {
+    vi.spyOn(process, "kill").mockImplementation(() => true);
+    const controller = new AbortController();
+    const pending = runShellProcess(
+      {
+        command: "echo ok",
+        cwd: "C:\\app",
+        timeoutMs: 1000,
+        signal: controller.signal,
+        onOutput: vi.fn(),
+      },
+      platform,
+    );
+    child.stdout.write("partial output");
+    child.emit("exit", 0);
+    controller.abort();
+    await vi.advanceTimersByTimeAsync(SHELL_SHUTDOWN_TIMEOUT_MS);
+    expect(await pending).toMatchObject({
+      status: "cancelled",
+      shutdownUnconfirmed: true,
+      stdout: "partial output",
+    });
+    expect(child.stdout.destroyed).toBe(true);
+    expect(child.stderr.destroyed).toBe(true);
+    if (platform === "win32") expect(mocks.treeKill).not.toHaveBeenCalled();
+  },
+);
+it("bounds a hung Windows taskkill callback even after close", async () => {
+  mocks.treeKill.mockImplementation(() => {});
+  const pending = runShellProcess(
+    {
+      command: "echo ok",
+      cwd: "C:\\app",
+      timeoutMs: 1000,
+      onOutput: vi.fn(),
+    },
+    "win32",
+  );
+  await vi.advanceTimersByTimeAsync(1000);
+  child.emit("exit", null);
+  child.emit("close", null);
+  await vi.advanceTimersByTimeAsync(SHELL_SHUTDOWN_TIMEOUT_MS);
+  expect(await pending).toMatchObject({
+    status: "timed_out",
+    shutdownUnconfirmed: true,
+  });
+  expect(mocks.treeKill).toHaveBeenCalledTimes(1);
 });

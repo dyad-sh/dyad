@@ -338,3 +338,183 @@ it("cancels while waiting for review retry without executing", async () => {
   expect(result.status).toBe("cancelled");
   await expect(readFile(path.join(directory, "result.txt"))).rejects.toThrow();
 });
+
+import { appOperationCoordinator } from "@/ipc/services/app_operation_coordinator";
+import {
+  createMutationActivityOwner,
+  describeTurnActivity,
+  endTurnFinalization,
+} from "../subagents/mutation_activity_tracker";
+import { randomUUID } from "node:crypto";
+
+it.each(["review", "approval", "retry"] as const)(
+  "holds no app claims or mutation activity while waiting for %s",
+  async (phase) => {
+    const turnId = randomUUID();
+    ctx.mutationActivityOwner = createMutationActivityOwner({
+      appId: ctx.appId,
+      chatId: 1,
+      turnId,
+    });
+    const check = async () => {
+      expect(describeTurnActivity(turnId)).toBeNull();
+      expect(
+        appOperationCoordinator.isBusy(ctx.appId, [
+          "app-path",
+          "repository",
+          "runtime",
+        ]),
+      ).toBe(false);
+      await appOperationCoordinator.run(
+        {
+          appId: ctx.appId,
+          operation: "preview-during-consent",
+          resources: ["runtime"],
+        },
+        async () => {},
+      );
+    };
+    if (phase === "review")
+      mocks.review.mockImplementation(async () => {
+        await check();
+        return { decision: "allow", reason: "Safe" };
+      });
+    else {
+      mocks.review.mockResolvedValue(
+        phase === "retry"
+          ? { decision: "block", reason: "Offline", unavailable: true }
+          : { decision: "ask", reason: "Approval needed" },
+      );
+      vi.mocked(ctx.requireConsent).mockImplementation(async () => {
+        await check();
+        return false;
+      });
+    }
+    try {
+      await runShellTool.execute(
+        { command: writeCommand, description: "test" },
+        ctx,
+      );
+    } finally {
+      endTurnFinalization(turnId);
+    }
+  },
+);
+
+it("withdraws queued shell admission immediately when cancelled", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let entered!: () => void;
+  const ready = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const holder = appOperationCoordinator.run(
+    { appId: ctx.appId, operation: "hold-repo", resources: ["repository"] },
+    async () => {
+      entered();
+      await gate;
+    },
+  );
+  await ready;
+  const controller = new AbortController();
+  ctx.abortSignal = controller.signal;
+  let approved!: () => void;
+  const consent = new Promise<void>((resolve) => {
+    approved = resolve;
+  });
+  vi.mocked(ctx.requireConsent).mockImplementation(async () => {
+    approved();
+    return true;
+  });
+  const pending = runShellTool.execute(
+    { command: writeCommand, description: "test" },
+    ctx,
+  );
+  const rejected = expect(pending).rejects.toMatchObject({
+    kind: "user_cancelled",
+  });
+  await consent;
+  // Let admission enqueue behind the live repository owner.
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  controller.abort();
+  try {
+    await rejected;
+    await expect(
+      readFile(path.join(directory, "result.txt")),
+    ).rejects.toThrow();
+  } finally {
+    release();
+    await holder;
+  }
+});
+
+import * as shellProcess from "./shell_process";
+it("returns a recovery error to queued mutations when process shutdown is unconfirmed", async () => {
+  const processSpy = vi
+    .spyOn(shellProcess, "runShellProcess")
+    .mockResolvedValueOnce({
+      executed: true,
+      code: 0,
+      status: "timed_out",
+      stdout: "partial",
+      stderr: "",
+      truncated: false,
+      shutdownUnconfirmed: true,
+    });
+  const block = appOperationCoordinator.blockConflictingOperations.bind(
+    appOperationCoordinator,
+  );
+  let recover: (() => void) | undefined;
+  const blockSpy = vi
+    .spyOn(appOperationCoordinator, "blockConflictingOperations")
+    .mockImplementation((request, reason) => {
+      recover = block(request, reason);
+      return recover;
+    });
+  try {
+    const result = JSON.parse(
+      await runShellTool.execute(
+        { command: writeCommand, description: "test" },
+        ctx,
+      ),
+    );
+    expect(result.note).toContain("restart Dyad");
+    expect(mocks.reconcile).not.toHaveBeenCalled();
+    await expect(
+      appOperationCoordinator.run(
+        {
+          appId: ctx.appId,
+          operation: "competing-write",
+          resources: ["repository"],
+        },
+        async () => {},
+      ),
+    ).rejects.toMatchObject({ kind: "precondition" });
+  } finally {
+    recover?.();
+    blockSpy.mockRestore();
+    processSpy.mockRestore();
+  }
+});
+
+it("requires fresh review if inspected files changed during approval", async () => {
+  mocks.review.mockResolvedValue({
+    decision: "allow",
+    reason: "Inspected script",
+    revalidateInspection: async () => false,
+  });
+  const result = JSON.parse(
+    await runShellTool.execute(
+      { command: writeCommand, description: "test" },
+      ctx,
+    ),
+  );
+  expect(result).toMatchObject({
+    status: "blocked",
+    reason: expect.stringContaining("fresh safety review"),
+  });
+  expect(mocks.track).not.toHaveBeenCalled();
+  await expect(readFile(path.join(directory, "result.txt"))).rejects.toThrow();
+});

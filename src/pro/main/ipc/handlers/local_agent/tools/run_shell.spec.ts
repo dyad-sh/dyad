@@ -2,6 +2,7 @@ import { mkdtemp, readFile, rm, mkdir, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as shellProcess from "./shell_process";
 import type { AgentContext } from "./types";
 const mocks = vi.hoisted(() => ({
   review: vi.fn(),
@@ -137,25 +138,58 @@ describe("reviewed shell execution", () => {
   });
 });
 
-it("does not reconcile remote functions after a timeout leaves partial edits", async () => {
-  ctx.supabaseProjectId = "project";
-  const sleep =
-    process.platform === "win32" ? "Start-Sleep -Seconds 30" : "sleep 30";
-  const result = JSON.parse(
-    await runShellTool.execute(
-      {
-        command: `${writeCommand}\n${sleep}`,
-        description: "Regenerate functions",
-        timeout_ms: 200,
-      },
-      ctx,
-    ),
-  );
-  expect(result.status).toBe("timed_out");
-  expect(result.note).toContain("reconciliation was skipped");
-  expect(mocks.track).toHaveBeenCalled();
-  expect(mocks.reconcile).not.toHaveBeenCalled();
-});
+it.each([true, false])(
+  "does not reconcile remote functions after a timeout (partial edits: %s)",
+  async (partialEdits) => {
+    ctx.supabaseProjectId = "project";
+    // PowerShell startup can exceed a short timeout before any edits happen.
+    // Control that outcome here; shell_process.test.ts covers real timeouts.
+    const processSpy = vi
+      .spyOn(shellProcess, "runShellProcess")
+      .mockImplementationOnce(async ({ cwd }) => {
+        if (partialEdits)
+          await writeFile(path.join(cwd, "result.txt"), "partial");
+        return {
+          executed: true,
+          code: null,
+          status: "timed_out",
+          stdout: "",
+          stderr: "",
+          truncated: false,
+        };
+      });
+    try {
+      const result = JSON.parse(
+        await runShellTool.execute(
+          {
+            command: writeCommand,
+            description: "Regenerate functions",
+            timeout_ms: 200,
+          },
+          ctx,
+        ),
+      );
+      expect(result.status).toBe("timed_out");
+      expect(result.note).toContain("Partial changes may remain");
+      if (partialEdits) {
+        expect(await readFile(path.join(directory, "result.txt"), "utf8")).toBe(
+          "partial",
+        );
+        expect(result.note).toContain("reconciliation was skipped");
+      } else {
+        await expect(
+          readFile(path.join(directory, "result.txt")),
+        ).rejects.toThrow();
+        expect(result.note).not.toContain("reconciliation was skipped");
+      }
+      expect(mocks.track).toHaveBeenCalledWith(ctx, partialEdits);
+      expect(mocks.reconcile).not.toHaveBeenCalled();
+      expect(mocks.deleteFunctions).toHaveBeenCalledWith(ctx, []);
+    } finally {
+      processSpy.mockRestore();
+    }
+  },
+);
 
 it("counts executed commands that change state outside Git without claiming file changes", async () => {
   const command =
@@ -451,7 +485,6 @@ it("withdraws queued shell admission immediately when cancelled", async () => {
   }
 });
 
-import * as shellProcess from "./shell_process";
 it("returns a recovery error to queued mutations when process shutdown is unconfirmed", async () => {
   const processSpy = vi
     .spyOn(shellProcess, "runShellProcess")

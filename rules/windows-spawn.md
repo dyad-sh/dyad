@@ -11,6 +11,8 @@ exits. Keep Windows quit cleanup on direct `taskkill.exe` argv and avoid
 - Windows PowerShell 5.1 turns piped native stderr into error records: avoid `$ErrorActionPreference = 'Stop'` in wrappers that must tolerate warnings. Derive implicit exit status from the final `$?` (0/1), not stale `$LASTEXITCODE` from an earlier native command; explicit `exit` codes remain intact. Bound `-EncodedCommand` input before review; UTF-16/base64 expands it about 2.7 times against Windows' 32,767-character command-line limit.
 - Do not invoke `taskkill` for a root PID after its `exit` event; it can already be reused while pipes are draining. Windows tree-kill already uses `/T /F`, so an additional delayed force-kill is unnecessary.
 
+- PowerShell startup can exceed a short test timeout before the first command runs. For tool-level partial-edit tests, mock the process result and write the fixture during the mock; keep real deadline and shutdown checks in subprocess tests.
+
 ## A bare command name becomes a `.cmd` shim
 
 `resolveWindowsExecutableName` appends `.cmd` to any command without a `.` in it (`npm` → `npm.cmd`), because that's what the command really is on Windows. This means **`node`, `npx`, and `npm` all take the `cmd.exe` path**, not the direct-exec path — only a name with an extension (`node.exe`) passes through unchanged. Assuming otherwise is an easy way to write a test that asserts the wrong branch.

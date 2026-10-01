@@ -75,7 +75,7 @@ async function runSingleBackgroundAutoReview(
 
   const remediated = await params.streamFix(barrier.prompt);
   if (remediated === "paused") {
-    setPendingReviewContinuation(params.chatId, async () => {
+    setPendingReviewContinuation(params.chatId, barrier.threadId, async () => {
       await ipc.agent.runAutoReviewBarrier({
         chatId: params.chatId,
         verification: true,
@@ -143,10 +143,28 @@ export function useBackgroundAutoReview(): void {
     const hasPendingContinuation = hasPendingReviewContinuation(event.chatId);
 
     if (event.wasCancelled) {
-      clearPendingReviewContinuation(event.chatId);
-      if (isRemediationTurn || hasPendingContinuation) {
-        void resumeQueue(event.chatId).catch(showError);
-      }
+      const abandonedThreadId = clearPendingReviewContinuation(event.chatId);
+      const needsQueueResume = isRemediationTurn || hasPendingContinuation;
+      void (async () => {
+        if (abandonedThreadId) {
+          try {
+            await ipc.agent.skipReviewAutoFix({
+              chatId: event.chatId,
+              threadId: abandonedThreadId,
+              remediationFailed: true,
+            });
+          } catch (error) {
+            // Settlement failed: show the error but keep the queue paused so
+            // subsequent turns do not run while the reviewer is still in
+            // fixing_findings with no retry path.
+            showError(error);
+            return;
+          }
+        }
+        if (needsQueueResume) {
+          await resumeQueue(event.chatId).catch(showError);
+        }
+      })();
       return;
     }
 

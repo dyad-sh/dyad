@@ -7,6 +7,10 @@ if (process.platform !== "darwin") {
   process.exit(0);
 }
 
+const env = { ...process.env };
+delete env.npm_config_allow_scripts;
+
 execFileSync("npm", ["rebuild", "dyad-keychain-reader"], {
   stdio: "inherit",
+  env,
 });

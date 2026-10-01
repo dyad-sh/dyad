@@ -13,6 +13,7 @@ import {
   extractFunctionNameFromPath,
   isServerFunction,
   isSharedServerModule,
+  supabaseFunctionEntryExists,
 } from "../../../../../../supabase_admin/supabase_utils";
 import { queueCloudSandboxSnapshotSync } from "@/ipc/utils/cloud_sandbox_provider";
 import { getFileWriteKey, withLocks } from "@/ipc/utils/lock_utils";
@@ -57,7 +58,7 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
       });
       const fromFullPath = safeJoin(ctx.appPath, fromOperationPath);
       const toFullPath = safeJoin(ctx.appPath, toOperationPath);
-      let functionToDelete: string | undefined;
+      let functionToReconcile: string | undefined;
       let functionToDeploy: string | undefined;
       const didRename = await withLocks(
         [
@@ -108,24 +109,50 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
 
             // Supabase side effects run after the file locks are released.
             if (ctx.supabaseProjectId) {
-              if (isServerFunction(fromOperationPath)) {
-                const functionName =
-                  extractFunctionNameFromPath(fromOperationPath);
+              const sourceFunctionName = isServerFunction(fromOperationPath)
+                ? extractFunctionNameFromPath(fromOperationPath)
+                : null;
+              const targetFunctionName = isServerFunction(toOperationPath)
+                ? extractFunctionNameFromPath(toOperationPath)
+                : null;
+              if (sourceFunctionName) {
                 if (ctx.allowDeploySideEffects === false) {
-                  ctx.onDeferredFunctionDelete?.(functionName);
-                } else {
-                  functionToDelete = functionName;
+                  ctx.onDeferredFunctionDelete?.(sourceFunctionName);
+                } else if (sourceFunctionName !== targetFunctionName) {
+                  // Reconcile a *different* surviving source function after
+                  // the lock (mirrors delete_file.ts): redeploy when its
+                  // index.ts still exists, delete only when it is gone. When
+                  // source and target are the same function the branch below
+                  // reconciles it once, avoiding a duplicate deploy.
+                  if (!ctx.isSharedModulesChanged) {
+                    functionToReconcile = sourceFunctionName;
+                  } else if (
+                    !ctx.pendingFunctionDeploys.includes(sourceFunctionName)
+                  ) {
+                    ctx.pendingFunctionDeploys.push(sourceFunctionName);
+                  }
                 }
               }
-              if (isServerFunction(toOperationPath)) {
-                const functionName =
-                  extractFunctionNameFromPath(toOperationPath);
+              if (targetFunctionName) {
                 if (ctx.allowDeploySideEffects === false) {
-                  ctx.onDeferredFunctionDeploy?.(functionName);
-                } else if (!ctx.isSharedModulesChanged) {
-                  functionToDeploy = functionName;
+                  ctx.onDeferredFunctionDeploy?.(targetFunctionName);
+                } else if (targetFunctionName === sourceFunctionName) {
+                  // Same function on both sides: reconcile it once (redeploy
+                  // it when its index.ts survives, delete it when renamed away).
+                  if (!ctx.isSharedModulesChanged) {
+                    functionToReconcile = targetFunctionName;
+                  } else if (
+                    !ctx.pendingFunctionDeploys.includes(targetFunctionName)
+                  ) {
+                    ctx.pendingFunctionDeploys.push(targetFunctionName);
+                  }
                 } else {
-                  ctx.pendingFunctionDeploys.push(functionName);
+                  // Deploy a distinct target function after the lock.
+                  if (!ctx.isSharedModulesChanged) {
+                    functionToDeploy = targetFunctionName;
+                  } else {
+                    ctx.pendingFunctionDeploys.push(targetFunctionName);
+                  }
                 }
               }
             }
@@ -155,23 +182,36 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
       // it must not hold the file locks other writers of these paths need.
       const successMessage = `Successfully renamed ${args.from} to ${args.to}`;
       let deferredNote: string | undefined;
-      if (functionToDelete && ctx.supabaseProjectId) {
+      let reconcileError: string | undefined;
+      // Reconcile the source function (mirrors delete_file.ts): redeploy when
+      // its entry still exists (internal rename within a surviving function),
+      // delete only when the entry is gone.
+      if (functionToReconcile && ctx.supabaseProjectId) {
+        const functionName = functionToReconcile;
         try {
-          await deleteSupabaseFunction({
-            appId: ctx.appId,
-            supabaseProjectId: ctx.supabaseProjectId,
-            functionName: functionToDelete,
-            organizationSlug: ctx.supabaseOrganizationSlug ?? null,
-            signal: ctx.abortSignal,
-          });
+          if (await supabaseFunctionEntryExists(ctx.appPath, functionName)) {
+            await deploySupabaseFunction({
+              appId: ctx.appId,
+              supabaseProjectId: ctx.supabaseProjectId,
+              functionName,
+              appPath: ctx.appPath,
+              organizationSlug: ctx.supabaseOrganizationSlug ?? null,
+              signal: ctx.abortSignal,
+            });
+          } else {
+            await deleteSupabaseFunction({
+              appId: ctx.appId,
+              supabaseProjectId: ctx.supabaseProjectId,
+              functionName,
+              organizationSlug: ctx.supabaseOrganizationSlug ?? null,
+              signal: ctx.abortSignal,
+            });
+          }
         } catch (error) {
           if (isSupabaseFunctionSyncDeferred(error)) {
             deferredNote = error.message;
           } else {
-            logger.warn(
-              `Failed to delete old Supabase function: ${args.from}`,
-              error,
-            );
+            reconcileError = `failed to reconcile Supabase function: ${error}`;
           }
         }
       }
@@ -187,10 +227,16 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
           });
         } catch (error) {
           if (!isSupabaseFunctionSyncDeferred(error)) {
-            return `File renamed, but failed to deploy Supabase function: ${error}`;
+            const deployFailure = `failed to deploy Supabase function: ${error}`;
+            return reconcileError !== undefined
+              ? `File renamed, but ${reconcileError} and ${deployFailure}`
+              : `File renamed, but ${deployFailure}`;
           }
           deferredNote = error.message;
         }
+      }
+      if (reconcileError !== undefined) {
+        return `File renamed, but ${reconcileError}`;
       }
       return deferredNote
         ? `${successMessage}. ${deferredNote}`

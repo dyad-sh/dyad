@@ -231,6 +231,27 @@ describe("chat follow controller", () => {
     expect(h.onFollowing).toHaveBeenLastCalledWith(true);
   });
 
+  it("preserves a restored top-of-history position before virtualized content is measured", () => {
+    const h = setup();
+    h.grow(200); // Initially, the virtualizer's measurement row fits the viewport.
+    // Tab restoration can retry while the list still has no measured height.
+    for (let frame = 0; frame < 4; frame++) {
+      restoreChatScrollPosition(h.scroller, 0, false);
+      h.controller.reconcile();
+      h.flush();
+    }
+    h.grow(4000);
+    h.flush();
+    expect(h.scroller.scrollTop).toBe(0);
+    expect(isChatScrollFollowing(h.scroller)).toBe(false);
+
+    h.position(3800); // Reaching the real bottom still resumes following.
+    h.grow(5000);
+    h.flush();
+    expect(h.scroller.scrollTop).toBe(4800);
+    expect(isChatScrollFollowing(h.scroller)).toBe(true);
+  });
+
   it("preserves an explicitly restored tab position across queued frames and later growth", () => {
     const h = setup();
     restoreChatScrollPosition(h.scroller, 300);

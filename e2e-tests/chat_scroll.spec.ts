@@ -297,6 +297,11 @@ test("existing long virtualized chat opens at the bottom without flashing its fi
   await po.page.getByTestId(`chat-tab-${otherChatId}`).click();
   await po.page.getByTestId(`chat-tab-${chatId}`).click();
   await expect(scroller).toBeVisible();
+  await expect(scroller).toHaveAttribute("data-chat-scroll-following", "false");
+  await expect
+    .poll(async () => (await metrics(scroller)).height)
+    .toBeGreaterThan(3000);
+  await waitForScrollToSettle(scroller);
   await expect.poll(async () => (await metrics(scroller)).top).toBeLessThan(5);
   await expect(
     scroller.getByText("[increment] history message 0", { exact: true }),

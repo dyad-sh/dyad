@@ -272,8 +272,11 @@ export function createChatScrollController(
     pause();
     scroller.scrollTo({ top, behavior: "instant" });
     lastPosition = position();
-    if (atBottom() && top <= scroller.scrollTop + 4) follow();
-    else send({ type: "position", atBottom: false });
+    // Before Virtuoso measures its rows, top = 0 is also the apparent bottom.
+    // Keep the upward-input guard until layout proves we have left the bottom,
+    // rather than turning an explicit history restore back into follow mode.
+    if (top > 0 && atBottom() && top <= scroller.scrollTop + 4) follow();
+    else send({ type: "position", atBottom: atBottom() });
   };
   scroller.addEventListener("scroll", onScroll, { passive: true });
   scroller.addEventListener("wheel", onWheel, { passive: true });

@@ -150,6 +150,8 @@ Snapshots must be **deterministic** and **platform-agnostic**. They must not con
 
 If the output under test contains non-deterministic or platform-specific content, add sanitization logic in the test helper (e.g. in `test_helper.ts`) to normalize it before snapshotting.
 
+PDF fixtures can contain only ASCII and be treated as text by Git. Keep `*.pdf binary` in `.gitattributes` so Windows checkout preserves their bytes; normalizing an encoded PDF in snapshots would conceal changed stream lengths and cross-reference offsets.
+
 When regenerating one failing snapshot by running an entire spec file, review `git diff` before committing. Neighboring request-dump snapshots in the same file can be rewritten too; keep only the updates needed for the failing assertion unless the broader fixture output intentionally changed.
 
 If a helper moves from Playwright's `toMatchAriaSnapshot()` to a custom `toMatchSnapshot()` filename, rerun affected specs with `--update-snapshots` and review later raw `.aria.yml` snapshots in the same test. The helper no longer consumes Playwright's ARIA snapshot counter, so subsequent raw ARIA baselines can shift even when the UI did not change.
@@ -366,6 +368,7 @@ If a targeted E2E fails before launch with `ENOENT: no such file or directory, s
 - In virtualized-chat E2Es, wait for native wheel/PageUp movement to settle before recording a reading anchor; a gap threshold alone can pass mid-animation. Bound the settling wait and retain subsequent no-drift assertions.
 - Do not combine the chat scroll controller with Virtuoso `initialTopMostItemIndex: LAST`: its index-scroll operation retries on size changes until 150ms of quiet, so fast streaming can keep jumping to bottom after user scroll-away. Let the controller own initial positioning too.
 - When testing initial virtualized-chat positioning, sample after animation-frame callbacks and check CSS visibility/opacity; geometry alone can count hidden measurement rows. Cover both opening a long chat at the bottom and restoring a deliberate top-of-history reading position.
+- Before virtualized rows are measured, `scrollHeight === clientHeight` can make a saved `scrollTop: 0` look like bottom-follow intent. Preserve explicit reading intent through that phase, and assert the restored position after content measurement and native scrolling settle.
 
 ## Waiting for button state transitions
 

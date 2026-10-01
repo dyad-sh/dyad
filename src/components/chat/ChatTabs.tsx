@@ -569,6 +569,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
     (chatId: number): ChatTabPresentationState => ({
       draftInput: store.get(chatInputValuesByIdAtom).get(chatId) ?? "",
       scrollTop: 0,
+      scrollAtBottom: true,
       selectedFile: null,
       editorCursor: null,
       stagedDiffFile: null,

@@ -1,6 +1,7 @@
 import type { ChatScrollEvent, ChatScrollState } from "./state";
 import { transition } from "./transition";
 import {
+  CHAT_SCROLL_FOLLOWING_ATTRIBUTE,
   CHAT_SCROLL_RESTORE_EVENT,
   type ChatScrollRestorePosition,
 } from "./restore";
@@ -30,6 +31,10 @@ export function createChatScrollController(
   let draggingScrollbar = false;
   let pointerActive = false;
   let inputUntil = 0;
+  const publishFollowing = (following: boolean) => {
+    scroller.setAttribute(CHAT_SCROLL_FOLLOWING_ATTRIBUTE, String(following));
+    onFollowingChange(following);
+  };
   const markInput = () => {
     inputUntil = performance.now() + 200;
   };
@@ -49,7 +54,7 @@ export function createChatScrollController(
     const changed = next.type !== state.type;
     state = next;
     observeTransition?.(event, result);
-    if (changed) onFollowingChange(next.type === "following");
+    if (changed) publishFollowing(next.type === "following");
   };
   const observeUserMovement = () => {
     const current = position();
@@ -279,7 +284,7 @@ export function createChatScrollController(
   scroller.addEventListener(CHAT_SCROLL_RESTORE_EVENT, onRestore);
   scroller.ownerDocument.addEventListener("pointerup", onPointerUp);
   scroller.ownerDocument.addEventListener("pointercancel", onPointerUp);
-  onFollowingChange(true);
+  publishFollowing(true);
   reconcile();
   return {
     follow,
@@ -296,6 +301,7 @@ export function createChatScrollController(
       scroller.removeEventListener(CHAT_SCROLL_RESTORE_EVENT, onRestore);
       scroller.ownerDocument.removeEventListener("pointerup", onPointerUp);
       scroller.ownerDocument.removeEventListener("pointercancel", onPointerUp);
+      scroller.removeAttribute(CHAT_SCROLL_FOLLOWING_ATTRIBUTE);
     },
   };
 }

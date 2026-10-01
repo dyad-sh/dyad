@@ -1,5 +1,19 @@
 export const CHAT_SCROLL_RESTORE_EVENT = "dyad:restore-chat-scroll";
 
+/** The mounted controller mirrors its follow state onto its scroller so tab
+ * presentation captures intent rather than re-deriving it from geometry, which
+ * lags the controller by a frame while streamed content grows.
+ */
+export const CHAT_SCROLL_FOLLOWING_ATTRIBUTE = "data-chat-scroll-following";
+
+/** Returns undefined when no controller is attached to the scroller. */
+export function isChatScrollFollowing(
+  scroller: HTMLElement,
+): boolean | undefined {
+  const following = scroller.getAttribute(CHAT_SCROLL_FOLLOWING_ATTRIBUTE);
+  return following === null ? undefined : following === "true";
+}
+
 export interface ChatScrollRestorePosition {
   top: number;
   following: boolean;

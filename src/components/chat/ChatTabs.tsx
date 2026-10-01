@@ -93,7 +93,10 @@ import {
   earlyChatTabRemovalEvents,
 } from "@/app_wiring/early_renderer_events";
 import type { ChatTabPresentationState } from "@/window_infrastructure/types";
-import { restoreChatScrollPosition } from "./scroll/restore";
+import {
+  isChatScrollFollowing,
+  restoreChatScrollPosition,
+} from "./scroll/restore";
 
 const MIN_VISIBLE_TAB_WIDTH_PX = 160;
 const TAB_GAP_PX = 4;
@@ -599,8 +602,9 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
         draftInput: store.get(chatInputValuesByIdAtom).get(chatId) ?? "",
         scrollTop: messages.scrollTop,
         scrollAtBottom:
+          isChatScrollFollowing(messages) ??
           messages.scrollHeight - messages.clientHeight - messages.scrollTop <=
-          4,
+            4,
         selectedFile: store.get(selectedFileAtom),
         editorCursor: store.get(editorCursorAtom),
         stagedDiffFile: store.get(stagedDiffFileAtom),

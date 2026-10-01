@@ -235,7 +235,12 @@ test("existing long virtualized chat opens at the bottom without flashing its fi
   const appPath = await electronApp.evaluate(({ app }) => app.getAppPath());
   await electronApp.evaluate(
     async ({ BrowserWindow }, indexPath) => {
-      await BrowserWindow.getAllWindows()[0].loadFile(indexPath);
+      try {
+        await BrowserWindow.getAllWindows()[0].loadFile(indexPath);
+      } catch (error) {
+        if (!(error instanceof Error) || !error.message.includes("(-3)"))
+          throw error;
+      }
     },
     path.join(appPath, ".vite/renderer/main_window/index.html"),
   );

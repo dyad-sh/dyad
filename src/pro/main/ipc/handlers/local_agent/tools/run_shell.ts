@@ -28,10 +28,13 @@ export const runShellTool: ToolDefinition<z.infer<typeof schema>> = {
   name: "run_shell",
   description: "Run an independently reviewed app command on the host.",
   getDescription: (ctx) =>
+    "Run an independently reviewed app command on the host. " +
     shellExecutionGuidance(
       process.platform,
       ctx.appPath ?? "current app directory",
     ),
+  getConsentPreview: (args) =>
+    `${process.platform === "win32" ? "PowerShell" : "Bash"}: ${args.command}\n\n${args.description}`,
   inputSchema: schema,
   modifiesState: true,
   usesEngineEndpoint: true,
@@ -48,7 +51,7 @@ export const runShellTool: ToolDefinition<z.infer<typeof schema>> = {
     const shell = process.platform === "win32" ? "PowerShell" : "Bash";
     const present = (status: string, body: string, final = false) => {
       const state = !final
-        ? "in-progress"
+        ? "pending"
         : status === "completed"
           ? "finished"
           : status === "cancelled"
@@ -136,7 +139,14 @@ export const runShellTool: ToolDefinition<z.infer<typeof schema>> = {
               present("running", `${decision.reason}\n\n${output}`);
             }
           },
-        });
+        }).catch((error: unknown) => ({
+          status: "failed" as const,
+          executed: false,
+          code: null,
+          stdout: "",
+          stderr: `Could not start the shell: ${error instanceof Error ? error.message : String(error)}`,
+          truncated: false,
+        }));
         // Even failed/cancelled commands can leave edits. Never label them rolled back.
         const after = await tryGetGitStateFingerprint(ctx.appPath, "after");
         const changed =
@@ -149,6 +159,7 @@ export const runShellTool: ToolDefinition<z.infer<typeof schema>> = {
           );
         let note: string | undefined;
         if (
+          result.executed &&
           changed &&
           result.status !== "timed_out" &&
           result.status !== "cancelled" &&

@@ -28,6 +28,10 @@ export function recordShellReviewOutcome(
           DyadErrorKind.UserCancelled,
           DyadErrorKind.Precondition,
           DyadErrorKind.Auth,
+          DyadErrorKind.Validation,
+          DyadErrorKind.NotFound,
+          DyadErrorKind.Conflict,
+          DyadErrorKind.RateLimited,
         ].includes(error.kind));
     text =
       outcome.executed && !denied

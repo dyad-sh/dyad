@@ -170,3 +170,44 @@ it("counts executed commands that change state outside Git without claiming file
   expect(mocks.track).toHaveBeenCalledWith(ctx, false);
   expect(mocks.reconcile).not.toHaveBeenCalled();
 });
+
+it("shows the exact command and purpose in consent, and pending progress while running", async () => {
+  expect(
+    runShellTool.getConsentPreview!({
+      command: writeCommand,
+      description: "Write test output",
+    }),
+  ).toContain(writeCommand);
+  expect(
+    runShellTool.getConsentPreview!({
+      command: writeCommand,
+      description: "Write test output",
+    }),
+  ).toContain("Write test output");
+  expect(runShellTool.getDescription!({} as AgentContext)).toMatch(
+    /^Run an independently reviewed app command/,
+  );
+  await runShellTool.execute(
+    { command: writeCommand, description: "test" },
+    ctx,
+  );
+  expect(ctx.onXmlStream).toHaveBeenCalledWith(
+    expect.stringContaining('state="pending"'),
+  );
+});
+
+it("returns a structured failure when the shell cannot start", async () => {
+  ctx.appPath = path.join(directory, "missing-cwd");
+  const result = JSON.parse(
+    await runShellTool.execute(
+      { command: writeCommand, description: "test" },
+      ctx,
+    ),
+  );
+  expect(result).toMatchObject({ status: "failed", executed: false });
+  expect(result.stderr).toContain("Could not start the shell");
+  expect(mocks.track).not.toHaveBeenCalled();
+  expect(ctx.onXmlComplete).toHaveBeenCalledWith(
+    expect.stringContaining('state="warning"'),
+  );
+});

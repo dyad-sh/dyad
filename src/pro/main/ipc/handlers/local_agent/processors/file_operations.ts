@@ -87,7 +87,7 @@ function renderSupabaseDeployStatus(progress: SupabaseDeployProgress): string {
       ? "aborted"
       : progress.phase === "finished"
         ? "finished"
-        : "in-progress";
+        : "pending";
   const content = [
     `${progress.succeeded} succeeded`,
     `${progress.failed} failed`,

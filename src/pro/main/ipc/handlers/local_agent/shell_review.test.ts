@@ -72,3 +72,33 @@ it.skipIf(process.platform === "win32")(
     }
   },
 );
+
+import { boundShellReviewContext } from "./shell_review";
+it("bounds evidence while preserving the entire dedicated-tool inventory", () => {
+  const context = {
+    tools: [
+      { name: "git_status", available: true, description: "x".repeat(5000) },
+    ],
+    history: Array.from({ length: 30 }, (_, i) => ({
+      tool: `tool${i}`,
+      args: "a".repeat(2000),
+      outcome: "b".repeat(4000),
+    })),
+  };
+  const bounded = boundShellReviewContext(context);
+  expect(bounded.tools[0]).toMatchObject({
+    name: "git_status",
+    available: true,
+  });
+  expect(bounded.tools[0].description.length).toBeLessThan(300);
+  expect(bounded.history).toHaveLength(6);
+  expect(bounded.history[0].tool).toBe("tool24");
+  expect(bounded.history[0].args.length).toBeLessThan(1100);
+  expect(bounded.history[0].outcome.length).toBeLessThan(2100);
+  expect(() =>
+    boundShellReviewContext({
+      ...context,
+      tools: Array(1000).fill(context.tools[0]),
+    }),
+  ).toThrow("budget");
+});

@@ -1433,7 +1433,7 @@ describe("handleLocalAgentStream", () => {
         mockMcpToolSet = {
           archive: {
             description: "Generate an archive",
-            inputSchema: { type: "object" },
+            inputSchema: jsonSchema({ type: "object" }),
             execute,
           },
         };

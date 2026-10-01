@@ -30,7 +30,10 @@ describe("mandatory tool reviewer", () => {
     'Here: {"reason":"x","decision":"allow"}',
   ])("blocks invalid shell verdict %s", async (text) => {
     mocks.streamText.mockReturnValue({ text: Promise.resolve(text) });
-    expect((await reviewToolAction(input)).decision).toBe("block");
+    expect(await reviewToolAction(input)).toEqual({
+      decision: "block",
+      reason: "The safety reviewer returned an invalid verdict.",
+    });
   });
   it("accepts a structured allow and preserves exact command data", async () => {
     mocks.streamText.mockReturnValue({
@@ -51,7 +54,10 @@ describe("mandatory tool reviewer", () => {
       mocks.getModelClient.mockReturnValue(new Promise(() => {}));
       const pending = reviewToolAction(input);
       await vi.advanceTimersByTimeAsync(8000);
-      expect((await pending).decision).toBe("block");
+      expect(await pending).toEqual({
+        decision: "block",
+        reason: "Tool safety review timed out.",
+      });
       expect(mocks.streamText).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
@@ -71,7 +77,10 @@ describe("mandatory tool reviewer", () => {
       },
     });
     controller.abort();
-    expect((await pending).decision).toBe("block");
+    expect(await pending).toEqual({
+      decision: "block",
+      reason: "Tool safety review was cancelled.",
+    });
     finish();
     await Promise.resolve();
     await Promise.resolve();

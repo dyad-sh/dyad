@@ -81,6 +81,32 @@ export function buildShellInspectionTool(appPath: string, signal: AbortSignal) {
   });
 }
 
+/** Keep every tool's availability visible while bounding untrusted evidence. */
+export function boundShellReviewContext(
+  context: NonNullable<AgentContext["shellReviewContext"]>,
+) {
+  const cap = (text: string, size: number) =>
+    text.length > size ? `${text.slice(0, size)}…[truncated]` : text;
+  const tools = context.tools.map((entry) => ({
+    name: entry.name,
+    available: entry.available,
+    description: cap(entry.description, 240),
+  }));
+  // Never silently omit dedicated tools from the reviewer's alternatives.
+  if (JSON.stringify(tools).length > 40_000)
+    throw new Error("Tool catalog exceeds safety review budget");
+  return {
+    tools,
+    history: context.history.slice(-6).map((entry) => ({
+      tool: entry.tool,
+      args: cap(entry.args, 1000),
+      outcome: cap(entry.outcome, 2000),
+    })),
+    contextNotice:
+      "Descriptions and evidence may be truncated. Missing evidence cannot establish authorization or a failed dedicated-tool execution.",
+  };
+}
+
 export function reviewShellCommand(
   command: string,
   description: string,
@@ -104,7 +130,7 @@ export function reviewShellCommand(
           description,
           execution: shellExecutionGuidance(process.platform, ctx.appPath),
           recentTurns,
-          ...ctx.shellReviewContext,
+          ...boundShellReviewContext(ctx.shellReviewContext),
         }),
         tools: {
           inspect_app_path: buildShellInspectionTool(ctx.appPath, signal),

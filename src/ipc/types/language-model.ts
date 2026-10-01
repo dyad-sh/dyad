@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { defineContract, createClient } from "../contracts/core";
+import {
+  defineContract,
+  defineEvent,
+  createClient,
+  createEventClient,
+} from "../contracts/core";
 
 // =============================================================================
 // Language Model Schemas
@@ -62,6 +67,39 @@ export const LocalModelSchema = z.object({
 });
 
 export type LocalModel = z.infer<typeof LocalModelSchema>;
+
+// Ollama model references are `name[:tag]`, optionally prefixed by the
+// community author (`mannix/phi3-mini-4k:latest`). Restricting the alphabet
+// keeps user input out of anything shell- or URL-meaningful.
+export const OllamaModelNameSchema = z
+  .string()
+  .min(1)
+  .max(200)
+  .regex(/^[\w.\-/:]+$/, "Invalid Ollama model name");
+
+export const OllamaRegistrySearchTermSchema = z
+  .string()
+  .trim()
+  .min(1, "Enter a search term")
+  .max(100);
+
+export const OllamaRegistryModelSchema = z.object({
+  name: z.string(),
+  updated: z.string().nullable(),
+  context: z.string().nullable(),
+  size: z.string().nullable(),
+});
+
+export type OllamaRegistryModel = z.infer<typeof OllamaRegistryModelSchema>;
+
+export const OllamaPullProgressSchema = z.object({
+  pullId: z.string(),
+  status: z.string(),
+  completed: z.number().optional(),
+  total: z.number().optional(),
+});
+
+export type OllamaPullProgress = z.infer<typeof OllamaPullProgressSchema>;
 
 export const CreateCustomLanguageModelProviderParamsSchema = z.object({
   id: z.string(),
@@ -175,6 +213,38 @@ export const languageModelContracts = {
     input: z.void(),
     output: z.object({ models: z.array(LocalModelSchema) }),
   }),
+
+  searchOllamaRegistry: defineContract({
+    channel: "local-models:search-ollama-registry",
+    input: z.object({ term: OllamaRegistrySearchTermSchema }),
+    output: z.object({ models: z.array(OllamaRegistryModelSchema) }),
+  }),
+
+  pullOllamaModel: defineContract({
+    channel: "local-models:pull-ollama-model",
+    input: z.object({
+      pullId: z.string().min(1),
+      model: OllamaModelNameSchema,
+    }),
+    output: z.void(),
+  }),
+
+  cancelOllamaPull: defineContract({
+    channel: "local-models:cancel-ollama-pull",
+    input: z.object({ pullId: z.string().min(1) }),
+    output: z.void(),
+  }),
+} as const;
+
+// =============================================================================
+// Language Model Events (Main -> Renderer)
+// =============================================================================
+
+export const languageModelEvents = {
+  ollamaPullProgress: defineEvent({
+    channel: "local-models:ollama-pull-progress",
+    payload: OllamaPullProgressSchema,
+  }),
 } as const;
 
 // =============================================================================
@@ -182,3 +252,5 @@ export const languageModelContracts = {
 // =============================================================================
 
 export const languageModelClient = createClient(languageModelContracts);
+
+export const languageModelEventClient = createEventClient(languageModelEvents);

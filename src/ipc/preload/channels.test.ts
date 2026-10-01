@@ -13,6 +13,10 @@ import {
 } from "../types/coolify_setup";
 import { cloudflareContracts } from "../types/cloudflare";
 import {
+  languageModelContracts,
+  languageModelEvents,
+} from "../types/language-model";
+import {
   VALID_INVOKE_CHANNELS,
   VALID_RECEIVE_CHANNELS,
   VALID_SEND_CHANNELS,
@@ -88,6 +92,19 @@ describe("cloudflare preload channels", () => {
     // running app, as "Invalid channel", the first time the tab is used.
     for (const contract of Object.values(cloudflareContracts)) {
       expect(VALID_INVOKE_CHANNELS).toContain(contract.channel);
+    }
+  });
+});
+
+describe("language-model preload channels", () => {
+  it("allows every language-model invoke and receive contract", () => {
+    // This domain's first main-to-renderer event: without the receive entry
+    // the Ollama pull progress subscription fails only at runtime.
+    for (const contract of Object.values(languageModelContracts)) {
+      expect(VALID_INVOKE_CHANNELS).toContain(contract.channel);
+    }
+    for (const event of Object.values(languageModelEvents)) {
+      expect(VALID_RECEIVE_CHANNELS).toContain(event.channel);
     }
   });
 });

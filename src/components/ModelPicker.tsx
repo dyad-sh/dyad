@@ -48,10 +48,12 @@ import {
 import {
   CheckIcon,
   ChevronRightIcon,
+  DownloadIcon,
   LockIcon,
   SparklesIcon,
 } from "lucide-react";
 import { ProviderIcon } from "@/components/ProviderIcon";
+import { OllamaRegistryDialog } from "@/components/OllamaRegistryDialog";
 import { SubscriptionModelMenu } from "@/components/SubscriptionModelMenu";
 import { useSubscriptionAccount } from "@/hooks/useSubscriptionAccount";
 import { usesChatGPTSubscription } from "@/lib/subscriptionModels";
@@ -206,6 +208,7 @@ export function ModelPicker() {
     (ModelSelectParams & { recentModels: LargeLanguageModel[] }) | null
   >(null);
   const [open, setOpen] = useState(false);
+  const [ollamaRegistryOpen, setOllamaRegistryOpen] = useState(false);
   const claudeStatus = useQuery({
     enabled:
       !!settings?.enableClaudeCodeSubscription &&
@@ -1490,6 +1493,23 @@ export function ModelPicker() {
           ) : (
             models.map((model) => renderLocalModelItem(providerId, model))
           )}
+          {providerId === "ollama" && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                data-testid="ollama-browse-registry"
+                onClick={() => {
+                  setOpen(false);
+                  setOllamaRegistryOpen(true);
+                }}
+              >
+                <div className="flex items-center gap-2">
+                  <DownloadIcon className="size-3.5 shrink-0" />
+                  <span>Browse Ollama registry…</span>
+                </div>
+              </DropdownMenuItem>
+            </>
+          )}
         </DropdownMenuSubContent>
       </DropdownMenuSub>
     );
@@ -1991,6 +2011,13 @@ export function ModelPicker() {
           )}
         </DialogContent>
       </Dialog>
+
+      <OllamaRegistryDialog
+        open={ollamaRegistryOpen}
+        onOpenChange={setOllamaRegistryOpen}
+        installedModelNames={ollamaModels.map((model) => model.modelName)}
+        onModelPulled={() => void loadOllamaModels()}
+      />
     </>
   );
 }

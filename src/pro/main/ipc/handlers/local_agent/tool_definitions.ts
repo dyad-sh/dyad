@@ -808,9 +808,43 @@ export function shouldIncludeTool(
   return true;
 }
 
-/**
- * Build ToolSet for AI SDK from tool definitions
- */
+/** Refresh reviewer context from tools the agent can actually invoke. */
+export function refreshShellReviewToolInventory(
+  ctx: AgentContext,
+  registeredTools: Record<string, { description?: string }>,
+  options: BuildAgentToolSetOptions = {},
+): void {
+  if (!ctx.shellReviewContext) return;
+  const definitions = new Map<string, (typeof TOOL_DEFINITIONS)[number]>(
+    TOOL_DEFINITIONS.map((tool) => [tool.name, tool]),
+  );
+  for (const entry of ctx.shellReviewContext.tools) {
+    const definition = definitions.get(entry.name);
+    const registered = registeredTools[entry.name];
+    entry.available =
+      !!registered &&
+      (!definition ||
+        shouldIncludeTool(definition, ctx, options, "invocation"));
+    if (registered?.description) entry.description = registered.description;
+  }
+  for (const [name, tool] of Object.entries(registeredTools)) {
+    if (
+      name !== "run_shell" &&
+      !ctx.shellReviewContext.tools.some((entry) => entry.name === name)
+    ) {
+      const definition = definitions.get(name);
+      ctx.shellReviewContext.tools.push({
+        name,
+        description: tool.description ?? "",
+        available:
+          !definition ||
+          shouldIncludeTool(definition, ctx, options, "invocation"),
+      });
+    }
+  }
+}
+
+/** Build ToolSet for AI SDK from tool definitions. */
 export function buildAgentToolSet(
   ctx: AgentContext,
   options: BuildAgentToolSetOptions = {},
@@ -822,7 +856,7 @@ export function buildAgentToolSet(
         (tool) => ({
           name: tool.name,
           description: resolveToolDescription(tool, ctx),
-          available: shouldIncludeTool(tool, ctx, options),
+          available: false, // Resolved from the callable tool set after registration.
         }),
       ),
       history: [],
@@ -1020,5 +1054,10 @@ export function buildAgentToolSet(
     };
   }
 
+  if (ctx.shellReviewContext) {
+    ctx.refreshShellReviewTools = () =>
+      refreshShellReviewToolInventory(ctx, toolSet, options);
+    ctx.refreshShellReviewTools();
+  }
   return toolSet;
 }

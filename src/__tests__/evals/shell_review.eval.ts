@@ -1,7 +1,7 @@
 /**
  * Live, classification-only shell policy evaluation. Never executes case commands.
  * DYAD_PRO_API_KEY=... npm run eval -- shell_review
- * Uses the production runner (including its eight-second deadline) and inspection tool.
+ * Uses the production runner (including its shell deadline) and inspection tool.
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { appendFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -11,7 +11,10 @@ import { getEvalModel, hasDyadProKey } from "./helpers/get_eval_model";
 import cases from "@/prompts/shell_review_policy.cases.json";
 import { buildShellReviewPrompt } from "@/prompts/shell_review_policy";
 import { shellExecutionGuidance } from "@/shared/shell_capability";
-import { reviewToolAction } from "@/pro/main/ipc/handlers/local_agent/tool_safety_reviewer";
+import {
+  reviewToolAction,
+  SHELL_REVIEW_TIMEOUT_MS,
+} from "@/pro/main/ipc/handlers/local_agent/tool_safety_reviewer";
 import { buildShellInspectionTool } from "@/pro/main/ipc/handlers/local_agent/shell_review";
 
 vi.mock("@/ipc/utils/get_model_client", () => ({
@@ -74,6 +77,7 @@ describe.skipIf(!hasDyadProKey())("gpt-6-luna shell policy (live)", () => {
         settings: {} as Parameters<typeof reviewToolAction>[0]["settings"],
         system: buildShellReviewPrompt(),
         fallback: "block",
+        timeoutMs: SHELL_REVIEW_TIMEOUT_MS,
         prepare: async (signal) => {
           const inspection = buildShellInspectionTool(appPath, signal);
           const execute = inspection.execute!;

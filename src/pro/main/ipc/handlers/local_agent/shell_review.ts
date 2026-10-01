@@ -2,7 +2,10 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { tool } from "ai";
 import { z } from "zod";
-import { reviewToolAction } from "./tool_safety_reviewer";
+import {
+  reviewToolAction,
+  SHELL_REVIEW_TIMEOUT_MS,
+} from "./tool_safety_reviewer";
 import { getRecentTurnsForConsent } from "./mcp_consent_context";
 import { buildShellReviewPrompt } from "@/prompts/shell_review_policy";
 import { shellExecutionGuidance } from "@/shared/shell_capability";
@@ -121,9 +124,11 @@ export function reviewShellCommand(
     settings: ctx.inferenceSettings ?? readSettings(),
     system: buildShellReviewPrompt(),
     fallback: "block",
+    timeoutMs: SHELL_REVIEW_TIMEOUT_MS,
     signal: ctx.abortSignal,
     prepare: async (signal) => {
       const recentTurns = await getRecentTurnsForConsent(ctx.chatId);
+      ctx.refreshShellReviewTools?.();
       if (
         !recentTurns.some((turn) => turn.role === "user") ||
         !ctx.shellReviewContext

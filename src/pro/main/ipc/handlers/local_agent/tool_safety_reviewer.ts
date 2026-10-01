@@ -7,6 +7,8 @@ import { extractJson } from "@/ipc/utils/extract_json";
 import type { UserSettings } from "@/lib/schemas";
 
 export const TOOL_REVIEW_TIMEOUT_MS = 8_000;
+// Shell inspection can require several model round trips; MCP remains a single verdict.
+export const SHELL_REVIEW_TIMEOUT_MS = 45_000;
 const logger = log.scope("tool-safety-reviewer");
 
 /** Policy-specific decisions share transport, cancellation, and fail-closed parsing. */
@@ -16,11 +18,13 @@ export async function reviewToolAction<D extends "ask" | "block">({
   fallback,
   signal,
   prepare,
+  timeoutMs = TOOL_REVIEW_TIMEOUT_MS,
 }: {
   settings: UserSettings;
   system: string;
   fallback: D;
   signal?: AbortSignal;
+  timeoutMs?: number;
   prepare: (
     signal: AbortSignal,
   ) => Promise<{ payload: string; tools?: ToolSet }>;
@@ -44,7 +48,7 @@ export async function reviewToolAction<D extends "ask" | "block">({
       timer = setTimeout(() => {
         timedOut = true;
         abort();
-      }, TOOL_REVIEW_TIMEOUT_MS);
+      }, timeoutMs);
       if (signal?.aborted) abort();
     });
     const work = async () => {
@@ -70,7 +74,7 @@ export async function reviewToolAction<D extends "ask" | "block">({
       const text = await stream.text;
       controller.signal.throwIfAborted();
       state.phase = "verdict";
-      const json = fallback === "ask" ? extractJson(text) : text.trim();
+      const json = extractJson(text);
       if (!json) throw new Error("Missing decision");
       const result = z
         .object({

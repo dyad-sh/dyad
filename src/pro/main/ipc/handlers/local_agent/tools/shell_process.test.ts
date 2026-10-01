@@ -114,3 +114,38 @@ it.skipIf(process.platform === "win32")(
     }
   },
 );
+
+it("bounds Windows encoded command lines before spawning", () => {
+  const invocation = shellInvocation("#".repeat(9000), "win32");
+  expect(
+    [invocation.command, ...invocation.args].join(" ").length,
+  ).toBeLessThan(32767);
+  expect(() => shellInvocation("#".repeat(9001), "win32")).toThrow("9000");
+  expect(() => shellInvocation("#".repeat(16000), "darwin")).not.toThrow();
+});
+it("uses Continue for Windows native stderr while preserving exit codes", () => {
+  const invocation = shellInvocation("node.exe --version", "win32");
+  const script = Buffer.from(invocation.args.at(-1)!, "base64").toString(
+    "utf16le",
+  );
+  expect(script).toContain("$ErrorActionPreference = 'Continue'");
+  expect(script).toContain("exit $LASTEXITCODE");
+});
+it.skipIf(process.platform !== "win32")(
+  "continues past native warnings and propagates nonzero native exit codes",
+  async () => {
+    const nodePath = process.execPath.replaceAll("'", "''");
+    for (const code of [0, 7]) {
+      const result = await runShellProcess({
+        command: `& '${nodePath}' -e 'process.stderr.write("warning\\n"); process.exit(${code});'\nWrite-Output 'continued'`,
+        cwd: process.cwd(),
+        timeoutMs: 10000,
+        onOutput: vi.fn(),
+      });
+      expect(result.stdout).toContain("continued");
+      expect(result.stderr).toContain("warning");
+      expect(result.code).toBe(code);
+      expect(result.status).toBe(code === 0 ? "completed" : "failed");
+    }
+  },
+);

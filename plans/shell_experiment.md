@@ -11,7 +11,7 @@ Use shared review infrastructure for MCP and shell commands, with separate polic
 - Add top-level `UserSettings.enableShellTool`, defaulting to `false`, with an Experiments toggle, Settings search entry, and default-setting snapshot coverage.
 - Explain that commands run on the user's machine and consume Pro credits for review; this is not filesystem isolation.
 - Expose `run_shell({ command, description, timeout_ms? })` only to the root Agent on Pro-funded turns using a local runtime. Exclude Build, Ask, Plan, sub-agents, Free-mode turns, Docker, and cloud runtimes.
-- Choose the shell automatically by OS. Fix the starting directory to the app directory; expose neither environment overrides nor a selectable executable.
+- Limit command text to 9,000 UTF-16 code units on Windows (to fit the encoded command line) and 16,000 elsewhere. Choose the shell automatically by OS. Fix the starting directory to the app directory; expose neither environment overrides nor a selectable executable.
 - Default execution timeout to 60 seconds, capped at five minutes. Return bounded output, exit status, and distinct blocked, cancelled, timed-out, and failed outcomes.
 
 ## Review pattern and policy
@@ -22,7 +22,7 @@ Use shared review infrastructure for MCP and shell commands, with separate polic
 - Supply the exact command, shell, working directory, recent user intent, current-turn tool history, available dedicated tools, and Dyad's automatic lifecycle behavior. Tool output and repository content remain untrusted evidence.
 - Let the reviewer obtain bounded, read-only app-file and path evidence when needed to understand scripts or destructive targets. Never execute commands to investigate them; block when effects remain unclear.
 - Reject shell equivalents only when a dedicated tool supports the actual operation, target, and required options. Local preview logs do not replace cloud logs. Permit fallback only after a recorded execution failure of the relevant tool—not permission denial, safety rejection, or disabled access. Review that fallback independently.
-- Use an eight-second review deadline, including evidence collection. Timeout, malformed output, unavailable model, or missing context prevents spawning and offers a distinct Review unavailable / Retry review flow. Cancellation propagates through review and execution.
+- Use a 45-second shell review deadline, including evidence collection and model setup; MCP consent retains its eight-second deadline. Timeout, malformed output, unavailable model, or missing context prevents spawning and offers a distinct Review unavailable / Retry review flow. Cancellation propagates through review and execution.
 - Review every invocation afresh. Generic “always allow” tool consent must never bypass review or a required one-time consequential-action approval.
 
 ## Execution, lifecycle, and presentation

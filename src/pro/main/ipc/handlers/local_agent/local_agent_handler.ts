@@ -79,6 +79,7 @@ import {
   getAgentToolConsent,
   shouldIncludeTool,
   requireAgentToolConsent,
+  refreshShellReviewToolInventory,
 } from "./tool_definitions";
 import {
   deployAllFunctionsIfNeeded,
@@ -1260,19 +1261,9 @@ export async function handleLocalAgentStream(
     }
     const registeredToolNames = new Set(Object.keys(allTools));
     if (ctx.shellReviewContext) {
-      for (const [name, tool] of Object.entries(allTools)) {
-        const existing = ctx.shellReviewContext.tools.find(
-          (entry) => entry.name === name,
-        );
-        if (existing)
-          existing.description = tool.description ?? existing.description;
-        else if (name !== "run_shell")
-          ctx.shellReviewContext.tools.push({
-            name,
-            description: tool.description ?? "",
-            available: true,
-          });
-      }
+      ctx.refreshShellReviewTools = () =>
+        refreshShellReviewToolInventory(ctx, allTools, buildOptions);
+      ctx.refreshShellReviewTools();
     }
 
     // Prepare message history with graceful fallback

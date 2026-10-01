@@ -68,6 +68,8 @@ export const APP_MUTATING_TOOL_NAMES = [
 export type AppMutatingToolName = (typeof APP_MUTATING_TOOL_NAMES)[number];
 
 export interface AgentContext {
+  /** Refresh the final callable inventory immediately before safety review. */
+  refreshShellReviewTools?: () => void;
   /** Recovery journal is needed only for Claude-owned conversations. */
   persistQuestionnaireRecovery?: boolean;
   /** Host-recorded evidence for mandatory shell review, shared across tool calls. */

@@ -8,6 +8,11 @@ import { buildWindowsCommandInvocation } from "@/ipc/utils/windows_command";
 
 const activeShellPids = new Set<number>();
 let quitCleanupRegistered = false;
+export function maxShellCommandLength(platform = process.platform): number {
+  // UTF-16 + base64 expands each Windows code unit to ~2.7 command-line characters.
+  // Leave space for the executable, switches, and wrapper under CreateProcess's 32K limit.
+  return platform === "win32" ? 9_000 : 16_000;
+}
 
 function registerQuitCleanup() {
   if (quitCleanupRegistered || !app?.once) return;
@@ -65,6 +70,10 @@ export function shellEnvironment(
 }
 
 export function shellInvocation(command: string, platform = process.platform) {
+  if (command.length > maxShellCommandLength(platform))
+    throw new RangeError(
+      `Shell command exceeds ${maxShellCommandLength(platform)} characters on this platform.`,
+    );
   if (platform === "win32") {
     const executable = path.win32.join(
       process.env.SystemRoot ?? "C:\\Windows",
@@ -74,7 +83,9 @@ export function shellInvocation(command: string, platform = process.platform) {
       "powershell.exe",
     );
     // EncodedCommand preserves arbitrary quotes, newlines, and Unicode without cmd.exe.
-    const script = `[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)\n$ErrorActionPreference = 'Stop'\n${command}\nif ($null -ne $LASTEXITCODE) { exit $LASTEXITCODE }\n`;
+    // Windows PowerShell 5.1 treats native stderr as error records. Continue lets
+    // warnings flow while LASTEXITCODE still determines native command failure.
+    const script = `[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)\n$ErrorActionPreference = 'Continue'\n${command}\n$dyadShellSucceeded = $?\nif ($null -ne $LASTEXITCODE) { exit $LASTEXITCODE }\nif (-not $dyadShellSucceeded) { exit 1 }\n`;
     return buildWindowsCommandInvocation(
       executable,
       [
@@ -102,19 +113,22 @@ export interface ShellProcessResult {
   truncated: boolean;
 }
 
-export function runShellProcess({
-  command,
-  cwd,
-  timeoutMs,
-  signal,
-  onOutput,
-}: {
-  command: string;
-  cwd: string;
-  timeoutMs: number;
-  signal?: AbortSignal;
-  onOutput: (text: string) => void;
-}): Promise<ShellProcessResult> {
+export function runShellProcess(
+  {
+    command,
+    cwd,
+    timeoutMs,
+    signal,
+    onOutput,
+  }: {
+    command: string;
+    cwd: string;
+    timeoutMs: number;
+    signal?: AbortSignal;
+    onOutput: (text: string) => void;
+  },
+  platform: NodeJS.Platform = process.platform,
+): Promise<ShellProcessResult> {
   if (signal?.aborted)
     return Promise.resolve({
       executed: false,
@@ -125,7 +139,7 @@ export function runShellProcess({
       truncated: false,
     });
   registerQuitCleanup();
-  const invocation = shellInvocation(command);
+  const invocation = shellInvocation(command, platform);
   return new Promise((resolve, reject) => {
     const stdout = new BoundedOutputBuffer(64_000);
     const stderr = new BoundedOutputBuffer(64_000);
@@ -135,22 +149,24 @@ export function runShellProcess({
       cwd,
       env: shellEnvironment(),
       shell: false,
-      detached: process.platform !== "win32",
+      detached: platform !== "win32",
       stdio: ["ignore", "pipe", "pipe"],
     });
     if (child.pid) activeShellPids.add(child.pid);
     let status: ShellProcessResult["status"] | undefined;
     let forceTimer: ReturnType<typeof setTimeout> | undefined;
     let killPending: Promise<void> = Promise.resolve();
+    let exited = false;
     const kill = (kind: "SIGTERM" | "SIGKILL") => {
       if (!child.pid) return;
-      if (process.platform !== "win32") {
+      if (platform !== "win32") {
         try {
           process.kill(-child.pid, kind);
         } catch {
           /* Already exited. */
         }
       } else {
+        if (exited) return;
         const pid = child.pid;
         killPending = new Promise<void>((done) =>
           treeKill(pid, kind, () => done()),
@@ -161,7 +177,8 @@ export function runShellProcess({
       if (status) return;
       status = next;
       kill("SIGTERM");
-      forceTimer = setTimeout(() => kill("SIGKILL"), 1_000);
+      if (platform !== "win32")
+        forceTimer = setTimeout(() => kill("SIGKILL"), 1_000);
     };
     const abort = () => stop("cancelled");
     const timer = setTimeout(() => stop("timed_out"), timeoutMs);
@@ -180,6 +197,11 @@ export function runShellProcess({
         /* A disconnected renderer must not release a live process. */
       }
     };
+    child.once("exit", () => {
+      exited = true;
+      // Never target an exited Windows root PID, even while pipes are draining.
+      if (platform === "win32" && child.pid) activeShellPids.delete(child.pid);
+    });
     child.stdout.on("data", (data: Buffer) => {
       stdout.append(data);
       emit(outDecoder.write(data));
@@ -194,7 +216,7 @@ export function runShellProcess({
     });
     child.on("close", async (code) => {
       // Clean remaining Unix group members even if a command forked then exited.
-      kill("SIGKILL");
+      if (platform !== "win32") kill("SIGKILL");
       await killPending;
       cleanup();
       emit(outDecoder.end());

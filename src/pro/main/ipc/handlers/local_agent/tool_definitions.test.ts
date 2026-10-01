@@ -230,3 +230,41 @@ describe("shell tool registration", () => {
     ).toBe(false);
   });
 });
+
+import { refreshShellReviewToolInventory } from "./tool_definitions";
+it("refreshes reviewer availability from registration and invocation guards", () => {
+  const ctx = {
+    isDyadPro: true,
+    preCommitHookAvailable: false,
+    shellReviewContext: {
+      tools: [
+        { name: "run_pre_commit", description: "pre-commit", available: false },
+        { name: "get_mcp_tool_schema", description: "schema", available: true },
+      ],
+      history: [],
+    },
+  } as unknown as import("./tools/types").AgentContext;
+  // Already offered tools remain callable when only a discovery condition changes.
+  const registered = {
+    run_pre_commit: { description: "Run hook" },
+    cloud_logs: { description: "Read cloud logs" },
+  };
+  refreshShellReviewToolInventory(ctx, registered);
+  expect(
+    ctx.shellReviewContext!.tools.find((t) => t.name === "run_pre_commit")
+      ?.available,
+  ).toBe(true);
+  expect(
+    ctx.shellReviewContext!.tools.find((t) => t.name === "get_mcp_tool_schema")
+      ?.available,
+  ).toBe(false);
+  expect(
+    ctx.shellReviewContext!.tools.find((t) => t.name === "cloud_logs"),
+  ).toMatchObject({ available: true, description: "Read cloud logs" });
+  // Current mode guards override an old registration snapshot.
+  refreshShellReviewToolInventory(ctx, registered, { readOnly: true });
+  expect(
+    ctx.shellReviewContext!.tools.find((t) => t.name === "run_pre_commit")
+      ?.available,
+  ).toBe(false);
+});

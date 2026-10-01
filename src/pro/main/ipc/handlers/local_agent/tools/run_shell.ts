@@ -8,7 +8,7 @@ import {
 } from "@/shared/shell_capability";
 import { appOperationCoordinator } from "@/ipc/services/app_operation_coordinator";
 import { reviewShellCommand } from "../shell_review";
-import { runShellProcess } from "./shell_process";
+import { runShellProcess, maxShellCommandLength } from "./shell_process";
 import { trackWorkspaceMutation } from "./tool_invocation";
 import {
   tryGetGitStateFingerprint,
@@ -19,7 +19,7 @@ import {
 import { escapeXmlAttr, escapeXmlContent, type ToolDefinition } from "./types";
 
 const schema = z.object({
-  command: z.string().min(1).max(16_000),
+  command: z.string().min(1).max(maxShellCommandLength()),
   description: z.string().min(1).max(1000),
   timeout_ms: z.number().int().min(1).max(300_000).optional(),
 });

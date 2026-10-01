@@ -350,6 +350,7 @@ vi.mock("@/pro/main/ipc/handlers/local_agent/tool_definitions", () => ({
     },
   ],
   buildAgentToolSet: vi.fn(() => ({})),
+  refreshShellReviewToolInventory: vi.fn(),
   shouldIncludeTool: vi.fn(() => false),
   requireAgentToolConsent: vi.fn(async () => true),
   clearPendingConsentsForChat: vi.fn(),

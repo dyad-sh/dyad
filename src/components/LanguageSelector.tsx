@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useSettings } from "@/hooks/useSettings";
-import { Language, LanguageSchema } from "@/lib/schemas";
+import { DEFAULT_LANGUAGE, Language, LanguageSchema } from "@/lib/schemas";
 import { SettingField } from "@/components/settings/SettingField";
 import {
   Select,
@@ -10,8 +10,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-
-const DEFAULT_LANGUAGE: Language = "en";
 
 /**
  * Language labels shown in their native script so users can always

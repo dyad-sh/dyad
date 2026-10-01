@@ -1,5 +1,6 @@
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
+import { DEFAULT_LANGUAGE } from "@/lib/schemas";
 
 // Import all English locale bundles (bundled with the app)
 import enCommon from "./locales/en/common.json";
@@ -104,7 +105,9 @@ const resources = {
 
 i18n.use(initReactI18next).init({
   resources,
-  lng: "en", // Default; overridden by user setting on startup
+  // Default until the persisted user setting loads; English stays the
+  // fallback for any key a locale has not translated yet.
+  lng: DEFAULT_LANGUAGE,
   fallbackLng: "en",
   defaultNS: "common",
   ns: ["common", "settings", "chat", "home", "errors"],

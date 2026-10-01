@@ -1,8 +1,17 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
 import type { ReactNode } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
+import i18n from "@/i18n";
 import * as parserModule from "@/lib/streamingMessageParser";
 import type {
   Block as ParserBlock,
@@ -19,6 +28,11 @@ const mockStreamState = vi.hoisted(() => ({
 // inside a React.memo'd MemoMarkdown, so a call here means the memo did
 // not short-circuit — i.e. the block actually re-rendered.
 const markdownRenderCounts = new Map<string, number>();
+
+// Assertions use English copy; the app itself defaults to French.
+beforeAll(async () => {
+  await i18n.changeLanguage("en");
+});
 
 vi.mock("react-markdown", () => ({
   default: function MockReactMarkdown({ children }: { children: string }) {

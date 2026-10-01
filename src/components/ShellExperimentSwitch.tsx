@@ -22,9 +22,10 @@ export function ShellExperimentSwitch() {
       </div>
       <div className="text-sm text-muted-foreground">
         Allow Agent mode to run Bash on macOS/Linux or PowerShell on Windows for
-        local app tasks. Every command is reviewed using Pro credits; commands
-        that cannot be approved are blocked. Commands run on your machine
-        without filesystem isolation. Available only with the Host runtime.
+        app tasks and connected cloud services. Every command is reviewed using
+        Pro credits. Consequential commands may require your approval; clear
+        safety violations are blocked. Commands run on your machine without
+        filesystem isolation. Available only with the Host runtime.
       </div>
     </div>
   );

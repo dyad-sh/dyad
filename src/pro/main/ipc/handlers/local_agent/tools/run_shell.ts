@@ -98,7 +98,7 @@ export const runShellTool: ToolDefinition<z.infer<typeof schema>> = {
         if (ctx.abortSignal?.aborted)
           return JSON.stringify({ status: "cancelled" });
         present("reviewing", "Checking command safety…");
-        const decision = await reviewShellCommand(
+        let decision = await reviewShellCommand(
           args.command,
           args.description,
           ctx,
@@ -107,7 +107,60 @@ export const runShellTool: ToolDefinition<z.infer<typeof schema>> = {
           present("cancelled", "Cancelled before execution.", true);
           return JSON.stringify({ status: "cancelled" });
         }
-        if (decision.decision !== "allow") return blocked(decision.reason);
+        // An outage has no safety verdict. Retry requires fresh review, never execution approval.
+        while (decision.unavailable && !ctx.abortSignal?.aborted) {
+          present("review unavailable", decision.reason);
+          const retry = await ctx.requireConsent({
+            toolName: "run_shell",
+            confirmation: "shell-review-retry",
+            toolDescription:
+              decision.reason +
+              " Retry runs the safety check again; it does not execute the command.",
+            inputPreview: runShellTool.getConsentPreview!(args),
+            abortSignal: ctx.abortSignal,
+          });
+          if (ctx.abortSignal?.aborted) {
+            present("cancelled", "Cancelled before execution.", true);
+            return JSON.stringify({ status: "cancelled" });
+          }
+          if (!retry) {
+            present("review unavailable", decision.reason, true);
+            return JSON.stringify({
+              status: "review_unavailable",
+              reason: decision.reason,
+              retryable: true,
+            });
+          }
+          if (!available())
+            return blocked("Shell access was disabled before retrying.");
+          present("reviewing", "Retrying command safety review…");
+          decision = await reviewShellCommand(
+            args.command,
+            args.description,
+            ctx,
+          );
+        }
+        if (ctx.abortSignal?.aborted) {
+          present("cancelled", "Cancelled before execution.", true);
+          return JSON.stringify({ status: "cancelled" });
+        }
+        if (decision.decision === "block") return blocked(decision.reason);
+        const approved = await ctx.requireConsent({
+          toolName: "run_shell",
+          ...(decision.decision === "ask"
+            ? { confirmation: "shell-approval" as const }
+            : {}),
+          toolDescription: decision.reason,
+          inputPreview: runShellTool.getConsentPreview!(args),
+          abortSignal: ctx.abortSignal,
+        });
+        if (!approved || ctx.abortSignal?.aborted) {
+          present("cancelled", "Command was not approved for execution.", true);
+          return JSON.stringify({
+            status: "cancelled",
+            reason: "Command was not approved for execution.",
+          });
+        }
         if (!available())
           return blocked("Shell access was disabled while reviewing.");
         const before = await tryGetGitStateFingerprint(

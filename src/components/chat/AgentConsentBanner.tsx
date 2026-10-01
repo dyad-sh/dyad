@@ -89,14 +89,17 @@ export function AgentConsentBanner({
         <div className="flex items-center gap-2 mb-1">
           <Bot className="w-4 h-4 text-muted-foreground flex-shrink-0" />
           <span className="text-sm font-medium">
-            Allow <span className="font-mono">{toolName}</span>
+            {consent.confirmation === "shell-review-retry"
+              ? "Retry safety review for"
+              : "Allow"}{" "}
+            <span className="font-mono">{toolName}</span>
             {serverName && (
               <>
                 {" "}
                 from <span className="font-mono">{serverName}</span>
               </>
             )}{" "}
-            to run?
+            {consent.confirmation === "shell-review-retry" ? "?" : "to run?"}
             {queueTotal > 1 && (
               <span className="ml-1.5 text-xs text-muted-foreground font-normal">
                 (1 of {queueTotal})
@@ -212,7 +215,9 @@ export function AgentConsentBanner({
             className="h-7 px-3 text-xs"
           >
             <Check className="w-3.5 h-3.5 mr-1" />
-            Allow once
+            {consent.confirmation === "shell-review-retry"
+              ? "Retry review"
+              : "Allow once"}
           </Button>
           <Button
             onClick={() => onDecision("decline")}

@@ -138,3 +138,26 @@ it("does not offer persistent approval for turn-scoped operations", () => {
   expect(container.textContent).not.toContain("Always allow");
   expect(container.textContent).toContain("Allow once");
 });
+
+it("offers a review retry without offering command approval", () => {
+  const { container } = render(
+    <AgentConsentBanner
+      consent={{
+        kind: "agent",
+        requestId: "retry",
+        chatId: 1,
+        toolName: "run_shell",
+        allowAlways: false,
+        confirmation: "shell-review-retry",
+        classifierReason: "Safety review timed out",
+        inputPreview: "Bash: gcloud logging read severity=ERROR --limit=50",
+      }}
+      onDecision={vi.fn()}
+      onClose={vi.fn()}
+    />,
+  );
+  expect(screen.getByRole("button", { name: "Retry review" })).toBeTruthy();
+  expect(container.textContent).not.toContain("Always allow");
+  expect(container.textContent).not.toContain("Allow once");
+  expect(container.textContent).toContain("Safety review timed out");
+});

@@ -294,6 +294,7 @@ export async function requireAgentToolConsent(
   params: {
     chatId: number;
     toolName: AgentToolName;
+    confirmation?: "shell-approval" | "shell-review-retry";
     toolDescription?: string | null;
     inputPreview?: string | null;
     metadata?: SqlConsentMetadata | null;
@@ -307,7 +308,13 @@ export async function requireAgentToolConsent(
 ): Promise<boolean> {
   const current = getAgentToolConsent(params.toolName);
 
-  if (current === "always") return true;
+  if (params.confirmation && params.toolName !== "run_shell")
+    throw new DyadError(
+      "Shell confirmation requires run_shell",
+      DyadErrorKind.Validation,
+    );
+  if (current === "never" && params.confirmation) return false;
+  if (current === "always" && !params.confirmation) return true;
   if (current === "never")
     throw new DyadError(
       "Should not ask for consent for a tool marked as 'never'",
@@ -315,6 +322,7 @@ export async function requireAgentToolConsent(
     );
 
   if (
+    !params.confirmation &&
     shouldAutoApproveAgentTool({
       toolName: params.toolName,
       metadata: params.metadata,
@@ -327,6 +335,8 @@ export async function requireAgentToolConsent(
   rememberUserInputSubscriber(event.sender);
   const requestId = userInputRegistry.request({
     kind: "agent-consent",
+    confirmation: params.confirmation,
+    allowAlways: params.confirmation ? false : undefined,
     chatId: params.chatId,
     toolName: params.toolName,
     toolDescription: params.toolDescription,
@@ -914,7 +924,9 @@ export function buildAgentToolSet(
           // Consent can wait indefinitely for the user. Resolve it before
           // registering mutation activity so cancellation cannot let delayed
           // consent enter a closed actor generation.
-          await requireToolConsentOrThrow(tool, processedArgs, invocationCtx);
+          // Shell resolves consent after classification, including mandatory one-time approval.
+          if (tool.name !== "run_shell")
+            await requireToolConsentOrThrow(tool, processedArgs, invocationCtx);
           const invoke = async () => {
             if (
               !shouldIncludeTool(tool, invocationCtx, options, "invocation")

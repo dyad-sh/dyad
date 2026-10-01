@@ -40,6 +40,7 @@ export type UserInputDescriptor =
   | (DescriptorBase & {
       kind: "agent-consent";
       allowAlways?: boolean;
+      confirmation?: "shell-approval" | "shell-review-retry";
       toolName: string;
       toolDescription?: string | null;
       inputPreview?: string | null;

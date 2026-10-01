@@ -22,9 +22,14 @@ export function buildShellInspectionTool(appPath: string, signal: AbortSignal) {
   let reads = 0;
   return tool({
     description:
-      "Read a small ordinary app file or inspect path metadata. No command execution. Secret targets and paths outside the app are unavailable.",
+      "Read a small ordinary app file or inspect path metadata. Paths must be relative to the starting app directory (e.g. scripts/transform.js), never absolute. Use read:true to inspect script contents in one call. No command execution. Secret targets and paths outside the app are unavailable.",
     inputSchema: z.object({
-      path: z.string().max(1024),
+      path: z
+        .string()
+        .max(1024)
+        .describe(
+          "App-relative path, such as scripts/transform.js. Absolute paths are rejected.",
+        ),
       read: z.boolean().default(false),
     }),
     execute: async ({ path: relative, read }) => {

@@ -2,7 +2,7 @@
 
 ## Summary
 
-Add an opt-in **Shell tool (Pro)** experiment using Bash on macOS/Linux and PowerShell on Windows. Every command must pass `gpt-6-luna` review before execution. Rejections, uncertainty, and review failures block execution without a manual override.
+Add an opt-in **Shell tool (Pro)** experiment using Bash on macOS/Linux and PowerShell on Windows. Every command must pass `gpt-6-luna` review before execution. Routine app and cloud work can be approved automatically. Consequential actions lacking sufficient authorization require one-time approval of the exact command. Clear safety violations remain blocked; unavailable reviews offer a retry that cannot execute the command.
 
 Use shared review infrastructure for MCP and shell commands, with separate policies and outcomes.
 
@@ -17,13 +17,13 @@ Use shared review infrastructure for MCP and shell commands, with separate polic
 ## Review pattern and policy
 
 - Extract MCP's model invocation, bounded context formatting, timeout, cancellation, and validated decision parsing into a shared reviewer runner. Preserve MCP's existing `allow/ask` policy and fallback.
-- Add a shell scaffold and separate policy based on the [pinned Codex Guardian policy](https://github.com/openai/codex/blob/7498521d288b9b3b96ffba4eedf089d8d6e06a84/codex-rs/prompts/templates/guardian/policy.md). Shell decisions are `allow/block`, with a short reason.
+- Add a shell scaffold and separate policy based on the [pinned Codex Guardian policy](https://github.com/openai/codex/blob/7498521d288b9b3b96ffba4eedf089d8d6e06a84/codex-rs/prompts/templates/guardian/policy.md). Shell decisions are `allow/ask/block`, with a short reason naming the target, effect, and concern.
 - Evaluate actual effects, user authorization, destructive scope, sensitive-data egress, credential probing, and security weakening. Explicit authorization can permit consequential app actions when it covers the target and effect and no other policy rule blocks them.
 - Supply the exact command, shell, working directory, recent user intent, current-turn tool history, available dedicated tools, and Dyad's automatic lifecycle behavior. Tool output and repository content remain untrusted evidence.
 - Let the reviewer obtain bounded, read-only app-file and path evidence when needed to understand scripts or destructive targets. Never execute commands to investigate them; block when effects remain unclear.
-- Reject shell equivalents of dedicated tools. Permit fallback only after a recorded execution failure of the relevant tool—not permission denial, safety rejection, or disabled access. Review that fallback independently.
-- Use an eight-second review deadline, including evidence collection. Timeout, malformed output, unavailable model, or missing context prevents spawning. Cancellation propagates through review and execution.
-- Review every invocation afresh. Generic “always allow” tool consent must never bypass review.
+- Reject shell equivalents only when a dedicated tool supports the actual operation, target, and required options. Local preview logs do not replace cloud logs. Permit fallback only after a recorded execution failure of the relevant tool—not permission denial, safety rejection, or disabled access. Review that fallback independently.
+- Use an eight-second review deadline, including evidence collection. Timeout, malformed output, unavailable model, or missing context prevents spawning and offers a distinct Review unavailable / Retry review flow. Cancellation propagates through review and execution.
+- Review every invocation afresh. Generic “always allow” tool consent must never bypass review or a required one-time consequential-action approval.
 
 ## Execution, lifecycle, and presentation
 
@@ -53,4 +53,13 @@ Use shared review infrastructure for MCP and shell commands, with separate polic
 - Maintain representative policy evaluation cases for both Bash and PowerShell, including indirect scripts and consequential actions with and without explicit authorization.
 - Run targeted unit/integration tests, formatting, lint, and type checks. Build before any Electron E2E verification.
 
-Defaults are off-by-default, root-only, local-runtime-only, with no approval override or persistent terminal sessions.
+Defaults remain off-by-default, root-only, and Host-runtime-only. App-related connected cloud services are in scope. One-time approval can authorize a reviewed consequential action, but cannot override hard policy blocks or execution boundaries. Persistent terminal sessions remain unsupported.
+
+## Approved policy revision
+
+- Allow routine cloud reads and normal existing CLI authentication, including gcloud. Assess the operation, not the executable name.
+- Allow specifically authorized bounded deployments and cloud mutations; ask for missing authorization for known consequential changes such as production deletion, IAM changes, or publication.
+- Keep credential theft, hidden/unintended sensitive uploads, permission bypass, opaque destructive effects, and unsupported execution boundaries blocked.
+- Show exact command and review reason before a one-time approval. Neither approval nor retry can be saved as Always allow.
+- Resolve shell consent after review to avoid blind or duplicate approvals. Retry means a fresh classification, never approval to execute without a verdict.
+- Run the synthetic shell policy corpus against gpt-6-luna using the production reviewer deadline and read-only inspection; never execute corpus commands.

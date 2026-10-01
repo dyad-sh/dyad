@@ -1087,6 +1087,7 @@ export async function handleLocalAgentStream(
       },
       requireConsent: async (params: {
         toolName: string;
+        confirmation?: "shell-approval" | "shell-review-retry";
         toolDescription?: string | null;
         inputPreview?: string | null;
         metadata?: SqlConsentMetadata | null;
@@ -1100,6 +1101,7 @@ export async function handleLocalAgentStream(
         return requireAgentToolConsent(event, {
           chatId: chat.id,
           toolName: params.toolName as AgentToolName,
+          confirmation: params.confirmation,
           toolDescription: params.toolDescription,
           inputPreview: params.inputPreview,
           metadata: params.metadata,

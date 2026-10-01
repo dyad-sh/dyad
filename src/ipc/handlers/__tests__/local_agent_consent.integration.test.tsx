@@ -57,6 +57,43 @@ describe("local-agent consent banner (integration)", () => {
     await harness?.dispose();
   });
 
+  it.each(["shell-approval", "shell-review-retry"] as const)(
+    "forces one-time %s even with saved always consent",
+    async (confirmation) => {
+      writeSettings({ agentToolConsents: { run_shell: "always" } });
+      const chatId = await harness.createChat();
+      harness.mount({ chatId });
+      const consent = requireAgentToolConsent(harness.bridge.fakeEvent as any, {
+        chatId,
+        toolName: "run_shell",
+        confirmation,
+        toolDescription: "Changes Cloud Run service my-app in project my-app.",
+        inputPreview:
+          "Bash: gcloud run services delete my-app --project=my-app --quiet",
+      });
+      const label =
+        confirmation === "shell-review-retry" ? "Retry review" : "Allow once";
+      const button = await screen.findByRole("button", { name: label });
+      expect(screen.queryByRole("button", { name: "Always allow" })).toBeNull();
+      expect(screen.getByText(/Changes Cloud Run service/)).toBeTruthy();
+      expect(screen.getByText(/gcloud run services delete/)).toBeTruthy();
+      const pending = await userInputClient.getPending();
+      const requestId = pending.find(
+        (entry) => entry.descriptor.chatId === chatId,
+      )!.descriptor.requestId;
+      expect(requestId).toBeTruthy();
+      await expect(
+        userInputClient.respond({
+          requestId,
+          response: { kind: "agent-consent", decision: "accept-always" },
+        }),
+      ).rejects.toBeTruthy();
+      fireEvent.click(button);
+      await expect(consent).resolves.toBe(true);
+      expect(readSettings().agentToolConsents?.run_shell).toBe("always");
+    },
+  );
+
   it("persists Always allow through the real consent response path", async () => {
     harness.mount();
 

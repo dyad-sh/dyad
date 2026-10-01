@@ -37,6 +37,7 @@ beforeEach(async () => {
     appPath: directory,
     isDyadPro: true,
     shellReviewContext: { tools: [], history: [] },
+    requireConsent: vi.fn(async () => true),
     onXmlStream: vi.fn(),
     onXmlComplete: vi.fn(),
     preCommitHookAvailable: true,
@@ -210,4 +211,130 @@ it("returns a structured failure when the shell cannot start", async () => {
   expect(ctx.onXmlComplete).toHaveBeenCalledWith(
     expect.stringContaining('state="warning"'),
   );
+});
+
+it.each([true, false])(
+  "requires one-time approval for an ask verdict (approved=%s)",
+  async (approved) => {
+    mocks.review.mockResolvedValue({
+      decision: "ask",
+      reason: "Changes the app's cloud service.",
+    });
+    vi.mocked(ctx.requireConsent).mockResolvedValue(approved);
+    const result = JSON.parse(
+      await runShellTool.execute(
+        { command: writeCommand, description: "test" },
+        ctx,
+      ),
+    );
+    expect(ctx.requireConsent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        toolName: "run_shell",
+        confirmation: "shell-approval",
+        inputPreview: expect.stringContaining(writeCommand),
+      }),
+    );
+    expect(result.status).toBe(approved ? "completed" : "cancelled");
+    if (!approved) {
+      await expect(
+        readFile(path.join(directory, "result.txt")),
+      ).rejects.toThrow();
+      expect(mocks.track).not.toHaveBeenCalled();
+    }
+  },
+);
+it("does not offer approval of a policy block", async () => {
+  mocks.review.mockResolvedValue({
+    decision: "block",
+    reason: "Credential theft",
+  });
+  await runShellTool.execute(
+    { command: writeCommand, description: "test" },
+    ctx,
+  );
+  expect(ctx.requireConsent).not.toHaveBeenCalled();
+});
+it("retries unavailable review before requesting execution consent", async () => {
+  mocks.review
+    .mockResolvedValueOnce({
+      decision: "block",
+      reason: "Timed out",
+      unavailable: true,
+    })
+    .mockResolvedValueOnce({ decision: "allow", reason: "Safe bounded write" });
+  const result = JSON.parse(
+    await runShellTool.execute(
+      { command: writeCommand, description: "test" },
+      ctx,
+    ),
+  );
+  expect(result.status).toBe("completed");
+  expect(mocks.review).toHaveBeenCalledTimes(2);
+  expect(ctx.requireConsent).toHaveBeenNthCalledWith(
+    1,
+    expect.objectContaining({ confirmation: "shell-review-retry" }),
+  );
+  expect(ctx.requireConsent).toHaveBeenNthCalledWith(
+    2,
+    expect.not.objectContaining({ confirmation: "shell-review-retry" }),
+  );
+});
+it("never executes when an unavailable review retry is declined", async () => {
+  mocks.review.mockResolvedValue({
+    decision: "block",
+    reason: "Timed out",
+    unavailable: true,
+  });
+  vi.mocked(ctx.requireConsent).mockResolvedValue(false);
+  const result = JSON.parse(
+    await runShellTool.execute(
+      { command: writeCommand, description: "test" },
+      ctx,
+    ),
+  );
+  expect(result).toMatchObject({
+    status: "review_unavailable",
+    retryable: true,
+  });
+  await expect(readFile(path.join(directory, "result.txt"))).rejects.toThrow();
+});
+it("rechecks capability after one-time approval", async () => {
+  mocks.review.mockResolvedValue({
+    decision: "ask",
+    reason: "Consequential action",
+  });
+  vi.mocked(ctx.requireConsent).mockImplementation(async () => {
+    mocks.settings.enableShellTool = false;
+    return true;
+  });
+  const result = JSON.parse(
+    await runShellTool.execute(
+      { command: writeCommand, description: "test" },
+      ctx,
+    ),
+  );
+  expect(result.status).toBe("blocked");
+  await expect(readFile(path.join(directory, "result.txt"))).rejects.toThrow();
+});
+
+it("cancels while waiting for review retry without executing", async () => {
+  const controller = new AbortController();
+  ctx.abortSignal = controller.signal;
+  mocks.review.mockResolvedValue({
+    decision: "block",
+    reason: "Timed out",
+    unavailable: true,
+  });
+  vi.mocked(ctx.requireConsent).mockImplementation(async () => {
+    controller.abort();
+    return false;
+  });
+  const result = JSON.parse(
+    await runShellTool.execute(
+      { command: writeCommand, description: "test" },
+      ctx,
+    ),
+  );
+  expect(result.status).toBe("cancelled");
+  await expect(readFile(path.join(directory, "result.txt"))).rejects.toThrow();
 });

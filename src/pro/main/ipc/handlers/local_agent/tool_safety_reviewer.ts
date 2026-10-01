@@ -24,7 +24,11 @@ export async function reviewToolAction<D extends "ask" | "block">({
   prepare: (
     signal: AbortSignal,
   ) => Promise<{ payload: string; tools?: ToolSet }>;
-}): Promise<{ decision: "allow" | D; reason: string }> {
+}): Promise<{
+  decision: "allow" | D | "ask";
+  reason: string;
+  unavailable?: true;
+}> {
   const state: { phase: "context" | "model setup" | "generation" | "verdict" } =
     { phase: "context" };
   let timedOut = false;
@@ -74,7 +78,10 @@ export async function reviewToolAction<D extends "ask" | "block">({
             fallback === "block"
               ? z.string().trim().min(1)
               : z.string().optional(),
-          decision: z.enum(["allow", fallback]),
+          decision:
+            fallback === "block"
+              ? z.enum(["allow", "ask", "block"])
+              : z.enum(["allow", "ask"]),
         })
         .parse(JSON.parse(json));
       logger.info("Review completed", {
@@ -100,7 +107,7 @@ export async function reviewToolAction<D extends "ask" | "block">({
       phase: state.phase,
       errorType: error instanceof Error ? error.name : "unknown",
     });
-    return { decision: fallback, reason };
+    return { decision: fallback, reason, unavailable: true };
   } finally {
     clearTimeout(timer);
     signal?.removeEventListener("abort", abort);

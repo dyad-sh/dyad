@@ -26,12 +26,12 @@ describe("mandatory tool reviewer", () => {
   it.each([
     "garbage",
     '{"decision":"allow"}',
-    '{"reason":"x","decision":"ask"}',
     'Here: {"reason":"x","decision":"allow"}',
   ])("blocks invalid shell verdict %s", async (text) => {
     mocks.streamText.mockReturnValue({ text: Promise.resolve(text) });
     expect(await reviewToolAction(input)).toEqual({
       decision: "block",
+      unavailable: true,
       reason: "The safety reviewer returned an invalid verdict.",
     });
   });
@@ -56,6 +56,7 @@ describe("mandatory tool reviewer", () => {
       await vi.advanceTimersByTimeAsync(8000);
       expect(await pending).toEqual({
         decision: "block",
+        unavailable: true,
         reason: "Tool safety review timed out.",
       });
       expect(mocks.streamText).not.toHaveBeenCalled();
@@ -79,11 +80,24 @@ describe("mandatory tool reviewer", () => {
     controller.abort();
     expect(await pending).toEqual({
       decision: "block",
+      unavailable: true,
       reason: "Tool safety review was cancelled.",
     });
     finish();
     await Promise.resolve();
     await Promise.resolve();
     expect(mocks.getModelClient).not.toHaveBeenCalled();
+  });
+});
+
+it("accepts a structured ask verdict for shell authorization", async () => {
+  mocks.streamText.mockReturnValue({
+    text: Promise.resolve(
+      '{"decision":"ask","reason":"Delete the production service; approval required."}',
+    ),
+  });
+  expect(await reviewToolAction(input)).toEqual({
+    decision: "ask",
+    reason: "Delete the production service; approval required.",
   });
 });

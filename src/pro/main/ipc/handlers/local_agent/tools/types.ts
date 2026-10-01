@@ -241,6 +241,7 @@ export interface AgentContext {
   resyncResponseFromDb?: () => Promise<void>;
   requireConsent: (params: {
     toolName: string;
+    confirmation?: "shell-approval" | "shell-review-retry";
     toolDescription?: string | null;
     inputPreview?: string | null;
     metadata?: SqlConsentMetadata | null;

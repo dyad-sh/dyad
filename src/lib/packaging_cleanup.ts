@@ -7,6 +7,7 @@ type PackagerArch = "arm64" | "x64" | "ia32" | string;
 const ELECTRON_LOCALE_DIRS_TO_KEEP = new Set([
   "en.lproj",
   "es.lproj",
+  "fr.lproj",
   "pt_BR.lproj",
   "zh_CN.lproj",
 ]);
@@ -14,6 +15,7 @@ const ELECTRON_LOCALE_DIRS_TO_KEEP = new Set([
 const ELECTRON_LOCALE_PAKS_TO_KEEP = new Set([
   "en-US.pak",
   "es.pak",
+  "fr.pak",
   "pt-BR.pak",
   "zh-CN.pak",
 ]);
@@ -445,25 +447,36 @@ async function pruneGitDistribution(
   await rmIfExists(path.join(gitPath, "libexec", "git-core", "git-lfs"));
 }
 
-function getResourcePaths(
+/**
+ * The macOS bundle is named after the product name, so it is looked up rather
+ * than assumed: a build packaged under another name would otherwise skip
+ * every prune below without any error.
+ */
+async function findMacAppBundle(buildPath: string): Promise<string> {
+  const entries = await fs.readdir(buildPath).catch(() => [] as string[]);
+  return entries.find((entry) => entry.endsWith(".app")) ?? "dyad.app";
+}
+
+async function getResourcePaths(
   buildPath: string,
   platform: PackagerPlatform,
-): {
+): Promise<{
   appResourcesPath: string;
   electronLocaleResourcePaths: string[];
-} {
+}> {
   if (platform === "darwin" || platform === "mas") {
+    const appBundle = await findMacAppBundle(buildPath);
     return {
       appResourcesPath: path.join(
         buildPath,
-        "dyad.app",
+        appBundle,
         "Contents",
         "Resources",
       ),
       electronLocaleResourcePaths: [
         path.join(
           buildPath,
-          "dyad.app",
+          appBundle,
           "Contents",
           "Frameworks",
           "Electron Framework.framework",
@@ -485,10 +498,8 @@ export async function removeUnusedCopiedResources(
   buildPath: string,
   platform: PackagerPlatform,
 ): Promise<void> {
-  const { appResourcesPath, electronLocaleResourcePaths } = getResourcePaths(
-    buildPath,
-    platform,
-  );
+  const { appResourcesPath, electronLocaleResourcePaths } =
+    await getResourcePaths(buildPath, platform);
 
   await Promise.all([
     pruneGitDistribution(appResourcesPath, platform),

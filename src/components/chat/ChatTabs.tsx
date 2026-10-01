@@ -138,10 +138,18 @@ export function restoreMessagesScrollTop(
     if (!shouldContinue()) return;
     const viewport = getMessagesScrollViewport();
     if (viewport) {
-      restoreChatScrollPosition(viewport, scrollTop, following);
+      const handled = restoreChatScrollPosition(viewport, scrollTop, following);
+      // Follow intent is sticky once the controller accepts it: it tracks later
+      // growth itself, and re-dispatching would override a user scroll-away.
+      if (following && handled) return;
       if (
-        scrollTop === 0 ||
-        viewport.scrollHeight >= scrollTop + viewport.clientHeight
+        following
+          ? viewport.scrollHeight -
+              viewport.clientHeight -
+              viewport.scrollTop <=
+            4
+          : scrollTop === 0 ||
+            viewport.scrollHeight >= scrollTop + viewport.clientHeight
       ) {
         stableFrames += 1;
         if (stableFrames >= SCROLL_RESTORE_STABILIZATION_FRAMES) return;

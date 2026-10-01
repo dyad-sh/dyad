@@ -14,7 +14,9 @@ import { FusesPlugin } from "@electron-forge/plugin-fuses";
 import { FuseV1Options, FuseVersion } from "@electron/fuses";
 import { AutoUnpackNativesPlugin } from "@electron-forge/plugin-auto-unpack-natives";
 import { readFileSync } from "fs";
+import { readFile, writeFile } from "fs/promises";
 import { createRequire } from "module";
+import path from "path";
 
 console.log("AZURE_CODE_SIGNING_DLIB", process.env.AZURE_CODE_SIGNING_DLIB);
 
@@ -146,6 +148,29 @@ const ignore = (file: string) => {
   return true;
 };
 
+// A local build that must not share data with an installed official Dyad.
+// Electron derives userData (~/Library/Application Support/<name>), the
+// single-instance lock and the safeStorage keychain entry from the app name,
+// which it reads from the bundled package.json, so renaming the bundle alone
+// is not enough: the copied package.json gets the same productName.
+const customAppName = process.env.DYAD_APP_NAME?.trim() || undefined;
+const customAppBundleId = customAppName
+  ? `local.dyad.${customAppName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`
+  : undefined;
+
+async function applyCustomAppName(buildPath: string): Promise<void> {
+  if (!customAppName) return;
+  const bundledPackageJsonPath = path.join(buildPath, "package.json");
+  const bundledPackageJson = JSON.parse(
+    await readFile(bundledPackageJsonPath, "utf8"),
+  ) as { productName?: string };
+  bundledPackageJson.productName = customAppName;
+  await writeFile(
+    bundledPackageJsonPath,
+    `${JSON.stringify(bundledPackageJson, null, 2)}\n`,
+  );
+}
+
 const isEndToEndTestBuild = process.env.E2E_TEST_BUILD === "true";
 const isWindowsSigningEnabled = process.env.WINDOWS_SIGN === "true";
 const shouldSkipNativeRebuild = process.env.DYAD_SKIP_NATIVE_REBUILD === "true";
@@ -171,9 +196,17 @@ const config: ForgeConfig = {
     // packaged app contains loadable runtime files.
     derefSymlinks: true,
     windowsSign: isWindowsSigningEnabled ? windowsSign : undefined,
+    name: customAppName,
+    appBundleId: customAppBundleId,
     afterCopy: [
       (buildPath, _electronVersion, platform, arch, callback) => {
         removeUnusedAppPackageFiles(buildPath, platform, arch).then(
+          () => callback(),
+          (error) => callback(error as Error),
+        );
+      },
+      (buildPath, _electronVersion, _platform, _arch, callback) => {
+        applyCustomAppName(buildPath).then(
           () => callback(),
           (error) => callback(error as Error),
         );

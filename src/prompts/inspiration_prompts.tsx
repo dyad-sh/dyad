@@ -16,8 +16,114 @@ import {
   Users,
   Wand2,
 } from "lucide-react";
+import type { ReactNode } from "react";
 
-export const INSPIRATION_PROMPTS = [
+export interface InspirationPrompt {
+  icon: ReactNode;
+  label: string;
+  prompt: string;
+}
+
+export const INSPIRATION_PROMPTS_FR: InspirationPrompt[] = [
+  {
+    icon: <ChefHat className="size-5" />,
+    label: "Planificateur de recettes",
+    prompt:
+      "Crée un planificateur de recettes où je peux saisir les ingrédients que j'ai déjà, obtenir des idées de repas, enregistrer mes favoris et générer une liste de courses hebdomadaire.",
+  },
+  {
+    icon: <MapPinned className="size-5" />,
+    label: "Carte de souvenirs de voyage",
+    prompt:
+      "Crée une carte interactive de souvenirs de voyage avec des étapes épinglées, des fiches photos, des notes, des filtres par année et une belle chronologie des lieux visités.",
+  },
+  {
+    icon: <HeartPulse className="size-5" />,
+    label: "Journal d'humeur quotidien",
+    prompt:
+      "Crée un journal de suivi d'humeur avec des réflexions quotidiennes, des étiquettes d'émotions, des séries de jours, des analyses bienveillantes et un tableau de bord apaisant montrant l'évolution dans le temps.",
+  },
+  {
+    icon: <Store className="size-5" />,
+    label: "Boutique en ligne",
+    prompt:
+      "Crée une page d'accueil soignée pour une boutique en ligne indépendante avec une section d'accroche, des produits vedettes, des avis clients, une inscription à la newsletter et un appel à l'action percutant.",
+  },
+  {
+    icon: <BadgeDollarSign className="size-5" />,
+    label: "Suivi de factures freelance",
+    prompt:
+      "Crée un outil de suivi de facturation freelance avec fiches clients, statut des factures, graphiques de revenus mensuels, rappels d'impayés et tableau de bord épuré.",
+  },
+  {
+    icon: <Dumbbell className="size-5" />,
+    label: "Coach d'entraînement",
+    prompt:
+      "Crée un coach d'entraînement sportif avec des plannings hebdomadaires, des fiches d'exercices, des photos de progression, le suivi des habitudes et des encouragements après chaque séance.",
+  },
+  {
+    icon: <Users className="size-5" />,
+    label: "Mini CRM d'équipe",
+    prompt:
+      "Crée un CRM léger pour une petite équipe avec fiches contacts, étapes de transactions, rappels de relance, notes et un tableau visuel de suivi des ventes.",
+  },
+  {
+    icon: <Images className="size-5" />,
+    label: "Portfolio créatif",
+    prompt:
+      "Crée un portfolio visuel pour designer avec des études de cas de projets, des galeries d'images, des témoignages, une section À propos et un formulaire de contact.",
+  },
+  {
+    icon: <GraduationCap className="size-5" />,
+    label: "Planificateur de révisions",
+    prompt:
+      "Crée un planificateur de sessions d'étude avec matières, sessions chronométrées, rappels de révision espacée, graphiques de progression et programme d'étude quotidien.",
+  },
+  {
+    icon: <Music className="size-5" />,
+    label: "Journal musical",
+    prompt:
+      "Crée un carnet de découvertes musicales où je peux enregistrer des albums, noter des morceaux, rédiger des impressions d'écoute, filtrer par ambiance et voir mes genres préférés au fil du temps.",
+  },
+  {
+    icon: <CalendarDays className="size-5" />,
+    label: "Gestionnaire de RSVP",
+    prompt:
+      "Crée une plateforme de gestion d'événements avec page d'invitation, liste des invités, statuts de confirmation RSVP, régimes alimentaires, programme et lien de partage.",
+  },
+  {
+    icon: <Camera className="size-5" />,
+    label: "Planificateur de shooting",
+    prompt:
+      "Crée un planificateur de séances photo avec moodboards, listes de prises de vue, repérage des lieux, notes modèles, plannings et checklist du matériel.",
+  },
+  {
+    icon: <Wand2 className="size-5" />,
+    label: "Espace d'écriture IA",
+    prompt:
+      "Crée un espace de rédaction assisté par IA avec fiches de documents, choix de tonalité, historique des brouillons, options rapides de reformulation et éditeur sans distraction.",
+  },
+  {
+    icon: <Home className="size-5" />,
+    label: "Recherche d'appartement",
+    prompt:
+      "Crée un tableau de recherche d'appartement avec annonces sauvegardées, temps de trajet, comparaison des loyers, filtres indispensables, calendrier des visites et scores de décision.",
+  },
+  {
+    icon: <Palette className="size-5" />,
+    label: "Générateur d'identité visuelle",
+    prompt:
+      "Crée un générateur d'identité de marque où je peux décrire une idée d'entreprise pour obtenir des palettes de couleurs, des associations de polices, des pistes de logos et des exemples de publications.",
+  },
+  {
+    icon: <Sparkles className="size-5" />,
+    label: "Page de lancement",
+    prompt:
+      "Crée une page de lancement pour un nouveau projet avec une accroche percutante, une inscription sur liste d'attente, des aperçus des fonctionnalités, des témoignages et un compte à rebours.",
+  },
+];
+
+export const INSPIRATION_PROMPTS_EN: InspirationPrompt[] = [
   {
     icon: <ChefHat className="size-5" />,
     label: "Pantry recipe planner",
@@ -115,3 +221,12 @@ export const INSPIRATION_PROMPTS = [
       "Build a personal launch page for a new project with a bold hero, waitlist signup, feature teasers, social proof, and a launch countdown.",
   },
 ];
+
+export function getInspirationPrompts(language?: string): InspirationPrompt[] {
+  if (language && !language.toLowerCase().startsWith("fr")) {
+    return INSPIRATION_PROMPTS_EN;
+  }
+  return INSPIRATION_PROMPTS_FR;
+}
+
+export const INSPIRATION_PROMPTS = INSPIRATION_PROMPTS_FR;

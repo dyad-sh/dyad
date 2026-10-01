@@ -220,5 +220,5 @@
   "engines": {
     "node": ">=24 <26"
   },
-  "productName": "dyad"
+  "productName": "Atelier IA"
 }

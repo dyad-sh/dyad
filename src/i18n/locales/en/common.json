@@ -73,5 +73,13 @@
     "resumeSubscription": "Resume subscription",
     "openActionError": "Could not open Academy. Please try again.",
     "dismiss": "Dismiss billing notice"
+  },
+  "nav": {
+    "apps": "Apps",
+    "settings": "Settings",
+    "library": "Library",
+    "templates": "Templates",
+    "plugins": "Plugins",
+    "help": "Help"
   }
 }

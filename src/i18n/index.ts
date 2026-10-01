@@ -1,5 +1,6 @@
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
+import { DEFAULT_LANGUAGE } from "@/lib/schemas";
 
 // Import all English locale bundles (bundled with the app)
 import enCommon from "./locales/en/common.json";
@@ -42,6 +43,13 @@ import trSettings from "./locales/tr/settings.json";
 import trChat from "./locales/tr/chat.json";
 import trHome from "./locales/tr/home.json";
 import trErrors from "./locales/tr/errors.json";
+
+// French
+import frCommon from "./locales/fr/common.json";
+import frSettings from "./locales/fr/settings.json";
+import frChat from "./locales/fr/chat.json";
+import frHome from "./locales/fr/home.json";
+import frErrors from "./locales/fr/errors.json";
 
 const resources = {
   en: {
@@ -86,11 +94,20 @@ const resources = {
     home: trHome,
     errors: trErrors,
   },
+  fr: {
+    common: frCommon,
+    settings: frSettings,
+    chat: frChat,
+    home: frHome,
+    errors: frErrors,
+  },
 };
 
 i18n.use(initReactI18next).init({
   resources,
-  lng: "en", // Default; overridden by user setting on startup
+  // Default until the persisted user setting loads; English stays the
+  // fallback for any key a locale has not translated yet.
+  lng: DEFAULT_LANGUAGE,
   fallbackLng: "en",
   defaultNS: "common",
   ns: ["common", "settings", "chat", "home", "errors"],

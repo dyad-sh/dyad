@@ -12,7 +12,10 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { HomeChatInput } from "@/components/chat/HomeChatInput";
 import { usePostHog } from "posthog-js/react";
 import { PrivacyBanner } from "@/components/TelemetryBanner";
-import { INSPIRATION_PROMPTS } from "@/prompts/inspiration_prompts";
+import {
+  INSPIRATION_PROMPTS,
+  getInspirationPrompts,
+} from "@/prompts/inspiration_prompts";
 
 import { ImportAppButton } from "@/components/ImportAppButton";
 import { FeaturedAppShowcase } from "@/components/FeaturedAppShowcase";
@@ -41,7 +44,7 @@ export interface HomeSubmitOptions {
 }
 
 export default function HomePage() {
-  const { t } = useTranslation("home");
+  const { t, i18n } = useTranslation("home");
   const [inputValue, setInputValue] = useAtom(homeChatInputValueAtom);
   const selectedApp = useAtomValue(homeSelectedAppAtom);
   const attachments = useAtomValue(attachmentsAtom);
@@ -75,9 +78,10 @@ export default function HomePage() {
 
   // Function to get random prompts
   const getRandomPrompts = useCallback(() => {
-    const shuffled = [...INSPIRATION_PROMPTS].sort(() => 0.5 - Math.random());
+    const list = getInspirationPrompts(i18n.language);
+    const shuffled = [...list].sort(() => 0.5 - Math.random());
     return shuffled.slice(0, 3);
-  }, []);
+  }, [i18n.language]);
 
   // Initialize random prompts
   useEffect(() => {
@@ -182,10 +186,10 @@ export default function HomePage() {
         <div className="w-full">
           <div className="mb-6 text-center">
             <h1 className="text-4xl font-semibold tracking-tight text-foreground">
-              What do you want to build?
+              {t("heroTitle")}
             </h1>
             <p className="mx-auto mt-3 max-w-2xl text-base leading-7 text-muted-foreground">
-              Describe your idea. Dyad will turn it into a working app.
+              {t("heroSubtitle")}
             </p>
             <div className="mt-4 flex justify-center gap-3">
               <ImportAppButton
@@ -203,7 +207,7 @@ export default function HomePage() {
                   }
                 >
                   <Sparkles aria-hidden="true" />
-                  Upgrade to Pro
+                  {t("upgradeToPro")}
                 </Button>
               )}
             </div>
@@ -240,8 +244,8 @@ export default function HomePage() {
                 >
                   <Zap aria-hidden="true" className="size-3.5" />
                   {hasConfiguredAiProvider
-                    ? "Manage AI setup"
-                    : "Connect AI to build — takes a minute"}
+                    ? t("manageAiSetup")
+                    : t("connectAiToBuild")}
                 </button>
               </div>
             )}

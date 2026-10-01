@@ -399,6 +399,9 @@ export const LanguageSchema = z.enum([
 ]);
 export type Language = z.infer<typeof LanguageSchema>;
 
+/** UI language used until the user picks one in settings. */
+export const DEFAULT_LANGUAGE: Language = "fr";
+
 export const DeviceModeSchema = z.enum(["desktop", "tablet", "mobile"]);
 export type DeviceMode = z.infer<typeof DeviceModeSchema>;
 

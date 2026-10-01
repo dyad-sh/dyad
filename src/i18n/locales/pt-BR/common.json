@@ -73,5 +73,13 @@
     "resumeSubscription": "Retomar assinatura",
     "openActionError": "Não foi possível abrir a Academy. Tente novamente.",
     "dismiss": "Dispensar aviso de cobrança"
+  },
+  "nav": {
+    "apps": "Aplicativos",
+    "settings": "Configurações",
+    "library": "Biblioteca",
+    "templates": "Modelos",
+    "plugins": "Plugins",
+    "help": "Ajuda"
   }
 }

@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useSettings } from "@/hooks/useSettings";
-import { Language, LanguageSchema } from "@/lib/schemas";
+import { DEFAULT_LANGUAGE, Language, LanguageSchema } from "@/lib/schemas";
 import { SettingField } from "@/components/settings/SettingField";
 import {
   Select,
@@ -10,8 +10,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-
-const DEFAULT_LANGUAGE: Language = "en";
 
 /**
  * Language labels shown in their native script so users can always
@@ -25,9 +23,9 @@ const LANGUAGE_OPTIONS: { value: Language; nativeLabel: string }[] = [
   { value: "es", nativeLabel: "Español" },
   { value: "ko", nativeLabel: "한국어" },
   { value: "tr", nativeLabel: "Türkçe" },
+  { value: "fr", nativeLabel: "Français" },
   // Additional languages will be added as translations are completed:
   // { value: "ja", nativeLabel: "日本語" },
-  // { value: "fr", nativeLabel: "Français" },
   // { value: "de", nativeLabel: "Deutsch" },
 ];
 

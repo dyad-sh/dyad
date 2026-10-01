@@ -59,5 +59,13 @@
   "builtIn": "내장",
   "advanced": "고급",
   "required": "필수",
-  "optional": "선택"
+  "optional": "선택",
+  "nav": {
+    "apps": "앱",
+    "settings": "설정",
+    "library": "라이브러리",
+    "templates": "템플릿",
+    "plugins": "플러그인",
+    "help": "도움말"
+  }
 }

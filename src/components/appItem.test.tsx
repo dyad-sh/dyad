@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppItem } from "./appItem";
-import "@/i18n";
+import i18n from "@/i18n";
 import type { ListedApp } from "@/ipc/types/app";
 
 const mocks = vi.hoisted(() => ({
@@ -25,6 +25,11 @@ vi.mock("@/ipc/types", async (importOriginal) => {
 });
 
 describe("AppItem", () => {
+  // Assertions use English copy; the app itself defaults to French.
+  beforeAll(async () => {
+    await i18n.changeLanguage("en");
+  });
+
   beforeEach(() => {
     mocks.openEntityInNewWindow.mockClear();
   });

@@ -70,7 +70,7 @@ export {
   versionEventClient,
   MAX_VERSION_NOTE_LENGTH,
 } from "./version";
-export { languageModelContracts } from "./language-model";
+export { languageModelContracts, languageModelEvents } from "./language-model";
 export { promptContracts } from "./prompts";
 export { templateContracts } from "./templates";
 export { proposalContracts } from "./proposals";
@@ -136,7 +136,10 @@ export { neonClient } from "./neon";
 export { migrationClient } from "./migration";
 export { systemClient, systemEventClient } from "./system";
 export { versionClient } from "./version";
-export { languageModelClient } from "./language-model";
+export {
+  languageModelClient,
+  languageModelEventClient,
+} from "./language-model";
 export { promptClient } from "./prompts";
 export { templateClient } from "./templates";
 export { proposalClient } from "./proposals";
@@ -375,6 +378,8 @@ export type {
   LanguageModelProvider,
   LanguageModel,
   LocalModel,
+  OllamaRegistryModel,
+  OllamaPullProgress,
   CreateCustomLanguageModelProviderParams,
   CreateCustomLanguageModelParams,
   UpdateCustomLanguageModelParams,
@@ -552,7 +557,10 @@ import { neonClient } from "./neon";
 import { migrationClient } from "./migration";
 import { systemClient, systemEventClient } from "./system";
 import { versionClient } from "./version";
-import { languageModelClient } from "./language-model";
+import {
+  languageModelClient,
+  languageModelEventClient,
+} from "./language-model";
 import { promptClient } from "./prompts";
 import { templateClient } from "./templates";
 import { proposalClient } from "./proposals";
@@ -689,5 +697,6 @@ export const ipc = {
     distributedMachine: distributedMachineEventClient,
     recording: recordingEventClient,
     previewView: previewViewEventClient,
+    languageModel: languageModelEventClient,
   },
 } as const;

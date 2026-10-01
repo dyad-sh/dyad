@@ -21,8 +21,8 @@ export interface ApiTemplate {
 export const DEFAULT_TEMPLATE_ID = "react";
 export const DEFAULT_TEMPLATE = {
   id: "react",
-  title: "React.js Template",
-  description: "Uses React.js, Vite, Shadcn, Tailwind and TypeScript.",
+  title: "Modèle React.js",
+  description: "Utilise React.js, Vite, Shadcn, Tailwind et TypeScript.",
   imageUrl:
     "https://github.com/user-attachments/assets/5b700eab-b28c-498e-96de-8649b14c16d9",
   isOfficial: true,
@@ -35,8 +35,8 @@ export const localTemplatesData: Template[] = [
   DEFAULT_TEMPLATE,
   {
     id: "next",
-    title: "Next.js Template",
-    description: "Uses Next.js, React.js, Shadcn, Tailwind and TypeScript.",
+    title: "Modèle Next.js",
+    description: "Utilise Next.js, React.js, Shadcn, Tailwind et TypeScript.",
     imageUrl:
       "https://github.com/user-attachments/assets/96258e4f-abce-4910-a62a-a9dff77965f2",
     githubUrl: "https://github.com/dyad-sh/nextjs-template",
@@ -44,9 +44,9 @@ export const localTemplatesData: Template[] = [
   },
   {
     id: "react-vite-nitro",
-    title: "Fullstack Vite+Nitro Template",
+    title: "Modèle Fullstack Vite+Nitro",
     description:
-      "Full-stack React + Vite + Nitro backend with Shadcn, Tailwind, TypeScript.",
+      "Backend Full-stack React + Vite + Nitro avec Shadcn, Tailwind, TypeScript.",
     imageUrl:
       "https://github.com/user-attachments/assets/5b700eab-b28c-498e-96de-8649b14c16d9",
     githubUrl: "https://github.com/dyad-sh/react-vite-nitro",
@@ -55,8 +55,8 @@ export const localTemplatesData: Template[] = [
   },
   {
     id: PORTAL_MINI_STORE_ID,
-    title: "Portal: Mini Store Template",
-    description: "Uses Neon DB, Payload CMS, Next.js",
+    title: "Modèle Portal\u00a0: Mini boutique",
+    description: "Utilise Neon DB, Payload CMS, Next.js",
     imageUrl:
       "https://github.com/user-attachments/assets/ed86f322-40bf-4fd5-81dc-3b1d8a16e12b",
     githubUrl: "https://github.com/dyad-sh/portal-mini-store-template",

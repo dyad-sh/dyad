@@ -37,7 +37,10 @@ import { neonContracts } from "../types/neon";
 import { migrationContracts } from "../types/migration";
 import { systemContracts, systemEvents } from "../types/system";
 import { versionContracts, versionEvents } from "../types/version";
-import { languageModelContracts } from "../types/language-model";
+import {
+  languageModelContracts,
+  languageModelEvents,
+} from "../types/language-model";
 import { promptContracts } from "../types/prompts";
 import { templateContracts } from "../types/templates";
 import { proposalContracts } from "../types/proposals";
@@ -196,6 +199,7 @@ export const VALID_RECEIVE_CHANNELS = [
   ...getReceiveChannels(supabaseEvents),
   ...getReceiveChannels(systemEvents),
   ...getReceiveChannels(versionEvents),
+  ...getReceiveChannels(languageModelEvents),
   ...getReceiveChannels(miscEvents),
   ...getReceiveChannels(planEvents),
   ...getReceiveChannels(appBlueprintEvents),

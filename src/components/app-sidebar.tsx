@@ -11,6 +11,7 @@ import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useSidebar } from "@/components/ui/sidebar"; // import useSidebar hook
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ComponentType } from "react";
+import { useTranslation } from "react-i18next";
 import { AnimatePresence, motion } from "framer-motion";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { dropdownOpenAtom } from "@/atoms/uiAtoms";
@@ -152,6 +153,7 @@ function AppSidebarRailButton({
 }
 
 export function AppSidebar() {
+  const { t } = useTranslation("common");
   const { state, toggleSidebar } = useSidebar(); // retrieve current sidebar state
   const [hoverState, setHoverState] =
     useState<AppSidebarHoverState>("no-hover");
@@ -318,7 +320,7 @@ export function AppSidebar() {
           <SidebarMenuItem>
             <AppSidebarRailButton
               icon={HelpCircle}
-              label="Help"
+              label={t("nav.help")}
               isExpanded={state === "expanded"}
               onClick={() => setHelpDialog({ open: true })}
             />
@@ -336,6 +338,7 @@ function AppIcons({
   onHoverChange: (state: AppSidebarHoverState) => void;
   isExpanded: boolean;
 }) {
+  const { t } = useTranslation("common");
   const routerState = useRouterState();
   const pathname = routerState.location.pathname;
 
@@ -354,6 +357,21 @@ function AppIcons({
     }
   };
 
+  const navKeyMap: Record<
+    AppSidebarItemTitle,
+    | "nav.apps"
+    | "nav.settings"
+    | "nav.library"
+    | "nav.templates"
+    | "nav.plugins"
+  > = {
+    Apps: "nav.apps",
+    Settings: "nav.settings",
+    Library: "nav.library",
+    Templates: "nav.templates",
+    Plugins: "nav.plugins",
+  };
+
   return (
     <SidebarGroup className="p-0 py-2">
       <SidebarGroupContent>
@@ -368,7 +386,7 @@ function AppIcons({
               <SidebarMenuItem key={item.title}>
                 <AppSidebarRailButton
                   icon={item.icon}
-                  label={item.title}
+                  label={t(navKeyMap[item.title])}
                   to={item.to}
                   isActive={isActive}
                   isExpanded={isExpanded}

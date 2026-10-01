@@ -208,14 +208,19 @@ describe("removeUnusedCopiedResources", () => {
       electronResourcesPath,
       "pt_BR.lproj/locale.pak",
     );
-    const removedLocale = path.join(
+    const keptFrenchLocale = path.join(
       electronResourcesPath,
       "fr.lproj/locale.pak",
+    );
+    const removedLocale = path.join(
+      electronResourcesPath,
+      "de.lproj/locale.pak",
     );
     const gitLfs = path.join(appResourcesPath, "git/libexec/git-core/git-lfs");
 
     await Promise.all([
       writeFixtureFile(keptLocale),
+      writeFixtureFile(keptFrenchLocale),
       writeFixtureFile(removedLocale),
       writeFixtureFile(gitLfs),
     ]);
@@ -223,6 +228,38 @@ describe("removeUnusedCopiedResources", () => {
     await removeUnusedCopiedResources(buildPath, "darwin");
 
     await expect(fs.readFile(keptLocale, "utf8")).resolves.toBe("fixture");
+    await expect(fs.readFile(keptFrenchLocale, "utf8")).resolves.toBe(
+      "fixture",
+    );
+    await expectMissing(removedLocale);
+    await expectMissing(gitLfs);
+  });
+
+  it("prunes a macOS bundle packaged under another product name", async () => {
+    const buildPath = await fs.mkdtemp(
+      path.join(os.tmpdir(), "dyad-package-cleanup-renamed-"),
+    );
+    tempDirectories.push(buildPath);
+
+    const bundle = "Atelier IA.app";
+    const removedLocale = path.join(
+      buildPath,
+      bundle,
+      "Contents/Frameworks/Electron Framework.framework/Versions/A/Resources/de.lproj/locale.pak",
+    );
+    const gitLfs = path.join(
+      buildPath,
+      bundle,
+      "Contents/Resources/git/libexec/git-core/git-lfs",
+    );
+
+    await Promise.all([
+      writeFixtureFile(removedLocale),
+      writeFixtureFile(gitLfs),
+    ]);
+
+    await removeUnusedCopiedResources(buildPath, "darwin");
+
     await expectMissing(removedLocale);
     await expectMissing(gitLfs);
   });
@@ -375,16 +412,19 @@ describe("removeUnusedCopiedResources", () => {
     tempDirectories.push(buildPath);
 
     const keptPak = path.join(buildPath, "locales/zh-CN.pak");
-    const removedPak = path.join(buildPath, "locales/fr.pak");
+    const keptFrenchPak = path.join(buildPath, "locales/fr.pak");
+    const removedPak = path.join(buildPath, "locales/de.pak");
 
     await Promise.all([
       writeFixtureFile(keptPak),
+      writeFixtureFile(keptFrenchPak),
       writeFixtureFile(removedPak),
     ]);
 
     await removeUnusedCopiedResources(buildPath, "linux");
 
     await expect(fs.readFile(keptPak, "utf8")).resolves.toBe("fixture");
+    await expect(fs.readFile(keptFrenchPak, "utf8")).resolves.toBe("fixture");
     await expectMissing(removedPak);
   });
 });

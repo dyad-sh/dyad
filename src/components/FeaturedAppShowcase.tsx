@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate } from "@tanstack/react-router";
 import { ChevronRight } from "lucide-react";
 import { useLoadApps } from "@/hooks/useLoadApps";
@@ -10,6 +11,7 @@ import { sortAppsForShowcase } from "@/lib/sortApps";
 const MAX_FEATURED_APPS = 10;
 
 export function FeaturedAppShowcase() {
+  const { t } = useTranslation("home");
   const { apps } = useLoadApps();
   const openApp = useOpenApp();
   const navigate = useNavigate();
@@ -36,13 +38,13 @@ export function FeaturedAppShowcase() {
       className="w-full max-w-6xl mx-auto px-8 mt-8 mb-12"
     >
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold">Featured Apps </h2>
+        <h2 className="text-lg font-semibold">{t("featuredApps")}</h2>
         <button
           type="button"
           onClick={() => navigate({ to: "/apps" })}
           className="flex items-center gap-1 text-sm font-medium text-primary hover:underline"
         >
-          See more
+          {t("seeMore")}
           <ChevronRight className="w-4 h-4" />
         </button>
       </div>
@@ -69,7 +71,7 @@ export function FeaturedAppShowcase() {
               className="flex flex-col items-center justify-center w-56 aspect-[4/3] flex-shrink-0 rounded-xl border border-dashed border-border bg-(--background-lighter) hover:border-primary/40 hover:bg-(--background-lightest) transition-all duration-200 active:scale-[0.99]"
             >
               <ChevronRight className="w-6 h-6 text-muted-foreground mb-1" />
-              <span className="text-sm font-medium">See more</span>
+              <span className="text-sm font-medium">{t("seeMore")}</span>
             </button>
           )}
         </div>

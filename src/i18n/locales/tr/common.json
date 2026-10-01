@@ -73,5 +73,13 @@
     "resumeSubscription": "Aboneliği sürdür",
     "openActionError": "Academy açılamadı. Lütfen tekrar deneyin.",
     "dismiss": "Faturalandırma bildirimini yoksay"
+  },
+  "nav": {
+    "apps": "Uygulamalar",
+    "settings": "Ayarlar",
+    "library": "Kütüphane",
+    "templates": "Şablonlar",
+    "plugins": "Eklentiler",
+    "help": "Yardım"
   }
 }

@@ -1006,12 +1006,13 @@ describe("modelClientSupportsPdfInput", () => {
   test.each([
     ["openai", "gpt-5.5", "api key", true, apiKeySettings],
     ["google", "gemini-3.5-flash", "api key", true, apiKeySettings],
-    // Engine Responses and Anthropic Messages routes pass file parts through.
+    // Every paid Engine route passes PDF file parts through.
     ["openai", "gpt-5.5", "pro", true, proSettings],
     ["anthropic", "claude-sonnet-4-20250514", "pro", true, proSettings],
-    // The Engine's chat-completions route rejects file parts.
-    ["google", "gemini-3.5-flash", "pro", false, proSettings],
-    ["openrouter", "qwen/qwen3-coder", "pro", false, proSettings],
+    ["google", "gemini-3.5-flash", "pro", true, proSettings],
+    ["openrouter", "qwen/qwen3-coder", "pro", true, proSettings],
+    // The Engine's free route rejects file parts.
+    ["auto", "free-pro", "pro", false, proSettings],
     ["lmstudio", "local-model", "api key", false, apiKeySettings],
     ["ollama", "local-model", "pro", false, proSettings],
   ] as const)(
@@ -1024,12 +1025,4 @@ describe("modelClientSupportsPdfInput", () => {
       expect(modelClientSupportsPdfInput(modelClient)).toBe(expected);
     },
   );
-
-  test("judges Pro Auto by its primary candidate", async () => {
-    const { modelClient } = await getModelClient(
-      { provider: "auto", name: "auto" },
-      proSettings,
-    );
-    expect(modelClientSupportsPdfInput(modelClient)).toBe(true);
-  });
 });

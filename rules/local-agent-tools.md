@@ -289,8 +289,8 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 
 ## Inline attachment delivery
 
-- Chat-context images and PDFs are stored as base64 parts in the user message's `aiMessagesJson` and replayed in full on every later turn; nothing replaces them with placeholders. Only the 10 MB `MAX_AI_MESSAGES_SIZE` save guard drops them (and with it the whole structured message). Any capability check for inline parts must scan the full outgoing history (`messagesContainPdf`), not just the current turn, or switching models mid-chat breaks later turns.
-- Whether a model client can take inline PDFs is `modelClientSupportsPdfInput` in `get_model_client.ts`. Dyad Pro requests that are not OpenAI (Responses) or Anthropic (Messages) go through the Engine's `/chat/completions` route, whose schema accepted only `text`/`image_url` parts until dyad-llm-engine#187. Those models are tagged via `isDyadEngineChatCompletionsModel`.
+- Chat-context images and PDFs are stored as base64 parts in the user message's `aiMessagesJson` and replayed in full on every later turn; nothing replaces them with placeholders. Above the 10 MB `MAX_AI_MESSAGES_SIZE` save guard the whole structured message is dropped and inference silently sees only the plain-text prompt, so `assertInlineAttachmentsFit` rejects oversized inline content before the turn is accepted. Any capability check for inline parts must scan the full outgoing history (`messagesContainPdf`), not just the current turn, or switching models mid-chat breaks later turns.
+- Whether a model client can take inline PDFs is `modelClientSupportsPdfInput` in `get_model_client.ts`. All paid Dyad Engine routes accept PDF file parts (chat-completions since dyad-llm-engine#187), but the Engine's free route still rejects them; free models are tagged via `isDyadEngineFreeModel`.
 - The ChatGPT subscription (Codex) backend accepts Responses `input_file` PDFs but appears to send the model only extracted text (verified live 2026-09-24: text answers were correct, a text-free drawing got a made-up answer, ~65 input tokens). Don't rely on it for visual PDF content.
 
 ## Tool spec mock contexts

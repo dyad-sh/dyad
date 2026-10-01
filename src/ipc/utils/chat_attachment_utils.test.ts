@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  assertInlineAttachmentsFit,
   buildInlinePdfFileParts,
   buildLocalAgentAttachmentInfo,
   hasScriptReadableAttachment,
@@ -130,5 +131,55 @@ describe("PDF attachments", () => {
         },
       ]),
     ).toBe(false);
+  });
+});
+
+describe("assertInlineAttachmentsFit", () => {
+  const MIB = 1024 * 1024;
+  const inline = (
+    fileName: string,
+    sizeBytes: number,
+    attachmentType: StoredChatAttachment["attachmentType"] = "chat-context",
+  ) => ({ filePath: `/media/${fileName}`, attachmentType, sizeBytes });
+
+  it("rejects inline attachments that would exceed the aiMessagesJson cap", () => {
+    // Each PDF passes the per-file cap, but together they encode to ~11 MB.
+    expect(() =>
+      assertInlineAttachmentsFit(
+        [inline("a.pdf", 4 * MIB), inline("b.pdf", 4 * MIB)],
+        10,
+      ),
+    ).toThrow("too large to send together");
+    expect(() =>
+      assertInlineAttachmentsFit(
+        [inline("a.pdf", 4 * MIB), inline("photo.png", 4 * MIB)],
+        10,
+      ),
+    ).toThrow("too large to send together");
+  });
+
+  it("accepts inline attachments within the cap", () => {
+    expect(() =>
+      assertInlineAttachmentsFit([inline("a.pdf", 4 * MIB)], 10),
+    ).not.toThrow();
+  });
+
+  it("counts the prompt toward the cap", () => {
+    expect(() =>
+      assertInlineAttachmentsFit([inline("a.pdf", 5 * MIB)], 3_000_000),
+    ).toThrow("too large to send together");
+  });
+
+  it("ignores attachments that stay on disk", () => {
+    expect(() =>
+      assertInlineAttachmentsFit(
+        [
+          inline("a.pdf", 4 * MIB),
+          inline("b.pdf", 4 * MIB, "upload-to-codebase"),
+          inline("data.csv", 8 * MIB),
+        ],
+        10,
+      ),
+    ).not.toThrow();
   });
 });

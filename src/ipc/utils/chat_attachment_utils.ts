@@ -7,6 +7,8 @@ import {
   type ChatMode,
   type UserSettings,
 } from "@/lib/schemas";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { MAX_AI_MESSAGES_SIZE } from "@/ipc/utils/ai_messages_utils";
 import { isSandboxSupportedPlatform } from "@/ipc/utils/sandbox/runner";
 import { isSandboxScriptExecutionEnabled } from "@/pro/main/ipc/handlers/local_agent/tools/execute_sandbox_script";
 import {
@@ -127,9 +129,59 @@ export function messagesContainPdf(messages: readonly ModelMessage[]): boolean {
   );
 }
 
-function isInlineAttachment(attachment: StoredChatAttachment): boolean {
+export const INLINE_ATTACHMENTS_TOO_LARGE_MESSAGE =
+  "The images and PDFs in this message are too large to send together. Remove some attachments or send them in separate messages.";
+
+// Room for the JSON envelope and message metadata around the inline parts.
+const AI_MESSAGE_JSON_HEADROOM_CHARS = 64 * 1024;
+
+/**
+ * Inline images and PDFs are persisted base64-encoded in the user message's
+ * aiMessagesJson. Past its size cap the structured message is not saved, and
+ * inference would silently receive only the plain-text prompt, so reject the
+ * turn before it is accepted instead.
+ */
+export function assertInlineAttachmentsFit(
+  attachments: readonly Pick<
+    StoredChatAttachment,
+    "filePath" | "attachmentType" | "sizeBytes"
+  >[],
+  promptChars: number,
+): void {
+  const encodedChars = attachments
+    .filter(isInlineAttachment)
+    .reduce(
+      (total, attachment) => total + 4 * Math.ceil(attachment.sizeBytes / 3),
+      0,
+    );
+  if (
+    encodedChars + promptChars + AI_MESSAGE_JSON_HEADROOM_CHARS >
+    MAX_AI_MESSAGES_SIZE
+  ) {
+    throw new DyadError(
+      INLINE_ATTACHMENTS_TOO_LARGE_MESSAGE,
+      DyadErrorKind.Validation,
+    );
+  }
+}
+
+/** Whether a message carries inline image or file parts. */
+export function hasInlineMediaParts(message: ModelMessage): boolean {
   return (
-    isInlineImageAttachment(attachment) || isInlinePdfAttachment(attachment)
+    message.role === "user" &&
+    Array.isArray(message.content) &&
+    message.content.some(
+      (part) => part.type === "image" || part.type === "file",
+    )
+  );
+}
+
+function isInlineAttachment(
+  attachment: Pick<StoredChatAttachment, "filePath" | "attachmentType">,
+): boolean {
+  return (
+    isInlineImageAttachmentPath(attachment.filePath) ||
+    isInlinePdfAttachment(attachment)
   );
 }
 

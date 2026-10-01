@@ -33,7 +33,7 @@ import { resolveBuiltinModelAlias } from "../shared/remote_language_model_catalo
 import { LanguageModelProvider } from "@/ipc/types";
 import {
   createDyadEngine,
-  isDyadEngineChatCompletionsModel,
+  isDyadEngineFreeModel,
   type DyadEngineProvider,
 } from "./llm_engine_provider";
 
@@ -83,8 +83,6 @@ export interface ModelClient {
   reasoningEffortProviderId?: string;
   /** Actual source, including the active candidate of an Auto fallback chain. */
   getRuntimeModel?: () => ModelSelection;
-  /** Overrides {@link modelClientSupportsPdfInput}'s inference. */
-  supportsPdfInput?: boolean;
 }
 
 // Providers whose APIs reject or silently drop inline PDF file parts.
@@ -95,10 +93,7 @@ const PDF_UNSUPPORTED_PROVIDERS = new Set(["xai", "ollama", "lmstudio"]);
  * assumed to support them; their API errors surface like any other.
  */
 export function modelClientSupportsPdfInput(modelClient: ModelClient) {
-  if (modelClient.supportsPdfInput !== undefined) {
-    return modelClient.supportsPdfInput;
-  }
-  if (isDyadEngineChatCompletionsModel(modelClient.model)) {
+  if (isDyadEngineFreeModel(modelClient.model)) {
     return false;
   }
   return !PDF_UNSUPPORTED_PROVIDERS.has(modelClient.builtinProviderId ?? "");
@@ -658,10 +653,6 @@ async function getProModelClient({
       // Using openAI as the default provider.
       // TODO: we should remove this and rely on the provider id passed into the provider().
       builtinProviderId: "openai",
-      // Judge by the primary model; a fallback that rejects PDFs errors normally.
-      supportsPdfInput: !isDyadEngineChatCompletionsModel(
-        validEntries[0].model,
-      ),
     };
   }
   if (usesOpenAIResponsesApi(model)) {

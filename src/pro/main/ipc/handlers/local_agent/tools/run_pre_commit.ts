@@ -35,6 +35,7 @@ import {
 import { trackWorkspaceMutation } from "./tool_invocation";
 import { deleteSupabaseFunction } from "@/supabase_admin/supabase_management_client";
 import { isSupabaseFunctionNotFoundError } from "../processors/file_operations";
+import { isSupabaseFunctionSyncDeferred } from "@/supabase_admin/supabase_recording_deferred_sync";
 
 export { isPreCommitHookAvailable } from "@/ipc/services/pre_commit_service";
 
@@ -265,7 +266,7 @@ async function scheduleHookGeneratedFileSideEffects(
       }
       if (removedFunctionNames.length > 0) {
         notes.push(
-          `Dyad is removing the corresponding remote Supabase function deployment(s): ${removedFunctionNames.join(", ")}. If that fails, it retries when the turn finishes.`,
+          `Dyad is removing the corresponding remote Supabase function deployment(s): ${removedFunctionNames.join(", ")}.`,
         );
       }
     }
@@ -647,10 +648,19 @@ async function deleteHookRemovedFunctions(
         signal: ctx.abortSignal,
       });
     } catch (error) {
-      if (!isSupabaseFunctionNotFoundError(error)) {
+      // Deferred until a recording ends, or already gone: nothing left to do.
+      if (
+        !isSupabaseFunctionSyncDeferred(error) &&
+        !isSupabaseFunctionNotFoundError(error)
+      ) {
         logger.warn(
-          `Failed to delete Supabase function ${functionName} removed by pre-commit; will retry at turn finalization:`,
+          `Failed to delete Supabase function ${functionName} removed by pre-commit:`,
           error,
+        );
+        // Finalization retries only if the turn completes; say so, because a
+        // cancelled or failed turn leaves the remote function deployed.
+        ctx.onWarningMessage?.(
+          `Pre-commit removed Supabase function ${functionName}, but Dyad could not delete its remote deployment yet: ${error}. Dyad retries when this turn finishes; if the turn is cancelled, delete it from Supabase or run Redeploy all.`,
         );
         continue;
       }

@@ -25,6 +25,7 @@ import {
   deleteSupabaseFunction,
   withSupabaseFunctionDeployment,
 } from "@/supabase_admin/supabase_management_client";
+import { isSupabaseFunctionSyncDeferred } from "@/supabase_admin/supabase_recording_deferred_sync";
 import {
   appOperationCoordinator,
   readAppResource,
@@ -136,6 +137,15 @@ export async function deployAllFunctionsIfNeeded(
         supabaseProjectId,
         signal: ctx.abortSignal,
         operation: "reconcile Local Agent Supabase functions",
+        sync: {
+          organizationSlug: ctx.supabaseOrganizationSlug ?? null,
+          functionNames: [
+            ...ctx.pendingFunctionDeploys,
+            ...(ctx.pendingFunctionDeletes ?? []),
+          ],
+          sharedModulesChanged: ctx.isSharedModulesChanged,
+          sharedModulePaths: ctx.sharedServerModulePaths,
+        },
       },
       async (operation, appPath) => {
         try {
@@ -252,6 +262,9 @@ export async function deployAllFunctionsIfNeeded(
       },
     );
   } catch (error) {
+    if (isSupabaseFunctionSyncDeferred(error)) {
+      return { success: true, warning: error.message };
+    }
     return {
       success: false,
       error: `Failed to redeploy Supabase functions: ${error}`,

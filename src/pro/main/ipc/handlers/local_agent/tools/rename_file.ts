@@ -16,10 +16,7 @@ import {
 } from "../../../../../../supabase_admin/supabase_utils";
 import { queueCloudSandboxSnapshotSync } from "@/ipc/utils/cloud_sandbox_provider";
 import { getFileWriteKey, withLocks } from "@/ipc/utils/lock_utils";
-import {
-  deferFunctionSyncIfRecording,
-  RECORDING_DEFERRED_FUNCTION_SYNC_NOTE,
-} from "./supabase_function_sync";
+import { isSupabaseFunctionSyncDeferred } from "@/supabase_admin/supabase_recording_deferred_sync";
 
 const logger = log.scope("rename_file");
 
@@ -157,7 +154,7 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
       // Deployment admission can queue behind another chat's batch upload, so
       // it must not hold the file locks other writers of these paths need.
       const successMessage = `Successfully renamed ${args.from} to ${args.to}`;
-      let deferredWhileRecording = false;
+      let deferredNote: string | undefined;
       if (functionToDelete && ctx.supabaseProjectId) {
         try {
           await deleteSupabaseFunction({
@@ -168,8 +165,8 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
             signal: ctx.abortSignal,
           });
         } catch (error) {
-          if (deferFunctionSyncIfRecording(ctx, functionToDelete, "delete")) {
-            deferredWhileRecording = true;
+          if (isSupabaseFunctionSyncDeferred(error)) {
+            deferredNote = error.message;
           } else {
             logger.warn(
               `Failed to delete old Supabase function: ${args.from}`,
@@ -189,14 +186,14 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
             signal: ctx.abortSignal,
           });
         } catch (error) {
-          if (!deferFunctionSyncIfRecording(ctx, functionToDeploy, "deploy")) {
+          if (!isSupabaseFunctionSyncDeferred(error)) {
             return `File renamed, but failed to deploy Supabase function: ${error}`;
           }
-          deferredWhileRecording = true;
+          deferredNote = error.message;
         }
       }
-      return deferredWhileRecording
-        ? `${successMessage}. ${RECORDING_DEFERRED_FUNCTION_SYNC_NOTE}`
+      return deferredNote
+        ? `${successMessage}. ${deferredNote}`
         : successMessage;
     },
   };

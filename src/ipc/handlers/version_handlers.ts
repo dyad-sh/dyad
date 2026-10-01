@@ -564,6 +564,7 @@ async function revertCodebaseToVersion({
   targetBranchName,
   preserveDirtyTree = false,
   onRestoreProgress,
+  onSupabaseRedeployNeeded,
 }: {
   appId: number;
   app: typeof apps.$inferSelect;
@@ -572,6 +573,11 @@ async function revertCodebaseToVersion({
   targetBranchName?: string;
   preserveDirtyTree?: boolean;
   onRestoreProgress?: (progress: RestoreRecovery) => void;
+  /**
+   * Called once the working tree is restored. Callers redeploy after releasing
+   * their claims, including when a later step of the operation fails.
+   */
+  onSupabaseRedeployNeeded?: (target: SupabaseRedeployTarget) => void;
 }): Promise<{
   successMessage: string;
   warningMessage: string;
@@ -580,7 +586,6 @@ async function revertCodebaseToVersion({
     { repositoryOutcome: "target-applied" }
   > & { nextStep: "chat-mutation" };
   preservedInterruptedChanges: boolean;
-  supabaseRedeploy: SupabaseRedeployTarget | null;
 }> {
   let successMessage = "Restored version";
   let warningMessage = "";
@@ -874,14 +879,13 @@ async function revertCodebaseToVersion({
       );
     }
   }
-  // Callers redeploy Supabase functions after releasing their claims.
-  const supabaseRedeploy: SupabaseRedeployTarget | null = app.supabaseProjectId
-    ? {
-        appPath,
-        supabaseProjectId: app.supabaseProjectId,
-        supabaseOrganizationSlug: app.supabaseOrganizationSlug ?? null,
-      }
-    : null;
+  if (app.supabaseProjectId) {
+    onSupabaseRedeployNeeded?.({
+      appPath,
+      supabaseProjectId: app.supabaseProjectId,
+      supabaseOrganizationSlug: app.supabaseOrganizationSlug ?? null,
+    });
+  }
   // The restored working tree no longer matches any existing CLI transcript.
   // Keep visible history, but require a fresh explicit session after undo.
   await db
@@ -909,7 +913,6 @@ async function revertCodebaseToVersion({
     warningMessage,
     restoreCompletion,
     preservedInterruptedChanges,
-    supabaseRedeploy,
   };
 }
 
@@ -1105,177 +1108,186 @@ export function registerVersionHandlers() {
     // A recording holds repository, provider and runtime-config for its whole
     // session, so this would queue invisibly behind it for up to the 30-minute
     // cap. It is also rewriting the tree the recording is capturing against.
-    const result = await appOperationCoordinator.run(
-      {
-        appId,
-        operation: "revert-version",
-        resources: [
-          readAppResource("app-path"),
-          "chat-content",
-          "provider",
-          "supabase-functions",
-          "repository",
-          "runtime-config",
-        ],
-        refuseWhenRecording: "undo to a previous version",
-      },
-      async () => {
-        const app = await db.query.apps.findFirst({
-          where: eq(apps.id, appId),
-        });
-
-        if (!app) {
-          throw new DyadError("App not found", DyadErrorKind.NotFound);
-        }
-
-        const appPath = getDyadAppPath(app.path);
-
-        if (expectedHeadOid) {
-          const currentHeadOid = await getCurrentCommitHash({
-            path: appPath,
-            ref: targetBranchName ?? "HEAD",
-          });
-          if (currentHeadOid !== expectedHeadOid) {
-            throw new DyadError(
-              "The app's history changed since you confirmed. Please retry the undo.",
-              DyadErrorKind.Conflict,
-            );
-          }
-        }
-
-        let preserveDirtyTree = false;
-        if (currentChatMessageId) {
-          const targetChat = await db.query.chats.findFirst({
-            columns: { appId: true },
-            where: eq(chats.id, currentChatMessageId.chatId),
-          });
-          preserveDirtyTree =
-            targetChat?.appId === appId &&
-            (await getRestoreTargetTurnOutcomeForMessage({
-              chatId: currentChatMessageId.chatId,
-              messageId: currentChatMessageId.messageId,
-            })) === "cancelled";
-        }
-
-        const revertResult = await revertCodebaseToVersion({
+    let result: ReturnType<typeof versionCommandResult>;
+    try {
+      result = await appOperationCoordinator.run(
+        {
           appId,
-          app,
-          appPath,
-          previousVersionId,
-          targetBranchName,
-          preserveDirtyTree,
-          onRestoreProgress,
-        });
-        let { successMessage, warningMessage, restoreCompletion } =
-          revertResult;
-        supabaseRedeploy = revertResult.supabaseRedeploy;
-        if (revertResult.preservedInterruptedChanges) {
-          successMessage = `${successMessage} ${INTERRUPTED_CHECKPOINT_NOTICE}`;
-          if (warningMessage) {
-            warningMessage = appendWarning(
-              warningMessage,
-              INTERRUPTED_CHECKPOINT_NOTICE,
-            );
-          }
-        }
-
-        let affectedChatId: number | null = null;
-
-        // Delete messages based on currentChatMessageId if provided, otherwise use commit hash lookup
-        if (currentChatMessageId) {
-          // Delete all messages including and after the specified message
-          const { chatId, messageId } = currentChatMessageId;
-          affectedChatId = chatId;
-
-          const messagesToDelete = await db.query.messages.findMany({
-            where: and(
-              eq(messages.chatId, chatId),
-              gte(messages.id, messageId),
-            ),
-            orderBy: desc(messages.id),
+          operation: "revert-version",
+          resources: [
+            readAppResource("app-path"),
+            "chat-content",
+            "provider",
+            "supabase-functions",
+            "repository",
+            "runtime-config",
+          ],
+          refuseWhenRecording: "undo to a previous version",
+        },
+        async () => {
+          const app = await db.query.apps.findFirst({
+            where: eq(apps.id, appId),
           });
 
-          logger.log(
-            `Deleting ${messagesToDelete.length} messages (id >= ${messageId}) from chat ${chatId}`,
-          );
-
-          if (messagesToDelete.length > 0) {
-            await db
-              .delete(messages)
-              .where(
-                and(eq(messages.chatId, chatId), gte(messages.id, messageId)),
-              );
+          if (!app) {
+            throw new DyadError("App not found", DyadErrorKind.NotFound);
           }
-        } else {
-          // Find the chat and message associated with the commit hash
-          const messageWithCommit = await db.query.messages.findFirst({
-            where: eq(messages.commitHash, previousVersionId),
-            with: {
-              chat: true,
+
+          const appPath = getDyadAppPath(app.path);
+
+          if (expectedHeadOid) {
+            const currentHeadOid = await getCurrentCommitHash({
+              path: appPath,
+              ref: targetBranchName ?? "HEAD",
+            });
+            if (currentHeadOid !== expectedHeadOid) {
+              throw new DyadError(
+                "The app's history changed since you confirmed. Please retry the undo.",
+                DyadErrorKind.Conflict,
+              );
+            }
+          }
+
+          let preserveDirtyTree = false;
+          if (currentChatMessageId) {
+            const targetChat = await db.query.chats.findFirst({
+              columns: { appId: true },
+              where: eq(chats.id, currentChatMessageId.chatId),
+            });
+            preserveDirtyTree =
+              targetChat?.appId === appId &&
+              (await getRestoreTargetTurnOutcomeForMessage({
+                chatId: currentChatMessageId.chatId,
+                messageId: currentChatMessageId.messageId,
+              })) === "cancelled";
+          }
+
+          const revertResult = await revertCodebaseToVersion({
+            appId,
+            app,
+            appPath,
+            previousVersionId,
+            targetBranchName,
+            preserveDirtyTree,
+            onRestoreProgress,
+            onSupabaseRedeployNeeded: (target) => {
+              supabaseRedeploy = target;
             },
           });
+          let { successMessage, warningMessage, restoreCompletion } =
+            revertResult;
+          if (revertResult.preservedInterruptedChanges) {
+            successMessage = `${successMessage} ${INTERRUPTED_CHECKPOINT_NOTICE}`;
+            if (warningMessage) {
+              warningMessage = appendWarning(
+                warningMessage,
+                INTERRUPTED_CHECKPOINT_NOTICE,
+              );
+            }
+          }
 
-          // If we found a message with this commit hash, delete all subsequent messages (but keep this message)
-          if (messageWithCommit) {
-            const chatId = messageWithCommit.chatId;
+          let affectedChatId: number | null = null;
+
+          // Delete messages based on currentChatMessageId if provided, otherwise use commit hash lookup
+          if (currentChatMessageId) {
+            // Delete all messages including and after the specified message
+            const { chatId, messageId } = currentChatMessageId;
             affectedChatId = chatId;
 
-            // Find all messages in this chat with IDs > the one with our commit hash
             const messagesToDelete = await db.query.messages.findMany({
               where: and(
                 eq(messages.chatId, chatId),
-                gt(messages.id, messageWithCommit.id),
+                gte(messages.id, messageId),
               ),
               orderBy: desc(messages.id),
             });
 
             logger.log(
-              `Deleting ${messagesToDelete.length} messages after commit ${previousVersionId} from chat ${chatId}`,
+              `Deleting ${messagesToDelete.length} messages (id >= ${messageId}) from chat ${chatId}`,
             );
 
-            // Delete the messages
             if (messagesToDelete.length > 0) {
               await db
                 .delete(messages)
                 .where(
-                  and(
-                    eq(messages.chatId, chatId),
-                    gt(messages.id, messageWithCommit.id),
-                  ),
+                  and(eq(messages.chatId, chatId), gte(messages.id, messageId)),
                 );
             }
+          } else {
+            // Find the chat and message associated with the commit hash
+            const messageWithCommit = await db.query.messages.findFirst({
+              where: eq(messages.commitHash, previousVersionId),
+              with: {
+                chat: true,
+              },
+            });
+
+            // If we found a message with this commit hash, delete all subsequent messages (but keep this message)
+            if (messageWithCommit) {
+              const chatId = messageWithCommit.chatId;
+              affectedChatId = chatId;
+
+              // Find all messages in this chat with IDs > the one with our commit hash
+              const messagesToDelete = await db.query.messages.findMany({
+                where: and(
+                  eq(messages.chatId, chatId),
+                  gt(messages.id, messageWithCommit.id),
+                ),
+                orderBy: desc(messages.id),
+              });
+
+              logger.log(
+                `Deleting ${messagesToDelete.length} messages after commit ${previousVersionId} from chat ${chatId}`,
+              );
+
+              // Delete the messages
+              if (messagesToDelete.length > 0) {
+                await db
+                  .delete(messages)
+                  .where(
+                    and(
+                      eq(messages.chatId, chatId),
+                      gt(messages.id, messageWithCommit.id),
+                    ),
+                  );
+              }
+            }
           }
-        }
 
-        // Undo has now reconciled this chat's visible history with the restored
-        // tree. Start its next turn with that history in a fresh CLI session;
-        // other chats remain interrupted because their history was not pruned.
-        if (affectedChatId !== null) {
-          await db
-            .update(chats)
-            .set({ claudeSessionId: null, claudeSessionState: null })
-            .where(
-              and(
-                eq(chats.id, affectedChatId),
-                eq(chats.appId, appId),
-                eq(chats.executionBackend, "claude-code"),
-              ),
-            );
-        }
+          // Undo has now reconciled this chat's visible history with the restored
+          // tree. Start its next turn with that history in a fresh CLI session;
+          // other chats remain interrupted because their history was not pruned.
+          if (affectedChatId !== null) {
+            await db
+              .update(chats)
+              .set({ claudeSessionId: null, claudeSessionState: null })
+              .where(
+                and(
+                  eq(chats.id, affectedChatId),
+                  eq(chats.appId, appId),
+                  eq(chats.executionBackend, "claude-code"),
+                ),
+              );
+          }
 
-        onRestoreProgress?.({
-          ...restoreCompletion,
-          nextStep: "completed",
-        });
-        return versionCommandResult({
-          notification: warningMessage
-            ? { kind: "warning", message: warningMessage }
-            : { kind: "success", message: successMessage },
-          runtimeAction: versionRuntimeAction(app, true),
-          affectedChatId,
-        });
-      },
-    );
+          onRestoreProgress?.({
+            ...restoreCompletion,
+            nextStep: "completed",
+          });
+          return versionCommandResult({
+            notification: warningMessage
+              ? { kind: "warning", message: warningMessage }
+              : { kind: "success", message: successMessage },
+            runtimeAction: versionRuntimeAction(app, true),
+            affectedChatId,
+          });
+        },
+      );
+    } catch (error) {
+      // The tree may already be restored; keep functions in sync with it.
+      await redeploySupabaseFunctionsAfterRevert(appId, supabaseRedeploy);
+      throw error;
+    }
     return withRedeployWarning(
       result,
       await redeploySupabaseFunctionsAfterRevert(appId, supabaseRedeploy),
@@ -1451,7 +1463,8 @@ export function registerVersionHandlers() {
     let releaseStreamAdmissionBlock: (() => void) | undefined;
     let releaseRecordingBlock: (() => void) | undefined;
     let supabaseRedeploy = null as SupabaseRedeployTarget | null;
-    let restoreResult: ReturnType<typeof versionCommandResult>;
+    let restoreResult: ReturnType<typeof versionCommandResult> | undefined;
+    let restoreFailure: { error: unknown } | undefined;
 
     // Wrap phases 2 and 3 in a single try/finally so the admission block is
     // always released, even if `withLock` were to throw synchronously before
@@ -1658,10 +1671,12 @@ export function registerVersionHandlers() {
               targetBranchName,
               preserveDirtyTree,
               onRestoreProgress,
+              onSupabaseRedeployNeeded: (target) => {
+                supabaseRedeploy = target;
+              },
             });
             successMessage = result.successMessage;
             warningMessage = result.warningMessage;
-            supabaseRedeploy = result.supabaseRedeploy;
             if (result.preservedInterruptedChanges) {
               successMessage = `${successMessage} ${INTERRUPTED_CHECKPOINT_NOTICE}`;
               if (warningMessage) {
@@ -1862,15 +1877,21 @@ export function registerVersionHandlers() {
           });
         },
       );
+    } catch (error) {
+      restoreFailure = { error };
     } finally {
       releaseStreamAdmissionBlock?.();
       releaseActorAdmissionBlock?.();
       releaseRecordingBlock?.();
     }
     // After the admission blocks are released: new turns need not wait for
-    // the upload.
+    // the upload. A failure after the tree was restored still redeploys.
+    if (restoreFailure) {
+      await redeploySupabaseFunctionsAfterRevert(appId, supabaseRedeploy);
+      throw restoreFailure.error;
+    }
     return withRedeployWarning(
-      restoreResult,
+      restoreResult!,
       await redeploySupabaseFunctionsAfterRevert(appId, supabaseRedeploy),
       "Code restored, but: ",
     );

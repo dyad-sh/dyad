@@ -26,6 +26,11 @@ import {
   type AppOperationContext,
 } from "@/ipc/services/app_operation_coordinator";
 import { getDyadAppPath } from "@/paths/paths";
+import {
+  deferSupabaseFunctionSyncForRecording,
+  SupabaseFunctionSyncDeferredError,
+  type DeferredSupabaseFunctionSync,
+} from "./supabase_recording_deferred_sync";
 
 const fsPromises = fs.promises;
 
@@ -52,6 +57,7 @@ export interface SupabaseFunctionSnapshot {
 
 export const SUPABASE_DEPLOY_REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
 
+/** Caller cancellation plus a deadline for one request attempt. */
 function deploymentSignal(signal?: AbortSignal): AbortSignal {
   const timeout = AbortSignal.timeout(SUPABASE_DEPLOY_REQUEST_TIMEOUT_MS);
   return signal ? AbortSignal.any([signal, timeout]) : timeout;
@@ -64,39 +70,68 @@ export async function withSupabaseFunctionDeployment<T>(
     supabaseProjectId: string;
     signal?: AbortSignal;
     operation?: string;
+    /**
+     * What this deployment syncs. While a recording holds the app's
+     * `supabase-functions` claim, it is registered to run after the recording
+     * ends and `SupabaseFunctionSyncDeferredError` is thrown instead.
+     */
+    sync: Omit<DeferredSupabaseFunctionSync, "supabaseProjectId">;
   },
   operation: (context: AppOperationContext, appPath: string) => Promise<T>,
 ): Promise<T> {
-  return appOperationCoordinator.run(
-    {
-      appId: target.appId,
-      operation: target.operation ?? "deploy app Supabase functions",
-      resources: [
-        readAppResource("app-path"),
-        readAppResource("provider"),
-        readAppResource("repository"),
-        "supabase-functions",
-      ],
-      signal: target.signal,
-      allowCompatibleQueueBypass: true,
-      refuseWhenRecording: "deploy Supabase functions",
-    },
-    async (context) => {
-      const { db } = await import("@/db");
-      const { apps } = await import("@/db/schema");
-      const { eq } = await import("drizzle-orm");
-      const app = await db.query.apps.findFirst({
-        where: eq(apps.id, target.appId),
-      });
-      if (!app || app.supabaseProjectId !== target.supabaseProjectId) {
+  // Same synchronous step as admission below, so a recording cannot start
+  // between this check and the coordinator's own recording refusal.
+  if (
+    deferSupabaseFunctionSyncForRecording(target.appId, {
+      ...target.sync,
+      supabaseProjectId: target.supabaseProjectId,
+    })
+  ) {
+    throw new SupabaseFunctionSyncDeferredError();
+  }
+  return appOperationCoordinator
+    .run(
+      {
+        appId: target.appId,
+        operation: target.operation ?? "deploy app Supabase functions",
+        resources: [
+          readAppResource("app-path"),
+          readAppResource("provider"),
+          readAppResource("repository"),
+          "supabase-functions",
+        ],
+        signal: target.signal,
+        allowCompatibleQueueBypass: true,
+        refuseWhenRecording: "deploy Supabase functions",
+      },
+      async (context) => {
+        const { db } = await import("@/db");
+        const { apps } = await import("@/db/schema");
+        const { eq } = await import("drizzle-orm");
+        const app = await db.query.apps.findFirst({
+          where: eq(apps.id, target.appId),
+        });
+        if (!app || app.supabaseProjectId !== target.supabaseProjectId) {
+          throw new DyadError(
+            "This app's Supabase project changed before deployment. Run the request again against the current project.",
+            DyadErrorKind.Precondition,
+          );
+        }
+        return operation(context, getDyadAppPath(app.path));
+      },
+    )
+    .catch((error: unknown) => {
+      // Aborted fetches, backoffs and throwIfAborted() raise DOMExceptions;
+      // report a user cancel as one rather than as a product exception.
+      if (target.signal?.aborted && !isDyadError(error)) {
         throw new DyadError(
-          "This app's Supabase project changed before deployment. Run the request again against the current project.",
-          DyadErrorKind.Precondition,
+          "Supabase function deployment was cancelled.",
+          DyadErrorKind.UserCancelled,
+          { cause: error },
         );
       }
-      return operation(context, getDyadAppPath(app.path));
-    },
-  );
+      throw error;
+    });
 }
 
 interface ZipFileEntry {
@@ -1002,7 +1037,12 @@ export async function deleteSupabaseFunction({
 }): Promise<void> {
   if (appId !== undefined) {
     return withSupabaseFunctionDeployment(
-      { appId, supabaseProjectId, signal: callerSignal },
+      {
+        appId,
+        supabaseProjectId,
+        signal: callerSignal,
+        sync: { organizationSlug, functionNames: [functionName] },
+      },
       async (context) => {
         context.releaseResources(["repository", "provider"]);
         return deleteSupabaseFunction({
@@ -1017,13 +1057,12 @@ export async function deleteSupabaseFunction({
   logger.info(
     `Deleting Supabase function: ${functionName} from project: ${supabaseProjectId}`,
   );
-  const signal = deploymentSignal(callerSignal);
-  signal.throwIfAborted();
+  callerSignal?.throwIfAborted();
   const supabase = await abortable(
     getSupabaseClient({ organizationSlug }),
-    signal,
+    deploymentSignal(callerSignal),
   );
-  signal.throwIfAborted();
+  callerSignal?.throwIfAborted();
   const response = await fetchWithRetry(
     `https://api.supabase.com/v1/projects/${encodeURIComponent(supabaseProjectId)}/functions/${encodeURIComponent(functionName)}`,
     {
@@ -1031,9 +1070,10 @@ export async function deleteSupabaseFunction({
       headers: {
         Authorization: `Bearer ${(supabase as any).options.accessToken}`,
       },
-      signal,
+      signal: callerSignal,
     },
     `Delete function ${functionName}`,
+    { attemptTimeoutMs: SUPABASE_DEPLOY_REQUEST_TIMEOUT_MS },
   );
   if (!response.ok)
     throw await createResponseError(response, "delete function");
@@ -1056,24 +1096,24 @@ export async function listSupabaseFunctions({
   }
 
   logger.info(`Listing Supabase functions for project: ${supabaseProjectId}`);
-  const signal = deploymentSignal(callerSignal);
-  signal.throwIfAborted();
+  callerSignal?.throwIfAborted();
   const supabase = await abortable(
     getSupabaseClient({ organizationSlug }),
-    signal,
+    deploymentSignal(callerSignal),
   );
-  signal.throwIfAborted();
+  callerSignal?.throwIfAborted();
 
   const response = await fetchWithRetry(
     `https://api.supabase.com/v1/projects/${supabaseProjectId}/functions`,
     {
       method: "GET",
-      signal,
+      signal: callerSignal,
       headers: {
         Authorization: `Bearer ${(supabase as any).options.accessToken}`,
       },
     },
     `List Supabase functions for ${supabaseProjectId}`,
+    { attemptTimeoutMs: SUPABASE_DEPLOY_REQUEST_TIMEOUT_MS },
   );
 
   if (response.status !== 200) {
@@ -1287,7 +1327,12 @@ export async function deploySupabaseFunction({
 }): Promise<DeployedFunctionResponse> {
   if (appId !== undefined) {
     return withSupabaseFunctionDeployment(
-      { appId, supabaseProjectId, signal },
+      {
+        appId,
+        supabaseProjectId,
+        signal,
+        sync: { organizationSlug, functionNames: [functionName] },
+      },
       async (context, currentAppPath) => {
         const captured =
           snapshot ??
@@ -1319,7 +1364,7 @@ export async function deploySupabaseFunction({
         bundleOnly,
         organizationSlug,
         snapshot,
-        signal: deploymentSignal(signal),
+        signal,
       }),
     signal,
   );
@@ -1368,7 +1413,7 @@ async function deploySupabaseFunctionUnqueued({
   // 5) Prepare multipart form-data
   const supabase = await abortable(
     getSupabaseClient({ organizationSlug }),
-    signal,
+    deploymentSignal(signal),
   );
   function buildFormData() {
     const formData = new FormData();
@@ -1398,7 +1443,7 @@ async function deploySupabaseFunctionUnqueued({
     async () => {
       const res = await fetch(deployUrl, {
         method: "POST",
-        signal,
+        signal: deploymentSignal(signal),
         headers: {
           Authorization: `Bearer ${(supabase as any).options.accessToken}`,
         },
@@ -1446,7 +1491,7 @@ export async function bulkUpdateFunctions({
         supabaseProjectId,
         functions,
         organizationSlug,
-        signal: deploymentSignal(signal),
+        signal,
       }),
     signal,
   );
@@ -1477,7 +1522,7 @@ async function bulkUpdateFunctionsUnqueued({
   signal?.throwIfAborted();
   const supabase = await abortable(
     getSupabaseClient({ organizationSlug }),
-    signal,
+    deploymentSignal(signal),
   );
   signal?.throwIfAborted();
 
@@ -1493,6 +1538,7 @@ async function bulkUpdateFunctionsUnqueued({
       body: JSON.stringify(functions),
     },
     `Bulk update functions for ${supabaseProjectId}`,
+    { attemptTimeoutMs: SUPABASE_DEPLOY_REQUEST_TIMEOUT_MS },
   );
 
   if (response.status !== 200) {

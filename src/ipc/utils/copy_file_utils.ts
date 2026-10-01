@@ -33,8 +33,6 @@ export interface CopyFileResult {
   skippedFunctionDeploy?: string;
   /** Error from Supabase function deployment, if any */
   deployError?: unknown;
-  /** Function whose deployment produced `deployError` */
-  failedFunctionDeploy?: string;
 }
 
 /**
@@ -203,10 +201,6 @@ export async function executeCopyFile({
     return publicResult;
   } catch (deployError) {
     logger.error("Failed to deploy Supabase function after copy:", deployError);
-    return {
-      ...publicResult,
-      deployError,
-      failedFunctionDeploy: deployRequest.functionName,
-    };
+    return { ...publicResult, deployError };
   }
 }

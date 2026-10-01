@@ -13,6 +13,7 @@ import {
   type SupabaseFunctionSnapshot,
 } from "./supabase_management_client";
 import { SUPABASE_BUNDLE_ONLY_DEPLOY_CONCURRENCY } from "./supabase_deploy_queue";
+import type { DeferredSupabaseFunctionSync } from "./supabase_recording_deferred_sync";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { runSupabaseDependencyAnalysis } from "@/ipc/processors/supabase_dependency_analysis";
 import type { SupabaseFunctionImpact } from "../../shared/supabase_dependency_analysis_types";
@@ -210,11 +211,17 @@ interface AppScopedDeployArgs {
  */
 function withAppDeploymentOwnership<Args extends AppScopedDeployArgs, Result>(
   { appId, ...args }: Args,
+  sync: Omit<DeferredSupabaseFunctionSync, "supabaseProjectId">,
   deploy: (args: Omit<Args, "appId">) => Promise<Result>,
 ): Promise<Result> {
   if (appId === undefined) return deploy(args);
   return withSupabaseFunctionDeployment(
-    { appId, supabaseProjectId: args.supabaseProjectId, signal: args.signal },
+    {
+      appId,
+      supabaseProjectId: args.supabaseProjectId,
+      signal: args.signal,
+      sync,
+    },
     (operation, appPath) =>
       deploy({
         ...args,
@@ -243,7 +250,16 @@ interface DeployAffectedSupabaseFunctionsArgs extends AppScopedDeployArgs {
 export function deployAffectedSupabaseFunctions(
   args: DeployAffectedSupabaseFunctionsArgs,
 ): Promise<string[]> {
-  return withAppDeploymentOwnership(args, deployAffectedUnscoped);
+  return withAppDeploymentOwnership(
+    args,
+    {
+      organizationSlug: args.supabaseOrganizationSlug,
+      functionNames: args.pendingFunctionDeploys,
+      sharedModulesChanged: args.sharedModulesChanged,
+      sharedModulePaths: args.changedSharedModulePaths,
+    },
+    deployAffectedUnscoped,
+  );
 }
 
 async function deployAffectedUnscoped({
@@ -330,7 +346,14 @@ interface DeploySupabaseFunctionsArgs extends AppScopedDeployArgs {
 export function deploySupabaseFunctions(
   args: DeploySupabaseFunctionsArgs,
 ): Promise<string[]> {
-  return withAppDeploymentOwnership(args, deploySupabaseFunctionsUnscoped);
+  return withAppDeploymentOwnership(
+    args,
+    {
+      organizationSlug: args.supabaseOrganizationSlug,
+      functionNames: args.functionNames,
+    },
+    deploySupabaseFunctionsUnscoped,
+  );
 }
 
 async function deploySupabaseFunctionsUnscoped({

@@ -11,7 +11,7 @@ import {
 } from "../../../../../../supabase_admin/supabase_management_client";
 import { resolveSelfAlias } from "@/ipc/utils/path_test_utils";
 import { getFileWriteKey, withLock } from "@/ipc/utils/lock_utils";
-import { isRecordingActive } from "@/ipc/services/recording_registry";
+import { SupabaseFunctionSyncDeferredError } from "@/supabase_admin/supabase_recording_deferred_sync";
 
 vi.mock("node:fs", async () => {
   const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
@@ -58,10 +58,6 @@ vi.mock("electron-log", () => ({
 
 vi.mock("@/ipc/utils/git_utils", () => ({
   gitRemove: vi.fn().mockResolvedValue(undefined),
-}));
-
-vi.mock("@/ipc/services/recording_registry", () => ({
-  isRecordingActive: vi.fn(() => false),
 }));
 
 vi.mock("../../../../../../supabase_admin/supabase_management_client", () => ({
@@ -369,29 +365,23 @@ describe("deleteFileTool", () => {
       expect(lockFreeDuringDeploy).toBe(true);
     });
 
-    it("queues the remote deletion for finalization when a recording refuses it", async () => {
+    it("reports a remote deletion deferred by an active recording as a success", async () => {
       vi.mocked(fs.lstatSync).mockReturnValue({
         isDirectory: () => false,
         isSymbolicLink: () => false,
       } as any);
       vi.mocked(deleteSupabaseFunction).mockRejectedValueOnce(
-        new Error("Stop the recording session before you deploy"),
+        new SupabaseFunctionSyncDeferredError(),
       );
-      vi.mocked(isRecordingActive).mockReturnValueOnce(true);
-      const context: AgentContext = {
-        ...mockContext,
-        supabaseProjectId: "project-id",
-        pendingFunctionDeploys: [],
-        pendingFunctionDeletes: [],
-      };
 
       const result = await deleteFileTool.execute(
         { path: "supabase/functions/hello-world/index.ts" },
-        context,
+        { ...mockContext, supabaseProjectId: "project-id" },
       );
 
-      expect(result).toMatch(/^Successfully deleted .*recording session/);
-      expect(context.pendingFunctionDeletes).toEqual(["hello-world"]);
+      expect(result).toMatch(
+        /^Successfully deleted .*after the recording ends/,
+      );
     });
 
     it("propagates shared-module deletion to the root turn", async () => {

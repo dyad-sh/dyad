@@ -16,10 +16,7 @@ import {
 } from "../../../../../../supabase_admin/supabase_utils";
 import { queueCloudSandboxSnapshotSync } from "@/ipc/utils/cloud_sandbox_provider";
 import { getFileWriteKey, withLock } from "@/ipc/utils/lock_utils";
-import {
-  deferFunctionSyncIfRecording,
-  RECORDING_DEFERRED_FUNCTION_SYNC_NOTE,
-} from "./supabase_function_sync";
+import { isSupabaseFunctionSyncDeferred } from "@/supabase_admin/supabase_recording_deferred_sync";
 
 const logger = log.scope("delete_file");
 
@@ -116,13 +113,8 @@ export const deleteFileTool: ToolDefinition<z.infer<typeof deleteFileSchema>> =
       // wait for it.
       if (functionToReconcile && ctx.supabaseProjectId) {
         const functionName = functionToReconcile;
-        let stillExists = true;
         try {
-          stillExists = await supabaseFunctionEntryExists(
-            ctx.appPath,
-            functionName,
-          );
-          if (stillExists) {
+          if (await supabaseFunctionEntryExists(ctx.appPath, functionName)) {
             await deploySupabaseFunction({
               appId: ctx.appId,
               supabaseProjectId: ctx.supabaseProjectId,
@@ -141,14 +133,8 @@ export const deleteFileTool: ToolDefinition<z.infer<typeof deleteFileSchema>> =
             });
           }
         } catch (error) {
-          if (
-            deferFunctionSyncIfRecording(
-              ctx,
-              functionName,
-              stillExists ? "deploy" : "delete",
-            )
-          ) {
-            return `Successfully deleted ${args.path}. ${RECORDING_DEFERRED_FUNCTION_SYNC_NOTE}`;
+          if (isSupabaseFunctionSyncDeferred(error)) {
+            return `Successfully deleted ${args.path}. ${error.message}`;
           }
           return `File deleted, but failed to reconcile Supabase function: ${error}`;
         }

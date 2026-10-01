@@ -16,10 +16,7 @@ import {
 } from "@/ipc/utils/git_utils";
 import { assertMutationPathAllowed, safeJoin } from "@/ipc/utils/path_utils";
 import { getFileWriteKey, withLock } from "@/ipc/utils/lock_utils";
-import {
-  deferFunctionSyncIfRecording,
-  RECORDING_DEFERRED_FUNCTION_SYNC_NOTE,
-} from "./supabase_function_sync";
+import { isSupabaseFunctionSyncDeferred } from "@/supabase_admin/supabase_recording_deferred_sync";
 import {
   AgentContext,
   escapeXmlAttr,
@@ -515,8 +512,8 @@ export const gitRestoreFileTool: ToolDefinition<
             signal: ctx.abortSignal,
           });
         } catch (error) {
-          if (deferFunctionSyncIfRecording(ctx, functionName, "deploy")) {
-            return `${successMessage} ${RECORDING_DEFERRED_FUNCTION_SYNC_NOTE}`;
+          if (isSupabaseFunctionSyncDeferred(error)) {
+            return `${successMessage} ${error.message}`;
           }
           return `${successMessage} Failed to deploy Supabase function: ${error}`;
         }

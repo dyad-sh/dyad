@@ -14,6 +14,7 @@ import {
   tryGetGitStateFingerprint,
   tryCollectSupabaseFunctionEntryPoints,
   scheduleHookGeneratedFileSideEffects,
+  deleteHookRemovedFunctions,
 } from "./run_pre_commit";
 import { escapeXmlAttr, escapeXmlContent, type ToolDefinition } from "./types";
 
@@ -76,7 +77,8 @@ export const runShellTool: ToolDefinition<z.infer<typeof schema>> = {
     };
     if (!available())
       return blocked("The shell experiment or Pro Host access is disabled.");
-    return appOperationCoordinator.run(
+    const removedFunctionNames: string[] = [];
+    const outcome = await appOperationCoordinator.run(
       {
         appId: ctx.appId,
         operation: "run-agent-shell",
@@ -155,6 +157,7 @@ export const runShellTool: ToolDefinition<z.infer<typeof schema>> = {
           note = await scheduleHookGeneratedFileSideEffects(
             ctx,
             entries,
+            removedFunctionNames,
             "Shell command",
           );
         }
@@ -179,5 +182,7 @@ export const runShellTool: ToolDefinition<z.infer<typeof schema>> = {
         return JSON.stringify({ ...result, reason: decision.reason, note });
       },
     );
+    await deleteHookRemovedFunctions(ctx, removedFunctionNames);
+    return outcome;
   },
 };

@@ -23,6 +23,7 @@ vi.mock("./run_pre_commit", () => ({
     readFile(path.join(dir, "result.txt"), "utf8").catch(() => "absent"),
   tryCollectSupabaseFunctionEntryPoints: vi.fn(),
   scheduleHookGeneratedFileSideEffects: mocks.reconcile,
+  deleteHookRemovedFunctions: vi.fn(),
 }));
 import { runShellTool } from "./run_shell";
 let directory: string;

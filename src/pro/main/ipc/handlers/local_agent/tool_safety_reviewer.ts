@@ -40,7 +40,7 @@ export async function reviewToolAction<D extends "ask" | "block">({
       const { payload, tools } = await prepare(controller.signal);
       controller.signal.throwIfAborted();
       const { modelClient } = await getModelClient(
-        { name: "gpt-5.6-luna", provider: "openai" },
+        { name: "gpt-6-luna", provider: "openai" },
         settings,
       );
       controller.signal.throwIfAborted();

@@ -633,7 +633,7 @@ export const runPreCommitTool: ToolDefinition<
  * released: deployment admission would otherwise nest inside it. Names stay in
  * `pendingFunctionDeletes` until deleted so the root finalizer can retry.
  */
-async function deleteHookRemovedFunctions(
+export async function deleteHookRemovedFunctions(
   ctx: AgentContext,
   functionNames: readonly string[],
 ): Promise<void> {

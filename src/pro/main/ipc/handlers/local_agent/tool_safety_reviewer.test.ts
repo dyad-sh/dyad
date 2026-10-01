@@ -37,6 +37,10 @@ describe("mandatory tool reviewer", () => {
       text: Promise.resolve('{"reason":"Bounded task","decision":"allow"}'),
     });
     expect((await reviewToolAction(input)).decision).toBe("allow");
+    expect(mocks.getModelClient).toHaveBeenCalledWith(
+      { name: "gpt-6-luna", provider: "openai" },
+      input.settings,
+    );
     expect(mocks.streamText.mock.calls[0][0].messages[0].content).toBe(
       "exact command",
     );

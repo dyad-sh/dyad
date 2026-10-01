@@ -2,7 +2,7 @@
 
 ## Summary
 
-Add an opt-in **Shell tool (Pro)** experiment using Bash on macOS/Linux and PowerShell on Windows. Every command must pass `gpt-5.6-luna` review before execution. Rejections, uncertainty, and review failures block execution without a manual override.
+Add an opt-in **Shell tool (Pro)** experiment using Bash on macOS/Linux and PowerShell on Windows. Every command must pass `gpt-6-luna` review before execution. Rejections, uncertainty, and review failures block execution without a manual override.
 
 Use shared review infrastructure for MCP and shell commands, with separate policies and outcomes.
 

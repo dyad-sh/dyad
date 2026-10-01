@@ -167,12 +167,43 @@ export async function flushDeferredSupabaseFunctionSync(
       logger.warn(
         `Deferred Supabase function sync for app ${appId} had errors: ${errors.join(", ")}`,
       );
+      await reportDeferredSyncFailure(appId, errors.join(", "));
     }
   } catch (error) {
     // A newer recording defers again through the same admission path.
     if (isSupabaseFunctionSyncDeferred(error)) return;
     logger.error(
       `Deferred Supabase function sync failed for app ${appId}`,
+      error,
+    );
+    await reportDeferredSyncFailure(appId, String(error));
+  }
+}
+
+/**
+ * The user was told this deploy would happen after the recording, so a
+ * failure must reach them rather than only the logs.
+ */
+async function reportDeferredSyncFailure(
+  appId: number,
+  detail: string,
+): Promise<void> {
+  try {
+    const { windowRegistry } =
+      await import("@/window_infrastructure/main/window_registry");
+    const target = windowRegistry.routePresentation({
+      effect: "ordinary",
+      entity: { kind: "app", id: appId },
+    });
+    if (!target) return;
+    windowRegistry.endpointForSession(target)?.send("toast:error", {
+      message: `Dyad couldn't deploy the Supabase function changes made during the recording: ${detail}. Use "Redeploy edge functions" in the Supabase panel to sync them.`,
+      persist: true,
+      toastId: `supabase-deferred-sync-${appId}`,
+    });
+  } catch (error) {
+    logger.warn(
+      `Failed to report deferred Supabase function sync failure for app ${appId}`,
       error,
     );
   }

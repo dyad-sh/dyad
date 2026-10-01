@@ -15,6 +15,14 @@ const mocks = vi.hoisted(() => ({
   deployAffected: vi.fn(),
   deployAll: vi.fn(),
   fetch: vi.fn(),
+  sendToWindow: vi.fn(),
+}));
+
+vi.mock("@/window_infrastructure/main/window_registry", () => ({
+  windowRegistry: {
+    routePresentation: () => "window-1",
+    endpointForSession: () => ({ send: mocks.sendToWindow }),
+  },
 }));
 
 vi.mock("@/paths/paths", () => ({ getDyadAppPath: (value: string) => value }));
@@ -116,6 +124,55 @@ describe("Supabase function sync during a recording", () => {
       expect.objectContaining({ method: "DELETE" }),
     );
     expect(mocks.fetch).toHaveBeenCalledTimes(1);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(mocks.sendToWindow).not.toHaveBeenCalled();
+  });
+
+  it("shows an error toast when the deferred deploy reports errors", async () => {
+    const endRecording = startRecording(9);
+    mocks.deployAffected.mockResolvedValue(["alpha: bundle failed"]);
+
+    await expect(
+      withSupabaseFunctionDeployment(
+        { appId: 9, supabaseProjectId: "project-id", sync },
+        vi.fn(),
+      ),
+    ).rejects.toSatisfy(isSupabaseFunctionSyncDeferred);
+    endRecording();
+
+    await vi.waitFor(() =>
+      expect(mocks.sendToWindow).toHaveBeenCalledWith("toast:error", {
+        message: expect.stringContaining("alpha: bundle failed"),
+        persist: true,
+        toastId: "supabase-deferred-sync-9",
+      }),
+    );
+  });
+
+  it("shows an error toast when the deferred deploy throws", async () => {
+    const endRecording = startRecording(10);
+    mocks.deployAll.mockRejectedValue(new Error("network down"));
+
+    await expect(
+      withSupabaseFunctionDeployment(
+        {
+          appId: 10,
+          supabaseProjectId: "project-id",
+          sync: { organizationSlug: null },
+        },
+        vi.fn(),
+      ),
+    ).rejects.toSatisfy(isSupabaseFunctionSyncDeferred);
+    endRecording();
+
+    await vi.waitFor(() =>
+      expect(mocks.sendToWindow).toHaveBeenCalledWith(
+        "toast:error",
+        expect.objectContaining({
+          message: expect.stringContaining("network down"),
+        }),
+      ),
+    );
   });
 
   it("redeploys every function when a whole-set deploy was deferred", async () => {
@@ -159,6 +216,7 @@ describe("Supabase function sync during a recording", () => {
 
     expect(mocks.deployAffected).not.toHaveBeenCalled();
     expect(mocks.fetch).not.toHaveBeenCalled();
+    expect(mocks.sendToWindow).not.toHaveBeenCalled();
   });
 });
 

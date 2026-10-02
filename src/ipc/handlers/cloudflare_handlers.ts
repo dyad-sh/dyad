@@ -174,15 +174,17 @@ async function listCommittedTargets(
 /**
  * Reads several committed files in one git call. The output names each
  * blob's size in bytes, so it is read byte for byte and split on those
- * sizes before being decoded. A path not on the branch reads as null.
+ * sizes before being decoded. Entries are NUL-delimited, as in the file
+ * listing, so a path may contain anything. A path not on the branch reads
+ * as null.
  */
 async function readCommittedFiles(
   appPath: string,
   branch: string,
   relativePaths: string[],
 ): Promise<(string | null)[]> {
-  const result = await execGit(["cat-file", "--batch"], appPath, {
-    stdin: relativePaths.map((p) => `refs/heads/${branch}:${p}\n`).join(""),
+  const result = await execGit(["cat-file", "--batch", "-Z"], appPath, {
+    stdin: relativePaths.map((p) => `refs/heads/${branch}:${p}\0`).join(""),
     encoding: "latin1",
   });
   if (result.exitCode !== 0) {
@@ -193,7 +195,7 @@ async function readCommittedFiles(
   const contents: (string | null)[] = [];
   let position = 0;
   for (const _ of relativePaths) {
-    const headerEnd = output.indexOf("\n", position);
+    const headerEnd = output.indexOf("\0", position);
     if (headerEnd === -1) {
       contents.push(null);
       continue;
@@ -209,7 +211,7 @@ async function readCommittedFiles(
       continue;
     }
     const blob = output.slice(position, position + size);
-    // The blob is followed by a newline of its own.
+    // The blob is followed by a NUL of its own.
     position += size + 1;
     contents.push(Buffer.from(blob, "latin1").toString("utf8"));
   }

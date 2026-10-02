@@ -50,16 +50,17 @@ vi.mock("../utils/git_utils", () => ({
     options?: { stdin?: string },
   ) => {
     if (args[0] === "cat-file") {
-      // One "<ref>:<path>" per stdin line; each answers with a size header
-      // and the bytes, or "missing". Bytes come back as latin1, as asked.
+      // One NUL-terminated "<ref>:<path>" per entry on stdin; each answers
+      // with a size header and the bytes, or "missing", NUL-terminated.
+      // Bytes come back as latin1, as asked.
       const stdout = (options?.stdin ?? "")
-        .split("\n")
+        .split("\0")
         .filter(Boolean)
         .map((name) => {
           const contents = holder.files[name.slice(name.indexOf(":") + 1)];
-          if (contents === undefined) return `${name} missing\n`;
+          if (contents === undefined) return `${name} missing\0`;
           const bytes = Buffer.from(contents, "utf8");
-          return `abc123 blob ${bytes.length}\n${bytes.toString("latin1")}\n`;
+          return `abc123 blob ${bytes.length}\0${bytes.toString("latin1")}\0`;
         })
         .join("");
       return { exitCode: 0, stdout, stderr: "" };
@@ -1251,6 +1252,20 @@ describe("the app's status", () => {
       ],
       connections: [],
     });
+  });
+
+  it("finds a Nitro app in a folder whose name holds a newline", async () => {
+    holder.committedFiles = [
+      "odd\nname/package.json",
+      "odd\nname/vite.config.ts",
+    ];
+    holder.files["odd\nname/package.json"] = JSON.stringify({
+      dependencies: { nitro: "^3.0.0" },
+    });
+    const status = await handlers.handleGetAppStatus(appId);
+    expect(status.targets).toEqual([
+      expect.objectContaining({ kind: "nitro", rootDirectory: "odd\nname" }),
+    ]);
   });
 
   it("lists a Nitro app as a target named after the app", async () => {

@@ -19,15 +19,17 @@ export function buildCloudflareDeployFixPrompt({
 }): string {
   const folder =
     rootDirectory === "" ? "this app" : `the \`${rootDirectory}\` folder`;
+  // Said as what Dyad does at connect time, since the rule's variables are not
+  // read back and a folder that became a Nitro app later has none.
   const preset =
-    "The deploy rule sets NITRO_PRESET=cloudflare_module, so the build generates the Worker and its Wrangler config.";
+    "Dyad sets NITRO_PRESET=cloudflare_module on the deploy rule when it connects one, and the build only produces a Worker with that preset. If the log shows a Node server build, the folder needs reconnecting.";
   const config =
     target === null
       ? "Its Wrangler config or Nitro setup is missing from the current branch."
       : target.kind === "nitro"
-        ? `It is a Nitro app. ${preset}`
+        ? `It is a Nitro app: ${preset}`
         : target.nitro
-          ? `It is a Nitro app with its own Wrangler config, \`${target.configPath}\`, which Nitro merges into the generated one. ${preset}`
+          ? `It is a Nitro app with its own Wrangler config, \`${target.configPath}\`, which Nitro merges into the one it generates. ${preset}`
           : `Its Wrangler config is \`${target.configPath}\`.`;
   const sections = [
     `The Cloudflare Workers deployment of ${folder} to the Worker "${workerName}" failed. ${config} Find the cause in the config or the code and fix it.`,

@@ -35,7 +35,7 @@ describe("buildCloudflareDeployFixPrompt", () => {
     expect(prompt).toContain("Nitro setup is missing");
   });
 
-  it("says a Nitro app generates its own config under the preset", () => {
+  it("says how a Nitro app gets its preset, and what its absence looks like", () => {
     const prompt = buildCloudflareDeployFixPrompt({
       workerName: "site",
       rootDirectory: "",
@@ -43,8 +43,9 @@ describe("buildCloudflareDeployFixPrompt", () => {
       logTail: ["error"],
     });
 
-    expect(prompt).toContain("It is a Nitro app.");
+    expect(prompt).toContain("It is a Nitro app:");
     expect(prompt).toContain("NITRO_PRESET=cloudflare_module");
+    expect(prompt).toContain("needs reconnecting");
     expect(prompt).not.toContain("missing");
   });
 

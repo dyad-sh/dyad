@@ -1114,7 +1114,7 @@ describe("a Nitro app", () => {
 
     expect(streamMessage).toHaveBeenCalledTimes(1);
     const prompt = streamMessage.mock.calls[0][0].prompt;
-    expect(prompt).toContain("It is a Nitro app.");
+    expect(prompt).toContain("It is a Nitro app:");
     expect(prompt).toContain("NITRO_PRESET=cloudflare_module");
     expect(prompt).not.toContain("wrangler.jsonc");
   });

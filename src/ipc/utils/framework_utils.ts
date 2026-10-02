@@ -11,9 +11,10 @@ import {
  * Detect the framework type for an app by checking config files and package.json.
  *
  * Vite apps with a Nitro server layer (added via `enable_nitro`) are reported
- * as `"vite-nitro"`. Detection looks for `nitro.config.{ts,js,mjs}` first, then
- * falls back to `nitro` in package.json deps — either is sufficient since the
- * tool writes the config file and installs the package together.
+ * as `"vite-nitro"`. Detection looks for a Nitro config file (see
+ * `NITRO_CONFIG_FILES`) first, then falls back to `nitro` in package.json
+ * deps. Either is sufficient since the tool writes the config file and
+ * installs the package together.
  */
 export function detectFrameworkType(appPath: string): AppFrameworkType | null {
   try {

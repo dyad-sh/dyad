@@ -8,7 +8,10 @@
  * app's committed files rather than over anything Dyad would have to generate.
  */
 
-import { NITRO_CONFIG_FILES } from "@/lib/framework_constants";
+import {
+  NITRO_CONFIG_FILES,
+  VITE_CONFIG_FILES,
+} from "@/lib/framework_constants";
 
 /** In the order Wrangler itself looks for them, so the first found is the one it uses. */
 export const WRANGLER_CONFIG_FILES = [
@@ -87,7 +90,7 @@ function dependsOnNitro(manifest: string): boolean {
       dependencies?: Record<string, unknown>;
       devDependencies?: Record<string, unknown>;
     };
-    return Boolean(parsed.dependencies?.nitro ?? parsed.devDependencies?.nitro);
+    return Boolean(parsed.dependencies?.nitro || parsed.devDependencies?.nitro);
   } catch {
     return false;
   }
@@ -97,20 +100,23 @@ function dependsOnNitro(manifest: string): boolean {
  * Finds every target in a list of repository-relative file paths.
  *
  * A folder with a Wrangler config is deployed as that config says. Any other
- * folder is a target when it is a Nitro app. Telling takes reading manifests;
- * `readFile` returns a committed file's contents, or null when it cannot be
- * read.
+ * folder is a target when it is a Nitro app. A Nitro config file settles that
+ * on its own; otherwise the manifest is read, but only in a folder with a Vite
+ * config, where the framework detection would look too. That keeps a
+ * workspace root that merely hoists the dependency from counting. `readFiles`
+ * returns the committed contents of each path, null where it cannot be read.
  *
  * Sorted shallowest first, then alphabetically, so the first entry is the
  * default selection.
  */
 export async function detectCloudflareTargets(
   files: string[],
-  readFile: (path: string) => Promise<string | null>,
+  readFiles: (paths: string[]) => Promise<(string | null)[]>,
 ): Promise<CloudflareTarget[]> {
   const configByDirectory = new Map<string, string>();
   const nitroDirectories = new Set<string>();
-  const manifestsToRead: { rootDirectory: string; path: string }[] = [];
+  const viteDirectories = new Set<string>();
+  const manifests: { rootDirectory: string; path: string }[] = [];
 
   for (const rawFile of files) {
     const split = splitPath(rawFile);
@@ -130,22 +136,27 @@ export async function detectCloudflareTargets(
       }
     } else if (NITRO_CONFIG_FILES.includes(fileName)) {
       nitroDirectories.add(rootDirectory);
+    } else if (VITE_CONFIG_FILES.includes(fileName)) {
+      viteDirectories.add(rootDirectory);
     } else if (fileName === "package.json") {
-      manifestsToRead.push({ rootDirectory, path: file });
+      manifests.push({ rootDirectory, path: file });
     }
   }
 
-  // Each read is a git call, so they run together.
-  await Promise.all(
-    manifestsToRead
-      .filter(({ rootDirectory }) => !nitroDirectories.has(rootDirectory))
-      .map(async ({ rootDirectory, path }) => {
-        const contents = await readFile(path);
-        if (contents !== null && dependsOnNitro(contents)) {
-          nitroDirectories.add(rootDirectory);
-        }
-      }),
+  const manifestsToRead = manifests.filter(
+    ({ rootDirectory }) =>
+      viteDirectories.has(rootDirectory) &&
+      !nitroDirectories.has(rootDirectory),
   );
+  if (manifestsToRead.length > 0) {
+    const contents = await readFiles(manifestsToRead.map(({ path }) => path));
+    manifestsToRead.forEach(({ rootDirectory }, index) => {
+      const manifest = contents[index];
+      if (manifest != null && dependsOnNitro(manifest)) {
+        nitroDirectories.add(rootDirectory);
+      }
+    });
+  }
 
   const targets: CloudflareTarget[] = [
     ...[...configByDirectory.entries()].map(

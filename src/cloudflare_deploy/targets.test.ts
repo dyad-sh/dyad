@@ -8,7 +8,7 @@ import {
 
 /** Committed file contents by path; anything else cannot be read. */
 function committed(files: Record<string, string> = {}) {
-  return async (path: string) => files[path] ?? null;
+  return async (paths: string[]) => paths.map((path) => files[path] ?? null);
 }
 
 const NITRO_MANIFEST = JSON.stringify({ dependencies: { nitro: "^3.0.0" } });
@@ -56,6 +56,7 @@ describe("detectCloudflareTargets", () => {
       [
         "services/zeta/wrangler.toml",
         "services/alpha/package.json",
+        "services/alpha/vite.config.ts",
         "api/wrangler.json",
         "nitro.config.ts",
       ],
@@ -153,10 +154,17 @@ describe("detectCloudflareTargets", () => {
       ).toEqual([{ kind: "nitro", rootDirectory: "" }]);
     });
 
-    it("finds an app by the nitro dependency in its manifest", async () => {
+    it("finds a Vite app by the nitro dependency in its manifest", async () => {
       expect(
         await detectCloudflareTargets(
-          ["package.json", "apps/site/package.json", "apps/docs/package.json"],
+          [
+            "package.json",
+            "vite.config.ts",
+            "apps/site/package.json",
+            "apps/site/vite.config.mts",
+            "apps/docs/package.json",
+            "apps/docs/vite.config.ts",
+          ],
           committed({
             "package.json": JSON.stringify({
               devDependencies: { react: "19" },
@@ -173,10 +181,42 @@ describe("detectCloudflareTargets", () => {
     it("is not fooled by a manifest that cannot be read or parsed", async () => {
       expect(
         await detectCloudflareTargets(
-          ["package.json", "broken/package.json"],
+          [
+            "package.json",
+            "vite.config.ts",
+            "broken/package.json",
+            "broken/vite.config.ts",
+          ],
           committed({ "broken/package.json": "{ nitro" }),
         ),
       ).toEqual([]);
+    });
+
+    it("only reads manifests in folders with a Vite config, in one call", async () => {
+      // A workspace root hoisting the dependency is not an app.
+      const calls: string[][] = [];
+      const targets = await detectCloudflareTargets(
+        [
+          "package.json",
+          "pnpm-workspace.yaml",
+          "apps/web/package.json",
+          "apps/web/vite.config.ts",
+          "apps/api/package.json",
+          "apps/api/vite.config.ts",
+          "tools/package.json",
+        ],
+        async (paths) => {
+          calls.push(paths);
+          return paths.map(() => NITRO_MANIFEST);
+        },
+      );
+      expect(calls).toEqual([
+        ["apps/web/package.json", "apps/api/package.json"],
+      ]);
+      expect(targets).toEqual([
+        { kind: "nitro", rootDirectory: "apps/api" },
+        { kind: "nitro", rootDirectory: "apps/web" },
+      ]);
     });
 
     it("lets a Wrangler config in the same folder decide, and says the folder is Nitro", async () => {
@@ -197,7 +237,7 @@ describe("detectCloudflareTargets", () => {
       ]);
       expect(
         await detectCloudflareTargets(
-          ["api/wrangler.toml", "api/package.json"],
+          ["api/wrangler.toml", "api/package.json", "api/vite.config.ts"],
           committed({ "api/package.json": NITRO_MANIFEST }),
         ),
       ).toEqual([
@@ -207,27 +247,6 @@ describe("detectCloudflareTargets", () => {
           configPath: "api/wrangler.toml",
           nitro: true,
         },
-      ]);
-    });
-
-    it("reads every manifest at once rather than one after another", async () => {
-      let pending = 0;
-      let mostPending = 0;
-      const targets = await detectCloudflareTargets(
-        ["a/package.json", "b/package.json", "c/package.json"],
-        async () => {
-          pending++;
-          mostPending = Math.max(mostPending, pending);
-          await new Promise((resolve) => setTimeout(resolve, 0));
-          pending--;
-          return NITRO_MANIFEST;
-        },
-      );
-      expect(mostPending).toBe(3);
-      expect(targets.map((target) => target.rootDirectory)).toEqual([
-        "a",
-        "b",
-        "c",
       ]);
     });
   });

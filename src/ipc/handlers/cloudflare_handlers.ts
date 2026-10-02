@@ -167,8 +167,53 @@ async function listCommittedTargets(
   }
   return detectCloudflareTargets(
     result.stdout.split("\0").filter(Boolean),
-    (file) => readCommittedFile(appPath, branch, file),
+    (paths) => readCommittedFiles(appPath, branch, paths),
   );
+}
+
+/**
+ * Reads several committed files in one git call. The output names each
+ * blob's size in bytes, so it is read byte for byte and split on those
+ * sizes before being decoded. A path not on the branch reads as null.
+ */
+async function readCommittedFiles(
+  appPath: string,
+  branch: string,
+  relativePaths: string[],
+): Promise<(string | null)[]> {
+  const result = await execGit(["cat-file", "--batch"], appPath, {
+    stdin: relativePaths.map((p) => `refs/heads/${branch}:${p}\n`).join(""),
+    encoding: "latin1",
+  });
+  if (result.exitCode !== 0) {
+    logger.warn(`Could not read files on ${branch}:`, result.stderr);
+    return relativePaths.map(() => null);
+  }
+  const output = result.stdout;
+  const contents: (string | null)[] = [];
+  let position = 0;
+  for (const _ of relativePaths) {
+    const headerEnd = output.indexOf("\n", position);
+    if (headerEnd === -1) {
+      contents.push(null);
+      continue;
+    }
+    const header = output.slice(position, headerEnd);
+    position = headerEnd + 1;
+    // "<object> blob <size>", or "<name> missing".
+    const size = header.endsWith(" missing")
+      ? null
+      : Number(header.slice(header.lastIndexOf(" ") + 1));
+    if (size === null || !Number.isInteger(size)) {
+      contents.push(null);
+      continue;
+    }
+    const blob = output.slice(position, position + size);
+    // The blob is followed by a newline of its own.
+    position += size + 1;
+    contents.push(Buffer.from(blob, "latin1").toString("utf8"));
+  }
+  return contents;
 }
 
 /**

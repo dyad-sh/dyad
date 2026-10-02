@@ -44,7 +44,26 @@ vi.mock("./github_handlers", () => ({
 }));
 
 vi.mock("../utils/git_utils", () => ({
-  execGit: async (args: string[]) => {
+  execGit: async (
+    args: string[],
+    _path: string,
+    options?: { stdin?: string },
+  ) => {
+    if (args[0] === "cat-file") {
+      // One "<ref>:<path>" per stdin line; each answers with a size header
+      // and the bytes, or "missing". Bytes come back as latin1, as asked.
+      const stdout = (options?.stdin ?? "")
+        .split("\n")
+        .filter(Boolean)
+        .map((name) => {
+          const contents = holder.files[name.slice(name.indexOf(":") + 1)];
+          if (contents === undefined) return `${name} missing\n`;
+          const bytes = Buffer.from(contents, "utf8");
+          return `abc123 blob ${bytes.length}\n${bytes.toString("latin1")}\n`;
+        })
+        .join("");
+      return { exitCode: 0, stdout, stderr: "" };
+    }
     if (args[0] === "ls-tree") {
       // As git does, fails for a branch that does not exist locally.
       return holder.refs[args[args.length - 1]]

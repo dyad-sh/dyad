@@ -28,6 +28,8 @@ export const CloudflareTargetSchema = z.discriminatedUnion("kind", [
     /** Path from the repository root, "" for the root itself. */
     rootDirectory: z.string(),
     configPath: z.string(),
+    /** Also a Nitro app, which merges the config into the one it generates. */
+    nitro: z.boolean(),
     label: z.string(),
     suggestedWorkerName: z.string(),
   }),

@@ -559,11 +559,20 @@ describe("a Nitro app", () => {
     });
   });
 
-  it("is deployed as its own Wrangler config says when it has one", async () => {
+  it("keeps the preset when it has a Wrangler config of its own, which Nitro merges", async () => {
     holder.committedFiles.push("wrangler.jsonc");
     holder.files["wrangler.jsonc"] = `{ "name": "shop" }`;
+    const status = await handlers.handleGetAppStatus(appId);
+    expect(status.targets).toEqual([
+      expect.objectContaining({ kind: "wrangler", nitro: true }),
+    ]);
+
     await handlers.handleConnectWorker({ appId, ...CONNECT_ROOT });
-    expect(cloudflare.buildVariables).toEqual({});
+    expect(
+      cloudflare.buildVariables[cloudflare.triggers[0].trigger_uuid],
+    ).toEqual({
+      NITRO_PRESET: { value: "cloudflare_module", is_secret: false },
+    });
   });
 
   it("is not a target once neither its config nor its dependency is committed", async () => {
@@ -1216,6 +1225,7 @@ describe("the app's status", () => {
           kind: "wrangler",
           rootDirectory: "worker",
           configPath: "worker/wrangler.jsonc",
+          nitro: false,
           label: "worker",
           suggestedWorkerName: "shop-api",
         },

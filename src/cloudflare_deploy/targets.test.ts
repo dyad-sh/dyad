@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildsWithNitro,
   describeCloudflareTarget,
   detectCloudflareTargets,
   readWranglerWorkerName,
@@ -29,6 +30,7 @@ describe("detectCloudflareTargets", () => {
         kind: "wrangler",
         rootDirectory: "worker",
         configPath: "worker/wrangler.jsonc",
+        nitro: false,
       },
     ]);
   });
@@ -40,7 +42,12 @@ describe("detectCloudflareTargets", () => {
         committed(),
       ),
     ).toEqual([
-      { kind: "wrangler", rootDirectory: "", configPath: "wrangler.toml" },
+      {
+        kind: "wrangler",
+        rootDirectory: "",
+        configPath: "wrangler.toml",
+        nitro: false,
+      },
     ]);
   });
 
@@ -93,6 +100,7 @@ describe("detectCloudflareTargets", () => {
         kind: "wrangler",
         rootDirectory: "api",
         configPath: "api/wrangler.json",
+        nitro: false,
       },
     ]);
     // Without a wrangler.json, jsonc comes before toml.
@@ -106,6 +114,7 @@ describe("detectCloudflareTargets", () => {
         kind: "wrangler",
         rootDirectory: "api",
         configPath: "api/wrangler.jsonc",
+        nitro: false,
       },
     ]);
   });
@@ -127,6 +136,7 @@ describe("detectCloudflareTargets", () => {
         kind: "wrangler",
         rootDirectory: "worker",
         configPath: "worker/wrangler.toml",
+        nitro: false,
       },
     ]);
   });
@@ -169,7 +179,7 @@ describe("detectCloudflareTargets", () => {
       ).toEqual([]);
     });
 
-    it("lets a Wrangler config in the same folder decide how it deploys", async () => {
+    it("lets a Wrangler config in the same folder decide, and says the folder is Nitro", async () => {
       expect(
         await detectCloudflareTargets(
           ["wrangler.jsonc", "nitro.config.ts", "package.json"],
@@ -178,9 +188,70 @@ describe("detectCloudflareTargets", () => {
           },
         ),
       ).toEqual([
-        { kind: "wrangler", rootDirectory: "", configPath: "wrangler.jsonc" },
+        {
+          kind: "wrangler",
+          rootDirectory: "",
+          configPath: "wrangler.jsonc",
+          nitro: true,
+        },
+      ]);
+      expect(
+        await detectCloudflareTargets(
+          ["api/wrangler.toml", "api/package.json"],
+          committed({ "api/package.json": NITRO_MANIFEST }),
+        ),
+      ).toEqual([
+        {
+          kind: "wrangler",
+          rootDirectory: "api",
+          configPath: "api/wrangler.toml",
+          nitro: true,
+        },
       ]);
     });
+
+    it("reads every manifest at once rather than one after another", async () => {
+      let pending = 0;
+      let mostPending = 0;
+      const targets = await detectCloudflareTargets(
+        ["a/package.json", "b/package.json", "c/package.json"],
+        async () => {
+          pending++;
+          mostPending = Math.max(mostPending, pending);
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          pending--;
+          return NITRO_MANIFEST;
+        },
+      );
+      expect(mostPending).toBe(3);
+      expect(targets.map((target) => target.rootDirectory)).toEqual([
+        "a",
+        "b",
+        "c",
+      ]);
+    });
+  });
+});
+
+describe("buildsWithNitro", () => {
+  it("is true for a Nitro app, with or without a Wrangler config", () => {
+    expect(buildsWithNitro({ kind: "nitro", rootDirectory: "" })).toBe(true);
+    expect(
+      buildsWithNitro({
+        kind: "wrangler",
+        rootDirectory: "",
+        configPath: "wrangler.json",
+        nitro: true,
+      }),
+    ).toBe(true);
+    expect(
+      buildsWithNitro({
+        kind: "wrangler",
+        rootDirectory: "",
+        configPath: "wrangler.json",
+        nitro: false,
+      }),
+    ).toBe(false);
   });
 });
 
@@ -194,6 +265,7 @@ describe("describeCloudflareTarget", () => {
         kind: "wrangler",
         rootDirectory: "services/api",
         configPath: "services/api/wrangler.toml",
+        nitro: false,
       }),
     ).toBe("services/api");
   });

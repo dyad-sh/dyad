@@ -6,7 +6,12 @@ describe("buildCloudflareDeployFixPrompt", () => {
     const prompt = buildCloudflareDeployFixPrompt({
       workerName: "shop-api",
       rootDirectory: "worker",
-      target: { kind: "wrangler", configPath: "worker/wrangler.jsonc" },
+      target: {
+        kind: "wrangler",
+        rootDirectory: "worker",
+        configPath: "worker/wrangler.jsonc",
+        nitro: false,
+      },
       logTail: ["npm error missing script: build", "Failed: build command"],
     });
 
@@ -34,20 +39,43 @@ describe("buildCloudflareDeployFixPrompt", () => {
     const prompt = buildCloudflareDeployFixPrompt({
       workerName: "site",
       rootDirectory: "",
-      target: { kind: "nitro" },
+      target: { kind: "nitro", rootDirectory: "" },
       logTail: ["error"],
     });
 
-    expect(prompt).toContain("It is a Nitro app");
+    expect(prompt).toContain("It is a Nitro app.");
     expect(prompt).toContain("NITRO_PRESET=cloudflare_module");
     expect(prompt).not.toContain("missing");
+  });
+
+  it("names the config of a Nitro app that has one, and still the preset", () => {
+    const prompt = buildCloudflareDeployFixPrompt({
+      workerName: "site",
+      rootDirectory: "",
+      target: {
+        kind: "wrangler",
+        rootDirectory: "",
+        configPath: "wrangler.jsonc",
+        nitro: true,
+      },
+      logTail: ["error"],
+    });
+
+    expect(prompt).toContain("Nitro app with its own Wrangler config");
+    expect(prompt).toContain("`wrangler.jsonc`");
+    expect(prompt).toContain("NITRO_PRESET=cloudflare_module");
   });
 
   it("uses a fence the log cannot close when it contains backticks", () => {
     const prompt = buildCloudflareDeployFixPrompt({
       workerName: "site",
       rootDirectory: "",
-      target: { kind: "wrangler", configPath: "wrangler.toml" },
+      target: {
+        kind: "wrangler",
+        rootDirectory: "",
+        configPath: "wrangler.toml",
+        nitro: false,
+      },
       logTail: [
         'Or add the following to your "wrangler.toml" file:',
         "```",
@@ -65,7 +93,12 @@ describe("buildCloudflareDeployFixPrompt", () => {
     const prompt = buildCloudflareDeployFixPrompt({
       workerName: "site",
       rootDirectory: "",
-      target: { kind: "wrangler", configPath: "wrangler.toml" },
+      target: {
+        kind: "wrangler",
+        rootDirectory: "",
+        configPath: "wrangler.toml",
+        nitro: false,
+      },
       logTail: [],
     });
 

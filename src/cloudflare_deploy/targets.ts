@@ -27,6 +27,10 @@ const IGNORED_DIRECTORIES = new Set([
   ".git",
 ]);
 
+/**
+ * A Nitro app is found the way the framework detection finds Nitro: a Nitro
+ * config, or the `nitro` dependency in the manifest.
+ */
 export type CloudflareTarget =
   | {
       kind: "wrangler";
@@ -34,16 +38,23 @@ export type CloudflareTarget =
       rootDirectory: string;
       /** Path of the Wrangler config from the repository root. */
       configPath: string;
+      /**
+       * Whether the folder is also a Nitro app. Nitro merges the config into
+       * the one its build generates, and that build only produces a Worker
+       * under the Cloudflare preset.
+       */
+      nitro: boolean;
     }
   | {
-      /**
-       * A Nitro app with no Wrangler config of its own. Found the way the
-       * framework detection finds Nitro: a Nitro config, or the `nitro`
-       * dependency in the manifest.
-       */
+      /** A Nitro app with no Wrangler config of its own. */
       kind: "nitro";
       rootDirectory: string;
     };
+
+/** Whether the target's build needs the Cloudflare preset to produce a Worker. */
+export function buildsWithNitro(target: CloudflareTarget): boolean {
+  return target.kind === "nitro" || target.nitro;
+}
 
 function configPriority(fileName: string): number {
   const index = (WRANGLER_CONFIG_FILES as readonly string[]).indexOf(fileName);
@@ -85,10 +96,10 @@ function dependsOnNitro(manifest: string): boolean {
 /**
  * Finds every target in a list of repository-relative file paths.
  *
- * A folder with a Wrangler config is deployed as that config says, whatever
- * else it holds. Any other folder is a target when it is a Nitro app, which
- * takes reading its manifest; `readFile` returns a committed file's contents,
- * or null when it cannot be read.
+ * A folder with a Wrangler config is deployed as that config says. Any other
+ * folder is a target when it is a Nitro app. Telling takes reading manifests;
+ * `readFile` returns a committed file's contents, or null when it cannot be
+ * read.
  *
  * Sorted shallowest first, then alphabetically, so the first entry is the
  * default selection.
@@ -124,18 +135,17 @@ export async function detectCloudflareTargets(
     }
   }
 
-  for (const manifest of manifestsToRead) {
-    if (
-      configByDirectory.has(manifest.rootDirectory) ||
-      nitroDirectories.has(manifest.rootDirectory)
-    ) {
-      continue;
-    }
-    const contents = await readFile(manifest.path);
-    if (contents !== null && dependsOnNitro(contents)) {
-      nitroDirectories.add(manifest.rootDirectory);
-    }
-  }
+  // Each read is a git call, so they run together.
+  await Promise.all(
+    manifestsToRead
+      .filter(({ rootDirectory }) => !nitroDirectories.has(rootDirectory))
+      .map(async ({ rootDirectory, path }) => {
+        const contents = await readFile(path);
+        if (contents !== null && dependsOnNitro(contents)) {
+          nitroDirectories.add(rootDirectory);
+        }
+      }),
+  );
 
   const targets: CloudflareTarget[] = [
     ...[...configByDirectory.entries()].map(
@@ -143,6 +153,7 @@ export async function detectCloudflareTargets(
         kind: "wrangler",
         rootDirectory,
         configPath,
+        nitro: nitroDirectories.has(rootDirectory),
       }),
     ),
     ...[...nitroDirectories]

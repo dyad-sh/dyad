@@ -66,6 +66,7 @@ import {
   toDeploymentState,
 } from "@/cloudflare_deploy/build_config";
 import {
+  buildsWithNitro,
   describeCloudflareTarget,
   detectCloudflareTargets,
   readWranglerWorkerName,
@@ -255,8 +256,9 @@ async function getBuildVariables(
   branch: string,
   target: CloudflareTarget,
 ): Promise<Record<string, string>> {
-  const variables: Record<string, string> =
-    target.kind === "nitro" ? { ...NITRO_WORKERS_PRESET_VARIABLE } : {};
+  const variables: Record<string, string> = buildsWithNitro(target)
+    ? { ...NITRO_WORKERS_PRESET_VARIABLE }
+    : {};
   const { rootDirectory } = target;
   const usesPnpm =
     (await readCommittedFile(
@@ -522,6 +524,7 @@ async function handleGetAppStatus(appId: number): Promise<CloudflareAppStatus> {
         kind: target.kind,
         rootDirectory,
         configPath: target.configPath,
+        nitro: target.nitro,
         label,
         suggestedWorkerName: suggestWorkerName({
           configName: contents

@@ -26,6 +26,9 @@ export const NITRO_CONFIG_FILES = [
   "nitro.config.ts",
   "nitro.config.js",
   "nitro.config.mjs",
+  "nitro.config.cjs",
+  "nitro.config.mts",
+  "nitro.config.cts",
 ];
 
 /**

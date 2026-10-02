@@ -69,6 +69,7 @@ vi.mock("@/hooks/useChatMode", () => ({
 const { CloudflareConnector } = await import("./CloudflareConnector");
 
 const TARGET = {
+  kind: "wrangler" as const,
   rootDirectory: "worker",
   configPath: "worker/wrangler.jsonc",
   label: "worker",
@@ -358,6 +359,7 @@ describe("an app whose Wrangler configs are already listed", () => {
         targets: [
           TARGET,
           {
+            kind: "wrangler" as const,
             rootDirectory: "api",
             configPath: "api/wrangler.toml",
             label: "api",
@@ -994,7 +996,7 @@ describe("a connected Worker", () => {
     // Also shown when the branch cannot be read, so it does not claim the
     // config is gone.
     expect(warning.textContent).toMatch(
-      /Dyad cannot find a Wrangler config for worker on main\./,
+      /Dyad cannot find a Wrangler config or a Nitro app in worker on main\./,
     );
     expect(screen.queryByText("No Cloudflare Worker found")).toBeNull();
     // Cloudflare cannot build it, so the card must not say that it deploys.
@@ -1054,6 +1056,7 @@ describe("a connected Worker", () => {
 
 describe("an app with several Workers", () => {
   const CRON_TARGET = {
+    kind: "wrangler" as const,
     rootDirectory: "cron",
     configPath: "cron/wrangler.toml",
     label: "cron",
@@ -1228,7 +1231,9 @@ describe("a folder that lost its config beside one that still has it", () => {
 
     const list = await screen.findByTestId("cloudflare-target-list");
     expect(list.textContent).toContain("old-worker");
-    expect(list.textContent).toContain("Connected to shop-api, config missing");
+    expect(list.textContent).toContain(
+      "Connected to shop-api, no longer found",
+    );
     // The deployable folder comes first and opens on its setup form.
     expect(await screen.findByTestId("cloudflare-worker-form")).toBeTruthy();
 

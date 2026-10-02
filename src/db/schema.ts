@@ -576,11 +576,11 @@ export const coolifyAppConnections = sqliteTable(
 /**
  * Which Cloudflare Worker a folder of an app deploys to.
  *
- * One row per target, where a target is a folder holding a Wrangler config:
- * an app can deploy several Workers, each with its own rule on Cloudflare. The
- * row existing is what "connected" means, so every column but `workerUrl` is
- * NOT NULL and disconnecting deletes the row. The API token is account-wide and lives in
- * settings.
+ * One row per target, where a target is a folder with a Wrangler config or a
+ * Nitro app: an app can deploy several Workers, each with its own rule on
+ * Cloudflare. The row existing is what "connected" means, so every column but
+ * `workerUrl` is NOT NULL and disconnecting deletes the row. The API token is
+ * account-wide and lives in settings.
  */
 export const cloudflareAppConnections = sqliteTable(
   "cloudflare_app_connections",

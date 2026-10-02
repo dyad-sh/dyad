@@ -519,6 +519,62 @@ describe("a target not installed with pnpm", () => {
   });
 });
 
+describe("a Nitro app", () => {
+  // Found the way the framework detection finds Nitro, from the manifest or
+  // the Nitro config, on the committed branch.
+  const CONNECT_ROOT = { ...CONNECT, rootDirectory: "", workerName: "shop" };
+
+  beforeEach(() => {
+    holder.committedFiles = ["package.json", "vite.config.ts"];
+    holder.files = {
+      "package.json": JSON.stringify({
+        scripts: { build: "vite build" },
+        dependencies: { nitro: "^3.0.0" },
+      }),
+    };
+  });
+
+  it("tells Nitro to build for Workers, and deploys what it generates", async () => {
+    await handlers.handleConnectWorker({ appId, ...CONNECT_ROOT });
+
+    const [trigger] = cloudflare.triggers;
+    expect(trigger).toMatchObject({
+      root_directory: "/",
+      build_command: "npm run build",
+      deploy_command: "npx wrangler deploy --name shop",
+    });
+    expect(cloudflare.buildVariables[trigger.trigger_uuid]).toEqual({
+      NITRO_PRESET: { value: "cloudflare_module", is_secret: false },
+    });
+  });
+
+  it("sets the preset beside the pnpm version", async () => {
+    holder.files["pnpm-lock.yaml"] = "lockfileVersion: '9.0'";
+    await handlers.handleConnectWorker({ appId, ...CONNECT_ROOT });
+    expect(
+      cloudflare.buildVariables[cloudflare.triggers[0].trigger_uuid],
+    ).toEqual({
+      NITRO_PRESET: { value: "cloudflare_module", is_secret: false },
+      PNPM_VERSION: { value: "11.4.2", is_secret: false },
+    });
+  });
+
+  it("is deployed as its own Wrangler config says when it has one", async () => {
+    holder.committedFiles.push("wrangler.jsonc");
+    holder.files["wrangler.jsonc"] = `{ "name": "shop" }`;
+    await handlers.handleConnectWorker({ appId, ...CONNECT_ROOT });
+    expect(cloudflare.buildVariables).toEqual({});
+  });
+
+  it("is not a target once neither its config nor its dependency is committed", async () => {
+    holder.files["package.json"] = JSON.stringify({ dependencies: {} });
+    await expect(
+      handlers.handleConnectWorker({ appId, ...CONNECT_ROOT }),
+    ).rejects.toThrow(/No Wrangler config or Nitro app/);
+    expect(cloudflare.calls).toEqual([]);
+  });
+});
+
 describe("reading the target", () => {
   it("fails when GitHub does not accept Dyad's token", async () => {
     holder.settings.githubAccessToken = { value: "stale-token" };
@@ -1157,6 +1213,7 @@ describe("the app's status", () => {
       branch: "main",
       targets: [
         {
+          kind: "wrangler",
           rootDirectory: "worker",
           configPath: "worker/wrangler.jsonc",
           label: "worker",
@@ -1165,6 +1222,19 @@ describe("the app's status", () => {
       ],
       connections: [],
     });
+  });
+
+  it("lists a Nitro app as a target named after the app", async () => {
+    holder.committedFiles = ["package.json", "nitro.config.ts"];
+    const status = await handlers.handleGetAppStatus(appId);
+    expect(status.targets).toEqual([
+      {
+        kind: "nitro",
+        rootDirectory: "",
+        label: "App root",
+        suggestedWorkerName: "shop",
+      },
+    ]);
   });
 
   it("is not synced while the latest commit has not reached GitHub", async () => {

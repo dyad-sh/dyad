@@ -6,7 +6,7 @@ describe("buildCloudflareDeployFixPrompt", () => {
     const prompt = buildCloudflareDeployFixPrompt({
       workerName: "shop-api",
       rootDirectory: "worker",
-      configPath: "worker/wrangler.jsonc",
+      target: { kind: "wrangler", configPath: "worker/wrangler.jsonc" },
       logTail: ["npm error missing script: build", "Failed: build command"],
     });
 
@@ -22,19 +22,32 @@ describe("buildCloudflareDeployFixPrompt", () => {
     const prompt = buildCloudflareDeployFixPrompt({
       workerName: "site",
       rootDirectory: "",
-      configPath: null,
+      target: null,
       logTail: ["error"],
     });
 
     expect(prompt).toContain("deployment of this app");
-    expect(prompt).toContain("config is missing");
+    expect(prompt).toContain("Nitro setup is missing");
+  });
+
+  it("says a Nitro app generates its own config under the preset", () => {
+    const prompt = buildCloudflareDeployFixPrompt({
+      workerName: "site",
+      rootDirectory: "",
+      target: { kind: "nitro" },
+      logTail: ["error"],
+    });
+
+    expect(prompt).toContain("It is a Nitro app");
+    expect(prompt).toContain("NITRO_PRESET=cloudflare_module");
+    expect(prompt).not.toContain("missing");
   });
 
   it("uses a fence the log cannot close when it contains backticks", () => {
     const prompt = buildCloudflareDeployFixPrompt({
       workerName: "site",
       rootDirectory: "",
-      configPath: "wrangler.toml",
+      target: { kind: "wrangler", configPath: "wrangler.toml" },
       logTail: [
         'Or add the following to your "wrangler.toml" file:',
         "```",
@@ -52,7 +65,7 @@ describe("buildCloudflareDeployFixPrompt", () => {
     const prompt = buildCloudflareDeployFixPrompt({
       workerName: "site",
       rootDirectory: "",
-      configPath: "wrangler.toml",
+      target: { kind: "wrangler", configPath: "wrangler.toml" },
       logTail: [],
     });
 

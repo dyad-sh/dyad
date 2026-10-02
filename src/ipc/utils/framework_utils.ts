@@ -2,6 +2,7 @@ import fs from "node:fs";
 import * as path from "path";
 import {
   NEXTJS_CONFIG_FILES,
+  NITRO_CONFIG_FILES,
   VITE_CONFIG_FILES,
   type AppFrameworkType,
 } from "@/lib/framework_constants";
@@ -83,12 +84,7 @@ function hasNitro(
   appPath: string,
   deps: Record<string, string> | null,
 ): boolean {
-  const nitroConfigs = [
-    "nitro.config.ts",
-    "nitro.config.js",
-    "nitro.config.mjs",
-  ];
-  for (const config of nitroConfigs) {
+  for (const config of NITRO_CONFIG_FILES) {
     if (fs.existsSync(path.join(appPath, config))) return true;
   }
   return Boolean(deps?.nitro);

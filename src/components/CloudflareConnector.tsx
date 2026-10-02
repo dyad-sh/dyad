@@ -259,8 +259,8 @@ function ConnectedAccount({ appId }: { appId: number }) {
   // without them, since a revoked token fails this call first.
   const accountList = accounts.data;
   // Every folder the tab has something to say about: the ones that can be
-  // deployed, and any still connected whose Wrangler config has since left
-  // the branch. Those keep their rule on Cloudflare, so they must stay
+  // deployed, and any still connected that has since stopped being deployable
+  // on the branch. Those keep their rule on Cloudflare, so they must stay
   // reachable here to be disconnected.
   const connections = status.data.connections;
   const deployable = status.data.targets;
@@ -288,9 +288,9 @@ function ConnectedAccount({ appId }: { appId: number }) {
       <div className={noticeClass} data-testid="cloudflare-no-targets">
         <p className="font-medium mb-1">No Cloudflare Worker found</p>
         <p>
-          Dyad deploys folders that contain a Wrangler config (wrangler.jsonc,
-          wrangler.json or wrangler.toml). Add a Worker to this app, then sync
-          it to GitHub and click Refresh.
+          Dyad deploys Nitro apps and folders that contain a Wrangler config
+          (wrangler.jsonc, wrangler.json or wrangler.toml). Add one to this app,
+          then sync it to GitHub and click Refresh.
         </p>
         <RecheckButton className="mt-3" onCheck={() => status.refetch()} />
       </div>
@@ -305,8 +305,8 @@ function ConnectedAccount({ appId }: { appId: number }) {
   const connection = connections.find(
     (candidate) => candidate.rootDirectory === folder.rootDirectory,
   );
-  // Looks for Wrangler configs added since the tab opened, and re-reads the
-  // accounts when they are part of the view. While a folder is being set up,
+  // Looks for deployable folders added since the tab opened, and re-reads
+  // the accounts when they are part of the view. While a folder is being set up,
   // TargetSetup shows the button instead and adds its own queries.
   const refreshStatus = () => status.refetch();
   const refresh = async () => {
@@ -361,10 +361,10 @@ function ConnectedAccount({ appId }: { appId: number }) {
               className={warningClass}
               data-testid="cloudflare-config-missing"
             >
-              Dyad cannot find a Wrangler config for {folder.label} on{" "}
-              {status.data.branch}. If the config is gone, Cloudflare cannot
-              build it either, but its deploy rule is still there: restore the
-              config, or disconnect {folder.label} to remove the rule.
+              Dyad cannot find a Wrangler config or a Nitro app in{" "}
+              {folder.label} on {status.data.branch}. If it is gone, Cloudflare
+              cannot build it either, but its deploy rule is still there:
+              restore it, or disconnect {folder.label} to remove the rule.
             </div>
           )}
           <DeploymentCard
@@ -373,7 +373,7 @@ function ConnectedAccount({ appId }: { appId: number }) {
             appId={appId}
             connection={connection}
             targetLabel={folder.label}
-            configPath={target?.configPath ?? null}
+            target={target}
           />
         </>
       ) : !target ? null : !accountList ? (
@@ -454,7 +454,7 @@ function ConnectedAccount({ appId }: { appId: number }) {
   );
 }
 
-/** A folder shown in the tab. `target` is null when Dyad cannot find its Wrangler config. */
+/** A folder shown in the tab. `target` is null when Dyad no longer finds it deployable. */
 interface DeployFolder {
   rootDirectory: string;
   label: string;
@@ -509,7 +509,7 @@ function TargetList({
                     ? "Not connected"
                     : target.target
                       ? `Connected to ${connection.workerName}`
-                      : `Connected to ${connection.workerName}, config missing`}
+                      : `Connected to ${connection.workerName}, no longer found`}
                 </span>
               </button>
             </li>
@@ -868,15 +868,15 @@ function DeploymentCard({
   appId,
   connection,
   targetLabel,
-  configPath,
+  target,
 }: {
   appId: number;
   connection: CloudflareConnection;
   targetLabel: string;
-  /** Null once the folder's Wrangler config has left the branch. */
-  configPath: string | null;
+  /** Null once the folder has stopped being deployable on the branch. */
+  target: CloudflareTargetSummary | null;
 }) {
-  const hasConfig = configPath !== null;
+  const isDeployable = target !== null;
   const status = useCloudflareDeploymentStatus({
     appId,
     rootDirectory: connection.rootDirectory,
@@ -913,7 +913,7 @@ function DeploymentCard({
       prompt: buildCloudflareDeployFixPrompt({
         workerName: connection.workerName,
         rootDirectory: connection.rootDirectory,
-        configPath,
+        target,
         logTail: status.data.logTail,
       }),
       chatId,
@@ -1055,14 +1055,16 @@ function DeploymentCard({
           a change to GitHub.
         </div>
       )}
-      {hasConfig && !status.data?.ruleDeploys && !status.data?.ruleMissing && (
-        <p className="text-xs text-gray-500 dark:text-gray-400">
-          {deployTriggerText({
-            rootDirectory: connection.rootDirectory,
-            label: targetLabel,
-          })}
-        </p>
-      )}
+      {isDeployable &&
+        !status.data?.ruleDeploys &&
+        !status.data?.ruleMissing && (
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            {deployTriggerText({
+              rootDirectory: connection.rootDirectory,
+              label: targetLabel,
+            })}
+          </p>
+        )}
       <Button
         variant="outline"
         size="sm"

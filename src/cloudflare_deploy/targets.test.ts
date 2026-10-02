@@ -5,33 +5,55 @@ import {
   readWranglerWorkerName,
 } from "./targets";
 
+/** Committed file contents by path; anything else cannot be read. */
+function committed(files: Record<string, string> = {}) {
+  return async (path: string) => files[path] ?? null;
+}
+
+const NITRO_MANIFEST = JSON.stringify({ dependencies: { nitro: "^3.0.0" } });
+
 describe("detectCloudflareTargets", () => {
-  it("finds a Worker in a subfolder of an app that is not itself one", () => {
+  it("finds a Worker in a subfolder of an app that is not itself one", async () => {
     expect(
-      detectCloudflareTargets([
-        "package.json",
-        "src/App.tsx",
-        "worker/wrangler.jsonc",
-        "worker/src/index.ts",
-      ]),
+      await detectCloudflareTargets(
+        [
+          "package.json",
+          "src/App.tsx",
+          "worker/wrangler.jsonc",
+          "worker/src/index.ts",
+        ],
+        committed({ "package.json": "{}" }),
+      ),
     ).toEqual([
-      { rootDirectory: "worker", configPath: "worker/wrangler.jsonc" },
+      {
+        kind: "wrangler",
+        rootDirectory: "worker",
+        configPath: "worker/wrangler.jsonc",
+      },
     ]);
   });
 
-  it("treats a config at the top level as the root target", () => {
-    expect(detectCloudflareTargets(["wrangler.toml", "src/index.ts"])).toEqual([
-      { rootDirectory: "", configPath: "wrangler.toml" },
+  it("treats a config at the top level as the root target", async () => {
+    expect(
+      await detectCloudflareTargets(
+        ["wrangler.toml", "src/index.ts"],
+        committed(),
+      ),
+    ).toEqual([
+      { kind: "wrangler", rootDirectory: "", configPath: "wrangler.toml" },
     ]);
   });
 
-  it("orders targets shallowest first so the first one is the default", () => {
-    const targets = detectCloudflareTargets([
-      "services/zeta/wrangler.toml",
-      "services/alpha/wrangler.toml",
-      "api/wrangler.json",
-      "wrangler.jsonc",
-    ]);
+  it("orders targets shallowest first so the first one is the default", async () => {
+    const targets = await detectCloudflareTargets(
+      [
+        "services/zeta/wrangler.toml",
+        "services/alpha/package.json",
+        "api/wrangler.json",
+        "nitro.config.ts",
+      ],
+      committed({ "services/alpha/package.json": NITRO_MANIFEST }),
+    );
     expect(targets.map((target) => target.rootDirectory)).toEqual([
       "",
       "api",
@@ -40,56 +62,136 @@ describe("detectCloudflareTargets", () => {
     ]);
   });
 
-  it("ignores configs inside dependencies and build output", () => {
+  it("ignores configs and apps inside dependencies and build output", async () => {
     expect(
-      detectCloudflareTargets([
-        "node_modules/some-package/wrangler.toml",
-        ".output/server/wrangler.json",
-        ".wrangler/tmp/wrangler.json",
-        "dist/wrangler.json",
-        "packages/api/node_modules/dep/wrangler.toml",
-      ]),
+      await detectCloudflareTargets(
+        [
+          "node_modules/some-package/wrangler.toml",
+          "node_modules/nitro/package.json",
+          ".output/server/wrangler.json",
+          ".output/server/package.json",
+          ".wrangler/tmp/wrangler.json",
+          "dist/wrangler.json",
+          "packages/api/node_modules/dep/wrangler.toml",
+        ],
+        committed({
+          "node_modules/nitro/package.json": NITRO_MANIFEST,
+          ".output/server/package.json": NITRO_MANIFEST,
+        }),
+      ),
     ).toEqual([]);
   });
 
-  it("reports a folder once, preferring the config Wrangler itself prefers", () => {
+  it("reports a folder once, preferring the config Wrangler itself prefers", async () => {
     expect(
-      detectCloudflareTargets([
-        "api/wrangler.toml",
-        "api/wrangler.json",
-        "api/wrangler.jsonc",
-      ]),
-    ).toEqual([{ rootDirectory: "api", configPath: "api/wrangler.json" }]);
+      await detectCloudflareTargets(
+        ["api/wrangler.toml", "api/wrangler.json", "api/wrangler.jsonc"],
+        committed(),
+      ),
+    ).toEqual([
+      {
+        kind: "wrangler",
+        rootDirectory: "api",
+        configPath: "api/wrangler.json",
+      },
+    ]);
     // Without a wrangler.json, jsonc comes before toml.
     expect(
-      detectCloudflareTargets(["api/wrangler.toml", "api/wrangler.jsonc"]),
-    ).toEqual([{ rootDirectory: "api", configPath: "api/wrangler.jsonc" }]);
+      await detectCloudflareTargets(
+        ["api/wrangler.toml", "api/wrangler.jsonc"],
+        committed(),
+      ),
+    ).toEqual([
+      {
+        kind: "wrangler",
+        rootDirectory: "api",
+        configPath: "api/wrangler.jsonc",
+      },
+    ]);
   });
 
-  it("does not mistake similarly named files for a config", () => {
+  it("does not mistake similarly named files for a config", async () => {
     expect(
-      detectCloudflareTargets([
-        "docs/wrangler.toml.md",
-        "my-wrangler.toml",
-        "wrangler.toml.bak",
-      ]),
+      await detectCloudflareTargets(
+        ["docs/wrangler.toml.md", "my-wrangler.toml", "wrangler.toml.bak"],
+        committed(),
+      ),
     ).toEqual([]);
   });
 
-  it("accepts Windows separators", () => {
-    expect(detectCloudflareTargets(["worker\\wrangler.toml"])).toEqual([
-      { rootDirectory: "worker", configPath: "worker/wrangler.toml" },
+  it("accepts Windows separators", async () => {
+    expect(
+      await detectCloudflareTargets(["worker\\wrangler.toml"], committed()),
+    ).toEqual([
+      {
+        kind: "wrangler",
+        rootDirectory: "worker",
+        configPath: "worker/wrangler.toml",
+      },
     ]);
+  });
+
+  describe("Nitro apps", () => {
+    it("finds an app by its Nitro config without reading anything", async () => {
+      expect(
+        await detectCloudflareTargets(
+          ["package.json", "nitro.config.ts", "vite.config.ts"],
+          async () => {
+            throw new Error("should not read");
+          },
+        ),
+      ).toEqual([{ kind: "nitro", rootDirectory: "" }]);
+    });
+
+    it("finds an app by the nitro dependency in its manifest", async () => {
+      expect(
+        await detectCloudflareTargets(
+          ["package.json", "apps/site/package.json", "apps/docs/package.json"],
+          committed({
+            "package.json": JSON.stringify({
+              devDependencies: { react: "19" },
+            }),
+            "apps/site/package.json": JSON.stringify({
+              devDependencies: { nitro: "latest" },
+            }),
+            "apps/docs/package.json": JSON.stringify({ dependencies: {} }),
+          }),
+        ),
+      ).toEqual([{ kind: "nitro", rootDirectory: "apps/site" }]);
+    });
+
+    it("is not fooled by a manifest that cannot be read or parsed", async () => {
+      expect(
+        await detectCloudflareTargets(
+          ["package.json", "broken/package.json"],
+          committed({ "broken/package.json": "{ nitro" }),
+        ),
+      ).toEqual([]);
+    });
+
+    it("lets a Wrangler config in the same folder decide how it deploys", async () => {
+      expect(
+        await detectCloudflareTargets(
+          ["wrangler.jsonc", "nitro.config.ts", "package.json"],
+          async () => {
+            throw new Error("should not read");
+          },
+        ),
+      ).toEqual([
+        { kind: "wrangler", rootDirectory: "", configPath: "wrangler.jsonc" },
+      ]);
+    });
   });
 });
 
 describe("describeCloudflareTarget", () => {
   it("names the root and shows a subfolder by its path", () => {
-    expect(
-      describeCloudflareTarget({ rootDirectory: "", configPath: "w.toml" }),
-    ).toBe("App root");
+    expect(describeCloudflareTarget({ kind: "nitro", rootDirectory: "" })).toBe(
+      "App root",
+    );
     expect(
       describeCloudflareTarget({
+        kind: "wrangler",
         rootDirectory: "services/api",
         configPath: "services/api/wrangler.toml",
       }),

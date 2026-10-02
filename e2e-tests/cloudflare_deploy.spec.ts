@@ -127,6 +127,48 @@ test("deploys a Worker from a subfolder and shows it live", async ({
   ).toBe(TEST_PNPM_VERSION);
 });
 
+test("deploys a Nitro app from the app root, built for Workers", async ({
+  po,
+}, testInfo) => {
+  const fakeLlmPort = FAKE_LLM_BASE_PORT + testInfo.parallelIndex;
+  await po.setUp({ autoApprove: true });
+  await po.sendPrompt("tc=cloudflare-nitro");
+
+  await po.previewPanel.selectPreviewMode("publish");
+  await po.githubConnector.connect();
+  await po.githubConnector.createRepo(`cloudflare-e2e-${Date.now()}`);
+
+  await saveToken(po);
+
+  // A Nitro app has no config to name its Worker, so the app names it.
+  const nameField = po.page.getByTestId("cloudflare-worker-name");
+  await expect(nameField).toHaveValue(/^[a-z0-9-]+$/, {
+    timeout: Timeout.MEDIUM,
+  });
+  const workerName = await nameField.inputValue();
+  await po.page.getByRole("button", { name: "Connect and Deploy" }).click();
+
+  await expect(po.page.getByTestId("cloudflare-deployment-state")).toHaveText(
+    /Live/,
+    { timeout: Timeout.MEDIUM },
+  );
+
+  const state = await cloudflareState(fakeLlmPort);
+  expect(state.triggers).toEqual([
+    expect.objectContaining({
+      root_directory: "/",
+      path_includes: ["*"],
+      build_command: "npm run build",
+      deploy_command: `npx wrangler deploy --name ${workerName}`,
+    }),
+  ]);
+  // Nitro only writes the Worker and its Wrangler config under this preset.
+  const [trigger] = state.triggers;
+  expect(
+    state.buildVariables[String(trigger.trigger_uuid)]?.NITRO_PRESET?.value,
+  ).toBe("cloudflare_module");
+});
+
 test("waits for Cloudflare to get access to the repository, then continues", async ({
   po,
 }, testInfo) => {

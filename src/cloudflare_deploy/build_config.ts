@@ -194,6 +194,16 @@ export function pnpmVersionForBuild({
     : null;
 }
 
+/**
+ * The build-time variable that makes a Nitro app build for Workers. Nitro
+ * ignores the preset in development and picks other hosts' presets up from
+ * their own build environments, so the app's files stay host-neutral and
+ * only Cloudflare's deploy rule carries this.
+ */
+export const NITRO_WORKERS_PRESET_VARIABLE = {
+  NITRO_PRESET: "cloudflare_module",
+} as const;
+
 // ---------------------------------------------------------------------------
 // Build status
 // ---------------------------------------------------------------------------

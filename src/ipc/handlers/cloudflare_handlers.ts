@@ -60,11 +60,13 @@ import {
   buildDeployRule,
   isBuildTokenRevokedLog,
   isValidWorkerName,
+  NITRO_WORKERS_PRESET_VARIABLE,
   pnpmVersionForBuild,
   suggestWorkerName,
   toDeploymentState,
 } from "@/cloudflare_deploy/build_config";
 import {
+  buildsWithNitro,
   describeCloudflareTarget,
   detectCloudflareTargets,
   readWranglerWorkerName,
@@ -144,8 +146,8 @@ async function revParse(appPath: string, ref: string): Promise<string | null> {
 
 /**
  * Targets come from the committed branch, not the working folder: Cloudflare
- * builds what is on GitHub, so a Wrangler config that was never committed is
- * not something it can deploy.
+ * builds what is on GitHub, so a Wrangler config or Nitro setup that was never
+ * committed is not something it can deploy.
  */
 async function listCommittedTargets(
   appPath: string,
@@ -163,7 +165,57 @@ async function listCommittedTargets(
       DyadErrorKind.Precondition,
     );
   }
-  return detectCloudflareTargets(result.stdout.split("\0").filter(Boolean));
+  return detectCloudflareTargets(
+    result.stdout.split("\0").filter(Boolean),
+    (paths) => readCommittedFiles(appPath, branch, paths),
+  );
+}
+
+/**
+ * Reads several committed files in one git call. The output names each
+ * blob's size in bytes, so it is read byte for byte and split on those
+ * sizes before being decoded. Entries are NUL-delimited, as in the file
+ * listing, so a path may contain anything. A path not on the branch reads
+ * as null.
+ */
+async function readCommittedFiles(
+  appPath: string,
+  branch: string,
+  relativePaths: string[],
+): Promise<(string | null)[]> {
+  const result = await execGit(["cat-file", "--batch", "-Z"], appPath, {
+    stdin: relativePaths.map((p) => `refs/heads/${branch}:${p}\0`).join(""),
+    encoding: "latin1",
+  });
+  if (result.exitCode !== 0) {
+    logger.warn(`Could not read files on ${branch}:`, result.stderr);
+    return relativePaths.map(() => null);
+  }
+  const output = result.stdout;
+  const contents: (string | null)[] = [];
+  let position = 0;
+  for (const _ of relativePaths) {
+    const headerEnd = output.indexOf("\0", position);
+    if (headerEnd === -1) {
+      contents.push(null);
+      continue;
+    }
+    const header = output.slice(position, headerEnd);
+    position = headerEnd + 1;
+    // "<object> blob <size>", or "<name> missing".
+    const size = header.endsWith(" missing")
+      ? null
+      : Number(header.slice(header.lastIndexOf(" ") + 1));
+    if (size === null || !Number.isInteger(size)) {
+      contents.push(null);
+      continue;
+    }
+    const blob = output.slice(position, position + size);
+    // The blob is followed by a NUL of its own.
+    position += size + 1;
+    contents.push(Buffer.from(blob, "latin1").toString("utf8"));
+  }
+  return contents;
 }
 
 /**
@@ -245,19 +297,23 @@ async function assertWorkerIsFree(
   );
 }
 
-/** Build-time variables the target needs for Cloudflare to install it. */
+/** Build-time variables the target needs for Cloudflare to install and build it. */
 async function getBuildVariables(
   appPath: string,
   branch: string,
-  rootDirectory: string,
+  target: CloudflareTarget,
 ): Promise<Record<string, string>> {
+  const variables: Record<string, string> = buildsWithNitro(target)
+    ? { ...NITRO_WORKERS_PRESET_VARIABLE }
+    : {};
+  const { rootDirectory } = target;
   const usesPnpm =
     (await readCommittedFile(
       appPath,
       branch,
       path.posix.join(rootDirectory, "pnpm-lock.yaml"),
     )) !== null;
-  if (!usesPnpm) return {};
+  if (!usesPnpm) return variables;
 
   let packageManagerField: string | null = null;
   const manifest = await readCommittedFile(
@@ -279,7 +335,8 @@ async function getBuildVariables(
     packageManagerField,
     localPnpmVersion: localPnpm?.version ?? null,
   });
-  return version ? { PNPM_VERSION: version } : {};
+  if (version) variables.PNPM_VERSION = version;
+  return variables;
 }
 
 /** How long a repository's ids are remembered. They only change if it is recreated. */
@@ -490,21 +547,38 @@ async function handleGetAppStatus(appId: number): Promise<CloudflareAppStatus> {
 
   const targetSummaries = await Promise.all(
     targets.map(async (target) => {
+      const { rootDirectory } = target;
+      const label = describeCloudflareTarget(target);
+      // A Nitro app has no config to name its Worker, so the app names it.
+      if (target.kind === "nitro") {
+        return {
+          kind: target.kind,
+          rootDirectory,
+          label,
+          suggestedWorkerName: suggestWorkerName({
+            configName: null,
+            appName: app.name,
+            rootDirectory,
+          }),
+        };
+      }
       const contents = await readCommittedFile(
         appPath,
         branch,
         target.configPath,
       );
       return {
-        rootDirectory: target.rootDirectory,
+        kind: target.kind,
+        rootDirectory,
         configPath: target.configPath,
-        label: describeCloudflareTarget(target),
+        nitro: target.nitro,
+        label,
         suggestedWorkerName: suggestWorkerName({
           configName: contents
             ? readWranglerWorkerName(target.configPath, contents)
             : null,
           appName: app.name,
-          rootDirectory: target.rootDirectory,
+          rootDirectory,
         }),
       };
     }),
@@ -576,9 +650,12 @@ async function handleConnectWorker(
   // The folder ends up in a rule Cloudflare runs, so it has to be one Dyad
   // found in the repository rather than whatever the caller sent.
   const targets = await listCommittedTargets(appPath, branch);
-  if (!targets.some((target) => target.rootDirectory === rootDirectory)) {
+  const target = targets.find(
+    (candidate) => candidate.rootDirectory === rootDirectory,
+  );
+  if (!target) {
     throw new DyadError(
-      "No Wrangler config was found in that folder on the synced branch.",
+      "No Wrangler config or Nitro app was found in that folder on the synced branch.",
       DyadErrorKind.Precondition,
     );
   }
@@ -705,11 +782,7 @@ async function handleConnectWorker(
       triggerUuid = await createTrigger(token, accountId, rule);
       createdTriggerUuid = triggerUuid;
     }
-    const buildVariables = await getBuildVariables(
-      appPath,
-      branch,
-      rootDirectory,
-    );
+    const buildVariables = await getBuildVariables(appPath, branch, target);
     if (Object.keys(buildVariables).length > 0) {
       await setTriggerBuildVariables(
         token,

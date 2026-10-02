@@ -23,7 +23,7 @@ const DESCRIPTIONS: Record<AgentModeRequiredDialogProps["action"], string> = {
   assertions:
     "Generating a test proposal runs in Agent mode, which names the test, describes your recorded steps and proposes checks you review before the test file is created. Continue will send this request in Agent mode.",
   deploy:
-    "Fixing a failed deployment means editing your Wrangler config or code, which this chat's mode cannot do. Continue will send this request in Agent mode.",
+    "Fixing a failed deployment means editing your deployment config or code, which this chat's mode cannot do. Continue will send this request in Agent mode.",
 };
 
 /**

@@ -69,8 +69,10 @@ vi.mock("@/hooks/useChatMode", () => ({
 const { CloudflareConnector } = await import("./CloudflareConnector");
 
 const TARGET = {
+  kind: "wrangler" as const,
   rootDirectory: "worker",
   configPath: "worker/wrangler.jsonc",
+  nitro: false,
   label: "worker",
   suggestedWorkerName: "shop-api",
 };
@@ -358,8 +360,10 @@ describe("an app whose Wrangler configs are already listed", () => {
         targets: [
           TARGET,
           {
+            kind: "wrangler" as const,
             rootDirectory: "api",
             configPath: "api/wrangler.toml",
+            nitro: false,
             label: "api",
             suggestedWorkerName: "shop-api-api",
           },
@@ -994,7 +998,7 @@ describe("a connected Worker", () => {
     // Also shown when the branch cannot be read, so it does not claim the
     // config is gone.
     expect(warning.textContent).toMatch(
-      /Dyad cannot find a Wrangler config for worker on main\./,
+      /Dyad cannot find a Wrangler config or a Nitro app in worker on main\./,
     );
     expect(screen.queryByText("No Cloudflare Worker found")).toBeNull();
     // Cloudflare cannot build it, so the card must not say that it deploys.
@@ -1052,10 +1056,76 @@ describe("a connected Worker", () => {
   });
 });
 
+describe("a Nitro app", () => {
+  const NITRO_TARGET = {
+    kind: "nitro" as const,
+    rootDirectory: "",
+    label: "App root",
+    suggestedWorkerName: "shop",
+  };
+  const NITRO_CONNECTION = {
+    ...CONNECTION,
+    rootDirectory: "",
+    workerName: "shop",
+  };
+
+  it("is set up from the app root under the name the app gives it", async () => {
+    cloudflare.getAppStatus.mockResolvedValue(
+      appStatus({ targets: [NITRO_TARGET] }),
+    );
+    cloudflare.connectWorker.mockResolvedValue({
+      status: "connected",
+      connection: NITRO_CONNECTION,
+    });
+    renderConnector();
+
+    const name = (await screen.findByTestId(
+      "cloudflare-worker-name",
+    )) as HTMLInputElement;
+    expect(name.value).toBe("shop");
+    fireEvent.click(screen.getByRole("button", { name: "Connect and Deploy" }));
+
+    await waitFor(() =>
+      expect(cloudflare.connectWorker).toHaveBeenCalledWith(
+        expect.objectContaining({ rootDirectory: "", workerName: "shop" }),
+      ),
+    );
+  });
+
+  it("tells the AI it is a Nitro app when a deployment fails", async () => {
+    cloudflare.getAppStatus.mockResolvedValue(
+      appStatus({ targets: [NITRO_TARGET], connections: [NITRO_CONNECTION] }),
+    );
+    cloudflare.getDeploymentStatus.mockResolvedValue({
+      state: "failed",
+      commitHash: "abc1234def",
+      logTail: ["Error: no wrangler config"],
+      tokenRevoked: false,
+      ruleMissing: false,
+      ruleDeploys: null,
+      workerUrl: NITRO_CONNECTION.workerUrl,
+    });
+    renderConnector();
+
+    expect(
+      await screen.findByText(/Deploys whenever a sync pushes new commits/),
+    ).toBeTruthy();
+    fireEvent.click(await screen.findByTestId("cloudflare-fix-with-ai"));
+
+    expect(streamMessage).toHaveBeenCalledTimes(1);
+    const prompt = streamMessage.mock.calls[0][0].prompt;
+    expect(prompt).toContain("It is a Nitro app:");
+    expect(prompt).toContain("NITRO_PRESET=cloudflare_module");
+    expect(prompt).not.toContain("wrangler.jsonc");
+  });
+});
+
 describe("an app with several Workers", () => {
   const CRON_TARGET = {
+    kind: "wrangler" as const,
     rootDirectory: "cron",
     configPath: "cron/wrangler.toml",
+    nitro: false,
     label: "cron",
     suggestedWorkerName: "shop-cron",
   };
@@ -1228,7 +1298,9 @@ describe("a folder that lost its config beside one that still has it", () => {
 
     const list = await screen.findByTestId("cloudflare-target-list");
     expect(list.textContent).toContain("old-worker");
-    expect(list.textContent).toContain("Connected to shop-api, config missing");
+    expect(list.textContent).toContain(
+      "Connected to shop-api, no longer found",
+    );
     // The deployable folder comes first and opens on its setup form.
     expect(await screen.findByTestId("cloudflare-worker-form")).toBeTruthy();
 

@@ -44,7 +44,27 @@ vi.mock("./github_handlers", () => ({
 }));
 
 vi.mock("../utils/git_utils", () => ({
-  execGit: async (args: string[]) => {
+  execGit: async (
+    args: string[],
+    _path: string,
+    options?: { stdin?: string },
+  ) => {
+    if (args[0] === "cat-file") {
+      // One NUL-terminated "<ref>:<path>" per entry on stdin; each answers
+      // with a size header and the bytes, or "missing", NUL-terminated.
+      // Bytes come back as latin1, as asked.
+      const stdout = (options?.stdin ?? "")
+        .split("\0")
+        .filter(Boolean)
+        .map((name) => {
+          const contents = holder.files[name.slice(name.indexOf(":") + 1)];
+          if (contents === undefined) return `${name} missing\0`;
+          const bytes = Buffer.from(contents, "utf8");
+          return `abc123 blob ${bytes.length}\0${bytes.toString("latin1")}\0`;
+        })
+        .join("");
+      return { exitCode: 0, stdout, stderr: "" };
+    }
     if (args[0] === "ls-tree") {
       // As git does, fails for a branch that does not exist locally.
       return holder.refs[args[args.length - 1]]
@@ -516,6 +536,71 @@ describe("a target not installed with pnpm", () => {
   it("sets no pnpm version", async () => {
     await handlers.handleConnectWorker({ appId, ...CONNECT });
     expect(cloudflare.buildVariables).toEqual({});
+  });
+});
+
+describe("a Nitro app", () => {
+  // Found the way the framework detection finds Nitro, from the manifest or
+  // the Nitro config, on the committed branch.
+  const CONNECT_ROOT = { ...CONNECT, rootDirectory: "", workerName: "shop" };
+
+  beforeEach(() => {
+    holder.committedFiles = ["package.json", "vite.config.ts"];
+    holder.files = {
+      "package.json": JSON.stringify({
+        scripts: { build: "vite build" },
+        dependencies: { nitro: "^3.0.0" },
+      }),
+    };
+  });
+
+  it("tells Nitro to build for Workers, and deploys what it generates", async () => {
+    await handlers.handleConnectWorker({ appId, ...CONNECT_ROOT });
+
+    const [trigger] = cloudflare.triggers;
+    expect(trigger).toMatchObject({
+      root_directory: "/",
+      build_command: "npm run build",
+      deploy_command: "npx wrangler deploy --name shop",
+    });
+    expect(cloudflare.buildVariables[trigger.trigger_uuid]).toEqual({
+      NITRO_PRESET: { value: "cloudflare_module", is_secret: false },
+    });
+  });
+
+  it("sets the preset beside the pnpm version", async () => {
+    holder.files["pnpm-lock.yaml"] = "lockfileVersion: '9.0'";
+    await handlers.handleConnectWorker({ appId, ...CONNECT_ROOT });
+    expect(
+      cloudflare.buildVariables[cloudflare.triggers[0].trigger_uuid],
+    ).toEqual({
+      NITRO_PRESET: { value: "cloudflare_module", is_secret: false },
+      PNPM_VERSION: { value: "11.4.2", is_secret: false },
+    });
+  });
+
+  it("keeps the preset when it has a Wrangler config of its own, which Nitro merges", async () => {
+    holder.committedFiles.push("wrangler.jsonc");
+    holder.files["wrangler.jsonc"] = `{ "name": "shop" }`;
+    const status = await handlers.handleGetAppStatus(appId);
+    expect(status.targets).toEqual([
+      expect.objectContaining({ kind: "wrangler", nitro: true }),
+    ]);
+
+    await handlers.handleConnectWorker({ appId, ...CONNECT_ROOT });
+    expect(
+      cloudflare.buildVariables[cloudflare.triggers[0].trigger_uuid],
+    ).toEqual({
+      NITRO_PRESET: { value: "cloudflare_module", is_secret: false },
+    });
+  });
+
+  it("is not a target once neither its config nor its dependency is committed", async () => {
+    holder.files["package.json"] = JSON.stringify({ dependencies: {} });
+    await expect(
+      handlers.handleConnectWorker({ appId, ...CONNECT_ROOT }),
+    ).rejects.toThrow(/No Wrangler config or Nitro app/);
+    expect(cloudflare.calls).toEqual([]);
   });
 });
 
@@ -1157,14 +1242,43 @@ describe("the app's status", () => {
       branch: "main",
       targets: [
         {
+          kind: "wrangler",
           rootDirectory: "worker",
           configPath: "worker/wrangler.jsonc",
+          nitro: false,
           label: "worker",
           suggestedWorkerName: "shop-api",
         },
       ],
       connections: [],
     });
+  });
+
+  it("finds a Nitro app in a folder whose name holds a newline", async () => {
+    holder.committedFiles = [
+      "odd\nname/package.json",
+      "odd\nname/vite.config.ts",
+    ];
+    holder.files["odd\nname/package.json"] = JSON.stringify({
+      dependencies: { nitro: "^3.0.0" },
+    });
+    const status = await handlers.handleGetAppStatus(appId);
+    expect(status.targets).toEqual([
+      expect.objectContaining({ kind: "nitro", rootDirectory: "odd\nname" }),
+    ]);
+  });
+
+  it("lists a Nitro app as a target named after the app", async () => {
+    holder.committedFiles = ["package.json", "nitro.config.ts"];
+    const status = await handlers.handleGetAppStatus(appId);
+    expect(status.targets).toEqual([
+      {
+        kind: "nitro",
+        rootDirectory: "",
+        label: "App root",
+        suggestedWorkerName: "shop",
+      },
+    ]);
   });
 
   it("is not synced while the latest commit has not reached GitHub", async () => {

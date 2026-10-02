@@ -18,14 +18,28 @@ export const CloudflareWorkerSchema = z.object({
 
 export type CloudflareWorkerSummary = z.infer<typeof CloudflareWorkerSchema>;
 
-/** A folder of the app that can be deployed as a Worker. */
-export const CloudflareTargetSchema = z.object({
-  /** Path from the repository root, "" for the root itself. */
-  rootDirectory: z.string(),
-  configPath: z.string(),
-  label: z.string(),
-  suggestedWorkerName: z.string(),
-});
+/**
+ * A folder of the app that can be deployed as a Worker: one with a Wrangler
+ * config, or a Nitro app, whose build produces the Worker itself.
+ */
+export const CloudflareTargetSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("wrangler"),
+    /** Path from the repository root, "" for the root itself. */
+    rootDirectory: z.string(),
+    configPath: z.string(),
+    /** Also a Nitro app, which merges the config into the one it generates. */
+    nitro: z.boolean(),
+    label: z.string(),
+    suggestedWorkerName: z.string(),
+  }),
+  z.object({
+    kind: z.literal("nitro"),
+    rootDirectory: z.string(),
+    label: z.string(),
+    suggestedWorkerName: z.string(),
+  }),
+]);
 
 export type CloudflareTargetSummary = z.infer<typeof CloudflareTargetSchema>;
 

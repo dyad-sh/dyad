@@ -22,7 +22,7 @@ export function buildCloudflareDeployFixPrompt({
   // Said as what Dyad does at connect time, since the rule's variables are not
   // read back and a folder that became a Nitro app later has none.
   const preset =
-    "Dyad sets NITRO_PRESET=cloudflare_module on the deploy rule when it connects one, and the build only produces a Worker with that preset. If the log shows a Node server build, the folder needs reconnecting.";
+    "Dyad sets NITRO_PRESET=cloudflare_module on the deploy rule when it connects one, and the build only produces a Worker with that preset. If the log shows a Node server build, the deploy rule is missing the preset: tell the user to disconnect the folder in the Cloudflare tab and connect it again.";
   const config =
     target === null
       ? "Its Wrangler config or Nitro setup is missing from the current branch."

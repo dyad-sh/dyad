@@ -45,8 +45,8 @@ describe("buildCloudflareDeployFixPrompt", () => {
 
     expect(prompt).toContain("It is a Nitro app:");
     expect(prompt).toContain("NITRO_PRESET=cloudflare_module");
-    expect(prompt).toContain("needs reconnecting");
-    expect(prompt).not.toContain("missing");
+    expect(prompt).toContain("tell the user to disconnect the folder");
+    expect(prompt).not.toContain("missing from the current branch");
   });
 
   it("names the config of a Nitro app that has one, and still the preset", () => {

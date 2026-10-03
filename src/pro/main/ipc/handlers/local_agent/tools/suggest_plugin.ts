@@ -9,6 +9,7 @@ import {
 } from "@/ipc/shared/remote_mcp_catalog";
 import {
   isRequiredInput,
+  userSuppliedInputs,
   type HttpCatalogEntry,
   type McpCatalogEntry,
 } from "@/ipc/types/mcp_catalog";
@@ -163,7 +164,7 @@ export async function collectSuggestablePlugins({
       (entry): entry is HttpCatalogEntry =>
         entry.featured === true &&
         entry.transport === "http" &&
-        !(entry.inputs ?? []).some(isRequiredInput) &&
+        !userSuppliedInputs(entry.inputs).some(isRequiredInput) &&
         !declined?.has(entry.slug) &&
         !neverSuggest.has(entry.slug),
     )

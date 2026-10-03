@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { McpServer } from "@/ipc/types";
-import type { CatalogInput } from "@/ipc/types/mcp_catalog";
+import type { UserSuppliedInput } from "@/ipc/types/mcp_catalog";
 import { PluginSetupSection } from "./PluginSetupSection";
 
 vi.mock("./AddPluginDialog", () => ({
@@ -46,7 +46,7 @@ function fillInputs(values: string[]) {
 describe("PluginSetupSection", () => {
   it("writes a header input to headersJson with its prefix and keeps existing headers", async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
-    const inputs: CatalogInput[] = [
+    const inputs: UserSuppliedInput[] = [
       {
         kind: "header",
         name: "Authorization",
@@ -80,7 +80,7 @@ describe("PluginSetupSection", () => {
 
   it("writes an env input to envJson", () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
-    const inputs: CatalogInput[] = [
+    const inputs: UserSuppliedInput[] = [
       { kind: "env", name: "API_TOKEN", label: "Token" },
     ];
     render(
@@ -105,7 +105,7 @@ describe("PluginSetupSection", () => {
 
   it("writes oauth client id/secret and shows the redirect-URI hint with the callback port", () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
-    const inputs: CatalogInput[] = [
+    const inputs: UserSuppliedInput[] = [
       { kind: "oauthClientId" },
       { kind: "oauthClientSecret" },
     ];
@@ -135,7 +135,7 @@ describe("PluginSetupSection", () => {
 
   it("lets an optional input stay blank and skips writing it", () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
-    const inputs: CatalogInput[] = [
+    const inputs: UserSuppliedInput[] = [
       { kind: "env", name: "API_TOKEN", label: "Token" },
       { kind: "env", name: "ACCOUNT_ID", label: "Account ID", optional: true },
     ];
@@ -168,7 +168,7 @@ describe("PluginSetupSection", () => {
 
   it("in optional mode, saves a filled value without enabling the server", () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
-    const inputs: CatalogInput[] = [
+    const inputs: UserSuppliedInput[] = [
       {
         kind: "header",
         name: "X-Workspace",
@@ -310,7 +310,7 @@ describe("PluginSetupSection", () => {
 
   it("keeps Save disabled until every input is filled", () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
-    const inputs: CatalogInput[] = [
+    const inputs: UserSuppliedInput[] = [
       { kind: "oauthClientId" },
       { kind: "oauthClientSecret" },
     ];

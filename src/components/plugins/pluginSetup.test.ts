@@ -34,6 +34,10 @@ const accountId: CatalogInput = {
   label: "Account ID",
   optional: true,
 };
+const vendoredClient: CatalogInput = {
+  kind: "vendoredOAuthClient",
+  clientId: "vendored-id",
+};
 
 describe("serverNeedsSetup", () => {
   it("needs setup while a required input is unfilled", () => {
@@ -43,6 +47,11 @@ describe("serverNeedsSetup", () => {
   it("is satisfied once the required inputs are filled, optional ones aside", () => {
     const server = makeServer({ envJson: { API_TOKEN: "tok" } });
     expect(serverNeedsSetup(server, [token, accountId])).toBe(false);
+  });
+
+  it("never needs setup for a catalog-supplied oauth client", () => {
+    const server = makeServer({ transport: "http", oauthEnabled: true });
+    expect(serverNeedsSetup(server, [vendoredClient])).toBe(false);
   });
 
   it("never needs setup for optional-only inputs", () => {

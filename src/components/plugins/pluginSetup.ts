@@ -13,6 +13,11 @@ function isInputSatisfied(server: McpServer, input: CatalogInput): boolean {
     case "oauthClientId":
     case "oauthClientSecret":
       return !!server.oauthClientId;
+    // Supplied by the catalog, so there is nothing for the user to fill in.
+    // Callers filter this kind out before building a form; this case only
+    // keeps an unfiltered list from reporting setup that can't be done.
+    case "vendoredOAuthClient":
+      return true;
   }
 }
 
@@ -31,10 +36,10 @@ export function serverNeedsSetup(
 
 // Optional inputs that still have no saved value, offered on the detail
 // page after setup so they can be filled in later.
-export function unfilledOptionalInputs(
+export function unfilledOptionalInputs<T extends CatalogInput>(
   server: McpServer,
-  inputs: CatalogInput[],
-): CatalogInput[] {
+  inputs: T[],
+): T[] {
   return inputs.filter(
     (input) => !isRequiredInput(input) && !isInputSatisfied(server, input),
   );

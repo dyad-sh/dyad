@@ -15,6 +15,7 @@ import {
   type ServerSecretRead,
 } from "./secret_storage";
 import { settleWithinTimeout } from "./promise_utils";
+import { syncVendoredOAuthClient } from "./vendored_oauth_client";
 
 // Connecting without a secret we know exists would talk to the server
 // unauthenticated, so refuse and point at the likely cause.
@@ -160,6 +161,10 @@ export class McpManager {
   }
 
   private async createClient(serverId: number): Promise<MCPClient> {
+    // Runs before the row is read so a refreshed client is picked up here,
+    // including on the silent token refresh path. Cached-only: building a
+    // client must not wait on a catalog fetch.
+    await syncVendoredOAuthClient(serverId, { cachedOnly: true });
     const server = await db
       .select()
       .from(mcpServers)

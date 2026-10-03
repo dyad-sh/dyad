@@ -44,6 +44,8 @@ Do not give every per-row spinner `role="status"`; each becomes a separate live
 region and screen readers announce the same update repeatedly. Use a labeled
 `role="img"` for row-level state and keep one `aria-live` summary for the list.
 
+For polled queries, keep verified success messages and completion buttons visible during background refetches; gating them on `!isFetching` makes them flicker on every poll. Gate initial verification separately (for example, with `isFetchedAfterMount`) and derive completion from the latest confirmed data.
+
 ## Flex containers with non-shrinkable children
 
 Don't put an explicit `min-w-*` on a flex item whose children are `flex-shrink-0` (icon buttons, etc.) if that value is smaller than the children's combined width. An explicit `min-width` overrides flexbox's content-based minimum, so the item gets squeezed below its content and the overflow paints over sibling elements — visually broken and it intercepts their pointer events (this broke the preview Restart button at narrow widths). Use `min-w-fit` to let the item refuse to shrink below its content.

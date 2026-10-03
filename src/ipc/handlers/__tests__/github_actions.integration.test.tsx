@@ -29,6 +29,7 @@ import {
 import { h } from "@/testing/hybrid.setup";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { githubOpsService } from "@/ipc/services/github_ops_service";
+import { verifyGithubConnection } from "@/ipc/handlers/github_handlers";
 
 type TestApp = {
   appId: number;
@@ -290,6 +291,11 @@ describe("GitHub connector actions (integration)", () => {
       expect(row?.githubOrg).toBe("testuser");
       expect(row?.githubRepo).toBe(testCase.repo);
       expect(row?.githubBranch).toBe(branch);
+      await waitFor(async () => {
+        await expect(
+          verifyGithubConnection({ appId: app.appId, requireSynced: true }),
+        ).resolves.toEqual({ owner: "testuser", repo: testCase.repo, branch });
+      });
     }
   }, 120_000);
 

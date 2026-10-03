@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { ipc } from "@/ipc/types";
 import { Button } from "@/components/ui/button";
@@ -29,26 +29,65 @@ import { MigrationSqlPreviewDialog } from "./MigrationSqlPreviewDialog";
 
 interface MigrationPanelProps {
   appId: number;
+  onVerified?: () => void;
+  onBusyChange?: (busy: boolean) => void;
+  autoPreview?: boolean;
 }
 
-export const MigrationPanelBody = ({ appId }: MigrationPanelProps) => {
+export const MigrationPanelBody = ({
+  appId,
+  onVerified,
+  onBusyChange,
+  autoPreview = false,
+}: MigrationPanelProps) => {
   const { t } = useTranslation("home");
   const { app } = useLoadApp(appId);
   const { projectInfo, branches } = useNeon(appId);
   const [showErrorDetails, setShowErrorDetails] = useState(false);
   const errorDetailsId = useId();
 
+  // Closing the review while the plan loads must not count as verifying it.
+  const previewAbandoned = useRef(false);
   const previewMutation = useMutation({
     mutationFn: () => ipc.migration.preview({ appId }),
+    onSuccess: (result) => {
+      if (
+        onVerified &&
+        result.statements.length === 0 &&
+        !previewAbandoned.current
+      ) {
+        setPreviewOpen(false);
+        onVerified();
+      }
+    },
   });
+  const startPreview = () => {
+    previewAbandoned.current = false;
+    previewMutation.mutate();
+  };
 
   const migrateMutation = useMutation({
     mutationFn: (migrationId: string) =>
       ipc.migration.migrate({ appId, migrationId }),
+    onSuccess: (result) => {
+      if (result.success) onVerified?.();
+    },
   });
 
   const [previewOpen, setPreviewOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const didAutoPreview = useRef(false);
+  useEffect(() => {
+    if (autoPreview && !didAutoPreview.current) {
+      didAutoPreview.current = true;
+      setPreviewOpen(true);
+      previewMutation.mutate();
+    }
+  }, [autoPreview, previewMutation.mutate]);
+  useEffect(() => {
+    onBusyChange?.(previewMutation.isPending || migrateMutation.isPending);
+  }, [previewMutation.isPending, migrateMutation.isPending, onBusyChange]);
+  useEffect(() => () => onBusyChange?.(false), [onBusyChange]);
   const previewHasDataLoss = previewMutation.data?.hasDataLoss ?? false;
 
   const productionBranch = branches.find(
@@ -123,7 +162,7 @@ export const MigrationPanelBody = ({ appId }: MigrationPanelProps) => {
           // Clear any prior migrate error/success so the stale banner doesn't
           // sit behind the preview dialog while the user reviews a new plan.
           migrateMutation.reset();
-          previewMutation.mutate();
+          startPreview();
           setPreviewOpen(true);
         }}
       >
@@ -149,6 +188,7 @@ export const MigrationPanelBody = ({ appId }: MigrationPanelProps) => {
         open={previewOpen}
         onOpenChange={(open) => {
           setPreviewOpen(open);
+          if (!open) previewAbandoned.current = true;
           // Don't reset() while the mutation is in-flight: doing so flips
           // isPending back to false and re-enables the trigger button, but
           // the backend preview keeps running. A second click would then
@@ -170,10 +210,11 @@ export const MigrationPanelBody = ({ appId }: MigrationPanelProps) => {
           setConfirmOpen(true);
         }}
         onCancel={() => {
+          previewAbandoned.current = true;
           setPreviewOpen(false);
           if (!previewMutation.isPending) previewMutation.reset();
         }}
-        onRetry={() => previewMutation.mutate()}
+        onRetry={startPreview}
       />
 
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>

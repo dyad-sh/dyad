@@ -655,6 +655,27 @@ describe("Plugins catalog (integration)", () => {
       expect(repairedState.clientInformation?.client_secret).toBe(
         "second-secret",
       );
+
+      // Tokens belong to the client that issued them, so a changed client id
+      // drops them even when no stored client says which one that was.
+      await db
+        .update(mcpServers)
+        .set({
+          oauthClientId: "stale-id",
+          oauthState: encryptToString(
+            JSON.stringify({
+              tokens: { access_token: "token-2", token_type: "bearer" },
+            }),
+          ),
+        })
+        .where(eq(mcpServers.id, created.id));
+      expect(await syncVendoredOAuthClient(created.id)).toBe(true);
+      const [reissued] = await db
+        .select()
+        .from(mcpServers)
+        .where(eq(mcpServers.id, created.id));
+      expect(reissued.oauthClientId).toBe("vendored-id");
+      expect(reissued.oauthState).toBeNull();
     } finally {
       catalogPayload = previousPayload;
       clearMcpCatalogCacheForTests();

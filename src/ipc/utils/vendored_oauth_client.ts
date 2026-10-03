@@ -103,6 +103,7 @@ async function syncOrThrow(
   await applyOAuthClientChange(serverId, {
     clientId: vendored.clientId,
     clientSecret: wantedSecret,
+    clientIdChanged: server.oauthClientId !== vendored.clientId,
   });
   return true;
 }

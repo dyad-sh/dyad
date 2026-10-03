@@ -99,6 +99,35 @@ describe("syncVendoredOAuthClient", () => {
     expect(mocks.update).not.toHaveBeenCalled();
   });
 
+  it("rewrites a stored client that disagrees with the catalog", async () => {
+    // The stored client is sent in place of the columns, so it is stale on
+    // its own even once the columns are current.
+    mocks.row.oauthClientId = "client-1";
+    mocks.row.oauthClientSecret = "enc:secret-1";
+    mocks.storedClient = {
+      client_id: "client-1",
+      client_secret: "stale-secret",
+    };
+    expect(await syncVendoredOAuthClient(1)).toBe(true);
+    expect(mocks.revoke).toHaveBeenCalledWith(1);
+    expect(mocks.applyClientChange).toHaveBeenCalledWith(1, {
+      clientId: "client-1",
+      clientSecret: "secret-1",
+      clientIdChanged: false,
+    });
+  });
+
+  it("reports a changed client id so the old client's tokens go", async () => {
+    mocks.row.oauthClientId = "old-client";
+    mocks.row.oauthClientSecret = "enc:secret-1";
+    expect(await syncVendoredOAuthClient(1)).toBe(true);
+    expect(mocks.applyClientChange).toHaveBeenCalledWith(1, {
+      clientId: "client-1",
+      clientSecret: "secret-1",
+      clientIdChanged: true,
+    });
+  });
+
   it("reports the fence when the write fails after it was raised", async () => {
     mocks.applyClientChange.mockRejectedValue(new Error("state write failed"));
     // The cached client can no longer persist tokens, so the caller still

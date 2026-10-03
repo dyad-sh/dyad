@@ -97,16 +97,22 @@ async function syncOrThrow(
   // the credentials this is replacing back.
   await revokeMcpOAuthWriteAuthority(serverId);
   fence.revoked = true;
-  // Conditional on OAuth still being on: turning it off clears these
-  // columns, and this must not put a client back on a server that no longer
-  // uses one.
+  // Conditional on the row still being an http server with OAuth on, the
+  // same shape checked above: an edit landing in between must not leave a
+  // client on a server that no longer uses one.
   const written = await db
     .update(mcpServers)
     .set({
       oauthClientId: vendored.clientId,
       oauthClientSecret: wantedSecret ? encryptToString(wantedSecret) : null,
     })
-    .where(and(eq(mcpServers.id, serverId), eq(mcpServers.oauthEnabled, true)))
+    .where(
+      and(
+        eq(mcpServers.id, serverId),
+        eq(mcpServers.transport, "http"),
+        eq(mcpServers.oauthEnabled, true),
+      ),
+    )
     .returning({ id: mcpServers.id });
   if (written.length === 0) return true;
   await applyOAuthClientChange(serverId, {

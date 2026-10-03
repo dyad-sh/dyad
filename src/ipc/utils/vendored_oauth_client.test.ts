@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   applyClientChange: vi.fn(),
   storedClient: undefined as Record<string, unknown> | undefined,
   updatedRows: [{ id: 1 }] as { id: number }[],
+  updateWhere: undefined as unknown,
 }));
 
 vi.mock("../../db", () => ({
@@ -17,9 +18,10 @@ vi.mock("../../db", () => ({
     select: () => ({ from: () => ({ where: async () => [mocks.row] }) }),
     update: () => ({
       set: (values: unknown) => ({
-        where: () => ({
+        where: (condition: unknown) => ({
           returning: async () => {
             mocks.update(values);
+            mocks.updateWhere = condition;
             return mocks.updatedRows;
           },
         }),
@@ -28,10 +30,16 @@ vi.mock("../../db", () => ({
   },
 }));
 
-vi.mock("../../db/schema", () => ({ mcpServers: { id: "id" } }));
+vi.mock("../../db/schema", () => ({
+  mcpServers: {
+    id: "id",
+    transport: "transport",
+    oauthEnabled: "oauth_enabled",
+  },
+}));
 
 vi.mock("drizzle-orm", () => ({
-  eq: (_c: unknown, v: unknown) => v,
+  eq: (column: unknown, value: unknown) => ({ column, value }),
   and: (...parts: unknown[]) => parts,
 }));
 
@@ -81,6 +89,7 @@ describe("syncVendoredOAuthClient", () => {
     mocks.applyClientChange.mockReset();
     mocks.storedClient = undefined;
     mocks.updatedRows = [{ id: 1 }];
+    mocks.updateWhere = undefined;
     mocks.entries = [catalogEntry()];
     mocks.row = {
       id: 1,
@@ -152,6 +161,17 @@ describe("syncVendoredOAuthClient", () => {
     mocks.row.oauthClientSecret = "enc:secret-1";
     expect(await syncVendoredOAuthClient(1)).toBe(false);
     expect(mocks.revoke).not.toHaveBeenCalled();
+  });
+
+  it("writes only while the row is still an http server using oauth", async () => {
+    // An edit landing between the read and the write must not leave a client
+    // on a server that no longer uses one.
+    expect(await syncVendoredOAuthClient(1)).toBe(true);
+    expect(mocks.updateWhere).toEqual([
+      { column: "id", value: 1 },
+      { column: "transport", value: "http" },
+      { column: "oauth_enabled", value: true },
+    ]);
   });
 
   it("leaves the stored state alone when oauth was turned off mid-sync", async () => {

@@ -24,29 +24,36 @@ const logger = log.scope("vendored_oauth_client");
  * gained or changed a vendored client, would try to register its own client
  * and fail against a provider that doesn't support that.
  *
- * Resolves to whether anything changed, so callers can drop a cached client
- * that holds the old credentials. Best-effort: with no catalog to read, or
- * on an unexpected failure, the stored client is left alone and the caller
- * continues with it. `cachedOnly` keeps callers on hot paths off the network.
+ * Resolves to whether the caller should drop its cached client for this
+ * server, which is true once the old client's writes have been fenced, even
+ * if the write that follows fails. Best-effort otherwise: with no catalog to
+ * read, or on an unexpected failure, the stored client is left alone and the
+ * caller continues with it. `cachedOnly` keeps callers on hot paths off the
+ * network.
  */
 export async function syncVendoredOAuthClient(
   serverId: number,
   { cachedOnly = false }: { cachedOnly?: boolean } = {},
 ): Promise<boolean> {
+  // A cached client whose provider lost its write authority can no longer
+  // persist tokens, so the caller has to drop it even when the writes that
+  // follow the fence fail.
+  const fence = { revoked: false };
   try {
-    return await syncOrThrow(serverId, cachedOnly);
+    return await syncOrThrow(serverId, cachedOnly, fence);
   } catch (error) {
     logger.warn(
       `Could not refresh the vendored OAuth client for server ${serverId}`,
       error,
     );
-    return false;
+    return fence.revoked;
   }
 }
 
 async function syncOrThrow(
   serverId: number,
   cachedOnly: boolean,
+  fence: { revoked: boolean },
 ): Promise<boolean> {
   const [server] = await db
     .select()
@@ -85,6 +92,7 @@ async function syncOrThrow(
   // Fence providers built from the old client: their later writes would put
   // the credentials this is replacing back.
   await revokeMcpOAuthWriteAuthority(serverId);
+  fence.revoked = true;
   await db
     .update(mcpServers)
     .set({

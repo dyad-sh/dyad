@@ -116,7 +116,13 @@ vi.mock("./PreviewLoadingScreen", () => ({
   PreviewLoadingScreen: () => null,
 }));
 vi.mock("./DeployButton", () => ({
-  DeployButton: () => <button aria-label="Deploy" />,
+  DeployButton: ({ disabledReason }: { disabledReason?: string | null }) => (
+    <button
+      aria-label="Deploy"
+      disabled={!!disabledReason}
+      title={disabledReason ?? undefined}
+    />
+  ),
 }));
 
 import { PreviewWebContentsView } from "./PreviewWebContentsView";
@@ -147,6 +153,18 @@ describe("PreviewWebContentsView screenshot fallback", () => {
       screen.getByRole("button", { name: "Open in browser" })
         .previousElementSibling,
     ).toBe(screen.getByRole("button", { name: "Deploy" }));
+  });
+  it("locks Deploy with the other controls while tests drive the page", () => {
+    const view = render(<PreviewWebContentsView loading={false} />);
+    const deploy = screen.getByRole("button", { name: "Deploy" });
+    expect((deploy as HTMLButtonElement).disabled).toBe(true);
+    expect(deploy.title).toBe("Locked while tests are driving this page");
+    h.testRunPhase = "idle";
+    view.rerender(<PreviewWebContentsView loading={false} />);
+    expect(
+      (screen.getByRole("button", { name: "Deploy" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
   });
   it("renders the latest in-memory screenshot while the native view is hidden", () => {
     render(<PreviewWebContentsView loading={false} />);

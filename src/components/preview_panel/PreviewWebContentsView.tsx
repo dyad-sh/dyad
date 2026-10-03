@@ -365,7 +365,10 @@ export const PreviewWebContentsView = ({ loading }: { loading: boolean }) => {
           )}
         </div>
 
-        <DeployButton appId={selectedAppId} />
+        <DeployButton
+          appId={selectedAppId}
+          disabledReason={lockedByTestRun ? lockedTooltip : null}
+        />
         <Tooltip>
           <TooltipTrigger
             render={

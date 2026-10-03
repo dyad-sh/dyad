@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAtomValue } from "jotai";
 import { CloudUpload } from "lucide-react";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
@@ -16,6 +16,10 @@ export const PublishPanel = () => {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const { app, loading } = useLoadApp(selectedAppId);
   const [deployAppId, setDeployAppId] = useState<number | null>(null);
+  // Otherwise switching back to the app reopens its dialog unprompted.
+  useEffect(() => {
+    setDeployAppId(null);
+  }, [selectedAppId]);
 
   if (loading) {
     return (

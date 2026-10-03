@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
 import { describe, expect, it, vi } from "vitest";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
@@ -49,6 +49,23 @@ describe("PublishPanel", () => {
     expect(screen.getByRole("dialog", { name: "Deploy app 1" })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Finish" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("does not reopen the dialog when switching back to its app", () => {
+    const store = createStore();
+    store.set(selectedAppIdAtom, 1);
+    render(
+      <Provider store={store}>
+        <PublishPanel />
+      </Provider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Guided deployment" }));
+    expect(screen.getByRole("dialog", { name: "Deploy app 1" })).toBeTruthy();
+    act(() => store.set(selectedAppIdAtom, 2));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    act(() => store.set(selectedAppIdAtom, 1));
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 });

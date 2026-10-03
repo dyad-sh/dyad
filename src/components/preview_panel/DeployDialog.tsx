@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   useMutation,
   useQueries,
@@ -12,6 +12,7 @@ import { getErrorMessage } from "@/lib/errors";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { useSettings } from "@/hooks/useSettings";
 import { useCloudflareAppStatus } from "@/hooks/useCloudflareDeploy";
+import { useCoolifyDeploy } from "@/hooks/useCoolifyDeploy";
 import {
   useGithubOps,
   isAppliedGithubOpsReceipt,
@@ -67,6 +68,8 @@ function useDatabaseContext(app: App) {
     queryFn: () => ipc.neon.getProject({ appId: app.id }),
     enabled: !!app.neonProjectId,
     staleTime: 0,
+    // A failed refetch on focus would unmount a migration in progress.
+    refetchOnWindowFocus: false,
     retry: false,
   });
   const activeId = app.neonActiveBranchId ?? app.neonDevelopmentBranchId;
@@ -76,9 +79,14 @@ function useDatabaseContext(app: App) {
   const production = project.data?.branches.find(
     (branch) => branch.type === "production",
   );
+  // Cached branches from an earlier opening are not verification, but
+  // branches verified here stay usable while a refetch runs.
   const ready =
     !app.neonProjectId ||
-    (!project.isFetching && !project.error && !!activeBranch && !!production);
+    (project.isFetchedAfterMount &&
+      !project.error &&
+      !!activeBranch &&
+      !!production);
   return { project, ready, isProduction: activeBranch?.type === "production" };
 }
 
@@ -448,7 +456,18 @@ function VercelDeployStep({
   onBusyChange: (busy: boolean) => void;
 }) {
   const { app: current } = useLoadApp(app.id);
-  const syncedProject = useRef<string | null>(null);
+  const queryClient = useQueryClient();
+  const startedProject = useRef<string | null>(null);
+  // Vercel applies environment variables only to builds that start after
+  // they are set, and a connected project's latest deployment can predate
+  // this flow, so the step starts its own build and verifies that one.
+  const redeploy = useMutation({
+    mutationFn: () => ipc.vercel.createDeployment({ appId: app.id }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.vercel.deployments({ appId: app.id }),
+      }),
+  });
   const sync = useMutation({
     mutationFn: async () => {
       const result = await ipc.vercel.syncNeonConfig({
@@ -461,34 +480,39 @@ function VercelDeployStep({
         );
       return result;
     },
+    onSuccess: () => redeploy.mutate(),
   });
   useEffect(() => {
     if (
-      app.neonProjectId &&
       current?.vercelProjectId &&
-      syncedProject.current !== current.vercelProjectId
+      startedProject.current !== current.vercelProjectId
     ) {
-      syncedProject.current = current.vercelProjectId;
-      sync.mutate();
+      startedProject.current = current.vercelProjectId;
+      if (app.neonProjectId) sync.mutate();
+      else redeploy.mutate();
     }
-  }, [app.neonProjectId, current?.vercelProjectId, sync.mutate]);
+  }, [
+    app.neonProjectId,
+    current?.vercelProjectId,
+    sync.mutate,
+    redeploy.mutate,
+  ]);
+  const deploymentUid = redeploy.data?.uid;
   const deployments = useQuery({
     queryKey: queryKeys.vercel.deployments({ appId: app.id }),
     queryFn: () => ipc.vercel.getDeployments({ appId: app.id }),
-    enabled: !!current?.vercelProjectId,
+    enabled: !!deploymentUid,
     staleTime: 0,
     refetchInterval: 5000,
     retry: false,
   });
-  const latest = deployments.data
-    ? [...deployments.data].sort((a, b) => b.createdAt - a.createdAt)[0]
-    : undefined;
+  const started = deployments.data?.find(
+    (deployment) => deployment.uid === deploymentUid,
+  );
+  const failed =
+    started?.readyState === "ERROR" || started?.readyState === "CANCELED";
   const complete =
-    !!current?.vercelProjectId &&
-    !deployments.error &&
-    deployments.isFetchedAfterMount &&
-    latest?.readyState === "READY" &&
-    (!app.neonProjectId || sync.isSuccess);
+    !!deploymentUid && !deployments.error && started?.readyState === "READY";
   return (
     <div className="space-y-4">
       <VercelConnector appId={app.id} folderName={app.name} />
@@ -506,6 +530,23 @@ function VercelDeployStep({
           {sync.data.warning}
         </p>
       )}
+      {redeploy.isPending && <Progress>Starting a Vercel deployment…</Progress>}
+      {deploymentUid && !complete && !failed && !deployments.error && (
+        <Progress>Building on Vercel…</Progress>
+      )}
+      {(redeploy.isError || failed) && (
+        <>
+          <ErrorNotice
+            error={
+              redeploy.error ??
+              new Error(
+                "The Vercel deployment did not finish. Check its build logs in Vercel, then retry.",
+              )
+            }
+          />
+          <Button onClick={() => redeploy.mutate()}>Retry deployment</Button>
+        </>
+      )}
       <ErrorNotice error={deployments.error} />
       {complete && (
         <p
@@ -518,7 +559,10 @@ function VercelDeployStep({
         </p>
       )}
       {complete && <FinishDeploymentButton />}
-      <BusyState busy={sync.isPending} onChange={onBusyChange} />
+      <BusyState
+        busy={sync.isPending || redeploy.isPending}
+        onChange={onBusyChange}
+      />
     </div>
   );
 }
@@ -578,6 +622,12 @@ function HostedDeploy({
   const { project, ready, isProduction } = useDatabaseContext(app);
   const [confirmed, setConfirmed] = useState(false);
   const [databaseVerified, setDatabaseVerified] = useState(false);
+  // Check GitHub can take the push before the production schema changes, so a
+  // failed push cannot leave the live app on old code against a new schema.
+  const preflight = useMutation({
+    mutationFn: () => ipc.github.verifyConnection({ appId: app.id }),
+    onSuccess: () => setConfirmed(true),
+  });
   const needsMigration =
     !!app.neonProjectId &&
     !isProduction &&
@@ -596,6 +646,12 @@ function HostedDeploy({
               Push the latest codebase changes to GitHub to trigger your hosting
               provider’s deployment.
             </li>
+            {app.deploymentProvidersInUse.coolify && (
+              <li>
+                Start a deployment on your Coolify server, which does not build
+                on push.
+              </li>
+            )}
           </ol>
           {!ready &&
             (project.isFetching ? (
@@ -616,8 +672,17 @@ function HostedDeploy({
                 </Button>
               </>
             ))}
-          <Button disabled={!ready} onClick={() => setConfirmed(true)}>
-            Review and deploy
+          {preflight.isError && (
+            <>
+              <ErrorNotice error={preflight.error} />
+              <GitHubConnector appId={app.id} folderName={app.name} expanded />
+            </>
+          )}
+          <Button
+            disabled={!ready || preflight.isPending}
+            onClick={() => preflight.mutate()}
+          >
+            {preflight.isPending ? "Checking GitHub…" : "Review and deploy"}
           </Button>
         </>
       ) : needsMigration && !databaseVerified ? (
@@ -693,17 +758,21 @@ function PushDeployment({
       verification.mutate();
     }
   }, [push.isSuccess, github.projection, verification.mutate]);
+  const usesCoolify = app.deploymentProvidersInUse.coolify;
   return (
     <div className="space-y-4">
       {verification.isSuccess ? (
-        <p
-          role="status"
-          className="flex items-center gap-2 text-sm text-green-600"
-        >
-          <CheckCircle2 className="size-4" />
-          Latest code verified on GitHub. Your hosting provider will build the
-          update.
-        </p>
+        <>
+          <p
+            role="status"
+            className="flex items-center gap-2 text-sm text-green-600"
+          >
+            <CheckCircle2 className="size-4" />
+            Latest code verified on GitHub.
+            {usesCoolify ? "" : " Your hosting provider will build the update."}
+          </p>
+          {usesCoolify && <CoolifyRedeploy appId={app.id} />}
+        </>
       ) : (
         <>
           {(push.isPending || github.projection.isSyncing) && (
@@ -724,11 +793,90 @@ function PushDeployment({
           <GitHubConnector appId={app.id} folderName={app.name} expanded />
         </>
       )}
-      {verification.isSuccess && <FinishDeploymentButton />}
+      {verification.isSuccess && !usesCoolify && <FinishDeploymentButton />}
       <BusyState
         busy={push.isPending || github.projection.isSyncing}
         onChange={onBusyChange}
       />
     </div>
+  );
+}
+
+type CoolifyAttempt = {
+  requestedAt: number;
+  started: boolean;
+  /** Set when this request follows a build that was already running. */
+  waitedOut: boolean;
+};
+
+/** Coolify clones from GitHub but does not build on push, so start its build. */
+function CoolifyRedeploy({ appId }: { appId: number }) {
+  const { snapshot, deploy } = useCoolifyDeploy(appId);
+  const requested = useRef(false);
+  const [attempt, setAttempt] = useState<CoolifyAttempt | null>(null);
+  const request = useCallback(
+    (waitedOut = false) => {
+      setAttempt({ requestedAt: Date.now(), started: false, waitedOut });
+      deploy.mutate();
+    },
+    [deploy.mutate],
+  );
+  useEffect(() => {
+    if (!requested.current) {
+      requested.current = true;
+      request();
+    }
+  }, [request]);
+  const finished =
+    snapshot.type === "succeeded" || snapshot.type === "failed"
+      ? snapshot
+      : null;
+  useEffect(() => {
+    if (!attempt || attempt.started) return;
+    if (
+      snapshot.type === "running" &&
+      snapshot.startedAt >= attempt.requestedAt
+    ) {
+      setAttempt({ ...attempt, started: true });
+    } else if (
+      !attempt.waitedOut &&
+      finished &&
+      finished.finishedAt > attempt.requestedAt
+    ) {
+      // Coolify ignores a request while it is already deploying. That build
+      // started before the push, so ask again once it has ended.
+      request(true);
+    }
+  }, [attempt, snapshot, finished, request]);
+  const result = attempt?.started ? finished : null;
+  return (
+    <>
+      {result?.type === "succeeded" ? (
+        <p
+          role="status"
+          className="flex items-center gap-2 text-sm text-green-600"
+        >
+          <CheckCircle2 className="size-4" />
+          Coolify deployment finished.
+        </p>
+      ) : deploy.isError || result?.type === "failed" ? (
+        <>
+          <ErrorNotice
+            error={
+              deploy.error ??
+              new Error(
+                result?.type === "failed"
+                  ? result.error
+                  : "The Coolify deployment failed.",
+              )
+            }
+          />
+          <Button onClick={() => request()}>Retry Coolify deployment</Button>
+        </>
+      ) : (
+        <Progress>Deploying to Coolify…</Progress>
+      )}
+      {result?.type === "succeeded" && <FinishDeploymentButton />}
+    </>
   );
 }

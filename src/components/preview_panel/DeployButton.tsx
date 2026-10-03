@@ -13,7 +13,14 @@ import { DeployDialog } from "./DeployDialog";
 import { PREVIEW_TOOLBAR_BUTTON_CLASSES } from "./previewToolbarStyles";
 import { usePreviewNativeOverlay } from "./usePreviewNativeOverlay";
 
-export function DeployButton({ appId }: { appId: number | null }) {
+export function DeployButton({
+  appId,
+  disabledReason = null,
+}: {
+  appId: number | null;
+  /** Disables the button and shows why in its tooltip. */
+  disabledReason?: string | null;
+}) {
   const nativeViewAppId = useAtomValue(previewNativeViewAppIdAtom);
   const useNativePreview = appId !== null && nativeViewAppId === appId;
   const syncDeployOverlay = usePreviewNativeOverlay("preview-deploy-dialog");
@@ -23,9 +30,18 @@ export function DeployButton({ appId }: { appId: number | null }) {
 
   useEffect(() => {
     syncDeployOverlay(
-      deployAppId !== null && deployAppId === appId && useNativePreview,
+      deployAppId !== null &&
+        deployAppId === appId &&
+        useNativePreview &&
+        !isVersionSelected,
     );
-  }, [deployAppId, appId, syncDeployOverlay, useNativePreview]);
+  }, [
+    deployAppId,
+    appId,
+    syncDeployOverlay,
+    useNativePreview,
+    isVersionSelected,
+  ]);
   useEffect(() => {
     setDeployAppId(null);
   }, [appId, isVersionSelected]);
@@ -41,6 +57,7 @@ export function DeployButton({ appId }: { appId: number | null }) {
               type="button"
               aria-label="Deploy"
               data-testid="deploy-button"
+              disabled={!!disabledReason}
               className={PREVIEW_TOOLBAR_BUTTON_CLASSES}
               onClick={() => {
                 syncDeployOverlay(useNativePreview);
@@ -51,7 +68,9 @@ export function DeployButton({ appId }: { appId: number | null }) {
         >
           <CloudUpload size={16} aria-hidden="true" />
         </TooltipTrigger>
-        <TooltipContent side="bottom">Deploy</TooltipContent>
+        <TooltipContent side="bottom">
+          {disabledReason || "Deploy"}
+        </TooltipContent>
       </Tooltip>
       {deployAppId !== null && deployAppId === appId && (
         <DeployDialog

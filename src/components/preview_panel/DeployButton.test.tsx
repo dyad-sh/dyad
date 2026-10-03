@@ -7,12 +7,15 @@ import {
   previewNativeViewAppIdAtom,
 } from "@/atoms/previewAtoms";
 
-const h = vi.hoisted(() => ({ setOverlayActive: vi.fn() }));
+const h = vi.hoisted(() => ({
+  setOverlayActive: vi.fn(),
+  previewState: { type: "closed" } as { type: string; session?: unknown },
+}));
 vi.mock("@/ipc/types", () => ({
   ipc: { previewView: { setOverlayActive: h.setOverlayActive } },
 }));
 vi.mock("@/hooks/useVersionPreview", () => ({
-  useVersionPreview: () => ({ state: { type: "closed" } }),
+  useVersionPreview: () => ({ state: h.previewState }),
 }));
 vi.mock("./DeployDialog", () => ({
   DeployDialog: ({
@@ -44,12 +47,15 @@ vi.mock("@/components/ui/tooltip", async () => {
 
 import { DeployButton } from "./DeployButton";
 
-function mount(nativeViewAppId: number | null = null) {
+function mount(
+  nativeViewAppId: number | null = null,
+  disabledReason: string | null = null,
+) {
   const store = createStore();
   store.set(previewNativeViewAppIdAtom, nativeViewAppId);
   const ui = (appId: number | null) => (
     <Provider store={store}>
-      <DeployButton appId={appId} />
+      <DeployButton appId={appId} disabledReason={disabledReason} />
     </Provider>
   );
   const view = render(ui(1));
@@ -60,7 +66,10 @@ function mount(nativeViewAppId: number | null = null) {
   };
 }
 
-beforeEach(() => h.setOverlayActive.mockReset());
+beforeEach(() => {
+  h.setOverlayActive.mockReset();
+  h.previewState = { type: "closed" };
+});
 
 describe("DeployButton", () => {
   it("shows only an icon, with an accessible name, and opens the app's dialog", () => {
@@ -103,5 +112,33 @@ describe("DeployButton", () => {
     fireEvent.click(screen.getByRole("button", { name: "Deploy" }));
     unmount();
     expect(store.get(previewNativeOverlayActiveAtom)).toBe(false);
+  });
+
+  it("hides the button and closes the dialog, restoring the native surface, while a version is selected", () => {
+    const { store, changeApp } = mount(1);
+    fireEvent.click(screen.getByRole("button", { name: "Deploy" }));
+    expect(store.get(previewNativeOverlayActiveAtom)).toBe(true);
+    h.previewState = {
+      type: "viewing-diff",
+      session: { isDiffVisible: true, targetVersionId: "v1" },
+    };
+    changeApp(1);
+    expect(screen.queryByRole("button", { name: "Deploy" })).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(store.get(previewNativeOverlayActiveAtom)).toBe(false);
+    h.previewState = { type: "closed" };
+    changeApp(1);
+    expect(screen.getByRole("button", { name: "Deploy" })).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("does not open the dialog while disabled", () => {
+    mount(null, "Locked while tests are driving this page");
+    const button = screen.getByRole("button", {
+      name: "Deploy",
+    }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    fireEvent.click(button);
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 });

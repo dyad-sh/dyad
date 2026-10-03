@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAtomValue } from "jotai";
 import { useTranslation } from "react-i18next";
 import { CloudUpload, Gitlab } from "lucide-react";
@@ -36,6 +36,10 @@ export const PublishPanel = () => {
   // naming GitHub for a moment on an app whose provider is still unknown.
   const { settings, settingsLoading } = useSettings();
   const [deployAppId, setDeployAppId] = useState<number | null>(null);
+  // Otherwise switching back to the app reopens its dialog unprompted.
+  useEffect(() => {
+    setDeployAppId(null);
+  }, [selectedAppId]);
 
   if (loading || settingsLoading) {
     return (

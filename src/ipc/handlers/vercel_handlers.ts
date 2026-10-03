@@ -24,6 +24,7 @@ import {
   CreateVercelProjectResult,
   ConnectToExistingVercelProjectParams,
   GetVercelDeploymentsParams,
+  CreateVercelDeploymentParams,
   DisconnectVercelProjectParams,
   VercelProject,
   VercelDeployment,
@@ -555,6 +556,59 @@ async function handleGetVercelDeployments(
   }
 }
 
+// --- Vercel Create Deployment Handler ---
+// Vercel applies environment variables only to builds that start after they
+// are set, so a connected project's latest deployment can predate them.
+async function handleCreateVercelDeployment(
+  event: IpcMainInvokeEvent,
+  { appId }: CreateVercelDeploymentParams,
+): Promise<{ uid: string }> {
+  try {
+    const accessToken = readSettings().vercelAccessToken?.value;
+    if (!accessToken) {
+      throw new DyadError("Not authenticated with Vercel.", DyadErrorKind.Auth);
+    }
+
+    const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+    if (!app?.vercelProjectId) {
+      throw new DyadError(
+        "App is not linked to a Vercel project.",
+        DyadErrorKind.Precondition,
+      );
+    }
+    if (!app.githubOrg || !app.githubRepo) {
+      throw new DyadError(
+        "Connect a GitHub repository before deploying to Vercel.",
+        DyadErrorKind.Precondition,
+      );
+    }
+
+    logger.info(
+      `Creating deployment for Vercel project: ${app.vercelProjectId} for app ${appId}`,
+    );
+    const deployment = await createVercelClient(
+      accessToken,
+    ).deployments.createDeployment({
+      requestBody: {
+        name: app.vercelProjectName ?? app.vercelProjectId,
+        project: app.vercelProjectId,
+        target: "production",
+        gitSource: {
+          type: "github",
+          org: app.githubOrg,
+          repo: app.githubRepo,
+          ref: app.githubBranch || "main",
+        },
+      },
+    });
+    return { uid: deployment.id };
+  } catch (err: any) {
+    if (err instanceof DyadError) throw err;
+    logger.error("[Vercel Handler] Failed to create deployment:", err);
+    throw new Error(err.message || "Failed to start a Vercel deployment.");
+  }
+}
+
 async function handleDisconnectVercelProject(
   event: IpcMainInvokeEvent,
   { appId }: DisconnectVercelProjectParams,
@@ -613,6 +667,13 @@ export function registerVercelHandlers() {
   createTypedHandler(vercelContracts.getDeployments, async (event, params) => {
     return handleGetVercelDeployments(event, params);
   });
+
+  createTypedHandler(
+    vercelContracts.createDeployment,
+    async (event, params) => {
+      return handleCreateVercelDeployment(event, params);
+    },
+  );
 
   createTypedHandler(vercelContracts.disconnect, async (event, params) => {
     await handleDisconnectVercelProject(event, params);

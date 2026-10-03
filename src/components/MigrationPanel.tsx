@@ -46,15 +46,25 @@ export const MigrationPanelBody = ({
   const [showErrorDetails, setShowErrorDetails] = useState(false);
   const errorDetailsId = useId();
 
+  // Closing the review while the plan loads must not count as verifying it.
+  const previewAbandoned = useRef(false);
   const previewMutation = useMutation({
     mutationFn: () => ipc.migration.preview({ appId }),
     onSuccess: (result) => {
-      if (onVerified && result.statements.length === 0) {
+      if (
+        onVerified &&
+        result.statements.length === 0 &&
+        !previewAbandoned.current
+      ) {
         setPreviewOpen(false);
         onVerified();
       }
     },
   });
+  const startPreview = () => {
+    previewAbandoned.current = false;
+    previewMutation.mutate();
+  };
 
   const migrateMutation = useMutation({
     mutationFn: (migrationId: string) =>
@@ -152,7 +162,7 @@ export const MigrationPanelBody = ({
           // Clear any prior migrate error/success so the stale banner doesn't
           // sit behind the preview dialog while the user reviews a new plan.
           migrateMutation.reset();
-          previewMutation.mutate();
+          startPreview();
           setPreviewOpen(true);
         }}
       >
@@ -178,6 +188,7 @@ export const MigrationPanelBody = ({
         open={previewOpen}
         onOpenChange={(open) => {
           setPreviewOpen(open);
+          if (!open) previewAbandoned.current = true;
           // Don't reset() while the mutation is in-flight: doing so flips
           // isPending back to false and re-enables the trigger button, but
           // the backend preview keeps running. A second click would then
@@ -199,10 +210,11 @@ export const MigrationPanelBody = ({
           setConfirmOpen(true);
         }}
         onCancel={() => {
+          previewAbandoned.current = true;
           setPreviewOpen(false);
           if (!previewMutation.isPending) previewMutation.reset();
         }}
-        onRetry={() => previewMutation.mutate()}
+        onRetry={startPreview}
       />
 
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>

@@ -385,6 +385,9 @@ When creating hooks/components that call IPC handlers:
 - Wrap reads in `useQuery`, using keys from `queryKeys` factory (see above), async `queryFn` that calls the relevant domain client (e.g., `appClient.getApp(...)`) or unified `ipc` namespace, and conditionally use `enabled`/`initialData`/`meta` as needed.
 - Wrap writes in `useMutation`; validate inputs locally, call the domain client, and invalidate related queries on success. Use shared utilities (e.g., toast helpers) in `onError`.
 - When a mutation changes fields exposed by both `apps.detail(...)` and `apps.all` (for example linking or unlinking a GitHub repository), invalidate both query families. Refreshing only the detail query can leave parent pages that derive conditional UI from the apps list stale.
+- To require a fresh read before enabling an action, gate on `query.isFetchedAfterMount`, not `!query.isFetching`. `isFetching` flips on every background refetch (window focus with `staleTime: 0`), so UI gated on it unmounts mid-flow — e.g. it unmounted `MigrationPanelBody` mid-migration in the deploy dialog.
+- When a mutation's result picks an item out of a query whose key does not change (e.g. a new deployment uid in `vercel.deployments`), invalidate that query in the mutation's `onSuccess`. A fast mutation can settle before React renders its pending state, so an `enabled: !!result` toggle never happens and the stale cache hides the new item until the next poll.
+- Callbacks passed to `useMutation(...)` are bound when `mutate()` runs, so they see that render's state. Read a ref for anything that can change while the request is in flight (such as the user cancelling the dialog that started it).
 - Synchronize TanStack Query data with any global state (like Jotai atoms) via `useEffect` only if required.
 - Root-mounted effects that automatically persist settings must depend on
   stable derived values rather than hook-returned callback identities. Set an

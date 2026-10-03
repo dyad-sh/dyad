@@ -135,7 +135,7 @@ When diagnosing a bug the user hit in their running dev app, read `logs/main.log
 - Keep Electron security practices in mind (no `remote`, validate/lock by `appId` when mutating shared resources).
 - **Never embed GitHub tokens in git remote URLs** (e.g., `https://<token>@github.com/...`) — they persist in plaintext in users' `.git/config` and leak via git error output. Native git network operations (clone/fetch/pull/push) in `src/ipc/utils/git_utils.ts` inject auth per-invocation via `getGitNetworkEnv(accessToken)` (`GIT_CONFIG_*` env vars); any new network-touching git command must pass this env or auth will silently be missing for private repos.
 - Add tests in the same folder tree when touching renderer components.
-- **Sandbox hook restrictions:** inline `python3 -c "..."` is blocked, and Python scripts only run when the file lives inside the repo's `.claude/` directory — write helper scripts to `.claude/tmp/` (and clean them up before committing).
+- **Sandbox hook restrictions:** inline `python3 -c "..."` is blocked, and Python scripts only run when the file lives inside the repo's `.claude/` directory — write helper scripts to `.claude/tmp/` (and clean them up before committing). jq string interpolation (`"\(.field)"`) in a `gh api --jq` filter is rejected with `Command contains shell metacharacters`; emit plain JSON instead and format it with `jq` string concatenation (`.a + " " + .b`) over the saved output.
 - **Always use Base UI (`@base-ui/react`) for UI primitives, never Radix UI.** This includes menus, tooltips, accordions, context menus, and other headless UI components. See [rules/base-ui-components.md](rules/base-ui-components.md) for component-specific guidance.
 
 Use these guidelines whenever you work within this repository.

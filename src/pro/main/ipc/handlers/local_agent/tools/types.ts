@@ -87,7 +87,34 @@ export interface AgentContext {
   mutationActivityOwner?: MutationActivityOwner;
   event: IpcMainInvokeEvent;
   appId: number;
+  /**
+   * Directory the turn reads and edits: the app's original folder, or the
+   * chat's isolated worktree when worktree isolation placed it there.
+   */
   appPath: string;
+  /**
+   * Folder whose `.dyad/` holds plans and todos. Always the app's original
+   * folder, so removing an isolated workspace never loses them. Defaults to
+   * `appPath`.
+   */
+  dyadMetadataPath?: string;
+  /**
+   * Runtime the turn's preview, log, and lifecycle tools address: the app id
+   * for the original folder, or the isolated workspace's runtime id. Defaults
+   * to `appId`.
+   */
+  runtimeAppId?: number;
+  /**
+   * Coordinator key for the isolated workspace's files and runtime. Unset
+   * when the turn works in the app's original folder.
+   */
+  workspaceCoordinationKey?: number;
+  /** Set when the turn works in a chat's isolated workspace. */
+  isolatedWorkspace?: {
+    workspaceId: number;
+    branch: string;
+    targetBranch: string;
+  };
   /**
    * Apps referenced via `@app:Name` in the current turn. Read-only tools
    * can target these via an `app_name` parameter; write tools cannot reach them.

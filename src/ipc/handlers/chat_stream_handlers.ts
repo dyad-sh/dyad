@@ -179,6 +179,10 @@ import {
 } from "./chat_turn_acceptance";
 import { withChatQueueLock } from "@/chat_stream/queue_lock";
 import {
+  chatWorkspaceService,
+  type TurnWorkspace,
+} from "@/ipc/services/chat_workspace_service";
+import {
   commitFreeAgentQuotaSlot,
   releaseFreeAgentQuotaSlot,
   reserveFreeAgentQuotaSlot,
@@ -1018,6 +1022,9 @@ export function registerChatStreamHandlers() {
     let mutatedPersistedChat = false;
     let freeAgentQuotaReservationId: number | null = null;
     let reservedFreeAgentQuotaMessageId: number | null = null;
+    // Where this turn reads and writes code. Settled in `finally` so the
+    // workspace reservation is released and integration is requested.
+    let turnWorkspace: TurnWorkspace | undefined;
     // Expose a promise that resolves once this handler fully unwinds (see the
     // `finally` block) so `cancelStream` can await in-flight tool/file writes.
     let resolveCompletion: () => void = () => {};
@@ -1551,8 +1558,14 @@ Update the working plan at \`${planPath}\` to mark your progress. Do not modify 
         for (const component of componentsToProcess) {
           let componentSnippet = "[component snippet not available]";
           try {
+            // The preview a component was picked from shows the chat's
+            // own workspace, so read the snippet from there.
             const componentFileContent = await readFile(
-              path.join(getDyadAppPath(chat.app.path), component.relativePath),
+              path.join(
+                (await chatWorkspaceService.resolveChatAppPath(req.chatId)) ??
+                  getDyadAppPath(chat.app.path),
+                component.relativePath,
+              ),
               "utf8",
             );
             const lines = componentFileContent.split(/\r?\n/);
@@ -1897,9 +1910,8 @@ ${componentSnippet}
               : selectedModel.connection === "subscription"
                 ? `ChatGPT subscription (${selectedModel.name})`
                 : selectedModel.name,
-          sourceCommitHash: await getCurrentCommitHash({
-            path: getDyadAppPath(chat.app.path),
-          }),
+          // Recorded below, once the turn's workspace is known.
+          sourceCommitHash: null,
         })
         .returning();
 
@@ -1932,6 +1944,73 @@ ${componentSnippet}
         messages: toRendererMessages(updatedChat.messages),
       } satisfies ChatStreamChunkPayload);
 
+      // Choose the directory this turn works in. Writable turns reserve it
+      // atomically (the original directory, the chat's isolated workspace,
+      // or a new one when another chat is already writing); Ask, Plan, and
+      // read-only intents only read the chat's workspace if it has one.
+      const turnIsWritable =
+        selectedChatMode === "local-agent" ||
+        (selectedChatMode === "build" &&
+          !req.prompt.startsWith("/security-review") &&
+          !req.prompt.startsWith("Summarize from chat-id="));
+      const showWorkspaceWait = (message: string | null) => {
+        const content = message
+          ? `<dyad-status title="Waiting for a workspace" state="pending">\n${escapeXmlContent(message)}\n</dyad-status>`
+          : "";
+        void db
+          .update(messages)
+          .set({ content })
+          .where(eq(messages.id, placeholderAssistantMessage.id))
+          .catch((error: unknown) =>
+            logger.warn("Failed to show workspace wait status", error),
+          );
+        sendChatChunk(event.sender, {
+          chatId: req.chatId,
+          invocationRef: req.invocationRef,
+          streamId: req.streamId,
+          messages: toRendererMessages(
+            updatedChat.messages.map((message) =>
+              message.id === placeholderAssistantMessage.id
+                ? { ...message, content }
+                : message,
+            ),
+          ),
+        } satisfies ChatStreamChunkPayload);
+      };
+      try {
+        turnWorkspace = await chatWorkspaceService.prepareTurnWorkspace({
+          appId: updatedChat.app.id,
+          chatId: req.chatId,
+          originalAppPath: getDyadAppPath(updatedChat.app.path),
+          writable: turnIsWritable,
+          allowIsolation: chat.executionBackend !== "claude-code",
+          signal: abortController.signal,
+          onWaiting: showWorkspaceWait,
+        });
+      } catch (error) {
+        if (abortController.signal.aborted) {
+          await db
+            .update(messages)
+            .set({ content: appendCancelledResponseNotice("") })
+            .where(eq(messages.id, placeholderAssistantMessage.id));
+          return req.chatId;
+        }
+        throw error;
+      }
+      turnWorkspace.outcome.messageId = placeholderAssistantMessage.id;
+      // The checkpoint the turn starts from, in the workspace it edits. A
+      // synchronization merge done above is part of this baseline, so the
+      // turn's own diff never includes other chats' work.
+      await db
+        .update(messages)
+        .set({
+          sourceCommitHash: await getCurrentCommitHash({
+            path: turnWorkspace.appPath,
+          }),
+        })
+        .where(eq(messages.id, placeholderAssistantMessage.id));
+      const turnAppPath = turnWorkspace.appPath;
+
       let fullResponse = "";
       let maxTokensUsed: number | undefined;
 
@@ -1963,7 +2042,7 @@ ${componentSnippet}
         const isLocalAgentMode = selectedChatMode === "local-agent";
         const isAskMode = selectedChatMode === "ask";
         const isPlanMode = selectedChatMode === "plan";
-        const appPath = getDyadAppPath(updatedChat.app.path);
+        const appPath = turnAppPath;
         // When we don't have smart context enabled, we
         // only include the selected components' files for codebase context.
         //
@@ -2183,7 +2262,7 @@ ${componentSnippet}
           );
         }
 
-        const aiRules = await readAiRules(getDyadAppPath(updatedChat.app.path));
+        const aiRules = await readAiRules(turnAppPath);
 
         // Get theme prompt for the app (null themeId means "no theme")
         const themePrompt = await getThemePromptById(updatedChat.app.themeId);
@@ -2283,9 +2362,8 @@ ${componentSnippet}
             databaseSchemaReadAvailable,
             readGuideAvailable,
           } = capabilityState;
-          const refreshedFrameworkType = detectFrameworkType(
-            getDyadAppPath(refreshedApp.path),
-          );
+          // The turn keeps its workspace even if the app row changes.
+          const refreshedFrameworkType = detectFrameworkType(turnAppPath);
           const neonEmailVerificationEnabled =
             provider === "neon" &&
             neonToolsAvailable &&
@@ -2369,8 +2447,7 @@ ${componentSnippet}
         if (isSecurityReviewIntent) {
           systemPrompt = SECURITY_REVIEW_SYSTEM_PROMPT;
           try {
-            const appPath = getDyadAppPath(updatedChat.app.path);
-            const rulesPath = path.join(appPath, "SECURITY_RULES.md");
+            const rulesPath = path.join(turnAppPath, "SECURITY_RULES.md");
             let securityRules = "";
 
             await fs.promises.access(rulesPath);
@@ -2797,6 +2874,7 @@ This conversation includes one or more image attachments. When the user uploads 
             abortController,
             {
               placeholderMessageId: placeholderAssistantMessage.id,
+              workspace: turnWorkspace,
               // Note: this is using the read-only system prompt rather than the
               // regular system prompt which gets overrides for special intents
               // like summarize chat, security review, etc.
@@ -2853,6 +2931,7 @@ This conversation includes one or more image attachments. When the user uploads 
             abortController,
             {
               placeholderMessageId: placeholderAssistantMessage.id,
+              workspace: turnWorkspace,
               systemPrompt: planModeSystemPrompt,
               dyadRequestId: dyadRequestId ?? "[no-request-id]",
               planModeOnly: true,
@@ -2883,6 +2962,7 @@ This conversation includes one or more image attachments. When the user uploads 
             abortController,
             {
               placeholderMessageId: placeholderAssistantMessage.id,
+              workspace: turnWorkspace,
               systemPrompt,
               dyadRequestId: dyadRequestId ?? "[no-request-id]",
               readOnly: readOnlyBuildTurn,
@@ -2917,6 +2997,7 @@ This conversation includes one or more image attachments. When the user uploads 
             abortController,
             {
               placeholderMessageId: placeholderAssistantMessage.id,
+              workspace: turnWorkspace,
               systemPrompt,
               dyadRequestId: dyadRequestId ?? "[no-request-id]",
               messageOverride: isSummarizeIntent ? chatMessages : undefined,
@@ -2974,7 +3055,7 @@ This conversation includes one or more image attachments. When the user uploads 
           if (!modelRefused && isTurboEditsV2Enabled(settings)) {
             let issues = await dryRunSearchReplace({
               fullResponse,
-              appPath: getDyadAppPath(updatedChat.app.path),
+              appPath: turnAppPath,
             });
             sendTelemetryEvent("search_replace:fix", {
               attemptNumber: 0,
@@ -3055,7 +3136,7 @@ This conversation includes one or more image attachments. When the user uploads 
               // Re-check for issues after the fix attempt
               issues = await dryRunSearchReplace({
                 fullResponse: result.incrementalResponse,
-                appPath: getDyadAppPath(updatedChat.app.path),
+                appPath: turnAppPath,
               });
 
               sendTelemetryEvent("search_replace:fix", {
@@ -3209,6 +3290,11 @@ This conversation includes one or more image attachments. When the user uploads 
               chatSummary,
               messageId: placeholderAssistantMessage.id,
               signal: abortController.signal,
+              // The edits were written against this workspace's code.
+              workspaceAppPath:
+                turnWorkspace.kind === "isolated"
+                  ? turnWorkspace.appPath
+                  : undefined,
             }, // Use placeholder ID
           );
 
@@ -3298,6 +3384,17 @@ This conversation includes one or more image attachments. When the user uploads 
           );
         } catch (error) {
           logger.error("Failed to refund reserved Basic Agent quota", error);
+        }
+      }
+      if (turnWorkspace) {
+        // Releases the workspace and, for a finished isolated turn, requests
+        // integration (or completes a conflict resolution) before the chat
+        // can start its next turn.
+        turnWorkspace.outcome.completed = finishedNaturally;
+        try {
+          await turnWorkspace.settle();
+        } catch (error) {
+          logger.error("Failed to settle the turn workspace", error);
         }
       }
       if (mutatedPersistedChat) {

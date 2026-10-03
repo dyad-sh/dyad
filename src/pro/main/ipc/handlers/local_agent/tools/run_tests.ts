@@ -622,6 +622,15 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
         completeWarning(ctx, title, body);
       return body;
     };
+    // End-to-end runs snapshot and serve the app's original folder, so from an
+    // isolated workspace they would test other code than this chat's.
+    if (ctx.isolatedWorkspace) {
+      const body =
+        "End-to-end tests run against the app's main folder, but this chat works in its own isolated workspace, so they would not test these changes. Dyad runs the app's type-check, build, and unit tests on the combined code before merging this chat's work. Use run_type_checks or run_build to verify your changes now. Nothing ran.";
+      if (ctx.onToolActivity || !getAppTestRunQueue(ctx.appId).activeRun)
+        completeWarning(ctx, "Tests unavailable in isolated workspace", body);
+      return body;
+    }
     // Direct callers must also fail closed: a legacy testFile must never be
     // stripped into an empty object and accidentally select the whole suite.
     const parsed = runTestsSchema.safeParse(args);

@@ -412,5 +412,33 @@
     "sending": "전송 중...",
     "send": "{{count}}개 전송"
   },
-  "safetyReviewUnavailable": "안전 검토를 사용할 수 없음"
+  "safetyReviewUnavailable": "안전 검토를 사용할 수 없음",
+  "workspace": {
+    "isolated": "격리된 작업 공간",
+    "isolatedTooltip": "이 채팅은 자체 브랜치와 폴더에서 작업합니다. Dyad는 결합된 코드를 확인한 후 완료된 작업을 {{target}}에 병합합니다.",
+    "originalTooltip": "이 채팅은 {{branch}} 브랜치의 앱 기본 폴더에서 작업합니다.",
+    "detachedBranch": "이전 버전",
+    "statusQueued": "병합 대기 중",
+    "statusQueuedTooltip": "앱의 기본 폴더를 사용하는 작업이 없으면 이 채팅의 작업이 {{target}}에 병합됩니다.",
+    "statusMerging": "{{target}}와(과) 결합하는 중",
+    "statusMergingTooltip": "Dyad가 최신 {{target}}을(를) 이 채팅의 작업 공간으로 가져오고 있습니다.",
+    "statusResolvingConflicts": "충돌 해결 중",
+    "statusResolvingConflictsTooltip": "이 채팅과 다른 작업이 같은 줄을 변경했습니다. 에이전트가 이 채팅의 작업 공간에서 둘을 결합하고 있습니다.",
+    "statusValidating": "결합된 변경 사항 확인 중",
+    "statusValidatingTooltip": "Dyad가 {{target}}에 병합하기 전에 결합된 코드에 대해 타입 검사, 빌드, 테스트를 실행하고 있습니다.",
+    "statusIntegrating": "{{target}}에 병합하는 중",
+    "statusIntegratingTooltip": "결합된 코드가 검사를 통과하여 {{target}}에 병합되고 있습니다.",
+    "statusMerged": "{{target}}에 병합됨",
+    "statusMergedTooltip": "이 채팅이 지금까지 한 모든 작업이 {{target}}에 있습니다.",
+    "statusPaused": "병합 일시 중지됨",
+    "statusPausedTooltip": "이 채팅의 작업을 병합하려면 확인이 필요합니다.",
+    "statusFailed": "병합 차단됨",
+    "statusFailedTooltip": "결합된 코드가 검사를 통과하지 못해 {{target}}은(는) 변경되지 않았습니다.",
+    "retryMerge": "병합 다시 시도",
+    "retryFailed": "병합을 다시 시도할 수 없습니다",
+    "concurrentBannerMessage": "Dyad가 다른 채팅에서 작업 중입니다. 동시에 진행되는 변경 사항을 분리하려면 워크트리 격리를 켜세요.",
+    "concurrentBannerEnable": "켜기",
+    "isolationEnabledToast": "워크트리 격리가 켜졌습니다. 다른 채팅이 작업 중이면 채팅의 다음 메시지는 자체 작업 공간에서 시작됩니다.",
+    "isolationEnableFailed": "워크트리 격리를 켤 수 없습니다"
+  }
 }

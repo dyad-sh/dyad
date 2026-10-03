@@ -1,4 +1,5 @@
 import { promises as fsPromises, type Dirent } from "node:fs";
+import { runWorkspaceScopedOperation } from "@/ipc/services/workspace_coordination";
 import path from "node:path";
 import log from "electron-log";
 import { z } from "zod";
@@ -11,7 +12,6 @@ import {
   runBufferedProcess,
   type BufferedProcessResult,
 } from "@/ipc/utils/buffered_process";
-import { appOperationCoordinator } from "@/ipc/services/app_operation_coordinator";
 import {
   formatPreCommitOutput,
   isPreCommitHookAvailable,
@@ -185,7 +185,11 @@ export async function scheduleHookGeneratedFileSideEffects(
   removedFunctionNamesOut: string[],
   operation = "Pre-commit",
 ): Promise<string | undefined> {
-  queueCloudSandboxSnapshotSync({ appId: ctx.appId, fullSync: true });
+  // Isolated workspace edits reach the app's sandbox once merged.
+  queueCloudSandboxSnapshotSync({
+    appId: ctx.runtimeAppId ?? ctx.appId,
+    fullSync: true,
+  });
   if (!ctx.supabaseProjectId) {
     return;
   }
@@ -316,13 +320,13 @@ export const runPreCommitTool: ToolDefinition<
 
   execute: async (_args, ctx) => {
     const hookRemovedFunctionNames: string[] = [];
-    const result = await appOperationCoordinator.run(
+    const result = await runWorkspaceScopedOperation(
       {
         appId: ctx.appId,
+        workspaceKey: ctx.workspaceCoordinationKey,
         operation: "run-local-agent-pre-commit",
-        resources: ctx.supabaseProjectId
-          ? ["provider", "repository"]
-          : ["repository"],
+        appResources: ctx.supabaseProjectId ? ["provider"] : [],
+        workspaceResources: ["repository"],
         refuseWhenRecording: "run pre-commit checks",
       },
       async () => {

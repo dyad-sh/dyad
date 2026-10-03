@@ -19,10 +19,7 @@ import { withLock } from "@/ipc/utils/lock_utils";
 import { fastTextOutput } from "@/ipc/utils/stream_text_utils";
 import { getBuiltinLanguageModelCatalog } from "@/ipc/shared/remote_language_model_catalog";
 import { SMALL_MODEL_NAME } from "@/ipc/shared/language_model_constants";
-import {
-  appOperationCoordinator,
-  readAppResource,
-} from "@/ipc/services/app_operation_coordinator";
+import { readAppResource } from "@/ipc/services/app_operation_coordinator";
 import type {
   SubagentActivity,
   SubagentMessage,
@@ -34,6 +31,12 @@ import { isDyadProEnabled, type UserSettings } from "@/lib/schemas";
 import { getChatInferenceSettings } from "@/ipc/services/chat_inference_settings";
 import { readSettings } from "@/main/settings";
 import { getDyadAppPath } from "@/paths/paths";
+import {
+  getActiveWorkspaceForChat,
+  getWorkspaceAppPath,
+} from "@/ipc/services/chat_workspace_store";
+import { runWorkspaceScopedOperation } from "@/ipc/services/workspace_coordination";
+import { workspaceRuntimeId } from "../../../../../../../shared/workspace_runtime_id";
 import { sanitizeStepMessages } from "../prepare_step_utils";
 import type { AgentContext } from "../tools/types";
 import { runExploreCodeSubagent } from "../tools/explore_code_subagent";
@@ -2260,12 +2263,17 @@ async function buildCoordinatedReviewTarget(params: {
   if (!initial?.app) {
     throw new DyadError("Chat app not found.", DyadErrorKind.NotFound);
   }
-  return appOperationCoordinator.run(
+  // A chat working in an isolated workspace is reviewed there: its commits
+  // and uncommitted edits are not in the app's original folder.
+  const workspace = getActiveWorkspaceForChat(params.chatId);
+  return runWorkspaceScopedOperation(
     {
       appId: initial.app.id,
+      workspaceKey: workspace ? workspaceRuntimeId(workspace.id) : undefined,
       operation: "build sub-agent review target",
-      resources: [readAppResource("app-path"), readAppResource("repository")],
-      refuseWhenRecording: "review these changes",
+      appResources: [readAppResource("app-path")],
+      workspaceResources: [readAppResource("repository")],
+      refuseWhenRecording: workspace ? undefined : "review these changes",
     },
     async () => {
       const current = await db.query.chats.findFirst({
@@ -2275,7 +2283,9 @@ async function buildCoordinatedReviewTarget(params: {
       if (!current?.app || current.app.id !== initial.app.id) {
         throw new DyadError("Chat app not found.", DyadErrorKind.NotFound);
       }
-      const appPath = getDyadAppPath(current.app.path);
+      const appPath = workspace
+        ? getWorkspaceAppPath(workspace)
+        : getDyadAppPath(current.app.path);
       return {
         appId: current.app.id,
         appPath,

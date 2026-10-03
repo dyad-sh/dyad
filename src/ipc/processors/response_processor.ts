@@ -38,6 +38,7 @@ import {
   getGitUncommittedFiles,
   hasStagedChanges,
 } from "../utils/git_utils";
+import { isMergeInProgress } from "../utils/git_worktree_utils";
 import { readSettings } from "@/main/settings";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { writeMigrationFile } from "../utils/file_utils";
@@ -152,10 +153,16 @@ export async function processFullResponseActions(
     chatSummary,
     messageId,
     signal,
+    workspaceAppPath,
   }: {
     chatSummary: string | undefined;
     messageId: number;
     signal?: AbortSignal;
+    /**
+     * The chat's isolated workspace when the changes belong there. Omitted,
+     * they apply to the app's original folder.
+     */
+    workspaceAppPath?: string;
   },
 ): Promise<{
   updatedFiles?: boolean;
@@ -177,7 +184,13 @@ export async function processFullResponseActions(
     return {};
   }
 
-  const appPath = getDyadAppPath(chatWithApp.app.path);
+  const appPath = workspaceAppPath ?? getDyadAppPath(chatWithApp.app.path);
+  // Links an isolated workspace's commits to their chat and turn; the
+  // workspace's history reaches the target branch by merge.
+  const withCommitTrailers = (subject: string) =>
+    workspaceAppPath
+      ? `${subject}\n\nDyad-Chat: ${chatId}\nDyad-Turn: ${messageId}`
+      : subject;
   const dyadDeletePaths = getDyadDeleteTags(fullResponse);
   let preparedDeletePaths: PreparedDeletePath[];
   try {
@@ -789,11 +802,18 @@ export async function processFullResponseActions(
           "No actual git changes detected after staging (files may have been rewritten with identical content), skipping commit",
         );
         hasChanges = false;
+      } else if (workspaceAppPath && isMergeInProgress(appPath)) {
+        // The response resolves a merge of the target branch into the chat's
+        // workspace. Dyad checks for leftover conflicts and completes the
+        // merge after the turn, so the resolution stays staged.
+        logger.log(
+          "Merge in progress in the chat's workspace; leaving changes staged",
+        );
       } else {
         // Use chat summary, if provided, or default for commit message
         let commitHash = await gitCommit({
           path: appPath,
-          message,
+          message: withCommitTrailers(message),
         });
         logger.log(`Successfully committed changes: ${changes.join(", ")}`);
 
@@ -806,7 +826,9 @@ export async function processFullResponseActions(
           try {
             commitHash = await gitCommit({
               path: appPath,
-              message: message + " + extra files edited outside of Dyad",
+              message: withCommitTrailers(
+                message + " + extra files edited outside of Dyad",
+              ),
               amend: true,
             });
             logger.log(
@@ -840,7 +862,8 @@ export async function processFullResponseActions(
       })
       .where(eq(messages.id, messageId));
 
-    if (hasChanges) {
+    // A workspace's changes reach the app's sandbox once they are merged.
+    if (hasChanges && !workspaceAppPath) {
       queueCloudSandboxSnapshotSync({
         appId: chatWithApp.app.id,
         changedPaths: [...writtenFiles, ...renamedFiles],

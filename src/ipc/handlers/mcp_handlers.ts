@@ -225,7 +225,9 @@ export function registerMcpHandlers() {
         clearNeverSuggestPlugin(slug);
         // A row added before the entry had a vendored client, or before
         // the client changed, still needs it.
-        await syncVendoredOAuthClient(existing[0].id);
+        if (await syncVendoredOAuthClient(existing[0].id)) {
+          void mcpManager.dispose(existing[0].id).catch(() => {});
+        }
         const [refreshed] = await db
           .select()
           .from(mcpServers)
@@ -563,7 +565,9 @@ export function registerMcpHandlers() {
   // `@ai-sdk/mcp` `auth()` function drives PKCE + token exchange, and
   // tokens land in the encrypted `oauth_state` column.
   createTypedHandler(mcpContracts.startOAuth, async (_, params) => {
-    await syncVendoredOAuthClient(params.serverId);
+    if (await syncVendoredOAuthClient(params.serverId)) {
+      await mcpManager.dispose(params.serverId).catch(() => {});
+    }
     const result = await runOAuthFlow({
       serverId: params.serverId,
       rendererMessageId: params.rendererMessageId,

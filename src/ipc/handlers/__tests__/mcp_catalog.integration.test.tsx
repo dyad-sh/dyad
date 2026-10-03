@@ -27,7 +27,10 @@ import { h } from "@/testing/hybrid.setup";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { mcpServers } from "@/db/schema";
-import { decryptFromString } from "@/ipc/utils/mcp_oauth_provider";
+import {
+  decryptFromString,
+  encryptToString,
+} from "@/ipc/utils/mcp_oauth_provider";
 import { syncVendoredOAuthClient } from "@/ipc/utils/vendored_oauth_client";
 
 vi.mock("@/lib/toast", async (importOriginal) => ({
@@ -536,7 +539,12 @@ describe("Plugins catalog (integration)", () => {
         .where(eq(mcpServers.id, created.id));
       expect(wiped.oauthClientId).toBeNull();
 
-      await syncVendoredOAuthClient(created.id);
+      // Nothing is written back while OAuth is off.
+      expect(await syncVendoredOAuthClient(created.id)).toBe(false);
+
+      // Turning OAuth back on restores the client it needs to connect.
+      await ipc.mcp.updateServer({ id: created.id, oauthEnabled: true });
+      expect(await syncVendoredOAuthClient(created.id)).toBe(true);
       const [restored] = await db
         .select()
         .from(mcpServers)
@@ -546,7 +554,22 @@ describe("Plugins catalog (integration)", () => {
         "first-secret",
       );
 
-      // A rotated secret reaches a server that was added before the change.
+      // A rotated secret reaches a server that was added before the
+      // change, including the client the provider stored on first connect.
+      await db
+        .update(mcpServers)
+        .set({
+          oauthState: encryptToString(
+            JSON.stringify({
+              tokens: { access_token: "token-1", token_type: "bearer" },
+              clientInformation: {
+                client_id: "vendored-id",
+                client_secret: "first-secret",
+              },
+            }),
+          ),
+        })
+        .where(eq(mcpServers.id, created.id));
       catalogPayload = { servers: [vendoredEntry("second-secret")] };
       clearMcpCatalogCacheForTests();
       await syncVendoredOAuthClient(created.id);
@@ -557,6 +580,46 @@ describe("Plugins catalog (integration)", () => {
       expect(decryptFromString(rotated.oauthClientSecret!)).toBe(
         "second-secret",
       );
+      const rotatedState = JSON.parse(
+        decryptFromString(rotated.oauthState!),
+      ) as {
+        tokens?: { access_token?: string };
+        clientInformation?: { client_id: string; client_secret?: string };
+      };
+      expect(rotatedState.clientInformation).toEqual({
+        client_id: "vendored-id",
+        client_secret: "second-secret",
+      });
+      // Same client, so the tokens it issued stay valid.
+      expect(rotatedState.tokens?.access_token).toBe("token-1");
+
+      // A different client id invalidates the tokens it issued.
+      catalogPayload = {
+        servers: [
+          {
+            ...vendoredEntry("second-secret"),
+            inputs: [
+              {
+                kind: "vendoredOAuthClient",
+                clientId: "replacement-id",
+                clientSecret: "second-secret",
+              },
+            ],
+          },
+        ],
+      };
+      clearMcpCatalogCacheForTests();
+      await syncVendoredOAuthClient(created.id);
+      const [reclient] = await db
+        .select()
+        .from(mcpServers)
+        .where(eq(mcpServers.id, created.id));
+      expect(reclient.oauthClientId).toBe("replacement-id");
+      expect(reclient.oauthState).toBeNull();
+
+      catalogPayload = { servers: [vendoredEntry("second-secret")] };
+      clearMcpCatalogCacheForTests();
+      await syncVendoredOAuthClient(created.id);
 
       // Adding the same entry again returns the existing server with the
       // current client rather than the copy it was created with.

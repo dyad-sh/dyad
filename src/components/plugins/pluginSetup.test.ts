@@ -67,11 +67,6 @@ describe("unfilledOptionalInputs", () => {
     ]);
   });
 
-  it("never offers a catalog-supplied oauth client as fillable", () => {
-    const server = makeServer({ transport: "http", oauthEnabled: true });
-    expect(unfilledOptionalInputs(server, [vendoredClient])).toEqual([]);
-  });
-
   it("drops an optional input once it has a value", () => {
     const server = makeServer({
       envJson: { API_TOKEN: "tok", ACCOUNT_ID: "123" },

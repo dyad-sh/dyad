@@ -162,8 +162,9 @@ export class McpManager {
 
   private async createClient(serverId: number): Promise<MCPClient> {
     // Runs before the row is read so a refreshed client is picked up here,
-    // including on the silent token refresh path.
-    await syncVendoredOAuthClient(serverId);
+    // including on the silent token refresh path. Cached-only: building a
+    // client must not wait on a catalog fetch.
+    await syncVendoredOAuthClient(serverId, { cachedOnly: true });
     const server = await db
       .select()
       .from(mcpServers)

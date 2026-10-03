@@ -135,6 +135,33 @@ async function withStateLock<T>(
   return next;
 }
 
+/**
+ * Applies a changed OAuth client to the stored state, which otherwise keeps
+ * returning the client it was seeded with and shadows the row's columns.
+ * A new secret for the same client leaves the tokens in place; a different
+ * client id drops them, since they belong to the old client.
+ */
+export async function applyOAuthClientChange(
+  serverId: number,
+  client: { clientId: string; clientSecret: string | null },
+): Promise<void> {
+  await withStateLock(serverId, async () => {
+    const state = await readState(serverId);
+    if (!state.clientInformation) return;
+    if (state.clientInformation.client_id !== client.clientId) {
+      await writeState(serverId, {});
+      return;
+    }
+    await writeState(serverId, {
+      ...state,
+      clientInformation: {
+        client_id: client.clientId,
+        ...(client.clientSecret ? { client_secret: client.clientSecret } : {}),
+      },
+    });
+  });
+}
+
 export async function revokeMcpOAuthWriteAuthority(
   serverId: number,
 ): Promise<void> {

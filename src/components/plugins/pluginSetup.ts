@@ -13,7 +13,9 @@ function isInputSatisfied(server: McpServer, input: CatalogInput): boolean {
     case "oauthClientId":
     case "oauthClientSecret":
       return !!server.oauthClientId;
-    // Stored when the server is added from the catalog.
+    // Supplied by the catalog, so there is nothing for the user to fill in.
+    // Callers filter this kind out before building a form; this case only
+    // keeps an unfiltered list from reporting setup that can't be done.
     case "vendoredOAuthClient":
       return true;
   }

@@ -1,5 +1,5 @@
 import log from "electron-log";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "../../db";
 import { mcpServers } from "../../db/schema";
 import {
@@ -63,6 +63,10 @@ async function syncOrThrow(
   // needs no catalog read at all.
   if (!server?.catalogSlug) return false;
   if (server.transport !== "http" || !server.oauthEnabled) return false;
+  // Connecting can't work without a client, so that is the one case worth
+  // correcting here. Anything else waits for Connect or a re-add, which must
+  // not have their flows fenced by a background connection.
+  if (cachedOnly && server.oauthClientId) return false;
 
   const entries = cachedOnly
     ? (peekRemoteMcpCatalog() ?? [])
@@ -93,13 +97,18 @@ async function syncOrThrow(
   // the credentials this is replacing back.
   await revokeMcpOAuthWriteAuthority(serverId);
   fence.revoked = true;
-  await db
+  // Conditional on OAuth still being on: turning it off clears these
+  // columns, and this must not put a client back on a server that no longer
+  // uses one.
+  const written = await db
     .update(mcpServers)
     .set({
       oauthClientId: vendored.clientId,
       oauthClientSecret: wantedSecret ? encryptToString(wantedSecret) : null,
     })
-    .where(eq(mcpServers.id, serverId));
+    .where(and(eq(mcpServers.id, serverId), eq(mcpServers.oauthEnabled, true)))
+    .returning({ id: mcpServers.id });
+  if (written.length === 0) return true;
   await applyOAuthClientChange(serverId, {
     clientId: vendored.clientId,
     clientSecret: wantedSecret,

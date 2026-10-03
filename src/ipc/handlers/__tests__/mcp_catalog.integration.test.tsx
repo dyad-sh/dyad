@@ -676,6 +676,31 @@ describe("Plugins catalog (integration)", () => {
         .where(eq(mcpServers.id, created.id));
       expect(reissued.oauthClientId).toBe("vendored-id");
       expect(reissued.oauthState).toBeNull();
+
+      // A rotated secret for the same client leaves those tokens usable.
+      await db
+        .update(mcpServers)
+        .set({
+          oauthClientSecret: encryptToString("outdated-secret"),
+          oauthState: encryptToString(
+            JSON.stringify({
+              tokens: { access_token: "token-3", token_type: "bearer" },
+            }),
+          ),
+        })
+        .where(eq(mcpServers.id, created.id));
+      expect(await syncVendoredOAuthClient(created.id)).toBe(true);
+      const [rotatedOnly] = await db
+        .select()
+        .from(mcpServers)
+        .where(eq(mcpServers.id, created.id));
+      expect(decryptFromString(rotatedOnly.oauthClientSecret!)).toBe(
+        "second-secret",
+      );
+      const keptState = JSON.parse(
+        decryptFromString(rotatedOnly.oauthState!),
+      ) as { tokens?: { access_token?: string } };
+      expect(keptState.tokens?.access_token).toBe("token-3");
     } finally {
       catalogPayload = previousPayload;
       clearMcpCatalogCacheForTests();

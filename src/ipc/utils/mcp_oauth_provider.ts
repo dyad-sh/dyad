@@ -163,15 +163,18 @@ export async function applyOAuthClientChange(
 ): Promise<void> {
   await withStateLock(serverId, async () => {
     const state = await readState(serverId);
-    if (
+    const replacesClient =
       client.clientIdChanged ||
-      state.clientInformation?.client_id !== client.clientId
-    ) {
+      (state.clientInformation !== undefined &&
+        state.clientInformation.client_id !== client.clientId);
+    if (replacesClient) {
       if (state.tokens || state.clientInformation) {
         await writeState(serverId, {});
       }
       return;
     }
+    // Nothing stored to bring in line; the columns carry the new secret.
+    if (!state.clientInformation) return;
     await writeState(serverId, {
       ...state,
       clientInformation: {

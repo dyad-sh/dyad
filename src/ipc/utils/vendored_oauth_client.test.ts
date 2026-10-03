@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   revoke: vi.fn(),
   applyClientChange: vi.fn(),
   storedClient: undefined as Record<string, unknown> | undefined,
+  updatedRows: [{ id: 1 }] as { id: number }[],
 }));
 
 vi.mock("../../db", () => ({
@@ -16,7 +17,12 @@ vi.mock("../../db", () => ({
     select: () => ({ from: () => ({ where: async () => [mocks.row] }) }),
     update: () => ({
       set: (values: unknown) => ({
-        where: async () => mocks.update(values),
+        where: () => ({
+          returning: async () => {
+            mocks.update(values);
+            return mocks.updatedRows;
+          },
+        }),
       }),
     }),
   },
@@ -24,7 +30,10 @@ vi.mock("../../db", () => ({
 
 vi.mock("../../db/schema", () => ({ mcpServers: { id: "id" } }));
 
-vi.mock("drizzle-orm", () => ({ eq: (_c: unknown, v: number) => v }));
+vi.mock("drizzle-orm", () => ({
+  eq: (_c: unknown, v: unknown) => v,
+  and: (...parts: unknown[]) => parts,
+}));
 
 vi.mock("@/ipc/shared/remote_mcp_catalog", () => ({
   getRemoteMcpCatalog: async () => mocks.entries,
@@ -71,6 +80,7 @@ describe("syncVendoredOAuthClient", () => {
     mocks.revoke.mockReset();
     mocks.applyClientChange.mockReset();
     mocks.storedClient = undefined;
+    mocks.updatedRows = [{ id: 1 }];
     mocks.entries = [catalogEntry()];
     mocks.row = {
       id: 1,
@@ -142,6 +152,26 @@ describe("syncVendoredOAuthClient", () => {
     mocks.row.oauthClientSecret = "enc:secret-1";
     expect(await syncVendoredOAuthClient(1)).toBe(false);
     expect(mocks.revoke).not.toHaveBeenCalled();
+  });
+
+  it("leaves the stored state alone when oauth was turned off mid-sync", async () => {
+    // The conditional write matches no row once OAuth is off, so the client
+    // must not be put back on a server that no longer uses one.
+    mocks.updatedRows = [];
+    expect(await syncVendoredOAuthClient(1)).toBe(true);
+    expect(mocks.applyClientChange).not.toHaveBeenCalled();
+  });
+
+  it("only fills in a missing client on the cached path", async () => {
+    mocks.row.oauthClientId = "client-1";
+    mocks.row.oauthClientSecret = "enc:stale";
+    // A rotation here would fence an in-flight connect, so it waits for
+    // Connect or a re-add.
+    expect(await syncVendoredOAuthClient(1, { cachedOnly: true })).toBe(false);
+    expect(mocks.revoke).not.toHaveBeenCalled();
+
+    mocks.row.oauthClientId = null;
+    expect(await syncVendoredOAuthClient(1, { cachedOnly: true })).toBe(true);
   });
 
   it("skips a server with oauth turned off", async () => {

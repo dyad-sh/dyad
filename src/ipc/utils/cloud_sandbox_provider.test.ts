@@ -340,6 +340,59 @@ describe("cloud_sandbox_provider incremental sync", () => {
     });
   });
 
+  it("includes files inside a directory re-included by a nested gitignore in a full snapshot", async () => {
+    await fs.mkdir(path.join(appPath, "app", "dist"), { recursive: true });
+    await fs.writeFile(path.join(appPath, ".gitignore"), "dist/\n");
+    await fs.writeFile(path.join(appPath, "app", ".gitignore"), "!dist/\n");
+    await fs.writeFile(
+      path.join(appPath, "app", "dist", "keep.ts"),
+      "export const keep = true;",
+    );
+    await fs.writeFile(
+      path.join(appPath, "app", "visible.ts"),
+      "export const visible = true;",
+    );
+
+    await expect(buildCloudSandboxFileMap(appPath)).resolves.toEqual({
+      ".gitignore": Buffer.from("dist/\n"),
+      "app/.gitignore": Buffer.from("!dist/\n"),
+      "app/dist/keep.ts": Buffer.from("export const keep = true;"),
+      "app/visible.ts": Buffer.from("export const visible = true;"),
+    });
+  });
+
+  it("uploads files inside a re-included directory instead of treating them as deletions", async () => {
+    await fs.mkdir(path.join(appPath, "app", "dist"), { recursive: true });
+    await fs.writeFile(path.join(appPath, ".gitignore"), "dist/\n");
+    await fs.writeFile(path.join(appPath, "app", ".gitignore"), "!dist/\n");
+    await fs.writeFile(
+      path.join(appPath, "app", "dist", "keep.ts"),
+      "export const keep = true;",
+    );
+
+    await syncCloudSandboxDirtyPaths({
+      appId: 1,
+      changedPaths: ["app/dist/keep.ts"],
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0];
+    const upload = await parseMultipartUpload(init);
+    expect(upload.manifest).toEqual({
+      replaceAll: false,
+      deletedFiles: [],
+      files: [
+        {
+          path: "app/dist/keep.ts",
+          fieldName: "file_0",
+        },
+      ],
+    });
+    expect(upload.files).toEqual({
+      "app/dist/keep.ts": Buffer.from("export const keep = true;"),
+    });
+  });
+
   it("promotes gitignore changes to a full snapshot sync", async () => {
     await fs.writeFile(path.join(appPath, ".gitignore"), "dist\n");
     await fs.writeFile(path.join(appPath, "index.ts"), "console.log('ok');");

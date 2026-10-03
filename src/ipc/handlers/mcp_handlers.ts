@@ -15,6 +15,7 @@ import {
   withMcpOAuthServerMutation,
 } from "../utils/mcp_oauth_flow";
 import { oauthStateHasTokens } from "../utils/mcp_oauth_provider";
+import { syncVendoredOAuthClient } from "../utils/vendored_oauth_client";
 import {
   encryptSecretMap,
   encryptToString,
@@ -222,7 +223,14 @@ export function registerMcpHandlers() {
         .where(eq(mcpServers.catalogSlug, slug));
       if (existing.length > 0) {
         clearNeverSuggestPlugin(slug);
-        return toMcpServer(existing[0]);
+        // A row added before the entry had a vendored client, or before
+        // the client changed, still needs it.
+        await syncVendoredOAuthClient(existing[0].id);
+        const [refreshed] = await db
+          .select()
+          .from(mcpServers)
+          .where(eq(mcpServers.id, existing[0].id));
+        return toMcpServer(refreshed ?? existing[0]);
       }
 
       // A stdio add must run exactly the command the consent prompt showed.
@@ -555,6 +563,7 @@ export function registerMcpHandlers() {
   // `@ai-sdk/mcp` `auth()` function drives PKCE + token exchange, and
   // tokens land in the encrypted `oauth_state` column.
   createTypedHandler(mcpContracts.startOAuth, async (_, params) => {
+    await syncVendoredOAuthClient(params.serverId);
     const result = await runOAuthFlow({
       serverId: params.serverId,
       rendererMessageId: params.rendererMessageId,

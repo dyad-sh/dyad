@@ -200,6 +200,10 @@ export const QueryInvalidationScopeSchema = z.discriminatedUnion("family", [
     appId: z.number().int().positive().optional(),
   }),
   z.object({
+    family: z.literal("workspaces"),
+    appId: z.number().int().positive().optional(),
+  }),
+  z.object({
     family: z.literal("chat"),
     chatId: z.number().int().positive(),
   }),
@@ -274,6 +278,7 @@ export function queryInvalidationScopeKey(
     case "problems":
     case "uncommitted-files":
     case "coolify":
+    case "workspaces":
       return `${scope.family}:${scope.appId ?? "*"}`;
     case "chat":
       return `${scope.family}:${scope.chatId}`;

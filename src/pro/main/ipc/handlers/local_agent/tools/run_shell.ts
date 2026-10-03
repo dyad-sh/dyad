@@ -7,11 +7,12 @@ import {
   shellExecutionGuidance,
 } from "@/shared/shell_capability";
 import { withTrackedMutation } from "../subagents/mutation_activity_tracker";
+import { readAppResource } from "@/ipc/services/app_operation_coordinator";
 import {
-  appOperationCoordinator,
-  readAppResource,
-  type AppOperationRequest,
-} from "@/ipc/services/app_operation_coordinator";
+  blockConflictingWorkspaceScopedOperations,
+  runWorkspaceScopedOperation,
+  type WorkspaceScopedOperationRequest,
+} from "@/ipc/services/workspace_coordination";
 import { reviewShellCommand } from "../shell_review";
 import {
   runShellProcess,
@@ -80,7 +81,7 @@ export const runShellTool: ToolDefinition<z.infer<typeof schema>> = {
       return blocked("Shell execution is unavailable in this turn.");
     const available = () => {
       const settings = readSettings();
-      const mode = runningApps.get(ctx.appId)?.mode;
+      const mode = runningApps.get(ctx.runtimeAppId ?? ctx.appId)?.mode;
       if (mode === "cloud" || mode === "docker") return false;
       return isShellExperimentAvailable({
         settings,
@@ -156,22 +157,20 @@ export const runShellTool: ToolDefinition<z.infer<typeof schema>> = {
     if (!available())
       return blocked("Shell access was disabled while reviewing.");
     const removedFunctionNames: string[] = [];
-    const request: AppOperationRequest = {
+    // Shell commands can touch providers and runtime configuration (app-wide)
+    // as well as the files and runtime of the turn's own workspace.
+    const request: WorkspaceScopedOperationRequest = {
       appId: ctx.appId,
+      workspaceKey: ctx.workspaceCoordinationKey,
       operation: "run-agent-shell",
-      resources: [
-        readAppResource("app-path"),
-        "repository",
-        "provider",
-        "runtime-config",
-        readAppResource("runtime"),
-      ],
+      appResources: [readAppResource("app-path"), "provider", "runtime-config"],
+      workspaceResources: ["repository", readAppResource("runtime")],
       signal: ctx.abortSignal,
       refuseWhenRecording: "run shell commands",
     };
     // Review and consent never hold resource claims or mutation activity.
     return withTrackedMutation(ctx, async () => {
-      const outcome = await appOperationCoordinator.run(request, async () => {
+      const outcome = await runWorkspaceScopedOperation(request, async () => {
         if (!available())
           return blocked("Shell access was disabled before execution.");
         if (ctx.abortSignal?.aborted)
@@ -221,10 +220,7 @@ export const runShellTool: ToolDefinition<z.infer<typeof schema>> = {
           "Shell process shutdown could not be confirmed. A descendant may still be running. Stop it externally and restart Dyad before modifying this app.";
         if (result.shutdownUnconfirmed) {
           // Do not release admission to competing mutations while escaped work may remain.
-          appOperationCoordinator.blockConflictingOperations(
-            request,
-            shutdownNotice,
-          );
+          blockConflictingWorkspaceScopedOperations(request, shutdownNotice);
         }
         // Even failed/cancelled commands can leave edits. Never label them rolled back.
         const after = result.shutdownUnconfirmed

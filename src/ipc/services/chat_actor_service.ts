@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { remoteMachineHost } from "@/ipc/services/distributed_machine_actor_host";
 import { deleteChatJournals } from "./chat_journal_cleanup";
 import { computeChatTurnPayloadHash } from "@/ipc/utils/chat_turn_intent_hash";
@@ -58,6 +59,10 @@ export async function deleteOwnedChatAfterSettlingActors(
     releaseSubagents = await settleSubagentsForChatDeletion(chatId);
     await settleChatActorsForDeletion(chatId);
     await deleteChatJournals(chatId);
+    // The chat's isolated workspace goes with it. Only a fully merged branch
+    // is deleted, so unmerged commits stay reachable in the repository.
+    const { chatWorkspaceService } = await import("./chat_workspace_service");
+    await chatWorkspaceService.onChatDeleting(chatId);
     await db.delete(chats).where(eq(chats.id, chatId));
     entityDisposalBus.publish({ kind: "chat", id: chatId });
   } finally {
@@ -293,6 +298,47 @@ export async function dispatchPlanImplementationTurn(input: {
   if (getIntentAcceptance(intentId) !== "message-accepted") {
     throw new Error("Implementation turn acceptance was not committed");
   }
+}
+
+/**
+ * Resumes a chat so its agent can resolve conflicts left by combining the
+ * chat's isolated workspace with the target branch. Resolves once the turn is
+ * accepted or rejected; a busy chat queues it behind the user's own messages.
+ */
+export async function dispatchWorkspaceRepairTurn(input: {
+  workspaceId: number;
+  chatId: number;
+  appId: number;
+  prompt: string;
+  requestedChatMode: "build" | "local-agent";
+  signal?: AbortSignal;
+}): Promise<"accepted" | "rejected"> {
+  const operationId = randomUUID();
+  const withoutHash = {
+    schemaVersion: 1 as const,
+    intentId: `workspace-integration:${input.workspaceId}:${operationId}`,
+    chatId: input.chatId,
+    appId: input.appId,
+    invocationRef: {
+      kind: "chat-stream" as const,
+      entityKey: input.chatId,
+      operationId,
+    },
+    prompt: input.prompt,
+    selectedComponents: [],
+    requestedChatMode: input.requestedChatMode,
+    owner: {
+      kind: "workspace-integration" as const,
+      workspaceId: input.workspaceId,
+    },
+  };
+  return dispatchChatIntentAndWait(
+    {
+      ...withoutHash,
+      payloadHash: computeChatTurnPayloadHash(withoutHash),
+    },
+    input.signal,
+  );
 }
 
 export async function dispatchUserInputFollowUp(input: {

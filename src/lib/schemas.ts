@@ -577,6 +577,14 @@ const BaseUserSettingsFields = {
   // while the integration is new; with it off the panel is unchanged.
   enableCloudflareDeployment: z.boolean().optional(),
   enableTestRunInPreview: z.boolean().optional(),
+  // Gives a writable chat its own Git worktree when another chat is already
+  // changing the same app, then merges the finished work back automatically.
+  // Off by default while the feature is new.
+  enableWorktreeIsolation: z.boolean().optional(),
+  // Retention limits for isolated chat workspaces. Unset uses the defaults in
+  // src/shared/settings_defaults.ts.
+  worktreeIsolationMaxWorkspacesPerApp: z.number().int().min(1).optional(),
+  worktreeIsolationIdleHours: z.number().min(1).optional(),
   enableAutoUpdate: z.boolean(),
   releaseChannel: ReleaseChannelSchema,
   runtimeMode2: RuntimeMode2Schema.optional(),

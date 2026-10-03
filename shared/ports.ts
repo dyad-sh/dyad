@@ -1,3 +1,8 @@
+import {
+  isWorkspaceRuntimeId,
+  workspaceIdFromRuntimeId,
+} from "./workspace_runtime_id";
+
 /**
  * Calculate the port for a given app based on its ID.
  * Uses a base port of 32100 and offsets by appId % 10_000.
@@ -27,9 +32,19 @@ function getE2ePortBlockBase(): number | null {
 }
 
 export function getAppPort(appId: number): number {
+  const workspaceId = workspaceIdFromRuntimeId(appId);
   const e2ePortBlockBase = getE2ePortBlockBase();
   if (e2ePortBlockBase != null) {
-    return e2ePortBlockBase + (Math.abs(appId) % E2E_APP_PORT_RANGE);
+    // Isolated workspace runtimes use the upper half of the block's app range;
+    // E2E apps have small ids.
+    return workspaceId !== null
+      ? e2ePortBlockBase +
+          E2E_WORKSPACE_OFFSET +
+          (workspaceId % E2E_WORKSPACE_RANGE)
+      : e2ePortBlockBase + (Math.abs(appId) % E2E_APP_PORT_RANGE);
+  }
+  if (workspaceId !== null) {
+    return WORKSPACE_APP_PORT_BASE + (workspaceId % WORKSPACE_PORT_RANGE);
   }
 
   return APP_PORT_BASE + (appId % APP_PORT_RANGE);
@@ -68,6 +83,18 @@ export const E2E_TEST_SERVER_PORT_START =
 export const E2E_TEST_SERVER_PORT_RANGE = 200;
 
 /**
+ * Isolated chat workspaces run their own previews (see
+ * shared/workspace_runtime_id.ts). Their dev servers and proxies get bands
+ * above every app band so a workspace never takes, or cleans up, the port of
+ * an app: dev servers span 52400..53399 and proxies 53400..54399.
+ */
+const WORKSPACE_APP_PORT_BASE = 52_400;
+const WORKSPACE_PROXY_PORT_BASE = 53_400;
+const WORKSPACE_PORT_RANGE = 1_000;
+const E2E_WORKSPACE_OFFSET = 500;
+const E2E_WORKSPACE_RANGE = 500;
+
+/**
  * Whether a port falls in a band Dyad hands out deterministically, and so must
  * not be taken by anything that only needs *some* free port.
  */
@@ -81,6 +108,8 @@ export function isReservedDyadPort(port: number): boolean {
     return true;
   }
   return (
+    (port >= WORKSPACE_APP_PORT_BASE &&
+      port < WORKSPACE_PROXY_PORT_BASE + WORKSPACE_PORT_RANGE) ||
     (port >= APP_PORT_BASE && port < APP_PORT_BASE + APP_PORT_RANGE) ||
     (port >= PROXY_PORT_BASE && port < PROXY_PORT_BASE + PROXY_PORT_RANGE) ||
     (port >= PROXY_FALLBACK_PORT_START &&
@@ -108,14 +137,24 @@ export function getProxyFallbackPortStart(): number {
  * killing whatever already holds the port.
  */
 export function getAppProxyPort(appId: number): number {
+  const workspaceId = workspaceIdFromRuntimeId(appId);
   const e2ePortBlockBase = getE2ePortBlockBase();
   if (e2ePortBlockBase != null) {
-    return (
-      e2ePortBlockBase +
-      E2E_APP_PORT_RANGE +
-      (Math.abs(appId) % E2E_PROXY_PORT_RANGE)
-    );
+    return workspaceId !== null
+      ? e2ePortBlockBase +
+          E2E_APP_PORT_RANGE +
+          E2E_WORKSPACE_OFFSET +
+          (workspaceId % E2E_WORKSPACE_RANGE)
+      : e2ePortBlockBase +
+          E2E_APP_PORT_RANGE +
+          (Math.abs(appId) % E2E_PROXY_PORT_RANGE);
+  }
+  if (workspaceId !== null) {
+    return WORKSPACE_PROXY_PORT_BASE + (workspaceId % WORKSPACE_PORT_RANGE);
   }
 
   return PROXY_PORT_BASE + (Math.abs(appId) % PROXY_PORT_RANGE);
 }
+
+/** Whether a runtime belongs to an isolated chat workspace. */
+export { isWorkspaceRuntimeId };

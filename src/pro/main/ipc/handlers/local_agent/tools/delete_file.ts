@@ -96,7 +96,8 @@ export const deleteFileTool: ToolDefinition<z.infer<typeof deleteFileSchema>> =
 
           if (currentStat) {
             queueCloudSandboxSnapshotSync({
-              appId: ctx.appId,
+              // Isolated workspace edits reach the app's sandbox once merged.
+              appId: ctx.runtimeAppId ?? ctx.appId,
               deletedPaths: [operationPath],
             });
           }

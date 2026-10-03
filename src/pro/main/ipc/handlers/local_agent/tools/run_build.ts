@@ -1,14 +1,12 @@
 import fs from "node:fs/promises";
+import { runWorkspaceScopedOperation } from "@/ipc/services/workspace_coordination";
 import path from "node:path";
 
 import log from "electron-log/main";
 import { z } from "zod";
 
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import {
-  appOperationCoordinator,
-  readAppResource,
-} from "@/ipc/services/app_operation_coordinator";
+import { readAppResource } from "@/ipc/services/app_operation_coordinator";
 import {
   copyGitOverlayEntriesOnWindows,
   createGitOverlayWorkspace,
@@ -145,7 +143,7 @@ export async function gatherBuildProjectFacts(
   buildScript: string,
   hasBuildLifecycleHooks = false,
 ): Promise<BuildProjectFacts> {
-  const runningApp = runningApps.get(ctx.appId);
+  const runningApp = runningApps.get(ctx.runtimeAppId ?? ctx.appId);
   const previewRunning = runningApp !== undefined;
   return {
     frameworkType: detectFrameworkType(ctx.appPath),
@@ -425,21 +423,24 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
       : '<dyad-status title="Running production build"></dyad-status>',
 
   execute: async (_args, ctx) => {
-    if (activeBuilds.has(ctx.appId)) {
+    // Builds are per runtime: isolated workspaces build independently.
+    const buildKey = ctx.runtimeAppId ?? ctx.appId;
+    if (activeBuilds.has(buildKey)) {
       const body =
         "A production build is already running for this app. Wait for it to finish instead of starting another one.";
       completeStatus(ctx, "Build already running", body, "warning");
       return body;
     }
 
-    activeBuilds.add(ctx.appId);
+    activeBuilds.add(buildKey);
     try {
-      return await appOperationCoordinator.run(
+      return await runWorkspaceScopedOperation(
         {
           appId: ctx.appId,
+          workspaceKey: ctx.workspaceCoordinationKey,
           operation: "run production build",
-          resources: [
-            readAppResource("app-path"),
+          appResources: [readAppResource("app-path")],
+          workspaceResources: [
             { resource: "repository-worktree", mode: "write" },
             readAppResource("runtime"),
           ],
@@ -450,7 +451,7 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
             count: 0,
           } satisfies BuildAttemptState);
           const currentMutationCount = ctx.mutationCount ?? 0;
-          if (runningApps.get(ctx.appId)?.mode === "cloud") {
+          if (runningApps.get(buildKey)?.mode === "cloud") {
             throw new DyadError(
               "Production build verification is unavailable while this app is running in a cloud sandbox because the build would run on the host instead of inside that sandbox. Switch the app runtime to Host and try again.",
               DyadErrorKind.Precondition,
@@ -634,7 +635,7 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
         },
       );
     } finally {
-      activeBuilds.delete(ctx.appId);
+      activeBuilds.delete(buildKey);
     }
   },
 };

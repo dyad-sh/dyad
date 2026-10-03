@@ -409,5 +409,33 @@
     "sending": "正在发送...",
     "send": "发送 {{count}} 条"
   },
-  "safetyReviewUnavailable": "安全审查不可用"
+  "safetyReviewUnavailable": "安全审查不可用",
+  "workspace": {
+    "isolated": "隔离工作区",
+    "isolatedTooltip": "此聊天在自己的分支和文件夹中工作。Dyad 会在检查合并后的代码后，将其完成的工作合并到 {{target}}。",
+    "originalTooltip": "此聊天在应用的主文件夹中的 {{branch}} 分支上工作。",
+    "detachedBranch": "早期版本",
+    "statusQueued": "等待合并",
+    "statusQueuedTooltip": "当没有其他任务使用应用的主文件夹时，此聊天的工作将合并到 {{target}}。",
+    "statusMerging": "正在与 {{target}} 合并",
+    "statusMergingTooltip": "Dyad 正在将最新的 {{target}} 引入此聊天的工作区。",
+    "statusResolvingConflicts": "正在解决冲突",
+    "statusResolvingConflictsTooltip": "此聊天与其他工作修改了相同的代码行。智能体正在此聊天的工作区中合并两者。",
+    "statusValidating": "正在检查合并后的更改",
+    "statusValidatingTooltip": "在合并到 {{target}} 之前，Dyad 正在对合并后的代码运行类型检查、构建和测试。",
+    "statusIntegrating": "正在合并到 {{target}}",
+    "statusIntegratingTooltip": "合并后的代码已通过检查，正在合并到 {{target}}。",
+    "statusMerged": "已合并到 {{target}}",
+    "statusMergedTooltip": "此聊天到目前为止完成的所有工作都已在 {{target}} 中。",
+    "statusPaused": "合并已暂停",
+    "statusPausedTooltip": "合并此聊天的工作需要你的处理。",
+    "statusFailed": "合并被阻止",
+    "statusFailedTooltip": "合并后的代码未通过检查，因此 {{target}} 未被更改。",
+    "retryMerge": "重试合并",
+    "retryFailed": "无法重试合并",
+    "concurrentBannerMessage": "Dyad 正在另一个聊天中工作。启用工作树隔离，可将同时进行的更改分开。",
+    "concurrentBannerEnable": "启用",
+    "isolationEnabledToast": "工作树隔离已开启。当另一个聊天仍在工作时，聊天的下一条消息将在其自己的工作区中开始。",
+    "isolationEnableFailed": "无法启用工作树隔离"
+  }
 }

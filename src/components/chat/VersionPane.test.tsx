@@ -8,7 +8,7 @@ import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import type { Version } from "@/ipc/types";
 import { isPaneVisibleState, type PreviewState } from "@/version_preview/state";
 import { projectVersionPreview } from "@/version_preview/projection";
-import { VersionPane } from "./VersionPane";
+import { summarizeDyadCommitMessage, VersionPane } from "./VersionPane";
 
 const mocks = vi.hoisted(() => ({
   listAppScreenshots: vi.fn(),
@@ -181,5 +181,20 @@ describe("VersionPane", () => {
       screen.getByText("Resolve the version recovery notice to continue."),
     ).toBeDefined();
     expect(screen.queryByTestId("virtualized-version-list")).toBeNull();
+  });
+});
+
+describe("summarizeDyadCommitMessage", () => {
+  it("shows only the subject of an isolated chat's structured commit", () => {
+    expect(
+      summarizeDyadCommitMessage(
+        "Add navigation\n\nRequested: add a navbar\nChanged: src/Nav.tsx\n\nDyad-Chat: 12\nDyad-Turn: 40",
+      ),
+    ).toBe("Add navigation");
+  });
+
+  it("leaves other commit messages as written", () => {
+    const message = "Initial commit\n\nCo-authored-by: someone";
+    expect(summarizeDyadCommitMessage(message)).toBe(message);
   });
 });

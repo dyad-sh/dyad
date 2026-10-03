@@ -628,6 +628,33 @@ describe("Plugins catalog (integration)", () => {
       });
       expect(readded.id).toBe(created.id);
       expect(readded.oauthClientId).toBe("vendored-id");
+
+      // A stored client the provider saved is sent in place of the columns,
+      // so it is stale on its own even while the columns are current.
+      await db
+        .update(mcpServers)
+        .set({
+          oauthState: encryptToString(
+            JSON.stringify({
+              clientInformation: {
+                client_id: "vendored-id",
+                client_secret: "stale-secret",
+              },
+            }),
+          ),
+        })
+        .where(eq(mcpServers.id, created.id));
+      expect(await syncVendoredOAuthClient(created.id)).toBe(true);
+      const [repaired] = await db
+        .select()
+        .from(mcpServers)
+        .where(eq(mcpServers.id, created.id));
+      const repairedState = JSON.parse(
+        decryptFromString(repaired.oauthState!),
+      ) as { clientInformation?: { client_secret?: string } };
+      expect(repairedState.clientInformation?.client_secret).toBe(
+        "second-secret",
+      );
     } finally {
       catalogPayload = previousPayload;
       clearMcpCatalogCacheForTests();

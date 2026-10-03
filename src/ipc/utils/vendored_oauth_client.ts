@@ -6,28 +6,47 @@ import {
   getRemoteMcpCatalog,
   peekRemoteMcpCatalog,
 } from "@/ipc/shared/remote_mcp_catalog";
-import { applyOAuthClientChange } from "./mcp_oauth_provider";
+import {
+  applyOAuthClientChange,
+  readStoredOAuthClient,
+  revokeMcpOAuthWriteAuthority,
+} from "./mcp_oauth_provider";
 import { decryptFromString, encryptToString } from "./secret_storage";
 
 const logger = log.scope("vendored_oauth_client");
 
 /**
  * Writes the OAuth client the catalog vendors for this server into its row
- * when the stored copy is missing or stale, and clears the stored client
- * registration that would otherwise shadow it. The row's copy is written
- * when the plugin is added, so without this a server whose client columns
- * were cleared, or whose entry gained or changed a vendored client, would
- * try to register its own client and fail against a provider that doesn't
- * support that.
+ * when the stored copy is missing or stale, covering both the row's columns
+ * and the client the provider saved on its first connect, which otherwise
+ * shadows them. The row's copy is written when the plugin is added, so
+ * without this a server whose client columns were cleared, or whose entry
+ * gained or changed a vendored client, would try to register its own client
+ * and fail against a provider that doesn't support that.
  *
  * Resolves to whether anything changed, so callers can drop a cached client
- * that holds the old credentials. Best-effort: with no catalog to read, the
- * stored client is left alone. `cachedOnly` keeps callers on hot paths off
- * the network.
+ * that holds the old credentials. Best-effort: with no catalog to read, or
+ * on an unexpected failure, the stored client is left alone and the caller
+ * continues with it. `cachedOnly` keeps callers on hot paths off the network.
  */
 export async function syncVendoredOAuthClient(
   serverId: number,
   { cachedOnly = false }: { cachedOnly?: boolean } = {},
+): Promise<boolean> {
+  try {
+    return await syncOrThrow(serverId, cachedOnly);
+  } catch (error) {
+    logger.warn(
+      `Could not refresh the vendored OAuth client for server ${serverId}`,
+      error,
+    );
+    return false;
+  }
+}
+
+async function syncOrThrow(
+  serverId: number,
+  cachedOnly: boolean,
 ): Promise<boolean> {
   const [server] = await db
     .select()
@@ -47,18 +66,25 @@ export async function syncVendoredOAuthClient(
   );
   if (vendored?.kind !== "vendoredOAuthClient") return false;
 
+  const wantedSecret = vendored.clientSecret ?? null;
   const storedSecret = server.oauthClientSecret
     ? decryptFromString(server.oauthClientSecret)
     : null;
-  const wantedSecret = vendored.clientSecret ?? null;
-  if (
-    server.oauthClientId === vendored.clientId &&
-    storedSecret === wantedSecret
-  ) {
-    return false;
-  }
+  const columnsMatch =
+    server.oauthClientId === vendored.clientId && storedSecret === wantedSecret;
+  // A stored client that disagrees with the catalog keeps being sent even
+  // once the columns are right, so it counts as stale on its own.
+  const stored = await readStoredOAuthClient(serverId);
+  const storedStateMatches =
+    !stored ||
+    (stored.client_id === vendored.clientId &&
+      (stored.client_secret ?? null) === wantedSecret);
+  if (columnsMatch && storedStateMatches) return false;
 
   logger.info(`Refreshing the vendored OAuth client for server ${serverId}`);
+  // Fence providers built from the old client: their later writes would put
+  // the credentials this is replacing back.
+  await revokeMcpOAuthWriteAuthority(serverId);
   await db
     .update(mcpServers)
     .set({

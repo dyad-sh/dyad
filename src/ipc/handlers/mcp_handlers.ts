@@ -262,9 +262,12 @@ export function registerMcpHandlers() {
       // connect or spawn until configured. Optional-only inputs don't
       // hold it back; they can be set later from the server's editor.
       const needsSetup = userSuppliedInputs(entry.inputs).some(isRequiredInput);
-      const vendoredClient = entry.inputs?.find(
-        (input) => input.kind === "vendoredOAuthClient",
-      );
+      // Only kept for an entry that uses OAuth, matching the sync, which
+      // leaves OAuth-disabled servers alone.
+      const vendoredClient =
+        entry.transport === "http" && entry.oauth
+          ? entry.inputs?.find((input) => input.kind === "vendoredOAuthClient")
+          : undefined;
       const values =
         entry.transport === "stdio"
           ? {

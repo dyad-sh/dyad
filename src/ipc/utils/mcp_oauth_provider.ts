@@ -135,6 +135,16 @@ async function withStateLock<T>(
   return next;
 }
 
+/** The client the stored state will hand back, shadowing the row's columns. */
+export async function readStoredOAuthClient(
+  serverId: number,
+): Promise<OAuthClientInformation | undefined> {
+  return withStateLock(
+    serverId,
+    async () => (await readState(serverId)).clientInformation,
+  );
+}
+
 /**
  * Applies a changed OAuth client to the stored state, which otherwise keeps
  * returning the client it was seeded with and shadows the row's columns.

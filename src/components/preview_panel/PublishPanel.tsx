@@ -1,5 +1,8 @@
+import { useState } from "react";
 import { useAtomValue } from "jotai";
+import { CloudUpload } from "lucide-react";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { Button } from "@/components/ui/button";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { GitHubConnector } from "@/components/GitHubConnector";
 import { PortalMigrate } from "@/components/PortalMigrate";
@@ -7,10 +10,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { GithubCollaboratorManager } from "@/components/GithubCollaboratorManager";
 import { DatabaseSection } from "@/components/preview_panel/DatabaseSection";
 import { DeploymentSection } from "@/components/preview_panel/DeploymentSection";
+import { DeployDialog } from "@/components/preview_panel/DeployDialog";
 
 export const PublishPanel = () => {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const { app, loading } = useLoadApp(selectedAppId);
+  const [deployAppId, setDeployAppId] = useState<number | null>(null);
 
   if (loading) {
     return (
@@ -74,11 +79,26 @@ export const PublishPanel = () => {
   return (
     <div className="flex flex-col h-full overflow-y-auto">
       <div className="p-4 space-y-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">
+        <div className="flex items-center justify-between gap-2">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
             Publish App
           </h1>
+          <Button
+            type="button"
+            data-testid="guided-deployment-button"
+            onClick={() => setDeployAppId(selectedAppId)}
+          >
+            <CloudUpload className="size-4" aria-hidden="true" />
+            Guided deployment
+          </Button>
         </div>
+        {deployAppId !== null && deployAppId === selectedAppId && (
+          <DeployDialog
+            key={deployAppId}
+            appId={deployAppId}
+            onClose={() => setDeployAppId(null)}
+          />
+        )}
 
         {/* Unified Database section - branch selection + migration + env vars when the
             app has a neon project and branch context, otherwise fall back to PortalMigrate

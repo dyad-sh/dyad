@@ -206,6 +206,20 @@ describe("getCompactionThreshold", () => {
     });
   });
 
+  describe("small context windows", () => {
+    it("scales the headroom down instead of clamping the threshold to zero", () => {
+      // A 4k window used to yield `max(0, 4096 - 25000) = 0`, which made
+      // `shouldTriggerCompaction` true after every single message.
+      expect(getCompactionThreshold(4_096, "lmstudio")).toBe(3_277);
+      expect(getCompactionThreshold(32_768, "lmstudio")).toBe(26_215);
+    });
+
+    it("keeps the full 25k headroom at and above 125k", () => {
+      expect(getCompactionThreshold(125_000, "lmstudio")).toBe(100_000);
+      expect(getCompactionThreshold(128_000, "lmstudio")).toBe(103_000);
+    });
+  });
+
   describe("google provider", () => {
     it("uses the 190k cap for large context windows", () => {
       expect(getCompactionThreshold(1_000_000, "google")).toBe(190_000);

@@ -31,7 +31,12 @@ export async function fetchLMStudioModelContextLength(
   modelId: string,
 ): Promise<number | undefined> {
   try {
-    const response = await fetch(`${getLmStudioBaseUrl()}/api/v0/models`);
+    const response = await fetch(`${getLmStudioBaseUrl()}/api/v0/models`, {
+      // `getContextWindow()` runs this on the token-count and per-turn
+      // compaction paths, so a stalled LM Studio (busy loading a model, or
+      // another process bound to port 1234) must not block them.
+      signal: AbortSignal.timeout(2_000),
+    });
     if (!response.ok) {
       return undefined;
     }
@@ -40,8 +45,11 @@ export async function fetchLMStudioModelContextLength(
     if (!model) {
       return undefined;
     }
-    return toPositiveContextLength(
-      model.loaded_context_length ?? model.max_context_length,
+    // Validate each candidate on its own: a present but unusable
+    // `loaded_context_length` must not hide a usable `max_context_length`.
+    return (
+      toPositiveContextLength(model.loaded_context_length) ??
+      toPositiveContextLength(model.max_context_length)
     );
   } catch {
     // LM Studio is not running or not reachable. A token-count read must not

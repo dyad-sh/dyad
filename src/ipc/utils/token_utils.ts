@@ -106,9 +106,14 @@ export async function getTemperature(
 /**
  * Calculate the token threshold for triggering context compaction.
  *
- * Returns the lower of a per-provider cap or `contextWindow - 25k`. The 25k
+ * Returns the lower of a per-provider cap or `contextWindow - headroom`. The
  * headroom leaves room for the next user message + tool outputs before we hit
  * the hard context limit.
+ *
+ * The headroom is normally 25k, but shrinks proportionally for windows below
+ * 125k. A fixed 25k headroom made `contextWindow - 25_000` clamp to 0 for any
+ * window under 25k (a small GPU, or MLX auto-fit), which flagged the chat for
+ * compaction after every single message.
  *
  * Per-provider caps differ because of input-token pricing tiers and operational
  * headroom. Google compacts before its 200k pricing boundary, while OpenAI
@@ -121,7 +126,8 @@ export function getCompactionThreshold(
 ): number {
   const cap =
     provider === "google" ? 190_000 : provider === "openai" ? 220_000 : 250_000;
-  return Math.min(cap, Math.max(0, contextWindow - 25_000));
+  const headroom = Math.min(25_000, Math.floor(contextWindow * 0.2));
+  return Math.min(cap, Math.max(0, contextWindow - headroom));
 }
 
 /**

@@ -57,6 +57,23 @@ describe("fetchLMStudioModelContextLength", () => {
     ).resolves.toBe(131_072);
   });
 
+  it("falls back to max_context_length when loaded_context_length is unusable", async () => {
+    stubFetchWith({
+      data: [
+        {
+          id: "qwen/qwen3-30b",
+          state: "loaded",
+          loaded_context_length: 0,
+          max_context_length: 131_072,
+        },
+      ],
+    });
+
+    await expect(
+      fetchLMStudioModelContextLength("qwen/qwen3-30b"),
+    ).resolves.toBe(131_072);
+  });
+
   it("returns undefined for a model LM Studio does not list", async () => {
     stubFetchWith({
       data: [{ id: "some-other-model", max_context_length: 4096 }],
@@ -86,6 +103,21 @@ describe("fetchLMStudioModelContextLength", () => {
     ).resolves.toBeUndefined();
   });
 
+  it("degrades to undefined when the request times out", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockRejectedValue(
+          new DOMException("The operation was aborted.", "TimeoutError"),
+        ),
+    );
+
+    await expect(
+      fetchLMStudioModelContextLength("qwen/qwen3-30b"),
+    ).resolves.toBeUndefined();
+  });
+
   it("ignores context lengths that are not positive numbers", async () => {
     for (const max_context_length of [0, -1, "32768", undefined]) {
       stubFetchWith({ data: [{ id: "m", max_context_length }] });
@@ -104,6 +136,7 @@ describe("fetchLMStudioModelContextLength", () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       "http://127.0.0.1:9876/api/v0/models",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
   });
 });

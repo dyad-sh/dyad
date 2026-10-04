@@ -54,6 +54,25 @@ describe("French locale", () => {
     },
   );
 
+  it("registers every French namespace with i18next", async () => {
+    await i18n.changeLanguage("fr");
+    try {
+      expect(i18n.t("itemCount", { ns: "common", count: 2 })).toBe(
+        "2 éléments",
+      );
+      expect(i18n.t("title", { ns: "settings" })).toBe("Paramètres");
+      expect(i18n.t("newChat", { ns: "chat" })).toBe("Nouveau chat");
+      expect(i18n.t("openInNewWindow", { ns: "home" })).toBe(
+        "Ouvrir dans une nouvelle fenêtre",
+      );
+      expect(i18n.t("unknown", { ns: "errors" })).toBe(
+        "Une erreur inconnue s'est produite",
+      );
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
   it("resolves French plural forms", async () => {
     await i18n.changeLanguage("fr");
     try {

@@ -4,6 +4,7 @@ import { Message } from "@/ipc/types";
 import { getErrorMessage } from "@ai-sdk/provider";
 
 import { findLanguageModel } from "./findLanguageModel";
+import { fetchLMStudioModelContextLength } from "./lm_studio_utils";
 
 // Estimate tokens (4 characters per token)
 export const estimateTokens = (text: string): number => {
@@ -68,7 +69,24 @@ const DEFAULT_CONTEXT_WINDOW = 128_000;
 export async function getContextWindow(model?: LargeLanguageModel) {
   const selectedModel = model ?? readSettings().selectedModel;
   const modelOption = await findLanguageModel(selectedModel);
-  return modelOption?.contextWindow || DEFAULT_CONTEXT_WINDOW;
+  if (modelOption?.contextWindow) {
+    return modelOption.contextWindow;
+  }
+
+  // Local models are not part of the model catalog, so `findLanguageModel`
+  // has no context window for them. Ask LM Studio itself before falling back
+  // to the generic default, which would otherwise misreport the window for any
+  // model loaded with a non-default context length.
+  if (selectedModel.provider === "lmstudio") {
+    const lmStudioContextWindow = await fetchLMStudioModelContextLength(
+      selectedModel.name,
+    );
+    if (lmStudioContextWindow) {
+      return lmStudioContextWindow;
+    }
+  }
+
+  return DEFAULT_CONTEXT_WINDOW;
 }
 
 export async function getMaxTokens(

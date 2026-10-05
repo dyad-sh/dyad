@@ -1,4 +1,4 @@
-import { and, desc, eq, like, sql } from "drizzle-orm";
+import { and, desc, eq, sql, type Column } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
 import { db } from "../../db";
 import { apps, chats, messages } from "../../db/schema";
@@ -13,7 +13,11 @@ export async function searchApps(
   searchQuery: string,
 ): Promise<AppSearchResult[]> {
   // Use parameterized query to prevent SQL injection
-  const pattern = `%${searchQuery.replace(/[%_]/g, "\\$&")}%`;
+  const pattern = `%${searchQuery.replace(/[\\%_]/g, "\\$&")}%`;
+  // SQLite has no default escape character, so the pattern's backslashes only
+  // take effect with an explicit ESCAPE clause.
+  const matchesQuery = (column: Column) =>
+    sql`${column} like ${pattern} escape '\\'`;
 
   // 1) Apps whose name matches
   const appNameMatches = await db
@@ -23,7 +27,7 @@ export async function searchApps(
       createdAt: apps.createdAt,
     })
     .from(apps)
-    .where(like(apps.name, pattern))
+    .where(matchesQuery(apps.name))
     .orderBy(desc(apps.createdAt));
 
   const appNameMatchesResult: AppSearchResult[] = appNameMatches.map((r) => ({
@@ -44,7 +48,7 @@ export async function searchApps(
     })
     .from(apps)
     .innerJoin(chats, eq(apps.id, chats.appId))
-    .where(like(chats.title, pattern))
+    .where(matchesQuery(chats.title))
     .orderBy(desc(apps.createdAt));
 
   const chatTitleMatchesResult: AppSearchResult[] = chatTitleMatches.map(
@@ -72,7 +76,7 @@ export async function searchApps(
     .where(
       and(
         eq(candidateChats.appId, apps.id),
-        like(candidateMessages.content, pattern),
+        matchesQuery(candidateMessages.content),
       ),
     )
     .limit(1);

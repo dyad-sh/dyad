@@ -116,6 +116,30 @@ describe("searchApps", () => {
     ]);
   });
 
+  it("treats %, _ and backslash in the query as literal characters", async () => {
+    const percentName = seedApp("100%-app", new Date(4_000_000));
+    seedApp("1000-app");
+    const underscoreTitle = seedApp("title-app", new Date(3_000_000));
+    seedChat(underscoreTitle, "rename snake_case");
+    seedChat(seedApp("other-title-app"), "rename snakeXcase");
+    const messageApp = seedApp("message-app", new Date(2_000_000));
+    const chatId = seedChat(messageApp, null);
+    seedMessage(chatId, "progress is 100% done, see snake_case in C:\\temp");
+    seedMessage(seedChat(seedApp("other-message-app"), null), "C:/temp");
+
+    expect((await searchApps("100%")).map((r) => r.id)).toEqual([
+      percentName,
+      messageApp,
+    ]);
+    expect((await searchApps("snake_case")).map((r) => r.id)).toEqual([
+      underscoreTitle,
+      messageApp,
+    ]);
+    const backslashResults = await searchApps("C:\\temp");
+    expect(backslashResults.map((r) => r.id)).toEqual([messageApp]);
+    expect(backslashResults[0].matchedChatMessage).toContain("C:\\temp");
+  });
+
   it("returns nothing when no app, chat, or message matches", async () => {
     seedMessage(seedChat(seedApp("my-app"), "chat"), "hello world");
 

@@ -7,10 +7,9 @@ import {
   chats,
   cloudflareAppConnections,
   coolifyAppConnections,
-  messages,
   versions,
 } from "../../db/schema";
-import { desc, eq, inArray, like } from "drizzle-orm";
+import { desc, eq, inArray } from "drizzle-orm";
 import { createTypedHandler } from "./base";
 import { appContracts } from "../types/app";
 import type { AppFileSearchResult } from "../types/app";
@@ -157,6 +156,7 @@ import {
   trackedBranchId,
 } from "../utils/neon_test_branch";
 import type { AppSearchResult } from "@/lib/schemas";
+import { searchApps } from "../utils/app_search";
 import { endTestsForApp } from "./tests_handlers";
 import { removeE2eTestArtifactsForApp } from "../services/e2e_test_workspace";
 
@@ -2217,85 +2217,7 @@ export function registerAppHandlers() {
   handle(
     "search-app",
     async (_, searchQuery: string): Promise<AppSearchResult[]> => {
-      // Use parameterized query to prevent SQL injection
-      const pattern = `%${searchQuery.replace(/[%_]/g, "\\$&")}%`;
-
-      // 1) Apps whose name matches
-      const appNameMatches = await db
-        .select({
-          id: apps.id,
-          name: apps.name,
-          createdAt: apps.createdAt,
-        })
-        .from(apps)
-        .where(like(apps.name, pattern))
-        .orderBy(desc(apps.createdAt));
-
-      const appNameMatchesResult: AppSearchResult[] = appNameMatches.map(
-        (r) => ({
-          id: r.id,
-          name: r.name,
-          createdAt: r.createdAt,
-          matchedChatTitle: null,
-          matchedChatMessage: null,
-        }),
-      );
-
-      // 2) Apps whose chat title matches
-      const chatTitleMatches = await db
-        .select({
-          id: apps.id,
-          name: apps.name,
-          createdAt: apps.createdAt,
-          matchedChatTitle: chats.title,
-        })
-        .from(apps)
-        .innerJoin(chats, eq(apps.id, chats.appId))
-        .where(like(chats.title, pattern))
-        .orderBy(desc(apps.createdAt));
-
-      const chatTitleMatchesResult: AppSearchResult[] = chatTitleMatches.map(
-        (r) => ({
-          id: r.id,
-          name: r.name,
-          createdAt: r.createdAt,
-          matchedChatTitle: r.matchedChatTitle,
-          matchedChatMessage: null,
-        }),
-      );
-
-      // 3) Apps whose chat message content matches
-      const chatMessageMatches = await db
-        .select({
-          id: apps.id,
-          name: apps.name,
-          createdAt: apps.createdAt,
-          matchedChatTitle: chats.title,
-          matchedChatMessage: messages.content,
-        })
-        .from(apps)
-        .innerJoin(chats, eq(apps.id, chats.appId))
-        .innerJoin(messages, eq(chats.id, messages.chatId))
-        .where(like(messages.content, pattern))
-        .orderBy(desc(apps.createdAt));
-
-      // Flatten and dedupe by app id
-      const allMatches: AppSearchResult[] = [
-        ...appNameMatchesResult,
-        ...chatTitleMatchesResult,
-        ...chatMessageMatches,
-      ];
-      const uniqueApps = Array.from(
-        new Map(allMatches.map((app) => [app.id, app])).values(),
-      );
-
-      // Sort newest apps first
-      uniqueApps.sort(
-        (a, b) =>
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-      );
-
-      return uniqueApps;
+      return searchApps(searchQuery);
     },
   );
 

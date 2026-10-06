@@ -1808,6 +1808,148 @@ describe("HelpDialog screenshot", () => {
     );
   });
 
+  /** Waits for a failed filing to hand the form back. */
+  const formIsBack = () =>
+    waitFor(() =>
+      expect(
+        (
+          screen.getByRole("button", {
+            name: /Create GitHub issue/,
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false),
+    );
+
+  /** What main answers once an upload has consumed the capture. */
+  const captureIsGoneFromMain = () => {
+    mocks.uploadScreenshot.mockResolvedValue({
+      uploaded: false,
+      reason: "missing",
+    });
+    mocks.recopyScreenshot.mockResolvedValue({ copied: false });
+  };
+
+  it("reuses the uploaded screenshot when filing is retried", async () => {
+    mocks.openExternalUrl.mockRejectedValueOnce(new Error("no browser"));
+
+    await openForm();
+    await addScreenshot();
+    submit();
+    await formIsBack();
+
+    captureIsGoneFromMain();
+    submit();
+    await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalledTimes(2));
+
+    // The image is already public. Uploading again is impossible, and filing
+    // without it would leave that copy with no issue pointing at it.
+    expect(mocks.uploadScreenshot).toHaveBeenCalledTimes(1);
+    expect(mocks.recopyScreenshot).not.toHaveBeenCalled();
+    const body = bodyOfOpenedIssue();
+    expect(body).toContain("Screenshot status: uploaded");
+    expect(body).toContain(
+      `![${SCREENSHOT_ALT}](${SIGNED_SCREENSHOT.publicUrl})`,
+    );
+  });
+
+  it("reuses the upload for a draft dismissed as the upload finished", async () => {
+    let release = (_: unknown) => {};
+    mocks.uploadScreenshot.mockReturnValueOnce(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+
+    await openForm();
+    await addScreenshot();
+    submit();
+    await waitFor(() =>
+      expect(mocks.uploadScreenshot).toHaveBeenCalledTimes(1),
+    );
+
+    // The dismissal loses the race: the upload had already landed.
+    fireEvent.click(screen.getByText("mock-dialog-dismiss"));
+    await act(async () => {
+      release({ uploaded: true });
+    });
+    expect(mocks.openExternalUrl).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByText("reopen-help"));
+    expect(
+      await screen.findByAltText("Screenshot of the Dyad window"),
+    ).toBeTruthy();
+    captureIsGoneFromMain();
+    await fileIt();
+
+    expect(mocks.uploadScreenshot).toHaveBeenCalledTimes(1);
+    expect(bodyOfOpenedIssue()).toContain(
+      `![${SCREENSHOT_ALT}](${SIGNED_SCREENSHOT.publicUrl})`,
+    );
+    expect(mocks.showError).not.toHaveBeenCalledWith(
+      "Your screenshot could no longer be restored, so it was removed from this report.",
+    );
+  });
+
+  it("uploads again when an uploaded screenshot is retaken", async () => {
+    mocks.openExternalUrl.mockRejectedValueOnce(new Error("no browser"));
+    mocks.takeScreenshot
+      .mockResolvedValueOnce({
+        dataUrl: "data:image/png;base64,AAAA",
+        captureId: "capture-first",
+      })
+      .mockResolvedValueOnce({
+        dataUrl: "data:image/png;base64,BBBB",
+        captureId: "capture-second",
+      });
+
+    await openForm();
+    await addScreenshot();
+    submit();
+    await formIsBack();
+
+    await askForRetake();
+    await waitFor(() =>
+      expect(
+        (
+          screen.getByAltText(
+            "Screenshot of the Dyad window",
+          ) as HTMLImageElement
+        ).src,
+      ).toContain("BBBB"),
+    );
+    submit();
+    await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalledTimes(2));
+
+    // The first upload was of an image the reporter has since replaced.
+    expect(mocks.uploadScreenshot).toHaveBeenCalledTimes(2);
+    expect(mocks.uploadScreenshot).toHaveBeenLastCalledWith(
+      expect.objectContaining({ captureId: "capture-second" }),
+    );
+  });
+
+  it("does not hand an uploaded screenshot to the next report", async () => {
+    mocks.openExternalUrl.mockRejectedValueOnce(new Error("no browser"));
+
+    await openForm("the first problem");
+    await addScreenshot();
+    submit();
+    await formIsBack();
+
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    fireEvent.click(await screen.findByText("Report a Bug"));
+    fireEvent.change(await screen.findByLabelText(/What happened/), {
+      target: { value: "the second problem" },
+    });
+    // Same capture id as before, so only the report ending can tell them
+    // apart.
+    await addScreenshot();
+    submit();
+    await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalledTimes(2));
+
+    expect(mocks.uploadScreenshot).toHaveBeenCalledTimes(2);
+    expect(bodyOfOpenedIssue()).toContain("the second problem");
+  });
+
   it("falls back to the clipboard when the upload service is down", async () => {
     screenshotUploadDown();
 

@@ -277,6 +277,12 @@ export function HelpDialog() {
   // sending the reporter's chat and codebase a second time and leaving the
   // first copy on the service with no issue pointing at it.
   const uploadedSession = useRef<string | null>(null);
+  // The screenshot this draft already uploaded. A resubmit reuses the URL:
+  // main dropped the image once it was in the bucket, so it cannot be sent
+  // again, and the copy already there would have no issue pointing at it.
+  const uploadedScreenshot = useRef<{ captureId: string; url: string } | null>(
+    null,
+  );
   // Where this report came from. A ref because the screenshot events fire from
   // callbacks that outlive the render which started the report.
   const reportSource = useRef<ReportSource>("report-bug");
@@ -682,6 +688,10 @@ export function HelpDialog() {
   /** Shows a capture on the form, or clears it. Keeps the ref in step. */
   const showCapture = (captureId: string | null) => {
     displayedCapture.current = captureId;
+    // An upload belongs to the capture it was made from.
+    if (uploadedScreenshot.current?.captureId !== captureId) {
+      uploadedScreenshot.current = null;
+    }
     setCaptureId(captureId);
   };
 
@@ -907,19 +917,30 @@ export function HelpDialog() {
     // Send the capture to the screenshot bucket, so the issue embeds it and
     // there is nothing to paste. The reporter saw the image on the form and
     // kept it there; this is the moment it becomes public.
-    if (outgoingScreenshot.status === "captured" && report.captureId) {
+    const reusable = uploadedScreenshot.current;
+    if (
+      outgoingScreenshot.status === "captured" &&
+      reusable?.captureId === report.captureId
+    ) {
+      // Already in the bucket from an earlier attempt at this report.
+      outgoingScreenshot = { status: "uploaded", url: reusable.url };
+    } else if (outgoingScreenshot.status === "captured" && report.captureId) {
       posthog.capture("screenshot-prompt:upload-attempt", {
         source: reportSource.current,
       });
       try {
         const url = await uploadScreenshot(report.captureId, token);
-        if (captureToken.current !== token) return;
-        outgoingScreenshot = { status: "uploaded", url };
-        // Main dropped the capture once it was in the bucket. The preview
-        // stays on the form, since the reporter is still looking at it.
+        // Main dropped the capture once it was in the bucket, so the URL is
+        // all that is left of it. Kept with the draft while the draft still
+        // shows this capture, even if this filing was abandoned meanwhile.
         if (activeCapture.current === report.captureId) {
           activeCapture.current = null;
         }
+        if (mounted.current && displayedCapture.current === report.captureId) {
+          uploadedScreenshot.current = { captureId: report.captureId, url };
+        }
+        if (captureToken.current !== token) return;
+        outgoingScreenshot = { status: "uploaded", url };
         posthog.capture("screenshot-prompt:uploaded", {
           source: reportSource.current,
         });

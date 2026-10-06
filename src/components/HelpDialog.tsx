@@ -597,7 +597,7 @@ export function HelpDialog() {
    *
    * Nothing leaves the machine until the PUT: the signed URL is fetched
    * first, and the token is checked between, so a reporter who backs out
-   * during the session upload never has their window published.
+   * before the screenshot upload starts never has their capture published.
    */
   const uploadScreenshot = async (
     captureId: string,

@@ -1980,17 +1980,23 @@ describe("HelpDialog screenshot", () => {
     ).toBeTruthy();
   });
 
-  it("gives the upload service a bounded time to answer", async () => {
-    await openForm();
-    await addScreenshot();
-    await fileIt();
+  it("gives the upload service ten seconds to answer", async () => {
+    const timeout = vi.spyOn(AbortSignal, "timeout");
+    try {
+      await openForm();
+      await addScreenshot();
+      await fileIt();
 
-    // A service that accepts the connection and never answers must not hold
-    // the report on "Preparing" until the reporter gives up.
-    expect(global.fetch).toHaveBeenCalledWith(
-      expect.stringMatching(/\/generate-screenshot-upload-url$/),
-      expect.objectContaining({ signal: expect.any(AbortSignal) }),
-    );
+      // A service that accepts the connection and never answers must not
+      // hold the report on "Preparing" until the reporter gives up.
+      expect(timeout).toHaveBeenCalledWith(10_000);
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringMatching(/\/generate-screenshot-upload-url$/),
+        expect.objectContaining({ signal: timeout.mock.results[0].value }),
+      );
+    } finally {
+      timeout.mockRestore();
+    }
   });
 
   it("falls back to the clipboard when the mint times out", async () => {
@@ -2111,14 +2117,17 @@ describe("HelpDialog screenshot", () => {
   it("refuses a public URL it could not safely embed", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue({
+      vi.fn().mockImplementation(async (url: string) => ({
         ok: true,
         status: 200,
-        json: async () => ({
-          ...SIGNED_SCREENSHOT,
-          publicUrl: "http://storage.test/not-https.png",
-        }),
-      }),
+        json: async () =>
+          url.endsWith("/generate-screenshot-upload-url")
+            ? {
+                ...SIGNED_SCREENSHOT,
+                publicUrl: "http://storage.test/not-https.png",
+              }
+            : { uploadUrl: "https://upload.test/signed", filename: "abc.json" },
+      })),
     );
 
     await openForm();

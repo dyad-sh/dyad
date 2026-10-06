@@ -123,6 +123,18 @@ describe("upload handlers", () => {
     await expect(running).resolves.toEqual({ uploaded: true });
   });
 
+  it("still throws when storage rejects a session upload", async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 403,
+      statusText: "Forbidden",
+    });
+
+    await expect(
+      upload(event, { ...params, uploadId: freshId() }),
+    ).rejects.toThrow("Upload failed with status 403: Forbidden");
+  });
+
   it("says so when there is nothing left to cancel", async () => {
     expect(await cancel(event, { uploadId: "gone" })).toEqual({
       cancelled: false,
@@ -223,9 +235,19 @@ describe("screenshot upload", () => {
       statusText: "Forbidden",
     });
 
-    await expect(
-      uploadScreenshot(event, { ...signed, captureId, uploadId: freshId() }),
-    ).rejects.toThrow("Upload failed with status 403");
+    // Reported as a result, not thrown: the caller falls back on it, and a
+    // thrown error would be logged as an app fault.
+    expect(
+      await uploadScreenshot(event, {
+        ...signed,
+        captureId,
+        uploadId: freshId(),
+      }),
+    ).toEqual({
+      uploaded: false,
+      reason: "rejected",
+      detail: "Upload failed with status 403: Forbidden",
+    });
     expect(getCapture(captureId)).toBeDefined();
   });
 
@@ -289,15 +311,15 @@ describe("screenshot upload", () => {
         uploadId: freshId(),
       });
       await inFlight;
+      await vi.advanceTimersByTimeAsync(2 * 60 * 1000);
+
       // A failure, not a cancel: the renderer falls back to the clipboard
       // rather than treating a stalled transfer as the reporter's choice.
-      // Listened for before the clock moves, or the rejection lands with no
-      // handler attached and vitest reports it as unhandled.
-      const outcome = expect(running).rejects.toThrow(
-        "Upload timed out after 120s",
-      );
-      await vi.advanceTimersByTimeAsync(2 * 60 * 1000);
-      await outcome;
+      expect(await running).toEqual({
+        uploaded: false,
+        reason: "timeout",
+        detail: "Upload timed out after 120s",
+      });
       expect(getSignal()?.aborted).toBe(true);
       expect(getCapture(captureId)).toBeDefined();
     } finally {
@@ -329,6 +351,21 @@ describe("screenshot upload", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("reports a dropped connection as a result too", async () => {
+    const captureId = freshId();
+    retainCapture(captureId, fakeCapture());
+    fetchMock.mockRejectedValue(new Error("socket hang up"));
+
+    expect(
+      await uploadScreenshot(event, {
+        ...signed,
+        captureId,
+        uploadId: freshId(),
+      }),
+    ).toEqual({ uploaded: false, reason: "network", detail: "socket hang up" });
+    expect(getCapture(captureId)).toBeDefined();
   });
 
   it("can be cancelled like a session upload", async () => {

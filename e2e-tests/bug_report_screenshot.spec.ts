@@ -121,7 +121,7 @@ test("file a bug report with nothing attached", async ({ po }) => {
   expect(body).not.toContain("Session ID");
 });
 
-test("report a bug with a chat session and a screenshot", async ({ po }) => {
+test("report a bug with a screenshot", async ({ po }) => {
   await po.setUp({ autoApprove: true });
   await po.sendPrompt("tc=write-index");
   await recordIssueUrls(po.electronApp);

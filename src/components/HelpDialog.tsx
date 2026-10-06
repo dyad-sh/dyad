@@ -679,6 +679,13 @@ export function HelpDialog() {
           "too-large",
           "The screenshot is larger than the upload service allows",
         );
+      case "timeout":
+      case "rejected":
+      case "network":
+        throw new ScreenshotUploadError(
+          "put-failed",
+          result.detail ?? "The screenshot upload did not complete",
+        );
       default:
         throw new ScreenshotUploadError("cancelled", "Upload was cancelled");
     }

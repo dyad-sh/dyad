@@ -2062,6 +2062,27 @@ describe("HelpDialog screenshot", () => {
     );
   });
 
+  it("falls back to the clipboard when storage rejects the upload", async () => {
+    mocks.uploadScreenshot.mockResolvedValue({
+      uploaded: false,
+      reason: "rejected",
+      detail: "Upload failed with status 403: Forbidden",
+    });
+
+    await openForm();
+    await addScreenshot();
+    await fileIt();
+
+    expect(mocks.recopyScreenshot).toHaveBeenCalled();
+    expect(bodyOfOpenedIssue()).toContain(
+      "captured (upload failed: Upload failed with status 403: Forbidden; ",
+    );
+    expect(posthogClient.capture).toHaveBeenCalledWith(
+      "screenshot-prompt:upload-failed",
+      { source: "report-bug", failure: "put-failed" },
+    );
+  });
+
   it("falls back when main no longer holds the capture, and says so if that fails too", async () => {
     mocks.uploadScreenshot.mockResolvedValue({
       uploaded: false,

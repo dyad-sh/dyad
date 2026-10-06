@@ -44,6 +44,11 @@ function assertSignedUrl(url: unknown): asserts url is string {
  */
 const SIGNED_HEADER = /^(content-type|x-goog-[a-z0-9-]+)$/i;
 
+/** The PUT outlived its time limit. */
+class UploadTimeoutError extends Error {}
+/** Storage answered the PUT with an error status. */
+class UploadRejectedError extends Error {}
+
 /** In-flight uploads, so a report that is abandoned can stop sending. */
 const uploads = new Map<string, AbortController>();
 
@@ -98,7 +103,9 @@ async function putToSignedUrl({
     });
   } catch (error) {
     if (timedOut) {
-      throw new Error(`Upload timed out after ${timeoutMs! / 1000}s`);
+      throw new UploadTimeoutError(
+        `Upload timed out after ${timeoutMs! / 1000}s`,
+      );
     }
     // A reporter backing out is an outcome, not a fault. Rethrowing would
     // publish an AbortError to the exception telemetry, so the more often
@@ -115,7 +122,7 @@ async function putToSignedUrl({
   }
 
   if (!response.ok) {
-    throw new Error(
+    throw new UploadRejectedError(
       `Upload failed with status ${response.status}: ${response.statusText}`,
     );
   }
@@ -186,13 +193,30 @@ export function registerUploadHandlers() {
       return { uploaded: false, reason: "too-large" as const };
     }
 
-    const result = await putToSignedUrl({
-      url,
-      headers: forwarded,
-      body: png,
-      uploadId,
-      timeoutMs: SCREENSHOT_PUT_TIMEOUT_MS,
-    });
+    let result;
+    try {
+      result = await putToSignedUrl({
+        url,
+        headers: forwarded,
+        body: png,
+        uploadId,
+        timeoutMs: SCREENSHOT_PUT_TIMEOUT_MS,
+      });
+    } catch (error) {
+      // A PUT that does not complete is an outcome the caller handles by
+      // falling back to the clipboard, and counts itself. Returned rather
+      // than thrown, so it is not also reported as an app fault. The capture
+      // stays, for that fallback.
+      const reason =
+        error instanceof UploadTimeoutError
+          ? ("timeout" as const)
+          : error instanceof UploadRejectedError
+            ? ("rejected" as const)
+            : ("network" as const);
+      const detail = error instanceof Error ? error.message : String(error);
+      logger.warn(`Screenshot upload did not complete (${reason}): ${detail}`);
+      return { uploaded: false, reason, detail };
+    }
     if (result.uploaded) {
       // The image is in the bucket now; nothing will paste it. Kept on a
       // failure, so the clipboard fallback still has something to restore.

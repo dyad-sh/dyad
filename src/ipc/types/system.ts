@@ -440,8 +440,23 @@ export const systemContracts = {
        * fault. "missing" means main no longer holds the capture. "too-large"
        * means the PNG is over the size the signed URL allows, which the
        * service would reject anyway -- checked here so nothing is sent.
+       * "timeout", "rejected" (storage answered with an error) and "network"
+       * are the PUT not completing. The caller falls back on all of them, so
+       * they are returned rather than thrown: a thrown error would be
+       * reported as an app fault.
        */
-      reason: z.enum(["cancelled", "missing", "too-large"]).optional(),
+      reason: z
+        .enum([
+          "cancelled",
+          "missing",
+          "too-large",
+          "timeout",
+          "rejected",
+          "network",
+        ])
+        .optional(),
+      /** What went wrong with the PUT, for the issue body. */
+      detail: z.string().optional(),
     }),
   }),
 

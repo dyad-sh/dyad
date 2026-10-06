@@ -1873,6 +1873,15 @@ describe("HelpDialog screenshot", () => {
       release({ uploaded: true });
     });
     expect(mocks.openExternalUrl).not.toHaveBeenCalled();
+    // It did upload, so it is counted now: the resubmit below reuses the
+    // URL and sends no event of its own.
+    const uploadedEvents = () =>
+      posthogClient.capture.mock.calls.filter(
+        (call) => call[0] === "screenshot-prompt:uploaded",
+      );
+    expect(uploadedEvents()).toEqual([
+      ["screenshot-prompt:uploaded", { source: "report-bug" }],
+    ]);
 
     fireEvent.click(screen.getByText("reopen-help"));
     expect(
@@ -1882,6 +1891,7 @@ describe("HelpDialog screenshot", () => {
     await fileIt();
 
     expect(mocks.uploadScreenshot).toHaveBeenCalledTimes(1);
+    expect(uploadedEvents()).toHaveLength(1);
     expect(bodyOfOpenedIssue()).toContain(
       `![${SCREENSHOT_ALT}](${SIGNED_SCREENSHOT.publicUrl})`,
     );

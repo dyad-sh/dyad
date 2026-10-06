@@ -941,9 +941,10 @@ export function HelpDialog() {
       // Already in the bucket from an earlier attempt at this report.
       outgoingScreenshot = { status: "uploaded", url: reusable.url };
     } else if (outgoingScreenshot.status === "captured" && report.captureId) {
-      posthog.capture("screenshot-prompt:upload-attempt", {
-        source: reportSource.current,
-      });
+      // Read once, so the attempt and its outcome carry the same source even
+      // if another report has started by the time the upload settles.
+      const source = reportSource.current;
+      posthog.capture("screenshot-prompt:upload-attempt", { source });
       try {
         const url = await uploadScreenshot(report.captureId, token);
         // Main dropped the capture once it was in the bucket, so the URL is
@@ -955,20 +956,17 @@ export function HelpDialog() {
         if (mounted.current && displayedCapture.current === report.captureId) {
           uploadedScreenshot.current = { captureId: report.captureId, url };
         }
+        // Counted before the check below: the upload happened even if this
+        // filing was abandoned, and a resubmit that reuses it sends no event.
+        posthog.capture("screenshot-prompt:uploaded", { source });
         if (captureToken.current !== token) return;
         outgoingScreenshot = { status: "uploaded", url };
-        posthog.capture("screenshot-prompt:uploaded", {
-          source: reportSource.current,
-        });
       } catch (error) {
         console.error("Failed to upload the screenshot:", error);
         if (captureToken.current !== token) return;
         const failure =
           error instanceof ScreenshotUploadError ? error.failure : "other";
-        posthog.capture("screenshot-prompt:upload-failed", {
-          source: reportSource.current,
-          failure,
-        });
+        posthog.capture("screenshot-prompt:upload-failed", { source, failure });
         // The clipboard path below takes over. Recorded in the issue, so a
         // maintainer can see why this one had to be pasted -- and so the
         // fallback rate can be counted.

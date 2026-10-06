@@ -102,6 +102,18 @@ type ScreenshotUploadFailure =
   | "too-large"
   | "cancelled";
 
+/** The headers the upload service wants sent, or null if any is not a string. */
+function signedHeadersFrom(value: unknown): Record<string, string> | null {
+  if (value == null) return {};
+  if (typeof value !== "object" || Array.isArray(value)) return null;
+  const headers: Record<string, string> = {};
+  for (const [name, header] of Object.entries(value)) {
+    if (typeof header !== "string") return null;
+    headers[name] = header;
+  }
+  return headers;
+}
+
 class ScreenshotUploadError extends Error {
   constructor(
     readonly failure: ScreenshotUploadFailure,
@@ -629,10 +641,13 @@ export function HelpDialog() {
         "Upload service returned an unusable screenshot URL",
       );
     }
-    const headers =
-      minted.requiredHeaders && typeof minted.requiredHeaders === "object"
-        ? (minted.requiredHeaders as Record<string, string>)
-        : {};
+    const headers = signedHeadersFrom(minted.requiredHeaders);
+    if (!headers) {
+      throw new ScreenshotUploadError(
+        "mint-failed",
+        "Upload service returned unusable upload headers",
+      );
+    }
 
     const uploadId = crypto.randomUUID();
     activeUpload.current = uploadId;
@@ -917,6 +932,7 @@ export function HelpDialog() {
     // Send the capture to the screenshot bucket, so the issue embeds it and
     // there is nothing to paste. The reporter saw the image on the form and
     // kept it there; this is the moment it becomes public.
+    let uploadFailed = false;
     const reusable = uploadedScreenshot.current;
     if (
       outgoingScreenshot.status === "captured" &&
@@ -960,7 +976,7 @@ export function HelpDialog() {
           status: "captured",
           uploadError: error instanceof Error ? error.message : String(error),
         };
-        tellReporter(t("home:report.screenshotUploadFailed"));
+        uploadFailed = true;
       }
     }
 
@@ -981,6 +997,10 @@ export function HelpDialog() {
         console.error("Failed to copy the screenshot:", error);
       }
       if (copied) {
+        // Said only now that the clipboard really holds the image.
+        if (uploadFailed) {
+          tellReporter(t("home:report.screenshotUploadFailed"));
+        }
         // Only the report that made this restore may remember it, for the
         // same reason as `uploadedSession`: a report the reporter walked away
         // from must not leave a cache saying the image is on the clipboard.

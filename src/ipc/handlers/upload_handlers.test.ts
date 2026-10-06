@@ -257,6 +257,25 @@ describe("screenshot upload", () => {
     expect(getCapture(captureId)).toBeDefined();
   });
 
+  it("checks the size bound whatever the header's capitalisation", async () => {
+    const captureId = freshId();
+    retainCapture(captureId, fakeCapture(2048));
+
+    expect(
+      await uploadScreenshot(event, {
+        url: signed.url,
+        headers: {
+          "Content-Type": "image/png",
+          "X-Goog-Custom-Time": "2026-09-23T22:33:26.077Z",
+          "X-Goog-Content-Length-Range": "0,1024",
+        },
+        captureId,
+        uploadId: freshId(),
+      }),
+    ).toEqual({ uploaded: false, reason: "too-large" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("gives up on a PUT that outlives the signed URL, keeping the capture", async () => {
     vi.useFakeTimers();
     try {

@@ -2062,9 +2062,49 @@ describe("HelpDialog screenshot", () => {
     const body = bodyOfOpenedIssue();
     expect(body).toContain("Screenshot status: capture-failed");
     expect(body).not.toContain("Screenshot status: captured");
+    // One message, and not the one promising a clipboard that is empty.
+    expect(mocks.showError).toHaveBeenCalledWith(
+      "Your screenshot could not be restored. Filing the report without it.",
+    );
+    expect(mocks.showError).not.toHaveBeenCalledWith(
+      "Your screenshot could not be attached. Dyad will put it on your clipboard so you can paste it into the issue instead.",
+    );
     expect(posthogClient.capture).toHaveBeenCalledWith(
       "screenshot-prompt:upload-failed",
       { source: "report-bug", failure: "capture-missing" },
+    );
+  });
+
+  it("treats upload headers that are not strings as a failed mint", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(async (url: string) => ({
+        ok: true,
+        status: 200,
+        json: async () =>
+          url.endsWith("/generate-screenshot-upload-url")
+            ? {
+                ...SIGNED_SCREENSHOT,
+                requiredHeaders: {
+                  "Content-Type": "image/png",
+                  "x-goog-content-length-range": 10485760,
+                },
+              }
+            : { uploadUrl: "https://upload.test/signed", filename: "abc.json" },
+      })),
+    );
+
+    await openForm();
+    await addScreenshot();
+    await fileIt();
+
+    // Caught where the service's answer is checked, so it is counted as the
+    // service's fault and nothing is handed to main.
+    expect(mocks.uploadScreenshot).not.toHaveBeenCalled();
+    expect(mocks.recopyScreenshot).toHaveBeenCalled();
+    expect(posthogClient.capture).toHaveBeenCalledWith(
+      "screenshot-prompt:upload-failed",
+      { source: "report-bug", failure: "mint-failed" },
     );
   });
 

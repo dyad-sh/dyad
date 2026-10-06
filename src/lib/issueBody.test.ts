@@ -565,6 +565,8 @@ describe("isEmbeddableScreenshotUrl", () => {
     expect(isEmbeddableScreenshotUrl("https://h.test/a.png)")).toBe(false);
     expect(isEmbeddableScreenshotUrl("https://h.test/a.png) text")).toBe(false);
     expect(isEmbeddableScreenshotUrl("https://h.test/<a>.png")).toBe(false);
+    // A backslash escapes the closing parenthesis of the markdown image.
+    expect(isEmbeddableScreenshotUrl("https://h.test/a.png\\")).toBe(false);
   });
 
   it("refuses a URL the size budget was not pinned against", () => {

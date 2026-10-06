@@ -113,7 +113,7 @@ export function isEmbeddableScreenshotUrl(url: unknown): url is string {
       parsed.protocol === "https:" &&
       // Nothing that would end the markdown link early or smuggle text past
       // it; a real object URL has none of these.
-      !/[\s()<>[\]]/.test(url)
+      !/[\s()<>[\]\\]/.test(url)
     );
   } catch {
     return false;

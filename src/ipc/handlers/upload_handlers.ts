@@ -124,7 +124,11 @@ async function putToSignedUrl({
 
 /** Upper bound of an `x-goog-content-length-range: min,max` header, if set. */
 function maxBytesAllowed(headers: Record<string, string>): number | null {
-  const range = headers["x-goog-content-length-range"];
+  // Header names are case-insensitive, and the forwarding filter treats
+  // them that way.
+  const range = Object.entries(headers).find(
+    ([name]) => name.toLowerCase() === "x-goog-content-length-range",
+  )?.[1];
   if (!range) return null;
   const max = Number(range.split(",")[1]);
   return Number.isFinite(max) ? max : null;

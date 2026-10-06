@@ -100,7 +100,9 @@ type ScreenshotUploadFailure =
   | "put-failed"
   | "capture-missing"
   | "too-large"
-  | "cancelled";
+  | "cancelled"
+  // Anything that is not one of the above.
+  | "other";
 
 /** The headers the upload service wants sent, or null if any is not a string. */
 function signedHeadersFrom(value: unknown): Record<string, string> | null {
@@ -971,7 +973,7 @@ export function HelpDialog() {
       } catch (error) {
         console.error("Failed to upload the screenshot:", error);
         if (captureToken.current !== token) return;
-        const failure =
+        const failure: ScreenshotUploadFailure =
           error instanceof ScreenshotUploadError ? error.failure : "other";
         posthog.capture("screenshot-prompt:upload-failed", { source, failure });
         // The clipboard path below takes over. Recorded in the issue, so a

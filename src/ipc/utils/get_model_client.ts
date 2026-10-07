@@ -386,7 +386,7 @@ export async function getModelClient(
       };
     } else {
       throw new DyadError(
-        "This provider is not available through Pro credits. Select Your API keys & local in the Pro menu.",
+        "This provider is not available through Pro credits. Select Your API keys in the Pro menu.",
         DyadErrorKind.Validation,
       );
     }

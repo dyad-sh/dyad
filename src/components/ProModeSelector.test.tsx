@@ -61,7 +61,7 @@ it("defaults to subscription when connected and writes a global preference", asy
   expect(
     screen.getByRole("button", { name: "ChatGPT Subscription" }),
   ).toHaveAttribute("aria-pressed", "true");
-  await user.click(screen.getByRole("button", { name: "Pro credits" }));
+  await user.click(screen.getByRole("button", { name: "Dyad Pro credits" }));
   expect(mocks.update).toHaveBeenCalledWith({ proModelUsage: "pro" });
 });
 it("disables subscription when disconnected", async () => {
@@ -72,21 +72,20 @@ it("disables subscription when disconnected", async () => {
   expect(
     screen.getByRole("button", { name: "ChatGPT Subscription" }),
   ).toBeDisabled();
-  expect(screen.getByRole("button", { name: "Pro credits" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
+  expect(
+    screen.getByRole("button", { name: "Dyad Pro credits" }),
+  ).toHaveAttribute("aria-pressed", "true");
 });
 
 it.each(["click", "keyboard"])(
-  "persists Pro credits from a disconnected subscription preference via %s",
+  "persists Dyad Pro credits from a disconnected subscription preference via %s",
   async (method) => {
     mocks.connected = false;
     mocks.usage = "subscription";
     const user = userEvent.setup();
     render(<ProModeSelector />);
     await user.click(screen.getByRole("button", { name: "Pro" }));
-    const credits = screen.getByRole("button", { name: "Pro credits" });
+    const credits = screen.getByRole("button", { name: "Dyad Pro credits" });
     expect(credits).toHaveAttribute("aria-pressed", "true");
     if (method === "click") await user.click(credits);
     else {
@@ -104,16 +103,14 @@ it("selects BYO without requiring keys or changing the selected model", async ()
   const user = userEvent.setup();
   render(<ProModeSelector />);
   await user.click(screen.getByRole("button", { name: "Pro" }));
-  await user.click(
-    screen.getByRole("button", { name: "Your API keys & local" }),
-  );
+  await user.click(screen.getByRole("button", { name: "Your API keys" }));
   expect(mocks.update).toHaveBeenCalledExactlyOnceWith({
     proModelUsage: "api-key",
   });
 });
 
 it.each([true, false])(
-  "keeps BYO selected with subscription connected=%s and explains billing",
+  "keeps BYO selected with subscription connected=%s without billing copy",
   async (connected) => {
     mocks.connected = connected;
     mocks.usage = "api-key";
@@ -121,13 +118,15 @@ it.each([true, false])(
     render(<ProModeSelector />);
     await user.click(screen.getByRole("button", { name: "Pro" }));
     expect(
-      screen.getByRole("button", { name: "Your API keys & local" }),
+      screen.getByRole("button", { name: "Your API keys" }),
     ).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByText(/Provider charges apply separately/)).toBeVisible();
     expect(
-      screen.getByText(/Pro helper tasks use cloud models through Dyad/),
-    ).toBeVisible();
-    await user.click(screen.getByRole("button", { name: "Pro credits" }));
+      screen.queryByText(/Provider charges apply separately/),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/Pro helper tasks use cloud models through Dyad/),
+    ).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Dyad Pro credits" }));
     expect(mocks.update).toHaveBeenCalledExactlyOnceWith({
       proModelUsage: "pro",
     });
@@ -146,9 +145,11 @@ it.each(["chatgpt", "claude"])(
     render(<ProModeSelector />);
     await user.click(screen.getByRole("button", { name: "Pro" }));
     expect(
-      screen.getByRole("button", { name: "Your API keys & local" }),
+      screen.getByRole("button", { name: "Your API keys" }),
     ).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("button", { name: "Pro credits" })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Dyad Pro credits" }),
+    ).toBeDisabled();
     expect(
       screen.getByRole("switch", { name: "Enable Dyad Pro" }),
     ).toHaveAttribute("aria-disabled", "true");

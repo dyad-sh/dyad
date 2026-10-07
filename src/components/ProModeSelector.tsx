@@ -55,7 +55,7 @@ export function ProModeSelector() {
         </TooltipTrigger>
         <TooltipContent>Configure Dyad Pro settings</TooltipContent>
       </Tooltip>
-      <PopoverContent className="w-80 border-primary/20">
+      <PopoverContent className="w-[26rem] max-w-[calc(100vw-2rem)] border-primary/20">
         <div className="space-y-4">
           <div className="space-y-1">
             <h4 className="font-medium flex items-center gap-1.5">
@@ -84,8 +84,8 @@ export function ProModeSelector() {
                 aria-label="Model usage"
                 variant="outline"
                 size="sm"
-                orientation="vertical"
-                className="w-full flex-col items-stretch gap-1 [&>button]:rounded-md [&>button]:border [&>button]:flex-none"
+                orientation="horizontal"
+                className="w-full items-stretch [&>button]:h-auto [&>button]:min-h-8 [&>button]:flex-auto [&>button]:whitespace-normal [&>button]:py-1"
                 value={[
                   settings?.proModelUsage === "api-key"
                     ? "api-key"
@@ -132,21 +132,12 @@ export function ProModeSelector() {
                       void updateSettings({ proModelUsage: "pro" });
                   }}
                 >
-                  Pro credits
+                  Dyad Pro credits
                 </ToggleGroupItem>
                 <ToggleGroupItem value="api-key" className="text-xs">
-                  Your API keys & local
+                  Your API keys
                 </ToggleGroupItem>
               </ToggleGroup>
-              {settings?.proModelUsage === "api-key" && (
-                <p className="text-xs text-muted-foreground">
-                  Provider charges apply separately. While Dyad Pro is on, each
-                  main-chat request also uses Dyad credits (lower rate for local
-                  models). Pro helper tasks use cloud models through Dyad and
-                  consume Pro credits at normal model rates, even with local
-                  chat models.
-                </p>
-              )}
             </div>
           )}
           <SelectorRow

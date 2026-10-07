@@ -57,7 +57,7 @@ describe("classifyMcpToolConsent", () => {
     };
     await classifyMcpToolConsent({ ...baseInput, settings: settings as any });
     expect(mocks.getModelClient).toHaveBeenCalledWith(
-      { provider: "openai", name: SMALL_MODEL_NAME },
+      { provider: "openai", name: "gpt-6-luna" },
       { ...settings, proModelUsage: "pro" },
     );
   });

@@ -524,8 +524,8 @@ export interface RunAppTestsCoreOptions {
   onOutput?: (chunk: string, phase: "setup" | "running") => void;
   /**
    * Extra env vars merged into the Playwright runner (e.g. Supabase test-user
-   * credentials the generated test signs in with). Never contains privileged
-   * keys.
+   * credentials and the admin key for Node-only fixture setup). Never forward
+   * these to the dev server, dependency installs, or renderer.
    */
   testEnv?: Record<string, string>;
   /**
@@ -1817,7 +1817,10 @@ async function runTestsAgainstNormalPreview({
             signal,
             timeoutMs,
             onOutput: emit,
-            testEnv: prepared.testCredentials,
+            testEnv: {
+              ...prepared.testCredentials,
+              ...prepared.testRunnerEnv,
+            },
           },
         });
         return { ...result, isolation };
@@ -2703,7 +2706,7 @@ async function executeAppTestsWithIsolation(
             }
             if (isolationMode === "supabase-test-user") {
               emit(
-                "The test workspace keeps public Supabase client settings for the test user. Service-role and direct database credentials are removed.\n",
+                "The test workspace keeps public Supabase client settings. Privileged credentials are removed from its files; Node test fixtures receive the connected project's admin key for custom setup and cleanup.\n",
                 "setup",
               );
             }
@@ -2839,7 +2842,10 @@ async function executeAppTestsWithIsolation(
               signal,
               timeoutMs,
               onOutput: emit,
-              testEnv: prepared.testCredentials,
+              testEnv: {
+                ...prepared.testCredentials,
+                ...prepared.testRunnerEnv,
+              },
             },
           });
 

@@ -9,11 +9,14 @@ import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
 import { fetchWithRetry } from "@/ipc/utils/retryWithRateLimit";
 import { retryTestDatabaseCleanup } from "./test_database_cleanup_retry";
 import { appOperationCoordinator } from "@/ipc/services/app_operation_coordinator";
+import { executeSupabaseSql } from "../../supabase_admin/supabase_management_client";
+
 import {
-  executeSupabaseSql,
-  getProjectApiKeys,
-  type SupabaseApiKey,
-} from "../../supabase_admin/supabase_management_client";
+  getSupabaseAdminKey,
+  type AdminKey,
+} from "../../supabase_admin/supabase_admin_key";
+
+export type { AdminKey } from "../../supabase_admin/supabase_admin_key";
 
 const logger = log.scope("supabase_test_user");
 
@@ -57,94 +60,12 @@ function projectUrlFor(ref: string): string {
   return `https://${ref}.supabase.co`;
 }
 
-// Prefix of a new-format secret key. Preferring it keeps us on a value we know
-// Supabase actually revealed — a redacted key keeps the shape of one but can't
-// authenticate.
-const SECRET_KEY_PREFIX = "sb_secret_";
-
 /**
- * Pick the key to authenticate Auth Admin calls with, newest format first.
- *
- * Deliberately NOT one `find` with an OR across the formats: Supabase doesn't
- * document the ordering of `/api-keys`, and it keeps listing the legacy
- * `anon`/`service_role` pair after they've been disabled in the dashboard. A
- * predicate that treats a legacy key as an equal alternative therefore lets a
- * DISABLED key win on position, and every admin call 401s with "Legacy API keys
- * are disabled". The legacy tier stays last so projects that never migrated
- * keep working.
- *
- * The top tier keys off the VALUE, not `type`. `type` is optional on the
- * Management API response, so requiring both would drop a perfectly good
- * `sb_secret_…` key from a project that omits the field straight down to the
- * legacy tier — silently un-migrating it. The prefix alone already proves the
- * format; `type` only breaks ties below it.
+ * Test setup uses the shared main-process key fetcher. Only the Playwright
+ * runner receives the admin key for Node fixtures; sandbox installs and app
+ * servers receive public keys and temporary user credentials only.
  */
-function pickSecretKey(
-  keys: readonly SupabaseApiKey[],
-): SupabaseApiKey | undefined {
-  return (
-    keys.find((key) => key.api_key?.startsWith(SECRET_KEY_PREFIX)) ??
-    keys.find((key) => key.type === "secret") ??
-    keys.find((key) => key.name === "service_role")
-  );
-}
-
-/**
- * The key the Auth Admin calls authenticate with, and which format it is.
- * The format decides the headers it may be sent on (see `adminHeaders`).
- */
-export interface AdminKey {
-  apiKey: string;
-  /**
-   * True for the legacy `service_role` JWT, false for a new-format
-   * (`sb_secret_…`) key. Classified from the key's own value: a JWT can never
-   * carry the `sb_secret_` prefix, so the prefix decides this on its own.
-   * Consulting `type` as well could only add false negatives — a legacy JWT
-   * that Supabase happened to label `secret` would lose its `Authorization`
-   * header and fail every Auth Admin call.
-   */
-  isLegacyJwt: boolean;
-}
-
-/**
- * Fetch a project's secret (`sb_secret_…`, formerly `service_role`) key. Used
- * ONLY by the main process for test-user setup/teardown — it must NEVER be
- * injected into the app under test (which runs with the publishable key).
- */
-export async function getServiceRoleKey({
-  projectId,
-  organizationSlug,
-}: {
-  projectId: string;
-  organizationSlug: string;
-}): Promise<AdminKey> {
-  if (IS_TEST_BUILD)
-    return { apiKey: "fake-test-admin-key", isLegacyJwt: false };
-  // reveal: without it Supabase redacts secret key values, which would leave
-  // the legacy service_role JWT as the only usable key on the project.
-  const keys = await getProjectApiKeys({
-    projectId,
-    organizationSlug,
-    reveal: true,
-  });
-  if (!keys?.length) {
-    throw new DyadError(
-      `No API keys found for Supabase project ${projectId}.`,
-      DyadErrorKind.NotFound,
-    );
-  }
-  const secret = pickSecretKey(keys);
-  if (!secret?.api_key) {
-    throw new DyadError(
-      `No secret key (or legacy service_role key) found for Supabase project ${projectId}. An isolated test user can't be created without one — create a secret key in Supabase under Settings → API Keys.`,
-      DyadErrorKind.NotFound,
-    );
-  }
-  return {
-    apiKey: secret.api_key,
-    isLegacyJwt: !secret.api_key.startsWith(SECRET_KEY_PREFIX),
-  };
-}
+export const getServiceRoleKey = getSupabaseAdminKey;
 
 /**
  * Authorization headers for the project's Auth Admin REST API.

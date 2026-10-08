@@ -22,7 +22,8 @@ export const TEST_CASE_FIXTURE_TIMEOUT_MS =
 
 /**
  * Run-scoped bridge from Playwright's auto fixture to main-owned provider hooks.
- * Privileged database/admin credentials never enter the Playwright process.
+ * This bridge returns only temporary user credentials. Supabase admin access
+ * for Node fixtures is injected separately into the Playwright environment.
  * The caller holds the app's provider/runtime claims until close() has drained.
  */
 export async function startTestCaseLifecycleServer(

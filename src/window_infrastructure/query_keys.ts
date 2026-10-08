@@ -30,7 +30,10 @@ export function queryKeysForInvalidationScope(
     case "codex-subscription":
       return [queryKeys.settings.codexSubscription];
     case "app":
-      return [queryKeys.apps.detail({ appId: scope.appId })];
+      return [
+        queryKeys.apps.detail({ appId: scope.appId }),
+        queryKeys.appEnvVars.byApp({ appId: scope.appId }),
+      ];
     case "coolify":
       return [
         scope.appId === undefined

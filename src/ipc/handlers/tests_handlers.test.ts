@@ -359,6 +359,87 @@ describe("tests handlers", () => {
   }
 
   describe("tests:run", () => {
+    it.each([false, true])(
+      "injects Supabase fixture credentials only into the runner (normal preview: %s)",
+      async (disableSandboxedE2eTests) => {
+        readSettingsMock.mockReturnValue({
+          ...DEFAULT_SETTINGS,
+          disableSandboxedE2eTests,
+        });
+        const appId = seedApp("app");
+        harness.db
+          .update(apps)
+          .set({ testingEnabled: true, supabaseProjectId: "sb-proj" })
+          .where(eq(apps.id, appId))
+          .run();
+        const testRunnerEnv = {
+          SUPABASE_SECRET_KEY: "sb_secret_fixture-test-key",
+          SUPABASE_URL: "https://sb-proj.supabase.co",
+        };
+        prepareIsolatedTestDatabaseMock.mockResolvedValue({
+          isolation: { mode: "supabase-test-user" },
+          testRunnerEnv,
+          testCaseLifecycle: { beforeEach: vi.fn(), afterEach: vi.fn() },
+          teardown: vi.fn().mockResolvedValue({
+            envRestored: true,
+            remoteCleanupCompleted: true,
+          }),
+        });
+        ensurePlaywrightBootstrapMock.mockResolvedValue({
+          installed: false,
+          previewRouted: true,
+        });
+        startTestCaseLifecycleServerMock.mockResolvedValue({
+          env: {
+            DYAD_TEST_CASE_ENDPOINT: "http://127.0.0.1:12345",
+            DYAD_TEST_CASE_TOKEN: "case-token",
+          },
+          close: vi.fn().mockResolvedValue(undefined),
+        });
+        runningApps.set(appId, { proxyUrl: "http://localhost:42100" } as any);
+        vi.stubEnv("SUPABASE_SECRET_KEY", "unrelated-inherited-key");
+        vi.stubEnv("SUPABASE_URL", "https://unrelated.supabase.co");
+        try {
+          const result = await runAppTestsWithIsolation({
+            event: { sender: {} } as any,
+            appId,
+            source: "panel",
+          });
+
+          expect(spawnStreamingMock).toHaveBeenCalledOnce();
+          expect(spawnStreamingMock.mock.calls[0][0].env).toMatchObject({
+            ...testRunnerEnv,
+            DYAD_TEST_CASE_TOKEN: "case-token",
+          });
+          // Injection must not mutate the main process's environment or enter
+          // install/server options, renderer events, results, or telemetry.
+          expect(process.env.SUPABASE_SECRET_KEY).toBe(
+            "unrelated-inherited-key",
+          );
+          for (const value of [
+            installE2eTestWorkspaceDependenciesMock.mock.calls,
+            startE2eTestRuntimeMock.mock.calls,
+            broadcastToRegisteredWindowsMock.mock.calls,
+            sendTelemetryEventMock.mock.calls,
+            result,
+          ]) {
+            expect(JSON.stringify(value)).not.toContain(
+              testRunnerEnv.SUPABASE_SECRET_KEY,
+            );
+          }
+          if (!disableSandboxedE2eTests) {
+            expect(
+              installE2eTestWorkspaceDependenciesMock,
+            ).toHaveBeenCalledOnce();
+            expect(startE2eTestRuntimeMock).toHaveBeenCalledOnce();
+          }
+        } finally {
+          runningApps.delete(appId);
+          vi.unstubAllEnvs();
+        }
+      },
+    );
+
     it.each([
       { outcome: "cancelled", message: "Test run stopped." },
       {

@@ -223,6 +223,39 @@ describe("per-case database isolation", () => {
       perTestCase: true,
     });
 
+  it.each([
+    { apiKey: "sb_secret_fixture-key", isLegacyJwt: false },
+    { apiKey: "legacy-service-role-key", isLegacyJwt: true },
+  ])("supplies $apiKey only in the Node runner environment", async (key) => {
+    mocks.getServiceRoleKey.mockResolvedValueOnce(key);
+    const prepared = await prepareSupabase();
+
+    expect(prepared.testRunnerEnv).toEqual({
+      SUPABASE_SECRET_KEY: key.apiKey,
+      SUPABASE_URL: "https://project.supabase.co",
+    });
+    expect(mocks.getServiceRoleKey).toHaveBeenCalledWith({
+      projectId: "project",
+      organizationSlug: "org",
+    });
+    expect(prepared.testCredentials).toBeUndefined();
+    expect(prepared.authSetup).toBeUndefined();
+    const credentials = await prepared.testCaseLifecycle!.beforeEach();
+    expect(credentials).not.toHaveProperty("SUPABASE_SECRET_KEY");
+    expect(JSON.stringify(emit.mock.calls)).not.toContain(key.apiKey);
+    await prepared.teardown();
+  });
+
+  it("does not expose runner credentials when Supabase preparation fails", async () => {
+    mocks.getServiceRoleKey.mockRejectedValueOnce(new Error("key unavailable"));
+    const prepared = await prepareSupabase();
+
+    expect(prepared.infraError).toBeDefined();
+    expect(prepared.testRunnerEnv).toBeUndefined();
+    expect(prepared.testCaseLifecycle).toBeUndefined();
+    expect(mocks.createTempTestUser).not.toHaveBeenCalled();
+  });
+
   it("creates a new Supabase user before every case and deletes it afterwards", async () => {
     const prepared = await prepareSupabase();
     expect(mocks.createTempTestUser).not.toHaveBeenCalled();
@@ -486,6 +519,7 @@ describe("prepareIsolatedTestDatabase — Supabase test-user path", () => {
     expect(mocks.createTempTestUser).toHaveBeenCalled();
     expect(prepared.isolation.mode).toBe("supabase-test-user");
     expect(prepared.isolation.reason).toBeUndefined();
+    expect(prepared.testRunnerEnv).toBeUndefined();
     expect(prepared.testCredentials).toMatchObject({
       DYAD_TEST_USER_EMAIL: "dyad-test+1@dyad.test",
       DYAD_TEST_USER_PASSWORD: "pw",
@@ -525,6 +559,7 @@ describe("prepareIsolatedTestDatabase — Supabase test-user path", () => {
     expect(prepared.isolation.mode).toBe("none");
     expect(prepared.isolation.reason).toMatch(/Supabase organization/);
     expect(mocks.createTempTestUser).not.toHaveBeenCalled();
+    expect(prepared.testRunnerEnv).toBeUndefined();
   });
 
   it("dead-ends (infraError) when test-user creation fails", async () => {
@@ -552,6 +587,7 @@ describe("prepareIsolatedTestDatabase — non-Neon paths", () => {
       runtimeMode: "host",
     });
     expect(prepared.isolation).toEqual({ mode: "none" });
+    expect(prepared.testRunnerEnv).toBeUndefined();
     expect(prepared.infraError).toBeUndefined();
     expect(prepared.authorizeRuntimeOrigin).toBeUndefined();
   });

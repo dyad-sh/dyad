@@ -117,10 +117,17 @@ export interface PreparedIsolation {
   /**
    * Extra env vars to inject into the test runner (e.g. the isolated test
    * user's credentials the generated test signs in with). Never contains
-   * privileged keys — the service_role key stays in the main process. Recordings
-   * receive these now; test runs receive fresh credentials from beforeEach.
+   * privileged keys. Recordings receive these now; test runs receive fresh
+   * credentials from beforeEach.
    */
   testCredentials?: Record<string, string>;
+  /**
+   * Node test-fixture environment, which can include the connected Supabase
+   * project's admin key. Inject only into Playwright processes, never copied
+   * dotenv files, dependency installs, dev servers, or recorder/browser auth.
+   * Keep this main-only field out of IPC results, logs, and telemetry.
+   */
+  testRunnerEnv?: Record<string, string>;
   /**
    * Credentials + endpoint the recorder uses to sign the preview in before
    * recording. Undefined when the app has no supported auth or provisioning
@@ -609,7 +616,7 @@ async function prepareSupabaseTestUserIsolation({
   }
 
   let testUser: TempTestUser | undefined;
-  // Main-process memory only, shared by all cases and final teardown in this run.
+  // Fetched once per run for lifecycle hooks and Node test-fixture injection.
   let adminKey: AdminKey | undefined;
   // Keep failed deletions tracked. Never overwrite the durable recovery slot
   // by creating the next user while the previous one still exists.
@@ -743,6 +750,12 @@ async function prepareSupabaseTestUserIsolation({
       },
       cleanupProvider: "supabase-test-user",
       testCredentials,
+      testRunnerEnv: adminKey
+        ? {
+            SUPABASE_SECRET_KEY: adminKey.apiKey,
+            SUPABASE_URL: `https://${projectId}.supabase.co`,
+          }
+        : undefined,
       authSetup,
       testCaseLifecycle: perTestCase
         ? {

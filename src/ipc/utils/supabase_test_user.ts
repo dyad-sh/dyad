@@ -10,6 +10,7 @@ import { fetchWithRetry } from "@/ipc/utils/retryWithRateLimit";
 import { retryTestDatabaseCleanup } from "./test_database_cleanup_retry";
 import { appOperationCoordinator } from "@/ipc/services/app_operation_coordinator";
 import { executeSupabaseSql } from "../../supabase_admin/supabase_management_client";
+import { SupabaseTestUserCreationRejectedError } from "./supabase_test_user_errors";
 
 import {
   getSupabaseAdminKey,
@@ -84,6 +85,30 @@ function adminHeaders(key: AdminKey): Record<string, string> {
     ...(key.isLegacyJwt ? { Authorization: `Bearer ${key.apiKey}` } : {}),
     "Content-Type": "application/json",
   };
+}
+
+function isUserCreationDatabaseError(status: number, detail: string): boolean {
+  if (status !== 500) return false;
+  try {
+    const error = JSON.parse(detail);
+    const code = error?.error_code ?? error?.code;
+    if (typeof code !== "string") return false;
+    // Some responses surface PostgreSQL errors from signup triggers directly.
+    // Class 23 is integrity-constraint rejection; P0001 is RAISE EXCEPTION.
+    // Never infer rejection from arbitrary text or other SQLSTATE classes
+    // (e.g. connection failures, cancellation, or unknown commit outcomes).
+    // https://www.postgresql.org/docs/current/errcodes-appendix.html
+    if (/^23[0-9A-Z]{3}$/.test(code) || code === "P0001") return true;
+    // Auth's initial and 2024-01-01 API response formats. This is the admin
+    // create transaction's error, not the generic unexpected_failure code alone.
+    // https://github.com/supabase/auth/blob/master/internal/api/admin.go
+    return (
+      code === "unexpected_failure" &&
+      (error?.msg ?? error?.message) === "Database error creating new user"
+    );
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -198,6 +223,28 @@ export async function createTempTestUser(
         `Supabase rejected the ${adminKey.isLegacyJwt ? "legacy service_role" : "secret"} key Dyad used to create the test user (${response.status}). ${detail}`,
         DyadErrorKind.External,
       );
+    }
+    if (isUserCreationDatabaseError(response.status, detail)) {
+      // A trigger/constraint rejection or Auth's generic database-create error.
+      // Confirm the generated email has no auth row
+      // before permitting custom fixtures to take over. Unknown outcomes and
+      // verification failures must still fail the run.
+      options.signal?.throwIfAborted();
+      const raw = await executeSupabaseSql({
+        supabaseProjectId: projectId,
+        organizationSlug,
+        query: `SELECT EXISTS (SELECT 1 FROM auth.users WHERE email = '${email.replace(/'/g, "''")}') AS user_exists;`,
+        signal: options.signal,
+      });
+      options.signal?.throwIfAborted();
+      const rows = JSON.parse(raw);
+      if (
+        Array.isArray(rows) &&
+        rows.length === 1 &&
+        rows[0]?.user_exists === false
+      ) {
+        throw new SupabaseTestUserCreationRejectedError();
+      }
     }
     throw new DyadError(
       `Supabase rejected the test-user creation (${response.status}). ${detail}`,

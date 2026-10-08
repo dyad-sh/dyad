@@ -229,105 +229,126 @@ describe("test case lifecycle bridge", () => {
     expect(lifecycle.afterEach).toHaveBeenCalledTimes(1);
   });
 
-  it("runs the generated auto fixture around cases in different files and retries", async () => {
-    const directory = fs.mkdtempSync(
-      path.join(os.tmpdir(), "dyad-case-fixture-"),
-    );
-    directories.push(directory);
-    const logFile = path.join(directory, "events.jsonl");
-    const record = (event: string) =>
-      fs.appendFileSync(logFile, JSON.stringify(event) + "\n");
-    let id = 0;
-    const server = await startTestCaseLifecycleServer({
-      beforeEach: async () => {
-        id += 1;
-        record(`create-${id}`);
-        return {
-          DYAD_TEST_USER_EMAIL: String(id),
-          DYAD_TEST_USER_PASSWORD: `password-${id}`,
-        };
-      },
-      afterEach: async () => {
-        record(`cleanup-${id}`);
-      },
-    });
-    servers.push(server);
-    fs.symlinkSync(
-      path.resolve("node_modules"),
-      path.join(directory, "node_modules"),
-      "junction",
-    );
-    fs.mkdirSync(path.join(directory, "e2e-tests"));
-    ensurePreviewShim(directory);
-    fs.writeFileSync(
-      path.join(directory, "playwright.config.cjs"),
-      `module.exports = { testDir: './e2e-tests', workers: 1, retries: 1 };`,
-    );
-    const helpers = `
+  it.each([false, true])(
+    "runs the generated auto fixture across files and retries (default creation rejected: %s)",
+    async (creationRejected) => {
+      const directory = fs.mkdtempSync(
+        path.join(os.tmpdir(), "dyad-case-fixture-"),
+      );
+      directories.push(directory);
+      const logFile = path.join(directory, "events.jsonl");
+      const record = (event: string) =>
+        fs.appendFileSync(logFile, JSON.stringify(event) + "\n");
+      let id = 0;
+      const server = await startTestCaseLifecycleServer({
+        beforeEach: async (): Promise<Record<string, string>> => {
+          id += 1;
+          record(`create-${id}`);
+          // A recoverable rejection returns no credentials. Exercise that after
+          // a successful case too, so stale credentials cannot mask the failure.
+          if (creationRejected && id > 1) return {};
+          return {
+            DYAD_TEST_USER_EMAIL: String(id),
+            DYAD_TEST_USER_PASSWORD: `password-${id}`,
+          };
+        },
+        afterEach: async () => {
+          record(`cleanup-${id}`);
+        },
+      });
+      servers.push(server);
+      fs.symlinkSync(
+        path.resolve("node_modules"),
+        path.join(directory, "node_modules"),
+        "junction",
+      );
+      fs.mkdirSync(path.join(directory, "e2e-tests"));
+      ensurePreviewShim(directory);
+      fs.writeFileSync(
+        path.join(directory, "playwright.config.cjs"),
+        `module.exports = { testDir: './e2e-tests', workers: 1, retries: 1 };`,
+      );
+      const helpers = `
 import { test, expect } from '@playwright/test';
 import { appendFileSync } from 'node:fs';
-const record = (phase) => appendFileSync(${JSON.stringify(logFile)}, JSON.stringify(phase + '-' + process.env.DYAD_TEST_USER_EMAIL) + '\\n');
-test.beforeEach(() => {
-  expect(process.env.DYAD_TEST_USER_PASSWORD).toBe('password-' + process.env.DYAD_TEST_USER_EMAIL);
+const record = (phase) => appendFileSync(${JSON.stringify(logFile)}, JSON.stringify(phase + '-' + (process.env.DYAD_TEST_USER_EMAIL ?? 'custom')) + '\\n');
+test.beforeEach(({}, info) => {
+  expect(process.env.SUPABASE_SECRET_KEY).toBe('fixture-only-test-key');
+  if (${creationRejected} && info.title !== 'first') {
+    expect(process.env.DYAD_TEST_USER_EMAIL).toBeUndefined();
+    expect(process.env.DYAD_TEST_USER_PASSWORD).toBeUndefined();
+  } else {
+    expect(process.env.DYAD_TEST_USER_PASSWORD).toBe('password-' + process.env.DYAD_TEST_USER_EMAIL);
+  }
   record('before');
 });
 test.afterEach(() => record('after'));
 `;
-    fs.writeFileSync(
-      path.join(directory, "e2e-tests/a.spec.ts"),
-      `${helpers}
+      fs.writeFileSync(
+        path.join(directory, "e2e-tests/a.spec.ts"),
+        `${helpers}
 test('first', () => record('test'));
 test('retry', ({}, info) => { record('test'); expect(info.retry).toBe(1); });
 `,
-    );
-    fs.writeFileSync(
-      path.join(directory, "e2e-tests/b.spec.ts"),
-      `${helpers}
+      );
+      fs.writeFileSync(
+        path.join(directory, "e2e-tests/b.spec.ts"),
+        `${helpers}
 test('next file', () => record('test'));
 `,
-    );
-    const require = createRequire(import.meta.url);
-    const cli = path.join(
-      path.dirname(require.resolve("@playwright/test/package.json")),
-      "cli.js",
-    );
-    const result = await new Promise<{ code: number | null; output: string }>(
-      (resolve, reject) => {
-        const child = spawn(
-          process.execPath,
-          [cli, "test", "--reporter=line"],
-          {
-            cwd: directory,
-            env: { ...process.env, ...server.env, CI: "true" },
-            stdio: ["ignore", "pipe", "pipe"],
-          },
-        );
-        let output = "";
-        child.stdout.on("data", (chunk) => {
-          output += String(chunk);
-        });
-        child.stderr.on("data", (chunk) => {
-          output += String(chunk);
-        });
-        child.once("error", reject);
-        child.once("close", (code) => resolve({ code, output }));
-      },
-    );
-    expect(result.code, result.output).toBe(0);
-    expect(server.failure).toBeUndefined();
-    expect(id).toBe(4);
-    expect(
-      fs
-        .readFileSync(logFile, "utf8")
-        .trim()
-        .split("\n")
-        .map((line) => JSON.parse(line)),
-    ).toEqual(
-      [1, 2, 3, 4].flatMap((caseId) =>
-        ["create", "before", "test", "after", "cleanup"].map(
-          (phase) => `${phase}-${caseId}`,
+      );
+      const require = createRequire(import.meta.url);
+      const cli = path.join(
+        path.dirname(require.resolve("@playwright/test/package.json")),
+        "cli.js",
+      );
+      const result = await new Promise<{ code: number | null; output: string }>(
+        (resolve, reject) => {
+          const child = spawn(
+            process.execPath,
+            [cli, "test", "--reporter=line"],
+            {
+              cwd: directory,
+              env: {
+                ...process.env,
+                ...server.env,
+                CI: "true",
+                DYAD_TEST_USER_EMAIL: "stale@dyad.test",
+                DYAD_TEST_USER_PASSWORD: "stale-password",
+                SUPABASE_SECRET_KEY: "fixture-only-test-key",
+              },
+              stdio: ["ignore", "pipe", "pipe"],
+            },
+          );
+          let output = "";
+          child.stdout.on("data", (chunk) => {
+            output += String(chunk);
+          });
+          child.stderr.on("data", (chunk) => {
+            output += String(chunk);
+          });
+          child.once("error", reject);
+          child.once("close", (code) => resolve({ code, output }));
+        },
+      );
+      expect(result.code, result.output).toBe(0);
+      expect(server.failure).toBeUndefined();
+      expect(id).toBe(4);
+      expect(
+        fs
+          .readFileSync(logFile, "utf8")
+          .trim()
+          .split("\n")
+          .map((line) => JSON.parse(line)),
+      ).toEqual(
+        [1, 2, 3, 4].flatMap((caseId) =>
+          ["create", "before", "test", "after", "cleanup"].map(
+            (phase) =>
+              `${phase}-${creationRejected && caseId > 1 && !["create", "cleanup"].includes(phase) ? "custom" : caseId}`,
+          ),
         ),
-      ),
-    );
-  }, 30_000);
+      );
+    },
+    30_000,
+  );
 });

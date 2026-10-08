@@ -117,6 +117,7 @@ vi.mock("electron-log", () => ({
 }));
 
 import { prepareIsolatedTestDatabase } from "./isolated_test_db";
+import { SupabaseTestUserCreationRejectedError } from "../utils/supabase_test_user_errors";
 
 const emit = vi.fn();
 
@@ -291,6 +292,90 @@ describe("per-case database isolation", () => {
       });
     }
   });
+
+  it("continues after verified default-user rejection and retries provisioning on later cases", async () => {
+    const prepared = await prepareSupabase();
+    const lifecycle = prepared.testCaseLifecycle!;
+    // A successful case first exercises cleanup before the rejected attempt.
+    await lifecycle.beforeEach();
+    mocks.createTempTestUser.mockRejectedValueOnce(
+      new SupabaseTestUserCreationRejectedError(),
+    );
+    expect(await lifecycle.beforeEach()).toEqual({});
+    expect(mocks.deleteTempTestUser).toHaveBeenCalledTimes(1);
+    expect(emit).toHaveBeenCalledWith(
+      expect.stringContaining("Continuing without default sign-in credentials"),
+      "running",
+    );
+    expect(prepared.testRunnerEnv).toEqual({
+      SUPABASE_SECRET_KEY: "secret",
+      SUPABASE_URL: "https://project.supabase.co",
+    });
+    await lifecycle.afterEach();
+    // No default user exists for the rejected attempt, so there's no deletion.
+    expect(mocks.deleteTempTestUser).toHaveBeenCalledTimes(1);
+    expect(await lifecycle.beforeEach()).toMatchObject({
+      DYAD_TEST_USER_EMAIL: "dyad-test+1@dyad.test",
+    });
+    await lifecycle.afterEach();
+    expect(mocks.createTempTestUser).toHaveBeenCalledTimes(3);
+    expect(mocks.deleteTempTestUser).toHaveBeenCalledTimes(2);
+    expect(await prepared.teardown()).toMatchObject({
+      remoteCleanupCompleted: true,
+    });
+  });
+
+  it.each([
+    new Error(
+      "Supabase rejected default test-user creation with a database error",
+    ),
+    new Error("invalid credentials"),
+    new TypeError("fetch failed"),
+    new DOMException("Request timed out", "TimeoutError"),
+  ])("propagates unclassified provisioning failures (%s)", async (error) => {
+    const prepared = await prepareSupabase();
+    mocks.createTempTestUser.mockRejectedValueOnce(error);
+    await expect(prepared.testCaseLifecycle!.beforeEach()).rejects.toBe(error);
+    expect(emit).not.toHaveBeenCalledWith(
+      expect.stringContaining("Continuing without default sign-in credentials"),
+      "running",
+    );
+    await prepared.teardown();
+  });
+
+  it.each(["run", "case"] as const)(
+    "keeps %s cancellation fatal after a verified rejection",
+    async (scope) => {
+      const controller = new AbortController();
+      const reason = new Error("stopped");
+      const prepared = await prepareIsolatedTestDatabase({
+        app: makeApp({
+          supabaseProjectId: "project",
+          supabaseOrganizationSlug: "org",
+        }),
+        emit,
+        runtimeMode: "host",
+        perTestCase: true,
+        signal: scope === "run" ? controller.signal : undefined,
+      });
+      mocks.createTempTestUser.mockImplementationOnce(async () => {
+        controller.abort(reason);
+        throw new SupabaseTestUserCreationRejectedError();
+      });
+      await expect(
+        prepared.testCaseLifecycle!.beforeEach(
+          scope === "case" ? controller.signal : undefined,
+        ),
+      ).rejects.toBe(reason);
+      expect(emit).not.toHaveBeenCalledWith(
+        expect.stringContaining(
+          "Continuing without default sign-in credentials",
+        ),
+        "running",
+      );
+      await prepared.teardown();
+    },
+  );
 
   it("retains a failed Supabase deletion for retry and refuses to provision another user", async () => {
     const prepared = await prepareSupabase();
@@ -562,21 +647,29 @@ describe("prepareIsolatedTestDatabase — Supabase test-user path", () => {
     expect(prepared.testRunnerEnv).toBeUndefined();
   });
 
-  it("dead-ends (infraError) when test-user creation fails", async () => {
-    mocks.createTempTestUser.mockRejectedValue(new Error("supabase down"));
-    const prepared = await prepareIsolatedTestDatabase({
-      app: makeApp({
-        supabaseProjectId: "sb-1",
-        supabaseOrganizationSlug: "org-1",
-      }),
-      emit,
-      runtimeMode: "host",
-    });
-    expect(prepared.infraError).toBeDefined();
-    expect(prepared.infraError?.message).toMatch(/real data was not touched/i);
-    expect(prepared.isolation.mode).toBe("none");
-    expect(prepared.testCredentials).toBeUndefined();
-  });
+  it.each([
+    new Error("supabase down"),
+    new SupabaseTestUserCreationRejectedError(),
+  ])(
+    "dead-ends recordings when test-user creation fails (%s)",
+    async (error) => {
+      mocks.createTempTestUser.mockRejectedValue(error);
+      const prepared = await prepareIsolatedTestDatabase({
+        app: makeApp({
+          supabaseProjectId: "sb-1",
+          supabaseOrganizationSlug: "org-1",
+        }),
+        emit,
+        runtimeMode: "host",
+      });
+      expect(prepared.infraError).toBeDefined();
+      expect(prepared.infraError?.message).toMatch(
+        /real data was not touched/i,
+      );
+      expect(prepared.isolation.mode).toBe("none");
+      expect(prepared.testCredentials).toBeUndefined();
+    },
+  );
 });
 
 describe("prepareIsolatedTestDatabase — non-Neon paths", () => {

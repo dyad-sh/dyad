@@ -553,13 +553,22 @@ describe("local_agent_prompt", () => {
         "Perform the flow and authorization assertions as those users with the public client",
       );
       expect(prompt).toContain("default-user cleanup does not track");
+      expect(prompt).toContain("continues without default-user credentials");
+      expect(prompt).toContain("verifies that no auth user was created");
+      expect(prompt).toContain(
+        "pass your custom user's credentials explicitly",
+      );
+      expect(prompt).toContain(
+        "Other provisioning errors, cancellation, and cleanup failures still stop the run",
+      );
+      expect(prompt).not.toContain("must succeed before custom setup can run");
       expect(prompt).not.toContain(
         "You do NOT need to write any setup/teardown code",
       );
     },
   );
 
-  it("describes injected Supabase fixture credentials and the provisioning prerequisite", () => {
+  it("describes injected Supabase fixture credentials and default provisioning", () => {
     const prompt = constructLocalAgentPrompt(undefined, undefined, {
       testingEnabled: true,
     });

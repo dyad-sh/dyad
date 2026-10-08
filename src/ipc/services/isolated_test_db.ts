@@ -25,6 +25,7 @@ import {
   type AdminKey,
   type TempTestUser,
 } from "../utils/supabase_test_user";
+import { SupabaseTestUserCreationRejectedError } from "../utils/supabase_test_user_errors";
 import { detectLegacyAppKey } from "../../supabase_admin/supabase_app_key";
 import { getPublishableKey } from "../../supabase_admin/supabase_context";
 import {
@@ -585,8 +586,8 @@ export async function prepareIsolatedTestDatabase({
  * Supabase (free tier) isolation: create a throwaway auth user in the real
  * project and have the test sign in as it. Isolation comes from Row-Level
  * Security, so we warn (but don't block) when some public tables lack RLS. On
- * setup failure we dead-end with an infra error, never running against real
- * data unguarded.
+ * setup failure we stop, except that per-case tests may supply custom users
+ * after a database-create rejection verified to have left no auth user.
  */
 async function prepareSupabaseTestUserIsolation({
   app,
@@ -764,13 +765,25 @@ async function prepareSupabaseTestUserIsolation({
               await afterEach(caseSignal);
               signal?.throwIfAborted();
               caseSignal?.throwIfAborted();
-              testUser = await createTempTestUser(
-                {
-                  ...app,
-                  supabaseTestUserId: null,
-                },
-                { adminKey, signal: caseSignal },
-              );
+              try {
+                testUser = await createTempTestUser(
+                  {
+                    ...app,
+                    supabaseTestUserId: null,
+                  },
+                  { adminKey, signal: caseSignal },
+                );
+              } catch (error) {
+                signal?.throwIfAborted();
+                caseSignal?.throwIfAborted();
+                if (!(error instanceof SupabaseTestUserCreationRejectedError))
+                  throw error;
+                emit(
+                  "Warning: Supabase rejected default test-user creation with a database error (often caused by a signup trigger). Dyad verified that no user was created. Continuing without default sign-in credentials so test fixtures can create and clean up their own users and required records.\n",
+                  "running",
+                );
+                return {};
+              }
               trackedUserId = testUser.userId;
               return credentialsFor(testUser);
             },

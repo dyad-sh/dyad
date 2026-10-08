@@ -65,6 +65,7 @@ import {
   reconcileOrphanTestUsers,
 } from "./supabase_test_user";
 import { DyadErrorKind } from "@/errors/dyad_error";
+import { SupabaseTestUserCreationRejectedError } from "./supabase_test_user_errors";
 
 type AppRow = any;
 
@@ -113,6 +114,164 @@ beforeEach(() => {
 });
 
 describe("createTempTestUser", () => {
+  const databaseCreateError = {
+    code: 500,
+    error_code: "unexpected_failure",
+    msg: "Database error creating new user",
+  };
+  // Actual HTTP 500 response from the organization-required signup trigger.
+  const constraintCreateError = {
+    code: "23514",
+    message: "organization_id is required to create a user",
+  };
+
+  it.each([
+    databaseCreateError,
+    {
+      code: "unexpected_failure",
+      message: "Database error creating new user",
+    },
+    constraintCreateError,
+    ...["23000", "23001", "23502", "23503", "23505", "23P01", "P0001"].map(
+      (code) => ({ code, message: "Fixture prerequisite failed" }),
+    ),
+    { code: 500, error_code: "23514", msg: "Fixture prerequisite failed" },
+  ])(
+    "classifies a database-create rejection only after verifying no user exists (%j)",
+    async (body) => {
+      const request = mockFetch(
+        () => new Response(JSON.stringify(body), { status: 500 }),
+      );
+      mocks.executeSupabaseSql.mockResolvedValueOnce('[{"user_exists":false}]');
+      const controller = new AbortController();
+
+      await expect(
+        createTempTestUser(makeApp(), { signal: controller.signal }),
+      ).rejects.toBeInstanceOf(SupabaseTestUserCreationRejectedError);
+
+      const { email } = JSON.parse(request.mock.calls[0][1].body);
+      expect(mocks.executeSupabaseSql).toHaveBeenCalledWith({
+        supabaseProjectId: "proj-1",
+        organizationSlug: "org-1",
+        query: `SELECT EXISTS (SELECT 1 FROM auth.users WHERE email = '${email}') AS user_exists;`,
+        signal: controller.signal,
+      });
+      expect(mocks.set).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each<[number, string]>([
+    [401, JSON.stringify(databaseCreateError)],
+    [403, JSON.stringify(databaseCreateError)],
+    [503, JSON.stringify(databaseCreateError)],
+    [403, JSON.stringify(constraintCreateError)],
+    [503, JSON.stringify(constraintCreateError)],
+    [500, "Database error creating new user"],
+    [
+      500,
+      JSON.stringify({
+        ...databaseCreateError,
+        msg: "Database error checking email",
+      }),
+    ],
+    [
+      500,
+      JSON.stringify({ ...databaseCreateError, error_code: "request_timeout" }),
+    ],
+    [500, JSON.stringify({ msg: "Database error creating new user" })],
+    [500, "null"],
+    ...[
+      "08006",
+      "57014",
+      "40003",
+      "XX000",
+      "42501",
+      "28P01",
+      "P0000",
+      "23",
+      "23514-extra",
+      23514,
+    ].map((code): [number, string] => [
+      500,
+      JSON.stringify({ ...constraintCreateError, code }),
+    ]),
+  ])(
+    "keeps unrelated or unknown HTTP failures fatal (%s, %s)",
+    async (status, body) => {
+      mockFetch(() => new Response(body, { status }));
+      const error = await createTempTestUser(makeApp()).catch((error) => error);
+      expect(error).toBeInstanceOf(Error);
+      expect(error).not.toBeInstanceOf(SupabaseTestUserCreationRejectedError);
+      expect(mocks.executeSupabaseSql).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    '[{"user_exists":true}]',
+    "[]",
+    "{}",
+    '[{"user_exists":"false"}]',
+    "invalid",
+  ])(
+    "does not allow fallback without a confirmed absent user (%s)",
+    async (result) => {
+      mockFetch(
+        () =>
+          new Response(JSON.stringify(constraintCreateError), { status: 500 }),
+      );
+      mocks.executeSupabaseSql.mockResolvedValueOnce(result);
+      const error = await createTempTestUser(makeApp()).catch((error) => error);
+      expect(error).toBeInstanceOf(Error);
+      expect(error).not.toBeInstanceOf(SupabaseTestUserCreationRejectedError);
+    },
+  );
+
+  it("propagates verification failures", async () => {
+    mockFetch(
+      () =>
+        new Response(JSON.stringify(constraintCreateError), { status: 500 }),
+    );
+    const error = new Error("verification unavailable");
+    mocks.executeSupabaseSql.mockRejectedValueOnce(error);
+    await expect(createTempTestUser(makeApp())).rejects.toBe(error);
+  });
+
+  it("honors cancellation while verifying a database-create rejection", async () => {
+    mockFetch(
+      () =>
+        new Response(JSON.stringify(constraintCreateError), { status: 500 }),
+    );
+    const controller = new AbortController();
+    const reason = new Error("cancelled");
+    mocks.executeSupabaseSql.mockImplementationOnce(async () => {
+      controller.abort(reason);
+      return '[{"user_exists":false}]';
+    });
+    await expect(
+      createTempTestUser(makeApp(), { signal: controller.signal }),
+    ).rejects.toBe(reason);
+  });
+
+  it.each([
+    new TypeError("fetch failed"),
+    new DOMException("Request timed out", "TimeoutError"),
+  ])(
+    "does not treat uncertain network outcomes as rejected creations (%s)",
+    async (error) => {
+      vi.stubGlobal("fetch", vi.fn().mockRejectedValue(error));
+      await expect(createTempTestUser(makeApp())).rejects.toBe(error);
+      expect(mocks.executeSupabaseSql).not.toHaveBeenCalled();
+    },
+  );
+
+  it("keeps a successful response without a user ID fatal", async () => {
+    mockFetch(() => new Response("{}"));
+    await expect(createTempTestUser(makeApp())).rejects.toThrow(
+      "did not return an id",
+    );
+    expect(mocks.executeSupabaseSql).not.toHaveBeenCalled();
+  });
+
   it("records a user created while cancellation is draining the request", async () => {
     const controller = new AbortController();
     let finish!: (response: Response) => void;

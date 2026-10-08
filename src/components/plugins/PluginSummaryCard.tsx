@@ -2,13 +2,15 @@ import { ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { CatalogBadge } from "./CatalogBadge";
 import { Switch } from "@/components/ui/switch";
 import type { McpServer } from "@/ipc/types";
-import { CatalogBadge } from "./CatalogBadge";
+import { PluginIcon } from "./PluginIcon";
 import type { ConnectFeedback } from "./usePluginConnect";
 
 export function PluginSummaryCard({
   server: s,
+  iconUrl,
   needsSetup,
   setupLocked,
   toolCount,
@@ -22,6 +24,8 @@ export function PluginSummaryCard({
   onOpen,
 }: {
   server: McpServer;
+  /** The catalog entry's icon, when the server came from the catalog. */
+  iconUrl?: string;
   /** A catalog server with declared setup fields still unfilled. */
   needsSetup: boolean;
   /** Setup is unfinished or its catalog entry hasn't resolved; lock controls. */
@@ -56,36 +60,48 @@ export function PluginSummaryCard({
         onClick={() => onOpen(s.id)}
       />
       <CardHeader className="p-4">
-        <CardTitle className="text-lg font-medium mb-1 flex items-center gap-2 min-w-0">
-          <span className="truncate">{s.name}</span>
-          {s.catalogSlug && <CatalogBadge />}
-          {needsSetup ? (
-            <span className="text-xs font-medium px-2 py-1 rounded-full shrink-0 text-amber-600 bg-amber-50 dark:bg-amber-900/30 dark:text-amber-300 border border-amber-500/50">
-              Needs setup
-            </span>
-          ) : feedback ? (
-            <span className="text-xs font-medium px-2 py-1 rounded-full text-red-600 bg-red-50 border border-red-500/50 dark:bg-red-900/30 dark:text-red-300 shrink-0">
-              {feedback.kind === "unauthorized" ||
-              feedback.kind === "credentials"
-                ? "Needs auth"
-                : "Connection error"}
-            </span>
-          ) : s.oauthEnabled ? (
-            <span
-              className={`text-xs font-medium px-2 py-1 rounded-full shrink-0 ${
-                s.oauthConnected
-                  ? "text-green-600 bg-green-50 dark:bg-green-900/30 dark:text-green-300 border border-green-500/50"
-                  : "text-amber-600 bg-amber-50 dark:bg-amber-900/30 dark:text-amber-300 border border-amber-500/50"
-              }`}
-            >
-              OAuth: {s.oauthConnected ? "connected" : "not connected"}
-            </span>
-          ) : null}
-        </CardTitle>
-        <div className="text-xs text-muted-foreground truncate">
-          {s.transport}
-          {s.url ? ` · ${s.url}` : ""}
-          {s.command ? ` · ${s.command}` : ""}
+        <div className="flex items-start gap-3 min-w-0">
+          <PluginIcon key={iconUrl ?? ""} name={s.name} iconUrl={iconUrl} />
+          <div className="min-w-0 flex-1">
+            {/* Only states that need attention get a pill, so the name
+                keeps most of the row. The catalog mark is icon-only here;
+                the detail page spells it out and shows the connected
+                state. */}
+            <CardTitle className="text-lg font-medium mb-1 flex items-center gap-2 min-w-0">
+              <span className="truncate">{s.name}</span>
+              {s.catalogSlug && (
+                // Raised above the open-card overlay so it can be hovered;
+                // clicking it still opens the card.
+                <span
+                  className="relative z-10 flex cursor-pointer"
+                  onClick={() => onOpen(s.id)}
+                >
+                  <CatalogBadge size="icon" />
+                </span>
+              )}
+              {needsSetup ? (
+                <span className="text-xs font-medium px-2 py-1 rounded-full shrink-0 text-amber-600 bg-amber-50 dark:bg-amber-900/30 dark:text-amber-300 border border-amber-500/50">
+                  Needs setup
+                </span>
+              ) : feedback ? (
+                <span className="text-xs font-medium px-2 py-1 rounded-full text-red-600 bg-red-50 border border-red-500/50 dark:bg-red-900/30 dark:text-red-300 shrink-0">
+                  {feedback.kind === "unauthorized" ||
+                  feedback.kind === "credentials"
+                    ? "Needs auth"
+                    : "Connection error"}
+                </span>
+              ) : s.oauthEnabled && !s.oauthConnected ? (
+                <span className="text-xs font-medium px-2 py-1 rounded-full shrink-0 text-amber-600 bg-amber-50 dark:bg-amber-900/30 dark:text-amber-300 border border-amber-500/50">
+                  Not connected
+                </span>
+              ) : null}
+            </CardTitle>
+            <div className="text-xs text-muted-foreground truncate">
+              {s.transport}
+              {s.url ? ` · ${s.url}` : ""}
+              {s.command ? ` · ${s.command}` : ""}
+            </div>
+          </div>
         </div>
         <div className="mt-3 flex items-center justify-between gap-2">
           <span className="text-sm text-muted-foreground">

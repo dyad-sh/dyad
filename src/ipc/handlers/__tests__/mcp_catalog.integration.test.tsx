@@ -145,9 +145,12 @@ describe("Plugins catalog (integration)", () => {
       { timeout: 15_000 },
     );
 
-    // The configured plugin's summary card carries the catalog badge.
+    // The configured plugin's summary card shows the icon tile. The
+    // fixture entry has no icon, so it falls back to the initial.
     const pluginCard = await screen.findByTestId("plugin-card");
-    expect(pluginCard.textContent).toContain("Catalog");
+    expect(
+      within(pluginCard).getByTestId("plugin-icon-fallback").textContent,
+    ).toBe("I");
 
     // Tools and Delete live on the detail page.
     fireEvent.click(

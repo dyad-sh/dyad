@@ -5,6 +5,7 @@ import {
   looksLikePackageSpec,
   type McpCatalogEntry,
 } from "@/ipc/types/mcp_catalog";
+import { PluginIcon } from "../PluginIcon";
 import { catalogEntryCanConnect } from "./catalogCardStatus";
 
 // The schema already validates url, but parse defensively so one bad
@@ -47,27 +48,42 @@ export function CatalogCard({
   onAdd: (entry: McpCatalogEntry) => void;
 }) {
   return (
-    <Card data-testid="catalog-card" className="border-border">
-      <CardHeader className="p-4">
-        <CardTitle className="text-base font-medium mb-1 flex items-center gap-2 min-w-0">
-          <span className="truncate">{entry.name}</span>
-          {entry.transport === "http" && entry.oauth != null && (
-            <span className="text-xs font-normal text-muted-foreground shrink-0">
-              OAuth
-            </span>
-          )}
-          {entry.transport === "stdio" && (
-            <span className="text-xs font-normal text-muted-foreground shrink-0">
-              Local
-            </span>
-          )}
-        </CardTitle>
-        {entry.description && (
-          <div className="text-xs text-muted-foreground truncate">
-            {entry.description}
+    // The grid stretches each card to its row's tallest, so a wrapped
+    // description only grows the row; the bottom row stays pinned so the
+    // Add buttons line up.
+    <Card
+      data-testid="catalog-card"
+      className="border-border h-full flex flex-col"
+    >
+      <CardHeader className="p-4 flex-1">
+        <div className="flex items-start gap-3 min-w-0">
+          <PluginIcon
+            key={entry.iconUrl ?? ""}
+            name={entry.name}
+            iconUrl={entry.iconUrl}
+          />
+          <div className="min-w-0 flex-1">
+            <CardTitle className="text-base font-medium mb-1 flex items-center gap-2 min-w-0">
+              <span className="truncate">{entry.name}</span>
+              {entry.transport === "http" && entry.oauth != null && (
+                <span className="text-xs font-normal text-muted-foreground shrink-0">
+                  OAuth
+                </span>
+              )}
+              {entry.transport === "stdio" && (
+                <span className="text-xs font-normal text-muted-foreground shrink-0">
+                  Local
+                </span>
+              )}
+            </CardTitle>
+            {entry.description && (
+              <div className="text-xs text-muted-foreground">
+                {entry.description}
+              </div>
+            )}
           </div>
-        )}
-        <div className="mt-3 flex items-center justify-between gap-2">
+        </div>
+        <div className="mt-auto pt-3 flex items-center justify-between gap-2">
           <span className="text-xs text-muted-foreground truncate">
             {sourceOf(entry)}
           </span>

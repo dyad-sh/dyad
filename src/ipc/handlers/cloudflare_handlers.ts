@@ -1156,10 +1156,11 @@ export function registerCloudflareHandlers() {
     },
   );
 
+  // Not gated on the experiment: secrets pointing at a database the app no
+  // longer uses should come off whether or not the tab is still shown.
   createTypedHandler(
     cloudflareContracts.removeNeonEnvVars,
     async (_, { appId }) => {
-      assertCloudflareEnabled();
       return removeNeonEnvVarsFromCloudflare({ appId });
     },
   );

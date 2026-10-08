@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import { ipc } from "@/ipc/types";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { useNeon } from "@/hooks/useNeon";
+import { useSettings } from "@/hooks/useSettings";
 import { MigrationPanelBody } from "@/components/MigrationPanel";
 import { DatabaseEnvVars } from "@/components/preview_panel/DatabaseEnvVars";
 import { getErrorMessage } from "@/lib/errors";
@@ -90,6 +91,7 @@ export const DatabaseSection = ({ appId }: DatabaseSectionProps) => {
   const { t } = useTranslation("home");
   const queryClient = useQueryClient();
   const { app, refreshApp } = useLoadApp(appId);
+  const { settings } = useSettings();
   const { branches, isLoadingBranches } = useNeon(appId);
 
   const productionBranch = branches.find((b) => b.type === "production");
@@ -204,8 +206,12 @@ export const DatabaseSection = ({ appId }: DatabaseSectionProps) => {
   const canSync =
     !!app?.neonProjectId && !isLoadingBranches && hasBranchSelected;
   const showSync = canSync && !!app?.vercelProjectId;
+  // The sync is refused while the experiment is off, like the rest of the
+  // Cloudflare tab, so the row goes with it.
   const showCloudflareSync =
-    canSync && !!app?.deploymentProvidersInUse.cloudflare;
+    canSync &&
+    !!app?.deploymentProvidersInUse.cloudflare &&
+    !!settings?.enableCloudflareDeployment;
   const syncPending =
     syncMutation.isPending ||
     cloudflareSyncMutation.isPending ||

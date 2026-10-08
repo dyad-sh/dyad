@@ -795,7 +795,10 @@
       "disconnectAccountConfirmation": "Neon hesabınızın bağlantısını kesmek istediğinizden emin misiniz? Yeniden bağlanmak için OAuth ile yeniden kimlik doğrulamanız gerekecek.",
       "removeVercelEnvVars": "Neon ortam değişkenlerini Vercel'den kaldır",
       "removeVercelEnvVarsHelp": "Bağlantısı kesilmiş bir veritabanını işaret etmemeleri için bağlı Vercel projesinden DATABASE_URL ve Neon Auth değişkenlerini siler.",
-      "failedRemoveVercelEnvVars": "Bağlantı kesildi ancak Neon ortam değişkenleri Vercel'den kaldırılamadı."
+      "failedRemoveVercelEnvVars": "Bağlantı kesildi ancak Neon ortam değişkenleri Vercel'den kaldırılamadı.",
+      "removeCloudflareEnvVars": "Neon gizli anahtarlarını Cloudflare'den kaldır",
+      "removeCloudflareEnvVarsHelp": "Bağlantısı kesilmiş bir veritabanını işaret etmemeleri için bağlı Worker'lardan DATABASE_URL ve NEON_AUTH_BASE_URL'yi siler.",
+      "failedRemoveCloudflareEnvVars": "Bağlantı kesildi ancak Neon gizli anahtarları Cloudflare'den kaldırılamadı."
     },
     "db": {
       "projectInfo": "{{provider}} Proje Bilgileri",
@@ -864,7 +867,11 @@
       "syncSuccess": "Veritabanı yapılandırması Vercel'e eşitlendi ancak canlı uygulamanızın bunu kullanması için yeniden dağıtım gerekir.",
       "syncError": "Vercel'e eşitlenemedi.",
       "selectBranchError": "Veritabanı dalı seçiminiz kaydedilemedi.",
-      "clearBranchError": "Veritabanı dalı seçiminiz temizlenemedi."
+      "clearBranchError": "Veritabanı dalı seçiminiz temizlenemedi.",
+      "syncToCloudflare": "Cloudflare'e Eşitle",
+      "syncToCloudflareHelp": "Cloudflare Worker'larınızda veritabanı gizli anahtarlarını ayarlayın ve adreslerini Neon'un kimlik doğrulama yönlendirme izin listesine ekleyin.",
+      "syncToCloudflareSuccess": "Veritabanı yapılandırması Cloudflare'e eşitlendi. Canlı uygulamanız bunu hemen kullanır.",
+      "syncToCloudflareError": "Cloudflare'e eşitlenemedi."
     },
     "migration": {
       "title": "Veritabanı Geçişi",

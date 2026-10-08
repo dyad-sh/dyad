@@ -9,6 +9,24 @@ vi.mock("@/main/settings", () => ({
 }));
 
 describe("readGuideTool", () => {
+  it.each(["nextjs", "vite-nitro", null] as const)(
+    "loads custom Supabase fixture guidance for %s",
+    async (frameworkType) => {
+      vi.mocked(readSettings).mockReturnValue({} as UserSettings);
+      const guide = await readGuideTool.execute(
+        { guide: "custom-supabase-test-fixtures" },
+        { frameworkType } as AgentContext,
+      );
+
+      expect(guide).toContain("process.env.SUPABASE_SECRET_KEY");
+      expect(guide).toContain("supabase.auth.admin.createUser");
+      expect(guide).toContain("test.beforeEach");
+      expect(guide).toContain("test.afterEach");
+      expect(guide).toContain("attempt all remaining cleanup");
+      expect(guide).not.toContain("${");
+    },
+  );
+
   it.each([true, false, undefined])(
     "uses the preview domains setting (%s) for authentication guidance",
     async (enableAppPreviewDomains) => {

@@ -1,4 +1,5 @@
 import type { ChildProcess } from "node:child_process";
+import { createTestOutputRedactor } from "../utils/test_output_redaction";
 import { previewTestNodeOptions } from "../utils/preview_dns";
 import fs from "node:fs";
 import os from "node:os";
@@ -946,7 +947,38 @@ async function runPreviewTestBatch({
  * Bootstrap Playwright when requested, run against an explicit sandbox server
  * (or the legacy preview URL for direct callers), and parse the JSON report.
  */
-export async function runAppTestsCore({
+export async function runAppTestsCore(
+  options: RunAppTestsCoreOptions,
+): Promise<RunAppTestsResult> {
+  const redactor = createTestOutputRedactor(
+    Object.values(options.testEnv ?? {}),
+  );
+  const streams = {
+    setup: redactor.stream((chunk) => options.onOutput?.(chunk, "setup")),
+    running: redactor.stream((chunk) => options.onOutput?.(chunk, "running")),
+  };
+  try {
+    return redactor.result(
+      await runAppTestsCoreUnredacted({
+        ...options,
+        onOutput: (chunk, phase) => streams[phase].push(chunk),
+      }),
+    );
+  } catch (error) {
+    // Unexpected failures must not leak runner credentials through IPC either.
+    if (error instanceof Error) {
+      error.message = redactor.redact(error.message);
+      if (error.stack) error.stack = redactor.redact(error.stack);
+      throw error;
+    }
+    throw new Error(redactor.redact(String(error)));
+  } finally {
+    streams.setup.flush();
+    streams.running.flush();
+  }
+}
+
+async function runAppTestsCoreUnredacted({
   isolateTestCases,
   appId,
   appPath: explicitAppPath,
@@ -1235,7 +1267,11 @@ export async function runAppTestsCore({
     // non-zero. Surface it as a structured infra error in the Tests panel
     // instead of letting it bubble up as a generic IPC failure.
     const message = error instanceof Error ? error.message : String(error);
-    logger.error(`Failed to spawn the test runner: ${message}`);
+    logger.error(
+      createTestOutputRedactor(Object.values(testEnv ?? {})).redact(
+        `Failed to spawn the test runner: ${message}`,
+      ),
+    );
     return { appId, results: [], infraError: { message } };
   }
 
@@ -1266,7 +1302,11 @@ export async function runAppTestsCore({
       results = parsePlaywrightReport(JSON.parse(raw), appPath);
       parseOk = true;
     } catch (error) {
-      logger.error(`Failed to parse Playwright report: ${error}`);
+      logger.error(
+        createTestOutputRedactor(Object.values(testEnv ?? {})).redact(
+          `Failed to parse Playwright report: ${error}`,
+        ),
+      );
     }
   }
 

@@ -208,6 +208,64 @@ beforeEach(() => {
 });
 
 describe("selected file batches", () => {
+  it.each([false, true])(
+    "redacts a real spec's printed secret and assertion failure (preview: %s)",
+    async (preview) => {
+      const root = fs.mkdtempSync(path.join(os.tmpdir(), "dyad-redaction-"));
+      const secret = "sb_secret_output-regression-test";
+      const output: string[] = [];
+      try {
+        fs.mkdirSync(path.join(root, "e2e-tests"));
+        fs.symlinkSync(
+          path.join(process.cwd(), "node_modules"),
+          path.join(root, "node_modules"),
+          "junction",
+        );
+        fs.writeFileSync(
+          path.join(root, DYAD_CONFIG_FILENAME),
+          'export default { testDir: "./e2e-tests", retries: 0 };',
+        );
+        fs.writeFileSync(
+          path.join(root, "e2e-tests/secret.spec.ts"),
+          `const { test, expect } = require("@playwright/test");
+test("prints a fixture secret", () => {
+  console.log(process.env.SUPABASE_SECRET_KEY);
+  console.error(process.env.SUPABASE_SECRET_KEY);
+  expect(process.env.SUPABASE_SECRET_KEY).toBe("different");
+});`,
+        );
+        ensurePreviewDnsPreload(root);
+        const { spawnStreaming } = await vi.importActual<
+          typeof import("../utils/spawn_streaming")
+        >("../utils/spawn_streaming");
+        h.spawnStreaming.mockImplementation(spawnStreaming);
+        const result = await runAppTestsCore({
+          appId: 1,
+          appPath: root,
+          baseUrl: PROXY_URL,
+          skipBootstrap: true,
+          testEnv: { SUPABASE_SECRET_KEY: secret },
+          onOutput: (chunk) => output.push(chunk),
+          ...(preview
+            ? {
+                previewCdpEndpoint: CDP_ENDPOINT,
+                previewCdpToken: "test-token",
+                rotatePreviewView: vi.fn().mockResolvedValue(undefined),
+              }
+            : {}),
+        });
+        expect(result.results[0].status).toBe("failed");
+        expect(JSON.stringify(result)).toContain("[redacted]");
+        expect(JSON.stringify(result)).not.toContain(secret);
+        expect(output.join("")).toContain("[redacted]");
+        expect(output.join("")).not.toContain(secret);
+      } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+      }
+    },
+    30_000,
+  );
+
   const selected = ["e2e-tests/a(legacy).spec.ts", "e2e-tests/b.spec.ts"];
   const candidates = [
     ...selected,

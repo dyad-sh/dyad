@@ -399,6 +399,19 @@ describe("tests handlers", () => {
         runningApps.set(appId, { proxyUrl: "http://localhost:42100" } as any);
         vi.stubEnv("SUPABASE_SECRET_KEY", "unrelated-inherited-key");
         vi.stubEnv("SUPABASE_URL", "https://unrelated.supabase.co");
+        // A spec can print the secret, including across separate pipe chunks.
+        spawnStreamingMock.mockImplementation(async ({ env, onOutput }) => {
+          const key = env.SUPABASE_SECRET_KEY;
+          onOutput(`stdout: ${key.slice(0, 10)}`);
+          onOutput(`${key.slice(10)}\nstderr: ${key}\n`);
+          return {
+            code: 1,
+            stdout: key,
+            stderr: `runner failed: ${key}`,
+            aborted: false,
+            timedOut: false,
+          };
+        });
         try {
           const result = await runAppTestsWithIsolation({
             event: { sender: {} } as any,
@@ -407,6 +420,10 @@ describe("tests handlers", () => {
           });
 
           expect(spawnStreamingMock).toHaveBeenCalledOnce();
+          expect(result.infraError?.message).toContain("[redacted]");
+          expect(
+            JSON.stringify(broadcastToRegisteredWindowsMock.mock.calls),
+          ).toContain("[redacted]");
           expect(spawnStreamingMock.mock.calls[0][0].env).toMatchObject({
             ...testRunnerEnv,
             DYAD_TEST_CASE_TOKEN: "case-token",

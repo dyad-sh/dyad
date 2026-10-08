@@ -538,61 +538,14 @@ describe("local_agent_prompt", () => {
       expect(choose).toBeGreaterThan(inspect);
       expect(prompt).toContain("relevant triggers and functions");
       expect(prompt).toContain("foreign keys, defaults, and RLS policies");
-      expect(prompt).toContain("test.beforeEach");
-      expect(prompt).toContain("more than one user");
-      expect(prompt).toContain(
-        "user_metadata: { organization_id: createdOrganization.id }",
-      );
-      expect(prompt).toContain(
-        "Updating metadata after creation does not rerun an INSERT trigger",
-      );
-      expect(prompt).toContain("test.afterEach");
-      expect(prompt).toContain("Handle partial setup failures");
-      expect(prompt).toContain("supabase.auth.admin.deleteUser");
-      expect(prompt).toContain(
-        "Perform the flow and authorization assertions as those users with the public client",
-      );
-      expect(prompt).toContain("default-user cleanup does not track");
-      expect(prompt).toContain("continues without default-user credentials");
-      expect(prompt).toContain("verifies that no auth user was created");
-      expect(prompt).toContain(
-        "pass your custom user's credentials explicitly",
-      );
-      expect(prompt).toContain(
-        "Other provisioning errors, cancellation, and cleanup failures still stop the run",
-      );
+      expect(prompt).toContain('guide="custom-supabase-test-fixtures"');
+      expect(prompt).not.toContain("supabase.auth.admin.createUser");
       expect(prompt).not.toContain("must succeed before custom setup can run");
       expect(prompt).not.toContain(
         "You do NOT need to write any setup/teardown code",
       );
     },
   );
-
-  it("describes injected Supabase fixture credentials and default provisioning", () => {
-    const prompt = constructLocalAgentPrompt(undefined, undefined, {
-      testingEnabled: true,
-    });
-
-    expect(prompt).toContain(
-      "Dyad injects `SUPABASE_SECRET_KEY` and the matching `SUPABASE_URL` directly into the Node Playwright process",
-    );
-    expect(prompt).toContain("process.env.SUPABASE_URL");
-    expect(prompt).toContain("require both variables before performing setup");
-    expect(prompt).toContain(
-      "sandbox's copied dotenv files still exclude the secret",
-    );
-    expect(prompt).toContain(
-      "automatic user provisioning runs before the spec's `beforeEach`",
-    );
-    expect(prompt).toContain("explain the missing runtime support to the user");
-    expect(prompt).toContain("do not edit Dyad-owned fixtures/config");
-    expect(prompt).toContain("no dotenv loading is needed");
-    expect(prompt).toContain("injected key does not disable the default user");
-    expect(prompt).not.toContain("test sandbox strips `SUPABASE_SECRET_KEY`");
-    expect(prompt).toContain(
-      "Admin access bypasses RLS in the real connected project",
-    );
-  });
 
   it("routes missing trigger inspection through root for Implementers", () => {
     const prompt = constructImplementerPrompt(undefined, {
@@ -604,9 +557,7 @@ describe("local_agent_prompt", () => {
     expect(prompt).toContain(
       "ask the root Agent to obtain them with read-only catalog queries",
     );
-    expect(prompt).toContain(
-      "report the missing runtime support to the root Agent",
-    );
+    expect(prompt).toContain('guide="custom-supabase-test-fixtures"');
     expect(prompt).not.toContain("through `execute_sql`");
   });
 

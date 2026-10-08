@@ -1,4 +1,67 @@
 import { stripVTControlCharacters } from "node:util";
+import fs from "node:fs/promises";
+import path from "node:path";
+
+/** Sanitize owned reports after the runner exits, including failed/stopped runs. */
+export async function redactTestRunArtifacts(
+  directory: string,
+  values: string[],
+) {
+  if (!values.some(Boolean)) return;
+  const redactor = createTestOutputRedactor(values);
+  const visit = async (current: string): Promise<void> => {
+    for (const entry of await fs.readdir(current, { withFileTypes: true })) {
+      const target = path.join(current, entry.name);
+      if (
+        entry.isSymbolicLink() ||
+        redactor.redact(entry.name) !== entry.name
+      ) {
+        await fs.rm(target, { recursive: true, force: true });
+      } else if (entry.isDirectory()) {
+        await visit(target);
+      } else if (entry.isFile()) {
+        // Traces, screenshots and arbitrary attachments may contain credentials
+        // in compressed/encoded or visual form. Retain only sanitizable text.
+        if (
+          !/\.(json|md|txt|log)$/.test(entry.name) &&
+          entry.name !== ".dyad-test-run"
+        ) {
+          await fs.rm(target, { force: true });
+          continue;
+        }
+        const raw = await fs.readFile(target, "utf8");
+        let clean = redactor.redact(raw);
+        if (entry.name.endsWith(".json")) {
+          try {
+            clean = JSON.stringify(redactor.result(JSON.parse(raw)));
+          } catch {
+            // A killed runner can leave incomplete JSON. Also redact escaped
+            // credentials without requiring a complete report.
+          }
+          clean = redactor.redact(clean);
+          for (const value of values.filter(Boolean)) {
+            clean = clean
+              .split(JSON.stringify(value).slice(1, -1))
+              .join("[redacted]");
+          }
+        }
+        await fs.writeFile(target, clean);
+      }
+    }
+  };
+  try {
+    await visit(directory);
+  } catch {
+    // Fail closed rather than retaining partially sanitized artifacts. Avoid
+    // propagating filesystem errors whose paths may themselves contain secrets.
+    await fs.rm(directory, { recursive: true, force: true }).catch(() => {
+      throw new Error("Could not remove unsanitized test artifacts.");
+    });
+    throw new Error(
+      "Could not sanitize test artifacts; removed the run artifacts.",
+    );
+  }
+}
 
 /** Redact runner-only credentials before output or results leave the runner. */
 export function createTestOutputRedactor(values: string[]) {

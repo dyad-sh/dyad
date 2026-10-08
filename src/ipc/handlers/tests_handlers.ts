@@ -1,5 +1,8 @@
 import type { ChildProcess } from "node:child_process";
-import { createTestOutputRedactor } from "../utils/test_output_redaction";
+import {
+  createTestOutputRedactor,
+  redactTestRunArtifacts,
+} from "../utils/test_output_redaction";
 import { previewTestNodeOptions } from "../utils/preview_dns";
 import fs from "node:fs";
 import os from "node:os";
@@ -689,6 +692,8 @@ async function runPreviewTestBatch({
         message: error instanceof Error ? error.message : String(error),
       };
       return result;
+    } finally {
+      await redactTestRunArtifacts(batchDir, Object.values(testEnv ?? {}));
     }
 
     if (discoveryRun.aborted) {
@@ -818,6 +823,11 @@ async function runPreviewTestBatch({
           message: error instanceof Error ? error.message : String(error),
         };
         break;
+      } finally {
+        await redactTestRunArtifacts(
+          invocationDir,
+          Object.values(testEnv ?? {}),
+        );
       }
 
       if (run.aborted) {
@@ -1273,6 +1283,8 @@ async function runAppTestsCoreUnredacted({
       ),
     );
     return { appId, results: [], infraError: { message } };
+  } finally {
+    await redactTestRunArtifacts(artifactsDir, Object.values(testEnv ?? {}));
   }
 
   if (run.aborted) {

@@ -228,9 +228,11 @@ describe("selected file batches", () => {
         fs.writeFileSync(
           path.join(root, "e2e-tests/secret.spec.ts"),
           `const { test, expect } = require("@playwright/test");
-test("prints a fixture secret", () => {
+test("prints a fixture secret", async ({}, testInfo) => {
   console.log(process.env.SUPABASE_SECRET_KEY);
   console.error(process.env.SUPABASE_SECRET_KEY);
+  const fs = require("node:fs");
+  fs.writeFileSync(testInfo.outputPath("error-context.md"), process.env.SUPABASE_SECRET_KEY);
   expect(process.env.SUPABASE_SECRET_KEY).toBe("different");
 });`,
         );
@@ -244,6 +246,7 @@ test("prints a fixture secret", () => {
           appPath: root,
           baseUrl: PROXY_URL,
           skipBootstrap: true,
+          bootstrapPreviewRouted: preview,
           testEnv: { SUPABASE_SECRET_KEY: secret },
           onOutput: (chunk) => output.push(chunk),
           ...(preview
@@ -259,6 +262,20 @@ test("prints a fixture secret", () => {
         expect(JSON.stringify(result)).not.toContain(secret);
         expect(output.join("")).toContain("[redacted]");
         expect(output.join("")).not.toContain(secret);
+        const artifactsRoot = path.join(root, "test-results");
+        const retainedFiles = fs
+          .readdirSync(artifactsRoot, { recursive: true, withFileTypes: true })
+          .filter((entry) => entry.isFile())
+          .map((entry) => path.join(entry.parentPath, entry.name));
+        expect(
+          retainedFiles.some((file) => file.endsWith("results.json")),
+        ).toBe(true);
+        expect(
+          retainedFiles.some((file) => file.endsWith("error-context.md")),
+        ).toBe(true);
+        for (const file of retainedFiles) {
+          expect(fs.readFileSync(file, "utf8")).not.toContain(secret);
+        }
       } finally {
         fs.rmSync(root, { recursive: true, force: true });
       }

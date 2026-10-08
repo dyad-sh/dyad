@@ -104,7 +104,10 @@ describe("Neon config sync to Cloudflare (integration)", () => {
     expect(await screen.findByTestId("sync-to-cloudflare")).toBeTruthy();
   });
 
-  it("removes the secrets on Neon disconnect whether or not the experiment is on", async () => {
+  it("lets the Neon disconnect cleanup through while the experiment is off", async () => {
+    // Only the gate is checked here: with no Worker connected there is nothing
+    // to delete. The deletion itself is covered in cloudflare_handlers.test.ts
+    // against the stand-in Cloudflare.
     await expect(
       ipc.cloudflare.removeNeonEnvVars({ appId: harness.appId }),
     ).resolves.toEqual({ removedKeys: [] });

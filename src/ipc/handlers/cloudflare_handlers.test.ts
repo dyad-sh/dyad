@@ -96,8 +96,49 @@ vi.mock("../utils/socket_firewall", () => ({
   }),
 }));
 
+// A stand-in Neon: what the chosen branch resolves to, and which origins the
+// sync asked it to trust.
+const neon = vi.hoisted(() => ({
+  resolved: {
+    databaseUrl: "postgres://db.neon.test/app",
+    neonAuthBaseUrl: "https://auth.neon.test/app/auth" as string | undefined,
+    neonAuthCookieSecret: undefined as string | undefined,
+    branchId: "br-prod",
+    isNextJs: false,
+  },
+  resolveError: null as Error | null,
+  branchTypes: [] as string[],
+  trustedOrigins: [] as string[],
+  trustError: null as Error | null,
+}));
+vi.mock("../utils/neon_utils", () => ({
+  combineWarnings: (...warnings: Array<string | undefined>) => {
+    const kept = warnings.filter(Boolean);
+    return kept.length > 0 ? kept.join(" ") : undefined;
+  },
+  getSelectedDeployBranchType: (app: {
+    selectedDatabaseBranchType?: unknown;
+  }) =>
+    app.selectedDatabaseBranchType === "development"
+      ? "development"
+      : "production",
+  resolveNeonBranchEnvVars: async ({ branchType }: { branchType: string }) => {
+    if (neon.resolveError) throw neon.resolveError;
+    neon.branchTypes.push(branchType);
+    return neon.resolved;
+  },
+  ensureNeonAuthTrustedDomain: async ({ origin }: { origin: string }) => {
+    if (neon.trustError) throw neon.trustError;
+    if (neon.trustedOrigins.includes(origin)) return null;
+    neon.trustedOrigins.push(origin);
+    return origin;
+  },
+}));
+
 const { cloudflareHandlersForTesting: handlers } =
   await import("./cloudflare_handlers");
+const { syncNeonConfigToCloudflare, removeNeonEnvVarsFromCloudflare } =
+  await import("../utils/cloudflare_neon_sync");
 
 // ---------------------------------------------------------------------------
 // A stand-in Cloudflare
@@ -123,6 +164,8 @@ interface FakeCloudflare {
   subdomain: string | null;
   visibleRepoIds: Set<string>;
   workers: Map<string, { tag: string; routeEnabled: boolean }>;
+  /** Each Worker's runtime secrets by name. */
+  secrets: Record<string, Record<string, string>>;
   buildTokens: { build_token_uuid: string; cloudflare_token_id: string }[];
   triggers: FakeTrigger[];
   builds: Record<string, unknown>[];
@@ -221,6 +264,30 @@ async function fakeFetch(
       worker.routeEnabled = true;
     }
     return ok({ enabled: worker.routeEnabled });
+  }
+  if (
+    (match = /\/workers\/scripts\/([^/]+)\/secrets$/.exec(path)) &&
+    method === "PUT"
+  ) {
+    if (!cloudflare.workers.has(match[1])) {
+      return fail(404, 10007, "workers.api.error.script_not_found");
+    }
+    cloudflare.secrets[match[1]] = {
+      ...cloudflare.secrets[match[1]],
+      [body.name]: body.text,
+    };
+    return ok({ name: body.name, type: body.type });
+  }
+  if (
+    (match = /\/workers\/scripts\/([^/]+)\/secrets\/([^/]+)$/.exec(path)) &&
+    method === "DELETE"
+  ) {
+    const secrets = cloudflare.secrets[match[1]];
+    if (!secrets || !(match[2] in secrets)) {
+      return fail(404, 10056, "binding not found");
+    }
+    delete secrets[match[2]];
+    return ok(null);
   }
   if ((match = /\/workers\/scripts\/([^/]+)$/.exec(path))) {
     if (method === "PUT") {
@@ -363,12 +430,24 @@ beforeEach(() => {
   holder.files = {
     "worker/wrangler.jsonc": `{ "name": "shop-api" }`,
   };
+  neon.resolved = {
+    databaseUrl: "postgres://db.neon.test/app",
+    neonAuthBaseUrl: "https://auth.neon.test/app/auth",
+    neonAuthCookieSecret: undefined,
+    branchId: "br-prod",
+    isNextJs: false,
+  };
+  neon.resolveError = null;
+  neon.branchTypes = [];
+  neon.trustedOrigins = [];
+  neon.trustError = null;
   cloudflare = {
     tokenStatus: "active",
     canUseBuilds: true,
     subdomain: "acme",
     visibleRepoIds: new Set(["501"]),
     workers: new Map(),
+    secrets: {},
     buildTokens: [],
     triggers: [],
     builds: [],
@@ -1211,6 +1290,244 @@ describe("disconnecting", () => {
     await handlers.handleConnectWorker({ appId, ...CONNECT });
     db.delete(apps).where(eq(apps.id, appId)).run();
     expect(db.select().from(cloudflareAppConnections).all()).toEqual([]);
+  });
+});
+
+describe("an app with a Neon database", () => {
+  beforeEach(() => {
+    db.update(apps).set({ neonProjectId: "neon-proj" }).run();
+  });
+
+  it("puts the database secrets on the Worker and trusts its address when connecting", async () => {
+    const result = await handlers.handleConnectWorker({ appId, ...CONNECT });
+
+    expect(result).toMatchObject({ status: "connected", warning: undefined });
+    expect(cloudflare.secrets["shop-api"]).toEqual({
+      DATABASE_URL: "postgres://db.neon.test/app",
+      NEON_AUTH_BASE_URL: "https://auth.neon.test/app/auth",
+    });
+    expect(neon.trustedOrigins).toEqual(["https://shop-api.acme.workers.dev"]);
+    // The secrets go on the Worker, where the deployed code reads them, not
+    // on the rule, whose variables exist only during the build.
+    expect(cloudflare.buildVariables).toEqual({});
+    // Set before the first build so the first deployment has them.
+    const secretsCall = cloudflare.calls.findIndex((call) =>
+      call.endsWith("/secrets"),
+    );
+    const buildCall = cloudflare.calls.findIndex((call) =>
+      call.endsWith("/builds"),
+    );
+    expect(secretsCall).toBeGreaterThan(-1);
+    expect(secretsCall).toBeLessThan(buildCall);
+  });
+
+  it("follows the branch the app deploys from", async () => {
+    db.update(apps).set({ selectedDatabaseBranchType: "development" }).run();
+    await handlers.handleConnectWorker({ appId, ...CONNECT });
+    expect(neon.branchTypes).toEqual(["development"]);
+  });
+
+  it("sets only the database URL, and says so, when Neon Auth is off", async () => {
+    neon.resolved.neonAuthBaseUrl = undefined;
+    const result = await handlers.handleConnectWorker({ appId, ...CONNECT });
+
+    expect(cloudflare.secrets["shop-api"]).toEqual({
+      DATABASE_URL: "postgres://db.neon.test/app",
+    });
+    expect(neon.trustedOrigins).toEqual([]);
+    expect(result.status === "connected" && result.warning).toMatch(
+      /Neon Auth is not active/,
+    );
+  });
+
+  it("still connects, and says how to retry, when the secrets cannot be set", async () => {
+    cloudflare.failOn = (method, path) =>
+      method === "PUT" && path.endsWith("/secrets");
+    const result = await handlers.handleConnectWorker({ appId, ...CONNECT });
+
+    expect(result.status).toBe("connected");
+    expect(result.status === "connected" && result.warning).toMatch(
+      /Sync to Cloudflare/,
+    );
+    expect(connectionRows()).toHaveLength(1);
+    expect(cloudflare.startedBuilds).toHaveLength(1);
+  });
+
+  it("still connects when Neon cannot be reached", async () => {
+    neon.resolveError = new Error("Neon is down");
+    const result = await handlers.handleConnectWorker({ appId, ...CONNECT });
+
+    expect(result.status).toBe("connected");
+    expect(result.status === "connected" && result.warning).toMatch(
+      /Neon is down/,
+    );
+    expect(cloudflare.secrets).toEqual({});
+  });
+
+  it("skips the allowlist for a Worker without a workers.dev address", async () => {
+    cloudflare.workers.set("shop-api", { tag: "tag-old", routeEnabled: false });
+    const result = await handlers.handleConnectWorker({
+      appId,
+      ...CONNECT,
+      mode: "existing",
+    });
+
+    expect(cloudflare.secrets["shop-api"]).toBeDefined();
+    expect(neon.trustedOrigins).toEqual([]);
+    expect(result.status === "connected" && result.warning).toMatch(
+      /no workers.dev address/,
+    );
+  });
+
+  it("touches neither Neon nor the Worker's secrets for an app without Neon", async () => {
+    db.update(apps).set({ neonProjectId: null }).run();
+    await handlers.handleConnectWorker({ appId, ...CONNECT });
+
+    expect(neon.branchTypes).toEqual([]);
+    expect(cloudflare.secrets).toEqual({});
+  });
+
+  describe("syncing on request", () => {
+    it("updates every connected Worker and reports a clean sync", async () => {
+      await handlers.handleConnectWorker({ appId, ...CONNECT });
+      holder.committedFiles.push("cron/wrangler.toml");
+      await handlers.handleConnectWorker({
+        appId,
+        ...CONNECT,
+        rootDirectory: "cron",
+        workerName: "shop-cron",
+      });
+      neon.resolved.databaseUrl = "postgres://db.neon.test/app-dev";
+
+      const result = await syncNeonConfigToCloudflare({
+        appId,
+        branchType: "development",
+      });
+
+      expect(result).toEqual({
+        envPushed: true,
+        domainsAdded: [],
+        skipped: [],
+        warning: undefined,
+      });
+      expect(neon.branchTypes.at(-1)).toBe("development");
+      for (const name of ["shop-api", "shop-cron"]) {
+        expect(cloudflare.secrets[name].DATABASE_URL).toBe(
+          "postgres://db.neon.test/app-dev",
+        );
+      }
+    });
+
+    it("reports a Worker that refused the secrets without skipping the others", async () => {
+      await handlers.handleConnectWorker({ appId, ...CONNECT });
+      holder.committedFiles.push("cron/wrangler.toml");
+      await handlers.handleConnectWorker({
+        appId,
+        ...CONNECT,
+        rootDirectory: "cron",
+        workerName: "shop-cron",
+      });
+      cloudflare.failOn = (method, path) =>
+        method === "PUT" && path.includes("/scripts/shop-api/secrets");
+      neon.resolved.databaseUrl = "postgres://db.neon.test/app-2";
+
+      const result = await syncNeonConfigToCloudflare({ appId });
+
+      expect(result.envPushed).toBe(false);
+      expect(result.warning).toMatch(/shop-api/);
+      expect(cloudflare.secrets["shop-cron"].DATABASE_URL).toBe(
+        "postgres://db.neon.test/app-2",
+      );
+    });
+
+    it("reports a failed allowlist update as a warning, with the secrets set", async () => {
+      await handlers.handleConnectWorker({ appId, ...CONNECT });
+      neon.trustError = new Error("Neon refused the domain");
+
+      const result = await syncNeonConfigToCloudflare({ appId });
+
+      expect(result.envPushed).toBe(true);
+      expect(result.warning).toMatch(/Neon refused the domain/);
+    });
+
+    it("refuses an app with no Worker", async () => {
+      await expect(syncNeonConfigToCloudflare({ appId })).rejects.toMatchObject(
+        {
+          kind: "precondition",
+          message: expect.stringMatching(
+            /not connected to a Cloudflare Worker/,
+          ),
+        },
+      );
+    });
+
+    it("refuses an app with no Neon project", async () => {
+      await handlers.handleConnectWorker({ appId, ...CONNECT });
+      db.update(apps).set({ neonProjectId: null }).run();
+      await expect(syncNeonConfigToCloudflare({ appId })).rejects.toMatchObject(
+        {
+          kind: "precondition",
+          message: expect.stringMatching(/not connected to a Neon project/),
+        },
+      );
+    });
+  });
+
+  describe("removing the secrets", () => {
+    it("takes them off every Worker, leaving other secrets alone", async () => {
+      await handlers.handleConnectWorker({ appId, ...CONNECT });
+      holder.committedFiles.push("cron/wrangler.toml");
+      await handlers.handleConnectWorker({
+        appId,
+        ...CONNECT,
+        rootDirectory: "cron",
+        workerName: "shop-cron",
+      });
+      cloudflare.secrets["shop-api"].API_KEY = "keep";
+
+      const result = await removeNeonEnvVarsFromCloudflare({ appId });
+
+      expect(result).toEqual({
+        removedKeys: ["DATABASE_URL", "NEON_AUTH_BASE_URL"],
+        warning: undefined,
+      });
+      expect(cloudflare.secrets["shop-api"]).toEqual({ API_KEY: "keep" });
+      expect(cloudflare.secrets["shop-cron"]).toEqual({});
+    });
+
+    it("counts a secret that was already gone as removed", async () => {
+      await handlers.handleConnectWorker({ appId, ...CONNECT });
+      delete cloudflare.secrets["shop-api"].NEON_AUTH_BASE_URL;
+
+      const result = await removeNeonEnvVarsFromCloudflare({ appId });
+
+      expect(result.removedKeys).toEqual([
+        "DATABASE_URL",
+        "NEON_AUTH_BASE_URL",
+      ]);
+      expect(result.warning).toBeUndefined();
+    });
+
+    it("names the secret it could not remove", async () => {
+      await handlers.handleConnectWorker({ appId, ...CONNECT });
+      cloudflare.failOn = (method, path) =>
+        method === "DELETE" && path.endsWith("/secrets/DATABASE_URL");
+
+      const result = await removeNeonEnvVarsFromCloudflare({ appId });
+
+      expect(result.removedKeys).toEqual(["NEON_AUTH_BASE_URL"]);
+      expect(result.warning).toMatch(/DATABASE_URL from shop-api/);
+      expect(cloudflare.secrets["shop-api"]).toEqual({
+        DATABASE_URL: "postgres://db.neon.test/app",
+      });
+    });
+
+    it("does nothing for an app with no Worker", async () => {
+      holder.settings = {};
+      await expect(removeNeonEnvVarsFromCloudflare({ appId })).resolves.toEqual(
+        { removedKeys: [] },
+      );
+    });
   });
 });
 

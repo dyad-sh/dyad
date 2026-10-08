@@ -764,7 +764,10 @@
       "connecting": "连接中...",
       "disconnectAccountTitle": "断开 Neon 账户",
       "disconnectAccountConfirmation": "确定要断开 Neon 账户吗？您需要通过 OAuth 重新认证才能重新连接。",
-      "connectFailed": "连接 Neon 失败"
+      "connectFailed": "连接 Neon 失败",
+      "removeCloudflareEnvVars": "从 Cloudflare 移除 Neon 密钥",
+      "removeCloudflareEnvVarsHelp": "从已连接的 Worker 中删除 DATABASE_URL 和 NEON_AUTH_BASE_URL，以免它们指向已断开的数据库。",
+      "failedRemoveCloudflareEnvVars": "已断开连接，但未能从 Cloudflare 移除 Neon 密钥。"
     },
     "db": {
       "projectInfo": "{{provider}} 项目信息",

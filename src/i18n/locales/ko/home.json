@@ -773,7 +773,10 @@
       "removeVercelEnvVars": "Vercel에서 Neon 환경 변수 제거",
       "removeVercelEnvVarsHelp": "연결된 Vercel 프로젝트가 연결 해제된 데이터베이스를 가리키지 않도록 DATABASE_URL 및 Neon Auth 변수를 삭제합니다.",
       "failedRemoveVercelEnvVars": "연결은 해제되었지만 Vercel에서 Neon 환경 변수 제거에 실패했습니다.",
-      "connectFailed": "Neon 연결에 실패했습니다"
+      "connectFailed": "Neon 연결에 실패했습니다",
+      "removeCloudflareEnvVars": "Cloudflare에서 Neon 시크릿 제거",
+      "removeCloudflareEnvVarsHelp": "연결된 Worker가 연결 해제된 데이터베이스를 가리키지 않도록 DATABASE_URL 및 NEON_AUTH_BASE_URL을 삭제합니다.",
+      "failedRemoveCloudflareEnvVars": "연결은 해제되었지만 Cloudflare에서 Neon 시크릿 제거에 실패했습니다."
     },
     "db": {
       "projectInfo": "{{provider}} 프로젝트 정보",
@@ -842,7 +845,11 @@
       "syncSuccess": "데이터베이스 설정을 Vercel에 동기화했지만, 라이브 앱에 적용하려면 재배포가 필요합니다.",
       "syncError": "Vercel 동기화에 실패했습니다.",
       "selectBranchError": "데이터베이스 브랜치 선택 저장에 실패했습니다.",
-      "clearBranchError": "데이터베이스 브랜치 선택 지우기에 실패했습니다."
+      "clearBranchError": "데이터베이스 브랜치 선택 지우기에 실패했습니다.",
+      "syncToCloudflare": "Cloudflare에 동기화",
+      "syncToCloudflareHelp": "Cloudflare Worker에 데이터베이스 시크릿을 설정하고 해당 주소를 Neon의 인증 리디렉션 허용 목록에 추가합니다.",
+      "syncToCloudflareSuccess": "데이터베이스 설정을 Cloudflare에 동기화했습니다. 라이브 앱에 바로 적용됩니다.",
+      "syncToCloudflareError": "Cloudflare 동기화에 실패했습니다."
     },
     "migration": {
       "title": "데이터베이스 마이그레이션",

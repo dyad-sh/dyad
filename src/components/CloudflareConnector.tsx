@@ -21,6 +21,7 @@ import type {
   CloudflareWorkerSummary,
 } from "@/ipc/types";
 import { useChatMode } from "@/hooks/useChatMode";
+import { useLoadApp } from "@/hooks/useLoadApp";
 import { useSettings } from "@/hooks/useSettings";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import {
@@ -680,6 +681,13 @@ function WorkerForm({
   );
   const [conflictRepo, setConflictRepo] = useState<string | null>(null);
   const connect = useConnectCloudflareWorker();
+  // A Neon app's database is put on the Worker as part of connecting, which
+  // the user should know before Dyad touches their Neon project for it.
+  const { app } = useLoadApp(appId);
+  const neonBranch =
+    app?.selectedDatabaseBranchType === "development"
+      ? "development"
+      : "production";
 
   const workerName = mode === "create" ? newName.trim() : existingName;
   const nameTaken =
@@ -833,6 +841,13 @@ function WorkerForm({
               ))}
             </SelectContent>
           </Select>
+        </div>
+      )}
+
+      {app?.neonProjectId && (
+        <div className={noticeClass} data-testid="cloudflare-neon-notice">
+          Dyad will connect this Worker to your {neonBranch} Neon database and
+          allow sign-in from the Worker's address.
         </div>
       )}
 

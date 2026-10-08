@@ -793,7 +793,10 @@
       "disconnectAccountConfirmation": "Are you sure you want to disconnect your Neon account? You will need to re-authenticate via OAuth to reconnect.",
       "removeVercelEnvVars": "Remove Neon environment variables from Vercel",
       "removeVercelEnvVarsHelp": "Deletes DATABASE_URL and Neon Auth variables from the linked Vercel project so they don't point at a disconnected database.",
-      "failedRemoveVercelEnvVars": "Disconnected, but failed to remove Neon environment variables from Vercel."
+      "failedRemoveVercelEnvVars": "Disconnected, but failed to remove Neon environment variables from Vercel.",
+      "removeCloudflareEnvVars": "Remove Neon secrets from Cloudflare",
+      "removeCloudflareEnvVarsHelp": "Deletes DATABASE_URL and NEON_AUTH_BASE_URL from the connected Workers so they don't point at a disconnected database.",
+      "failedRemoveCloudflareEnvVars": "Disconnected, but failed to remove Neon secrets from Cloudflare."
     },
     "db": {
       "projectInfo": "{{provider}} Project Info",
@@ -862,7 +865,11 @@
       "syncSuccess": "Synced database configuration to Vercel, but a redeploy is required for your live app to use it.",
       "syncError": "Failed to sync to Vercel.",
       "selectBranchError": "Failed to save your database branch selection.",
-      "clearBranchError": "Failed to clear your database branch selection."
+      "clearBranchError": "Failed to clear your database branch selection.",
+      "syncToCloudflare": "Sync to Cloudflare",
+      "syncToCloudflareHelp": "Set database secrets on your Cloudflare Workers and add their addresses to Neon's auth redirect allowlist.",
+      "syncToCloudflareSuccess": "Synced database configuration to Cloudflare. Your live app uses it right away.",
+      "syncToCloudflareError": "Failed to sync to Cloudflare."
     },
     "migration": {
       "title": "Database Migration",

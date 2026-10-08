@@ -47,6 +47,45 @@ const ENV_META: Record<
   dev: { branchType: "development", icon: FlaskConical },
 };
 
+/** One deploy host's "push the database configuration there" control. */
+const SyncRow = ({
+  testId,
+  help,
+  label,
+  syncingLabel,
+  isPending,
+  disabled,
+  onSync,
+}: {
+  testId: string;
+  help: string;
+  label: string;
+  syncingLabel: string;
+  isPending: boolean;
+  disabled: boolean;
+  onSync: () => void;
+}) => (
+  <div
+    className="flex items-start justify-between gap-3 rounded-lg border border-border p-3"
+    data-testid={testId}
+  >
+    <p className="text-xs text-gray-600 dark:text-gray-400">{help}</p>
+    <Button size="sm" className="shrink-0" onClick={onSync} disabled={disabled}>
+      {isPending ? (
+        <>
+          <Loader2 className="w-4 h-4 animate-spin" />
+          {syncingLabel}
+        </>
+      ) : (
+        <>
+          <UploadCloud className="w-4 h-4" />
+          {label}
+        </>
+      )}
+    </Button>
+  </div>
+);
+
 export const DatabaseSection = ({ appId }: DatabaseSectionProps) => {
   const { t } = useTranslation("home");
   const queryClient = useQueryClient();
@@ -103,20 +142,44 @@ export const DatabaseSection = ({ appId }: DatabaseSectionProps) => {
     },
   });
 
+  // Both hosts answer the same way: the env push is the primary operation, so
+  // its failure is an error rather than a warning, which is reserved for the
+  // non-critical steps such as the trusted-domain allowlist.
+  const reportSync = (
+    result: { envPushed: boolean; warning?: string },
+    messages: { success: string; error: string },
+  ) => {
+    if (!result.envPushed) {
+      toast.error(result.warning ?? messages.error);
+    } else if (result.warning) {
+      toast.warning(result.warning);
+    } else {
+      toast.success(messages.success);
+    }
+  };
+
   const syncMutation = useMutation({
     mutationFn: (branchType: "production" | "development") =>
       ipc.vercel.syncNeonConfig({ appId, branchType }),
     onSuccess: (result) => {
-      if (!result.envPushed) {
-        // Env push is the primary operation; surface its failure as an error
-        // rather than a warning so it isn't mistaken for a non-critical
-        // (e.g. trusted-domain) skip.
-        toast.error(result.warning ?? t("integrations.database.syncError"));
-      } else if (result.warning) {
-        toast.warning(result.warning);
-      } else {
-        toast.success(t("integrations.database.syncSuccess"));
-      }
+      reportSync(result, {
+        success: t("integrations.database.syncSuccess"),
+        error: t("integrations.database.syncError"),
+      });
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error));
+    },
+  });
+
+  const cloudflareSyncMutation = useMutation({
+    mutationFn: (branchType: "production" | "development") =>
+      ipc.cloudflare.syncNeonConfig({ appId, branchType }),
+    onSuccess: (result) => {
+      reportSync(result, {
+        success: t("integrations.database.syncToCloudflareSuccess"),
+        error: t("integrations.database.syncToCloudflareError"),
+      });
     },
     onError: (error) => {
       toast.error(getErrorMessage(error));
@@ -138,11 +201,15 @@ export const DatabaseSection = ({ appId }: DatabaseSectionProps) => {
   // A branch is "selected" once the app is on production or an env was picked.
   // Don't surface the sync action on the branch-selection screen.
   const hasBranchSelected = isProductionBranchActive || selectedEnv !== null;
-  const showSync =
-    !!app?.vercelProjectId &&
-    !!app?.neonProjectId &&
-    !isLoadingBranches &&
-    hasBranchSelected;
+  const canSync =
+    !!app?.neonProjectId && !isLoadingBranches && hasBranchSelected;
+  const showSync = canSync && !!app?.vercelProjectId;
+  const showCloudflareSync =
+    canSync && !!app?.deploymentProvidersInUse.cloudflare;
+  const syncPending =
+    syncMutation.isPending ||
+    cloudflareSyncMutation.isPending ||
+    setBranchMutation.isPending;
 
   // Sync against the branch the UI is actually displaying, not the persisted
   // selection. When the production branch is active (Case 2) the UI shows the
@@ -163,32 +230,26 @@ export const DatabaseSection = ({ appId }: DatabaseSectionProps) => {
       </CardHeader>
       <CardContent className="space-y-4">
         {showSync && (
-          <div
-            className="flex items-start justify-between gap-3 rounded-lg border border-border p-3"
-            data-testid="sync-to-vercel"
-          >
-            <p className="text-xs text-gray-600 dark:text-gray-400">
-              {t("integrations.database.syncToVercelHelp")}
-            </p>
-            <Button
-              size="sm"
-              className="shrink-0"
-              onClick={() => syncMutation.mutate(syncBranchType)}
-              disabled={syncMutation.isPending || setBranchMutation.isPending}
-            >
-              {syncMutation.isPending ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  {t("integrations.database.syncing")}
-                </>
-              ) : (
-                <>
-                  <UploadCloud className="w-4 h-4" />
-                  {t("integrations.database.syncToVercel")}
-                </>
-              )}
-            </Button>
-          </div>
+          <SyncRow
+            testId="sync-to-vercel"
+            help={t("integrations.database.syncToVercelHelp")}
+            label={t("integrations.database.syncToVercel")}
+            syncingLabel={t("integrations.database.syncing")}
+            isPending={syncMutation.isPending}
+            disabled={syncPending}
+            onSync={() => syncMutation.mutate(syncBranchType)}
+          />
+        )}
+        {showCloudflareSync && (
+          <SyncRow
+            testId="sync-to-cloudflare"
+            help={t("integrations.database.syncToCloudflareHelp")}
+            label={t("integrations.database.syncToCloudflare")}
+            syncingLabel={t("integrations.database.syncing")}
+            isPending={cloudflareSyncMutation.isPending}
+            disabled={syncPending}
+            onSync={() => cloudflareSyncMutation.mutate(syncBranchType)}
+          />
         )}
 
         {isLoadingBranches ? (

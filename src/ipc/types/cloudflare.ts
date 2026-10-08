@@ -155,7 +155,11 @@ export const ConnectCloudflareWorkerResultSchema = z.discriminatedUnion(
     z.object({
       status: z.literal("connected"),
       connection: CloudflareConnectionSchema,
-      /** Set when the rule was created but the first build did not start. */
+      /**
+       * Set when the Worker is connected but something after that did not
+       * go through: the first build did not start, or the app's Neon
+       * configuration could not be put on the Worker.
+       */
       warning: z.string().optional(),
     }),
     z.object({
@@ -169,6 +173,34 @@ export const ConnectCloudflareWorkerResultSchema = z.discriminatedUnion(
 export type ConnectCloudflareWorkerResult = z.infer<
   typeof ConnectCloudflareWorkerResultSchema
 >;
+
+// --- Neon → Cloudflare sync ---
+
+export const SyncCloudflareNeonConfigParamsSchema = z.object({
+  appId: z.number(),
+  /**
+   * The branch the Database section is showing. Without it the stored
+   * deploy-branch choice is used, production when there is none.
+   */
+  branchType: z.enum(["production", "development"]).optional(),
+});
+
+export const CloudflareNeonSyncResultSchema = z.object({
+  /** Whether every connected Worker got the secrets. */
+  envPushed: z.boolean(),
+  domainsAdded: z.array(z.string()),
+  skipped: z.array(z.string()),
+  warning: z.string().optional(),
+});
+
+export type CloudflareNeonSyncResult = z.infer<
+  typeof CloudflareNeonSyncResultSchema
+>;
+
+export const RemoveNeonEnvVarsFromCloudflareResultSchema = z.object({
+  removedKeys: z.array(z.string()),
+  warning: z.string().optional(),
+});
 
 // =============================================================================
 // Cloudflare Contracts
@@ -228,6 +260,18 @@ export const cloudflareContracts = {
     input: CloudflareTargetParamsSchema,
     output: z.void(),
     invalidates: (input) => [{ family: "app", appId: input.appId }],
+  }),
+
+  syncNeonConfig: defineContract({
+    channel: "cloudflare:sync-neon-config",
+    input: SyncCloudflareNeonConfigParamsSchema,
+    output: CloudflareNeonSyncResultSchema,
+  }),
+
+  removeNeonEnvVars: defineContract({
+    channel: "cloudflare:remove-neon-env-vars",
+    input: CloudflareAppParamsSchema,
+    output: RemoveNeonEnvVarsFromCloudflareResultSchema,
   }),
 } as const;
 

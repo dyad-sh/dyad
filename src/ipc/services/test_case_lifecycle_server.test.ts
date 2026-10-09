@@ -304,15 +304,19 @@ describe("test case lifecycle bridge", () => {
       const server = await startTestCaseLifecycleServer(
         {
           beforeEach: async (_signal, caseTiming) =>
-            measureTestRunStep(caseTiming, "supabase_user_create", async () => {
-              id += 1;
-              record(`create-${id}`);
-              if (creationRejected && id > 1) return {};
-              return {
-                DYAD_TEST_USER_EMAIL: String(id),
-                DYAD_TEST_USER_PASSWORD: `password-${id}`,
-              };
-            }),
+            measureTestRunStep(
+              caseTiming,
+              "supabase_user_create",
+              async (): Promise<Record<string, string>> => {
+                id += 1;
+                record(`create-${id}`);
+                if (creationRejected && id > 1) return {};
+                return {
+                  DYAD_TEST_USER_EMAIL: String(id),
+                  DYAD_TEST_USER_PASSWORD: `password-${id}`,
+                };
+              },
+            ),
           afterEach: async (_signal, caseTiming) =>
             measureTestRunStep(
               caseTiming,

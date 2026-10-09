@@ -1,4 +1,4 @@
-import { expect, type ElectronApplication } from "@playwright/test";
+import { expect, type ElectronApplication, type Page } from "@playwright/test";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { test, Timeout } from "./helpers/test_helper";
@@ -53,6 +53,19 @@ async function recordedScreenshotUploads(electronApp: ElectronApplication) {
       (globalThis as Record<string, unknown>)
         .__screenshotUploads as RecordedUpload[],
   );
+}
+
+/**
+ * The form files whatever diagnostics it has shown. Submitting while the
+ * disclosure still reads "Loading diagnostics..." files without them and
+ * raises an error toast that covers the dialog buttons on slow runners.
+ */
+async function waitForDiagnostics(page: Page) {
+  const disclosure = page.locator("details", { hasText: "System Information" });
+  await expect(disclosure).toContainText("Dyad Version", {
+    timeout: Timeout.MEDIUM,
+  });
+  await expect(page.getByText("Loading diagnostics...")).toHaveCount(0);
 }
 
 /** What the upload service answers for a screenshot. */
@@ -170,6 +183,7 @@ test("report a bug with a screenshot", async ({ po }) => {
   // The draft survives the dialog hiding and reopening.
   await expect(description).toHaveValue("The generated page is blank.");
 
+  await waitForDiagnostics(po.page);
   await po.page.getByRole("button", { name: "Create GitHub issue" }).click();
 
   const params = await firstIssueUrl(po.electronApp);
@@ -252,6 +266,7 @@ test("falls back to pasting when the screenshot upload fails", async ({
     ).toBeVisible({ timeout: Timeout.MEDIUM });
     await expect(description).toHaveValue("The generated page is blank.");
 
+    await waitForDiagnostics(po.page);
     await po.page.getByRole("button", { name: "Create GitHub issue" }).click();
 
     const params = await firstIssueUrl(po.electronApp);

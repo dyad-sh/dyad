@@ -880,6 +880,27 @@ describe("shouldBypassNonProTelemetrySampling", () => {
     }
   });
 
+  it.each(["e2e_test_run_completed"])(
+    "keeps %s for non-Pro run correlation",
+    (event) => {
+      expect(
+        shouldBypassNonProTelemetrySampling({
+          event,
+          properties: { timing_id: "test-run-1", status: "completed" },
+        }),
+      ).toBe(true);
+    },
+  );
+
+  it.each([
+    "e2e_test_step_started",
+    "e2e_test_step_completed",
+    "e2e_test_case_completed",
+    "e2e_test_future_event",
+  ])("does not extend the timing exemption to %s", (event) => {
+    expect(shouldBypassNonProTelemetrySampling({ event })).toBe(false);
+  });
+
   it("always sends pnpm build policy telemetry for non-Pro sampling", () => {
     expect(
       shouldBypassNonProTelemetrySampling({

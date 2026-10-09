@@ -9,6 +9,11 @@ import log from "electron-log/main";
 import { globSync } from "glob";
 import { spawnStreaming } from "./spawn_streaming";
 import {
+  measureTestRunStep,
+  type TestRunTiming,
+  testProcessTimingStatus,
+} from "../services/test_run_timing";
+import {
   findPackageManagerRoot,
   workspaceMembershipFor,
 } from "@/ipc/services/isolated_package_install";
@@ -29,6 +34,7 @@ import {
   TEST_CASE_REQUEST_TIMEOUT_MS,
   TEST_CASE_TOKEN_ENV,
 } from "../services/test_case_lifecycle_server";
+import { TEST_CASE_TIMING_ID_EXPRESSION } from "../services/test_case_timing_reporter";
 
 const logger = log.scope("playwright_bootstrap");
 
@@ -558,7 +564,7 @@ export function buildPreviewShimSource(): string {
 // instead of launching a separate browser, and isolates database data around
 // each test case when Dyad supplies a test-case lifecycle endpoint.
 import * as pw from "@playwright/test";
-import { randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 
 export * from "@playwright/test";
 
@@ -582,8 +588,8 @@ async function caseRequest(phase: "before" | "after", id: string) {
 }
 
 const isolatedTest = !caseEndpoint ? pw.test : pw.test.extend<{ _dyadTestCase: void }>({
-  _dyadTestCase: [async ({}, use) => {
-    const id = randomUUID();
+  _dyadTestCase: [async ({}, use, testInfo) => {
+    const id = ${TEST_CASE_TIMING_ID_EXPRESSION};
     for (const key of credentialKeys) delete process.env[key];
     try {
       const credentials = await caseRequest("before", id);
@@ -1737,12 +1743,14 @@ function ensureTestScript(appPath: string): void {
  * that its preview run has quietly become an ordinary browser run.
  */
 export async function ensurePlaywrightBootstrap({
+  timing,
   appPath,
   signal,
   onOutput,
   ensurePreviewShim: writePreviewShim,
   isolateTestCases,
 }: {
+  timing?: TestRunTiming;
   appPath: string;
   signal?: AbortSignal;
   onOutput?: (chunk: string) => void;
@@ -1783,19 +1791,25 @@ export async function ensurePlaywrightBootstrap({
   if (!packageInstalled) {
     onOutput?.("Installing @playwright/test...\n");
     const { command, args } = install;
-    const installDep = await spawnStreaming({
-      command,
-      args,
-      cwd: install.cwd,
-      signal,
-      onOutput,
-      // Disable Corepack's project spec so a stale `packageManager` pin can't
-      // fail the install before @playwright/test lands, mirroring the other
-      // Dyad-managed package-manager paths (executeAddDependency, runtime).
-      env: getPackageManagerCommandEnv(),
-      // Don't let a stuck registry/network hang the whole test flow forever.
-      timeoutMs: 5 * 60 * 1000,
-    });
+    const installDep = await measureTestRunStep(
+      timing,
+      "playwright_package_install",
+      () =>
+        spawnStreaming({
+          command,
+          args,
+          cwd: install.cwd,
+          signal,
+          onOutput,
+          // Disable Corepack's project spec so a stale `packageManager` pin can't
+          // fail the install before @playwright/test lands, mirroring the other
+          // Dyad-managed package-manager paths (executeAddDependency, runtime).
+          env: getPackageManagerCommandEnv(),
+          // Don't let a stuck registry/network hang the whole test flow forever.
+          timeoutMs: 5 * 60 * 1000,
+        }),
+      testProcessTimingStatus,
+    );
     if (installDep.aborted) {
       throw new DyadError("Test setup cancelled.", DyadErrorKind.Precondition);
     }
@@ -1874,18 +1888,24 @@ export async function ensurePlaywrightBootstrap({
     !isPlaywrightBrowserInstalled(appPath)
   ) {
     onOutput?.("\nDownloading the Chromium test browser...\n");
-    const installBrowser = await spawnStreaming({
-      command: "npx",
-      args: ["playwright", "install", "chromium"],
-      cwd: appPath,
-      signal,
-      onOutput,
-      // Same Corepack guard as the package install above.
-      env: getPackageManagerCommandEnv(),
-      // The Chromium download is large; give it a generous ceiling but never
-      // let it hang indefinitely on a stalled connection.
-      timeoutMs: 10 * 60 * 1000,
-    });
+    const installBrowser = await measureTestRunStep(
+      timing,
+      "playwright_browser_install",
+      () =>
+        spawnStreaming({
+          command: "npx",
+          args: ["playwright", "install", "chromium"],
+          cwd: appPath,
+          signal,
+          onOutput,
+          // Same Corepack guard as the package install above.
+          env: getPackageManagerCommandEnv(),
+          // The Chromium download is large; give it a generous ceiling but never
+          // let it hang indefinitely on a stalled connection.
+          timeoutMs: 10 * 60 * 1000,
+        }),
+      testProcessTimingStatus,
+    );
     if (installBrowser.aborted) {
       throw new DyadError("Test setup cancelled.", DyadErrorKind.Precondition);
     }

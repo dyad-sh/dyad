@@ -148,9 +148,8 @@ const posthogClient = posthog.init(
       }
       event = dedupedEvent;
 
-      // For non-Pro users, only send 10% of events (but always send errors,
-      // app:initial-load, promo_click, and sandbox.script.* — see
-      // shouldBypassNonProTelemetrySampling).
+      // For non-Pro users, sample routine events at 10%. The helper keeps
+      // correlated diagnostics and other exempt events.
       if (!isPro) {
         if (
           !shouldBypassNonProTelemetrySampling(event) &&

@@ -807,6 +807,11 @@ export function shouldBypassNonProTelemetrySampling(
     return true;
   }
 
+  // One summary per run carries grouped run phases and individual case timings.
+  if (eventName === "e2e_test_run_completed") {
+    return true;
+  }
+
   // Reporting a bug is rare enough that these add little volume, and sampling
   // them independently would break the outcome each prompt is paired with.
   // The form events are read as rates against each other -- how often the

@@ -2,6 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { TestRunTiming } from "./test_run_timing";
+import { sendTelemetryEvent } from "../utils/telemetry";
+
+vi.mock("../utils/telemetry", () => ({ sendTelemetryEvent: vi.fn() }));
 
 const mocks = vi.hoisted(() => ({
   createTempTestBranch: vi.fn(),
@@ -213,8 +217,9 @@ describe("per-case database isolation", () => {
     );
   });
 
-  const prepareSupabase = () =>
+  const prepareSupabase = (timing?: TestRunTiming) =>
     prepareIsolatedTestDatabase({
+      timing,
       app: makeApp({
         supabaseProjectId: "project",
         supabaseOrganizationSlug: "org",
@@ -258,7 +263,8 @@ describe("per-case database isolation", () => {
   });
 
   it("creates a new Supabase user before every case and deletes it afterwards", async () => {
-    const prepared = await prepareSupabase();
+    const timing = new TestRunTiming({ appId: 1, runId: 1, source: "panel" });
+    const prepared = await prepareSupabase(timing);
     expect(mocks.createTempTestUser).not.toHaveBeenCalled();
     expect(prepared.testCredentials).toBeUndefined();
     const lifecycle = prepared.testCaseLifecycle!;
@@ -282,6 +288,25 @@ describe("per-case database isolation", () => {
       );
     }
     await prepared.teardown();
+    expect(sendTelemetryEvent).not.toHaveBeenCalled();
+    timing.finish();
+    expect(sendTelemetryEvent).toHaveBeenCalledExactlyOnceWith(
+      "e2e_test_run_completed",
+      expect.objectContaining({
+        run_steps: [
+          { step: "database_setup", duration_ms: expect.any(Number) },
+          { step: "cleanup", duration_ms: expect.any(Number) },
+        ],
+      }),
+    );
+    expect(mocks.createTempTestUser).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ timing }),
+    );
+    expect(mocks.deleteTempTestUser).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ timing }),
+    );
     expect(mocks.createTempTestUser).toHaveBeenCalledTimes(2);
     expect(mocks.deleteTempTestUser).toHaveBeenCalledTimes(2);
     expect(mocks.getServiceRoleKey).toHaveBeenCalledTimes(1);

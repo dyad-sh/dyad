@@ -1,3 +1,4 @@
+import type { TestRunTiming } from "./test_run_timing";
 import { apps } from "@/db/schema";
 import {
   prepareIsolatedTestDatabase,
@@ -12,12 +13,14 @@ type AppRow = typeof apps.$inferSelect;
  * normal preview.
  */
 export function prepareE2eTestDataIsolation({
+  timing,
   app,
   workspacePath,
   emit,
   runtimeMode,
   signal,
 }: {
+  timing?: TestRunTiming;
   app: AppRow;
   workspacePath: string;
   emit: (chunk: string, phase: "setup" | "running") => void;
@@ -36,6 +39,7 @@ export function prepareE2eTestDataIsolation({
   signal?: AbortSignal;
 }): Promise<PreparedIsolation> {
   return prepareIsolatedTestDatabase({
+    timing,
     app,
     emit,
     runtimeMode,

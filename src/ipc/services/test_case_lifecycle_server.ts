@@ -1,6 +1,11 @@
 import { randomBytes } from "node:crypto";
 import { createServer } from "node:http";
 import type { TestCaseLifecycle } from "./isolated_test_db";
+import {
+  measureTestRunStep,
+  type TestRunTiming,
+  type TestStepTiming,
+} from "./test_run_timing";
 
 export const TEST_CASE_ENDPOINT_ENV = "DYAD_TEST_CASE_ENDPOINT";
 export const TEST_CASE_TOKEN_ENV = "DYAD_TEST_CASE_TOKEN";
@@ -28,7 +33,10 @@ export const TEST_CASE_FIXTURE_TIMEOUT_MS =
  */
 export async function startTestCaseLifecycleServer(
   lifecycle: TestCaseLifecycle,
-  { onSlowShutdown }: { onSlowShutdown?: () => void } = {},
+  {
+    onSlowShutdown,
+    timing,
+  }: { onSlowShutdown?: () => void; timing?: TestRunTiming } = {},
 ) {
   const token = randomBytes(32).toString("hex");
   let closing = false;
@@ -38,27 +46,35 @@ export async function startTestCaseLifecycleServer(
   let activeController: AbortController | undefined;
   let closePromise: Promise<void> | undefined;
   const closingError = new Error("Test case lifecycle is closing.");
+  closingError.name = "AbortError";
   const rememberFailure = (error: unknown) => {
     // Shutdown cancellation is expected; final cleanup can still genuinely fail.
     if (error === closingError) return;
     failure ??= error instanceof Error ? error : new Error(String(error));
   };
-  const runHook = async <T>(hook: (signal: AbortSignal) => Promise<T>) => {
-    const controller = new AbortController();
-    activeController = controller;
-    const timer = setTimeout(
-      () =>
-        controller.abort(new Error("Isolated test data operation timed out.")),
-      TEST_CASE_HOOK_TIMEOUT_MS,
-    );
-    try {
-      const result = await hook(controller.signal);
-      controller.signal.throwIfAborted();
-      return result;
-    } finally {
-      clearTimeout(timer);
-      activeController = undefined;
-    }
+  const runHook = async <T>(
+    step: "case_setup" | "case_cleanup",
+    hook: (signal: AbortSignal, timing?: TestStepTiming) => Promise<T>,
+  ) => {
+    const caseTiming = activeCase ? timing?.caseSteps(activeCase) : timing;
+    return measureTestRunStep(caseTiming, step, async () => {
+      const controller = new AbortController();
+      activeController = controller;
+      const timeoutError = new Error("Isolated test data operation timed out.");
+      timeoutError.name = "TimeoutError";
+      const timer = setTimeout(
+        () => controller.abort(timeoutError),
+        TEST_CASE_HOOK_TIMEOUT_MS,
+      );
+      try {
+        const result = await hook(controller.signal, caseTiming);
+        controller.signal.throwIfAborted();
+        return result;
+      } finally {
+        clearTimeout(timer);
+        activeController = undefined;
+      }
+    });
   };
   const server = createServer((request, response) => {
     response.setHeader("Cache-Control", "no-store");
@@ -88,12 +104,12 @@ export async function startTestCaseLifecycleServer(
           const [, phase, caseId] = match;
           let credentials: Record<string, string> = {};
           if (phase === "before") {
-            if (activeCase) await runHook(lifecycle.afterEach);
+            if (activeCase) await runHook("case_cleanup", lifecycle.afterEach);
             if (closing) return;
             activeCase = caseId;
-            credentials = await runHook(lifecycle.beforeEach);
+            credentials = await runHook("case_setup", lifecycle.beforeEach);
           } else if (activeCase === caseId) {
-            await runHook(lifecycle.afterEach);
+            await runHook("case_cleanup", lifecycle.afterEach);
             activeCase = undefined;
           }
           response.setHeader("Content-Type", "application/json");
@@ -150,7 +166,7 @@ export async function startTestCaseLifecycleServer(
         const warningTimer = setTimeout(() => onSlowShutdown?.(), 10_000);
         try {
           await pending;
-          if (activeCase) await runHook(lifecycle.afterEach);
+          if (activeCase) await runHook("case_cleanup", lifecycle.afterEach);
         } catch (error) {
           rememberFailure(error);
         } finally {

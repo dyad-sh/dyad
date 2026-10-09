@@ -21,6 +21,7 @@ import { windowRegistry } from "@/window_infrastructure/main/window_registry";
 import { TEST_BASE_URL_ENV } from "../utils/playwright_bootstrap";
 import { WindowSessionIdSchema } from "@/window_infrastructure/types";
 import { runningApps } from "../utils/process_manager";
+import { TestRunTiming } from "../services/test_run_timing";
 
 // Every app folder lives under one throwaway base so the delete handler runs
 // against real directories (its path guards resolve symlinks on disk).
@@ -1135,6 +1136,97 @@ describe("tests handlers", () => {
         "e2e_tests_run",
         expect.objectContaining({ first_run: true }),
       );
+      const summaries = sendTelemetryEventMock.mock.calls.filter(
+        ([event]) => event === "e2e_test_run_completed",
+      );
+      expect(summaries).toHaveLength(1);
+      expect(
+        sendTelemetryEventMock.mock.calls.some(
+          ([event]) => event === "e2e_test_step_completed",
+        ),
+      ).toBe(false);
+      expect(summaries[0][1].run_steps).toEqual([
+        { step: "waiting", duration_ms: expect.any(Number) },
+        { step: "playwright_setup", duration_ms: expect.any(Number) },
+        { step: "workspace_setup", duration_ms: expect.any(Number) },
+        { step: "database_setup", duration_ms: expect.any(Number) },
+        { step: "runtime_setup", duration_ms: expect.any(Number) },
+        { step: "execution", duration_ms: expect.any(Number) },
+        { step: "shutdown", duration_ms: expect.any(Number) },
+        { step: "cleanup", duration_ms: expect.any(Number) },
+      ]);
+
+      expect(sendTelemetryEventMock.mock.calls.at(-1)).toEqual([
+        "e2e_test_run_completed",
+        expect.objectContaining({
+          status: "completed",
+          source: "panel",
+          sandboxed: true,
+          duration_ms: expect.any(Number),
+          schema_version: 2,
+          testcases: [],
+        }),
+      ]);
+    });
+
+    it("keeps the same timer when an unrelated operation releases a queued workspace claim", async () => {
+      const appId = seedApp("app");
+      prepareIsolatedTestDatabaseMock.mockResolvedValue({
+        isolation: { mode: "none" },
+        infraError: { message: "No runner needed for this admission test." },
+        teardown: async () => ({
+          envRestored: true,
+          remoteCleanupCompleted: true,
+        }),
+      });
+      harness.db
+        .update(apps)
+        .set({ testingEnabled: true })
+        .where(eq(apps.id, appId))
+        .run();
+      let release!: () => void;
+      const blocker = appOperationCoordinator.run(
+        {
+          appId,
+          operation: "test-blocker",
+          resources: ["repository-worktree"],
+        },
+        () =>
+          new Promise<void>((resolve) => {
+            release = resolve;
+          }),
+      );
+      await vi.waitFor(() => expect(release).toBeDefined());
+      const startStep = vi.spyOn(TestRunTiming.prototype, "startStep");
+      const run = runAppTestsWithIsolation({
+        event: { sender: {} } as any,
+        appId,
+        source: "panel",
+      });
+      try {
+        await vi.waitFor(() =>
+          expect(startStep).toHaveBeenCalledWith("workspace_lock_wait"),
+        );
+        expect(ensurePlaywrightBootstrapMock).not.toHaveBeenCalled();
+        release();
+        await run;
+        const events = sendTelemetryEventMock.mock.calls.filter(
+          ([event]) => event === "e2e_test_run_completed",
+        );
+        expect(events).toHaveLength(1);
+        expect(events[0][1].run_steps).toEqual([
+          { step: "waiting", duration_ms: expect.any(Number) },
+          { step: "playwright_setup", duration_ms: expect.any(Number) },
+          { step: "workspace_setup", duration_ms: expect.any(Number) },
+          { step: "database_setup", duration_ms: expect.any(Number) },
+          { step: "shutdown", duration_ms: expect.any(Number) },
+          { step: "cleanup", duration_ms: expect.any(Number) },
+        ]);
+      } finally {
+        release();
+        await Promise.allSettled([blocker, run]);
+        startStep.mockRestore();
+      }
     });
 
     it("returns cleanly when Stop lands during the sandbox copy", async () => {
@@ -1186,6 +1278,15 @@ describe("tests handlers", () => {
       });
 
       expect(result.infraError?.message).toMatch(/registry unreachable/i);
+      expect(
+        sendTelemetryEventMock.mock.calls.some(
+          ([event]) => event === "e2e_test_step_completed",
+        ),
+      ).toBe(false);
+      expect(sendTelemetryEventMock).toHaveBeenCalledWith(
+        "e2e_test_run_completed",
+        expect.objectContaining({ status: "infra_error" }),
+      );
       expect(result.results).toEqual([]);
       expect(createE2eTestWorkspaceMock).not.toHaveBeenCalled();
       // No workspace was ever created, so the cleanup copy must not offer to

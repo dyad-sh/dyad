@@ -11,6 +11,7 @@ import {
 } from "@/test_run_queue/state";
 import { createTraceObserver } from "@/state_machines/trace";
 import { broadcastToRegisteredWindows } from "../utils/window_broadcast";
+import { TestRunTiming } from "./test_run_timing";
 const logger = log.scope("test_run_queue");
 const deletingApps = new Set<number>();
 
@@ -27,7 +28,7 @@ export function withAppTestRun<Result>(
     externalSignal?: AbortSignal;
     onQueued?: (position: number) => void;
   },
-  execute: (run: TestRunExecution) => Promise<Result>,
+  execute: (run: TestRunExecution, timing: TestRunTiming) => Promise<Result>,
   cancelled: () => Result,
 ): Promise<Result> {
   const { appId, event } = options;
@@ -36,6 +37,9 @@ export function withAppTestRun<Result>(
       new DyadError("App is being deleted", DyadErrorKind.Precondition),
     );
   const runId = ++nextTestRunId;
+  const timing = new TestRunTiming({ appId, runId, source: options.source });
+  const queueWait = timing.startStep("queue_wait");
+  let signal = options.externalSignal;
   let queue = testRunQueues.get(appId);
   if (!queue) {
     queue = new TestRunQueue({
@@ -63,13 +67,31 @@ export function withAppTestRun<Result>(
       grep: options.grep,
     },
     signal: options.externalSignal,
-    execute,
-    cancelled,
+    execute: (run) => {
+      queueWait.end();
+      signal = run.signal;
+      return execute(run, timing);
+    },
+    cancelled: () => {
+      queueWait.end("cancelled");
+      timing.finish("cancelled");
+      return cancelled();
+    },
     onQueued: options.onQueued,
   });
   if (!queue.getSnapshot().activeRun && testRunQueues.get(appId) === queue)
     testRunQueues.delete(appId);
-  return result;
+  return result.then(
+    (value) => {
+      timing.finish(signal?.aborted ? "cancelled" : undefined);
+      return value;
+    },
+    (error) => {
+      queueWait.end("failed");
+      timing.finish(signal?.aborted ? "cancelled" : "failed");
+      throw error;
+    },
+  );
 }
 
 export function getAppTestRunQueue(appId: number) {

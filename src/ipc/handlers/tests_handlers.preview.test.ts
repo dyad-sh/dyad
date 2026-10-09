@@ -95,6 +95,8 @@ vi.mock("../utils/window_broadcast", () => ({
   broadcastToRegisteredWindows: h.broadcast,
 }));
 
+vi.mock("../utils/telemetry", () => ({ sendTelemetryEvent: vi.fn() }));
+
 vi.mock("../utils/playwright_bootstrap", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../utils/playwright_bootstrap")>()),
   ensurePlaywrightBootstrap: h.ensurePlaywrightBootstrap,
@@ -128,6 +130,8 @@ import {
   TEST_CASE_TOKEN_ENV,
 } from "../services/test_case_lifecycle_server";
 import { trackE2eTestProcess } from "../services/e2e_test_process_registry";
+import { TestRunTiming } from "../services/test_run_timing";
+import { sendTelemetryEvent } from "../utils/telemetry";
 
 const PROXY_URL = "http://app-1.localhost:42101/";
 const CDP_ENDPOINT = "http://127.0.0.1:51234";
@@ -163,6 +167,7 @@ function lastSpawn() {
 }
 
 beforeEach(() => {
+  vi.mocked(sendTelemetryEvent).mockClear();
   h.findFirst.mockReset().mockResolvedValue({
     id: 1,
     path: "my-app",
@@ -331,8 +336,14 @@ test("prints a fixture secret", async ({}, testInfo) => {
           return { code: 0, stdout, stderr, aborted: false, timedOut: false };
         });
 
+        const timing = new TestRunTiming({
+          appId: 1,
+          runId: 1,
+          source: "panel",
+        });
         const result = await runAppTestsCore({
           appId: 1,
+          timing,
           ...(mode === "sandbox"
             ? {
                 appPath: linked,
@@ -350,6 +361,38 @@ test("prints a fixture secret", async ({}, testInfo) => {
               }
             : {}),
         });
+
+        timing.setResult(result);
+        timing.finish();
+        const summaries = vi
+          .mocked(sendTelemetryEvent)
+          .mock.calls.filter(([name]) => name === "e2e_test_run_completed");
+        expect(summaries).toHaveLength(1);
+        const testcases = summaries[0][1]!.testcases as any[];
+        // Preview skips are discovered but never launched. Collect actual
+        // attempts on every execution route, never discovery.
+        expect(testcases).toHaveLength(
+          mode === "panel" || mode === "preview" ? 1 : 2,
+        );
+        const completed = testcases.filter(
+          ({ status }) => status === "completed",
+        );
+        expect(completed).toHaveLength(1);
+        expect(completed[0]).toMatchObject({
+          case_id: expect.stringMatching(/^[a-f0-9]{64}$/),
+          retry: 0,
+          timing_incomplete: false,
+          steps: [
+            { step: "setup", duration_ms: expect.any(Number) },
+            { step: "execution", duration_ms: expect.any(Number) },
+            { step: "cleanup", duration_ms: expect.any(Number) },
+          ],
+        });
+        expect(
+          vi
+            .mocked(sendTelemetryEvent)
+            .mock.calls.some(([name]) => name === "e2e_test_case_completed"),
+        ).toBe(false);
 
         expect(result.infraError).toBeUndefined();
         if (mode === "sandbox") {

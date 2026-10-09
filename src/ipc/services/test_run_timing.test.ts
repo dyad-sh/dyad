@@ -32,7 +32,7 @@ function logEvents(name: string) {
     .map(([, properties]) => properties);
 }
 
-it("logs every step and sends run phases plus aggregates through cleanup", async () => {
+it("logs every step and sends only the run summary through cleanup", async () => {
   const run = timing();
   const wait = run.startStep("queue_wait");
   now = 30;
@@ -80,16 +80,14 @@ it("logs every step and sends run phases plus aggregates through cleanup", async
     }),
   ]);
   expect(events("e2e_test_step_started")).toEqual([]);
-  expect(events("e2e_test_step_completed").map(({ step }) => step)).toEqual([
-    "queue_wait",
-    "database_teardown",
-  ]);
+  expect(events("e2e_test_step_completed")).toEqual([]);
+  expect(sendTelemetryEvent).toHaveBeenCalledTimes(1);
   expect(logEvents("e2e_test_run_completed")).toEqual(
     events("e2e_test_run_completed"),
   );
 });
 
-it("sends one event per case with individual durations instead of events per step", async () => {
+it("batches 100 cases and repeated provider steps into one fixed-size run summary", async () => {
   const run = timing();
   const repeatedSteps = [
     "case_setup",
@@ -129,15 +127,38 @@ it("sends one event per case with individual durations instead of events per ste
   });
   run.finish();
 
-  // 100 case events plus the enclosing run phase and final run summary.
-  expect(
-    vi.mocked(sendTelemetryEvent).mock.calls.map(([event]) => event),
-  ).toEqual([
-    "e2e_test_step_completed",
-    ...Array(100).fill("e2e_test_case_completed"),
-    "e2e_test_run_completed",
-  ]);
-  const cases = events("e2e_test_case_completed");
+  expect(sendTelemetryEvent).toHaveBeenCalledTimes(1);
+  expect(events("e2e_test_case_completed")).toEqual([]);
+  expect(events("e2e_test_step_completed")).toEqual([]);
+  expect(events("e2e_test_run_completed")[0].case_summary).toEqual({
+    attempt_count: 100,
+    retry_count: 0,
+    unknown_retry_count: 0,
+    incomplete_timing_count: 0,
+    outcomes: {
+      completed: 100,
+      failed: 0,
+      cancelled: 0,
+      timed_out: 0,
+      skipped: 0,
+      incomplete: 0,
+    },
+    timings: {
+      duration_ms: {
+        count: 100,
+        total_ms: 13000,
+        average_ms: 130,
+        max_ms: 195,
+      },
+      setup_ms: { count: 100, total_ms: 2000, average_ms: 20, max_ms: 30 },
+      execution_ms: { count: 100, total_ms: 9000, average_ms: 90, max_ms: 135 },
+      cleanup_ms: { count: 100, total_ms: 2000, average_ms: 20, max_ms: 30 },
+    },
+  });
+  expect(JSON.stringify(events("e2e_test_run_completed"))).not.toContain(
+    "case-99",
+  );
+  const cases = logEvents("e2e_test_case_completed");
   for (let i = 0; i < cases.length; i++) {
     const duration = i % 2 === 0 ? 5 : 15;
     expect(cases[i]).toMatchObject({
@@ -152,7 +173,7 @@ it("sends one event per case with individual durations instead of events per ste
       })),
     });
   }
-  expect(events("e2e_test_step_completed")[0]).toMatchObject({
+  expect(logEvents("e2e_test_step_completed").at(-1)).toMatchObject({
     step: "test_execution",
     duration_ms: 13000,
   });
@@ -181,7 +202,7 @@ it("preserves abandoned-case cleanup and marks missing execution timing explicit
   });
   run.finish("cancelled");
   run.finish("cancelled");
-  expect(events("e2e_test_case_completed")).toEqual([
+  expect(logEvents("e2e_test_case_completed")).toEqual([
     expect.objectContaining({
       case_id: "abandoned",
       retry: 0,
@@ -196,7 +217,7 @@ it("preserves abandoned-case cleanup and marks missing execution timing explicit
   ]);
 });
 
-it("sends at most one completion per run phase while aggregating every invocation", async () => {
+it("sends only the summary while aggregating every repeated run phase", async () => {
   const run = timing();
   for (let i = 0; i < 100; i++) {
     await measureTestRunStep(run, "playwright_bootstrap", async () => {
@@ -204,7 +225,8 @@ it("sends at most one completion per run phase while aggregating every invocatio
     });
   }
   run.finish();
-  expect(events("e2e_test_step_completed")).toHaveLength(1);
+  expect(events("e2e_test_step_completed")).toHaveLength(0);
+  expect(sendTelemetryEvent).toHaveBeenCalledTimes(1);
   expect(events("e2e_test_run_completed")[0].step_timings).toEqual({
     playwright_bootstrap: { count: 100, total_ms: 1000, max_ms: 10 },
   });
@@ -243,6 +265,84 @@ it("preserves failures and return values without sending their contents", async 
   const payload = JSON.stringify(vi.mocked(sendTelemetryEvent).mock.calls);
   expect(payload).not.toContain(error.message);
   expect(payload).not.toContain("private-password");
+});
+
+it("aggregates retries and outcomes without treating missing phase timings as zero", async () => {
+  const run = timing();
+  run.recordCaseResult({
+    case_id: "failed-first-attempt",
+    retry: 0,
+    status: "failed",
+    duration_ms: 30,
+    setup_ms: 10,
+    execution_ms: 20,
+    cleanup_ms: null,
+  });
+  run.recordCaseResult({
+    case_id: "successful-retry",
+    retry: 1,
+    status: "completed",
+    duration_ms: 60,
+    setup_ms: 20,
+    execution_ms: 30,
+    cleanup_ms: 10,
+  });
+  run.recordCaseResult({
+    case_id: "skipped",
+    retry: 0,
+    status: "skipped",
+    duration_ms: 0,
+    setup_ms: 0,
+    execution_ms: 0,
+    cleanup_ms: 0,
+  });
+  run.recordCaseStarted("interrupted-retry", 2);
+  await measureTestRunStep(
+    run.caseSteps("cleanup-failure"),
+    "case_cleanup",
+    async () => false,
+    (ok) => (ok ? "completed" : "failed"),
+  );
+  run.finish("cancelled");
+  run.finish();
+  expect(sendTelemetryEvent).toHaveBeenCalledTimes(1);
+  expect(events("e2e_test_run_completed")[0].case_summary).toEqual({
+    attempt_count: 5,
+    retry_count: 2,
+    unknown_retry_count: 1,
+    incomplete_timing_count: 3,
+    outcomes: {
+      completed: 1,
+      failed: 2,
+      cancelled: 1,
+      timed_out: 0,
+      skipped: 1,
+      incomplete: 0,
+    },
+    timings: {
+      duration_ms: { count: 3, total_ms: 90, average_ms: 30, max_ms: 60 },
+      setup_ms: { count: 3, total_ms: 30, average_ms: 10, max_ms: 20 },
+      execution_ms: { count: 3, total_ms: 50, average_ms: 50 / 3, max_ms: 30 },
+      cleanup_ms: { count: 2, total_ms: 10, average_ms: 5, max_ms: 10 },
+    },
+  });
+  expect(
+    JSON.stringify(vi.mocked(sendTelemetryEvent).mock.calls),
+  ).not.toContain("successful-retry");
+});
+
+it("reports empty timing aggregates explicitly for runs with no cases", () => {
+  timing().finish();
+  expect(events("e2e_test_run_completed")[0].case_summary).toMatchObject({
+    attempt_count: 0,
+    retry_count: 0,
+    incomplete_timing_count: 0,
+    timings: {
+      setup_ms: { count: 0, total_ms: 0, average_ms: null, max_ms: null },
+      execution_ms: { count: 0, total_ms: 0, average_ms: null, max_ms: null },
+      cleanup_ms: { count: 0, total_ms: 0, average_ms: null, max_ms: null },
+    },
+  });
 });
 
 it("keeps concurrent runs separate through explicit timer arguments", async () => {
@@ -288,7 +388,7 @@ it("records resolved failures and includes cleanup in cancelled runs", async () 
     now += 100;
   });
   run.finish("cancelled");
-  expect(events("e2e_test_step_completed")[0]).toMatchObject({
+  expect(logEvents("e2e_test_step_completed")[0]).toMatchObject({
     status: "failed",
   });
   expect(events("e2e_test_run_completed")[0]).toMatchObject({

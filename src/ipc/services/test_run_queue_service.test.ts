@@ -72,14 +72,10 @@ it("times queued cancellation separately and retains the active run through clea
       duration_ms: 100,
     });
     expect(summaries()[0].timing_id).not.toBe(summaries()[1].timing_id);
-    expect(sendTelemetryEvent).toHaveBeenCalledWith(
-      "e2e_test_step_completed",
-      expect.objectContaining({
-        timing_id: summaries()[1].timing_id,
-        step: "database_teardown",
-        duration_ms: 100,
-      }),
-    );
+    expect(summaries()[1].step_timings).toMatchObject({
+      database_teardown: { count: 1, total_ms: 100, max_ms: 100 },
+    });
+    expect(sendTelemetryEvent).toHaveBeenCalledTimes(2);
   } finally {
     finish();
     await Promise.allSettled([active, queued]);

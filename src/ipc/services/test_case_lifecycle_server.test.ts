@@ -22,8 +22,9 @@ vi.mock("electron-log/main", () => ({
 import { ensurePreviewShim } from "../utils/playwright_bootstrap";
 import { retryTestDatabaseCleanup } from "../utils/test_database_cleanup_retry";
 
+const { timingInfo } = vi.hoisted(() => ({ timingInfo: vi.fn() }));
 vi.mock("electron-log", () => ({
-  default: { scope: () => ({ warn: vi.fn(), info: vi.fn() }) },
+  default: { scope: () => ({ warn: vi.fn(), info: timingInfo }) },
 }));
 vi.mock("../utils/telemetry", () => ({ sendTelemetryEvent: vi.fn() }));
 
@@ -63,6 +64,7 @@ async function setup(onSlowShutdown?: () => void, timing?: TestRunTiming) {
 describe("test case lifecycle bridge", () => {
   it("correlates HTTP hooks and abandoned-case cleanup with their owning run", async () => {
     vi.mocked(sendTelemetryEvent).mockClear();
+    timingInfo.mockClear();
     const timing = new TestRunTiming({ appId: 1, runId: 25, source: "panel" });
     const { request, server } = await setup(undefined, timing);
     expect((await request("before/first")).status).toBe(200);
@@ -70,8 +72,12 @@ describe("test case lifecycle bridge", () => {
     await server.close();
     expect(sendTelemetryEvent).not.toHaveBeenCalled();
     timing.finish();
-    expect(vi.mocked(sendTelemetryEvent).mock.calls).toEqual([
-      ...["first", "retry"].map((caseId) => [
+    expect(
+      timingInfo.mock.calls.filter(
+        ([event]) => event === "e2e_test_case_completed",
+      ),
+    ).toEqual(
+      ["first", "retry"].map((caseId) => [
         "e2e_test_case_completed",
         expect.objectContaining({
           case_id: caseId,
@@ -90,6 +96,8 @@ describe("test case lifecycle bridge", () => {
           ],
         }),
       ]),
+    );
+    expect(vi.mocked(sendTelemetryEvent).mock.calls).toEqual([
       [
         "e2e_test_run_completed",
         expect.objectContaining({
@@ -288,6 +296,7 @@ describe("test case lifecycle bridge", () => {
     "runs the generated auto fixture across files and retries (default creation rejected: %s)",
     async (creationRejected) => {
       vi.mocked(sendTelemetryEvent).mockClear();
+      timingInfo.mockClear();
       const timing = new TestRunTiming({
         appId: 1,
         runId: 26,
@@ -413,9 +422,9 @@ test('next file', () => record('test'));
       caseTimings.collect();
       await server.close();
       timing.finish();
-      const caseEvents = vi
-        .mocked(sendTelemetryEvent)
-        .mock.calls.filter(([name]) => name === "e2e_test_case_completed")
+      expect(sendTelemetryEvent).toHaveBeenCalledTimes(1);
+      const caseEvents = timingInfo.mock.calls
+        .filter(([name]) => name === "e2e_test_case_completed")
         .map(([, properties]) => properties!);
       expect(caseEvents).toHaveLength(4);
       expect(new Set(caseEvents.map((event) => event.case_id)).size).toBe(4);

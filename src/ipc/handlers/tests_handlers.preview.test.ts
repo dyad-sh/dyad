@@ -364,24 +364,33 @@ test("prints a fixture secret", async ({}, testInfo) => {
 
         timing.setResult(result);
         timing.finish();
-        const cases = vi
+        const summaries = vi
           .mocked(sendTelemetryEvent)
-          .mock.calls.filter(([name]) => name === "e2e_test_case_completed")
-          .map(([, properties]) => properties!);
-        // Preview skips are discovered but never launched. The reporter must
-        // collect actual attempts on every execution route, never discovery.
-        expect(cases).toHaveLength(
+          .mock.calls.filter(([name]) => name === "e2e_test_run_completed");
+        expect(summaries).toHaveLength(1);
+        const summary = summaries[0][1]!.case_summary as any;
+        // Preview skips are discovered but never launched. Collect actual
+        // attempts on every execution route, never discovery.
+        expect(summary.attempt_count).toBe(
           mode === "panel" || mode === "preview" ? 1 : 2,
         );
-        expect(cases).toContainEqual(
-          expect.objectContaining({
-            status: "completed",
-            setup_ms: expect.any(Number),
-            execution_ms: expect.any(Number),
-            cleanup_ms: expect.any(Number),
-            timing_incomplete: false,
-          }),
+        expect(summary.outcomes.completed).toBe(1);
+        // Playwright may report a skipped case without all hook spans.
+        expect(summary.incomplete_timing_count).toBeLessThanOrEqual(
+          summary.attempt_count - 1,
         );
+        for (const phase of ["setup_ms", "execution_ms", "cleanup_ms"]) {
+          expect(summary.timings[phase].count).toBeGreaterThanOrEqual(1);
+          expect(summary.timings[phase].count).toBeLessThanOrEqual(
+            summary.attempt_count,
+          );
+          expect(summary.timings[phase].total_ms).toEqual(expect.any(Number));
+        }
+        expect(
+          vi
+            .mocked(sendTelemetryEvent)
+            .mock.calls.some(([name]) => name === "e2e_test_case_completed"),
+        ).toBe(false);
 
         expect(result.infraError).toBeUndefined();
         if (mode === "sandbox") {

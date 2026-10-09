@@ -807,13 +807,8 @@ export function shouldBypassNonProTelemetrySampling(
     return true;
   }
 
-  // Keep run phases, case attempts, and the summary together by timing_id.
-  // Starts stay local; repeated case operations are bundled in case events.
-  if (
-    eventName === "e2e_test_step_completed" ||
-    eventName === "e2e_test_case_completed" ||
-    eventName === "e2e_test_run_completed"
-  ) {
+  // One summary per run carries phase and case aggregates.
+  if (eventName === "e2e_test_run_completed") {
     return true;
   }
 

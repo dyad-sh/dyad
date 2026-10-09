@@ -1136,10 +1136,16 @@ describe("tests handlers", () => {
         "e2e_tests_run",
         expect.objectContaining({ first_run: true }),
       );
-      const completedSteps = sendTelemetryEventMock.mock.calls
-        .filter(([event]) => event === "e2e_test_step_completed")
-        .map(([, properties]) => properties);
-      expect(completedSteps.map(({ step }) => step)).toEqual(
+      const summaries = sendTelemetryEventMock.mock.calls.filter(
+        ([event]) => event === "e2e_test_run_completed",
+      );
+      expect(summaries).toHaveLength(1);
+      expect(
+        sendTelemetryEventMock.mock.calls.some(
+          ([event]) => event === "e2e_test_step_completed",
+        ),
+      ).toBe(false);
+      expect(Object.keys(summaries[0][1].step_timings)).toEqual(
         expect.arrayContaining([
           "queue_wait",
           "workspace_lock_wait",
@@ -1157,9 +1163,7 @@ describe("tests handlers", () => {
           "workspace_disposal",
         ]),
       );
-      expect(
-        new Set(completedSteps.map(({ timing_id }) => timing_id)).size,
-      ).toBe(1);
+
       expect(sendTelemetryEventMock.mock.calls.at(-1)).toEqual([
         "e2e_test_run_completed",
         expect.objectContaining({
@@ -1215,10 +1219,11 @@ describe("tests handlers", () => {
         expect(ensurePlaywrightBootstrapMock).not.toHaveBeenCalled();
         release();
         await run;
-        const events = sendTelemetryEventMock.mock.calls
-          .filter(([event]) => event === "e2e_test_step_completed")
-          .map(([, properties]) => properties);
-        expect(events.map(({ step }) => step)).toEqual(
+        const events = sendTelemetryEventMock.mock.calls.filter(
+          ([event]) => event === "e2e_test_run_completed",
+        );
+        expect(events).toHaveLength(1);
+        expect(Object.keys(events[0][1].step_timings)).toEqual(
           expect.arrayContaining([
             "workspace_lock_wait",
             "playwright_bootstrap",
@@ -1226,7 +1231,6 @@ describe("tests handlers", () => {
             "workspace_disposal",
           ]),
         );
-        expect(new Set(events.map(({ timing_id }) => timing_id)).size).toBe(1);
       } finally {
         release();
         await Promise.allSettled([blocker, run]);
@@ -1283,13 +1287,11 @@ describe("tests handlers", () => {
       });
 
       expect(result.infraError?.message).toMatch(/registry unreachable/i);
-      expect(sendTelemetryEventMock).toHaveBeenCalledWith(
-        "e2e_test_step_completed",
-        expect.objectContaining({
-          step: "playwright_bootstrap",
-          status: "failed",
-        }),
-      );
+      expect(
+        sendTelemetryEventMock.mock.calls.some(
+          ([event]) => event === "e2e_test_step_completed",
+        ),
+      ).toBe(false);
       expect(sendTelemetryEventMock).toHaveBeenCalledWith(
         "e2e_test_run_completed",
         expect.objectContaining({ status: "infra_error" }),

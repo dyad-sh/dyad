@@ -9,8 +9,9 @@ import { prepareTestCaseTimingReporter } from "./test_case_timing_reporter";
 import { TestRunTiming } from "./test_run_timing";
 import { sendTelemetryEvent } from "../utils/telemetry";
 
+const { info } = vi.hoisted(() => ({ info: vi.fn() }));
 vi.mock("electron-log", () => ({
-  default: { scope: () => ({ info: vi.fn() }) },
+  default: { scope: () => ({ info }) },
 }));
 vi.mock("../utils/telemetry", () => ({ sendTelemetryEvent: vi.fn() }));
 const directories: string[] = [];
@@ -32,9 +33,9 @@ function setup() {
   return { directory, artifacts, timing, recording };
 }
 function caseEvents() {
-  return vi
-    .mocked(sendTelemetryEvent)
-    .mock.calls.filter(([name]) => name === "e2e_test_case_completed")
+  expect(sendTelemetryEvent).toHaveBeenCalledTimes(1);
+  return info.mock.calls
+    .filter(([name]) => name === "e2e_test_case_completed")
     .map(([, properties]) => properties!);
 }
 

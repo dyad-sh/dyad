@@ -6,6 +6,8 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { ServerResponse } from "node:http";
+import { TestRunTiming } from "./test_run_timing";
+import { sendTelemetryEvent } from "../utils/telemetry";
 import {
   startTestCaseLifecycleServer,
   TEST_CASE_ENDPOINT_ENV,
@@ -20,8 +22,9 @@ import { ensurePreviewShim } from "../utils/playwright_bootstrap";
 import { retryTestDatabaseCleanup } from "../utils/test_database_cleanup_retry";
 
 vi.mock("electron-log", () => ({
-  default: { scope: () => ({ warn: vi.fn() }) },
+  default: { scope: () => ({ warn: vi.fn(), info: vi.fn() }) },
 }));
+vi.mock("../utils/telemetry", () => ({ sendTelemetryEvent: vi.fn() }));
 
 const servers: Awaited<ReturnType<typeof startTestCaseLifecycleServer>>[] = [];
 const directories: string[] = [];
@@ -33,7 +36,7 @@ afterEach(async () => {
     fs.rmSync(directory, { recursive: true, force: true });
 });
 
-async function setup(onSlowShutdown?: () => void) {
+async function setup(onSlowShutdown?: () => void, timing?: TestRunTiming) {
   const lifecycle = {
     beforeEach: vi.fn(async (_signal?: AbortSignal) => ({
       DYAD_TEST_USER_EMAIL: "new@dyad.test",
@@ -42,6 +45,7 @@ async function setup(onSlowShutdown?: () => void) {
   };
   const server = await startTestCaseLifecycleServer(lifecycle, {
     onSlowShutdown,
+    timing,
   });
   servers.push(server);
   const request = (route: string, headers: Record<string, string> = {}) =>
@@ -56,6 +60,32 @@ async function setup(onSlowShutdown?: () => void) {
 }
 
 describe("test case lifecycle bridge", () => {
+  it("correlates HTTP hooks and abandoned-case cleanup with their owning run", async () => {
+    vi.mocked(sendTelemetryEvent).mockClear();
+    const timing = new TestRunTiming({ appId: 1, runId: 25, source: "panel" });
+    const { request, server } = await setup(undefined, timing);
+    expect((await request("before/first")).status).toBe(200);
+    expect((await request("before/retry")).status).toBe(200);
+    await server.close();
+    timing.finish();
+    const completed = vi
+      .mocked(sendTelemetryEvent)
+      .mock.calls.filter(([event]) => event === "e2e_test_step_completed")
+      .map(([, properties]) => properties!);
+    expect(completed.map(({ step }) => step)).toEqual([
+      "case_setup",
+      "case_cleanup",
+      "case_setup",
+      "case_cleanup",
+    ]);
+    expect(
+      completed.every(
+        ({ run_id, status }) => run_id === 25 && status === "completed",
+      ),
+    ).toBe(true);
+    expect(new Set(completed.map(({ timing_id }) => timing_id)).size).toBe(1);
+  });
+
   it("continues to the next case when a transient cleanup failure recovers", async () => {
     const { lifecycle, server, request } = await setup();
     const cleanup = vi

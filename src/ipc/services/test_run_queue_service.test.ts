@@ -1,5 +1,8 @@
-import { expect, it, vi } from "vitest";
+import { beforeEach, expect, it, vi } from "vitest";
 import type { IpcMainInvokeEvent } from "electron";
+import { performance } from "node:perf_hooks";
+import { sendTelemetryEvent } from "../utils/telemetry";
+import { measureTestRunStep } from "./test_run_timing";
 import {
   beginAppTestDeletion,
   isTestRunActive,
@@ -10,6 +13,79 @@ import {
 vi.mock("../utils/window_broadcast", () => ({
   broadcastToRegisteredWindows: vi.fn(),
 }));
+vi.mock("../utils/telemetry", () => ({ sendTelemetryEvent: vi.fn() }));
+vi.mock("electron-log", () => ({
+  default: { scope: () => ({ info: vi.fn(), error: vi.fn() }) },
+}));
+beforeEach(() => vi.clearAllMocks());
+
+it("times queued cancellation separately and retains the active run through cleanup", async () => {
+  let now = 0;
+  const clock = vi.spyOn(performance, "now").mockImplementation(() => now);
+  let finish!: () => void;
+  const cleanup = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  const options = {
+    appId: 701,
+    event: { sender: {} } as IpcMainInvokeEvent,
+    source: "agent" as const,
+  };
+  const active = withAppTestRun(
+    options,
+    async (_run, timing) => {
+      await measureTestRunStep(timing, "database_teardown", () => cleanup);
+      return "done";
+    },
+    () => "cancelled",
+  );
+  await Promise.resolve();
+  now = 10;
+  const cancelledSignal = new AbortController();
+  const executeQueued = vi.fn(async () => "unexpected");
+  const queued = withAppTestRun(
+    { ...options, externalSignal: cancelledSignal.signal },
+    executeQueued,
+    () => "cancelled",
+  );
+  try {
+    now = 60;
+    cancelledSignal.abort();
+    expect(await queued).toBe("cancelled");
+    expect(executeQueued).not.toHaveBeenCalled();
+    const summaries = () =>
+      vi
+        .mocked(sendTelemetryEvent)
+        .mock.calls.filter(([event]) => event === "e2e_test_run_completed")
+        .map(([, properties]) => properties!);
+    expect(summaries()).toEqual([
+      expect.objectContaining({
+        status: "cancelled",
+        duration_ms: 50,
+      }),
+    ]);
+    now = 100;
+    finish();
+    expect(await active).toBe("done");
+    expect(summaries()).toHaveLength(2);
+    expect(summaries()[1]).toMatchObject({
+      duration_ms: 100,
+    });
+    expect(summaries()[0].timing_id).not.toBe(summaries()[1].timing_id);
+    expect(sendTelemetryEvent).toHaveBeenCalledWith(
+      "e2e_test_step_completed",
+      expect.objectContaining({
+        timing_id: summaries()[1].timing_id,
+        step: "database_teardown",
+        duration_ms: 100,
+      }),
+    );
+  } finally {
+    finish();
+    await Promise.allSettled([active, queued]);
+    clock.mockRestore();
+  }
+});
 
 it("fences new requests and settles queued requests before app deletion drains cleanup", async () => {
   let finish!: () => void;

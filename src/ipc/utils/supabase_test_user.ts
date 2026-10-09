@@ -1,3 +1,7 @@
+import {
+  measureTestRunStep,
+  type TestRunTiming,
+} from "../services/test_run_timing";
 import crypto from "node:crypto";
 import log from "electron-log";
 import { eq, isNotNull } from "drizzle-orm";
@@ -122,7 +126,11 @@ function isUserCreationDatabaseError(status: number, detail: string): boolean {
  */
 export async function createTempTestUser(
   appData: AppRow,
-  options: { adminKey?: AdminKey; signal?: AbortSignal } = {},
+  options: {
+    adminKey?: AdminKey;
+    signal?: AbortSignal;
+    timing?: TestRunTiming;
+  } = {},
 ): Promise<TempTestUser> {
   options.signal?.throwIfAborted();
   const projectId = appData.supabaseProjectId;
@@ -158,13 +166,19 @@ export async function createTempTestUser(
   // startup reconciliation sweep relies on the column to find it again).
   let priorCleanupOk = true;
   if (appData.supabaseTestUserId) {
-    priorCleanupOk = await deleteUserBestEffort({
-      projectUrl,
-      projectId,
-      organizationSlug,
-      userId: appData.supabaseTestUserId,
-      ...options,
-    });
+    priorCleanupOk = await measureTestRunStep(
+      options.timing,
+      "supabase_user_delete",
+      () =>
+        deleteUserBestEffort({
+          projectUrl,
+          projectId,
+          organizationSlug,
+          userId: appData.supabaseTestUserId!,
+          ...options,
+        }),
+      (result) => (result ? "completed" : "failed"),
+    );
     if (!priorCleanupOk) {
       throw new DyadError(
         `Couldn't clean up the previous Supabase test user for app ${appData.id}. Skipping this run to avoid leaking a test user; it will be retried on the next launch.`,
@@ -271,13 +285,19 @@ export async function createTempTestUser(
     try {
       await persistTestUserId(appData.id, created.id);
     } catch (error) {
-      await deleteUserBestEffort({
-        projectUrl,
-        projectId,
-        organizationSlug,
-        userId: created.id,
-        adminKey,
-      });
+      await measureTestRunStep(
+        options.timing,
+        "supabase_user_delete",
+        () =>
+          deleteUserBestEffort({
+            projectUrl,
+            projectId,
+            organizationSlug,
+            userId: created.id!,
+            adminKey,
+          }),
+        (result) => (result ? "completed" : "failed"),
+      );
       throw error;
     }
   }
@@ -293,7 +313,11 @@ export async function createTempTestUser(
  */
 export async function deleteTempTestUser(
   appData: AppRow,
-  options: { adminKey?: AdminKey; signal?: AbortSignal } = {},
+  options: {
+    adminKey?: AdminKey;
+    signal?: AbortSignal;
+    timing?: TestRunTiming;
+  } = {},
 ): Promise<boolean> {
   options.signal?.throwIfAborted();
   const userId = appData.supabaseTestUserId;
@@ -312,24 +336,32 @@ export async function deleteTempTestUser(
 
   // Sweep the user's rows FIRST so a `restrict`/`no action` FK to auth.users
   // doesn't block the user delete below.
-  await cleanUpRowsOwnedBy({
-    projectId,
-    organizationSlug,
-    userId,
-    signal: options.signal,
-  });
+  await measureTestRunStep(options.timing, "supabase_row_cleanup", () =>
+    cleanUpRowsOwnedBy({
+      projectId,
+      organizationSlug,
+      userId,
+      signal: options.signal,
+    }),
+  );
 
   // Only forget the user once Supabase confirms it's gone. Clearing the column
   // on a failed delete would orphan the user, since the startup reconciliation
   // sweep relies on this id to find it again.
   const projectUrl = projectUrlFor(projectId);
-  const deleted = await deleteUserBestEffort({
-    projectUrl,
-    projectId,
-    organizationSlug,
-    userId,
-    ...options,
-  });
+  const deleted = await measureTestRunStep(
+    options.timing,
+    "supabase_user_delete",
+    () =>
+      deleteUserBestEffort({
+        projectUrl,
+        projectId,
+        organizationSlug,
+        userId,
+        ...options,
+      }),
+    (result) => (result ? "completed" : "failed"),
+  );
   if (deleted) {
     await db
       .update(apps)

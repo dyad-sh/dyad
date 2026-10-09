@@ -22,6 +22,7 @@ import { usesSandboxedE2eTests } from "@/lib/e2eSandbox";
 import { reconcileResultFile } from "@/lib/testResultUtils";
 import { getAppTestRunQueue } from "@/ipc/services/test_run_queue_service";
 import type { TestRunExecution } from "@/test_run_queue/controller";
+import type { TestRunTiming } from "@/ipc/services/test_run_timing";
 import { readSettings } from "@/main/settings";
 import type { RunAppTestsResult, TestResult } from "@/ipc/types/tests";
 import { normalizeFailureSignature } from "./test_failure_signature";
@@ -325,6 +326,7 @@ async function runSpecs(
   testFiles: string[],
   queueRun: TestRunExecution,
   grep?: string,
+  timing?: TestRunTiming,
 ): Promise<RunAppTestsResult> {
   const filesLabel = testFiles.join(", ");
   const label = grep ? `${filesLabel} › /${grep}/` : filesLabel;
@@ -347,6 +349,7 @@ async function runSpecs(
     grep,
     source: "agent",
     queueRun,
+    timing,
     headed: settings.testHeaded ?? false,
     // Deliberately not gated on `preview`: the runner already drops
     // `--fully-parallel` while the preview endpoint is live, and it clears that
@@ -656,7 +659,7 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
               )
           : undefined,
       },
-      async (queueRun) => {
+      async (queueRun, timing) => {
         const resolved = await resolveSpecPaths(ctx, args.testFiles);
         if ("error" in resolved) return resolved.error;
         const { testFiles, specs, selectionNote } = resolved;
@@ -741,7 +744,7 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
         let res: RunAppTestsResult;
         try {
           ctx.testRunCount = (ctx.testRunCount ?? 0) + 1;
-          res = await runSpecs(ctx, testFiles, queueRun, args.grep);
+          res = await runSpecs(ctx, testFiles, queueRun, args.grep, timing);
         } catch (error) {
           refundFlakeChecks();
           const message =

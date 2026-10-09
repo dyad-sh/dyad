@@ -1,3 +1,4 @@
+import { measureTestRunStep, type TestRunTiming } from "./test_run_timing";
 import fs from "node:fs";
 import log from "electron-log";
 import { DyadError, DyadErrorKind } from "../../errors/dyad_error";
@@ -176,6 +177,7 @@ const NOOP_TEARDOWN = async () => {
  * with a reason, since their dev server lifecycle isn't a local restart.
  */
 export async function prepareIsolatedTestDatabase({
+  timing,
   app,
   emit,
   runtimeMode,
@@ -184,6 +186,7 @@ export async function prepareIsolatedTestDatabase({
   appPathOverride,
   restartApp = true,
 }: {
+  timing?: TestRunTiming;
   app: AppRow;
   emit: EmitOutput;
   runtimeMode: string;
@@ -198,6 +201,7 @@ export async function prepareIsolatedTestDatabase({
   // Supabase: isolate via a throwaway, RLS-scoped test user.
   if (app.supabaseProjectId) {
     return prepareSupabaseTestUserIsolation({
+      timing,
       app,
       emit,
       signal,
@@ -291,7 +295,12 @@ export async function prepareIsolatedTestDatabase({
       // between leaves a row that says the env is real and only the branch is
       // outstanding. Both callers must encode that ordering identically or
       // teardown and recovery drift apart.
-      remoteCleanupCompleted = await markAndDeleteTempTestBranch(app, branchId);
+      remoteCleanupCompleted = await measureTestRunStep(
+        timing,
+        "neon_branch_delete",
+        () => markAndDeleteTempTestBranch(app, branchId!),
+        (result) => (result ? "completed" : "failed"),
+      );
     } else if (branchId || trackedBranchUnknown) {
       // Deliberately kept, or simply unknown because the row could not be read
       // back — either way still outstanding from the user's perspective.
@@ -319,26 +328,30 @@ export async function prepareIsolatedTestDatabase({
     // `createTempTestBranch`, before its own auth provisioning. Writing it
     // afterwards would leave a window where a crash makes startup recovery
     // rewrite the user's real `.env.local` for a run that never touched it.
-    const branch = await createTempTestBranch(app, {
-      cleanupOnly: !restartApp,
-      // The tree whose `.env.local` the run's server will read. Detecting Neon
-      // Auth from the live project instead would provision (or skip) auth based
-      // on a directory the sandbox stopped mirroring at capture time.
-      appPathOverride,
-    });
+    const branch = await measureTestRunStep(timing, "neon_branch_create", () =>
+      createTempTestBranch(app, {
+        cleanupOnly: !restartApp,
+        // The tree whose `.env.local` the run's server will read. Detecting Neon
+        // Auth from the live project instead would provision (or skip) auth based
+        // on a directory the sandbox stopped mirroring at capture time.
+        appPathOverride,
+      }),
+    );
     branchId = branch.branchId;
 
     // 3. Point the app at the throwaway branch. Mark the env as modified before
     //    the write so a partial failure still triggers a restore in teardown.
     envModified = true;
-    await updateNeonEnvVars({
-      appPath,
-      connectionUri: branch.databaseUrl,
-      neonAuthBaseUrl: branch.neonAuthBaseUrl,
-      frameworkType: detectFrameworkType(appPath),
-      cookieSecret: branch.cookieSecret,
-      preserveExistingAuth: !branch.neonAuthBaseUrl,
-    });
+    await measureTestRunStep(timing, "neon_environment_update", () =>
+      updateNeonEnvVars({
+        appPath,
+        connectionUri: branch.databaseUrl,
+        neonAuthBaseUrl: branch.neonAuthBaseUrl,
+        frameworkType: detectFrameworkType(appPath),
+        cookieSecret: branch.cookieSecret,
+        preserveExistingAuth: !branch.neonAuthBaseUrl,
+      }),
+    );
 
     // 4. Restart so the dev server reads the throwaway branch, then wait until
     //    it's serving again before Playwright points at it.
@@ -357,20 +370,27 @@ export async function prepareIsolatedTestDatabase({
 
     // 5. Recordings start from the same empty database as replay. Clear before
     //    provisioning the recording user so cleanup cannot delete that account.
-    const clearTestData = await createNeonTestDataCleaner({
-      databaseUrl: branch.databaseUrl,
-      projectId: app.neonProjectId!,
-      branchId: branch.branchId,
-      protectedBranchIds: [
-        app.neonActiveBranchId,
-        app.neonDevelopmentBranchId,
-        app.neonPreviewBranchId,
-      ],
-    });
+    const clearTestData = await measureTestRunStep(
+      timing,
+      "neon_cleaner_setup",
+      () =>
+        createNeonTestDataCleaner({
+          databaseUrl: branch.databaseUrl,
+          projectId: app.neonProjectId!,
+          branchId: branch.branchId,
+          protectedBranchIds: [
+            app.neonActiveBranchId,
+            app.neonDevelopmentBranchId,
+            app.neonPreviewBranchId,
+          ],
+        }),
+    );
     signal?.throwIfAborted();
     if (!perTestCase) {
       emit("Clearing copied data from the temporary Neon database…\n", "setup");
-      await clearTestData(signal);
+      await measureTestRunStep(timing, "neon_data_cleanup", () =>
+        clearTestData(signal),
+      );
       signal?.throwIfAborted();
     }
 
@@ -419,10 +439,12 @@ export async function prepareIsolatedTestDatabase({
       }
       try {
         const account = !perTestCase
-          ? await createNeonTestAccount({
-              neonAuthBaseUrl: branch.neonAuthBaseUrl,
-              appId: app.id,
-            })
+          ? await measureTestRunStep(timing, "neon_user_create", () =>
+              createNeonTestAccount({
+                neonAuthBaseUrl: branch.neonAuthBaseUrl!,
+                appId: app.id,
+              }),
+            )
           : undefined;
         if (account) {
           testCredentials = {
@@ -470,21 +492,31 @@ export async function prepareIsolatedTestDatabase({
               signal?.throwIfAborted();
               // Clear the copied parent data before the first case too. Repeating
               // this before later cases recovers a worker killed before teardown.
-              await clearTestData(caseSignal);
+              await measureTestRunStep(timing, "neon_data_cleanup", () =>
+                clearTestData(caseSignal),
+              );
               signal?.throwIfAborted();
               caseSignal?.throwIfAborted();
               if (!branch.neonAuthBaseUrl) return {};
-              const account = await createNeonTestAccount({
-                neonAuthBaseUrl: branch.neonAuthBaseUrl,
-                appId: app.id,
-                signal: caseSignal,
-              });
+              const account = await measureTestRunStep(
+                timing,
+                "neon_user_create",
+                () =>
+                  createNeonTestAccount({
+                    neonAuthBaseUrl: branch.neonAuthBaseUrl!,
+                    appId: app.id,
+                    signal: caseSignal,
+                  }),
+              );
               return {
                 DYAD_TEST_USER_EMAIL: account.email,
                 DYAD_TEST_USER_PASSWORD: account.password,
               };
             },
-            afterEach: (caseSignal) => clearTestData(caseSignal),
+            afterEach: (caseSignal) =>
+              measureTestRunStep(timing, "neon_data_cleanup", () =>
+                clearTestData(caseSignal),
+              ),
           }
         : undefined,
       authorizeRuntimeOrigin:
@@ -590,12 +622,14 @@ export async function prepareIsolatedTestDatabase({
  * after a database-create rejection verified to have left no auth user.
  */
 async function prepareSupabaseTestUserIsolation({
+  timing,
   app,
   emit,
   signal,
   perTestCase,
   appPathOverride,
 }: {
+  timing?: TestRunTiming;
   app: AppRow;
   emit: EmitOutput;
   signal?: AbortSignal;
@@ -626,11 +660,24 @@ async function prepareSupabaseTestUserIsolation({
     if (!trackedUserId) return;
     const userApp = { ...app, supabaseTestUserId: trackedUserId };
     const deleted = perTestCase
-      ? await deleteTempTestUser(userApp, {
-          adminKey,
-          signal: caseSignal ?? AbortSignal.timeout(TEST_CASE_HOOK_TIMEOUT_MS),
-        })
-      : await deleteTempTestUser(userApp);
+      ? await measureTestRunStep(
+          timing,
+          "supabase_user_cleanup",
+          () =>
+            deleteTempTestUser(userApp, {
+              adminKey,
+              timing,
+              signal:
+                caseSignal ?? AbortSignal.timeout(TEST_CASE_HOOK_TIMEOUT_MS),
+            }),
+          (result) => (result ? "completed" : "failed"),
+        )
+      : await measureTestRunStep(
+          timing,
+          "supabase_user_cleanup",
+          () => deleteTempTestUser(userApp),
+          (result) => (result ? "completed" : "failed"),
+        );
     if (!deleted)
       throw new Error("Couldn't delete the previous Supabase test user.");
     trackedUserId = null;
@@ -662,7 +709,9 @@ async function prepareSupabaseTestUserIsolation({
       throw new DyadError("Test run stopped.", DyadErrorKind.UserCancelled);
     }
     // RLS gate (warn, don't refuse): surface unprotected tables to the user.
-    const rls = await checkRls({ projectId, organizationSlug });
+    const rls = await measureTestRunStep(timing, "supabase_rls_check", () =>
+      checkRls({ projectId, organizationSlug }),
+    );
 
     if (signal?.aborted) {
       throw new DyadError("Test run stopped.", DyadErrorKind.UserCancelled);
@@ -674,11 +723,16 @@ async function prepareSupabaseTestUserIsolation({
     // The sandbox copy when there is one: the warning has to describe the
     // client code this run will actually sign in through, not the live project
     // it was snapshotted from.
-    const legacyKey = await detectLegacyAppKey({
-      appPath: appPathOverride ?? getDyadAppPath(app.path),
-      projectId,
-      organizationSlug,
-    });
+    const legacyKey = await measureTestRunStep(
+      timing,
+      "supabase_key_detection",
+      () =>
+        detectLegacyAppKey({
+          appPath: appPathOverride ?? getDyadAppPath(app.path),
+          projectId,
+          organizationSlug,
+        }),
+    );
     // The legacy-key half is NOT folded into `reason`. It travels as the
     // structured `canSwitchToPublishableKey` flag so the panel can render it in
     // the user's own language (`reason` is main-process English), and can drop
@@ -691,10 +745,14 @@ async function prepareSupabaseTestUserIsolation({
     }
     if (!perTestCase) {
       emit("Creating an isolated test user…\n", "setup");
-      testUser = await createTempTestUser(app);
+      testUser = await measureTestRunStep(timing, "supabase_user_create", () =>
+        createTempTestUser(app),
+      );
       trackedUserId = testUser.userId;
     } else {
-      adminKey = await getServiceRoleKey({ projectId, organizationSlug });
+      adminKey = await measureTestRunStep(timing, "supabase_admin_key", () =>
+        getServiceRoleKey({ projectId, organizationSlug }),
+      );
       emit(
         "Each test gets a fresh isolated Supabase user. Read test credentials inside a test or beforeEach; they are unavailable at module scope or in beforeAll.\n",
         "running",
@@ -706,7 +764,11 @@ async function prepareSupabaseTestUserIsolation({
     // without it, auth is unavailable and the flow proceeds unauthenticated.
     let anonKey: string | undefined;
     try {
-      anonKey = await getPublishableKey({ projectId, organizationSlug });
+      anonKey = await measureTestRunStep(
+        timing,
+        "supabase_publishable_key",
+        () => getPublishableKey({ projectId, organizationSlug }),
+      );
     } catch (error) {
       logger.warn(
         `Couldn't fetch the Supabase anon key for app ${app.id}; continuing unauthenticated: ${error}`,
@@ -766,12 +828,17 @@ async function prepareSupabaseTestUserIsolation({
               signal?.throwIfAborted();
               caseSignal?.throwIfAborted();
               try {
-                testUser = await createTempTestUser(
-                  {
-                    ...app,
-                    supabaseTestUserId: null,
-                  },
-                  { adminKey, signal: caseSignal },
+                testUser = await measureTestRunStep(
+                  timing,
+                  "supabase_user_create",
+                  () =>
+                    createTempTestUser(
+                      {
+                        ...app,
+                        supabaseTestUserId: null,
+                      },
+                      { adminKey, signal: caseSignal, timing },
+                    ),
                 );
               } catch (error) {
                 signal?.throwIfAborted();

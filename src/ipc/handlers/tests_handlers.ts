@@ -3,6 +3,11 @@ import {
   createTestOutputRedactor,
   redactTestRunArtifacts,
 } from "../utils/test_output_redaction";
+import {
+  measureTestRunStep,
+  type TestRunTiming,
+  testProcessTimingStatus,
+} from "../services/test_run_timing";
 import { previewTestNodeOptions } from "../utils/preview_dns";
 import fs from "node:fs";
 import os from "node:os";
@@ -441,6 +446,7 @@ function playwrightCliInvocationForApp(
 }
 
 export interface RunAppTestsCoreOptions {
+  timing?: TestRunTiming;
   /** Requires the auto fixture and serial execution for provider cleanup. */
   isolateTestCases?: boolean;
   appId: number;
@@ -588,6 +594,7 @@ function timeoutInfraError(timeoutMs: number | undefined): {
 }
 
 async function runPreviewTestBatch({
+  timing,
   appId,
   appPath,
   baseUrl,
@@ -605,6 +612,7 @@ async function runPreviewTestBatch({
   installed,
   baseEnv,
 }: {
+  timing?: TestRunTiming;
   appId: number;
   appPath: string;
   baseUrl: string;
@@ -678,15 +686,21 @@ async function runPreviewTestBatch({
 
     let discoveryRun;
     try {
-      discoveryRun = await spawnStreaming({
-        ...playwrightCliInvocationForApp(appPath, discoveryArgs),
-        cwd: appPath,
-        env: runnerEnv(discoveryReportPath),
-        signal,
-        timeoutMs: discoveryTimeout,
-        onOutput: (chunk) => emit(chunk, "setup"),
-        onProcess: trackRunProcess,
-      });
+      discoveryRun = await measureTestRunStep(
+        timing,
+        "test_discovery",
+        () =>
+          spawnStreaming({
+            ...playwrightCliInvocationForApp(appPath, discoveryArgs),
+            cwd: appPath,
+            env: runnerEnv(discoveryReportPath),
+            signal,
+            timeoutMs: discoveryTimeout,
+            onOutput: (chunk) => emit(chunk, "setup"),
+            onProcess: trackRunProcess,
+          }),
+        testProcessTimingStatus,
+      );
     } catch (error) {
       result.infraError = {
         message: error instanceof Error ? error.message : String(error),
@@ -771,7 +785,9 @@ async function runPreviewTestBatch({
         break;
       }
       try {
-        await rotatePreviewView(rotationTimeout);
+        await measureTestRunStep(timing, "preview_rotate", () =>
+          rotatePreviewView(rotationTimeout),
+        );
       } catch (error) {
         result.infraError = {
           message: `Couldn't prepare a fresh preview for ${target.fullTitle}: ${error instanceof Error ? error.message : String(error)}`,
@@ -809,15 +825,21 @@ async function runPreviewTestBatch({
 
       let run;
       try {
-        run = await spawnStreaming({
-          ...playwrightCliInvocationForApp(appPath, args),
-          cwd: appPath,
-          env: runnerEnv(reportPath),
-          signal,
-          timeoutMs: invocationTimeout,
-          onOutput: (chunk) => emit(chunk, "running"),
-          onProcess: trackRunProcess,
-        });
+        run = await measureTestRunStep(
+          timing,
+          "playwright_process",
+          () =>
+            spawnStreaming({
+              ...playwrightCliInvocationForApp(appPath, args),
+              cwd: appPath,
+              env: runnerEnv(reportPath),
+              signal,
+              timeoutMs: invocationTimeout,
+              onOutput: (chunk) => emit(chunk, "running"),
+              onProcess: trackRunProcess,
+            }),
+          testProcessTimingStatus,
+        );
       } catch (error) {
         result.infraError = {
           message: error instanceof Error ? error.message : String(error),
@@ -905,8 +927,10 @@ async function runPreviewTestBatch({
       // hundred milliseconds to load, and the timeout then reported a fully
       // green run as an infrastructure failure, which an agent reads as
       // inconclusive and spends a fix attempt on.
-      await rotatePreviewView(
-        signal?.aborted ? 1 : PREVIEW_TEARDOWN_ROTATION_TIMEOUT_MS,
+      await measureTestRunStep(timing, "preview_rotate", () =>
+        rotatePreviewView(
+          signal?.aborted ? 1 : PREVIEW_TEARDOWN_ROTATION_TIMEOUT_MS,
+        ),
       );
     } catch (error) {
       logger.warn(
@@ -948,7 +972,9 @@ async function runPreviewTestBatch({
     !result.infraError &&
     result.results.length > 0
   ) {
-    await pruneTestRunArtifacts(appPath, batchDir);
+    await measureTestRunStep(timing, "artifact_prune", () =>
+      pruneTestRunArtifacts(appPath, batchDir),
+    );
   }
   return result;
 }
@@ -989,6 +1015,7 @@ export async function runAppTestsCore(
 }
 
 async function runAppTestsCoreUnredacted({
+  timing,
   isolateTestCases,
   appId,
   appPath: explicitAppPath,
@@ -1103,13 +1130,19 @@ async function runAppTestsCoreUnredacted({
     }
   } else {
     try {
-      const result = await ensurePlaywrightBootstrap({
-        appPath,
-        signal,
-        onOutput: (chunk) => emit(chunk, "setup"),
-        ensurePreviewShim: !!previewCdpEndpoint,
-        isolateTestCases,
-      });
+      const result = await measureTestRunStep(
+        timing,
+        "playwright_bootstrap",
+        () =>
+          ensurePlaywrightBootstrap({
+            timing,
+            appPath,
+            signal,
+            onOutput: (chunk) => emit(chunk, "setup"),
+            ensurePreviewShim: !!previewCdpEndpoint,
+            isolateTestCases,
+          }),
+      );
       installed = result.installed;
       fixtureRouted = result.previewRouted;
       if (previewEndpoint && !result.previewRouted) {
@@ -1172,6 +1205,7 @@ async function runAppTestsCoreUnredacted({
       };
     }
     return runPreviewTestBatch({
+      timing,
       appId,
       appPath,
       baseUrl,
@@ -1248,30 +1282,36 @@ async function runAppTestsCoreUnredacted({
 
   let run;
   try {
-    run = await spawnStreaming({
-      ...playwrightCliInvocationForApp(appPath, args),
-      cwd: appPath,
-      env: getPackageManagerCommandEnv({
-        ...runnerBaseEnv,
-        ...testEnv,
-        [TEST_BASE_URL_ENV]: baseUrl,
-        NODE_OPTIONS: previewTestNodeOptions(appPath),
-        // PREVIEW_CDP_ENDPOINT_ENV is deliberately not set here. A preview run
-        // returned above; leaving the variable unset is what keeps the
-        // generated fixture shim inert so this run launches its own browser.
-        // Left unset at full speed so the config's `|| 0` fallback applies.
-        ...(slowMo ? { [TEST_SLOW_MO_ENV]: String(SLOW_MO_DELAY_MS) } : {}),
-        PLAYWRIGHT_JSON_OUTPUT_NAME: resultsJsonPath,
-        // Non-interactive: never try to open/serve an HTML report.
-        CI: "true",
-      }),
-      signal,
-      timeoutMs,
-      onOutput: (chunk) => emit(chunk, "running"),
-      // Quit tree-kills the runner synchronously; the signal path alone would
-      // leave a headless browser and the sandbox cwd behind.
-      onProcess: (child) => trackE2eTestProcess(child, signal),
-    });
+    run = await measureTestRunStep(
+      timing,
+      "playwright_process",
+      () =>
+        spawnStreaming({
+          ...playwrightCliInvocationForApp(appPath, args),
+          cwd: appPath,
+          env: getPackageManagerCommandEnv({
+            ...runnerBaseEnv,
+            ...testEnv,
+            [TEST_BASE_URL_ENV]: baseUrl,
+            NODE_OPTIONS: previewTestNodeOptions(appPath),
+            // PREVIEW_CDP_ENDPOINT_ENV is deliberately not set here. A preview run
+            // returned above; leaving the variable unset is what keeps the
+            // generated fixture shim inert so this run launches its own browser.
+            // Left unset at full speed so the config's `|| 0` fallback applies.
+            ...(slowMo ? { [TEST_SLOW_MO_ENV]: String(SLOW_MO_DELAY_MS) } : {}),
+            PLAYWRIGHT_JSON_OUTPUT_NAME: resultsJsonPath,
+            // Non-interactive: never try to open/serve an HTML report.
+            CI: "true",
+          }),
+          signal,
+          timeoutMs,
+          onOutput: (chunk) => emit(chunk, "running"),
+          // Quit tree-kills the runner synchronously; the signal path alone would
+          // leave a headless browser and the sandbox cwd behind.
+          onProcess: (child) => trackE2eTestProcess(child, signal),
+        }),
+      testProcessTimingStatus,
+    );
   } catch (error) {
     // A spawn failure (e.g. Node missing from PATH) rejects rather than exiting
     // non-zero. Surface it as a structured infra error in the Tests panel
@@ -1413,7 +1453,9 @@ async function runAppTestsCoreUnredacted({
     !signal?.aborted &&
     results.length > 0
   ) {
-    await pruneTestRunArtifacts(appPath, artifactsDir);
+    await measureTestRunStep(timing, "artifact_prune", () =>
+      pruneTestRunArtifacts(appPath, artifactsDir),
+    );
   }
   return { appId, results };
 }
@@ -1464,21 +1506,33 @@ async function runTestsWithPreviewAutomation({
   testCaseLifecycle?: PreparedIsolation["testCaseLifecycle"];
 }): Promise<RunAppTestsResult> {
   const appId = coreOptions.appId;
+  const timing = coreOptions.timing;
   let window = previewWindow;
   let driveUrl = previewBaseUrl;
 
   if (window) {
     const ready = driveUrl
-      ? await waitForPreviewView(window, {
-          ...(requireCurrentUrl ? { url: driveUrl } : {}),
-          // A panel run was just started by someone looking at the preview, so
-          // waiting out a slow mount is worth it. An agent run falls back
-          // instead of failing, and pays this wait on every call while the user
-          // is elsewhere — inside the app lock, holding up other operations —
-          // so it gives up sooner.
-          ...(source === "agent" ? { timeoutMs: 5_000 } : {}),
-          signal,
-        })
+      ? await measureTestRunStep(
+          timing,
+          "preview_ready",
+          () =>
+            waitForPreviewView(window!, {
+              ...(requireCurrentUrl ? { url: driveUrl } : {}),
+              // A panel run was just started by someone looking at the preview, so
+              // waiting out a slow mount is worth it. An agent run falls back
+              // instead of failing, and pays this wait on every call while the user
+              // is elsewhere — inside the app lock, holding up other operations —
+              // so it gives up sooner.
+              ...(source === "agent" ? { timeoutMs: 5_000 } : {}),
+              signal,
+            }),
+          (result) =>
+            result.ok
+              ? "completed"
+              : "aborted" in result && result.aborted
+                ? "cancelled"
+                : "failed",
+        )
       : ({ ok: false, reason: "the app isn't running" } as const);
 
     if (!ready.ok) {
@@ -1562,8 +1616,12 @@ async function runTestsWithPreviewAutomation({
     }
     try {
       previewBroker = new PreviewCdpBroker();
-      await previewBroker.start();
-      await previewBroker.setTarget(target);
+      await measureTestRunStep(timing, "preview_connect", () =>
+        previewBroker!.start(),
+      );
+      await measureTestRunStep(timing, "preview_connect", () =>
+        previewBroker!.setTarget(target),
+      );
       const connection = previewBroker.connectionInfo;
       previewCdpEndpoint = connection.endpoint;
       previewCdpToken = connection.token;
@@ -1594,11 +1652,22 @@ async function runTestsWithPreviewAutomation({
           if (!rotated.ok) {
             throw new Error(rotated.reason);
           }
-          const ready = await waitForPreviewView(automationWindow, {
-            url: automationBaseUrl,
-            timeoutMs: Math.max(1, Math.min(remainingMs ?? 15_000, 15_000)),
-            signal,
-          });
+          const ready = await measureTestRunStep(
+            timing,
+            "preview_ready",
+            () =>
+              waitForPreviewView(automationWindow, {
+                url: automationBaseUrl,
+                timeoutMs: Math.max(1, Math.min(remainingMs ?? 15_000, 15_000)),
+                signal,
+              }),
+            (result) =>
+              result.ok
+                ? "completed"
+                : "aborted" in result && result.aborted
+                  ? "cancelled"
+                  : "failed",
+          );
           if (!ready.ok) {
             throw new Error(ready.reason);
           }
@@ -1617,6 +1686,7 @@ async function runTestsWithPreviewAutomation({
   try {
     if (testCaseLifecycle) {
       caseServer = await startTestCaseLifecycleServer(testCaseLifecycle, {
+        timing,
         onSlowShutdown: () =>
           emit(
             "Waiting for the database provider to finish cancelled test setup or cleanup. New runs remain blocked until it settles.\n",
@@ -1629,34 +1699,48 @@ async function runTestsWithPreviewAutomation({
           "setup",
         );
     }
-    result = await runAppTestsCore({
-      ...coreOptions,
-      testEnv: { ...coreOptions.testEnv, ...caseServer?.env },
-      isolateTestCases: !!caseServer,
-      previewCdpEndpoint,
-      previewCdpToken,
-      rotatePreviewView,
-      // The run turned out to need its own browser, so stop holding the
-      // preview view frozen (no navigation, no hiding) for it.
-      onPreviewFallback: () => {
-        automation?.end();
-        // ...and tell the renderer, or the user is left staring at a native
-        // "Test view" with every control locked by the run while the tests
-        // actually execute in a separate Playwright window. The only other
-        // signal is a warning line in the test output, which is collapsed by
-        // default.
-        emitPreviewFallback();
-      },
-    });
+    result = await measureTestRunStep(
+      timing,
+      "test_execution",
+      () =>
+        runAppTestsCore({
+          ...coreOptions,
+          testEnv: { ...coreOptions.testEnv, ...caseServer?.env },
+          isolateTestCases: !!caseServer,
+          previewCdpEndpoint,
+          previewCdpToken,
+          rotatePreviewView,
+          // The run turned out to need its own browser, so stop holding the
+          // preview view frozen (no navigation, no hiding) for it.
+          onPreviewFallback: () => {
+            automation?.end();
+            // ...and tell the renderer, or the user is left staring at a native
+            // "Test view" with every control locked by the run while the tests
+            // actually execute in a separate Playwright window. The only other
+            // signal is a warning line in the test output, which is collapsed by
+            // default.
+            emitPreviewFallback();
+          },
+        }),
+      (result) => (result.infraError ? "failed" : "completed"),
+    );
   } finally {
     // Release preview controls immediately while provider mutations drain.
-    const caseClosing = caseServer?.close().catch((error) => {
-      logger.warn(`Failed to close test case lifecycle server: ${error}`);
-    });
-    try {
-      await previewBroker?.close().catch((error) => {
-        logger.warn(`Failed to close preview automation broker: ${error}`);
+    const caseClosing =
+      caseServer &&
+      measureTestRunStep(timing, "lifecycle_drain", () =>
+        caseServer!.close(),
+      ).catch((error) => {
+        logger.warn(`Failed to close test case lifecycle server: ${error}`);
       });
+    try {
+      if (previewBroker) {
+        await measureTestRunStep(timing, "preview_disconnect", () =>
+          previewBroker!.close(),
+        ).catch((error) => {
+          logger.warn(`Failed to close preview automation broker: ${error}`);
+        });
+      }
     } finally {
       try {
         automation?.end();
@@ -1702,6 +1786,7 @@ async function runTestsWithPreviewAutomation({
  * user's real database, and this fails closed instead.
  */
 async function runTestsAgainstNormalPreview({
+  timing,
   appId,
   disclosure,
   neonRefusal,
@@ -1725,6 +1810,7 @@ async function runTestsAgainstNormalPreview({
   releasePreviewReservation,
   emitPreviewFallback,
 }: {
+  timing?: TestRunTiming;
   appId: number;
   /** Why this run isn't sandboxed, shown on the result's isolation badge. */
   disclosure: string;
@@ -1775,7 +1861,8 @@ async function runTestsAgainstNormalPreview({
     "runtime-config",
     "test-files",
   ] as const;
-  return appOperationCoordinator.run(
+  const lockWait = timing?.startStep("run_lock_wait");
+  const execution = appOperationCoordinator.run(
     {
       appId,
       operation: "run-app-tests",
@@ -1788,6 +1875,7 @@ async function runTestsAgainstNormalPreview({
       refuseWhenRecording: "run tests",
     },
     async () => {
+      lockWait?.end();
       const app = await getApp(appId);
       // The route can wait behind another operation after the preflight read.
       // Honor a Tests-panel disable that happened while it was queued before
@@ -1816,20 +1904,27 @@ async function runTestsAgainstNormalPreview({
 
       let prepared: PreparedIsolation | undefined;
       try {
-        prepared = await prepareIsolatedTestDatabase({
-          app,
-          emit,
-          // The real mode, not a hardcoded "host". Only the Neon branch-swap
-          // path reads it, and `refusesUnsandboxedTestRun` already turned those
-          // apps away — but that is a non-local invariant, and relaxing it
-          // (allowing Neon here, or reordering the provider precedence) would
-          // silently run the host-only env swap and `restartAppInPlace` in a
-          // Docker or cloud runtime. Passing the truth keeps the precondition
-          // enforceable where it is written.
-          runtimeMode,
-          signal,
-          perTestCase: true,
-        });
+        prepared = await measureTestRunStep(
+          timing,
+          "database_isolation",
+          () =>
+            prepareIsolatedTestDatabase({
+              timing,
+              app,
+              emit,
+              // The real mode, not a hardcoded "host". Only the Neon branch-swap
+              // path reads it, and `refusesUnsandboxedTestRun` already turned those
+              // apps away — but that is a non-local invariant, and relaxing it
+              // (allowing Neon here, or reordering the provider precedence) would
+              // silently run the host-only env swap and `restartAppInPlace` in a
+              // Docker or cloud runtime. Passing the truth keeps the precondition
+              // enforceable where it is written.
+              runtimeMode,
+              signal,
+              perTestCase: true,
+            }),
+          (result) => (result.infraError ? "failed" : "completed"),
+        );
         // Disclose the missing runtime sandbox, without overwriting a more
         // specific provider reason (e.g. the Supabase publishable-key hint).
         const isolation: TestIsolation = {
@@ -1858,6 +1953,7 @@ async function runTestsAgainstNormalPreview({
           releasePreviewReservation,
           emitPreviewFallback,
           coreOptions: {
+            timing,
             appId,
             testFile,
             testFiles,
@@ -1890,7 +1986,17 @@ async function runTestsAgainstNormalPreview({
             }
             onIsolationCleanupFailed(true, prepared.cleanupProvider);
             onIsolationCleanupFailed(
-              !(await prepared.teardown()).remoteCleanupCompleted,
+              !(
+                await measureTestRunStep(
+                  timing,
+                  "database_teardown",
+                  () => prepared!.teardown(),
+                  (result) =>
+                    result.remoteCleanupCompleted && result.envRestored
+                      ? "completed"
+                      : "failed",
+                )
+              ).remoteCleanupCompleted,
               prepared.cleanupProvider,
             );
           } catch (error) {
@@ -1901,6 +2007,9 @@ async function runTestsAgainstNormalPreview({
         }
       }
     },
+  );
+  return execution.finally(() =>
+    lockWait?.end(signal.aborted ? "cancelled" : "failed"),
   );
 }
 
@@ -2014,6 +2123,8 @@ type E2eTestPrepareResult =
 // a sandbox directory silently, so it must dispose before returning instead.
 
 export interface RunTestsWithIsolationOptions {
+  /** Shared with the agent's queue admission; omitted by panel callers. */
+  timing?: TestRunTiming;
   /**
    * The invoking IPC event. Its `sender` is where `tests:output` and
    * `tests:run-state` stream to, and `prepareIsolatedTestDatabase` uses it for
@@ -2054,6 +2165,21 @@ export interface RunTestsWithIsolationOptions {
 export function runAppTestsWithIsolation(
   options: RunTestsWithIsolationOptions,
 ): Promise<RunAppTestsResult> {
+  const execute = async (run: TestRunExecution, timing?: TestRunTiming) => {
+    try {
+      const result = await executeAppTestsWithIsolation(
+        { ...options, timing },
+        run,
+      );
+      timing?.setResult(result);
+      return result;
+    } catch (error) {
+      // The agent can turn this rejection into a tool result before the queue
+      // settles; retain the infrastructure outcome for the final timing event.
+      timing?.setFailed();
+      throw error;
+    }
+  };
   if (options.queueRun) {
     if (!ownsAppTestRun(options.appId, options.queueRun)) {
       throw new DyadError(
@@ -2061,21 +2187,18 @@ export function runAppTestsWithIsolation(
         DyadErrorKind.Precondition,
       );
     }
-    return executeAppTestsWithIsolation(options, options.queueRun);
+    return execute(options.queueRun, options.timing);
   }
-  return withAppTestRun<RunAppTestsResult>(
-    options,
-    (run) => executeAppTestsWithIsolation(options, run),
-    () => ({
-      appId: options.appId,
-      results: [],
-      infraError: { message: "Test run stopped before execution." },
-    }),
-  );
+  return withAppTestRun<RunAppTestsResult>(options, execute, () => ({
+    appId: options.appId,
+    results: [],
+    infraError: { message: "Test run stopped before execution." },
+  }));
 }
 
 async function executeAppTestsWithIsolation(
   {
+    timing,
     event,
     appId,
     testFile,
@@ -2265,12 +2388,15 @@ async function executeAppTestsWithIsolation(
   // exited parent without proving that its descendants stopped.
   let runProcessesSettlement: Promise<boolean> | undefined;
   const settleRunProcesses = () =>
-    (runProcessesSettlement ??= settleE2eTestProcesses(signal).catch(
-      (error) => {
-        logger.warn(`Failed to settle E2E test processes: ${error}`);
-        return false;
-      },
-    ));
+    (runProcessesSettlement ??= measureTestRunStep(
+      timing,
+      "process_settlement",
+      () => settleE2eTestProcesses(signal),
+      (settled) => (settled ? "completed" : "failed"),
+    ).catch((error) => {
+      logger.warn(`Failed to settle E2E test processes: ${error}`);
+      return false;
+    }));
   let processSettlementFailed = false;
   const onProcessSettlementFailed = (
     resources: AppOperationRequest["resources"],
@@ -2342,6 +2468,19 @@ async function executeAppTestsWithIsolation(
   };
   try {
     const guardApp = await getApp(appId);
+    timing?.setOptions({
+      headed,
+      parallel,
+      slowMo,
+      preview,
+      sandboxed: usesSandboxedE2eTests(routingSettings),
+      provider: guardApp.supabaseProjectId
+        ? "supabase"
+        : guardApp.neonProjectId
+          ? "neon"
+          : "none",
+      runtimeMode: routingSettings.runtimeMode2 ?? "host",
+    });
 
     // Decide both refusals BEFORE the workspace stage. `ensurePlaywrightBootstrap`
     // is not read-only — it installs `@playwright/test` into the user's real
@@ -2381,6 +2520,7 @@ async function executeAppTestsWithIsolation(
     if (sandboxUnavailable) {
       finalResult = withIsolationCleanupWarning(
         await runTestsAgainstNormalPreview({
+          timing,
           appId,
           ...sandboxUnavailable,
           runtimeMode,
@@ -2438,7 +2578,9 @@ async function executeAppTestsWithIsolation(
     ) {
       emit("Restoring settings a previous test run left behind…\n", "setup");
       try {
-        await restoreAppFromTestBranch(guardApp);
+        await measureTestRunStep(timing, "recover_previous_environment", () =>
+          restoreAppFromTestBranch(guardApp),
+        );
       } catch (error) {
         logger.warn(
           `Failed to recover a leaked Neon test branch for app ${appId}: ${error}`,
@@ -2449,7 +2591,8 @@ async function executeAppTestsWithIsolation(
     // Bootstrap and snapshot under the real working-tree claim, then release it
     // before Playwright runs so ordinary app editing can continue against the
     // normal preview while this run uses its captured filesystem state.
-    const prepareResult = await appOperationCoordinator.run(
+    const workspaceLockWait = timing?.startStep("workspace_lock_wait");
+    const preparation = appOperationCoordinator.run(
       {
         appId,
         operation: "prepare-e2e-test-workspace",
@@ -2468,6 +2611,7 @@ async function executeAppTestsWithIsolation(
         refuseWhenRecording: "run tests",
       },
       async (): Promise<E2eTestPrepareResult> => {
+        workspaceLockWait?.end();
         const claimedApp = await getApp(appId);
         if (
           claimedApp.neonTestBranchId &&
@@ -2483,15 +2627,21 @@ async function executeAppTestsWithIsolation(
           // Written into the REAL app, before the capture, so the snapshot
           // carries it: a sandboxed preview run executes from the workspace,
           // and the shim has to already be in what was copied.
-          const { installed, previewRouted } = await ensurePlaywrightBootstrap({
-            appPath: realAppPath,
-            signal,
-            onOutput: (chunk) => emit(chunk, "setup"),
-            ensurePreviewShim: !!previewWindow,
-            isolateTestCases: !!(
-              claimedApp.neonProjectId || claimedApp.supabaseProjectId
-            ),
-          });
+          const { installed, previewRouted } = await measureTestRunStep(
+            timing,
+            "playwright_bootstrap",
+            () =>
+              ensurePlaywrightBootstrap({
+                timing,
+                appPath: realAppPath,
+                signal,
+                onOutput: (chunk) => emit(chunk, "setup"),
+                ensurePreviewShim: !!previewWindow,
+                isolateTestCases: !!(
+                  claimedApp.neonProjectId || claimedApp.supabaseProjectId
+                ),
+              }),
+          );
           // Read BEFORE the capture, not after. A disconnect that lands *during*
           // the copy leaves the snapshot holding the old credentials while a
           // post-copy read would record the new association — and the run
@@ -2509,12 +2659,17 @@ async function executeAppTestsWithIsolation(
           // hold have to be the same ones.
           const capturedEnv = await readEnvFile(realAppPath);
           emit("Capturing the app in an isolated Git workspace…\n", "setup");
-          const workspace = await createE2eTestWorkspace({
-            appId,
-            appPath: realAppPath,
-            hasCustomCommands: hasCustomE2eStartCommand(claimedApp),
-            signal,
-          });
+          const workspace = await measureTestRunStep(
+            timing,
+            "workspace_capture",
+            () =>
+              createE2eTestWorkspace({
+                appId,
+                appPath: realAppPath,
+                hasCustomCommands: hasCustomE2eStartCommand(claimedApp),
+                signal,
+              }),
+          );
           // The copy itself is the ambiguous window: nothing here can say which
           // side of a change its `.env.local` landed on, so a row that moved
           // during it fails setup rather than guessing. Disposal is explicit —
@@ -2546,7 +2701,9 @@ async function executeAppTestsWithIsolation(
               );
             }
           } catch (error) {
-            await workspace.dispose().catch((disposeError) => {
+            await measureTestRunStep(timing, "workspace_disposal", () =>
+              workspace.dispose(),
+            ).catch((disposeError) => {
               logger.warn(
                 `Failed to remove a captured E2E workspace after a setup failure: ${disposeError}`,
               );
@@ -2574,6 +2731,9 @@ async function executeAppTestsWithIsolation(
           return { setupError: message };
         }
       },
+    );
+    const prepareResult = await preparation.finally(() =>
+      workspaceLockWait?.end(signal.aborted ? "cancelled" : "failed"),
     );
     if ("setupError" in prepareResult) {
       finalResult = withIsolationCleanupWarning({
@@ -2609,7 +2769,8 @@ async function executeAppTestsWithIsolation(
         "setup",
       );
     }
-    finalResult = await appOperationCoordinator.run(
+    const runLockWait = timing?.startStep("run_lock_wait");
+    const execution = appOperationCoordinator.run(
       {
         appId,
         operation: "run-app-tests",
@@ -2620,6 +2781,7 @@ async function executeAppTestsWithIsolation(
         refuseWhenRecording: "run tests",
       },
       async () => {
+        runLockWait?.end();
         let prepared: PreparedIsolation | undefined;
         let testRuntime: E2eTestRuntime | undefined;
         let processesStopped: Promise<boolean> | undefined;
@@ -2627,7 +2789,12 @@ async function executeAppTestsWithIsolation(
           (processesStopped ??= (async () => {
             if (testRuntime) {
               try {
-                serverStopped = await testRuntime.stop();
+                serverStopped = await measureTestRunStep(
+                  timing,
+                  "server_stop",
+                  () => testRuntime!.stop(),
+                  (result) => (result ? "completed" : "failed"),
+                );
               } catch (error) {
                 serverStopped = false;
                 logger.error(
@@ -2687,13 +2854,20 @@ async function executeAppTestsWithIsolation(
           // Set up isolation so the run never mutates the user's real data:
           // Neon apps get a throwaway copy-on-write branch, Supabase apps get
           // a throwaway RLS-scoped test user, and no-DB apps run as-is.
-          prepared = await prepareE2eTestDataIsolation({
-            app,
-            workspacePath: workspace!.workspacePath,
-            emit,
-            runtimeMode,
-            signal,
-          });
+          prepared = await measureTestRunStep(
+            timing,
+            "database_isolation",
+            () =>
+              prepareE2eTestDataIsolation({
+                timing,
+                app,
+                workspacePath: workspace!.workspacePath,
+                emit,
+                runtimeMode,
+                signal,
+              }),
+            (result) => (result.infraError ? "failed" : "completed"),
+          );
           // Recorded here so a Stop thrown out of the server start below still
           // reaches the exit paths with the mode they need to name the leak.
           lastIsolation = prepared.isolation;
@@ -2762,12 +2936,14 @@ async function executeAppTestsWithIsolation(
                 "setup",
               );
             }
-            await installE2eTestWorkspaceDependencies({
-              workspace: workspace!,
-              signal,
-              onOutput: (chunk) => emit(chunk, "setup"),
-              isolationMode,
-            });
+            await measureTestRunStep(timing, "dependency_install", () =>
+              installE2eTestWorkspaceDependencies({
+                workspace: workspace!,
+                signal,
+                onOutput: (chunk) => emit(chunk, "setup"),
+                isolationMode,
+              }),
+            );
           } catch (error) {
             if (signal.aborted) throw error;
             const message =
@@ -2785,14 +2961,16 @@ async function executeAppTestsWithIsolation(
 
           emit("Starting the isolated test server…\n", "setup");
           try {
-            testRuntime = await startE2eTestRuntime({
-              workspacePath: workspace!.workspacePath,
-              packageManager: workspace!.packageManager,
-              installCommand: app.installCommand,
-              startCommand: app.startCommand,
-              signal,
-              onOutput: (chunk) => emit(chunk, "setup"),
-            });
+            testRuntime = await measureTestRunStep(timing, "server_start", () =>
+              startE2eTestRuntime({
+                workspacePath: workspace!.workspacePath,
+                packageManager: workspace!.packageManager,
+                installCommand: app.installCommand,
+                startCommand: app.startCommand,
+                signal,
+                onOutput: (chunk) => emit(chunk, "setup"),
+              }),
+            );
           } catch (error) {
             // A Stop is not a setup failure — let it reach the outer catch,
             // which turns it into the same "Test run stopped." result the
@@ -2827,7 +3005,9 @@ async function executeAppTestsWithIsolation(
               "setup",
             );
             try {
-              await prepared.authorizeRuntimeOrigin(runtimeOrigin);
+              await measureTestRunStep(timing, "authorize_runtime_origin", () =>
+                prepared!.authorizeRuntimeOrigin!(runtimeOrigin),
+              );
             } catch (error) {
               logger.error(
                 `Failed to authorize isolated E2E origin ${runtimeOrigin} for app ${appId}: ${error}`,
@@ -2876,6 +3056,7 @@ async function executeAppTestsWithIsolation(
                 grep,
               }),
             coreOptions: {
+              timing,
               appId,
               appPath: workspace!.workspacePath,
               baseUrl: testRuntime.baseUrl,
@@ -2910,14 +3091,16 @@ async function executeAppTestsWithIsolation(
           let retained = false;
           try {
             if (stopped) {
-              await retainE2eTestArtifacts(workspace!, {
-                // A targeted run leaves the untargeted files' rows on screen, and
-                // their screenshots live in earlier runs' artifact directories —
-                // so the prune has to keep those rather than treat this run's
-                // output as a complete replacement.
-                replacesEveryResult:
-                  !normalizedTestFiles && testLine === undefined && !grep,
-              });
+              await measureTestRunStep(timing, "artifact_retention", () =>
+                retainE2eTestArtifacts(workspace!, {
+                  // A targeted run leaves the untargeted files' rows on screen, and
+                  // their screenshots live in earlier runs' artifact directories —
+                  // so the prune has to keep those rather than treat this run's
+                  // output as a complete replacement.
+                  replacesEveryResult:
+                    !normalizedTestFiles && testLine === undefined && !grep,
+                }),
+              );
               retained = true;
             }
           } catch (error) {
@@ -2949,8 +3132,17 @@ async function executeAppTestsWithIsolation(
                 emitProgress("cleaning-up", prepared.isolation);
               }
               isolationCleanupFailed = true;
-              isolationCleanupFailed = !(await prepared.teardown())
-                .remoteCleanupCompleted;
+              isolationCleanupFailed = !(
+                await measureTestRunStep(
+                  timing,
+                  "database_teardown",
+                  () => prepared!.teardown(),
+                  (result) =>
+                    result.remoteCleanupCompleted && result.envRestored
+                      ? "completed"
+                      : "failed",
+                )
+              ).remoteCleanupCompleted;
             } catch (error) {
               logger.error(
                 `Failed to tear down isolated test environment for app ${appId}: ${error}`,
@@ -2959,6 +3151,9 @@ async function executeAppTestsWithIsolation(
           }
         }
       },
+    );
+    finalResult = await execution.finally(() =>
+      runLockWait?.end(signal.aborted ? "cancelled" : "failed"),
     );
     finalResult = withIsolationCleanupWarning(finalResult);
     return finalResult;
@@ -3028,7 +3223,9 @@ async function executeAppTestsWithIsolation(
       // itself when there was provider state to remove).
       emitProgress("cleaning-up", finalResult.isolation);
       try {
-        await workspace.dispose();
+        await measureTestRunStep(timing, "workspace_disposal", () =>
+          workspace!.dispose(),
+        );
       } catch (error) {
         logger.error(
           `Failed to remove isolated test workspace for app ${appId}: ${error}`,

@@ -77,7 +77,7 @@ export function CatalogCard({
               )}
             </CardTitle>
             {entry.description && (
-              <div className="text-xs text-muted-foreground">
+              <div className="text-xs text-muted-foreground break-words">
                 {entry.description}
               </div>
             )}

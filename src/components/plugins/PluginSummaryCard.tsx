@@ -2,9 +2,9 @@ import { ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { CatalogBadge } from "./CatalogBadge";
 import { Switch } from "@/components/ui/switch";
 import type { McpServer } from "@/ipc/types";
+import { CatalogBadge } from "./CatalogBadge";
 import { PluginIcon } from "./PluginIcon";
 import type { ConnectFeedback } from "./usePluginConnect";
 

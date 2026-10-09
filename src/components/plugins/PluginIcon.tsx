@@ -41,7 +41,7 @@ export function PluginIcon({
           className={`${letter} font-semibold text-neutral-500`}
           data-testid="plugin-icon-fallback"
         >
-          {name.charAt(0).toUpperCase()}
+          {Array.from(name)[0]?.toUpperCase()}
         </span>
       )}
     </span>

@@ -18,6 +18,11 @@ describe("PluginIcon", () => {
     expect(screen.getByTestId("plugin-icon-fallback").textContent).toBe("E");
   });
 
+  it("keeps a whole first character, not half an emoji", () => {
+    render(<PluginIcon name="🚀 Rocket" />);
+    expect(screen.getByTestId("plugin-icon-fallback").textContent).toBe("🚀");
+  });
+
   it("falls back to the initial when the icon fails to load", () => {
     render(<PluginIcon name="Example" iconUrl={ICON_URL} />);
     fireEvent.error(screen.getByTestId("plugin-icon"));

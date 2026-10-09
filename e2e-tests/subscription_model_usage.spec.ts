@@ -117,10 +117,10 @@ test("subscription model usage UX", async ({ po, electronApp }, testInfo) => {
   });
   await expect(subscription).toHaveAttribute("aria-pressed", "true");
   await po.page
-    .getByRole("button", { name: "Pro credits", exact: true })
+    .getByRole("button", { name: "Dyad Pro credits", exact: true })
     .click();
   await expect(
-    po.page.getByRole("button", { name: "Pro credits", exact: true }),
+    po.page.getByRole("button", { name: "Dyad Pro credits", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
   const saved = await po.page.evaluate(async () => {
     const value = await (window as any).electron.ipcRenderer.invoke(

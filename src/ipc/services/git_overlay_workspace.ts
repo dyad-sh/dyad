@@ -184,7 +184,13 @@ async function runWorkspaceGit(
   const { env, gitLocation } = getGitProcessEnvironment();
   const result = await runBufferedProcess({
     command: gitLocation,
-    args,
+    // Sandbox paths can exceed MAX_PATH even when the live checkout fits.
+    // Apply this to checkout, overlay inspection, submodules, and cleanup
+    // without changing the source repository or the user's Git configuration.
+    args:
+      process.platform === "win32"
+        ? ["-c", "core.longpaths=true", ...args]
+        : args,
     cwd,
     env,
     signal,

@@ -501,7 +501,7 @@ const BaseUserSettingsFields = {
   telemetryUserId: z.string().optional(),
   hasRunBefore: z.boolean().optional(),
   // Global across chats. Unset prefers a connected subscription.
-  proModelUsage: z.enum(["subscription", "pro"]).optional(),
+  proModelUsage: z.enum(["subscription", "pro", "api-key"]).optional(),
   // Applies only to requests routed through the ChatGPT subscription adapter.
   chatgptFastMode: z.boolean().optional(),
   enableDyadPro: z.boolean().optional(),

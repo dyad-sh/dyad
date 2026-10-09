@@ -55,7 +55,7 @@ export function ProModeSelector() {
         </TooltipTrigger>
         <TooltipContent>Configure Dyad Pro settings</TooltipContent>
       </Tooltip>
-      <PopoverContent className="w-80 border-primary/20">
+      <PopoverContent className="w-[26rem] max-w-[calc(100vw-2rem)] border-primary/20">
         <div className="space-y-4">
           <div className="space-y-1">
             <h4 className="font-medium flex items-center gap-1.5">
@@ -77,26 +77,33 @@ export function ProModeSelector() {
               </a>
             </div>
           )}
-          {hasProKey && (
+          {(hasProKey || settings?.proModelUsage === "api-key") && (
             <div className="space-y-2">
               <Label>Model usage</Label>
               <ToggleGroup
                 aria-label="Model usage"
                 variant="outline"
                 size="sm"
-                className="w-full"
+                orientation="horizontal"
+                className="w-full items-stretch [&>button]:h-auto [&>button]:min-h-8 [&>button]:flex-auto [&>button]:whitespace-normal [&>button]:py-1"
                 value={[
-                  subscriptionConnected && settings?.proModelUsage !== "pro"
-                    ? "subscription"
-                    : "pro",
+                  settings?.proModelUsage === "api-key"
+                    ? "api-key"
+                    : subscriptionConnected && settings?.proModelUsage !== "pro"
+                      ? "subscription"
+                      : "pro",
                 ]}
                 onValueChange={(value) => {
                   if (
                     value[0] === "pro" ||
+                    value[0] === "api-key" ||
                     (value[0] === "subscription" && subscriptionConnected)
                   )
                     void updateSettings({
-                      proModelUsage: value[0] as "pro" | "subscription",
+                      proModelUsage: value[0] as
+                        | "pro"
+                        | "subscription"
+                        | "api-key",
                     });
                 }}
               >
@@ -111,6 +118,7 @@ export function ProModeSelector() {
                 </ToggleGroupItem>
                 <ToggleGroupItem
                   value="pro"
+                  disabled={!hasProKey}
                   className="text-xs aria-pressed:bg-primary aria-pressed:text-primary-foreground aria-pressed:hover:bg-primary aria-pressed:hover:text-primary-foreground"
                   onClick={() => {
                     // Disconnected accounts display Pro even when the saved
@@ -118,12 +126,16 @@ export function ProModeSelector() {
                     // Clicking that selected toggle emits an empty value.
                     if (
                       !subscriptionConnected &&
+                      settings?.proModelUsage !== "api-key" &&
                       settings?.proModelUsage !== "pro"
                     )
                       void updateSettings({ proModelUsage: "pro" });
                   }}
                 >
-                  Pro credits
+                  Dyad Pro credits
+                </ToggleGroupItem>
+                <ToggleGroupItem value="api-key" className="text-xs">
+                  Your API keys
                 </ToggleGroupItem>
               </ToggleGroup>
             </div>

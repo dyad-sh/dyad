@@ -117,6 +117,20 @@ describe("runExploreChatHistorySubagent", () => {
     harness.dispose();
   });
 
+  it("uses the engine helper model with BYO for history exploration", async () => {
+    const ctx = makeAgentContext({ isDyadPro: true });
+    ctx.inferenceSettings = {
+      ...mocks.readSettings(),
+      proModelUsage: "api-key",
+      selectedModel: { provider: "google", name: "chosen-model" },
+    };
+    await runExploreChatHistorySubagent({ query: "find save discussion", ctx });
+    expect(mocks.getModelClient).toHaveBeenCalledWith(
+      { provider: "openai", name: SMALL_MODEL_NAME },
+      expect.objectContaining({ proModelUsage: "pro" }),
+      expect.objectContaining({ provider: "openai", name: SMALL_MODEL_NAME }),
+    );
+  });
   it.each(["build", "ask", "plan", "local-agent"] as const)(
     "inherits accepted %s billing settings instead of the live default",
     async (selectedChatMode) => {

@@ -61,3 +61,9 @@ requested about 1055390 tokens`. Keep catalog output limits well under the
   requests through the Engine dropped old-prefix blocks but retained blocks
   produced under the new prefix on later append-only turns. Check dropped
   **paths**, not just a nonzero drop count; old blocks may be dropped repeatedly.
+- **Auto entries can be engine-only products, not provider model aliases.**
+  When adding a direct-inference source, hide and reject engine-only choices
+  (such as Super Value); never let them fall through generic premium Auto aliases.
+- **BYO applies to main-chat inference, not Pro auxiliary tasks.** Keep fixed
+  helper/persona models and route Pro BYO helpers through the engine using a
+  request-only settings snapshot; never require another provider key or mutate the main-chat source.

@@ -44,6 +44,7 @@ export function useLanguageModelProviders() {
       ) ||
         (!isDyadProEnabled(settings) &&
           settings.proModelUsage !== "pro" &&
+          settings.proModelUsage !== "api-key" &&
           isChatGPTAutoSelection(settings.selectedModel) &&
           subscription.data?.connected &&
           subscription.data.models.length > 0))

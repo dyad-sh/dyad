@@ -1,5 +1,6 @@
 import { expect } from "@playwright/test";
 import { test } from "./helpers/test_helper";
+import { Timeout } from "./helpers/constants";
 import path from "path";
 import fs from "fs";
 
@@ -7,6 +8,9 @@ test("env var", async ({ po }) => {
   await po.sendPrompt("tc=1");
   const appPath = await po.appManagement.getCurrentAppPath();
 
+  // Env var writes queue behind the app runtime claim, which is held until the
+  // preview is ready. Prevents the case where a save waits out the whole install.
+  await po.previewPanel.expectPreviewIframeIsVisible(Timeout.EXTRA_LONG);
   await po.previewPanel.selectPreviewMode("configure");
 
   // Create a new env var

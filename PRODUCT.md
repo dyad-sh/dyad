@@ -36,4 +36,4 @@ Calm and capable. Quiet confidence in the vein of Linear or Things: the UI gets 
 - Target WCAG 2.1 AA: body text ≥4.5:1 contrast in both light and dark themes.
 - Full keyboard operability for all setup/onboarding flows (they're modal-heavy).
 - `prefers-reduced-motion` alternatives for every animation.
-- UI strings localized via i18n (en, pt-BR, zh-CN today); avoid idioms that translate poorly.
+- UI strings localized via i18n (en, es, fr, ko, pt-BR, tr, zh-CN today); avoid idioms that translate poorly.

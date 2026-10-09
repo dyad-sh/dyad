@@ -807,6 +807,16 @@ export function shouldBypassNonProTelemetrySampling(
     return true;
   }
 
+  // Keep run phases, case attempts, and the summary together by timing_id.
+  // Starts stay local; repeated case operations are bundled in case events.
+  if (
+    eventName === "e2e_test_step_completed" ||
+    eventName === "e2e_test_case_completed" ||
+    eventName === "e2e_test_run_completed"
+  ) {
+    return true;
+  }
+
   // Reporting a bug is rare enough that these add little volume, and sampling
   // them independently would break the outcome each prompt is paired with.
   // The form events are read as rates against each other -- how often the

@@ -102,18 +102,18 @@ describe("test case lifecycle bridge", () => {
         "e2e_test_run_completed",
         expect.objectContaining({
           run_id: 25,
-          step_timings: {
-            case_setup: {
-              count: 2,
-              total_ms: expect.any(Number),
-              max_ms: expect.any(Number),
-            },
-            case_cleanup: {
-              count: 2,
-              total_ms: expect.any(Number),
-              max_ms: expect.any(Number),
-            },
-          },
+          run_steps: [],
+          testcases: ["first", "retry"].map((case_id) =>
+            expect.objectContaining({
+              case_id,
+              timing_incomplete: true,
+              steps: [
+                { step: "setup", duration_ms: null },
+                { step: "execution", duration_ms: null },
+                { step: "cleanup", duration_ms: null },
+              ],
+            }),
+          ),
         }),
       ],
     ]);

@@ -1145,24 +1145,16 @@ describe("tests handlers", () => {
           ([event]) => event === "e2e_test_step_completed",
         ),
       ).toBe(false);
-      expect(Object.keys(summaries[0][1].step_timings)).toEqual(
-        expect.arrayContaining([
-          "queue_wait",
-          "workspace_lock_wait",
-          "playwright_bootstrap",
-          "workspace_capture",
-          "run_lock_wait",
-          "database_isolation",
-          "dependency_install",
-          "server_start",
-          "test_execution",
-          "server_stop",
-          "process_settlement",
-          "artifact_retention",
-          "database_teardown",
-          "workspace_disposal",
-        ]),
-      );
+      expect(summaries[0][1].run_steps).toEqual([
+        { step: "waiting", duration_ms: expect.any(Number) },
+        { step: "playwright_setup", duration_ms: expect.any(Number) },
+        { step: "workspace_setup", duration_ms: expect.any(Number) },
+        { step: "database_setup", duration_ms: expect.any(Number) },
+        { step: "runtime_setup", duration_ms: expect.any(Number) },
+        { step: "execution", duration_ms: expect.any(Number) },
+        { step: "shutdown", duration_ms: expect.any(Number) },
+        { step: "cleanup", duration_ms: expect.any(Number) },
+      ]);
 
       expect(sendTelemetryEventMock.mock.calls.at(-1)).toEqual([
         "e2e_test_run_completed",
@@ -1171,9 +1163,8 @@ describe("tests handlers", () => {
           source: "panel",
           sandboxed: true,
           duration_ms: expect.any(Number),
-          step_timings: expect.objectContaining({
-            playwright_process: expect.objectContaining({ count: 1 }),
-          }),
+          schema_version: 2,
+          testcases: [],
         }),
       ]);
     });
@@ -1223,14 +1214,14 @@ describe("tests handlers", () => {
           ([event]) => event === "e2e_test_run_completed",
         );
         expect(events).toHaveLength(1);
-        expect(Object.keys(events[0][1].step_timings)).toEqual(
-          expect.arrayContaining([
-            "workspace_lock_wait",
-            "playwright_bootstrap",
-            "database_isolation",
-            "workspace_disposal",
-          ]),
-        );
+        expect(events[0][1].run_steps).toEqual([
+          { step: "waiting", duration_ms: expect.any(Number) },
+          { step: "playwright_setup", duration_ms: expect.any(Number) },
+          { step: "workspace_setup", duration_ms: expect.any(Number) },
+          { step: "database_setup", duration_ms: expect.any(Number) },
+          { step: "shutdown", duration_ms: expect.any(Number) },
+          { step: "cleanup", duration_ms: expect.any(Number) },
+        ]);
       } finally {
         release();
         await Promise.allSettled([blocker, run]);

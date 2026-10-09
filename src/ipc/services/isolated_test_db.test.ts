@@ -293,14 +293,10 @@ describe("per-case database isolation", () => {
     expect(sendTelemetryEvent).toHaveBeenCalledExactlyOnceWith(
       "e2e_test_run_completed",
       expect.objectContaining({
-        step_timings: {
-          supabase_rls_check: expect.objectContaining({ count: 1 }),
-          supabase_key_detection: expect.objectContaining({ count: 1 }),
-          supabase_admin_key: expect.objectContaining({ count: 1 }),
-          supabase_publishable_key: expect.objectContaining({ count: 1 }),
-          supabase_user_create: expect.objectContaining({ count: 2 }),
-          supabase_user_cleanup: expect.objectContaining({ count: 2 }),
-        },
+        run_steps: [
+          { step: "database_setup", duration_ms: expect.any(Number) },
+          { step: "cleanup", duration_ms: expect.any(Number) },
+        ],
       }),
     );
     expect(mocks.createTempTestUser).toHaveBeenLastCalledWith(

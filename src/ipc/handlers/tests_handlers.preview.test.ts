@@ -368,24 +368,26 @@ test("prints a fixture secret", async ({}, testInfo) => {
           .mocked(sendTelemetryEvent)
           .mock.calls.filter(([name]) => name === "e2e_test_run_completed");
         expect(summaries).toHaveLength(1);
-        const summary = summaries[0][1]!.case_summary as any;
+        const testcases = summaries[0][1]!.testcases as any[];
         // Preview skips are discovered but never launched. Collect actual
         // attempts on every execution route, never discovery.
-        expect(summary.attempt_count).toBe(
+        expect(testcases).toHaveLength(
           mode === "panel" || mode === "preview" ? 1 : 2,
         );
-        expect(summary.outcomes.completed).toBe(1);
-        // Playwright may report a skipped case without all hook spans.
-        expect(summary.incomplete_timing_count).toBeLessThanOrEqual(
-          summary.attempt_count - 1,
+        const completed = testcases.filter(
+          ({ status }) => status === "completed",
         );
-        for (const phase of ["setup_ms", "execution_ms", "cleanup_ms"]) {
-          expect(summary.timings[phase].count).toBeGreaterThanOrEqual(1);
-          expect(summary.timings[phase].count).toBeLessThanOrEqual(
-            summary.attempt_count,
-          );
-          expect(summary.timings[phase].total_ms).toEqual(expect.any(Number));
-        }
+        expect(completed).toHaveLength(1);
+        expect(completed[0]).toMatchObject({
+          case_id: expect.stringMatching(/^[a-f0-9]{64}$/),
+          retry: 0,
+          timing_incomplete: false,
+          steps: [
+            { step: "setup", duration_ms: expect.any(Number) },
+            { step: "execution", duration_ms: expect.any(Number) },
+            { step: "cleanup", duration_ms: expect.any(Number) },
+          ],
+        });
         expect(
           vi
             .mocked(sendTelemetryEvent)

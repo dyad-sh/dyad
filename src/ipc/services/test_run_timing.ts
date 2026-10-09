@@ -31,20 +31,72 @@ interface CaseTiming {
 }
 
 type CaseStatus = StepStatus | "skipped" | "incomplete";
-const CASE_DURATION_FIELDS = [
-  "duration_ms",
-  "setup_ms",
-  "execution_ms",
-  "cleanup_ms",
-] as const;
-function emptyDurationSummary() {
-  return {
-    count: 0,
-    total_ms: 0,
-    average_ms: null as number | null,
-    max_ms: null as number | null,
-  };
-}
+const CASE_PHASES = ["setup", "execution", "cleanup"] as const;
+const RUN_STEP_GROUPS = {
+  waiting: ["queue_wait", "workspace_lock_wait", "run_lock_wait"],
+  recovery: ["recover_previous_environment"],
+  playwright_setup: [
+    "playwright_bootstrap",
+    "playwright_package_install",
+    "playwright_browser_install",
+  ],
+  workspace_setup: ["workspace_capture", "dependency_install"],
+  database_setup: [
+    "database_isolation",
+    "neon_branch_create",
+    "neon_environment_update",
+    "neon_cleaner_setup",
+    "neon_user_create",
+    "supabase_rls_check",
+    "supabase_key_detection",
+    "supabase_admin_key",
+    "supabase_publishable_key",
+    "supabase_user_create",
+  ],
+  runtime_setup: ["server_start", "authorize_runtime_origin"],
+  preview_setup: ["preview_ready", "preview_connect"],
+  discovery: ["test_discovery"],
+  execution: ["test_execution", "playwright_process", "preview_rotate"],
+  shutdown: [
+    "lifecycle_drain",
+    "preview_disconnect",
+    "server_stop",
+    "process_settlement",
+  ],
+  cleanup: [
+    "artifact_prune",
+    "artifact_retention",
+    "database_teardown",
+    "workspace_disposal",
+    "neon_branch_delete",
+    "supabase_user_cleanup",
+    "supabase_row_cleanup",
+    "supabase_user_delete",
+  ],
+} as const;
+type RunStepGroup = keyof typeof RUN_STEP_GROUPS;
+const runStepGroups = new Map<string, RunStepGroup>(
+  (Object.keys(RUN_STEP_GROUPS) as RunStepGroup[]).flatMap((group) =>
+    RUN_STEP_GROUPS[group].map((step) => [step, group] as const),
+  ),
+);
+// The broad execution timer encloses discovery and other phases. Attribute
+// overlapping time once, to the more specific phase. Cleanup/shutdown take
+// precedence when draining concurrently with other work. Nested steps in one
+// group count once; testcase phases remain scoped to their individual attempt.
+const RUN_GROUP_PRIORITY: RunStepGroup[] = [
+  "cleanup",
+  "shutdown",
+  "discovery",
+  "waiting",
+  "recovery",
+  "workspace_setup",
+  "playwright_setup",
+  "database_setup",
+  "runtime_setup",
+  "preview_setup",
+  "execution",
+];
 
 /** One explicitly passed timer per run, from queue admission through cleanup. */
 export class TestRunTiming {
@@ -56,10 +108,9 @@ export class TestRunTiming {
   private status: RunStatus = "not_run";
   private timedOut = false;
   private metadata: Record<string, unknown> = {};
-  private readonly stepTimings = new Map<
-    string,
-    { count: number; total_ms: number; max_ms: number }
-  >();
+  private lastRunStepUpdate = this.startedAt;
+  private readonly activeRunGroups = new Map<RunStepGroup, number>();
+  private readonly runGroupDurations = new Map<RunStepGroup, number>();
   private readonly cases = new Map<string, CaseTiming>();
 
   constructor(
@@ -157,11 +208,37 @@ export class TestRunTiming {
     if (!this.finished) this.caseTiming(result.case_id).result = result;
   }
 
+  private updateRunGroupDuration(now: number) {
+    const group = RUN_GROUP_PRIORITY.find(
+      (candidate) => (this.activeRunGroups.get(candidate) ?? 0) > 0,
+    );
+    if (group) {
+      this.runGroupDurations.set(
+        group,
+        (this.runGroupDurations.get(group) ?? 0) + now - this.lastRunStepUpdate,
+      );
+    }
+    this.lastRunStepUpdate = now;
+  }
+
   // Use fixed step names, never test titles, paths, SQL, or provider errors.
   startStep(step: string, caseId?: string) {
     if (this.finished) return { stepId: 0, end: (_status?: StepStatus) => {} };
     const stepId = ++this.nextStepId;
     const startedAt = performance.now();
+    // Case hooks belong only to their attempt. Provider detail without its own
+    // group (e.g. neon_data_cleanup during setup or teardown) is covered by the
+    // enclosing run phase. Unknown step names stay in local logs.
+    const group = caseId ? undefined : runStepGroups.get(step);
+    if (group) {
+      this.updateRunGroupDuration(startedAt);
+      this.activeRunGroups.set(
+        group,
+        (this.activeRunGroups.get(group) ?? 0) + 1,
+      );
+      if (!this.runGroupDurations.has(group))
+        this.runGroupDurations.set(group, 0);
+    }
     const properties = {
       ...this.properties(),
       step,
@@ -178,7 +255,12 @@ export class TestRunTiming {
         if (ended || this.finished) return;
         ended = true;
         if (status === "timed_out") this.timedOut = true;
-        const durationMs = Math.round(performance.now() - startedAt);
+        const endedAt = performance.now();
+        const durationMs = Math.round(endedAt - startedAt);
+        if (group) {
+          this.updateRunGroupDuration(endedAt);
+          this.activeRunGroups.set(group, this.activeRunGroups.get(group)! - 1);
+        }
         if (caseId) {
           this.caseTiming(caseId).steps.push({
             step,
@@ -186,12 +268,6 @@ export class TestRunTiming {
             status,
           });
         }
-        const previous = this.stepTimings.get(step);
-        this.stepTimings.set(step, {
-          count: (previous?.count ?? 0) + 1,
-          total_ms: (previous?.total_ms ?? 0) + durationMs,
-          max_ms: Math.max(previous?.max_ms ?? 0, durationMs),
-        });
         this.publish(
           "e2e_test_step_completed",
           { ...properties, duration_ms: durationMs, status },
@@ -203,30 +279,12 @@ export class TestRunTiming {
 
   finish(status?: RunStatus) {
     if (this.finished) return;
+    const finishedAt = performance.now();
+    this.updateRunGroupDuration(finishedAt);
     this.finished = true;
     // Wait until run cleanup has drained so abandoned attempts include their
     // final provider cleanup too. Reporter results cover parallel/no-DB cases.
-    // Fixed-size aggregates keep the PostHog payload independent of case count.
-    const caseSummary = {
-      attempt_count: this.cases.size,
-      retry_count: 0,
-      unknown_retry_count: 0,
-      incomplete_timing_count: 0,
-      outcomes: {
-        completed: 0,
-        failed: 0,
-        cancelled: 0,
-        timed_out: 0,
-        skipped: 0,
-        incomplete: 0,
-      },
-      timings: Object.fromEntries(
-        CASE_DURATION_FIELDS.map((field) => [field, emptyDurationSummary()]),
-      ) as Record<
-        (typeof CASE_DURATION_FIELDS)[number],
-        ReturnType<typeof emptyDurationSummary>
-      >,
-    };
+    const testcases = [];
     for (const [caseId, entry] of this.cases) {
       const hookFailure = entry.steps.find(
         (step) => step.status !== "completed",
@@ -241,20 +299,21 @@ export class TestRunTiming {
         entry.result.execution_ms === null ||
         entry.result.cleanup_ms === null;
       const retry = entry.result?.retry ?? entry.retry;
-      if (retry === undefined) caseSummary.unknown_retry_count++;
-      else if (retry > 0) caseSummary.retry_count++;
-      if (timingIncomplete) caseSummary.incomplete_timing_count++;
-      caseSummary.outcomes[caseStatus]++;
-      for (const field of CASE_DURATION_FIELDS) {
-        const value = entry.result?.[field];
-        // Missing timings are excluded from averages, rather than counted as zero.
-        if (value === null || value === undefined) continue;
-        const aggregate = caseSummary.timings[field];
-        aggregate.count++;
-        aggregate.total_ms += value;
-        aggregate.max_ms = Math.max(aggregate.max_ms ?? 0, value);
-        aggregate.average_ms = aggregate.total_ms / aggregate.count;
-      }
+      testcases.push({
+        case_id: caseId,
+        case_index: entry.case_index,
+        retry: retry ?? null,
+        status: caseStatus,
+        duration_ms: entry.result?.duration_ms ?? null,
+        timing_incomplete: timingIncomplete,
+        // Reporter hook spans already include provider work and user fixtures.
+        // Missing phase timings stay null; nested provider spans cannot replace
+        // a complete hook span or be added to it without double counting.
+        steps: CASE_PHASES.map((step) => ({
+          step,
+          duration_ms: entry.result?.[`${step}_ms`] ?? null,
+        })),
+      });
       this.publish("e2e_test_case_completed", {
         ...this.properties(),
         case_id: caseId,
@@ -276,16 +335,23 @@ export class TestRunTiming {
       "e2e_test_run_completed",
       {
         ...this.properties(),
+        schema_version: 2,
         status:
           status === "cancelled"
             ? "cancelled"
             : this.timedOut
               ? "timed_out"
               : (status ?? this.status),
-        duration_ms: Math.round(performance.now() - this.startedAt),
-        // Durations are inclusive: nested phases must not be added together.
-        step_timings: Object.fromEntries(this.stepTimings),
-        case_summary: caseSummary,
+        duration_ms: Math.round(finishedAt - this.startedAt),
+        // Disjoint, instrumented wall-clock time. Uninstrumented gaps are not
+        // assigned to a group. Testcase times overlap this run-level breakdown.
+        run_steps: (Object.keys(RUN_STEP_GROUPS) as RunStepGroup[])
+          .filter((step) => this.runGroupDurations.has(step))
+          .map((step) => ({
+            step,
+            duration_ms: Math.round(this.runGroupDurations.get(step)!),
+          })),
+        testcases,
       },
       true,
     );

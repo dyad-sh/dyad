@@ -72,8 +72,9 @@ it("times queued cancellation separately and retains the active run through clea
       duration_ms: 100,
     });
     expect(summaries()[0].timing_id).not.toBe(summaries()[1].timing_id);
-    expect(summaries()[1].step_timings).toMatchObject({
-      database_teardown: { count: 1, total_ms: 100, max_ms: 100 },
+    expect(summaries()[1].run_steps).toContainEqual({
+      step: "cleanup",
+      duration_ms: 100,
     });
     expect(sendTelemetryEvent).toHaveBeenCalledTimes(2);
   } finally {

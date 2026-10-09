@@ -807,7 +807,7 @@ export function shouldBypassNonProTelemetrySampling(
     return true;
   }
 
-  // One summary per run carries phase and case aggregates.
+  // One summary per run carries grouped run phases and individual case timings.
   if (eventName === "e2e_test_run_completed") {
     return true;
   }

@@ -34,9 +34,27 @@ function setup() {
 }
 function caseEvents() {
   expect(sendTelemetryEvent).toHaveBeenCalledTimes(1);
-  return info.mock.calls
+  const cases = info.mock.calls
     .filter(([name]) => name === "e2e_test_case_completed")
     .map(([, properties]) => properties!);
+  expect(vi.mocked(sendTelemetryEvent).mock.calls[0]).toEqual([
+    "e2e_test_run_completed",
+    expect.objectContaining({
+      testcases: cases.map((testcase) => ({
+        case_id: testcase.case_id,
+        case_index: testcase.case_index,
+        retry: testcase.retry,
+        status: testcase.status,
+        duration_ms: testcase.duration_ms,
+        timing_incomplete: testcase.timing_incomplete,
+        steps: ["setup", "execution", "cleanup"].map((step) => ({
+          step,
+          duration_ms: testcase[`${step}_ms`],
+        })),
+      })),
+    }),
+  ]);
+  return cases;
 }
 
 it("keeps parallel attempts separate and includes time in fixtures with custom timeouts", () => {

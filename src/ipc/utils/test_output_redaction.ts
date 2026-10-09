@@ -1,6 +1,51 @@
 import { stripVTControlCharacters } from "node:util";
 import fs from "node:fs/promises";
 import path from "node:path";
+import type { PwReport } from "./playwright_report";
+
+const REMOVED_SCREENSHOT_MESSAGE =
+  "Failure screenshot removed to protect credentials supplied to the test runner.";
+
+/** Repair report references only after all opaque artifacts have been removed. */
+async function removeDeletedAttachments(report: PwReport) {
+  const visit = async (suites: PwReport["suites"]) => {
+    for (const suite of suites ?? []) {
+      for (const spec of suite.specs ?? []) {
+        for (const test of spec.tests ?? []) {
+          for (const result of test.results ?? []) {
+            let removedScreenshot = false;
+            const retained = [];
+            for (const attachment of result.attachments ?? []) {
+              if (attachment.path) {
+                try {
+                  await fs.access(attachment.path);
+                } catch {
+                  if (attachment.name === "screenshot")
+                    removedScreenshot = true;
+                  continue;
+                }
+              }
+              retained.push(attachment);
+            }
+            result.attachments = retained;
+            if (removedScreenshot) {
+              if (result.error?.message) {
+                result.error.message += `\n\n${REMOVED_SCREENSHOT_MESSAGE}`;
+              } else {
+                result.errors = [
+                  ...(result.errors ?? []),
+                  { message: REMOVED_SCREENSHOT_MESSAGE },
+                ];
+              }
+            }
+          }
+        }
+      }
+      await visit(suite.suites);
+    }
+  };
+  await visit(report.suites);
+}
 
 /** Sanitize owned reports after the runner exits, including failed/stopped runs. */
 export async function redactTestRunArtifacts(
@@ -9,6 +54,7 @@ export async function redactTestRunArtifacts(
 ) {
   if (!values.some(Boolean)) return;
   const redactor = createTestOutputRedactor(values);
+  const reports: string[] = [];
   const visit = async (current: string): Promise<void> => {
     for (const entry of await fs.readdir(current, { withFileTypes: true })) {
       const target = path.join(current, entry.name);
@@ -33,7 +79,9 @@ export async function redactTestRunArtifacts(
         let clean = redactor.redact(raw);
         if (entry.name.endsWith(".json")) {
           try {
-            clean = JSON.stringify(redactor.result(JSON.parse(raw)));
+            const parsed = redactor.result(JSON.parse(raw));
+            clean = JSON.stringify(parsed);
+            if (parsed?.suites) reports.push(target);
           } catch {
             // A killed runner can leave incomplete JSON. Also redact escaped
             // credentials without requiring a complete report.
@@ -51,6 +99,11 @@ export async function redactTestRunArtifacts(
   };
   try {
     await visit(directory);
+    for (const target of reports) {
+      const report = JSON.parse(await fs.readFile(target, "utf8"));
+      await removeDeletedAttachments(report);
+      await fs.writeFile(target, JSON.stringify(report));
+    }
   } catch {
     // Fail closed rather than retaining partially sanitized artifacts. Avoid
     // propagating filesystem errors whose paths may themselves contain secrets.

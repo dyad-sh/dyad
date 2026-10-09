@@ -6,9 +6,104 @@ import {
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { parsePlaywrightReport } from "./playwright_report";
 
 describe("test runner output redaction", () => {
   const secret = "sb_secret_fixture-test-key";
+
+  it.each([
+    { withCredentials: true, useErrorsArray: false },
+    { withCredentials: true, useErrorsArray: true },
+    { withCredentials: false, useErrorsArray: false },
+  ])(
+    "keeps screenshot references consistent with retained artifacts ($withCredentials, errors array: $useErrorsArray)",
+    async ({ withCredentials, useErrorsArray }) => {
+      const run = await fs.mkdtemp(
+        path.join(os.tmpdir(), "dyad-screenshot-redaction-"),
+      );
+      const screenshot = path.join(run, "test-failed.png");
+      const context = path.join(run, "error-context.md");
+      const reportPath = path.join(run, "results.json");
+      const error = "Expected welcome heading to be visible";
+      try {
+        await fs.writeFile(screenshot, "opaque screenshot data");
+        await fs.writeFile(context, error);
+        await fs.writeFile(
+          reportPath,
+          JSON.stringify({
+            suites: [
+              {
+                file: "e2e-tests/signup.spec.ts",
+                suites: [
+                  {
+                    specs: [
+                      {
+                        title: "signup",
+                        tests: [
+                          {
+                            results: [
+                              {
+                                status: "failed",
+                                ...(useErrorsArray
+                                  ? { errors: [{ message: error }] }
+                                  : { error: { message: error } }),
+                                attachments: [
+                                  { name: "screenshot", path: screenshot },
+                                  { name: "error-context", path: context },
+                                ],
+                              },
+                            ],
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          }),
+        );
+        await redactTestRunArtifacts(run, withCredentials ? [secret] : []);
+        // Cleanup can be repeated during run teardown; don't duplicate notices.
+        await redactTestRunArtifacts(run, withCredentials ? [secret] : []);
+        const report = JSON.parse(await fs.readFile(reportPath, "utf8"));
+        const [result] = parsePlaywrightReport(report, run);
+        expect(result.status).toBe("failed");
+        expect(result.screenshotPath).toBe(
+          withCredentials ? undefined : screenshot,
+        );
+        expect(result.tests?.[0].screenshotPath).toBe(
+          withCredentials ? undefined : screenshot,
+        );
+        expect(result.error).toBe(
+          withCredentials
+            ? `${error}${useErrorsArray ? "\n" : "\n\n"}Failure screenshot removed to protect credentials supplied to the test runner.`
+            : error,
+        );
+        const attachments =
+          report.suites[0].suites[0].specs[0].tests[0].results[0].attachments;
+        expect(attachments).toEqual(
+          withCredentials
+            ? [{ name: "error-context", path: context }]
+            : [
+                { name: "screenshot", path: screenshot },
+                { name: "error-context", path: context },
+              ],
+        );
+        if (withCredentials) {
+          await expect(fs.stat(screenshot)).rejects.toMatchObject({
+            code: "ENOENT",
+          });
+        } else {
+          expect(await fs.readFile(screenshot, "utf8")).toBe(
+            "opaque screenshot data",
+          );
+        }
+      } finally {
+        await fs.rm(run, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("sanitizes reports and nested context, removes opaque attachments, and leaves other runs alone", async () => {
     const root = await fs.mkdtemp(

@@ -1,6 +1,6 @@
 import {
   measureTestRunStep,
-  type TestRunTiming,
+  type TestStepTiming,
 } from "../services/test_run_timing";
 import crypto from "node:crypto";
 import log from "electron-log";
@@ -129,7 +129,7 @@ export async function createTempTestUser(
   options: {
     adminKey?: AdminKey;
     signal?: AbortSignal;
-    timing?: TestRunTiming;
+    timing?: TestStepTiming;
   } = {},
 ): Promise<TempTestUser> {
   options.signal?.throwIfAborted();
@@ -316,7 +316,7 @@ export async function deleteTempTestUser(
   options: {
     adminKey?: AdminKey;
     signal?: AbortSignal;
-    timing?: TestRunTiming;
+    timing?: TestStepTiming;
   } = {},
 ): Promise<boolean> {
   options.signal?.throwIfAborted();

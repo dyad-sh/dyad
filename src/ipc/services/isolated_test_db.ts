@@ -1,4 +1,8 @@
-import { measureTestRunStep, type TestRunTiming } from "./test_run_timing";
+import {
+  measureTestRunStep,
+  type TestRunTiming,
+  type TestStepTiming,
+} from "./test_run_timing";
 import fs from "node:fs";
 import log from "electron-log";
 import { DyadError, DyadErrorKind } from "../../errors/dyad_error";
@@ -148,8 +152,11 @@ export interface PreparedIsolation {
 }
 
 export interface TestCaseLifecycle {
-  beforeEach: (signal?: AbortSignal) => Promise<Record<string, string>>;
-  afterEach: (signal?: AbortSignal) => Promise<void>;
+  beforeEach: (
+    signal?: AbortSignal,
+    timing?: TestStepTiming,
+  ) => Promise<Record<string, string>>;
+  afterEach: (signal?: AbortSignal, timing?: TestStepTiming) => Promise<void>;
 }
 
 type EmitOutput = (chunk: string, phase: "setup" | "running") => void;
@@ -488,18 +495,21 @@ export async function prepareIsolatedTestDatabase({
       authSetup,
       testCaseLifecycle: perTestCase
         ? {
-            beforeEach: async (caseSignal): Promise<Record<string, string>> => {
+            beforeEach: async (
+              caseSignal,
+              caseTiming = timing,
+            ): Promise<Record<string, string>> => {
               signal?.throwIfAborted();
               // Clear the copied parent data before the first case too. Repeating
               // this before later cases recovers a worker killed before teardown.
-              await measureTestRunStep(timing, "neon_data_cleanup", () =>
+              await measureTestRunStep(caseTiming, "neon_data_cleanup", () =>
                 clearTestData(caseSignal),
               );
               signal?.throwIfAborted();
               caseSignal?.throwIfAborted();
               if (!branch.neonAuthBaseUrl) return {};
               const account = await measureTestRunStep(
-                timing,
+                caseTiming,
                 "neon_user_create",
                 () =>
                   createNeonTestAccount({
@@ -513,8 +523,8 @@ export async function prepareIsolatedTestDatabase({
                 DYAD_TEST_USER_PASSWORD: account.password,
               };
             },
-            afterEach: (caseSignal) =>
-              measureTestRunStep(timing, "neon_data_cleanup", () =>
+            afterEach: (caseSignal, caseTiming = timing) =>
+              measureTestRunStep(caseTiming, "neon_data_cleanup", () =>
                 clearTestData(caseSignal),
               ),
           }
@@ -656,17 +666,20 @@ async function prepareSupabaseTestUserIsolation({
   // Keep failed deletions tracked. Never overwrite the durable recovery slot
   // by creating the next user while the previous one still exists.
   let trackedUserId = app.supabaseTestUserId;
-  const afterEach = async (caseSignal?: AbortSignal) => {
+  const afterEach = async (
+    caseSignal?: AbortSignal,
+    caseTiming: TestStepTiming | undefined = timing,
+  ) => {
     if (!trackedUserId) return;
     const userApp = { ...app, supabaseTestUserId: trackedUserId };
     const deleted = perTestCase
       ? await measureTestRunStep(
-          timing,
+          caseTiming,
           "supabase_user_cleanup",
           () =>
             deleteTempTestUser(userApp, {
               adminKey,
-              timing,
+              timing: caseTiming,
               signal:
                 caseSignal ?? AbortSignal.timeout(TEST_CASE_HOOK_TIMEOUT_MS),
             }),
@@ -822,14 +835,14 @@ async function prepareSupabaseTestUserIsolation({
       authSetup,
       testCaseLifecycle: perTestCase
         ? {
-            beforeEach: async (caseSignal) => {
+            beforeEach: async (caseSignal, caseTiming = timing) => {
               signal?.throwIfAborted();
-              await afterEach(caseSignal);
+              await afterEach(caseSignal, caseTiming);
               signal?.throwIfAborted();
               caseSignal?.throwIfAborted();
               try {
                 testUser = await measureTestRunStep(
-                  timing,
+                  caseTiming,
                   "supabase_user_create",
                   () =>
                     createTempTestUser(
@@ -837,7 +850,7 @@ async function prepareSupabaseTestUserIsolation({
                         ...app,
                         supabaseTestUserId: null,
                       },
-                      { adminKey, signal: caseSignal, timing },
+                      { adminKey, signal: caseSignal, timing: caseTiming },
                     ),
                 );
               } catch (error) {

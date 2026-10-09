@@ -13,6 +13,51 @@ type RunStatus =
   | "tests_failed"
   | "not_run";
 
+export type TestStepTiming = Pick<TestRunTiming, "startStep">;
+export interface TestCaseTimingResult {
+  case_id: string;
+  retry: number;
+  status: StepStatus | "skipped";
+  duration_ms: number;
+  setup_ms: number | null;
+  execution_ms: number | null;
+  cleanup_ms: number | null;
+}
+interface CaseTiming {
+  case_index: number;
+  retry?: number;
+  result?: TestCaseTimingResult;
+  steps: { step: string; duration_ms: number; status: StepStatus }[];
+}
+
+// Only these run phases get individual PostHog completions. Other steps can
+// repeat per test case (including preview readiness and Playwright processes),
+// so keep their detail in local logs and the final aggregate instead of IPC.
+const POSTHOG_RUN_STEPS = new Set([
+  "queue_wait",
+  "workspace_lock_wait",
+  "run_lock_wait",
+  "recover_previous_environment",
+  "playwright_bootstrap",
+  "playwright_package_install",
+  "playwright_browser_install",
+  "workspace_capture",
+  "dependency_install",
+  "database_isolation",
+  "server_start",
+  "authorize_runtime_origin",
+  "test_discovery",
+  "test_execution",
+  "lifecycle_drain",
+  "preview_disconnect",
+  "server_stop",
+  "process_settlement",
+  "artifact_prune",
+  "artifact_retention",
+  "database_teardown",
+  "workspace_disposal",
+]);
+
 /** One explicitly passed timer per run, from queue admission through cleanup. */
 export class TestRunTiming {
   private readonly startedAt = performance.now();
@@ -23,6 +68,11 @@ export class TestRunTiming {
   private status: RunStatus = "not_run";
   private timedOut = false;
   private metadata: Record<string, unknown> = {};
+  private readonly stepTimings = new Map<
+    string,
+    { count: number; total_ms: number; max_ms: number }
+  >();
+  private readonly cases = new Map<string, CaseTiming>();
 
   constructor(
     private readonly identity: {
@@ -42,11 +92,15 @@ export class TestRunTiming {
     };
   }
 
-  private publish(event: string, properties: Record<string, unknown>) {
+  private publish(
+    event: string,
+    properties: Record<string, unknown>,
+    sendToPostHog = true,
+  ) {
     // Observability must not change queue settlement or mask a test failure.
     try {
       logger.info(event, properties);
-      sendTelemetryEvent(event, properties);
+      if (sendToPostHog) sendTelemetryEvent(event, properties);
     } catch {
       // The renderer can disappear during shutdown. Local execution continues.
     }
@@ -93,8 +147,30 @@ export class TestRunTiming {
     };
   }
 
+  private caseTiming(caseId: string) {
+    let entry = this.cases.get(caseId);
+    if (!entry) {
+      entry = { case_index: this.cases.size + 1, steps: [] };
+      this.cases.set(caseId, entry);
+    }
+    return entry;
+  }
+
+  /** Explicit context for provider hooks; never infer a case from async state. */
+  caseSteps(caseId: string): TestStepTiming {
+    return { startStep: (step) => this.startStep(step, caseId) };
+  }
+
+  recordCaseStarted(caseId: string, retry: number) {
+    if (!this.finished) this.caseTiming(caseId).retry = retry;
+  }
+
+  recordCaseResult(result: TestCaseTimingResult) {
+    if (!this.finished) this.caseTiming(result.case_id).result = result;
+  }
+
   // Use fixed step names, never test titles, paths, SQL, or provider errors.
-  startStep(step: string) {
+  startStep(step: string, caseId?: string) {
     if (this.finished) return { stepId: 0, end: (_status?: StepStatus) => {} };
     const stepId = ++this.nextStepId;
     const startedAt = performance.now();
@@ -103,9 +179,10 @@ export class TestRunTiming {
       step,
       step_id: stepId,
       started_after_ms: Math.round(startedAt - this.startedAt),
+      ...(caseId ? { case_id: caseId } : {}),
     };
-    // Start events also identify a phase that never finishes (hang/crash).
-    this.publish("e2e_test_step_started", properties);
+    // Local start events identify a phase that never finishes (hang/crash).
+    this.publish("e2e_test_step_started", properties, false);
     let ended = false;
     return {
       stepId,
@@ -114,11 +191,25 @@ export class TestRunTiming {
         ended = true;
         if (status === "timed_out") this.timedOut = true;
         const durationMs = Math.round(performance.now() - startedAt);
-        this.publish("e2e_test_step_completed", {
-          ...properties,
-          duration_ms: durationMs,
-          status,
+        if (caseId) {
+          this.caseTiming(caseId).steps.push({
+            step,
+            duration_ms: durationMs,
+            status,
+          });
+        }
+        const previous = this.stepTimings.get(step);
+        this.stepTimings.set(step, {
+          count: (previous?.count ?? 0) + 1,
+          total_ms: (previous?.total_ms ?? 0) + durationMs,
+          max_ms: Math.max(previous?.max_ms ?? 0, durationMs),
         });
+        this.publish(
+          "e2e_test_step_completed",
+          { ...properties, duration_ms: durationMs, status },
+          // Even an accidentally repeated run phase must not flood telemetry.
+          !caseId && POSTHOG_RUN_STEPS.has(step) && !previous,
+        );
       },
     };
   }
@@ -126,6 +217,36 @@ export class TestRunTiming {
   finish(status?: RunStatus) {
     if (this.finished) return;
     this.finished = true;
+    // Wait until run cleanup has drained so abandoned attempts include their
+    // final provider cleanup too. Reporter results cover parallel/no-DB cases.
+    for (const [caseId, entry] of this.cases) {
+      const hookFailure = entry.steps.find(
+        (step) => step.status !== "completed",
+      );
+      this.publish("e2e_test_case_completed", {
+        ...this.properties(),
+        case_id: caseId,
+        case_index: entry.case_index,
+        retry: entry.retry ?? null,
+        duration_ms: null,
+        setup_ms: null,
+        execution_ms: null,
+        cleanup_ms: null,
+        ...entry.result,
+        status:
+          hookFailure?.status ??
+          entry.result?.status ??
+          (status === "cancelled" ? "cancelled" : "incomplete"),
+        timing_incomplete:
+          !entry.result ||
+          entry.result.setup_ms === null ||
+          entry.result.execution_ms === null ||
+          entry.result.cleanup_ms === null,
+        // Keep each invocation, including setup recovery and cleanup retries.
+        steps: entry.steps,
+      });
+    }
+    this.cases.clear();
     this.publish("e2e_test_run_completed", {
       ...this.properties(),
       status:
@@ -135,6 +256,8 @@ export class TestRunTiming {
             ? "timed_out"
             : (status ?? this.status),
       duration_ms: Math.round(performance.now() - this.startedAt),
+      // Durations are inclusive: nested phases must not be added together.
+      step_timings: Object.fromEntries(this.stepTimings),
     });
   }
 }
@@ -154,7 +277,7 @@ export function testProcessTimingStatus(result: {
 }
 
 export async function measureTestRunStep<T>(
-  timing: TestRunTiming | undefined,
+  timing: TestStepTiming | undefined,
   step: string,
   action: () => Promise<T>,
   statusOf?: (value: T) => StepStatus,

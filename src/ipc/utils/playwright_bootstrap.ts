@@ -34,6 +34,7 @@ import {
   TEST_CASE_REQUEST_TIMEOUT_MS,
   TEST_CASE_TOKEN_ENV,
 } from "../services/test_case_lifecycle_server";
+import { TEST_CASE_TIMING_ID_EXPRESSION } from "../services/test_case_timing_reporter";
 
 const logger = log.scope("playwright_bootstrap");
 
@@ -563,7 +564,7 @@ export function buildPreviewShimSource(): string {
 // instead of launching a separate browser, and isolates database data around
 // each test case when Dyad supplies a test-case lifecycle endpoint.
 import * as pw from "@playwright/test";
-import { randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 
 export * from "@playwright/test";
 
@@ -587,8 +588,8 @@ async function caseRequest(phase: "before" | "after", id: string) {
 }
 
 const isolatedTest = !caseEndpoint ? pw.test : pw.test.extend<{ _dyadTestCase: void }>({
-  _dyadTestCase: [async ({}, use) => {
-    const id = randomUUID();
+  _dyadTestCase: [async ({}, use, testInfo) => {
+    const id = ${TEST_CASE_TIMING_ID_EXPRESSION};
     for (const key of credentialKeys) delete process.env[key];
     try {
       const credentials = await caseRequest("before", id);

@@ -288,21 +288,21 @@ describe("per-case database isolation", () => {
       );
     }
     await prepared.teardown();
-    const steps = vi
-      .mocked(sendTelemetryEvent)
-      .mock.calls.filter(([event]) => event === "e2e_test_step_completed")
-      .map(([, properties]) => properties!);
-    expect(steps.map(({ step }) => step)).toEqual([
-      "supabase_rls_check",
-      "supabase_key_detection",
-      "supabase_admin_key",
-      "supabase_publishable_key",
-      "supabase_user_create",
-      "supabase_user_cleanup",
-      "supabase_user_create",
-      "supabase_user_cleanup",
-    ]);
-    expect(new Set(steps.map(({ timing_id }) => timing_id)).size).toBe(1);
+    expect(sendTelemetryEvent).not.toHaveBeenCalled();
+    timing.finish();
+    expect(sendTelemetryEvent).toHaveBeenCalledExactlyOnceWith(
+      "e2e_test_run_completed",
+      expect.objectContaining({
+        step_timings: {
+          supabase_rls_check: expect.objectContaining({ count: 1 }),
+          supabase_key_detection: expect.objectContaining({ count: 1 }),
+          supabase_admin_key: expect.objectContaining({ count: 1 }),
+          supabase_publishable_key: expect.objectContaining({ count: 1 }),
+          supabase_user_create: expect.objectContaining({ count: 2 }),
+          supabase_user_cleanup: expect.objectContaining({ count: 2 }),
+        },
+      }),
+    );
     expect(mocks.createTempTestUser).toHaveBeenLastCalledWith(
       expect.anything(),
       expect.objectContaining({ timing }),

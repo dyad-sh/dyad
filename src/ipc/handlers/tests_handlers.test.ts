@@ -21,6 +21,7 @@ import { windowRegistry } from "@/window_infrastructure/main/window_registry";
 import { TEST_BASE_URL_ENV } from "../utils/playwright_bootstrap";
 import { WindowSessionIdSchema } from "@/window_infrastructure/types";
 import { runningApps } from "../utils/process_manager";
+import { TestRunTiming } from "../services/test_run_timing";
 
 // Every app folder lives under one throwaway base so the delete handler runs
 // against real directories (its path guards resolve symlinks on disk).
@@ -1148,7 +1149,6 @@ describe("tests handlers", () => {
           "database_isolation",
           "dependency_install",
           "server_start",
-          "playwright_process",
           "test_execution",
           "server_stop",
           "process_settlement",
@@ -1167,6 +1167,9 @@ describe("tests handlers", () => {
           source: "panel",
           sandboxed: true,
           duration_ms: expect.any(Number),
+          step_timings: expect.objectContaining({
+            playwright_process: expect.objectContaining({ count: 1 }),
+          }),
         }),
       ]);
     });
@@ -1199,6 +1202,7 @@ describe("tests handlers", () => {
           }),
       );
       await vi.waitFor(() => expect(release).toBeDefined());
+      const startStep = vi.spyOn(TestRunTiming.prototype, "startStep");
       const run = runAppTestsWithIsolation({
         event: { sender: {} } as any,
         appId,
@@ -1206,10 +1210,7 @@ describe("tests handlers", () => {
       });
       try {
         await vi.waitFor(() =>
-          expect(sendTelemetryEventMock).toHaveBeenCalledWith(
-            "e2e_test_step_started",
-            expect.objectContaining({ step: "workspace_lock_wait" }),
-          ),
+          expect(startStep).toHaveBeenCalledWith("workspace_lock_wait"),
         );
         expect(ensurePlaywrightBootstrapMock).not.toHaveBeenCalled();
         release();
@@ -1229,6 +1230,7 @@ describe("tests handlers", () => {
       } finally {
         release();
         await Promise.allSettled([blocker, run]);
+        startStep.mockRestore();
       }
     });
 

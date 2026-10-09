@@ -8,6 +8,7 @@ import {
   type TestRunTiming,
   testProcessTimingStatus,
 } from "../services/test_run_timing";
+import { prepareTestCaseTimingReporter } from "../services/test_case_timing_reporter";
 import { previewTestNodeOptions } from "../utils/preview_dns";
 import fs from "node:fs";
 import os from "node:os";
@@ -808,13 +809,18 @@ async function runPreviewTestBatch({
       const reportPath = path.join(invocationDir, "results.json");
       const artifactsPath = path.join(invocationDir, "artifacts");
       fs.mkdirSync(invocationDir, { recursive: true });
+      const caseTimings = prepareTestCaseTimingReporter(
+        appPath,
+        invocationDir,
+        timing,
+      );
 
       const args = ["test", "--config", DYAD_CONFIG_FILENAME];
       args.push(
         `${exactTestFileSelector(appPath, target.file)}:${target.line}`,
         "-g",
         exactDiscoveredTitleGrep(target.file, target.fullTitle),
-        "--reporter=list,json",
+        `--reporter=${caseTimings.reporter}`,
         "--trace=off",
         "--workers=1",
         `--output=${artifactsPath}`,
@@ -832,7 +838,7 @@ async function runPreviewTestBatch({
             spawnStreaming({
               ...playwrightCliInvocationForApp(appPath, args),
               cwd: appPath,
-              env: runnerEnv(reportPath),
+              env: { ...runnerEnv(reportPath), ...caseTimings.env },
               signal,
               timeoutMs: invocationTimeout,
               onOutput: (chunk) => emit(chunk, "running"),
@@ -846,6 +852,7 @@ async function runPreviewTestBatch({
         };
         break;
       } finally {
+        caseTimings.collect();
         await redactTestRunArtifacts(
           invocationDir,
           Object.values(testEnv ?? {}),
@@ -1228,6 +1235,11 @@ async function runAppTestsCoreUnredacted({
   // 2. Run the tests. Use list reporter for live stdout + json for parsing.
   const artifactsDir = await createTestRunArtifactsDir(appPath);
   const resultsJsonPath = path.join(artifactsDir, "results.json");
+  const caseTimings = prepareTestCaseTimingReporter(
+    appPath,
+    artifactsDir,
+    timing,
+  );
 
   // Pass args as an array (never a shell string) so a test path can't be
   // interpreted as a shell command. A line suffix (`file:line`) targets a
@@ -1247,7 +1259,7 @@ async function runAppTestsCoreUnredacted({
     args.push("-g", grep);
   }
   args.push(
-    "--reporter=list,json",
+    `--reporter=${caseTimings.reporter}`,
     `--output=${path.join(artifactsDir, "artifacts")}`,
   );
   // baseURL is passed via the DYAD_TEST_BASE_URL env var, not a CLI flag —
@@ -1292,6 +1304,7 @@ async function runAppTestsCoreUnredacted({
           env: getPackageManagerCommandEnv({
             ...runnerBaseEnv,
             ...testEnv,
+            ...caseTimings.env,
             [TEST_BASE_URL_ENV]: baseUrl,
             NODE_OPTIONS: previewTestNodeOptions(appPath),
             // PREVIEW_CDP_ENDPOINT_ENV is deliberately not set here. A preview run
@@ -1324,6 +1337,7 @@ async function runAppTestsCoreUnredacted({
     );
     return { appId, results: [], infraError: { message } };
   } finally {
+    caseTimings.collect();
     await redactTestRunArtifacts(artifactsDir, Object.values(testEnv ?? {}));
   }
 

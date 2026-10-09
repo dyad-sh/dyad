@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import * as esbuild from "esbuild";
 import {
   TEST_CASE_ENDPOINT_ENV,
@@ -210,8 +211,7 @@ describe("preview shim fixtures", () => {
     // eslint-disable-next-line @typescript-eslint/no-implied-eval
     new Function("require", "module", "exports", "process", "fetch", code)(
       (specifier: string) => {
-        if (specifier === "node:crypto")
-          return { randomUUID: () => "test-case-id" };
+        if (specifier === "node:crypto") return { createHash };
         if (specifier !== "@playwright/test") {
           throw new Error(`Unexpected import in the shim: ${specifier}`);
         }
@@ -275,7 +275,11 @@ describe("preview shim fixtures", () => {
         expect(fixtures.env.SERVICE_ROLE_KEY).toBeUndefined();
         if (scenario === "test failure") throw new Error("assertion failed");
       });
-      const attempt = fixtures._dyadTestCase[0]({}, use, {});
+      const attempt = fixtures._dyadTestCase[0]({}, use, {
+        testId: "test-id",
+        retry: 0,
+        repeatEachIndex: 0,
+      });
       if (scenario === "success") await attempt;
       else
         await expect(attempt).rejects.toThrow(
@@ -284,9 +288,11 @@ describe("preview shim fixtures", () => {
             : "isolated test data",
         );
       expect(use).toHaveBeenCalledTimes(scenario === "setup failure" ? 0 : 1);
+      const caseId = requests[0].split("/").at(-1)!;
+      expect(caseId).toMatch(/^[a-f0-9]{64}$/);
       expect(requests).toEqual([
-        "http://127.0.0.1:12345/before/test-case-id",
-        "http://127.0.0.1:12345/after/test-case-id",
+        `http://127.0.0.1:12345/before/${caseId}`,
+        `http://127.0.0.1:12345/after/${caseId}`,
       ]);
       expect(fixtures.env.DYAD_TEST_USER_EMAIL).toBeUndefined();
       expect(fixtures.env.DYAD_TEST_USER_PASSWORD).toBeUndefined();

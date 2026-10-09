@@ -30,6 +30,16 @@ describe("PluginIcon", () => {
     expect(screen.getByTestId("plugin-icon-fallback").textContent).toBe("E");
   });
 
+  it("tries again when the URL changes after a failure", () => {
+    const { rerender } = render(
+      <PluginIcon name="Example" iconUrl={ICON_URL} />,
+    );
+    fireEvent.error(screen.getByTestId("plugin-icon"));
+    expect(screen.queryByTestId("plugin-icon")).toBeNull();
+    rerender(<PluginIcon name="Example" iconUrl={`${ICON_URL}?v=2`} />);
+    expect(screen.getByTestId("plugin-icon")).toBeTruthy();
+  });
+
   // The name sits next to the tile already; a second copy in the image's
   // accessible name would be read twice.
   it("stays decorative", () => {

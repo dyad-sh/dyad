@@ -189,7 +189,6 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3 min-w-0">
               <PluginIcon
-                key={catalogEntry?.iconUrl ?? ""}
                 name={s.name}
                 iconUrl={catalogEntry?.iconUrl}
                 size="md"

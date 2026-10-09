@@ -57,11 +57,7 @@ export function CatalogCard({
     >
       <CardHeader className="p-4 flex-1">
         <div className="flex items-start gap-3 min-w-0">
-          <PluginIcon
-            key={entry.iconUrl ?? ""}
-            name={entry.name}
-            iconUrl={entry.iconUrl}
-          />
+          <PluginIcon name={entry.name} iconUrl={entry.iconUrl} />
           <div className="min-w-0 flex-1">
             <CardTitle className="text-base font-medium mb-1 flex items-center gap-2 min-w-0">
               <span className="truncate">{entry.name}</span>

@@ -61,7 +61,7 @@ export function PluginSummaryCard({
       />
       <CardHeader className="p-4">
         <div className="flex items-start gap-3 min-w-0">
-          <PluginIcon key={iconUrl ?? ""} name={s.name} iconUrl={iconUrl} />
+          <PluginIcon name={s.name} iconUrl={iconUrl} />
           <div className="min-w-0 flex-1">
             {/* Only states that need attention get a pill, so the name
                 keeps most of the row. The catalog mark is icon-only here;

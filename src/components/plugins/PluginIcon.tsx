@@ -5,9 +5,6 @@ import { useState } from "react";
 // so manually added servers line up with catalog ones. The tile stays
 // light in dark mode: several marks are plain black and would vanish on
 // a dark card.
-//
-// Key the element on the URL so a failed load is forgotten when it
-// changes.
 export function PluginIcon({
   name,
   iconUrl,
@@ -17,8 +14,9 @@ export function PluginIcon({
   iconUrl?: string;
   size?: "sm" | "md";
 }) {
-  const [failed, setFailed] = useState(false);
-  const showImage = iconUrl != null && !failed;
+  // Remember which URL failed, so a new URL gets its own try.
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const showImage = iconUrl != null && iconUrl !== failedUrl;
   const tile = size === "md" ? "size-12 rounded-lg" : "size-9 rounded-md";
   const letter = size === "md" ? "text-lg" : "text-sm";
   return (
@@ -33,7 +31,7 @@ export function PluginIcon({
           className="size-full object-contain p-1.5"
           loading="lazy"
           draggable={false}
-          onError={() => setFailed(true)}
+          onError={() => setFailedUrl(iconUrl)}
           data-testid="plugin-icon"
         />
       ) : (

@@ -31,6 +31,9 @@ export function createChatScrollController(
   let draggingScrollbar = false;
   let pointerActive = false;
   let inputUntil = 0;
+  // Set by a Home press. Any later input or an explicit follow or restore
+  // replaces it, and it only acts while the reader is away from the bottom.
+  let pinnedToTop = false;
   const publishFollowing = (following: boolean) => {
     scroller.setAttribute(CHAT_SCROLL_FOLLOWING_ATTRIBUTE, String(following));
     onFollowingChange(following);
@@ -98,6 +101,7 @@ export function createChatScrollController(
     });
   };
   const follow = () => {
+    pinnedToTop = false;
     lastPosition = position();
     send({ type: "follow" });
     reconcile();
@@ -110,6 +114,14 @@ export function createChatScrollController(
   const onScroll = () => {
     const delta = observeUserMovement();
     const wasReading = state.type === "reading";
+    // Rows that a jump to the top renders for the first time measure taller
+    // than their estimates, and Virtuoso then moves scrollTop to keep the old
+    // anchor row in place. Prevents the case where Home lands partway down.
+    if (pinnedToTop && wasReading && scroller.scrollTop > 0) {
+      scroller.scrollTo({ top: 0, behavior: "instant" });
+      lastPosition = position();
+      return;
+    }
     if (!draggingScrollbar) {
       // A generous reattachment threshold only applies to downward movement;
       // small deliberate upward movements must not immediately reattach.
@@ -168,6 +180,7 @@ export function createChatScrollController(
   const onWheel = (event: WheelEvent) => {
     if (event.ctrlKey || event.defaultPrevented) return;
     markInput();
+    pinnedToTop = false;
     if (hasNestedScroller(event.target)) {
       observeUserMovement();
       return;
@@ -177,6 +190,7 @@ export function createChatScrollController(
   };
   const onTouchStart = (event: TouchEvent) => {
     markInput();
+    pinnedToTop = false;
     touchY = event.touches.length === 1 ? event.touches[0]?.clientY : undefined;
   };
   const onTouchMove = (event: TouchEvent) => {
@@ -196,6 +210,9 @@ export function createChatScrollController(
     touchY = y;
   };
   const onKeyDown = (event: KeyboardEvent) => {
+    // Cleared before the modifier check so that a chord the browser still
+    // scrolls on, such as Ctrl+End, is not undone.
+    pinnedToTop = false;
     if (
       event.defaultPrevented ||
       event.metaKey ||
@@ -230,9 +247,10 @@ export function createChatScrollController(
     if (
       ["ArrowUp", "PageUp", "Home"].includes(event.key) ||
       (event.key === " " && event.shiftKey)
-    )
+    ) {
+      pinnedToTop = event.key === "Home";
       pauseForUpwardInput();
-    else if (
+    } else if (
       ["ArrowDown", "PageDown", "End", " "].includes(event.key) &&
       atBottom(80)
     )
@@ -241,6 +259,7 @@ export function createChatScrollController(
   const onPointerDown = (event: PointerEvent) => {
     pointerActive = true;
     markInput();
+    pinnedToTop = false;
     // Only the scrollbar gutter; selecting/clicking message content must not
     // silently disable follow mode. Both left and right scrollbars are supported.
     const rect = scroller.getBoundingClientRect();
@@ -265,6 +284,7 @@ export function createChatScrollController(
       .detail;
     if (!Number.isFinite(top)) return;
     event.preventDefault();
+    pinnedToTop = false;
     if (following) {
       follow();
       return;

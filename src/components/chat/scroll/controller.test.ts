@@ -308,6 +308,24 @@ describe("chat follow controller", () => {
     expect(h.onFollowing.mock.calls).toEqual([[true], [false]]);
   });
 
+  it("keeps a Home press at the top when the virtualizer re-anchors after measuring", () => {
+    const h = setup();
+    h.grow(4000);
+    h.flush();
+    h.scroller.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Home", bubbles: true }),
+    );
+    h.position(0); // The browser performs the jump itself.
+    expect(isChatScrollFollowing(h.scroller)).toBe(false);
+    h.position(600); // Newly rendered rows measured taller than estimated.
+    expect(h.scroller.scrollTop).toBe(0);
+    expect(isChatScrollFollowing(h.scroller)).toBe(false);
+
+    h.scroller.dispatchEvent(new WheelEvent("wheel", { deltaY: 200 }));
+    h.position(300); // The reader leaving the top is not a correction.
+    expect(h.scroller.scrollTop).toBe(300);
+  });
+
   it("cancels frames and rejects late callbacks after chat teardown", () => {
     const h = setup();
     const lateCallback = [...h.callbacks.values()][0];

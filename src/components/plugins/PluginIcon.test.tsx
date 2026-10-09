@@ -37,7 +37,9 @@ describe("PluginIcon", () => {
     fireEvent.error(screen.getByTestId("plugin-icon"));
     expect(screen.queryByTestId("plugin-icon")).toBeNull();
     rerender(<PluginIcon name="Example" iconUrl={`${ICON_URL}?v=2`} />);
-    expect(screen.getByTestId("plugin-icon")).toBeTruthy();
+    expect(screen.getByTestId<HTMLImageElement>("plugin-icon").src).toBe(
+      `${ICON_URL}?v=2`,
+    );
   });
 
   // The name sits next to the tile already; a second copy in the image's

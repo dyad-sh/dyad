@@ -1268,6 +1268,7 @@ export function buildAddDependencyCommand(
   packageManager: PackageManager,
   useSocketFirewall: boolean,
   options: { dev?: boolean; saveExact?: boolean } = {},
+  platform: NodeJS.Platform = process.platform,
 ): { command: string; args: string[] } {
   const { dev = false, saveExact = false } = options;
   const packageManagerArgs =
@@ -1292,6 +1293,7 @@ export function buildAddDependencyCommand(
     packageManager,
     packageManagerArgs,
     useSocketFirewall,
+    platform,
   );
 }
 
@@ -1299,6 +1301,7 @@ export function buildUpdateDependencyCommand(
   packages: string[],
   packageManager: PackageManager,
   useSocketFirewall: boolean,
+  platform: NodeJS.Platform = process.platform,
 ): { command: string; args: string[] } {
   const packageManagerArgs =
     packageManager === "pnpm"
@@ -1309,6 +1312,7 @@ export function buildUpdateDependencyCommand(
     packageManager,
     packageManagerArgs,
     useSocketFirewall,
+    platform,
   );
 }
 
@@ -1316,6 +1320,7 @@ function wrapPackageManagerCommand(
   packageManager: PackageManager,
   packageManagerArgs: string[],
   useSocketFirewall: boolean,
+  platform: NodeJS.Platform,
 ): { command: string; args: string[] } {
   if (useSocketFirewall) {
     return {
@@ -1323,7 +1328,13 @@ function wrapPackageManagerCommand(
       command: "npx",
       args: [
         ...SOCKET_FIREWALL_NPX_ARGS,
-        packageManager,
+        // sfw resolves this name itself. On Windows its resolver checks
+        // `.ps1` before PATHEXT and launches a match with `powershell.exe
+        // -File`, which the default Restricted execution policy blocks; the
+        // managed pnpm's npm bin-links include a `pnpm.ps1`. Naming the
+        // `.cmd` shim makes sfw run it through cmd.exe instead. Dyad's own
+        // spawner already requires the `.cmd` shim (resolveWindowsExecutableName).
+        resolveWindowsExecutableName(packageManager, platform),
         ...packageManagerArgs,
       ],
     };

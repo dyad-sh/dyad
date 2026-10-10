@@ -303,6 +303,30 @@ describe("remote_mcp_catalog", () => {
     expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
   });
 
+  it("carries an icon URL through", async () => {
+    mockCatalogResponse([
+      {
+        ...VALID_ENTRY,
+        iconUrl: "https://api.dyad.sh/v1/mcp-catalog/icons/figma.svg",
+      },
+    ]);
+    const entries = await getRemoteMcpCatalog();
+    expect(entries[0].iconUrl).toBe(
+      "https://api.dyad.sh/v1/mcp-catalog/icons/figma.svg",
+    );
+  });
+
+  it("drops a bad icon URL but keeps the entry", async () => {
+    mockCatalogResponse([
+      { ...VALID_ENTRY, iconUrl: "javascript:alert(1)" },
+      { ...VALID_STDIO_ENTRY, iconUrl: 42 },
+    ]);
+    const entries = await getRemoteMcpCatalog();
+    expect(entries).toHaveLength(2);
+    expect(entries[0].iconUrl).toBeUndefined();
+    expect(entries[1].iconUrl).toBeUndefined();
+  });
+
   it("drops entries whose URL is not http(s)", async () => {
     mockCatalogResponse([
       { ...VALID_ENTRY, slug: "ftp-server", url: "ftp://example.com/mcp" },

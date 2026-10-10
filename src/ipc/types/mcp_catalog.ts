@@ -73,6 +73,14 @@ const baseEntry = {
   category: z.string().optional(),
   // Surfaced in a Featured section as well as its category.
   featured: z.boolean().optional(),
+  // Absolute http(s) URL of a square icon served by the catalog. A bad
+  // value drops the icon, not the entry.
+  iconUrl: z
+    .string()
+    .url()
+    .refine((u) => /^https?:\/\//i.test(u), "URL must be http(s)")
+    .optional()
+    .catch(undefined),
   // Values the server needs during setup, entered by the user or supplied
   // by the catalog.
   inputs: z.array(CatalogInputSchema).optional(),

@@ -1,13 +1,11 @@
 import { z } from "zod";
+import { runWorkspaceScopedOperation } from "@/ipc/services/workspace_coordination";
 
 import { ToolDefinition, AgentContext } from "./types";
 import { ExecuteAddDependencyError } from "@/ipc/processors/executeAddDependency";
 import { ensureNitroOnViteApp } from "@/ipc/utils/nitro_setup";
 import { trackAppMutation } from "./tool_invocation";
-import {
-  appOperationCoordinator,
-  readAppResource,
-} from "@/ipc/services/app_operation_coordinator";
+import { readAppResource } from "@/ipc/services/app_operation_coordinator";
 
 const enableNitroSchema = z.object({
   reason: z
@@ -66,11 +64,13 @@ export const enableNitroTool: ToolDefinition<
     }
 
     try {
-      const result = await appOperationCoordinator.run(
+      const result = await runWorkspaceScopedOperation(
         {
           appId: ctx.appId,
+          workspaceKey: ctx.workspaceCoordinationKey,
           operation: "install the Local Agent Nitro integration",
-          resources: [readAppResource("app-path"), "repository-worktree"],
+          appResources: [readAppResource("app-path")],
+          workspaceResources: ["repository-worktree"],
           refuseWhenRecording: "enable Nitro",
         },
         () => ensureNitroOnViteApp(ctx.appPath),

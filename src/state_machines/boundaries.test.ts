@@ -23,6 +23,7 @@ const MACHINE_DIRECTORIES = [
   "voice_to_text",
   "user_input",
   "coolify_setup",
+  "workspace_integration",
 ] as const;
 type MachineDirectory = (typeof MACHINE_DIRECTORIES)[number];
 type BoundaryRule =

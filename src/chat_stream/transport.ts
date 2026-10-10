@@ -57,6 +57,14 @@ export const ChatTurnOwnerSchema = z.discriminatedUnion("kind", [
       threadId: z.string().min(1).max(MAX_CHAT_WIRE_ID_CHARS),
     })
     .strict(),
+  // Dyad resumed the chat to resolve conflicts while combining its isolated
+  // workspace with the target branch.
+  z
+    .object({
+      kind: z.literal("workspace-integration"),
+      workspaceId: z.number().int().positive(),
+    })
+    .strict(),
 ]);
 
 export const SerializableChatTurnIntentSchema = z

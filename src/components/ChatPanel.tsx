@@ -7,6 +7,7 @@ import {
   useCallback,
   useMemo,
 } from "react";
+import { ConcurrentChatBanner } from "./chat/ConcurrentChatBanner";
 import { useTranslation } from "react-i18next";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { selectAtom } from "jotai/utils";
@@ -319,6 +320,7 @@ export function ChatPanel({
                   )}
                   <SupabaseLegacyKeyBanner appId={selectedAppId} />
                   <NotificationBanner />
+                  <ConcurrentChatBanner appId={selectedAppId} chatId={chatId} />
                   <ChatInput chatId={chatId} />
                 </motion.div>
               )}

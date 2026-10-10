@@ -44,6 +44,7 @@ Detailed rules and learnings are in the `rules/` directory. Read the relevant fi
 
 | [rules/claude-code-backend.md](rules/claude-code-backend.md) | Claude Code backend, model picker, subscription usage, and tool presentation |
 | [rules/user-app-test-isolation.md](rules/user-app-test-isolation.md) | Changing Tests-panel database isolation: Supabase test users, Neon test data cleanup, per-test lifecycle timeouts, or the generated fixture shim |
+| [rules/worktree-isolation.md](rules/worktree-isolation.md) | Touching isolated chat workspaces: turn workspace selection, Build-mode/proposal application, worktree Git helpers, app moves and branch renames, workspace runtimes/ports, integration queue, or Undo/Retry for isolated chats |
 
 ## Project setup and lints
 

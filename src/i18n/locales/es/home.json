@@ -768,7 +768,10 @@
       "connecting": "Conectando...",
       "disconnectAccountTitle": "Desconectar Cuenta de Neon",
       "disconnectAccountConfirmation": "¿Estás seguro de que quieres desconectar tu cuenta de Neon? Necesitarás volver a autenticarte a través de OAuth para reconectarte.",
-      "connectFailed": "Error al conectar con Neon"
+      "connectFailed": "Error al conectar con Neon",
+      "removeCloudflareEnvVars": "Eliminar los secretos de Neon de Cloudflare",
+      "removeCloudflareEnvVarsHelp": "Elimina DATABASE_URL y NEON_AUTH_BASE_URL de los Workers conectados para que no apunten a una base de datos desconectada.",
+      "failedRemoveCloudflareEnvVars": "Desconectado, pero no se pudieron eliminar los secretos de Neon de Cloudflare."
     },
     "db": {
       "projectInfo": "Información del Proyecto {{provider}}",

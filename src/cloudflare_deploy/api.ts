@@ -312,6 +312,47 @@ export async function isWorkersDevRouteEnabled(
   return result?.enabled === true;
 }
 
+/**
+ * Sets a runtime secret on the Worker, replacing one of the same name. Unlike
+ * a deploy rule's build variables, this is what the deployed code reads, and
+ * it survives the deploys the rule runs.
+ */
+export async function putWorkerSecret(
+  token: string,
+  accountId: string,
+  name: string,
+  secretName: string,
+  value: string,
+): Promise<void> {
+  await send(
+    token,
+    "PUT",
+    apiPath`/accounts/${accountId}/workers/scripts/${name}/secrets`,
+    { name: secretName, text: value, type: "secret_text" },
+  );
+}
+
+/** Removing a secret the Worker no longer has is not a failure. */
+export async function deleteWorkerSecret(
+  token: string,
+  accountId: string,
+  name: string,
+  secretName: string,
+): Promise<void> {
+  try {
+    await send(
+      token,
+      "DELETE",
+      apiPath`/accounts/${accountId}/workers/scripts/${name}/secrets/${secretName}`,
+    );
+  } catch (error) {
+    if (error instanceof CloudflareApiError && error.status === 404) {
+      return;
+    }
+    throw error;
+  }
+}
+
 /** The account's workers.dev subdomain, or null when it has none yet. */
 export async function getAccountSubdomain(
   token: string,

@@ -48,6 +48,17 @@ const showError = vi.hoisted(() => vi.fn());
 const showInfo = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/toast", () => ({ showWarning, showError, showInfo }));
 
+// The app record, for whether it has a Neon database to put on the Worker.
+const loadedApp = vi.hoisted(() => ({
+  value: {
+    neonProjectId: null as string | null,
+    selectedDatabaseBranchType: null as string | null,
+  },
+}));
+vi.mock("@/hooks/useLoadApp", () => ({
+  useLoadApp: () => ({ app: loadedApp.value, loading: false }),
+}));
+
 // The deployment card's "Fix with AI" sends into the selected chat, which is
 // outside this tab: the send and the chat's mode are stood in for here.
 const streamMessage = vi.hoisted(() => vi.fn());
@@ -120,6 +131,7 @@ beforeEach(() => {
   chatMode.value = "local-agent";
   chatMode.isLoading = false;
   chatStream.isStreaming = false;
+  loadedApp.value = { neonProjectId: null, selectedDatabaseBranchType: null };
   streamMessage.mockResolvedValue(true);
   settings.value = { cloudflareAccessToken: { value: "cf-token" } };
   cloudflare.listAccounts.mockResolvedValue([{ id: "acct-1", name: "Acme" }]);
@@ -621,6 +633,25 @@ describe("choosing a Worker", () => {
         "The Worker is connected, but the first deployment did not start.",
       ),
     );
+  });
+
+  it("tells a Neon app what Dyad will put on the Worker, for the branch it deploys", async () => {
+    loadedApp.value = {
+      neonProjectId: "neon-1",
+      selectedDatabaseBranchType: "development",
+    };
+    renderConnector();
+
+    const notice = await screen.findByTestId("cloudflare-neon-notice");
+    expect(notice.textContent).toMatch(/development Neon database/);
+    expect(notice.textContent).toMatch(/sign-in/);
+  });
+
+  it("says nothing about a database for an app without Neon", async () => {
+    renderConnector();
+
+    await screen.findByTestId("cloudflare-worker-form");
+    expect(screen.queryByTestId("cloudflare-neon-notice")).toBeNull();
   });
 
   it("says nothing extra when the connection went through cleanly", async () => {

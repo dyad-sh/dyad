@@ -7,6 +7,12 @@ export interface SandboxWorkerInput {
   script: string;
   timeoutMs: number;
   persistFullOutput?: boolean;
+  /**
+   * Host functions that only exist on the main thread (write_file, MCP
+   * tools). The worker exposes a proxy for each name that forwards the call
+   * over the message port and awaits the main thread's reply.
+   */
+  remoteCapabilityNames?: string[];
 }
 
 export interface SandboxWorkerHostCall {
@@ -21,13 +27,32 @@ export interface SerializedSandboxWorkerError {
   stack?: string;
 }
 
+/** A guest call to a main-thread host function, sent worker → main. */
+export interface SandboxRemoteCallMessage {
+  type: "remoteCall";
+  callId: number;
+  name: string;
+  args: unknown[];
+}
+
+/** Messages sent worker → main. */
 export type SandboxWorkerMessage =
   | { type: "vmBudgetStart" }
   | { type: "vmBudgetPause" }
   | { type: "vmBudgetResume" }
   | { type: "hostCall"; hostCall: SandboxWorkerHostCall }
+  | SandboxRemoteCallMessage
   | { type: "result"; result: SandboxRunResult }
   | { type: "error"; error: SerializedSandboxWorkerError };
+
+/** Messages sent main → worker: replies to remote host-function calls. */
+export type SandboxHostMessage =
+  | { type: "remoteResult"; callId: number; value: unknown }
+  | {
+      type: "remoteError";
+      callId: number;
+      error: SerializedSandboxWorkerError;
+    };
 
 export function serializeSandboxWorkerError(
   error: unknown,

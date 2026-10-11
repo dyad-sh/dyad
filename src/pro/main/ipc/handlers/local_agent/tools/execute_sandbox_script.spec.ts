@@ -1,11 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { executeSandboxScriptInProcess } from "@/ipc/utils/sandbox/execution";
 import { runSandboxScript } from "@/ipc/utils/sandbox/runner";
 import {
   assertAllowedGuestPath,
   assertSandboxWritePathAllowed,
-  buildSandboxCapabilitiesWithObserver,
 } from "@/ipc/utils/sandbox/capabilities";
 import { getAppBlueprintForChat } from "@/ipc/handlers/app_blueprint_handlers";
 import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
@@ -27,9 +25,11 @@ import {
 
 vi.mock("@/ipc/utils/sandbox/execution", () => ({
   isSandboxSupportedPlatform: vi.fn(() => true),
-  executeSandboxScriptInProcess: vi.fn(),
 }));
 
+// Every script goes through the runner, which owns the worker and the bridge
+// for main-thread host functions. The tests below inspect what the tool hands
+// it: the script, the remote capability map, and the turn's abort signal.
 vi.mock("@/ipc/utils/sandbox/runner", () => ({
   runSandboxScript: vi.fn(),
 }));
@@ -37,7 +37,6 @@ vi.mock("@/ipc/utils/sandbox/runner", () => ({
 vi.mock("@/ipc/utils/sandbox/capabilities", () => ({
   assertAllowedGuestPath: vi.fn(),
   assertSandboxWritePathAllowed: vi.fn(),
-  buildSandboxCapabilitiesWithObserver: vi.fn(() => ({})),
 }));
 
 vi.mock("@/ipc/handlers/app_blueprint_handlers", () => ({
@@ -144,14 +143,14 @@ describe("executeSandboxScriptTool", () => {
       "}",
       "main();",
     ].join("\n");
-    vi.mocked(executeSandboxScriptInProcess).mockRejectedValue(
+    vi.mocked(runSandboxScript).mockRejectedValue(
       new Error("Unexpected token ?."),
     );
 
     let thrown: unknown;
     try {
       await executeSandboxScriptTool.execute(
-        { script, description: "Read data.csv", execution_thread: "main" },
+        { script, description: "Read data.csv" },
         createMockContext(),
       );
     } catch (error) {
@@ -166,7 +165,7 @@ describe("executeSandboxScriptTool", () => {
     expect((thrown as Error).message).toContain(
       "Original error:\nUnexpected token ?.",
     );
-    expect(executeSandboxScriptInProcess).toHaveBeenCalledWith(
+    expect(runSandboxScript).toHaveBeenCalledWith(
       expect.objectContaining({
         appPath: "/tmp/app",
         script,
@@ -182,31 +181,34 @@ describe("executeSandboxScriptTool", () => {
     );
   });
 
-  it("defaults execution_thread to main and runs in-process", async () => {
-    vi.mocked(executeSandboxScriptInProcess).mockResolvedValue({
+  it("runs every script through the worker runner with the turn's abort signal", async () => {
+    vi.mocked(runSandboxScript).mockResolvedValue({
       value: "42",
       truncated: false,
       executionMs: 5,
     });
+    const abortController = new AbortController();
+    const ctx = createMockContext();
+    ctx.abortSignal = abortController.signal;
 
-    await executeSandboxScriptTool.execute(
-      { script: "1 + 1", execution_thread: "main" },
-      createMockContext(),
-    );
+    await executeSandboxScriptTool.execute({ script: "1 + 1" }, ctx);
 
-    expect(executeSandboxScriptInProcess).toHaveBeenCalledTimes(1);
-    expect(runSandboxScript).not.toHaveBeenCalled();
+    expect(runSandboxScript).toHaveBeenCalledTimes(1);
+    expect(runSandboxScript).toHaveBeenCalledWith({
+      appPath: "/tmp/app",
+      script: "1 + 1",
+      onHostCall: expect.any(Function),
+      remoteCapabilities: {},
+      signal: abortController.signal,
+    });
     expect(sendTelemetryEvent).toHaveBeenCalledWith(
       "sandbox.script.completed",
-      expect.objectContaining({ executionThread: "main" }),
+      expect.objectContaining({ executionThread: "worker" }),
     );
   });
 
-  it("injects write_file as a main-thread host capability", async () => {
-    vi.mocked(buildSandboxCapabilitiesWithObserver).mockReturnValue({
-      read_file: vi.fn(),
-    } as any);
-    vi.mocked(executeSandboxScriptInProcess).mockResolvedValue({
+  it("serves write_file to the worker as a remote capability", async () => {
+    vi.mocked(runSandboxScript).mockResolvedValue({
       value: "done",
       truncated: false,
       executionMs: 3,
@@ -220,13 +222,12 @@ describe("executeSandboxScriptTool", () => {
       await executeSandboxScriptTool.execute(
         {
           script: 'write_file("src/out.txt", "hello");',
-          execution_thread: "main",
         },
         ctx,
       );
 
-      const capabilities = vi.mocked(executeSandboxScriptInProcess).mock
-        .calls[0][0].capabilities;
+      const capabilities =
+        vi.mocked(runSandboxScript).mock.calls[0][0].remoteCapabilities;
       const writeFile = capabilities?.write_file;
       expect(writeFile).toEqual(expect.any(Function));
 
@@ -285,7 +286,7 @@ describe("executeSandboxScriptTool", () => {
   });
 
   it("rejects attachment paths passed to the write_file host capability", async () => {
-    vi.mocked(executeSandboxScriptInProcess).mockResolvedValue({
+    vi.mocked(runSandboxScript).mockResolvedValue({
       value: "done",
       truncated: false,
       executionMs: 3,
@@ -294,13 +295,12 @@ describe("executeSandboxScriptTool", () => {
     await executeSandboxScriptTool.execute(
       {
         script: 'write_file("attachments:file.txt", "hello");',
-        execution_thread: "main",
       },
       createWritableSandboxContext(),
     );
 
-    const capabilities = vi.mocked(executeSandboxScriptInProcess).mock
-      .calls[0][0].capabilities;
+    const capabilities =
+      vi.mocked(runSandboxScript).mock.calls[0][0].remoteCapabilities;
     const writeFile = capabilities?.write_file;
 
     await expect(
@@ -312,19 +312,19 @@ describe("executeSandboxScriptTool", () => {
   });
 
   it("wraps invalid write_file host arguments as validation errors", async () => {
-    vi.mocked(executeSandboxScriptInProcess).mockResolvedValue({
+    vi.mocked(runSandboxScript).mockResolvedValue({
       value: "done",
       truncated: false,
       executionMs: 3,
     });
 
     await executeSandboxScriptTool.execute(
-      { script: 'write_file("src/out.txt");', execution_thread: "main" },
+      { script: 'write_file("src/out.txt");' },
       createWritableSandboxContext(),
     );
 
-    const capabilities = vi.mocked(executeSandboxScriptInProcess).mock
-      .calls[0][0].capabilities;
+    const capabilities =
+      vi.mocked(runSandboxScript).mock.calls[0][0].remoteCapabilities;
     const writeFile = capabilities?.write_file;
 
     await expect(writeFile?.("src/out.txt")).rejects.toMatchObject({
@@ -339,19 +339,19 @@ describe("executeSandboxScriptTool", () => {
         DyadErrorKind.Precondition,
       );
     });
-    vi.mocked(executeSandboxScriptInProcess).mockResolvedValue({
+    vi.mocked(runSandboxScript).mockResolvedValue({
       value: "done",
       truncated: false,
       executionMs: 3,
     });
 
     await executeSandboxScriptTool.execute(
-      { script: 'write_file(".env", "SECRET=x");', execution_thread: "main" },
+      { script: 'write_file(".env", "SECRET=x");' },
       createWritableSandboxContext(),
     );
 
-    const capabilities = vi.mocked(executeSandboxScriptInProcess).mock
-      .calls[0][0].capabilities;
+    const capabilities =
+      vi.mocked(runSandboxScript).mock.calls[0][0].remoteCapabilities;
     const writeFile = capabilities?.write_file;
 
     await expect(writeFile?.(".env", "SECRET=x")).rejects.toMatchObject({
@@ -365,7 +365,7 @@ describe("executeSandboxScriptTool", () => {
       enableSandboxScriptExecution: true,
       agentToolConsents: { write_file: "never" },
     } as unknown as ReturnType<typeof readSettings>);
-    vi.mocked(executeSandboxScriptInProcess).mockResolvedValue({
+    vi.mocked(runSandboxScript).mockResolvedValue({
       value: "done",
       truncated: false,
       executionMs: 3,
@@ -374,18 +374,17 @@ describe("executeSandboxScriptTool", () => {
     await executeSandboxScriptTool.execute(
       {
         script: 'write_file("src/out.txt", "hello");',
-        execution_thread: "main",
       },
       createWritableSandboxContext(),
     );
 
-    const capabilities = vi.mocked(executeSandboxScriptInProcess).mock
-      .calls[0][0].capabilities;
+    const capabilities =
+      vi.mocked(runSandboxScript).mock.calls[0][0].remoteCapabilities;
     expect(capabilities).not.toHaveProperty("write_file");
   });
 
   it("throws a precondition error if write_file permission is disabled after capability injection", async () => {
-    vi.mocked(executeSandboxScriptInProcess).mockResolvedValue({
+    vi.mocked(runSandboxScript).mockResolvedValue({
       value: "done",
       truncated: false,
       executionMs: 3,
@@ -394,13 +393,12 @@ describe("executeSandboxScriptTool", () => {
     await executeSandboxScriptTool.execute(
       {
         script: 'write_file("src/out.txt", "hello");',
-        execution_thread: "main",
       },
       createWritableSandboxContext(),
     );
 
-    const capabilities = vi.mocked(executeSandboxScriptInProcess).mock
-      .calls[0][0].capabilities;
+    const capabilities =
+      vi.mocked(runSandboxScript).mock.calls[0][0].remoteCapabilities;
     const writeFile = capabilities?.write_file;
     vi.mocked(readSettings).mockReturnValue({
       enableSandboxScriptExecution: true,
@@ -413,7 +411,7 @@ describe("executeSandboxScriptTool", () => {
   });
 
   it("throws a user-cancelled error when write_file host consent is denied", async () => {
-    vi.mocked(executeSandboxScriptInProcess).mockResolvedValue({
+    vi.mocked(runSandboxScript).mockResolvedValue({
       value: "done",
       truncated: false,
       executionMs: 3,
@@ -424,13 +422,12 @@ describe("executeSandboxScriptTool", () => {
     await executeSandboxScriptTool.execute(
       {
         script: 'write_file("src/out.txt", "hello");',
-        execution_thread: "main",
       },
       ctx,
     );
 
-    const capabilities = vi.mocked(executeSandboxScriptInProcess).mock
-      .calls[0][0].capabilities;
+    const capabilities =
+      vi.mocked(runSandboxScript).mock.calls[0][0].remoteCapabilities;
     const writeFile = capabilities?.write_file;
 
     await expect(writeFile?.("src/out.txt", "hello")).rejects.toMatchObject({
@@ -439,7 +436,7 @@ describe("executeSandboxScriptTool", () => {
   });
 
   it("gates write_file host calls on app blueprint approval", async () => {
-    vi.mocked(executeSandboxScriptInProcess).mockResolvedValue({
+    vi.mocked(runSandboxScript).mockResolvedValue({
       value: "done",
       truncated: false,
       executionMs: 3,
@@ -454,13 +451,12 @@ describe("executeSandboxScriptTool", () => {
       await executeSandboxScriptTool.execute(
         {
           script: 'write_file("src/out.txt", "hello");',
-          execution_thread: "main",
         },
         ctx,
       );
 
-      const capabilities = vi.mocked(executeSandboxScriptInProcess).mock
-        .calls[0][0].capabilities;
+      const capabilities =
+        vi.mocked(runSandboxScript).mock.calls[0][0].remoteCapabilities;
       const writeFile = capabilities?.write_file;
 
       // No blueprint yet: the write host is blocked without prompting.
@@ -491,7 +487,7 @@ describe("executeSandboxScriptTool", () => {
   });
 
   it("is exempt from the wrapper-level blueprint gate so read scripts run pre-approval", async () => {
-    vi.mocked(executeSandboxScriptInProcess).mockResolvedValue({
+    vi.mocked(runSandboxScript).mockResolvedValue({
       value: "2",
       truncated: false,
       executionMs: 1,
@@ -506,7 +502,6 @@ describe("executeSandboxScriptTool", () => {
     await expect(
       toolSet.execute_sandbox_script.execute({
         script: "1 + 1;",
-        execution_thread: "main",
       }),
     ).resolves.toBeDefined();
 
@@ -517,7 +512,7 @@ describe("executeSandboxScriptTool", () => {
   });
 
   it("enforces realpath write containment before prompting for consent", async () => {
-    vi.mocked(executeSandboxScriptInProcess).mockResolvedValue({
+    vi.mocked(runSandboxScript).mockResolvedValue({
       value: "done",
       truncated: false,
       executionMs: 3,
@@ -526,13 +521,12 @@ describe("executeSandboxScriptTool", () => {
     await executeSandboxScriptTool.execute(
       {
         script: 'write_file("out/a.txt", "hello");',
-        execution_thread: "main",
       },
       ctx,
     );
 
-    const capabilities = vi.mocked(executeSandboxScriptInProcess).mock
-      .calls[0][0].capabilities;
+    const capabilities =
+      vi.mocked(runSandboxScript).mock.calls[0][0].remoteCapabilities;
     const writeFile = capabilities?.write_file;
     vi.mocked(assertSandboxWritePathAllowed).mockRejectedValue(
       new DyadError(
@@ -552,7 +546,7 @@ describe("executeSandboxScriptTool", () => {
   });
 
   it("admits sandbox writes at the host capability boundary", async () => {
-    vi.mocked(executeSandboxScriptInProcess).mockResolvedValue({
+    vi.mocked(runSandboxScript).mockResolvedValue({
       value: "done",
       truncated: false,
       executionMs: 3,
@@ -568,12 +562,11 @@ describe("executeSandboxScriptTool", () => {
     await executeSandboxScriptTool.execute(
       {
         script: 'write_file("out/a.txt", "hello");',
-        execution_thread: "main",
       },
       ctx,
     );
-    const capabilities = vi.mocked(executeSandboxScriptInProcess).mock
-      .calls[0][0].capabilities;
+    const capabilities =
+      vi.mocked(runSandboxScript).mock.calls[0][0].remoteCapabilities;
     const writeFile = capabilities?.write_file;
     let finishWrite!: (value: string) => void;
     const execute = vi.spyOn(writeFileTool, "execute").mockReturnValueOnce(
@@ -590,47 +583,47 @@ describe("executeSandboxScriptTool", () => {
     endTurnFinalization(turnId);
   });
 
-  it("with execution_thread: 'worker', invokes runSandboxScript and does not inject MCP capabilities", async () => {
+  it("serves MCP host functions to the worker as remote capabilities when the turn enables them", async () => {
     vi.mocked(runSandboxScript).mockResolvedValue({
       value: "ok",
       truncated: false,
       executionMs: 1,
     });
+    const def: McpToolDef = {
+      jsName: "srv__hello",
+      toolKey: "srv__hello",
+      serverId: 1,
+      serverName: "srv",
+      toolName: "hello",
+      inputSchema: { type: "object" } as any,
+    };
 
-    const ctx = createMockContext();
-    // Pretend MCP is enabled with one tool def — worker path should
-    // ignore it entirely.
-    ctx.mcpToolsEnabled = true;
-    ctx.mcpToolDefs = [
-      {
-        jsName: "srv__hello",
-        toolKey: "srv__hello",
-        serverId: 1,
-        serverName: "srv",
-        toolName: "hello",
-        inputSchema: { type: "object" } as any,
-      },
-    ];
-
-    await executeSandboxScriptTool.execute(
-      { script: "1 + 1", execution_thread: "worker" },
-      ctx,
+    const enabledCtx = createMockContext();
+    enabledCtx.mcpToolsEnabled = true;
+    enabledCtx.mcpToolDefs = [def];
+    await executeSandboxScriptTool.execute({ script: "1 + 1" }, enabledCtx);
+    const enabledCall = vi.mocked(runSandboxScript).mock.calls[0][0];
+    // The MCP function itself stays on the main thread (it needs the client
+    // registry and consent prompts); the worker gets a proxy by this name.
+    expect(enabledCall.remoteCapabilities?.srv__hello).toEqual(
+      expect.any(Function),
     );
+    expect(Object.keys(enabledCall)).not.toContain("capabilities");
 
-    expect(runSandboxScript).toHaveBeenCalledTimes(1);
-    expect(executeSandboxScriptInProcess).not.toHaveBeenCalled();
-    const runnerCall = vi.mocked(runSandboxScript).mock.calls[0][0];
-    // The runner is given only the observer; the MCP capability map is
-    // never built or passed on the worker path.
-    expect(Object.keys(runnerCall)).not.toContain("capabilities");
-    expect(sendTelemetryEvent).toHaveBeenCalledWith(
-      "sandbox.script.completed",
-      expect.objectContaining({ executionThread: "worker" }),
-    );
+    // A read-only or plan turn leaves MCP disabled: the defs may still be
+    // present on the context, but nothing is served to the worker.
+    vi.mocked(runSandboxScript).mockClear();
+    const disabledCtx = createMockContext();
+    disabledCtx.mcpToolsEnabled = false;
+    disabledCtx.mcpToolDefs = [def];
+    await executeSandboxScriptTool.execute({ script: "1 + 1" }, disabledCtx);
+    expect(
+      vi.mocked(runSandboxScript).mock.calls[0][0].remoteCapabilities,
+    ).toEqual({});
   });
 
   it("does not inject write_file when the turn is read-only", async () => {
-    vi.mocked(executeSandboxScriptInProcess).mockResolvedValue({
+    vi.mocked(runSandboxScript).mockResolvedValue({
       value: "done",
       truncated: false,
       executionMs: 3,
@@ -639,13 +632,12 @@ describe("executeSandboxScriptTool", () => {
     await executeSandboxScriptTool.execute(
       {
         script: 'typeof write_file === "undefined"',
-        execution_thread: "main",
       },
       createMockContext(),
     );
 
-    const capabilities = vi.mocked(executeSandboxScriptInProcess).mock
-      .calls[0][0].capabilities;
+    const capabilities =
+      vi.mocked(runSandboxScript).mock.calls[0][0].remoteCapabilities;
     expect(capabilities).not.toHaveProperty("write_file");
   });
 });

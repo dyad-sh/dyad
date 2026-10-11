@@ -1,13 +1,10 @@
 import { z } from "zod";
-import {
-  executeSandboxScriptInProcess,
-  isSandboxSupportedPlatform,
-} from "@/ipc/utils/sandbox/execution";
+import { isSandboxSupportedPlatform } from "@/ipc/utils/sandbox/execution";
 import { runSandboxScript } from "@/ipc/utils/sandbox/runner";
+import type { RemoteCapabilityMap } from "@/ipc/utils/sandbox/remote_capabilities";
 import {
   assertAllowedGuestPath,
   assertSandboxWritePathAllowed,
-  buildSandboxCapabilitiesWithObserver,
 } from "@/ipc/utils/sandbox/capabilities";
 import { SANDBOX_SCRIPT_SOURCE_LIMIT_BYTES } from "@/ipc/utils/sandbox/limits";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
@@ -50,20 +47,6 @@ const executeSandboxScriptSchema = z.object({
     .max(160)
     .optional()
     .describe("One-line human-readable summary of what the script does."),
-  execution_thread: z
-    .enum(["main", "worker"])
-    .optional()
-    .default("main")
-    .describe(
-      "Where to run the script. Default 'main' runs in-process and is " +
-        "the only thread that can expose main-thread-only host functions — " +
-        "use it for scripts that call MCP host functions and for small / " +
-        "fast operations. " +
-        "Use 'worker' for compute-heavy work (parsing multi-MB attachments, " +
-        "large aggregations, anything that might take more than a few hundred " +
-        "milliseconds) so chat streaming and other main-process work isn't " +
-        "stalled. MCP host functions are NOT available on the worker thread.",
-    ),
 });
 
 type ExecuteSandboxScriptArgs = z.infer<typeof executeSandboxScriptSchema>;
@@ -205,10 +188,6 @@ const row = { key: "x", total: 1 };
 });
 \`\`\`
 
-Execution thread:
-- 'main' (default) runs in-process. Use for small / fast scripts${includeWriteFile ? ", write_file," : ""} and MCP calls.
-- 'worker' runs on a separate worker thread so chat streaming and other main-process work stay responsive. Use when the script is compute-heavy (parsing multi-MB CSVs, large aggregations). The worker thread exposes read_file, list_files, and file_stats only; ${includeWriteFile ? "write_file and " : ""}MCP calls are not available.
-
 Host functions:
 \`\`\`ts
 type ReadFileOptions = {
@@ -242,7 +221,6 @@ function buildMcpAddendum(typeDefsBlock: string): string {
 
 MCP tools can also be invoked from inside the script. Use this when you need to call one or more MCP tools (optionally chaining their results, or combining them with file reads) before answering.
 - Each MCP tool invocation may trigger a user consent prompt. A denied call throws.
-- MCP host functions are only available on the 'main' execution thread. They are NOT available on the 'worker' thread — if you need both heavy compute and MCP calls, split into two scripts (worker for the compute, then main for the MCP follow-up).
 
 MCP host functions (TypeScript declarations):
 \`\`\`ts
@@ -279,7 +257,6 @@ function buildMcpSearchAddendum(
 MCP tools can also be invoked from inside the script. The tools available on each connected server are listed below by name only. To use one:
 ${howToUse}
 - Each MCP tool invocation may trigger a user consent prompt. A denied call throws.
-- MCP host functions are only available on the 'main' execution thread. They are NOT available on the 'worker' thread — if you need both heavy compute and MCP calls, split into two scripts (worker for the compute, then main for the MCP follow-up).
 
 ${inventoryHeading}
 \`\`\`
@@ -354,26 +331,23 @@ export const executeSandboxScriptTool: ToolDefinition<ExecuteSandboxScriptArgs> 
       args.description?.trim() || "Run a sandboxed script",
 
     execute: async (args: ExecuteSandboxScriptArgs, ctx: AgentContext) => {
-      const executionThread = args.execution_thread ?? "main";
+      // Every script runs on the worker thread; a CPU-bound guest on the main
+      // thread would freeze the app (#4728). Main-thread-only host functions
+      // are served to the worker over its message port by the runner.
+      const executionThread = "worker";
       const observeHostCall = ({ path }: { path?: string }) => {
         if (isAttachmentHostCallPath(path)) {
           ctx.onAttachmentAccess?.();
         }
       };
       try {
-        const result =
-          executionThread === "worker"
-            ? // Worker thread builds its own capability map inside the worker;
-              // MCP host functions are intentionally not exposed on this path
-              // because the MCP client + consent flow live on the main thread.
-              // Splitting heavy compute (worker) from MCP follow-up (main) is
-              // documented in the tool prompt.
-              await runSandboxScript({
-                appPath: ctx.appPath,
-                script: args.script,
-                onHostCall: observeHostCall,
-              })
-            : await runInMainThread({ args, ctx, observeHostCall });
+        const result = await runSandboxScript({
+          appPath: ctx.appPath,
+          script: args.script,
+          onHostCall: observeHostCall,
+          remoteCapabilities: buildRemoteCapabilities(ctx),
+          signal: ctx.abortSignal,
+        });
 
         ctx.onXmlComplete(
           buildScriptXml({
@@ -521,16 +495,12 @@ function buildWriteFileCapability(ctx: AgentContext) {
 }
 
 /**
- * Run a sandbox script in the main process with both built-in file
- * host functions and (when enabled for the turn) MCP host functions
- * injected as capabilities. Extracted from `execute()` so the worker
- * path can stay a simple call to `runSandboxScript`.
+ * Host functions that must execute on the main process: write_file (consent,
+ * blueprint gating, mutation tracking, UI cards) and MCP tools (client
+ * registry, consent prompts). The runner serves them to the worker over its
+ * message port; the file host functions are built inside the worker itself.
  */
-async function runInMainThread(params: {
-  args: ExecuteSandboxScriptArgs;
-  ctx: AgentContext;
-  observeHostCall: (event: { path?: string }) => void;
-}) {
+function buildRemoteCapabilities(ctx: AgentContext): RemoteCapabilityMap {
   // Only inject MCP host functions when the caller has opted in for
   // this turn (set by `local_agent_handler`). Skipping here keeps
   // read-only and plan-mode turns from exposing MCP tools through
@@ -539,31 +509,18 @@ async function runInMainThread(params: {
   // The handler populates `ctx.mcpToolDefs` with the same defs used
   // to build the dynamic tool description, so the prompt and the
   // capability map can never disagree about which tools exist.
-  const defs: McpToolDef[] = params.ctx.mcpToolsEnabled
-    ? (params.ctx.mcpToolDefs ?? [])
-    : [];
-  const fileCaps = buildSandboxCapabilitiesWithObserver(
-    params.ctx.appPath,
-    params.observeHostCall,
-  );
-  const writeFileCaps: Record<string, (...args: unknown[]) => unknown> =
-    params.ctx.sandboxWriteFileHostEnabled === true && isWriteFileHostEnabled()
-      ? { write_file: buildWriteFileCapability(params.ctx) }
+  const defs: McpToolDef[] = ctx.mcpToolsEnabled ? (ctx.mcpToolDefs ?? []) : [];
+  const writeFileCaps: RemoteCapabilityMap =
+    ctx.sandboxWriteFileHostEnabled === true && isWriteFileHostEnabled()
+      ? { write_file: buildWriteFileCapability(ctx) }
       : {};
   const mcpCaps = buildMcpCapabilityMap({
-    event: params.ctx.event,
-    ctx: params.ctx,
+    event: ctx.event,
+    ctx,
     defs,
   });
-  const capabilities = {
-    ...(fileCaps as unknown as Record<string, (...args: unknown[]) => unknown>),
+  return {
     ...mcpCaps,
     ...writeFileCaps,
   };
-
-  return executeSandboxScriptInProcess({
-    appPath: params.ctx.appPath,
-    script: params.args.script,
-    capabilities,
-  });
 }

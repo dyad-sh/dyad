@@ -19,7 +19,6 @@ export const fixture: LocalAgentFixture = {
               "}",
               "main();",
             ].join("\n"),
-            execution_thread: "main",
           },
         },
       ],

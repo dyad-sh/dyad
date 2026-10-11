@@ -2,7 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { Worker } from "node:worker_threads";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import type { SandboxHostCallObserver } from "./capabilities";
+import {
+  buildSandboxCapabilitiesWithObserver,
+  type SandboxHostCallObserver,
+} from "./capabilities";
 import {
   executeSandboxScriptInProcess,
   isSandboxSupportedPlatform,
@@ -13,9 +16,15 @@ import {
   clampSandboxTimeoutMs,
   SANDBOX_SCRIPT_SOURCE_LIMIT_BYTES,
   SANDBOX_WALL_CLOCK_TIMEOUT_MS,
+  SANDBOX_WORKER_HEAP_LIMIT_MB,
 } from "./limits";
 import {
+  createRemoteCallDispatcher,
+  type RemoteCapabilityMap,
+} from "./remote_capabilities";
+import {
   deserializeSandboxWorkerError,
+  type SandboxHostMessage,
   type SandboxWorkerInput,
   type SandboxWorkerMessage,
 } from "./worker_protocol";
@@ -24,6 +33,23 @@ export { isSandboxSupportedPlatform };
 export type { SandboxRunResult };
 
 const WORKER_WALL_CLOCK_TIMEOUT_MARGIN_MS = 5_000;
+
+export interface RunSandboxScriptParams {
+  appPath: string;
+  script: string;
+  timeoutMs?: number;
+  persistFullOutput?: boolean;
+  onHostCall?: SandboxHostCallObserver;
+  /**
+   * Host functions that must execute on the main thread (write_file, MCP
+   * tools). They are served over the worker's message port: the guest sees a
+   * proxy with the same name, and each call runs here against the real
+   * function with its result or error relayed back.
+   */
+  remoteCapabilities?: RemoteCapabilityMap;
+  /** Terminates the worker when the owning turn is cancelled. */
+  signal?: AbortSignal;
+}
 
 function isTestRuntime(): boolean {
   return (
@@ -34,6 +60,14 @@ function isTestRuntime(): boolean {
 }
 
 function resolveSandboxWorkerPath(): string | undefined {
+  if (isTestRuntime()) {
+    // Vitest cannot run the TypeScript worker entry directly. A test that
+    // builds the worker bundle can point the runner at the output.
+    const override = process.env.DYAD_SANDBOX_WORKER_PATH;
+    if (override) {
+      return override;
+    }
+  }
   const workerPath = path.join(__dirname, "sandbox_worker.js");
   if (fs.existsSync(workerPath)) {
     return workerPath;
@@ -47,28 +81,70 @@ function resolveSandboxWorkerPath(): string | undefined {
   );
 }
 
-function runSandboxScriptInWorker(params: {
-  appPath: string;
-  script: string;
-  timeoutMs: number;
-  persistFullOutput?: boolean;
-  onHostCall?: SandboxHostCallObserver;
-}): Promise<SandboxRunResult> {
-  const workerPath = resolveSandboxWorkerPath();
-  if (!workerPath) {
-    return executeSandboxScriptInProcess(params);
+function cancelledError(): DyadError {
+  return new DyadError(
+    "Sandbox script cancelled.",
+    DyadErrorKind.UserCancelled,
+  );
+}
+
+function runSandboxScriptInWorker(
+  params: RunSandboxScriptParams & { timeoutMs: number },
+): Promise<SandboxRunResult> {
+  if (params.signal?.aborted) {
+    return Promise.reject(cancelledError());
   }
 
+  const workerPath = resolveSandboxWorkerPath();
+  if (!workerPath) {
+    // Test runtime without a built worker: run in-process with the same
+    // merged capability map the worker would build.
+    const capabilities = params.remoteCapabilities
+      ? {
+          ...(buildSandboxCapabilitiesWithObserver(
+            params.appPath,
+            params.onHostCall,
+          ) as unknown as RemoteCapabilityMap),
+          ...params.remoteCapabilities,
+        }
+      : undefined;
+    return executeSandboxScriptInProcess({
+      appPath: params.appPath,
+      script: params.script,
+      timeoutMs: params.timeoutMs,
+      persistFullOutput: params.persistFullOutput,
+      onHostCall: params.onHostCall,
+      capabilities,
+    });
+  }
+
+  const remoteCapabilities = params.remoteCapabilities ?? {};
   const input: SandboxWorkerInput = {
     appPath: params.appPath,
     script: params.script,
     timeoutMs: params.timeoutMs,
     persistFullOutput: params.persistFullOutput,
+    remoteCapabilityNames: Object.keys(remoteCapabilities),
   };
 
   return new Promise((resolve, reject) => {
     let settled = false;
-    const worker = new Worker(workerPath, { workerData: input });
+    const worker = new Worker(workerPath, {
+      workerData: input,
+      // A worker that exhausts the shared V8 heap aborts the whole process;
+      // with a limit it terminates alone with ERR_WORKER_OUT_OF_MEMORY.
+      resourceLimits: { maxOldGenerationSizeMb: SANDBOX_WORKER_HEAP_LIMIT_MB },
+    });
+    const dispatcher = createRemoteCallDispatcher(
+      remoteCapabilities,
+      (message: SandboxHostMessage) => {
+        // A reply for a worker that has already been terminated is dropped;
+        // nothing is waiting for it.
+        if (!settled) {
+          worker.postMessage(message);
+        }
+      },
+    );
     const wallClockTimeoutMs = clampSandboxWallClockTimeoutMs(undefined);
     const wallClockTimeout = setTimeout(() => {
       settle(
@@ -152,9 +228,15 @@ function runSandboxScriptInWorker(params: {
       scheduleVmTimeout();
     }
 
+    const onAbort = () => {
+      settle(() => reject(cancelledError()), true);
+    };
+    params.signal?.addEventListener("abort", onAbort, { once: true });
+
     function cleanup() {
       clearTimeout(wallClockTimeout);
       clearVmTimeout();
+      params.signal?.removeEventListener("abort", onAbort);
       worker.removeAllListeners();
     }
 
@@ -196,6 +278,13 @@ function runSandboxScriptInWorker(params: {
         } catch (error) {
           settle(() => reject(error), true);
         }
+        return;
+      }
+
+      if (message.type === "remoteCall") {
+        // The dispatcher reports every outcome, including a thrown
+        // capability, back to the worker as a reply; it never rejects.
+        void dispatcher.dispatch(message);
         return;
       }
 
@@ -245,13 +334,9 @@ function runSandboxScriptInWorker(params: {
   });
 }
 
-export async function runSandboxScript(params: {
-  appPath: string;
-  script: string;
-  timeoutMs?: number;
-  persistFullOutput?: boolean;
-  onHostCall?: SandboxHostCallObserver;
-}): Promise<SandboxRunResult> {
+export async function runSandboxScript(
+  params: RunSandboxScriptParams,
+): Promise<SandboxRunResult> {
   if (
     Buffer.byteLength(params.script, "utf8") > SANDBOX_SCRIPT_SOURCE_LIMIT_BYTES
   ) {

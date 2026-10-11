@@ -467,9 +467,7 @@
       "proFeatureTitle": "O Anotador é um Recurso Pro",
       "proFeatureDescription": "Desbloqueie a capacidade de anotar capturas de tela e aprimore seu fluxo de trabalho com o Dyad Pro.",
       "getDyadPro": "Obtenha o Dyad Pro"
-    },
-    "openDevServer": "Abrir endereço do servidor de desenvolvimento",
-    "openDevServerDescription": "Para navegadores que não conseguem abrir o endereço de prévia. Compartilha o armazenamento do navegador com outros apps em localhost."
+    }
   },
   "integrations": {
     "github": {

@@ -468,9 +468,7 @@
       "proFeatureTitle": "어노테이터는 Pro 기능입니다",
       "proFeatureDescription": "Dyad Pro로 스크린샷에 주석을 달고 작업 흐름을 개선하는 기능을 잠금 해제하세요.",
       "getDyadPro": "Dyad Pro 받기"
-    },
-    "openDevServer": "개발 서버 주소 열기",
-    "openDevServerDescription": "미리보기 주소를 열 수 없는 브라우저용입니다. 다른 localhost 앱과 브라우저 저장소를 공유합니다."
+    }
   },
   "integrations": {
     "github": {

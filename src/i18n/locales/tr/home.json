@@ -490,9 +490,7 @@
       "neonRefusalDisabled": "Bu uygulama için testler çalıştırılamıyor: yalıtılmış test sunucuları Ayarlar bölümünde kapalı ve Dyad, Neon testlerini gerçek veritabanınızda çalıştırmaz. Testleri çalıştırmak için bunları açın.",
       "turnOnSandbox": "Aç",
       "openSettings": "Ayarları aç"
-    },
-    "openDevServer": "Geliştirme sunucusu adresini aç",
-    "openDevServerDescription": "Önizleme adresini açamayan tarayıcılar içindir. Tarayıcı depolamasını diğer localhost uygulamalarıyla paylaşır."
+    }
   },
   "integrations": {
     "github": {

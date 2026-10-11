@@ -467,9 +467,7 @@
       "proFeatureTitle": "标注器是 Pro 功能",
       "proFeatureDescription": "解锁截图标注功能，使用 Dyad Pro 提升您的工作流程。",
       "getDyadPro": "获取 Dyad Pro"
-    },
-    "openDevServer": "打开开发服务器地址",
-    "openDevServerDescription": "适用于无法打开预览地址的浏览器。与其他 localhost 应用共享浏览器存储。"
+    }
   },
   "integrations": {
     "github": {

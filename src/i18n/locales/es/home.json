@@ -471,9 +471,7 @@
       "proFeatureTitle": "El Anotador es una Función Pro",
       "proFeatureDescription": "Desbloquea la capacidad de anotar capturas de pantalla y mejora tu flujo de trabajo con Dyad Pro.",
       "getDyadPro": "Consigue Dyad Pro"
-    },
-    "openDevServer": "Abrir dirección del servidor de desarrollo",
-    "openDevServerDescription": "Para navegadores que no pueden abrir la dirección de vista previa. Comparte el almacenamiento del navegador con otras apps en localhost."
+    }
   },
   "integrations": {
     "github": {

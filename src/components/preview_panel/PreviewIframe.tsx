@@ -1558,24 +1558,6 @@ export const PreviewIframe = ({
                   </DropdownMenuItem>
                 )}
                 {!showOpenBrowser && <DropdownMenuSeparator />}
-                {!isCloudMode && originalUrl && (
-                  <DropdownMenuItem
-                    onClick={() =>
-                      void ipc.system
-                        .openExternalUrl(originalUrl)
-                        .catch(showError)
-                    }
-                    data-testid="preview-open-dev-server-menu-item"
-                  >
-                    <ExternalLink size={16} />
-                    <div className="flex flex-col">
-                      <span>{t("preview.openDevServer")}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {t("preview.openDevServerDescription")}
-                      </span>
-                    </div>
-                  </DropdownMenuItem>
-                )}
                 <DropdownMenuItem onClick={onCleanRestart}>
                   <Cog size={16} />
                   <div className="flex flex-col">

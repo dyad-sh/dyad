@@ -488,9 +488,7 @@
       "proFeatureTitle": "Annotator is a Pro Feature",
       "proFeatureDescription": "Unlock the ability to annotate screenshots and enhance your workflow with Dyad Pro.",
       "getDyadPro": "Get Dyad Pro"
-    },
-    "openDevServer": "Open dev server address",
-    "openDevServerDescription": "For browsers that cannot open the preview address. Shares browser storage with other localhost apps."
+    }
   },
   "integrations": {
     "github": {

@@ -5,20 +5,14 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import type { SandboxWorkerHostCall } from "./worker_protocol";
 import { isSandboxSupportedPlatform, runSandboxScript } from "./runner";
+import { buildSandboxWorkerBundle } from "./testing/sandbox_worker_bundle";
 
 /**
  * Runs the real sandbox worker, not the in-process fallback, so the bridge
  * for main-thread host functions is exercised across an actual thread
  * boundary: proxies in the worker, dispatcher in this process, structured
  * clone in between.
- *
- * The worker is a Vite library bundle; the runner only knows how to find the
- * packaged copy, so the suite builds it into the ignored `.vite/` directory
- * and points the runner at it through the test-only override.
  */
-const REPO_ROOT = path.resolve(__dirname, "..", "..", "..", "..");
-const WORKER_OUT_DIR = path.join(REPO_ROOT, ".vite", "sandbox-worker-test");
-
 const supported = isSandboxSupportedPlatform();
 
 describe.skipIf(!supported)("sandbox worker host-function bridge", () => {
@@ -26,21 +20,10 @@ describe.skipIf(!supported)("sandbox worker host-function bridge", () => {
   let previousOverride: string | undefined;
 
   beforeAll(async () => {
-    const { build } = await import("vite");
-    await build({
-      configFile: path.join(REPO_ROOT, "vite.sandbox-worker.config.mts"),
-      logLevel: "silent",
-      build: { outDir: WORKER_OUT_DIR, emptyOutDir: true },
-    });
-    const entries = await fs.readdir(WORKER_OUT_DIR);
-    const bundle = entries.find((name) => /^sandbox_worker\.c?js$/.test(name));
-    if (!bundle) {
-      throw new Error(
-        `Sandbox worker bundle not found in ${WORKER_OUT_DIR}: ${entries.join(", ")}`,
-      );
-    }
     previousOverride = process.env.DYAD_SANDBOX_WORKER_PATH;
-    process.env.DYAD_SANDBOX_WORKER_PATH = path.join(WORKER_OUT_DIR, bundle);
+    process.env.DYAD_SANDBOX_WORKER_PATH = await buildSandboxWorkerBundle(
+      "sandbox-worker-bridge-test",
+    );
   }, 120_000);
 
   afterAll(() => {

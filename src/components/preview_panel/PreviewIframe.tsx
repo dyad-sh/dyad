@@ -89,10 +89,7 @@ import { VisualEditingToolbar } from "./VisualEditingToolbar";
 import { recordingStatusMessage } from "./RecordingBanner";
 import { RecordingBannerHost } from "./RecordingBannerHost";
 import { RecordingStorageWarningDialog } from "./RecordingStorageWarningDialog";
-import {
-  LOCAL_PREVIEW_BROWSER_HINT,
-  resolvePreviewBrowserUrl,
-} from "./previewBrowserUrl";
+import { resolvePreviewBrowserUrl } from "./previewBrowserUrl";
 import { PreviewLoadingScreen } from "./PreviewLoadingScreen";
 import { PreviewErrorBanner } from "./PreviewErrorBanner";
 import { useTranslation } from "react-i18next";
@@ -1064,6 +1061,7 @@ export const PreviewIframe = ({
         isCloudMode,
         selectedAppId,
         appUrl,
+        originalUrl,
         createCloudSandboxShareLink,
       });
       await ipc.system.openExternalUrl(url);
@@ -1515,10 +1513,7 @@ export const PreviewIframe = ({
               >
                 <ExternalLink size={14} />
               </TooltipTrigger>
-              <TooltipContent side="bottom">
-                Open in browser
-                {!isCloudMode && `. ${LOCAL_PREVIEW_BROWSER_HINT}`}
-              </TooltipContent>
+              <TooltipContent side="bottom">Open in browser</TooltipContent>
             </Tooltip>
           )}
 
@@ -1559,14 +1554,7 @@ export const PreviewIframe = ({
                     data-testid="preview-open-browser-menu-item"
                   >
                     <ExternalLink size={16} />
-                    <div className="flex flex-col">
-                      <span>Open in browser</span>
-                      {!isCloudMode && (
-                        <span className="text-xs text-muted-foreground">
-                          {LOCAL_PREVIEW_BROWSER_HINT}
-                        </span>
-                      )}
-                    </div>
+                    <span>Open in browser</span>
                   </DropdownMenuItem>
                 )}
                 {!showOpenBrowser && <DropdownMenuSeparator />}

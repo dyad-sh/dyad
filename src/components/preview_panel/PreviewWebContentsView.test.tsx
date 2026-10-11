@@ -1,5 +1,11 @@
 import home from "@/i18n/locales/en/home.json";
-import { act, render, screen } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import type { PreviewAuthStatus } from "@/app_run/state";
 import type { ReactElement, ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -75,7 +81,7 @@ vi.mock("@/hooks/useAppRun", () => ({
   useCurrentAppUrl: () => ({
     previewAuth: h.previewAuth,
     appUrl: "http://app-1.localhost:42101/",
-    originalUrl: "http://app-1.localhost:42101/",
+    originalUrl: "http://localhost:5173/",
     mode: "local",
   }),
 }));
@@ -121,9 +127,11 @@ vi.mock("./PreviewLoadingScreen", () => ({
 }));
 
 import { PreviewWebContentsView } from "./PreviewWebContentsView";
+import { ipc } from "@/ipc/types";
 
 beforeEach(() => {
   h.previewAuth = undefined;
+  vi.mocked(ipc.system.openExternalUrl).mockClear();
   h.testRunPhase = "running";
   h.overlayActive = true;
   h.setTestSetupOverlayActive.mockReset();
@@ -140,6 +148,18 @@ beforeEach(() => {
       disconnect() {}
     },
   );
+});
+
+it("opens app-specific previews in the browser at the localhost dev server", async () => {
+  render(<PreviewWebContentsView loading={false} />);
+
+  fireEvent.click(screen.getByRole("button", { name: "Open in browser" }));
+
+  await waitFor(() => {
+    expect(ipc.system.openExternalUrl).toHaveBeenCalledWith(
+      "http://localhost:5173/",
+    );
+  });
 });
 
 describe("PreviewWebContentsView screenshot fallback", () => {

@@ -12,6 +12,7 @@ describe("resolvePreviewBrowserUrl", () => {
         isCloudMode: true,
         selectedAppId: 42,
         appUrl: "https://preview.internal.test",
+        originalUrl: "https://sandbox.internal.test",
         createCloudSandboxShareLink,
       }),
     ).resolves.toBe("https://dyad.sh/share/sandbox-1");
@@ -21,7 +22,7 @@ describe("resolvePreviewBrowserUrl", () => {
     });
   });
 
-  it("returns the existing preview URL for non-cloud previews", async () => {
+  it("opens app-specific previews at the localhost dev-server URL", async () => {
     const createCloudSandboxShareLink = vi.fn();
 
     await expect(
@@ -29,11 +30,40 @@ describe("resolvePreviewBrowserUrl", () => {
         isCloudMode: false,
         selectedAppId: null,
         appUrl: "http://app-42.localhost:42142",
+        originalUrl: "http://localhost:5173/",
         createCloudSandboxShareLink,
       }),
-    ).resolves.toBe("http://app-42.localhost:42142");
+    ).resolves.toBe("http://localhost:5173/");
 
     expect(createCloudSandboxShareLink).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "http://localhost:42142",
+    "http://127.0.0.1:42142/path?q=1#hash",
+    "https://preview.example.com/path?q=1#hash",
+  ])("preserves other preview URLs: %s", async (appUrl) => {
+    await expect(
+      resolvePreviewBrowserUrl({
+        isCloudMode: false,
+        selectedAppId: 42,
+        appUrl,
+        originalUrl: "http://localhost:5173/",
+        createCloudSandboxShareLink: vi.fn(),
+      }),
+    ).resolves.toBe(appUrl);
+  });
+
+  it("requires the dev-server URL instead of opening the isolated proxy", async () => {
+    await expect(
+      resolvePreviewBrowserUrl({
+        isCloudMode: false,
+        selectedAppId: 42,
+        appUrl: "http://app-42.localhost:42142",
+        originalUrl: null,
+        createCloudSandboxShareLink: vi.fn(),
+      }),
+    ).rejects.toThrow("Dev server URL is unavailable.");
   });
 
   it("throws when cloud preview browser open is requested without an app id", async () => {
@@ -42,6 +72,7 @@ describe("resolvePreviewBrowserUrl", () => {
         isCloudMode: true,
         selectedAppId: null,
         appUrl: "https://preview.internal.test",
+        originalUrl: null,
         createCloudSandboxShareLink: vi.fn(),
       }),
     ).rejects.toThrow("Cloud sandbox is not running.");

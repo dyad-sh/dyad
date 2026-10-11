@@ -125,14 +125,21 @@ test("app hostnames isolate sessions through restart, HMR, native preview and re
     .poll(() =>
       electronApp.evaluate(() => (globalThis as any).__previewOpenedUrls),
     )
-    .toEqual([firstOrigin]);
+    .toEqual([expect.stringMatching(/^http:\/\/localhost:\d+\/?$/)]);
+  const [browserUrl] = await electronApp.evaluate(
+    () => (globalThis as any).__previewOpenedUrls as string[],
+  );
+  // This must be the serving dev-server port, not the proxy with its hostname
+  // replaced: the app-specific proxy deliberately rejects localhost requests.
+  expect(new URL(browserUrl).port).not.toBe(new URL(firstOrigin).port);
+  expect((await po.page.request.get(browserUrl)).ok()).toBe(true);
   await po.previewPanel.clickPreviewMoreOptions();
   await po.page.getByTestId("preview-open-dev-server-menu-item").click();
   await expect
     .poll(() =>
       electronApp.evaluate(() => (globalThis as any).__previewOpenedUrls),
     )
-    .toEqual([firstOrigin, expect.stringMatching(/^http:\/\/localhost:\d+/)]);
+    .toEqual([browserUrl, browserUrl]);
 
   await po.navigation.goToAppsTab();
   if (

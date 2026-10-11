@@ -378,6 +378,47 @@ describe("buildMcpCapabilityMap", () => {
     endTurnFinalization(turnId);
   });
 
+  it("holds the turn open during the client lookup and skips execution after a Stop", async () => {
+    vi.mocked(requireMcpToolConsent).mockResolvedValue({ approved: true });
+    const execute = vi.fn().mockResolvedValue({ content: [] });
+    let finishLookup!: (client: unknown) => void;
+    vi.mocked(mcpManager.getClient).mockReturnValue(
+      new Promise<any>((resolve) => {
+        finishLookup = resolve;
+      }),
+    );
+    const abortController = new AbortController();
+    const ctx = createCtx();
+    ctx.abortSignal = abortController.signal;
+    const turnId = "sandbox-mcp-lookup-test";
+    ctx.mutationActivityOwner = createMutationActivityOwner({
+      appId: ctx.appId,
+      chatId: ctx.chatId,
+      turnId,
+      actorRunId: "root",
+    });
+    const call = buildMcpCapabilityMap({
+      event: {} as any,
+      ctx,
+      defs: [makeDef()],
+    }).srv__hello({});
+
+    await vi.waitFor(() =>
+      expect(mcpManager.getClient).toHaveBeenCalledWith(42),
+    );
+    // The lookup is in flight, so the turn must not be finalizable yet.
+    expect(tryBeginTurnFinalization(turnId)).toBe(false);
+    abortController.abort();
+    finishLookup({ tools: async () => ({ hello: { execute } }) });
+
+    await expect(call).rejects.toMatchObject({
+      kind: DyadErrorKind.UserCancelled,
+    });
+    expect(execute).not.toHaveBeenCalled();
+    expect(tryBeginTurnFinalization(turnId)).toBe(true);
+    endTurnFinalization(turnId);
+  });
+
   it("wraps a plain-string MCP result into the declared McpResult shape", async () => {
     vi.mocked(requireMcpToolConsent).mockResolvedValue({ approved: true });
     const execute = vi.fn().mockResolvedValue("hello world");

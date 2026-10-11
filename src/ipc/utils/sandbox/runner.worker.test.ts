@@ -41,7 +41,7 @@ describe.skipIf(!supported)("sandbox worker host-function bridge", () => {
   });
 
   afterAll(async () => {
-    await fs.rm(appPath, { recursive: true, force: true });
+    if (appPath) await fs.rm(appPath, { recursive: true, force: true });
   });
 
   it("calls a main-thread capability from the worker and returns its result", async () => {

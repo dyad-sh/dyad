@@ -90,7 +90,7 @@ describe.skipIf(!isSandboxSupportedPlatform())(
       } else {
         process.env.DYAD_SANDBOX_WORKER_PATH = previousOverride;
       }
-      await fs.rm(appPath, { recursive: true, force: true });
+      if (appPath) await fs.rm(appPath, { recursive: true, force: true });
     });
 
     it("keeps the calling thread's event loop free while a script is busy", async () => {

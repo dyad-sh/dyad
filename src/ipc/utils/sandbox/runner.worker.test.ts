@@ -57,6 +57,10 @@ describe.skipIf(!supported)("sandbox worker host-function bridge", () => {
     await fs.writeFile(path.join(appPath, "src", "data.txt"), "abcdef", "utf8");
   });
 
+  afterAll(async () => {
+    await fs.rm(appPath, { recursive: true, force: true });
+  });
+
   it("calls a main-thread capability from the worker and returns its result", async () => {
     const seen: unknown[][] = [];
     const result = await runSandboxScript({
@@ -135,12 +139,17 @@ describe.skipIf(!supported)("sandbox worker host-function bridge", () => {
   it("terminates the worker when the turn is cancelled mid-call", async () => {
     const abortController = new AbortController();
     const started = Date.now();
+    let markBlocked!: () => void;
+    const blocked = new Promise<void>((resolve) => {
+      markBlocked = resolve;
+    });
     const run = runSandboxScript({
       appPath,
       script: `await block(); 1;`,
       remoteCapabilities: {
         block: () =>
           new Promise<unknown>((resolve) => {
+            markBlocked();
             // Resolve only after the abort to prove the cancellation won.
             abortController.signal.addEventListener("abort", () =>
               setTimeout(() => resolve("too late"), 50),
@@ -149,7 +158,10 @@ describe.skipIf(!supported)("sandbox worker host-function bridge", () => {
       },
       signal: abortController.signal,
     });
-    setTimeout(() => abortController.abort(), 100);
+    // Abort only once the host call is in flight, so the test covers
+    // cancellation mid-call rather than before the script reaches it.
+    await blocked;
+    abortController.abort();
 
     await expect(run).rejects.toMatchObject({
       kind: DyadErrorKind.UserCancelled,

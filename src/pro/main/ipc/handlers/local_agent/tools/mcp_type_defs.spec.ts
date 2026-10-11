@@ -20,11 +20,18 @@ import {
   tryBeginTurnFinalization,
 } from "../subagents/mutation_activity_tracker";
 
-vi.mock("@/ipc/utils/mcp_manager", () => ({
-  mcpManager: {
-    getClient: vi.fn(),
-  },
-}));
+vi.mock("@/ipc/utils/mcp_manager", () => {
+  const getClient = vi.fn();
+  return {
+    mcpManager: {
+      getClient,
+      // Mirror the real wrapper so tests can stub the client alone.
+      listToolsWithin: vi.fn((serverId: number) =>
+        getClient(serverId).then((client: any) => client.tools()),
+      ),
+    },
+  };
+});
 
 vi.mock("@/ipc/utils/mcp_consent", () => ({
   requireMcpToolConsent: vi.fn(),
@@ -406,6 +413,9 @@ describe("buildMcpCapabilityMap", () => {
     await vi.waitFor(() =>
       expect(mcpManager.getClient).toHaveBeenCalledWith(42),
     );
+    expect(mcpManager.listToolsWithin).toHaveBeenCalledWith(42, {
+      signal: abortController.signal,
+    });
     // The lookup is in flight, so the turn must not be finalizable yet.
     expect(tryBeginTurnFinalization(turnId)).toBe(false);
     abortController.abort();

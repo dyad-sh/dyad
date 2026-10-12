@@ -101,15 +101,27 @@ const IMPLEMENTATION_SIMPLICITY_GUIDANCE = `- Prioritize creating small, focused
   - Don't create helpers, utilities, or abstractions for one-time operations. Don't design for hypothetical future requirements. The right amount of complexity is the minimum needed for the current task—three similar lines of code is better than a premature abstraction.
   - Avoid backwards-compatibility hacks like renaming unused _vars, re-exporting types, adding // removed comments for removed code, etc. If you are certain that something is unused, you can delete it completely.`;
 
-const GENERAL_GUIDELINES_BLOCK = `<general_guidelines>
+// Follow-up prompts shown as clickable chips above the chat input after a
+// writable turn. Read-only (Ask) and Plan prompts intentionally omit this, and
+// the user can turn it off with the "Suggested follow-up prompts" setting.
+export const SUGGESTED_PROMPTS_GUIDANCE = `- After you have finished implementing the user's request, end your final message with 2-3 suggested follow-up prompts the user could send next. Wrap them in a <dyad-suggested-prompts> tag with exactly one prompt per line and nothing else inside the tag. Each prompt must be a short, concrete next step for this app written as the user would type it (for example "Add a dark mode toggle"). Omit the tag when you are asking the user a question, waiting for their approval, or did not complete the request. Example:
+<dyad-suggested-prompts>
+Add a dark mode toggle
+Make the header responsive on mobile
+Show a confirmation toast after saving
+</dyad-suggested-prompts>`;
+
+function generalGuidelinesBlock(suggestedPromptsEnabled: boolean): string {
+  return `<general_guidelines>
 ${COMMON_GUIDELINES}
 - Be careful not to introduce security vulnerabilities such as command injection, XSS, SQL injection, and other OWASP top 10 vulnerabilities. If you notice that you wrote insecure code, immediately fix it. Prioritize writing safe, secure, and correct code.
 - Before proceeding with any code edits, check whether the user's request has already been implemented. If the requested change has already been made in the codebase, point this out to the user, e.g., "This feature is already implemented as described."
 - Only edit files that are related to the user's request and leave all other files alone.
 - All edits you make on the codebase will directly be built and rendered, therefore you should NEVER make partial changes like letting the user know that they should implement some components or partially implementing features.
 - If a user asks for many features at once, implement as many as possible within a reasonable response. Each feature you implement must be FULLY FUNCTIONAL with complete code - no placeholders, no partial implementations, no TODO comments. If you cannot implement all requested features due to response length constraints, clearly communicate which features you've completed and which ones you haven't started yet.
-${IMPLEMENTATION_SIMPLICITY_GUIDANCE}
+${IMPLEMENTATION_SIMPLICITY_GUIDANCE}${suggestedPromptsEnabled ? `\n${SUGGESTED_PROMPTS_GUIDANCE}` : ""}
 </general_guidelines>`;
+}
 
 const TOOL_CALLING_BLOCK = `<tool_calling>
 You have tools at your disposal to solve the coding task. Follow these rules regarding tool calls:
@@ -622,6 +634,7 @@ function buildLocalAgentSystemPrompt({
   restartAppToolAvailable,
   reinstallAndRestartAppToolAvailable,
   runBuildToolAvailable,
+  suggestedPromptsEnabled,
 }: {
   enableAppBlueprint: boolean;
   hasAppBlueprint: boolean;
@@ -636,6 +649,7 @@ function buildLocalAgentSystemPrompt({
   restartAppToolAvailable: boolean;
   reinstallAndRestartAppToolAvailable: boolean;
   runBuildToolAvailable: boolean;
+  suggestedPromptsEnabled: boolean;
 }): string {
   return `
 ${ROLE_BLOCK}
@@ -644,7 +658,7 @@ ${APP_COMMANDS_BLOCK}
 
 ${appLifecycleBlock({ restartAppToolAvailable, reinstallAndRestartAppToolAvailable })}
 
-${GENERAL_GUIDELINES_BLOCK}
+${generalGuidelinesBlock(suggestedPromptsEnabled)}
 
 ${TOOL_CALLING_BLOCK}
 
@@ -678,6 +692,7 @@ function buildLocalAgentBasicSystemPrompt(
   restartAppToolAvailable: boolean,
   reinstallAndRestartAppToolAvailable: boolean,
   runBuildToolAvailable: boolean,
+  suggestedPromptsEnabled: boolean,
 ): string {
   return `
 ${ROLE_BLOCK}
@@ -686,7 +701,7 @@ ${APP_COMMANDS_BLOCK}
 
 ${appLifecycleBlock({ restartAppToolAvailable, reinstallAndRestartAppToolAvailable })}
 
-${GENERAL_GUIDELINES_BLOCK}
+${generalGuidelinesBlock(suggestedPromptsEnabled)}
 
 ${TOOL_CALLING_BLOCK}
 
@@ -711,6 +726,7 @@ function buildBuildModeSystemPrompt(
   appBlueprint: AppBlueprintData | undefined,
   restartAppToolAvailable: boolean,
   reinstallAndRestartAppToolAvailable: boolean,
+  suggestedPromptsEnabled: boolean,
 ): string {
   const workflowSteps = [
     "**Understand:** Think about the user's request and inspect the relevant code using read-only tools. Use `grep` and `list_files` to locate code, then `read_file` to validate assumptions instead of guessing.",
@@ -743,7 +759,7 @@ ${APP_COMMANDS_BLOCK}
 
 ${appLifecycleBlock({ restartAppToolAvailable, reinstallAndRestartAppToolAvailable })}
 
-${GENERAL_GUIDELINES_BLOCK}
+${generalGuidelinesBlock(suggestedPromptsEnabled)}
 
 ${TOOL_CALLING_BLOCK}
 
@@ -954,6 +970,8 @@ export function constructLocalAgentPrompt(
     restartAppToolAvailable?: boolean;
     reinstallAndRestartAppToolAvailable?: boolean;
     runBuildToolAvailable?: boolean;
+    /** Whether to ask for follow-up prompt chips; off via user setting. */
+    suggestedPromptsEnabled?: boolean;
   },
 ): string {
   const enableAppBlueprint = options?.enableAppBlueprint === true;
@@ -972,6 +990,7 @@ export function constructLocalAgentPrompt(
   const reinstallAndRestartAppToolAvailable =
     options?.reinstallAndRestartAppToolAvailable !== false;
   const runBuildToolAvailable = options?.runBuildToolAvailable !== false;
+  const suggestedPromptsEnabled = options?.suggestedPromptsEnabled !== false;
 
   // Select the appropriate base prompt
   let basePrompt: string;
@@ -989,6 +1008,7 @@ export function constructLocalAgentPrompt(
       restartAppToolAvailable,
       reinstallAndRestartAppToolAvailable,
       runBuildToolAvailable,
+      suggestedPromptsEnabled,
     );
   } else {
     basePrompt = buildLocalAgentSystemPrompt({
@@ -1005,6 +1025,7 @@ export function constructLocalAgentPrompt(
       restartAppToolAvailable,
       reinstallAndRestartAppToolAvailable,
       runBuildToolAvailable,
+      suggestedPromptsEnabled,
     });
   }
 
@@ -1047,6 +1068,8 @@ export function constructBuildAgentPrompt(
     appBlueprint?: AppBlueprintData;
     restartAppToolAvailable?: boolean;
     reinstallAndRestartAppToolAvailable?: boolean;
+    /** Whether to ask for follow-up prompt chips; off via user setting. */
+    suggestedPromptsEnabled?: boolean;
   },
 ): string {
   const enableAppBlueprint = options?.enableAppBlueprint === true;
@@ -1068,6 +1091,7 @@ export function constructBuildAgentPrompt(
     appBlueprint,
     options?.restartAppToolAvailable !== false,
     options?.reinstallAndRestartAppToolAvailable !== false,
+    options?.suggestedPromptsEnabled !== false,
   )
     .replace("[[SERVER_LAYER]]", () => serverLayer)
     .replace("[[AI_RULES]]", () => aiRules ?? DEFAULT_AI_RULES);

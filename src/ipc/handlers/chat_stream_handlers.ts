@@ -1,4 +1,5 @@
 import { SubscriptionBillingError } from "@/shared/subscription_billing_error";
+import { DEFAULT_ENABLE_SUGGESTED_PROMPTS } from "@/shared/settings_defaults";
 import { modelForChatBackend } from "@/shared/execution_backend";
 import { isDotenvFilePath } from "@/utils/dotenv_redaction";
 import type { ExternalModelAdmission } from "../services/external_model_admission";
@@ -2348,6 +2349,8 @@ ${componentSnippet}
           restartAppToolAvailable,
           reinstallAndRestartAppToolAvailable,
           runBuildToolAvailable,
+          suggestedPromptsEnabled:
+            settings.enableSuggestedPrompts ?? DEFAULT_ENABLE_SUGGESTED_PROMPTS,
         });
 
         // Add information for any legacy caller that still injects full

@@ -1054,6 +1054,11 @@ function renderCustomTag(
       // Don't render anything for dyad-chat-summary
       return null;
 
+    case "dyad-suggested-prompts":
+      // Rendered as clickable chips above the chat input (see
+      // SuggestedPromptsStrip), not inline in the transcript.
+      return null;
+
     case "dyad-command":
       if (attributes.type) {
         const action = {

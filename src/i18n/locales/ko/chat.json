@@ -115,6 +115,10 @@
   "refreshApp": "앱 새로고침",
   "refreshAppDescription": "애플리케이션 미리보기 새로고침",
   "keepGoing": "계속 진행",
+  "suggestedPrompts": {
+    "label": "추천 다음 단계",
+    "dismiss": "제안 숨기기"
+  },
   "addTypeScript": "TypeScript 추가",
   "tipProposal": "팁 제안",
   "securityRisks": "보안 위험",

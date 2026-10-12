@@ -88,6 +88,9 @@ import {
   doesSqlMutateSchema,
 } from "@/lib/sqlSchemaMutation";
 import { ChatImageGenerationStrip } from "./ChatImageGenerationStrip";
+import { SuggestedPromptsStrip } from "./SuggestedPromptsStrip";
+import { selectSuggestedPrompts } from "@/lib/suggestedPrompts";
+import { DEFAULT_ENABLE_SUGGESTED_PROMPTS } from "@/shared/settings_defaults";
 import { dismissedImageGenerationJobIdsAtom } from "@/atoms/imageGenerationAtoms";
 import { useChatImageGenerationJobs } from "@/image_generation/hooks";
 import { ImageGeneratorDialog } from "@/components/ImageGeneratorDialog";
@@ -772,6 +775,41 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     setShowError(false);
   };
 
+  // Follow-up prompts the model attached to its last reply. Hidden while a
+  // pending consent or unapproved proposal still owns the composer's attention,
+  // and entirely when the user has turned the setting off.
+  const suggestedPromptsEnabled =
+    settings?.enableSuggestedPrompts ?? DEFAULT_ENABLE_SUGGESTED_PROMPTS;
+  const suggestedPrompts = useMemo(
+    () =>
+      suggestedPromptsEnabled
+        ? selectSuggestedPrompts({ messages, isStreaming })
+        : null,
+    [suggestedPromptsEnabled, messages, isStreaming],
+  );
+  const handleSelectSuggestedPrompt = useCallback(
+    (prompt: string) => {
+      if (!chatId || isStreaming) return;
+      void openPreviewIfSetupRequired(appId);
+      void streamMessage({
+        prompt,
+        chatId,
+        redo: false,
+        showOptimisticMessage: true,
+        requestedChatMode: isChatModeLoading ? null : storedChatMode,
+      });
+    },
+    [
+      chatId,
+      isStreaming,
+      appId,
+      openPreviewIfSetupRequired,
+      streamMessage,
+      isChatModeLoading,
+      storedChatMode,
+    ],
+  );
+
   const handleNewChat = async () => {
     if (appId) {
       try {
@@ -1054,6 +1092,15 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           <ChatImageGenerationStrip
             onGenerateImage={handleOpenImageGenerator}
           />
+
+          {/* Model-suggested follow-up prompts from the last reply */}
+          {suggestedPrompts && !pendingToolConsent && !disableSendButton && (
+            <SuggestedPromptsStrip
+              messageId={suggestedPrompts.messageId}
+              prompts={suggestedPrompts.prompts}
+              onSelect={handleSelectSuggestedPrompt}
+            />
+          )}
 
           {/* Use the DragDropOverlay component */}
           <DragDropOverlay isDraggingOver={isDraggingOver} />

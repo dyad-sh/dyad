@@ -36,6 +36,7 @@ const DYAD_CUSTOM_TAG_NAMES = [
   "dyad-output",
   "dyad-problem-report",
   "dyad-chat-summary",
+  "dyad-suggested-prompts",
   "dyad-edit",
   "dyad-grep",
   "dyad-explore-code",

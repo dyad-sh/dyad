@@ -115,6 +115,10 @@
   "refreshApp": "Atualizar app",
   "refreshAppDescription": "Atualizar a pré-visualização do aplicativo",
   "keepGoing": "Continuar",
+  "suggestedPrompts": {
+    "label": "Próximos passos sugeridos",
+    "dismiss": "Ocultar sugestões"
+  },
   "addTypeScript": "Adicionar TypeScript",
   "tipProposal": "Dica de proposta",
   "securityRisks": "Riscos de Segurança",

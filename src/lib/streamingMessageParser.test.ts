@@ -349,3 +349,22 @@ trailing`;
     expect(finalBlocks[0].content).toBe("new");
   });
 });
+
+describe("streamingMessageParser suggested prompts", () => {
+  it("parses dyad-suggested-prompts as a custom tag so it never renders as text", () => {
+    const content =
+      "Done!\n<dyad-suggested-prompts>\nAdd a dark mode toggle\n</dyad-suggested-prompts>";
+    const { blocks } = parseFullMessage(content);
+    expect(blocksToShape(blocks)).toEqual([
+      { kind: "markdown", content: "Done!\n", complete: true },
+      {
+        kind: "custom-tag",
+        tag: "dyad-suggested-prompts",
+        attributes: {},
+        content: "\nAdd a dark mode toggle\n",
+        complete: true,
+        inProgress: false,
+      },
+    ]);
+  });
+});

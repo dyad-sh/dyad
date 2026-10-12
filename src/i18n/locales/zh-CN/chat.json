@@ -115,6 +115,10 @@
   "refreshApp": "刷新应用",
   "refreshAppDescription": "刷新应用预览",
   "keepGoing": "继续",
+  "suggestedPrompts": {
+    "label": "建议的下一步",
+    "dismiss": "隐藏建议"
+  },
   "addTypeScript": "添加 TypeScript",
   "tipProposal": "提案提示",
   "securityRisks": "安全风险",

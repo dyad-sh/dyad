@@ -27,6 +27,7 @@ import { SandboxedE2eTestsSwitch } from "@/components/SandboxedE2eTestsSwitch";
 import { AutoExpandPreviewSwitch } from "@/components/AutoExpandPreviewSwitch";
 import { KeepPreviewsRunningSwitch } from "@/components/KeepPreviewsRunningSwitch";
 import { ChatEventNotificationSwitch } from "@/components/ChatEventNotificationSwitch";
+import { SuggestedPromptsSwitch } from "@/components/SuggestedPromptsSwitch";
 import { AutoUpdateSwitch } from "@/components/AutoUpdateSwitch";
 import { ReleaseChannelSelector } from "@/components/ReleaseChannelSelector";
 import { NeonIntegration } from "@/components/NeonIntegration";
@@ -589,6 +590,14 @@ export function WorkflowSettings() {
         <p className={hint}>
           Show native notifications when a chat response completes or a
           questionnaire needs your input while the app is not focused.
+        </p>
+      </div>
+
+      <div id={SETTING_IDS.suggestedPrompts} className="space-y-1.5">
+        <SuggestedPromptsSwitch />
+        <p className={hint}>
+          After a Build or Agent response, show clickable suggestions for what
+          to ask next above the chat input.
         </p>
       </div>
     </SettingsSection>

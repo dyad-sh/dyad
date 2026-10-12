@@ -774,6 +774,7 @@ export const constructSystemPrompt = ({
   restartAppToolAvailable,
   reinstallAndRestartAppToolAvailable,
   runBuildToolAvailable,
+  suggestedPromptsEnabled,
 }: {
   aiRules: string | undefined;
   chatMode?: "build" | "ask" | "local-agent" | "plan";
@@ -830,6 +831,8 @@ export const constructSystemPrompt = ({
   restartAppToolAvailable?: boolean;
   reinstallAndRestartAppToolAvailable?: boolean;
   runBuildToolAvailable?: boolean;
+  /** Whether writable prompts ask for follow-up prompt chips (user setting). */
+  suggestedPromptsEnabled?: boolean;
 }) => {
   if (chatMode === "plan") {
     return constructPlanModePrompt(aiRules, themePrompt);
@@ -855,6 +858,7 @@ export const constructSystemPrompt = ({
       restartAppToolAvailable,
       reinstallAndRestartAppToolAvailable,
       runBuildToolAvailable,
+      suggestedPromptsEnabled,
     });
   }
 
@@ -869,6 +873,7 @@ export const constructSystemPrompt = ({
       appBlueprint,
       restartAppToolAvailable,
       reinstallAndRestartAppToolAvailable,
+      suggestedPromptsEnabled,
     });
   }
 

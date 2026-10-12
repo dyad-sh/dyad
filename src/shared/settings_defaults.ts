@@ -2,3 +2,4 @@
 // Keep renderer-consumed defaults here free of runtime side effects.
 export const DEFAULT_ENABLE_TESTING_FOR_NEW_APPS = false;
 export const DEFAULT_ENABLE_PREVIEW_COOKIE_ISOLATION = true;
+export const DEFAULT_ENABLE_SUGGESTED_PROMPTS = true;

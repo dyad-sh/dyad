@@ -13,6 +13,7 @@ const CUSTOM_TAG_NAMES = [
   "dyad-output",
   "dyad-problem-report",
   "dyad-chat-summary",
+  "dyad-suggested-prompts",
   "dyad-edit",
   "dyad-codebase-context",
   "dyad-script",
@@ -244,6 +245,7 @@ export const useCopyToClipboard = () => {
       }
 
       case "dyad-chat-summary":
+      case "dyad-suggested-prompts":
       case "dyad-command":
         // Don't include these in copy
         return "";

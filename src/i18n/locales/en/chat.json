@@ -115,6 +115,10 @@
   "refreshApp": "Refresh app",
   "refreshAppDescription": "Refresh the application preview",
   "keepGoing": "Keep going",
+  "suggestedPrompts": {
+    "label": "Suggested next steps",
+    "dismiss": "Hide suggestions"
+  },
   "addTypeScript": "Add TypeScript",
   "tipProposal": "Tip proposal",
   "securityRisks": "Security Risks",

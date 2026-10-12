@@ -113,6 +113,10 @@
   "refreshApp": "Uygulamayı yenile",
   "refreshAppDescription": "Uygulama önizlemesini yenile",
   "keepGoing": "Devam et",
+  "suggestedPrompts": {
+    "label": "Önerilen sonraki adımlar",
+    "dismiss": "Önerileri gizle"
+  },
   "addTypeScript": "TypeScript ekle",
   "tipProposal": "Bahşiş önerisi",
   "securityRisks": "Güvenlik Riskleri",

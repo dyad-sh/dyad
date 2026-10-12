@@ -1,0 +1,101 @@
+import { describe, expect, it } from "vitest";
+import type { Message } from "@/ipc/types";
+import {
+  extractSuggestedPrompts,
+  selectSuggestedPrompts,
+} from "./suggestedPrompts";
+
+function assistant(content: string, overrides: Partial<Message> = {}): Message {
+  return { id: 2, role: "assistant", content, ...overrides };
+}
+
+const user: Message = { id: 1, role: "user", content: "Build a todo app" };
+
+describe("extractSuggestedPrompts", () => {
+  it("returns one prompt per line from the tag body", () => {
+    const content = `Done!\n<dyad-suggested-prompts>\nAdd a dark mode toggle\nMake the header responsive\n</dyad-suggested-prompts>`;
+    expect(extractSuggestedPrompts(content)).toEqual([
+      "Add a dark mode toggle",
+      "Make the header responsive",
+    ]);
+  });
+
+  it("returns nothing without a closed tag", () => {
+    expect(extractSuggestedPrompts("Done!")).toEqual([]);
+    expect(
+      extractSuggestedPrompts(
+        "Done!\n<dyad-suggested-prompts>\nAdd a dark mode toggle\n",
+      ),
+    ).toEqual([]);
+  });
+
+  it("strips list markers, blank lines, duplicates and caps at three", () => {
+    const content = `<dyad-suggested-prompts>
+- Add a dark mode toggle
+
+1. Make the header responsive
+* add a dark mode toggle
+• Connect a database
+2) Add user accounts
+Add tests
+</dyad-suggested-prompts>`;
+    expect(extractSuggestedPrompts(content)).toEqual([
+      "Add a dark mode toggle",
+      "Make the header responsive",
+      "Connect a database",
+    ]);
+  });
+
+  it("uses the last closed tag and unescapes XML entities", () => {
+    const content = `<dyad-suggested-prompts>\nOld idea\n</dyad-suggested-prompts>\nMore work...\n<dyad-suggested-prompts>\nAdd search &amp; filters\n</dyad-suggested-prompts>`;
+    expect(extractSuggestedPrompts(content)).toEqual(["Add search & filters"]);
+  });
+});
+
+describe("selectSuggestedPrompts", () => {
+  const withPrompts = assistant(
+    "Done\n<dyad-suggested-prompts>\nAdd a dark mode toggle\n</dyad-suggested-prompts>",
+  );
+
+  it("offers the prompts from a settled trailing assistant message", () => {
+    expect(
+      selectSuggestedPrompts({
+        messages: [user, withPrompts],
+        isStreaming: false,
+      }),
+    ).toEqual({ messageId: 2, prompts: ["Add a dark mode toggle"] });
+  });
+
+  it("offers nothing while streaming", () => {
+    expect(
+      selectSuggestedPrompts({
+        messages: [user, withPrompts],
+        isStreaming: true,
+      }),
+    ).toBeNull();
+  });
+
+  it("offers nothing once the user has replied", () => {
+    expect(
+      selectSuggestedPrompts({
+        messages: [user, withPrompts, { ...user, id: 3 }],
+        isStreaming: false,
+      }),
+    ).toBeNull();
+  });
+
+  it("offers nothing for a rejected message or one without the tag", () => {
+    expect(
+      selectSuggestedPrompts({
+        messages: [user, { ...withPrompts, approvalState: "rejected" }],
+        isStreaming: false,
+      }),
+    ).toBeNull();
+    expect(
+      selectSuggestedPrompts({
+        messages: [user, assistant("Done")],
+        isStreaming: false,
+      }),
+    ).toBeNull();
+  });
+});

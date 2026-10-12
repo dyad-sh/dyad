@@ -594,6 +594,8 @@ const BaseUserSettingsFields = {
   // than run against the real database either way.
   disableSandboxedE2eTests: z.boolean().optional(),
   autoExpandPreviewPanel: z.boolean().optional(),
+  // Follow-up prompt chips above the chat input after Build and Agent turns.
+  enableSuggestedPrompts: z.boolean().optional(),
   enableChatEventNotifications: z.boolean().optional(),
   blockUnsafeNpmPackages: z.boolean().optional(),
   enablePnpmMinimumReleaseAgeWarning: z.boolean().optional(),

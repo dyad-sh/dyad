@@ -242,6 +242,13 @@ export class AppManagement {
     });
     await this.page.getByRole("button", { name: "Select Folder" }).click();
     await this.page.getByRole("button", { name: "Import" }).click();
+    // Import opens the new app's chat once the main process answers. Return
+    // only when that navigation has landed: a caller that navigates in the
+    // meantime (goToChatTab's Apps click) races the pending route change and
+    // can end up on home with the app pane closed.
+    await expect(this.page.getByTestId("chat-input-container")).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
   }
 
   async configureGitUser({

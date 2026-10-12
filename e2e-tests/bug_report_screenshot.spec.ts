@@ -183,7 +183,9 @@ test("report a bug with a screenshot", async ({ po }) => {
   );
   expect(body).not.toContain("Paste your screenshot here");
   await expect(po.page.getByRole("dialog")).toHaveCount(0);
-  expect(po.page.getByText("Did you paste your screenshot?")).toHaveCount(0);
+  await expect(po.page.getByText("Did you paste your screenshot?")).toHaveCount(
+    0,
+  );
 
   // Main was asked to send the capture the form showed, to the URL the
   // service signed, with the headers the signature covers.
@@ -268,6 +270,20 @@ test("falls back to pasting when the screenshot upload fails", async ({
     await expect(
       po.page.getByText("Did you paste your screenshot?"),
     ).toBeVisible();
+    // The same reminder is also raised as an error toast. In CI's small window
+    // it sits over the Done button, and a pointer resting on a sonner toast
+    // pauses its auto-dismiss, so the click would wait on it forever.
+    const reminderToast = po.page
+      .locator("[data-sonner-toast]")
+      .filter({ hasText: "could not be attached" });
+    if (await reminderToast.isVisible()) {
+      await reminderToast
+        .getByRole("button", { name: "Close error" })
+        .click({ force: true });
+    }
+    await expect(po.page.locator("[data-sonner-toast]")).toHaveCount(0, {
+      timeout: Timeout.MEDIUM,
+    });
     await po.page.getByRole("button", { name: "Done" }).click();
     await expect(po.page.getByRole("dialog")).toHaveCount(0);
     expect(body).toContain("The generated page is blank.");

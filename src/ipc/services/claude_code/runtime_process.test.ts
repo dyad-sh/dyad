@@ -11,7 +11,11 @@ vi.mock("node:fs/promises", async (original) => ({
   ...(await original<typeof import("node:fs/promises")>()),
   access: vi.fn().mockResolvedValue(undefined),
 }));
-import { runClaudeTurn, safeClaudeDiagnostic } from "./runtime";
+import {
+  CLAUDE_MCP_TOOL_TIMEOUT_MS,
+  runClaudeTurn,
+  safeClaudeDiagnostic,
+} from "./runtime";
 import { getClaudeUsageLimits, setClaudeUsageAccount } from "./usage_limits";
 import { DyadErrorKind } from "@/errors/dyad_error";
 
@@ -197,4 +201,18 @@ it("drains stdout after an oversized frame so process close can settle the turn"
   spawned.stdout.end("ignored after failure");
   await rejection;
   expect(turn.onEvent).not.toHaveBeenCalled();
+});
+
+it("lets the CLI wait on a Dyad tool call for as long as it allows", async () => {
+  state.spawn.mockClear();
+  const spawned = child();
+  state.spawn.mockReturnValue(spawned);
+  const running = runClaudeTurn(options(new AbortController().signal));
+  await vi.waitFor(() => expect(state.spawn).toHaveBeenCalled());
+  spawned.emit("close", 0);
+  await running;
+  // Questionnaires have no Dyad-side deadline, so the CLI must never give up
+  // on a parked call first. 2^31-1 ms is the CLI's own clamp.
+  expect(CLAUDE_MCP_TOOL_TIMEOUT_MS).toBe(2 ** 31 - 1);
+  expect(state.spawn.mock.calls[0][2].env.MCP_TOOL_TIMEOUT).toBe("2147483647");
 });

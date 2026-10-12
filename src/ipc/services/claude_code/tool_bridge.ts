@@ -6,6 +6,7 @@ import path from "node:path";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import {
   CallToolRequestSchema,
+  CancelledNotificationSchema,
   ListToolsRequestSchema,
   type CallToolResult,
 } from "@modelcontextprotocol/sdk/types.js";
@@ -13,11 +14,23 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { asSchema, type ToolSet } from "ai";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
+const MAX_CANCELLATION_REASON_LENGTH = 200;
+
 /** Transport only. Tool callbacks are the same guarded callbacks used by Dyad. */
 export async function createDyadToolBridge(options: {
   tools: ToolSet;
   signal: AbortSignal;
-  invoke(name: string, args: unknown, id: string): Promise<CallToolResult>;
+  /**
+   * `signal` aborts when the CLI stops waiting for this call (its MCP tool
+   * timeout fired, or it cancelled the request). The turn itself stays live;
+   * only this call's human waits and I/O should be released.
+   */
+  invoke(
+    name: string,
+    args: unknown,
+    id: string,
+    signal: AbortSignal,
+  ): Promise<CallToolResult>;
 }) {
   const token = randomBytes(32).toString("hex");
   const closing = new AbortController();
@@ -28,6 +41,25 @@ export async function createDyadToolBridge(options: {
     string,
     { fingerprint: string; result: Promise<CallToolResult> }
   >();
+  // Stateless transport: every POST gets its own MCP server, so the SDK's
+  // per-server cancellation routing never sees the original request. Key
+  // in-flight calls here so a `notifications/cancelled` arriving on a later
+  // POST can still release the call it names.
+  const cancellations = new Map<string, AbortController>();
+  const abandonmentError = (reason: unknown) => {
+    const detail =
+      typeof reason === "string" && reason.trim()
+        ? reason.trim().slice(0, MAX_CANCELLATION_REASON_LENGTH)
+        : reason instanceof Error
+          ? reason.message.slice(0, MAX_CANCELLATION_REASON_LENGTH)
+          : "";
+    return new DyadError(
+      detail
+        ? `Claude Code stopped waiting for this tool call: ${detail}`
+        : "Claude Code stopped waiting for this tool call.",
+      DyadErrorKind.External,
+    );
+  };
   const declarations = await Promise.all(
     Object.entries(options.tools).map(async ([name, tool]) => ({
       name,
@@ -59,6 +91,14 @@ export async function createDyadToolBridge(options: {
     server.setRequestHandler(ListToolsRequestSchema, async () => ({
       tools: declarations,
     }));
+    server.setNotificationHandler(
+      CancelledNotificationSchema,
+      async (notification) => {
+        const { requestId, reason } = notification.params;
+        if (requestId === undefined) return;
+        cancellations.get(String(requestId))?.abort(abandonmentError(reason));
+      },
+    );
     server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
       signal.throwIfAborted();
       const name = request.params.name;
@@ -73,10 +113,19 @@ export async function createDyadToolBridge(options: {
         return prior.result;
       }
       if (calls.size >= 1000) throw new Error("Turn tool limit exceeded");
+      const cancellation = new AbortController();
+      cancellations.set(key, cancellation);
+      // Same-server cancellation (SDK routing) still counts when it happens.
+      extra.signal.addEventListener(
+        "abort",
+        () => cancellation.abort(abandonmentError(extra.signal.reason)),
+        { once: true },
+      );
       const work = options.invoke(
         name,
         request.params.arguments ?? {},
         randomUUID(),
+        AbortSignal.any([signal, cancellation.signal]),
       );
       calls.set(key, { fingerprint, result: work });
       active.add(work);
@@ -101,6 +150,7 @@ export async function createDyadToolBridge(options: {
         return await work;
       } finally {
         active.delete(work);
+        cancellations.delete(key);
         if (heartbeat) clearInterval(heartbeat);
       }
     });

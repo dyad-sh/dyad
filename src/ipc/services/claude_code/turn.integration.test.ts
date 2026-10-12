@@ -554,6 +554,63 @@ it("drains a parked questionnaire when the CLI dies without cancelling the outer
   }
 }, 15_000);
 
+it("releases a parked questionnaire when the CLI stops waiting and keeps serving later calls", async () => {
+  const { userInputRegistry } = await import("@/user_input/main");
+  const { recoverQuestionnaires } =
+    await import("@/user_input/questionnaire_journal");
+  const chatId = await ipc.chat.createChat({ appId: harness.appId });
+  const pendingForChat = () =>
+    userInputRegistry
+      .getPending()
+      .filter((p) => p.descriptor.chatId === chatId);
+  calls.operate.mockImplementationOnce(async (turn) => {
+    const client = await connectTools(turn);
+    try {
+      // The CLI's MCP tool timeout: the SDK client rejects locally and sends
+      // notifications/cancelled, exactly what Claude Code does at its deadline.
+      const abandoned = client.callTool(
+        {
+          name: "planning_questionnaire",
+          arguments: {
+            questions: [{ id: "q", type: "text", question: "Answer?" }],
+          },
+        },
+        undefined,
+        { timeout: 300 },
+      );
+      await vi.waitFor(() =>
+        expect(
+          pendingForChat().some((p) => p.descriptor.kind === "questionnaire"),
+        ).toBe(true),
+      );
+      await expect(abandoned).rejects.toThrow(/timed out/i);
+      // The card clears without the user answering or cancelling the turn.
+      await vi.waitFor(() => expect(pendingForChat()).toEqual([]));
+      // The FIFO queue is free again: the model's next call is served.
+      const listed = await client.callTool({
+        name: "list_files",
+        arguments: {},
+      });
+      expect(listed.isError).toBeFalsy();
+    } finally {
+      await client.close();
+    }
+  });
+  await harness.streamChat("Ask before listing files", { chatId });
+  expect(await recoverQuestionnaires(chatId)).toMatchObject([
+    { outcome: "interrupted" },
+  ]);
+  const saved = await harness.db.query.messages.findMany({
+    where: eq(messages.chatId, chatId),
+  });
+  const content = saved.find((m) => m.role === "assistant")!.content;
+  expect(content).toContain("Questionnaire closed");
+  expect(content).toContain(
+    "Claude Code stopped waiting for planning_questionnaire",
+  );
+  expect(content).toContain("Request timed out");
+}, 15_000);
+
 it("preserves Dyad whole-line edit, grep, rename/delete and Git semantics through MCP", async () => {
   const chatId = await ipc.chat.createChat({ appId: harness.appId });
   await harness.db

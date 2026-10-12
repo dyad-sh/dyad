@@ -121,3 +121,56 @@ it("deduplicates retried MCP identities and rejects conflicting payloads and for
     await bridge.close();
   }
 });
+
+it("releases an in-flight call when the client cancels it from a later POST", async () => {
+  let observed: AbortSignal | undefined;
+  const invoke = vi.fn(async (_name, _args, _id, signal: AbortSignal) => {
+    observed = signal;
+    await new Promise<void>((resolve) =>
+      signal.addEventListener("abort", () => resolve(), { once: true }),
+    );
+    return { content: [{ type: "text" as const, text: "released" }] };
+  });
+  const bridge = await createDyadToolBridge({
+    tools: { wait: { inputSchema: z.object({}) } },
+    signal: new AbortController().signal,
+    invoke,
+  });
+  const config = JSON.parse(await readFile(bridge.configPath, "utf8"))
+    .mcpServers.dyad;
+  const post = (body: unknown) =>
+    fetch(config.url, {
+      method: "POST",
+      headers: {
+        ...config.headers,
+        "Content-Type": "application/json",
+        Accept: "application/json, text/event-stream",
+      },
+      body: JSON.stringify(body),
+    });
+  try {
+    const call = post({
+      jsonrpc: "2.0",
+      id: 7,
+      method: "tools/call",
+      params: { name: "wait", arguments: {} },
+    });
+    await vi.waitFor(() => expect(observed).toBeDefined());
+    expect(observed!.aborted).toBe(false);
+    // Stateless transport: the cancellation arrives on its own POST, served by
+    // a different MCP server instance than the call it names.
+    const cancelled = await post({
+      jsonrpc: "2.0",
+      method: "notifications/cancelled",
+      params: { requestId: 7, reason: "MCP error -32001: Request timed out" },
+    });
+    expect(cancelled.status).toBe(202);
+    expect(await (await call).text()).toContain("released");
+    expect(observed!.aborted).toBe(true);
+    expect(String((observed!.reason as Error).message)).toContain(
+      "Claude Code stopped waiting for this tool call: MCP error -32001: Request timed out",
+    );
+  } finally {
+    await bridge.close();
+  }
+});

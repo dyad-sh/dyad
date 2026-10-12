@@ -386,6 +386,16 @@ export function claudeArguments(
   ];
 }
 
+/**
+ * The CLI's hard wall-clock limit per MCP tool call (progress notifications do
+ * not extend it). Dyad tools park on human input — questionnaires have no
+ * deadline at all — so this must outlast every user-input registry deadline;
+ * otherwise the CLI abandons the call while Dyad is still waiting. The CLI
+ * clamps the value to this signed 32-bit maximum (~24.8 days), which is the
+ * longest wait it allows.
+ */
+export const CLAUDE_MCP_TOOL_TIMEOUT_MS = 2_147_483_647;
+
 /** CLI owns inference. Its adapter emits provider-executed events to Dyad;
  * the SDK must never execute those tool calls again. */
 export async function runClaudeTurn(turn: BackendTurn): Promise<void> {
@@ -395,7 +405,10 @@ export async function runClaudeTurn(turn: BackendTurn): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const child = spawn(executable, claudeArguments(turn), {
       cwd: turn.cwd,
-      env: { ...claudeEnvironment(), MCP_TOOL_TIMEOUT: "2100000" },
+      env: {
+        ...claudeEnvironment(),
+        MCP_TOOL_TIMEOUT: String(CLAUDE_MCP_TOOL_TIMEOUT_MS),
+      },
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
       detached: process.platform !== "win32",

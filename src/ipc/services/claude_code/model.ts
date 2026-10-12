@@ -30,6 +30,7 @@ import { toMcpToolResult } from "./tool_result";
 import type { UserMessageContentPart } from "@/pro/main/ipc/handlers/local_agent/tools/types";
 import { claudeConversation } from "./prompt";
 import { getUserDataPath } from "@/paths/paths";
+import { escapeXmlAttr, escapeXmlContent } from "../../../../shared/xmlEscape";
 
 const emptyUsage = (): LanguageModelV3Usage => ({
   inputTokens: {
@@ -217,14 +218,22 @@ export class ClaudeCodeModel implements LanguageModelV3 {
       bridge = await createDyadToolBridge({
         tools,
         signal: runSignal,
-        invoke: (name, args, id) => {
+        invoke: (name, args, id, cancellation) => {
           // FIFO admission is also the decision barrier: no concurrent operation
           // can overtake a questionnaire or consent wait. No workspace lock is held.
           const call = queue.then(async (): Promise<CallToolResult> => {
             runSignal.throwIfAborted();
+            // The CLI gave up on this call while it was queued: skip it so the
+            // next call is served instead of a result nobody is waiting for.
+            cancellation.throwIfAborted();
             if (!started || stopAfterTool)
               throw new Error("Tool admission is closed");
             const tool = tools[name];
+            // Tools read the shared context's signal (questionnaire and consent
+            // parks wait on it). Bind it to this call so a CLI-abandoned call
+            // releases its wait without cancelling the turn. The FIFO queue
+            // guarantees only one call sees the context at a time.
+            const callSignal = AbortSignal.any([runSignal, cancellation]);
             let value: unknown;
             let isError = false;
             emit({
@@ -242,13 +251,14 @@ export class ClaudeCodeModel implements LanguageModelV3 {
               input: JSON.stringify(args),
               providerExecuted: true,
             });
+            ctx.abortSignal = callSignal;
             try {
               if (!tool.execute)
                 throw new Error("Tool has no execution adapter");
               value = await tool.execute(args, {
                 toolCallId: id,
                 messages: [],
-                abortSignal: runSignal,
+                abortSignal: callSignal,
               });
               if (
                 name === "write_plan" ||
@@ -260,6 +270,18 @@ export class ClaudeCodeModel implements LanguageModelV3 {
             } catch (error) {
               isError = true;
               value = error instanceof Error ? error.message : String(error);
+            } finally {
+              ctx.abortSignal = runSignal;
+            }
+            if (cancellation.aborted && !runSignal.aborted) {
+              // Tell the user why their pending input vanished: the result
+              // below goes to a request the CLI already abandoned.
+              const reason = cancellation.reason;
+              ctx.onXmlComplete(
+                `<dyad-status title="${escapeXmlAttr(`Claude Code stopped waiting for ${name}`)}" state="warning">${escapeXmlContent(
+                  reason instanceof Error ? reason.message : String(reason),
+                )}</dyad-status>`,
+              );
             }
             const safe = sanitizeMcpToolResult(value);
             emit({

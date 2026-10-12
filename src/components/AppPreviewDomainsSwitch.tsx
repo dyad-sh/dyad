@@ -1,6 +1,7 @@
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useSettings } from "@/hooks/useSettings";
+import { DEFAULT_ENABLE_APP_PREVIEW_DOMAINS } from "@/shared/settings_defaults";
 
 export function AppPreviewDomainsSwitch() {
   const { settings, updateSettings } = useSettings();
@@ -11,13 +12,17 @@ export function AppPreviewDomainsSwitch() {
         <Switch
           id="enable-app-preview-domains"
           aria-label="App-specific localhost domains"
-          checked={!!settings?.enableAppPreviewDomains}
+          checked={
+            settings?.enableAppPreviewDomains ??
+            DEFAULT_ENABLE_APP_PREVIEW_DOMAINS
+          }
           disabled={!settings}
           onCheckedChange={(checked) => {
             // The settings mutation displays its own error toast.
-            void updateSettings({ enableAppPreviewDomains: checked }).catch(
-              () => {},
-            );
+            void updateSettings({
+              enableAppPreviewDomains: checked,
+              ...(checked && { hideAppPreviewDomainsBanner: false }),
+            }).catch(() => {});
           }}
         />
         <Label htmlFor="enable-app-preview-domains">
@@ -26,7 +31,7 @@ export function AppPreviewDomainsSwitch() {
       </div>
       <p className="text-[13px] leading-relaxed text-muted-foreground">
         Use <code>app-&lt;id&gt;.localhost</code> preview addresses to keep each
-        app's cookies separate. Off by default. Restart running apps to apply
+        app's cookies separate. On by default. Restart running apps to apply
         changes.
       </p>
     </div>

@@ -1,4 +1,8 @@
 import { PreviewAuthBanner } from "./PreviewAuthBanner";
+import {
+  PreviewAppDomainsBanner,
+  PreviewAppDomainsMenuItem,
+} from "./PreviewAppDomains";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { currentTestRunStateAtom } from "@/atoms/testRuntimeAtoms";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
@@ -1570,6 +1574,19 @@ export const PreviewIframe = ({
                   </DropdownMenuItem>
                 )}
                 {!showOpenBrowser && <DropdownMenuSeparator />}
+                {!isCloudMode && (
+                  <>
+                    <PreviewAppDomainsMenuItem
+                      onRestart={onRestart}
+                      disabled={
+                        loading ||
+                        recorder.phase !== "idle" ||
+                        testRunPhase !== "idle"
+                      }
+                    />
+                    <DropdownMenuSeparator />
+                  </>
+                )}
                 {!isCloudMode && originalUrl && (
                   <DropdownMenuItem
                     onClick={() =>
@@ -1622,6 +1639,8 @@ export const PreviewIframe = ({
           </div>
         </div>
       )}
+
+      {!isCloudMode && !annotatorMode && <PreviewAppDomainsBanner />}
 
       {/* Under the browser header rather than above it: on this tab the bar
           reads as part of the preview's chrome instead of shoving it down.

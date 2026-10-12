@@ -272,6 +272,12 @@
     "tests": "Testler",
     "plan": "Plan",
     "moreOptions": "Daha fazla seçenek",
+    "appDomains": {
+      "label": "Uygulamaya özel alan adları",
+      "description": "Tüm uygulamalara uygulanır; bu önizlemeyi yeniden başlatır.",
+      "banner": "Uygulamaya özel alan adları etkin. Özellikle OAuth ile sorun mu yaşıyorsunuz? localhost kullanmak için Diğer seçenekler (⋮) menüsünden “Uygulamaya özel alan adları” seçeneğini kapatın.",
+      "dismiss": "Alan adı bildirimini kapat"
+    },
     "rebuild": "Yeniden Derle",
     "rebuildDescription": "node_modules'i yeniden kurar ve yeniden başlatır",
     "clearCache": "Önbelleği Temizle",

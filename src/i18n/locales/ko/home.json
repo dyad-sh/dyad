@@ -285,6 +285,12 @@
     },
     "plan": "계획",
     "moreOptions": "추가 옵션",
+    "appDomains": {
+      "label": "앱별 도메인",
+      "description": "모든 앱에 적용되며 이 미리보기를 다시 시작합니다.",
+      "banner": "앱별 도메인이 활성화되었습니다. OAuth 등에서 문제가 발생하면 더 보기(⋮)에서 ‘앱별 도메인’을 꺼서 localhost를 사용하세요.",
+      "dismiss": "앱 도메인 안내 닫기"
+    },
     "rebuild": "다시 빌드",
     "rebuildDescription": "node_modules를 다시 설치하고 재시작합니다",
     "clearCache": "캐시 지우기",

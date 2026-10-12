@@ -41,9 +41,24 @@ describe("Supabase preview redirect registration", () => {
       projectId: "branch-ref",
       organizationSlug: "org",
       redirectUrls: [
+        "http://localhost:*",
+        "http://localhost:*/**",
         "http://app-9.localhost:42999",
         "http://app-9.localhost:42999/**",
       ],
+      signal: expect.any(AbortSignal),
+    });
+  });
+
+  it("ensures localhost wildcards without accumulating individual ports", async () => {
+    await ensureSupabasePreviewRedirects({
+      ...input(),
+      origin: "http://localhost:42109",
+    });
+    expect(mocks.register).toHaveBeenCalledExactlyOnceWith({
+      projectId: "branch-ref",
+      organizationSlug: "org",
+      redirectUrls: ["http://localhost:*", "http://localhost:*/**"],
       signal: expect.any(AbortSignal),
     });
   });
@@ -58,7 +73,11 @@ describe("Supabase preview redirect registration", () => {
 
   it.each([
     "not a URL",
-    "http://localhost:42109",
+    "http://localhost.evil:42109",
+    "http://localhost:42109/path",
+    "http://user@localhost:42109",
+    "http://localhost:42109?next=evil",
+    "http://localhost:*",
     "http://app-8.localhost:42109",
     "http://app-9.localhost.evil:42109",
     "https://app-9.localhost:42109",

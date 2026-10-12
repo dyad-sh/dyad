@@ -168,8 +168,10 @@ describe("AppRuntimeService", () => {
       expect(harness.dependencies.ensureProxy).toHaveBeenCalledOnce();
       if (!enabled) {
         expect(appInfo.previewAuth).toBeUndefined();
-        expect(resolveSupabasePreviewTarget).not.toHaveBeenCalled();
       }
+      expect(resolveSupabasePreviewTarget).toHaveBeenCalledExactlyOnceWith(
+        APP_ID,
+      );
     },
   );
 

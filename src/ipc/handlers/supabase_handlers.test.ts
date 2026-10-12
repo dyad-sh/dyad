@@ -188,6 +188,8 @@ describe("Supabase handlers", () => {
           projectId,
           organizationSlug: "org-1",
           redirectUrls: [
+            "http://localhost:*",
+            "http://localhost:*/**",
             "http://app-7.localhost:42999",
             "http://app-7.localhost:42999/**",
           ],
@@ -534,6 +536,8 @@ describe("Supabase handlers", () => {
         expect.objectContaining({
           projectId: "proj-new",
           redirectUrls: [
+            "http://localhost:*",
+            "http://localhost:*/**",
             "http://app-7.localhost:42107",
             "http://app-7.localhost:42107/**",
           ],

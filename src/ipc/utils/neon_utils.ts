@@ -371,6 +371,40 @@ export function getSelectedDeployBranchType(appData: AppRow): NeonBranchType {
     : "production";
 }
 
+/** Ensure local development access on the captured Neon Auth branch. */
+export async function ensureNeonAuthAllowLocalhost({
+  projectId,
+  branchId,
+  signal,
+}: {
+  projectId: string;
+  branchId: string;
+  signal: AbortSignal;
+}): Promise<void> {
+  signal.throwIfAborted();
+  const neonClient = await abortable(getNeonClient(), signal);
+  signal.throwIfAborted();
+  const response = await neonClient.getNeonAuthAllowLocalhost(
+    projectId,
+    branchId,
+    { signal },
+  );
+  signal.throwIfAborted();
+  if (response.data?.allow_localhost === true) return;
+  if (response.data?.allow_localhost !== false) {
+    throw new DyadError(
+      "Neon returned an unexpected localhost Auth configuration.",
+      DyadErrorKind.External,
+    );
+  }
+  await neonClient.updateNeonAuthAllowLocalhost(
+    projectId,
+    branchId,
+    { allow_localhost: true },
+    { signal },
+  );
+}
+
 /**
  * Registers a deployed origin as a Neon Auth trusted domain.
  *

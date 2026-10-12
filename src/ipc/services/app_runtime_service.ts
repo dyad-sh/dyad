@@ -334,7 +334,6 @@ async function initializeRunningPreviewAuth(
   appInfo: RunningAppInfo,
   options: PreviewAuthOptions,
 ): Promise<void> {
-  if (options.hostname === "localhost") return;
   // Publish the runtime before reading the association, so provider changes
   // can reconcile it even during this lookup. Neon configuration is protected
   // by the caller's runtime-config claim; Supabase is a single DB snapshot.
@@ -512,13 +511,6 @@ export async function reconcileRunningNeonPreview(
 export async function reconcileRunningSupabasePreview(appId: number) {
   const appInfo = runningApps.get(appId);
   if (!appInfo) return;
-  if (
-    appInfo.previewHostname === "localhost" ||
-    (appInfo.proxyUrl
-      ? new URL(appInfo.proxyUrl).hostname === "localhost"
-      : !appInfo.previewHostname && !readSettings().enableAppPreviewDomains)
-  )
-    return;
   const target = await resolveSupabasePreviewTarget(appId);
   if (runningApps.get(appId) !== appInfo) return;
   await reconcileRunningPreviewAuth(
@@ -574,10 +566,8 @@ async function registerPreviewOrigin(
   if (runningApps.get(appId) !== appInfo || appInfo.stopRequested) return;
   // The opt-in is applied when starting the proxy. Use its actual address so
   // changing the setting does not alter an already-running preview's auth.
-  if (
-    appInfo.previewHostname === "localhost" ||
-    new URL(proxyUrl).hostname !== getAppPreviewHostname(appId)
-  )
+  const hostname = new URL(proxyUrl).hostname;
+  if (hostname !== "localhost" && hostname !== getAppPreviewHostname(appId))
     return;
   const previous = appInfo.previewAuthRegistration;
   const origin = new URL(proxyUrl).origin;

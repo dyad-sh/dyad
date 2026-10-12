@@ -1,13 +1,14 @@
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { getAppPreviewHostname } from "../../../shared/preview_hostname";
 
-/** Provider allowlists accept only the exact origin owned by this app. */
+/** Accept only the local proxy or the app's own preview origin. */
 export function assertAppPreviewOrigin(appId: number, origin: string): void {
   const url = URL.parse(origin);
   if (
     !url ||
     url.protocol !== "http:" ||
-    url.hostname !== getAppPreviewHostname(appId) ||
+    (url.hostname !== "localhost" &&
+      url.hostname !== getAppPreviewHostname(appId)) ||
     !url.port ||
     url.origin !== origin
   ) {

@@ -36,13 +36,18 @@ export async function ensureSupabasePreviewRedirects({
 }): Promise<void> {
   assertAppPreviewOrigin(appId, origin);
   signal.throwIfAborted();
+  // Localhost remains available even when the preview uses an app-specific
+  // domain. Cover both bare-origin redirects and arbitrarily nested callbacks.
+  const redirectUrls = ["http://localhost:*", "http://localhost:*/**"];
+  if (new URL(origin).hostname !== "localhost") {
+    redirectUrls.push(origin, `${origin}/**`);
+  }
   await abortable(
     ensureSupabaseAuthRedirectUrls({
       // A selected Supabase branch has its own project ref and Auth config.
       projectId: target.projectId,
       organizationSlug: target.organizationSlug,
-      // The bare origin is not matched by /** (which requires a slash).
-      redirectUrls: [origin, `${origin}/**`],
+      redirectUrls,
       signal,
     }),
     signal,

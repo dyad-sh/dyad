@@ -983,9 +983,20 @@ describe("executeApp", () => {
     }
   });
 
-  describe.each(["neon", "supabase"] as const)(
-    "%s preview auth registration",
-    (provider) => {
+  describe.each([
+    ["neon", "app-42.localhost"],
+    ["neon", "localhost"],
+    ["supabase", "app-42.localhost"],
+    ["supabase", "localhost"],
+  ] as const)(
+    "%s registers preview authentication in the background on %s",
+    (provider, hostname) => {
+      beforeEach(() => {
+        readSettingsMock.mockReturnValue({
+          runtimeMode2: "host",
+          enableAppPreviewDomains: hostname !== "localhost",
+        });
+      });
       const target: PreviewAuthTarget =
         provider === "neon"
           ? { provider, projectId: "project", branchId: "active" }
@@ -1003,6 +1014,7 @@ describe("executeApp", () => {
           mode: "host",
           lastViewedAt: 0,
           output,
+          previewHostname: hostname,
           previewAuthTarget: target,
         });
         return {
@@ -1038,9 +1050,7 @@ describe("executeApp", () => {
         await ensureProxyForRunningApp(request);
         await appRuntimeService.waitForReady(42);
         await runningApps.get(42)?.previewAuthRegistration?.settled;
-        expect(runningApps.get(42)?.proxyUrl).toBe(
-          "http://app-42.localhost:42142",
-        );
+        expect(runningApps.get(42)?.proxyUrl).toBe(`http://${hostname}:42142`);
       });
 
       it("publishes an already-running preview without waiting for provider registration", async () => {
@@ -1074,8 +1084,8 @@ describe("executeApp", () => {
         );
         const request = seed();
         startProxyMock.mockImplementation(async (_url, opts) => {
-          opts.onStarted("http://app-42.localhost:42999");
-          opts.onStarted("http://app-42.localhost:42142");
+          opts.onStarted(`http://${hostname}:42999`);
+          opts.onStarted(`http://${hostname}:42142`);
           return { terminate: vi.fn() };
         });
         await Promise.all([
@@ -1083,9 +1093,7 @@ describe("executeApp", () => {
           ensureProxyForRunningApp(request),
         ]);
         await vi.waitFor(() => expect(ensure).toHaveBeenCalledOnce());
-        expect(runningApps.get(42)?.proxyUrl).toBe(
-          "http://app-42.localhost:42999",
-        );
+        expect(runningApps.get(42)?.proxyUrl).toBe(`http://${hostname}:42999`);
         expect(safeSendMock).toHaveBeenCalledOnce();
         expect(safeSendMock).toHaveBeenLastCalledWith(
           expect.anything(),
@@ -1096,7 +1104,7 @@ describe("executeApp", () => {
         );
         expect(ensure).toHaveBeenCalledWith(
           expect.objectContaining({
-            origin: "http://app-42.localhost:42999",
+            origin: `http://${hostname}:42999`,
             target: expect.objectContaining({ projectId: "project" }),
           }),
         );
@@ -1112,9 +1120,7 @@ describe("executeApp", () => {
           "app:output",
           expect.objectContaining({ previewAuth: undefined }),
         );
-        expect(runningApps.get(42)?.proxyUrl).toBe(
-          "http://app-42.localhost:42999",
-        );
+        expect(runningApps.get(42)?.proxyUrl).toBe(`http://${hostname}:42999`);
       });
 
       it("keeps the preview open after failure and clears the warning on a successful retry", async () => {
@@ -1122,9 +1128,7 @@ describe("executeApp", () => {
         ensure.mockRejectedValueOnce(new Error("private upstream details"));
         await ensureProxyForRunningApp(request);
         await runningApps.get(42)?.previewAuthRegistration?.settled;
-        expect(runningApps.get(42)?.proxyUrl).toBe(
-          "http://app-42.localhost:42142",
-        );
+        expect(runningApps.get(42)?.proxyUrl).toBe(`http://${hostname}:42142`);
         expect(safeSendMock).toHaveBeenLastCalledWith(
           expect.anything(),
           "app:output",
@@ -1485,7 +1489,7 @@ describe("executeApp", () => {
   });
 
   it.each([undefined, false, true])(
-    "selects the preview hostname for preference %s without registering localhost auth",
+    "selects the preview hostname for preference %s and registers auth",
     async (enabled) => {
       readSettingsMock.mockReturnValue({
         runtimeMode2: "host",
@@ -1512,7 +1516,9 @@ describe("executeApp", () => {
       expect(runningApps.get(42)?.proxyUrl).toBe(`http://${hostname}:42142`);
       expect(
         neonPreviewDomainService.ensureTrustedDomain,
-      ).toHaveBeenCalledTimes(enabled ? 1 : 0);
+      ).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ origin: `http://${hostname}:42142` }),
+      );
 
       // A preference change leaves the running proxy at its existing address.
       readSettingsMock.mockReturnValue({ enableAppPreviewDomains: !enabled });
@@ -1522,20 +1528,58 @@ describe("executeApp", () => {
     },
   );
 
-  it.each([undefined, false])(
-    "skips preview auth lookups when domains are %s",
-    async (enabled) => {
+  it.each([
+    ["neon", undefined],
+    ["neon", false],
+    ["supabase", undefined],
+    ["supabase", false],
+  ] as const)(
+    "initializes %s localhost auth on startup when domains are %s",
+    async (provider, enabled) => {
       readSettingsMock.mockReturnValue({ enableAppPreviewDomains: enabled });
+      const target =
+        provider === "neon"
+          ? { projectId: "project", branchId: "active" }
+          : { projectId: "project", organizationSlug: "org" };
+      const resolve =
+        provider === "neon"
+          ? vi.mocked(resolveNeonPreviewTarget)
+          : vi.mocked(resolveSupabasePreviewTarget);
+      if (target.branchId !== undefined) {
+        vi.mocked(resolveNeonPreviewTarget).mockResolvedValue(target);
+      } else {
+        vi.mocked(resolveSupabasePreviewTarget).mockResolvedValue(target);
+      }
       spawnMock.mockReturnValue(new FakeChildProcess(42));
+      const output = createOutput();
       await executeApp({
         appId: 42,
         appPath: "/tmp/app",
-        output: createOutput(),
-        isNeon: false,
+        output,
+        isNeon: provider === "neon",
       });
-      await reconcileRunningSupabasePreview(42);
-      expect(resolveSupabasePreviewTarget).not.toHaveBeenCalled();
-      expect(ensureSupabasePreviewRedirects).not.toHaveBeenCalled();
+      expect(resolve).toHaveBeenCalledExactlyOnceWith(42);
+      expect(runningApps.get(42)?.previewAuthTarget).toEqual({
+        provider,
+        ...target,
+      });
+      await ensureProxyForRunningApp({
+        appId: 42,
+        output,
+        originalUrl: "http://localhost:32142",
+        mode: "host",
+      });
+      await runningApps.get(42)?.previewAuthRegistration?.settled;
+      const ensure =
+        provider === "neon"
+          ? neonPreviewDomainService.ensureTrustedDomain
+          : ensureSupabasePreviewRedirects;
+      expect(ensure).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          origin: "http://localhost:42142",
+          target: expect.objectContaining(target),
+        }),
+      );
     },
   );
 

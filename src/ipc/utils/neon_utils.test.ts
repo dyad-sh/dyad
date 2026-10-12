@@ -57,6 +57,7 @@ vi.mock("electron-log", () => ({
 }));
 
 import {
+  ensureNeonAuthAllowLocalhost,
   ensureNeonAuthTrustedOrigin,
   getOrCreateNeonAuthCookieSecret,
   syncActiveNeonAuthCookieSecretFromEnv,
@@ -323,6 +324,87 @@ describe("syncActiveNeonAuthCookieSecretFromEnv", () => {
 
     expect(result).toBeUndefined();
     expect(mocks.set).not.toHaveBeenCalled();
+  });
+});
+
+describe("ensureNeonAuthAllowLocalhost", () => {
+  const getLocalhost = vi.fn();
+  const updateLocalhost = vi.fn();
+  const input = () => ({
+    projectId: "proj-1",
+    branchId: "br-dev",
+    signal: new AbortController().signal,
+  });
+
+  beforeEach(() => {
+    getLocalhost.mockReset();
+    updateLocalhost.mockReset().mockResolvedValue({
+      data: { allow_localhost: true },
+    });
+    mocks.getNeonClient.mockReset().mockResolvedValue({
+      getNeonAuthAllowLocalhost: getLocalhost,
+      updateNeonAuthAllowLocalhost: updateLocalhost,
+    });
+  });
+
+  it("enables localhost only when disabled on the captured branch", async () => {
+    getLocalhost.mockResolvedValue({ data: { allow_localhost: false } });
+    const request = input();
+    await ensureNeonAuthAllowLocalhost(request);
+    expect(getLocalhost).toHaveBeenCalledExactlyOnceWith("proj-1", "br-dev", {
+      signal: request.signal,
+    });
+    expect(updateLocalhost).toHaveBeenCalledExactlyOnceWith(
+      "proj-1",
+      "br-dev",
+      { allow_localhost: true },
+      { signal: request.signal },
+    );
+  });
+
+  it("does not write when localhost is already allowed", async () => {
+    getLocalhost.mockResolvedValue({ data: { allow_localhost: true } });
+    await ensureNeonAuthAllowLocalhost(input());
+    expect(updateLocalhost).not.toHaveBeenCalled();
+  });
+
+  it("does not write after an invalid configuration response", async () => {
+    getLocalhost.mockResolvedValue({ data: {} });
+    await expect(ensureNeonAuthAllowLocalhost(input())).rejects.toThrow(
+      "unexpected localhost Auth configuration",
+    );
+    expect(updateLocalhost).not.toHaveBeenCalled();
+  });
+
+  it.each(["credentials", "read"])(
+    "does not enable localhost after cancellation during %s",
+    async (phase) => {
+      const controller = new AbortController();
+      if (phase === "credentials") {
+        mocks.getNeonClient.mockImplementationOnce(async () => {
+          controller.abort(new Error("Stopped"));
+          return {};
+        });
+      } else {
+        getLocalhost.mockImplementationOnce(async () => {
+          controller.abort(new Error("Stopped"));
+          return { data: { allow_localhost: false } };
+        });
+      }
+      await expect(
+        ensureNeonAuthAllowLocalhost({ ...input(), signal: controller.signal }),
+      ).rejects.toThrow("Stopped");
+      expect(updateLocalhost).not.toHaveBeenCalled();
+      if (phase === "credentials") expect(getLocalhost).not.toHaveBeenCalled();
+    },
+  );
+
+  it("propagates provider failures for the runtime warning and retry", async () => {
+    getLocalhost.mockResolvedValue({ data: { allow_localhost: false } });
+    updateLocalhost.mockRejectedValueOnce(new Error("Neon unavailable"));
+    await expect(ensureNeonAuthAllowLocalhost(input())).rejects.toThrow(
+      "Neon unavailable",
+    );
   });
 });
 

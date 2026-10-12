@@ -6,7 +6,10 @@ import type { AppRunInvocationRef } from "@/app_run/state";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { assertAppPreviewOrigin } from "./preview_origin";
 import { readEnvVarsOrEmpty } from "../utils/app_env_var_utils";
-import { ensureNeonAuthTrustedDomain } from "../utils/neon_utils";
+import {
+  ensureNeonAuthAllowLocalhost,
+  ensureNeonAuthTrustedDomain,
+} from "../utils/neon_utils";
 import { abortable } from "../utils/abortable";
 import { retryOnLocked } from "../utils/retryOnLocked";
 
@@ -33,10 +36,24 @@ export async function resolveNeonPreviewTarget(
   return { projectId: app.neonProjectId, branchId };
 }
 
+async function ensureNeonPreviewAuth(input: {
+  projectId: string;
+  branchId: string;
+  origin: string;
+  signal: AbortSignal;
+}): Promise<string | null> {
+  await ensureNeonAuthAllowLocalhost(input);
+  input.signal.throwIfAborted();
+  // Neon has a branch-level localhost switch; URL/path wildcards belong only
+  // to Supabase. App-specific domains still need their own trusted origin.
+  if (new URL(input.origin).hostname === "localhost") return null;
+  return ensureNeonAuthTrustedDomain(input);
+}
+
 export class NeonPreviewDomainService {
   private readonly pending = new Map<string, Promise<void>>();
 
-  constructor(private readonly register = ensureNeonAuthTrustedDomain) {}
+  constructor(private readonly register = ensureNeonPreviewAuth) {}
 
   async ensureTrustedDomain(input: {
     appId: number;

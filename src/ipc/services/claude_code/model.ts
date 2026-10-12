@@ -23,7 +23,13 @@ import { runClaudeTurn, safeClaudeDiagnostic } from "./runtime";
 import { claudeTextFilter } from "./text";
 import { startExternalModelUsage } from "../external_model_usage";
 import type { ExternalModelAdmission } from "../external_model_admission";
-import { reportClaudeUsage } from "./accounting";
+import { reportClaudeUsage, type ClaudeUsageCheckpoint } from "./accounting";
+import { logClaudeUsageDiagnostics } from "./usage_diagnostics";
+import {
+  ClaudeSessionManifestSchema,
+  writeClaudeSessionManifest,
+  type ClaudeSessionManifest,
+} from "./usage_checkpoint";
 import { sanitizeMcpToolResult } from "@/ipc/utils/mcp_result_sanitizer";
 import { recoverQuestionnaires } from "@/user_input/questionnaire_journal";
 import { toMcpToolResult } from "./tool_result";
@@ -145,6 +151,8 @@ export class ClaudeCodeModel implements LanguageModelV3 {
     let bridge: Awaited<ReturnType<typeof createDyadToolBridge>> | undefined;
     let result: Record<string, any> | undefined;
     let usageId: string | undefined;
+    let usageCheckpoint: ClaudeUsageCheckpoint | undefined;
+    let usageCheckpointed = false;
     let started = false;
     let latched = false;
     let completed = false;
@@ -192,17 +200,32 @@ export class ClaudeCodeModel implements LanguageModelV3 {
         "claude-sessions",
         `${ctx.chatId}.json`,
       );
-      let manifest: { sessionId?: string; fingerprint?: string } = {};
+      let manifest: Partial<ClaudeSessionManifest> = {};
       try {
-        manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+        manifest = ClaudeSessionManifestSchema.parse(
+          JSON.parse(await readFile(manifestPath, "utf8")),
+        );
       } catch {
         /* Legacy or interrupted sessions start fresh. */
       }
       const resume =
         chat.claudeSessionState === "ready" &&
         chat.claudeSessionId === manifest.sessionId &&
-        manifest.fingerprint === fingerprint;
+        manifest.fingerprint === fingerprint &&
+        manifest.usageBaseline !== undefined;
       const sessionId = resume ? chat.claudeSessionId! : randomUUID();
+      const previous = resume ? manifest.usageBaseline! : {};
+      usageCheckpoint = {
+        previous,
+        save: async (usageBaseline) => {
+          await writeClaudeSessionManifest(manifestPath, {
+            sessionId,
+            fingerprint,
+            usageBaseline,
+          });
+          usageCheckpointed = true;
+        },
+      };
       const recovery = await recoverQuestionnaires(ctx.chatId);
       if (recovery.some((receipt) => receipt.outcome === "answered"))
         ctx.appBlueprintQuestionnaireCompleted = true;
@@ -286,11 +309,11 @@ export class ClaudeCodeModel implements LanguageModelV3 {
         .where(eq(chats.id, ctx.chatId));
       latched = true;
       await mkdir(path.dirname(manifestPath), { recursive: true });
-      await writeFile(
-        manifestPath,
-        JSON.stringify({ sessionId, fingerprint }),
-        { mode: 0o600 },
-      );
+      await writeClaudeSessionManifest(manifestPath, {
+        sessionId,
+        fingerprint,
+        usageBaseline: previous,
+      });
       emit({ type: "stream-start", warnings: [] });
       await runClaudeTurn({
         cwd: ctx.appPath,
@@ -305,6 +328,17 @@ export class ClaudeCodeModel implements LanguageModelV3 {
         maxTurns: ctx.inferenceSettings?.maxToolCallSteps ?? 25,
         systemPromptPath: path.join(directory, "system.txt"),
         onEvent: async (event) => {
+          logClaudeUsageDiagnostics(
+            {
+              chatId: ctx.chatId,
+              messageId: ctx.messageId,
+              sessionId,
+              resume,
+              billingEventId: usageId,
+              requestedModel: this.modelId,
+            },
+            event,
+          );
           if (event.type === "system" && event.subtype === "init") {
             const allowed = new Set([...bridge!.names, "EndConversation"]);
             if (
@@ -391,16 +425,21 @@ export class ClaudeCodeModel implements LanguageModelV3 {
       // primary inference failure with a secondary cleanup/storage error.
       cleanup.push(
         ...(await Promise.allSettled([
-          reportClaudeUsage(accountingId, result),
           (async () => {
-            if (latched)
-              await db
-                .update(chats)
-                .set({
-                  claudeSessionState:
-                    completed && !stopAfterTool ? "ready" : "interrupted",
-                })
-                .where(eq(chats.id, ctx.chatId));
+            try {
+              await reportClaudeUsage(accountingId, result, usageCheckpoint);
+            } finally {
+              if (latched)
+                await db
+                  .update(chats)
+                  .set({
+                    claudeSessionState:
+                      completed && !stopAfterTool && usageCheckpointed
+                        ? "ready"
+                        : "interrupted",
+                  })
+                  .where(eq(chats.id, ctx.chatId));
+            }
           })(),
           rm(directory, { recursive: true, force: true }),
         ])),

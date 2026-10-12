@@ -9,6 +9,7 @@ import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { writeFile, readFile, rename } from "node:fs/promises";
 import path from "node:path";
+import { getUserDataPath } from "@/paths/paths";
 import {
   setupHybridChatHarness,
   type HybridChatHarness,
@@ -721,5 +722,32 @@ it("admits non-Pro Claude Agent turns without charging Dyad credits", async () =
   expect(calls.reportUsage).toHaveBeenLastCalledWith(
     undefined,
     expect.any(Object),
+    expect.objectContaining({
+      previous: expect.any(Object),
+      save: expect.any(Function),
+    }),
   );
+});
+
+it("starts a fresh session for a legacy manifest without a billing baseline", async () => {
+  const chatId = await ipc.chat.createChat({ appId: harness.appId });
+  await harness.streamChat("First turn", { chatId });
+  const firstSession = calls.run.mock.calls[0][0].sessionId;
+  const manifestPath = path.join(
+    getUserDataPath(),
+    "claude-sessions",
+    `${chatId}.json`,
+  );
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  expect(manifest.usageBaseline["claude-resolved"]).toEqual({
+    inputTokens: 1,
+    outputTokens: 2,
+    cacheReadInputTokens: 3,
+    cacheCreationInputTokens: 4,
+  });
+  delete manifest.usageBaseline;
+  await writeFile(manifestPath, JSON.stringify(manifest));
+  await harness.streamChat("Second turn", { chatId });
+  expect(calls.run.mock.calls[1][0].resume).toBe(false);
+  expect(calls.run.mock.calls[1][0].sessionId).not.toBe(firstSession);
 });

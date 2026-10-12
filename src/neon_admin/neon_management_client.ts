@@ -283,6 +283,12 @@ export async function getNeonClient(): Promise<Api<unknown>> {
           base_url: getMockAuthBaseUrl(branchId),
         },
       }),
+      getNeonAuthAllowLocalhost: async () => ({
+        data: { allow_localhost: true },
+      }),
+      updateNeonAuthAllowLocalhost: async () => ({
+        data: { allow_localhost: true },
+      }),
       listBranchNeonAuthTrustedDomains: async (
         _projectId: string,
         _branchId: string,

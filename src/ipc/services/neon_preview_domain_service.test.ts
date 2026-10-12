@@ -13,9 +13,14 @@ vi.mock("../utils/app_env_var_utils", () => ({
   readEnvVarsOrEmpty: mocks.readEnv,
 }));
 vi.mock("../utils/neon_utils", () => ({
+  ensureNeonAuthAllowLocalhost: vi.fn(),
   ensureNeonAuthTrustedDomain: vi.fn(),
 }));
 
+import {
+  ensureNeonAuthAllowLocalhost,
+  ensureNeonAuthTrustedDomain,
+} from "../utils/neon_utils";
 import {
   NeonPreviewDomainService,
   resolveNeonPreviewTarget,
@@ -37,8 +42,62 @@ function input(branchId = "br-active") {
 }
 
 describe("Neon preview domain registration", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(ensureNeonAuthAllowLocalhost).mockReset().mockResolvedValue();
+    vi.mocked(ensureNeonAuthTrustedDomain).mockReset().mockResolvedValue(null);
+  });
   afterEach(() => vi.useRealTimers());
+
+  it.each(["localhost", "app-42.localhost"])(
+    "ensures localhost access when the preview uses %s",
+    async (hostname) => {
+      const request = { ...input(), origin: `http://${hostname}:42999` };
+      await new NeonPreviewDomainService().ensureTrustedDomain(request);
+      expect(ensureNeonAuthAllowLocalhost).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          projectId: "project",
+          branchId: "br-active",
+          signal: request.signal,
+        }),
+      );
+      if (hostname === "localhost") {
+        expect(ensureNeonAuthTrustedDomain).not.toHaveBeenCalled();
+      } else {
+        expect(ensureNeonAuthTrustedDomain).toHaveBeenCalledExactlyOnceWith({
+          ...request.target,
+          origin: request.origin,
+          signal: request.signal,
+        });
+      }
+    },
+  );
+
+  it("retries a rate-limited localhost update", async () => {
+    vi.useFakeTimers();
+    vi.mocked(ensureNeonAuthAllowLocalhost).mockRejectedValueOnce({
+      response: { status: 429 },
+    });
+    const work = new NeonPreviewDomainService().ensureTrustedDomain(input());
+    await vi.advanceTimersByTimeAsync(1_100);
+    await work;
+    expect(ensureNeonAuthAllowLocalhost).toHaveBeenCalledTimes(2);
+    expect(ensureNeonAuthTrustedDomain).toHaveBeenCalledOnce();
+  });
+
+  it("does not register the app domain after cancellation during localhost setup", async () => {
+    const controller = new AbortController();
+    vi.mocked(ensureNeonAuthAllowLocalhost).mockImplementationOnce(async () => {
+      controller.abort(new Error("Stopped"));
+    });
+    await expect(
+      new NeonPreviewDomainService().ensureTrustedDomain({
+        ...input(),
+        signal: controller.signal,
+      }),
+    ).rejects.toThrow("Stopped");
+    expect(ensureNeonAuthTrustedDomain).not.toHaveBeenCalled();
+  });
 
   it.each([423, 429])("retries transient Neon %s responses", async (status) => {
     vi.useFakeTimers();
@@ -161,6 +220,8 @@ describe("Neon preview domain registration", () => {
 
   it.each([
     "not a URL",
+    "http://localhost.evil:42999",
+    "http://localhost:42999/path",
     "http://app-43.localhost:42999",
     "http://app-42.localhost.evil:42999",
     "https://app-42.localhost:42999",

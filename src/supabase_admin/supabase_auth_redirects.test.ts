@@ -82,6 +82,29 @@ describe("Supabase Auth preview redirect allowlist", () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
+  it.each([
+    "https://production.example/auth/callback",
+    "https://production.example/auth/callback,http://localhost:*",
+    "https://production.example/auth/callback,http://localhost:*,http://localhost:*/**",
+  ])("adds only missing localhost entries to %s", async (existing) => {
+    const redirectUrls = ["http://localhost:*", "http://localhost:*/**"];
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(Response.json({ uri_allow_list: existing }))
+      .mockResolvedValueOnce(Response.json({}));
+    await ensureSupabaseAuthRedirectUrls({ ...input(), redirectUrls });
+    if (redirectUrls.every((entry) => existing.split(",").includes(entry))) {
+      expect(fetch).toHaveBeenCalledTimes(1);
+    } else {
+      expect(fetch).toHaveBeenCalledTimes(2);
+      expect(
+        JSON.parse(vi.mocked(fetch).mock.calls[1][1]!.body as string),
+      ).toEqual({
+        uri_allow_list:
+          "https://production.example/auth/callback,http://localhost:*,http://localhost:*/**",
+      });
+    }
+  });
+
   it("retries rate-limited reads and writes with Retry-After", async () => {
     vi.useFakeTimers();
     const rateLimited = () =>

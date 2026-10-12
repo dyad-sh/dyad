@@ -186,6 +186,17 @@ export class ChatActions {
       await chatInput.evaluate((element) => {
         (element as HTMLElement).focus();
       });
+      // A retry refills the same text, which leaves the input's external
+      // value unchanged, so ExternalValueSyncPlugin never rebuilds a typed
+      // @app:Name into a mention node. Empty the editor first so the refill
+      // is a value change.
+      if ((await chatInput.textContent({ timeout: 1_000 }))?.trim()) {
+        await this.page.keyboard.press("ControlOrMeta+a");
+        await this.page.keyboard.press("Backspace");
+        expect(
+          (await chatInput.textContent({ timeout: 1_000 }))?.trim() ?? "",
+        ).toBe("");
+      }
       await chatInput.fill(prompt, { timeout: 1_000 });
       const visiblePrompt = prompt.replace(/@app:/g, "@");
       expect(await chatInput.textContent({ timeout: 1_000 })).toContain(

@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   clearNeonTestData: vi.fn().mockResolvedValue(undefined),
   createNeonTestDataCleaner: vi.fn(),
   getServiceRoleKey: vi.fn(),
+  ensureNeonAuthAllowLocalhost: vi.fn().mockResolvedValue(undefined),
   ensureNeonAuthTrustedOrigin: vi.fn().mockResolvedValue(null),
   ensureNeonAuthTrustedDomain: vi.fn().mockResolvedValue(null),
   createTempTestUser: vi.fn(),
@@ -64,6 +65,7 @@ vi.mock("../utils/neon_test_data", () => ({
 }));
 vi.mock("../utils/neon_utils", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../utils/neon_utils")>()),
+  ensureNeonAuthAllowLocalhost: mocks.ensureNeonAuthAllowLocalhost,
   ensureNeonAuthTrustedOrigin: mocks.ensureNeonAuthTrustedOrigin,
   ensureNeonAuthTrustedDomain: mocks.ensureNeonAuthTrustedDomain,
 }));
@@ -153,6 +155,7 @@ beforeEach(() => {
     email: "neon-test@dyad.test",
     password: "neon-pw",
   });
+  mocks.ensureNeonAuthAllowLocalhost.mockResolvedValue(undefined);
   mocks.ensureNeonAuthTrustedDomain.mockResolvedValue(null);
   mocks.trackedTestBranchId.mockResolvedValue(null);
   mocks.markAndDeleteTempTestBranch.mockResolvedValue(true);
@@ -1113,6 +1116,19 @@ describe("prepareIsolatedTestDatabase — auth provisioning", () => {
         runtimeMode: "host",
       });
 
+      expect(
+        mocks.ensureNeonAuthAllowLocalhost,
+      ).toHaveBeenCalledExactlyOnceWith({
+        projectId: "proj-1",
+        branchId: "test-br",
+        origin: "http://app-1.localhost:42100",
+        signal: expect.any(AbortSignal),
+      });
+      expect(
+        mocks.ensureNeonAuthAllowLocalhost.mock.invocationCallOrder[0],
+      ).toBeLessThan(
+        mocks.ensureNeonAuthTrustedDomain.mock.invocationCallOrder[0],
+      );
       expect(mocks.ensureNeonAuthTrustedDomain).toHaveBeenCalledWith({
         projectId: "proj-1",
         branchId: "test-br",
@@ -1261,34 +1277,38 @@ describe("prepareIsolatedTestDatabase — auth provisioning", () => {
     }
   });
 
-  it("fails setup and tears down when the preview origin cannot be trusted", async () => {
-    mocks.createTempTestBranch.mockResolvedValue({
-      branchId: "test-br",
-      databaseUrl: "postgres://temp",
-      neonAuthBaseUrl: "https://auth",
-      cookieSecret: "secret",
-    });
-    mocks.ensureNeonAuthTrustedDomain.mockRejectedValue(
-      new Error("trusted domain rejected"),
-    );
-    const fetchSpy = withServerUp();
-    try {
-      const prepared = await prepareIsolatedTestDatabase({
-        app: makeApp({ neonProjectId: "proj-1" }),
-        emit,
-        runtimeMode: "host",
+  it.each([
+    "ensureNeonAuthAllowLocalhost",
+    "ensureNeonAuthTrustedDomain",
+  ] as const)(
+    "fails setup and tears down when %s rejects",
+    async (authorize) => {
+      mocks.createTempTestBranch.mockResolvedValue({
+        branchId: "test-br",
+        databaseUrl: "postgres://temp",
+        neonAuthBaseUrl: "https://auth",
+        cookieSecret: "secret",
       });
+      mocks[authorize].mockRejectedValue(new Error("preview auth rejected"));
+      const fetchSpy = withServerUp();
+      try {
+        const prepared = await prepareIsolatedTestDatabase({
+          app: makeApp({ neonProjectId: "proj-1" }),
+          emit,
+          runtimeMode: "host",
+        });
 
-      expect(prepared.isolation.mode).toBe("none");
-      expect(prepared.infraError?.message).toContain("trusted domain rejected");
-      expect(mocks.markAndDeleteTempTestBranch).toHaveBeenCalled();
-      expect(prepared.testCredentials).toBeUndefined();
-      expect(prepared.authSetup).toBeUndefined();
-      expect(mocks.createNeonTestAccount).not.toHaveBeenCalled();
-    } finally {
-      fetchSpy.mockRestore();
-    }
-  });
+        expect(prepared.isolation.mode).toBe("none");
+        expect(prepared.infraError?.message).toContain("preview auth rejected");
+        expect(mocks.markAndDeleteTempTestBranch).toHaveBeenCalled();
+        expect(prepared.testCredentials).toBeUndefined();
+        expect(prepared.authSetup).toBeUndefined();
+        expect(mocks.createNeonTestAccount).not.toHaveBeenCalled();
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    },
+  );
 
   it("skips account provisioning for a Neon app without Neon Auth", async () => {
     mocks.createTempTestBranch.mockResolvedValue({

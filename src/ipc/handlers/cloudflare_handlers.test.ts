@@ -166,6 +166,8 @@ interface FakeCloudflare {
   workers: Map<string, { tag: string; routeEnabled: boolean }>;
   /** Each Worker's runtime secrets by name. */
   secrets: Record<string, Record<string, string>>;
+  /** Custom domains attached to Workers in the account. */
+  domains: { hostname: string; service: string; enabled: boolean }[];
   buildTokens: { build_token_uuid: string; cloudflare_token_id: string }[];
   triggers: FakeTrigger[];
   builds: Record<string, unknown>[];
@@ -244,6 +246,14 @@ async function fakeFetch(
   }
   if (path === "/accounts") {
     return ok([{ id: ACCOUNT, name: "Acme" }]);
+  }
+  if (path === `${account}/workers/domains` && method === "GET") {
+    const service = url.searchParams.get("service");
+    return ok(
+      cloudflare.domains.filter(
+        (domain) => service === null || domain.service === service,
+      ),
+    );
   }
   if (path === `${account}/workers/subdomain`) {
     return cloudflare.subdomain
@@ -448,6 +458,7 @@ beforeEach(() => {
     visibleRepoIds: new Set(["501"]),
     workers: new Map(),
     secrets: {},
+    domains: [],
     buildTokens: [],
     triggers: [],
     builds: [],
@@ -1364,7 +1375,7 @@ describe("an app with a Neon database", () => {
     expect(cloudflare.secrets).toEqual({});
   });
 
-  it("skips the allowlist for a Worker without a workers.dev address", async () => {
+  it("says so when the Worker has no address to trust", async () => {
     cloudflare.workers.set("shop-api", { tag: "tag-old", routeEnabled: false });
     const result = await handlers.handleConnectWorker({
       appId,
@@ -1375,7 +1386,64 @@ describe("an app with a Neon database", () => {
     expect(cloudflare.secrets["shop-api"]).toBeDefined();
     expect(neon.trustedOrigins).toEqual([]);
     expect(result.status === "connected" && result.warning).toMatch(
-      /no workers.dev address/,
+      /no address Dyad can find/,
+    );
+  });
+
+  it("trusts the custom domains attached to the Worker, skipping disabled ones", async () => {
+    cloudflare.domains = [
+      { hostname: "app.example.com", service: "shop-api", enabled: true },
+      { hostname: "old.example.com", service: "shop-api", enabled: false },
+      { hostname: "other.example.com", service: "other", enabled: true },
+    ];
+    const result = await handlers.handleConnectWorker({ appId, ...CONNECT });
+
+    expect(result).toMatchObject({ status: "connected", warning: undefined });
+    expect(neon.trustedOrigins).toEqual([
+      "https://shop-api.acme.workers.dev",
+      "https://app.example.com",
+    ]);
+  });
+
+  it("trusts a custom domain on a Worker served nowhere else", async () => {
+    cloudflare.workers.set("shop-api", { tag: "tag-old", routeEnabled: false });
+    cloudflare.domains = [
+      { hostname: "app.example.com", service: "shop-api", enabled: true },
+    ];
+    const result = await handlers.handleConnectWorker({
+      appId,
+      ...CONNECT,
+      mode: "existing",
+    });
+
+    expect(result).toMatchObject({ status: "connected", warning: undefined });
+    expect(neon.trustedOrigins).toEqual(["https://app.example.com"]);
+  });
+
+  it("trusts a workers.dev address turned on after connecting", async () => {
+    cloudflare.workers.set("shop-api", { tag: "tag-old", routeEnabled: false });
+    await handlers.handleConnectWorker({
+      appId,
+      ...CONNECT,
+      mode: "existing",
+    });
+    expect(connectionRows()[0].workerUrl).toBeNull();
+    cloudflare.workers.get("shop-api")!.routeEnabled = true;
+
+    const result = await syncNeonConfigToCloudflare({ appId });
+
+    expect(result.warning).toBeUndefined();
+    expect(neon.trustedOrigins).toEqual(["https://shop-api.acme.workers.dev"]);
+  });
+
+  it("still trusts the workers.dev address when the domains cannot be listed", async () => {
+    cloudflare.failOn = (method, path) =>
+      method === "GET" && path.endsWith("/workers/domains");
+    const result = await handlers.handleConnectWorker({ appId, ...CONNECT });
+
+    expect(neon.trustedOrigins).toEqual(["https://shop-api.acme.workers.dev"]);
+    expect(result.status === "connected" && result.warning).toMatch(
+      /Could not list the custom domains of shop-api/,
     );
   });
 

@@ -4,7 +4,13 @@ import { db } from "../../db";
 import { apps, cloudflareAppConnections } from "../../db/schema";
 import { readSettings } from "../../main/settings";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { deleteWorkerSecret, putWorkerSecret } from "@/cloudflare_deploy/api";
+import {
+  deleteWorkerSecret,
+  isWorkersDevRouteEnabled,
+  listWorkerDomains,
+  putWorkerSecret,
+  resolveWorkersDevUrl,
+} from "@/cloudflare_deploy/api";
 import {
   combineWarnings,
   ensureNeonAuthTrustedDomain,
@@ -67,6 +73,50 @@ function loadConnections(appId: number): Promise<ConnectionRow[]> {
 
 function describeFailure(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * Every address the Worker is served at, asked of Cloudflare now rather than
+ * read from the row: the workers.dev route can be switched after connecting,
+ * and custom domains are attached in the dashboard, never by Dyad.
+ */
+async function collectWorkerOrigins(
+  token: string,
+  row: ConnectionRow,
+): Promise<{ origins: string[]; warning?: string }> {
+  const origins: string[] = [];
+  const warnings: string[] = [];
+
+  const routeEnabled = await isWorkersDevRouteEnabled(
+    token,
+    row.accountId,
+    row.workerName,
+  ).catch(() => undefined);
+  const workersDevUrl = await resolveWorkersDevUrl(
+    token,
+    row.accountId,
+    row.workerName,
+    row.workerUrl,
+    routeEnabled,
+  );
+  if (workersDevUrl) origins.push(workersDevUrl);
+
+  try {
+    const domains = await listWorkerDomains(
+      token,
+      row.accountId,
+      row.workerName,
+    );
+    for (const domain of domains) {
+      if (domain.enabled) origins.push(`https://${domain.hostname}`);
+    }
+  } catch (error) {
+    warnings.push(
+      `Could not list the custom domains of ${row.workerName}, so only its workers.dev address was added to Neon's redirect allowlist: ${describeFailure(error)}`,
+    );
+  }
+
+  return { origins, warning: combineWarnings(...warnings) };
 }
 
 /**
@@ -146,25 +196,27 @@ export async function syncNeonConfigToCloudflare({
     );
   } else {
     for (const row of rows) {
-      if (!row.workerUrl) {
-        // An existing Worker served only at its own domain. Dyad does not
-        // know that domain, so the user adds it in the Neon console.
+      const { origins, warning } = await collectWorkerOrigins(token, row);
+      warnings.push(warning);
+      if (origins.length === 0) {
         warnings.push(
-          `${row.workerName} has no workers.dev address, so nothing was added to Neon's redirect allowlist for it.`,
+          `${row.workerName} has no address Dyad can find, so nothing was added to Neon's redirect allowlist for it.`,
         );
         continue;
       }
-      try {
-        const added = await ensureNeonAuthTrustedDomain({
-          projectId: neonProjectId,
-          branchId: resolved.branchId,
-          origin: row.workerUrl,
-        });
-        if (added) domainsAdded.push(added);
-      } catch (error) {
-        warnings.push(
-          `Failed to add ${row.workerUrl} to Neon's trusted domains: ${describeFailure(error)}`,
-        );
+      for (const origin of origins) {
+        try {
+          const added = await ensureNeonAuthTrustedDomain({
+            projectId: neonProjectId,
+            branchId: resolved.branchId,
+            origin,
+          });
+          if (added) domainsAdded.push(added);
+        } catch (error) {
+          warnings.push(
+            `Failed to add ${origin} to Neon's trusted domains: ${describeFailure(error)}`,
+          );
+        }
       }
     }
   }

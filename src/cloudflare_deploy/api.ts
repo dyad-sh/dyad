@@ -353,6 +353,55 @@ export async function deleteWorkerSecret(
   }
 }
 
+/**
+ * The Worker's workers.dev address as of now. The route can be switched in
+ * the dashboard after connecting, so a stored address is only as good as the
+ * route check: an unknown route keeps the stored address, a route that is
+ * off means no address, and a route that is on is given one if the row has
+ * none yet.
+ */
+export async function resolveWorkersDevUrl(
+  token: string,
+  accountId: string,
+  workerName: string,
+  storedUrl: string | null,
+  routeEnabled: boolean | undefined,
+): Promise<string | null> {
+  if (routeEnabled === undefined) return storedUrl;
+  if (!routeEnabled) return null;
+  if (storedUrl) return storedUrl;
+  const subdomain = await getAccountSubdomain(token, accountId).catch(
+    () => null,
+  );
+  return subdomain ? `https://${workerName}.${subdomain}.workers.dev` : null;
+}
+
+export interface CloudflareWorkerDomain {
+  hostname: string;
+  /** Whether requests to the hostname reach the Worker. */
+  enabled: boolean;
+}
+
+/** The custom domains attached to the Worker, which Dyad never sets itself. */
+export async function listWorkerDomains(
+  token: string,
+  accountId: string,
+  workerName: string,
+): Promise<CloudflareWorkerDomain[]> {
+  const domains = await request<
+    { hostname?: string; enabled?: boolean }[] | null
+  >(
+    token,
+    "GET",
+    apiPath`/accounts/${accountId}/workers/domains?service=${workerName}`,
+  );
+  return (domains ?? []).flatMap((domain) =>
+    domain.hostname
+      ? [{ hostname: domain.hostname, enabled: domain.enabled !== false }]
+      : [],
+  );
+}
+
 /** The account's workers.dev subdomain, or null when it has none yet. */
 export async function getAccountSubdomain(
   token: string,

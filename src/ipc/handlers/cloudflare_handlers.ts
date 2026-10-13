@@ -47,6 +47,7 @@ import {
   listTriggers,
   listWorkers,
   probeBuildsAccess,
+  resolveWorkersDevUrl,
   restoreTrigger,
   setTriggerBuildToken,
   setTriggerBuildVariables,
@@ -909,23 +910,6 @@ async function handleConnectWorker(
   }
 }
 
-/** The Worker's address given what its route is now, which may not be what was stored. */
-async function currentWorkerUrl(
-  token: string,
-  row: ConnectionRow,
-  routeEnabled: boolean | undefined,
-): Promise<string | null> {
-  if (routeEnabled === undefined) return row.workerUrl;
-  if (!routeEnabled) return null;
-  if (row.workerUrl) return row.workerUrl;
-  const subdomain = await getAccountSubdomain(token, row.accountId).catch(
-    () => null,
-  );
-  return subdomain
-    ? `https://${row.workerName}.${subdomain}.workers.dev`
-    : null;
-}
-
 async function handleGetDeploymentStatus({
   appId,
   rootDirectory,
@@ -963,7 +947,13 @@ async function handleGetDeploymentStatus({
         () => undefined,
       ),
     ]);
-    const workerUrl = await currentWorkerUrl(token, row, routeEnabled);
+    const workerUrl = await resolveWorkersDevUrl(
+      token,
+      row.accountId,
+      row.workerName,
+      row.workerUrl,
+      routeEnabled,
+    );
     const ruleMissing = rule === null;
     // The rule stays on the branch and repository it was made for. An app
     // moved to another one still syncs, but nothing deploys.

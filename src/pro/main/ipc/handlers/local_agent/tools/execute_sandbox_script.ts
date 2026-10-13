@@ -283,7 +283,7 @@ export async function buildExecuteSandboxScriptDescription(
      * Whether to advertise the write_file host function. Required (no
      * settings-derived default) because only the caller knows the turn
      * context — a settings-only fallback could advertise write_file in a
-     * read-only turn where `runInMainThread` never injects it.
+     * read-only turn where `buildRemoteCapabilities` never injects it.
      */
     includeWriteFile: boolean;
   },

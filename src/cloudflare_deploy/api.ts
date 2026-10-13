@@ -393,7 +393,7 @@ export async function listWorkerDomains(
   >(
     token,
     "GET",
-    apiPath`/accounts/${accountId}/workers/domains?service=${workerName}`,
+    apiPath`/accounts/${accountId}/workers/domains?service=${workerName}&per_page=100`,
   );
   return (domains ?? []).flatMap((domain) =>
     domain.hostname

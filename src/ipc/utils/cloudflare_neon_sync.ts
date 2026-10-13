@@ -112,7 +112,7 @@ async function collectWorkerOrigins(
     }
   } catch (error) {
     warnings.push(
-      `Could not list the custom domains of ${row.workerName}, so only its workers.dev address was added to Neon's redirect allowlist: ${describeFailure(error)}`,
+      `Could not list the custom domains of ${row.workerName}, so some addresses may be missing from Neon's redirect allowlist: ${describeFailure(error)}`,
     );
   }
 

@@ -29,6 +29,33 @@ import {
   type SandboxWorkerMessage,
 } from "./worker_protocol";
 
+/**
+ * A failure of the worker itself (it could not start, crashed outside the
+ * script run, ran out of memory, or exited early), as opposed to an error
+ * raised by the guest script.
+ */
+export class SandboxWorkerError extends DyadError {}
+
+export function classifySandboxWorkerError(error: unknown): SandboxWorkerError {
+  const code =
+    error !== null && typeof error === "object" && "code" in error
+      ? error.code
+      : undefined;
+  if (code === "ERR_WORKER_OUT_OF_MEMORY") {
+    return new SandboxWorkerError(
+      `Sandbox script ran out of memory (worker heap limit is ${SANDBOX_WORKER_HEAP_LIMIT_MB} MB).`,
+      DyadErrorKind.Validation,
+      { cause: error },
+    );
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return new SandboxWorkerError(
+    `Sandbox worker failed: ${message}`,
+    DyadErrorKind.Internal,
+    { cause: error },
+  );
+}
+
 export { isSandboxSupportedPlatform };
 export type { SandboxRunResult };
 
@@ -314,14 +341,14 @@ function runSandboxScriptInWorker(
     });
 
     worker.on("error", (error) => {
-      settle(() => reject(error), true);
+      settle(() => reject(classifySandboxWorkerError(error)), true);
     });
 
     worker.on("exit", (code) => {
       settle(
         () =>
           reject(
-            new DyadError(
+            new SandboxWorkerError(
               code === 0
                 ? "Sandbox worker exited without returning a result."
                 : `Sandbox worker exited with code ${code}.`,

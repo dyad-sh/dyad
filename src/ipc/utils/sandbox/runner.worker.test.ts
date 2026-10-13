@@ -4,7 +4,12 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import type { SandboxWorkerHostCall } from "./worker_protocol";
-import { isSandboxSupportedPlatform, runSandboxScript } from "./runner";
+import {
+  classifySandboxWorkerError,
+  isSandboxSupportedPlatform,
+  runSandboxScript,
+  SandboxWorkerError,
+} from "./runner";
 import { buildSandboxWorkerBundle } from "./testing/sandbox_worker_bundle";
 
 /**
@@ -152,6 +157,29 @@ describe.skipIf(!supported)("sandbox worker host-function bridge", () => {
     expect(Date.now() - started).toBeLessThan(5_000);
   });
 
+  it("reports a worker that fails to start as an internal worker error", async () => {
+    const brokenWorker = path.join(appPath, "broken_worker.cjs");
+    await fs.writeFile(
+      brokenWorker,
+      'throw new Error("native binding failed to load");',
+      "utf8",
+    );
+    const bundlePath = process.env.DYAD_SANDBOX_WORKER_PATH;
+    process.env.DYAD_SANDBOX_WORKER_PATH = brokenWorker;
+    try {
+      const error = await runSandboxScript({ appPath, script: `1;` }).catch(
+        (e: unknown) => e,
+      );
+      expect(error).toBeInstanceOf(SandboxWorkerError);
+      expect(error).toMatchObject({
+        kind: DyadErrorKind.Internal,
+        message: expect.stringContaining("native binding failed to load"),
+      });
+    } finally {
+      process.env.DYAD_SANDBOX_WORKER_PATH = bundlePath;
+    }
+  });
+
   it("rejects immediately when the signal is already aborted", async () => {
     const abortController = new AbortController();
     abortController.abort();
@@ -162,5 +190,18 @@ describe.skipIf(!supported)("sandbox worker host-function bridge", () => {
         signal: abortController.signal,
       }),
     ).rejects.toMatchObject({ kind: DyadErrorKind.UserCancelled });
+  });
+});
+
+describe("classifySandboxWorkerError", () => {
+  it("treats running out of worker memory as the script's fault", () => {
+    const oom = Object.assign(new Error("JS heap out of memory"), {
+      code: "ERR_WORKER_OUT_OF_MEMORY",
+    });
+    const error = classifySandboxWorkerError(oom);
+    expect(error).toBeInstanceOf(SandboxWorkerError);
+    expect(error.kind).toBe(DyadErrorKind.Validation);
+    expect(error.message).toContain("ran out of memory");
+    expect(error.cause).toBe(oom);
   });
 });

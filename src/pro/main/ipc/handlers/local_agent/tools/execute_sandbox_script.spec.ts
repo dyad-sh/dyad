@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { runSandboxScript } from "@/ipc/utils/sandbox/runner";
+import {
+  runSandboxScript,
+  SandboxWorkerError,
+} from "@/ipc/utils/sandbox/runner";
 import {
   assertAllowedGuestPath,
   assertSandboxWritePathAllowed,
@@ -30,9 +33,13 @@ vi.mock("@/ipc/utils/sandbox/execution", () => ({
 // Every script goes through the runner, which owns the worker and the bridge
 // for main-thread host functions. The tests below inspect what the tool hands
 // it: the script, the remote capability map, and the turn's abort signal.
-vi.mock("@/ipc/utils/sandbox/runner", () => ({
-  runSandboxScript: vi.fn(),
-}));
+vi.mock("@/ipc/utils/sandbox/runner", async () => {
+  const { DyadError } = await import("@/errors/dyad_error");
+  return {
+    runSandboxScript: vi.fn(),
+    SandboxWorkerError: class extends DyadError {},
+  };
+});
 
 vi.mock("@/ipc/utils/sandbox/capabilities", () => ({
   assertAllowedGuestPath: vi.fn(),
@@ -178,6 +185,25 @@ describe("executeSandboxScriptTool", () => {
         chatId: 123,
         error: "Unexpected token ?.",
       }),
+    );
+  });
+
+  it("reports a worker failure as is instead of blaming the script's syntax", async () => {
+    const workerError = new SandboxWorkerError(
+      "Sandbox worker failed: Cannot find module 'mustardscript'",
+      DyadErrorKind.Internal,
+    );
+    vi.mocked(runSandboxScript).mockRejectedValue(workerError);
+
+    await expect(
+      executeSandboxScriptTool.execute(
+        { script: "1 + 1" },
+        createMockContext(),
+      ),
+    ).rejects.toBe(workerError);
+    expect(sendTelemetryEvent).toHaveBeenCalledWith(
+      "sandbox.script.failed",
+      expect.objectContaining({ error: workerError.message }),
     );
   });
 

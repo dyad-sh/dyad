@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { isSandboxSupportedPlatform } from "@/ipc/utils/sandbox/execution";
-import { runSandboxScript } from "@/ipc/utils/sandbox/runner";
+import {
+  runSandboxScript,
+  SandboxWorkerError,
+} from "@/ipc/utils/sandbox/runner";
 import type { RemoteCapabilityMap } from "@/ipc/utils/sandbox/remote_capabilities";
 import {
   assertAllowedGuestPath,
@@ -391,6 +394,10 @@ export const executeSandboxScriptTool: ToolDefinition<ExecuteSandboxScriptArgs> 
             executionThread,
           },
         );
+        // The worker itself failed, so the script is not at fault.
+        if (error instanceof SandboxWorkerError) {
+          throw error;
+        }
         throw new DyadError(
           buildSandboxFailureMessage({
             script: args.script,

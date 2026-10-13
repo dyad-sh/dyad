@@ -8,6 +8,7 @@ import {
   within,
 } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { App } from "@/ipc/types";
 import type { GithubOpsProjection } from "@/github_ops/projection";
@@ -111,6 +112,7 @@ function mount() {
     <QueryClientProvider client={client}>
       <DeployDialog appId={1} onClose={onClose} />
     </QueryClientProvider>,
+    { wrapper: StrictMode },
   );
 }
 function button(name: string) {
@@ -219,6 +221,30 @@ afterEach(() => {
 });
 
 describe("first deployment", () => {
+  it.each([false, true])(
+    "settles an automatic Vercel deployment when the project is connected before the step mounts (Neon=%s)",
+    async (withNeon) => {
+      h.app.neonActiveBranchId = "prod";
+      if (!withNeon) h.app.neonProjectId = null;
+      mount();
+      await continueDatabase();
+      await connectVercel();
+      fireEvent.click(button("Continue to deployment"));
+
+      await screen.findByText(
+        withNeon
+          ? "Deployment verified and environment variables configured."
+          : "Deployment verified.",
+      );
+      expect(
+        screen.queryByText("Configuring Vercel environment variables…"),
+      ).toBeNull();
+      expect(screen.queryByText("Starting a Vercel deployment…")).toBeNull();
+      expect(h.createDeployment).toHaveBeenCalledOnce();
+      expect(h.sync).toHaveBeenCalledTimes(withNeon ? 1 : 0);
+    },
+  );
+
   it("requires a choice and successful migration, replaces each step, and verifies GitHub before deployment", async () => {
     mount();
     await screen.findByText("Production database");
@@ -229,6 +255,10 @@ describe("first deployment", () => {
     expect(button("Continue to GitHub").disabled).toBe(true);
     fireEvent.click(button("integrations.migration.migrateToProduction"));
     await approveMigration();
+    await screen.findByText(
+      "Migration applied successfully. You can continue.",
+    );
+    expect(screen.queryByText(/No schema changes needed/)).toBeNull();
     await continueDatabase();
     expect(h.migrate).toHaveBeenCalledWith({ appId: 1, migrationId: "plan-1" });
     expect(screen.queryByText("Production database")).toBeNull();
@@ -259,6 +289,8 @@ describe("first deployment", () => {
     fireEvent.click(button("integrations.migration.migrateToProduction"));
     await approveMigration();
     await screen.findByText("Migration failed");
+    expect(screen.queryByText(/Migration applied successfully/)).toBeNull();
+    expect(screen.queryByText(/No schema changes needed/)).toBeNull();
     expect(button("Continue to GitHub").disabled).toBe(true);
     expect(screen.queryByText("GitHub setup controls")).toBeNull();
   });
@@ -305,15 +337,30 @@ describe("first deployment", () => {
     expect(screen.queryByText("GitHub setup controls")).toBeNull();
   });
 
-  it("accepts a verified empty migration plan without applying SQL", async () => {
+  it("reports no schema changes for an empty migration plan without applying SQL", async () => {
     h.preview.mockResolvedValue({ ...plan, statements: [] });
     mount();
     fireEvent.click(
       await screen.findByRole("button", { name: "Production database" }),
     );
     fireEvent.click(button("integrations.migration.migrateToProduction"));
+    await screen.findByText("No schema changes needed. You can continue.");
+    expect(screen.queryByText(/Migration applied successfully/)).toBeNull();
     await continueDatabase();
     expect(h.migrate).not.toHaveBeenCalled();
+  });
+
+  it("reports no schema changes when the migration returns no changes", async () => {
+    h.migrate.mockResolvedValue({ success: true, noChanges: true });
+    mount();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Production database" }),
+    );
+    fireEvent.click(button("integrations.migration.migrateToProduction"));
+    await approveMigration();
+    await screen.findByText("No schema changes needed. You can continue.");
+    expect(screen.queryByText(/Migration applied successfully/)).toBeNull();
+    await continueDatabase();
   });
 
   it("automatically configures Vercel after connection and blocks success until env setup succeeds", async () => {
@@ -525,7 +572,8 @@ describe("first deployment", () => {
       }),
     );
     await act(async () => finishPreview({ ...plan, statements: [] }));
-    expect(screen.queryByText(/Production database verified/)).toBeNull();
+    expect(screen.queryByText(/No schema changes needed/)).toBeNull();
+    expect(screen.queryByText(/Migration applied successfully/)).toBeNull();
     expect(button("Continue to GitHub").disabled).toBe(true);
   });
 });
@@ -574,6 +622,10 @@ describe("already hosted", () => {
       </QueryClientProvider>,
     );
     await screen.findByText(/Latest code verified on GitHub/);
+    expect(screen.queryByText("Pushing latest code to GitHub…")).toBeNull();
+    expect(
+      h.dispatch.mock.calls.filter(([event]) => event.type === "OP_REQUESTED"),
+    ).toHaveLength(1);
     expect(h.verify).toHaveBeenLastCalledWith({
       appId: 1,
       requireSynced: true,
@@ -604,6 +656,61 @@ describe("already hosted", () => {
     expect(h.commit.mock.invocationCallOrder[0]).toBeLessThan(
       h.dispatch.mock.invocationCallOrder[0],
     );
+  });
+
+  it("ends the push spinner on failure and allows one explicit retry", async () => {
+    h.app.neonActiveBranchId = "prod";
+    let rejectPush!: (error: Error) => void;
+    h.dispatch.mockImplementation(async (event) => {
+      if (event.type === "OP_REQUESTED") {
+        return new Promise((_resolve, reject) => {
+          rejectPush = reject;
+        });
+      }
+      return { kind: "applied" };
+    });
+    const view = mount();
+    const confirm = await screen.findByRole("button", {
+      name: "Review and deploy",
+    });
+    await waitFor(() =>
+      expect((confirm as HTMLButtonElement).disabled).toBe(false),
+    );
+    fireEvent.click(confirm);
+    await screen.findByText("Pushing latest code to GitHub…");
+    await waitFor(() => expect(rejectPush).toBeTypeOf("function"));
+
+    await act(async () => rejectPush(new Error("Could not start GitHub push")));
+    await screen.findByText("Could not start GitHub push");
+    expect(screen.queryByText("Pushing latest code to GitHub…")).toBeNull();
+    expect(
+      h.dispatch.mock.calls.filter(([event]) => event.type === "OP_REQUESTED"),
+    ).toHaveLength(1);
+
+    h.dispatch.mockResolvedValue({ kind: "applied" });
+    fireEvent.click(button("Retry deployment push"));
+    await waitFor(() =>
+      expect(
+        h.dispatch.mock.calls.filter(
+          ([event]) => event.type === "OP_REQUESTED",
+        ),
+      ).toHaveLength(2),
+    );
+    h.projection = projectGithubOps({
+      type: "idle",
+      banner: {
+        kind: "success",
+        completedOperation: "push",
+        message: "Pushed",
+      },
+    });
+    view.rerender(
+      <QueryClientProvider client={client}>
+        <DeployDialog appId={1} onClose={onClose} />
+      </QueryClientProvider>,
+    );
+    await screen.findByText(/Latest code verified on GitHub/);
+    expect(screen.queryByText("Pushing latest code to GitHub…")).toBeNull();
   });
 
   it("keeps the verified result after the GitHub success banner disappears", async () => {

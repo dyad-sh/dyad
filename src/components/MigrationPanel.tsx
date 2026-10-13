@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { ipc } from "@/ipc/types";
 import { Button } from "@/components/ui/button";
@@ -27,9 +27,11 @@ import { useLoadApp } from "@/hooks/useLoadApp";
 import { useNeon } from "@/hooks/useNeon";
 import { MigrationSqlPreviewDialog } from "./MigrationSqlPreviewDialog";
 
+export type MigrationOutcome = "no-changes" | "applied";
+
 interface MigrationPanelProps {
   appId: number;
-  onVerified?: () => void;
+  onVerified?: (outcome: MigrationOutcome) => void;
   onBusyChange?: (busy: boolean) => void;
   autoPreview?: boolean;
 }
@@ -46,31 +48,35 @@ export const MigrationPanelBody = ({
   const [showErrorDetails, setShowErrorDetails] = useState(false);
   const errorDetailsId = useId();
 
-  // Closing the review while the plan loads must not count as verifying it.
-  const previewAbandoned = useRef(false);
   const previewMutation = useMutation({
     mutationFn: () => ipc.migration.preview({ appId }),
-    onSuccess: (result) => {
-      if (
-        onVerified &&
-        result.statements.length === 0 &&
-        !previewAbandoned.current
-      ) {
-        setPreviewOpen(false);
-        onVerified();
-      }
-    },
   });
-  const startPreview = () => {
-    previewAbandoned.current = false;
-    previewMutation.mutate();
+  const startPreview = useCallback(() => {
+    // Per-call callbacks are detached by reset(), replacement, or unmount.
+    // A late result from a cancelled review must never verify the database.
+    previewMutation.mutate(undefined, {
+      onSuccess: (result) => {
+        if (onVerified && result.statements.length === 0) {
+          setPreviewOpen(false);
+          onVerified("no-changes");
+        }
+      },
+    });
+  }, [previewMutation.mutate, onVerified]);
+
+  const cancelPreview = () => {
+    setPreviewOpen(false);
+    // Planning only reads database schemas. Detach immediately while the IPC
+    // request finishes in the background; it cannot affect a later review.
+    previewMutation.reset();
   };
 
   const migrateMutation = useMutation({
     mutationFn: (migrationId: string) =>
       ipc.migration.migrate({ appId, migrationId }),
     onSuccess: (result) => {
-      if (result.success) onVerified?.();
+      if (result.success)
+        onVerified?.(result.noChanges ? "no-changes" : "applied");
     },
   });
 
@@ -78,12 +84,21 @@ export const MigrationPanelBody = ({
   const [confirmOpen, setConfirmOpen] = useState(false);
   const didAutoPreview = useRef(false);
   useEffect(() => {
-    if (autoPreview && !didAutoPreview.current) {
+    if (!autoPreview || didAutoPreview.current) return;
+    let disposed = false;
+    // Strict Mode replays effects and detaches the mutation observer. Start
+    // after that replay so the live observer receives the result, and only
+    // claim the automatic start when this effect is still mounted.
+    queueMicrotask(() => {
+      if (disposed || didAutoPreview.current) return;
       didAutoPreview.current = true;
       setPreviewOpen(true);
-      previewMutation.mutate();
-    }
-  }, [autoPreview, previewMutation.mutate]);
+      startPreview();
+    });
+    return () => {
+      disposed = true;
+    };
+  }, [autoPreview, startPreview]);
   useEffect(() => {
     onBusyChange?.(previewMutation.isPending || migrateMutation.isPending);
   }, [previewMutation.isPending, migrateMutation.isPending, onBusyChange]);
@@ -187,14 +202,8 @@ export const MigrationPanelBody = ({
       <MigrationSqlPreviewDialog
         open={previewOpen}
         onOpenChange={(open) => {
-          setPreviewOpen(open);
-          if (!open) previewAbandoned.current = true;
-          // Don't reset() while the mutation is in-flight: doing so flips
-          // isPending back to false and re-enables the trigger button, but
-          // the backend preview keeps running. A second click would then
-          // race the first request through the same deterministic work
-          // dir, with each ensureFreshWorkDir wiping the other's files.
-          if (!open && !previewMutation.isPending) previewMutation.reset();
+          if (open) setPreviewOpen(true);
+          else cancelPreview();
         }}
         preview={previewMutation.data ?? null}
         isLoading={previewMutation.isPending}
@@ -209,11 +218,7 @@ export const MigrationPanelBody = ({
           setPreviewOpen(false);
           setConfirmOpen(true);
         }}
-        onCancel={() => {
-          previewAbandoned.current = true;
-          setPreviewOpen(false);
-          if (!previewMutation.isPending) previewMutation.reset();
-        }}
+        onCancel={cancelPreview}
         onRetry={startPreview}
       />
 

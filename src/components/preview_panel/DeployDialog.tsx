@@ -20,7 +20,10 @@ import {
 import { GitHubConnector } from "@/components/GitHubConnector";
 import { VercelConnector } from "@/components/VercelConnector";
 import { CloudflareConnector } from "@/components/CloudflareConnector";
-import { MigrationPanelBody } from "@/components/MigrationPanel";
+import {
+  MigrationPanelBody,
+  type MigrationOutcome,
+} from "@/components/MigrationPanel";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -216,7 +219,8 @@ function DatabaseStep({
   const { project, ready, isProduction } = useDatabaseContext(app);
   const queryClient = useQueryClient();
   const [choice, setChoice] = useState<DatabaseBranch | null>(null);
-  const [verified, setVerified] = useState(false);
+  const [migrationOutcome, setMigrationOutcome] =
+    useState<MigrationOutcome | null>(null);
   const [migrating, setMigrating] = useState(false);
   const selected = isProduction ? "production" : choice;
   const save = useMutation({
@@ -293,7 +297,7 @@ function DatabaseStep({
                 aria-pressed={choice === value}
                 onClick={() => {
                   setChoice(value);
-                  setVerified(false);
+                  setMigrationOutcome(null);
                 }}
               >
                 <Database className="size-4" />
@@ -309,16 +313,18 @@ function DatabaseStep({
               development database.
             </p>
           )}
-          {needsMigration && !verified && (
+          {needsMigration && !migrationOutcome && (
             <MigrationPanelBody
               appId={app.id}
-              onVerified={() => setVerified(true)}
+              onVerified={setMigrationOutcome}
               onBusyChange={setMigrating}
             />
           )}
-          {needsMigration && verified && (
+          {needsMigration && migrationOutcome && (
             <p role="status" className="text-sm text-green-600">
-              Production database verified. You can continue.
+              {migrationOutcome === "no-changes"
+                ? "No schema changes needed. You can continue."
+                : "Migration applied successfully. You can continue."}
             </p>
           )}
         </>
@@ -331,7 +337,7 @@ function DatabaseStep({
             migrating ||
             save.isPending ||
             (!!app.neonProjectId && !selected) ||
-            (needsMigration && !verified)
+            (needsMigration && !migrationOutcome)
           }
           onClick={() => save.mutate()}
         >
@@ -484,13 +490,22 @@ function VercelDeployStep({
   });
   useEffect(() => {
     if (
-      current?.vercelProjectId &&
-      startedProject.current !== current.vercelProjectId
-    ) {
+      !current?.vercelProjectId ||
+      startedProject.current === current.vercelProjectId
+    )
+      return;
+    let disposed = false;
+    // Wait for Strict Mode's effect replay before starting the mutation so
+    // its result remains attached to the live observer.
+    queueMicrotask(() => {
+      if (disposed) return;
       startedProject.current = current.vercelProjectId;
       if (app.neonProjectId) sync.mutate();
       else redeploy.mutate();
-    }
+    });
+    return () => {
+      disposed = true;
+    };
   }, [
     app.neonProjectId,
     current?.vercelProjectId,
@@ -732,13 +747,22 @@ function PushDeployment({
   });
   useEffect(() => {
     if (
-      !started.current &&
-      github.connection === "ready" &&
-      !github.projection.isOperationInFlight
-    ) {
+      started.current ||
+      github.connection !== "ready" ||
+      github.projection.isOperationInFlight
+    )
+      return;
+    let disposed = false;
+    // Strict Mode detaches mutation observers during effect replay. Starting
+    // afterward lets the push receipt update the UI and trigger verification.
+    queueMicrotask(() => {
+      if (disposed || started.current) return;
       started.current = true;
       push.mutate();
-    }
+    });
+    return () => {
+      disposed = true;
+    };
   }, [github.connection, github.projection.isOperationInFlight, push.mutate]);
   const verification = useMutation({
     mutationFn: () =>
@@ -822,10 +846,16 @@ function CoolifyRedeploy({ appId }: { appId: number }) {
     [deploy.mutate],
   );
   useEffect(() => {
-    if (!requested.current) {
+    if (requested.current) return;
+    let disposed = false;
+    queueMicrotask(() => {
+      if (disposed || requested.current) return;
       requested.current = true;
       request();
-    }
+    });
+    return () => {
+      disposed = true;
+    };
   }, [request]);
   const finished =
     snapshot.type === "succeeded" || snapshot.type === "failed"

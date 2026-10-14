@@ -70,18 +70,21 @@ describe("github_ops wire contracts", () => {
     expect(
       GithubOpsProducerEventSchema.safeParse({
         type: "CONFLICTS",
+        provider: "github",
         files: ["/Users/alice/secret/app.ts"],
       }).success,
     ).toBe(false);
     expect(
       GithubOpsProducerEventSchema.safeParse({
         type: "CONFLICTS",
+        provider: "github",
         files: ["\\Users\\alice\\secret\\app.ts"],
       }).success,
     ).toBe(false);
     expect(
       GithubOpsProducerEventSchema.safeParse({
         type: "CONFLICTS",
+        provider: "github",
         files: ["src/app.tsx"],
       }).success,
     ).toBe(true);

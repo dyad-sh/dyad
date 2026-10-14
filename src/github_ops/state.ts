@@ -156,15 +156,22 @@ export type GithubOpsEvent =
       op: GithubOperation;
       failure: GithubOperationFailure;
     }
+  // Both probes report whose remote the app is linked to, read from the app
+  // row: a rebase git reports in progress was not started by an operation the
+  // machine knows about, so this is the only place its provider can come
+  // from. Null when the app has no linked remote, or when a failed conflicts
+  // probe settles with no files.
   | {
       type: "CONFLICTS";
       files: readonly string[];
+      provider: GitRemoteProviderName | null;
       verificationAttempt?: number;
     }
   | {
       type: "GIT_STATE";
       mergeInProgress: boolean;
       rebaseInProgress: boolean;
+      provider: GitRemoteProviderName | null;
       verificationAttempt?: number;
     }
   | { type: "ABORT_AND_SWITCH_CONFIRMED" }

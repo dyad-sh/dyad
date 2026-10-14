@@ -347,6 +347,7 @@ export const GithubOpsProducerEventSchema = z.union([
     .object({
       type: z.literal("CONFLICTS"),
       files: z.array(repositoryRelativePathSchema),
+      provider: z.enum(["github", "gitlab"]).nullable(),
       recoveryInvocationRef: GithubOpsInvocationRefSchema.optional(),
       verificationAttempt: z.number().int().positive().optional(),
     })
@@ -356,6 +357,7 @@ export const GithubOpsProducerEventSchema = z.union([
       type: z.literal("GIT_STATE"),
       mergeInProgress: z.boolean(),
       rebaseInProgress: z.boolean(),
+      provider: z.enum(["github", "gitlab"]).nullable(),
       recoveryInvocationRef: GithubOpsInvocationRefSchema.optional(),
       verificationAttempt: z.number().int().positive().optional(),
     })

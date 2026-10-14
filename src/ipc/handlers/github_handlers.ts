@@ -45,6 +45,7 @@ import {
   githubRemote,
   githubRemoteAuth,
   requireAppGitRemote,
+  resolveAppGitRemote,
   type GitRemoteProvider,
 } from "../utils/app_git_remote";
 import { findAppOrThrow } from "../utils/find_app";
@@ -961,10 +962,19 @@ export async function ensureCleanWorkspace(
   );
 }
 
+/**
+ * Whether git is in the middle of a merge or rebase, and whose remote the app
+ * is linked to. A rebase found in progress was not started by any operation
+ * the machine knows about, so the provider has to come from the app row.
+ */
 export async function handleGetGitState(
   event: IpcMainInvokeEvent,
   { appId }: { appId: number },
-): Promise<{ mergeInProgress: boolean; rebaseInProgress: boolean }> {
+): Promise<{
+  mergeInProgress: boolean;
+  rebaseInProgress: boolean;
+  provider: GitRemoteProvider | null;
+}> {
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
   if (!app) throw new Error("App not found");
   const appPath = getDyadAppPath(app.path);
@@ -972,7 +982,11 @@ export async function handleGetGitState(
   const mergeInProgress = isGitMergeInProgress({ path: appPath });
   const rebaseInProgress = isGitRebaseInProgress({ path: appPath });
 
-  return { mergeInProgress, rebaseInProgress };
+  return {
+    mergeInProgress,
+    rebaseInProgress,
+    provider: resolveAppGitRemote(app)?.provider ?? null,
+  };
 }
 
 async function handleListCollaborators(
@@ -1142,16 +1156,17 @@ async function handleRemoveCollaborator(
   }
 }
 
+/** The conflicted files, and whose remote the app is linked to; see handleGetGitState. */
 export async function handleGetMergeConflicts(
   event: IpcMainInvokeEvent,
   { appId }: { appId: number },
-): Promise<string[]> {
+): Promise<{ files: string[]; provider: GitRemoteProvider | null }> {
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
   if (!app) throw new Error("App not found");
   const appPath = getDyadAppPath(app.path);
 
-  const conflicts = await gitGetMergeConflicts({ path: appPath });
-  return conflicts;
+  const files = await gitGetMergeConflicts({ path: appPath });
+  return { files, provider: resolveAppGitRemote(app)?.provider ?? null };
 }
 
 export async function handleDisconnectGithubRepo(

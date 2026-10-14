@@ -15,6 +15,9 @@ vi.mock("@/ipc/utils/git_utils", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/ipc/utils/git_utils")>()),
   gitCheckout: vi.fn(),
   gitFetch: vi.fn(),
+  gitGetMergeConflicts: vi.fn(),
+  isGitMergeInProgress: vi.fn(),
+  isGitRebaseInProgress: vi.fn(),
   gitListBranches: vi.fn(),
   gitListRemoteBranches: vi.fn(),
   gitSetRemoteUrl: vi.fn(),
@@ -25,6 +28,8 @@ import {
   ensureCleanWorkspace,
   handleConnectToExistingRepo,
   handleCreateRepo,
+  handleGetGitState,
+  handleGetMergeConflicts,
   normalizeGitHubRepoName,
   prepareLocalBranch,
 } from "@/ipc/handlers/github_handlers";
@@ -32,7 +37,9 @@ import { createAppOperationHandler } from "@/ipc/utils/app_mutation_lock";
 import { db } from "@/db";
 import {
   gitCheckout,
+  gitGetMergeConflicts,
   gitListBranches,
+  isGitRebaseInProgress,
   isGitStatusClean,
 } from "@/ipc/utils/git_utils";
 
@@ -159,5 +166,56 @@ describe("linking an app to GitHub", () => {
         appId: 1,
       }),
     ).rejects.toThrow(/already linked to GitLab/);
+  });
+});
+
+describe("probing git for the sync state machine", () => {
+  // A rebase found in progress was started by no operation the machine knows
+  // about, so the probes are where its provider comes from.
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(isGitRebaseInProgress).mockReturnValue(true);
+    vi.mocked(gitGetMergeConflicts).mockResolvedValue(["src/conflicted.ts"]);
+  });
+
+  it("reports GitLab for an app linked to a GitLab project", async () => {
+    vi.mocked(db.query.apps.findFirst).mockResolvedValue({
+      id: 1,
+      path: "test-app",
+      gitlabInstanceUrl: "https://gitlab.example.com",
+      gitlabProjectId: 9,
+      gitlabProjectPath: "team/app",
+    } as never);
+
+    await expect(
+      handleGetGitState({} as never, { appId: 1 }),
+    ).resolves.toMatchObject({ rebaseInProgress: true, provider: "gitlab" });
+    await expect(
+      handleGetMergeConflicts({} as never, { appId: 1 }),
+    ).resolves.toEqual({ files: ["src/conflicted.ts"], provider: "gitlab" });
+  });
+
+  it("reports GitHub for an app linked to a GitHub repo", async () => {
+    vi.mocked(db.query.apps.findFirst).mockResolvedValue({
+      id: 1,
+      path: "test-app",
+      githubOrg: "acme",
+      githubRepo: "demo",
+    } as never);
+
+    await expect(
+      handleGetGitState({} as never, { appId: 1 }),
+    ).resolves.toMatchObject({ provider: "github" });
+  });
+
+  it("reports no provider for an app with no linked remote", async () => {
+    vi.mocked(db.query.apps.findFirst).mockResolvedValue({
+      id: 1,
+      path: "test-app",
+    } as never);
+
+    await expect(
+      handleGetMergeConflicts({} as never, { appId: 1 }),
+    ).resolves.toEqual({ files: ["src/conflicted.ts"], provider: null });
   });
 });

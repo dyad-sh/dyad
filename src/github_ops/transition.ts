@@ -27,15 +27,18 @@ function pushAfter(op: { provider: GitRemoteProviderName }): GithubOperation {
 }
 
 /**
- * The provider a synthesized rebase belongs to.
+ * The provider a rebase belongs to when git reports one in progress that no
+ * rebase operation started: a conflicted pull, or a rebase left over from
+ * before the app was opened. The probe reads it from the app row.
  *
- * Only reached when git reports a rebase in progress that no rebase operation
- * started — a conflicted pull, say. Those operations are provider-agnostic and
- * carry no name, so this is the one place left that has to assume one. It is
- * confined to the banner; the push itself resolves the remote from the app row.
+ * Null only for an app with no linked remote. The continuation then pushes
+ * nowhere and is refused as unlinked whichever provider it names, so GitHub
+ * stands in.
  */
-function originProvider(origin: ConflictOrigin): GitRemoteProviderName {
-  return "provider" in origin ? origin.provider : "github";
+function foundRebaseProvider(
+  provider: GitRemoteProviderName | null,
+): GitRemoteProviderName {
+  return provider ?? "github";
 }
 
 export function transition(
@@ -390,9 +393,11 @@ function conflictsReceived(
     case "rebase-paused":
       return files.length > 0
         ? // A rebase git was already in the middle of when the machine looked.
-          // Nothing here started it, so there is no provider to carry; see
-          // originProvider for why the banner assumes GitHub.
-          enterConflicted(files, { type: "rebase", provider: "github" }, false)
+          enterConflicted(
+            files,
+            { type: "rebase", provider: foundRebaseProvider(event.provider) },
+            false,
+          )
         : ignore(state, "no-change");
     case "idle":
       return files.length > 0
@@ -427,7 +432,7 @@ function gitStateReceived(
       const nextOrigin: ConflictOrigin = event.rebaseInProgress
         ? state.resolution !== undefined || isRebaseConflictOrigin(state.origin)
           ? state.origin
-          : { type: "rebase", provider: originProvider(state.origin) }
+          : { type: "rebase", provider: foundRebaseProvider(event.provider) }
         : state.resolution !== undefined &&
             isResumableRebaseOrigin(state.origin)
           ? pushAfter(state.origin)

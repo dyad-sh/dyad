@@ -314,12 +314,13 @@ function createCommandRunner(
             context.ids.next(`${GITHUB_OPS_INVOCATION_KIND}:recovery`),
           );
         void githubOpsService.getConflicts(appId).then(
-          (files) => {
+          ({ files, provider }) => {
             if (generation === conflictProbeGeneration) {
               githubOpsPresentationService.dismissError(appId, "conflicts");
               emit({
                 type: "CONFLICTS",
                 files,
+                provider,
                 recoveryInvocationRef,
                 verificationAttempt: command.verificationAttempt,
               });
@@ -337,7 +338,7 @@ function createCommandRunner(
               "conflicts",
             );
             if (command.settleOnError) {
-              emit({ type: "CONFLICTS", files: [] });
+              emit({ type: "CONFLICTS", files: [], provider: null });
             }
           },
         );

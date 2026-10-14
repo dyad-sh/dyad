@@ -111,19 +111,20 @@ export const PublishPanel = () => {
   return (
     <div className="flex flex-col h-full overflow-y-auto">
       <div className="p-4 space-y-4">
-        <div className="flex items-center justify-between gap-2">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-            Publish App
-          </h1>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+          Publish App
+        </h1>
+        {app.neonProjectId && (
           <Button
             type="button"
+            className="w-full"
             data-testid="guided-deployment-button"
             onClick={() => setDeployAppId(selectedAppId)}
           >
             <CloudUpload className="size-4" aria-hidden="true" />
-            Guided deployment
+            Publish app
           </Button>
-        </div>
+        )}
         {deployAppId !== null && deployAppId === selectedAppId && (
           <DeployDialog
             key={deployAppId}

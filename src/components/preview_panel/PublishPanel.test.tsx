@@ -5,7 +5,15 @@ import { selectedAppIdAtom } from "@/atoms/appAtoms";
 
 vi.mock("@/hooks/useLoadApp", () => ({
   useLoadApp: (appId: number | null) => ({
-    app: appId === null ? null : { id: appId, name: "app", files: [] },
+    app:
+      appId === null
+        ? null
+        : {
+            id: appId,
+            name: "app",
+            files: [],
+            neonProjectId: appId === 1 ? "neon-project" : null,
+          },
     loading: false,
   }),
 }));
@@ -32,7 +40,7 @@ vi.mock("@/components/preview_panel/DeployDialog", () => ({
 import { PublishPanel } from "./PublishPanel";
 
 describe("PublishPanel", () => {
-  it("keeps the existing cards and opens the guided deployment dialog", () => {
+  it("keeps the existing cards and opens guided deployment for a Neon app", () => {
     const store = createStore();
     store.set(selectedAppIdAtom, 1);
     render(
@@ -45,10 +53,25 @@ describe("PublishPanel", () => {
     expect(screen.getByText("Deployment section")).toBeTruthy();
     expect(screen.queryByRole("dialog")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Guided deployment" }));
+    fireEvent.click(screen.getByRole("button", { name: "Publish app" }));
     expect(screen.getByRole("dialog", { name: "Deploy app 1" })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Finish" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("keeps publishing options without guided deployment for a non-Neon app", () => {
+    const store = createStore();
+    store.set(selectedAppIdAtom, 2);
+    render(
+      <Provider store={store}>
+        <PublishPanel />
+      </Provider>,
+    );
+
+    expect(screen.getByText("GitHub connector")).toBeTruthy();
+    expect(screen.getByText("Deployment section")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Publish app" })).toBeNull();
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
@@ -61,11 +84,13 @@ describe("PublishPanel", () => {
       </Provider>,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Guided deployment" }));
+    fireEvent.click(screen.getByRole("button", { name: "Publish app" }));
     expect(screen.getByRole("dialog", { name: "Deploy app 1" })).toBeTruthy();
     act(() => store.set(selectedAppIdAtom, 2));
     expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Publish app" })).toBeNull();
     act(() => store.set(selectedAppIdAtom, 1));
     expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByRole("button", { name: "Publish app" })).toBeTruthy();
   });
 });

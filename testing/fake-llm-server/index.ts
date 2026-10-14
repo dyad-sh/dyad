@@ -7,6 +7,7 @@ import { createChatCompletionHandler } from "./chatCompletionHandler";
 import { registerFakeCoolify } from "./coolify";
 import { registerFakeGitLab } from "./gitlab";
 import { registerFakeCloudflare } from "./cloudflare";
+import { registerFakeVercel } from "./vercel";
 import { createResponsesHandler } from "./responsesHandler";
 import { createAnthropicMessagesHandler } from "./anthropicMessagesHandler";
 import { fakeLlmLog } from "./log";
@@ -731,6 +732,9 @@ export function createFakeLlmApp(getPort: () => number) {
 
   // The Cloudflare API. Test builds send Cloudflare calls here.
   registerFakeCloudflare(app);
+
+  // The Vercel API. Test builds send SDK and HTTP calls here.
+  registerFakeVercel(app);
 
   // GitHub API Mock Endpoints
   fakeLlmLog("Setting up GitHub mock endpoints");

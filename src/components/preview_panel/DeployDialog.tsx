@@ -155,18 +155,15 @@ export function DeployDialog({
   );
 }
 
-function FirstDeploy({
-  app,
-  onBusyChange,
+function DeploymentStepIndicator({
+  steps,
+  step,
 }: {
-  app: App;
-  onBusyChange: (busy: boolean) => void;
+  steps: string[];
+  step: number;
 }) {
-  const [step, setStep] = useState<0 | 1 | 2>(0);
-  const [branch, setBranch] = useState<DatabaseBranch>("production");
-  const steps = ["Database", "GitHub repository", "Deployment"];
   return (
-    <div className="space-y-5">
+    <>
       <ol
         aria-label="Deployment steps"
         className="flex gap-3 text-xs text-muted-foreground"
@@ -178,7 +175,7 @@ function FirstDeploy({
             className={`flex flex-1 items-center gap-1.5 border-b-2 pb-3 ${index === step ? "border-primary text-primary font-medium" : "border-border"}`}
           >
             {index < step ? (
-              <CheckCircle2 className="size-4" />
+              <CheckCircle2 className="size-4 shrink-0" aria-hidden="true" />
             ) : (
               <span>{index + 1}.</span>
             )}
@@ -186,9 +183,28 @@ function FirstDeploy({
           </li>
         ))}
       </ol>
-      <h2 className="font-semibold">
+      <h2 className="font-semibold" aria-live="polite">
         Step {step + 1} — {steps[step]}
       </h2>
+    </>
+  );
+}
+
+function FirstDeploy({
+  app,
+  onBusyChange,
+}: {
+  app: App;
+  onBusyChange: (busy: boolean) => void;
+}) {
+  const [step, setStep] = useState<0 | 1 | 2>(0);
+  const [branch, setBranch] = useState<DatabaseBranch>("production");
+  return (
+    <div className="space-y-5">
+      <DeploymentStepIndicator
+        steps={["Database", "GitHub repository", "Deployment"]}
+        step={step}
+      />
       {step === 0 && (
         <DatabaseStep
           app={app}
@@ -648,8 +664,13 @@ function HostedDeploy({
     !!app.neonProjectId &&
     !isProduction &&
     app.selectedDatabaseBranchType !== "development";
+  const step = !confirmed ? 0 : needsMigration && !databaseVerified ? 1 : 2;
   return (
     <div className="space-y-4">
+      <DeploymentStepIndicator
+        steps={["Intro", "Database", "Deployment"]}
+        step={step}
+      />
       {!confirmed ? (
         <>
           <p className="text-sm">This app is already hosted. Deploy will:</p>

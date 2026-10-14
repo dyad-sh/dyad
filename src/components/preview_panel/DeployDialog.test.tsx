@@ -118,6 +118,19 @@ function mount() {
 function button(name: string) {
   return screen.getByRole("button", { name }) as HTMLButtonElement;
 }
+function expectDeploymentStep(step: number, label: string) {
+  const items = within(
+    screen.getByRole("list", { name: "Deployment steps" }),
+  ).getAllByRole("listitem");
+  expect(items).toHaveLength(3);
+  expect(
+    items.filter((item) => item.getAttribute("aria-current") === "step"),
+  ).toEqual([items[step - 1]]);
+  expect(items[step - 1].textContent).toContain(label);
+  expect(
+    screen.getByRole("heading", { name: `Step ${step} — ${label}` }),
+  ).toBeTruthy();
+}
 async function continueDatabase() {
   const next = await screen.findByRole("button", {
     name: "Continue to GitHub",
@@ -253,6 +266,7 @@ describe.each([false, true])(
       const card = await within(dialog).findByRole("region", {
         name: "integrations.migration.preview.title",
       });
+      if (hosted) expectDeploymentStep(2, "Database");
       await within(card).findByText("integrations.migration.preview.loading");
       expect(document.activeElement).toBe(within(card).getByRole("heading"));
       expect(screen.getAllByRole("dialog")).toEqual([dialog]);
@@ -288,6 +302,7 @@ describe.each([false, true])(
       expect(screen.queryByRole("alertdialog")).toBeNull();
       expect(screen.getAllByRole("dialog")).toEqual([dialog]);
       expect(document.activeElement).toBe(within(confirm).getByRole("heading"));
+      if (hosted) expectDeploymentStep(2, "Database");
       expect(
         within(confirm).getByText(
           "integrations.migration.confirmDescriptionWithBranches",
@@ -322,6 +337,7 @@ describe.each([false, true])(
       expect(h.migrate).not.toHaveBeenCalled();
       expect(h.dispatch).not.toHaveBeenCalled();
       if (!hosted) expect(button("Continue to GitHub").disabled).toBe(true);
+      else expectDeploymentStep(2, "Database");
     });
 
     it.each([false, true])(
@@ -791,8 +807,10 @@ describe("already hosted", () => {
     );
     expect(h.preview).not.toHaveBeenCalled();
     expect(h.dispatch).not.toHaveBeenCalled();
+    expectDeploymentStep(1, "Intro");
     fireEvent.click(confirm);
     await screen.findByText(plan.statements[0]);
+    expectDeploymentStep(2, "Database");
     expect(h.dispatch).not.toHaveBeenCalled();
     await approveMigration();
     await waitFor(() =>
@@ -805,6 +823,7 @@ describe("already hosted", () => {
       h.dispatch.mock.invocationCallOrder[0],
     );
     expect(screen.queryByText(/Latest code verified/)).toBeNull();
+    expectDeploymentStep(3, "Deployment");
     expect(screen.queryByRole("button", { name: "Finish" })).toBeNull();
     h.projection = projectGithubOps({
       type: "idle",
@@ -820,6 +839,7 @@ describe("already hosted", () => {
       </QueryClientProvider>,
     );
     await screen.findByText(/Latest code verified on GitHub/);
+    expectDeploymentStep(3, "Deployment");
     expect(screen.queryByText("Pushing latest code to GitHub…")).toBeNull();
     expect(
       h.dispatch.mock.calls.filter(([event]) => event.type === "OP_REQUESTED"),
@@ -851,6 +871,7 @@ describe("already hosted", () => {
     );
     expect(h.migrate).not.toHaveBeenCalled();
     expect(h.commit).toHaveBeenCalledOnce();
+    expectDeploymentStep(3, "Deployment");
     expect(h.commit.mock.invocationCallOrder[0]).toBeLessThan(
       h.dispatch.mock.invocationCallOrder[0],
     );
@@ -976,6 +997,7 @@ describe("already hosted", () => {
         }),
       );
       expect(h.preview).not.toHaveBeenCalled();
+      expectDeploymentStep(3, "Deployment");
     },
   );
 
@@ -992,6 +1014,7 @@ describe("already hosted", () => {
     await approveMigration();
     await screen.findByText("Migration failed");
     expect(h.dispatch).not.toHaveBeenCalled();
+    expectDeploymentStep(2, "Database");
   });
 
   it("verifies GitHub before reviewing or applying a migration", async () => {
@@ -1007,11 +1030,13 @@ describe("already hosted", () => {
     );
     fireEvent.click(confirm);
     await screen.findByText("Reconnect your GitHub account to continue.");
+    expectDeploymentStep(1, "Intro");
     expect(screen.getByText("GitHub setup controls")).toBeTruthy();
     expect(h.preview).not.toHaveBeenCalled();
     fireEvent.click(button("Review and deploy"));
     await screen.findByText(plan.statements[0]);
     expect(h.verify).toHaveBeenNthCalledWith(2, { appId: 1 });
+    expectDeploymentStep(2, "Database");
     expect(h.verify.mock.invocationCallOrder[1]).toBeLessThan(
       h.preview.mock.invocationCallOrder[0],
     );
@@ -1084,6 +1109,7 @@ describe("already hosted on Coolify", () => {
     expect(screen.queryByText(/Your hosting provider will build/)).toBeNull();
     expect(h.coolifyDeploy).toHaveBeenCalledOnce();
     expect(screen.getByText("Deploying to Coolify…")).toBeTruthy();
+    expectDeploymentStep(3, "Deployment");
     expect(screen.queryByRole("button", { name: "Finish" })).toBeNull();
     h.coolifySnapshot = running(Date.now());
     rerender();
@@ -1097,6 +1123,7 @@ describe("already hosted on Coolify", () => {
     };
     rerender();
     await screen.findByText("Coolify build failed");
+    expectDeploymentStep(3, "Deployment");
     expect(screen.queryByRole("button", { name: "Finish" })).toBeNull();
     fireEvent.click(button("Retry Coolify deployment"));
     expect(h.coolifyDeploy).toHaveBeenCalledTimes(2);

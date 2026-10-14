@@ -9,6 +9,7 @@ import {
 
 const h = vi.hoisted(() => ({
   setOverlayActive: vi.fn(),
+  loadApp: vi.fn(),
   previewState: { type: "closed" } as { type: string; session?: unknown },
 }));
 vi.mock("@/ipc/types", () => ({
@@ -16,6 +17,9 @@ vi.mock("@/ipc/types", () => ({
 }));
 vi.mock("@/hooks/useVersionPreview", () => ({
   useVersionPreview: () => ({ state: h.previewState }),
+}));
+vi.mock("@/hooks/useLoadApp", () => ({
+  useLoadApp: h.loadApp,
 }));
 vi.mock("./DeployDialog", () => ({
   DeployDialog: ({
@@ -68,10 +72,34 @@ function mount(
 
 beforeEach(() => {
   h.setOverlayActive.mockReset();
+  h.loadApp.mockReset().mockImplementation((appId: number | null) => ({
+    app: appId === null ? null : { id: appId, neonProjectId: "neon-project" },
+  }));
   h.previewState = { type: "closed" };
 });
 
 describe("DeployButton", () => {
+  it.each([null, undefined, ""])(
+    "hides the button when the app has no Neon project (%s)",
+    (neonProjectId) => {
+      h.loadApp.mockReturnValue({ app: { id: 1, neonProjectId } });
+      mount();
+      expect(screen.queryByRole("button", { name: "Deploy" })).toBeNull();
+      expect(screen.queryByRole("dialog")).toBeNull();
+    },
+  );
+
+  it("waits for the app to load before showing the button", () => {
+    h.loadApp.mockReturnValue({ app: undefined });
+    const { changeApp } = mount();
+    expect(screen.queryByRole("button", { name: "Deploy" })).toBeNull();
+    h.loadApp.mockReturnValue({
+      app: { id: 1, neonProjectId: "neon-project" },
+    });
+    changeApp(1);
+    expect(screen.getByRole("button", { name: "Deploy" })).toBeTruthy();
+  });
+
   it("shows only an icon, with an accessible name, and opens the app's dialog", () => {
     mount();
     const button = screen.getByRole("button", { name: "Deploy" });
@@ -102,6 +130,39 @@ describe("DeployButton", () => {
     expect(store.get(previewNativeOverlayActiveAtom)).toBe(false);
     fireEvent.click(screen.getByRole("button", { name: "Deploy" }));
     expect(screen.getByRole("dialog", { name: "Deploy app 2" })).toBeTruthy();
+  });
+
+  it("hides the button and closes the dialog when switching to a non-Neon app", () => {
+    h.loadApp.mockImplementation((appId: number | null) => ({
+      app: { id: appId, neonProjectId: appId === 1 ? "neon-project" : null },
+    }));
+    const { changeApp, store } = mount(1);
+    fireEvent.click(screen.getByRole("button", { name: "Deploy" }));
+    changeApp(2);
+    expect(screen.queryByRole("button", { name: "Deploy" })).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(store.get(previewNativeOverlayActiveAtom)).toBe(false);
+    changeApp(1);
+    expect(screen.getByRole("button", { name: "Deploy" })).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("closes the dialog and restores the native surface when Neon is disconnected", () => {
+    const { changeApp, store } = mount(1);
+    fireEvent.click(screen.getByRole("button", { name: "Deploy" }));
+    expect(store.get(previewNativeOverlayActiveAtom)).toBe(true);
+    h.loadApp.mockReturnValue({ app: { id: 1, neonProjectId: null } });
+    changeApp(1);
+    expect(screen.queryByRole("button", { name: "Deploy" })).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(store.get(previewNativeOverlayActiveAtom)).toBe(false);
+    expect(h.setOverlayActive).toHaveBeenLastCalledWith({ active: false });
+    h.loadApp.mockReturnValue({
+      app: { id: 1, neonProjectId: "neon-project" },
+    });
+    changeApp(1);
+    expect(screen.getByRole("button", { name: "Deploy" })).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("cleans up the overlay on unmount and hides the button without an app", () => {

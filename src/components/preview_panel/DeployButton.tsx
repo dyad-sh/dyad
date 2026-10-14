@@ -7,6 +7,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useLoadApp } from "@/hooks/useLoadApp";
 import { useVersionPreview } from "@/hooks/useVersionPreview";
 import { diffVersionIdForState } from "@/version_preview/state";
 import { DeployDialog } from "./DeployDialog";
@@ -21,6 +22,8 @@ export function DeployButton({
   /** Disables the button and shows why in its tooltip. */
   disabledReason?: string | null;
 }) {
+  const { app } = useLoadApp(appId);
+  const isNeonApp = !!app?.neonProjectId;
   const nativeViewAppId = useAtomValue(previewNativeViewAppIdAtom);
   const useNativePreview = appId !== null && nativeViewAppId === appId;
   const syncDeployOverlay = usePreviewNativeOverlay("preview-deploy-dialog");
@@ -32,21 +35,23 @@ export function DeployButton({
     syncDeployOverlay(
       deployAppId !== null &&
         deployAppId === appId &&
+        isNeonApp &&
         useNativePreview &&
         !isVersionSelected,
     );
   }, [
     deployAppId,
     appId,
+    isNeonApp,
     syncDeployOverlay,
     useNativePreview,
     isVersionSelected,
   ]);
   useEffect(() => {
     setDeployAppId(null);
-  }, [appId, isVersionSelected]);
+  }, [appId, isVersionSelected, isNeonApp]);
 
-  if (appId === null || isVersionSelected) return null;
+  if (appId === null || !isNeonApp || isVersionSelected) return null;
 
   return (
     <>

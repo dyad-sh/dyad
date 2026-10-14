@@ -125,6 +125,8 @@ export function DeployDialog({
   appId: number;
   onClose: () => void;
 }) {
+  // Only migration and commit work should prevent dismissal. Remote requests
+  // can stall, so deployment setup and polling must leave the dialog closable.
   const [busy, setBusy] = useState(false);
   const appQuery = useQuery({
     queryKey: queryKeys.apps.detail({ appId }),
@@ -240,9 +242,7 @@ function FirstDeploy({
         />
       )}
       {step === 1 && <GithubStep app={app} onComplete={() => setStep(2)} />}
-      {step === 2 && (
-        <DeploymentStep app={app} branch={branch} onBusyChange={onBusyChange} />
-      )}
+      {step === 2 && <DeploymentStep app={app} branch={branch} />}
     </div>
   );
 }
@@ -382,7 +382,7 @@ function DatabaseStep({
           Continue to GitHub
         </Button>
       </div>
-      <BusyState busy={migrating || save.isPending} onChange={onBusyChange} />
+      <BusyState busy={migrating} onChange={onBusyChange} />
     </div>
   );
 }
@@ -446,15 +446,7 @@ function CloudflareDeploymentNotes() {
   );
 }
 
-function DeploymentStep({
-  app,
-  branch,
-  onBusyChange,
-}: {
-  app: App;
-  branch: DatabaseBranch;
-  onBusyChange: (busy: boolean) => void;
-}) {
+function DeploymentStep({ app, branch }: { app: App; branch: DatabaseBranch }) {
   const { settings } = useSettings();
   const [provider, setProvider] = useState<"vercel" | "cloudflare">("vercel");
   return (
@@ -478,11 +470,7 @@ function DeploymentStep({
         </div>
       )}
       {provider === "vercel" ? (
-        <VercelDeployStep
-          app={app}
-          branch={branch}
-          onBusyChange={onBusyChange}
-        />
+        <VercelDeployStep app={app} branch={branch} />
       ) : (
         <CloudflareDeployStep app={app} />
       )}
@@ -493,11 +481,9 @@ function DeploymentStep({
 function VercelDeployStep({
   app,
   branch,
-  onBusyChange,
 }: {
   app: App;
   branch: DatabaseBranch;
-  onBusyChange: (busy: boolean) => void;
 }) {
   const { app: current } = useLoadApp(app.id);
   const queryClient = useQueryClient();
@@ -612,10 +598,6 @@ function VercelDeployStep({
         </p>
       )}
       {complete && <FinishDeploymentButton />}
-      <BusyState
-        busy={sync.isPending || redeploy.isPending}
-        onChange={onBusyChange}
-      />
     </div>
   );
 }
@@ -760,18 +742,25 @@ function PushDeployment({
   onBusyChange: (busy: boolean) => void;
 }) {
   const github = useGithubOps(app.id);
+  const [committing, setCommitting] = useState(false);
   const started = useRef(false);
   const verifiedBanner = useRef(github.projection.banner);
   const push = useMutation({
     mutationFn: async () => {
       await ipc.github.verifyConnection({ appId: app.id });
       const files = await ipc.git.getUncommittedFiles({ appId: app.id });
-      if (files.length)
-        await ipc.git.commitChanges({
-          appId: app.id,
-          message: "Prepare deployment",
-          operationId: `deploy:${crypto.randomUUID()}`,
-        });
+      if (files.length) {
+        setCommitting(true);
+        try {
+          await ipc.git.commitChanges({
+            appId: app.id,
+            message: "Prepare deployment",
+            operationId: `deploy:${crypto.randomUUID()}`,
+          });
+        } finally {
+          setCommitting(false);
+        }
+      }
       await github.dispatch({ type: "BANNER_DISMISSED" });
       const receipt = await github.dispatch({
         type: "OP_REQUESTED",
@@ -856,10 +845,7 @@ function PushDeployment({
         </>
       )}
       {verification.isSuccess && !usesCoolify && <FinishDeploymentButton />}
-      <BusyState
-        busy={push.isPending || github.projection.isSyncing}
-        onChange={onBusyChange}
-      />
+      <BusyState busy={committing} onChange={onBusyChange} />
     </div>
   );
 }

@@ -77,7 +77,7 @@ function button(name: string) {
 async function startPreview() {
   fireEvent.click(button("integrations.migration.migrateToProduction"));
   await screen.findByText("integrations.migration.preview.loading");
-  await waitFor(() => expect(onBusyChange).toHaveBeenLastCalledWith(true));
+  expect(onBusyChange).toHaveBeenLastCalledWith(false);
 }
 
 beforeEach(() => {
@@ -149,7 +149,7 @@ describe("migration preview lifecycle", () => {
   );
 
   it.each(["integrations.migration.preview.cancel", "Close"])(
-    "clears the loading and busy state via %s before the request finishes",
+    "clears the loading state via %s before the request finishes",
     async (cancelButton) => {
       const pending = deferredPreview();
       preview.mockReturnValueOnce(pending.promise);
@@ -193,7 +193,7 @@ describe("migration preview lifecycle", () => {
     expect(
       screen.getByText("integrations.migration.preview.loading"),
     ).toBeTruthy();
-    expect(onBusyChange).toHaveBeenLastCalledWith(true);
+    expect(onBusyChange).toHaveBeenLastCalledWith(false);
 
     await act(async () => current.resolve({ ...plan, statements: [] }));
     await waitFor(() => expect(onVerified).toHaveBeenCalledWith("no-changes"));

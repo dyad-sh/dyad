@@ -604,6 +604,9 @@ describe.each([false, true])(
           }),
         );
         expect(button("integrations.migration.migrating").disabled).toBe(true);
+        expect(screen.queryByRole("button", { name: "Close" })).toBeNull();
+        fireEvent.keyDown(dialog, { key: "Escape" });
+        expect(onClose).not.toHaveBeenCalled();
         expect(h.dispatch).not.toHaveBeenCalled();
         if (!hosted) expect(button("Continue to GitHub").disabled).toBe(true);
 
@@ -627,6 +630,73 @@ describe.each([false, true])(
 );
 
 describe("first deployment", () => {
+  describe.each(["Close", "Escape"])("dismissal via %s", (dismissal) => {
+    function dismiss() {
+      if (dismissal === "Close") fireEvent.click(button("Close"));
+      else fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+      expect(onClose).toHaveBeenCalledOnce();
+    }
+
+    it.each([
+      ["environment setup", "Configuring Vercel environment variables…"],
+      ["deployment", "Starting a Vercel deployment…"],
+    ])(
+      "allows dismissal during pending Vercel %s",
+      async (request, progress) => {
+        const pending =
+          request === "environment setup" ? h.sync : h.createDeployment;
+        pending.mockImplementationOnce(() => new Promise(() => {}));
+        await reachDeployment();
+        await connectVercel();
+        await screen.findByText(progress);
+        expect(screen.queryByRole("button", { name: "Finish" })).toBeNull();
+        dismiss();
+      },
+    );
+
+    it("allows dismissal during a pending Cloudflare deployment check", async () => {
+      h.cloudflare = true;
+      h.cfStatus.mockResolvedValue({
+        connections: [{ rootDirectory: "" }],
+        synced: true,
+      });
+      h.cfDeployment.mockImplementationOnce(() => new Promise(() => {}));
+      await reachDeployment();
+      fireEvent.click(button("Cloudflare"));
+      await waitFor(() => expect(h.cfDeployment).toHaveBeenCalled());
+      expect(screen.queryByRole("button", { name: "Finish" })).toBeNull();
+      dismiss();
+    });
+
+    it("allows dismissal while saving the database selection", async () => {
+      h.app.neonActiveBranchId = "prod";
+      h.setBranch.mockImplementationOnce(() => new Promise(() => {}));
+      mount();
+      const next = await screen.findByRole("button", {
+        name: "Continue to GitHub",
+      });
+      await waitFor(() =>
+        expect((next as HTMLButtonElement).disabled).toBe(false),
+      );
+      fireEvent.click(next);
+      await waitFor(() =>
+        expect((next as HTMLButtonElement).disabled).toBe(true),
+      );
+      dismiss();
+    });
+
+    it("allows dismissal during migration planning", async () => {
+      h.preview.mockImplementationOnce(() => new Promise(() => {}));
+      mount();
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Production database" }),
+      );
+      fireEvent.click(button("integrations.migration.migrateToProduction"));
+      await screen.findByText("integrations.migration.preview.loading");
+      dismiss();
+    });
+  });
+
   it.each([false, true])(
     "settles an automatic Vercel deployment when the project is connected before the step mounts (Neon=%s)",
     async (withNeon) => {
@@ -997,6 +1067,56 @@ describe("already hosted", () => {
   beforeEach(() => {
     h.app.vercelProjectId = "vercel-1";
   });
+
+  it.each(["success", "failure"])(
+    "locks dismissal only while committing and unlocks after %s",
+    async (outcome) => {
+      h.app.neonActiveBranchId = "prod";
+      h.files.mockResolvedValue([{ path: "index.ts", status: "modified" }]);
+      let finishCommit!: (sha: string) => void;
+      let failCommit!: (error: Error) => void;
+      h.commit.mockImplementationOnce(
+        () =>
+          new Promise((resolve, reject) => {
+            finishCommit = resolve;
+            failCommit = reject;
+          }),
+      );
+      h.dispatch.mockImplementation(async (event) => {
+        if (event.type === "OP_REQUESTED") return new Promise(() => {});
+        return { kind: "applied" };
+      });
+      mount();
+      const review = await screen.findByRole("button", {
+        name: "Review and deploy",
+      });
+      await waitFor(() =>
+        expect((review as HTMLButtonElement).disabled).toBe(false),
+      );
+      fireEvent.click(review);
+      await waitFor(() => expect(h.commit).toHaveBeenCalledOnce());
+      await waitFor(() =>
+        expect(screen.queryByRole("button", { name: "Close" })).toBeNull(),
+      );
+      fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+      expect(onClose).not.toHaveBeenCalled();
+
+      await act(async () => {
+        if (outcome === "success") finishCommit("commit-sha");
+        else failCommit(new Error("Commit failed"));
+      });
+      if (outcome === "success") {
+        await waitFor(() =>
+          expect(h.dispatch).toHaveBeenCalledWith({
+            type: "OP_REQUESTED",
+            op: { type: "push", mode: "normal" },
+          }),
+        );
+      } else await screen.findByText("Commit failed");
+      fireEvent.click(await screen.findByRole("button", { name: "Close" }));
+      expect(onClose).toHaveBeenCalledOnce();
+    },
+  );
 
   it("waits for confirmation, review, and migration success before pushing, and verifies push completion", async () => {
     const view = mount();

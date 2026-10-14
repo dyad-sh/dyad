@@ -115,8 +115,8 @@ export const MigrationPanelBody = ({
     };
   }, [autoPreview, startPreview]);
   useEffect(() => {
-    onBusyChange?.(previewMutation.isPending || migrateMutation.isPending);
-  }, [previewMutation.isPending, migrateMutation.isPending, onBusyChange]);
+    onBusyChange?.(migrateMutation.isPending);
+  }, [migrateMutation.isPending, onBusyChange]);
   useEffect(() => () => onBusyChange?.(false), [onBusyChange]);
   const previewHasDataLoss = previewMutation.data?.hasDataLoss ?? false;
 

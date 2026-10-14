@@ -20,7 +20,7 @@ import {
 } from "./app_git_remote";
 
 const gitlabApp = {
-  gitlabHost: "https://gitlab.example.com/",
+  gitlabInstanceUrl: "https://gitlab.example.com/",
   gitlabProjectId: 9,
   gitlabProjectPath: "group/my-app",
   gitlabBranch: "develop",
@@ -90,7 +90,9 @@ describe("resolveAppGitRemote", () => {
     expect(
       resolveAppGitRemote({ ...gitlabApp, gitlabProjectId: null }),
     ).toBeNull();
-    expect(resolveAppGitRemote({ ...gitlabApp, gitlabHost: "" })).toBeNull();
+    expect(
+      resolveAppGitRemote({ ...gitlabApp, gitlabInstanceUrl: "" }),
+    ).toBeNull();
     // A project id of 0 is not a missing id.
     expect(
       resolveAppGitRemote({ ...gitlabApp, gitlabProjectId: 0 }),

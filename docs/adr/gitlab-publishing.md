@@ -60,7 +60,7 @@ rejected are noted where they shaped the design.
    `settings.gitlab = { instanceUrl, accessToken, user, tokenExpiresAt }`
    in the shape of the Coolify entry. The plain-http acknowledgement is a
    parameter of the save call, deliberately not stored, as Coolify's is.
-   Each app records the host it was linked
+   Each app records the instance URL it was linked
    on. If the active connection points at a different host, push and deploy
    fail with a message that names both hosts; apps stay linked across
    connection changes.
@@ -76,7 +76,7 @@ rejected are noted where they shaped the design.
 
 9. **Parallel provider stack plus a thin shared layer.** GitLab gets its own
    API client, IPC contracts, settings entry and `apps` columns
-   (`gitlab_host`, `gitlab_project_id`, `gitlab_project_path`,
+   (`gitlab_instance_url`, `gitlab_project_id`, `gitlab_project_path`,
    `gitlab_branch`). The existing GitHub columns are not migrated. Consumers
    that today read `githubOrg`/`githubRepo` directly (Publish panel, Coolify
    deploy, remote scrub, push handlers) go through one small module that

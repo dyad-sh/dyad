@@ -75,10 +75,10 @@ export const apps = sqliteTable("apps", {
   // src/shared/linked_remote.ts, and src/ipc/utils/app_git_remote.ts builds
   // the URLs and credentials on top of it — resolve through those rather than
   // reading these columns directly, so the UI and the push cannot disagree
-  // about the provider. The host is recorded because Dyad holds one GitLab
+  // about the provider. The instance URL is recorded because Dyad holds one GitLab
   // connection at a time and it can later point at a different instance than
   // this project is on — pushing there would silently go to the wrong GitLab.
-  gitlabHost: text("gitlab_host"),
+  gitlabInstanceUrl: text("gitlab_instance_url"),
   gitlabProjectId: integer("gitlab_project_id"),
   gitlabProjectPath: text("gitlab_project_path"),
   gitlabBranch: text("gitlab_branch"),

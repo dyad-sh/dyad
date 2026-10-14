@@ -48,7 +48,7 @@ export interface LinkedRemoteColumns {
   githubOrg?: string | null;
   githubRepo?: string | null;
   githubBranch?: string | null;
-  gitlabHost?: string | null;
+  gitlabInstanceUrl?: string | null;
   gitlabProjectId?: number | null;
   gitlabProjectPath?: string | null;
   gitlabBranch?: string | null;
@@ -77,12 +77,12 @@ export function describeLinkedRemote(
     };
   }
   if (
-    app.gitlabHost &&
+    app.gitlabInstanceUrl &&
     app.gitlabProjectId !== null &&
     app.gitlabProjectId !== undefined &&
     app.gitlabProjectPath
   ) {
-    const host = app.gitlabHost.replace(/\/+$/, "");
+    const host = app.gitlabInstanceUrl.replace(/\/+$/, "");
     return {
       provider: "gitlab",
       providerLabel: gitLabProviderLabel(host),

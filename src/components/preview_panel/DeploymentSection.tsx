@@ -25,7 +25,7 @@ interface AppSummary {
   name: string;
   githubOrg: string | null;
   githubRepo: string | null;
-  gitlabHost?: string | null;
+  gitlabInstanceUrl?: string | null;
   gitlabProjectId?: number | null;
   gitlabProjectPath?: string | null;
   deploymentProvidersInUse: DeploymentProvidersInUse;

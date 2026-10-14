@@ -250,7 +250,7 @@ describe("for an app linked to GitLab", () => {
     ...APP,
     githubOrg: null,
     githubRepo: null,
-    gitlabHost: "https://gitlab.com",
+    gitlabInstanceUrl: "https://gitlab.com",
     gitlabProjectId: 42,
     gitlabProjectPath: "acme/demo",
   };

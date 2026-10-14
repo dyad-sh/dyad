@@ -124,7 +124,7 @@ describe("linking an app to GitHub", () => {
   const gitlabLinkedApp = {
     id: 1,
     path: "test-app",
-    gitlabHost: "https://gitlab.example.com",
+    gitlabInstanceUrl: "https://gitlab.example.com",
     gitlabProjectId: 9,
     gitlabProjectPath: "team/app",
   };

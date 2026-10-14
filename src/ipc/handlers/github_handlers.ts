@@ -1178,7 +1178,7 @@ export async function handleDisconnectGithubRepo(
       githubRepo: null,
       githubOrg: null,
       githubBranch: null,
-      gitlabHost: null,
+      gitlabInstanceUrl: null,
       gitlabProjectId: null,
       gitlabProjectPath: null,
       gitlabBranch: null,

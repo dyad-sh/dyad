@@ -29,14 +29,14 @@ function embeddedCredentialsRegex(host: string): RegExp {
  * user configured by hand on some other host is theirs, credentials and all.
  */
 export function managedRemoteHosts(app: {
-  gitlabHost: string | null;
+  gitlabInstanceUrl: string | null;
 }): string[] {
   const hosts = ["github.com"];
-  if (app.gitlabHost) {
+  if (app.gitlabInstanceUrl) {
     try {
-      hosts.push(new URL(app.gitlabHost).host);
+      hosts.push(new URL(app.gitlabInstanceUrl).host);
     } catch {
-      // A host that does not parse cannot be in a remote URL either.
+      // An instance URL that does not parse cannot be in a remote URL either.
     }
   }
   return hosts;
@@ -51,7 +51,7 @@ export function managedRemoteHosts(app: {
 export async function scrubTokensFromRemotes(): Promise<void> {
   try {
     const allApps = await db
-      .select({ path: apps.path, gitlabHost: apps.gitlabHost })
+      .select({ path: apps.path, gitlabInstanceUrl: apps.gitlabInstanceUrl })
       .from(apps);
 
     const counts = await Promise.all(

@@ -141,7 +141,7 @@ describe("scrubbing the app's own GitLab host", () => {
     appRows = [
       {
         path: "gitlab-linked",
-        gitlabHost: "https://gitlab.example.com",
+        gitlabInstanceUrl: "https://gitlab.example.com",
       } as { path: string },
     ];
 
@@ -168,7 +168,7 @@ describe("scrubbing the app's own GitLab host", () => {
     appRows = [
       {
         path: "gitlab-port",
-        gitlabHost: "https://gitlab.example.com:8443",
+        gitlabInstanceUrl: "https://gitlab.example.com:8443",
       } as { path: string },
     ];
 
@@ -197,7 +197,7 @@ describe("scrubbing the app's own GitLab host", () => {
     appRows = [
       {
         path: "gitlab-other-port",
-        gitlabHost: "https://gitlab.example.com",
+        gitlabInstanceUrl: "https://gitlab.example.com",
       } as { path: string },
     ];
 

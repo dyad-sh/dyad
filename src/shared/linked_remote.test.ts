@@ -8,7 +8,7 @@ describe("describeLinkedRemote", () => {
     expect(describeLinkedRemote({ githubOrg: "o" })).toBeNull();
     expect(
       describeLinkedRemote({
-        gitlabHost: "https://gitlab.com",
+        gitlabInstanceUrl: "https://gitlab.com",
         gitlabProjectId: 1,
       }),
     ).toBeNull();
@@ -36,7 +36,7 @@ describe("describeLinkedRemote", () => {
   it("describes a GitLab project and names a self-hosted instance", () => {
     expect(
       describeLinkedRemote({
-        gitlabHost: "https://gitlab.example.com/",
+        gitlabInstanceUrl: "https://gitlab.example.com/",
         gitlabProjectId: 9,
         gitlabProjectPath: "team/demo",
         gitlabBranch: null,
@@ -55,7 +55,7 @@ describe("describeLinkedRemote", () => {
     });
     expect(
       describeLinkedRemote({
-        gitlabHost: "https://gitlab.com",
+        gitlabInstanceUrl: "https://gitlab.com",
         gitlabProjectId: 9,
         gitlabProjectPath: "me/demo",
       })?.providerLabel,

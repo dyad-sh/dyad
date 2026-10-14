@@ -417,7 +417,7 @@ describe("handleCreateGitLabProject", () => {
       providerLabel: "GitLab",
     });
     expect(dbState.updates[0]).toEqual({
-      gitlabHost: "https://gitlab.example.com",
+      gitlabInstanceUrl: "https://gitlab.example.com",
       gitlabProjectId: 9,
       gitlabProjectPath: "group/my-app",
       gitlabBranch: "main",

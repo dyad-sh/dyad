@@ -84,7 +84,7 @@ export async function updateAppGitLabProject({
   await db
     .update(apps)
     .set({
-      gitlabHost: host,
+      gitlabInstanceUrl: host,
       gitlabProjectId: projectId,
       gitlabProjectPath: projectPath,
       gitlabBranch: branch || "main",

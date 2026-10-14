@@ -57,7 +57,7 @@ describe("RepositoryConnector", () => {
   it("keeps a GitLab-linked app on GitLab even with the experiment off", () => {
     h.app = {
       id: 1,
-      gitlabHost: "https://gitlab.com",
+      gitlabInstanceUrl: "https://gitlab.com",
       gitlabProjectId: 9,
       gitlabProjectPath: "me/demo",
     };
@@ -131,7 +131,7 @@ describe("RepositoryConnector", () => {
     h.settingsLoading = true;
     h.app = {
       id: 1,
-      gitlabHost: "https://gitlab.com",
+      gitlabInstanceUrl: "https://gitlab.com",
       gitlabProjectId: 9,
       gitlabProjectPath: "me/demo",
     };

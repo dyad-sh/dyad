@@ -3,6 +3,7 @@ import { defineContract, createClient } from "../contracts/core";
 import { APP_FRAMEWORK_TYPES } from "../../lib/framework_constants";
 import { ChatModeSchema } from "../../lib/schemas";
 import type { AppRunInvocationRef } from "@/app_run/state";
+import type { LinkedRemoteColumns } from "@/shared/linked_remote";
 
 // =============================================================================
 // App Schemas
@@ -21,7 +22,7 @@ export const AppBaseSchema = z.object({
   githubOrg: z.string().nullable(),
   githubRepo: z.string().nullable(),
   githubBranch: z.string().nullable(),
-  gitlabHost: z.string().nullable(),
+  gitlabInstanceUrl: z.string().nullable(),
   gitlabProjectId: z.number().nullable(),
   gitlabProjectPath: z.string().nullable(),
   gitlabBranch: z.string().nullable(),
@@ -43,6 +44,24 @@ export const AppBaseSchema = z.object({
   testingEnabled: z.boolean(),
   collectionId: z.number().nullable(),
 });
+
+type MutuallyAssignable<Left, Right> = [Left] extends [Right]
+  ? [Right] extends [Left]
+    ? true
+    : false
+  : false;
+type AssertTrue<Value extends true> = Value;
+
+// LinkedRemoteColumns is written by hand because src/shared cannot import this
+// schema. Every field on it is optional, so a renamed column would otherwise
+// still type-check at every call site and leave the app reading as unlinked.
+const linkedRemoteColumnsTypeAssertion: AssertTrue<
+  MutuallyAssignable<
+    Pick<z.infer<typeof AppBaseSchema>, keyof LinkedRemoteColumns>,
+    Required<LinkedRemoteColumns>
+  >
+> = true;
+void linkedRemoteColumnsTypeAssertion;
 
 /**
  * Which publishing destinations the app is connected to in Dyad: a Vercel

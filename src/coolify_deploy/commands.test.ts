@@ -2031,7 +2031,7 @@ describe("deploying from GitLab", () => {
     githubOrg: null,
     githubRepo: null,
     githubBranch: null,
-    gitlabHost: "https://gitlab.example.com",
+    gitlabInstanceUrl: "https://gitlab.example.com",
     gitlabProjectId: 9,
     gitlabProjectPath: "team/demo",
     gitlabBranch: "main",

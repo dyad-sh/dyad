@@ -35,7 +35,10 @@ import {
   type AppGitRemote,
   type GitLabRemote,
 } from "@/ipc/utils/app_git_remote";
-import { isGitLabStatus } from "@/ipc/utils/gitlab_client";
+import {
+  isGitLabStatus,
+  type GitLabDeployKey,
+} from "@/ipc/utils/gitlab_client";
 import { gitLabInstanceLabel } from "@/shared/gitlab_instance_url";
 import {
   getCurrentCommitHash,
@@ -326,10 +329,13 @@ async function ensureGithubDeployKey({
  *
  * The URL comes from the API rather than being composed: a self-hosted
  * instance often serves SSH on a port other than 22, and only the project
- * record knows which. GitLab, unlike GitHub, lets one key serve several
- * projects, so "already taken" means the key is on this project (a
- * re-deploy) or on another one this token can see; either way the project
- * key list says whether it is here.
+ * record knows which.
+ *
+ * GitLab answers a key that is already on the project with success and the
+ * key as stored, keeping whatever access it was given, so the answer is
+ * checked for write access as well. A rejection means GitLab would not take
+ * the key, normally because it is registered where this token cannot see;
+ * the project key list then says whether it is here anyway.
  */
 async function ensureGitLabDeployKey({
   remote,
@@ -348,12 +354,24 @@ async function ensureGitLabDeployKey({
   const client = getGitLabClientForRemote(remote, signal);
   const label = remote.displayPath;
 
+  // Dyad registers this key read-only, but an earlier registration (by hand,
+  // or by another tool) can have granted write. Accepting it would hand
+  // Coolify push access to the repository it only needs to read.
+  const refuseWriteAccess = () =>
+    new DyadError(
+      `Dyad's deploy key is already registered on ${label} with write access, ` +
+        `but Coolify only needs to read the repository. Give the key read-only ` +
+        `access in the project's Deploy keys settings, or remove it there and ` +
+        `deploy again so Dyad can register it read-only.`,
+      DyadErrorKind.Validation,
+    );
+
+  let registered: GitLabDeployKey | undefined;
   try {
-    await client.addDeployKey(remote.projectId, {
+    registered = await client.addDeployKey(remote.projectId, {
       title: "Dyad deploy key (Coolify)",
       key: publicKey,
     });
-    report.log(`Added the deploy key to ${label}.\n`);
   } catch (error) {
     if (!isGitLabStatus(error, 400)) throw error;
     // GitLab returns the key without its trailing comment.
@@ -364,18 +382,7 @@ async function ensureGitLabDeployKey({
     // problem the user would go and investigate.
     throwIfAborted(signal);
     const existing = keys.find((k) => k.key.startsWith(ours));
-    if (existing?.canPush) {
-      // Dyad registers this key read-only, but an earlier registration — by
-      // hand, or by another tool — can have granted write. Accepting it would
-      // hand Coolify push access to the repository it only needs to read.
-      throw new DyadError(
-        `Dyad's deploy key is already registered on ${label} with write access, ` +
-          `but Coolify only needs to read the repository. Give the key read-only ` +
-          `access in the project's Deploy keys settings, or remove it there and ` +
-          `deploy again so Dyad can register it read-only.`,
-        DyadErrorKind.Validation,
-      );
-    }
+    if (existing?.canPush) throw refuseWriteAccess();
     if (existing) {
       report.log(`Deploy key already present on ${label}.\n`);
     } else {
@@ -390,6 +397,10 @@ async function ensureGitLabDeployKey({
     }
   }
   throwIfAborted(signal);
+  if (registered) {
+    if (registered.canPush) throw refuseWriteAccess();
+    report.log(`Deploy key registered on ${label}.\n`);
+  }
 
   const project = await client.getProject(remote.projectId);
   if (!project.sshUrlToRepo) {

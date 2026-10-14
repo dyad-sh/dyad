@@ -2126,6 +2126,27 @@ describe("deploying from GitLab", () => {
     });
   });
 
+  it("refuses a key GitLab already has on the project with write access", async () => {
+    // GitLab answers a key that is already on the project with success and
+    // the stored key, ignoring the read-only access Dyad asks for.
+    gitlabConnected();
+    const app = await seedApp(gitlabApp);
+    gitlabRoutes();
+    route(
+      "POST /api/v4/projects/9/deploy_keys",
+      { id: 5, title: "Dyad", key: "ssh-ed25519 AAAAPUBLIC", can_push: true },
+      201,
+    );
+
+    const error = await run(app.id).catch((e) => e);
+    expect(isDyadError(error)).toBe(true);
+    expect(error.kind).toBe(DyadErrorKind.Validation);
+    expect(error.message).toMatch(
+      /already registered on team\/demo with write access/,
+    );
+    expect(bodyOf("POST /applications/private-deploy-key")).toBeUndefined();
+  });
+
   it("refuses a key that GitLab has registered somewhere else", async () => {
     gitlabConnected();
     const app = await seedApp(gitlabApp);

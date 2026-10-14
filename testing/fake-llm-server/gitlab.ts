@@ -400,11 +400,10 @@ export function registerFakeGitLab(app: Express) {
     }
     const material = keyMaterial(String(req.body?.key ?? ""));
     const existing = state.deployKeys.get(project.id) ?? [];
-    if (existing.some((k) => keyMaterial(k.key) === material)) {
-      return res
-        .status(400)
-        .json({ message: { fingerprint: ["has already been taken"] } });
-    }
+    // GitLab answers a key that is already on the project with the key as
+    // stored, keeping its access whatever this request asks for.
+    const stored = existing.find((k) => keyMaterial(k.key) === material);
+    if (stored) return res.status(201).json(stored);
     const created: FakeDeployKey = {
       id: state.nextKeyId++,
       title: String(req.body?.title ?? ""),

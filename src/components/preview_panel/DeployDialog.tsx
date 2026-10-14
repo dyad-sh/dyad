@@ -9,6 +9,7 @@ import { CheckCircle2, CloudUpload, Database, Loader2 } from "lucide-react";
 import { ipc, type App } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
 import { getErrorMessage } from "@/lib/errors";
+import { DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { useSettings } from "@/hooks/useSettings";
 import { useCloudflareAppStatus } from "@/hooks/useCloudflareDeploy";
@@ -20,6 +21,7 @@ import {
 import { GitHubConnector } from "@/components/GitHubConnector";
 import { VercelConnector } from "@/components/VercelConnector";
 import { CloudflareConnector } from "@/components/CloudflareConnector";
+import { NeonSignInButton } from "@/components/NeonSignInButton";
 import {
   MigrationPanelBody,
   type MigrationOutcome,
@@ -51,6 +53,28 @@ function ErrorNotice({ error }: { error: unknown }) {
       {getErrorMessage(error)}
     </p>
   ) : null;
+}
+
+function DatabaseCheckError({
+  appId,
+  error,
+  onRetry,
+}: {
+  appId: number;
+  error: unknown;
+  onRetry: () => void;
+}) {
+  return (
+    <>
+      <ErrorNotice error={error} />
+      {isDyadError(error) && error.kind === DyadErrorKind.Auth && (
+        <NeonSignInButton appId={appId} />
+      )}
+      <Button variant="outline" className="mr-2" onClick={onRetry}>
+        Retry database check
+      </Button>
+    </>
+  );
 }
 
 function Progress({ children }: { children: React.ReactNode }) {
@@ -279,19 +303,16 @@ function DatabaseStep({
           {project.isFetching ? (
             <Progress>Checking database branches…</Progress>
           ) : (
-            <>
-              <ErrorNotice
-                error={
-                  project.error ??
-                  new Error(
-                    "Could not verify the active and production database branches. Check your Neon connection.",
-                  )
-                }
-              />
-              <Button variant="outline" onClick={() => void project.refetch()}>
-                Retry database check
-              </Button>
-            </>
+            <DatabaseCheckError
+              appId={app.id}
+              error={
+                project.error ??
+                new Error(
+                  "Could not verify the active and production database branches. Check your Neon connection.",
+                )
+              }
+              onRetry={() => void project.refetch()}
+            />
           )}
         </>
       ) : !app.neonProjectId || isProduction ? (
@@ -668,7 +689,7 @@ function HostedDeploy({
   return (
     <div className="space-y-4">
       <DeploymentStepIndicator
-        steps={["Intro", "Database", "Deployment"]}
+        steps={["Overview", "Database", "Deployment"]}
         step={step}
       />
       {!confirmed ? (
@@ -694,20 +715,14 @@ function HostedDeploy({
             (project.isFetching ? (
               <Progress>Checking database branches…</Progress>
             ) : (
-              <>
-                <ErrorNotice
-                  error={
-                    project.error ??
-                    new Error("Could not verify the database branches.")
-                  }
-                />
-                <Button
-                  variant="outline"
-                  onClick={() => void project.refetch()}
-                >
-                  Retry database check
-                </Button>
-              </>
+              <DatabaseCheckError
+                appId={app.id}
+                error={
+                  project.error ??
+                  new Error("Could not verify the database branches.")
+                }
+                onRetry={() => void project.refetch()}
+              />
             ))}
           {preflight.isError && (
             <>

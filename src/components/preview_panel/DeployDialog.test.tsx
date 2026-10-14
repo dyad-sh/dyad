@@ -11,6 +11,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { App } from "@/ipc/types";
+import type { ConnectionFlowState } from "@/connection_flow/state";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import type { GithubOpsProjection } from "@/github_ops/projection";
 import { projectGithubOps } from "@/github_ops/projection";
 
@@ -33,10 +35,19 @@ const h = vi.hoisted(() => ({
   commit: vi.fn(),
   cfStatus: vi.fn(),
   cfDeployment: vi.fn(),
+  neonFlow: { status: "disconnected", revision: 0 } as ConnectionFlowState,
+  startConnection: vi.fn(),
+  cancelConnection: vi.fn(),
+  acknowledgeConnection: vi.fn(),
+  openExternalUrl: vi.fn(),
+  toastError: vi.fn(),
+  toastWarning: vi.fn(),
+  toastSuccess: vi.fn(),
 }));
 vi.mock("@/ipc/types", () => ({
   ipc: {
     app: { getApp: vi.fn(async () => h.app) },
+    system: { openExternalUrl: h.openExternalUrl },
     neon: {
       getProject: h.getProject,
       setSelectedDatabaseBranchType: h.setBranch,
@@ -54,6 +65,27 @@ vi.mock("@/ipc/types", () => ({
       getDeploymentStatus: h.cfDeployment,
     },
   },
+}));
+vi.mock("@/hooks/useConnectionFlow", () => ({
+  useConnectionFlow: () => ({
+    flowState: h.neonFlow,
+    isFlowActive: ["starting", "awaiting-return", "exchanging-token"].includes(
+      h.neonFlow.status,
+    ),
+  }),
+  startConnectionFlow: h.startConnection,
+  cancelConnectionFlow: h.cancelConnection,
+  acknowledgeConnectionFlow: h.acknowledgeConnection,
+}));
+vi.mock("sonner", () => ({
+  toast: {
+    error: h.toastError,
+    warning: h.toastWarning,
+    success: h.toastSuccess,
+  },
+}));
+vi.mock("@/contexts/ThemeContext", () => ({
+  useTheme: () => ({ isDarkMode: false }),
 }));
 vi.mock("@/hooks/useSettings", () => ({
   useSettings: () => ({
@@ -105,6 +137,11 @@ const plan = {
   warningReasons: [],
   destructiveStatements: [],
 };
+const neonInvocation = {
+  kind: "connection-flow",
+  entityKey: "neon",
+  operationId: "neon-sign-in",
+} as const;
 let client: QueryClient;
 let onClose: ReturnType<typeof vi.fn>;
 function mount() {
@@ -194,6 +231,14 @@ beforeEach(() => {
     },
   } as App;
   h.cloudflare = false;
+  h.neonFlow = { status: "disconnected", revision: 0 };
+  h.startConnection.mockResolvedValue({
+    started: true,
+    invocationRef: neonInvocation,
+  });
+  h.cancelConnection.mockResolvedValue(undefined);
+  h.acknowledgeConnection.mockResolvedValue(undefined);
+  h.openExternalUrl.mockResolvedValue(undefined);
   h.projection = projectGithubOps({ type: "idle", banner: null });
   h.getProject.mockResolvedValue({
     branches: [
@@ -232,6 +277,162 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   client.clear();
+});
+
+describe.each([false, true])("Neon sign-in (hosted: %s)", (hosted) => {
+  const missingToken =
+    "Neon access token not found. Please authenticate first.";
+  const connectLabel = "integrations.neon.connectTo Neon";
+
+  beforeEach(() => {
+    if (hosted) h.app.vercelProjectId = "vercel-1";
+  });
+
+  function setFlow(view: ReturnType<typeof mount>, state: ConnectionFlowState) {
+    h.neonFlow = state;
+    view.rerender(
+      <QueryClientProvider client={client}>
+        <DeployDialog appId={1} onClose={onClose} />
+      </QueryClientProvider>,
+    );
+  }
+
+  it("offers sign-in alongside the auth error and rechecks branches after connecting", async () => {
+    h.getProject.mockRejectedValueOnce(
+      new DyadError(missingToken, DyadErrorKind.Auth),
+    );
+    const view = mount();
+    await screen.findByText(missingToken);
+    const next = button(hosted ? "Review and deploy" : "Continue to GitHub");
+    expect(next.disabled).toBe(true);
+    fireEvent.click(button(connectLabel));
+    await waitFor(() => {
+      expect(h.startConnection).toHaveBeenCalledWith("neon");
+      expect(h.openExternalUrl).toHaveBeenCalledWith(
+        "https://oauth.dyad.sh/api/integrations/neon/login?state=neon-sign-in",
+      );
+    });
+    setFlow(view, {
+      status: "awaiting-return",
+      revision: 1,
+      provider: "neon",
+      invocationRef: neonInvocation,
+    });
+    expect(button(connectLabel).disabled).toBe(true);
+    expect(screen.getByText("integrations.neon.completingSignIn")).toBeTruthy();
+    expect(button("integrations.neon.cancelSignIn")).toBeTruthy();
+    expect(screen.getByText(missingToken)).toBeTruthy();
+    expect(h.getProject).toHaveBeenCalledOnce();
+
+    client.setQueryData(queryKeys.settings.user, {});
+    setFlow(view, {
+      status: "connected",
+      revision: 2,
+      provider: "neon",
+      invocationRef: neonInvocation,
+    });
+    await waitFor(() => expect(h.getProject).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByText(missingToken)).toBeNull());
+    expect(client.getQueryState(queryKeys.settings.user)?.isInvalidated).toBe(
+      true,
+    );
+    await waitFor(() =>
+      expect(h.acknowledgeConnection).toHaveBeenCalledExactlyOnceWith(
+        "neon",
+        neonInvocation,
+      ),
+    );
+    expect(screen.queryByRole("button", { name: connectLabel })).toBeNull();
+    if (!hosted) fireEvent.click(button("Development database"));
+    expect(next.disabled).toBe(false);
+    expect(h.preview).not.toHaveBeenCalled();
+    expect(h.dispatch).not.toHaveBeenCalled();
+  });
+
+  it("keeps ordinary database errors on the retry path", async () => {
+    h.getProject.mockRejectedValueOnce(
+      new DyadError("Neon unavailable", DyadErrorKind.External),
+    );
+    mount();
+    await screen.findByText("Neon unavailable");
+    expect(screen.queryByRole("button", { name: connectLabel })).toBeNull();
+    fireEvent.click(button("Retry database check"));
+    await waitFor(() => expect(h.getProject).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(screen.queryByText("Neon unavailable")).toBeNull(),
+    );
+  });
+
+  it("cancels the sign-in flow if the browser cannot open", async () => {
+    h.getProject.mockRejectedValue(
+      new DyadError(missingToken, DyadErrorKind.Auth),
+    );
+    h.openExternalUrl.mockRejectedValueOnce(
+      new Error("Could not open browser"),
+    );
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: connectLabel }));
+    await waitFor(() =>
+      expect(h.toastError).toHaveBeenCalledWith("Could not open browser"),
+    );
+    expect(h.cancelConnection).toHaveBeenCalledWith("neon", neonInvocation);
+    expect(button(connectLabel).disabled).toBe(false);
+    expect(screen.getByText(missingToken)).toBeTruthy();
+    expect(h.getProject).toHaveBeenCalledOnce();
+  });
+
+  it("allows cancellation without advancing the deployment", async () => {
+    h.getProject.mockRejectedValue(
+      new DyadError(missingToken, DyadErrorKind.Auth),
+    );
+    h.neonFlow = {
+      status: "awaiting-return",
+      revision: 1,
+      provider: "neon",
+      invocationRef: neonInvocation,
+    };
+    const view = mount();
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "integrations.neon.cancelSignIn",
+      }),
+    );
+    expect(h.cancelConnection).toHaveBeenCalledWith("neon", neonInvocation);
+    setFlow(view, {
+      status: "cancelled",
+      revision: 2,
+      provider: "neon",
+      invocationRef: neonInvocation,
+    });
+    await waitFor(() => expect(h.acknowledgeConnection).toHaveBeenCalledOnce());
+    expect(button(connectLabel).disabled).toBe(false);
+    expect(h.getProject).toHaveBeenCalledOnce();
+    expect(
+      button(hosted ? "Review and deploy" : "Continue to GitHub").disabled,
+    ).toBe(true);
+    expect(h.toastError).not.toHaveBeenCalled();
+  });
+
+  it("reports a sign-in timeout once and allows another attempt", async () => {
+    h.getProject.mockRejectedValue(
+      new DyadError(missingToken, DyadErrorKind.Auth),
+    );
+    h.neonFlow = {
+      status: "failed",
+      reason: "timeout",
+      revision: 2,
+      provider: "neon",
+      invocationRef: neonInvocation,
+    };
+    mount();
+    await screen.findByRole("button", { name: connectLabel });
+    expect(h.toastWarning).toHaveBeenCalledExactlyOnceWith(
+      "integrations.neon.signInTimedOut",
+    );
+    expect(h.acknowledgeConnection).toHaveBeenCalledOnce();
+    expect(button(connectLabel).disabled).toBe(false);
+    expect(h.getProject).toHaveBeenCalledOnce();
+  });
 });
 
 describe.each([false, true])(
@@ -807,7 +1008,7 @@ describe("already hosted", () => {
     );
     expect(h.preview).not.toHaveBeenCalled();
     expect(h.dispatch).not.toHaveBeenCalled();
-    expectDeploymentStep(1, "Intro");
+    expectDeploymentStep(1, "Overview");
     fireEvent.click(confirm);
     await screen.findByText(plan.statements[0]);
     expectDeploymentStep(2, "Database");
@@ -1030,7 +1231,7 @@ describe("already hosted", () => {
     );
     fireEvent.click(confirm);
     await screen.findByText("Reconnect your GitHub account to continue.");
-    expectDeploymentStep(1, "Intro");
+    expectDeploymentStep(1, "Overview");
     expect(screen.getByText("GitHub setup controls")).toBeTruthy();
     expect(h.preview).not.toHaveBeenCalled();
     fireEvent.click(button("Review and deploy"));

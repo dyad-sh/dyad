@@ -136,10 +136,11 @@ async function reachDeployment() {
 async function approveMigration() {
   await screen.findByText(plan.statements[0]);
   fireEvent.click(button("integrations.migration.preview.continue"));
-  const confirm = within(await screen.findByRole("alertdialog")).getByRole(
-    "button",
-    { name: "integrations.migration.migrateToProduction" },
-  );
+  const confirm = within(
+    await screen.findByRole("region", {
+      name: "integrations.migration.migrateToProduction",
+    }),
+  ).getByRole("button", { name: "integrations.migration.migrateToProduction" });
   fireEvent.click(confirm);
 }
 async function connectVercel() {
@@ -223,7 +224,7 @@ afterEach(() => {
 describe.each([false, true])(
   "inline migration preview (hosted: %s)",
   (hosted) => {
-    it("keeps loading, errors, retries, and SQL review in the deployment dialog", async () => {
+    it("keeps loading, errors, review, and confirmation in the deployment dialog", async () => {
       if (hosted) h.app.vercelProjectId = "vercel-1";
       let rejectPreview!: (error: Error) => void;
       h.preview.mockImplementationOnce(
@@ -281,19 +282,130 @@ describe.each([false, true])(
           name: "integrations.migration.preview.continue",
         }),
       );
-      const confirm = await screen.findByRole("alertdialog");
+      const confirm = await within(dialog).findByRole("region", {
+        name: "integrations.migration.migrateToProduction",
+      });
+      expect(screen.queryByRole("alertdialog")).toBeNull();
+      expect(screen.getAllByRole("dialog")).toEqual([dialog]);
+      expect(document.activeElement).toBe(within(confirm).getByRole("heading"));
+      expect(
+        within(confirm).getByText(
+          "integrations.migration.confirmDescriptionWithBranches",
+        ),
+      ).toBeTruthy();
+      expect(h.migrate).not.toHaveBeenCalled();
       fireEvent.click(
         within(confirm).getByRole("button", {
           name: "integrations.migration.backToReview",
         }),
       );
       await within(dialog).findByText(plan.statements[0]);
-      await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+      expect(document.activeElement).toBe(
+        within(dialog).getByRole("heading", {
+          name: "integrations.migration.preview.title",
+        }),
+      );
       expect(screen.getAllByRole("dialog")).toEqual([dialog]);
       expect(h.preview).toHaveBeenCalledTimes(2);
+
+      fireEvent.click(button("integrations.migration.preview.continue"));
+      fireEvent.click(button("integrations.migration.cancel"));
+      expect(
+        screen.queryByRole("region", {
+          name: "integrations.migration.migrateToProduction",
+        }),
+      ).toBeNull();
+      expect(document.activeElement).toBe(
+        button("integrations.migration.migrateToProduction"),
+      );
+      expect(screen.getAllByRole("dialog")).toEqual([dialog]);
       expect(h.migrate).not.toHaveBeenCalled();
       expect(h.dispatch).not.toHaveBeenCalled();
+      if (!hosted) expect(button("Continue to GitHub").disabled).toBe(true);
     });
+
+    it.each([false, true])(
+      "applies the reviewed plan only after inline confirmation (data loss: %s)",
+      async (hasDataLoss) => {
+        if (hosted) h.app.vercelProjectId = "vercel-1";
+        h.preview.mockResolvedValue({ ...plan, hasDataLoss });
+        let finishMigration!: (result: { success: boolean }) => void;
+        h.migrate.mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              finishMigration = resolve;
+            }),
+        );
+        mount();
+        if (hosted) {
+          const review = await screen.findByRole("button", {
+            name: "Review and deploy",
+          });
+          await waitFor(() =>
+            expect((review as HTMLButtonElement).disabled).toBe(false),
+          );
+          fireEvent.click(review);
+        } else {
+          fireEvent.click(
+            await screen.findByRole("button", { name: "Production database" }),
+          );
+          fireEvent.click(button("integrations.migration.migrateToProduction"));
+        }
+        await screen.findByText(plan.statements[0]);
+        fireEvent.click(
+          button(
+            hasDataLoss
+              ? "integrations.migration.preview.continueWithDataLoss"
+              : "integrations.migration.preview.continue",
+          ),
+        );
+        const dialog = screen.getByRole("dialog", { name: "Deploy Demo" });
+        const confirm = within(dialog).getByRole("region", {
+          name: "integrations.migration.migrateToProduction",
+        });
+        expect(screen.queryByRole("alertdialog")).toBeNull();
+        expect(
+          Boolean(
+            within(confirm).queryByText(
+              "integrations.migration.confirmDestructiveWarning",
+            ),
+          ),
+        ).toBe(hasDataLoss);
+        expect(h.migrate).not.toHaveBeenCalled();
+        expect(h.dispatch).not.toHaveBeenCalled();
+        fireEvent.click(
+          within(confirm).getByRole("button", {
+            name: hasDataLoss
+              ? "integrations.migration.migrateToProductionDestructive"
+              : "integrations.migration.migrateToProduction",
+          }),
+        );
+        await waitFor(() =>
+          expect(h.migrate).toHaveBeenCalledExactlyOnceWith({
+            appId: 1,
+            migrationId: "plan-1",
+          }),
+        );
+        expect(button("integrations.migration.migrating").disabled).toBe(true);
+        expect(h.dispatch).not.toHaveBeenCalled();
+        if (!hosted) expect(button("Continue to GitHub").disabled).toBe(true);
+
+        await act(async () => finishMigration({ success: true }));
+        if (hosted)
+          await waitFor(() =>
+            expect(h.dispatch).toHaveBeenCalledWith({
+              type: "OP_REQUESTED",
+              op: { type: "push", mode: "normal" },
+            }),
+          );
+        else {
+          await screen.findByText(
+            "Migration applied successfully. You can continue.",
+          );
+          expect(button("Continue to GitHub").disabled).toBe(false);
+        }
+      },
+    );
   },
 );
 

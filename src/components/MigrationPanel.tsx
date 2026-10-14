@@ -12,15 +12,11 @@ import {
 } from "lucide-react";
 import {
   AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
-  AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { buttonVariants } from "@/components/ui/button";
 import { useTranslation } from "react-i18next";
 import { getErrorMessage } from "@/lib/errors";
 import { useLoadApp } from "@/hooks/useLoadApp";
@@ -34,7 +30,7 @@ interface MigrationPanelProps {
   onVerified?: (outcome: MigrationOutcome) => void;
   onBusyChange?: (busy: boolean) => void;
   autoPreview?: boolean;
-  previewPresentation?: "dialog" | "inline";
+  presentation?: "dialog" | "inline";
 }
 
 export const MigrationPanelBody = ({
@@ -42,7 +38,7 @@ export const MigrationPanelBody = ({
   onVerified,
   onBusyChange,
   autoPreview = false,
-  previewPresentation = "dialog",
+  presentation = "dialog",
 }: MigrationPanelProps) => {
   const { t } = useTranslation("home");
   const { app } = useLoadApp(appId);
@@ -51,6 +47,8 @@ export const MigrationPanelBody = ({
   const errorDetailsId = useId();
   const previewTriggerId = useId();
   const restorePreviewFocus = useRef(false);
+  const confirmationTitleId = useId();
+  const confirmationTitleRef = useRef<HTMLHeadingElement>(null);
 
   const previewMutation = useMutation({
     mutationFn: () => ipc.migration.preview({ appId }),
@@ -69,8 +67,9 @@ export const MigrationPanelBody = ({
   }, [previewMutation.mutate, onVerified]);
 
   const cancelPreview = () => {
-    restorePreviewFocus.current = previewPresentation === "inline";
+    restorePreviewFocus.current = presentation === "inline";
     setPreviewOpen(false);
+    setConfirmOpen(false);
     // Planning only reads database schemas. Detach immediately while the IPC
     // request finishes in the background; it cannot affect a later review.
     previewMutation.reset();
@@ -88,11 +87,16 @@ export const MigrationPanelBody = ({
   const [previewOpen, setPreviewOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   useEffect(() => {
-    if (!previewOpen && restorePreviewFocus.current) {
+    if (!previewOpen && !confirmOpen && restorePreviewFocus.current) {
       restorePreviewFocus.current = false;
       document.getElementById(previewTriggerId)?.focus();
     }
-  }, [previewOpen, previewTriggerId]);
+  }, [previewOpen, confirmOpen, previewTriggerId]);
+  useEffect(() => {
+    if (confirmOpen && presentation === "inline") {
+      confirmationTitleRef.current?.focus();
+    }
+  }, [confirmOpen, presentation]);
   const didAutoPreview = useRef(false);
   useEffect(() => {
     if (!autoPreview || didAutoPreview.current) return;
@@ -164,6 +168,84 @@ export const MigrationPanelBody = ({
         ? getErrorMessage(migrateMutation.error)
         : null;
 
+  const confirmationDescription = (
+    <>
+      {confirmDescription}
+      {previewHasDataLoss && (
+        <span className="mt-2 block font-medium text-red-700 dark:text-red-300">
+          {t("integrations.migration.confirmDestructiveWarning")}
+        </span>
+      )}
+    </>
+  );
+  const confirmationContent = (
+    <>
+      {presentation === "inline" ? (
+        <div className="space-y-1.5">
+          <h3
+            id={confirmationTitleId}
+            ref={confirmationTitleRef}
+            tabIndex={-1}
+            className="text-sm font-semibold outline-none"
+          >
+            {t("integrations.migration.migrateToProduction")}
+          </h3>
+          <p className="text-sm text-muted-foreground">
+            {confirmationDescription}
+          </p>
+        </div>
+      ) : (
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            {t("integrations.migration.migrateToProduction")}
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            {confirmationDescription}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+      )}
+      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+        <Button type="button" variant="outline" onClick={cancelPreview}>
+          {t("integrations.migration.cancel")}
+        </Button>
+        {previewMutation.data && (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              setConfirmOpen(false);
+              setPreviewOpen(true);
+            }}
+          >
+            {t("integrations.migration.backToReview")}
+          </Button>
+        )}
+        <Button
+          type="button"
+          variant={previewHasDataLoss ? "destructive" : "default"}
+          className="h-auto min-h-9 whitespace-normal"
+          disabled={!previewMutation.data?.migrationId}
+          onClick={() => {
+            const migrationId = previewMutation.data?.migrationId;
+            setShowErrorDetails(false);
+            setConfirmOpen(false);
+            if (!migrationId) {
+              // Lost the preview between approve and confirm — re-open
+              // the preview so the user can regenerate.
+              setPreviewOpen(true);
+              return;
+            }
+            migrateMutation.mutate(migrationId);
+          }}
+        >
+          {previewHasDataLoss
+            ? t("integrations.migration.migrateToProductionDestructive")
+            : t("integrations.migration.migrateToProduction")}
+        </Button>
+      </div>
+    </>
+  );
+
   return (
     <div className="space-y-4">
       <p className="text-sm text-gray-600 dark:text-gray-400">{description}</p>
@@ -176,7 +258,7 @@ export const MigrationPanelBody = ({
         <span>{t("integrations.migration.backupWarning")}</span>
       </div>
 
-      {!(previewPresentation === "inline" && previewOpen) && (
+      {!(presentation === "inline" && (previewOpen || confirmOpen)) && (
         <Button
           id={previewTriggerId}
           disabled={
@@ -214,7 +296,7 @@ export const MigrationPanelBody = ({
       )}
 
       <MigrationSqlPreview
-        presentation={previewPresentation}
+        presentation={presentation}
         open={previewOpen}
         onOpenChange={(open) => {
           if (open) setPreviewOpen(true);
@@ -237,64 +319,20 @@ export const MigrationPanelBody = ({
         onRetry={startPreview}
       />
 
-      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t("integrations.migration.migrateToProduction")}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {confirmDescription}
-              {previewHasDataLoss && (
-                <span className="mt-2 block font-medium text-red-700 dark:text-red-300">
-                  {t("integrations.migration.confirmDestructiveWarning")}
-                </span>
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>
-              {t("integrations.migration.cancel")}
-            </AlertDialogCancel>
-            {previewMutation.data && (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  setConfirmOpen(false);
-                  setPreviewOpen(true);
-                }}
-              >
-                {t("integrations.migration.backToReview")}
-              </Button>
-            )}
-            <AlertDialogAction
-              className={
-                previewHasDataLoss
-                  ? buttonVariants({ variant: "destructive" })
-                  : undefined
-              }
-              disabled={!previewMutation.data?.migrationId}
-              onClick={() => {
-                const migrationId = previewMutation.data?.migrationId;
-                setShowErrorDetails(false);
-                setConfirmOpen(false);
-                if (!migrationId) {
-                  // Lost the preview between approve and confirm — re-open
-                  // the preview so the user can regenerate.
-                  setPreviewOpen(true);
-                  return;
-                }
-                migrateMutation.mutate(migrationId);
-              }}
-            >
-              {previewHasDataLoss
-                ? t("integrations.migration.migrateToProductionDestructive")
-                : t("integrations.migration.migrateToProduction")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {presentation === "inline" ? (
+        confirmOpen && (
+          <section
+            aria-labelledby={confirmationTitleId}
+            className="min-w-0 rounded-lg border bg-card p-4 text-card-foreground flex flex-col gap-4"
+          >
+            {confirmationContent}
+          </section>
+        )
+      ) : (
+        <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+          <AlertDialogContent>{confirmationContent}</AlertDialogContent>
+        </AlertDialog>
+      )}
 
       {isProductionBranchActive && (
         <p className="text-sm text-amber-700 dark:text-amber-300">

@@ -29,7 +29,7 @@ import { runAppLifecycleInBackground, useRunApp } from "@/hooks/useRunApp";
 import { useSettings } from "@/hooks/useSettings";
 import { ipc } from "@/ipc/types";
 import type { PreviewViewNavigationState } from "@/ipc/types";
-import { formatPreviewAddressPath, getPreviewHost } from "./previewAddressPath";
+import { formatPreviewAddressPath } from "./previewAddressPath";
 import { resolvePreviewBrowserUrl } from "./previewBrowserUrl";
 import { PreviewLoadingScreen } from "./PreviewLoadingScreen";
 import { PREVIEW_TOOLBAR_BUTTON_CLASSES } from "./previewToolbarStyles";
@@ -351,7 +351,6 @@ export const PreviewWebContentsView = ({ loading }: { loading: boolean }) => {
             className="truncate text-xs text-muted-foreground"
             data-testid="preview-native-path"
           >
-            {getPreviewHost(appUrl)}
             {currentPath}
           </span>
           <span

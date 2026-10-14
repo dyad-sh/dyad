@@ -95,7 +95,6 @@ import { PreviewErrorBanner } from "./PreviewErrorBanner";
 import { useTranslation } from "react-i18next";
 import {
   formatPreviewAddressPath,
-  getPreviewHost,
   normalizePreviewAddressPath,
   sameOriginStartPath,
 } from "./previewAddressPath";
@@ -1400,14 +1399,6 @@ export const PreviewIframe = ({
 
           {/* Flexible route field keeps priority as the panel narrows. */}
           <div className="relative flex h-8 min-w-24 flex-1 items-center rounded-md border border-border bg-(--background-lighter) px-1">
-            {appUrl && (
-              <span
-                className="max-w-40 truncate pl-2 text-xs text-muted-foreground"
-                title={appUrl}
-              >
-                {getPreviewHost(appUrl)}
-              </span>
-            )}
             <div className="flex min-w-[2rem] flex-1 items-center">
               <input
                 aria-label="Preview path"

@@ -1,6 +1,5 @@
-import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { usePreviewRuntime } from "@/hooks/usePreviewRuntime";
 import type { ConsoleEntry } from "@/ipc/types";
-import { useAtomValue } from "jotai";
 import { ipc } from "@/ipc/types";
 import { useEffect, useRef, useState, useMemo, useCallback, memo } from "react";
 import { Virtuoso, VirtuosoHandle } from "react-virtuoso";
@@ -69,7 +68,9 @@ ConsoleItem.displayName = "ConsoleItem";
 
 // Console component
 export const Console = () => {
-  const selectedAppId = useAtomValue(selectedAppIdAtom);
+  // Logs belong to the runtime the preview shows (the selected chat's
+  // isolated workspace, or the app).
+  const selectedAppId = usePreviewRuntime().runtimeAppId;
   const consoleEntries = useConsoleEntries(selectedAppId);
   const appRunManager = useAppRunRemoteManager();
   const { settings } = useSettings();

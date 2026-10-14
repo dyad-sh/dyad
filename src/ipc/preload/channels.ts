@@ -63,6 +63,7 @@ import {
   appBlueprintEvents,
 } from "../types/app_blueprint";
 import { appCollectionContracts } from "../types/app_collections";
+import { workspaceContracts } from "../types/workspace";
 import { terminalContracts } from "../types/terminal";
 import { testsContracts, testsEvents } from "../types/tests";
 import { recordingContracts, recordingEvents } from "../types/recording";
@@ -156,6 +157,7 @@ export const VALID_INVOKE_CHANNELS = [
   ...getInvokeChannels(distributedMachineContracts),
   ...getInvokeChannels(imageGenerationContracts),
   ...getInvokeChannels(previewViewContracts),
+  ...getInvokeChannels(workspaceContracts),
 
   // Test-only channels
   ...TEST_INVOKE_CHANNELS,

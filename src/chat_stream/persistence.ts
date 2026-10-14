@@ -134,7 +134,8 @@ export function toQueueEntry(
     editable: intent.owner === undefined,
     removable:
       intent.owner?.kind !== "plan-handoff" &&
-      intent.owner?.kind !== "review-remediation",
+      intent.owner?.kind !== "review-remediation" &&
+      intent.owner?.kind !== "workspace-integration",
   };
 }
 

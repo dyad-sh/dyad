@@ -138,6 +138,22 @@ export const queryKeys = {
       ["branches", appId, "inventory"] as const,
   },
 
+  // Isolated chat workspaces (worktrees) and their integration status.
+  workspaces: {
+    all: ["workspaces"] as const,
+    byApp: ({ appId }: { appId: number | null }) =>
+      ["workspaces", appId] as const,
+    overview: ({ appId }: { appId: number | null }) =>
+      ["workspaces", appId, "overview"] as const,
+    chat: ({
+      appId,
+      chatId,
+    }: {
+      appId: number | null;
+      chatId: number | null;
+    }) => ["workspaces", appId, "chat", chatId] as const,
+  },
+
   uncommittedFiles: {
     all: ["uncommittedFiles"] as const,
     byApp: ({ appId }: { appId: number | null }) =>
@@ -538,6 +554,7 @@ export type AppQueryKey =
   | QueryKeyOf<
       (typeof queryKeys.uncommittedFiles)[keyof typeof queryKeys.uncommittedFiles]
     >
+  | QueryKeyOf<(typeof queryKeys.workspaces)[keyof typeof queryKeys.workspaces]>
   | QueryKeyOf<(typeof queryKeys.problems)[keyof typeof queryKeys.problems]>
   | QueryKeyOf<(typeof queryKeys.tests)[keyof typeof queryKeys.tests]>
   | QueryKeyOf<

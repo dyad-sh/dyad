@@ -410,5 +410,33 @@
     "sending": "Enviando...",
     "send": "Enviar {{count}}"
   },
-  "safetyReviewUnavailable": "Revisión de seguridad no disponible"
+  "safetyReviewUnavailable": "Revisión de seguridad no disponible",
+  "workspace": {
+    "isolated": "Espacio de trabajo aislado",
+    "isolatedTooltip": "Este chat trabaja en su propia rama y carpeta. Dyad fusiona su trabajo terminado en {{target}} después de comprobar el código combinado.",
+    "originalTooltip": "Este chat trabaja en la carpeta principal de la app en {{branch}}.",
+    "detachedBranch": "Versión anterior",
+    "statusQueued": "Esperando para fusionar",
+    "statusQueuedTooltip": "El trabajo de este chat se fusionará en {{target}} cuando nada más esté usando la carpeta principal de la app.",
+    "statusMerging": "Combinando con {{target}}",
+    "statusMergingTooltip": "Dyad está trayendo la versión más reciente de {{target}} al espacio de trabajo de este chat.",
+    "statusResolvingConflicts": "Resolviendo conflictos",
+    "statusResolvingConflictsTooltip": "Este chat y otro trabajo cambiaron las mismas líneas. El agente está combinando ambos en el espacio de trabajo de este chat.",
+    "statusValidating": "Comprobando los cambios combinados",
+    "statusValidatingTooltip": "Dyad está ejecutando la comprobación de tipos, la compilación y las pruebas del código combinado antes de fusionarlo en {{target}}.",
+    "statusIntegrating": "Fusionando en {{target}}",
+    "statusIntegratingTooltip": "El código combinado pasó sus comprobaciones y se está fusionando en {{target}}.",
+    "statusMerged": "Fusionado en {{target}}",
+    "statusMergedTooltip": "Todo lo que este chat ha hecho hasta ahora está en {{target}}.",
+    "statusPaused": "Fusión en pausa",
+    "statusPausedTooltip": "La fusión del trabajo de este chat necesita tu atención.",
+    "statusFailed": "Fusión bloqueada",
+    "statusFailedTooltip": "El código combinado no pasó sus comprobaciones, así que {{target}} no se modificó.",
+    "retryMerge": "Reintentar fusión",
+    "retryFailed": "No se pudo reintentar la fusión",
+    "concurrentBannerMessage": "Dyad está trabajando en otro chat. Activa el aislamiento con worktrees para mantener separados los cambios simultáneos.",
+    "concurrentBannerEnable": "Activar",
+    "isolationEnabledToast": "El aislamiento con worktrees está activado. El siguiente mensaje de un chat empieza en su propio espacio de trabajo mientras otro chat siga trabajando.",
+    "isolationEnableFailed": "No se pudo activar el aislamiento con worktrees"
+  }
 }

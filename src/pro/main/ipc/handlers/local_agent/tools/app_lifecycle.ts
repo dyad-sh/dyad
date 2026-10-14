@@ -28,8 +28,10 @@ async function executeLifecycle({
   ctx: AgentContext;
   operation: "restart" | "rebuild";
 }): Promise<void> {
+  // The turn's own runtime: an isolated workspace restarts its preview, never
+  // the one the user may currently be looking at for another chat.
   await appRunActorService.executeExternalLifecycle({
-    appId: ctx.appId,
+    appId: ctx.runtimeAppId ?? ctx.appId,
     operation,
     abortSignal: ctx.abortSignal,
     timeoutMs: operation === "rebuild" ? REBUILD_READY_TIMEOUT_MS : undefined,

@@ -88,6 +88,10 @@ vi.mock("@/ipc/utils/process_manager", () => ({
   stopAppByInfo: stopAppByInfoMock,
 }));
 
+vi.mock("@/ipc/services/chat_workspace_service", () => ({
+  chatWorkspaceService: { reconnectAfterAppMove: vi.fn() },
+}));
+
 import { registerTemplateHandlers } from "./template_handlers";
 
 async function writeTree(root: string, files: Record<string, string>) {

@@ -72,7 +72,8 @@ export const writeFileTool: ToolDefinition<z.infer<typeof writeFileSchema>> = {
       fs.writeFileSync(fullFilePath, args.content);
       logger.log(`Successfully wrote file: ${fullFilePath}`);
       queueCloudSandboxSnapshotSync({
-        appId: ctx.appId,
+        // Isolated workspace edits reach the app's sandbox once merged.
+        appId: ctx.runtimeAppId ?? ctx.appId,
         changedPaths: [operationPath],
       });
     });

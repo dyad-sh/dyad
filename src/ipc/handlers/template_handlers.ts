@@ -20,6 +20,7 @@ import { slugifyAppFolderName } from "@/shared/app_names";
 import { resolveUniqueFolderName } from "../utils/app_name_resolution";
 import { getGitUncommittedFiles } from "../utils/git_utils";
 import { gitService } from "../services/git_service";
+import { chatWorkspaceService } from "../services/chat_workspace_service";
 
 const logger = log.scope("template_handlers");
 
@@ -292,6 +293,9 @@ export function registerTemplateHandlers() {
               .set({ path: newSlug })
               .where(eq(apps.id, appId));
             dbUpdated = true;
+            // The repository moved with `.git`; point the app's isolated
+            // chat workspaces at its new location.
+            await chatWorkspaceService.reconnectAfterAppMove(appId);
 
             if (chatId) {
               const chatRecord = await db.query.chats.findFirst({

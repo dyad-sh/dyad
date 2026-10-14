@@ -1,4 +1,5 @@
 import { db } from "../../db";
+import { getActiveWorkspaceForChat } from "@/ipc/services/chat_workspace_store";
 import {
   apps,
   chats,
@@ -1365,6 +1366,16 @@ export function registerVersionHandlers() {
           throw new DyadError(
             "Chat does not belong to this app",
             DyadErrorKind.Validation,
+          );
+        }
+
+        // A chat in an isolated workspace keeps its checkpoints on its own
+        // branch. Restoring one of them into the app's main folder would
+        // publish unmerged work and roll back other chats' merged changes.
+        if (restoreCodebase && getActiveWorkspaceForChat(chatId)) {
+          throw new DyadError(
+            "This chat works in an isolated workspace, so restoring the app to one of its messages isn't available. Use Undo on its latest response, or restore from the Version history.",
+            DyadErrorKind.Precondition,
           );
         }
 

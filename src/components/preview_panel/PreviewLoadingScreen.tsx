@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { usePreviewRuntime } from "@/hooks/usePreviewRuntime";
 import { useAtomValue } from "jotai";
 import {
   AlertTriangle,
@@ -11,7 +12,6 @@ import {
 import { useTranslation } from "react-i18next";
 import type { ConsoleEntry } from "@/ipc/types";
 import type { AppExit } from "@/app_run/selectors";
-import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { runAppLifecycleInBackground, useRunApp } from "@/hooks/useRunApp";
 import { useAppExit, useAppRunState } from "@/hooks/useAppRun";
@@ -154,14 +154,15 @@ export function PreviewLoadingScreen({
   hasStartupError,
 }: PreviewLoadingScreenProps) {
   const { t } = useTranslation("home");
-  const selectedAppId = useAtomValue(selectedAppIdAtom);
+  // Startup progress and errors come from the runtime the preview shows.
+  const selectedAppId = usePreviewRuntime().runtimeAppId;
   const consoleEntries = useConsoleEntries(selectedAppId);
   const runState = useAppRunState(selectedAppId);
   const previewAppExit = useAppExit(selectedAppId);
   const previewRunStartedAt = runState.startedAt;
   const selectedChatId = useAtomValue(selectedChatIdAtom);
   const { streamMessage, isStreaming } = useStreamChat();
-  const { restartApp } = useRunApp();
+  const { restartApp } = useRunApp(selectedAppId);
 
   const isVisible = loading || (!isAppUrlReady && !hasStartupError);
 

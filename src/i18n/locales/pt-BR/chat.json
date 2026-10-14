@@ -409,5 +409,33 @@
     "sending": "Enviando...",
     "send": "Enviar {{count}}"
   },
-  "safetyReviewUnavailable": "Revisão de segurança indisponível"
+  "safetyReviewUnavailable": "Revisão de segurança indisponível",
+  "workspace": {
+    "isolated": "Espaço de trabalho isolado",
+    "isolatedTooltip": "Este chat trabalha em sua própria branch e pasta. O Dyad mescla o trabalho concluído em {{target}} depois de verificar o código combinado.",
+    "originalTooltip": "Este chat trabalha na pasta principal do app em {{branch}}.",
+    "detachedBranch": "Versão anterior",
+    "statusQueued": "Aguardando mesclagem",
+    "statusQueuedTooltip": "O trabalho deste chat será mesclado em {{target}} quando nada mais estiver usando a pasta principal do app.",
+    "statusMerging": "Combinando com {{target}}",
+    "statusMergingTooltip": "O Dyad está trazendo a versão mais recente de {{target}} para o espaço de trabalho deste chat.",
+    "statusResolvingConflicts": "Resolvendo conflitos",
+    "statusResolvingConflictsTooltip": "Este chat e outro trabalho alteraram as mesmas linhas. O agente está combinando os dois no espaço de trabalho deste chat.",
+    "statusValidating": "Verificando as alterações combinadas",
+    "statusValidatingTooltip": "O Dyad está executando a verificação de tipos, o build e os testes no código combinado antes de mesclar em {{target}}.",
+    "statusIntegrating": "Mesclando em {{target}}",
+    "statusIntegratingTooltip": "O código combinado passou nas verificações e está sendo mesclado em {{target}}.",
+    "statusMerged": "Mesclado em {{target}}",
+    "statusMergedTooltip": "Tudo o que este chat fez até agora está em {{target}}.",
+    "statusPaused": "Mesclagem pausada",
+    "statusPausedTooltip": "A mesclagem do trabalho deste chat precisa da sua atenção.",
+    "statusFailed": "Mesclagem bloqueada",
+    "statusFailedTooltip": "O código combinado não passou nas verificações, então {{target}} não foi alterado.",
+    "retryMerge": "Tentar mesclar novamente",
+    "retryFailed": "Não foi possível tentar a mesclagem novamente",
+    "concurrentBannerMessage": "O Dyad está trabalhando em outro chat. Ative o isolamento com worktrees para manter separadas as alterações simultâneas.",
+    "concurrentBannerEnable": "Ativar",
+    "isolationEnabledToast": "O isolamento com worktrees está ativado. A próxima mensagem de um chat começa em seu próprio espaço de trabalho enquanto outro chat ainda estiver trabalhando.",
+    "isolationEnableFailed": "Não foi possível ativar o isolamento com worktrees"
+  }
 }

@@ -31,6 +31,16 @@ import {
   isRestoreRecoveryFlowState,
 } from "@/version_preview/state";
 
+/**
+ * Commits from isolated chat workspaces carry a structured body (request,
+ * changed files, checks) and `Dyad-*` trailers; the version row shows the
+ * subject only. Other messages are shown as written.
+ */
+export function summarizeDyadCommitMessage(message: string): string {
+  if (!/^Dyad-Chat: \d+$/m.test(message)) return message;
+  return message.split("\n")[0].trim();
+}
+
 function HighlightMatch({
   text,
   query,
@@ -126,19 +136,20 @@ function VersionRow({
     isResolvingPreviewBranch ||
     isAnyVersionMutationPending;
   const trimmedSearchQuery = searchQuery.trim();
+  const versionMessage = summarizeDyadCommitMessage(version.message);
   const displayMessage =
-    version.message &&
-    (version.message.startsWith("Reverted all changes back to version ")
-      ? version.message.replace(
+    versionMessage &&
+    (versionMessage.startsWith("Reverted all changes back to version ")
+      ? versionMessage.replace(
           /Reverted all changes back to version ([a-f0-9]+)/,
           (_, hash) => {
             const targetVersionNumber = versionNumberByOid.get(hash);
             return targetVersionNumber !== undefined
               ? `Reverted all changes back to version ${targetVersionNumber}`
-              : version.message;
+              : versionMessage;
           },
         )
-      : version.message);
+      : versionMessage);
 
   return (
     <div

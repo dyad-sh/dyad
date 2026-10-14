@@ -156,9 +156,13 @@ export const updateTodosTool: ToolDefinition<
     const allCompleted =
       ctx.todos.length > 0 && ctx.todos.every((t) => t.status === "completed");
     if (allCompleted || ctx.todos.length === 0) {
-      await deleteTodos(ctx.appPath, ctx.chatId);
+      await deleteTodos(ctx.dyadMetadataPath ?? ctx.appPath, ctx.chatId);
     } else {
-      await saveTodos(ctx.appPath, ctx.chatId, ctx.todos);
+      await saveTodos(
+        ctx.dyadMetadataPath ?? ctx.appPath,
+        ctx.chatId,
+        ctx.todos,
+      );
     }
 
     const completed = ctx.todos.filter((t) => t.status === "completed").length;

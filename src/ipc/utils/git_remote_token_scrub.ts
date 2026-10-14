@@ -4,6 +4,7 @@ import path from "node:path";
 import { getDyadAppPath } from "@/paths/paths";
 import { db } from "@/db";
 import { apps } from "@/db/schema";
+import { resolveGitCommonDirSync } from "./git_dir";
 
 const logger = log.scope("git_remote_token_scrub");
 
@@ -26,9 +27,11 @@ export async function scrubGithubTokenFromRemotes(): Promise<void> {
 
     const counts = await Promise.all(
       allApps.map(async (app) => {
+        // The config is shared by every worktree, so resolve the common Git
+        // directory rather than assuming `.git` is a directory: an imported
+        // app can itself be a linked worktree whose `.git` is a file.
         const configPath = path.join(
-          getDyadAppPath(app.path),
-          ".git",
+          resolveGitCommonDirSync(getDyadAppPath(app.path)),
           "config",
         );
 

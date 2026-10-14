@@ -76,6 +76,13 @@ const persistence = vi.hoisted(() => ({
 const subagents = vi.hoisted(() => ({
   settle: vi.fn(async () => vi.fn()),
 }));
+const workspaces = vi.hoisted(() => ({
+  onChatDeleting: vi.fn(async (_chatId: number) => undefined),
+}));
+
+vi.mock("./chat_workspace_service", () => ({
+  chatWorkspaceService: { onChatDeleting: workspaces.onChatDeleting },
+}));
 
 vi.mock("@/ipc/services/distributed_machine_actor_host", () => ({
   remoteMachineHost: host,
@@ -354,6 +361,11 @@ describe("waitForChatActorIdle", () => {
       expect.objectContaining({ chatId: 7 }),
     );
     expect(cleanup.deleteWhere).toHaveBeenCalledOnce();
+    // The chat's isolated workspace is removed before its row cascades.
+    expect(workspaces.onChatDeleting).toHaveBeenCalledWith(7);
+    expect(workspaces.onChatDeleting.mock.invocationCallOrder[0]).toBeLessThan(
+      cleanup.deleteWhere.mock.invocationCallOrder[0],
+    );
     expect(cleanup.publish).toHaveBeenCalledWith({ kind: "chat", id: 7 });
   });
 });

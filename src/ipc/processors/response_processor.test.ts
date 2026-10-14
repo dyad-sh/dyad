@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   executeSupabaseSqlMock: vi.fn(),
   writeMigrationFileMock: vi.fn(),
   deployAffectedSupabaseFunctionsMock: vi.fn(),
+  isMergeInProgressMock: vi.fn(),
 }));
 
 const {
@@ -81,6 +82,10 @@ vi.mock("@/main/settings", () => ({
   readSettings: mocks.readSettingsMock,
 }));
 
+vi.mock("../utils/git_worktree_utils", () => ({
+  isMergeInProgress: mocks.isMergeInProgressMock,
+}));
+
 vi.mock("../utils/cloud_sandbox_provider", () => ({
   queueCloudSandboxSnapshotSync: mocks.queueCloudSandboxSnapshotSyncMock,
 }));
@@ -141,6 +146,7 @@ describe("processFullResponseActions add dependency errors", () => {
       "supabase/migrations/0000_test.sql",
     );
     deployAffectedSupabaseFunctionsMock.mockResolvedValue([]);
+    mocks.isMergeInProgressMock.mockReturnValue(false);
 
     vi.mocked(db.query.chats.findFirst).mockResolvedValue({
       id: 1,
@@ -356,6 +362,49 @@ describe("processFullResponseActions add dependency errors", () => {
       path: "/mock/apps/test-app",
       message: "updated project files",
     });
+  });
+
+  it("commits a chat workspace's changes there, linked to the chat and turn", async () => {
+    vi.mocked(hasStagedChanges).mockResolvedValueOnce(true);
+
+    await processFullResponseActions(
+      '<dyad-write path="src/file1.js">console.log("Hello");</dyad-write>',
+      1,
+      {
+        chatSummary: "Say hello",
+        messageId: 7,
+        workspaceAppPath: "/workspaces/chat-1",
+      },
+    );
+
+    expect(gitCommit).toHaveBeenCalledWith({
+      path: "/workspaces/chat-1",
+      message: "Say hello - wrote 1 file(s)\n\nDyad-Chat: 1\nDyad-Turn: 7",
+    });
+    // The app's sandbox gets the change once it is merged.
+    expect(queueCloudSandboxSnapshotSyncMock).not.toHaveBeenCalled();
+  });
+
+  it("leaves a merge resolution in a chat workspace staged for Dyad to complete", async () => {
+    vi.mocked(hasStagedChanges).mockResolvedValueOnce(true);
+    mocks.isMergeInProgressMock.mockReturnValue(true);
+
+    const result = await processFullResponseActions(
+      '<dyad-write path="src/file1.js">console.log("Hello");</dyad-write>',
+      1,
+      {
+        chatSummary: undefined,
+        messageId: 7,
+        workspaceAppPath: "/workspaces/chat-1",
+      },
+    );
+
+    expect(gitAdd).toHaveBeenCalledWith({
+      path: "/workspaces/chat-1",
+      filepath: "src/file1.js",
+    });
+    expect(gitCommit).not.toHaveBeenCalled();
+    expect(result.error).toBeUndefined();
   });
 
   it("queues delete tags for cloud sync even when the local path is already missing", async () => {

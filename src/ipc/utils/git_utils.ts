@@ -25,6 +25,7 @@ import {
   selectTextLineRange,
 } from "@/utils/dotenv_redaction";
 import { runBufferedProcess } from "./buffered_process";
+import { resolveGitDirSync } from "./git_dir";
 import {
   collectGitLaunchDiagnostics,
   getGitLaunchTelemetryProperties,
@@ -32,6 +33,7 @@ import {
 import { sendTelemetryEvent } from "./telemetry";
 
 export { GIT_ERROR_CODES } from "@/shared/git_error_codes";
+export { resolveGitCommonDirSync, resolveGitDirSync } from "./git_dir";
 
 const logger = log.scope("git_utils");
 
@@ -978,6 +980,17 @@ export async function gitCheckout({
       `Failed to checkout ref '${ref}'`,
     );
   } catch (error) {
+    // Git refuses to check out a branch another worktree has checked out,
+    // which is how isolated chat workspaces hold their branches.
+    if (
+      error instanceof Error &&
+      /is already (?:used by worktree|checked out) at/.test(error.message)
+    ) {
+      throw new DyadError(
+        `Branch '${ref}' is in use by an isolated chat workspace. It can be checked out here after that chat's work is merged and its workspace is cleaned up.`,
+        DyadErrorKind.Conflict,
+      );
+    }
     throw classifyGitOperationError(error, [
       GIT_ERROR_CODES.UNCOMMITTED_CHANGES,
     ]);
@@ -1726,17 +1739,20 @@ function mapDiffStatusToChangeType(status: string): GitChangedFileType | null {
 export async function gitListBranches({
   path,
 }: GitBaseParams): Promise<string[]> {
-  const result = await execGit(["branch", "--list"], path);
+  // An explicit format avoids parsing the `*` (current) and `+` (checked out in
+  // another linked worktree) markers that `git branch --list` prefixes.
+  const result = await execGit(
+    ["branch", "--list", "--format=%(refname:short)"],
+    path,
+  );
 
   if (result.exitCode !== 0) {
     throw new DyadError(result.stderr.toString(), DyadErrorKind.Conflict);
   }
-  // Parse output:
-  // e.g. "* main\n  feature/login"
   return result.stdout
     .toString()
     .split("\n")
-    .map((line) => line.replace("*", "").trim())
+    .map((line) => line.trim())
     .filter((line) => line.length > 0);
 }
 
@@ -3132,7 +3148,7 @@ export async function gitGetMergeConflicts({
  * if there are still unmerged files.
  */
 export function isGitMergeOrRebaseInProgress({ path }: GitBaseParams): boolean {
-  const gitDir = pathModule.join(path, ".git");
+  const gitDir = resolveGitDirSync(path);
 
   // Check for merge in progress
   const mergeHeadPath = pathModule.join(gitDir, "MERGE_HEAD");
@@ -3160,7 +3176,7 @@ export function isGitMergeOrRebaseInProgress({ path }: GitBaseParams): boolean {
  * This checks for MERGE_HEAD file which indicates a merge is in progress.
  */
 export function isGitMergeInProgress({ path }: GitBaseParams): boolean {
-  const gitDir = pathModule.join(path, ".git");
+  const gitDir = resolveGitDirSync(path);
   const mergeHeadPath = pathModule.join(gitDir, "MERGE_HEAD");
   return fs.existsSync(mergeHeadPath);
 }
@@ -3171,7 +3187,7 @@ export function isGitMergeInProgress({ path }: GitBaseParams): boolean {
  * or `git commit` when completing conflict resolution.
  */
 export function isGitRebaseInProgress({ path }: GitBaseParams): boolean {
-  const gitDir = pathModule.join(path, ".git");
+  const gitDir = resolveGitDirSync(path);
 
   // Check for rebase in progress via REBASE_HEAD
   const rebaseHeadPath = pathModule.join(gitDir, "REBASE_HEAD");

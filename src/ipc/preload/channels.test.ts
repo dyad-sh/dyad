@@ -12,6 +12,7 @@ import {
   coolifySetupEvents,
 } from "../types/coolify_setup";
 import { cloudflareContracts } from "../types/cloudflare";
+import { workspaceContracts } from "../types/workspace";
 import {
   VALID_INVOKE_CHANNELS,
   VALID_RECEIVE_CHANNELS,
@@ -87,6 +88,16 @@ describe("cloudflare preload channels", () => {
     // A channel missing from the list type-checks and fails only in the
     // running app, as "Invalid channel", the first time the tab is used.
     for (const contract of Object.values(cloudflareContracts)) {
+      expect(VALID_INVOKE_CHANNELS).toContain(contract.channel);
+    }
+  });
+});
+
+describe("chat workspace preload channels", () => {
+  it("allows every chat workspace invoke contract", () => {
+    // Without these the preview cannot tell which workspace a chat uses and
+    // keeps re-resolving, and isolated chats lose Undo, Retry, and status.
+    for (const contract of Object.values(workspaceContracts)) {
       expect(VALID_INVOKE_CHANNELS).toContain(contract.channel);
     }
   });

@@ -412,5 +412,33 @@
     "sending": "Sending...",
     "send": "Send {{count}}"
   },
-  "safetyReviewUnavailable": "Safety review unavailable"
+  "safetyReviewUnavailable": "Safety review unavailable",
+  "workspace": {
+    "isolated": "Isolated workspace",
+    "isolatedTooltip": "This chat works on its own branch and folder. Dyad merges its finished work into {{target}} after checking the combined code.",
+    "originalTooltip": "This chat works in the app's main folder on {{branch}}.",
+    "detachedBranch": "Earlier version",
+    "statusQueued": "Waiting to merge",
+    "statusQueuedTooltip": "This chat's work will be merged into {{target}} once nothing else is using the app's main folder.",
+    "statusMerging": "Combining with {{target}}",
+    "statusMergingTooltip": "Dyad is bringing the latest {{target}} into this chat's workspace.",
+    "statusResolvingConflicts": "Resolving conflicts",
+    "statusResolvingConflictsTooltip": "This chat and other work changed the same lines. The agent is combining both in this chat's workspace.",
+    "statusValidating": "Checking combined changes",
+    "statusValidatingTooltip": "Dyad is running the type-check, build, and tests on the combined code before merging into {{target}}.",
+    "statusIntegrating": "Merging into {{target}}",
+    "statusIntegratingTooltip": "The combined code passed its checks and is being merged into {{target}}.",
+    "statusMerged": "Merged into {{target}}",
+    "statusMergedTooltip": "Everything this chat has done so far is in {{target}}.",
+    "statusPaused": "Merge paused",
+    "statusPausedTooltip": "Merging this chat's work needs your attention.",
+    "statusFailed": "Merge blocked",
+    "statusFailedTooltip": "The combined code didn't pass its checks, so {{target}} was left unchanged.",
+    "retryMerge": "Retry merge",
+    "retryFailed": "Couldn't retry the merge",
+    "concurrentBannerMessage": "Dyad is working in another chat. Enable worktree isolation to keep concurrent changes separate.",
+    "concurrentBannerEnable": "Enable",
+    "isolationEnabledToast": "Worktree isolation is on. A chat's next message starts in its own workspace while another chat is still working.",
+    "isolationEnableFailed": "Couldn't enable worktree isolation"
+  }
 }

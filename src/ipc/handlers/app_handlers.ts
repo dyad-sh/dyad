@@ -1,4 +1,9 @@
 import { deleteChatJournals } from "@/ipc/services/chat_journal_cleanup";
+import { chatWorkspaceService } from "@/ipc/services/chat_workspace_service";
+import {
+  listWorkspacesForApp,
+  type ChatWorkspaceRow,
+} from "@/ipc/services/chat_workspace_store";
 import { initialChatExecution } from "@/ipc/utils/chat_execution_selection";
 import { app, dialog } from "electron";
 import { closeDatabase, db, getDatabaseFilePaths } from "../../db";
@@ -647,6 +652,7 @@ async function deleteAppByIdExclusive(
   let imageGenerationCleanupFailed = false;
   let imageGenerationCleanupError: unknown;
   let deletedRow: typeof apps.$inferSelect | null = null;
+  let appWorkspaces: ChatWorkspaceRow[] = [];
   try {
     versionPreviewActorService.beginAppDeletion(appId);
     versionPreviewDeletionStarted = true;
@@ -724,6 +730,9 @@ async function deleteAppByIdExclusive(
             // Continue with deletion even if stopping fails
           }
         }
+        // Captured before the row delete cascades to them.
+        appWorkspaces = listWorkspacesForApp(appId);
+        await chatWorkspaceService.stopRuntimesForDeletedApp(appWorkspaces);
 
         await appRunDeletion.seal();
         // Re-read rather than reuse `app` from the top of this lock: the stop
@@ -788,6 +797,11 @@ async function deleteAppByIdExclusive(
       }
     }
 
+    await chatWorkspaceService
+      .cleanUpAfterAppDeletion(appWorkspaces)
+      .catch((error) =>
+        logger.warn(`Failed to clean up workspaces of app ${appId}`, error),
+      );
     // Clear logs for this app to prevent memory leak
     appRuntimeService.clearRuntimeLogs(appId);
     getPtySessionManager().killForApp(appId);
@@ -1095,6 +1109,12 @@ export function registerAppHandlers() {
             newAppPath,
             (source: string) => {
               if (!withHistory && path.basename(source) === ".git") {
+                return false;
+              }
+              // Isolated chat workspaces stay with the original app. Copying
+              // their registrations would leave the copy's branches "checked
+              // out" in another app's worktrees.
+              if (source === path.join(originalAppPath, ".git", "worktrees")) {
                 return false;
               }
               return true;
@@ -1893,6 +1913,9 @@ export function registerAppHandlers() {
             .where(eq(apps.id, appId))
             .returning();
 
+          if (newAppPath !== oldAppPath) {
+            await chatWorkspaceService.reconnectAfterAppMove(appId);
+          }
           return { name: appName, path: pathToStore };
         } catch (error: any) {
           // Attempt to rollback the file move
@@ -2125,6 +2148,11 @@ export function registerAppHandlers() {
 
           await gitRenameBranch({
             path: appPath,
+            oldBranch: oldBranchName,
+            newBranch: newBranchName,
+          });
+          chatWorkspaceService.onBranchRenamed({
+            appId,
             oldBranch: oldBranchName,
             newBranch: newBranchName,
           });
@@ -2414,6 +2442,7 @@ export function registerAppHandlers() {
             );
           }
 
+          await chatWorkspaceService.reconnectAfterAppMove(appId);
           return {
             resolvedPath: nextResolvedPath,
           };

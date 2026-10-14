@@ -97,6 +97,9 @@ import {
 } from "./ipc/utils/process_manager";
 import { cleanupOldAiMessagesJson } from "./pro/main/ipc/handlers/local_agent/ai_messages_cleanup";
 import { cleanupStaleBuildSnapshots } from "./pro/main/ipc/handlers/local_agent/tools/run_build";
+import { chatWorkspaceService } from "./ipc/services/chat_workspace_service";
+import { workspaceIntegrationQueue } from "./ipc/services/workspace_integration_queue";
+import { startPublishingWorkspaceRegistryChanges } from "./ipc/services/workspace_events";
 import {
   startChatSearchIndexer,
   stopChatSearchIndexer,
@@ -464,6 +467,15 @@ export async function onReady() {
   void recoverInterruptedSubagents().catch((error) =>
     logger.error("Failed to reconcile interrupted sub-agents", error),
   );
+  // Reconcile isolated chat workspaces with Git before integration resumes:
+  // a merge interrupted by a crash is kept for the user, queued work restarts,
+  // and an integration that landed before its status was saved is recorded.
+  startPublishingWorkspaceRegistryChanges();
+  void chatWorkspaceService
+    .recover()
+    .catch((error) =>
+      logger.error("Failed to recover isolated chat workspaces", error),
+    );
   void cleanupStaleBuildSnapshots().catch((error) =>
     logger.error("Failed to clean stale production build snapshots", error),
   );
@@ -1794,6 +1806,9 @@ app.on("will-quit", () => {
 
   // Stop the chat-search index maintenance timers
   stopChatSearchIndexer();
+
+  // Stop starting new integration steps; persisted phases resume next launch.
+  workspaceIntegrationQueue.stop();
 });
 
 app.on("quit", (_event, exitCode) => {

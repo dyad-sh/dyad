@@ -44,6 +44,14 @@ export const copyFileTool: ToolDefinition<z.infer<typeof copyFileSchema>> = {
       from: args.from,
       to: args.to,
       appId: ctx.appId,
+      workspace:
+        ctx.workspaceCoordinationKey !== undefined
+          ? {
+              appPath: ctx.appPath,
+              mediaAppPath: ctx.dyadMetadataPath ?? ctx.appPath,
+              coordinationKey: ctx.workspaceCoordinationKey,
+            }
+          : undefined,
       isSharedModulesChanged: ctx.isSharedModulesChanged,
       allowDeploySideEffects: ctx.allowDeploySideEffects,
       signal: ctx.abortSignal,
@@ -64,7 +72,8 @@ export const copyFileTool: ToolDefinition<z.infer<typeof copyFileSchema>> = {
     }
 
     queueCloudSandboxSnapshotSync({
-      appId: ctx.appId,
+      // Isolated workspace edits reach the app's sandbox once merged.
+      appId: ctx.runtimeAppId ?? ctx.appId,
       changedPaths: [args.to],
     });
 

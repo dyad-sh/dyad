@@ -1,4 +1,5 @@
 import React from "react";
+import { useChatWorkspaceStatus } from "@/hooks/useChatWorkspace";
 import type { Message, Version } from "@/ipc/types";
 import {
   forwardRef,
@@ -63,6 +64,11 @@ interface FooterContext {
   selectedChatId: number | null;
   appId: number | null;
   renderSetupBanner: () => React.ReactNode;
+  /**
+   * The chat works in an isolated workspace: Undo and Retry revert only its
+   * own commits there instead of restoring the app's branch.
+   */
+  isIsolatedWorkspace: boolean;
 }
 
 type RevertConfirmation = {
@@ -141,6 +147,7 @@ function FooterComponent({ context }: { context?: FooterContext }) {
     appId,
     renderSetupBanner,
     executionBackend,
+    isIsolatedWorkspace,
   } = context;
 
   let questionnaireSettledAt: number | undefined;
@@ -251,6 +258,19 @@ function FooterComponent({ context }: { context?: FooterContext }) {
     });
   };
 
+  // An isolated chat undoes inside its own workspace: only its commits are
+  // reverted, so work merged from other chats is never rolled back and no
+  // workspace commit is ever restored into the app's main folder.
+  const undoInWorkspace = async ({
+    chatId,
+    fromUserMessageId,
+  }: {
+    chatId: number;
+    fromUserMessageId: number;
+  }) => {
+    await ipc.workspace.undoTurns({ chatId, fromUserMessageId });
+  };
+
   // Reverts the whole last generation: targets the version just before the last
   // assistant message's commit (falling back to its source commit) and drops the
   // messages produced by that turn. Shared by the modified-files card and the
@@ -261,6 +281,28 @@ function FooterComponent({ context }: { context?: FooterContext }) {
       return;
     }
     if (!beginAction("undo")) return;
+
+    if (isIsolatedWorkspace) {
+      try {
+        const userMessage = messages[messages.length - 2];
+        if (!userMessage || userMessage.role !== "user") {
+          showWarning("There is no earlier message to undo to.");
+          return;
+        }
+        await undoInWorkspace({
+          chatId: selectedChatId,
+          fromUserMessageId: userMessage.id,
+        });
+      } catch (error) {
+        console.error("Error during undo operation:", error);
+        showError(
+          error instanceof Error ? error.message : "Failed to undo changes",
+        );
+      } finally {
+        endAction("undo");
+      }
+      return;
+    }
 
     try {
       const freshVersions = restoreTargetBranch
@@ -344,6 +386,35 @@ function FooterComponent({ context }: { context?: FooterContext }) {
       return;
     }
     if (!beginAction("retry")) return;
+
+    if (isIsolatedWorkspace) {
+      try {
+        const lastUserMessage = [...messages]
+          .reverse()
+          .find((message) => message.role === "user");
+        if (!lastUserMessage) {
+          console.error("No user message found");
+          return;
+        }
+        await undoInWorkspace({
+          chatId: selectedChatId,
+          fromUserMessageId: lastUserMessage.id,
+        });
+        streamMessage({
+          prompt: lastUserMessage.content,
+          chatId: selectedChatId,
+          redo: false,
+        });
+      } catch (error) {
+        console.error("Error during retry operation:", error);
+        showError(
+          error instanceof Error ? error.message : "Failed to retry message",
+        );
+      } finally {
+        endAction("retry");
+      }
+      return;
+    }
 
     try {
       const freshVersions = restoreTargetBranch
@@ -663,6 +734,13 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
       persistedMessages,
     );
     const { chat: selectedChat } = useChatMode(selectedChatId);
+    const { data: workspaceStatus } = useChatWorkspaceStatus(
+      appId,
+      selectedChatId ?? undefined,
+    );
+    const isIsolatedWorkspace =
+      workspaceStatus?.chatId === selectedChatId &&
+      workspaceStatus.kind === "isolated";
 
     // Virtualization only renders visible DOM elements, which creates issues for E2E tests:
     // 1. Off-screen logs don't exist in the DOM and can't be queried by test selectors
@@ -755,6 +833,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
         selectedChatId,
         appId,
         renderSetupBanner,
+        isIsolatedWorkspace,
       }),
       [
         persistedMessages,
@@ -772,6 +851,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
         selectedChatId,
         appId,
         renderSetupBanner,
+        isIsolatedWorkspace,
       ],
     );
 

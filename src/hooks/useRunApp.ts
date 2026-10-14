@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef } from "react";
-import { ipc, type AppOutput } from "@/ipc/types";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useAtomValue } from "jotai";
+import { isWorkspaceRuntimeId } from "../../shared/workspace_runtime_id";
+import { ipc, type AppOutput } from "@/ipc/types";
 import { showError, showInputRequest } from "@/lib/toast";
 import { shouldShowPnpmMinimumReleaseAgeWarning } from "@/lib/schemas";
 import { useAppRunRemoteManager } from "@/app_run/AppRunRemoteProvider";
@@ -92,7 +93,12 @@ export function useAppOutputSubscription() {
   const processAppOutput = useCallback(
     (output: AppOutput) => {
       if (output.type === "input-requested") {
-        if (selectedAppIdRef.current !== output.appId) {
+        // A window only receives an isolated workspace's output while its
+        // preview shows that workspace, so its prompts belong to this window.
+        if (
+          selectedAppIdRef.current !== output.appId &&
+          !isWorkspaceRuntimeId(output.appId)
+        ) {
           return null;
         }
         showInputRequest(output.message, async (response) => {
@@ -211,10 +217,16 @@ export function useAppOutputSubscription() {
   }, [manager, processAppOutput]);
 }
 
-export function useRunApp() {
+/**
+ * @param targetRuntimeId Runtime that default actions (restart, reload,
+ *   loading state) address. The preview passes the selected chat's isolated
+ *   workspace runtime; omitted, it is the selected app.
+ */
+export function useRunApp(targetRuntimeId?: number | null) {
   const manager = useAppRunRemoteManager();
   const packageWarnings = usePackageManagerWarningStore();
-  const appId = useAtomValue(selectedAppIdAtom);
+  const selectedAppId = useAtomValue(selectedAppIdAtom);
+  const appId = targetRuntimeId === undefined ? selectedAppId : targetRuntimeId;
   const runState = useAppRunState(appId);
   const view = appId === null ? undefined : manager.getView(appId);
   const prepareMutationRequest = useCallback(

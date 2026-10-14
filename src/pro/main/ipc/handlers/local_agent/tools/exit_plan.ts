@@ -73,7 +73,7 @@ export const exitPlanTool: ToolDefinition<z.infer<typeof exitPlanSchema>> = {
     // Plan panel accepts directly; conversational acceptance requires a
     // one-shot human decision on this exact persisted version.
     const plan = await readPlanFromDisk({
-      appPath: ctx.appPath,
+      appPath: ctx.dyadMetadataPath ?? ctx.appPath,
       chatId: ctx.chatId,
     });
     const acceptedVersion = serializePlanDocument(plan);
@@ -102,7 +102,10 @@ export const exitPlanTool: ToolDefinition<z.infer<typeof exitPlanSchema>> = {
       );
     if (
       serializePlanDocument(
-        await readPlanFromDisk({ appPath: ctx.appPath, chatId: ctx.chatId }),
+        await readPlanFromDisk({
+          appPath: ctx.dyadMetadataPath ?? ctx.appPath,
+          chatId: ctx.chatId,
+        }),
       ) !== acceptedVersion
     )
       throw new DyadError(
@@ -125,7 +128,7 @@ export const exitPlanTool: ToolDefinition<z.infer<typeof exitPlanSchema>> = {
     await startPlanHandoffFromMain({
       sourceChatId: ctx.chatId,
       appId: ctx.appId,
-      appPath: ctx.appPath,
+      appPath: ctx.dyadMetadataPath ?? ctx.appPath,
       acceptInNewChat: ctx.planAcceptInNewChat ?? false,
       senderWebContentsId: ctx.event.sender.id,
     });

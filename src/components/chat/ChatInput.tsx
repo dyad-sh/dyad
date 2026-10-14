@@ -1,4 +1,5 @@
 import { SubscriptionLimitBanner } from "@/components/SubscriptionConnectionStatus";
+import { WorkspaceStatusIndicator } from "./WorkspaceStatusIndicator";
 import {
   StopCircleIcon,
   X,
@@ -1207,6 +1208,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               onGenerateImage={handleOpenImageGenerator}
             />
           </div>
+          <WorkspaceStatusIndicator appId={appId} chatId={chatId} />
           {/* TokenBar is only displayed when showTokenBar is true */}
           {showTokenBar && <TokenBar chatId={chatId} />}
         </div>

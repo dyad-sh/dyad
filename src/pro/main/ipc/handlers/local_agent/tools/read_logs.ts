@@ -79,7 +79,12 @@ ${summary}
       throw new DyadError("Chat or app not found.", DyadErrorKind.NotFound);
     }
 
-    const appId = chat.app.id;
+    // An isolated workspace runs its own preview, so its logs live under the
+    // workspace's runtime id rather than the app id.
+    const appId =
+      ctx.runtimeAppId !== undefined && ctx.appId === chat.app.id
+        ? ctx.runtimeAppId
+        : chat.app.id;
 
     // Get logs directly from central log store (no UI coupling!)
     const allLogs = getLogs(appId);

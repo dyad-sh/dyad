@@ -24,7 +24,7 @@ This project uses a **contract-driven IPC architecture**. Contracts in `src/ipc/
 1. Define contracts in the relevant `src/ipc/types/<domain>.ts` file using `defineContract()`.
 2. Export the client via `createClient(contracts)` from the same file.
 3. Re-export the contract, client, and types from `src/ipc/types/index.ts`.
-4. The preload allowlist is auto-derived from contracts — no manual channel registration needed.
+4. Within an existing domain, the preload allowlist picks up new contracts automatically. A **new domain's** contract object must be imported in `src/ipc/preload/channels.ts`, spread into `VALID_INVOKE_CHANNELS` with `getInvokeChannels(...)`, and added to `channels.test.ts`. The renderer+IPC and chat-flow harnesses bypass the preload, so a missing domain passes every Vitest test and fails only in the packaged app as `Invalid channel` (a failing React Query lookup that keeps refetching can then loop effects that depend on it).
 5. Register the handler in `src/ipc/handlers/<domain>_handlers.ts` using `createTypedHandler(contract, handler)`.
 6. Import and call the registration function in `src/ipc/ipc_host.ts`.
 

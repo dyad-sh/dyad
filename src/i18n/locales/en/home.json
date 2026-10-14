@@ -289,6 +289,12 @@
     },
     "plan": "Plan",
     "moreOptions": "More options",
+    "appDomains": {
+      "label": "App-specific domains",
+      "description": "Applies to all apps; restarts this preview.",
+      "banner": "App-specific domains are now on. Having issues, especially with OAuth? Turn off “App-specific domains” in More options (⋮) to use localhost.",
+      "dismiss": "Dismiss app domains notice"
+    },
     "rebuild": "Rebuild",
     "rebuildDescription": "Re-installs node_modules and restarts",
     "clearCache": "Clear Cache",

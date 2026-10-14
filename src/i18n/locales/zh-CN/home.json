@@ -286,6 +286,12 @@
     },
     "plan": "计划",
     "moreOptions": "更多选项",
+    "appDomains": {
+      "label": "应用专属域名",
+      "description": "适用于所有应用，并重启当前预览。",
+      "banner": "应用专属域名已启用。如果遇到问题（尤其是 OAuth 登录），请在更多选项（⋮）中关闭“应用专属域名”，改用 localhost。",
+      "dismiss": "关闭应用域名提示"
+    },
     "rebuild": "重新构建",
     "rebuildDescription": "重新安装 node_modules 并重启",
     "clearCache": "清除缓存",

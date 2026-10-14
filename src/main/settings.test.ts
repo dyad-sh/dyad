@@ -114,6 +114,7 @@ describe("readSettings", () => {
           "disableSandboxedE2eTests": false,
           "enableAdvancedSubagents": false,
           "enableAppBlueprint": true,
+          "enableAppPreviewDomains": true,
           "enableAutoReview": false,
           "enableAutoUpdate": true,
           "enableClaudeCodeSubscription": false,
@@ -153,6 +154,20 @@ describe("readSettings", () => {
   });
 
   describe("when settings file exists", () => {
+    it.each([undefined, false, true])(
+      "defaults app preview domains on and preserves the saved preference %s",
+      (enableAppPreviewDomains) => {
+        mockFs.existsSync.mockReturnValue(true);
+        mockFs.readFileSync.mockReturnValue(
+          JSON.stringify({ enableAppPreviewDomains }),
+        );
+
+        expect(readSettings().enableAppPreviewDomains).toBe(
+          enableAppPreviewDomains ?? true,
+        );
+      },
+    );
+
     it("should read and merge settings with defaults", () => {
       const mockFileContent = {
         selectedModel: {
@@ -569,6 +584,7 @@ describe("readSettings", () => {
           "disableSandboxedE2eTests": false,
           "enableAdvancedSubagents": false,
           "enableAppBlueprint": true,
+          "enableAppPreviewDomains": true,
           "enableAutoReview": false,
           "enableAutoUpdate": true,
           "enableClaudeCodeSubscription": false,

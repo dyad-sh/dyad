@@ -24,18 +24,33 @@ describe("AppPreviewDomainsSwitch", () => {
   });
 
   it.each([undefined, false, true])(
-    "shows and toggles the stored preference %s, defaulting to off",
+    "shows and toggles the stored preference %s, defaulting to on",
     (enabled) => {
       mocks.settings = { enableAppPreviewDomains: enabled };
       render(<AppPreviewDomainsSwitch />);
       const toggle = screen.getByRole("switch", {
         name: "App-specific localhost domains",
       });
-      expect(toggle.getAttribute("aria-checked")).toBe(String(!!enabled));
+      expect(toggle.getAttribute("aria-checked")).toBe(String(enabled ?? true));
       fireEvent.click(toggle);
-      expect(mocks.updateSettings).toHaveBeenCalledWith({
-        enableAppPreviewDomains: !enabled,
-      });
+      expect(mocks.updateSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          enableAppPreviewDomains: !(enabled ?? true),
+        }),
+      );
     },
   );
+
+  it("shows a previously dismissed banner when app domains are enabled again", () => {
+    mocks.settings = {
+      enableAppPreviewDomains: false,
+      hideAppPreviewDomainsBanner: true,
+    };
+    render(<AppPreviewDomainsSwitch />);
+    fireEvent.click(screen.getByRole("switch"));
+    expect(mocks.updateSettings).toHaveBeenCalledWith({
+      enableAppPreviewDomains: true,
+      hideAppPreviewDomainsBanner: false,
+    });
+  });
 });

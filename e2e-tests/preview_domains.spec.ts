@@ -15,8 +15,7 @@ test("app hostnames isolate sessions through restart, HMR, native preview and re
   const domainSwitch = po.page.getByRole("switch", {
     name: "App-specific localhost domains",
   });
-  await expect(domainSwitch).not.toBeChecked();
-  await domainSwitch.click();
+  await expect(domainSwitch).toBeChecked();
   await expect
     .poll(
       async () => (await po.settings.recordSettings()).enableAppPreviewDomains,
@@ -60,6 +59,54 @@ test("app hostnames isolate sessions through restart, HMR, native preview and re
   }
   const firstOrigin = await importRecorder("cookie-app-one");
   expect(new URL(firstOrigin).hostname).toMatch(/^app-\d+\.localhost$/);
+  const domainBanner = po.page.getByTestId("preview-app-domains-banner");
+  await expect(domainBanner).toContainText("OAuth");
+  await expect(domainBanner).toContainText("More options");
+  await domainBanner
+    .getByRole("button", { name: "Dismiss app domains notice" })
+    .click();
+  await expect(domainBanner).toBeHidden();
+
+  // The overflow switch saves the global preference and restarts this preview.
+  // Enabling it again also restores a previously dismissed notice.
+  for (const enabled of [false, true]) {
+    await po.previewPanel.clickPreviewMoreOptions();
+    const menuSwitch = po.page.getByRole("menuitemcheckbox", {
+      name: "App-specific domains",
+      exact: true,
+    });
+    await expect(menuSwitch).toBeChecked({ checked: !enabled });
+    await menuSwitch.click();
+    await po.page.keyboard.press("Escape");
+    await expect
+      .poll(
+        async () =>
+          (await po.settings.recordSettings()).enableAppPreviewDomains,
+      )
+      .toBe(enabled);
+    await expect
+      .poll(
+        async () => {
+          const src = await po.previewPanel
+            .getPreviewIframeElement()
+            .getAttribute("src");
+          return src ? new URL(src).hostname : null;
+        },
+        { timeout: Timeout.EXTRA_LONG },
+      )
+      .toBe(enabled ? new URL(firstOrigin).hostname : "localhost");
+    await expect(frame().getByTestId("auth-state")).toHaveText("Signed out");
+    if (enabled) {
+      await expect(domainBanner).toBeVisible();
+    } else {
+      await expect(domainBanner).toBeHidden();
+    }
+  }
+
+  await domainBanner
+    .getByRole("button", { name: "Dismiss app domains notice" })
+    .click();
+  await expect(domainBanner).toBeHidden();
   await signIn();
   await expect
     .poll(() =>
@@ -86,6 +133,7 @@ test("app hostnames isolate sessions through restart, HMR, native preview and re
     )
     .toBe(true);
   await po.previewPanel.expectPreviewIframeIsVisible(Timeout.EXTRA_LONG);
+  await expect(domainBanner).toBeHidden();
   await expect(frame().getByTestId("auth-state")).toHaveText("Signed in", {
     timeout: Timeout.LONG,
   });

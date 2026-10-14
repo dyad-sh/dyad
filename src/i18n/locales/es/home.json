@@ -289,6 +289,12 @@
     },
     "plan": "Plan",
     "moreOptions": "Más opciones",
+    "appDomains": {
+      "label": "Dominios por aplicación",
+      "description": "Se aplica a todas las apps; reinicia esta vista previa.",
+      "banner": "Los dominios por aplicación están activados. ¿Tienes problemas, sobre todo con OAuth? Desactiva «Dominios por aplicación» en Más opciones (⋮) para usar localhost.",
+      "dismiss": "Ocultar aviso de dominios"
+    },
     "rebuild": "Reconstruir",
     "rebuildDescription": "Reinstala node_modules y reinicia",
     "clearCache": "Borrar Caché",

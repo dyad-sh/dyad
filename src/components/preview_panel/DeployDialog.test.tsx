@@ -220,6 +220,83 @@ afterEach(() => {
   client.clear();
 });
 
+describe.each([false, true])(
+  "inline migration preview (hosted: %s)",
+  (hosted) => {
+    it("keeps loading, errors, retries, and SQL review in the deployment dialog", async () => {
+      if (hosted) h.app.vercelProjectId = "vercel-1";
+      let rejectPreview!: (error: Error) => void;
+      h.preview.mockImplementationOnce(
+        () =>
+          new Promise((_, reject) => {
+            rejectPreview = reject;
+          }),
+      );
+      mount();
+      const dialog = await screen.findByRole("dialog", { name: "Deploy Demo" });
+      if (hosted) {
+        const review = await screen.findByRole("button", {
+          name: "Review and deploy",
+        });
+        await waitFor(() =>
+          expect((review as HTMLButtonElement).disabled).toBe(false),
+        );
+        fireEvent.click(review);
+      } else {
+        fireEvent.click(
+          await screen.findByRole("button", { name: "Production database" }),
+        );
+        fireEvent.click(button("integrations.migration.migrateToProduction"));
+      }
+
+      const card = await within(dialog).findByRole("region", {
+        name: "integrations.migration.preview.title",
+      });
+      await within(card).findByText("integrations.migration.preview.loading");
+      expect(document.activeElement).toBe(within(card).getByRole("heading"));
+      expect(screen.getAllByRole("dialog")).toEqual([dialog]);
+      expect(
+        within(dialog).queryByRole("button", {
+          name: "integrations.migration.computingMigrationPlan",
+        }),
+      ).toBeNull();
+      expect(h.migrate).not.toHaveBeenCalled();
+      expect(h.dispatch).not.toHaveBeenCalled();
+
+      await act(async () => rejectPreview(new Error("Could not read schemas")));
+      await within(card).findByText(
+        "integrations.migration.preview.loadingError",
+      );
+      expect(screen.getAllByRole("dialog")).toEqual([dialog]);
+      fireEvent.click(
+        within(card).getByRole("button", {
+          name: "integrations.migration.preview.retry",
+        }),
+      );
+      await within(card).findByText(plan.statements[0]);
+      expect(screen.getAllByRole("dialog")).toEqual([dialog]);
+
+      fireEvent.click(
+        within(card).getByRole("button", {
+          name: "integrations.migration.preview.continue",
+        }),
+      );
+      const confirm = await screen.findByRole("alertdialog");
+      fireEvent.click(
+        within(confirm).getByRole("button", {
+          name: "integrations.migration.backToReview",
+        }),
+      );
+      await within(dialog).findByText(plan.statements[0]);
+      await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+      expect(screen.getAllByRole("dialog")).toEqual([dialog]);
+      expect(h.preview).toHaveBeenCalledTimes(2);
+      expect(h.migrate).not.toHaveBeenCalled();
+      expect(h.dispatch).not.toHaveBeenCalled();
+    });
+  },
+);
+
 describe("first deployment", () => {
   it.each([false, true])(
     "settles an automatic Vercel deployment when the project is connected before the step mounts (Neon=%s)",
@@ -570,6 +647,15 @@ describe("first deployment", () => {
       await screen.findByRole("button", {
         name: "integrations.migration.preview.cancel",
       }),
+    );
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(
+      screen.queryByRole("region", {
+        name: "integrations.migration.preview.title",
+      }),
+    ).toBeNull();
+    expect(document.activeElement).toBe(
+      button("integrations.migration.migrateToProduction"),
     );
     await act(async () => finishPreview({ ...plan, statements: [] }));
     expect(screen.queryByText(/No schema changes needed/)).toBeNull();

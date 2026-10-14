@@ -25,7 +25,7 @@ import { useTranslation } from "react-i18next";
 import { getErrorMessage } from "@/lib/errors";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { useNeon } from "@/hooks/useNeon";
-import { MigrationSqlPreviewDialog } from "./MigrationSqlPreviewDialog";
+import { MigrationSqlPreview } from "./MigrationSqlPreview";
 
 export type MigrationOutcome = "no-changes" | "applied";
 
@@ -34,6 +34,7 @@ interface MigrationPanelProps {
   onVerified?: (outcome: MigrationOutcome) => void;
   onBusyChange?: (busy: boolean) => void;
   autoPreview?: boolean;
+  previewPresentation?: "dialog" | "inline";
 }
 
 export const MigrationPanelBody = ({
@@ -41,12 +42,15 @@ export const MigrationPanelBody = ({
   onVerified,
   onBusyChange,
   autoPreview = false,
+  previewPresentation = "dialog",
 }: MigrationPanelProps) => {
   const { t } = useTranslation("home");
   const { app } = useLoadApp(appId);
   const { projectInfo, branches } = useNeon(appId);
   const [showErrorDetails, setShowErrorDetails] = useState(false);
   const errorDetailsId = useId();
+  const previewTriggerId = useId();
+  const restorePreviewFocus = useRef(false);
 
   const previewMutation = useMutation({
     mutationFn: () => ipc.migration.preview({ appId }),
@@ -65,6 +69,7 @@ export const MigrationPanelBody = ({
   }, [previewMutation.mutate, onVerified]);
 
   const cancelPreview = () => {
+    restorePreviewFocus.current = previewPresentation === "inline";
     setPreviewOpen(false);
     // Planning only reads database schemas. Detach immediately while the IPC
     // request finishes in the background; it cannot affect a later review.
@@ -82,6 +87,12 @@ export const MigrationPanelBody = ({
 
   const [previewOpen, setPreviewOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  useEffect(() => {
+    if (!previewOpen && restorePreviewFocus.current) {
+      restorePreviewFocus.current = false;
+      document.getElementById(previewTriggerId)?.focus();
+    }
+  }, [previewOpen, previewTriggerId]);
   const didAutoPreview = useRef(false);
   useEffect(() => {
     if (!autoPreview || didAutoPreview.current) return;
@@ -165,41 +176,45 @@ export const MigrationPanelBody = ({
         <span>{t("integrations.migration.backupWarning")}</span>
       </div>
 
-      <Button
-        disabled={
-          migrateMutation.isPending ||
-          previewMutation.isPending ||
-          isProductionBranchActive
-        }
-        onClick={() => {
-          setShowErrorDetails(false);
-          previewMutation.reset();
-          // Clear any prior migrate error/success so the stale banner doesn't
-          // sit behind the preview dialog while the user reviews a new plan.
-          migrateMutation.reset();
-          startPreview();
-          setPreviewOpen(true);
-        }}
-      >
-        {migrateMutation.isPending ? (
-          <>
-            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            {t("integrations.migration.migrating")}
-          </>
-        ) : previewMutation.isPending ? (
-          <>
-            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            {t("integrations.migration.computingMigrationPlan")}
-          </>
-        ) : (
-          <>
-            <Database className="w-4 h-4 mr-2" />
-            {t("integrations.migration.migrateToProduction")}
-          </>
-        )}
-      </Button>
+      {!(previewPresentation === "inline" && previewOpen) && (
+        <Button
+          id={previewTriggerId}
+          disabled={
+            migrateMutation.isPending ||
+            previewMutation.isPending ||
+            isProductionBranchActive
+          }
+          onClick={() => {
+            setShowErrorDetails(false);
+            previewMutation.reset();
+            // Clear any prior migrate error/success so the stale banner doesn't
+            // remain visible while the user reviews a new plan.
+            migrateMutation.reset();
+            startPreview();
+            setPreviewOpen(true);
+          }}
+        >
+          {migrateMutation.isPending ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              {t("integrations.migration.migrating")}
+            </>
+          ) : previewMutation.isPending ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              {t("integrations.migration.computingMigrationPlan")}
+            </>
+          ) : (
+            <>
+              <Database className="w-4 h-4 mr-2" />
+              {t("integrations.migration.migrateToProduction")}
+            </>
+          )}
+        </Button>
+      )}
 
-      <MigrationSqlPreviewDialog
+      <MigrationSqlPreview
+        presentation={previewPresentation}
         open={previewOpen}
         onOpenChange={(open) => {
           if (open) setPreviewOpen(true);
@@ -266,7 +281,7 @@ export const MigrationPanelBody = ({
                 setConfirmOpen(false);
                 if (!migrationId) {
                   // Lost the preview between approve and confirm — re-open
-                  // the preview dialog so the user can regenerate.
+                  // the preview so the user can regenerate.
                   setPreviewOpen(true);
                   return;
                 }

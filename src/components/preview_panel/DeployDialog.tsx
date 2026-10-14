@@ -316,6 +316,7 @@ function DatabaseStep({
           {needsMigration && !migrationOutcome && (
             <MigrationPanelBody
               appId={app.id}
+              previewPresentation="inline"
               onVerified={setMigrationOutcome}
               onBusyChange={setMigrating}
             />
@@ -703,6 +704,7 @@ function HostedDeploy({
       ) : needsMigration && !databaseVerified ? (
         <MigrationPanelBody
           appId={app.id}
+          previewPresentation="inline"
           autoPreview
           onBusyChange={onBusyChange}
           onVerified={() => setDatabaseVerified(true)}

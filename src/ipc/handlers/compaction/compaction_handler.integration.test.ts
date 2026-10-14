@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 
 import { setDatabaseForTesting } from "@/db";
 import { apps, chats, messages } from "@/db/schema";
+import { SMALL_MODEL_NAME } from "@/ipc/shared/language_model_constants";
 import { createInMemoryTestDb, type TestDb } from "@/testing/test_db";
 
 const {
@@ -46,7 +47,7 @@ vi.mock("@/ipc/utils/get_model_client", () => ({
 // Keep the pinned model's metadata deterministic without a remote catalog.
 vi.mock("@/ipc/utils/findLanguageModel", () => ({
   findLanguageModel: async (model: { name: string }) =>
-    model.name === "gpt-5.6-luna"
+    model.name === SMALL_MODEL_NAME
       ? {
           effortSettings: {
             defaultEffortLevel: "high",
@@ -297,6 +298,37 @@ describe("performCompaction", () => {
     );
   });
 
+  it("uses engine-backed Luna for Pro BYO compaction without an OpenAI key", async () => {
+    const accepted = {
+      selectedModel: { provider: "anthropic", name: "test-model" },
+      enableDyadPro: true,
+      proModelUsage: "api-key",
+      selectedChatMode: "local-agent",
+      providerSettings: {
+        auto: { apiKey: { value: "dyad-key" } },
+        anthropic: { apiKey: { value: "anthropic-key" } },
+      },
+    } as unknown as import("@/lib/schemas").UserSettings;
+    mockStreamText.mockReturnValue({ textStream: textStream(["Summary"]) });
+    const result = await performCompaction(
+      { sender: {} } as never,
+      chatId,
+      "/tmp/test-app",
+      "request-id",
+      undefined,
+      { settingsOverride: accepted },
+    );
+    expect(result.success).toBe(true);
+    expect(mockGetModelClient).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: "openai", name: SMALL_MODEL_NAME }),
+      expect.objectContaining({
+        providerSettings: accepted.providerSettings,
+        proModelUsage: "pro",
+      }),
+      expect.objectContaining({ provider: "openai", name: SMALL_MODEL_NAME }),
+    );
+  });
+
   it("pins the benchmarked compaction model for Dyad Pro users", async () => {
     settingsState.current = {
       selectedModel: { provider: "anthropic", name: "test-model" },
@@ -318,7 +350,7 @@ describe("performCompaction", () => {
     expect(mockGetModelClient).toHaveBeenCalledWith(
       {
         provider: "openai",
-        name: "gpt-5.6-luna",
+        name: SMALL_MODEL_NAME,
         effortLevel: "high",
       },
       {
@@ -327,13 +359,13 @@ describe("performCompaction", () => {
         providerSettings: { auto: { apiKey: { value: "dyad-pro-key" } } },
         selectedModel: {
           provider: "openai",
-          name: "gpt-5.6-luna",
+          name: SMALL_MODEL_NAME,
           effortLevel: "high",
         },
       },
       {
         provider: "openai",
-        name: "gpt-5.6-luna",
+        name: SMALL_MODEL_NAME,
         effortLevel: "high",
       },
     );

@@ -1,6 +1,10 @@
 import type { ChatScrollEvent, ChatScrollState } from "./state";
 import { transition } from "./transition";
-import { CHAT_SCROLL_RESTORE_EVENT } from "./restore";
+import {
+  CHAT_SCROLL_FOLLOWING_ATTRIBUTE,
+  CHAT_SCROLL_RESTORE_EVENT,
+  type ChatScrollRestorePosition,
+} from "./restore";
 
 export interface FrameScheduler {
   request(callback: () => void): number;
@@ -27,6 +31,10 @@ export function createChatScrollController(
   let draggingScrollbar = false;
   let pointerActive = false;
   let inputUntil = 0;
+  const publishFollowing = (following: boolean) => {
+    scroller.setAttribute(CHAT_SCROLL_FOLLOWING_ATTRIBUTE, String(following));
+    onFollowingChange(following);
+  };
   const markInput = () => {
     inputUntil = performance.now() + 200;
   };
@@ -46,7 +54,7 @@ export function createChatScrollController(
     const changed = next.type !== state.type;
     state = next;
     observeTransition?.(event, result);
-    if (changed) onFollowingChange(next.type === "following");
+    if (changed) publishFollowing(next.type === "following");
   };
   const observeUserMovement = () => {
     const current = position();
@@ -253,14 +261,22 @@ export function createChatScrollController(
     else onScroll();
   };
   const onRestore = (event: Event) => {
-    const top = (event as CustomEvent<number>).detail;
+    const { top, following } = (event as CustomEvent<ChatScrollRestorePosition>)
+      .detail;
     if (!Number.isFinite(top)) return;
     event.preventDefault();
+    if (following) {
+      follow();
+      return;
+    }
     pause();
     scroller.scrollTo({ top, behavior: "instant" });
     lastPosition = position();
-    if (atBottom() && top <= scroller.scrollTop + 4) follow();
-    else send({ type: "position", atBottom: false });
+    // Before Virtuoso measures its rows, top = 0 is also the apparent bottom.
+    // Keep the upward-input guard until layout proves we have left the bottom,
+    // rather than turning an explicit history restore back into follow mode.
+    if (top > 0 && atBottom() && top <= scroller.scrollTop + 4) follow();
+    else send({ type: "position", atBottom: atBottom() });
   };
   scroller.addEventListener("scroll", onScroll, { passive: true });
   scroller.addEventListener("wheel", onWheel, { passive: true });
@@ -271,7 +287,7 @@ export function createChatScrollController(
   scroller.addEventListener(CHAT_SCROLL_RESTORE_EVENT, onRestore);
   scroller.ownerDocument.addEventListener("pointerup", onPointerUp);
   scroller.ownerDocument.addEventListener("pointercancel", onPointerUp);
-  onFollowingChange(true);
+  publishFollowing(true);
   reconcile();
   return {
     follow,
@@ -288,6 +304,7 @@ export function createChatScrollController(
       scroller.removeEventListener(CHAT_SCROLL_RESTORE_EVENT, onRestore);
       scroller.ownerDocument.removeEventListener("pointerup", onPointerUp);
       scroller.ownerDocument.removeEventListener("pointercancel", onPointerUp);
+      scroller.removeAttribute(CHAT_SCROLL_FOLLOWING_ATTRIBUTE);
     },
   };
 }

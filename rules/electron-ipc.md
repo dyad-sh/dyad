@@ -168,6 +168,17 @@ pre-hydration atoms can erase unrelated restored entities.
 
 **Custom-protocol debugging:** Before using `git bisect` on a `dyad://` flow, quit every dev and packaged Dyad instance and verify which build owns the protocol registration. macOS may route the link to a different running/registered build, producing a convincing but false good/bad result.
 
+Custom-protocol delivery (`open-url`, argv, or `second-instance`) carries only
+the callback URL, not a trustworthy web origin. Credential-bearing callbacks
+must present a provider-bound, expiring, single-use correlation value minted at
+the authoritative flow-start boundary; an unmatched or unsolicited callback
+must not perform the credential write. Browser protocol-launch prompts are UX,
+not an authentication boundary.
+Test-only producers (`neon:fake-connect`, `supabase:fake-connect-and-set-project`)
+that call `runOAuthReturnExchange` without a ref must pass
+`allowUnclaimedExchange: true`: integration tests invoke them without starting a
+connection flow and otherwise fail with "OAuth return did not match an active connection flow".
+
 ## Handler expectations
 
 - Keep handler registration free of database-dependent startup work. Handlers
@@ -287,6 +298,13 @@ late output from overwriting the current stream.
 
 **Renderer-visible fields must be in the output schema:** `createTypedHandler` validates handler output through the contract's Zod schema. If the handler returns extra fields that are not declared in the output schema, renderer code cannot type-safely consume them and they may be stripped by parsing. Add any consumed fields (for example `appId` on `ChatSchema`) to the IPC output schema when relying on them in renderer code.
 
+Test-run `infraError` can accompany completed results (for example when restoring
+`.env.local` fails). Preserve those results; use each file's `incomplete` marker
+to prevent interrupted preview reports from becoming whole-file passes.
+Canonicalize the app root before constructing Playwright selectors and report keys.
+Resolve discovery and execution paths against `config.rootDir`, then make them app-relative.
+Mixed logical/physical roots or differing report keys break selection, split cases, and lose incomplete status.
+
 When one IPC producer needs stronger presentation semantics (for example, a persistent multiline error toast), carry that intent as an explicit optional event field and scope it at the producer. Do not infer global renderer behavior from message shape such as the presence of a newline; shared toast/event consumers serve unrelated features and tests.
 
 **Model refusals are stream completions, not errors:** AI SDK providers can normalize a successful safety refusal to `finishReason: "content-filter"` while preserving a provider-specific value such as `rawFinishReason: "refusal"`. Route every stream-consumption path (including continuation/fix streams) through the shared refusal handling, treat refusal as terminal for follow-up generation, discard incomplete output from the refused attempt, and persist a renderer-visible warning in both renderer content and AI history instead of relying on `onError` or matching generated text.
@@ -364,6 +382,7 @@ When creating hooks/components that call IPC handlers:
   and still receives its unhandled scopes. Omitted origin-handled metadata must
   default to no handled scopes; only declare `originHandles` when every caller
   of that contract performs the matching local cache update/invalidation.
+- A tab-scoped event subscription must refresh its IPC snapshot on remount (`staleTime: 0`), since events may be missed while the tab is closed. Apply complete event snapshots directly and prevent an older in-flight bootstrap from overwriting them.
 - Wrap reads in `useQuery`, using keys from `queryKeys` factory (see above), async `queryFn` that calls the relevant domain client (e.g., `appClient.getApp(...)`) or unified `ipc` namespace, and conditionally use `enabled`/`initialData`/`meta` as needed.
 - Wrap writes in `useMutation`; validate inputs locally, call the domain client, and invalidate related queries on success. Use shared utilities (e.g., toast helpers) in `onError`.
 - When a mutation changes fields exposed by both `apps.detail(...)` and `apps.all` (for example linking or unlinking a GitHub repository), invalidate both query families. Refreshing only the detail query can leave parent pages that derive conditional UI from the apps list stale.
@@ -396,7 +415,8 @@ When creating hooks/components that call IPC handlers:
 - In packaged builds, TanStack Router history updates turn the loaded `index.html` URL into root-relative locations such as `file:///chat` (`file:///C:/chat` on Windows). IPC trust must require `senderFrame === sender.mainFrame`, `file:` with an empty host, the configured file-volume prefix, and an allowlisted renderer route; pinning only the built entry pathname breaks packaged IPC, while accepting arbitrary file paths is unsafe.
 - Electron's `setWindowOpenHandler` details do not identify the initiating frame. When preview iframes need popups, fail closed on missing or privileged request details and construct allowed HTTP(S) popups yourself after removing inherited `preload` and forcing sandboxed, Node-disabled web preferences; `about:blank` cannot be safely overridden this way.
 - Keep a strong `BrowserWindow` reference for every popup created through a custom `createWindow` callback until its `closed` event. A callback-local window can be garbage-collected and close an active OAuth or payment flow; remove the reference on close so the owner collection remains bounded.
-- Clearing browser storage for one preview cannot scope cookies to that preview. `session.clearStorageData({ origin: "http://localhost:<port>" })` matches cookies by **host**, because cookies have never been port-scoped, so it signs the user out of every other `localhost` preview in that session; `session.clearData({ origins })` is wider still — Electron's own typings note it deletes cookies at the **registrable domain** level. `localStorage`/IndexedDB/service workers really are origin-keyed and unaffected. There is no filter that narrows cookies; only a dedicated `session.fromPartition()` contains them. Until then, whatever consent dialog precedes the clear must say other previews are signed out too.
+- Preview recording cleanup must use `session.clearData({ origins, originMatchingMode: "origin-in-all-contexts", dataTypes })` for origin-based storage: `clearStorageData({ origin })` leaves partitioned iframe localStorage behind. Exclude cookies from `clearData`, which removes them at registrable-domain scope; enumerate and remove cookies for the exact `app-<id>.localhost` hostname instead. Verify with two apps so cleanup cannot silently sign out a sibling preview.
+- Before changing preview hostnames, audit exact-`localhost` assumptions in OAuth redirect allowlists, browser identity providers, passkeys, site-restricted keys, and generated app code; Google OAuth, for example, rejects `app-<id>.localhost` as a registered origin. Stage a compatibility-sensitive origin change behind an off-by-default setting and provide a preview fallback that users can toggle when an integration rejects the new origin.
 
 When billing direct OpenAI-compatible model streams, set the provider's
 `includeUsage: true`; otherwise the SDK omits `stream_options.include_usage`

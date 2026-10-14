@@ -10,6 +10,8 @@ import {
   deploySupabaseFunction,
 } from "../../../../../../supabase_admin/supabase_management_client";
 import { resolveSelfAlias } from "@/ipc/utils/path_test_utils";
+import { getFileWriteKey, withLock } from "@/ipc/utils/lock_utils";
+import { SupabaseFunctionSyncDeferredError } from "@/supabase_admin/supabase_recording_deferred_sync";
 
 vi.mock("node:fs", async () => {
   const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
@@ -257,6 +259,7 @@ describe("deleteFileTool", () => {
         filepath: "supabase/functions/hello-world/index.ts",
       });
       expect(deleteSupabaseFunction).toHaveBeenCalledWith({
+        appId: 1,
         supabaseProjectId: "project-id",
         functionName: "hello-world",
         organizationSlug: null,
@@ -325,12 +328,60 @@ describe("deleteFileTool", () => {
       );
 
       expect(deploySupabaseFunction).toHaveBeenCalledWith({
+        appId: 1,
         supabaseProjectId: "project-id",
         functionName: "hello-world",
         appPath: "/test/app",
         organizationSlug: null,
       });
       expect(deleteSupabaseFunction).not.toHaveBeenCalled();
+    });
+
+    it("releases the file lock before waiting for function deployment admission", async () => {
+      vi.mocked(fs.lstatSync).mockReturnValue({
+        isDirectory: () => false,
+        isSymbolicLink: () => false,
+      } as any);
+      const fullPath = path.join(
+        mockContext.appPath,
+        "supabase/functions/hello-world/index.ts",
+      );
+      let lockFreeDuringDeploy = false;
+      vi.mocked(deleteSupabaseFunction).mockImplementationOnce(async () => {
+        // A deadlock here would mean the tool still holds the file lock.
+        lockFreeDuringDeploy = await Promise.race([
+          withLock(await getFileWriteKey(fullPath), async () => true),
+          new Promise<boolean>((resolve) =>
+            setTimeout(() => resolve(false), 50),
+          ),
+        ]);
+      });
+
+      await deleteFileTool.execute(
+        { path: "supabase/functions/hello-world/index.ts" },
+        { ...mockContext, supabaseProjectId: "project-id" },
+      );
+
+      expect(lockFreeDuringDeploy).toBe(true);
+    });
+
+    it("reports a remote deletion deferred by an active recording as a success", async () => {
+      vi.mocked(fs.lstatSync).mockReturnValue({
+        isDirectory: () => false,
+        isSymbolicLink: () => false,
+      } as any);
+      vi.mocked(deleteSupabaseFunction).mockRejectedValueOnce(
+        new SupabaseFunctionSyncDeferredError(),
+      );
+
+      const result = await deleteFileTool.execute(
+        { path: "supabase/functions/hello-world/index.ts" },
+        { ...mockContext, supabaseProjectId: "project-id" },
+      );
+
+      expect(result).toMatch(
+        /^Successfully deleted .*after the recording ends/,
+      );
     });
 
     it("propagates shared-module deletion to the root turn", async () => {

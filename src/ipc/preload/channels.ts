@@ -27,6 +27,7 @@ import {
 } from "../types/connection_flow";
 import { mcpContracts } from "../types/mcp";
 import { vercelContracts } from "../types/vercel";
+import { cloudflareContracts } from "../types/cloudflare";
 import { coolifyContracts, coolifyEvents } from "../types/coolify";
 import {
   coolifySetupContracts,
@@ -120,6 +121,7 @@ export const VALID_INVOKE_CHANNELS = [
   ...getInvokeChannels(gitlabContracts),
   ...getInvokeChannels(mcpContracts),
   ...getInvokeChannels(vercelContracts),
+  ...getInvokeChannels(cloudflareContracts),
   ...getInvokeChannels(coolifyContracts),
   ...getInvokeChannels(coolifySetupContracts),
   ...getInvokeChannels(supabaseContracts),

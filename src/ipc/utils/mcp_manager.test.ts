@@ -1,5 +1,7 @@
 // @vitest-environment node
 
+import { createServer as createHttpServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { MCPClient } from "@ai-sdk/mcp";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
@@ -67,7 +69,7 @@ vi.mock("electron-log", () => ({
   },
 }));
 
-const { McpManager } = await import("./mcp_manager");
+const { McpManager, McpListToolsTimeoutError } = await import("./mcp_manager");
 
 function seedStdioServer(id: number): void {
   mocks.rows.set(id, {
@@ -283,6 +285,147 @@ describe("McpManager lifecycle", () => {
       expect(staleClose).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();
+    }
+  });
+});
+
+describe("McpManager.listToolsWithin", () => {
+  beforeEach(() => {
+    mocks.rows.clear();
+    mocks.createMCPClient.mockReset();
+    mocks.stdioOptions.length = 0;
+    mocks.select.mockReset();
+    mocks.select.mockImplementation(() => ({
+      from: () => ({
+        where: async () => [...mocks.rows.values()],
+      }),
+    }));
+  });
+
+  function clientWithTools(tools: () => Promise<unknown>): MCPClient {
+    return { close: vi.fn(async () => {}), tools } as unknown as MCPClient;
+  }
+
+  it("returns the server's tools when it answers in time", async () => {
+    seedStdioServer(20);
+    const toolSet = { search: { description: "Search" } };
+    mocks.createMCPClient.mockResolvedValueOnce(
+      clientWithTools(async () => toolSet),
+    );
+    const manager = new McpManager();
+
+    await expect(manager.listToolsWithin(20)).resolves.toBe(toolSet);
+  });
+
+  it("times out a slow start without killing it, so a later call reuses the finished client", async () => {
+    vi.useFakeTimers();
+    try {
+      seedStdioServer(21);
+      const slowStart = deferred<MCPClient>();
+      const close = vi.fn(async () => {});
+      const toolSet = { search: { description: "Search" } };
+      mocks.createMCPClient.mockReturnValueOnce(slowStart.promise);
+      const manager = new McpManager();
+
+      const first = manager.listToolsWithin(21, { timeoutMs: 5_000 });
+      const firstResult = expect(first).rejects.toBeInstanceOf(
+        McpListToolsTimeoutError,
+      );
+      await vi.advanceTimersByTimeAsync(5_000);
+      await firstResult;
+
+      // The launch keeps running after the caller gave up (e.g. `npx` on a
+      // cold cache), and the next turn joins it instead of relaunching.
+      slowStart.resolve({ close, tools: async () => toolSet } as never);
+      await expect(manager.listToolsWithin(21)).resolves.toBe(toolSet);
+      expect(mocks.createMCPClient).toHaveBeenCalledTimes(1);
+      expect(close).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not close a connected client whose tools() call times out", async () => {
+    vi.useFakeTimers();
+    try {
+      seedStdioServer(25);
+      const close = vi.fn(async () => {});
+      const toolSet = { search: { description: "Search" } };
+      const tools = vi
+        .fn()
+        .mockReturnValueOnce(new Promise(() => {}))
+        .mockResolvedValueOnce(toolSet);
+      mocks.createMCPClient.mockResolvedValueOnce({ close, tools } as never);
+      const manager = new McpManager();
+
+      const first = manager.listToolsWithin(25, { timeoutMs: 5_000 });
+      const firstResult = expect(first).rejects.toBeInstanceOf(
+        McpListToolsTimeoutError,
+      );
+      await vi.advanceTimersByTimeAsync(5_000);
+      await firstResult;
+
+      // Another chat may be mid tool call on this client, so it stays open
+      // and the next call simply asks again.
+      expect(close).not.toHaveBeenCalled();
+      await expect(manager.listToolsWithin(25)).resolves.toBe(toolSet);
+      expect(mocks.createMCPClient).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("rejects as soon as the caller aborts", async () => {
+    seedStdioServer(22);
+    mocks.createMCPClient.mockReturnValueOnce(new Promise(() => {}));
+    const manager = new McpManager();
+    const controller = new AbortController();
+
+    const pending = manager.listToolsWithin(22, { signal: controller.signal });
+    controller.abort(new Error("stopped by user"));
+
+    await expect(pending).rejects.toThrow("stopped by user");
+  });
+
+  it("rejects immediately when already aborted", async () => {
+    seedStdioServer(23);
+    const manager = new McpManager();
+    const controller = new AbortController();
+    controller.abort(new Error("stopped by user"));
+
+    await expect(
+      manager.listToolsWithin(23, { signal: controller.signal }),
+    ).rejects.toThrow("stopped by user");
+    expect(mocks.createMCPClient).not.toHaveBeenCalled();
+  });
+
+  it("times out a real HTTP server that accepts connections but never responds", async () => {
+    const { createMCPClient } =
+      await vi.importActual<typeof import("@ai-sdk/mcp")>("@ai-sdk/mcp");
+    mocks.createMCPClient.mockImplementation(createMCPClient);
+    // Mirrors a wedged local desktop-app MCP server: the socket accepts,
+    // but no response ever comes back.
+    const server = createHttpServer(() => {});
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const { port } = server.address() as AddressInfo;
+    mocks.rows.set(24, {
+      id: 24,
+      name: "Hung",
+      transport: "http",
+      url: `http://127.0.0.1:${port}/mcp`,
+      oauthEnabled: false,
+    });
+    const manager = new McpManager();
+
+    try {
+      await expect(
+        manager.listToolsWithin(24, { timeoutMs: 300 }),
+      ).rejects.toBeInstanceOf(McpListToolsTimeoutError);
+    } finally {
+      server.closeAllConnections();
+      await new Promise((resolve) => server.close(resolve));
     }
   });
 });

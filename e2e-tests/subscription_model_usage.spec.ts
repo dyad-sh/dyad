@@ -30,7 +30,7 @@ test("subscription model usage UX", async ({ po, electronApp }, testInfo) => {
   });
   await po.page.getByTestId("model-picker").click();
   const subscriptionMenu = po.page.getByRole("menuitem", {
-    name: "Subscription, New, ChatGPT connected. Open submenu.",
+    name: "ChatGPT subscription, Recommended, ChatGPT connected. Open submenu.",
   });
   await expect(subscriptionMenu).toBeVisible();
   await subscriptionMenu.hover();
@@ -41,7 +41,7 @@ test("subscription model usage UX", async ({ po, electronApp }, testInfo) => {
   await expect(po.page.getByText("Weekly", { exact: true })).toBeVisible();
   await expect(po.page.getByText("Plus", { exact: true })).toBeVisible();
   await expect(
-    subscriptionMenu.getByText("New", { exact: true }),
+    subscriptionMenu.getByText("Recommended", { exact: true }),
   ).toBeVisible();
   const sideMenu = po.page.locator('[data-slot="dropdown-menu-sub-content"]');
   await expect(async () => {
@@ -117,10 +117,10 @@ test("subscription model usage UX", async ({ po, electronApp }, testInfo) => {
   });
   await expect(subscription).toHaveAttribute("aria-pressed", "true");
   await po.page
-    .getByRole("button", { name: "Pro credits", exact: true })
+    .getByRole("button", { name: "Dyad Pro credits", exact: true })
     .click();
   await expect(
-    po.page.getByRole("button", { name: "Pro credits", exact: true }),
+    po.page.getByRole("button", { name: "Dyad Pro credits", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
   const saved = await po.page.evaluate(async () => {
     const value = await (window as any).electron.ipcRenderer.invoke(

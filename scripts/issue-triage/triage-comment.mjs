@@ -37,18 +37,6 @@ export const NEEDS_HUMAN_LABEL = "triage/needs-human";
 export const FAILED_LABEL = "triage/failed";
 export const SIGN_OFF = "Someone from the Dyad team will follow up here.";
 
-const LIMITS = {
-  title: 80,
-  summary: 400,
-  step: 220,
-  steps: 4,
-  related: 2,
-  possiblyRelated: 3,
-  relatedNote: 160,
-  developerNotes: 1200,
-  playbookMatch: 80,
-};
-
 const ALLOWED_HOSTS = new Set([
   "www.dyad.sh",
   "dyad.sh",
@@ -111,7 +99,7 @@ export function isAllowedUrl(raw, repository) {
  */
 export function sanitizeText(
   value,
-  { maxLength, author, repository, multiline = false } = {},
+  { author, repository, multiline = false } = {},
 ) {
   let text = `${value ?? ""}`;
   text = text.replace(/<[^>]*>/g, "");
@@ -141,7 +129,7 @@ export function sanitizeText(
   } else {
     text = text.replace(/\s+/g, " ").trim();
   }
-  return typeof maxLength === "number" ? text.slice(0, maxLength) : text;
+  return text;
 }
 
 function assertArray(value, name) {
@@ -179,11 +167,11 @@ export function normalizeTriage(
   if (raw.triageFailed === true) {
     throw new Error(`Agent reported failure: ${raw.reason ?? "no reason"}`);
   }
-  const text = (value, maxLength, multiline = false) =>
-    sanitizeText(value, { maxLength, author, repository, multiline });
+  const text = (value, multiline = false) =>
+    sanitizeText(value, { author, repository, multiline });
 
   if (!Array.isArray(raw.labels)) throw new Error("labels must be an array");
-  const labels = [...new Set(raw.labels.map((label) => text(label, 80)))];
+  const labels = [...new Set(raw.labels.map((label) => text(label)))];
   for (const label of labels) {
     if (!ALLOWED_LABELS.includes(label)) {
       throw new Error(`Invalid label: ${label}`);
@@ -206,28 +194,25 @@ export function normalizeTriage(
   }
 
   const title =
-    typeof raw.title === "string" && raw.title.trim()
-      ? text(raw.title, LIMITS.title)
-      : null;
+    typeof raw.title === "string" && raw.title.trim() ? text(raw.title) : null;
 
-  const assessment = text(raw.assessment, 40);
+  const assessment = text(raw.assessment);
   if (!ASSESSMENTS.includes(assessment)) {
     throw new Error(`Invalid assessment: ${assessment || "(missing)"}`);
   }
 
-  const summary = text(raw.summary, LIMITS.summary);
+  const summary = text(raw.summary);
   if (!summary && assessment !== "feature_request") {
     throw new Error("summary is required");
   }
 
   const steps = assertArray(raw.steps, "steps")
-    .map((step) => text(step, LIMITS.step))
-    .filter(Boolean)
-    .slice(0, LIMITS.steps);
+    .map((step) => text(step))
+    .filter(Boolean);
 
   let fixedIn = null;
   if (raw.fixedIn && typeof raw.fixedIn === "object") {
-    const version = text(raw.fixedIn.version, 40).replace(/^v/i, "");
+    const version = text(raw.fixedIn.version).replace(/^v/i, "");
     if (!RELEASE_VERSION_PATTERN.test(version)) {
       throw new Error(`fixedIn.version is not a version: ${version}`);
     }
@@ -247,44 +232,41 @@ export function normalizeTriage(
     throw new Error("fixed_in_release requires fixedIn.version");
   }
 
-  const related = assertArray(raw.related, "related")
-    .slice(0, LIMITS.related)
-    .map((entry, index) => {
-      if (!entry || typeof entry !== "object") {
-        throw new Error(`related[${index}] must be an object`);
-      }
-      const number = parseIssueNumber(
-        entry.number,
-        `related[${index}].number`,
-        issueNumber,
-      );
-      const outcome = text(entry.outcome, 40);
-      if (!RELATED_OUTCOMES.includes(outcome)) {
-        throw new Error(`related[${index}].outcome is invalid`);
-      }
-      const note = text(entry.note, LIMITS.relatedNote);
-      return { number, outcome, ...(note ? { note } : {}) };
-    });
+  const related = assertArray(raw.related, "related").map((entry, index) => {
+    if (!entry || typeof entry !== "object") {
+      throw new Error(`related[${index}] must be an object`);
+    }
+    const number = parseIssueNumber(
+      entry.number,
+      `related[${index}].number`,
+      issueNumber,
+    );
+    const outcome = text(entry.outcome);
+    if (!RELATED_OUTCOMES.includes(outcome)) {
+      throw new Error(`related[${index}].outcome is invalid`);
+    }
+    const note = text(entry.note);
+    return { number, outcome, ...(note ? { note } : {}) };
+  });
 
-  const possiblyRelated = assertArray(raw.possiblyRelated, "possiblyRelated")
-    .slice(0, LIMITS.possiblyRelated)
-    .map((entry, index) => {
-      if (!entry || typeof entry !== "object") {
-        throw new Error(`possiblyRelated[${index}] must be an object`);
-      }
-      const number = parseIssueNumber(
-        entry.number,
-        `possiblyRelated[${index}].number`,
-        issueNumber,
-      );
-      const note = text(entry.note, LIMITS.relatedNote);
-      return { number, ...(note ? { note } : {}) };
-    });
+  const possiblyRelated = assertArray(
+    raw.possiblyRelated,
+    "possiblyRelated",
+  ).map((entry, index) => {
+    if (!entry || typeof entry !== "object") {
+      throw new Error(`possiblyRelated[${index}] must be an object`);
+    }
+    const number = parseIssueNumber(
+      entry.number,
+      `possiblyRelated[${index}].number`,
+      issueNumber,
+    );
+    const note = text(entry.note);
+    return { number, ...(note ? { note } : {}) };
+  });
 
   const infoNeeded = [
-    ...new Set(
-      assertArray(raw.infoNeeded, "infoNeeded").map((v) => text(v, 40)),
-    ),
+    ...new Set(assertArray(raw.infoNeeded, "infoNeeded").map((v) => text(v))),
   ];
   for (const item of infoNeeded) {
     if (!INFO_NEEDED.includes(item)) {
@@ -292,8 +274,8 @@ export function normalizeTriage(
     }
   }
 
-  const developerNotes = text(raw.developerNotes, LIMITS.developerNotes, true);
-  const playbookMatch = text(raw.playbookMatch, LIMITS.playbookMatch) || null;
+  const developerNotes = text(raw.developerNotes, true);
+  const playbookMatch = text(raw.playbookMatch) || null;
 
   return {
     labels,
@@ -326,12 +308,12 @@ function stepsWithUpdate(triage) {
   );
   if (alreadyMentionsDownload) return triage.steps;
   const update = `Update to Dyad ${triage.fixedIn.version} or newer from https://www.dyad.sh/download, which includes the fix ([release notes](${triage.fixedIn.url})).`;
-  return [update, ...triage.steps].slice(0, LIMITS.steps);
+  return [update, ...triage.steps];
 }
 
 function renderRelated(related) {
   const sameOutcome =
-    related.length > 1 &&
+    related.length === 2 &&
     related.every(
       (entry) => !entry.note && entry.outcome === related[0].outcome,
     );

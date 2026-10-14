@@ -14,6 +14,11 @@ import {
   interruptSubscriptionUsage,
 } from "../services/codex_subscription_usage";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { DYAD_INTERNAL_REQUEST_ID_HEADER } from "./provider_options";
+import {
+  fetchWithRequestLogging,
+  readRequestHeader,
+} from "./model_request_logging";
 import { safeGithubOpsErrorMessage } from "../services/github_ops_safe_error";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, randomUUID } from "node:crypto";
@@ -137,21 +142,29 @@ export async function createCodexSubscriptionModel(
         )
         .digest("hex");
       body.input = reasoningExclusions.filter(scope, body.input as unknown[]);
+      const requestLabel = `chatgpt-subscription:${
+        readRequestHeader(init, DYAD_INTERNAL_REQUEST_ID_HEADER) ?? "no-id"
+      }`;
+      let sendCount = 0;
       const sendOnce = () => {
         init?.signal?.throwIfAborted();
-        return fetch(ENDPOINT, {
-          method: "POST",
-          redirect: "error",
-          signal: init?.signal,
-          headers: {
-            Authorization: `Bearer ${credentials.access}`,
-            "ChatGPT-Account-Id": credentials.accountId,
-            "Content-Type": "application/json",
-            Accept: "text/event-stream",
-            "OpenAI-Beta": "responses=experimental",
-          },
-          body: JSON.stringify(body),
-        });
+        sendCount += 1;
+        const label = `${requestLabel}:send-${sendCount}`;
+        return fetchWithRequestLogging(label, ENDPOINT, () =>
+          fetch(ENDPOINT, {
+            method: "POST",
+            redirect: "error",
+            signal: init?.signal,
+            headers: {
+              Authorization: `Bearer ${credentials.access}`,
+              "ChatGPT-Account-Id": credentials.accountId,
+              "Content-Type": "application/json",
+              Accept: "text/event-stream",
+              "OpenAI-Beta": "responses=experimental",
+            },
+            body: JSON.stringify(body),
+          }),
+        );
       };
       // Retry rejected HTTP requests on this source only. Keep raw OAuth
       // responses out of SDK errors, and never replay a successful stream.

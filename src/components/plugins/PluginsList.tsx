@@ -4,7 +4,7 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useMcp } from "@/hooks/useMcp";
 import { useMcpCatalog } from "@/hooks/useMcpCatalog";
-import type { CatalogInput } from "@/ipc/types/mcp_catalog";
+import type { McpCatalogEntry } from "@/ipc/types/mcp_catalog";
 import { AddPluginDialog, useOauthStorageEncrypted } from "./AddPluginDialog";
 import { OauthPlaintextStorageAlert } from "./OauthPlaintextStorageAlert";
 import { PluginSummaryCard } from "./PluginSummaryCard";
@@ -36,12 +36,12 @@ export function PluginsList({
   const oauthStorageEncrypted = useOauthStorageEncrypted();
 
   const catalogQuery = useMcpCatalog();
-  // Declared setup fields per catalog slug, so a card can tell whether
-  // its server still has any unfilled.
-  const inputsBySlug = useMemo(() => {
-    const map = new Map<string, CatalogInput[]>();
+  // A server's catalog entry supplies its icon and its declared setup
+  // fields, so a card can tell whether any are still unfilled.
+  const entryBySlug = useMemo(() => {
+    const map = new Map<string, McpCatalogEntry>();
     for (const e of catalogQuery.data?.entries ?? []) {
-      if (e.inputs?.length) map.set(e.slug, e.inputs);
+      map.set(e.slug, e);
     }
     return map;
   }, [catalogQuery.data]);
@@ -102,9 +102,12 @@ export function PluginsList({
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {servers.map((s) => {
+            const catalogEntry = s.catalogSlug
+              ? entryBySlug.get(s.catalogSlug)
+              : undefined;
             const needsSetup =
               !!s.catalogSlug &&
-              serverNeedsSetup(s, inputsBySlug.get(s.catalogSlug) ?? []);
+              serverNeedsSetup(s, catalogEntry?.inputs ?? []);
             // A disabled catalog server might still need setup while its
             // catalog is loading, so lock its controls until the fetch
             // settles rather than for as long as data is missing.
@@ -115,6 +118,7 @@ export function PluginsList({
               <PluginSummaryCard
                 key={s.id}
                 server={s}
+                iconUrl={catalogEntry?.iconUrl}
                 needsSetup={needsSetup}
                 setupLocked={setupLocked}
                 toolCount={toolCountFor(s.id)}

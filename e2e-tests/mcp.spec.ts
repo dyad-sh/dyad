@@ -2,7 +2,19 @@ import { expect } from "@playwright/test";
 import { spawn, type ChildProcess } from "child_process";
 import path from "path";
 
-import { testSkipIfWindows } from "./helpers/test_helper";
+import { test, testSkipIfWindows } from "./helpers/test_helper";
+
+test.beforeEach(async ({ po }) => {
+  // These scenarios exercise manual consent, not Pro's safe-tool auto-approval.
+  await po.page.evaluate(async () => {
+    await (window as any).electron.ipcRenderer.invoke("set-user-settings", {
+      autoApproveSafeMcpTools: false,
+    });
+  });
+  await expect
+    .poll(() => po.settings.recordSettings().autoApproveSafeMcpTools)
+    .toBe(false);
+});
 
 async function stopProcess(process: ChildProcess): Promise<void> {
   process.kill();

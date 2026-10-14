@@ -8,7 +8,9 @@
 // deploys the functions through a bounded-concurrency queue at the end of
 // the turn, streaming `<dyad-status>` progress updates
 // ("Deploying Supabase functions: X/20 complete (N active, M queued)") and
-// finishing with "Supabase functions deployed: 20/20 complete" — which now
+// finishing with "Supabase functions deployed: 20/20 complete" plus the
+// dependency-analysis fallback suffix (the hybrid harness has no analysis
+// worker, so every function redeploys) — which now
 // renders as the real <dyad-status> card in the messages list (the surface
 // the Playwright spec polled).
 //
@@ -77,14 +79,13 @@ describe("local agent supabase deploy progress (integration)", () => {
     send();
 
     // The finished <dyad-status> card renders in the messages list — the same
-    // progress surface the e2e polled, in its terminal state.
-    await waitFor(
-      () =>
-        expect(
-          screen.getByText("Supabase functions deployed: 20/20 complete"),
-        ).toBeTruthy(),
-      { timeout: 30_000 },
-    );
+    // progress surface the e2e polled, in its terminal state. The collapsed
+    // title names the fallback so it is visible without expanding the card.
+    const finishedTitle =
+      "Supabase functions deployed: 20/20 complete (fallback to all functions: dependency analysis failed)";
+    await waitFor(() => expect(screen.getByText(finishedTitle)).toBeTruthy(), {
+      timeout: 30_000,
+    });
 
     // Gate main-side assertions on the real end-of-stream event.
     await harness.waitForStreamEnd(harness.chatId);
@@ -132,7 +133,7 @@ describe("local agent supabase deploy progress (integration)", () => {
     });
     const assistant = messages.find((m) => m.role === "assistant")!;
     expect(assistant.content).toContain(
-      '<dyad-status title="Supabase functions deployed: 20/20 complete" state="finished">',
+      `<dyad-status title="${finishedTitle}" state="finished">\nRedeployed all functions because dependency analysis failed: hybrid test worker unavailable.\n`,
     );
     // The transient in-progress statuses were not persisted — only the
     // finished one.

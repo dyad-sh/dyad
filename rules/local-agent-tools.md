@@ -4,6 +4,9 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 
 ## Read-only / plan-only mode
 
+- External CLI adapters must enforce read-only mode in both the CLI's actual built-in inventory and the host MCP bridge. Permission allowlists alone are not tool removal; approved checks, installs and preview still execute project code.
+- Claude Code result `modelUsage` can include auxiliary model calls even with subagents disabled. Do not add top-level `usage` to it; use a top-level cache-TTL split only when it matches one model's complete category totals uniquely.
+
 - **`modifiesState: true`** must be set on any tool that writes to disk or modifies external state (files, database, etc.). This flag controls whether the tool is available in read-only (ask) mode and plan-only mode — see `buildAgentToolSet` in `tool_definitions.ts`.
 - A durable orchestration tool that changes only main-process metadata may use `allowInReadOnlyModes` to remain available in Ask and Plan, but its turn-scoped schema must exclude every app- or external-state-mutating capability. Keep `modifiesState: true`; the exception does not make metadata writes read-only.
 - If a read/inspection wrapper tool gains a state-changing host function (for example a new sandbox `write_file` capability inside `execute_sandbox_script`), either mark the parent tool `modifiesState: true` or make `modifiesState` a context predicate that returns true whenever the writable host function is exposed. Otherwise read-only / plan-only filtering can still expose writes through the wrapper tool. Prompt descriptions, tool filtering, and runtime capability injection should all derive from the same turn-scoped flag so ask/plan mode can keep the read-only surface without advertising or exposing writes.
@@ -121,6 +124,9 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
   only after confirming that the app belongs to that npm/pnpm workspace, then
   install from the applicable workspace root. An unrelated ancestor lockfile
   must not turn a child install into `npm ci`.
+  When both manifests exist, the one containing this app takes precedence over
+  the other manager's lockfile. Resolve bootstrap browser markers beside the
+  installed Playwright package too, including hoisted workspace packages.
 - A detached superproject worktree does not populate Git submodules. Materialize
   initialized live submodules from local state without fetching so isolated
   builds retain both their inputs and Git boundary; leave live-uninitialized
@@ -147,9 +153,18 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 - Do not run a host-side production build while the active preview uses a cloud
   sandbox. Refuse with guidance to switch to the Host runtime until build
   execution is supported inside the active cloud sandbox.
-- Keep `run_tests` guidance explicit about sequential calls for the same app,
-  even across different specs: `runAppTestsWithIsolation` aborts the prior run
-  and waits for its cleanup before starting the replacement.
+- Same-app `run_tests` calls share a main-owned FIFO with panel runs. Keep
+  attempt guards, execution, cleanup, and result accounting inside the queue
+  slot; never cancel an earlier run just because a new request arrives. Queued
+  calls create no test environment. Caller cancellation removes only its own
+  request, while the Tests panel Stop clears the app queue and stops its active run.
+- Synthetic `run_tests` subprocess mocks must match selectors against `await fs.promises.realpath(appPath)`, like the real runner. `fs.realpathSync` can retain Windows short-path aliases such as `RUNNER~1` that the native async API expands, causing mocked spawns to reject every selector. Keep a linked-directory fixture to exercise canonicalization on Linux too.
+- `run_tests` only short-circuits on its dev-server pre-check when sandboxing is
+  off — a sandboxed run serves the app itself and needs no preview. A test that
+  relies on that short-circuit for a fast deterministic outcome must set
+  `disableSandboxedE2eTests: true` in its settings; otherwise the tool performs a
+  real sandboxed run and fails differently on every machine (`spawn pnpm ENOENT`
+  without pnpm, a download failure without network, a timeout locally).
 - Snapshot teardown is best-effort and must not delay a cancelled or timed-out
   turn. Start cleanup without awaiting it; the marked-directory startup sweep
   remains the fallback for interrupted cleanup.
@@ -178,6 +193,7 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 
 ## User-visible tool output
 
+- For terminal-output tools such as `run_tests`, include preflight warnings in the single final `onXmlComplete` card. Multiple completions overwrite the tool activity's XML or append duplicate fallback cards; test both the final card and model-visible return value.
 - Treat model-generated code as untrusted executable input whenever its prompt
   contains app-, tool-, or user-controlled text. Model provenance plus a
   one-statement/shape check is not a security boundary: before writing or
@@ -198,6 +214,7 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 
 - `requireMcpToolConsent` resolves to a structured result, not a bare boolean. If `npm run ts` reports `Argument of type 'boolean' is not assignable to parameter of type 'McpConsentResult'`, update mocks to return `{ approved: true/false }`.
 - Treat MCP tool results as untrusted-size input. Every execution path (direct Agent tools, sandbox host functions, and Build-mode tools) must pass the raw result through `sanitizeMcpToolResult` before JSON serialization, XML emission, SDK return, or persistence; directly stringifying a result can multiply large text or base64 media across main-process memory.
+- Never await `mcpManager.getClient()` + `client.tools()` unbounded while discovering tools at turn start. A server can accept the connection and never answer (e.g. a wedged local desktop-app server), which freezes every Agent-mode turn before a request is sent and makes Stop ineffective. Load turn tools through `loadEnabledMcpServerTools` (or `mcpManager.listToolsWithin` with the turn's `abortSignal`). A timeout only stops waiting; do not dispose the client there, since that kills slow-starting stdio servers mid-launch and can close a client another chat is mid tool call on. Sandbox MCP invocations (`buildMcpCapabilityMap`) use the same bounded lookup with the turn's signal, inside their mutation reservation. Mocks of `@/ipc/utils/mcp_manager` must stub `listToolsWithin` and export `McpListToolsTimeoutError` / `MCP_LIST_TOOLS_TIMEOUT_MS`.
 
 ## SQL consent and auto-approval
 
@@ -268,11 +285,18 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 - When enforcing realpath containment or protected-path rules, canonicalize **both** the root and target before calling `path.relative`. Mixing a lexical root with a realpath target can misclassify paths on macOS (`/var/...` canonicalizes to `/private/var/...`) and bypass checks such as referenced-app `.dyad/` protection.
 - Consent, file-edit tracking, and blueprint gating shared between `buildAgentToolSet` and sandbox capability bridges live in `tools/tool_invocation.ts` — a cycle-free module (`tool_definitions.ts` imports every tool, so tools cannot import back from it). Use those helpers instead of copying the wrapper's blocks.
 - Derive "is this host function enabled" from one predicate: the handler sets `ctx.sandboxWriteFileHostEnabled` via `shouldIncludeTool(writeFileTool, ...)`, and per-call re-checks use `getToolConsent(writeFileTool)` (which honors the tool's `defaultConsent` fallback). Do not read `settings.agentToolConsents` directly — a raw read silently diverges if the default consent changes. `buildExecuteSandboxScriptDescription` requires an explicit `includeWriteFile` for the same reason: only the caller knows the turn context.
+- `execute_sandbox_script` always runs the guest on the sandbox worker thread; never call `executeSandboxScriptInProcess` from the tool. A CPU-bound guest cannot be interrupted on the main thread (the interpreter runs synchronously between host calls and the `AbortSignal` is cooperative), so an in-process script freezes the whole app and makes the VM timeout unenforceable. Host functions that need main-process state (write_file, MCP tools) are passed to `runSandboxScript` as `remoteCapabilities`; the worker exposes a same-named proxy and the runner serves each call over the message port (`remote_capabilities.ts`), preserving `DyadErrorKind` on failures. Arguments and results must be structured-cloneable. Vitest has no built worker, so the runner falls back in-process with the merged capability map; `runner.worker.test.ts` builds the Vite bundle and points the runner at it via `DYAD_SANDBOX_WORKER_PATH` to cover the real thread boundary.
 
 ## Attachment manifest lifecycle
 
 - When deleting old `.dyad/media` attachment files, also prune `attachments-manifest.json` entries under the `attachments-manifest:${appPath}` lock. Read-time filtering hides broken entries but still leaves stale logical names that force unnecessary suffixes like `notes-2.txt` on future uploads.
 - When registering `.dyad/media` files that may already exist (for example repeated `@media:` mentions), reuse an existing manifest entry for the same `storedFileName` before allocating a new logical name. Otherwise repeated references create noisy `attachments:*` aliases like `image-2.png`, `image-3.png`.
+
+## Inline attachment delivery
+
+- Chat-context images and PDFs are stored as base64 parts in the user message's `aiMessagesJson` and replayed in full on every later turn; nothing replaces them with placeholders. Above the 10 MB `MAX_AI_MESSAGES_SIZE` save guard the whole structured message is dropped and inference silently sees only the plain-text prompt, so `assertInlineAttachmentsFit` rejects oversized inline content before the turn is accepted. Any capability check for inline parts must scan the full outgoing history (`messagesContainPdf`), not just the current turn, or switching models mid-chat breaks later turns.
+- Whether a model client can take inline PDFs is `modelClientSupportsPdfInput` in `get_model_client.ts`. All paid Dyad Engine routes accept PDF file parts (chat-completions since dyad-llm-engine#187), but the Engine's free route still rejects them; free models are tagged via `isDyadEngineFreeModel`.
+- The ChatGPT subscription (Codex) backend accepts Responses `input_file` PDFs but appears to send the model only extracted text (verified live 2026-09-24: text answers were correct, a text-free drawing got a made-up answer, ~65 input tokens). Don't rely on it for visual PDF content.
 
 ## Tool spec mock contexts
 
@@ -283,3 +307,14 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 - A local-agent tool that parks while waiting for user input must persist its interactive card before the park; `streamingPreview` is renderer-local and disappears on reload or in another window. Either return it from `buildXml(..., true)`, or, when the card must be matched to exactly one request, omit `buildXml` and write the card with `ctx.onXmlComplete` right after `userInputRegistry.request` so it can carry the request id (`suggest_plugin`). Append a terminal outcome when the request settles, and make the earlier pending card hide once that durable outcome exists.
 - MCP tools are collected once at turn start, so a tool that lets the user connect a plugin mid-turn (`suggest_plugin`) cannot use the new tools in that turn. Put the resume prompt on the descriptor's `followUpPrompt`, arm it from `followUpPromptFor` in `src/user_input/transition.ts`, and tell the model in the tool result to stop and wait for the queued follow-up turn. The renderer read model's armed-event handling is gated by `descriptorArmsFollowUp`; add new follow-up kinds there too.
 - The fake catalog in `testing/fake-llm-server` serves nothing featured by default so `suggest_plugin` stays out of every local-agent request snapshot. A test that needs it opts in with `DYAD_MCP_CATALOG_URL=.../api/mcp-catalog?featured=<slug>` in a `preLaunchHook`, and the hybrid harness points `DYAD_MCP_CATALOG_URL` at the fake server so turn-start catalog reads never hit the network.
+
+## Mandatory shell review
+
+- Shell review is enforced inside `run_shell`, independently of saved tool consent. Keep platform guidance, reviewer execution context, and tool descriptions aligned; never let an “always” consent setting bypass classification or required one-time consequential-action approval.
+- Keep shell review, retry, and consent waits outside coordinator claims and mutation tracking. Use internal mutation tracking only after approval, cancel queued admission, and revalidate inspected files under execution claims so an approval wait cannot authorize a changed script.
+- Shell's model-facing result has a separate 20,000 estimated-token cap on the complete serialized JSON (including escaping and metadata). Retain larger chat buffers, keep model output tails, and mark truncation; a raw-character cap can miss heavily escaped output.
+- Classifier deadlines must include context preparation and model-client setup, not only response streaming. Shell review gets 45 seconds for multiple inspection round trips; MCP's single verdict keeps its eight-second deadline. Race the whole operation against cancellation, and recheck the signal after setup so a late continuation cannot start inference or execution.
+- Safety-review outcome history must cover native tools and both direct and sandbox-hosted MCP calls. Keep only host-recorded status and call arguments; never forward raw tool results or error text. Separate execution failure from consent/auth refusal so fallback cannot treat a denied call as a failed execution.
+
+- Reviewer inspection tools must state that paths are app-relative and that script inspection requires `read:true`; otherwise live classifiers can request rejected absolute paths and incorrectly block benign scripts. Validate policies with real-model cases; a static expected-verdict corpus does not measure classification quality.
+- Reject multiply linked files before reviewer reads, including by checking the opened descriptor's link count and inode identity; `realpath` containment alone cannot detect hard-linked aliases of protected files.

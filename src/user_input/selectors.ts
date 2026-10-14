@@ -31,6 +31,8 @@ export interface PendingPluginSuggestion {
 
 export interface PendingToolConsent {
   kind: "agent" | "mcp";
+  allowAlways?: boolean;
+  confirmation?: "shell-approval" | "shell-review-retry";
   requestId: string;
   chatId: number;
   toolName: string;
@@ -142,6 +144,12 @@ export function selectPendingToolConsents(
     if (descriptor.kind === "agent-consent") {
       consents.push({
         kind: "agent",
+        allowAlways: descriptor.allowAlways,
+        confirmation: descriptor.confirmation,
+        classifierReason:
+          descriptor.confirmation === "shell-approval"
+            ? descriptor.toolDescription
+            : undefined,
         requestId: descriptor.requestId,
         chatId: descriptor.chatId,
         toolName: descriptor.toolName,

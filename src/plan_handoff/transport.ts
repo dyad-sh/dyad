@@ -87,6 +87,7 @@ export const PlanHandoffRemoteSnapshotSchema = z
     handoffId: z.string().nullable(),
     targetChatId: z.number().int().positive().nullable(),
     planId: z.string().nullable(),
+    planVersion: z.string().nullable().optional(),
     phase: PlanHandoffPhaseSchema,
     failure: z.string().nullable(),
   })

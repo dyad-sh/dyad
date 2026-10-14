@@ -55,9 +55,13 @@ This has two consequences that bite in CI:
 
 **Verify before merging a new claude-code-action workflow:** mentally compute the effective allowlist as `project .claude/settings.json` ∪ `allowed_tools input` ∪ `inline settings allow`, minus any `deny`. If that union is wider than the job actually needs — especially if the job handles untrusted input or checks out a fork — apply the mitigations above.
 
-## Scope `Write`/`Edit`/`Read` rules to workspace-relative paths
+## Scope `Write`/`Edit`/`Read` rules to absolute workspace paths
 
-`--allowedTools` path patterns without a leading `/` resolve relative to the checkout; a leading `/` is absolute. `claude-triage.yml` granted `Edit(/tmp/issue-triage/**)` while the decision file was `tmp/issue-triage/triage.json` inside the workspace, so every write was denied (`permission_denials_count: 13`, then `Claude did not write tmp/issue-triage/triage.json`, dyad-sh/dyad#4427) unless the model happened to use `Bash(echo:*)` redirection — 41 issues went unlabeled that way. Name the exact workspace-relative file and grant both `Write(...)` (new file) and `Edit(...)`: `Write(tmp/issue-triage/triage.json),Edit(tmp/issue-triage/triage.json)`.
+`--allowedTools` path patterns follow gitignore-style anchoring: `//path` is absolute, `/path` is relative to the project root, and a bare `path` is relative to the **shell's current directory**. That last one moves: Claude Code auto-allows read-only Bash such as `cd` and `jq` even when `Bash` is not in the allowlist, and the shell keeps its directory between calls. In the PR #4712 review run the model ran `cd /home/runner/work/dyad/dyad/tmp/pr-review && jq ...`, after which `Edit(tmp/pr-review/**)` resolved to `tmp/pr-review/tmp/pr-review/**` and both output writes were denied ("Claude requested permissions to write to ..., but you haven't granted it yet"), failing the job. Runs whose model `cd`s back to the repo root pass, which makes this look like a flake.
+
+Earlier, `claude-triage.yml` granted `Edit(/tmp/issue-triage/**)` while the decision file lived in the workspace, so every write was denied (`permission_denials_count: 13`, dyad-sh/dyad#4427).
+
+Anchor path rules to the checkout with `/${{ github.workspace }}/...` (the workspace is already absolute, so this yields `//home/runner/...`), and name the exact output files rather than a directory glob: `Edit(/${{ github.workspace }}/tmp/issue-triage/triage.json)`. An `Edit` rule also covers `Write` creating the file. To check a rule change locally, run `claude -p --setting-sources user --allowedTools "..."` in a scratch git repo, have it `cd` into a subdirectory before writing, and read `permission_denials` from `--output-format json`.
 
 ## Issue triage (`claude-triage.yml`) layout
 

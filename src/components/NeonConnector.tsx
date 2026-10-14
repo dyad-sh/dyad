@@ -4,8 +4,8 @@ import {
   cancelConnectionFlow,
   startConnectionFlow,
   useConnectionFlow,
-  useUnsolicitedConnectionReturn,
 } from "@/hooks/useConnectionFlow";
+import { buildOAuthLoginUrl } from "@/connection_flow/oauth_deep_link";
 import { useTranslation } from "react-i18next";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -79,6 +79,7 @@ export function NeonConnector({ appId }: { appId: number }) {
   const [isDisconnectingAccount, setIsDisconnectingAccount] = useState(false);
   const [isDisconnectDialogOpen, setIsDisconnectDialogOpen] = useState(false);
   const [removeFromVercel, setRemoveFromVercel] = useState(true);
+  const [removeFromCloudflare, setRemoveFromCloudflare] = useState(true);
   const [isDisconnectAccountDialogOpen, setIsDisconnectAccountDialogOpen] =
     useState(false);
   const formatToastError = (error: unknown) => getErrorMessage(error);
@@ -136,18 +137,6 @@ export function NeonConnector({ appId }: { appId: number }) {
     }
   }, [flowState, t]);
 
-  // A dyad://neon-oauth-return processed with no active flow (cold start,
-  // app restarted mid-flow, or a return that arrived after the flow timed
-  // out): tokens are already stored — refresh what we show and confirm the
-  // (late but real) success, matching the pre-machine behavior where every
-  // processed return toasted success.
-  useUnsolicitedConnectionReturn("neon", () => {
-    void (async () => {
-      await refreshAfterConnectRef.current();
-      toast.success(t("integrations.neon.connectedSuccess"));
-    })();
-  });
-
   const handleConnect = async () => {
     try {
       // Starting is a no-op while a flow is already active (double-click).
@@ -160,7 +149,7 @@ export function NeonConnector({ appId }: { appId: number }) {
           await ipc.neon.fakeConnect();
         } else {
           await ipc.system.openExternalUrl(
-            "https://oauth.dyad.sh/api/integrations/neon/login",
+            buildOAuthLoginUrl("neon", invocationRef),
           );
         }
       } catch (error) {
@@ -239,6 +228,8 @@ export function NeonConnector({ appId }: { appId: number }) {
   const handleUnsetProject = async () => {
     setIsDisconnecting(true);
     const shouldRemoveFromVercel = removeFromVercel && !!app?.vercelProjectId;
+    const shouldRemoveFromCloudflare =
+      removeFromCloudflare && !!app?.deploymentProvidersInUse.cloudflare;
     try {
       await ipc.neon.unsetAppProject({ appId });
 
@@ -257,6 +248,21 @@ export function NeonConnector({ appId }: { appId: number }) {
             vercelError,
           );
           toast.warning(t("integrations.neon.failedRemoveVercelEnvVars"));
+        }
+      }
+      // The same for the secrets on the app's Cloudflare Workers.
+      if (shouldRemoveFromCloudflare) {
+        try {
+          const result = await ipc.cloudflare.removeNeonEnvVars({ appId });
+          if (result.warning) {
+            toast.warning(result.warning);
+          }
+        } catch (cloudflareError) {
+          console.error(
+            "Failed to remove Neon secrets from Cloudflare:",
+            cloudflareError,
+          );
+          toast.warning(t("integrations.neon.failedRemoveCloudflareEnvVars"));
         }
       }
 
@@ -586,7 +592,10 @@ export function NeonConnector({ appId }: { appId: number }) {
               onOpenChange={(open) => {
                 if (isDisconnecting) return;
                 setIsDisconnectDialogOpen(open);
-                if (open) setRemoveFromVercel(true);
+                if (open) {
+                  setRemoveFromVercel(true);
+                  setRemoveFromCloudflare(true);
+                }
               }}
             >
               <AlertDialogTrigger
@@ -620,6 +629,29 @@ export function NeonConnector({ appId }: { appId: number }) {
                       </span>
                       <span className="text-xs text-gray-600 dark:text-gray-400">
                         {t("integrations.neon.removeVercelEnvVarsHelp")}
+                      </span>
+                    </span>
+                  </label>
+                )}
+                {app?.deploymentProvidersInUse.cloudflare && (
+                  <label
+                    className="flex items-start gap-2 rounded-md border border-border p-3 text-sm"
+                    data-testid="neon-remove-cloudflare-secrets"
+                  >
+                    <Checkbox
+                      checked={removeFromCloudflare}
+                      onCheckedChange={(checked) =>
+                        setRemoveFromCloudflare(checked === true)
+                      }
+                      disabled={isDisconnecting}
+                      className="mt-0.5"
+                    />
+                    <span className="flex flex-col gap-0.5">
+                      <span className="font-medium">
+                        {t("integrations.neon.removeCloudflareEnvVars")}
+                      </span>
+                      <span className="text-xs text-gray-600 dark:text-gray-400">
+                        {t("integrations.neon.removeCloudflareEnvVarsHelp")}
                       </span>
                     </span>
                   </label>

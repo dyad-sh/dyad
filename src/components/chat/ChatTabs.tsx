@@ -93,7 +93,10 @@ import {
   earlyChatTabRemovalEvents,
 } from "@/app_wiring/early_renderer_events";
 import type { ChatTabPresentationState } from "@/window_infrastructure/types";
-import { restoreChatScrollPosition } from "./scroll/restore";
+import {
+  isChatScrollFollowing,
+  restoreChatScrollPosition,
+} from "./scroll/restore";
 
 const MIN_VISIBLE_TAB_WIDTH_PX = 160;
 const TAB_GAP_PX = 4;
@@ -130,6 +133,7 @@ export function restoreLocalStorageSnapshot(
 export function restoreMessagesScrollTop(
   scrollTop: number,
   shouldContinue: () => boolean,
+  following = false,
 ): void {
   let remainingFrames = SCROLL_RESTORE_MAX_FRAMES;
   let stableFrames = 0;
@@ -137,10 +141,18 @@ export function restoreMessagesScrollTop(
     if (!shouldContinue()) return;
     const viewport = getMessagesScrollViewport();
     if (viewport) {
-      restoreChatScrollPosition(viewport, scrollTop);
+      const handled = restoreChatScrollPosition(viewport, scrollTop, following);
+      // Follow intent is sticky once the controller accepts it: it tracks later
+      // growth itself, and re-dispatching would override a user scroll-away.
+      if (following && handled) return;
       if (
-        scrollTop === 0 ||
-        viewport.scrollHeight >= scrollTop + viewport.clientHeight
+        following
+          ? viewport.scrollHeight -
+              viewport.clientHeight -
+              viewport.scrollTop <=
+            4
+          : scrollTop === 0 ||
+            viewport.scrollHeight >= scrollTop + viewport.clientHeight
       ) {
         stableFrames += 1;
         if (stableFrames >= SCROLL_RESTORE_STABILIZATION_FRAMES) return;
@@ -557,6 +569,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
     (chatId: number): ChatTabPresentationState => ({
       draftInput: store.get(chatInputValuesByIdAtom).get(chatId) ?? "",
       scrollTop: 0,
+      scrollAtBottom: true,
       selectedFile: null,
       editorCursor: null,
       stagedDiffFile: null,
@@ -589,6 +602,10 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
       return {
         draftInput: store.get(chatInputValuesByIdAtom).get(chatId) ?? "",
         scrollTop: messages.scrollTop,
+        scrollAtBottom:
+          isChatScrollFollowing(messages) ??
+          messages.scrollHeight - messages.clientHeight - messages.scrollTop <=
+            4,
         selectedFile: store.get(selectedFileAtom),
         editorCursor: store.get(editorCursorAtom),
         stagedDiffFile: store.get(stagedDiffFileAtom),
@@ -643,6 +660,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
           scrollRestoreGeneration === scrollRestoreGenerationRef.current &&
           (options.chatId === undefined ||
             store.get(selectedChatIdAtom) === options.chatId),
+        presentation.scrollAtBottom,
       );
       if (options.restoreComponents !== false) {
         requestAnimationFrame(() => {

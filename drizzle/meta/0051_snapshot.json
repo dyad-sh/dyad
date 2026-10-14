@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "eaef2311-2062-4897-a5e4-1a790feadde8",
+  "id": "1563e631-ec24-439f-bc86-240bfd8e968c",
   "prevId": "d14c5611-c21f-4eba-bf67-7ede7d5ffa5f",
   "tables": {
     "agent_activities": {
@@ -551,34 +551,6 @@
           "notNull": false,
           "autoincrement": false
         },
-        "gitlab_host": {
-          "name": "gitlab_host",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "gitlab_project_id": {
-          "name": "gitlab_project_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "gitlab_project_path": {
-          "name": "gitlab_project_path",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "gitlab_branch": {
-          "name": "gitlab_branch",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "supabase_project_id": {
           "name": "supabase_project_id",
           "type": "text",
@@ -1062,6 +1034,28 @@
         },
         "title": {
           "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "execution_backend": {
+          "name": "execution_backend",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'dyad'"
+        },
+        "claude_session_id": {
+          "name": "claude_session_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "claude_session_state": {
+          "name": "claude_session_state",
           "type": "text",
           "primaryKey": false,
           "notNull": false,

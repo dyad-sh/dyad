@@ -1,4 +1,6 @@
+import { PreviewAuthBanner } from "./PreviewAuthBanner";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { currentTestRunStateAtom } from "@/atoms/testRuntimeAtoms";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
 import { useCurrentAppUrl } from "@/hooks/useAppRun";
 import { useAtomValue, useSetAtom, useAtom } from "jotai";
@@ -87,12 +89,16 @@ import { VisualEditingToolbar } from "./VisualEditingToolbar";
 import { recordingStatusMessage } from "./RecordingBanner";
 import { RecordingBannerHost } from "./RecordingBannerHost";
 import { RecordingStorageWarningDialog } from "./RecordingStorageWarningDialog";
-import { resolvePreviewBrowserUrl } from "./previewBrowserUrl";
+import {
+  LOCAL_PREVIEW_BROWSER_HINT,
+  resolvePreviewBrowserUrl,
+} from "./previewBrowserUrl";
 import { PreviewLoadingScreen } from "./PreviewLoadingScreen";
 import { PreviewErrorBanner } from "./PreviewErrorBanner";
 import { useTranslation } from "react-i18next";
 import {
   formatPreviewAddressPath,
+  getPreviewHost,
   normalizePreviewAddressPath,
   sameOriginStartPath,
 } from "./previewAddressPath";
@@ -121,7 +127,9 @@ export const PreviewIframe = ({
   const { t } = useTranslation("home");
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const isPreviewOpen = useAtomValue(isPreviewOpenAtom);
-  const { appUrl, originalUrl, mode } = useCurrentAppUrl(selectedAppId);
+  const { appUrl, originalUrl, mode, previewAuth } =
+    useCurrentAppUrl(selectedAppId);
+  const testRunPhase = useAtomValue(currentTestRunStateAtom).phase;
   const appRunManager = useAppRunRemoteManager();
   const selectedChatId = useAtomValue(selectedChatIdAtom);
   const { streamMessage } = useStreamChat();
@@ -1055,7 +1063,7 @@ export const PreviewIframe = ({
       const url = await resolvePreviewBrowserUrl({
         isCloudMode,
         selectedAppId,
-        originalUrl,
+        appUrl,
         createCloudSandboxShareLink,
       });
       await ipc.system.openExternalUrl(url);
@@ -1091,10 +1099,17 @@ export const PreviewIframe = ({
     getPreviewToolbarActionVisibility(previewToolbarWidth);
   const openBrowserDisabled = isCloudMode
     ? isCreatingCloudSandboxShareLink
-    : !originalUrl;
+    : !appUrl;
 
   return (
     <div className="flex flex-col h-full">
+      <PreviewAuthBanner
+        status={previewAuth}
+        onRetry={onRestart}
+        disabled={
+          loading || recorder.phase !== "idle" || testRunPhase !== "idle"
+        }
+      />
       {/* Browser-style header - hide when annotator is active */}
       {!annotatorMode && (
         <div
@@ -1387,6 +1402,14 @@ export const PreviewIframe = ({
 
           {/* Flexible route field keeps priority as the panel narrows. */}
           <div className="relative flex h-8 min-w-24 flex-1 items-center rounded-md border border-border bg-(--background-lighter) px-1">
+            {appUrl && (
+              <span
+                className="max-w-40 truncate pl-2 text-xs text-muted-foreground"
+                title={appUrl}
+              >
+                {getPreviewHost(appUrl)}
+              </span>
+            )}
             <div className="flex min-w-[2rem] flex-1 items-center">
               <input
                 aria-label="Preview path"
@@ -1492,7 +1515,10 @@ export const PreviewIframe = ({
               >
                 <ExternalLink size={14} />
               </TooltipTrigger>
-              <TooltipContent side="bottom">Open in browser</TooltipContent>
+              <TooltipContent side="bottom">
+                Open in browser
+                {!isCloudMode && `. ${LOCAL_PREVIEW_BROWSER_HINT}`}
+              </TooltipContent>
             </Tooltip>
           )}
 
@@ -1533,10 +1559,35 @@ export const PreviewIframe = ({
                     data-testid="preview-open-browser-menu-item"
                   >
                     <ExternalLink size={16} />
-                    <span>Open in browser</span>
+                    <div className="flex flex-col">
+                      <span>Open in browser</span>
+                      {!isCloudMode && (
+                        <span className="text-xs text-muted-foreground">
+                          {LOCAL_PREVIEW_BROWSER_HINT}
+                        </span>
+                      )}
+                    </div>
                   </DropdownMenuItem>
                 )}
                 {!showOpenBrowser && <DropdownMenuSeparator />}
+                {!isCloudMode && originalUrl && (
+                  <DropdownMenuItem
+                    onClick={() =>
+                      void ipc.system
+                        .openExternalUrl(originalUrl)
+                        .catch(showError)
+                    }
+                    data-testid="preview-open-dev-server-menu-item"
+                  >
+                    <ExternalLink size={16} />
+                    <div className="flex flex-col">
+                      <span>{t("preview.openDevServer")}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {t("preview.openDevServerDescription")}
+                      </span>
+                    </div>
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem onClick={onCleanRestart}>
                   <Cog size={16} />
                   <div className="flex flex-col">

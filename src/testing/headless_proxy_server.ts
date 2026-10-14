@@ -67,6 +67,9 @@ export function resolveProxyWorkerPath(): string {
 
 export interface HeadlessStartProxyOptions {
   port: number;
+  hostname: string;
+  authBootstrapToken: string;
+  signal?: AbortSignal;
   onStarted?: (proxyUrl: string) => void;
   onError?: (error: DyadError) => void;
   fixedHeaders?: Record<string, string>;
@@ -96,6 +99,8 @@ export function createHeadlessProxyModule(): {
     const worker = new Worker(workerPath, {
       workerData: {
         targetOrigin,
+        hostname: opts.hostname,
+        authBootstrapToken: opts.authBootstrapToken,
         port,
         fallbackPortStart,
         maxPortAttempts: PROXY_FALLBACK_MAX_ATTEMPTS,
@@ -103,11 +108,19 @@ export function createHeadlessProxyModule(): {
       },
     });
 
+    let started = false;
+    let reportedError = false;
+    const reportError = (error: DyadError) => {
+      if (reportedError || opts.signal?.aborted) return;
+      reportedError = true;
+      onError?.(error);
+    };
     worker.on("message", (m) => {
       if (typeof m === "string" && m.startsWith("proxy-server-start url=")) {
+        started = true;
         onStarted?.(m.substring("proxy-server-start url=".length));
       } else if (typeof m === "string" && m.startsWith("proxy-server-error")) {
-        onError?.(
+        reportError(
           new DyadError(
             `Could not start the preview proxy: every port from ${port} to ${
               fallbackPortStart + PROXY_FALLBACK_MAX_ATTEMPTS - 1
@@ -118,7 +131,7 @@ export function createHeadlessProxyModule(): {
       }
     });
     worker.on("error", (error) => {
-      onError?.(
+      reportError(
         new DyadError(
           `Preview proxy worker failed: ${
             error instanceof Error ? error.message : String(error)
@@ -128,6 +141,15 @@ export function createHeadlessProxyModule(): {
       );
     });
 
+    worker.on("exit", () => {
+      if (!started && !reportedError)
+        reportError(
+          new DyadError(
+            "Preview proxy exited before it was ready",
+            DyadErrorKind.External,
+          ),
+        );
+    });
     return worker;
   };
 

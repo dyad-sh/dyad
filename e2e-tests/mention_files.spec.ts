@@ -9,12 +9,16 @@ test("mention file", async ({ po }) => {
   await po.navigation.goToAppsTab();
   await po.chatActions.getChatInput().click();
   // Use pressSequentially so the mention trigger (@) is properly detected by Lexical
-  await po.chatActions.getChatInput().pressSequentially("[dump] @AI_RULES");
+  await po.chatActions
+    .getChatInput()
+    .pressSequentially("[dump] @AI_RULES", { delay: 50 });
   // Wait for the mention menu to appear
   const menuItem = po.page.getByRole("menuitem", {
     name: "Choose AI_RULES.md",
   });
   await expect(menuItem).toBeVisible({ timeout: Timeout.MEDIUM });
+  // Let the mention plugin process the final query update before selecting it.
+  await po.page.waitForTimeout(100);
   await po.page.keyboard.press("Enter");
   await po.page.getByRole("button", { name: "Send message" }).click();
   await po.chatActions.waitForChatCompletion();

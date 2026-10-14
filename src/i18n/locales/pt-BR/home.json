@@ -174,6 +174,7 @@
     "systemInfoFailed": "Não foi possível incluir as informações do seu sistema. O relatório será enviado sem elas.",
     "screenshotRestoreFailed": "Não foi possível restaurar sua captura de tela. O relatório será enviado sem ela.",
     "screenshotDropped": "Sua captura de tela não pôde mais ser restaurada, então foi removida deste relatório.",
+    "screenshotUploadFailed": "Não foi possível anexar sua captura de tela. O Dyad vai colocá-la na área de transferência para você colar na issue.",
     "filingFailed": "Algo deu errado ao enviar seu relatório. Tente novamente.",
     "updaterLogs": "Logs do Atualizador",
     "appMetadata": "Metadados do Aplicativo",
@@ -185,17 +186,17 @@
     "screenshot": "Captura de tela",
     "addScreenshot": "Adicionar uma captura de tela",
     "takingScreenshot": "Capturando tela...",
-    "screenshotHint": "Este diálogo sai do caminho para você ir primeiro até onde o bug está. Você vai colá-la no GitHub no final.",
+    "screenshotHint": "Este diálogo sai do caminho para você ir primeiro até onde o bug está. A captura de tela é anexada ao seu relatório automaticamente.",
     "captureBarLabel": "Captura de tela para o seu relatório de bug",
     "captureBarHeading": "Vá até onde o bug está.",
     "captureBarHint": "Quando ele estiver na tela, capture. Seu relatório está salvo e vai reabrir com a captura.",
     "captureBarCapture": "Capturar tela",
     "captureBarCancel": "Voltar ao relatório",
     "filedHeading": "Você colou sua captura de tela?",
-    "filedPasteBody": "O Dyad não pode anexá-la por você, então ela está esperando na área de transferência. Pressione {{shortcut}} na issue do GitHub para adicioná-la. Se você já enviou sem ela, edite a issue e cole lá. Se ela já está incluída, está tudo certo.",
+    "filedPasteBody": "Não foi possível anexar sua captura de tela automaticamente, então ela está esperando na área de transferência. Pressione {{shortcut}} na issue do GitHub para adicioná-la. Se você já enviou sem ela, edite a issue e cole lá. Se ela já está incluída, está tudo certo.",
     "filedDone": "Concluído",
     "screenshotAlt": "Captura de tela da janela do Dyad",
-    "screenshotPasteHint": "Copiada para a área de transferência. Pressione {{shortcut}} na issue do GitHub para anexá-la.",
+    "screenshotAttachHint": "Esta imagem será anexada à sua issue do GitHub, onde qualquer pessoa pode vê-la. Verifique se ela não mostra nada que você não queira tornar público.",
     "screenshotFailed": "Não foi possível capturar a tela.",
     "screenshotStillFile": "Você ainda pode enviar o relatório sem ela.",
     "retake": "Capturar de novo",
@@ -264,6 +265,25 @@
     "security": "Segurança",
     "publish": "Publicar",
     "tests": "Testes",
+    "testQueued": "Na fila",
+    "testRunsQueued_one": "{{count}} execução na fila",
+    "testRunsQueued_other": "{{count}} execuções na fila",
+    "cancelQueued": "Cancelar fila",
+    "cancelQueuedTests": "Cancelar testes na fila",
+    "allTests": "Todos os testes",
+    "queueAll": "Adicionar todos à fila",
+    "queueAllTests": "Adicionar todos os testes à fila",
+    "testGate": {
+      "settingsLoading": "Carregando configurações…",
+      "settingsUnavailable": "O Dyad não conseguiu carregar suas configurações, então não sabe como os testes seriam executados.",
+      "retry": "Tentar novamente",
+      "startApp": "Inicie o app para executar os testes.",
+      "start": "Iniciar",
+      "neonRefusalRuntime": "Os testes não podem ser executados neste app: servidores de teste isolados ainda não estão disponíveis no runtime {{runtime}}, e o Dyad não executará testes do Neon no seu banco de dados real. Mude para o runtime host para executá-los.",
+      "neonRefusalDisabled": "Os testes não podem ser executados neste app: servidores de teste isolados estão desativados nas Configurações, e o Dyad não executará testes do Neon no seu banco de dados real. Ative-os novamente para executá-los.",
+      "turnOnSandbox": "Ativar",
+      "openSettings": "Abrir Configurações"
+    },
     "plan": "Plano",
     "moreOptions": "Mais opções",
     "rebuild": "Reconstruir",
@@ -447,7 +467,9 @@
       "proFeatureTitle": "O Anotador é um Recurso Pro",
       "proFeatureDescription": "Desbloqueie a capacidade de anotar capturas de tela e aprimore seu fluxo de trabalho com o Dyad Pro.",
       "getDyadPro": "Obtenha o Dyad Pro"
-    }
+    },
+    "openDevServer": "Abrir endereço do servidor de desenvolvimento",
+    "openDevServerDescription": "Para navegadores que não conseguem abrir o endereço de prévia. Compartilha o armazenamento do navegador com outros apps em localhost."
   },
   "integrations": {
     "github": {
@@ -714,7 +736,8 @@
       "redeploySucceededWithPruning_other": "{{count}} Edge Functions reimplantadas e funções somente remotas removidas: {{functions}}",
       "redeployPrunedOnly": "Edge Functions somente remotas removidas: {{functions}}",
       "noFunctionsToRedeploy": "Nenhuma Edge Function local encontrada para reimplantar",
-      "redeployFailed": "A reimplantação das Edge Functions terminou com problemas: {{error}}"
+      "redeployFailed": "A reimplantação das Edge Functions terminou com problemas: {{error}}",
+      "previewRedirectNotice": "O Dyad adiciona automaticamente as URLs de prévia locais à lista de redirecionamentos permitidos do Auth de {{project}}. Essas entradas permanecem após desconectar ou excluir um app, pois colegas podem usar as mesmas URLs. Remova entradas não utilizadas em Supabase → Authentication → URL Configuration."
     },
     "neon": {
       "title": "Integração com Neon",
@@ -773,7 +796,10 @@
       "connecting": "Conectando...",
       "disconnectAccountTitle": "Desconectar conta Neon",
       "disconnectAccountConfirmation": "Tem certeza de que deseja desconectar sua conta Neon? Você precisará autenticar novamente via OAuth para reconectar.",
-      "connectFailed": "Falha ao conectar ao Neon"
+      "connectFailed": "Falha ao conectar ao Neon",
+      "removeCloudflareEnvVars": "Remover segredos do Neon do Cloudflare",
+      "removeCloudflareEnvVarsHelp": "Exclui DATABASE_URL e NEON_AUTH_BASE_URL dos Workers conectados para que não apontem para um banco de dados desconectado.",
+      "failedRemoveCloudflareEnvVars": "Desconectado, mas não foi possível remover os segredos do Neon do Cloudflare."
     },
     "db": {
       "projectInfo": "{{provider}} Informações do Projeto",
@@ -870,5 +896,10 @@
       "neonUnavailable": "O Neon não está disponível porque um projeto Supabase já está conectado. Apenas uma integração de banco de dados pode estar ativa por vez.",
       "chooseOne": "Escolha uma integração de banco de dados. Conectar Supabase ou Neon bloqueará o outro para este aplicativo."
     }
+  },
+  "previewAuth": {
+    "neonPending": "Registrando o endereço de prévia deste app no Neon em segundo plano. O login OAuth e os redirecionamentos de autenticação podem não funcionar até o registro terminar.",
+    "supabasePending": "Registrando as URLs de redirecionamento da prévia deste app no Supabase em segundo plano. Os redirecionamentos de autenticação podem não funcionar até o registro terminar.",
+    "retry": "Reiniciar e tentar novamente"
   }
 }

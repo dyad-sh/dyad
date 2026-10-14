@@ -51,6 +51,42 @@ beforeEach(() => {
     models: ["eligible-model"],
   });
 });
+
+it.each(["build", "ask", "plan", "local-agent"] as const)(
+  "matches Codex billing eligibility in %s mode, with Pro on or off",
+  async (selectedChatMode) => {
+    for (const provider of ["openai", "claude-code"]) {
+      for (const enableDyadPro of [true, false]) {
+        mocks.credits.mockClear();
+        const result = await preflightWithAdmission(
+          { ...model, provider },
+          {
+            ...settings,
+            selectedChatMode,
+            enableDyadPro,
+            enableClaudeCodeSubscription: true,
+          },
+          signal,
+        );
+        const billed = enableDyadPro && selectedChatMode === "local-agent";
+        expect(mocks.credits).toHaveBeenCalledTimes(billed ? 1 : 0);
+        expect(Boolean(result.externalModelAdmission)).toBe(billed);
+      }
+    }
+  },
+);
+
+it("blocks disabled Claude experiments before authentication or billing", async () => {
+  await expect(
+    preflightWithAdmission(
+      { ...model, provider: "claude-code" },
+      settings,
+      signal,
+    ),
+  ).rejects.toThrow("Settings → Experiments");
+  expect(mocks.credentials).not.toHaveBeenCalled();
+  expect(mocks.credits).not.toHaveBeenCalled();
+});
 describe("global subscription turn routing", () => {
   it.each(["build", "ask", "plan"] as const)(
     "allows %s subscription turns with no Dyad credits",
@@ -457,3 +493,103 @@ describe("cancelled admission", () => {
     expect(mocks.credits).not.toHaveBeenCalled();
   });
 });
+
+it.each([true, false])(
+  "keeps Claude on its CLI backend with Pro=%s, without ChatGPT auth",
+  async (pro) => {
+    const result = await preflightWithAdmission(
+      { provider: "claude-code", name: "sonnet", effortLevel: "medium" },
+      { ...settings, enableDyadPro: pro, enableClaudeCodeSubscription: true },
+      signal,
+    );
+    expect(result.model).toMatchObject({
+      provider: "claude-code",
+      connection: "subscription",
+    });
+    expect(mocks.credentials).not.toHaveBeenCalled();
+    expect(mocks.account).not.toHaveBeenCalled();
+    expect(mocks.credits).toHaveBeenCalledTimes(pro ? 1 : 0);
+    expect(Boolean(result.externalModelAdmission)).toBe(pro);
+  },
+);
+
+it.each([
+  "openai",
+  "anthropic",
+  "google",
+  "openrouter",
+  "azure",
+  "vertex",
+  "bedrock",
+  "xai",
+  "minimax",
+  "ollama",
+  "lmstudio",
+  "custom",
+  "auto",
+])(
+  "keeps BYO %s direct even with a connected subscription",
+  async (provider) => {
+    const result = await preflightWithAdmission(
+      { ...model, provider, connection: "pro" },
+      { ...settings, proModelUsage: "api-key" },
+      signal,
+    );
+    expect(result.model).toMatchObject({ provider, connection: "api-key" });
+    expect(result.externalModelAdmission).toBeDefined();
+    expect(mocks.credits).toHaveBeenCalledWith("test-key", signal);
+    expect(mocks.account).not.toHaveBeenCalled();
+    expect(mocks.credentials).not.toHaveBeenCalled();
+  },
+);
+it("does not check Dyad credits for BYO with Pro off", async () => {
+  const result = await preflightWithAdmission(
+    model,
+    { ...settings, proModelUsage: "api-key", enableDyadPro: false },
+    signal,
+  );
+  expect(result.model.connection).toBe("api-key");
+  expect(result.externalModelAdmission).toBeUndefined();
+  expect(mocks.credits).not.toHaveBeenCalled();
+});
+it("rejects exhausted BYO credits without falling back to a subscription", async () => {
+  const { SubscriptionBillingError } =
+    await import("@/shared/subscription_billing_error");
+  const error = new SubscriptionBillingError("OUT_OF_CREDITS");
+  mocks.credits.mockRejectedValue(error);
+  await expect(
+    preflightWithAdmission(
+      model,
+      { ...settings, proModelUsage: "api-key" },
+      signal,
+    ),
+  ).rejects.toBe(error);
+  expect(mocks.credentials).not.toHaveBeenCalled();
+});
+it("asks existing Claude Code chats to change model or source instead of ignoring BYO", async () => {
+  await expect(
+    preflightWithAdmission(
+      { ...model, provider: "claude-code" },
+      {
+        ...settings,
+        proModelUsage: "api-key",
+        enableClaudeCodeSubscription: true,
+      },
+      signal,
+    ),
+  ).rejects.toThrow("Select Subscriptions");
+});
+
+it.each(["value", "free-pro"])(
+  "rejects engine-only Auto %s in BYO before charging",
+  async (name) => {
+    await expect(
+      preflightWithAdmission(
+        { ...model, provider: "auto", name },
+        { ...settings, proModelUsage: "api-key" },
+        signal,
+      ),
+    ).rejects.toThrow("requires Pro credits");
+    expect(mocks.credits).not.toHaveBeenCalled();
+  },
+);

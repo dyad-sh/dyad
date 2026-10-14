@@ -7,9 +7,29 @@ import {
   type HandlerTestHarness,
   setupHandlerTestHarness,
 } from "@/testing/handler_test_harness";
+import { deleteChatJournals } from "@/ipc/services/chat_journal_cleanup";
 import { registerChatHandlers } from "./chat_handlers";
 
+const cli = vi.hoisted(() => ({
+  status: vi.fn().mockResolvedValue({ connected: true }),
+  models: vi.fn().mockResolvedValue([]),
+  usage: vi.fn().mockResolvedValue({}),
+}));
+vi.mock("@/ipc/services/claude_code/runtime", async (original) => ({
+  ...(await original<typeof import("@/ipc/services/claude_code/runtime")>()),
+  claudeStatus: cli.status,
+  listClaudeModels: cli.models,
+}));
+
+vi.mock("@/ipc/services/claude_code/usage_limits", () => ({
+  getClaudeUsageLimits: cli.usage,
+}));
 const deletionOrder = vi.hoisted(() => [] as string[]);
+vi.mock("@/ipc/services/chat_journal_cleanup", () => ({
+  deleteChatJournals: vi.fn(async () => {
+    deletionOrder.push("delete-journals");
+  }),
+}));
 // Lets a test observe database state at the moment streams are drained, which
 // is where the revoke-vs-stream-union ordering matters.
 const drainHooks = vi.hoisted(
@@ -84,6 +104,86 @@ describe("registerChatHandlers", () => {
   afterEach(() => {
     harness.dispose();
   });
+
+  it.each(["claude-code:models", "claude-code:status", "claude-code:usage"])(
+    "gates %s before spawning the CLI",
+    async (channel) => {
+      cli.status.mockClear();
+      cli.models.mockClear();
+      cli.usage.mockClear();
+      await expect(harness.invokeHandler(channel)).rejects.toMatchObject({
+        kind: DyadErrorKind.Precondition,
+      });
+      expect(cli.status).not.toHaveBeenCalled();
+      expect(cli.models).not.toHaveBeenCalled();
+      expect(cli.usage).not.toHaveBeenCalled();
+      harness.writeSettings({ enableClaudeCodeSubscription: true });
+      await harness.invokeHandler(channel);
+      expect(
+        channel.endsWith("models")
+          ? cli.models
+          : channel.endsWith("usage")
+            ? cli.usage
+            : cli.status,
+      ).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("forwards an explicit status refresh past the main-process cache", async () => {
+    harness.writeSettings({ enableClaudeCodeSubscription: true });
+    await harness.invokeHandler("claude-code:status", { force: true });
+    expect(cli.status).toHaveBeenLastCalledWith({ force: true });
+  });
+
+  it.each(["dyad", "claude-code"] as const)(
+    "switches an empty %s chat backend and rejects switching once messages exist",
+    async (executionBackend) => {
+      const appId = Number(
+        harness.db.insert(apps).values({ name: "switch", path: "switch" }).run()
+          .lastInsertRowid,
+      );
+      const chatId = Number(
+        harness.db.insert(chats).values({ appId, executionBackend }).run()
+          .lastInsertRowid,
+      );
+      const modelSelection = {
+        provider: executionBackend === "dyad" ? "claude-code" : "auto",
+        name: executionBackend === "dyad" ? "sonnet" : "auto",
+        effortLevel: "medium",
+      };
+      await harness.invokeHandler("update-chat", { chatId, modelSelection });
+      const updated = harness.db
+        .select()
+        .from(chats)
+        .where(eq(chats.id, chatId))
+        .get();
+      expect(updated).toMatchObject({
+        executionBackend: executionBackend === "dyad" ? "claude-code" : "dyad",
+        modelSelection,
+      });
+      harness.db
+        .insert(messages)
+        .values({
+          chatId,
+          role: "assistant",
+          content: "Hello",
+        })
+        .run();
+      await expect(
+        harness.invokeHandler("update-chat", {
+          chatId,
+          modelSelection: {
+            provider: executionBackend === "dyad" ? "auto" : "claude-code",
+            name: "sonnet",
+            effortLevel: "medium",
+          },
+        }),
+      ).rejects.toMatchObject({ kind: DyadErrorKind.Precondition });
+      expect(
+        harness.db.select().from(chats).where(eq(chats.id, chatId)).get(),
+      ).toEqual(updated);
+    },
+  );
 
   it("does not expose main-process AI message history through get-chat", async () => {
     const appResult = harness.db
@@ -286,6 +386,7 @@ describe("registerChatHandlers", () => {
       "settle-actors",
       "drain-actor",
       "drain",
+      "delete-journals",
       "release-subagents",
       "release",
       "actor-release",
@@ -312,18 +413,67 @@ describe("registerChatHandlers", () => {
     await harness.invokeHandler("delete-messages", chatId);
 
     expect(deletionOrder).toEqual([
+      "settle-input",
+      "subagent-barrier",
       "actor-barrier",
       "barrier",
+      "settle-subagents",
+      "settle-actors",
       "drain-actor",
       "drain",
+      "delete-journals",
+      "release-subagents",
       "release",
       "actor-release",
+      "subagent-admission-release",
     ]);
     await expect(
       harness.db.query.messages.findMany({
         where: (row, { eq }) => eq(row.chatId, chatId),
       }),
     ).resolves.toEqual([]);
+  });
+
+  it("releases admission fences and preserves history when cleanup fails, allowing retry", async () => {
+    const appId = Number(
+      harness.db
+        .insert(apps)
+        .values({ name: "cleanup-retry", path: "cleanup-retry" })
+        .run().lastInsertRowid,
+    );
+    const chatId = Number(
+      harness.db.insert(chats).values({ appId }).run().lastInsertRowid,
+    );
+    harness.db
+      .insert(messages)
+      .values({ chatId, role: "user", content: "keep me" })
+      .run();
+    vi.mocked(deleteChatJournals).mockRejectedValueOnce(
+      new Error("receipt cleanup failed"),
+    );
+    await expect(
+      harness.invokeHandler("delete-messages", chatId),
+    ).rejects.toThrow("receipt cleanup failed");
+    expect(deletionOrder.slice(-4)).toEqual([
+      "release-subagents",
+      "release",
+      "actor-release",
+      "subagent-admission-release",
+    ]);
+    expect(
+      await harness.db.query.messages.findMany({
+        where: eq(messages.chatId, chatId),
+      }),
+    ).toHaveLength(1);
+    await harness.invokeHandler("delete-messages", chatId);
+    expect(
+      await harness.db.query.messages.findMany({
+        where: eq(messages.chatId, chatId),
+      }),
+    ).toHaveLength(0);
+    expect(
+      await harness.db.query.chats.findFirst({ where: eq(chats.id, chatId) }),
+    ).toBeDefined();
   });
 
   it("clears sticky referenced apps in the same transaction as the messages", async () => {
@@ -342,7 +492,13 @@ describe("registerChatHandlers", () => {
     const chatId = Number(
       harness.db
         .insert(chats)
-        .values({ appId, referencedAppIds: [referencedAppId] })
+        .values({
+          appId,
+          referencedAppIds: [referencedAppId],
+          executionBackend: "claude-code",
+          claudeSessionId: "old-session",
+          claudeSessionState: "ready",
+        })
         .run().lastInsertRowid,
     );
     harness.db
@@ -356,6 +512,11 @@ describe("registerChatHandlers", () => {
     // that still carries referenced ids would keep cross-app reads alive with
     // nothing on screen explaining why.
     expect(readStoredIds(chatId)).toEqual([]);
+    expect(
+      await harness.db.query.chats.findFirst({
+        where: (row, { eq }) => eq(row.id, chatId),
+      }),
+    ).toMatchObject({ claudeSessionId: null, claudeSessionState: null });
     await expect(
       harness.db.query.messages.findMany({
         where: (row, { eq }) => eq(row.chatId, chatId),

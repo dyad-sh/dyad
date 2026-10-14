@@ -86,7 +86,9 @@ async function open() {
   );
   await user.click(screen.getByRole("button", { name: "Models" }));
   await user.hover(
-    screen.getByRole("menuitem", { name: /Subscription.*Open submenu/ }),
+    screen.getByRole("menuitem", {
+      name: /ChatGPT subscription.*Open submenu/,
+    }),
   );
   return user;
 }
@@ -154,7 +156,7 @@ it("shows account usage limits without a duplicate model catalog", async () => {
     screen.getByText("Get up to 5× usage with your ChatGPT subscription."),
   ).toBeVisible();
   expect(screen.queryByText(/1.5 Pro credits/)).not.toBeInTheDocument();
-  expect(screen.getByText("New")).toBeVisible();
+  expect(screen.getByText("Recommended")).toBeVisible();
   expect(screen.getByText("25% used")).toBeVisible();
   expect(
     screen.getByRole("menuitem", { name: "Disconnect ChatGPT" }),
@@ -164,7 +166,9 @@ it("replaces models with subscription details in narrow windows and returns with
   vi.stubGlobal("innerWidth", 300);
   const user = await open();
   await user.click(
-    screen.getByRole("menuitem", { name: /Subscription.*Open submenu/ }),
+    screen.getByRole("menuitem", {
+      name: /ChatGPT subscription.*Open submenu/,
+    }),
   );
   expect(
     await screen.findByRole("menuitem", { name: "Back to models" }),

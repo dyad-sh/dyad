@@ -102,7 +102,13 @@ export function certificateDomainFor(
   // certificate authority both have more to say about IPv6 than is worth
   // guessing at here. A name is used as given.
   if (isIP(bare) === 6) return null;
-  return bare || null;
+  // The apply-time guard refuses any character outside [A-Za-z0-9.-], which a
+  // name the user gave as an SSH host can contain — an underscore is legal as
+  // a DNS label. Checking the same charset here, where the host becomes a
+  // domain, sends a host the guard would reject to the friendly fallback
+  // below rather than minutes into an install, where the guard fires with a
+  // message that blames the user's own SSH host.
+  return bare && isPlausibleInstanceDomain(bare) ? bare : null;
 }
 
 export function httpsUrlFor(domain: string): string {
@@ -373,12 +379,17 @@ export async function tryEnableHttps(
   }
 
   // Only a domain of the user's own can point somewhere else. A derived
-  // sslip.io name resolves to the address it was built from, by construction
-  // — including one derived from an address typed into the domain field,
+  // name — the sslip.io spelling of an IPv4 address, or a hostname used as
+  // given — resolves to the address it was built from, by construction,
+  // including one derived from an address typed into the domain field,
   // which is why this asks what the domain turned out to be rather than
   // whether the field was filled. An address typed there that is not this
-  // server is still the user's own, and is still checked.
-  if (customDomain && domain !== `${host}.sslip.io`) {
+  // server is still the user's own, and is still checked. Computing the
+  // derived name the same way certificateDomainFor does, instead of
+  // assuming the sslip.io spelling, recognizes a hostname host whose
+  // derived name is the host itself.
+  const derived = certificateDomainFor(host, null);
+  if (customDomain && domain !== derived) {
     const points = await domainPointsAtServer(domain, host, {
       resolve,
       hostAddresses,

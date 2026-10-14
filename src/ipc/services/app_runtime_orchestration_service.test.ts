@@ -1,11 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { readSettings } from "@/main/settings";
 
 import type { AppRunInvocationRef } from "@/app_run/state";
 import type { RuntimeMode2 } from "@/lib/schemas";
 import type { RunningAppInfo } from "@/ipc/utils/process_manager";
+import { runningApps } from "@/ipc/utils/process_manager";
 import {
   AppRuntimeService,
+  appRuntimeService,
   getAppRuntimeOperationResources,
+  reconcileRunningSupabasePreview,
   type AppRuntimeOutput,
   type AppRuntimeServiceDependencies,
 } from "./app_runtime_service";
@@ -13,6 +17,21 @@ import {
   AppOperationCoordinator,
   readAppResource,
 } from "./app_operation_coordinator";
+import {
+  ensureSupabasePreviewRedirects,
+  resolveSupabasePreviewTarget,
+  type SupabasePreviewTarget,
+} from "./supabase_preview_redirect_service";
+
+vi.mock("./supabase_preview_redirect_service", () => ({
+  ensureSupabasePreviewRedirects: vi.fn().mockResolvedValue(undefined),
+  resolveSupabasePreviewTarget: vi.fn().mockResolvedValue(null),
+}));
+
+vi.mock("@/main/settings", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/main/settings")>()),
+  readSettings: vi.fn(() => ({ enableAppPreviewDomains: true })),
+}));
 
 const APP_ID = 42;
 const REF: AppRunInvocationRef = {
@@ -112,6 +131,89 @@ function createHarness() {
 describe("AppRuntimeService", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(readSettings).mockReturnValue({
+      ...readSettings(),
+      enableAppPreviewDomains: true,
+    });
+  });
+
+  it.each([false, true])(
+    "applies domain preference %s to an in-place cloud restart",
+    async (enabled) => {
+      vi.mocked(readSettings).mockReturnValue({
+        ...readSettings(),
+        enableAppPreviewDomains: enabled,
+      });
+      const harness = createHarness();
+      const { output } = createOutput();
+      const appInfo: RunningAppInfo = {
+        process: null,
+        processId: 8,
+        mode: "cloud",
+        lastViewedAt: 0,
+        cloudSandboxId: "sandbox",
+        previewHostname: enabled ? "localhost" : "app-42.localhost",
+        previewAuth: { provider: "supabase", state: "pending" },
+        output,
+      };
+      harness.setRunning(appInfo);
+      vi.mocked(harness.dependencies.restartSandbox).mockResolvedValue({
+        previewUrl: "https://preview.example.test",
+        previewAuthToken: "preview-token",
+      });
+      await harness.service.restart({ appId: APP_ID, output });
+      expect(appInfo.previewHostname).toBe(
+        enabled ? "app-42.localhost" : "localhost",
+      );
+      expect(harness.dependencies.ensureProxy).toHaveBeenCalledOnce();
+      if (!enabled) {
+        expect(appInfo.previewAuth).toBeUndefined();
+        expect(resolveSupabasePreviewTarget).not.toHaveBeenCalled();
+      }
+    },
+  );
+
+  it("lets Stop release pending startup readiness without failing Run", async () => {
+    const harness = createHarness();
+    const coordinator = new AppOperationCoordinator();
+    const { output } = createOutput();
+    harness.dependencies.runSerialized = (appId, lifecycle, operation) =>
+      coordinator.run(
+        {
+          appId,
+          operation: lifecycle,
+          resources: getAppRuntimeOperationResources(lifecycle),
+        },
+        operation,
+      );
+    vi.mocked(harness.dependencies.startProcess).mockImplementation(
+      async () => {
+        const appInfo: RunningAppInfo = {
+          process: null,
+          processId: 1,
+          mode: "host",
+          lastViewedAt: 0,
+          proxyAbortController: new AbortController(),
+        };
+        harness.setRunning(appInfo);
+        runningApps.set(APP_ID, appInfo);
+      },
+    );
+    vi.mocked(harness.dependencies.waitForReady).mockImplementation((appId) =>
+      appRuntimeService.waitForReady(appId, { timeoutMs: 1000 }),
+    );
+    const start = harness.service.start({ appId: APP_ID, output });
+    try {
+      await vi.waitFor(() =>
+        expect(harness.dependencies.waitForReady).toHaveBeenCalledOnce(),
+      );
+      const stop = harness.service.stop(APP_ID);
+      await expect(start).resolves.toBeUndefined();
+      await expect(stop).resolves.toBeUndefined();
+      expect(harness.dependencies.stopProcess).toHaveBeenCalledOnce();
+    } finally {
+      runningApps.delete(APP_ID);
+    }
   });
 
   it("claims only the resources each lifecycle operation touches", () => {
@@ -160,51 +262,74 @@ describe("AppRuntimeService", () => {
     ]);
   });
 
-  it.each(["start", "restart"] as const)(
-    "allows repository writers while %s becomes ready",
-    async (lifecycle) => {
-      const harness = createHarness();
-      const coordinator = new AppOperationCoordinator();
-      const { output } = createOutput();
-      let releaseReady!: () => void;
-      const ready = new Promise<void>((resolve) => {
-        releaseReady = resolve;
-      });
-      vi.mocked(harness.dependencies.waitForReady).mockImplementation(
-        async () => ready,
-      );
-      harness.dependencies.runSerialized = (appId, lifecycle, operation) =>
-        coordinator.run(
-          {
-            appId,
-            operation: `runtime:${lifecycle}`,
-            resources: getAppRuntimeOperationResources(lifecycle),
-          },
-          operation,
-        );
+  describe.each(["start", "restart", "rebuild"] as const)(
+    "%s admission",
+    (lifecycle) => {
+      it.each(["setup", "readiness"] as const)(
+        "allows chat checkpoint and Supabase reconciliation during %s",
+        async (phase) => {
+          const harness = createHarness();
+          const coordinator = new AppOperationCoordinator();
+          const { output } = createOutput();
+          let release!: () => void;
+          const pending = new Promise<void>((resolve) => {
+            release = resolve;
+          });
+          const blockedStep = vi.mocked(
+            phase === "setup"
+              ? harness.dependencies.startProcess
+              : harness.dependencies.waitForReady,
+          );
+          blockedStep.mockImplementation(async () => pending);
+          harness.dependencies.runSerialized = (appId, lifecycle, operation) =>
+            coordinator.run(
+              {
+                appId,
+                operation: `runtime:${lifecycle}`,
+                resources: getAppRuntimeOperationResources(lifecycle),
+              },
+              operation,
+            );
 
-      const runtimeOperation = harness.service[lifecycle]({
-        appId: APP_ID,
-        output,
-      });
-      await vi.waitFor(() =>
-        expect(harness.dependencies.startProcess).toHaveBeenCalledOnce(),
-      );
+          const runtimeOperation = harness.service[
+            lifecycle === "start" ? "start" : "restart"
+          ]({
+            appId: APP_ID,
+            output,
+            removeNodeModules: lifecycle === "rebuild",
+          });
+          await vi.waitFor(() => expect(blockedStep).toHaveBeenCalledOnce());
 
-      const repositoryWriter = vi.fn();
-      const write = coordinator.run(
-        {
-          appId: APP_ID,
-          operation: "chat-checkpoint",
-          resources: [readAppResource("app-path"), "repository"],
+          const repositoryWriter = vi.fn();
+          const checkpoint = coordinator.run(
+            {
+              appId: APP_ID,
+              operation: "chat-checkpoint",
+              resources: [readAppResource("app-path"), "repository"],
+            },
+            async () => repositoryWriter(),
+          );
+          const providerWriter = vi.fn();
+          const reconciliation = coordinator.run(
+            {
+              appId: APP_ID,
+              operation: "reconcile Local Agent Supabase functions",
+              resources: [readAppResource("app-path"), "provider"],
+            },
+            async () => providerWriter(),
+          );
+          try {
+            await vi.waitFor(() => {
+              expect(repositoryWriter).toHaveBeenCalledOnce();
+              expect(providerWriter).toHaveBeenCalledOnce();
+            });
+            expect(coordinator.isBusy(APP_ID, ["runtime-config"])).toBe(true);
+          } finally {
+            release();
+            await Promise.all([runtimeOperation, checkpoint, reconciliation]);
+          }
         },
-        async () => repositoryWriter(),
       );
-      await write;
-      expect(repositoryWriter).toHaveBeenCalledOnce();
-
-      releaseReady();
-      await runtimeOperation;
     },
   );
 
@@ -221,6 +346,57 @@ describe("AppRuntimeService", () => {
 
     expect(harness.calls).not.toContain("delete");
     expect(harness.service.isRunning(APP_ID)).toBe(true);
+  });
+
+  it("preserves a connect then disconnect during an in-place cloud restart lookup", async () => {
+    const harness = createHarness();
+    const { output } = createOutput();
+    const appInfo: RunningAppInfo = {
+      process: null,
+      processId: 8,
+      mode: "cloud",
+      lastViewedAt: 0,
+      cloudSandboxId: "sandbox",
+      proxyUrl: "http://app-42.localhost:42142",
+      originalUrl: "https://preview.example.test",
+      previewAuthTarget: null,
+      output,
+    };
+    harness.setRunning(appInfo);
+    runningApps.set(APP_ID, appInfo);
+    vi.mocked(harness.dependencies.restartSandbox).mockResolvedValue({
+      previewUrl: "https://preview.example.test",
+      previewAuthToken: "preview-token",
+    });
+    let finishLookup!: (target: SupabasePreviewTarget) => void;
+    vi.mocked(resolveSupabasePreviewTarget).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishLookup = resolve;
+        }),
+    );
+    const target = { projectId: "project", organizationSlug: "org" };
+    const restart = harness.service.restart({ appId: APP_ID, output });
+    try {
+      await vi.waitFor(() =>
+        expect(resolveSupabasePreviewTarget).toHaveBeenCalledOnce(),
+      );
+      vi.mocked(resolveSupabasePreviewTarget).mockResolvedValueOnce(target);
+      await reconcileRunningSupabasePreview(APP_ID);
+      vi.mocked(resolveSupabasePreviewTarget).mockResolvedValueOnce(null);
+      await reconcileRunningSupabasePreview(APP_ID);
+      vi.mocked(ensureSupabasePreviewRedirects).mockClear();
+      finishLookup(target);
+      await restart;
+      expect(appInfo.previewAuthTarget).toBeNull();
+      expect(ensureSupabasePreviewRedirects).not.toHaveBeenCalled();
+    } finally {
+      finishLookup?.(target);
+      await restart;
+      appInfo.proxyAbortController?.abort();
+      await appInfo.previewAuthRegistration?.settled;
+      runningApps.delete(APP_ID);
+    }
   });
 
   it("binds a cached proxy response to the requesting invocation", async () => {

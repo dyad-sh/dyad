@@ -31,7 +31,12 @@ const restartOptions = {
   recreateSandbox: false,
 };
 const url = {
-  appUrl: "http://localhost:3210",
+  appUrl: "http://app-42.localhost:42142",
+  previewAuth: {
+    provider: "supabase",
+    state: "error",
+    message: "Registration failed. Restart and retry.",
+  } as const,
   originalUrl: "http://localhost:5173",
   mode: "host" as const,
 };

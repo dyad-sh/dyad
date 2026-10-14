@@ -14,6 +14,11 @@ import {
   supabaseFunctionEntryExists,
   type SupabaseDeployProgress,
 } from "../../../../../../supabase_admin/supabase_utils";
+import {
+  describeSupabaseDeployScope,
+  formatSupabaseDeployScopeTitleSuffix,
+  type SupabaseDeployScope,
+} from "../../../../../../supabase_admin/supabase_deploy_scope";
 import { readSettings } from "../../../../../../main/settings";
 import {
   escapeXmlAttr,
@@ -21,7 +26,11 @@ import {
   type AgentContext,
 } from "../tools/types";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { deleteSupabaseFunction } from "@/supabase_admin/supabase_management_client";
+import {
+  deleteSupabaseFunction,
+  withSupabaseFunctionDeployment,
+} from "@/supabase_admin/supabase_management_client";
+import { isSupabaseFunctionSyncDeferred } from "@/supabase_admin/supabase_recording_deferred_sync";
 import {
   appOperationCoordinator,
   readAppResource,
@@ -69,22 +78,27 @@ export async function reconcileDeferredFunctionOperations(params: {
   return { deploys: [...deploys], deletes: [...deletes] };
 }
 
-function renderSupabaseDeployStatus(progress: SupabaseDeployProgress): string {
+export function renderSupabaseDeployStatus(
+  progress: SupabaseDeployProgress,
+  scope?: SupabaseDeployScope,
+): string {
   const isComplete =
     progress.phase === "finished" || progress.phase === "failed";
   const title =
-    progress.phase === "finished"
+    (progress.phase === "finished"
       ? `Supabase functions deployed: ${progress.completed}/${progress.total} complete`
       : progress.phase === "failed"
         ? `Supabase functions failed to deploy: ${progress.completed}/${progress.total} complete`
-        : `Deploying Supabase functions: ${progress.completed}/${progress.total} complete (${progress.active} active, ${progress.queued} queued)`;
+        : `Deploying Supabase functions: ${progress.completed}/${progress.total} complete (${progress.active} active, ${progress.queued} queued)`) +
+    formatSupabaseDeployScopeTitleSuffix(scope);
   const state =
     progress.phase === "failed"
       ? "aborted"
       : progress.phase === "finished"
         ? "finished"
-        : "in-progress";
+        : "pending";
   const content = [
+    ...(scope ? [describeSupabaseDeployScope(scope), ""] : []),
     `${progress.succeeded} succeeded`,
     `${progress.failed} failed`,
     `${progress.active} active`,
@@ -113,6 +127,7 @@ export async function deployAllFunctionsIfNeeded(
     | "pendingFunctionDeletes"
     | "onXmlStream"
     | "onXmlComplete"
+    | "abortSignal"
   >,
 ): Promise<FileOperationResult> {
   if (
@@ -126,65 +141,106 @@ export async function deployAllFunctionsIfNeeded(
   const supabaseProjectId = ctx.supabaseProjectId;
 
   try {
-    return await appOperationCoordinator.run(
+    return await withSupabaseFunctionDeployment(
       {
         appId: ctx.appId,
+        supabaseProjectId,
+        signal: ctx.abortSignal,
         operation: "reconcile Local Agent Supabase functions",
-        resources: [readAppResource("app-path"), "provider"],
-        refuseWhenRecording: "deploy Supabase functions",
+        sync: {
+          organizationSlug: ctx.supabaseOrganizationSlug ?? null,
+          functionNames: [
+            ...ctx.pendingFunctionDeploys,
+            ...(ctx.pendingFunctionDeletes ?? []),
+          ],
+          sharedModulesChanged: ctx.isSharedModulesChanged,
+          sharedModulePaths: ctx.sharedServerModulePaths,
+        },
       },
-      async () => {
+      async (operation, appPath) => {
         try {
           const deferred = await reconcileDeferredFunctionOperations({
             pendingDeploys: ctx.pendingFunctionDeploys,
             pendingDeletes: ctx.pendingFunctionDeletes ?? [],
             functionExists: (functionName) =>
-              supabaseFunctionEntryExists(ctx.appPath, functionName),
+              supabaseFunctionEntryExists(appPath, functionName),
           });
           const settings = readSettings();
           const preservedDeletes = settings.skipPruneEdgeFunctions
             ? deferred.deletes
             : [];
           const deleteErrors: string[] = [];
-          for (const functionName of settings.skipPruneEdgeFunctions
-            ? []
-            : deferred.deletes) {
+          let deletesProcessed = false;
+          const deleteDeferredFunctions = async () => {
+            // Check completion first: a late cancel after deletes already ran
+            // must not turn a finished deployment into a reported failure.
+            if (deletesProcessed) return;
+            ctx.abortSignal?.throwIfAborted();
+            deletesProcessed = true;
+            operation.releaseResources(["repository", "provider"]);
+            for (const functionName of settings.skipPruneEdgeFunctions
+              ? []
+              : deferred.deletes) {
+              try {
+                ctx.abortSignal?.throwIfAborted();
+                await deleteSupabaseFunction({
+                  supabaseProjectId,
+                  functionName,
+                  organizationSlug: ctx.supabaseOrganizationSlug ?? null,
+                  signal: ctx.abortSignal,
+                });
+              } catch (error) {
+                ctx.abortSignal?.throwIfAborted();
+                // Deferred queues can contain a function that was created and removed
+                // before root finalization, or one another path already removed.
+                if (isSupabaseFunctionNotFoundError(error)) continue;
+                deleteErrors.push(`${functionName}: ${error}`);
+              }
+            }
+          };
+          let deployErrors: string[] = [];
+          let deployScope: SupabaseDeployScope | undefined;
+          if (ctx.isSharedModulesChanged || deferred.deploys.length > 0) {
             try {
-              await deleteSupabaseFunction({
+              deployErrors = await deployAffectedSupabaseFunctions({
+                appPath,
                 supabaseProjectId,
-                functionName,
-                organizationSlug: ctx.supabaseOrganizationSlug ?? null,
+                supabaseOrganizationSlug: ctx.supabaseOrganizationSlug ?? null,
+                skipPruneEdgeFunctions:
+                  settings.skipPruneEdgeFunctions ?? false,
+                sharedModulesChanged: ctx.isSharedModulesChanged,
+                changedSharedModulePaths: ctx.sharedServerModulePaths,
+                pendingFunctionDeploys: deferred.deploys,
+                onSnapshotCaptured: deleteDeferredFunctions,
+                signal: ctx.abortSignal,
+                onScopeResolved: (scope) => {
+                  deployScope = scope;
+                },
+                onProgress: (progress: SupabaseDeployProgress) => {
+                  const statusXml = renderSupabaseDeployStatus(
+                    progress,
+                    deployScope,
+                  );
+                  if (
+                    progress.phase === "finished" ||
+                    progress.phase === "failed"
+                  ) {
+                    ctx.onXmlComplete(statusXml);
+                  } else {
+                    ctx.onXmlStream(statusXml);
+                  }
+                },
               });
             } catch (error) {
-              // Deferred queues can contain a function that was created and removed
-              // before root finalization, or one another path already removed.
-              if (isSupabaseFunctionNotFoundError(error)) continue;
-              deleteErrors.push(`${functionName}: ${error}`);
+              ctx.abortSignal?.throwIfAborted();
+              deployErrors.push(
+                `Failed to prepare Supabase functions: ${error}`,
+              );
             }
           }
-          let deployErrors: string[] = [];
-          if (ctx.isSharedModulesChanged || deferred.deploys.length > 0) {
-            deployErrors = await deployAffectedSupabaseFunctions({
-              appPath: ctx.appPath,
-              supabaseProjectId,
-              supabaseOrganizationSlug: ctx.supabaseOrganizationSlug ?? null,
-              skipPruneEdgeFunctions: settings.skipPruneEdgeFunctions ?? false,
-              sharedModulesChanged: ctx.isSharedModulesChanged,
-              changedSharedModulePaths: ctx.sharedServerModulePaths,
-              pendingFunctionDeploys: deferred.deploys,
-              onProgress: (progress: SupabaseDeployProgress) => {
-                const statusXml = renderSupabaseDeployStatus(progress);
-                if (
-                  progress.phase === "finished" ||
-                  progress.phase === "failed"
-                ) {
-                  ctx.onXmlComplete(statusXml);
-                } else {
-                  ctx.onXmlStream(statusXml);
-                }
-              },
-            });
-          }
+          // Inventory/shared capture can fail before invoking the callback.
+          // Confirmed removals must still run under deployment ownership.
+          await deleteDeferredFunctions();
 
           if (
             preservedDeletes.length > 0 ||
@@ -223,6 +279,9 @@ export async function deployAllFunctionsIfNeeded(
       },
     );
   } catch (error) {
+    if (isSupabaseFunctionSyncDeferred(error)) {
+      return { success: true, warning: error.message };
+    }
     return {
       success: false,
       error: `Failed to redeploy Supabase functions: ${error}`,

@@ -12,6 +12,10 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { getExtraProviderOptionsForEngine } from "./thinking_utils";
 import { getTestFetchOption } from "./test_fetch_override";
 import { DYAD_INTERNAL_REQUEST_ID_HEADER } from "./provider_options";
+import {
+  describeRequestUrl,
+  fetchWithRequestLogging,
+} from "./model_request_logging";
 import type { ModelSelection, UserSettings } from "../../lib/schemas";
 import type { LanguageModel } from "ai";
 import {
@@ -19,6 +23,8 @@ import {
   formatInvalidProviderApiKeyMessage,
   normalizeProviderApiKeyInput,
 } from "@/lib/providerApiKey";
+
+import { withAnthropicPreservedThinking } from "./anthropic_preserved_thinking";
 
 const logger = log.scope("llm_engine_provider");
 
@@ -80,6 +86,14 @@ Creates a chat model for text generation.
   responses(modelId: ExampleChatModelId, chatParams: ChatParams): LanguageModel;
 
   anthropic(modelId: ExampleChatModelId, chatParams: ChatParams): LanguageModel;
+}
+
+// The Engine's free route only accepts text and image parts, so callers need
+// to know when a model uses it before sending files.
+const engineFreeModels = new WeakSet<object>();
+
+export function isDyadEngineFreeModel(model: LanguageModel) {
+  return typeof model === "object" && engineFreeModels.has(model);
 }
 
 export function createDyadEngine(
@@ -258,7 +272,15 @@ export function createDyadEngine(
         };
 
         // Use the provided fetch or default fetch
-        return (options.fetch || fetch)(requestInput, modifiedInit);
+        const fetchFn =
+          providerId === "anthropic"
+            ? withAnthropicPreservedThinking(options.fetch)
+            : options.fetch || fetch;
+        return fetchWithRequestLogging(
+          modifiedRequestId ?? "engine",
+          describeRequestUrl(requestInput),
+          () => fetchFn(requestInput, modifiedInit),
+        );
       } catch (e) {
         logger.error("Error parsing request body", e);
         // If parsing fails, use original request
@@ -287,7 +309,11 @@ export function createDyadEngine(
   const createFreeChatModel = (
     modelId: ExampleChatModelId,
     chatParams: ChatParams,
-  ) => createChatModel(modelId, chatParams, "/free");
+  ) => {
+    const model = createChatModel(modelId, chatParams, "/free");
+    engineFreeModels.add(model);
+    return model;
+  };
 
   const createResponsesModel = (
     modelId: ExampleChatModelId,

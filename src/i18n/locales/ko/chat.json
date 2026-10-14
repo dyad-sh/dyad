@@ -80,8 +80,9 @@
   "cancelGeneration": "생성 취소",
   "stoppingGeneration": "중지하는 중…",
   "cancellationEndingTestRun": "테스트 실행을 종료하는 중입니다.",
-  "cancellationRestoringTestApp": "앱의 데이터베이스와 미리보기를 복원하는 중입니다. 시간이 걸릴 수 있습니다.",
+  "cancellationRemovingTestDatabase": "임시 테스트 데이터베이스를 제거하는 중입니다. 시간이 걸릴 수 있습니다.",
   "cancellationCleaningTestData": "이 테스트 실행의 데이터를 정리하는 중입니다.",
+  "cancellationCleaningTestSandbox": "이번 실행의 테스트 샌드박스와 데이터를 정리하는 중입니다.",
   "sendMessage": "메시지 보내기",
   "loadingProposal": "제안을 불러오는 중...",
   "errorLoadingProposal": "제안 불러오기 오류: {{message}}",
@@ -410,5 +411,6 @@
     "discard": "버리기",
     "sending": "전송 중...",
     "send": "{{count}}개 전송"
-  }
+  },
+  "safetyReviewUnavailable": "안전 검토를 사용할 수 없음"
 }

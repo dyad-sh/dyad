@@ -57,7 +57,9 @@ Deno.serve(() => new Response(message));
 
   await po.appManagement.startDatabaseIntegrationSetup("supabase");
   await po.appManagement.clickConnectSupabaseButton();
-  await expect(po.page.getByText("Fake Supabase Project")).toBeVisible({
+  await expect(
+    po.page.getByText("Fake Supabase Project", { exact: true }),
+  ).toBeVisible({
     timeout: Timeout.MEDIUM,
   });
   await po.navigation.clickBackButton();
@@ -69,7 +71,9 @@ Deno.serve(() => new Response(message));
   });
   await po.chatActions.waitForChatCompletion();
   await expect(
-    po.page.getByText("Supabase functions deployed: 1/1 complete").last(),
+    po.page
+      .getByText("Supabase functions deployed: 1/1 complete", { exact: true })
+      .last(),
   ).toBeVisible({ timeout: Timeout.LONG });
 
   await po.sendPrompt("tc=local-agent/supabase-dependency-all", {
@@ -77,6 +81,11 @@ Deno.serve(() => new Response(message));
   });
   await po.chatActions.waitForChatCompletion();
   await expect(
-    po.page.getByText("Supabase functions deployed: 2/2 complete").last(),
+    po.page
+      .getByText(
+        "Supabase functions deployed: 2/2 complete (fallback to all functions: non-code shared file changed)",
+        { exact: true },
+      )
+      .last(),
   ).toBeVisible({ timeout: Timeout.LONG });
 });

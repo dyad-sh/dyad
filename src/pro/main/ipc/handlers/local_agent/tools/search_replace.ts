@@ -20,6 +20,7 @@ import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { queueCloudSandboxSnapshotSync } from "@/ipc/utils/cloud_sandbox_provider";
 import { withLock, getFileWriteKey } from "@/ipc/utils/lock_utils";
+import { isSupabaseFunctionSyncDeferred } from "@/supabase_admin/supabase_recording_deferred_sync";
 
 const logger = log.scope("search_replace");
 
@@ -164,15 +165,20 @@ CRITICAL REQUIREMENTS FOR USING THIS TOOL:
           }
         } else if (!ctx.isSharedModulesChanged) {
           await deploySupabaseFunction({
+            appId: ctx.appId,
             supabaseProjectId: ctx.supabaseProjectId,
             functionName,
             appPath: ctx.appPath,
             organizationSlug: ctx.supabaseOrganizationSlug ?? null,
+            signal: ctx.abortSignal,
           });
         } else {
           ctx.pendingFunctionDeploys.push(functionName);
         }
       } catch (error) {
+        if (isSupabaseFunctionSyncDeferred(error)) {
+          return `Successfully applied edits to ${args.file_path}. ${error.message}`;
+        }
         return `Search-replace applied, but failed to deploy Supabase function: ${error}`;
       }
     }

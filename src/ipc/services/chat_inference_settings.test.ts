@@ -45,3 +45,20 @@ it.each(["build", "ask", "plan", "local-agent"] as const)(
     expect(mocks.chat).not.toHaveBeenCalled();
   },
 );
+
+it("uses the stored chat model for standalone BYO helpers, not the global selection", async () => {
+  mocks.settings.mockReturnValue({ ...settings, proModelUsage: "api-key" });
+  mocks.chat.mockResolvedValue({
+    chatMode: "local-agent",
+    modelSelection: {
+      provider: "anthropic",
+      name: "claude-sonnet",
+      effortLevel: "medium",
+    },
+  });
+  const resolved = await getChatInferenceSettings(1);
+  expect(resolved.selectedModel).toMatchObject({
+    provider: "anthropic",
+    name: "claude-sonnet",
+  });
+});

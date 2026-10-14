@@ -109,8 +109,8 @@ export const codeSearchTool: ToolDefinition<CodeSearchArgs> = {
   // Route root discovery through the Explorer sub-agent whenever it is
   // available. Inside Explorer, retain code_search as a fallback unless the
   // compiler-backed exploration surface is ready.
-  isEnabled: (ctx) => {
-    if (!ctx.isDyadPro) return false;
+  isEnabled: (ctx) => ctx.isDyadPro,
+  isDiscoverable: (ctx) => {
     if (!ctx.subagentThreadId && ctx.canUseExplorerSubagent) return false;
 
     const exploreCodeAvailable =

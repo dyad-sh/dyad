@@ -144,17 +144,17 @@ on and how sure we are. Say "we can't tell yet" when that is the truth.
 
 ## Task 4: Steps
 
-`steps` is what the reporter can do right now, at most four, each a single
+`steps` is what the reporter can do right now, each a single
 sentence in product words with UI labels in bold. Steps may only come from the
 playbook, the release notes, or a maintainer comment on an earlier issue. Never
 invent a workaround. Leave the list empty when there is nothing to try.
 
 ## Task 5: Related reports
 
-`related` holds at most two earlier issues you are sure describe the same
+`related` holds earlier issues you are sure describe the same
 problem, each with an `outcome` (`fixed`, `resolved_with_workaround`, `open`,
 `closed_without_fix`) and an optional short `note` such as "fixed in 1.12.0".
-Weaker matches go in `possiblyRelated` (at most three) for the team notes only.
+Weaker matches go in `possiblyRelated` for the team notes only.
 Do not list empty reports as related to each other; they carry no information.
 
 ## Task 6: Information needed
@@ -165,7 +165,7 @@ image is in the body), `session_id`, `version`. Ask only for what you need.
 
 ## Task 7: Notes for the team
 
-`developerNotes` is markdown for maintainers, about 120 words: one line with
+`developerNotes` is concise markdown for maintainers: one line with
 version (and CURRENT_VERSION if behind), platform, model, and mode; the log
 signature; the likely area or file; the evidence for your assessment; and your
 confidence.
@@ -180,6 +180,7 @@ empty and no comment is posted. Put similar earlier requests in
 
 ## Writing rules
 
+- Keep the reply concise while preserving complete explanations, steps, and relevant evidence.
 - Talk to a person, not a developer. Use the words on the screen.
 - Say what we think is going on and how sure we are.
 - Only give steps that come from the playbook, release notes, or a maintainer.

@@ -68,25 +68,20 @@ for (const [m, mLabel, sfx] of MODELS) {
 }
 const html = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>App-builder demo tours</title>
-<style>
- body{margin:0;background:#0b1220;color:#e5e7eb;font:15px/1.5 system-ui,-apple-system,'Segoe UI',sans-serif;padding:24px}
- h1{font-size:22px;margin:0 0 4px} p.sub{color:#94a3b8;margin:0 0 22px}
- h2{font-size:17px;margin:26px 0 10px;color:#cbd5e1}
- .row{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:16px}
- figure{margin:0;background:#111a2e;border:1px solid #1f2a44;border-radius:10px;padding:10px}
- figcaption{display:flex;justify-content:space-between;font-weight:600;margin-bottom:8px}
- .meta{color:#94a3b8;font-weight:400}
- video{width:100%;border-radius:6px;background:#000;aspect-ratio:8/5}
- .missing .ph{aspect-ratio:8/5;display:flex;align-items:center;justify-content:center;color:#64748b;border:1px dashed #334155;border-radius:6px}
- .tips{color:#94a3b8;font-size:13px;margin-top:26px}
- .stats{display:flex;flex-wrap:wrap;gap:18px;margin:-4px 0 10px;color:#cbd5e1;font-size:14px}
- .stats b{color:#f8fafc;font-size:16px} .stats .dim{color:#94a3b8}
-</style>
-<h1>Relay CRM — demo tours by model</h1>
-<p class="sub"><a href="scores.html" style="color:#93c5fd">Scores &amp; costs across all three apps →</a></p>
+<style>${fs.readFileSync(path.resolve(dir, "../../site/scores.css"), "utf8")}</style>
+<script>try { const t=localStorage.getItem('appbench.theme')||'system'; document.documentElement.dataset.theme=t==='system'?(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'):t; } catch { document.documentElement.dataset.theme=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'; }</script>
+<div class="wrap gallery"><div class="topbar"><a class="brand" href="scores.html">dyad<span>/ benchmarks</span></a><nav class="topnav"><a href="scores.html#demos">Latest demos</a><label class="theme-label"><span>Appearance</span><select id="theme" aria-label="Color theme"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label></nav></div>
+<p class="eyebrow">From the archive</p><h1>Relay CRM demo tours</h1>
+<p class="sub"><a href="scores.html" >Scores &amp; costs across all three apps →</a></p>
 <p class="sub">Each video is one continuous walkthrough of the finished app (checkpoint 3), recorded at 1.5× zoom with slowed pacing and a step banner. Generated ${new Date().toISOString().slice(0,16).replace("T"," ")} UTC.</p>
 ${cards}
-<p class="tips">Tip: use the browser's playback-speed control to slow down further; videos are 1600×1000 H.264.</p>`;
+<p class="tips">Tip: use the browser's playback-speed control to slow down further; videos are 1600×1000 H.264.</p></div>
+<script>
+const control=document.getElementById('theme'), system=matchMedia('(prefers-color-scheme: dark)');
+try { control.value=localStorage.getItem('appbench.theme')||'system'; } catch {}
+const apply=()=>{document.documentElement.dataset.theme=control.value==='system'?(system.matches?'dark':'light'):control.value;};
+control.addEventListener('change',()=>{try{localStorage.setItem('appbench.theme',control.value);}catch{} apply();});system.addEventListener('change',apply);apply();
+</script>`;
 fs.writeFileSync(path.join(dir, "index.html"), html);
 console.log(`gallery: ${files.length} videos -> ${path.join(dir, "index.html")}`);
 EOF

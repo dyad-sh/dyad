@@ -1,4 +1,5 @@
 import { remoteMachineHost } from "@/ipc/services/distributed_machine_actor_host";
+import { deleteChatJournals } from "./chat_journal_cleanup";
 import { computeChatTurnPayloadHash } from "@/ipc/utils/chat_turn_intent_hash";
 import { chatStreamDefinition } from "@/chat_stream/definition";
 import { getIntentAcceptance } from "@/chat_stream/persistence";
@@ -56,6 +57,7 @@ export async function deleteOwnedChatAfterSettlingActors(
     await userInputSettlement;
     releaseSubagents = await settleSubagentsForChatDeletion(chatId);
     await settleChatActorsForDeletion(chatId);
+    await deleteChatJournals(chatId);
     await db.delete(chats).where(eq(chats.id, chatId));
     entityDisposalBus.publish({ kind: "chat", id: chatId });
   } finally {

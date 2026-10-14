@@ -54,27 +54,39 @@ export function quoteWindowsCmdArg(value: string): string {
  *
  * Single source of truth for both spawn (`spawn_streaming`) and node-pty
  * (`socket_firewall`) callers so quoting/security fixes apply to both.
+ *
+ * The batch path returns `useVerbatimArguments: true` because the `/c` payload
+ * is already a fully cmd-escaped command string wrapped in the outer pair of
+ * quotes that `/s` strips. Spawners MUST forward `args` verbatim — Node's
+ * `child_process.spawn` via `windowsVerbatimArguments: true`, and node-pty by
+ * passing the args as a single pre-built command-line string — so libuv /
+ * node-pty don't apply a *second* MSVC `\"` argv-escaping layer on top of
+ * `quoteWindowsCmdArg`'s cmd-style `""` doubling. Without the outer pair AND
+ * the verbatim handoff, every quoted argument (spaces, `&|<>()^"!`, empty
+ * string) is corrupted on the way to the child.
  */
 export function buildWindowsCommandInvocation(
   command: string,
   args: string[],
   platform: NodeJS.Platform = process.platform,
   comSpec = process.env.ComSpec ?? "cmd.exe",
-): { command: string; args: string[] } {
+): { command: string; args: string[]; useVerbatimArguments?: true } {
   const resolvedCommand = resolveWindowsExecutableName(command, platform);
 
   if (
     platform === "win32" &&
     WINDOWS_BATCH_COMMAND_PATTERN.test(resolvedCommand)
   ) {
+    const commandString = [resolvedCommand, ...args]
+      .map(quoteWindowsCmdArg)
+      .join(" ");
     return {
       command: comSpec,
-      args: [
-        "/d",
-        "/s",
-        "/c",
-        [resolvedCommand, ...args].map(quoteWindowsCmdArg).join(" "),
-      ],
+      // The outer pair of quotes is consumed by `/s`: cmd.exe strips the first
+      // and last `"` of the `/c` payload, leaving exactly `commandString` —
+      // `quoteWindowsCmdArg`'s cmd-style quoting — for cmd.exe to tokenize.
+      args: ["/d", "/s", "/c", `"${commandString}"`],
+      useVerbatimArguments: true,
     };
   }
 

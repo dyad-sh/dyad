@@ -1,3 +1,7 @@
+import {
+  measureTestRunStep,
+  type TestStepTiming,
+} from "../services/test_run_timing";
 import crypto from "node:crypto";
 import log from "electron-log";
 import { eq, isNotNull } from "drizzle-orm";
@@ -7,12 +11,17 @@ import { apps } from "../../db/schema";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
 import { fetchWithRetry } from "@/ipc/utils/retryWithRateLimit";
+import { retryTestDatabaseCleanup } from "./test_database_cleanup_retry";
 import { appOperationCoordinator } from "@/ipc/services/app_operation_coordinator";
+import { executeSupabaseSql } from "../../supabase_admin/supabase_management_client";
+import { SupabaseTestUserCreationRejectedError } from "./supabase_test_user_errors";
+
 import {
-  executeSupabaseSql,
-  getProjectApiKeys,
-  type SupabaseApiKey,
-} from "../../supabase_admin/supabase_management_client";
+  getSupabaseAdminKey,
+  type AdminKey,
+} from "../../supabase_admin/supabase_admin_key";
+
+export type { AdminKey } from "../../supabase_admin/supabase_admin_key";
 
 const logger = log.scope("supabase_test_user");
 
@@ -56,94 +65,12 @@ function projectUrlFor(ref: string): string {
   return `https://${ref}.supabase.co`;
 }
 
-// Prefix of a new-format secret key. Preferring it keeps us on a value we know
-// Supabase actually revealed — a redacted key keeps the shape of one but can't
-// authenticate.
-const SECRET_KEY_PREFIX = "sb_secret_";
-
 /**
- * Pick the key to authenticate Auth Admin calls with, newest format first.
- *
- * Deliberately NOT one `find` with an OR across the formats: Supabase doesn't
- * document the ordering of `/api-keys`, and it keeps listing the legacy
- * `anon`/`service_role` pair after they've been disabled in the dashboard. A
- * predicate that treats a legacy key as an equal alternative therefore lets a
- * DISABLED key win on position, and every admin call 401s with "Legacy API keys
- * are disabled". The legacy tier stays last so projects that never migrated
- * keep working.
- *
- * The top tier keys off the VALUE, not `type`. `type` is optional on the
- * Management API response, so requiring both would drop a perfectly good
- * `sb_secret_…` key from a project that omits the field straight down to the
- * legacy tier — silently un-migrating it. The prefix alone already proves the
- * format; `type` only breaks ties below it.
+ * Test setup uses the shared main-process key fetcher. Only the Playwright
+ * runner receives the admin key for Node fixtures; sandbox installs and app
+ * servers receive public keys and temporary user credentials only.
  */
-function pickSecretKey(
-  keys: readonly SupabaseApiKey[],
-): SupabaseApiKey | undefined {
-  return (
-    keys.find((key) => key.api_key?.startsWith(SECRET_KEY_PREFIX)) ??
-    keys.find((key) => key.type === "secret") ??
-    keys.find((key) => key.name === "service_role")
-  );
-}
-
-/**
- * The key the Auth Admin calls authenticate with, and which format it is.
- * The format decides the headers it may be sent on (see `adminHeaders`).
- */
-export interface AdminKey {
-  apiKey: string;
-  /**
-   * True for the legacy `service_role` JWT, false for a new-format
-   * (`sb_secret_…`) key. Classified from the key's own value: a JWT can never
-   * carry the `sb_secret_` prefix, so the prefix decides this on its own.
-   * Consulting `type` as well could only add false negatives — a legacy JWT
-   * that Supabase happened to label `secret` would lose its `Authorization`
-   * header and fail every Auth Admin call.
-   */
-  isLegacyJwt: boolean;
-}
-
-/**
- * Fetch a project's secret (`sb_secret_…`, formerly `service_role`) key. Used
- * ONLY by the main process for test-user setup/teardown — it must NEVER be
- * injected into the app under test (which runs with the publishable key).
- */
-export async function getServiceRoleKey({
-  projectId,
-  organizationSlug,
-}: {
-  projectId: string;
-  organizationSlug: string;
-}): Promise<AdminKey> {
-  if (IS_TEST_BUILD)
-    return { apiKey: "fake-test-admin-key", isLegacyJwt: false };
-  // reveal: without it Supabase redacts secret key values, which would leave
-  // the legacy service_role JWT as the only usable key on the project.
-  const keys = await getProjectApiKeys({
-    projectId,
-    organizationSlug,
-    reveal: true,
-  });
-  if (!keys?.length) {
-    throw new DyadError(
-      `No API keys found for Supabase project ${projectId}.`,
-      DyadErrorKind.NotFound,
-    );
-  }
-  const secret = pickSecretKey(keys);
-  if (!secret?.api_key) {
-    throw new DyadError(
-      `No secret key (or legacy service_role key) found for Supabase project ${projectId}. An isolated test user can't be created without one — create a secret key in Supabase under Settings → API Keys.`,
-      DyadErrorKind.NotFound,
-    );
-  }
-  return {
-    apiKey: secret.api_key,
-    isLegacyJwt: !secret.api_key.startsWith(SECRET_KEY_PREFIX),
-  };
-}
+export const getServiceRoleKey = getSupabaseAdminKey;
 
 /**
  * Authorization headers for the project's Auth Admin REST API.
@@ -164,6 +91,30 @@ function adminHeaders(key: AdminKey): Record<string, string> {
   };
 }
 
+function isUserCreationDatabaseError(status: number, detail: string): boolean {
+  if (status !== 500) return false;
+  try {
+    const error = JSON.parse(detail);
+    const code = error?.error_code ?? error?.code;
+    if (typeof code !== "string") return false;
+    // Some responses surface PostgreSQL errors from signup triggers directly.
+    // Class 23 is integrity-constraint rejection; P0001 is RAISE EXCEPTION.
+    // Never infer rejection from arbitrary text or other SQLSTATE classes
+    // (e.g. connection failures, cancellation, or unknown commit outcomes).
+    // https://www.postgresql.org/docs/current/errcodes-appendix.html
+    if (/^23[0-9A-Z]{3}$/.test(code) || code === "P0001") return true;
+    // Auth's initial and 2024-01-01 API response formats. This is the admin
+    // create transaction's error, not the generic unexpected_failure code alone.
+    // https://github.com/supabase/auth/blob/master/internal/api/admin.go
+    return (
+      code === "unexpected_failure" &&
+      (error?.msg ?? error?.message) === "Database error creating new user"
+    );
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Create a throwaway, confirmed auth user inside the app's real Supabase
  * project for an isolated test run. Tests authenticate as this user and, under
@@ -175,7 +126,11 @@ function adminHeaders(key: AdminKey): Record<string, string> {
  */
 export async function createTempTestUser(
   appData: AppRow,
-  options: { adminKey?: AdminKey; signal?: AbortSignal } = {},
+  options: {
+    adminKey?: AdminKey;
+    signal?: AbortSignal;
+    timing?: TestStepTiming;
+  } = {},
 ): Promise<TempTestUser> {
   options.signal?.throwIfAborted();
   const projectId = appData.supabaseProjectId;
@@ -211,13 +166,19 @@ export async function createTempTestUser(
   // startup reconciliation sweep relies on the column to find it again).
   let priorCleanupOk = true;
   if (appData.supabaseTestUserId) {
-    priorCleanupOk = await deleteUserBestEffort({
-      projectUrl,
-      projectId,
-      organizationSlug,
-      userId: appData.supabaseTestUserId,
-      ...options,
-    });
+    priorCleanupOk = await measureTestRunStep(
+      options.timing,
+      "supabase_user_delete",
+      () =>
+        deleteUserBestEffort({
+          projectUrl,
+          projectId,
+          organizationSlug,
+          userId: appData.supabaseTestUserId!,
+          ...options,
+        }),
+      (result) => (result ? "completed" : "failed"),
+    );
     if (!priorCleanupOk) {
       throw new DyadError(
         `Couldn't clean up the previous Supabase test user for app ${appData.id}. Skipping this run to avoid leaking a test user; it will be retried on the next launch.`,
@@ -277,6 +238,28 @@ export async function createTempTestUser(
         DyadErrorKind.External,
       );
     }
+    if (isUserCreationDatabaseError(response.status, detail)) {
+      // A trigger/constraint rejection or Auth's generic database-create error.
+      // Confirm the generated email has no auth row
+      // before permitting custom fixtures to take over. Unknown outcomes and
+      // verification failures must still fail the run.
+      options.signal?.throwIfAborted();
+      const raw = await executeSupabaseSql({
+        supabaseProjectId: projectId,
+        organizationSlug,
+        query: `SELECT EXISTS (SELECT 1 FROM auth.users WHERE email = '${email.replace(/'/g, "''")}') AS user_exists;`,
+        signal: options.signal,
+      });
+      options.signal?.throwIfAborted();
+      const rows = JSON.parse(raw);
+      if (
+        Array.isArray(rows) &&
+        rows.length === 1 &&
+        rows[0]?.user_exists === false
+      ) {
+        throw new SupabaseTestUserCreationRejectedError();
+      }
+    }
     throw new DyadError(
       `Supabase rejected the test-user creation (${response.status}). ${detail}`,
       DyadErrorKind.External,
@@ -302,13 +285,19 @@ export async function createTempTestUser(
     try {
       await persistTestUserId(appData.id, created.id);
     } catch (error) {
-      await deleteUserBestEffort({
-        projectUrl,
-        projectId,
-        organizationSlug,
-        userId: created.id,
-        adminKey,
-      });
+      await measureTestRunStep(
+        options.timing,
+        "supabase_user_delete",
+        () =>
+          deleteUserBestEffort({
+            projectUrl,
+            projectId,
+            organizationSlug,
+            userId: created.id!,
+            adminKey,
+          }),
+        (result) => (result ? "completed" : "failed"),
+      );
       throw error;
     }
   }
@@ -324,7 +313,11 @@ export async function createTempTestUser(
  */
 export async function deleteTempTestUser(
   appData: AppRow,
-  options: { adminKey?: AdminKey; signal?: AbortSignal } = {},
+  options: {
+    adminKey?: AdminKey;
+    signal?: AbortSignal;
+    timing?: TestStepTiming;
+  } = {},
 ): Promise<boolean> {
   options.signal?.throwIfAborted();
   const userId = appData.supabaseTestUserId;
@@ -343,24 +336,32 @@ export async function deleteTempTestUser(
 
   // Sweep the user's rows FIRST so a `restrict`/`no action` FK to auth.users
   // doesn't block the user delete below.
-  await cleanUpRowsOwnedBy({
-    projectId,
-    organizationSlug,
-    userId,
-    signal: options.signal,
-  });
+  await measureTestRunStep(options.timing, "supabase_row_cleanup", () =>
+    cleanUpRowsOwnedBy({
+      projectId,
+      organizationSlug,
+      userId,
+      signal: options.signal,
+    }),
+  );
 
   // Only forget the user once Supabase confirms it's gone. Clearing the column
   // on a failed delete would orphan the user, since the startup reconciliation
   // sweep relies on this id to find it again.
   const projectUrl = projectUrlFor(projectId);
-  const deleted = await deleteUserBestEffort({
-    projectUrl,
-    projectId,
-    organizationSlug,
-    userId,
-    ...options,
-  });
+  const deleted = await measureTestRunStep(
+    options.timing,
+    "supabase_user_delete",
+    () =>
+      deleteUserBestEffort({
+        projectUrl,
+        projectId,
+        organizationSlug,
+        userId,
+        ...options,
+      }),
+    (result) => (result ? "completed" : "failed"),
+  );
   if (deleted) {
     await db
       .update(apps)
@@ -481,20 +482,34 @@ async function cleanUpRowsOwnedBy({
     return;
   }
   try {
-    const discoverQuery = `SELECT table_name, column_name
-FROM information_schema.columns
-WHERE table_schema = 'public'
-  AND column_name IN (${OWNER_COLUMNS.map((c) => `'${c}'`).join(", ")});`;
-    const raw = await executeSupabaseSql({
-      supabaseProjectId: projectId,
-      query: discoverQuery,
-      organizationSlug,
+    // pg_class rather than information_schema.columns: the latter also lists
+    // views, which can't be deleted from (55000) and cost a wasted round trip
+    // each. Ordinary and partitioned tables only; partitions are swept via
+    // their parent.
+    const discoverQuery = `SELECT c.relname AS table_name, a.attname AS column_name
+FROM pg_class c
+JOIN pg_namespace n ON n.oid = c.relnamespace
+JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
+WHERE n.nspname = 'public'
+  AND c.relkind IN ('r', 'p')
+  AND NOT c.relispartition
+  AND a.attname IN (${OWNER_COLUMNS.map((c) => `'${c}'`).join(", ")});`;
+    const raw = await retryTestDatabaseCleanup(
+      () =>
+        executeSupabaseSql({
+          supabaseProjectId: projectId,
+          query: discoverQuery,
+          organizationSlug,
+          signal,
+        }),
+      `Discover cleanup owner columns for test user ${userId}`,
       signal,
-    });
+    );
     const rows = JSON.parse(raw);
     if (!Array.isArray(rows) || rows.length === 0) {
       return;
     }
+    const targets: { label: string; statement: string }[] = [];
     for (const row of rows) {
       const table = String(row?.table_name ?? "");
       const column = String(row?.column_name ?? "");
@@ -508,33 +523,105 @@ WHERE table_schema = 'public'
       if (table.includes("$") || column.includes("$")) {
         continue;
       }
+      // SECURITY: the regex guards above (SAFE_IDENT_RE for table/column,
+      // UUID_RE for userId) are the LOAD-BEARING injection defense here, not
+      // format(). The values are interpolated into the JS template string
+      // *before* Postgres ever sees the query, so if a value contained a
+      // single quote it would break out of the SQL string literal that wraps
+      // format()'s arguments — format() only escapes what reaches it intact.
+      // The regexes guarantee that: SAFE_IDENT_RE/UUID_RE must NEVER be
+      // relaxed to allow quotes, dollar signs, or backslashes. format(%I, %L)
+      // is a second layer that quotes identifiers/values that already passed
+      // regex validation.
+      targets.push({
+        label: `public.${table}.${column}`,
+        statement: `EXECUTE format('DELETE FROM public.%I WHERE %I = %L', '${table}', '${column}', '${userId}');`,
+      });
+    }
+    if (targets.length === 0) {
+      return;
+    }
+    const runCleanup = (query: string, context: string) =>
+      retryTestDatabaseCleanup(
+        () =>
+          executeSupabaseSql({
+            supabaseProjectId: projectId,
+            query,
+            organizationSlug,
+            signal,
+          }),
+        context,
+        signal,
+      );
+    // Fast path: one round trip for every table, since per-test isolation runs
+    // this before each case. Each DELETE gets its own exception block (a
+    // subtransaction) so one failing table — an FK restrict, a non-uuid owner
+    // column — doesn't roll back the others. A DO block can't return rows, so
+    // the batch is a session-temporary function whose result carries each
+    // table's error back for the same per-table log line as the fallback.
+    let batchResult: string | undefined;
+    try {
+      batchResult = await runCleanup(
+        `CREATE OR REPLACE FUNCTION pg_temp.dyad_cleanup() RETURNS text[] LANGUAGE plpgsql AS $dyad_cleanup$
+DECLARE failures text[] := '{}';
+BEGIN ${targets
+          .map(
+            ({ label, statement }) =>
+              `BEGIN ${statement} EXCEPTION WHEN others THEN failures := failures || ('${label}: ' || SQLERRM); END;`,
+          )
+          .join(" ")} RETURN failures; END $dyad_cleanup$;
+SELECT pg_temp.dyad_cleanup() AS failures;`,
+        `Clean up ${targets.length} owner column(s) for test user ${userId}`,
+      );
+    } catch (error) {
+      signal?.throwIfAborted();
+      // `WHEN others` can't catch QUERY_CANCELED, so a statement timeout rolls
+      // back the whole batch, including deletes that had succeeded. Fall back
+      // to one committed request per table. If that outruns the lifecycle
+      // budget, the abort propagates before the user is deleted, keeping the
+      // recovery marker so startup reconciliation retries the sweep.
+      logger.warn(
+        `Batched cleanup for test user failed; retrying per table: ${error}`,
+      );
+    }
+    if (batchResult !== undefined) {
+      // The deletes committed; reporting is best-effort. An unexpected response
+      // shape just means no per-table detail, never a rerun of the sweep.
+      for (const failure of parseCleanupFailures(batchResult)) {
+        logger.warn(`Best-effort cleanup for test user failed: ${failure}`);
+      }
+      return;
+    }
+    for (const { label, statement } of targets) {
       try {
-        // SECURITY: the regex guards above (SAFE_IDENT_RE for table/column,
-        // UUID_RE for userId) are the LOAD-BEARING injection defense here, not
-        // format(). The values are interpolated into the JS template string
-        // *before* Postgres ever sees the query, so if a value contained a
-        // single quote it would break out of the SQL string literal that wraps
-        // format()'s arguments — format() only escapes what reaches it intact.
-        // The regexes guarantee that: SAFE_IDENT_RE/UUID_RE must NEVER be
-        // relaxed to allow quotes, dollar signs, or backslashes. format(%I, %L)
-        // is a second layer that quotes identifiers/values that already passed
-        // regex validation.
-        await executeSupabaseSql({
-          supabaseProjectId: projectId,
-          query: `DO $dyad_cleanup$ BEGIN EXECUTE format('DELETE FROM public.%I WHERE %I = %L', '${table}', '${column}', '${userId}'); END $dyad_cleanup$;`,
-          organizationSlug,
-          signal,
-        });
+        await runCleanup(
+          `DO $dyad_cleanup$ BEGIN ${statement} END $dyad_cleanup$;`,
+          `Clean up ${label} for test user ${userId}`,
+        );
       } catch (error) {
         signal?.throwIfAborted();
         logger.warn(
-          `Best-effort cleanup of public.${table}.${column} for test user failed: ${error}`,
+          `Best-effort cleanup of ${label} for test user failed: ${error}`,
         );
       }
     }
   } catch (error) {
     signal?.throwIfAborted();
     logger.warn(`Could not discover owner columns for cleanup: ${error}`);
+  }
+}
+
+/**
+ * Reads the per-table errors the batched cleanup returns as
+ * `[{ failures: ["public.t.c: <error>", ...] }]`. Anything else yields none.
+ */
+function parseCleanupFailures(raw: string): string[] {
+  try {
+    const rows = JSON.parse(raw);
+    const failures = Array.isArray(rows) ? rows[0]?.failures : undefined;
+    return Array.isArray(failures) ? failures.map(String) : [];
+  } catch {
+    return [];
   }
 }
 
@@ -566,14 +653,19 @@ async function deleteUserBestEffort({
         projectId,
         organizationSlug,
       }));
-    const response = await fetchWithRetry(
-      `${projectUrl}/auth/v1/admin/users/${userId}`,
-      {
-        method: "DELETE",
-        signal,
-        headers: adminHeaders(adminKey),
-      },
+    const response = await retryTestDatabaseCleanup(
+      () =>
+        fetchWithRetry(
+          `${projectUrl}/auth/v1/admin/users/${userId}`,
+          {
+            method: "DELETE",
+            signal,
+            headers: adminHeaders(adminKey),
+          },
+          `Delete test user ${userId}`,
+        ),
       `Delete test user ${userId}`,
+      signal,
     );
     // A 404 means it's already gone — treat as success so we clear the column.
     if (!response.ok && response.status !== 404) {
@@ -583,6 +675,7 @@ async function deleteUserBestEffort({
     logger.info(`Deleted test user ${userId} for project ${projectId}`);
     return true;
   } catch (error) {
+    signal?.throwIfAborted();
     logger.warn(
       `Failed to delete test user ${userId} for project ${projectId} (will be retried on next launch if still tracked): ${error}`,
     );

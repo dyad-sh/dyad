@@ -15,6 +15,8 @@ export function transitionPlanHandoffHost(
     case "ACCEPT":
       if (
         state.intent?.handoffId === event.intent.handoffId ||
+        (state.phase === "started" &&
+          state.intent?.planHash === event.intent.planHash) ||
         (state.phase !== "idle" &&
           state.phase !== "started" &&
           state.phase !== "failed" &&

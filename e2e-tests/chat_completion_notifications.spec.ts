@@ -128,8 +128,10 @@ testWithNotificationsEnabled(
     // Inject notifications AFTER page is fully loaded
     await po.browserNotifications.injectFakeNotifications();
 
-    await po.chatActions.sendPrompt("hello", { skipWaitForCompletion: true });
+    // The handler reads visibility when the response completes, and the
+    // canned response can complete before a post-send hide lands.
     await triggerHidden(po);
+    await po.chatActions.sendPrompt("hello", { skipWaitForCompletion: true });
 
     const notification =
       await po.browserNotifications.waitForNotificationWithTag(
@@ -189,8 +191,8 @@ testWithNotificationsEnabled(
 
     await po.browserNotifications.injectFakeNotifications();
 
-    await po.chatActions.sendPrompt("hello", { skipWaitForCompletion: true });
     await triggerHidden(po);
+    await po.chatActions.sendPrompt("hello", { skipWaitForCompletion: true });
 
     const tag = `dyad-chat-complete-${chatId}`;
     let notification =
@@ -267,8 +269,8 @@ testWithNotificationsEnabled(
     const tag = `dyad-chat-complete-${chatId}`;
 
     // Send first message
-    await po.chatActions.sendPrompt("first", { skipWaitForCompletion: true });
     await triggerHidden(po);
+    await po.chatActions.sendPrompt("first", { skipWaitForCompletion: true });
 
     await po.browserNotifications.waitForNotificationWithTag(tag);
     let notifications = await po.browserNotifications.getCreatedNotifications();
@@ -278,7 +280,6 @@ testWithNotificationsEnabled(
     // because the notification was triggered. We can just send the second message.
     // Send second message - should create new notification with same tag
     await po.chatActions.sendPrompt("second", { skipWaitForCompletion: true });
-    await triggerHidden(po);
 
     await po.browserNotifications.waitForNotificationWithTag(tag);
 
@@ -331,8 +332,8 @@ testWithNotificationsEnabled(
     await po.browserNotifications.injectFakeNotifications();
     await po.browserNotifications.setPermission("denied");
 
-    await po.chatActions.sendPrompt("hello", { skipWaitForCompletion: true });
     await triggerHidden(po);
+    await po.chatActions.sendPrompt("hello", { skipWaitForCompletion: true });
 
     // Should show fallback toast instead of notification
     const notifications =

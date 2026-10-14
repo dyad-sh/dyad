@@ -177,6 +177,7 @@
     "systemInfoFailed": "Sistem bilgileriniz dahil edilemedi. Rapor onsuz gönderiliyor.",
     "screenshotRestoreFailed": "Ekran görüntünüz geri yüklenemedi. Rapor onsuz gönderiliyor.",
     "screenshotDropped": "Ekran görüntünüz artık geri yüklenemediği için bu rapordan kaldırıldı.",
+    "screenshotUploadFailed": "Ekran görüntünüz eklenemedi. Soruna yapıştırabilmeniz için Dyad onu panonuza koyacak.",
     "filingFailed": "Raporunuz gönderilirken bir şeyler ters gitti. Lütfen tekrar deneyin.",
     "updaterLogs": "Otomatik Güncelleyici Günlükleri",
     "appMetadata": "Uygulama Metaverisi",
@@ -188,17 +189,17 @@
     "screenshot": "Ekran görüntüsü",
     "addScreenshot": "Ekran görüntüsü ekle",
     "takingScreenshot": "Ekran görüntüsü alınıyor...",
-    "screenshotHint": "Bu iletişim kutusu kenara çekilir; önce hatanın olduğu yere gidebilirsiniz. Görüntüyü sonunda GitHub'a yapıştıracaksınız.",
+    "screenshotHint": "Bu iletişim kutusu kenara çekilir; önce hatanın olduğu yere gidebilirsiniz. Ekran görüntüsü raporunuza otomatik olarak eklenir.",
     "captureBarLabel": "Hata raporunuz için ekran görüntüsü",
     "captureBarHeading": "Hatanın olduğu yere gidin.",
     "captureBarHint": "Hata ekrandayken yakalayın. Raporunuz kaydedilir ve ekran görüntüsüyle birlikte yeniden açılır.",
     "captureBarCapture": "Ekran görüntüsü yakala",
     "captureBarCancel": "Rapora dön",
     "filedHeading": "Ekran görüntünüzü yapıştırdınız mı?",
-    "filedPasteBody": "Dyad bunu sizin yerinize ekleyemiyor, bu yüzden panonuzda bekliyor. Eklemek için GitHub sorununda {{shortcut}} tuşlarına basın. Sorunu onsuz gönderdiyseniz sorunu düzenleyin ve görüntüyü oraya yapıştırın. Zaten ekliyse işiniz tamam.",
+    "filedPasteBody": "Ekran görüntünüz otomatik olarak eklenemedi, bu yüzden panonuzda bekliyor. Eklemek için GitHub sorununda {{shortcut}} tuşlarına basın. Sorunu onsuz gönderdiyseniz sorunu düzenleyin ve görüntüyü oraya yapıştırın. Zaten ekliyse işiniz tamam.",
     "filedDone": "Bitti",
     "screenshotAlt": "Dyad penceresinin ekran görüntüsü",
-    "screenshotPasteHint": "Panonuza kopyalandı. Eklemek için GitHub sorununda {{shortcut}} tuşlarına basın.",
+    "screenshotAttachHint": "Bu görüntü, herkesin görebileceği GitHub sorununuza eklenecek. Herkese açık olmasını istemediğiniz bir şey içermediğinden emin olun.",
     "screenshotFailed": "Ekran görüntüsü alınamadı.",
     "screenshotStillFile": "Raporu onsuz da gönderebilirsiniz.",
     "retake": "Yeniden çek",
@@ -470,7 +471,28 @@
       "proFeatureTitle": "Açıklayıcı bir Pro Özelliğidir",
       "proFeatureDescription": "Dyad Pro ile ekran görüntülerine açıklama ekleme yeteneğinin kilidini açın ve iş akışınızı geliştirin.",
       "getDyadPro": "Dyad Pro'yu Edinin"
-    }
+    },
+    "testQueued": "Sırada",
+    "testRunsQueued_one": "{{count}} çalıştırma sırada",
+    "testRunsQueued_other": "{{count}} çalıştırma sırada",
+    "cancelQueued": "Sıradakileri iptal et",
+    "cancelQueuedTests": "Sıradaki testleri iptal et",
+    "allTests": "Tüm testler",
+    "queueAll": "Tümünü sıraya al",
+    "queueAllTests": "Tüm testleri sıraya al",
+    "testGate": {
+      "settingsLoading": "Ayarlar yükleniyor…",
+      "settingsUnavailable": "Dyad ayarlarınızı yükleyemediği için testlerin nasıl çalıştırılacağını belirleyemiyor.",
+      "retry": "Yeniden dene",
+      "startApp": "Testleri çalıştırmak için uygulamayı başlatın.",
+      "start": "Başlat",
+      "neonRefusalRuntime": "Bu uygulama için testler çalıştırılamıyor: yalıtılmış test sunucuları henüz {{runtime}} çalışma ortamında kullanılamıyor ve Dyad, Neon testlerini gerçek veritabanınızda çalıştırmaz. Testleri çalıştırmak için host çalışma ortamına geçin.",
+      "neonRefusalDisabled": "Bu uygulama için testler çalıştırılamıyor: yalıtılmış test sunucuları Ayarlar bölümünde kapalı ve Dyad, Neon testlerini gerçek veritabanınızda çalıştırmaz. Testleri çalıştırmak için bunları açın.",
+      "turnOnSandbox": "Aç",
+      "openSettings": "Ayarları aç"
+    },
+    "openDevServer": "Geliştirme sunucusu adresini aç",
+    "openDevServerDescription": "Önizleme adresini açamayan tarayıcılar içindir. Tarayıcı depolamasını diğer localhost uygulamalarıyla paylaşır."
   },
   "integrations": {
     "github": {
@@ -742,7 +764,8 @@
       "redeploySucceededWithPruning_other": "{{count}} edge işlevi yeniden dağıtıldı ve yalnızca uzak olan işlevler kaldırıldı: {{functions}}",
       "redeployPrunedOnly": "Yalnızca uzak olan edge işlevleri kaldırıldı: {{functions}}",
       "noFunctionsToRedeploy": "Yeniden dağıtılacak yerel edge işlevi bulunamadı",
-      "redeployFailed": "Edge işlevi yeniden dağıtımı sorunlarla tamamlandı: {{error}}"
+      "redeployFailed": "Edge işlevi yeniden dağıtımı sorunlarla tamamlandı: {{error}}",
+      "previewRedirectNotice": "Dyad, yerel önizleme URL'lerini {{project}} projesinin Auth yönlendirme izin listesine otomatik olarak ekler. Ekip arkadaşları aynı URL'leri kullanabileceğinden uygulamanın bağlantısı kesildikten veya uygulama silindikten sonra bu kayıtlar korunur. Kullanılmayan kayıtları Supabase → Authentication → URL Configuration bölümünden kaldırın."
     },
     "neon": {
       "title": "Neon Entegrasyonu",
@@ -804,7 +827,10 @@
       "disconnectAccountConfirmation": "Neon hesabınızın bağlantısını kesmek istediğinizden emin misiniz? Yeniden bağlanmak için OAuth ile yeniden kimlik doğrulamanız gerekecek.",
       "removeVercelEnvVars": "Neon ortam değişkenlerini Vercel'den kaldır",
       "removeVercelEnvVarsHelp": "Bağlantısı kesilmiş bir veritabanını işaret etmemeleri için bağlı Vercel projesinden DATABASE_URL ve Neon Auth değişkenlerini siler.",
-      "failedRemoveVercelEnvVars": "Bağlantı kesildi ancak Neon ortam değişkenleri Vercel'den kaldırılamadı."
+      "failedRemoveVercelEnvVars": "Bağlantı kesildi ancak Neon ortam değişkenleri Vercel'den kaldırılamadı.",
+      "removeCloudflareEnvVars": "Neon gizli değerlerini Cloudflare'den kaldır",
+      "removeCloudflareEnvVarsHelp": "Bağlantısı kesilmiş bir veritabanını işaret etmemeleri için bağlı Worker'lardan DATABASE_URL ve NEON_AUTH_BASE_URL'yi siler.",
+      "failedRemoveCloudflareEnvVars": "Bağlantı kesildi ancak Neon gizli değerleri Cloudflare'den kaldırılamadı."
     },
     "db": {
       "projectInfo": "{{provider}} Proje Bilgileri",
@@ -873,7 +899,11 @@
       "syncSuccess": "Veritabanı yapılandırması Vercel'e eşitlendi ancak canlı uygulamanızın bunu kullanması için yeniden dağıtım gerekir.",
       "syncError": "Vercel'e eşitlenemedi.",
       "selectBranchError": "Veritabanı dalı seçiminiz kaydedilemedi.",
-      "clearBranchError": "Veritabanı dalı seçiminiz temizlenemedi."
+      "clearBranchError": "Veritabanı dalı seçiminiz temizlenemedi.",
+      "syncToCloudflare": "Cloudflare'e Eşitle",
+      "syncToCloudflareHelp": "Cloudflare Worker'larınızda veritabanı gizli değerlerini ayarlayın ve adreslerini Neon'un kimlik doğrulama yönlendirme izin listesine ekleyin.",
+      "syncToCloudflareSuccess": "Veritabanı yapılandırması Cloudflare'e eşitlendi. Canlı uygulamanız bunu hemen kullanır.",
+      "syncToCloudflareError": "Cloudflare'e eşitlenemedi."
     },
     "migration": {
       "title": "Veritabanı Geçişi",
@@ -930,5 +960,10 @@
       "neonUnavailable": "Supabase projesi zaten bağlı olduğundan Neon kullanılamıyor. Aynı anda yalnızca bir veritabanı entegrasyonu etkin olabilir.",
       "chooseOne": "Bir veritabanı entegrasyonu seçin. Supabase veya Neon'dan birini bağlamak, bu uygulama için diğerini devre dışı bırakır."
     }
+  },
+  "previewAuth": {
+    "neonPending": "Bu uygulamanın önizleme adresi arka planda Neon'a kaydediliyor. Kayıt tamamlanana kadar OAuth oturum açma ve kimlik doğrulama yönlendirmeleri çalışmayabilir.",
+    "supabasePending": "Bu uygulamanın önizleme yönlendirme URL'leri arka planda Supabase'e kaydediliyor. Kayıt tamamlanana kadar kimlik doğrulama yönlendirmeleri çalışmayabilir.",
+    "retry": "Yeniden başlat ve tekrar dene"
   }
 }

@@ -89,6 +89,11 @@ Before running `pr_push.sh` from a worktree for an existing fork PR, make the lo
 
 ## Final automated-review audit
 
+When `gh run list --workflow CI` shows stale runs, query by commit without the
+workflow filter and select `workflowName == "CI"`; the name filter can resolve
+an older workflow ID. For completed jobs in an unfinished run, download logs
+with `gh api repos/dyad-sh/dyad/actions/jobs/<id>/logs --allow-escape-sequences`.
+
 An automated review workflow can finish successfully before its GitHub review
 comments become visible. After every review and CI check is terminal, query
 unresolved review threads again before declaring the PR clean; do not treat a
@@ -165,6 +170,8 @@ commit the corresponding tracked `.claude/skills/...` path instead.
 
 `.gitignore` lists `node_modules` **without** a trailing slash, and it must stay that way. A worktree that symlinks `node_modules` at another checkout (common in agent worktrees to avoid reinstalling) is not a directory, so the old directory-only `node_modules/` pattern did not match it and `git add -A` staged the symlink — committing an absolute path from one machine, which made every later checkout of that branch replace the reader's real `node_modules` with a dangling link. The bare pattern covers symlinks and nested copies such as `testing/fake-llm-server/node_modules` alike. If one is ever staged again, untrack it with `git rm --cached node_modules`.
 
+A worktree that symlinks the root `node_modules` must also link `testing/fake-llm-server/node_modules`. Otherwise every Vitest integration suite fails at load with `Cannot find module 'git-http-mock-server/middleware'` before any test runs.
+
 ## Consumers of `git status --porcelain`
 
 `git status --porcelain` defaults to `--untracked-files=normal`, which collapses a wholly-untracked directory into a **single entry whose path ends in `/`** (`?? src/newfolder/`) instead of listing the files inside it. `getGitUncommittedFiles`/`getGitUncommittedFilesWithStatus` pass that entry straight through, so anything matching those paths against a real file list (file-tree markers, per-file UI) silently misses every file in a new folder. Either expand the entry against the file list or drop it — never let it flow into path-derived state, or you get a folder flagged as changed with no changed child. Adding `-uall` fixes the shape but makes `attachLineStats` run per untracked file, so it is not free for large unignored directories.
@@ -220,10 +227,11 @@ Add `#skip-bugbot` to the PR description for trivial PRs that won't affect end-u
   rebase, so budget for another conflict pass.
 
 - `git fetch --all` can return nonzero after successfully refreshing
-  `upstream/main` when unrelated collaborator remotes have clashing historical
-  tags (`would clobber existing tag`). Verify the base ref was updated, then
-  rebase onto it; do not treat an unrelated remote's tag rejection as a stale
-  upstream fetch.
+  `upstream/main` when unrelated collaborator remotes are inaccessible (for
+  example, `Repo ... is not allowlisted`) or have clashing historical tags
+  (`would clobber existing tag`). Verify the base ref was updated, then rebase
+  onto it; do not treat an unrelated remote's failure as a stale upstream
+  fetch.
 
 When running GitHub Actions with `pull_request_target` on cross-repo PRs (from forks):
 

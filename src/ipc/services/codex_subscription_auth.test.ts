@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   decrypt: vi.fn(),
   account: vi.fn(),
   selectedModel: { provider: "auto", name: "auto" },
+  proModelUsage: undefined as string | undefined,
 }));
 vi.mock("electron", () => ({
   app: { getPath: () => mocks.directory },
@@ -30,6 +31,7 @@ vi.mock("@/main/settings", () => ({
   readSettings: () => ({
     providerSettings: {},
     selectedModel: mocks.selectedModel,
+    proModelUsage: mocks.proModelUsage,
   }),
   writeSettings: vi.fn(),
 }));
@@ -49,6 +51,7 @@ import {
 
 describe("subscription OAuth", () => {
   beforeEach(() => {
+    mocks.proModelUsage = undefined;
     mocks.directory = fs.mkdtempSync(
       path.join(os.tmpdir(), "dyad-oauth-test-"),
     );
@@ -59,6 +62,12 @@ describe("subscription OAuth", () => {
     disconnectCodexSubscription();
     fs.rmSync(mocks.directory, { recursive: true, force: true });
     vi.unstubAllGlobals();
+  });
+  it("preserves the BYO source when disconnecting an unused subscription", () => {
+    mocks.proModelUsage = "api-key";
+    vi.mocked(writeSettings).mockClear();
+    disconnectCodexSubscription();
+    expect(writeSettings).not.toHaveBeenCalled();
   });
   it.each([
     [undefined, undefined, "plus"],

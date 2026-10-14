@@ -10,6 +10,8 @@ test("captures an app screenshot after the first generated commit", async ({
 }) => {
   await po.setUp({ autoApprove: true });
   await po.sendPrompt("tc=write-index");
+  // A cold Windows dependency install can consume the preview timeout itself.
+  await po.appManagement.ensurePnpmInstall();
   await po.previewPanel.expectPreviewIframeIsVisible();
 
   const appPath = await po.appManagement.getCurrentAppPath();

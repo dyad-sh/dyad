@@ -6,6 +6,7 @@ import crypto from "node:crypto";
 import { createChatCompletionHandler } from "./chatCompletionHandler";
 import { registerFakeCoolify } from "./coolify";
 import { registerFakeGitLab } from "./gitlab";
+import { registerFakeCloudflare } from "./cloudflare";
 import { createResponsesHandler } from "./responsesHandler";
 import { createAnthropicMessagesHandler } from "./anthropicMessagesHandler";
 import { fakeLlmLog } from "./log";
@@ -412,6 +413,11 @@ export function createFakeLlmApp(getPort: () => number) {
       modelsByProvider: {
         openai: [
           {
+            apiName: "gpt-6-luna",
+            displayName: "GPT 6 Luna",
+            description: "Sub-agent Explorer and Implementer model",
+          },
+          {
             apiName: "gpt-5.6-luna",
             displayName: "GPT 5.6 Luna",
             description: "Sub-agent Explorer and Implementer model",
@@ -721,6 +727,9 @@ export function createFakeLlmApp(getPort: () => number) {
   // the connection form, the way a user types their own instance's.
   registerFakeCoolify(app);
   registerFakeGitLab(app);
+
+  // The Cloudflare API. Test builds send Cloudflare calls here.
+  registerFakeCloudflare(app);
 
   // GitHub API Mock Endpoints
   fakeLlmLog("Setting up GitHub mock endpoints");

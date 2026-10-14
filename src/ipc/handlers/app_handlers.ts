@@ -1,7 +1,15 @@
+import { deleteChatJournals } from "@/ipc/services/chat_journal_cleanup";
+import { initialChatExecution } from "@/ipc/utils/chat_execution_selection";
 import { app, dialog } from "electron";
 import { closeDatabase, db, getDatabaseFilePaths } from "../../db";
-import { apps, chats, messages, versions } from "../../db/schema";
-import { desc, eq, inArray, like } from "drizzle-orm";
+import {
+  apps,
+  chats,
+  cloudflareAppConnections,
+  coolifyAppConnections,
+  versions,
+} from "../../db/schema";
+import { desc, eq, inArray } from "drizzle-orm";
 import { createTypedHandler } from "./base";
 import { appContracts } from "../types/app";
 import type { AppFileSearchResult } from "../types/app";
@@ -65,6 +73,7 @@ import {
   endRecordingForApp,
 } from "../services/recording_registry";
 import { forgetAppRecordedDrafts } from "../services/recorded_test_drafts";
+import { beginAppTestDeletion } from "../services/test_run_queue_service";
 import { getPtySessionManager } from "../utils/pty_session_manager";
 import { sameInvocationRef } from "@/state_machines/invocation_ref";
 import { userInputRegistry } from "@/user_input/main";
@@ -137,6 +146,7 @@ import {
   deployAllSupabaseFunctions,
   extractFunctionNameFromPath,
 } from "@/supabase_admin/supabase_utils";
+import { isSupabaseFunctionSyncDeferred } from "@/supabase_admin/supabase_recording_deferred_sync";
 import { getVercelTeamSlug } from "../utils/vercel_utils";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
 import {
@@ -146,6 +156,9 @@ import {
   trackedBranchId,
 } from "../utils/neon_test_branch";
 import type { AppSearchResult } from "@/lib/schemas";
+import { searchApps } from "../utils/app_search";
+import { endTestsForApp } from "./tests_handlers";
+import { removeE2eTestArtifactsForApp } from "../services/e2e_test_workspace";
 
 import {
   getRgExecutablePath,
@@ -504,7 +517,9 @@ async function deleteAppById(
     throw error;
   }
   let deletedRow: typeof apps.$inferSelect | null = null;
+  const testDeletion = beginAppTestDeletion(appId);
   try {
+    await endTestsForApp(appId);
     // A recording session already admitted before the fence holds this app's
     // resources until it ends. Stop that admitted owner before the exclusive
     // path drains the coordinator; nothing here needs the dev server back.
@@ -548,6 +563,7 @@ async function deleteAppById(
       }
     }
   } finally {
+    testDeletion.release();
     appOperationDeletion.release();
   }
 
@@ -556,6 +572,15 @@ async function deleteAppById(
   // branch cleanup below: a deletion that failed leaves a live app whose
   // recording the user can still save.
   forgetAppRecordedDrafts(appId);
+
+  // Retained screenshots/traces live outside the app directory, under
+  // <userData>/test-artifacts, and are otherwise only replaced by the next run
+  // of this same app — which will never happen now.
+  await removeE2eTestArtifactsForApp(appId).catch((error) =>
+    logger.warn(
+      `App ${appId} was deleted but its retained test artifacts could not be removed: ${error}`,
+    ),
+  );
 
   // Only after the deletion has committed — the throw above skips this. Doing
   // it earlier means a deletion that then fails leaves a live app pointed at a
@@ -666,6 +691,12 @@ async function deleteAppByIdExclusive(
         waitForChatActorIdle(chatId, { cancelActive: true }),
       ),
     );
+    // Drain journal owners before removing their durable data; a late handoff
+    // checkpoint or questionnaire settlement must not recreate deleted files.
+    for (const { id: chatId } of appChats) {
+      await userInputRegistry.settleChat(chatId);
+      await settleChatActorsForDeletion(chatId);
+    }
 
     const { appPath, doomedRow } = await appOperationDeletion.runExclusive(
       async () => {
@@ -716,6 +747,8 @@ async function deleteAppByIdExclusive(
               DyadErrorKind.External,
             );
           }
+          for (const { id: chatId } of appChats)
+            await deleteChatJournals(chatId);
           await db.delete(apps).where(eq(apps.id, appId));
           appRunDeletion.commit();
           deletionCommitted = true;
@@ -745,8 +778,6 @@ async function deleteAppByIdExclusive(
       versionPreviewActorService.disposeApp(appId),
       githubOpsActorService.disposeApp(appId),
       appRunActorService.disposeApp(appId),
-      ...appChats.map(({ id: chatId }) => userInputRegistry.settleChat(chatId)),
-      ...appChats.map(({ id: chatId }) => settleChatActorsForDeletion(chatId)),
     ]);
     for (const result of actorCleanup) {
       if (result.status === "rejected") {
@@ -903,6 +934,7 @@ export function registerAppHandlers() {
         .values({
           appId: app.id,
           chatMode: initialChatMode,
+          ...(await initialChatExecution()),
         })
         .returning();
 
@@ -1176,6 +1208,19 @@ export function registerAppHandlers() {
       vercelTeamSlug = await getVercelTeamSlug(app.vercelTeamId);
     }
 
+    // Which Publish tab to open on; carried here so the panel has the answer
+    // in the same load it already waits for.
+    const [cloudflareConnection, coolifyConnection] = await Promise.all([
+      db.query.cloudflareAppConnections.findFirst({
+        where: eq(cloudflareAppConnections.appId, appId),
+        columns: { id: true },
+      }),
+      db.query.coolifyAppConnections.findFirst({
+        where: eq(coolifyAppConnections.appId, appId),
+        columns: { id: true },
+      }),
+    ]);
+
     return {
       ...app,
       files,
@@ -1183,6 +1228,11 @@ export function registerAppHandlers() {
       resolvedPath: appPath,
       supabaseProjectName,
       vercelTeamSlug,
+      deploymentProvidersInUse: {
+        vercel: Boolean(app.vercelProjectId),
+        cloudflare: cloudflareConnection !== undefined,
+        coolify: coolifyConnection !== undefined,
+      },
     };
   });
 
@@ -1465,6 +1515,7 @@ export function registerAppHandlers() {
           );
           const settings = readSettings();
           const deployErrors = await deployAllSupabaseFunctions({
+            appId,
             appPath,
             supabaseProjectId: app.supabaseProjectId,
             supabaseOrganizationSlug: app.supabaseOrganizationSlug ?? null,
@@ -1476,6 +1527,9 @@ export function registerAppHandlers() {
             };
           }
         } catch (error) {
+          if (isSupabaseFunctionSyncDeferred(error)) {
+            return { warning: `File saved. ${error.message}` };
+          }
           logger.error(
             `Error redeploying Supabase functions after shared module change:`,
             error,
@@ -1489,12 +1543,16 @@ export function registerAppHandlers() {
         try {
           const functionName = extractFunctionNameFromPath(filePath);
           await deploySupabaseFunction({
+            appId,
             supabaseProjectId: app.supabaseProjectId,
             functionName,
             appPath,
             organizationSlug: app.supabaseOrganizationSlug ?? null,
           });
         } catch (error) {
+          if (isSupabaseFunctionSyncDeferred(error)) {
+            return { warning: `File saved. ${error.message}` };
+          }
           logger.error(`Error deploying Supabase function ${filePath}:`, error);
           return {
             warning: `File saved, but failed to deploy Supabase function: ${filePath}: ${error}`,
@@ -2159,85 +2217,7 @@ export function registerAppHandlers() {
   handle(
     "search-app",
     async (_, searchQuery: string): Promise<AppSearchResult[]> => {
-      // Use parameterized query to prevent SQL injection
-      const pattern = `%${searchQuery.replace(/[%_]/g, "\\$&")}%`;
-
-      // 1) Apps whose name matches
-      const appNameMatches = await db
-        .select({
-          id: apps.id,
-          name: apps.name,
-          createdAt: apps.createdAt,
-        })
-        .from(apps)
-        .where(like(apps.name, pattern))
-        .orderBy(desc(apps.createdAt));
-
-      const appNameMatchesResult: AppSearchResult[] = appNameMatches.map(
-        (r) => ({
-          id: r.id,
-          name: r.name,
-          createdAt: r.createdAt,
-          matchedChatTitle: null,
-          matchedChatMessage: null,
-        }),
-      );
-
-      // 2) Apps whose chat title matches
-      const chatTitleMatches = await db
-        .select({
-          id: apps.id,
-          name: apps.name,
-          createdAt: apps.createdAt,
-          matchedChatTitle: chats.title,
-        })
-        .from(apps)
-        .innerJoin(chats, eq(apps.id, chats.appId))
-        .where(like(chats.title, pattern))
-        .orderBy(desc(apps.createdAt));
-
-      const chatTitleMatchesResult: AppSearchResult[] = chatTitleMatches.map(
-        (r) => ({
-          id: r.id,
-          name: r.name,
-          createdAt: r.createdAt,
-          matchedChatTitle: r.matchedChatTitle,
-          matchedChatMessage: null,
-        }),
-      );
-
-      // 3) Apps whose chat message content matches
-      const chatMessageMatches = await db
-        .select({
-          id: apps.id,
-          name: apps.name,
-          createdAt: apps.createdAt,
-          matchedChatTitle: chats.title,
-          matchedChatMessage: messages.content,
-        })
-        .from(apps)
-        .innerJoin(chats, eq(apps.id, chats.appId))
-        .innerJoin(messages, eq(chats.id, messages.chatId))
-        .where(like(messages.content, pattern))
-        .orderBy(desc(apps.createdAt));
-
-      // Flatten and dedupe by app id
-      const allMatches: AppSearchResult[] = [
-        ...appNameMatchesResult,
-        ...chatTitleMatchesResult,
-        ...chatMessageMatches,
-      ];
-      const uniqueApps = Array.from(
-        new Map(allMatches.map((app) => [app.id, app])).values(),
-      );
-
-      // Sort newest apps first
-      uniqueApps.sort(
-        (a, b) =>
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-      );
-
-      return uniqueApps;
+      return searchApps(searchQuery);
     },
   );
 

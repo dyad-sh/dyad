@@ -1,5 +1,6 @@
 import log from "electron-log";
 import { getRemoteMcpCatalog } from "@/ipc/shared/remote_mcp_catalog";
+import { isRequiredInput, userSuppliedInputs } from "@/ipc/types/mcp_catalog";
 import { db } from "../../db";
 import { mcpServers, mcpToolConsents } from "../../db/schema";
 import { eq, and, isNotNull } from "drizzle-orm";
@@ -14,6 +15,7 @@ import {
   withMcpOAuthServerMutation,
 } from "../utils/mcp_oauth_flow";
 import { oauthStateHasTokens } from "../utils/mcp_oauth_provider";
+import { syncVendoredOAuthClient } from "../utils/vendored_oauth_client";
 import {
   encryptSecretMap,
   encryptToString,
@@ -221,7 +223,16 @@ export function registerMcpHandlers() {
         .where(eq(mcpServers.catalogSlug, slug));
       if (existing.length > 0) {
         clearNeverSuggestPlugin(slug);
-        return toMcpServer(existing[0]);
+        // A row added before the entry had a vendored client, or before
+        // the client changed, still needs it.
+        if (await syncVendoredOAuthClient(existing[0].id)) {
+          void mcpManager.dispose(existing[0].id).catch(() => {});
+        }
+        const [refreshed] = await db
+          .select()
+          .from(mcpServers)
+          .where(eq(mcpServers.id, existing[0].id));
+        return toMcpServer(refreshed ?? existing[0]);
       }
 
       // A stdio add must run exactly the command the consent prompt showed.
@@ -246,10 +257,17 @@ export function registerMcpHandlers() {
         );
       }
 
-      // An entry that declares inputs needs the user to fill them on the
-      // setup page first, so it's added disabled and doesn't connect or
-      // spawn until configured.
-      const needsSetup = (entry.inputs?.length ?? 0) > 0;
+      // An entry that declares required inputs needs the user to fill
+      // them on the setup page first, so it's added disabled and doesn't
+      // connect or spawn until configured. Optional-only inputs don't
+      // hold it back; they can be set later from the server's editor.
+      const needsSetup = userSuppliedInputs(entry.inputs).some(isRequiredInput);
+      // Only kept for an entry that uses OAuth, matching the sync, which
+      // leaves OAuth-disabled servers alone.
+      const vendoredClient =
+        entry.transport === "http" && entry.oauth
+          ? entry.inputs?.find((input) => input.kind === "vendoredOAuthClient")
+          : undefined;
       const values =
         entry.transport === "stdio"
           ? {
@@ -271,6 +289,10 @@ export function registerMcpHandlers() {
               enabled: !needsSetup,
               oauthEnabled: entry.oauth != null,
               oauthScope: entry.oauth?.scope ?? null,
+              oauthClientId: vendoredClient?.clientId ?? null,
+              oauthClientSecret: vendoredClient?.clientSecret
+                ? encryptToString(vendoredClient.clientSecret)
+                : null,
               catalogSlug: entry.slug,
             };
       const [created] = await db
@@ -460,12 +482,10 @@ export function registerMcpHandlers() {
     // Caps a hung server (often unconnected OAuth) so it doesn't
     // freeze the whole tools list.
     const LIST_TOOLS_TIMEOUT_MS = 8_000;
-    // Cleared after the race so a late reject stays unobserved.
-    let timeoutId: NodeJS.Timeout | undefined;
-    // Swallow a late `mainOp` reject after the timeout wins.
-    const mainOp = (async () => {
-      const client = await mcpManager.getClient(serverId);
-      const remoteTools = await client.tools();
+    try {
+      const remoteTools = await mcpManager.listToolsWithin(serverId, {
+        timeoutMs: LIST_TOOLS_TIMEOUT_MS,
+      });
       const tools = await Promise.all(
         Object.entries(remoteTools).map(async ([name, mcpTool]) => ({
           name,
@@ -476,27 +496,7 @@ export function registerMcpHandlers() {
         })),
       );
       return { tools, status: "ok" as const };
-    })();
-    mainOp.catch(() => undefined);
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      timeoutId = setTimeout(
-        () =>
-          reject(
-            new Error(
-              `Timed out after ${LIST_TOOLS_TIMEOUT_MS / 1000}s waiting for tools from server ${serverId}.`,
-            ),
-          ),
-        LIST_TOOLS_TIMEOUT_MS,
-      );
-    });
-    // Same guard for a late timeout reject after the race resolves.
-    timeoutPromise.catch(() => undefined);
-    try {
-      const result = await Promise.race([mainOp, timeoutPromise]);
-      clearTimeout(timeoutId);
-      return result;
     } catch (e) {
-      clearTimeout(timeoutId);
       // Tear down the cached client so a hung transport doesn't leak
       // an FD on every subsequent poll. Fire-and-forget: awaiting a hung
       // transport's close would hang this handler.
@@ -568,6 +568,9 @@ export function registerMcpHandlers() {
   // `@ai-sdk/mcp` `auth()` function drives PKCE + token exchange, and
   // tokens land in the encrypted `oauth_state` column.
   createTypedHandler(mcpContracts.startOAuth, async (_, params) => {
+    if (await syncVendoredOAuthClient(params.serverId)) {
+      await mcpManager.dispose(params.serverId).catch(() => {});
+    }
     const result = await runOAuthFlow({
       serverId: params.serverId,
       rendererMessageId: params.rendererMessageId,

@@ -76,8 +76,8 @@ export function filterDyadInternalFiles<T extends { path: string }>(
 }
 
 /**
- * Throw if a resolved path inside a referenced app points into its `.dyad/`
- * folder. No-op when `appName` is omitted (current app). The relative path is
+ * Block Git metadata in every app and `.dyad/` content in referenced apps.
+ * Current-app `.dyad/` content remains available. The relative path is
  * computed from the resolved `fullFilePath`, so normalized traversal aliases
  * (e.g. `src/../.dyad/...`) are caught.
  */
@@ -90,10 +90,23 @@ export function assertDyadInternalAccessAllowed({
   fullFilePath: string;
   appName: string | undefined;
 }): void {
+  const relativeFromApp = path.relative(targetAppPath, fullFilePath);
+  // Git metadata can contain credential-bearing remotes and extra headers.
+  // Apply the same rule to lexical paths and the reader's canonical-path check.
+  if (
+    relativeFromApp
+      .replace(/\\/g, "/")
+      .split("/")
+      .some((part) => part.toLowerCase() === ".git")
+  ) {
+    throw new DyadError(
+      "Cannot read Git metadata through file tools.",
+      DyadErrorKind.Validation,
+    );
+  }
   if (!appName) {
     return;
   }
-  const relativeFromApp = path.relative(targetAppPath, fullFilePath);
   if (isDyadInternalPath(relativeFromApp)) {
     throw new DyadError(
       `Cannot read .dyad/ paths from referenced apps — these files are not part of the @app reference contract.`,

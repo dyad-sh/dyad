@@ -48,13 +48,12 @@ test("sanitizeText only allows github links inside this repository", () => {
   );
 });
 
-test("sanitizeText keeps newlines only in multiline mode and enforces length", () => {
+test("sanitizeText keeps newlines only in multiline mode", () => {
   assert.equal(
     sanitizeText("a\n\n\n\nb  \n c", { multiline: true }),
     "a\n\nb\n c",
   );
   assert.equal(sanitizeText("a\n\n\n\nb  \n c"), "a b c");
-  assert.equal(sanitizeText("abcdef", { maxLength: 3 }), "abc");
 });
 
 test("normalizeTriage rejects malformed decisions", () => {
@@ -86,6 +85,71 @@ test("normalizeTriage rejects malformed decisions", () => {
   }
 });
 
+test("triage preserves long text and complete Markdown through comment rendering", () => {
+  const longText =
+    "Complete explanation. ".repeat(80) +
+    "[Release notes](https://www.dyad.sh/docs/releases/1.13.0)";
+  const raw = {
+    ...baseTriage,
+    title: longText,
+    summary: longText,
+    steps: [longText],
+    related: [{ number: 1, outcome: "open", note: longText }],
+    possiblyRelated: [{ number: 2, note: longText }],
+    developerNotes: longText,
+    playbookMatch: "playbook-entry-".repeat(10),
+  };
+  const triage = normalizeTriage(raw, context);
+  for (const field of [
+    "title",
+    "summary",
+    "steps",
+    "related",
+    "possiblyRelated",
+    "developerNotes",
+    "playbookMatch",
+  ]) {
+    assert.deepEqual(triage[field], raw[field]);
+  }
+  const comment = composeComment(triage, { author: "reporter" });
+  assert.ok(comment.includes("**What's going on:** " + longText));
+  assert.ok(comment.includes("**What you can do now:** " + longText));
+  assert.ok(comment.includes("#1 (" + longText + ")"));
+  assert.ok(comment.includes("- Possibly related: #2 (" + longText + ")"));
+  assert.ok(comment.includes("\n" + longText + "\n- Assessment:"));
+  assert.ok(comment.includes("Playbook: " + raw.playbookMatch));
+});
+
+test("triage validates entries beyond the former list caps", () => {
+  assert.throws(
+    () =>
+      normalizeTriage(
+        {
+          ...baseTriage,
+          related: [1, 2, context.issueNumber].map((number) => ({
+            number,
+            outcome: "open",
+          })),
+        },
+        context,
+      ),
+    /must not reference the current issue/,
+  );
+  assert.throws(
+    () =>
+      normalizeTriage(
+        {
+          ...baseTriage,
+          possiblyRelated: [1, 2, 3, context.issueNumber].map((number) => ({
+            number,
+          })),
+        },
+        context,
+      ),
+    /must not reference the current issue/,
+  );
+});
+
 test("normalizeTriage accepts a version-shaped fixedIn when releases are unknown", () => {
   const triage = normalizeTriage(
     {
@@ -101,7 +165,7 @@ test("normalizeTriage accepts a version-shaped fixedIn when releases are unknown
   });
 });
 
-test("normalizeTriage caps lists, dedupes, and derives needsHuman", () => {
+test("normalizeTriage preserves lists, dedupes, and derives needsHuman", () => {
   const triage = normalizeTriage(
     {
       ...baseTriage,
@@ -112,7 +176,10 @@ test("normalizeTriage caps lists, dedupes, and derives needsHuman", () => {
         { number: 2, outcome: "fixed", note: "fixed in 1.12.0" },
         { number: 3, outcome: "open" },
       ],
-      possiblyRelated: [{ number: 4, note: "same area" }],
+      possiblyRelated: [4, 5, 6, 7].map((number) => ({
+        number,
+        note: "same area",
+      })),
       infoNeeded: ["session_id", "session_id", "screenshot"],
       developerNotes: "- line one\n- line two\n\n\n\n- line three",
       playbookMatch: "credits-billing",
@@ -120,10 +187,14 @@ test("normalizeTriage caps lists, dedupes, and derives needsHuman", () => {
     context,
   );
   assert.equal(triage.needsHuman, true);
-  assert.equal(triage.steps.length, 4);
+  assert.deepEqual(triage.steps, ["one", "two", "three", "four", "five"]);
   assert.deepEqual(
     triage.related.map((entry) => entry.number),
-    [1, 2],
+    [1, 2, 3],
+  );
+  assert.deepEqual(
+    triage.possiblyRelated.map((entry) => entry.number),
+    [4, 5, 6, 7],
   );
   assert.deepEqual(triage.infoNeeded, ["session_id", "screenshot"]);
   assert.equal(triage.developerNotes, "- line one\n- line two\n\n- line three");
@@ -272,4 +343,42 @@ test("composeFallbackComment greets the reporter", () => {
     composeFallbackComment({ author: "reporter" }),
     "Hi @reporter, thanks for the report. Our automatic first look didn't complete, so someone from the Dyad team will take a look directly.",
   );
+});
+
+test("composeComment preserves all steps when prepending an update", () => {
+  const triage = normalizeTriage(
+    {
+      ...baseTriage,
+      assessment: "fixed_in_release",
+      fixedIn: { version: "1.13.0" },
+      steps: ["one", "two", "three", "four", "five"],
+    },
+    context,
+  );
+  const comment = composeComment(triage, { author: "reporter" });
+  assert.match(comment, /1\. Update to Dyad/);
+  triage.steps.forEach((step, index) => {
+    assert.ok(comment.includes(index + 2 + ". " + step));
+  });
+});
+
+test("composeComment renders more than two related reports without saying both", () => {
+  const triage = normalizeTriage(
+    {
+      ...baseTriage,
+      related: [1, 2, 3].map((number) => ({ number, outcome: "open" })),
+      possiblyRelated: [4, 5, 6, 7].map((number) => ({ number })),
+    },
+    context,
+  );
+  const comment = composeComment(triage, { author: "reporter" });
+  for (const number of [1, 2, 3]) {
+    assert.ok(
+      comment.includes(
+        "#" + number + " (still open, you can follow it for updates)",
+      ),
+    );
+  }
+  assert.match(comment, /Possibly related: #4, #5, #6, #7/);
+  assert.doesNotMatch(comment, /both/);
 });

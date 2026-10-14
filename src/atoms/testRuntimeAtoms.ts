@@ -44,7 +44,8 @@ export type TestRunPhase =
   | "setup" // first-run Playwright bootstrap streaming
   | "running" // playwright test executing
   | "stopping" // Stop pressed; killing the Playwright process tree
-  | "cleaning-up"; // tests gone; isolation teardown still restoring the app
+  | "cleaning-up"; // tests gone; provider data and/or the run's sandbox copy
+// of the app are still being removed
 
 export interface TestRunState {
   phase: TestRunPhase;
@@ -72,6 +73,12 @@ export interface TestRunState {
    * a run completes.
    */
   isolation?: TestIsolation;
+  /**
+   * Whether the run executed in an isolated sandbox. Drives the cleanup copy:
+   * the fallback path (Docker/cloud runtime, or the user's opt-out) creates no
+   * workspace, so there is no sandbox to claim Dyad is deleting.
+   */
+  sandboxed?: boolean;
   startedAt?: number;
 }
 
@@ -223,27 +230,47 @@ export const applyTestRunStartedAtom = atom(
     {
       appId,
       testFile,
+      testFiles,
       testLine,
       grep,
       startedAt,
       runId,
       source,
+      sandboxed,
     }: {
       appId: number;
       testFile?: string;
+      testFiles?: string[];
       testLine?: number;
       grep?: string;
       startedAt?: number;
       runId?: number;
       source: "panel" | "agent";
+      /**
+       * Whether this run is expected to be sandboxed, read when it started.
+       * The main process confirms it later, but the setup phase is over by
+       * then and the status line has to describe the wait it is actually in —
+       * so a Settings toggle mid-run cannot relabel a run that already chose
+       * its path.
+       */
+      sandboxed?: boolean;
     },
   ) => {
-    const isPartialRun = testFile != null && (testLine != null || !!grep);
+    const isPartialRun = testLine != null || !!grep;
     const specs = get(testSpecsByAppIdAtom).get(appId) ?? [];
-    const targetFiles = testFile ? [testFile] : specs.map((s) => s.file);
+    const targetFiles =
+      testFiles ?? (testFile ? [testFile] : specs.map((s) => s.file));
     const grepMatchedTests =
-      testFile != null && testLine == null && grep
-        ? grepMatchedTestKeys(grep, specs, testFile)
+      testLine == null && grep
+        ? targetFiles.flatMap(
+            (file) =>
+              // Unknown hierarchical matches spin that file's known cases only;
+              // matches in another file must not hide this file's activity.
+              grepMatchedTestKeys(grep, specs, file) ??
+              (specs.find((s) => s.file === file)?.tests ?? []).map((test) =>
+                testKey(file, test.line),
+              ),
+          )
         : null;
     set(clearTestRunOutputForAppAtom, appId);
     set(setTestRunStateForAppAtom, {
@@ -259,8 +286,8 @@ export const applyTestRunStartedAtom = atom(
         wasStopped: false,
         runningFiles: targetFiles,
         runningTests:
-          testFile != null && testLine != null
-            ? [testKey(testFile, testLine)]
+          targetFiles.length === 1 && testLine != null
+            ? [testKey(targetFiles[0], testLine)]
             : (grepMatchedTests ?? []),
         // For a single-test run, keep the file's existing results (siblings
         // keep their status; we merge the one test back in afterward). Grep
@@ -275,6 +302,13 @@ export const applyTestRunStartedAtom = atom(
             ),
         runError: undefined,
         isolation: undefined,
+        // The starter's expectation; the main process confirms (or corrects)
+        // it on the progress and finished events. `?? prev` rather than a bare
+        // assignment: this atom is applied TWICE for one run — once optimistically
+        // at the click, then again when the main process broadcasts `started` —
+        // and a caller that omits the flag must not erase what the first call
+        // knew.
+        sandboxed: sandboxed ?? prev.sandboxed,
         startedAt: startedAt ?? Date.now(),
       }),
     });
@@ -296,12 +330,14 @@ export const applyTestRunFinishedAtom = atom(
       isPartialRun,
       expectedStartedAt,
       expectedRunId,
+      sandboxed,
     }: {
       appId: number;
       res: RunAppTestsResult;
       isPartialRun: boolean;
       expectedStartedAt?: number;
       expectedRunId?: number;
+      sandboxed?: boolean;
     },
   ) => {
     // Playwright reports a spec's `file` relative to its own rootDir, which
@@ -322,6 +358,8 @@ export const applyTestRunFinishedAtom = atom(
           return prev;
         }
         const nextResults = { ...prev.results };
+        // Infrastructure/cleanup warnings do not invalidate completed results.
+        // Main marks files whose selected cases did not all finish separately.
         for (const r of res.results) {
           const key = reconcileResultFile(r.file, specFiles);
           const mapped = { ...r, file: key };
@@ -335,6 +373,14 @@ export const applyTestRunFinishedAtom = atom(
           } else {
             nextResults[key] = mapped;
           }
+          if (r.incomplete) {
+            const result = nextResults[key];
+            nextResults[key] = {
+              ...result,
+              incomplete: true,
+              status: result.status === "passed" ? "partial" : result.status,
+            };
+          }
         }
         return {
           ...prev,
@@ -347,6 +393,7 @@ export const applyTestRunFinishedAtom = atom(
             ? { message: res.infraError.message, kind: "infra" }
             : undefined,
           isolation: res.isolation,
+          sandboxed: sandboxed ?? prev.sandboxed,
         };
       },
     });

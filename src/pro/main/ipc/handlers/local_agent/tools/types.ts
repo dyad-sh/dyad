@@ -68,6 +68,19 @@ export const APP_MUTATING_TOOL_NAMES = [
 export type AppMutatingToolName = (typeof APP_MUTATING_TOOL_NAMES)[number];
 
 export interface AgentContext {
+  /** Refresh the final callable inventory immediately before safety review. */
+  refreshShellReviewTools?: () => void;
+  /** Recovery journal is needed only for Claude-owned conversations. */
+  persistQuestionnaireRecovery?: boolean;
+  /** Host-recorded evidence for mandatory shell review, shared across tool calls. */
+  shellReviewContext?: {
+    tools: { name: string; description: string; available: boolean }[];
+    history: {
+      tool: string;
+      args: string;
+      outcome: "returned" | "execution_failed" | "not_executed_or_denied";
+    }[];
+  };
   /** Accepted root settings, including resolved mode and billing account. */
   inferenceSettings?: UserSettings;
   /** Owner-scoped identity used to join only this root turn's mutations. */
@@ -83,6 +96,7 @@ export interface AgentContext {
    * absolute app path.
    */
   referencedApps: Map<string, string>;
+  referencedAppIds?: Map<string, number>;
   chatId: number;
   planAcceptInNewChat?: boolean;
   supabaseProjectId: string | null;
@@ -233,6 +247,7 @@ export interface AgentContext {
   resyncResponseFromDb?: () => Promise<void>;
   requireConsent: (params: {
     toolName: string;
+    confirmation?: "shell-approval" | "shell-review-retry";
     toolDescription?: string | null;
     inputPreview?: string | null;
     metadata?: SqlConsentMetadata | null;
@@ -332,8 +347,8 @@ export interface AgentContext {
    */
   testRunAttempts: Map<string, TestRunAttemptState>;
   /**
-   * Actual Playwright runs started by `run_tests` during this turn, across all
-   * specs. Preflight/dev-server refusals do not increment this.
+   * Batches started by `run_tests` during this turn, across all specs. Includes
+   * infrastructure failures; preflight/dev-server refusals do not increment it.
    */
   testRunCount?: number;
   /** Whether reinstall_and_restart_app is registered in this turn's effective tool set. */
@@ -487,7 +502,7 @@ export type ToolResult = string;
 export type ToolDescriptionContext = Pick<
   AgentContext,
   "runTypeScriptForWholeProject" | "suggestablePlugins"
->;
+> & { appPath?: string };
 
 export interface ToolDefinition<T = any> {
   readonly name: string;
@@ -527,10 +542,12 @@ export interface ToolDefinition<T = any> {
   execute: (args: T, ctx: AgentContext) => Promise<ToolResult>;
 
   /**
-   * If defined, returns whether the tool should be available in the current context.
-   * If it returns false, the tool will be filtered out.
+   * Authorization/feature eligibility, enforced at discovery and invocation.
+   * Use isDiscoverable for operational readiness and routing preferences.
    */
   isEnabled?: (ctx: AgentContext) => boolean;
+  /** Discovery preference only, not authorization. Existing calls remain valid. */
+  isDiscoverable?: (ctx: AgentContext) => boolean;
 
   /**
    * Returns a preview string describing what the tool will do with the given args.

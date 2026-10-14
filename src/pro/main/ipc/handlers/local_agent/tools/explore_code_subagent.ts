@@ -1,7 +1,10 @@
+import { getAuxiliarySettings } from "@/lib/auxiliaryModel";
+import { withReferencedAppRead } from "./referenced_app_read";
 import { streamText, stepCountIs, type ModelMessage, type ToolSet } from "ai";
 import log from "electron-log";
 
 import { getChatInferenceSettings } from "@/ipc/services/chat_inference_settings";
+import { SMALL_MODEL_NAME } from "@/ipc/shared/language_model_constants";
 import { resolveModelSelection } from "@/ipc/utils/model_effort";
 import { getModelPreferenceKey } from "@/lib/modelEffort";
 import { cleanMessage } from "@/ipc/utils/ai_messages_utils";
@@ -64,7 +67,7 @@ import { formatExploreProgressLog } from "./explore_code_subagent_progress";
 
 const logger = log.scope("explore_code_subagent");
 
-const SUBAGENT_MODEL = { provider: "openai", name: "gpt-5.6-luna" } as const;
+const SUBAGENT_MODEL = { provider: "openai", name: SMALL_MODEL_NAME } as const;
 // Max model turns in the agent loop. Each step may issue several parallel tool
 // calls, so this is distinct from the read-only tool-call budget below.
 const SUBAGENT_MAX_STEPS = 12;
@@ -115,25 +118,26 @@ export async function runExploreCodeSubagent({
     ctx.inferenceSettings,
   );
   assertDyadValueAvailable(storedSettings);
+  const auxiliaryModel = SUBAGENT_MODEL;
   const selectedModel = await resolveModelSelection({
-    model: SUBAGENT_MODEL,
+    model: auxiliaryModel,
     preferredEffortLevel:
       storedSettings.modelEffortPreferences?.[
-        getModelPreferenceKey(SUBAGENT_MODEL)
+        getModelPreferenceKey(auxiliaryModel)
       ],
   });
-  const settings = { ...storedSettings, selectedModel };
+  const settings = { ...getAuxiliarySettings(storedSettings), selectedModel };
 
   const modelInfo = await getModelClient(
-    SUBAGENT_MODEL,
+    auxiliaryModel,
     settings,
     selectedModel,
   );
   const maxOutputTokens = Math.min(
-    (await getMaxTokens(SUBAGENT_MODEL)) ?? SUBAGENT_MAX_OUTPUT_TOKENS,
+    (await getMaxTokens(auxiliaryModel)) ?? SUBAGENT_MAX_OUTPUT_TOKENS,
     SUBAGENT_MAX_OUTPUT_TOKENS,
   );
-  const temperature = await getTemperature(SUBAGENT_MODEL);
+  const temperature = await getTemperature(auxiliaryModel);
   const intent: ExploreIntent = args.intent ?? "locate";
   const observations: SubagentObservation[] = [];
   const candidateRegistry = createCandidateRegistry();
@@ -294,15 +298,23 @@ async function collectRawExploreObservation({
   candidateRegistry: CandidateRegistry;
   onProgress?: (progressText: string) => void;
 }): Promise<void> {
-  const targetAppPath = resolveTargetAppPath(ctx, args.app_name);
-  const effectiveArgs = normalizeExploreCodeArgsForApp({
-    appPath: targetAppPath,
+  const { effectiveArgs, rawResult } = await withReferencedAppRead(
+    "explore_code",
     args,
-  });
-  const rawResult = await runRawExploreCode({
-    appPath: targetAppPath,
-    args: effectiveArgs,
-  });
+    ctx,
+    async (readCtx) => {
+      const targetAppPath = resolveTargetAppPath(readCtx, args.app_name);
+      const effectiveArgs = normalizeExploreCodeArgsForApp({
+        appPath: targetAppPath,
+        args,
+      });
+      const rawResult = await runRawExploreCode({
+        appPath: targetAppPath,
+        args: effectiveArgs,
+      });
+      return { effectiveArgs, rawResult };
+    },
+  );
   const resultText = formatRawExploreCodeResult(rawResult);
   const candidates = candidateRegistry.register(
     candidatesFromRawExploreCodeResult(rawResult),
@@ -752,15 +764,26 @@ function buildObservedExploreCodeTool({
             toolArgs.max_depth ??
             (parentArgs.intent === "explain" ? MAX_DEPTH : undefined),
         };
-        const targetAppPath = resolveTargetAppPath(ctx, lockedArgs.app_name);
-        const effectiveToolArgs = normalizeExploreCodeArgsForApp({
-          appPath: targetAppPath,
-          args: lockedArgs,
-        });
-        const rawResult = await runRawExploreCode({
-          appPath: targetAppPath,
-          args: effectiveToolArgs,
-        });
+        const { effectiveToolArgs, rawResult } = await withReferencedAppRead(
+          "explore_code",
+          lockedArgs,
+          ctx,
+          async (readCtx) => {
+            const targetAppPath = resolveTargetAppPath(
+              readCtx,
+              lockedArgs.app_name,
+            );
+            const effectiveToolArgs = normalizeExploreCodeArgsForApp({
+              appPath: targetAppPath,
+              args: lockedArgs,
+            });
+            const rawResult = await runRawExploreCode({
+              appPath: targetAppPath,
+              args: effectiveToolArgs,
+            });
+            return { effectiveToolArgs, rawResult };
+          },
+        );
         const resultText = formatRawExploreCodeResult(rawResult);
         const candidates = candidateRegistry.register(
           candidatesFromRawExploreCodeResult(rawResult),
@@ -804,7 +827,7 @@ function buildObservedExploreCodeTool({
   };
 }
 
-function wrapSubagentTool<TArgs>({
+function wrapSubagentTool<TArgs extends { app_name?: string }>({
   tool,
   ctx,
   observations,
@@ -857,7 +880,12 @@ function wrapSubagentTool<TArgs>({
           return compactResult;
         }
 
-        const result = await tool.execute(toolArgs, ctx);
+        const result = await withReferencedAppRead(
+          tool.name,
+          toolArgs,
+          ctx,
+          (readCtx) => tool.execute(toolArgs, readCtx),
+        );
         const resultText =
           typeof result === "string" ? result : JSON.stringify(result, null, 2);
         const registeredCandidates = candidateRegistry.register(

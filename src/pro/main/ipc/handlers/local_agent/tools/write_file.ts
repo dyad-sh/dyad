@@ -2,7 +2,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import log from "electron-log";
-import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
+import {
+  ToolDefinition,
+  AgentContext,
+  escapeXmlAttr,
+  escapeXmlContent,
+} from "./types";
 import { assertMutationPathAllowed, safeJoin } from "@/ipc/utils/path_utils";
 import { deploySupabaseFunction } from "../../../../../../supabase_admin/supabase_management_client";
 import {
@@ -12,6 +17,7 @@ import {
 } from "../../../../../../supabase_admin/supabase_utils";
 import { queueCloudSandboxSnapshotSync } from "@/ipc/utils/cloud_sandbox_provider";
 import { withLock, getFileWriteKey } from "@/ipc/utils/lock_utils";
+import { isSupabaseFunctionSyncDeferred } from "@/supabase_admin/supabase_recording_deferred_sync";
 const logger = log.scope("write_file");
 
 const writeFileSchema = z.object({
@@ -35,7 +41,8 @@ export const writeFileTool: ToolDefinition<z.infer<typeof writeFileSchema>> = {
   buildXml: (args, isComplete) => {
     if (!args.path) return undefined;
 
-    let xml = `<dyad-write path="${escapeXmlAttr(args.path)}" description="${escapeXmlAttr(args.description ?? "")}">\n${args.content ?? ""}`;
+    const displayed = (args.content ?? "").slice(0, 64_000);
+    let xml = `<dyad-write path="${escapeXmlAttr(args.path)}" description="${escapeXmlAttr(args.description ?? "")}">\n${escapeXmlContent(displayed)}${(args.content?.length ?? 0) > displayed.length ? "\n[Display truncated; the complete file was supplied to the tool.]" : ""}`;
     if (isComplete) {
       xml += "\n</dyad-write>";
     }
@@ -87,12 +94,17 @@ export const writeFileTool: ToolDefinition<z.infer<typeof writeFileSchema>> = {
       } else if (!ctx.isSharedModulesChanged) {
         try {
           await deploySupabaseFunction({
+            appId: ctx.appId,
             supabaseProjectId: ctx.supabaseProjectId,
             functionName,
             appPath: ctx.appPath,
             organizationSlug: ctx.supabaseOrganizationSlug ?? null,
+            signal: ctx.abortSignal,
           });
         } catch (error) {
+          if (isSupabaseFunctionSyncDeferred(error)) {
+            return `Successfully wrote ${args.path}. ${error.message}`;
+          }
           return `File written, but failed to deploy Supabase function: ${error}`;
         }
       } else {

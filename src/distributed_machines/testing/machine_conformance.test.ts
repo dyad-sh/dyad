@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { appRunConformance } from "@/app_run/conformance.test_support";
 import { appRunRemoteIntentContract } from "@/app_run/remote_intent_contract";
-import { unsafeEscapeHatchInventory } from "../boundary_inventory.test_support";
 import { imageGenerationConformance } from "@/image_generation/conformance.test_support";
 import { imageGenerationRemoteIntentContract } from "@/image_generation/remote_intent_contract";
 import { declareRemoteIntentContractForProtocolV1 } from "../remote_intent_contract";
@@ -569,7 +568,9 @@ describe("diff-first contract report", () => {
   it("is concise, sorted, and contains review-critical declarations", () => {
     const report = formatContractReport(
       [...PILOT_CONFORMANCE_REGISTRATIONS].reverse(),
-      unsafeEscapeHatchInventory,
+      {
+        wideningCasts: [{ exactFile: "fixture/legacy.ts", expectedCount: 1 }],
+      },
     );
     expect(report.indexOf("app_run")).toBeLessThan(
       report.indexOf("image_generation"),
@@ -578,7 +579,7 @@ describe("diff-first contract report", () => {
       "START: completion=tracked-completion revision=actor(required=true) retry=none acceptance=admission input=preserve-until-accepted",
     );
     expect(report).toContain("tiers: T0,T1,T2");
-    expect(report).toContain("wideningCasts:\n  chat_stream/definition.ts#1");
+    expect(report).toContain("wideningCasts:\n  fixture/legacy.ts#1");
     expect(report).not.toContain("app_run/definition.ts#1");
     expect(report.split("\n").length).toBeLessThan(100);
   });

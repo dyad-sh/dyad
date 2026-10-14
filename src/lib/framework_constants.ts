@@ -22,6 +22,15 @@ export const VITE_CONFIG_FILES = [
   "vite.config.cts",
 ];
 
+export const NITRO_CONFIG_FILES = [
+  "nitro.config.ts",
+  "nitro.config.js",
+  "nitro.config.mjs",
+  "nitro.config.cjs",
+  "nitro.config.mts",
+  "nitro.config.cts",
+];
+
 /**
  * Whether Neon can be connected to this app. Neon supports Next.js and Vite
  * apps (Vite apps automatically get a Nitro server layer added on connect).

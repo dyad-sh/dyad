@@ -14,7 +14,7 @@ const ConsentDecisionSchema = z.enum([
 const DescriptorBaseSchema = z.object({
   requestId: z.string(),
   chatId: z.number(),
-  deadlineAt: z.number(),
+  deadlineAt: z.number().nullable(),
   followUpPrompt: z.string().optional(),
 });
 export const UserInputQuestionSchema = z
@@ -47,6 +47,8 @@ export const UserInputDescriptorSchema = z.discriminatedUnion("kind", [
   }),
   DescriptorBaseSchema.extend({
     kind: z.literal("agent-consent"),
+    allowAlways: z.boolean().optional(),
+    confirmation: z.enum(["shell-approval", "shell-review-retry"]).optional(),
     toolName: z.string(),
     toolDescription: z.string().nullable().optional(),
     inputPreview: z.string().nullable().optional(),
@@ -62,6 +64,7 @@ export const UserInputDescriptorSchema = z.discriminatedUnion("kind", [
   }),
   DescriptorBaseSchema.extend({
     kind: z.literal("questionnaire"),
+    requiresRecovery: z.boolean().optional(),
     questions: z.array(UserInputQuestionSchema),
     classifier: z.literal("none"),
   }),
@@ -123,7 +126,7 @@ export const UserInputResponseSchema = z.discriminatedUnion("kind", [
 const PendingSnapshotSchema = z.object({
   status: z.enum(["awaiting", "armed", "due"]),
   descriptor: UserInputDescriptorSchema,
-  deadlineAt: z.number(),
+  deadlineAt: z.number().nullable(),
   classifier: z.enum(["none", "racing", "review"]).optional(),
   classifierReason: z.string().optional(),
   followUpPrompt: z.string().optional(),

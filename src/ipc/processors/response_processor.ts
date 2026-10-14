@@ -28,6 +28,7 @@ import {
   deployAffectedSupabaseFunctions,
   extractFunctionNameFromPath,
 } from "../../supabase_admin/supabase_utils";
+import { isSupabaseFunctionSyncDeferred } from "../../supabase_admin/supabase_recording_deferred_sync";
 import { UserSettings } from "../../lib/schemas";
 import {
   gitCommit,
@@ -150,9 +151,11 @@ export async function processFullResponseActions(
   {
     chatSummary,
     messageId,
+    signal,
   }: {
     chatSummary: string | undefined;
     messageId: number;
+    signal?: AbortSignal;
   },
 ): Promise<{
   updatedFiles?: boolean;
@@ -227,6 +230,24 @@ export async function processFullResponseActions(
 
   const warnings: Output[] = [];
   const errors: Output[] = [];
+  // A deploy/delete deferred until an active recording ends is not a failure;
+  // report it once as a warning instead.
+  let reportedDeferredSupabaseSync = false;
+  const reportSupabaseFailure = (
+    output: Output,
+    severity: "error" | "warning" = "error",
+  ) => {
+    if (!isSupabaseFunctionSyncDeferred(output.error)) {
+      (severity === "error" ? errors : warnings).push(output);
+      return;
+    }
+    if (reportedDeferredSupabaseSync) return;
+    reportedDeferredSupabaseSync = true;
+    warnings.push({
+      message: "Supabase function changes will deploy after the recording ends",
+      error: output.error,
+    });
+  };
   const warningMessages: string[] = [];
 
   try {
@@ -429,12 +450,14 @@ export async function processFullResponseActions(
       if (isServerFunction(filePath)) {
         try {
           await deleteSupabaseFunction({
+            appId: chatWithApp.app.id,
+            signal,
             supabaseProjectId: chatWithApp.app.supabaseProjectId!,
             functionName: extractFunctionNameFromPath(filePath),
             organizationSlug: chatWithApp.app.supabaseOrganizationSlug ?? null,
           });
         } catch (error) {
-          errors.push({
+          reportSupabaseFailure({
             message: `Failed to delete Supabase function: ${filePath}`,
             error: error,
           });
@@ -483,15 +506,20 @@ export async function processFullResponseActions(
       if (isServerFunction(tag.from)) {
         try {
           await deleteSupabaseFunction({
+            appId: chatWithApp.app.id,
+            signal,
             supabaseProjectId: chatWithApp.app.supabaseProjectId!,
             functionName: extractFunctionNameFromPath(tag.from),
             organizationSlug: chatWithApp.app.supabaseOrganizationSlug ?? null,
           });
         } catch (error) {
-          warnings.push({
-            message: `Failed to delete Supabase function: ${tag.from} as part of renaming ${tag.from} to ${tag.to}`,
-            error: error,
-          });
+          reportSupabaseFailure(
+            {
+              message: `Failed to delete Supabase function: ${tag.from} as part of renaming ${tag.from} to ${tag.to}`,
+              error: error,
+            },
+            "warning",
+          );
         }
       }
       // Deploy renamed function (skip if shared modules changed - will be handled later)
@@ -500,6 +528,8 @@ export async function processFullResponseActions(
         if (!sharedModulesChanged) {
           try {
             await deploySupabaseFunction({
+              appId: chatWithApp.app.id,
+              signal,
               supabaseProjectId: chatWithApp.app.supabaseProjectId!,
               functionName,
               appPath,
@@ -507,7 +537,7 @@ export async function processFullResponseActions(
                 chatWithApp.app.supabaseOrganizationSlug ?? null,
             });
           } catch (error) {
-            errors.push({
+            reportSupabaseFailure({
               message: `Failed to deploy Supabase function: ${tag.to} as part of renaming ${tag.from} to ${tag.to}`,
               error: error,
             });
@@ -555,6 +585,8 @@ export async function processFullResponseActions(
           if (!sharedModulesChanged) {
             try {
               await deploySupabaseFunction({
+                appId: chatWithApp.app.id,
+                signal,
                 supabaseProjectId: chatWithApp.app.supabaseProjectId!,
                 functionName,
                 appPath,
@@ -562,7 +594,7 @@ export async function processFullResponseActions(
                   chatWithApp.app.supabaseOrganizationSlug ?? null,
               });
             } catch (error) {
-              errors.push({
+              reportSupabaseFailure({
                 message: `Failed to deploy Supabase function after search-replace: ${filePath}`,
                 error: error,
               });
@@ -587,6 +619,7 @@ export async function processFullResponseActions(
           from: tag.from,
           to: tag.to,
           appId: chatWithApp.app.id,
+          signal,
           isSharedModulesChanged: sharedModulesChanged,
         });
 
@@ -602,7 +635,7 @@ export async function processFullResponseActions(
         }
 
         if (result.deployError) {
-          errors.push({
+          reportSupabaseFailure({
             message: `Failed to deploy Supabase function after copy: ${tag.to}`,
             error: result.deployError,
           });
@@ -645,6 +678,8 @@ export async function processFullResponseActions(
         if (!sharedModulesChanged) {
           try {
             await deploySupabaseFunction({
+              appId: chatWithApp.app.id,
+              signal,
               supabaseProjectId: chatWithApp.app.supabaseProjectId!,
               functionName,
               appPath,
@@ -652,7 +687,7 @@ export async function processFullResponseActions(
                 chatWithApp.app.supabaseOrganizationSlug ?? null,
             });
           } catch (error) {
-            errors.push({
+            reportSupabaseFailure({
               message: `Failed to deploy Supabase function: ${filePath}`,
               error: error,
             });
@@ -671,6 +706,8 @@ export async function processFullResponseActions(
       try {
         const settings = readSettings();
         const deployErrors = await deployAffectedSupabaseFunctions({
+          appId: chatWithApp.app.id,
+          signal,
           appPath,
           supabaseProjectId: chatWithApp.app.supabaseProjectId,
           supabaseOrganizationSlug:
@@ -691,7 +728,7 @@ export async function processFullResponseActions(
           }
         }
       } catch (error) {
-        errors.push({
+        reportSupabaseFailure({
           message:
             "Failed to redeploy Supabase functions after shared module change",
           error: error,

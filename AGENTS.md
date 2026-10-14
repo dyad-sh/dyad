@@ -42,6 +42,9 @@ Detailed rules and learnings are in the `rules/` directory. Read the relevant fi
 | [rules/i18n.md](rules/i18n.md)                                             | Adding translation keys to `src/i18n/locales/*/chat.json` or building i18n-aware chat tool cards                                                                                                                                          |
 | [rules/model-effort-and-catalog.md](rules/model-effort-and-catalog.md)     | Sending reasoning effort or output-token limits to models via the engine, editing the remote model catalog, or debugging 400s / truncation from a provider (Gemini thought signatures, OpenRouter context limits, Anthropic 4096 default) |
 
+| [rules/claude-code-backend.md](rules/claude-code-backend.md) | Claude Code backend, model picker, subscription usage, and tool presentation |
+| [rules/user-app-test-isolation.md](rules/user-app-test-isolation.md) | Changing Tests-panel database isolation: Supabase test users, Neon test data cleanup, per-test lifecycle timeouts, or the generated fixture shim |
+
 ## Project setup and lints
 
 Make sure you run this once after doing `npm install` because it will make sure whenever you commit something, it will run pre-commit hooks like linting and formatting.
@@ -126,6 +129,8 @@ This is the only supported way to type-check the project. It uses the correct co
 You should test your changes before committing or pushing. Run relevant unit tests and E2E tests to verify expected behavior. If it's truly impossible to test a change locally (e.g. CI-only behavior, third-party service integration), note this in the PR description explaining why and what manual verification is needed.
 
 When diagnosing a bug the user hit in their running dev app, read `logs/main.log` under the dev app's userData directory — `NODE_ENV=development` repoints Electron's userData away from the OS path (`~/.config/dyad/logs/main.log`), which holds unit-test noise instead. That directory is `./userData` **inside the repo** by default, but `DYAD_DEV_USER_DATA_DIR` overrides it (see `getUserDataPath` in `src/paths/paths.ts`) — `npm run start:onboarding` sets it to a throwaway directory, so a plain `userData/logs/main.log` there is stale or absent. Check the env var first, or read the path `electron-log` prints on startup. The main log carries scoped lines (`process_manager`, `app_runtime_service`, timings) that pin down whether a failure is main-process or renderer-side.
+
+For a chat that hangs with no error: a packaged macOS build logs to `~/Library/Logs/dyad/main.log`; check its `model_request` lines (request sent / headers / first chunk, keyed by `<requestId>:attempt-N`) and `turn_stall_watchdog` warnings (which setup phase is stuck). To check whether a request ever reached Dyad Engine, run `gcloud logging read '"<requestId>"' --project=dyad-prod --freshness=30d --format="value(timestamp,jsonPayload.message)"`. The engine logs `[cl:<requestId>:attempt-N] request received` on arrival, the bare UUID matches it, and the text is in `jsonPayload.message` (`textPayload` is empty). A plain `curl` to `engine.dyad.sh` may get a Cloudflare challenge (`cf-mitigated: challenge`) from some networks; don't read that as proof the user's app is blocked.
 
 ## General guidance
 

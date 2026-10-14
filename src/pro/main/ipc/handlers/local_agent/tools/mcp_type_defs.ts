@@ -1,9 +1,15 @@
+import { recordShellReviewOutcome } from "../shell_review_history";
 import type { IpcMainInvokeEvent } from "electron";
 import { randomUUID } from "node:crypto";
 import { asSchema } from "@ai-sdk/provider-utils";
 import type { JSONSchema7 } from "@ai-sdk/provider";
-import type { MCPClient } from "@ai-sdk/mcp";
-import { mcpManager } from "@/ipc/utils/mcp_manager";
+import log from "electron-log";
+import {
+  MCP_LIST_TOOLS_TIMEOUT_MS,
+  McpListToolsTimeoutError,
+  mcpManager,
+  type McpToolSet,
+} from "@/ipc/utils/mcp_manager";
 import { SANDBOX_HOST_CALL_NAMES } from "@/ipc/utils/sandbox/capabilities";
 import { mcpServers } from "@/db/schema";
 import { db } from "@/db";
@@ -17,6 +23,8 @@ import { jsonSchemaToTs } from "./json_schema_to_ts";
 import { buildMcpAutoApprove } from "../mcp_auto_consent";
 import { sanitizeMcpToolResult } from "@/ipc/utils/mcp_result_sanitizer";
 import { withTrackedMutation } from "../subagents/mutation_activity_tracker";
+
+const logger = log.scope("mcp_tools");
 
 const MCP_RESULT_TYPE = `type McpResult = {
   content: Array<
@@ -58,13 +66,82 @@ function toJsIdentifier(name: string): string {
   return id;
 }
 
-export async function collectMcpToolDefs(): Promise<McpToolDef[]> {
-  let servers: { id: number; name: string | null }[] = [];
+export interface LoadedMcpServerTools {
+  server: typeof mcpServers.$inferSelect;
+  tools: McpToolSet;
+}
+
+/**
+ * Load tools from every enabled MCP server for one agent turn. Servers load
+ * in parallel, each bounded by a timeout and the turn's abort signal, so one
+ * unresponsive server can neither stall the turn nor ignore Stop. Servers
+ * that fail or time out are skipped; results keep the servers' query order.
+ */
+export async function loadEnabledMcpServerTools({
+  abortSignal,
+  onWarningMessage,
+}: {
+  abortSignal?: AbortSignal;
+  onWarningMessage?: (message: string) => void;
+} = {}): Promise<LoadedMcpServerTools[]> {
+  const servers = await db
+    .select()
+    .from(mcpServers)
+    .where(eq(mcpServers.enabled, true as any));
+  if (servers.length === 0) return [];
+
+  const startedAt = performance.now();
+  const results = await Promise.all(
+    servers.map(async (server) => {
+      const serverStartedAt = performance.now();
+      try {
+        const tools = await mcpManager.listToolsWithin(server.id, {
+          signal: abortSignal,
+        });
+        logger.info(
+          `Loaded ${Object.keys(tools).length} tools from MCP server ${server.id} (${server.name}) in ${elapsedMs(serverStartedAt)}ms`,
+        );
+        return { server, tools };
+      } catch (error) {
+        if (abortSignal?.aborted) return null;
+        if (error instanceof McpListToolsTimeoutError) {
+          const seconds = MCP_LIST_TOOLS_TIMEOUT_MS / 1000;
+          logger.warn(
+            `MCP server ${server.id} (${server.name}, ${server.transport}) did not return tools within ${seconds}s; skipping it for this turn`,
+          );
+          onWarningMessage?.(
+            `MCP server "${server.name}" didn't respond within ${seconds}s, so its tools weren't available for this response.`,
+          );
+        } else {
+          logger.warn(
+            `Failed to load tools for MCP server ${server.id} (${server.name})`,
+            error,
+          );
+        }
+        return null;
+      }
+    }),
+  );
+
+  const loaded = results.filter(
+    (result): result is LoadedMcpServerTools => result !== null,
+  );
+  logger.info(
+    `Loaded MCP tools from ${loaded.length}/${servers.length} servers in ${elapsedMs(startedAt)}ms`,
+  );
+  return loaded;
+}
+
+function elapsedMs(startedAt: number): number {
+  return Math.round(performance.now() - startedAt);
+}
+
+export async function collectMcpToolDefs(
+  options: Parameters<typeof loadEnabledMcpServerTools>[0] = {},
+): Promise<McpToolDef[]> {
+  let loadedServers: LoadedMcpServerTools[];
   try {
-    servers = (await db
-      .select()
-      .from(mcpServers)
-      .where(eq(mcpServers.enabled, true as any))) as typeof servers;
+    loadedServers = await loadEnabledMcpServerTools(options);
   } catch {
     cachedMcpToolDefs = [];
     return [];
@@ -82,14 +159,7 @@ export async function collectMcpToolDefs(): Promise<McpToolDef[]> {
   // rather than silently shadowing the file capability when the two
   // maps are merged.
   const seenJsNames = new Set<string>(SANDBOX_HOST_CALL_NAMES);
-  for (const s of servers) {
-    let toolSet: Awaited<ReturnType<MCPClient["tools"]>>;
-    try {
-      const client = await mcpManager.getClient(s.id);
-      toolSet = await client.tools();
-    } catch {
-      continue;
-    }
+  for (const { server: s, tools: toolSet } of loadedServers) {
     const serverNameSanitized = sanitizeMcpName(s.name || "");
     for (const [toolName, mcpTool] of Object.entries(toolSet)) {
       const sanitizedToolName = sanitizeMcpName(toolName);
@@ -123,7 +193,11 @@ export async function collectMcpToolDefs(): Promise<McpToolDef[]> {
       });
     }
   }
-  cachedMcpToolDefs = defs;
+  // A stopped turn returns only the servers that finished loading; keep the
+  // last complete set for the renderer's token estimate instead.
+  if (!options.abortSignal?.aborted) {
+    cachedMcpToolDefs = defs;
+  }
   return defs;
 }
 
@@ -153,6 +227,7 @@ export function buildMcpCapabilityMap(params: {
             : JSON.stringify(args).slice(0, 500);
 
       const autoApprove = buildMcpAutoApprove({
+        signal: params.ctx.abortSignal,
         settings: readSettings(),
         isDyadPro: params.ctx.isDyadPro,
         freeModelMode: params.ctx.freeModelMode,
@@ -178,19 +253,13 @@ export function buildMcpCapabilityMap(params: {
         },
       );
       if (!approved) {
+        recordShellReviewOutcome(params.ctx, def.toolKey, args, {
+          error: "Consent declined",
+          executed: false,
+        });
         throw new DyadError(
           `User declined running tool ${def.toolKey}`,
           DyadErrorKind.UserCancelled,
-        );
-      }
-
-      const client = await mcpManager.getClient(def.serverId);
-      const toolSet = await client.tools();
-      const mcpTool = toolSet[def.toolName];
-      if (!mcpTool || typeof mcpTool.execute !== "function") {
-        throw new DyadError(
-          `MCP tool ${def.toolKey} not found at runtime`,
-          DyadErrorKind.NotFound,
         );
       }
 
@@ -202,9 +271,37 @@ export function buildMcpCapabilityMap(params: {
         `<dyad-mcp-tool-call server="${escapeXmlAttr(def.serverName)}" tool="${escapeXmlAttr(def.toolName)}" call-id="${escapeXmlAttr(callId)}"${autoApprovedAttr}>\n${escapeXmlContent(contentPretty)}\n</dyad-mcp-tool-call>`,
       );
 
+      let executionStarted = false;
       try {
-        params.ctx.mcpToolRan = true;
+        // Reserve mutation activity right after consent, before the client
+        // lookup. Otherwise a Stop during the lookup can finalize the turn
+        // and the tool would still run afterwards. The lookup is bounded by
+        // the turn's signal and a timeout so a wedged server cannot hold the
+        // reservation open.
         const res = await withTrackedMutation(params.ctx, async () => {
+          const cancelled = () =>
+            new DyadError(
+              "This agent run was cancelled.",
+              DyadErrorKind.UserCancelled,
+            );
+          let toolSet: McpToolSet;
+          try {
+            toolSet = await mcpManager.listToolsWithin(def.serverId, {
+              signal: params.ctx.abortSignal,
+            });
+          } catch (error) {
+            throw params.ctx.abortSignal?.aborted ? cancelled() : error;
+          }
+          const mcpTool = toolSet[def.toolName];
+          if (!mcpTool || typeof mcpTool.execute !== "function") {
+            throw new DyadError(
+              `MCP tool ${def.toolKey} not found at runtime`,
+              DyadErrorKind.NotFound,
+            );
+          }
+          if (params.ctx.abortSignal?.aborted) throw cancelled();
+          params.ctx.mcpToolRan = true;
+          executionStarted = true;
           return mcpTool.execute(args, {
             toolCallId: `mcp-sandbox-${def.toolKey}`,
             messages: [],
@@ -218,11 +315,18 @@ export function buildMcpCapabilityMap(params: {
             ? { content: [{ type: "text", text: res }] }
             : res;
         const safeResult = sanitizeMcpToolResult(normalized);
+        recordShellReviewOutcome(params.ctx, def.toolKey, args, {
+          result: safeResult.value,
+        });
         params.ctx.onXmlComplete(
           `<dyad-mcp-tool-result server="${escapeXmlAttr(def.serverName)}" tool="${escapeXmlAttr(def.toolName)}" call-id="${escapeXmlAttr(callId)}">\n${escapeXmlContent(safeResult.serialized)}\n</dyad-mcp-tool-result>`,
         );
         return safeResult.value;
       } catch (error) {
+        recordShellReviewOutcome(params.ctx, def.toolKey, args, {
+          error,
+          executed: executionStarted,
+        });
         const errorMessage =
           error instanceof Error ? error.message : String(error);
         const errorStack =

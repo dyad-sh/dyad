@@ -37,6 +37,7 @@ export {
 } from "./connection_flow";
 export { mcpContracts } from "./mcp";
 export { vercelContracts } from "./vercel";
+export { cloudflareContracts } from "./cloudflare";
 export { coolifyContracts, coolifyEvents, coolifyEventClient } from "./coolify";
 export {
   coolifySetupContracts,
@@ -130,6 +131,7 @@ export {
 } from "./connection_flow";
 export { mcpClient } from "./mcp";
 export { vercelClient } from "./vercel";
+export { cloudflareClient } from "./cloudflare";
 export { supabaseClient, supabaseEventClient } from "./supabase";
 export { neonClient } from "./neon";
 export { migrationClient } from "./migration";
@@ -199,6 +201,7 @@ export type {
 // App types
 export type {
   App,
+  DeploymentProvidersInUse,
   CreateAppParams,
   CreateAppResult,
   CopyAppParams,
@@ -293,6 +296,18 @@ export type {
   GetVercelDeploymentsParams,
   DisconnectVercelProjectParams,
 } from "./vercel";
+
+// Cloudflare types
+export type {
+  CloudflareAccount,
+  CloudflareWorkerSummary,
+  CloudflareTargetSummary,
+  CloudflareConnection,
+  CloudflareAppStatus,
+  CloudflareDeploymentStatus,
+  ConnectCloudflareWorkerParams,
+  ConnectCloudflareWorkerResult,
+} from "./cloudflare";
 
 // Supabase types
 export type {
@@ -531,6 +546,7 @@ import {
 import { mcpClient } from "./mcp";
 import { vercelClient } from "./vercel";
 import { gitlabClient } from "./gitlab";
+import { cloudflareClient } from "./cloudflare";
 import { coolifyClient, coolifyEventClient } from "./coolify";
 import { coolifySetupClient, coolifySetupEventClient } from "./coolify_setup";
 import { supabaseClient, supabaseEventClient } from "./supabase";
@@ -616,6 +632,7 @@ export const ipc = {
   mcp: mcpClient,
   vercel: vercelClient,
   gitlab: gitlabClient,
+  cloudflare: cloudflareClient,
   coolify: coolifyClient,
   coolifySetup: coolifySetupClient,
   supabase: supabaseClient,

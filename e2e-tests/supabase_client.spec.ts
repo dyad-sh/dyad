@@ -9,7 +9,9 @@ testSkipIfWindows("supabase client is generated", async ({ po }) => {
   await po.appManagement.clickConnectSupabaseButton();
   // Wait for the fake OAuth return to finish resource loading before leaving
   // this screen. The connected project card is the terminal happy-path UI.
-  await expect(po.page.getByText("Fake Supabase Project")).toBeVisible({
+  await expect(
+    po.page.getByText("Fake Supabase Project", { exact: true }),
+  ).toBeVisible({
     timeout: Timeout.MEDIUM,
   });
   await expect(po.page.getByTestId("supabase-branch-select")).toBeVisible();

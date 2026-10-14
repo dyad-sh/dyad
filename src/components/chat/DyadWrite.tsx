@@ -21,10 +21,12 @@ interface DyadWriteProps {
   node?: any;
   path?: string;
   description?: string;
+  allowEdit?: boolean;
 }
 
 export const DyadWrite: React.FC<DyadWriteProps> = ({
   children,
+  allowEdit = true,
   node,
   path: pathProp,
   description: descriptionProp,
@@ -51,12 +53,17 @@ export const DyadWrite: React.FC<DyadWriteProps> = ({
 
   const fileName = path ? path.split("/").pop() : "";
 
+  const hasDetails =
+    isEditing || (typeof children === "string" && children.trim().length > 0);
+
   return (
     <DyadCard
       state={state}
       accentColor="blue"
-      onClick={() => setIsContentVisible(!isContentVisible)}
-      isExpanded={isContentVisible}
+      onClick={
+        hasDetails ? () => setIsContentVisible(!isContentVisible) : undefined
+      }
+      isExpanded={hasDetails && isContentVisible}
     >
       <DyadCardHeader icon={<Pencil size={15} />} accentColor="blue">
         <div className="min-w-0 truncate">
@@ -74,11 +81,12 @@ export const DyadWrite: React.FC<DyadWriteProps> = ({
         {inProgress && (
           <DyadStateIndicator state="pending" pendingLabel="Writing..." />
         )}
+        {state === "error" && <DyadStateIndicator state="error" />}
         {aborted && (
           <DyadStateIndicator state="aborted" abortedLabel="Did not finish" />
         )}
         <div className="ml-auto flex items-center gap-1">
-          {!inProgress && (
+          {allowEdit && !inProgress && (
             <>
               {isEditing ? (
                 <button
@@ -105,7 +113,7 @@ export const DyadWrite: React.FC<DyadWriteProps> = ({
               )}
             </>
           )}
-          <DyadExpandIcon isExpanded={isContentVisible} />
+          {hasDetails && <DyadExpandIcon isExpanded={isContentVisible} />}
         </div>
       </DyadCardHeader>
       {description && (
@@ -116,7 +124,7 @@ export const DyadWrite: React.FC<DyadWriteProps> = ({
           </span>
         </DyadDescription>
       )}
-      <DyadCardContent isExpanded={isContentVisible}>
+      <DyadCardContent isExpanded={hasDetails && isContentVisible}>
         <div
           className="text-xs cursor-text"
           onClick={(e) => e.stopPropagation()}

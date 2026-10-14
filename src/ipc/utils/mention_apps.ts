@@ -11,6 +11,7 @@ import { publishQueryInvalidations } from "./query_invalidation_delivery";
 const logger = log.scope("mention_apps");
 
 export interface MentionedAppReference {
+  appId: number;
   appName: string;
   appPath: string;
 }
@@ -98,6 +99,7 @@ async function extractCodebasesForApps(
       });
 
       results.push({
+        appId: app.id,
         appName: app.name,
         appPath,
         codebaseInfo: formattedOutput,
@@ -189,6 +191,7 @@ export async function resolveStickyReferencedApps({
 
   return {
     references: dedupedApps.map((app) => ({
+      appId: app.id,
       appName: app.name,
       appPath: getDyadAppPath(app.path),
     })),

@@ -21,6 +21,7 @@ interface PlaywrightDiscoverySuite {
 }
 
 export interface PlaywrightDiscoveryReport {
+  config?: { rootDir?: string };
   suites?: PlaywrightDiscoverySuite[];
   errors?: Array<{ message?: string }>;
 }
@@ -33,14 +34,22 @@ export interface DiscoveredPreviewTest {
   skipped: boolean;
 }
 
-function normalizeFile(file: string, appPath: string): string {
-  const relative = path.isAbsolute(file) ? path.relative(appPath, file) : file;
+function normalizeFile(
+  file: string,
+  appPath: string,
+  reportRoot: string,
+): string {
+  // JSON locations are relative to config.rootDir (usually e2e-tests/), not
+  // the app root. Canonical app-relative paths let the runner select exact
+  // absolute filenames instead of ambiguous suffix regexes.
+  const relative = path.relative(appPath, path.resolve(reportRoot, file));
   return relative.replace(/\\/g, "/");
 }
 
 function collectTests(
   suite: PlaywrightDiscoverySuite,
   appPath: string,
+  reportRoot: string,
   inheritedFile: string | undefined,
   inheritedTitles: string[],
   out: DiscoveredPreviewTest[],
@@ -64,7 +73,7 @@ function collectTests(
     if (!specFile || !spec.title || !spec.line) continue;
     const declaredTests = spec.tests ?? [];
     out.push({
-      file: normalizeFile(specFile, appPath),
+      file: normalizeFile(specFile, appPath, reportRoot),
       line: spec.line,
       title: spec.title,
       fullTitle: [...titles, spec.title].join(" "),
@@ -75,7 +84,7 @@ function collectTests(
   }
 
   for (const child of suite.suites ?? []) {
-    collectTests(child, appPath, file, titles, out, false);
+    collectTests(child, appPath, reportRoot, file, titles, out, false);
   }
 }
 
@@ -84,8 +93,9 @@ export function parsePreviewTestDiscovery(
   appPath: string,
 ): { tests: DiscoveredPreviewTest[]; errors: string[] } {
   const tests: DiscoveredPreviewTest[] = [];
+  const reportRoot = report.config?.rootDir ?? appPath;
   for (const suite of report.suites ?? []) {
-    collectTests(suite, appPath, undefined, [], tests, true);
+    collectTests(suite, appPath, reportRoot, undefined, [], tests, true);
   }
 
   return {

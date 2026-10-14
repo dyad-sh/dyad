@@ -10,6 +10,10 @@ import {
 } from "react";
 import { Virtuoso } from "react-virtuoso";
 import ChatMessage from "./ChatMessage";
+import {
+  CHAT_SCROLL_RESTORE_EVENT,
+  type ChatScrollRestorePosition,
+} from "./scroll/restore";
 import { OpenRouterSetupBanner, SetupBanner } from "../SetupBanner";
 
 import { useStreamChat } from "@/hooks/useStreamChat";
@@ -44,6 +48,7 @@ const MemoizedChatMessage = React.memo(ChatMessage);
 
 // Context type for Virtuoso
 interface FooterContext {
+  executionBackend?: "dyad" | "claude-code";
   messages: Message[];
   isStreaming: boolean;
   isUndoLoading: boolean;
@@ -135,6 +140,7 @@ function FooterComponent({ context }: { context?: FooterContext }) {
     selectedChatId,
     appId,
     renderSetupBanner,
+    executionBackend,
   } = context;
 
   let questionnaireSettledAt: number | undefined;
@@ -327,6 +333,12 @@ function FooterComponent({ context }: { context?: FooterContext }) {
   // work that already existed when it started. If newer commits exist, let the
   // user choose whether to keep them or restore through them.
   const handleRetry = async () => {
+    if (executionBackend === "claude-code") {
+      showError(
+        "Start a new chat to retry Claude Code. Retrying here would retain hidden context from the replaced turn.",
+      );
+      return;
+    }
     if (!selectedChatId || !appId) {
       console.error("No chat selected or app ID not available");
       return;
@@ -420,6 +432,11 @@ function FooterComponent({ context }: { context?: FooterContext }) {
     }
   };
 
+  const retryUnavailableReason =
+    executionBackend === "claude-code"
+      ? "Start a new chat to retry Claude Code; the existing CLI context cannot be replaced."
+      : undefined;
+
   // When the last assistant turn produced a commit, show the modified-files card
   // (which owns its own Undo/Retry buttons). Otherwise fall back to the standalone
   // buttons so text-only replies keep those affordances.
@@ -444,6 +461,7 @@ function FooterComponent({ context }: { context?: FooterContext }) {
           onUndo={handleUndo}
           isUndoLoading={isUndoLoading}
           onRetry={handleRetry}
+          retryUnavailableReason={retryUnavailableReason}
           isRetryLoading={isRetryLoading}
           isAnyVersionMutationPending={isAnyVersionMutationPending}
         />
@@ -472,8 +490,12 @@ function FooterComponent({ context }: { context?: FooterContext }) {
               variant="outline"
               size="sm"
               disabled={
-                isRetryLoading || isUndoLoading || isAnyVersionMutationPending
+                isRetryLoading ||
+                isUndoLoading ||
+                isAnyVersionMutationPending ||
+                !!retryUnavailableReason
               }
+              title={retryUnavailableReason}
               onClick={handleRetry}
             >
               {isRetryLoading ? (
@@ -583,13 +605,39 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
     },
     ref,
   ) {
+    const initialScroller = useRef<HTMLElement | null>(null);
+    const [initialPositionReady, setInitialPositionReady] = useState(false);
+    const revealRestoredPosition = useCallback((event: Event) => {
+      if (!(event as CustomEvent<ChatScrollRestorePosition>).detail.following)
+        setInitialPositionReady(true);
+    }, []);
+    const revealScrolledPosition = useCallback(() => {
+      if ((initialScroller.current?.scrollTop ?? 0) > 0)
+        setInitialPositionReady(true);
+    }, []);
     const setScrollerRef = useCallback(
       (element: HTMLElement | Window | null) => {
         if (element instanceof Window) return;
+        initialScroller.current?.removeEventListener(
+          "scroll",
+          revealScrolledPosition,
+        );
+        initialScroller.current?.removeEventListener(
+          CHAT_SCROLL_RESTORE_EVENT,
+          revealRestoredPosition,
+        );
+        initialScroller.current = element;
+        element?.addEventListener("scroll", revealScrolledPosition, {
+          passive: true,
+        });
+        element?.addEventListener(
+          CHAT_SCROLL_RESTORE_EVENT,
+          revealRestoredPosition,
+        );
         if (typeof ref === "function") ref(element as HTMLDivElement | null);
         else if (ref) ref.current = element as HTMLDivElement | null;
       },
-      [ref],
+      [ref, revealScrolledPosition, revealRestoredPosition],
     );
     const appId = useAtomValue(selectedAppIdAtom);
     const { refreshVersions } = useVersions(appId);
@@ -679,18 +727,20 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
           <div className="px-4" key={messageKey}>
             <MemoizedChatMessage
               message={message}
+              executionBackend={selectedChat?.executionBackend}
               isLastMessage={isLastMessage}
               isCancelledPrompt={cancelledPromptIndices.has(index)}
             />
           </div>
         );
       },
-      [messages.length, cancelledPromptIndices],
+      [messages.length, cancelledPromptIndices, selectedChat?.executionBackend],
     );
 
     // Create context object for Footer component with stable references
     const footerContext = useMemo<FooterContext>(
       () => ({
+        executionBackend: selectedChat?.executionBackend,
         messages: persistedMessages,
         isStreaming,
         isUndoLoading,
@@ -708,6 +758,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
       }),
       [
         persistedMessages,
+        selectedChat?.executionBackend,
         isStreaming,
         isUndoLoading,
         isRetryLoading,
@@ -772,6 +823,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
                 <div className="px-4" key={message.id}>
                   <ChatMessage
                     message={message}
+                    executionBackend={selectedChat?.executionBackend}
                     isLastMessage={isLastMessage}
                     isCancelledPrompt={cancelledPromptIndices.has(index)}
                   />
@@ -790,7 +842,19 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
         data-testid="messages-list"
       >
         <Virtuoso
-          initialTopMostItemIndex={{ index: "LAST", align: "end" }}
+          // Keep the measurement-only top window hidden until the controller
+          // positions the chat (or all messages fit). Never hide it again after
+          // initial positioning, including explicit top-of-history restoration.
+          style={{
+            visibility:
+              initialPositionReady || messages.length === 0
+                ? "visible"
+                : "hidden",
+          }}
+          rangeChanged={({ endIndex }) => {
+            if (endIndex === messages.length - 1) setInitialPositionReady(true);
+            else revealScrolledPosition();
+          }}
           scrollerRef={setScrollerRef}
           totalListHeightChanged={onContentHeightChange}
           data={messages}

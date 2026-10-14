@@ -1,3 +1,4 @@
+import { openOptions } from "../interactions";
 // Portalis — shared suite helpers (design/app-3-portalis.md).
 //
 // Conventions:
@@ -192,7 +193,7 @@ export async function switchOrg(page: Page, orgId: string, name: string) {
   if (tag === "select") {
     await switcher.selectOption(orgId);
   } else {
-    await switcher.click();
+    await openOptions(page, "org-switcher", "org-switcher-option");
     await page
       .locator(`[data-testid="org-switcher-option"][data-org-id="${orgId}"]`)
       .first()

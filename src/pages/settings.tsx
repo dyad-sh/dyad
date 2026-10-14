@@ -1,3 +1,4 @@
+import { ShellExperimentSwitch } from "@/components/ShellExperimentSwitch";
 import { useEffect, useState, type ReactNode } from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { ProviderSettingsGrid } from "@/components/ProviderSettings";
@@ -13,6 +14,7 @@ import { GitHubIntegration } from "@/components/GitHubIntegration";
 import { GitLabIntegration } from "@/components/GitLabIntegration";
 import { GitLabPublishingExperimentSwitch } from "@/components/GitLabPublishingExperimentSwitch";
 import { VercelIntegration } from "@/components/VercelIntegration";
+import { CloudflareIntegration } from "@/components/CloudflareIntegration";
 import { SupabaseIntegration } from "@/components/SupabaseIntegration";
 import { CustomAppsFolderSelector } from "@/components/CustomAppsFolderSelector";
 import { Switch } from "@/components/ui/switch";
@@ -21,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { AppBlueprintSwitch } from "@/components/AppBlueprintSwitch";
 import { TestingForNewAppsSwitch } from "@/components/TestingForNewAppsSwitch";
+import { SandboxedE2eTestsSwitch } from "@/components/SandboxedE2eTestsSwitch";
 import { AutoExpandPreviewSwitch } from "@/components/AutoExpandPreviewSwitch";
 import { KeepPreviewsRunningSwitch } from "@/components/KeepPreviewsRunningSwitch";
 import { ChatEventNotificationSwitch } from "@/components/ChatEventNotificationSwitch";
@@ -37,6 +40,8 @@ import { ContextCompactionSwitch } from "@/components/ContextCompactionSwitch";
 import { BlockUnsafeNpmPackagesSwitch } from "@/components/BlockUnsafeNpmPackagesSwitch";
 import { CloudSandboxExperimentSwitch } from "@/components/CloudSandboxExperimentSwitch";
 import { MultiWindowExperimentSwitch } from "@/components/MultiWindowExperimentSwitch";
+import { ClaudeCodeSubscriptionExperimentSwitch } from "@/components/ClaudeCodeSubscriptionExperimentSwitch";
+import { AppPreviewDomainsSwitch } from "@/components/AppPreviewDomainsSwitch";
 import { TestRunInPreviewSwitch } from "@/components/TestRunInPreviewSwitch";
 import { AutoApproveSqlSwitch } from "@/components/AutoApproveSqlSwitch";
 import { AutoApproveMcpSwitch } from "@/components/AutoApproveMcpSwitch";
@@ -179,6 +184,9 @@ export default function SettingsPage() {
             <div id={SETTING_IDS.vercel}>
               <VercelIntegration />
             </div>
+            <div id={SETTING_IDS.cloudflare}>
+              <CloudflareIntegration />
+            </div>
             <div id={SETTING_IDS.supabase}>
               <SupabaseIntegration />
             </div>
@@ -239,12 +247,22 @@ export default function SettingsPage() {
             title="Experiments"
             description="Early features that may not be stable yet. Enable at your own risk."
           >
+            <div id={SETTING_IDS.enableShellTool}>
+              <ShellExperimentSwitch />
+            </div>
             <div id={SETTING_IDS.enableCloudSandbox}>
               <CloudSandboxExperimentSwitch />
             </div>
 
             <div id={SETTING_IDS.enableMultiWindow}>
               <MultiWindowExperimentSwitch />
+            </div>
+            <div id={SETTING_IDS.enableClaudeCodeSubscription}>
+              <ClaudeCodeSubscriptionExperimentSwitch />
+            </div>
+
+            <div id={SETTING_IDS.enableAppPreviewDomains}>
+              <AppPreviewDomainsSwitch />
             </div>
 
             <div id={SETTING_IDS.enableTestRunInPreview}>
@@ -281,6 +299,30 @@ export default function SettingsPage() {
 
             <div id={SETTING_IDS.enableGitlabPublishing}>
               <GitLabPublishingExperimentSwitch />
+            </div>
+
+            <div
+              id={SETTING_IDS.enableCloudflareDeployment}
+              className="space-y-1.5"
+            >
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="enable-cloudflare-deployment"
+                  aria-label="Allow deployment to Cloudflare Workers"
+                  checked={!!settings?.enableCloudflareDeployment}
+                  onCheckedChange={(checked) => {
+                    updateSettings({ enableCloudflareDeployment: checked });
+                  }}
+                />
+                <Label htmlFor="enable-cloudflare-deployment">
+                  Allow deployment to Cloudflare Workers
+                </Label>
+              </div>
+              <p className={hint}>
+                Adds a Cloudflare tab to the Publish panel that deploys a Worker
+                from your app when you sync changes to GitHub. Turning this off
+                hides the tab, but Workers you already connected keep deploying.
+              </p>
             </div>
 
             <div id={SETTING_IDS.enableMcpToolSearch} className="space-y-1.5">
@@ -506,6 +548,19 @@ export function WorkflowSettings() {
           When creating a new app, opt it into AI E2E testing by default. This
           only affects apps created while this setting is on; existing apps are
           unchanged.
+        </p>
+      </div>
+
+      <div id={SETTING_IDS.sandboxedE2eTests} className="space-y-1.5">
+        <SandboxedE2eTestsSwitch />
+        <p className={hint}>
+          Run each E2E batch in a throwaway copy of your app with its own
+          server, so tests never touch your preview. Neon apps also get a
+          temporary database; Supabase apps still use your real project,
+          isolated by a throwaway test user. Each run installs dependencies from
+          scratch, so turn this off if that makes runs too slow — tests then run
+          against your normal preview, and Neon-only apps won't run at all
+          rather than test against your real data.
         </p>
       </div>
 

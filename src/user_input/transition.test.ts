@@ -319,3 +319,32 @@ describe("user-input transition", () => {
     expect(never.state).toMatchObject({ status: "settled", outcome: "human" });
   });
 });
+
+it("rejects persistent consent for a turn-scoped approval", () => {
+  const scoped: UserInputDescriptor = {
+    kind: "agent-consent",
+    requestId: "scoped:1",
+    chatId: 1,
+    deadlineAt: 300000,
+    toolName: "Claude Code: Edit",
+    classifier: "none",
+    allowAlways: false,
+  };
+  const state = transition(
+    { status: "idle" },
+    { type: "requested", descriptor: scoped, deadlineMs: 300000 },
+  ).state;
+  const always = transition(state, {
+    type: "human-decided",
+    requestId: scoped.requestId,
+    response: { kind: "agent-consent", decision: "accept-always" },
+  });
+  expect(always.state).toBe(state);
+  expect(ignoreReasonOf(always)).toBe("response-kind-mismatch");
+  const once = transition(state, {
+    type: "human-decided",
+    requestId: scoped.requestId,
+    response: { kind: "agent-consent", decision: "accept-once" },
+  });
+  expect(once.state.status).toBe("settled");
+});

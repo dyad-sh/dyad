@@ -15,6 +15,7 @@ import {
   type ServerSecretRead,
 } from "./secret_storage";
 import { settleWithinTimeout } from "./promise_utils";
+import { syncVendoredOAuthClient } from "./vendored_oauth_client";
 
 // Connecting without a secret we know exists would talk to the server
 // unauthenticated, so refuse and point at the likely cause.
@@ -37,7 +38,22 @@ type ClientInitialization = {
   promise: Promise<MCPClient>;
 };
 
+export type McpToolSet = Awaited<ReturnType<MCPClient["tools"]>>;
+
 const MCP_CLIENT_DISPOSAL_TIMEOUT_MS = 1_500;
+
+/** Default cap on connecting to one MCP server and listing its tools. */
+export const MCP_LIST_TOOLS_TIMEOUT_MS = 10_000;
+
+export class McpListToolsTimeoutError extends DyadError {
+  constructor(serverId: number, timeoutMs: number) {
+    super(
+      `Timed out after ${timeoutMs / 1000}s waiting for tools from server ${serverId}.`,
+      DyadErrorKind.Precondition,
+    );
+    this.name = "McpListToolsTimeoutError";
+  }
+}
 
 export class McpManager {
   private static _instance: McpManager;
@@ -98,7 +114,57 @@ export class McpManager {
     return initialization.promise;
   }
 
+  /**
+   * Connect (or reuse the cached client) and list the server's tools, giving
+   * up after `timeoutMs` or when `signal` aborts. A server that accepts the
+   * connection but never answers (e.g. a wedged local desktop-app server)
+   * would otherwise block its caller forever.
+   *
+   * Giving up only stops waiting; it deliberately does not dispose the client.
+   * Disposing would kill a slow-starting stdio server (e.g. `npx` on a cold
+   * cache) mid-launch on every turn, and could close a client another chat is
+   * using for an in-flight tool call. A still-pending initialization stays
+   * coalesced, so a later call picks up the client once it finishes; each
+   * call still waits at most `timeoutMs`. Callers that own the server's
+   * lifecycle (settings edits) dispose explicitly.
+   */
+  async listToolsWithin(
+    serverId: number,
+    {
+      timeoutMs = MCP_LIST_TOOLS_TIMEOUT_MS,
+      signal,
+    }: { timeoutMs?: number; signal?: AbortSignal } = {},
+  ): Promise<McpToolSet> {
+    signal?.throwIfAborted();
+    const load = this.getClient(serverId).then((client) => client.tools());
+    // Keep a late rejection after timeout/abort from going unhandled.
+    load.catch(() => undefined);
+
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    let onAbort: (() => void) | undefined;
+    try {
+      return await new Promise<McpToolSet>((resolve, reject) => {
+        timeoutId = setTimeout(
+          () => reject(new McpListToolsTimeoutError(serverId, timeoutMs)),
+          timeoutMs,
+        );
+        if (signal) {
+          onAbort = () => reject(signal.reason);
+          signal.addEventListener("abort", onAbort, { once: true });
+        }
+        load.then(resolve, reject);
+      });
+    } finally {
+      clearTimeout(timeoutId);
+      if (onAbort) signal?.removeEventListener("abort", onAbort);
+    }
+  }
+
   private async createClient(serverId: number): Promise<MCPClient> {
+    // Runs before the row is read so a refreshed client is picked up here,
+    // including on the silent token refresh path. Cached-only: building a
+    // client must not wait on a catalog fetch.
+    await syncVendoredOAuthClient(serverId, { cachedOnly: true });
     const server = await db
       .select()
       .from(mcpServers)

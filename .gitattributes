@@ -1,6 +1,9 @@
 # Set the default behavior, in case people don't have core.autocrlf set.
 * text=auto
 
+# Preserve PDF bytes, including stream lengths and cross-reference offsets.
+*.pdf binary
+
 # Make everything in the e2e-tests/snapshots directory use LF line endings.
 # Otherwise we'll get diffs in the snapshots when running on Windows.
 e2e-tests/snapshots/** text eol=lf
@@ -8,10 +11,6 @@ src/prompts/guides/** text eol=lf
 
 # Guide markdown files are loaded as raw strings and tested with literal \n.
 # Force LF so the tests pass on Windows.
-src/prompts/guides/*.md text eol=lf
-
-# Guide markdown files are imported as raw strings in tests; keep LF so
-# string-literal assertions are not broken by Windows CRLF checkout.
 src/prompts/guides/*.md text eol=lf
 
 # we do NOT want github to automatically collapse the diff because

@@ -13,6 +13,13 @@ export class Plugins {
     await expect(
       this.page.getByRole("dialog", { name: "Add Plugin" }),
     ).toBeVisible();
+    // Base UI autofocus runs after the dialog becomes visible. Starting a
+    // second fill before it settles can send that text into the name field.
+    await expect(
+      this.page
+        .getByRole("dialog", { name: "Add Plugin" })
+        .getByPlaceholder("My MCP Server"),
+    ).toBeFocused();
   }
 
   // The dialog's submit button; the header button that opens the

@@ -17,6 +17,12 @@ export function normalizeChatGPTPlanType(
 ): ChatGPTPlanType | undefined {
   if (typeof value !== "string") return undefined;
   const normalized = value.toLowerCase();
+  if (
+    normalized === "self_serve_business_prolite" ||
+    normalized === "self_serve_business_usage_based"
+  ) {
+    return "business";
+  }
   return Object.hasOwn(CHATGPT_PLAN_LABELS, normalized)
     ? (normalized as ChatGPTPlanType)
     : undefined;
@@ -52,6 +58,7 @@ export function usesChatGPTSubscription(
 ): boolean {
   return Boolean(
     settings.proModelUsage !== "pro" &&
+    settings.proModelUsage !== "api-key" &&
     subscription.connected &&
     model.provider === "openai" &&
     subscription.models.includes(model.name),

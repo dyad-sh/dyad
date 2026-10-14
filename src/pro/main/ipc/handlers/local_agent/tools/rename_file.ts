@@ -16,6 +16,7 @@ import {
 } from "../../../../../../supabase_admin/supabase_utils";
 import { queueCloudSandboxSnapshotSync } from "@/ipc/utils/cloud_sandbox_provider";
 import { getFileWriteKey, withLocks } from "@/ipc/utils/lock_utils";
+import { isSupabaseFunctionSyncDeferred } from "@/supabase_admin/supabase_recording_deferred_sync";
 
 const logger = log.scope("rename_file");
 
@@ -56,17 +57,19 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
       });
       const fromFullPath = safeJoin(ctx.appPath, fromOperationPath);
       const toFullPath = safeJoin(ctx.appPath, toOperationPath);
-      return withLocks(
+      let functionToDelete: string | undefined;
+      let functionToDeploy: string | undefined;
+      const didRename = await withLocks(
         [
           await getFileWriteKey(fromFullPath),
           await getFileWriteKey(toFullPath),
         ],
         async () => {
-          const didRename =
+          const renamed =
             path.normalize(fromFullPath) !== path.normalize(toFullPath) &&
             fs.existsSync(fromFullPath);
 
-          if (didRename) {
+          if (renamed) {
             // Track if this involves shared modules
             if (
               isSharedServerModule(fromOperationPath) ||
@@ -103,7 +106,7 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
               logger.warn(`Failed to git remove old file ${args.from}:`, error);
             }
 
-            // Handle Supabase functions
+            // Supabase side effects run after the file locks are released.
             if (ctx.supabaseProjectId) {
               if (isServerFunction(fromOperationPath)) {
                 const functionName =
@@ -111,18 +114,7 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
                 if (ctx.allowDeploySideEffects === false) {
                   ctx.onDeferredFunctionDelete?.(functionName);
                 } else {
-                  try {
-                    await deleteSupabaseFunction({
-                      supabaseProjectId: ctx.supabaseProjectId,
-                      functionName,
-                      organizationSlug: ctx.supabaseOrganizationSlug ?? null,
-                    });
-                  } catch (error) {
-                    logger.warn(
-                      `Failed to delete old Supabase function: ${args.from}`,
-                      error,
-                    );
-                  }
+                  functionToDelete = functionName;
                 }
               }
               if (isServerFunction(toOperationPath)) {
@@ -131,25 +123,9 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
                 if (ctx.allowDeploySideEffects === false) {
                   ctx.onDeferredFunctionDeploy?.(functionName);
                 } else if (!ctx.isSharedModulesChanged) {
-                  try {
-                    await deploySupabaseFunction({
-                      supabaseProjectId: ctx.supabaseProjectId,
-                      functionName,
-                      appPath: ctx.appPath,
-                      organizationSlug: ctx.supabaseOrganizationSlug ?? null,
-                    });
-                  } catch (error) {
-                    return `File renamed, but failed to deploy Supabase function: ${error}`;
-                  }
+                  functionToDeploy = functionName;
                 } else {
-                  try {
-                    ctx.pendingFunctionDeploys.push(functionName);
-                  } catch (error) {
-                    logger.warn(
-                      `File renamed, but failed to identify Supabase function name: ${args.to}`,
-                      error,
-                    );
-                  }
+                  ctx.pendingFunctionDeploys.push(functionName);
                 }
               }
             }
@@ -159,7 +135,7 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
             );
           }
 
-          if (didRename) {
+          if (renamed) {
             queueCloudSandboxSnapshotSync({
               appId: ctx.appId,
               changedPaths: [toOperationPath],
@@ -167,10 +143,57 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
             });
           }
 
-          return didRename
-            ? `Successfully renamed ${args.from} to ${args.to}`
-            : `Source file ${args.from} did not exist or already matched ${args.to}, so nothing was renamed.`;
+          return renamed;
         },
       );
+
+      if (!didRename) {
+        return `Source file ${args.from} did not exist or already matched ${args.to}, so nothing was renamed.`;
+      }
+
+      // Deployment admission can queue behind another chat's batch upload, so
+      // it must not hold the file locks other writers of these paths need.
+      const successMessage = `Successfully renamed ${args.from} to ${args.to}`;
+      let deferredNote: string | undefined;
+      if (functionToDelete && ctx.supabaseProjectId) {
+        try {
+          await deleteSupabaseFunction({
+            appId: ctx.appId,
+            supabaseProjectId: ctx.supabaseProjectId,
+            functionName: functionToDelete,
+            organizationSlug: ctx.supabaseOrganizationSlug ?? null,
+            signal: ctx.abortSignal,
+          });
+        } catch (error) {
+          if (isSupabaseFunctionSyncDeferred(error)) {
+            deferredNote = error.message;
+          } else {
+            logger.warn(
+              `Failed to delete old Supabase function: ${args.from}`,
+              error,
+            );
+          }
+        }
+      }
+      if (functionToDeploy && ctx.supabaseProjectId) {
+        try {
+          await deploySupabaseFunction({
+            appId: ctx.appId,
+            supabaseProjectId: ctx.supabaseProjectId,
+            functionName: functionToDeploy,
+            appPath: ctx.appPath,
+            organizationSlug: ctx.supabaseOrganizationSlug ?? null,
+            signal: ctx.abortSignal,
+          });
+        } catch (error) {
+          if (!isSupabaseFunctionSyncDeferred(error)) {
+            return `File renamed, but failed to deploy Supabase function: ${error}`;
+          }
+          deferredNote = error.message;
+        }
+      }
+      return deferredNote
+        ? `${successMessage}. ${deferredNote}`
+        : successMessage;
     },
   };

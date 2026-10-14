@@ -17,6 +17,213 @@ function deferred<T = void>() {
 }
 
 describe("AppOperationCoordinator", () => {
+  it("releases preparation claims without releasing deployment or deletion ownership", async () => {
+    const coordinator = new AppOperationCoordinator();
+    const captured = deferred();
+    const upload = deferred();
+    const prepared = deferred();
+    const deploy = coordinator.run(
+      {
+        appId: 1,
+        operation: "deploy",
+        allowCompatibleQueueBypass: true,
+        resources: [
+          readAppResource("app-path"),
+          readAppResource("repository"),
+          "provider",
+          "supabase-functions",
+        ],
+      },
+      async ({ releaseResources }) => {
+        prepared.resolve();
+        await captured.promise;
+        releaseResources(["repository", "provider"]);
+        await upload.promise;
+      },
+    );
+    await prepared.promise;
+    const nextDeploy = vi.fn(async () => {});
+    const queuedDeploy = coordinator.run(
+      {
+        appId: 1,
+        operation: "next deploy",
+        allowCompatibleQueueBypass: true,
+        resources: [
+          readAppResource("app-path"),
+          readAppResource("repository"),
+          "provider",
+          "supabase-functions",
+        ],
+      },
+      nextDeploy,
+    );
+    const build = vi.fn(async () => {});
+    const tests = vi.fn(async () => {});
+    const buildResult = coordinator.run(
+      { appId: 1, operation: "build", resources: ["repository-worktree"] },
+      build,
+    );
+    const testResult = coordinator.run(
+      { appId: 1, operation: "tests", resources: ["provider", "test-files"] },
+      tests,
+    );
+    const deletion = coordinator.beginAppDeletion(1);
+    const drained = vi.fn();
+    const drain = deletion.drain().then(drained);
+    try {
+      expect(build).not.toHaveBeenCalled();
+      expect(tests).not.toHaveBeenCalled();
+      captured.resolve();
+      await Promise.all([buildResult, testResult]);
+      expect(build).toHaveBeenCalledOnce();
+      expect(tests).toHaveBeenCalledOnce();
+      expect(coordinator.isBusy(1, ["supabase-functions"])).toBe(true);
+      expect(nextDeploy).not.toHaveBeenCalled();
+      expect(drained).not.toHaveBeenCalled();
+    } finally {
+      captured.resolve();
+      upload.resolve();
+      await Promise.all([deploy, queuedDeploy, drain]);
+      deletion.release();
+    }
+  });
+
+  it("does not let released domains overtake a queued exclusive revert", async () => {
+    const coordinator = new AppOperationCoordinator();
+    const captured = deferred();
+    const upload = deferred();
+    const deploy = coordinator.run(
+      {
+        appId: 1,
+        operation: "deploy",
+        allowCompatibleQueueBypass: true,
+        resources: [
+          readAppResource("app-path"),
+          readAppResource("repository"),
+          readAppResource("provider"),
+          "supabase-functions",
+        ],
+      },
+      async ({ releaseResources }) => {
+        releaseResources(["repository", "provider"]);
+        captured.resolve();
+        await upload.promise;
+      },
+    );
+    await captured.promise;
+    const order: string[] = [];
+    const revert = coordinator.run(
+      {
+        appId: 1,
+        operation: "revert",
+        resources: [
+          readAppResource("app-path"),
+          "provider",
+          "supabase-functions",
+          "repository",
+        ],
+      },
+      async () => {
+        order.push("revert");
+      },
+    );
+    const checkpoint = coordinator.run(
+      { appId: 1, operation: "checkpoint", resources: ["repository"] },
+      async () => {
+        order.push("checkpoint");
+      },
+    );
+    try {
+      await Promise.resolve();
+      expect(order).toEqual([]);
+    } finally {
+      upload.resolve();
+      await Promise.all([deploy, revert, checkpoint]);
+    }
+    expect(order).toEqual(["revert", "checkpoint"]);
+  });
+
+  it("rejects resource release from a settled operation context", async () => {
+    const coordinator = new AppOperationCoordinator();
+    let release!: () => void;
+    await coordinator.run(
+      { appId: 1, operation: "capture", resources: ["repository"] },
+      async (context) => {
+        release = () => context.releaseResources(["repository"]);
+      },
+    );
+    expect(release).toThrow("App operation already settled");
+  });
+
+  it("detaches abort listeners when a safety fence rejects queued work", async () => {
+    const coordinator = new AppOperationCoordinator();
+    const release = deferred();
+    const controller = new AbortController();
+    const detach = vi.spyOn(controller.signal, "removeEventListener");
+    const active = coordinator.run(
+      { appId: 1, operation: "active", resources: ["runtime"] },
+      () => release.promise,
+    );
+    const execute = vi.fn(async () => {});
+    const queued = coordinator.run(
+      {
+        appId: 1,
+        operation: "queued",
+        resources: ["runtime"],
+        signal: controller.signal,
+      },
+      execute,
+    );
+    const unblock = coordinator.blockConflictingOperations(
+      { appId: 1, operation: "unsafe-cleanup", resources: ["runtime"] },
+      "Recovery required",
+    );
+    try {
+      await expect(queued).rejects.toThrow("Recovery required");
+      expect(detach).toHaveBeenCalledWith("abort", expect.any(Function));
+      controller.abort();
+    } finally {
+      release.resolve();
+      await active;
+      unblock();
+    }
+    expect(execute).not.toHaveBeenCalled();
+  });
+  it("cancels queued admission without releasing an active operation's resources", async () => {
+    const coordinator = new AppOperationCoordinator();
+    const release = deferred();
+    const controller = new AbortController();
+    const active = coordinator.run(
+      { appId: 1, operation: "active", resources: ["runtime"] },
+      () => release.promise,
+    );
+    const execute = vi.fn(async () => {});
+    const queued = coordinator.run(
+      {
+        appId: 1,
+        operation: "queued",
+        resources: ["runtime"],
+        signal: controller.signal,
+      },
+      execute,
+    );
+    controller.abort();
+    await expect(queued).rejects.toMatchObject({
+      kind: DyadErrorKind.UserCancelled,
+    });
+    expect(execute).not.toHaveBeenCalled();
+    expect(coordinator.isBusy(1, ["runtime"])).toBe(true);
+    const deletion = coordinator.beginAppDeletion(1);
+    const drained = vi.fn();
+    const drain = deletion.drain().then(drained);
+    await Promise.resolve();
+    expect(drained).not.toHaveBeenCalled();
+    release.resolve();
+    await Promise.all([active, drain]);
+    expect(execute).not.toHaveBeenCalled();
+    expect(drained).toHaveBeenCalledOnce();
+    deletion.release();
+  });
   it("runs unrelated resources concurrently while serializing conflicts", async () => {
     const coordinator = new AppOperationCoordinator();
     const runtimeRelease = deferred();
@@ -399,6 +606,142 @@ describe("AppOperationCoordinator", () => {
         async () => "ok",
       ),
     ).resolves.toBe("ok");
+  });
+
+  it("rejects queued and new conflicts after unsafe cleanup without blocking unrelated work", async () => {
+    const coordinator = new AppOperationCoordinator();
+    const finish = deferred();
+    const request = {
+      appId: 1,
+      operation: "tests",
+      resources: [readAppResource("app-path"), "provider", "repository"],
+    } as const;
+    let recover!: () => void;
+    const active = coordinator.run(request, async () => {
+      await finish.promise;
+      recover = coordinator.blockConflictingOperations(
+        request,
+        "Stop the remaining processes",
+      );
+    });
+    const queuedCallback = vi.fn();
+    const queued = coordinator.run(
+      { appId: 1, operation: "disconnect", resources: ["provider"] },
+      queuedCallback,
+    );
+    const rejected = expect(queued).rejects.toMatchObject({
+      kind: DyadErrorKind.Precondition,
+      message: "Stop the remaining processes",
+    });
+
+    finish.resolve();
+    await Promise.all([active, rejected]);
+    expect(queuedCallback).not.toHaveBeenCalled();
+    expect(coordinator.isBusy(1, ["provider"])).toBe(true);
+
+    for (const resource of [
+      "provider",
+      "repository-ref",
+      "repository-worktree",
+      "app-path",
+    ] as const) {
+      const callback = vi.fn();
+      await expect(
+        coordinator.run(
+          { appId: 1, operation: "later", resources: [resource] },
+          callback,
+        ),
+      ).rejects.toMatchObject({ kind: DyadErrorKind.Precondition });
+      expect(callback).not.toHaveBeenCalled();
+    }
+    await expect(
+      coordinator.run(
+        {
+          appId: 1,
+          operation: "read-path",
+          resources: [readAppResource("app-path")],
+        },
+        async () => "ok",
+      ),
+    ).resolves.toBe("ok");
+    await expect(
+      coordinator.run(
+        { appId: 1, operation: "chat", resources: ["chat-membership"] },
+        async () => "ok",
+      ),
+    ).resolves.toBe("ok");
+    await expect(
+      coordinator.run({ ...request, appId: 2 }, async () => "ok"),
+    ).resolves.toBe("ok");
+    expect(() => coordinator.beginAppDeletion(1)).toThrow(
+      "Stop the remaining processes",
+    );
+
+    recover();
+    recover();
+    expect(coordinator.isBusy(1, ["provider"])).toBe(false);
+    await expect(
+      coordinator.run(request, async () => "recovered"),
+    ).resolves.toBe("recovered");
+  });
+
+  it("refuses deletion when an admitted operation fails cleanup during the drain", async () => {
+    const coordinator = new AppOperationCoordinator();
+    const finish = deferred();
+    const request = {
+      appId: 1,
+      operation: "tests",
+      resources: ["provider"],
+    } as const;
+    const active = coordinator.run(request, async () => {
+      await finish.promise;
+      coordinator.blockConflictingOperations(request, "Shutdown unconfirmed");
+    });
+    const deletion = coordinator.beginAppDeletion(1);
+    const rejectedDrain = expect(deletion.drain()).rejects.toThrow(
+      "Shutdown unconfirmed",
+    );
+
+    finish.resolve();
+    await Promise.all([active, rejectedDrain]);
+    const removeApp = vi.fn();
+    await expect(deletion.runExclusive(removeApp)).rejects.toThrow(
+      "Shutdown unconfirmed",
+    );
+    expect(removeApp).not.toHaveBeenCalled();
+    expect(() => coordinator.beginAppDeletion(1)).toThrow(
+      AppDeletionInProgressError,
+    );
+    deletion.release();
+    expect(() => coordinator.beginAppDeletion(1)).toThrow(
+      "Shutdown unconfirmed",
+    );
+  });
+
+  it("releases only its own block after recovery", async () => {
+    const coordinator = new AppOperationCoordinator();
+    const request = {
+      appId: 1,
+      operation: "tests",
+      resources: ["provider"],
+    } as const;
+    const first = coordinator.blockConflictingOperations(
+      request,
+      "First failure",
+    );
+    const second = coordinator.blockConflictingOperations(
+      request,
+      "Second failure",
+    );
+    first();
+    first();
+    await expect(
+      coordinator.run(request, async () => undefined),
+    ).rejects.toThrow("Second failure");
+    second();
+    await expect(coordinator.run(request, async () => "ok")).resolves.toBe(
+      "ok",
+    );
   });
 
   it("rejects overlapping deletion-exclusive operations", async () => {

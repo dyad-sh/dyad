@@ -52,7 +52,10 @@ vi.mock("@/ipc/processors/tsc", async (importOriginal) => {
 vi.mock("@/ipc/processors/supabase_dependency_analysis", () => ({
   runSupabaseDependencyAnalysis: async () => ({
     kind: "all" as const,
-    reason: "hybrid_test_worker_unavailable",
+    reason: {
+      code: "dependency_analysis_failed" as const,
+      detail: "hybrid test worker unavailable",
+    },
   }),
 }));
 

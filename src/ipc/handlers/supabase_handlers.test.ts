@@ -1,5 +1,6 @@
 import path from "node:path";
 import os from "node:os";
+import fs from "node:fs/promises";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -8,8 +9,10 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { SUPABASE_PROJECT_CREATED_BUT_UNLINKED } from "@/ipc/types";
 import { queryInvalidationBus } from "@/window_infrastructure/main/query_invalidation_bus";
 import { activeRecordings } from "@/ipc/services/recording_registry";
+import { appOperationCoordinator } from "@/ipc/services/app_operation_coordinator";
 import { SupabaseManagementAPIError } from "@dyad-sh/supabase-management-js";
 import { RateLimitError } from "@/ipc/utils/retryWithRateLimit";
+import { runningApps } from "@/ipc/utils/process_manager";
 import {
   type HandlerTestHarness,
   setupHandlerTestHarness,
@@ -19,6 +22,11 @@ const mocks = vi.hoisted(() => ({
   deployAllSupabaseFunctions: vi.fn(),
   readSettings: vi.fn(),
   createSupabaseProject: vi.fn(),
+  ensureSupabaseAuthRedirectUrls: vi.fn(),
+  getProjectApiKeys: vi.fn(),
+  executeExternalLifecycle: vi.fn(),
+  syncCloudSandboxSnapshot: vi.fn(),
+  appRoot: "",
 }));
 
 vi.mock("electron", () => ({
@@ -33,7 +41,21 @@ vi.mock("electron", () => ({
 
 vi.mock("@/paths/paths", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/paths/paths")>()),
-  getDyadAppPath: (appPath: string) => `/apps/${appPath}`,
+  getDyadAppPath: (appPath: string) => path.join(mocks.appRoot, appPath),
+}));
+
+vi.mock("@/ipc/utils/cloud_sandbox_provider", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@/ipc/utils/cloud_sandbox_provider")
+  >()),
+  queueCloudSandboxSnapshotSync: vi.fn(),
+  syncCloudSandboxSnapshot: mocks.syncCloudSandboxSnapshot,
+}));
+
+vi.mock("@/ipc/services/app_run_actor_service", () => ({
+  appRunActorService: {
+    executeExternalLifecycle: mocks.executeExternalLifecycle,
+  },
 }));
 
 vi.mock("@/main/settings", async (importOriginal) => ({
@@ -54,28 +76,58 @@ vi.mock(
       typeof import("@/supabase_admin/supabase_management_client")
     >()),
     createSupabaseProject: mocks.createSupabaseProject,
+    ensureSupabaseAuthRedirectUrls: mocks.ensureSupabaseAuthRedirectUrls,
+    getProjectApiKeys: mocks.getProjectApiKeys,
   }),
 );
 
 const { registerSupabaseHandlers, unlinkedProjectsByApp } =
   await import("./supabase_handlers");
+const { registerAppEnvVarsHandlers } = await import("./app_env_vars_handlers");
 
 describe("Supabase handlers", () => {
   let harness: HandlerTestHarness;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
     activeRecordings.clear();
+    runningApps.clear();
+    mocks.appRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "dyad-supabase-handlers-"),
+    );
+    for (const name of ["app", "old-app", "my-app"]) {
+      await fs.mkdir(path.join(mocks.appRoot, name));
+    }
+    mocks.getProjectApiKeys
+      .mockReset()
+      .mockImplementation(async ({ projectId }) => [
+        { name: "default", type: "secret", api_key: `sb_secret_${projectId}` },
+      ]);
+    mocks.executeExternalLifecycle.mockReset().mockResolvedValue(undefined);
+    mocks.syncCloudSandboxSnapshot.mockReset().mockResolvedValue(undefined);
+    mocks.ensureSupabaseAuthRedirectUrls
+      .mockReset()
+      .mockResolvedValue(undefined);
     // Process-lifetime state, so without this a stranded project recorded by
     // one test refuses the next test's create.
     unlinkedProjectsByApp.clear();
     harness = setupHandlerTestHarness();
+    mocks.readSettings.mockReturnValue(harness.readSettings());
     registerSupabaseHandlers();
+    registerAppEnvVarsHandlers();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     activeRecordings.clear();
+    await Promise.all(
+      [...runningApps.values()].map((info) => {
+        info.proxyAbortController?.abort();
+        return info.previewAuthRegistration?.settled;
+      }),
+    );
+    runningApps.clear();
     harness?.dispose();
+    await fs.rm(mocks.appRoot, { recursive: true, force: true, maxRetries: 3 });
   });
 
   describe("app recording admission", () => {
@@ -95,6 +147,11 @@ describe("Supabase handlers", () => {
       ],
       ["removing a project", "supabase:unset-app-project", { app: 7 }],
       [
+        "editing environment variables",
+        "set-app-env-vars",
+        { appId: 7, envVars: [] },
+      ],
+      [
         "switching to a publishable key",
         "supabase:switch-app-to-publishable-key",
         { appId: 7 },
@@ -106,6 +163,151 @@ describe("Supabase handlers", () => {
         },
       );
     });
+  });
+
+  it("registers an existing preview when connecting and switching Supabase projects", async () => {
+    harness.db
+      .insert(apps)
+      .values({ id: 7, name: "Old App", path: "old-app" })
+      .run();
+    runningApps.set(7, {
+      process: null,
+      processId: 1,
+      mode: "host",
+      lastViewedAt: 0,
+      proxyUrl: "http://app-7.localhost:42999",
+    });
+    for (const projectId of ["project-1", "branch-ref"]) {
+      await harness.invokeHandler("supabase:set-app-project", {
+        appId: 7,
+        projectId,
+        organizationSlug: "org-1",
+      });
+      expect(mocks.ensureSupabaseAuthRedirectUrls).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          projectId,
+          organizationSlug: "org-1",
+          redirectUrls: [
+            "http://app-7.localhost:42999",
+            "http://app-7.localhost:42999/**",
+          ],
+        }),
+      );
+    }
+    await harness.invokeHandler("supabase:unset-app-project", { app: 7 });
+    expect(mocks.ensureSupabaseAuthRedirectUrls).toHaveBeenCalledTimes(2);
+    await expect(
+      fs.readFile(path.join(mocks.appRoot, "old-app", ".env.local"), "utf8"),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+    expect(mocks.getProjectApiKeys).not.toHaveBeenCalled();
+    expect(mocks.executeExternalLifecycle).not.toHaveBeenCalled();
+  });
+
+  it.each(["unset", "nullable association"])(
+    "connects without waiting for registration and cancels it on disconnect through %s",
+    async (disconnect) => {
+      harness.db.insert(apps).values({ id: 7, name: "App", path: "app" }).run();
+      const send = vi.fn();
+      runningApps.set(7, {
+        process: null,
+        processId: 1,
+        mode: "host",
+        lastViewedAt: 0,
+        proxyUrl: "http://app-7.localhost:42999",
+        originalUrl: "http://localhost:32107",
+        output: { send, enqueue: send, flush: vi.fn() },
+      });
+      mocks.ensureSupabaseAuthRedirectUrls.mockReturnValueOnce(
+        new Promise(() => {}),
+      );
+      await harness.invokeHandler("supabase:set-app-project", {
+        appId: 7,
+        projectId: "project",
+        organizationSlug: "org",
+      });
+      expect(send).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          previewAuth: { provider: "supabase", state: "pending" },
+        }),
+      );
+      await vi.waitFor(() =>
+        expect(mocks.ensureSupabaseAuthRedirectUrls).toHaveBeenCalledOnce(),
+      );
+      const signal =
+        mocks.ensureSupabaseAuthRedirectUrls.mock.calls[0][0].signal;
+      if (disconnect === "unset") {
+        await harness.invokeHandler("supabase:unset-app-project", { app: 7 });
+      } else {
+        await harness.invokeHandler("supabase:set-app-project", {
+          appId: 7,
+          projectId: null,
+          organizationSlug: null,
+        });
+      }
+      expect(signal.aborted).toBe(true);
+      expect(runningApps.get(7)?.previewAuthRegistration).toBeUndefined();
+      expect(send).toHaveBeenLastCalledWith(
+        expect.objectContaining({ previewAuth: undefined }),
+      );
+    },
+  );
+
+  describe("Supabase project associations preserve app environment files", () => {
+    const envPath = () => path.join(mocks.appRoot, "app", ".env.local");
+    const originalEnv = "KEEP=yes\nVITE_SUPABASE_ANON_KEY=public-key\n";
+    const originalIgnore = "node_modules\n.env.local\n";
+    beforeEach(async () => {
+      harness.db
+        .insert(apps)
+        .values({
+          id: 7,
+          name: "App",
+          path: "app",
+          supabaseProjectId: "previous-project",
+        })
+        .run();
+      await fs.writeFile(envPath(), originalEnv);
+      await fs.writeFile(
+        path.join(mocks.appRoot, "app", ".gitignore"),
+        originalIgnore,
+      );
+    });
+
+    it.each(["host", "cloud"] as const)(
+      "switches and disconnects a %s app without fetching secrets or restarting it",
+      async (mode) => {
+        runningApps.set(7, {
+          process: null,
+          processId: 1,
+          mode,
+          lastViewedAt: 0,
+        });
+        mocks.getProjectApiKeys.mockRejectedValue(new Error("offline"));
+        for (const projectId of ["next-project", null]) {
+          await harness.invokeHandler("supabase:set-app-project", {
+            appId: 7,
+            projectId,
+            organizationSlug: projectId ? "org" : null,
+          });
+          expect(
+            (await harness.db.query.apps.findFirst({ where: eq(apps.id, 7) }))
+              ?.supabaseProjectId,
+          ).toBe(projectId);
+          expect(await fs.readFile(envPath(), "utf8")).toBe(originalEnv);
+        }
+        await harness.invokeHandler("supabase:unset-app-project", { app: 7 });
+        expect(await fs.readFile(envPath(), "utf8")).toBe(originalEnv);
+        expect(
+          await fs.readFile(
+            path.join(mocks.appRoot, "app", ".gitignore"),
+            "utf8",
+          ),
+        ).toBe(originalIgnore);
+        expect(mocks.getProjectApiKeys).not.toHaveBeenCalled();
+        expect(mocks.executeExternalLifecycle).not.toHaveBeenCalled();
+        expect(mocks.syncCloudSandboxSnapshot).not.toHaveBeenCalled();
+      },
+    );
   });
 
   describe("supabase:redeploy-all-functions", () => {
@@ -165,7 +367,7 @@ describe("Supabase handlers", () => {
 
       expect(mocks.deployAllSupabaseFunctions).toHaveBeenCalledWith(
         expect.objectContaining({
-          appPath: "/apps/my-app",
+          appPath: path.join(mocks.appRoot, "my-app"),
           supabaseProjectId: "project-1",
           supabaseOrganizationSlug: "org-1",
           skipPruneEdgeFunctions: true,
@@ -180,6 +382,70 @@ describe("Supabase handlers", () => {
           total: 2,
         }),
       );
+    });
+
+    it("admits builds, checkpoints and tests during upload but drains before disconnect", async () => {
+      let finishUpload!: () => void;
+      let captured!: () => void;
+      const snapshotCaptured = new Promise<void>((resolve) => {
+        captured = resolve;
+      });
+      mocks.deployAllSupabaseFunctions.mockImplementationOnce(
+        async ({ onSnapshotCaptured }) => {
+          await onSnapshotCaptured();
+          captured();
+          await new Promise<void>((resolve) => {
+            finishUpload = resolve;
+          });
+          return [];
+        },
+      );
+      const deploy = harness.invokeHandler("supabase:redeploy-all-functions", {
+        appId: 7,
+        operationId: "concurrent",
+      });
+      await snapshotCaptured;
+      try {
+        await Promise.all([
+          appOperationCoordinator.run(
+            {
+              appId: 7,
+              operation: "build",
+              resources: ["repository-worktree"],
+            },
+            async () => {},
+          ),
+          appOperationCoordinator.run(
+            { appId: 7, operation: "checkpoint", resources: ["repository"] },
+            async () => {},
+          ),
+          appOperationCoordinator.run(
+            {
+              appId: 7,
+              operation: "tests",
+              resources: ["provider", "test-files"],
+            },
+            async () => {},
+          ),
+        ]);
+        const disconnect = harness.invokeHandler("supabase:unset-app-project", {
+          app: 7,
+        });
+        await Promise.resolve();
+        expect(
+          harness.db.query.apps.findFirst({ where: eq(apps.id, 7) }).sync()
+            ?.supabaseProjectId,
+        ).toBe("project-1");
+        finishUpload();
+        await Promise.all([deploy, disconnect]);
+        expect(
+          harness.db.query.apps.findFirst({ where: eq(apps.id, 7) }).sync()
+            ?.supabaseProjectId,
+        ).toBeNull();
+      } finally {
+        finishUpload();
+        await deploy;
+      }
     });
 
     it("rejects an app without a connected Supabase project", async () => {
@@ -237,6 +503,13 @@ describe("Supabase handlers", () => {
 
     it("creates the project and links the app to it in one call", async () => {
       insertApp();
+      runningApps.set(7, {
+        process: null,
+        processId: 1,
+        mode: "host",
+        lastViewedAt: 0,
+        proxyUrl: "http://app-7.localhost:42107",
+      });
 
       await expect(
         harness.invokeHandler("supabase:create-project", INPUT),
@@ -252,6 +525,20 @@ describe("Supabase handlers", () => {
         supabaseOrganizationSlug: "org-1",
         supabaseParentProjectId: null,
       });
+      await expect(
+        fs.readFile(path.join(mocks.appRoot, "my-app", ".env.local"), "utf8"),
+      ).rejects.toMatchObject({ code: "ENOENT" });
+      expect(mocks.getProjectApiKeys).not.toHaveBeenCalled();
+      expect(mocks.executeExternalLifecycle).not.toHaveBeenCalled();
+      expect(mocks.ensureSupabaseAuthRedirectUrls).toHaveBeenCalledWith(
+        expect.objectContaining({
+          projectId: "proj-new",
+          redirectUrls: [
+            "http://app-7.localhost:42107",
+            "http://app-7.localhost:42107/**",
+          ],
+        }),
+      );
     });
 
     // The renderer's disabled-button guard reads a React Query pending flag

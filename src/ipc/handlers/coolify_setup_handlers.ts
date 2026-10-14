@@ -11,6 +11,7 @@ import type { SetupServer, SetupSnapshot } from "../types/coolify_setup";
 import { safeSend } from "../utils/safe_sender";
 import { readSettings, writeSettings } from "@/main/settings";
 import type { Coolify } from "@/lib/schemas";
+import { coolifyDeployRegistry } from "@/coolify_deploy/controller";
 import {
   SshError,
   connectSsh,
@@ -293,6 +294,14 @@ function setupController(): CoolifySetupController {
           // it only when a token was also minted discards the password in the
           // one case the user needs it — where they must sign in to Coolify and
           // make a token by hand, which is what the token failing means.
+          //
+          // Whether this write points Dyad at a new instance. The address and
+          // token go together only on the secure path, so only that path can
+          // move the host — and only a move is the reason to stop what is
+          // running, mirroring `coolify:save-token`. Read before the write,
+          // since the write is what changes it.
+          const wroteNewInstance = Boolean(result.token) && result.secure;
+          const previousInstanceUrl = readSettings().coolify?.instanceUrl;
           try {
             writeSettings({
               coolify: {
@@ -322,6 +331,18 @@ function setupController(): CoolifySetupController {
                   : {}),
               },
             });
+            // Anything running is still talking to the old instance with a
+            // token that may no longer be for it, so that does stop. The same
+            // side effect `coolify:save-token` makes on a host-move, for the
+            // same reason: a deploy captures its client at start and would
+            // otherwise keep polling the abandoned instance.
+            if (
+              wroteNewInstance &&
+              previousInstanceUrl &&
+              previousInstanceUrl !== result.dashboardUrl
+            ) {
+              coolifyDeployRegistry.cancelAll();
+            }
             // Nothing has agreed to this yet, so it waits where a restart
             // loses it rather than where a restart finds it.
             heldInsecureToken =
@@ -658,6 +679,10 @@ export function registerCoolifySetupHandlers() {
     // where a run ended on an address that is not encrypted, and a run that
     // ended any other way stored its token itself.
     if (!heldInsecureToken) return;
+    // Read before the write, since the write is what moves the host. The
+    // same host-move guard `coolify:save-token` makes: a token accepted
+    // for a different instance stops anything still polling the old one.
+    const previous = readSettings().coolify?.instanceUrl;
     writeSettings({
       coolify: {
         ...readSettings().coolify,
@@ -665,6 +690,9 @@ export function registerCoolifySetupHandlers() {
         accessToken: { value: heldInsecureToken.token },
       },
     });
+    if (previous && previous !== heldInsecureToken.instanceUrl) {
+      coolifyDeployRegistry.cancelAll();
+    }
     heldInsecureToken = null;
   });
 

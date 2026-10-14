@@ -262,7 +262,7 @@ export function registerSupabaseHandlers() {
     supabaseContracts.createProject,
     createAppOperationHandler(
       "create-supabase-project",
-      ["provider"],
+      ["provider", "supabase-functions"],
       async (event, params) => {
         const { appId, name, organizationSlug, region } = params;
         // Fail before creating, rather than orphaning a project the user then
@@ -374,6 +374,10 @@ export function registerSupabaseHandlers() {
           throw unlinked;
         }
 
+        const { reconcileRunningSupabasePreview } =
+          await import("../services/app_runtime_service");
+        await reconcileRunningSupabasePreview(appId);
+
         logger.info(
           `Created Supabase project ${project.id} (${project.status}) and associated it with app ${appId}`,
         );
@@ -445,7 +449,7 @@ export function registerSupabaseHandlers() {
     supabaseContracts.setAppProject,
     createAppOperationHandler(
       "set-supabase-project",
-      ["provider"],
+      ["provider", "supabase-functions"],
       async (_, params) => {
         const { projectId, appId, parentProjectId, organizationSlug } = params;
         await assertNoNeonProject(appId);
@@ -463,6 +467,9 @@ export function registerSupabaseHandlers() {
         if (projectId) {
           unlinkedProjectsByApp.delete(appId);
         }
+        const { reconcileRunningSupabasePreview } =
+          await import("../services/app_runtime_service");
+        await reconcileRunningSupabasePreview(appId);
 
         logger.info(
           `Associated app ${appId} with Supabase project ${projectId} (organization: ${organizationSlug})${parentProjectId ? ` and parent project ${parentProjectId}` : ""}`,
@@ -484,7 +491,7 @@ export function registerSupabaseHandlers() {
       {
         appId: app,
         operation: "unset-supabase-project",
-        resources: ["provider"],
+        resources: ["provider", "supabase-functions"],
         // Same reason as the connect above: a recording holds `provider` for
         // its whole session, so this would queue invisibly behind it.
         refuseWhenRecording: "disconnect this app's Supabase project",
@@ -498,6 +505,10 @@ export function registerSupabaseHandlers() {
             supabaseOrganizationSlug: null,
           })
           .where(eq(apps.id, app));
+
+        const { reconcileRunningSupabasePreview } =
+          await import("../services/app_runtime_service");
+        await reconcileRunningSupabasePreview(app);
 
         logger.info(`Removed Supabase project association for app ${app}`);
       },
@@ -588,8 +599,13 @@ export function registerSupabaseHandlers() {
     supabaseContracts.redeployAllFunctions,
     createAppOperationHandler(
       "redeploy-all-supabase-functions",
-      [readAppResource("app-path"), "provider", readAppResource("repository")],
-      async (event, { appId, operationId }) => {
+      [
+        readAppResource("app-path"),
+        "provider",
+        readAppResource("repository"),
+        "supabase-functions",
+      ],
+      async (event, { appId, operationId }, operation) => {
         const app = await db.query.apps.findFirst({
           where: eq(apps.id, appId),
         });
@@ -613,6 +629,8 @@ export function registerSupabaseHandlers() {
           supabaseProjectId: app.supabaseProjectId,
           supabaseOrganizationSlug: app.supabaseOrganizationSlug ?? null,
           skipPruneEdgeFunctions: settings.skipPruneEdgeFunctions ?? false,
+          onSnapshotCaptured: () =>
+            operation.releaseResources(["repository", "provider"]),
           onSummary: (nextSummary) => {
             summary = nextSummary;
           },
@@ -627,6 +645,8 @@ export function registerSupabaseHandlers() {
 
         return { ...summary, errors };
       },
+      "deploy Supabase functions",
+      { allowCompatibleQueueBypass: true },
     ),
   );
 
@@ -643,29 +663,35 @@ export function registerSupabaseHandlers() {
       // which fails with fake tokens, causing credentials to be stored in legacy format
       // Run the write through the connection flow machine so an active flow
       // (started by the connector's Connect click) advances just like a real
-      // dyad://supabase-oauth-return deep link would.
-      const outcome = await runOAuthReturnExchange("supabase", () => {
-        const settings = readSettings();
-        const existingOrgs = settings.supabase?.organizations ?? {};
-        writeSettings({
-          supabase: {
-            ...settings.supabase,
-            organizations: {
-              ...existingOrgs,
-              [fakeOrgId]: {
-                accessToken: {
-                  value: "fake-access-token",
+      // dyad://supabase-oauth-return deep link would. Integration tests call
+      // this without starting a flow, so this trusted test-only producer may
+      // still write when nothing is awaiting a return.
+      const outcome = await runOAuthReturnExchange(
+        "supabase",
+        () => {
+          const settings = readSettings();
+          const existingOrgs = settings.supabase?.organizations ?? {};
+          writeSettings({
+            supabase: {
+              ...settings.supabase,
+              organizations: {
+                ...existingOrgs,
+                [fakeOrgId]: {
+                  accessToken: {
+                    value: "fake-access-token",
+                  },
+                  refreshToken: {
+                    value: "fake-refresh-token",
+                  },
+                  expiresIn: 3600,
+                  tokenTimestamp: Math.floor(Date.now() / 1000),
                 },
-                refreshToken: {
-                  value: "fake-refresh-token",
-                },
-                expiresIn: 3600,
-                tokenTimestamp: Math.floor(Date.now() / 1000),
               },
             },
-          },
-        });
-      });
+          });
+        },
+        { allowUnclaimedExchange: true },
+      );
       if (!outcome.ok && !outcome.claimed) {
         throw outcome.error;
       }

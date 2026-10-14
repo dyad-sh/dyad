@@ -23,7 +23,7 @@ vi.mock("../services/codex_subscription_auth", () => ({
   }),
 }));
 vi.mock("electron-log", () => ({
-  default: { scope: () => ({ warn: mocks.warn }) },
+  default: { scope: () => ({ info: vi.fn(), warn: mocks.warn }) },
 }));
 import { createCodexSubscriptionModel } from "./codex_subscription_provider";
 import { DyadErrorKind } from "@/errors/dyad_error";

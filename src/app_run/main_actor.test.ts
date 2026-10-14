@@ -225,6 +225,40 @@ describe("main-hosted app-run actor", () => {
     expect(actorB.getSnapshot()).toStrictEqual(actorA.getSnapshot());
     expect(runtime.start).toHaveBeenCalledTimes(1);
 
+    // Background auth progress must reach both windows without remounting the
+    // preview. applyUrl increments this epoch just like an explicit reload.
+    for (const previewAuth of [
+      { provider: "neon", state: "pending" } as const,
+      {
+        provider: "neon",
+        state: "error",
+        message: "Restart and retry",
+      } as const,
+      undefined,
+    ]) {
+      host.ensure(appRunDefinition, appRunKey(7)).send({
+        type: "PROXY_READY",
+        invocationRef: {
+          kind: "app-run",
+          entityKey: 7,
+          operationId: "start-a",
+        },
+        url: {
+          appUrl: "http://localhost:3210",
+          originalUrl: "http://localhost:5173",
+          mode: "host",
+          previewAuth,
+        },
+      });
+      await flush();
+      expect(actorA.getSnapshot()).toMatchObject({
+        phase: "ready",
+        previewReloadEpoch: 1,
+        url: { previewAuth },
+      });
+      expect(actorB.getSnapshot()).toStrictEqual(actorA.getSnapshot());
+    }
+
     const ensureRunning = await actorB.dispatch({
       type: "START",
       operationId: "ensure-running",

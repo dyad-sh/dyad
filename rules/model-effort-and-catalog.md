@@ -15,6 +15,11 @@ requested about 1055390 tokens`. Keep catalog output limits well under the
   large `write_file` truncates, the agent re-reads and retries, responses of
   exactly 4096 completion tokens. OpenAI-compatible paths send no default and
   are not affected.
+- **When changing a fixed internal model, synchronize both remote catalogs
+  before shipping:** the production catalog and
+  `testing/fake-llm-server/index.ts`. A successful remote fetch bypasses
+  `MODEL_OPTIONS`, so persona preflight rejects a model that exists only in the
+  app fallback catalog and E2E Explorer/Implementer spawns fail immediately.
 - **Effort is provider-specific on the engine (LiteLLM) path**, see
   `src/ipc/utils/thinking_utils.ts`: OpenAI gets `reasoning.effort`
   (`/responses`), Anthropic gets `output_config.effort` + adaptive thinking,
@@ -30,3 +35,35 @@ requested about 1055390 tokens`. Keep catalog output limits well under the
   and `gpt-6-astra` rejects `max_tokens` entirely (`Use
 'max_completion_tokens' instead`). Use ≥16 tokens and try both parameter
   names before concluding a model name is invalid.
+- **ChatGPT subscription model visibility depends on Codex `client_version`.**
+  The signed-in `/backend-api/codex/models` endpoint rejects a request without
+  it (HTTP 400). For the same account, `0.154.0` omitted GPT-6 Sol while
+  `0.155.1` included it; compare versions with one account before changing the
+  remote catalog's `codexClientVersion`.
+- **Keep a last known good Codex client version across Dyad catalog outages.**
+  Falling back to a pinned version after a failed catalog refresh can invalidate
+  a healthy ChatGPT model list and hide subscription models until recovery.
+- **Do not serialize two ChatGPT model requests on a subscription send.** If
+  the remote version changes during an in-flight lookup, return its successful
+  result and refresh in the background; check other suites' catalog mocks when
+  adding new imports to `codex_subscription_account.ts`.
+- **A background account-model refresh must invalidate the subscription picker
+  query when the list changes.** Its normal idle polling interval is 30 minutes.
+  If ChatGPT rejects a published client version with HTTP 400, retry the pinned
+  version once; do not double-request on auth or transient network failures.
+- **Anthropic preserved thinking requires the beta header and wire option together:**
+  `thinking-binding-controls-2026-08-01` plus
+  `thinking.block_binding.prefix_mismatch_behavior: "drop_block"`. The pinned
+  AI SDK omits these controls/diagnostics; use the shared fetch wrapper after
+  serialization and inspect `input_transformations` on SSE `message_start`
+  (and fallback `message_delta`), not only parsed SDK metadata.
+- **A mode switch does not permanently disable new thinking.** Live Opus 5.5
+  requests through the Engine dropped old-prefix blocks but retained blocks
+  produced under the new prefix on later append-only turns. Check dropped
+  **paths**, not just a nonzero drop count; old blocks may be dropped repeatedly.
+- **Auto entries can be engine-only products, not provider model aliases.**
+  When adding a direct-inference source, hide and reject engine-only choices
+  (such as Super Value); never let them fall through generic premium Auto aliases.
+- **BYO applies to main-chat inference, not Pro auxiliary tasks.** Keep fixed
+  helper/persona models and route Pro BYO helpers through the engine using a
+  request-only settings snapshot; never require another provider key or mutate the main-chat source.

@@ -89,14 +89,17 @@ export function AgentConsentBanner({
         <div className="flex items-center gap-2 mb-1">
           <Bot className="w-4 h-4 text-muted-foreground flex-shrink-0" />
           <span className="text-sm font-medium">
-            Allow <span className="font-mono">{toolName}</span>
+            {consent.confirmation === "shell-review-retry"
+              ? "Retry safety review for"
+              : "Allow"}{" "}
+            <span className="font-mono">{toolName}</span>
             {serverName && (
               <>
                 {" "}
                 from <span className="font-mono">{serverName}</span>
               </>
             )}{" "}
-            to run?
+            {consent.confirmation === "shell-review-retry" ? "?" : "to run?"}
             {queueTotal > 1 && (
               <span className="ml-1.5 text-xs text-muted-foreground font-normal">
                 (1 of {queueTotal})
@@ -131,7 +134,14 @@ export function AgentConsentBanner({
             </span>
           </p>
         )}
-        {classifierPending ? (
+        {consent.confirmation === "shell-review-retry" ? (
+          <div className="ml-6 mb-1.5 rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground">
+            <div className="font-medium">{t("safetyReviewUnavailable")}</div>
+            <div className="mt-0.5 whitespace-pre-wrap break-words">
+              {toolDescription}
+            </div>
+          </div>
+        ) : classifierPending ? (
           <div
             className="ml-6 mb-1.5 flex items-center gap-1.5 text-xs text-muted-foreground"
             role="status"
@@ -194,15 +204,17 @@ export function AgentConsentBanner({
           </div>
         )}
         <div className="flex items-center gap-2 ml-6">
-          <Button
-            onClick={() => onDecision("accept-always")}
-            size="sm"
-            variant="outline"
-            className="h-7 px-3 text-xs"
-          >
-            <ShieldCheck className="w-3.5 h-3.5 mr-1" />
-            Always allow
-          </Button>
+          {consent.allowAlways !== false && (
+            <Button
+              onClick={() => onDecision("accept-always")}
+              size="sm"
+              variant="outline"
+              className="h-7 px-3 text-xs"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 mr-1" />
+              Always allow
+            </Button>
+          )}
           <Button
             onClick={() => onDecision("accept-once")}
             size="sm"
@@ -210,7 +222,9 @@ export function AgentConsentBanner({
             className="h-7 px-3 text-xs"
           >
             <Check className="w-3.5 h-3.5 mr-1" />
-            Allow once
+            {consent.confirmation === "shell-review-retry"
+              ? "Retry review"
+              : "Allow once"}
           </Button>
           <Button
             onClick={() => onDecision("decline")}

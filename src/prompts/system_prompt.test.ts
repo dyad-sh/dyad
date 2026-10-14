@@ -1,8 +1,26 @@
 import { describe, expect, it } from "vitest";
 import {
   BUILD_SYSTEM_PREFIX,
+  AGENT_TEST_WRITING_GUIDANCE,
+  getImplementerTestWritingGuidance,
   getSystemPromptForChatMode,
 } from "@/prompts/system_prompt";
+
+describe("test-writing guidance", () => {
+  it.each([
+    ["root", AGENT_TEST_WRITING_GUIDANCE],
+    ["implementer", getImplementerTestWritingGuidance(true)],
+  ])(
+    "loads custom Supabase setup on demand for the %s",
+    (_audience, prompt) => {
+      expect(prompt).toContain('guide="custom-supabase-test-fixtures"');
+      expect(prompt).toContain("signup triggers require metadata");
+      expect(prompt).not.toContain("supabase.auth.admin.createUser");
+      expect(prompt).not.toContain("SUPABASE_SECRET_KEY");
+      expect(prompt).not.toContain("narrowly scoped");
+    },
+  );
+});
 
 describe("build system prompt", () => {
   it("uses context-sensitive component placement and error handling", () => {

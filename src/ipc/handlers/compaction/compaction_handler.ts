@@ -3,6 +3,7 @@
  * Orchestrates the compaction of long conversations to stay within context limits.
  */
 
+import { getAuxiliarySettings } from "@/lib/auxiliaryModel";
 import { IpcMainInvokeEvent } from "electron";
 import { streamText, ModelMessage } from "ai";
 import log from "electron-log";
@@ -12,6 +13,7 @@ import { db } from "@/db";
 import { chats, messages } from "@/db/schema";
 import { readSettings } from "@/main/settings";
 import { getChatInferenceSettings } from "@/ipc/services/chat_inference_settings";
+import { SMALL_MODEL_NAME } from "@/ipc/shared/language_model_constants";
 import type { UserSettings } from "@/lib/schemas";
 import { getModelClient } from "@/ipc/utils/get_model_client";
 import {
@@ -57,7 +59,7 @@ const logger = log.scope("compaction_handler");
 // reachable through the Dyad Engine gateway.
 const PRO_COMPACTION_MODEL = {
   provider: "openai",
-  name: "gpt-5.6-luna",
+  name: SMALL_MODEL_NAME,
 } as const;
 
 export interface CompactionResult {
@@ -200,9 +202,12 @@ export async function performCompaction(
       where: eq(chats.id, chatId),
       columns: { modelSelection: true },
     });
-    const selectedModel = chat?.modelSelection
-      ? await normalizeModelSelection(chat.modelSelection)
-      : await resolveDefaultModelSelection(storedSettings);
+    const selectedModel =
+      options?.settingsOverride && storedSettings.proModelUsage === "api-key"
+        ? await resolveDefaultModelSelection(storedSettings)
+        : chat?.modelSelection
+          ? await normalizeModelSelection(chat.modelSelection)
+          : await resolveDefaultModelSelection(storedSettings);
     // Stored connections describe an earlier turn, not this auxiliary request.
     const { connection: _connection, ...modelIdentity } = selectedModel;
     const compactionModel = isDyadProEnabled(storedSettings)
@@ -214,7 +219,10 @@ export async function performCompaction(
             ],
         })
       : modelIdentity;
-    const settings = { ...storedSettings, selectedModel: compactionModel };
+    const settings = {
+      ...getAuxiliarySettings(storedSettings),
+      selectedModel: compactionModel,
+    };
     logger.info(`Starting compaction for chat ${chatId}`);
 
     // Load all messages for the chat

@@ -1,7 +1,9 @@
+import { getAuxiliarySettings } from "@/lib/auxiliaryModel";
 import { streamText, stepCountIs, type ModelMessage, type ToolSet } from "ai";
 import log from "electron-log";
 
 import { getChatInferenceSettings } from "@/ipc/services/chat_inference_settings";
+import { SMALL_MODEL_NAME } from "@/ipc/shared/language_model_constants";
 import { resolveModelSelection } from "@/ipc/utils/model_effort";
 import { getModelPreferenceKey } from "@/lib/modelEffort";
 import { cleanMessage } from "@/ipc/utils/ai_messages_utils";
@@ -29,9 +31,8 @@ import {
 
 const logger = log.scope("explore_chat_history_subagent");
 
-// Kept in one place so the explorer's model can change independently of
-// explore_code's. Both currently use the same Engine model.
-const SUBAGENT_MODEL = { provider: "openai", name: "gpt-5.6-luna" } as const;
+// Shared with the other latency-sensitive Dyad tasks through SMALL_MODEL_NAME.
+const SUBAGENT_MODEL = { provider: "openai", name: SMALL_MODEL_NAME } as const;
 // Max model turns. The chat-history corpus is small; benchmark runs
 // converged in well under this (mean 5 searches + 3 reads).
 const SUBAGENT_MAX_STEPS = 10;
@@ -63,25 +64,26 @@ export async function runExploreChatHistorySubagent({
     ctx.inferenceSettings,
   );
   assertHistoryExplorerAvailable(storedSettings, ctx);
+  const auxiliaryModel = SUBAGENT_MODEL;
   const selectedModel = await resolveModelSelection({
-    model: SUBAGENT_MODEL,
+    model: auxiliaryModel,
     preferredEffortLevel:
       storedSettings.modelEffortPreferences?.[
-        getModelPreferenceKey(SUBAGENT_MODEL)
+        getModelPreferenceKey(auxiliaryModel)
       ],
   });
-  const settings = { ...storedSettings, selectedModel };
+  const settings = { ...getAuxiliarySettings(storedSettings), selectedModel };
 
   const modelInfo = await getModelClient(
-    SUBAGENT_MODEL,
+    auxiliaryModel,
     settings,
     selectedModel,
   );
   const maxOutputTokens = Math.min(
-    (await getMaxTokens(SUBAGENT_MODEL)) ?? SUBAGENT_MAX_OUTPUT_TOKENS,
+    (await getMaxTokens(auxiliaryModel)) ?? SUBAGENT_MAX_OUTPUT_TOKENS,
     SUBAGENT_MAX_OUTPUT_TOKENS,
   );
-  const temperature = await getTemperature(SUBAGENT_MODEL);
+  const temperature = await getTemperature(auxiliaryModel);
 
   const registry = createHistoryObservationRegistry();
   const counts: RetrievalCounts = { searches: 0, reads: 0 };

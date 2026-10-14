@@ -1,5 +1,6 @@
 import { neon } from "@neondatabase/serverless";
 import { IS_TEST_BUILD } from "./test_utils";
+import { retryTestDatabaseCleanup } from "./test_database_cleanup_retry";
 import { getNeonClient } from "../../neon_admin/neon_management_client";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
@@ -59,7 +60,12 @@ export async function createNeonTestDataCleaner({
       DyadErrorKind.Precondition,
     );
   }
-  return (signal) => clearNeonTestData(databaseUrl, signal);
+  return (signal) =>
+    retryTestDatabaseCleanup(
+      () => clearNeonTestData(databaseUrl, signal),
+      "Clear temporary Neon test database",
+      signal,
+    );
 }
 
 async function clearNeonTestData(

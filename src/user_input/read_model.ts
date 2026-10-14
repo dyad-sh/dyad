@@ -47,7 +47,7 @@ export type UserInputRequest =
   | {
       status: "awaiting" | "armed" | "due";
       descriptor: UserInputDescriptorPayload;
-      deadlineAt: number;
+      deadlineAt: number | null;
       classifier?: "none" | "racing" | "review";
       classifierReason?: string;
       followUpPrompt?: string;
@@ -58,7 +58,7 @@ export type UserInputRequest =
       outcome: UserInputOutcome;
       settledAt: number;
       descriptor?: UserInputDescriptorPayload;
-      deadlineAt?: number;
+      deadlineAt?: number | null;
       questionnaireSubmitted?: boolean;
     };
 

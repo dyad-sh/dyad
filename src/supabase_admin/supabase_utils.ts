@@ -3,15 +3,25 @@ import path from "node:path";
 import log from "electron-log";
 import {
   bulkUpdateFunctions,
+  captureSupabaseFunction,
+  captureSupabaseSharedFiles,
   deleteSupabaseFunction,
   deploySupabaseFunction,
   listSupabaseFunctions,
+  withSupabaseFunctionDeployment,
   type DeployedFunctionResponse,
+  type SupabaseFunctionSnapshot,
 } from "./supabase_management_client";
 import { SUPABASE_BUNDLE_ONLY_DEPLOY_CONCURRENCY } from "./supabase_deploy_queue";
+import type { DeferredSupabaseFunctionSync } from "./supabase_recording_deferred_sync";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { runSupabaseDependencyAnalysis } from "@/ipc/processors/supabase_dependency_analysis";
 import type { SupabaseFunctionImpact } from "../../shared/supabase_dependency_analysis_types";
+
+import {
+  describeSupabaseFallbackReason,
+  type SupabaseDeployScope,
+} from "./supabase_deploy_scope";
 
 export type { SupabaseFunctionImpact } from "../../shared/supabase_dependency_analysis_types";
 
@@ -187,15 +197,85 @@ export async function getSupabaseFunctionsAffectedBySharedModules({
       "Supabase dependency analysis failed; deploying all functions",
       error,
     );
-    return { kind: "all", reason: "dependency_analysis_failed" };
+    return {
+      kind: "all",
+      reason: {
+        code: "dependency_analysis_failed",
+        detail: error instanceof Error ? error.message : String(error),
+      },
+    };
   }
+}
+
+interface AppScopedDeployArgs {
+  appId?: number;
+  appPath: string;
+  supabaseProjectId: string;
+  onSnapshotCaptured?: () => void | Promise<void>;
+  signal?: AbortSignal;
+}
+
+/**
+ * With an `appId`, admits the deploy under the app's function-deployment
+ * ownership, resolves the current app path, and releases the repository and
+ * provider preparation claims once the batch snapshot is captured.
+ */
+function withAppDeploymentOwnership<Args extends AppScopedDeployArgs, Result>(
+  { appId, ...args }: Args,
+  sync: Omit<DeferredSupabaseFunctionSync, "supabaseProjectId">,
+  deploy: (args: Omit<Args, "appId">) => Promise<Result>,
+): Promise<Result> {
+  if (appId === undefined) return deploy(args);
+  return withSupabaseFunctionDeployment(
+    {
+      appId,
+      supabaseProjectId: args.supabaseProjectId,
+      signal: args.signal,
+      sync,
+    },
+    (operation, appPath) =>
+      deploy({
+        ...args,
+        appPath,
+        onSnapshotCaptured: async () => {
+          operation.releaseResources(["repository", "provider"]);
+          await args.onSnapshotCaptured?.();
+        },
+      }),
+  );
+}
+
+interface DeployAffectedSupabaseFunctionsArgs extends AppScopedDeployArgs {
+  supabaseOrganizationSlug: string | null;
+  skipPruneEdgeFunctions: boolean;
+  sharedModulesChanged: boolean;
+  changedSharedModulePaths: string[];
+  pendingFunctionDeploys: string[];
+  onProgress?: (progress: SupabaseDeployProgress) => void;
+  /** Called with the chosen function set before any function deploys. */
+  onScopeResolved?: (scope: SupabaseDeployScope) => void;
 }
 
 /**
  * Deploys the right Supabase function set after shared module changes and/or
  * deferred direct function deploys.
  */
-export async function deployAffectedSupabaseFunctions({
+export function deployAffectedSupabaseFunctions(
+  args: DeployAffectedSupabaseFunctionsArgs,
+): Promise<string[]> {
+  return withAppDeploymentOwnership(
+    args,
+    {
+      organizationSlug: args.supabaseOrganizationSlug,
+      functionNames: args.pendingFunctionDeploys,
+      sharedModulesChanged: args.sharedModulesChanged,
+      sharedModulePaths: args.changedSharedModulePaths,
+    },
+    deployAffectedUnscoped,
+  );
+}
+
+async function deployAffectedUnscoped({
   appPath,
   supabaseProjectId,
   supabaseOrganizationSlug,
@@ -204,22 +284,18 @@ export async function deployAffectedSupabaseFunctions({
   changedSharedModulePaths,
   pendingFunctionDeploys,
   onProgress,
-}: {
-  appPath: string;
-  supabaseProjectId: string;
-  supabaseOrganizationSlug: string | null;
-  skipPruneEdgeFunctions: boolean;
-  sharedModulesChanged: boolean;
-  changedSharedModulePaths: string[];
-  pendingFunctionDeploys: string[];
-  onProgress?: (progress: SupabaseDeployProgress) => void;
-}): Promise<string[]> {
+  onScopeResolved,
+  onSnapshotCaptured,
+  signal,
+}: Omit<DeployAffectedSupabaseFunctionsArgs, "appId">): Promise<string[]> {
   const deployArgs = {
     appPath,
     supabaseProjectId,
     supabaseOrganizationSlug,
     skipPruneEdgeFunctions,
     onProgress,
+    onSnapshotCaptured,
+    signal,
   };
 
   if (sharedModulesChanged) {
@@ -231,7 +307,7 @@ export async function deployAffectedSupabaseFunctions({
           })
         : ({
             kind: "all",
-            reason: "changed_shared_paths_missing",
+            reason: { code: "changed_shared_paths_missing" },
           } as const);
 
     if (impact.kind === "partial") {
@@ -243,26 +319,42 @@ export async function deployAffectedSupabaseFunctions({
           ? `Shared modules changed, redeploying affected Supabase functions: ${functionNames.join(", ")}`
           : "Shared modules changed, no affected Supabase functions to bundle",
       );
-      return deploySupabaseFunctions({
+      onScopeResolved?.({
+        kind: "affected",
+        changedSharedModulePaths: Array.from(new Set(changedSharedModulePaths)),
+        affectedFunctionNames: impact.functionNames,
+        editedFunctionNames: Array.from(new Set(pendingFunctionDeploys)),
+      });
+      return deploySupabaseFunctionsUnscoped({
         ...deployArgs,
         functionNames,
       });
     }
 
     logger.info(
-      `Shared module dependency analysis fell back to all functions: ${impact.reason}`,
+      `Shared module dependency analysis fell back to all functions (${impact.reason.code}): ${describeSupabaseFallbackReason(impact.reason)}`,
     );
-    return deployAllSupabaseFunctions(deployArgs);
+    onScopeResolved?.({ kind: "all", reason: impact.reason });
+    return deploySupabaseFunctionsUnscoped(deployArgs);
   }
 
   const functionNames = Array.from(new Set(pendingFunctionDeploys));
   logger.info(
     `Redeploying pending Supabase functions: ${functionNames.join(", ")}`,
   );
-  return deploySupabaseFunctions({
+  onScopeResolved?.({ kind: "edited", functionNames });
+  return deploySupabaseFunctionsUnscoped({
     ...deployArgs,
     functionNames,
   });
+}
+
+interface DeploySupabaseFunctionsArgs extends AppScopedDeployArgs {
+  supabaseOrganizationSlug: string | null;
+  skipPruneEdgeFunctions: boolean;
+  functionNames?: string[];
+  onProgress?: (progress: SupabaseDeployProgress) => void;
+  onSummary?: (summary: SupabaseDeploySummary) => void;
 }
 
 /**
@@ -273,26 +365,35 @@ export async function deployAffectedSupabaseFunctions({
  * @param skipPruneEdgeFunctions - If false, delete any deployed edge functions that are not in the codebase
  * @returns An array of error messages for functions that failed to deploy (empty if all succeeded)
  */
-export async function deploySupabaseFunctions({
+export function deploySupabaseFunctions(
+  args: DeploySupabaseFunctionsArgs,
+): Promise<string[]> {
+  return withAppDeploymentOwnership(
+    args,
+    {
+      organizationSlug: args.supabaseOrganizationSlug,
+      functionNames: args.functionNames,
+    },
+    deploySupabaseFunctionsUnscoped,
+  );
+}
+
+async function deploySupabaseFunctionsUnscoped({
   appPath,
   supabaseProjectId,
   supabaseOrganizationSlug,
   skipPruneEdgeFunctions,
   functionNames,
   onProgress,
+  onSnapshotCaptured,
+  signal,
   onSummary,
-}: {
-  appPath: string;
-  supabaseProjectId: string;
-  supabaseOrganizationSlug: string | null;
-  skipPruneEdgeFunctions: boolean;
-  functionNames?: string[];
-  onProgress?: (progress: SupabaseDeployProgress) => void;
-  onSummary?: (summary: SupabaseDeploySummary) => void;
-}): Promise<string[]> {
+}: Omit<DeploySupabaseFunctionsArgs, "appId">): Promise<string[]> {
+  signal?.throwIfAborted();
   const functionsDir = path.join(appPath, "supabase", "functions");
   const prunedFunctionNames: string[] = [];
   let functionCount = 0;
+  let reportFailure: (() => void) | undefined;
   const finish = (errors: string[]) => {
     onSummary?.({ functionCount, prunedFunctionNames });
     return errors;
@@ -302,6 +403,7 @@ export async function deploySupabaseFunctions({
     await fs.access(functionsDir);
   } catch {
     logger.info(`No supabase/functions directory found at ${functionsDir}`);
+    await onSnapshotCaptured?.();
     return finish([]);
   }
 
@@ -339,7 +441,9 @@ export async function deploySupabaseFunctions({
 
     if (validFunctions.length === 0) {
       logger.info("No valid functions to deploy");
+      signal?.throwIfAborted();
       if (errors.length > 0) {
+        await onSnapshotCaptured?.();
         return finish(errors);
       }
       // An empty complete local set is not enough evidence that every remote
@@ -348,6 +452,7 @@ export async function deploySupabaseFunctions({
       // just been removed. Manual whole-set sync therefore falls back to a
       // deploy-only no-op instead of pruning the entire remote project.
       if (allValidFunctions.length === 0) {
+        await onSnapshotCaptured?.();
         return finish([]);
       }
     }
@@ -377,25 +482,52 @@ export async function deploySupabaseFunctions({
         functionName,
       });
     }
+    reportFailure = () => emitProgress("failed");
 
     if (validFunctions.length > 0) {
       emitProgress("deploying");
     }
 
-    const deployResults = await mapSettledWithConcurrency(
+    const sharedFiles =
+      validFunctions.length > 0
+        ? await captureSupabaseSharedFiles(appPath)
+        : [];
+    // Entries are cleared once bundled so a large batch does not keep every
+    // captured file alive through activation and pruning.
+    const snapshots: Array<
+      PromiseSettledResult<SupabaseFunctionSnapshot> | undefined
+    > = await mapSettledWithConcurrency(
       validFunctions,
       SUPABASE_BUNDLE_ONLY_DEPLOY_CONCURRENCY,
       async (functionName) => {
+        signal?.throwIfAborted();
+        return captureSupabaseFunction({ appPath, functionName, sharedFiles });
+      },
+    );
+    signal?.throwIfAborted();
+    await onSnapshotCaptured?.();
+    signal?.throwIfAborted();
+
+    const deployResults = await mapSettledWithConcurrency(
+      validFunctions,
+      SUPABASE_BUNDLE_ONLY_DEPLOY_CONCURRENCY,
+      async (functionName, index) => {
         activeFunctions++;
         emitProgress("deploying", functionName);
         logger.info(`Bundling function: ${functionName}`);
         try {
+          signal?.throwIfAborted();
+          const snapshot = snapshots[index]!;
+          snapshots[index] = undefined;
+          if (snapshot.status === "rejected") throw snapshot.reason;
           const result = await deploySupabaseFunction({
             supabaseProjectId,
             organizationSlug: supabaseOrganizationSlug,
             functionName,
             appPath,
             bundleOnly: true,
+            snapshot: snapshot.value,
+            signal,
           });
           succeededFunctions++;
           logger.info(`Successfully bundled function: ${functionName}`);
@@ -410,6 +542,8 @@ export async function deploySupabaseFunctions({
         }
       },
     );
+
+    signal?.throwIfAborted();
 
     // Collect successful results and errors
     const successfulDeploys: DeployedFunctionResponse[] = [];
@@ -437,12 +571,14 @@ export async function deploySupabaseFunctions({
         await bulkUpdateFunctions({
           supabaseProjectId,
           functions: successfulDeploys,
+          signal,
           organizationSlug: supabaseOrganizationSlug,
         });
         logger.info(
           `Successfully activated ${successfulDeploys.length} functions`,
         );
       } catch (error: any) {
+        signal?.throwIfAborted();
         const errorMessage = `Failed to bulk update functions: ${error.message}`;
         logger.error(errorMessage, error);
         errors.push(errorMessage);
@@ -456,6 +592,7 @@ export async function deploySupabaseFunctions({
         const deployedFunctions = await listSupabaseFunctions({
           supabaseProjectId,
           organizationSlug: supabaseOrganizationSlug,
+          signal,
         });
 
         const localFunctionNames = new Set(allValidFunctions);
@@ -474,10 +611,12 @@ export async function deploySupabaseFunctions({
                 supabaseProjectId,
                 functionName: fn.slug,
                 organizationSlug: supabaseOrganizationSlug,
+                signal,
               });
               prunedFunctionNames.push(fn.slug);
               logger.info(`Pruned dangling edge function: ${fn.slug}`);
             } catch (deleteError: any) {
+              signal?.throwIfAborted();
               const errorMessage = `Failed to prune edge function ${fn.slug}: ${deleteError.message}`;
               logger.error(errorMessage, deleteError);
               errors.push(errorMessage);
@@ -487,6 +626,7 @@ export async function deploySupabaseFunctions({
           logger.info("No dangling edge functions found");
         }
       } catch (pruneError: any) {
+        signal?.throwIfAborted();
         const errorMessage = `Failed to check for dangling edge functions: ${pruneError.message}`;
         logger.error(errorMessage, pruneError);
         errors.push(errorMessage);
@@ -499,6 +639,8 @@ export async function deploySupabaseFunctions({
       );
     }
   } catch (error: any) {
+    reportFailure?.();
+    signal?.throwIfAborted();
     const errorMessage = `Error reading functions directory: ${error.message}`;
     logger.error(errorMessage, error);
     errors.push(errorMessage);
@@ -516,11 +658,14 @@ export async function deploySupabaseFunctions({
  * @returns An array of error messages for functions that failed to deploy (empty if all succeeded)
  */
 export async function deployAllSupabaseFunctions(args: {
+  appId?: number;
   appPath: string;
   supabaseProjectId: string;
   supabaseOrganizationSlug: string | null;
   skipPruneEdgeFunctions: boolean;
   onProgress?: (progress: SupabaseDeployProgress) => void;
+  onSnapshotCaptured?: () => void | Promise<void>;
+  signal?: AbortSignal;
   onSummary?: (summary: SupabaseDeploySummary) => void;
 }): Promise<string[]> {
   return deploySupabaseFunctions(args);

@@ -309,6 +309,8 @@ test.describe("relay-crm checkpoint 2", () => {
         .filter({ hasText: DEAL })
         .first(),
     ).toBeVisible();
+    // The card can move optimistically before its PATCH commits.
+    await settleAfterSubmit(owner.page);
     await owner.page.reload();
     await expect(
       owner.page

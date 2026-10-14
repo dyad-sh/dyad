@@ -11,12 +11,17 @@ import { useEffect } from "react";
 import { HelpDialog } from "./HelpDialog";
 import { helpDialogAtom } from "@/atoms/helpDialogAtom";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
-import { PROSE_BUDGET, SCREENSHOT_PASTE_REMINDER } from "@/lib/issueBody";
+import {
+  PROSE_BUDGET,
+  SCREENSHOT_ALT,
+  SCREENSHOT_PASTE_REMINDER,
+} from "@/lib/issueBody";
 
 const mocks = vi.hoisted(() => ({
   getSystemDebugInfo: vi.fn(),
   getSessionDebugBundle: vi.fn(),
   uploadToSignedUrl: vi.fn(),
+  uploadScreenshot: vi.fn(),
   cancelUpload: vi.fn(),
   openExternalUrl: vi.fn(),
   takeScreenshot: vi.fn(),
@@ -36,6 +41,7 @@ vi.mock("@/ipc/types", () => ({
       getSystemDebugInfo: mocks.getSystemDebugInfo,
       openExternalUrl: mocks.openExternalUrl,
       uploadToSignedUrl: mocks.uploadToSignedUrl,
+      uploadScreenshot: mocks.uploadScreenshot,
       cancelUpload: mocks.cancelUpload,
       takeScreenshot: mocks.takeScreenshot,
       recopyScreenshot: mocks.recopyScreenshot,
@@ -276,6 +282,51 @@ const fileIt = async () => {
   await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalled());
 };
 
+/** What the upload service answers for a screenshot. */
+const SIGNED_SCREENSHOT = {
+  uploadUrl: "https://upload.test/signed-screenshot",
+  publicUrl: "https://storage.test/dyad-issue-screenshots/abc.png",
+  requiredHeaders: {
+    "Content-Type": "image/png",
+    "x-goog-custom-time": "2026-09-23T22:33:26.077Z",
+    "x-goog-content-length-range": "0,10485760",
+  },
+};
+
+/**
+ * Stands in for the upload service. Session URLs always come back; screenshot
+ * URLs come back unless the service is "down", which is how a test gets the
+ * clipboard fallback instead of an embedded image.
+ */
+function stubUploadService({
+  screenshots = "up",
+}: { screenshots?: "up" | "down" } = {}) {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockImplementation(async (url: string) => {
+      if (url.endsWith("/generate-screenshot-upload-url")) {
+        return screenshots === "up"
+          ? { ok: true, status: 200, json: async () => SIGNED_SCREENSHOT }
+          : { ok: false, status: 503, json: async () => ({ error: "down" }) };
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          uploadUrl: "https://upload.test/signed",
+          filename: "abc.json",
+        }),
+      };
+    }),
+  );
+}
+
+/**
+ * The tests below that restore the clipboard are the fallback path, which
+ * only runs once the upload has failed. Each of them says so up front.
+ */
+const screenshotUploadDown = () => stubUploadService({ screenshots: "down" });
+
 beforeEach(() => {
   // reset, not clear: clearAllMocks keeps implementations AND leaves any
   // unconsumed mock*Once queue in place, so a test that stops short of
@@ -286,6 +337,7 @@ beforeEach(() => {
   mocks.getSystemDebugInfo.mockResolvedValue(debugInfo);
   mocks.getSessionDebugBundle.mockResolvedValue(bundle);
   mocks.uploadToSignedUrl.mockResolvedValue({ uploaded: true });
+  mocks.uploadScreenshot.mockResolvedValue({ uploaded: true });
   mocks.cancelUpload.mockResolvedValue({ cancelled: true });
   mocks.recopyScreenshot.mockResolvedValue({ copied: true });
   mocks.discardScreenshot.mockResolvedValue({ discarded: true });
@@ -293,16 +345,7 @@ beforeEach(() => {
     dataUrl: "data:image/png;base64,AAAA",
     captureId: "capture-1",
   });
-  vi.stubGlobal(
-    "fetch",
-    vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        uploadUrl: "https://upload.test/signed",
-        filename: "abc.json",
-      }),
-    }),
-  );
+  stubUploadService();
 });
 
 afterEach(() => {
@@ -771,6 +814,7 @@ describe("HelpDialog disclosures", () => {
   });
 
   it("does not upload the session again for a draft that survived a dismissal", async () => {
+    screenshotUploadDown();
     let release = (_: unknown) => {};
     mocks.recopyScreenshot.mockReturnValueOnce(
       new Promise((resolve) => {
@@ -981,6 +1025,7 @@ describe("HelpDialog disclosures", () => {
   });
 
   it("stops offering a lost screenshot when filing throws", async () => {
+    screenshotUploadDown();
     mocks.recopyScreenshot.mockResolvedValue({ copied: false });
     mocks.openExternalUrl.mockRejectedValueOnce(new Error("no browser"));
 
@@ -1003,6 +1048,7 @@ describe("HelpDialog disclosures", () => {
   });
 
   it("asks main again on a retry rather than assuming the clipboard", async () => {
+    screenshotUploadDown();
     mocks.openExternalUrl.mockRejectedValueOnce(new Error("no browser"));
     mocks.recopyScreenshot
       .mockResolvedValueOnce({ copied: true })
@@ -1033,6 +1079,7 @@ describe("HelpDialog disclosures", () => {
   });
 
   it("does not remember a restore made for a report that ended", async () => {
+    screenshotUploadDown();
     let release = (_: unknown) => {};
     mocks.recopyScreenshot.mockReturnValueOnce(
       new Promise((resolve) => {
@@ -1094,6 +1141,7 @@ describe("HelpDialog disclosures", () => {
   });
 
   it("does not file a lost screenshot as one the reporter declined", async () => {
+    screenshotUploadDown();
     mocks.recopyScreenshot.mockResolvedValue({ copied: false });
     mocks.openExternalUrl.mockRejectedValueOnce(new Error("no browser"));
 
@@ -1145,6 +1193,7 @@ describe("HelpDialog disclosures", () => {
   });
 
   it("says nothing about a failed restore once the dialog is gone", async () => {
+    screenshotUploadDown();
     let release = (_: unknown) => {};
     mocks.recopyScreenshot.mockReturnValueOnce(
       new Promise((resolve) => {
@@ -1173,6 +1222,7 @@ describe("HelpDialog disclosures", () => {
   });
 
   it("says why a lost screenshot went, on the draft they come back to", async () => {
+    screenshotUploadDown();
     let release = (_: unknown) => {};
     mocks.recopyScreenshot.mockReturnValueOnce(
       new Promise((resolve) => {
@@ -1196,6 +1246,7 @@ describe("HelpDialog disclosures", () => {
   });
 
   it("asks again for a restore once the reporter has been away", async () => {
+    screenshotUploadDown();
     mocks.openExternalUrl.mockRejectedValueOnce(new Error("no browser"));
 
     await openForm();
@@ -1224,6 +1275,7 @@ describe("HelpDialog disclosures", () => {
   });
 
   it("stops showing a screenshot main dropped on a restore", async () => {
+    screenshotUploadDown();
     let release = (_: unknown) => {};
     mocks.recopyScreenshot.mockReturnValueOnce(
       new Promise((resolve) => {
@@ -1256,6 +1308,7 @@ describe("HelpDialog disclosures", () => {
   });
 
   it("says nothing about a screenshot once the dialog is gone", async () => {
+    screenshotUploadDown();
     let release = (_: unknown) => {};
     mocks.recopyScreenshot.mockReturnValueOnce(
       new Promise((resolve) => {
@@ -1284,6 +1337,7 @@ describe("HelpDialog disclosures", () => {
   });
 
   it("stops showing a lost screenshot under StrictMode too", async () => {
+    screenshotUploadDown();
     // StrictMode tears effects down and re-runs them, which is exactly what
     // silently inverted the mounted guard once already.
     mocks.recopyScreenshot.mockResolvedValue({ copied: false });
@@ -1303,6 +1357,7 @@ describe("HelpDialog disclosures", () => {
   });
 
   it("stops showing a screenshot after a second filing loses it", async () => {
+    screenshotUploadDown();
     // Both filings fail, so the form is still up to be inspected -- after a
     // successful one the dialog tears down and any assertion is vacuous.
     mocks.openExternalUrl
@@ -1694,7 +1749,458 @@ describe("HelpDialog screenshot", () => {
     );
   });
 
-  it("records a captured screenshot in the issue", async () => {
+  it("uploads the screenshot and embeds it, with nothing to paste", async () => {
+    await openForm();
+    await addScreenshot();
+    await fileIt();
+
+    const body = bodyOfOpenedIssue();
+    expect(body).toContain("Screenshot status: uploaded");
+    expect(body).toContain(
+      `![${SCREENSHOT_ALT}](${SIGNED_SCREENSHOT.publicUrl})`,
+    );
+    expect(body).not.toContain(SCREENSHOT_PASTE_REMINDER);
+    // The clipboard is the fallback, and there was nothing to fall back from.
+    expect(mocks.recopyScreenshot).not.toHaveBeenCalled();
+    expect(posthogClient.capture).toHaveBeenCalledWith(
+      "screenshot-prompt:uploaded",
+      { source: "report-bug" },
+    );
+    // Nothing left for the reporter to do, so no closing step either.
+    await waitFor(() =>
+      expect(screen.queryByLabelText(/What happened/)).toBeNull(),
+    );
+    expect(screen.queryByText("Did you paste your screenshot?")).toBeNull();
+  });
+
+  it("sends main the URL and headers the service signed", async () => {
+    await openForm();
+    await addScreenshot();
+    await fileIt();
+
+    // GCS checks every one of these against the signature, so they have to
+    // reach the PUT exactly as minted. Main holds the image; the renderer
+    // only ever names it.
+    expect(mocks.uploadScreenshot).toHaveBeenCalledWith({
+      captureId: "capture-1",
+      url: SIGNED_SCREENSHOT.uploadUrl,
+      headers: SIGNED_SCREENSHOT.requiredHeaders,
+      uploadId: expect.any(String),
+    });
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringMatching(/\/generate-screenshot-upload-url$/),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ contentType: "image/png" }),
+      }),
+    );
+  });
+
+  it("uploads before the browser opens, never after", async () => {
+    await openForm();
+    await addScreenshot();
+    await fileIt();
+
+    // The body embeds the URL, so the image has to be in the bucket by the
+    // time anyone can open the issue.
+    expect(mocks.uploadScreenshot.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.openExternalUrl.mock.invocationCallOrder[0],
+    );
+  });
+
+  /** Waits for a failed filing to hand the form back. */
+  const formIsBack = () =>
+    waitFor(() =>
+      expect(
+        (
+          screen.getByRole("button", {
+            name: /Create GitHub issue/,
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false),
+    );
+
+  /** What main answers once an upload has consumed the capture. */
+  const captureIsGoneFromMain = () => {
+    mocks.uploadScreenshot.mockResolvedValue({
+      uploaded: false,
+      reason: "missing",
+    });
+    mocks.recopyScreenshot.mockResolvedValue({ copied: false });
+  };
+
+  it("reuses the uploaded screenshot when filing is retried", async () => {
+    mocks.openExternalUrl.mockRejectedValueOnce(new Error("no browser"));
+
+    await openForm();
+    await addScreenshot();
+    submit();
+    await formIsBack();
+
+    captureIsGoneFromMain();
+    submit();
+    await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalledTimes(2));
+
+    // The image is already public. Uploading again is impossible, and filing
+    // without it would leave that copy with no issue pointing at it.
+    expect(mocks.uploadScreenshot).toHaveBeenCalledTimes(1);
+    expect(mocks.recopyScreenshot).not.toHaveBeenCalled();
+    const body = bodyOfOpenedIssue();
+    expect(body).toContain("Screenshot status: uploaded");
+    expect(body).toContain(
+      `![${SCREENSHOT_ALT}](${SIGNED_SCREENSHOT.publicUrl})`,
+    );
+  });
+
+  it("reuses the upload for a draft dismissed as the upload finished", async () => {
+    let release = (_: unknown) => {};
+    mocks.uploadScreenshot.mockReturnValueOnce(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+
+    await openForm();
+    await addScreenshot();
+    submit();
+    await waitFor(() =>
+      expect(mocks.uploadScreenshot).toHaveBeenCalledTimes(1),
+    );
+
+    // The dismissal loses the race: the upload had already landed.
+    fireEvent.click(screen.getByText("mock-dialog-dismiss"));
+    await act(async () => {
+      release({ uploaded: true });
+    });
+    expect(mocks.openExternalUrl).not.toHaveBeenCalled();
+    // It did upload, so it is counted now: the resubmit below reuses the
+    // URL and sends no event of its own.
+    const uploadedEvents = () =>
+      posthogClient.capture.mock.calls.filter(
+        (call) => call[0] === "screenshot-prompt:uploaded",
+      );
+    expect(uploadedEvents()).toEqual([
+      ["screenshot-prompt:uploaded", { source: "report-bug" }],
+    ]);
+
+    fireEvent.click(screen.getByText("reopen-help"));
+    expect(
+      await screen.findByAltText("Screenshot of the Dyad window"),
+    ).toBeTruthy();
+    captureIsGoneFromMain();
+    await fileIt();
+
+    expect(mocks.uploadScreenshot).toHaveBeenCalledTimes(1);
+    expect(uploadedEvents()).toHaveLength(1);
+    expect(bodyOfOpenedIssue()).toContain(
+      `![${SCREENSHOT_ALT}](${SIGNED_SCREENSHOT.publicUrl})`,
+    );
+    expect(mocks.showError).not.toHaveBeenCalledWith(
+      "Your screenshot could no longer be restored, so it was removed from this report.",
+    );
+  });
+
+  it("uploads again when an uploaded screenshot is retaken", async () => {
+    mocks.openExternalUrl.mockRejectedValueOnce(new Error("no browser"));
+    mocks.takeScreenshot
+      .mockResolvedValueOnce({
+        dataUrl: "data:image/png;base64,AAAA",
+        captureId: "capture-first",
+      })
+      .mockResolvedValueOnce({
+        dataUrl: "data:image/png;base64,BBBB",
+        captureId: "capture-second",
+      });
+
+    await openForm();
+    await addScreenshot();
+    submit();
+    await formIsBack();
+
+    await askForRetake();
+    await waitFor(() =>
+      expect(
+        (
+          screen.getByAltText(
+            "Screenshot of the Dyad window",
+          ) as HTMLImageElement
+        ).src,
+      ).toContain("BBBB"),
+    );
+    submit();
+    await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalledTimes(2));
+
+    // The first upload was of an image the reporter has since replaced.
+    expect(mocks.uploadScreenshot).toHaveBeenCalledTimes(2);
+    expect(mocks.uploadScreenshot).toHaveBeenLastCalledWith(
+      expect.objectContaining({ captureId: "capture-second" }),
+    );
+  });
+
+  it("does not hand an uploaded screenshot to the next report", async () => {
+    mocks.openExternalUrl.mockRejectedValueOnce(new Error("no browser"));
+
+    await openForm("the first problem");
+    await addScreenshot();
+    submit();
+    await formIsBack();
+
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    fireEvent.click(await screen.findByText("Report a Bug"));
+    fireEvent.change(await screen.findByLabelText(/What happened/), {
+      target: { value: "the second problem" },
+    });
+    // Same capture id as before, so only the report ending can tell them
+    // apart.
+    await addScreenshot();
+    submit();
+    await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalledTimes(2));
+
+    expect(mocks.uploadScreenshot).toHaveBeenCalledTimes(2);
+    expect(bodyOfOpenedIssue()).toContain("the second problem");
+  });
+
+  it("falls back to the clipboard when the upload service is down", async () => {
+    screenshotUploadDown();
+
+    await openForm();
+    await addScreenshot();
+    await fileIt();
+
+    // Same hand-off as before there was an upload, and the issue says why.
+    expect(mocks.uploadScreenshot).not.toHaveBeenCalled();
+    expect(mocks.recopyScreenshot).toHaveBeenCalledWith({
+      captureId: "capture-1",
+    });
+    const body = bodyOfOpenedIssue();
+    expect(body).toContain(
+      "Screenshot status: captured (upload failed: Failed to get a screenshot upload URL: upload service answered 503; ",
+    );
+    expect(body).toContain(SCREENSHOT_PASTE_REMINDER);
+    expect(body).not.toContain("Screenshot status: uploaded");
+    expect(mocks.showError).toHaveBeenCalledWith(
+      "Your screenshot could not be attached. Dyad will put it on your clipboard so you can paste it into the issue instead.",
+    );
+    expect(posthogClient.capture).toHaveBeenCalledWith(
+      "screenshot-prompt:upload-failed",
+      { source: "report-bug", failure: "mint-failed" },
+    );
+    expect(
+      await screen.findByText("Did you paste your screenshot?"),
+    ).toBeTruthy();
+  });
+
+  it("gives the upload service ten seconds to answer", async () => {
+    const timeout = vi.spyOn(AbortSignal, "timeout");
+    try {
+      await openForm();
+      await addScreenshot();
+      await fileIt();
+
+      // A service that accepts the connection and never answers must not
+      // hold the report on "Preparing" until the reporter gives up.
+      expect(timeout).toHaveBeenCalledWith(10_000);
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringMatching(/\/generate-screenshot-upload-url$/),
+        expect.objectContaining({ signal: timeout.mock.results[0].value }),
+      );
+    } finally {
+      timeout.mockRestore();
+    }
+  });
+
+  it("falls back to the clipboard when the mint times out", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(async (url: string) => {
+        if (url.endsWith("/generate-screenshot-upload-url")) {
+          throw new DOMException("The operation timed out.", "TimeoutError");
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            uploadUrl: "https://upload.test/signed",
+            filename: "abc.json",
+          }),
+        };
+      }),
+    );
+
+    await openForm();
+    await addScreenshot();
+    await fileIt();
+
+    // Same hand-off as any other mint failure: paste path, reason recorded.
+    expect(mocks.uploadScreenshot).not.toHaveBeenCalled();
+    expect(mocks.recopyScreenshot).toHaveBeenCalled();
+    expect(bodyOfOpenedIssue()).toContain(
+      "captured (upload failed: Failed to get a screenshot upload URL: The operation timed out.; ",
+    );
+    expect(posthogClient.capture).toHaveBeenCalledWith(
+      "screenshot-prompt:upload-failed",
+      { source: "report-bug", failure: "mint-failed" },
+    );
+  });
+
+  it("falls back to the clipboard when the PUT fails", async () => {
+    mocks.uploadScreenshot.mockRejectedValue(
+      new Error("Upload failed with status 403: Forbidden"),
+    );
+
+    await openForm();
+    await addScreenshot();
+    await fileIt();
+
+    expect(mocks.recopyScreenshot).toHaveBeenCalled();
+    expect(bodyOfOpenedIssue()).toContain(
+      "captured (upload failed: Upload failed with status 403: Forbidden; ",
+    );
+    expect(posthogClient.capture).toHaveBeenCalledWith(
+      "screenshot-prompt:upload-failed",
+      { source: "report-bug", failure: "put-failed" },
+    );
+  });
+
+  it("falls back to the clipboard when storage rejects the upload", async () => {
+    mocks.uploadScreenshot.mockResolvedValue({
+      uploaded: false,
+      reason: "rejected",
+      detail: "Upload failed with status 403: Forbidden",
+    });
+
+    await openForm();
+    await addScreenshot();
+    await fileIt();
+
+    expect(mocks.recopyScreenshot).toHaveBeenCalled();
+    expect(bodyOfOpenedIssue()).toContain(
+      "captured (upload failed: Upload failed with status 403: Forbidden; ",
+    );
+    expect(posthogClient.capture).toHaveBeenCalledWith(
+      "screenshot-prompt:upload-failed",
+      { source: "report-bug", failure: "put-failed" },
+    );
+  });
+
+  it("falls back when main no longer holds the capture, and says so if that fails too", async () => {
+    mocks.uploadScreenshot.mockResolvedValue({
+      uploaded: false,
+      reason: "missing",
+    });
+    mocks.recopyScreenshot.mockResolvedValue({ copied: false });
+
+    await openForm();
+    await addScreenshot();
+    await fileIt();
+
+    // Neither route could produce the image, so the issue must not promise
+    // one -- and "declined" would be wrong too.
+    const body = bodyOfOpenedIssue();
+    expect(body).toContain("Screenshot status: capture-failed");
+    expect(body).not.toContain("Screenshot status: captured");
+    // One message, and not the one promising a clipboard that is empty.
+    expect(mocks.showError).toHaveBeenCalledWith(
+      "Your screenshot could not be restored. Filing the report without it.",
+    );
+    expect(mocks.showError).not.toHaveBeenCalledWith(
+      "Your screenshot could not be attached. Dyad will put it on your clipboard so you can paste it into the issue instead.",
+    );
+    expect(posthogClient.capture).toHaveBeenCalledWith(
+      "screenshot-prompt:upload-failed",
+      { source: "report-bug", failure: "capture-missing" },
+    );
+  });
+
+  it("treats upload headers that are not strings as a failed mint", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(async (url: string) => ({
+        ok: true,
+        status: 200,
+        json: async () =>
+          url.endsWith("/generate-screenshot-upload-url")
+            ? {
+                ...SIGNED_SCREENSHOT,
+                requiredHeaders: {
+                  "Content-Type": "image/png",
+                  "x-goog-content-length-range": 10485760,
+                },
+              }
+            : { uploadUrl: "https://upload.test/signed", filename: "abc.json" },
+      })),
+    );
+
+    await openForm();
+    await addScreenshot();
+    await fileIt();
+
+    // Caught where the service's answer is checked, so it is counted as the
+    // service's fault and nothing is handed to main.
+    expect(mocks.uploadScreenshot).not.toHaveBeenCalled();
+    expect(mocks.recopyScreenshot).toHaveBeenCalled();
+    expect(posthogClient.capture).toHaveBeenCalledWith(
+      "screenshot-prompt:upload-failed",
+      { source: "report-bug", failure: "mint-failed" },
+    );
+  });
+
+  it("refuses a public URL it could not safely embed", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(async (url: string) => ({
+        ok: true,
+        status: 200,
+        json: async () =>
+          url.endsWith("/generate-screenshot-upload-url")
+            ? {
+                ...SIGNED_SCREENSHOT,
+                publicUrl: "http://storage.test/not-https.png",
+              }
+            : { uploadUrl: "https://upload.test/signed", filename: "abc.json" },
+      })),
+    );
+
+    await openForm();
+    await addScreenshot();
+    await fileIt();
+
+    // The URL goes into a public issue as markdown; a bad one is not sent
+    // anywhere, and the reporter pastes instead.
+    expect(mocks.uploadScreenshot).not.toHaveBeenCalled();
+    expect(mocks.recopyScreenshot).toHaveBeenCalled();
+    expect(bodyOfOpenedIssue()).toContain("Screenshot status: captured");
+  });
+
+  it("stops the screenshot upload when the reporter backs out mid-PUT", async () => {
+    let release = (_: unknown) => {};
+    mocks.uploadScreenshot.mockReturnValue(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+
+    await openForm();
+    await addScreenshot();
+    submit();
+    await waitFor(() => expect(mocks.uploadScreenshot).toHaveBeenCalled());
+    const { uploadId } = mocks.uploadScreenshot.mock.calls.at(-1)![0];
+
+    // The image is a picture of their window, and they have changed their
+    // mind about publishing it.
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    await waitFor(() =>
+      expect(mocks.cancelUpload).toHaveBeenCalledWith({ uploadId }),
+    );
+    await act(async () => {
+      release({ uploaded: false, reason: "cancelled" });
+    });
+
+    expect(mocks.openExternalUrl).not.toHaveBeenCalled();
+  });
+
+  it("records a captured screenshot in the issue when it had to be pasted", async () => {
+    screenshotUploadDown();
     await openForm();
     await addScreenshot();
     submit();
@@ -1802,13 +2308,15 @@ describe("HelpDialog screenshot", () => {
   });
 
   it("puts the capture back on the clipboard as the report is filed", async () => {
+    screenshotUploadDown();
     await openForm();
     await addScreenshot();
     submit();
     await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalled());
 
-    // Ordering is the point: the clipboard has to be right before the browser
-    // opens, not after the reporter has already been sent there.
+    // Ordering is the point: with the upload gone, the clipboard has to be
+    // right before the browser opens, not after the reporter has already
+    // been sent there.
     expect(mocks.recopyScreenshot).toHaveBeenCalled();
     expect(mocks.recopyScreenshot.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.openExternalUrl.mock.invocationCallOrder[0],
@@ -1841,14 +2349,16 @@ describe("HelpDialog screenshot", () => {
       release({ uploaded: true });
     });
 
-    // Both are visible outside the dialog and would arrive with nothing on
-    // screen to explain them, so neither may happen for a report that was
-    // backed out of.
+    // All three are visible outside the dialog and would arrive with nothing
+    // on screen to explain them, so none may happen for a report that was
+    // backed out of -- least of all publishing a picture of the window.
+    expect(mocks.uploadScreenshot).not.toHaveBeenCalled();
     expect(mocks.recopyScreenshot).not.toHaveBeenCalled();
     expect(mocks.openExternalUrl).not.toHaveBeenCalled();
   });
 
   it("does not open the browser when the reporter backs out mid-clipboard", async () => {
+    screenshotUploadDown();
     let release = (_: unknown) => {};
     mocks.recopyScreenshot.mockReturnValue(
       new Promise((resolve) => {
@@ -1870,7 +2380,7 @@ describe("HelpDialog screenshot", () => {
     expect(mocks.openExternalUrl).not.toHaveBeenCalled();
   });
 
-  it("restores the capture the reporter kept, not the one they replaced", async () => {
+  it("uploads the capture the reporter kept, not the one they replaced", async () => {
     mocks.takeScreenshot
       .mockResolvedValueOnce({
         dataUrl: "data:image/png;base64,AAAA",
@@ -1897,17 +2407,17 @@ describe("HelpDialog screenshot", () => {
     );
     await fileIt();
 
-    // The reporter is told to paste, so the clipboard has to hold the image
-    // they actually kept.
-    expect(mocks.recopyScreenshot).toHaveBeenCalledWith({
-      captureId: "capture-second",
-    });
-    expect(mocks.recopyScreenshot).not.toHaveBeenCalledWith({
-      captureId: "capture-first",
-    });
+    // What they saw on the form is what becomes public.
+    expect(mocks.uploadScreenshot).toHaveBeenCalledWith(
+      expect.objectContaining({ captureId: "capture-second" }),
+    );
+    expect(mocks.uploadScreenshot).not.toHaveBeenCalledWith(
+      expect.objectContaining({ captureId: "capture-first" }),
+    );
   });
 
   it("does not claim a screenshot the clipboard could not take back", async () => {
+    screenshotUploadDown();
     mocks.recopyScreenshot.mockResolvedValue({ copied: false });
     await openForm();
     await addScreenshot();
@@ -2061,7 +2571,7 @@ describe("HelpDialog screenshot", () => {
     );
   });
 
-  it("shows the paste shortcut as keys, in one sentence", async () => {
+  it("says the image will be public, next to the image", async () => {
     await openForm();
     await addScreenshot();
 
@@ -2069,13 +2579,12 @@ describe("HelpDialog screenshot", () => {
       .getByAltText("Screenshot of the Dyad window")
       .parentElement!.querySelector("p.text-xs")!;
 
-    // The sentence has to read as one sentence, with the keys marked up.
+    // The preview is the reporter's only chance to notice a key or a path
+    // before it lands in a public issue, so it has to say what is at stake.
     expect(hint.textContent).toBe(
-      "Copied to your clipboard. Press Cmd/Ctrl + V in the GitHub issue to attach it.",
+      "This image will be attached to your GitHub issue, where anyone can see it. Check it for anything you would not want public.",
     );
-    expect(
-      Array.from(hint.querySelectorAll("kbd")).map((k) => k.textContent),
-    ).toEqual(["Cmd", "Ctrl", "V"]);
+    expect(hint.textContent).not.toContain("clipboard");
   });
 
   it("still shows why a capture failed", async () => {
@@ -2107,16 +2616,16 @@ describe("HelpDialog screenshot", () => {
     await askForRetake();
     await waitFor(() => expect(mocks.takeScreenshot).toHaveBeenCalledTimes(2));
 
-    // The first image is still on the clipboard and still in main, so losing
-    // it to a failed retake would throw away something that works.
+    // The first image is still in main, so losing it to a failed retake
+    // would throw away something that works.
     expect(
       await screen.findByAltText("Screenshot of the Dyad window"),
     ).toBeTruthy();
     await fileIt();
-    expect(bodyOfOpenedIssue()).toContain("Screenshot status: captured");
-    expect(mocks.recopyScreenshot).toHaveBeenCalledWith({
-      captureId: "capture-first",
-    });
+    expect(bodyOfOpenedIssue()).toContain("Screenshot status: uploaded");
+    expect(mocks.uploadScreenshot).toHaveBeenCalledWith(
+      expect.objectContaining({ captureId: "capture-first" }),
+    );
   });
 
   it("drops a capture the reporter removed", async () => {
@@ -2132,16 +2641,18 @@ describe("HelpDialog screenshot", () => {
     );
   });
 
-  it("does not discard a capture it just put back on the clipboard", async () => {
+  it("does not discard a capture it just uploaded", async () => {
     await openForm();
     await addScreenshot();
     await fileIt();
 
-    // The restore already dropped it in main; asking again is pointless work.
+    // Main dropped it once it was in the bucket; asking again is pointless
+    // work.
     expect(mocks.discardScreenshot).not.toHaveBeenCalled();
   });
 
   it("stops showing a screenshot it can no longer restore", async () => {
+    screenshotUploadDown();
     let release = (_: unknown) => {};
     mocks.recopyScreenshot.mockReturnValue(
       new Promise((resolve) => {
@@ -2182,6 +2693,7 @@ describe("HelpDialog screenshot", () => {
   });
 
   it("leaves a newer report's screenshot alone when an older restore works", async () => {
+    screenshotUploadDown();
     mocks.takeScreenshot
       .mockResolvedValueOnce({
         dataUrl: "data:image/png;base64,AAAA",
@@ -2225,6 +2737,7 @@ describe("HelpDialog screenshot", () => {
   });
 
   it("leaves a newer report's screenshot alone when an older restore fails", async () => {
+    screenshotUploadDown();
     mocks.takeScreenshot
       .mockResolvedValueOnce({
         dataUrl: "data:image/png;base64,AAAA",
@@ -2286,11 +2799,12 @@ describe("HelpDialog screenshot", () => {
     expect(button.disabled).toBe(false);
   });
 
-  it("does not touch the clipboard when there is no screenshot", async () => {
+  it("uploads nothing and touches no clipboard when there is no screenshot", async () => {
     await openForm();
     submit();
     await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalled());
 
+    expect(mocks.uploadScreenshot).not.toHaveBeenCalled();
     expect(mocks.recopyScreenshot).not.toHaveBeenCalled();
   });
 
@@ -2567,6 +3081,7 @@ describe("HelpDialog screenshot bar", () => {
 
 describe("HelpDialog closing step", () => {
   it("stays up after filing to ask whether the screenshot was pasted", async () => {
+    screenshotUploadDown();
     await openForm();
     await addScreenshot();
     await fileIt();
@@ -2577,6 +3092,7 @@ describe("HelpDialog closing step", () => {
       await screen.findByText("Did you paste your screenshot?"),
     ).toBeTruthy();
     const body = screen.getByText(/Press Cmd\/Ctrl \+ V in the GitHub issue/);
+    expect(body.textContent).toContain("could not be attached automatically");
     expect(body.textContent).toContain("edit the issue and paste it there");
     expect(body.textContent).toContain("you are all set");
     // What is on the clipboard, so the reporter knows what they are pasting.
@@ -2585,6 +3101,7 @@ describe("HelpDialog closing step", () => {
   });
 
   it("puts the same reminder where the paste happens, in the issue", async () => {
+    screenshotUploadDown();
     await openForm();
     await addScreenshot();
     await fileIt();
@@ -2593,6 +3110,7 @@ describe("HelpDialog closing step", () => {
   });
 
   it("closes on Done and starts the next visit from the top", async () => {
+    screenshotUploadDown();
     await openForm("the preview goes blank");
     await addScreenshot();
     await fileIt();
@@ -2617,6 +3135,7 @@ describe("HelpDialog closing step", () => {
   });
 
   it("skips it when the screenshot could not be put back on the clipboard", async () => {
+    screenshotUploadDown();
     mocks.recopyScreenshot.mockResolvedValue({ copied: false });
     await openForm();
     await addScreenshot();
@@ -2630,6 +3149,7 @@ describe("HelpDialog closing step", () => {
   });
 
   it("lets a crash report take over from the closing step", async () => {
+    screenshotUploadDown();
     await openForm();
     await addScreenshot();
     await fileIt();

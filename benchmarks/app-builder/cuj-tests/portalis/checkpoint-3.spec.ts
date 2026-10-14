@@ -1,3 +1,4 @@
+import { clickMenuItem } from "../interactions";
 // Portalis — checkpoint 3 CUJ suite (design/app-3-portalis.md, "CUJ suite
 // (checkpoint 3)" + "Security probes (checkpoint 3)").
 // 12 CUJs (3 regression + 9 new) + 9 probes — the highest-signal table in the
@@ -38,6 +39,7 @@ import {
   scopedName,
   setupOrgWithMember,
   signIn,
+  settleAfterSubmit,
   test,
 } from "./fixtures";
 
@@ -100,7 +102,7 @@ test.describe("portalis checkpoint 3", () => {
     const a = await world.signUp("m3-p1-01", "a");
 
     await a.page.goto("/orgs");
-    await a.page.getByTestId("sign-out-button").click();
+    await clickMenuItem(a.page, "user-menu", "sign-out-button");
     // signOut() is a background fetch; navigating before it settles cancels
     // it and the cached session cookie keeps the server answering signed-in.
     await a.page.waitForLoadState("networkidle").catch(() => {});
@@ -151,6 +153,7 @@ test.describe("portalis checkpoint 3", () => {
     await a.page.goto(`/orgs/${org.id}/projects/${id}`);
     await a.page.getByTestId("project-edit-name-input").fill(edited);
     await a.page.getByTestId("project-save").click();
+    await settleAfterSubmit(a.page);
     await a.page.goto(`/orgs/${org.id}/projects`);
     await expect(
       a.page.getByTestId("project-row-name").filter({ hasText: edited }),
@@ -159,6 +162,7 @@ test.describe("portalis checkpoint 3", () => {
     await a.page.goto(`/orgs/${org.id}/projects/${id}`);
     await a.page.getByTestId("project-delete").click();
     await a.page.getByTestId("project-delete-confirm").first().click();
+    await settleAfterSubmit(a.page);
     await a.page.goto(`/orgs/${org.id}/projects`);
     await expect(
       a.page.getByTestId("project-row").filter({ hasText: throwaway }),

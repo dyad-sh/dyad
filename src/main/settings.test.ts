@@ -106,14 +106,17 @@ describe("readSettings", () => {
       expect(scrubSettings(result)).toMatchInlineSnapshot(`
         {
           "autoApproveNonSchemaSql": true,
+          "autoApproveSafeMcpTools": true,
           "autoExpandPreviewPanel": true,
           "autoFixReviewIssues": false,
           "chatgptFastMode": false,
           "disablePreviewNodeAutoInstall": false,
+          "disableSandboxedE2eTests": false,
           "enableAdvancedSubagents": false,
           "enableAppBlueprint": true,
           "enableAutoReview": false,
           "enableAutoUpdate": true,
+          "enableClaudeCodeSubscription": false,
           "enableCodeExplorer": true,
           "enableContextCompaction": true,
           "enableExplorerSubagent": true,
@@ -179,6 +182,16 @@ describe("readSettings", () => {
       expect(result.blockUnsafeNpmPackages).toBeUndefined();
       expect(result.enableAutoUpdate).toBe(true);
       expect(result.releaseChannel).toBe("stable");
+      expect(result.autoApproveSafeMcpTools).toBe(true);
+    });
+
+    it("preserves an explicit opt-out of safe MCP auto-approval", () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(
+        JSON.stringify({ autoApproveSafeMcpTools: false }),
+      );
+
+      expect(readSettings().autoApproveSafeMcpTools).toBe(false);
     });
 
     it("should treat existing settings files without hasRunBefore as already run", () => {
@@ -548,14 +561,17 @@ describe("readSettings", () => {
       expect(scrubSettings(result)).toMatchInlineSnapshot(`
         {
           "autoApproveNonSchemaSql": true,
+          "autoApproveSafeMcpTools": true,
           "autoExpandPreviewPanel": true,
           "autoFixReviewIssues": false,
           "chatgptFastMode": false,
           "disablePreviewNodeAutoInstall": false,
+          "disableSandboxedE2eTests": false,
           "enableAdvancedSubagents": false,
           "enableAppBlueprint": true,
           "enableAutoReview": false,
           "enableAutoUpdate": true,
+          "enableClaudeCodeSubscription": false,
           "enableCodeExplorer": true,
           "enableContextCompaction": true,
           "enableExplorerSubagent": true,
@@ -1195,6 +1211,31 @@ describe("preserving undecryptable secrets", () => {
       password: { value: "invented-password", encryptionType: "plaintext" },
       instanceUrl: "http://203.0.113.5:8000",
     });
+  });
+
+  it("puts the Cloudflare API token through encryption", () => {
+    writeSettings({ cloudflareAccessToken: { value: "cf-token" } });
+
+    expect(readStoredFile().cloudflareAccessToken).toEqual({
+      value: "cf-token",
+      encryptionType: "plaintext",
+    });
+    expect(readSettings().cloudflareAccessToken?.value).toBe("cf-token");
+  });
+
+  it("keeps a Cloudflare API token that will not decrypt, without exposing it", () => {
+    // Cloudflare deploys with this token on every push, so losing the stored
+    // copy to an unrelated write would break deployments the user cannot see.
+    const locked = lockedSecret("cloudflare");
+    store[mockSettingsPath] = JSON.stringify({ cloudflareAccessToken: locked });
+
+    expect(readSettings().cloudflareAccessToken).toBeUndefined();
+
+    writeSettings({ enableAutoUpdate: false });
+    const stored = readStoredFile();
+    expect(stored.enableAutoUpdate).toBe(false);
+    expect(stored.cloudflareAccessToken).toEqual(locked);
+    expect(readSettings().cloudflareAccessToken).toBeUndefined();
   });
 
   it("forgets a Coolify token that will not decrypt when signing out", () => {

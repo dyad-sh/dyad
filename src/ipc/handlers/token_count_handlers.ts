@@ -1,3 +1,8 @@
+import {
+  isShellExperimentAvailable,
+  shellExecutionGuidance,
+} from "@/shared/shell_capability";
+import { isFreeProModel } from "@/lib/freeProModel";
 import { db } from "../../db";
 import { chats } from "../../db/schema";
 import { eq } from "drizzle-orm";
@@ -188,6 +193,7 @@ export function registerTokenCountHandlers() {
       }
 
       const isDyadPro = isDyadProEnabled(settings);
+      const freeModelMode = isFreeProModel(selectedModel);
       const mcpToolDefs =
         selectedChatMode === "local-agent" ? getCachedMcpToolDefs() : [];
       // Cached only: an estimate must never wait on the catalog network
@@ -202,13 +208,21 @@ export function registerTokenCountHandlers() {
               return [];
             })
           : [];
+      if (
+        selectedChatMode === "local-agent" &&
+        isShellExperimentAvailable({ settings, isDyadPro, freeModelMode })
+      ) {
+        systemPrompt += `\n\n<shell_execution>\n${shellExecutionGuidance(process.platform, getDyadAppPath(chat.app.path))}\n</shell_execution>`;
+      }
       const toolDefinitionTokens = await estimateAgentToolTokens({
+        appPath: getDyadAppPath(chat.app.path),
         toolProfile: selectedChatMode === "build" ? "build" : "agent",
         readOnly: selectedChatMode === "ask",
         planModeOnly: selectedChatMode === "plan",
         basicAgentMode:
           selectedChatMode === "local-agent" && isBasicAgentMode(settings),
         enableAppBlueprint,
+        freeModelMode,
         isDyadPro,
         frameworkType,
         supabaseProjectId: chat.app.supabaseProjectId,

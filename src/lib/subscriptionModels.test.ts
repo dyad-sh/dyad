@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  CHATGPT_PLAN_LABELS,
   getSubscriptionDefaultModel,
   normalizeChatGPTPlanType,
 } from "./subscriptionModels";
@@ -40,5 +41,21 @@ describe("subscription defaults", () => {
     expect(normalizeChatGPTPlanType("Plus")).toBe("plus");
     expect(normalizeChatGPTPlanType("new-tier")).toBeUndefined();
     expect(normalizeChatGPTPlanType(null)).toBeUndefined();
+  });
+  it.each([
+    "business",
+    "self_serve_business_prolite",
+    "self_serve_business_usage_based",
+    "SELF_SERVE_BUSINESS_PROLITE",
+    "SELF_SERVE_BUSINESS_USAGE_BASED",
+  ])("displays %s as Business", (value) => {
+    const plan = normalizeChatGPTPlanType(value);
+    expect(plan).toBe("business");
+    expect(plan && CHATGPT_PLAN_LABELS[plan]).toBe("Business");
+  });
+  it("does not classify unrecognized Business variants as Business", () => {
+    expect(
+      normalizeChatGPTPlanType("self_serve_business_unknown"),
+    ).toBeUndefined();
   });
 });

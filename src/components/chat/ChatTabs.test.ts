@@ -37,6 +37,7 @@ import {
   shouldSkipChatSelection,
 } from "@/components/chat/ChatTabs";
 import type { ChatSummary } from "@/lib/schemas";
+import { CHAT_SCROLL_RESTORE_EVENT } from "@/components/chat/scroll/restore";
 
 function chat(id: number, appId = 1): ChatSummary {
   return {
@@ -146,6 +147,53 @@ describe("ChatTabs helpers", () => {
     callbacks.shift()?.(2);
     callbacks.shift()?.(3);
     expect(viewport.scrollTop).toBe(300);
+    wrapper.remove();
+  });
+
+  function mountRestoreViewport(scrollHeight: number) {
+    const callbacks: FrameRequestCallback[] = [];
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      callbacks.push(callback);
+      return callbacks.length;
+    });
+    const wrapper = document.createElement("div");
+    wrapper.dataset.testid = "messages-list";
+    const viewport = document.createElement("div");
+    viewport.dataset.virtuosoScroller = "";
+    Object.defineProperties(viewport, {
+      scrollHeight: { value: scrollHeight },
+      clientHeight: { value: 200 },
+    });
+    wrapper.append(viewport);
+    document.body.append(wrapper);
+    return { callbacks, wrapper, viewport };
+  }
+
+  it("hands bottom-follow restoration to the controller once", () => {
+    const { callbacks, wrapper, viewport } = mountRestoreViewport(1_000);
+    const restores: Event[] = [];
+    viewport.addEventListener(CHAT_SCROLL_RESTORE_EVENT, (event) => {
+      restores.push(event);
+      event.preventDefault();
+    });
+
+    restoreMessagesScrollTop(3_000, () => true, true);
+    callbacks.shift()?.(0);
+
+    expect(restores).toHaveLength(1);
+    expect(callbacks).toHaveLength(0);
+    wrapper.remove();
+  });
+
+  it("stops the unattached bottom-follow fallback once content shrinks below the saved offset", () => {
+    const { callbacks, wrapper, viewport } = mountRestoreViewport(1_000);
+
+    restoreMessagesScrollTop(3_000, () => true, true);
+    let frames = 0;
+    while (callbacks.length > 0) callbacks.shift()?.(frames++);
+
+    expect(viewport.scrollTop).toBe(1_000);
+    expect(frames).toBe(4);
     wrapper.remove();
   });
 

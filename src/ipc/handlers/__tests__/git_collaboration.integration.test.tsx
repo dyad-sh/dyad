@@ -168,9 +168,13 @@ describe("Git collaboration actions (integration)", () => {
       {},
       { timeout: 30_000 },
     );
-    await within(connectedRepo).findByText("Successfully pushed to GitHub!", {
-      exact: false,
-    });
+    // The initial push runs after the repo connects, so this wait covers a
+    // whole `git push` on a loaded CI runner; the default 5s is not enough.
+    await within(connectedRepo).findByText(
+      "Successfully pushed to GitHub!",
+      { exact: false },
+      { timeout: 30_000 },
+    );
     await screen.findByTestId("branch-actions-menu-trigger", undefined, {
       timeout: 15_000,
     });

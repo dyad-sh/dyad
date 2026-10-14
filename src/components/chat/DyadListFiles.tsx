@@ -14,6 +14,8 @@ interface DyadListFilesProps {
   node: {
     properties: {
       directory?: string;
+      summary?: string;
+      count?: string;
       recursive?: string;
       include_ignored?: string;
       state?: CustomTagState;
@@ -26,7 +28,6 @@ interface DyadListFilesProps {
 export function DyadListFiles({ node, children }: DyadListFilesProps) {
   const { directory, recursive, include_ignored, state, appName } =
     node.properties;
-  const isLoading = state === "pending";
   const isRecursive = recursive === "true";
   const isIncludeIgnored = include_ignored === "true";
   const content = typeof children === "string" ? children : "";
@@ -34,12 +35,14 @@ export function DyadListFiles({ node, children }: DyadListFilesProps) {
 
   const title = directory ? directory : "List Files";
 
+  const hasDetails = typeof children === "string" && children.trim().length > 0;
+
   return (
     <DyadCard
       state={state}
       accentColor="slate"
-      isExpanded={isExpanded}
-      onClick={() => setIsExpanded(!isExpanded)}
+      isExpanded={hasDetails && isExpanded}
+      onClick={hasDetails ? () => setIsExpanded(!isExpanded) : undefined}
       data-testid="dyad-list-files"
     >
       <DyadCardHeader icon={<FolderOpen size={15} />} accentColor="slate">
@@ -51,14 +54,29 @@ export function DyadListFiles({ node, children }: DyadListFilesProps) {
         {isIncludeIgnored && (
           <DyadBadge color="slate">include ignored</DyadBadge>
         )}
-        {isLoading && (
-          <DyadStateIndicator state="pending" pendingLabel="Listing..." />
+        {state && state !== "finished" && (
+          <DyadStateIndicator
+            state={state}
+            pendingLabel="Listing..."
+            errorLabel="Failed"
+            abortedLabel="Did not finish"
+          />
+        )}
+        {node.properties.count !== undefined && (
+          <span className="text-xs text-muted-foreground">
+            {node.properties.count} paths
+          </span>
         )}
         <div className="ml-auto">
-          <DyadExpandIcon isExpanded={isExpanded} />
+          {hasDetails && <DyadExpandIcon isExpanded={isExpanded} />}
         </div>
       </DyadCardHeader>
-      <DyadCardContent isExpanded={isExpanded}>
+      {node.properties.summary && (
+        <div className="px-3 pb-2 text-xs text-muted-foreground break-words">
+          {node.properties.summary}
+        </div>
+      )}
+      <DyadCardContent isExpanded={hasDetails && isExpanded}>
         {content && (
           <div className="p-3 text-xs font-mono whitespace-pre-wrap max-h-60 overflow-y-auto bg-muted/20 rounded-lg">
             {content}

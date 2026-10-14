@@ -413,6 +413,171 @@ describe("sandbox capabilities", () => {
     });
   });
 
+  it("supports the advertised 0.3 data helpers after a host file read", async () => {
+    if (!isSandboxSupportedPlatform()) return;
+
+    await fs.writeFile(
+      path.join(appPath, "src", "rows.json"),
+      JSON.stringify([
+        { name: "z", group: "one", internal: true },
+        { name: "é", group: "one", internal: true },
+        { name: "a", group: "two", internal: true },
+      ]),
+    );
+    const result = await runSandboxScript({
+      appPath,
+      script: `
+        const rows = JSON.parse(await read_file("src/rows.json"), (key, value) => key === "internal" ? undefined : value);
+        const grouped = Object.groupBy(rows, row => row.group);
+        const mapped = Map.groupBy(rows, row => row.group);
+        const sorted = rows.toSorted((a, b) => a.name.localeCompare(b.name, "en-US"));
+        const names = sorted.map(row => { delete row.group; return row.name; });
+        const sparse = [1, 2, 3];
+        delete sparse[1];
+        const date = new Date("2026-09-21T23:30:00-07:00");
+        JSON.stringify({
+          names,
+          firstGroupSize: grouped.one.length,
+          mappedGroupNames: mapped.get("one").map(row => row.name),
+          reversed: names.toReversed(),
+          spliced: names.toSpliced(1, 1, "b"),
+          originalNames: names.join(","),
+          removed: !Object.hasOwn(rows[0], "internal") && !Object.hasOwn(rows[0], "group"),
+          deletedElement: !Object.hasOwn(sparse, 1) && sparse.length === 3,
+          union: Array.from(new Set(["one"]).union(new Set(["two"]))),
+          intersection: Array.from(new Set(["one", "two"]).intersection(new Set(["two", "three"]))),
+          difference: Array.from(new Set(["one", "two"]).difference(new Set(["two"]))),
+          replaced: JSON.stringify({ keep: 1, internal: true }, (key, value) => key === "internal" ? undefined : value, 2),
+          formatted: new Intl.NumberFormat("en-US", { minimumFractionDigits: 2 }).format(1234.5),
+          utcDate: [date.getHours(), date.getDate(), date.getTimezoneOffset()],
+          encoded: encodeURIComponent("a b")
+        }, null, 2);
+      `,
+    });
+    expect(JSON.parse(result.value)).toEqual({
+      names: ["a", "é", "z"],
+      firstGroupSize: 2,
+      mappedGroupNames: ["z", "é"],
+      reversed: ["z", "é", "a"],
+      spliced: ["a", "b", "z"],
+      originalNames: "a,é,z",
+      removed: true,
+      deletedElement: true,
+      union: ["one", "two"],
+      intersection: ["two"],
+      difference: ["one"],
+      replaced: '{\n  "keep": 1\n}',
+      formatted: "1,234.50",
+      utcDate: [6, 22, 0],
+      encoded: "a%20b",
+    });
+  });
+
+  it.each([
+    [
+      '"a".localeCompare("b", "de");',
+      "TypeError: Intl currently supports only the `en-US` locale",
+    ],
+    [
+      'new Intl.NumberFormat("de").format(1);',
+      "TypeError: Intl currently supports only the `en-US` locale",
+    ],
+    [
+      'new Intl.DateTimeFormat("en-US", { timeZone: "America/Los_Angeles" });',
+      "TypeError: Intl.DateTimeFormat currently supports only the `UTC` timeZone",
+    ],
+  ])(
+    "rejects unsupported locale/time-zone arguments: %s",
+    async (script, message) => {
+      if (!isSandboxSupportedPlatform()) return;
+      await expect(runSandboxScript({ appPath, script })).rejects.toThrow(
+        message,
+      );
+    },
+  );
+
+  it.each([
+    ["1n", "BigInt values cannot cross the structured host boundary"],
+    [
+      'new Map([["key", 1]])',
+      "Map and Set values cannot cross the structured host boundary",
+    ],
+    [
+      "new Set([1])",
+      "Map and Set values cannot cross the structured host boundary",
+    ],
+  ])(
+    "rejects non-structured values at return and host-call boundaries: %s",
+    async (expression, message) => {
+      if (!isSandboxSupportedPlatform()) return;
+      await expect(
+        runSandboxScript({ appPath, script: `${expression};` }),
+      ).rejects.toThrow(message);
+      let called = false;
+      await expect(
+        executeSandboxScriptInProcess({
+          appPath,
+          script: `send(${expression});`,
+          capabilities: {
+            send: () => {
+              called = true;
+            },
+          },
+        }),
+      ).rejects.toThrow(message);
+      expect(called).toBe(false);
+    },
+  );
+
+  it("preserves sparse host-call arrays but renders holes as null in final output", async () => {
+    if (!isSandboxSupportedPlatform()) return;
+    const script = "const items = [1, 2, 3]; delete items[1];";
+    const result = await runSandboxScript({
+      appPath,
+      script: `${script} items;`,
+    });
+    expect(result.value).toBe("[\n  1,\n  null,\n  3\n]");
+
+    let received: unknown;
+    await executeSandboxScriptInProcess({
+      appPath,
+      script: `${script} send(items);`,
+      capabilities: {
+        send: (value) => {
+          received = value;
+        },
+      },
+    });
+    const expected = [1, 2, 3];
+    delete expected[1];
+    expect(received).toStrictEqual(expected);
+    expect(Object.hasOwn(received as number[], 1)).toBe(false);
+  });
+
+  it.each(["\ud800", { ["\ud800"]: 1 }])(
+    "rejects lone surrogates in host-returned strings and keys: %j",
+    async (value) => {
+      if (!isSandboxSupportedPlatform()) return;
+      await expect(
+        executeSandboxScriptInProcess({
+          appPath,
+          script: "receive();",
+          capabilities: { receive: () => value },
+        }),
+      ).rejects.toThrow(/lone surrogate/i);
+    },
+  );
+
+  it.each([
+    'JSON.parse("1", () => read_file("src/data.txt"));',
+    'JSON.stringify({ a: 1 }, () => read_file("src/data.txt"));',
+  ])("rejects host calls inside JSON callbacks: %s", async (script) => {
+    if (!isSandboxSupportedPlatform()) return;
+    await expect(runSandboxScript({ appPath, script })).rejects.toThrow(
+      "JSON callbacks do not support synchronous host suspensions",
+    );
+  });
+
   it("reports actual attachment host calls from MustardScript", async () => {
     if (!isSandboxSupportedPlatform()) {
       return;

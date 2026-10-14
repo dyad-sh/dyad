@@ -1,7 +1,19 @@
 import path from "path";
 import { spawn } from "child_process";
-import { testSkipIfWindows } from "./helpers/test_helper";
+import { test, testSkipIfWindows } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
+
+test.beforeEach(async ({ po }) => {
+  // These scenarios exercise manual consent, not Pro's safe-tool auto-approval.
+  await po.page.evaluate(async () => {
+    await (window as any).electron.ipcRenderer.invoke("set-user-settings", {
+      autoApproveSafeMcpTools: false,
+    });
+  });
+  await expect
+    .poll(() => po.settings.recordSettings().autoApproveSafeMcpTools)
+    .toBe(false);
+});
 
 testSkipIfWindows("mcp - oauth connects and calls a tool", async ({ po }) => {
   const fakePath = path.join(

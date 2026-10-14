@@ -4,9 +4,12 @@ const mocks = vi.hoisted(() => ({
   credentialError: false,
   credentials: vi.fn(),
   catalog: vi.fn(),
+  codexClientVersion: vi.fn(),
 }));
 vi.mock("../shared/remote_language_model_catalog", () => ({
+  FALLBACK_CODEX_CLIENT_VERSION: "0.155.1",
   getBuiltinLanguageModelCatalog: mocks.catalog,
+  getCodexClientVersion: mocks.codexClientVersion,
 }));
 vi.mock("../shared/language_model_helpers", () => ({
   getLanguageModelProviders: async () => [],
@@ -15,6 +18,7 @@ import { resolveSubscriptionModel } from "./resolve_subscription_model";
 import { usesChatGPTSubscription } from "@/lib/subscriptionModels";
 import type { UserSettings } from "@/lib/schemas";
 import { DyadErrorKind } from "@/errors/dyad_error";
+import { queryInvalidationBus } from "@/window_infrastructure/main/query_invalidation_bus";
 const settings = {
   enableDyadPro: true,
   proModelUsage: "subscription",
@@ -35,17 +39,22 @@ import {
   resetSubscriptionAccount,
 } from "./codex_subscription_account";
 beforeEach(() => {
+  vi.spyOn(queryInvalidationBus, "publish").mockReturnValue(0);
   resetSubscriptionAccount();
   mocks.catalog
     .mockReset()
     .mockResolvedValue({ modelsByProvider: { openai: [] } });
+  mocks.codexClientVersion.mockReset().mockReturnValue("0.155.1");
   mocks.credentials
     .mockReset()
     .mockResolvedValue({ access: "test-access", accountId: "test-account" });
   mocks.connected = true;
   mocks.credentialError = false;
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 it("preserves credential-storage failures without making account requests", async () => {
   mocks.connected = false;
   mocks.credentialError = true;
@@ -94,6 +103,7 @@ it("deduplicates account lookups and never returns credentials to the renderer",
             ? {
                 models: [
                   { slug: "gpt-eligible" },
+                  { slug: "gpt-6-sol", visibility: "list" },
                   { slug: "hidden", visibility: "hide" },
                 ],
               }
@@ -107,10 +117,98 @@ it("deduplicates account lookups and never returns credentials to the renderer",
     getSubscriptionAccount(),
   ]);
   expect(a).toEqual(b);
-  expect(a).toMatchObject({ models: ["gpt-eligible"], limitReached: true });
+  expect(a).toMatchObject({
+    models: ["gpt-eligible", "gpt-6-sol"],
+    limitReached: true,
+  });
   expect(JSON.stringify(a)).not.toContain("test-access");
   await getSubscriptionAccount();
   expect(fetcher).toHaveBeenCalledTimes(2);
+  expect(
+    fetcher.mock.calls.some(([url]) =>
+      url.includes("/codex/models?client_version=0.155.1"),
+    ),
+  ).toBe(true);
+});
+it("uses the Codex client version from the remote model catalog", async () => {
+  mocks.codexClientVersion.mockReturnValue("0.156.0");
+  const fetcher = vi.fn().mockResolvedValue(accountResponse(["gpt-6-sol"]));
+  vi.stubGlobal("fetch", fetcher);
+
+  expect(await getSubscriptionAccount({ includeUsage: false })).toMatchObject({
+    models: ["gpt-6-sol"],
+  });
+  expect(fetcher.mock.calls[0][0]).toContain("client_version=0.156.0");
+});
+it("retries a rejected remote client version with the pinned version", async () => {
+  mocks.codexClientVersion.mockReturnValue("0.156.0");
+  const fetcher = vi.fn(async (url: string) =>
+    url.includes("client_version=0.156.0")
+      ? new Response(null, { status: 400 })
+      : accountResponse(["gpt-6-sol"]),
+  );
+  vi.stubGlobal("fetch", fetcher);
+
+  expect(await getSubscriptionAccount({ includeUsage: false })).toMatchObject({
+    models: ["gpt-6-sol"],
+    modelsError: undefined,
+  });
+  expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
+    "https://chatgpt.com/backend-api/codex/models?client_version=0.156.0",
+    "https://chatgpt.com/backend-api/codex/models?client_version=0.155.1",
+  ]);
+});
+it("does not retry authentication failures with another client version", async () => {
+  mocks.codexClientVersion.mockReturnValue("0.156.0");
+  const fetcher = vi
+    .fn()
+    .mockResolvedValue(new Response(null, { status: 401 }));
+  vi.stubGlobal("fetch", fetcher);
+
+  expect(await getSubscriptionAccount({ includeUsage: false })).toMatchObject({
+    error: "Reconnect your ChatGPT subscription to continue.",
+  });
+  expect(fetcher).toHaveBeenCalledTimes(1);
+});
+it("refreshes cached models when the remote Codex client version changes", async () => {
+  const fetcher = vi.fn(async (url: string) =>
+    accountResponse([
+      url.includes("client_version=0.156.0") ? "new-model" : "old-model",
+    ]),
+  );
+  vi.stubGlobal("fetch", fetcher);
+
+  expect(await getSubscriptionAccount({ includeUsage: false })).toMatchObject({
+    models: ["old-model"],
+  });
+  mocks.codexClientVersion.mockReturnValue("0.156.0");
+  expect(await getSubscriptionAccount({ includeUsage: false })).toMatchObject({
+    models: ["new-model"],
+  });
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  expect(queryInvalidationBus.publish).toHaveBeenCalledTimes(2);
+});
+it("refreshes a changed version without delaying the first model lookup", async () => {
+  let finishOld!: (response: Response) => void;
+  const fetcher = vi.fn((url: string) =>
+    url.includes("client_version=0.155.1")
+      ? new Promise<Response>((resolve) => {
+          finishOld = resolve;
+        })
+      : Promise.resolve(accountResponse(["new-model"])),
+  );
+  vi.stubGlobal("fetch", fetcher);
+
+  const pending = getSubscriptionAccount({ includeUsage: false });
+  await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
+  mocks.codexClientVersion.mockReturnValue("0.156.0");
+  finishOld(accountResponse(["old-model"]));
+  expect(await pending).toMatchObject({ models: ["old-model"] });
+  await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+  expect(await getSubscriptionAccount({ includeUsage: false })).toMatchObject({
+    models: ["new-model"],
+  });
+  expect(queryInvalidationBus.publish).toHaveBeenCalledTimes(2);
 });
 it("reports unavailable instead of showing zero usage or guessing models", async () => {
   vi.stubGlobal(

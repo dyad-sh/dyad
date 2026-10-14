@@ -85,11 +85,40 @@ describe.runIf(process.platform !== "win32")(
         filepath: "supabase/functions/hello-world/index.ts",
       });
       expect(deploySupabaseFunction).toHaveBeenCalledWith({
+        appId: 987654,
         supabaseProjectId: "project-id",
         functionName: "hello-world",
         appPath,
         organizationSlug: null,
       });
+    });
+
+    it("still applies the copy after cancellation and leaves cancellation to the deploy", async () => {
+      const abortController = new AbortController();
+      abortController.abort();
+
+      await executeCopyFile({
+        from: "source.txt",
+        to: "supabase/functions/hello-world/index.ts",
+        appId: 987654,
+        signal: abortController.signal,
+      });
+
+      await expect(
+        fs.readFile(
+          path.join(
+            appPath,
+            "supabase",
+            "functions",
+            "hello-world",
+            "index.ts",
+          ),
+          "utf8",
+        ),
+      ).resolves.toBe("copied");
+      expect(deploySupabaseFunction).toHaveBeenCalledWith(
+        expect.objectContaining({ signal: abortController.signal }),
+      );
     });
   },
 );

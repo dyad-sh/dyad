@@ -49,6 +49,23 @@ interface FakeServerBehaviour {
   probe?: string;
   /** Exit code for install.sh. Non-zero makes the install fail. */
   installExit?: number;
+  /**
+   * A signal that kills install.sh, sent as an SSH exit-signal rather than an
+   * exit status.
+   *
+   * Models sshd terminating the install shell itself — the one path that
+   * produces an exit-signal on a real box. A signal hitting a grandchild
+   * (Docker, curl) comes back as a normal `128 + signo` exit status via bash,
+   * so this is the lesser case the wrapper's close handler has to tell apart
+   * from a connection that died under the channel. The bare name, no `SIG`
+   * prefix — exactly what sshd puts on the wire, and what ssh2 turns back into
+   * `SIG<name>` for the client.
+   */
+  installSignal?: string;
+  /** Whether the killed shell dumped core, as sshd reports it. */
+  installSignalCoreDumped?: boolean;
+  /** sshd's own death description, where it carries one. */
+  installSignalDescription?: string;
   /** Coolify's reported version, which decides the automatic token path. */
   version?: string;
   /**
@@ -152,6 +169,10 @@ function answer(
 ): {
   stdout: string;
   code: number;
+  /** Set when the install shell was signal-killed; takes precedence over code. */
+  signal?: string;
+  coreDumped?: boolean;
+  description?: string;
 } {
   state.commands.push(command);
 
@@ -164,12 +185,25 @@ function answer(
     };
   }
   if (command.includes("install.sh")) {
+    // What the real installer prints, so the failure message's tail is what
+    // a user would see. The same transcript is returned for a signal kill as
+    // for an exit status: the shell ran and printed before it died.
+    const stdout = "1/6 Installing Docker...\n6/6 Coolify is up\n";
+    if (state.installSignal) {
+      // The shell was killed, so nothing was installed — installed is left
+      // false. `code` is unused by the signal path but kept to satisfy the
+      // shared return type; finish() dispatches on `signal`.
+      return {
+        stdout,
+        code: 0,
+        signal: state.installSignal,
+        coreDumped: state.installSignalCoreDumped,
+        description: state.installSignalDescription,
+      };
+    }
     const code = state.installExit ?? 0;
     if (code === 0) state.installed = true;
-    return {
-      stdout: "1/6 Installing Docker...\n6/6 Coolify is up\n",
-      code,
-    };
+    return { stdout, code };
   }
   if (command.includes("db:seed")) {
     return { stdout: "Seeding: RootUserSeeder\n", code: 0 };
@@ -230,10 +264,23 @@ export async function startFakeSshServer(): Promise<FakeSshServer> {
               stdin += chunk.toString("utf8");
             });
             const finish = () => {
-              const { stdout, code } = answer(info.command, stdin, state);
-              stream.write(stdout);
+              const result = answer(info.command, stdin, state);
+              stream.write(result.stdout);
+              if (result.signal) {
+                // stream.exit(name, coreDumped, msg) with a string first arg
+                // dispatches SSH_MSG_CHANNEL_REQUEST of type `exit-signal` —
+                // the wire shape a real sshd sends when it kills the shell
+                // directly. A number first arg dispatches `exit-status` below.
+                stream.exit(
+                  result.signal,
+                  result.coreDumped,
+                  result.description,
+                );
+                stream.end();
+                return;
+              }
               if (!state.exitAfterEofMs) {
-                stream.exit(code);
+                stream.exit(result.code);
                 stream.end();
                 return;
               }
@@ -252,7 +299,10 @@ export async function startFakeSshServer(): Promise<FakeSshServer> {
                   };
                   outgoing: { id: number };
                 };
-                inner._client._protocol.exitStatus(inner.outgoing.id, code);
+                inner._client._protocol.exitStatus(
+                  inner.outgoing.id,
+                  result.code,
+                );
                 stream.close();
               }, state.exitAfterEofMs);
             };

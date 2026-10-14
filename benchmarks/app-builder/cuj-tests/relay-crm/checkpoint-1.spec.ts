@@ -221,6 +221,7 @@ test.describe("relay-crm checkpoint 1", () => {
       .click();
     await owner.page.getByTestId("contact-delete-button").click();
     await owner.page.getByTestId("contact-delete-confirm").click();
+    await settleAfterSubmit(owner.page);
     await owner.page.goto("/contacts");
     await expect(
       owner.page.getByTestId("contact-row").filter({ hasText: TEMP }),
@@ -268,18 +269,14 @@ test.describe("relay-crm checkpoint 1", () => {
 
     const outsider = await world.signUp("outsider");
     await outsider.page.goto("/contacts");
-    const rows = await outsider.page.getByTestId("contact-row").count();
-    if (rows > 0) {
-      // Rows may exist only if the model pre-seeded demo data; the owner's
-      // records must never appear.
-      expect(rows).toBe(0);
-    } else {
-      await expect(
-        outsider.page
-          .getByTestId("contacts-empty")
-          .or(outsider.page.getByTestId("contacts-list")),
-      ).toBeVisible();
-    }
+    await expect(
+      outsider.page
+        .getByTestId("contacts-empty")
+        .or(outsider.page.getByTestId("contacts-list"))
+        .filter({ visible: true })
+        .first(),
+    ).toBeVisible();
+    await expect(outsider.page.getByTestId("contact-row")).toHaveCount(0);
     expect(await outsider.page.content()).not.toContain(ADA);
     const me = await outsider.context.request.get("/api/me");
     expect(me.status()).toBe(200);

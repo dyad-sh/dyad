@@ -1,9 +1,17 @@
+import log from "electron-log";
 import { z } from "zod";
-import { getBuiltinLanguageModelCatalog } from "../shared/remote_language_model_catalog";
+import {
+  FALLBACK_CODEX_CLIENT_VERSION,
+  getBuiltinLanguageModelCatalog,
+  getCodexClientVersion,
+} from "../shared/remote_language_model_catalog";
+import { queryInvalidationBus } from "@/window_infrastructure/main/query_invalidation_bus";
 import {
   getCodexSubscriptionCredentials,
   getCodexSubscriptionStatus,
 } from "./codex_subscription_auth";
+
+const logger = log.scope("codex_subscription_account");
 
 const Window = z.object({
   used_percent: z.number().finite().nonnegative(),
@@ -34,12 +42,14 @@ let cached: {
   limitsError?: string;
 } = { models: [], windows: [], limitReached: false };
 const updatedAt = { models: -Infinity, limits: -Infinity };
+let requestedModelsClientVersion: string | undefined;
 let revision = 0;
 const inflight: Partial<Record<"models" | "limits", Promise<void>>> = {};
 export function resetSubscriptionAccount() {
   revision++;
   cached = { models: [], windows: [], limitReached: false };
   updatedAt.models = updatedAt.limits = -Infinity;
+  requestedModelsClientVersion = undefined;
   delete inflight.models;
   delete inflight.limits;
 }
@@ -67,10 +77,17 @@ export function parseSubscriptionLimits(raw: unknown) {
 }
 // Catalog eligibility and usage display have independent freshness and waiters.
 async function refreshAccountPart(part: "models" | "limits") {
+  const activeRevision = revision;
+  const clientVersion = part === "models" ? getCodexClientVersion() : undefined;
   // Retry failed catalog lookups sooner; an outage must not poison eligibility for an hour.
   const ttl = part === "models" && !cached.modelsError ? 60 * 60_000 : 60_000;
-  if (!inflight[part] && Date.now() - updatedAt[part] >= ttl) {
+  if (
+    !inflight[part] &&
+    (Date.now() - updatedAt[part] >= ttl ||
+      (part === "models" && clientVersion !== requestedModelsClientVersion))
+  ) {
     const current = revision;
+    if (part === "models") requestedModelsClientVersion = clientVersion;
     inflight[part] = (async () => {
       try {
         const credentials = await getCodexSubscriptionCredentials().catch(
@@ -82,19 +99,37 @@ async function refreshAccountPart(part: "models" | "limits") {
         );
         if (current !== revision) return;
         if (part === "models") cached.error = undefined;
-        const response = await fetch(
-          part === "models"
-            ? "https://chatgpt.com/backend-api/codex/models?client_version=0.154.0"
-            : "https://chatgpt.com/backend-api/wham/usage",
-          {
-            headers: {
-              Authorization: `Bearer ${credentials.access}`,
-              "ChatGPT-Account-Id": credentials.accountId,
+        const request = (version: string | undefined) =>
+          fetch(
+            part === "models"
+              ? `https://chatgpt.com/backend-api/codex/models?client_version=${version}`
+              : "https://chatgpt.com/backend-api/wham/usage",
+            {
+              headers: {
+                Authorization: `Bearer ${credentials.access}`,
+                "ChatGPT-Account-Id": credentials.accountId,
+              },
+              signal: AbortSignal.timeout(10_000),
+              redirect: "error",
             },
-            signal: AbortSignal.timeout(10_000),
-            redirect: "error",
-          },
-        );
+          );
+        let response = await request(clientVersion);
+        let effectiveClientVersion = clientVersion;
+        if (
+          part === "models" &&
+          current === revision &&
+          clientVersion !== FALLBACK_CODEX_CLIENT_VERSION &&
+          response.status === 400
+        ) {
+          await response.body?.cancel();
+          logger.warn("Codex model catalog rejected client version", {
+            clientVersion,
+            fallbackVersion: FALLBACK_CODEX_CLIENT_VERSION,
+            status: response.status,
+          });
+          effectiveClientVersion = FALLBACK_CODEX_CLIENT_VERSION;
+          response = await request(effectiveClientVersion);
+        }
         if (!response.ok) {
           if (
             current === revision &&
@@ -124,8 +159,19 @@ async function refreshAccountPart(part: "models" | "limits") {
           // Empty responses must not erase the last successful account catalog.
           if (!models.length)
             throw new Error("Empty subscription model catalog");
+          const modelsChanged =
+            models.length !== cached.models.length ||
+            models.some((model, index) => model !== cached.models[index]);
+          const hadModelsError = cached.modelsError !== undefined;
           cached.models = models;
           cached.modelsError = undefined;
+          logger.info("Loaded subscription model catalog", {
+            clientVersion: effectiveClientVersion,
+            modelCount: models.length,
+          });
+          if (modelsChanged || hadModelsError) {
+            queryInvalidationBus.publish([{ family: "codex-subscription" }]);
+          }
         } else {
           Object.assign(cached, parseSubscriptionLimits(raw));
           cached.limitsError = undefined;
@@ -133,8 +179,12 @@ async function refreshAccountPart(part: "models" | "limits") {
       } catch {
         if (current !== revision) return;
         if (part === "models") {
+          const hadModelsError = cached.modelsError !== undefined;
           cached.modelsError =
             "Subscription model availability is temporarily unavailable.";
+          if (!hadModelsError) {
+            queryInvalidationBus.publish([{ family: "codex-subscription" }]);
+          }
         } else {
           cached.limitsError = "Usage limits are temporarily unavailable.";
         }
@@ -147,6 +197,15 @@ async function refreshAccountPart(part: "models" | "limits") {
     })();
   }
   await inflight[part];
+  // A catalog update can land during the account request. Refresh the picker
+  // in the background without delaying a successful subscription turn.
+  if (
+    part === "models" &&
+    activeRevision === revision &&
+    requestedModelsClientVersion !== getCodexClientVersion()
+  ) {
+    void refreshAccountPart("models");
+  }
 }
 
 export async function getSubscriptionAccount({

@@ -163,6 +163,13 @@ vi.mock("@/ipc/shared/remote_mcp_catalog", async (importOriginal) => ({
 
 const getClientMock = vi.fn();
 const disposeMock = vi.fn(async () => {});
+// The timeout itself is covered in mcp_manager.test.ts; here it forwards to
+// the getClient mock so each test controls the failure, and records the
+// options so handlers can be checked for the cap they pass.
+const listToolsWithinMock = vi.fn(
+  async (serverId: number, _options?: { timeoutMs?: number }) =>
+    (await getClientMock(serverId)).tools(),
+);
 let neverSuggestSlugs: string[] | undefined;
 const writeSettingsMock = vi.fn();
 vi.mock("@/main/settings", () => ({
@@ -174,6 +181,7 @@ vi.mock("@/ipc/utils/mcp_manager", () => ({
   mcpManager: {
     getClient: getClientMock,
     dispose: disposeMock,
+    listToolsWithin: listToolsWithinMock,
   },
 }));
 
@@ -531,6 +539,14 @@ describe("mcp listTools handler", () => {
   beforeEach(() => {
     dbStore.clear();
     vi.clearAllMocks();
+  });
+
+  it("caps listing tools at 8s so a hung server can't freeze the tools list", async () => {
+    getClientMock.mockResolvedValueOnce({ tools: vi.fn(async () => ({})) });
+
+    await invoke("mcp:list-tools", 3);
+
+    expect(listToolsWithinMock).toHaveBeenCalledWith(3, { timeoutMs: 8_000 });
   });
 
   it("returns an empty list (not a crash) when getClient throws", async () => {

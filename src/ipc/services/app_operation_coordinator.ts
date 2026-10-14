@@ -8,6 +8,7 @@ export const APP_OPERATION_RESOURCES = [
   "media", // Uploaded, generated, and screenshot files in the media library.
   "metadata", // General app fields not owned by a more specific resource.
   "provider", // Supabase/Neon associations and provider lifecycle state.
+  "supabase-functions", // Captured function deployments and project reassociation.
   "repository", // Umbrella for Git refs plus the index and working tree.
   "repository-ref", // Git HEAD and refs, excluding index and working-tree files.
   "repository-worktree", // Git index and working-tree files.
@@ -39,10 +40,17 @@ export interface AppOperationAccess {
   mode: AppOperationAccessMode;
 }
 
+export interface AppOperationContext {
+  /** Drop preparation claims while retaining ownership of the remaining work. */
+  releaseResources(resources: readonly AppOperationResource[]): void;
+}
+
 export interface AppOperationRequest {
   appId: number;
   operation: string;
   resources: readonly (AppOperationResource | AppOperationAccess)[];
+  /** Cancel admission while queued. Once active, the callback owns cleanup. */
+  signal?: AbortSignal;
   /**
    * While this operation is active, later compatible work may pass an earlier
    * queued operation that is blocked exclusively by bypass-enabled active
@@ -80,6 +88,8 @@ interface NormalizedAppOperationRequest {
   operation: string;
   resources: readonly AppOperationAccess[];
   allowCompatibleQueueBypass?: boolean;
+  /** Snapshot preparation domains this owner explicitly released. */
+  releasedResources?: readonly AppOperationResource[];
 }
 
 interface PendingOperation {
@@ -87,11 +97,18 @@ interface PendingOperation {
   execute: () => Promise<unknown>;
   resolve: (result: unknown) => void;
   reject: (error: unknown) => void;
+  detachAbort: () => void;
+}
+
+interface BlockedOperation {
+  request: NormalizedAppOperationRequest;
+  error: DyadError;
 }
 
 interface AppOperationState {
   active: Set<PendingOperation>;
   queue: PendingOperation[];
+  blocks: Set<BlockedOperation>;
   deletion?: {
     token: symbol;
     drainWaiters: Set<() => void>;
@@ -164,11 +181,19 @@ function canBypassBlockedOperation(
     requestsConflict(blocker.request, blocked.request),
   );
   const blockerResources = new Set(
-    directBlockers.flatMap((blocker) =>
-      blocker.request.resources.map(({ resource }) => resource),
-    ),
+    directBlockers.flatMap((blocker) => [
+      ...blocker.request.resources.map(({ resource }) => resource),
+      ...(blocked.request.allowCompatibleQueueBypass
+        ? (blocker.request.releasedResources ?? [])
+        : []),
+    ]),
   );
-  // The session may relax fairness only inside domains it currently owns.
+  // The session may relax fairness only inside domains it owns. Domains a
+  // snapshot owner released also count when the blocked operation is itself a
+  // long-lived owner (a later deploy still excluded by the retained function
+  // claim): its queued preparation must not re-block the editing/testing
+  // domains just released. Ordinary exclusive work such as a revert keeps its
+  // fairness and is not overtaken for the length of an upload.
   // Otherwise a repository writer blocked by the session could reorder two
   // operations that conflict only on an unrelated resource such as chat data.
   const bypassedConflictResources = conflictingResources(
@@ -201,8 +226,11 @@ export class AppOperationCoordinator {
 
   run<Result>(
     request: AppOperationRequest,
-    operation: () => Promise<Result>,
+    operation: (context: AppOperationContext) => Promise<Result>,
   ): Promise<Result> {
+    const cancelled = () =>
+      new DyadError("App operation cancelled", DyadErrorKind.UserCancelled);
+    if (request.signal?.aborted) return Promise.reject(cancelled());
     const state = this.getOrCreateState(request.appId);
     if (state.deletion) {
       return Promise.reject(
@@ -230,16 +258,91 @@ export class AppOperationCoordinator {
       ...request,
       resources: normalizeResources(request.resources),
     };
+    const block = [...state.blocks].find((blocked) =>
+      requestsConflict(blocked.request, normalizedRequest),
+    );
+    if (block) return Promise.reject(block.error);
 
     return new Promise<Result>((resolve, reject) => {
-      state.queue.push({
+      const onAbort = () => {
+        const index = state.queue.indexOf(pending);
+        if (index < 0) return;
+        state.queue.splice(index, 1);
+        pending.detachAbort();
+        reject(cancelled());
+        this.pump(request.appId, state);
+      };
+      const pending: PendingOperation = {
         request: normalizedRequest,
-        execute: operation,
+        execute: async () => {
+          let active = true;
+          try {
+            return await operation({
+              releaseResources: (resources) => {
+                if (!active) throw new Error("App operation already settled");
+                const released = new Set(
+                  normalizeResources(resources).map(({ resource }) => resource),
+                );
+                pending.request = {
+                  ...pending.request,
+                  releasedResources: [
+                    ...(pending.request.releasedResources ?? []),
+                    ...pending.request.resources
+                      .filter(({ resource }) => released.has(resource))
+                      .map(({ resource }) => resource),
+                  ],
+                  resources: pending.request.resources.filter(
+                    ({ resource }) => !released.has(resource),
+                  ),
+                };
+                this.pump(request.appId, state);
+              },
+            });
+          } finally {
+            active = false;
+          }
+        },
         resolve: (result) => resolve(result as Result),
         reject,
-      });
+        detachAbort: () =>
+          request.signal?.removeEventListener("abort", onAbort),
+      };
+      request.signal?.addEventListener("abort", onAbort, { once: true });
+      state.queue.push(pending);
       this.pump(request.appId, state);
     });
+  }
+
+  /**
+   * Keep unsafe resources fenced after their owning callback finishes. Call
+   * while holding the corresponding claims, before returning from failed
+   * cleanup. Already queued conflicts are rejected too, so callers get a
+   * recovery error instead of waiting indefinitely. Unrelated work may run.
+   *
+   * Release only after independently confirming recovery. An unconfirmed
+   * process shutdown keeps this block for the rest of the main-process lifetime.
+   */
+  blockConflictingOperations(
+    request: AppOperationRequest,
+    reason: string,
+  ): () => void {
+    const state = this.getOrCreateState(request.appId);
+    const block: BlockedOperation = {
+      request: { ...request, resources: normalizeResources(request.resources) },
+      error: new DyadError(reason, DyadErrorKind.Precondition),
+    };
+    state.blocks.add(block);
+    state.queue = state.queue.filter((pending) => {
+      if (!requestsConflict(block.request, pending.request)) return true;
+      pending.detachAbort();
+      pending.reject(block.error);
+      return false;
+    });
+    this.pump(request.appId, state);
+    return () => {
+      if (!state.blocks.delete(block)) return;
+      this.pump(request.appId, state);
+    };
   }
 
   isBusy(appId: number, resources: AppOperationRequest["resources"]): boolean {
@@ -250,16 +353,21 @@ export class AppOperationCoordinator {
       operation: "inspect",
       resources: normalizeResources(resources),
     };
-    return [...state.active, ...state.queue].some((pending) =>
+    return [...state.active, ...state.queue, ...state.blocks].some((pending) =>
       requestsConflict(pending.request, request),
     );
   }
 
   beginAppDeletion(appId: number): AppOperationDeletion {
     const state = this.getOrCreateState(appId);
+    const assertSafeToDelete = () => {
+      const block = state.blocks.values().next().value;
+      if (block) throw block.error;
+    };
     if (state.deletion) {
       throw new AppDeletionInProgressError(appId);
     }
+    assertSafeToDelete();
 
     const token = Symbol(`app-deletion:${appId}`);
     state.deletion = { token, drainWaiters: new Set() };
@@ -276,16 +384,19 @@ export class AppOperationCoordinator {
     return {
       drain: async () => {
         assertOwner();
+        assertSafeToDelete();
         if (state.active.size > 0 || state.queue.length > 0) {
           await new Promise<void>((resolve) => {
             state.deletion!.drainWaiters.add(resolve);
           });
         }
         assertOwner();
+        assertSafeToDelete();
         drained = true;
       },
       runExclusive: async <Result>(operation: () => Promise<Result>) => {
         assertOwner();
+        assertSafeToDelete();
         if (!drained || state.active.size > 0 || state.queue.length > 0) {
           throw new Error(
             `App ${appId} deletion must drain admitted operations before running exclusively`,
@@ -321,7 +432,7 @@ export class AppOperationCoordinator {
   private getOrCreateState(appId: number): AppOperationState {
     let state = this.states.get(appId);
     if (!state) {
-      state = { active: new Set(), queue: [] };
+      state = { active: new Set(), queue: [], blocks: new Set() };
       this.states.set(appId, state);
     }
     return state;
@@ -357,6 +468,7 @@ export class AppOperationCoordinator {
     const readySet = new Set(ready);
     state.queue = state.queue.filter((pending) => !readySet.has(pending));
     for (const pending of ready) {
+      pending.detachAbort();
       state.active.add(pending);
       void Promise.resolve()
         .then(pending.execute)
@@ -380,6 +492,7 @@ export class AppOperationCoordinator {
   private removeStateIfIdle(appId: number, state: AppOperationState): void {
     if (
       !state.deletion &&
+      state.blocks.size === 0 &&
       state.active.size === 0 &&
       state.queue.length === 0 &&
       this.states.get(appId) === state

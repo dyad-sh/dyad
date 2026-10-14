@@ -1,7 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   BUILD_MODE_TOOL_NAMES,
+  shouldIncludeTool,
+  buildAgentToolSet,
   estimateAgentToolTokens,
   estimateBuildModeToolTokens,
   TOOL_DEFINITIONS,
@@ -145,4 +147,124 @@ describe("Build mode tool profile", () => {
 
     expect(linkedNeonAvailable).toBeGreaterThan(linkedNeonUnavailable);
   });
+});
+
+describe("discovery versus invocation availability", () => {
+  it("keeps operationally unavailable pre-commit calls invocable but enforces read-only boundaries", () => {
+    const tool = TOOL_DEFINITIONS.find(
+      (tool) => tool.name === "run_pre_commit",
+    )!;
+    const ctx = {
+      preCommitHookAvailable: false,
+      isDyadPro: true,
+    } as import("./tools/types").AgentContext;
+    expect(shouldIncludeTool(tool, ctx)).toBe(false);
+    expect(shouldIncludeTool(tool, ctx, {}, "invocation")).toBe(true);
+    expect(shouldIncludeTool(tool, ctx, { readOnly: true }, "invocation")).toBe(
+      false,
+    );
+  });
+  it("runs an already-offered pre-commit tool through the shared guard after discovery changes", async () => {
+    const ctx = {
+      appId: 987656,
+      appPath: "/tmp/unused-pre-commit",
+      chatId: 1,
+      isDyadPro: false,
+      preCommitHookAvailable: true,
+      preCommitRunCount: 100,
+      onXmlComplete: vi.fn(),
+      onXmlStream: vi.fn(),
+      requireConsent: vi.fn(async () => true),
+      referencedApps: new Map(),
+      abortSignal: new AbortController().signal,
+    } as unknown as import("./tools/types").AgentContext;
+    const tools = buildAgentToolSet(ctx, { enableAppBlueprint: false });
+    expect(tools.run_pre_commit).toBeDefined();
+    ctx.preCommitHookAvailable = false;
+    const result = await tools.run_pre_commit.execute({});
+    expect(JSON.stringify(result)).toContain("already run");
+    expect(ctx.onXmlComplete).toHaveBeenCalled();
+  });
+  it("does not turn search routing preferences into authorization while retaining Pro checks", () => {
+    const tool = TOOL_DEFINITIONS.find((tool) => tool.name === "code_search")!;
+    const ctx = {
+      canUseExplorerSubagent: true,
+      isDyadPro: true,
+    } as import("./tools/types").AgentContext;
+    expect(shouldIncludeTool(tool, ctx)).toBe(false);
+    expect(shouldIncludeTool(tool, ctx, {}, "invocation")).toBe(true);
+    expect(
+      shouldIncludeTool(tool, { ...ctx, isDyadPro: false }, {}, "invocation"),
+    ).toBe(false);
+  });
+});
+
+describe("shell tool registration", () => {
+  it("excludes shell from Build, Ask, Plan, Free turns and children", async () => {
+    const { shouldIncludeTool } = await import("./tool_definitions");
+    const tool = TOOL_DEFINITIONS.find((entry) => entry.name === "run_shell")!;
+    const ctx = {
+      isDyadPro: true,
+      inferenceSettings: { enableShellTool: true },
+    } as import("./tools/types").AgentContext;
+    expect(shouldIncludeTool(tool, ctx)).toBe(true);
+    for (const options of [
+      { toolProfile: "build" as const },
+      { readOnly: true },
+      { planModeOnly: true },
+      { freeModelMode: true },
+    ]) {
+      expect(shouldIncludeTool(tool, ctx, options)).toBe(false);
+    }
+    expect(
+      shouldIncludeTool(tool, {
+        ...ctx,
+        mutationActivityOwner: {
+          appId: 1,
+          chatId: 1,
+          turnId: "turn",
+          actorRunId: "child",
+          persona: "implementer",
+        },
+      }),
+    ).toBe(false);
+  });
+});
+
+import { refreshShellReviewToolInventory } from "./tool_definitions";
+it("refreshes reviewer availability from registration and invocation guards", () => {
+  const ctx = {
+    isDyadPro: true,
+    preCommitHookAvailable: false,
+    shellReviewContext: {
+      tools: [
+        { name: "run_pre_commit", description: "pre-commit", available: false },
+        { name: "get_mcp_tool_schema", description: "schema", available: true },
+      ],
+      history: [],
+    },
+  } as unknown as import("./tools/types").AgentContext;
+  // Already offered tools remain callable when only a discovery condition changes.
+  const registered = {
+    run_pre_commit: { description: "Run hook" },
+    cloud_logs: { description: "Read cloud logs" },
+  };
+  refreshShellReviewToolInventory(ctx, registered);
+  expect(
+    ctx.shellReviewContext!.tools.find((t) => t.name === "run_pre_commit")
+      ?.available,
+  ).toBe(true);
+  expect(
+    ctx.shellReviewContext!.tools.find((t) => t.name === "get_mcp_tool_schema")
+      ?.available,
+  ).toBe(false);
+  expect(
+    ctx.shellReviewContext!.tools.find((t) => t.name === "cloud_logs"),
+  ).toMatchObject({ available: true, description: "Read cloud logs" });
+  // Current mode guards override an old registration snapshot.
+  refreshShellReviewToolInventory(ctx, registered, { readOnly: true });
+  expect(
+    ctx.shellReviewContext!.tools.find((t) => t.name === "run_pre_commit")
+      ?.available,
+  ).toBe(false);
 });

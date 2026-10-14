@@ -16,12 +16,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useMcp } from "@/hooks/useMcp";
 import { useMcpCatalog } from "@/hooks/useMcpCatalog";
 import type { McpToolConsent } from "@/ipc/types";
+import { userSuppliedInputs } from "@/ipc/types/mcp_catalog";
 import { useOauthStorageEncrypted } from "./AddPluginDialog";
 import { CatalogBadge } from "./CatalogBadge";
 import { OauthPlaintextStorageAlert } from "./OauthPlaintextStorageAlert";
+import { PluginIcon } from "./PluginIcon";
 import { KeyValueEditor, arrayToJsonObject } from "./KeyValueEditor";
 import { PluginSetupSection } from "./PluginSetupSection";
-import { serverNeedsSetup } from "./pluginSetup";
+import { serverNeedsSetup, unfilledOptionalInputs } from "./pluginSetup";
 import { usePluginConnect, type ConnectFeedback } from "./usePluginConnect";
 
 // Keyed on the full kind union so adding a feedback kind forces a
@@ -121,7 +123,7 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
   const catalogEntry = s.catalogSlug
     ? catalogQuery.data?.entries.find((e) => e.slug === s.catalogSlug)
     : undefined;
-  const setupInputs = catalogEntry?.inputs ?? [];
+  const setupInputs = userSuppliedInputs(catalogEntry?.inputs);
   // Show the guided setup until every declared field has a saved value.
   const needsSetup = serverNeedsSetup(s, setupInputs);
   // A disabled catalog server might still need setup while its catalog is
@@ -148,6 +150,15 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
         i.kind === "env" ||
         i.kind === "oauthClientSecret",
     );
+  // Optional inputs left blank during setup stay offered by their catalog
+  // label, so filling one later doesn't require knowing its variable or
+  // header name. Blocked like setup when the map it writes can't be read.
+  const optionalInputs = setupIncomplete
+    ? []
+    : unfilledOptionalInputs(s, setupInputs);
+  const optionalBlockedByUnreadable =
+    (s.headersUnreadable && optionalInputs.some((i) => i.kind === "header")) ||
+    (s.envUnreadable && optionalInputs.some((i) => i.kind === "env"));
 
   const onSetToolConsent = async (
     toolName: string,
@@ -176,29 +187,36 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
 
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
           <div className="flex items-center justify-between gap-4">
-            <div className="min-w-0">
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
-                <span className="truncate">{s.name}</span>
-                {s.catalogSlug && <CatalogBadge size="md" />}
-                {s.oauthEnabled && (
-                  <span
-                    className={`text-xs font-medium px-2 py-1 rounded-full shrink-0 ${
-                      s.oauthConnected
-                        ? "text-green-600 bg-green-50 dark:bg-green-900/30 dark:text-green-300 border border-green-500/50"
-                        : "text-amber-600 bg-amber-50 dark:bg-amber-900/30 dark:text-amber-300 border border-amber-500/50"
-                    }`}
-                  >
-                    OAuth: {s.oauthConnected ? "connected" : "not connected"}
-                  </span>
-                )}
-              </h1>
-              <div className="text-xs text-muted-foreground mt-1 truncate">
-                {s.transport}
-                {s.url ? ` · ${s.url}` : ""}
-                {s.command ? ` · ${s.command}` : ""}
-                {Array.isArray(s.args) && s.args.length
-                  ? ` · ${s.args.join(" ")}`
-                  : ""}
+            <div className="flex items-center gap-3 min-w-0">
+              <PluginIcon
+                name={s.name}
+                iconUrl={catalogEntry?.iconUrl}
+                size="md"
+              />
+              <div className="min-w-0">
+                <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
+                  <span className="truncate">{s.name}</span>
+                  {s.catalogSlug && <CatalogBadge size="md" />}
+                  {s.oauthEnabled && (
+                    <span
+                      className={`text-xs font-medium px-2 py-1 rounded-full shrink-0 ${
+                        s.oauthConnected
+                          ? "text-green-600 bg-green-50 dark:bg-green-900/30 dark:text-green-300 border border-green-500/50"
+                          : "text-amber-600 bg-amber-50 dark:bg-amber-900/30 dark:text-amber-300 border border-amber-500/50"
+                      }`}
+                    >
+                      OAuth: {s.oauthConnected ? "connected" : "not connected"}
+                    </span>
+                  )}
+                </h1>
+                <div className="text-xs text-muted-foreground mt-1 truncate">
+                  {s.transport}
+                  {s.url ? ` · ${s.url}` : ""}
+                  {s.command ? ` · ${s.command}` : ""}
+                  {Array.isArray(s.args) && s.args.length
+                    ? ` · ${s.args.join(" ")}`
+                    : ""}
+                </div>
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
@@ -356,6 +374,22 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
                 }}
               />
             </div>
+          )}
+
+          {optionalInputs.length > 0 && !optionalBlockedByUnreadable && (
+            // Sits under the editor it writes to, so that editor's storage
+            // warning covers it too. Locked like the editor while disabled.
+            <PluginSetupSection
+              key={`optional-${s.id}`}
+              variant="optional"
+              server={s}
+              inputs={optionalInputs}
+              disabled={!s.enabled}
+              isSaving={isUpdatingServer}
+              onSave={async (update) => {
+                await updateServer(update);
+              }}
+            />
           )}
 
           <div className="mt-6">

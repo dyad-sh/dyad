@@ -4,7 +4,10 @@
     "max_tokens": 32000,
     "thinking": {
       "type": "adaptive",
-      "display": "summarized"
+      "display": "summarized",
+      "block_binding": {
+        "prefix_mismatch_behavior": "drop_block"
+      }
     },
     "output_config": {
       "effort": "medium"

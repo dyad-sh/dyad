@@ -37,3 +37,24 @@ function createContext(): AgentContext {
     referencedApps: new Map([["other-app", "/apps/other"]]),
   } as AgentContext;
 }
+
+import { assertDyadInternalAccessAllowed } from "./resolve_app_context";
+it.each([undefined, "reference"])(
+  "rejects Git metadata for %s app reads",
+  (appName) => {
+    expect(() =>
+      assertDyadInternalAccessAllowed({
+        targetAppPath: "/apps/current",
+        fullFilePath: "/apps/current/.git/config",
+        appName,
+      }),
+    ).toThrow("Git metadata");
+    expect(() =>
+      assertDyadInternalAccessAllowed({
+        targetAppPath: "/apps/current",
+        fullFilePath: "/apps/current/nested/.git/config",
+        appName,
+      }),
+    ).toThrow("Git metadata");
+  },
+);

@@ -12,6 +12,7 @@ import {
   MAX_PLAN_ITEMS,
 } from "../../lib/test_recorder/assertion_proposal";
 import { WindowSessionIdSchema } from "../../window_infrastructure/types";
+import type { TestRunQueueState } from "../../test_run_queue/state";
 
 /** A UUID today; sized so a different id scheme doesn't have to revisit this. */
 const MAX_PROPOSAL_ID_LENGTH = 128;
@@ -106,6 +107,8 @@ export type TestCaseResult = z.infer<typeof TestCaseResultSchema>;
 export const TestResultSchema = z.object({
   file: z.string(),
   status: TestRunStatusSchema,
+  /** Some selected cases in this file never finished; these results are partial. */
+  incomplete: z.boolean().optional(),
   durationMs: z.number().optional(),
   /** Error text on failure (assertion or infra). */
   error: z.string().optional(),
@@ -126,8 +129,10 @@ export const ListAppTestsResultSchema = z.object({
 
 export const RunAppTestsParamsSchema = z.object({
   appId: z.number(),
-  /** When set, runs a single spec file (relative path); otherwise runs all. */
+  /** Panel single-file target. Omit both selectors to run the whole suite. */
   testFile: z.string().optional(),
+  /** Selected specs. Mutually exclusive with the panel's single-file target. */
+  testFiles: z.array(z.string().min(1)).min(1).optional(),
   /**
    * When set (with testFile), runs only the test whose `test(` call is at this
    * 1-based line, via Playwright's `file:line` selector.
@@ -181,12 +186,15 @@ export type TestIsolation = z.infer<typeof TestIsolationSchema>;
 
 export const RunAppTestsResultSchema = z.object({
   appId: z.number(),
+  /** Refused before lifecycle publication; only these errors need a caller toast. */
+  preflightRefused: z.boolean().optional(),
   results: z.array(TestResultSchema),
   /**
-   * Set when the entire run failed before producing per-test results (e.g.
+   * Set when the run encountered an infrastructure or cleanup error (e.g.
    * Playwright/browser missing and bootstrap declined, dev server down, spawn
    * error, or an isolated test database could not be set up). Renders as an
-   * amber, panel-level "inconclusive" banner.
+   * amber, panel-level "inconclusive" banner. Completed results may accompany
+   * this warning; incomplete file results are marked separately.
    */
   infraError: z
     .object({
@@ -356,7 +364,123 @@ export type ApplyTestAssertionsResult = z.infer<
 // Tests Contracts
 // =============================================================================
 
+const QueuedTestRunSchema = z.object({
+  runId: z.number().int().positive(),
+  source: z.enum(["panel", "agent"]),
+  testFile: z.string().optional(),
+  testFiles: z.array(z.string()).readonly().optional(),
+  testLine: z.number().optional(),
+  grep: z.string().optional(),
+});
+export const TestRunQueueSchema = z.object({
+  activeRun: QueuedTestRunSchema.extend({ stopping: z.boolean() }).nullable(),
+  queuedRuns: z.array(QueuedTestRunSchema).readonly(),
+});
+// Keep the pure machine read model and its wire codec mutually assignable.
+type AssertQueueShape<T extends TestRunQueueState> = T;
+type AssertQueueWire<T extends z.infer<typeof TestRunQueueSchema>> = T;
+export type TestRunQueueSnapshot = AssertQueueShape<
+  z.infer<typeof TestRunQueueSchema>
+>;
+export type TestRunQueueWireState = AssertQueueWire<TestRunQueueState>;
+
+// =============================================================================
+// Tests Events (main -> renderer streamed output)
+// =============================================================================
+
+export const TestOutputPayloadSchema = z.object({
+  appId: z.number(),
+  /** Main-owned per-app generation for the run that produced this output. */
+  runId: z.number().int().positive(),
+  /** A chunk of raw bootstrap/runner output. */
+  chunk: z.string(),
+  /** Phase the run is in, so the panel can switch between setup/running copy. */
+  phase: z.enum(["setup", "running"]),
+});
+export type TestOutputPayload = z.infer<typeof TestOutputPayloadSchema>;
+
+/**
+ * Lifecycle of a test run, so every renderer can reflect runs it didn't start
+ * itself (e.g. the agent's run_tests tool or a panel run in another window).
+ * Requests still waiting in the queue do not emit these active-run events.
+ */
+export const TestsRunStatePayloadSchema = z.object({
+  appId: z.number(),
+  /**
+   * Main-owned per-app generation. Only active runs emit lifecycle events;
+   * queued requests are projected separately through tests:queue-state.
+   */
+  runId: z.number().int().positive(),
+  source: z.enum(["panel", "agent"]),
+  /**
+   * `stopping` and `cleaning-up` are progress-only states covering the two
+   * waits between a Stop and the terminal `finished`: the kill of the
+   * Playwright process tree, then the isolation teardown (env restore,
+   * dev-server restart, temporary branch/user delete) that no caller can
+   * abort. Both panel and agent runs publish their full lifecycle here.
+   *
+   * "preview-fallback" is emitted mid-run when a run that asked for the native
+   * preview turned out to need an ordinary browser instead. It is not a
+   * terminal state: a "finished" still follows.
+   */
+  state: z.enum([
+    "started",
+    "stopping",
+    "cleaning-up",
+    "preview-fallback",
+    "finished",
+  ]),
+  /** Authoritative abort state, carried by progress events. */
+  wasStopped: z.boolean().optional(),
+  /** Single spec targeted by the panel. */
+  testFile: z.string().optional(),
+  /** Selected specs; omitting both testFiles and testFile means the whole suite. */
+  testFiles: z.array(z.string()).optional(),
+  /** With testFile: only the test at this 1-based line was run. */
+  testLine: z.number().optional(),
+  /** Regex passed to Playwright's --grep across the selection for a partial run. */
+  grep: z.string().optional(),
+  /** Whether this run drives the native preview view. Present on "started". */
+  preview: z.boolean().optional(),
+  /**
+   * Window allowed to activate — and, on "preview-fallback", required to drop —
+   * its native preview for this run. Run state is broadcast, but preview
+   * automation remains owned by the invoking window.
+   */
+  previewOwnerWindowSessionId: WindowSessionIdSchema.optional(),
+  /** Present only on "finished". */
+  results: z.array(TestResultSchema).optional(),
+  infraError: z.object({ message: z.string() }).optional(),
+  isolation: TestIsolationSchema.optional(),
+  /**
+   * Whether this run executed in an isolated sandbox — a throwaway copy of the
+   * app served by its own dev server. False for the fallback path (Docker/cloud
+   * runtime, or the user's opt-out), which creates no workspace, so cleanup
+   * copy can name what is actually being removed.
+   */
+  sandboxed: z.boolean().optional(),
+});
+export type TestsRunStatePayload = z.infer<typeof TestsRunStatePayloadSchema>;
+
+/** Bounded active-run replay for a renderer opened after the start event. */
+export const ActiveTestRunSnapshotSchema = z.object({
+  run: TestsRunStatePayloadSchema,
+  phase: z.enum(["setup", "running", "stopping", "cleaning-up"]),
+  output: z.string(),
+});
+export type ActiveTestRunSnapshot = z.infer<typeof ActiveTestRunSnapshotSchema>;
+
 export const testsContracts = {
+  getActiveRun: defineContract({
+    channel: "tests:get-active-run",
+    input: z.object({ appId: z.number() }),
+    output: ActiveTestRunSnapshotSchema.nullable(),
+  }),
+  getRunQueue: defineContract({
+    channel: "tests:get-run-queue",
+    input: z.object({ appId: z.number() }),
+    output: TestRunQueueSchema,
+  }),
   applyTestAssertions: defineContract({
     channel: "tests:apply-assertions",
     input: ApplyTestAssertionsParamsSchema,
@@ -412,78 +536,11 @@ export const testsContracts = {
   }),
 } as const;
 
-// =============================================================================
-// Tests Events (main -> renderer streamed output)
-// =============================================================================
-
-export const TestOutputPayloadSchema = z.object({
-  appId: z.number(),
-  /** Main-owned per-app generation for the run that produced this output. */
-  runId: z.number().int().positive(),
-  /** A chunk of raw bootstrap/runner output. */
-  chunk: z.string(),
-  /** Phase the run is in, so the panel can switch between setup/running copy. */
-  phase: z.enum(["setup", "running"]),
-});
-export type TestOutputPayload = z.infer<typeof TestOutputPayloadSchema>;
-
-/**
- * Lifecycle of a test run, so every renderer can reflect runs it didn't start
- * itself (e.g. the agent's run_tests tool or a panel run in another window).
- * The initiating panel also writes optimistic state before the IPC round trip.
- */
-export const TestsRunStatePayloadSchema = z.object({
-  appId: z.number(),
-  /**
-   * Main-owned per-app generation. A new run registers before it waits for a
-   * prior teardown, so appId + phase alone cannot reject stale lifecycle
-   * events from overlapping runs.
-   */
-  runId: z.number().int().positive(),
-  source: z.enum(["panel", "agent"]),
-  /**
-   * `stopping` and `cleaning-up` are progress-only states covering the two
-   * waits between a Stop and the terminal `finished`: the kill of the
-   * Playwright process tree, then the isolation teardown (env restore,
-   * dev-server restart, temporary branch/user delete) that no caller can
-   * abort. Unlike `finished`, both are consumed for BOTH sources — the panel
-   * writes its own start/finish state directly but cannot observe these two.
-   *
-   * "preview-fallback" is emitted mid-run when a run that asked for the native
-   * preview turned out to need an ordinary browser instead. It is not a
-   * terminal state: a "finished" still follows.
-   */
-  state: z.enum([
-    "started",
-    "stopping",
-    "cleaning-up",
-    "preview-fallback",
-    "finished",
-  ]),
-  /** Authoritative abort state, carried by progress events. */
-  wasStopped: z.boolean().optional(),
-  /** Single spec targeted, when set; absent = whole suite. */
-  testFile: z.string().optional(),
-  /** With testFile: only the test at this 1-based line was run. */
-  testLine: z.number().optional(),
-  /** With testFile: regex passed to Playwright's --grep for a partial run. */
-  grep: z.string().optional(),
-  /** Whether this run drives the native preview view. Present on "started". */
-  preview: z.boolean().optional(),
-  /**
-   * Window allowed to activate — and, on "preview-fallback", required to drop —
-   * its native preview for this run. Run state is broadcast, but preview
-   * automation remains owned by the invoking window.
-   */
-  previewOwnerWindowSessionId: WindowSessionIdSchema.optional(),
-  /** Present only on "finished". */
-  results: z.array(TestResultSchema).optional(),
-  infraError: z.object({ message: z.string() }).optional(),
-  isolation: TestIsolationSchema.optional(),
-});
-export type TestsRunStatePayload = z.infer<typeof TestsRunStatePayloadSchema>;
-
 export const testsEvents = {
+  queueState: defineEvent({
+    channel: "tests:queue-state",
+    payload: TestRunQueueSchema.extend({ appId: z.number() }),
+  }),
   output: defineEvent({
     channel: "tests:output",
     payload: TestOutputPayloadSchema,

@@ -247,6 +247,56 @@ describe("context limit banner (integration)", () => {
     expect(result.messageHistoryTokens).toBeGreaterThan(1_000);
   });
 
+  it("excludes shell guidance and declarations from free-model token counts", async () => {
+    const chatId = await harness.createChat();
+    await harness.db
+      .update(chats)
+      .set({
+        chatMode: "local-agent",
+        modelSelection: {
+          provider: "auto",
+          name: "free-pro",
+          effortLevel: "default",
+        },
+      })
+      .where(eq(chats.id, chatId));
+    const original = readSettings();
+    try {
+      writeSettings({
+        enableDyadPro: true,
+        providerSettings: {
+          ...original.providerSettings,
+          auto: { apiKey: { value: "test-key" } },
+        },
+        enableShellTool: false,
+      });
+      const freeWithoutShell = await countTokens(chatId);
+      writeSettings({ enableShellTool: true });
+      const freeWithShell = await countTokens(chatId);
+      expect(freeWithShell.systemPromptTokens).toBe(
+        freeWithoutShell.systemPromptTokens,
+      );
+      await harness.db
+        .update(chats)
+        .set({
+          modelSelection: {
+            provider: "custom::testing",
+            name: "test-model",
+            effortLevel: "default",
+          },
+        })
+        .where(eq(chats.id, chatId));
+      const paidWithShell = await countTokens(chatId);
+      writeSettings({ enableShellTool: false });
+      const paidWithoutShell = await countTokens(chatId);
+      expect(paidWithShell.systemPromptTokens).toBeGreaterThan(
+        paidWithoutShell.systemPromptTokens,
+      );
+    } finally {
+      writeSettings(original);
+    }
+  });
+
   it("counts the blueprint prompt for the current blueprint and questionnaire state", async () => {
     const chatId = await harness.createChat();
     const chat = await harness.db.query.chats.findFirst({

@@ -96,6 +96,7 @@ export function canonicalOrigin(value: string): string | null {
       const parsed = new URL(trimmed);
       if (
         parsed.hostname === "localhost" ||
+        parsed.hostname.endsWith(".localhost") ||
         parsed.hostname === "127.0.0.1" ||
         parsed.hostname === "[::1]"
       ) {

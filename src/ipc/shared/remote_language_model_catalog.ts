@@ -29,6 +29,7 @@ const logger = log.scope("remote_language_model_catalog");
 const REMOTE_LANGUAGE_MODEL_CATALOG_TIMEOUT_MS = 5_000;
 const DEFAULT_CACHE_TTL_MS = 60 * 60 * 1000;
 const FALLBACK_CACHE_TTL_MS = 30 * 1000;
+export const FALLBACK_CODEX_CLIENT_VERSION = "0.155.1";
 
 function getRemoteLanguageModelCatalogUrl() {
   if (process.env.DYAD_LANGUAGE_MODEL_CATALOG_URL) {
@@ -92,6 +93,16 @@ export type BuiltinModelAlias = (typeof KNOWN_BUILTIN_MODEL_ALIASES)[number];
 const LanguageModelCatalogResponseSchema = z.object({
   version: z.string(),
   expiresAt: z.string().datetime().optional(),
+  codexClientVersion: z
+    .string()
+    .regex(/^\d+\.\d+\.\d+$/)
+    .optional()
+    .catch(() => {
+      logger.warn(
+        "Ignoring invalid codexClientVersion in remote language model catalog",
+      );
+      return undefined;
+    }),
   providers: z.array(CatalogProviderSchema),
   modelsByProvider: z.record(z.string(), z.array(CatalogModelSchema)),
   aliases: z.array(
@@ -120,6 +131,7 @@ type LanguageModelCatalogResponse = z.infer<
 type BuiltinLanguageModelCatalog = {
   providers: LanguageModelProvider[];
   modelsByProvider: Record<string, LanguageModel[]>;
+  codexClientVersion?: string;
   aliases: LanguageModelCatalogResponse["aliases"];
   themeGenerationOptions: ThemeGenerationModelOption[];
   expiresAt: number;
@@ -136,6 +148,7 @@ type ResolvedBuiltinModel = {
 let builtinCatalogCache: BuiltinLanguageModelCatalog | null = null;
 let builtinCatalogFetchPromise: Promise<BuiltinLanguageModelCatalog> | null =
   null;
+let lastKnownCodexClientVersion: string | undefined;
 // Tracks whether the current cache has already been extended through one
 // stale-while-revalidate grace cycle. Bounds stale-remote service so a
 // transient outage does not serve server-expired data indefinitely.
@@ -347,6 +360,7 @@ function convertRemoteCatalog(
   return {
     providers,
     modelsByProvider,
+    codexClientVersion: remoteCatalog.codexClientVersion,
     aliases: mergedAliases,
     themeGenerationOptions: remoteCatalog.curatedSelections
       ?.themeGenerationOptions?.length
@@ -389,6 +403,9 @@ async function fetchRemoteCatalog(): Promise<BuiltinLanguageModelCatalog | null>
     const rawCatalog = await response.json();
     const remoteCatalog = LanguageModelCatalogResponseSchema.parse(rawCatalog);
     const convertedCatalog = convertRemoteCatalog(remoteCatalog);
+    if (convertedCatalog.codexClientVersion) {
+      lastKnownCodexClientVersion = convertedCatalog.codexClientVersion;
+    }
 
     logger.info("Loaded remote language model catalog", {
       catalogUrl,
@@ -521,6 +538,18 @@ export async function getBuiltinLanguageModelCatalog(): Promise<BuiltinLanguageM
   }
 
   return builtinCatalogFetchPromise;
+}
+
+/** The subscription catalog request must not wait for Dyad's remote catalog. */
+export function getCodexClientVersion(): string {
+  if (!builtinCatalogCache || builtinCatalogCache.expiresAt <= Date.now()) {
+    triggerBackgroundRefresh();
+  }
+  return (
+    builtinCatalogCache?.codexClientVersion ??
+    lastKnownCodexClientVersion ??
+    FALLBACK_CODEX_CLIENT_VERSION
+  );
 }
 
 export async function getThemeGenerationModelOptions(): Promise<

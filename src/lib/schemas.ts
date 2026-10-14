@@ -535,6 +535,9 @@ const BaseUserSettingsFields = {
   githubAccessToken: SecretSchema.optional(),
   gitlab: GitLabSchema.optional(),
   vercelAccessToken: SecretSchema.optional(),
+  // One API token does two jobs: Dyad uses it to set up Workers and deploy
+  // rules, and Cloudflare's build service deploys with it after each push.
+  cloudflareAccessToken: SecretSchema.optional(),
   coolify: CoolifySchema.optional(),
   supabase: SupabaseSchema.optional(),
   neon: NeonSchema.optional(),
@@ -543,7 +546,7 @@ const BaseUserSettingsFields = {
   telemetryUserId: z.string().optional(),
   hasRunBefore: z.boolean().optional(),
   // Global across chats. Unset prefers a connected subscription.
-  proModelUsage: z.enum(["subscription", "pro"]).optional(),
+  proModelUsage: z.enum(["subscription", "pro", "api-key"]).optional(),
   // Applies only to requests routed through the ChatGPT subscription adapter.
   chatgptFastMode: z.boolean().optional(),
   enableDyadPro: z.boolean().optional(),
@@ -562,6 +565,7 @@ const BaseUserSettingsFields = {
   selectedThemeId: z.string().optional(),
   enableSupabaseWriteSqlMigration: z.boolean().optional(),
   autoApproveNonSchemaSql: z.boolean().optional(),
+  enableShellTool: z.boolean().optional(),
   autoApproveSafeMcpTools: z.boolean().optional(),
   skipPruneEdgeFunctions: z.boolean().optional(),
   acceptedCommunityCode: z.boolean().optional(),
@@ -579,6 +583,16 @@ const BaseUserSettingsFields = {
   testHeaded: z.boolean().optional(),
   testParallel: z.boolean().optional(),
   testSlowMo: z.boolean().optional(),
+  // Escape hatch for the sandboxed E2E runtime, which snapshots the app's
+  // source per run and then installs its dependencies from scratch —
+  // `node_modules` is deliberately never copied or linked, so every run pays a
+  // clean `npm ci` / `pnpm install --frozen-lockfile` (budgeted at 15 minutes)
+  // that a warm project would not. That install, not the snapshot, is what
+  // makes a run noticeably slower. Off by default — the sandbox is the
+  // intended path — and turning it on runs the tests against the normal
+  // preview with the missing isolation disclosed. Neon-only apps are refused rather
+  // than run against the real database either way.
+  disableSandboxedE2eTests: z.boolean().optional(),
   autoExpandPreviewPanel: z.boolean().optional(),
   enableChatEventNotifications: z.boolean().optional(),
   blockUnsafeNpmPackages: z.boolean().optional(),
@@ -591,6 +605,8 @@ const BaseUserSettingsFields = {
   enableCodeExplorer: z.boolean().optional(),
   runTypeScriptForWholeProject: z.boolean().optional(),
   enableMultiWindow: z.boolean().optional(),
+  enableClaudeCodeSubscription: z.boolean().optional(),
+  enableAppPreviewDomains: z.boolean().optional(),
   enableExplorerSubagent: z.boolean().optional(),
   enableAutoReview: z.boolean().optional(),
   enableReviewButton: z.boolean().optional(),
@@ -606,6 +622,9 @@ const BaseUserSettingsFields = {
   // explicitly turned on; it gates new GitLab connections only, so an app
   // already linked to GitLab keeps its GitLab card when this is off again.
   enableGitlabPublishing: z.boolean().optional(),
+  // Deploying Cloudflare Workers from the Publish panel. Off unless turned on
+  // while the integration is new; with it off the panel is unchanged.
+  enableCloudflareDeployment: z.boolean().optional(),
   enableTestRunInPreview: z.boolean().optional(),
   enableAutoUpdate: z.boolean(),
   releaseChannel: ReleaseChannelSchema,
@@ -773,7 +792,9 @@ export function getEffectiveDefaultChatMode(
  */
 export function isBasicAgentMode(settings: UserSettings): boolean {
   return (
-    !isDyadProEnabled(settings) && settings.selectedChatMode === "local-agent"
+    settings.selectedModel.provider !== "claude-code" &&
+    !isDyadProEnabled(settings) &&
+    settings.selectedChatMode === "local-agent"
   );
 }
 

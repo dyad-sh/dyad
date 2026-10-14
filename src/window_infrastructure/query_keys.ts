@@ -27,8 +27,13 @@ export function queryKeysForInvalidationScope(
       return [queryKeys.freeAgentQuota.status];
     case "free-model-quota":
       return [queryKeys.freeModelQuota.status];
+    case "codex-subscription":
+      return [queryKeys.settings.codexSubscription];
     case "app":
-      return [queryKeys.apps.detail({ appId: scope.appId })];
+      return [
+        queryKeys.apps.detail({ appId: scope.appId }),
+        queryKeys.appEnvVars.byApp({ appId: scope.appId }),
+      ];
     case "coolify":
       return [
         scope.appId === undefined

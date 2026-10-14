@@ -83,6 +83,28 @@ describe("a server that refuses the install", () => {
   });
 });
 
+describe("a server that kills the install with a signal", () => {
+  it("reports the signal name rather than `exit null`", async () => {
+    // When sshd kills the install shell itself (a manual `kill -9`, a session
+    // timeout, a cgroup limit on the login shell) it sends an exit-signal, not
+    // an exit status. ssh2 turns that into `close(null, "SIGKILL", …)`, and the
+    // bug folded `null` back into "never said" and rendered `exit null`. This
+    // drives the real ssh2 server → real client → wrapper path end to end.
+    server!.state.installSignal = "KILL";
+    server!.state.installSignalCoreDumped = false;
+    server!.state.installSignalDescription = "Killed";
+    const { done, output } = runSetup();
+
+    await expect(done).rejects.toThrow(
+      /Installing Coolify failed \(killed by SIGKILL\)/,
+    );
+    // The installer's last words are still shown alongside the signal — what
+    // is no longer lost is the signal that distinguishes a kill from a lost
+    // link, not the transcript.
+    expect(output.join("")).toContain("Coolify is up");
+  });
+});
+
 describe("a Coolify too old to make its own token", () => {
   it("finishes anyway and hands back the sign-in details", async () => {
     // The server is installed and usable; only the token has to be made by

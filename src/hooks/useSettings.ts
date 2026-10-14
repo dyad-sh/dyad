@@ -9,6 +9,7 @@ import {
 import { usePostHog } from "posthog-js/react";
 import { useAppVersion } from "./useAppVersion";
 import { queryKeys } from "@/lib/queryKeys";
+import { useSubscriptionAccount } from "./useSubscriptionAccount";
 
 const TELEMETRY_CONSENT_KEY = "dyadTelemetryConsent";
 const TELEMETRY_USER_ID_KEY = "dyadTelemetryUserId";
@@ -32,6 +33,7 @@ export function useSettings() {
   const posthog = usePostHog();
   const appVersion = useAppVersion();
   const queryClient = useQueryClient();
+  const subscriptionQuery = useSubscriptionAccount();
 
   const settingsQuery = useQuery({
     queryKey: queryKeys.settings.user,
@@ -78,7 +80,8 @@ export function useSettings() {
       !posthog ||
       isPlatformLoading ||
       isInitialLoadTelemetryContextLoading ||
-      !initialLoadTelemetryContext
+      !initialLoadTelemetryContext ||
+      subscriptionQuery.isPending
     ) {
       return;
     }
@@ -94,6 +97,7 @@ export function useSettings() {
       "app:initial-load",
       getInitialLoadTelemetryProperties({
         settings: settingsQuery.data,
+        codexSubscriptionEnabled: subscriptionQuery.data?.connected ?? null,
         appVersion,
         platform: platform ?? null,
         isFirstSession: initialLoadTelemetryContext.isFirstSession,
@@ -111,6 +115,8 @@ export function useSettings() {
     platform,
     platformError,
     initialLoadTelemetryContext,
+    subscriptionQuery.isPending,
+    subscriptionQuery.data?.connected,
   ]);
 
   const updateSettingsMutation = useMutation({

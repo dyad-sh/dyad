@@ -1,3 +1,4 @@
+import { ClaudeCodeToolCard } from "./ClaudeCodeToolCard";
 import React, { useDeferredValue, useMemo, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -1175,6 +1176,9 @@ function renderCustomTag(
           {content}
         </DyadImageGeneration>
       );
+
+    case "dyad-claude-tool":
+      return <ClaudeCodeToolCard content={content} />;
 
     case "dyad-status":
       return (

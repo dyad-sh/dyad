@@ -1,3 +1,4 @@
+import { openOptions } from "../interactions";
 // Portalis — checkpoint 2 CUJ suite (design/app-3-portalis.md, "CUJ suite
 // (checkpoint 2)" + "Security probes (checkpoint 2)").
 // 12 CUJs (3 regression + 9 new) + 7 probes.
@@ -161,6 +162,7 @@ test.describe("portalis checkpoint 2", () => {
 
     const orgB = await provisionOrg(b, "m2-p2-03", "Bravo");
     await b.page.goto(`/orgs/${orgB.id}`);
+    await openOptions(b.page, "org-switcher", "org-switcher-option");
     const options = b.page.getByTestId("org-switcher-option");
     await expect(options).toHaveCount(2, { timeout: 15_000 });
     const ids = await options.evaluateAll((els) =>
@@ -194,8 +196,8 @@ test.describe("portalis checkpoint 2", () => {
       // Inputs must be inert AND saving must not change anything.
       const nameInput = b.page.getByTestId("settings-name-input").first();
       if (await nameInput.count()) {
-        const disabled = await nameInput.isDisabled();
-        if (!disabled) {
+        const editable = await nameInput.isEditable();
+        if (editable) {
           await nameInput.fill(`Hijacked ${RUN_ID}`);
           const save = b.page.getByTestId("settings-save").first();
           if ((await save.count()) && !(await save.isDisabled())) {

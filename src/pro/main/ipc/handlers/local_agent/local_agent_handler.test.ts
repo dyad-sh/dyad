@@ -1,7 +1,12 @@
 import { SubscriptionBillingError } from "@/shared/subscription_billing_error";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { IpcMainInvokeEvent, WebContents } from "electron";
-import { InvalidToolInputError, streamText, type ModelMessage } from "ai";
+import {
+  InvalidToolInputError,
+  streamText,
+  jsonSchema,
+  type ModelMessage,
+} from "ai";
 import type { AgentContext } from "./tools/types";
 import { buildCompactionBlock } from "@/ipc/handlers/compaction/compaction_utils";
 import {
@@ -308,10 +313,13 @@ vi.mock("@/ipc/utils/provider_options", () => ({
 }));
 
 vi.mock("@/ipc/utils/mcp_manager", () => ({
+  MCP_LIST_TOOLS_TIMEOUT_MS: 10_000,
+  McpListToolsTimeoutError: class extends Error {},
   mcpManager: {
     getClient: vi.fn(async () => ({
       tools: vi.fn(async () => mockMcpToolSet),
     })),
+    listToolsWithin: vi.fn(async () => mockMcpToolSet),
   },
 }));
 
@@ -342,6 +350,7 @@ vi.mock("@/pro/main/ipc/handlers/local_agent/tool_definitions", () => ({
     },
   ],
   buildAgentToolSet: vi.fn(() => ({})),
+  refreshShellReviewToolInventory: vi.fn(),
   shouldIncludeTool: vi.fn(() => false),
   requireAgentToolConsent: vi.fn(async () => true),
   clearPendingConsentsForChat: vi.fn(),
@@ -1412,6 +1421,65 @@ describe("handleLocalAgentStream", () => {
   });
 
   describe("MCP result limits", () => {
+    it.each([true, false])(
+      "records direct MCP failure evidence only after execution (approved=%s)",
+      async (approved) => {
+        const { event } = createFakeEvent();
+        mockSettings = buildTestSettings({ enableDyadPro: true });
+        mockChatData = buildTestChat();
+        mockMcpServers = [{ id: 42, name: "srv" }];
+        const execute = vi
+          .fn()
+          .mockRejectedValue(new Error("Archive service unavailable"));
+        mockMcpToolSet = {
+          archive: {
+            description: "Generate an archive",
+            inputSchema: jsonSchema({ type: "object" }),
+            execute,
+          },
+        };
+        mockRequireMcpToolConsent.mockResolvedValue({ approved });
+        const history: NonNullable<
+          AgentContext["shellReviewContext"]
+        >["history"] = [];
+        vi.mocked(buildAgentToolSet).mockImplementationOnce((ctx) => {
+          ctx.shellReviewContext = { tools: [], history };
+          return {};
+        });
+        mockStreamTextImpl = (options) => ({
+          fullStream: (async function* () {
+            try {
+              await options.tools.srv__archive.execute(
+                {},
+                { toolCallId: "archive-call", messages: [] },
+              );
+            } catch {
+              /* Expected failure. */
+            }
+            yield { type: "text-delta", text: "Done" };
+          })(),
+          response: Promise.resolve({ messages: [] }),
+          steps: Promise.resolve([{ toolCalls: [] }]),
+        });
+        await handleLocalAgentStream(
+          event,
+          { chatId: 1, prompt: "Archive the app" },
+          new AbortController(),
+          {
+            placeholderMessageId: 10,
+            systemPrompt: "You are helpful",
+            dyadRequestId,
+          },
+        );
+        expect(history).toHaveLength(1);
+        expect(history[0].tool).toBe("srv__archive");
+        expect(history[0].outcome).toContain(
+          approved ? "execution_failed" : "not_executed_or_denied",
+        );
+        expect(execute).toHaveBeenCalledTimes(approved ? 1 : 0);
+      },
+    );
+
     it("bounds direct MCP tool output before it reaches XML or model history", async () => {
       const { event } = createFakeEvent();
       mockSettings = buildTestSettings({ enableDyadPro: true });
@@ -1421,7 +1489,7 @@ describe("handleLocalAgentStream", () => {
       mockMcpToolSet = {
         huge: {
           description: "Return a large result",
-          inputSchema: { type: "object" },
+          inputSchema: jsonSchema({ type: "object" }),
           execute: vi.fn().mockResolvedValue({
             content: [{ type: "text", text: hugeText }],
           }),
@@ -1559,6 +1627,9 @@ describe("handleLocalAgentStream", () => {
   });
 
   describe("Pro status validation", () => {
+    beforeEach(() => {
+      mockChatData = buildTestChat();
+    });
     it("should send error when Dyad Pro is not enabled", async () => {
       // Arrange
       const { event, getMessagesByChannel } = createFakeEvent();

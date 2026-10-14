@@ -28,6 +28,10 @@ roots may call Chat Completions while Implementers call the Responses API. When
 a fake fixture covers both actors, implement equivalent fixture-tool streaming
 for both endpoints or the Implementer will never execute its tool calls.
 
+Local-agent fixtures advance by tool-result message count. On Chat Completions,
+multiple tool calls in one fixture turn can skip the next turn; put prerequisite
+tool calls in separate turns when a later scripted action must run.
+
 In a fresh worktree, the root `npm install` does not install the nested
 `testing/fake-llm-server` package. Before chat-flow or hybrid suites that load
 its Git routes, run `npm ci --prefix testing/fake-llm-server`; otherwise test
@@ -162,6 +166,10 @@ For cross-platform path assertions, match the path contract being exercised.
 Use `path.normalize()` when the code preserves a rooted path such as `/tmp/...`;
 `path.resolve()` adds the runner's current drive on Windows and is only correct
 when production code also resolves the path to an absolute drive-qualified one.
+
+Mocks returning paths to Git overlay workspaces must preserve the resolver's
+canonical-path contract: use `fs.realpath()` for fixture roots. macOS symlinks
+and Windows 8.3 temp aliases otherwise make relative install paths escape the sandbox.
 
 For asynchronous Git actions driven through the renderer, file existence and
 chat end events can precede Local Agent Git finalization. Before direct Git

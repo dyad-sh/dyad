@@ -40,6 +40,8 @@ const h = vi.hoisted(() => ({
   connectError: null as unknown,
 }));
 
+const cancelAll = vi.hoisted(() => vi.fn());
+
 vi.mock("electron", () => ({ BrowserWindow: { getAllWindows: () => [] } }));
 
 const handlers = new Map<string, (...args: unknown[]) => Promise<unknown>>();
@@ -185,6 +187,13 @@ vi.mock("@/coolify_setup/setup_flow", () => ({
   }),
 }));
 
+vi.mock("@/coolify_deploy/controller", () => ({
+  // The setup handlers mirror `coolify:save-token`'s host-move side effect;
+  // this mock lets the cases below prove they call it, and keeps the real
+  // registry (with its own electron/drizzle imports) out of the unit suite.
+  coolifyDeployRegistry: { cancelAll },
+}));
+
 const { registerCoolifySetupHandlers, resetCoolifySetupStateForTests } =
   await import("./coolify_setup_handlers");
 
@@ -245,6 +254,7 @@ beforeEach(() => {
   h.preflightThrows = false;
   h.preflightReady = true;
   h.fingerprint = "SHA256:fingerprint";
+  cancelAll.mockClear();
   resetCoolifySetupStateForTests();
   registerCoolifySetupHandlers();
 });
@@ -1005,6 +1015,116 @@ describe("a token for an unencrypted address", () => {
       coolify: { accessToken?: { value: string } };
     };
     expect(saved.coolify.accessToken?.value).toBeTruthy();
+  });
+});
+
+describe("switching instances mid-deploy", () => {
+  // The setup writers overwrite `coolify.instanceUrl`/`accessToken` just like
+  // `coolify:save-token` does. The side effect that writer makes on a host-move
+  // — cancelling every in-flight deploy, which captured its client at start and
+  // would otherwise keep polling the abandoned instance — has to come with it.
+  // These pin that the two setup writers cancel when the host moves and leave
+  // running deploys alone when it does not.
+
+  it("stops a deploy against the old instance when setup finishes securely", async () => {
+    // A token was pasted for instance A and a deploy started against it; then a
+    // setup run on a different server finished and stored a secure token for
+    // it. Anything still polling A has to stop, exactly as `coolify:save-token`
+    // would stop it.
+    h.settings = {
+      coolify: {
+        instanceUrl: "https://a.example.com",
+        accessToken: { value: "1|for-a" },
+      },
+    };
+
+    await checkThenRun();
+
+    expect(cancelAll).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves a deploy alone when the secure token is for the same instance", async () => {
+    // The newly installed server answers at the address that was already
+    // configured, so no host moved and nothing was talking to a different one.
+    h.settings = {
+      coolify: {
+        instanceUrl: RESULT.dashboardUrl,
+        accessToken: { value: "1|same" },
+      },
+    };
+
+    await checkThenRun();
+
+    expect(cancelAll).not.toHaveBeenCalled();
+  });
+
+  it("does not cancel when the run holds an insecure token instead of storing it", async () => {
+    // The insecure path holds the token rather than writing `instanceUrl`, so
+    // the host does not move on the way out. Accepting it later is what moves
+    // it, and that path has its own check.
+    h.settings = {
+      coolify: {
+        instanceUrl: "https://a.example.com",
+        accessToken: { value: "1|for-a" },
+      },
+    };
+    h.setupResult = { ...(RESULT as object), secure: false, token: "1|abc" };
+
+    await checkThenRun();
+
+    expect(cancelAll).not.toHaveBeenCalled();
+  });
+
+  it("does not cancel when the finish write fails to store the token", async () => {
+    // The write never landed, so the configured instance is still the old one
+    // and a host-move did not actually happen. Carrying on and cancelling would
+    // stop a deploy against the instance the user is still connected to.
+    h.settings = {
+      coolify: {
+        instanceUrl: "https://a.example.com",
+        accessToken: { value: "1|for-a" },
+      },
+    };
+    // Let the write on the way in succeed (so the run is admitted) and then
+    // fail the finish write.
+    h.writeOkFirst = 2;
+    h.writeThrows = true;
+
+    await checkThenRun();
+
+    expect(cancelAll).not.toHaveBeenCalled();
+  });
+
+  it("stops a deploy against the old instance when an insecure token is accepted", async () => {
+    // The run held the token; accepting it writes `instanceUrl` for a different
+    // instance than the one a deploy is running against, so that deploy stops.
+    h.settings = {
+      coolify: {
+        instanceUrl: "https://a.example.com",
+        accessToken: { value: "1|for-a" },
+      },
+    };
+    h.setupResult = { ...(RESULT as object), secure: false, token: "1|abc" };
+    await checkThenRun();
+
+    await call("coolify-setup:accept-insecure-token");
+
+    expect(cancelAll).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves a deploy alone when the accepted insecure token is for the same instance", async () => {
+    h.settings = {
+      coolify: {
+        instanceUrl: RESULT.dashboardUrl,
+        accessToken: { value: "1|same" },
+      },
+    };
+    h.setupResult = { ...(RESULT as object), secure: false, token: "1|abc" };
+    await checkThenRun();
+
+    await call("coolify-setup:accept-insecure-token");
+
+    expect(cancelAll).not.toHaveBeenCalled();
   });
 });
 

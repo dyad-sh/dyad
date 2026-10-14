@@ -13,7 +13,8 @@ export type ConsentDecision = "accept-once" | "accept-always" | "decline";
 interface DescriptorBase {
   requestId: string;
   chatId: number;
-  deadlineAt: number;
+  /** Null means this request waits for an explicit response or cancellation. */
+  deadlineAt: number | null;
   followUpPrompt?: string;
 }
 
@@ -38,6 +39,8 @@ export type UserInputDescriptor =
     })
   | (DescriptorBase & {
       kind: "agent-consent";
+      allowAlways?: boolean;
+      confirmation?: "shell-approval" | "shell-review-retry";
       toolName: string;
       toolDescription?: string | null;
       inputPreview?: string | null;
@@ -51,6 +54,7 @@ export type UserInputDescriptor =
     })
   | (DescriptorBase & {
       kind: "questionnaire";
+      requiresRecovery?: boolean;
       questions: UserInputQuestion[];
       classifier: "none";
     })
@@ -152,7 +156,7 @@ export type UserInputEvent =
   | {
       type: "requested";
       descriptor: UserInputDescriptor;
-      deadlineMs: number;
+      deadlineMs: number | null;
     }
   | {
       type: "human-decided";

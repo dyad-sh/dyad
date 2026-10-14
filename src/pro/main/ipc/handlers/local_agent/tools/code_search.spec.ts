@@ -120,14 +120,14 @@ describe("codeSearchTool", () => {
     });
   });
 
-  describe("isEnabled", () => {
+  describe("eligibility and discovery", () => {
     it("is enabled inside Explorer when compiler exploration is disabled", () => {
       mockContext.subagentThreadId = "explorer-1";
       mockContext.subagentPersona = "explorer";
       mocks.readSettings.mockReturnValue({ enableCodeExplorer: false });
       mocks.isCodeExplorerReady.mockReturnValue(true);
 
-      expect(codeSearchTool.isEnabled?.(mockContext)).toBe(true);
+      expect(codeSearchTool.isDiscoverable?.(mockContext)).toBe(true);
     });
 
     it("is disabled inside Explorer when compiler exploration is enabled and ready", () => {
@@ -136,7 +136,7 @@ describe("codeSearchTool", () => {
       mocks.readSettings.mockReturnValue({ enableCodeExplorer: true });
       mocks.isCodeExplorerReady.mockReturnValue(true);
 
-      expect(codeSearchTool.isEnabled?.(mockContext)).toBe(false);
+      expect(codeSearchTool.isDiscoverable?.(mockContext)).toBe(false);
     });
 
     it("stays enabled inside Explorer when compiler exploration is not ready", () => {
@@ -145,7 +145,7 @@ describe("codeSearchTool", () => {
       mocks.readSettings.mockReturnValue({ enableCodeExplorer: true });
       mocks.isCodeExplorerReady.mockReturnValue(false);
 
-      expect(codeSearchTool.isEnabled?.(mockContext)).toBe(true);
+      expect(codeSearchTool.isDiscoverable?.(mockContext)).toBe(true);
     });
 
     it("is disabled for non-Pro regardless of explorer readiness", () => {
@@ -160,13 +160,13 @@ describe("codeSearchTool", () => {
     it("is disabled for a root turn when the Explorer sub-agent is available", () => {
       mockContext.canUseExplorerSubagent = true;
 
-      expect(codeSearchTool.isEnabled?.(mockContext)).toBe(false);
+      expect(codeSearchTool.isDiscoverable?.(mockContext)).toBe(false);
     });
 
     it("stays enabled for a root turn when the Explorer sub-agent is unavailable", () => {
       mockContext.canUseExplorerSubagent = false;
 
-      expect(codeSearchTool.isEnabled?.(mockContext)).toBe(true);
+      expect(codeSearchTool.isDiscoverable?.(mockContext)).toBe(true);
     });
   });
 

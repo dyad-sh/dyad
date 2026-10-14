@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { userInputContracts, userInputEvents } from "../types/user_input";
 import { supabaseEvents } from "../types/supabase";
 import { gitEvents } from "../types/github";
+import { testsContracts, testsEvents } from "../types/tests";
 import {
   previewViewEvents,
   previewViewSendContracts,
@@ -10,6 +11,7 @@ import {
   coolifySetupContracts,
   coolifySetupEvents,
 } from "../types/coolify_setup";
+import { cloudflareContracts } from "../types/cloudflare";
 import {
   VALID_INVOKE_CHANNELS,
   VALID_RECEIVE_CHANNELS,
@@ -22,6 +24,18 @@ describe("user-input preload channels", () => {
       expect(VALID_INVOKE_CHANNELS).toContain(contract.channel);
     }
     for (const event of Object.values(userInputEvents)) {
+      expect(VALID_RECEIVE_CHANNELS).toContain(event.channel);
+    }
+  });
+});
+
+describe("test queue preload channels", () => {
+  it("allows the queue snapshot and lifecycle subscriptions", () => {
+    expect(VALID_INVOKE_CHANNELS).toContain(testsContracts.getRunQueue.channel);
+    expect(VALID_INVOKE_CHANNELS).toContain(
+      testsContracts.getActiveRun.channel,
+    );
+    for (const event of Object.values(testsEvents)) {
       expect(VALID_RECEIVE_CHANNELS).toContain(event.channel);
     }
   });
@@ -64,6 +78,16 @@ describe("coolify-setup preload channels", () => {
     }
     for (const event of Object.values(coolifySetupEvents)) {
       expect(VALID_RECEIVE_CHANNELS).toContain(event.channel);
+    }
+  });
+});
+
+describe("cloudflare preload channels", () => {
+  it("allows every Cloudflare invoke contract", () => {
+    // A channel missing from the list type-checks and fails only in the
+    // running app, as "Invalid channel", the first time the tab is used.
+    for (const contract of Object.values(cloudflareContracts)) {
+      expect(VALID_INVOKE_CHANNELS).toContain(contract.channel);
     }
   });
 });

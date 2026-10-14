@@ -200,6 +200,19 @@ export async function acceptInvite(page: Page, workspaceName: string) {
   } else {
     await page.getByTestId("invite-accept-button").first().click();
   }
+  // Acceptance is asynchronous: do not query membership or navigate before
+  // the server commits it. Poll the pinned API, not a particular UI transition.
+  await expect
+    .poll(
+      async () => {
+        const me = await getMe(page.context());
+        return (me.memberships ?? []).map(
+          (m: { workspaceName: string }) => m.workspaceName,
+        );
+      },
+      { timeout: 15_000 },
+    )
+    .toContain(workspaceName);
 }
 
 // Formatting-insensitive numeric read of an element's text (e.g. "$7,500.00").

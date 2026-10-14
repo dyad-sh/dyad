@@ -1,5 +1,5 @@
 import log from "electron-log";
-import { setTimeout as delayWithSignal } from "node:timers/promises";
+import { abortableDelay } from "./abortable";
 
 export const logger = log.scope("retryWithRateLimit");
 
@@ -77,6 +77,15 @@ export interface RetryWithRateLimitOptions {
   maxDelay?: number;
 }
 
+export interface FetchWithRetryOptions extends RetryWithRateLimitOptions {
+  /**
+   * Deadline for each request attempt. Retry backoff (including Retry-After)
+   * is bounded only by the caller's signal, so waiting on a rate limit cannot
+   * use up the time a later upload attempt needs.
+   */
+  attemptTimeoutMs?: number;
+}
+
 /**
  * Retries an async operation with exponential backoff on rate limit errors (429).
  * Uses exponential backoff.
@@ -105,6 +114,7 @@ export async function retryWithRateLimit<T>(
       }
       return result;
     } catch (error: any) {
+      options?.signal?.throwIfAborted();
       lastError = error;
 
       // Only retry on rate limit errors
@@ -146,11 +156,7 @@ export async function retryWithRateLimit<T>(
         );
       }
 
-      if (options?.signal) {
-        await delayWithSignal(delay, undefined, { signal: options.signal });
-      } else {
-        await new Promise((resolve) => setTimeout(resolve, delay));
-      }
+      await abortableDelay(delay, options?.signal);
     }
   }
 
@@ -171,11 +177,26 @@ export async function fetchWithRetry(
   input: RequestInfo | URL,
   init: RequestInit | undefined,
   context: string,
-  retryOptions?: RetryWithRateLimitOptions,
+  retryOptions?: FetchWithRetryOptions,
 ): Promise<Response> {
+  const callerSignal = init?.signal ?? retryOptions?.signal ?? undefined;
   return retryWithRateLimit(
     async () => {
-      const response = await fetch(input, init);
+      const attemptTimeoutMs = retryOptions?.attemptTimeoutMs;
+      const response = await fetch(
+        input,
+        attemptTimeoutMs === undefined
+          ? init
+          : {
+              ...init,
+              signal: callerSignal
+                ? AbortSignal.any([
+                    callerSignal,
+                    AbortSignal.timeout(attemptTimeoutMs),
+                  ])
+                : AbortSignal.timeout(attemptTimeoutMs),
+            },
+      );
       if (response.status === 429) {
         const retryAfterMs = parseRetryAfter(
           response.headers.get("Retry-After"),
@@ -189,6 +210,6 @@ export async function fetchWithRetry(
       return response;
     },
     context,
-    { ...retryOptions, signal: init?.signal ?? retryOptions?.signal },
+    { ...retryOptions, signal: callerSignal },
   );
 }

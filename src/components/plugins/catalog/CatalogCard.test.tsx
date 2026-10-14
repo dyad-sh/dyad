@@ -84,3 +84,19 @@ describe("CatalogCard status", () => {
     expect(screen.getByRole("status").textContent).toBe("Connecting…");
   });
 });
+
+describe("CatalogCard icon", () => {
+  it("shows the entry's icon", () => {
+    const iconUrl = "https://api.dyad.sh/v1/mcp-catalog/icons/example.svg";
+    renderCard("not-added", false, { ...entry, iconUrl });
+    expect(screen.getByTestId<HTMLImageElement>("plugin-icon").src).toBe(
+      iconUrl,
+    );
+  });
+
+  it("shows the entry's initial when it has no icon", () => {
+    renderCard("not-added");
+    expect(screen.queryByTestId("plugin-icon")).toBeNull();
+    expect(screen.getByTestId("plugin-icon-fallback").textContent).toBe("E");
+  });
+});

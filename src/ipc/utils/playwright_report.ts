@@ -46,6 +46,7 @@ interface PwSuite {
 }
 
 export interface PwReport {
+  config?: { rootDir?: string };
   suites?: PwSuite[];
   errors?: { message?: string }[];
 }
@@ -296,12 +297,13 @@ export function parsePlaywrightReport(
   }
 
   const byFile = new Map<string, TestCaseResult[]>();
+  const reportRoot = report.config?.rootDir ?? appPath;
 
   for (const { spec, file: rawFile } of specs) {
     if (!rawFile) continue;
-    const file = path.isAbsolute(rawFile)
-      ? path.relative(appPath, rawFile)
-      : rawFile;
+    // Use the same app-relative keys as preview discovery, including when
+    // Playwright reports locations relative to its test directory.
+    const file = path.relative(appPath, path.resolve(reportRoot, rawFile));
     // Normalize all separators to POSIX. A global replace is more robust than
     // split(path.sep) because Playwright may report mixed separators on Windows.
     const normalized = file.replace(/\\/g, "/");

@@ -377,6 +377,10 @@ const buildTestWritingGuidance = (
     audience === "root"
       ? "build one before writing the auth-gated test"
       : "report the missing login prerequisite to the root Agent before writing the auth-gated test";
+  const inspectSupabaseAuthInstruction =
+    audience === "root"
+      ? "Use `get_database_table_schema` for the public schema and read-only catalog queries through `execute_sql` when needed to inspect the triggers on `auth.users` and their function definitions; the public-table schema alone may omit auth triggers."
+      : "Use `get_database_table_schema` when available and read existing schema/migration files. If the trigger definitions or other live-schema details are missing, ask the root Agent to obtain them with read-only catalog queries before implementing setup; do not guess.";
   return `# Writing end-to-end tests
 
 When writing an end-to-end (e2e) test for a feature or flow, write a Playwright test.
@@ -405,7 +409,7 @@ The error message and test output usually reference these paths directly — ope
 
 ## Isolated test data (database-connected apps)
 
-For Dyad-managed Neon and Supabase apps, Dyad isolates each test session so tests can create, update, and delete data without touching the user's real data. Depending on the provider this is either a temporary, throwaway COPY of the database, or a dedicated, pre-provisioned TEST USER whose data is scoped by Row-Level Security. You do NOT need to write any setup/teardown code; Dyad handles the isolation around the run.
+For Dyad-managed Neon apps, Dyad uses a temporary, throwaway COPY of the database. For Supabase apps, Dyad normally creates one fresh TEST USER per case and retry in the connected project; Row-Level Security must scope that user's access. Supabase does not use a throwaway database. Dyad handles its default user's lifecycle, but custom Supabase users and prerequisite records need the setup and cleanup described below.
 
 Custom databases, custom backends, and providers Dyad cannot manage may NOT be isolated. If the Tests panel warns that isolation is unavailable, assume the test can touch the app's current data: keep setup minimal, avoid destructive flows unless the user explicitly asks for them, and prefer creating disposable records through the app itself.
 
@@ -414,23 +418,25 @@ Because the isolated session starts effectively empty (a fresh copy, or a brand-
 ### Fixtures: seeding the data a test needs
 
 - Put reusable setup in files under \`e2e-tests/fixtures/\` (e.g. \`e2e-tests/fixtures/todos.ts\`) and import them into your specs. Write fixtures as plain files so the user can review and edit them — never hide setup in a way that regenerates differently each run.
-- Seed data THROUGH THE APP (its UI or its API routes), the same way a user would — e.g. create a todo by filling the app's "new todo" form, or POSTing to the app's own API route. This guarantees the data is written within the isolated session (the throwaway copy, or owned by the isolated test user so Row-Level Security scopes it correctly).
-- Do NOT seed by connecting to the database directly from the test, and do NOT run SQL/migrations against the database while authoring the test — that would write to the user's REAL data, outside the isolated session.
+- Seed ordinary feature data THROUGH THE APP (its UI or its API routes), the same way a user would — e.g. create a todo by filling the app's "new todo" form, or POSTing to the app's own API route. Use the test user's session so the app's authorization and Row-Level Security apply.
+- Do NOT seed by connecting to the database directly from the test, except for custom Supabase setup/cleanup described in the \`custom-supabase-test-fixtures\` guide. Do NOT run write SQL/migrations against the database while authoring a test. Read-only schema inspection is appropriate; creating fixture data belongs in the test's runtime hooks.
 - Base the fixture data on the app's actual schema and on what the specific test needs. Keep it minimal: seed only what the test asserts on.
 
 ### Improving a recorded test
 
-When asked to improve a test Dyad's recorder generated, PRESERVE its recorded interactions, locators, and its \`signIn\` fixture usage — your job is to make the flow's outcomes verified, not to rewrite the flow or re-pick the selectors.
+When asked to improve a test Dyad's recorder generated, PRESERVE its recorded interactions and locators. Reuse its \`signIn\` fixture where it satisfies the flow's auth requirements; adapt the auth setup only when schema inspection or a multi-user scenario shows the default user is insufficient.
 
 ### Authenticated tests (signing in a test user)
 
-This section applies ONLY when the specific flow under test genuinely requires a logged-in user. If the flow is reachable without signing in, or the user asked for a test that doesn't need authentication (or explicitly doesn't want auth), skip everything below — test the reachable flow as it is and do NOT add any login/signup UI. Note that \`process.env.DYAD_TEST_USER_*\` being set means Dyad provisioned a test user for the session; it does NOT mean this particular test needs a login. If a flow truly can't be tested without a sign-in that the app doesn't have yet, ${missingAuthInstruction} — don't add it silently.
+This section applies when the specific flow requires a logged-in user or tests user signup itself. For other flows reachable without authentication (or when the user explicitly doesn't want auth), skip the auth setup — test the reachable flow as it is and do NOT add any login/signup UI. Note that \`process.env.DYAD_TEST_USER_*\` being set means Dyad provisioned a test user for the session; it does NOT mean this particular test needs a login. If a flow truly can't be tested without a sign-in that the app doesn't have yet, ${missingAuthInstruction} — don't add it silently.
 
-When a flow requires a logged-in user, use the built-in auth fixture in \`e2e-tests/fixtures/test-user.ts\` instead of hand-rolling credentials. Expose a \`signIn(page)\` helper (and \`signUp\` where relevant) from there and import it into your specs.
-- If \`e2e-tests/fixtures/test-user.ts\` already exists (Dyad's test recorder generates it), REUSE its \`signIn(page)\` — import and call it. Do NOT hand-roll credentials, re-implement it, or drive the login UI when it exists; it already signs in programmatically from \`process.env.DYAD_TEST_USER_*\`.
-- Dyad creates a fresh isolated user for each test case and retry. Read \`process.env.DYAD_TEST_USER_*\` inside \`signIn\`, \`beforeEach\`, or the test body, never at module scope or in \`beforeAll\`. Neon test data, including auth data, is cleared between cases; seed any required data per case.
-- Otherwise, if \`process.env.DYAD_TEST_USER_EMAIL\` and \`process.env.DYAD_TEST_USER_PASSWORD\` are set, Dyad has ALREADY provisioned an isolated test user (for Supabase AND Neon Auth apps) — read the credentials from those env vars and sign that user in (via the fixture, or by driving the app's OWN login UI). Do NOT sign them up; they already exist. If the flow needs a login and the app has no login UI yet, ${missingLoginInstruction}.
-- Otherwise, define a shared test user and create it by driving the app's OWN signup flow (so the user can really authenticate). If the flow needs a login and the app has no signup flow yet, ${missingSignupInstruction}.
+For a Supabase flow that creates users or requires authentication, FIRST inspect the database and the app's signup code before choosing a user fixture. ${inspectSupabaseAuthInstruction} Inspect the relevant triggers and functions, required columns, foreign keys, defaults, and RLS policies. Identify which metadata is read at INSERT time and what users and permissions the scenario needs. Do not weaken triggers, constraints, or RLS to make the test pass.
+
+If a single default user satisfies those requirements, use the built-in auth fixture in \`e2e-tests/fixtures/test-user.ts\`. If signup triggers require metadata, prerequisite records, or multiple users, you MUST call \`read_guide\` with guide="custom-supabase-test-fixtures" before implementing custom setup. Keep reusable sign-in helpers in that fixture and import them into your specs.
+- For the default-user path, if \`e2e-tests/fixtures/test-user.ts\` already exists (Dyad's test recorder generates it), REUSE its \`signIn(page)\` — import and call it. It already signs in programmatically from \`process.env.DYAD_TEST_USER_*\`.
+- In the default-user path, Dyad creates a fresh isolated user for each test case and retry. Read \`process.env.DYAD_TEST_USER_*\` inside \`signIn\`, \`beforeEach\`, or the test body, never at module scope or in \`beforeAll\`. Neon test data, including auth data, is cleared between cases; seed any required data per case.
+- For the default-user path without an existing fixture, if \`process.env.DYAD_TEST_USER_EMAIL\` and \`process.env.DYAD_TEST_USER_PASSWORD\` are set, Dyad has ALREADY provisioned an isolated test user (for Supabase AND Neon Auth apps) — read the credentials from those env vars and sign that user in (via the fixture, or by driving the app's OWN login UI). Do NOT sign them up; they already exist. If the flow needs a login and the app has no login UI yet, ${missingLoginInstruction}.
+- Otherwise, create a fresh test user per case by driving the app's OWN signup flow (so the user can really authenticate). If the flow needs a login and the app has no signup flow yet, ${missingSignupInstruction}.
 - Never INSERT users directly into auth tables; that commonly produces a user that exists but cannot log in.
 - If you sign in programmatically with \`page.request.*\` against the app's own auth endpoint, remember that \`page.request\` is an API client, not the browser — it sends no \`Origin\`/\`Referer\`, and \`signIn\` typically runs before the first navigation (the page is still \`about:blank\`). Auth servers with a CSRF / trusted-origin check (e.g. Better Auth) answer that with a 403. Pass the app's own origin explicitly: \`const origin = new URL(process.env.DYAD_TEST_BASE_URL || "http://localhost:32100").origin;\` then send \`headers: { origin, referer: origin + "/" }\`. A 403 from a sign-in endpoint is almost always this, not bad credentials — fix the test, not the app.`;
 };
@@ -452,26 +458,28 @@ const buildAgentRunTestsGuidance = (
       : "report to the root Agent what the test covers, what still fails, what you tried, and what you recommend";
   return `## Running tests and fixing failures
 
-After you write or edit a spec, VERIFY it with the \`run_tests\` tool — never claim a test works without running it. \`testFile\` is required: always pass the single spec you're working on (e.g. \`run_tests({ testFile: "e2e-tests/signup.spec.ts" })\`) so you get fast, focused feedback. By default the whole file runs, so a pass means every test in the spec passes.
+After you write or edit specs, VERIFY them with the \`run_tests\` tool — never claim a test works without running it. Batch the affected specs with \`testFiles\` (e.g. \`run_tests({ testFiles: ["e2e-tests/signup.spec.ts", "e2e-tests/checkout.spec.ts"] })\`). Omit \`testFiles\` only when you deliberately need the whole suite. An empty list is invalid; the old \`testFile\` argument is no longer supported. By default each whole file runs. For managed Neon and Supabase apps, database data and auth users are isolated per test case and retry, including across files. Seed each case independently; isolated runs remain sequential.
 
-Run the whole file by default. Only narrow the run with \`grep\` (a regex matched against \`test()\` titles, same as Playwright's --grep, e.g. \`run_tests({ testFile: "e2e-tests/signup.spec.ts", grep: "user can sign up" })\`) when you have a specific reason — typically when ONE test keeps failing while the spec's other tests already passed and rerunning them all is slow. A narrowed pass only verifies the tests it matched, not the rest of the file. If the pattern matches no title, the tool runs nothing and replies with the titles that DO exist.
+Run whole files by default. Only narrow the run with \`grep\` (a regex matched against Playwright's full hierarchical test titles, e.g. \`run_tests({ testFiles: ["e2e-tests/signup.spec.ts"], grep: "user can sign up" })\`) when you have a specific reason — typically to iterate on a slow/failing subset. One pattern applies across the selection; without \`testFiles\` it applies across the suite. Filtered runs remain sequential. A filtered pass only verifies matched tests and does not reset a file's failure budget. A file with no runnable tests is not verified and consumes no failure attempt.
 
-Use the EXACT path of a spec that exists under e2e-tests/ — don't guess it. If your \`testFile\` doesn't match a real spec, \`run_tests\` runs nothing and replies with the specs that DO exist so you can retry with a correct path.
+Use EXACT paths of specs that exist under e2e-tests/ — don't guess. Paths are normalized and deduplicated. If ANY requested path is invalid or missing, the whole batch is refused before setup and the tool lists the real specs.
 
-Unless you just wrote or edited the spec this turn, READ it with \`read_file\` before running it. You need its current content to target a test by title with \`grep\` and to judge whether a failure comes from the test or the app — never run or edit a spec you haven't seen this turn.
+Unless you just wrote or edited a selected spec this turn, READ each selected spec with \`read_file\` before running it. You need its current content to target a test by title with \`grep\` and to judge whether a failure comes from the test or the app — never run or edit a spec you haven't seen this turn.
 
 The tool needs the app's dev server to be running; if it reports the app isn't running, ${serverUnavailableInstruction}.
 
 When \`run_tests\` reports a failure, work the fix loop:
 1. READ the \`error-context.md\` the result points at (use \`read_file\`) — it's the page snapshot and the most useful artifact. The failure screenshot is attached as an image; look at it too. Only read the artifacts from the CURRENT run's directory.
 2. Decide whether the TEST is wrong (fix the locator/assertion) or the APP is wrong (fix the app), then make ONE targeted change.
-3. Call \`run_tests\` again for the same spec.
+3. Call \`run_tests\` again for the relevant specs. Results and remaining failure attempts are reported separately for each file.
 4. If the tool says your last change did NOT alter the failure, do NOT retry a small variation — step back and try a different approach (a different locator strategy, or inspect the app code more closely).
 5. If you suspect the failure is flaky (passes/fails inconsistently) rather than a real bug, rerun once with \`flakeCheck: true\` — this doesn't count against the attempt limit.
 
 You have a limited number of fix attempts per spec (the tool tells you how many remain). When it says the limit is reached, STOP editing and running: ${attemptLimitInstruction}.
 
-When a task touches multiple specs, verify each one with its own \`run_tests\` call — one spec per call. Call \`run_tests\` sequentially for the same app: wait for each call to finish before starting the next, even when targeting different spec files. Overlapping calls for the same app cancel earlier runs; they do not run in parallel.`;
+When a task touches multiple specs, batch them into one \`run_tests\` call. If any selected file is blocked (already passed without changes, needs a fix, or exhausted its attempts), no part of the batch runs: read the blocked paths and select only eligible files. A passing file never resets another file's failure budget. Infrastructure failures and incomplete runs do not consume failure attempts or grant verification.
+
+Calls to \`run_tests\` for the same app are queued in arrival order. Each call waits for earlier runs and their cleanup, then returns its own results. Calls for different apps can run concurrently. Each batch counts once toward the 10-run limit per turn, including infrastructure failures; preflight refusals do not count. The selected tests share a 10-minute execution deadline (20 minutes with slow motion), tripled for per-test database isolation to allow for serial provisioning and cleanup.`;
 };
 
 const AGENT_RUN_TESTS_GUIDANCE = buildAgentRunTestsGuidance();

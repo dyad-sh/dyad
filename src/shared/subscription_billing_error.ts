@@ -3,9 +3,9 @@ import { DyadError, DyadErrorKind } from "../errors/dyad_error";
 export const SUBSCRIPTION_BILLING_ERRORS = {
   OUT_OF_CREDITS: {
     title: "You’re out of AI credits",
-    description: "Add credits to continue using your subscription.",
+    description: "Add credits to continue using Pro features.",
     message:
-      "You're out of Dyad credits. Add credits to continue using your subscription.",
+      "You're out of Dyad credits. Add credits to continue using Pro features.",
     action: "Get more credits",
     url: "https://academy.dyad.sh/subscription",
   },

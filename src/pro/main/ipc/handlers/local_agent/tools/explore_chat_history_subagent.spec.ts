@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { streamText } from "ai";
+import { SMALL_MODEL_NAME } from "@/ipc/shared/language_model_constants";
 
 import { DyadErrorKind } from "@/errors/dyad_error";
 import {
@@ -116,6 +117,20 @@ describe("runExploreChatHistorySubagent", () => {
     harness.dispose();
   });
 
+  it("uses the engine helper model with BYO for history exploration", async () => {
+    const ctx = makeAgentContext({ isDyadPro: true });
+    ctx.inferenceSettings = {
+      ...mocks.readSettings(),
+      proModelUsage: "api-key",
+      selectedModel: { provider: "google", name: "chosen-model" },
+    };
+    await runExploreChatHistorySubagent({ query: "find save discussion", ctx });
+    expect(mocks.getModelClient).toHaveBeenCalledWith(
+      { provider: "openai", name: SMALL_MODEL_NAME },
+      expect.objectContaining({ proModelUsage: "pro" }),
+      expect.objectContaining({ provider: "openai", name: SMALL_MODEL_NAME }),
+    );
+  });
   it.each(["build", "ask", "plan", "local-agent"] as const)(
     "inherits accepted %s billing settings instead of the live default",
     async (selectedChatMode) => {
@@ -196,17 +211,17 @@ describe("runExploreChatHistorySubagent", () => {
       "submit_report",
     ]);
     expect(mocks.getModelClient).toHaveBeenCalledWith(
-      { provider: "openai", name: "gpt-5.6-luna" },
+      { provider: "openai", name: SMALL_MODEL_NAME },
       expect.objectContaining({
         selectedModel: {
           provider: "openai",
-          name: "gpt-5.6-luna",
+          name: SMALL_MODEL_NAME,
           effortLevel: "medium",
         },
       }),
       {
         provider: "openai",
-        name: "gpt-5.6-luna",
+        name: SMALL_MODEL_NAME,
         effortLevel: "medium",
       },
     );

@@ -33,6 +33,9 @@ export const queryKeys = {
     nodejsStatus: ["system", "nodejsStatus"] as const,
     nativeTheme: ["system", "nativeTheme"] as const,
     platform: ["system", "platform"] as const,
+    claudeCodeStatus: ["system", "claudeCodeStatus"] as const,
+    claudeCodeModels: ["system", "claudeCodeModels"] as const,
+    claudeCodeUsage: ["system", "claudeCodeUsage"] as const,
     subscriptionStatus: ["system", "subscriptionStatus"] as const,
     initialLoadTelemetryContext: [
       "system",
@@ -162,6 +165,12 @@ export const queryKeys = {
   // ─────────────────────────────────────────────────────────────────────────────
   tests: {
     all: ["tests"] as const,
+    activeRun: ({ appId }: { appId: number | null }) =>
+      ["tests", appId, "active-run"] as const,
+    run: ({ appId }: { appId: number | null }) =>
+      ["tests", appId, "run"] as const,
+    queue: ({ appId }: { appId: number | null }) =>
+      ["tests", appId, "queue"] as const,
     list: ({ appId }: { appId: number | null }) =>
       ["tests", "list", appId] as const,
     legacy: ({ appId }: { appId: number | null }) =>
@@ -326,6 +335,24 @@ export const queryKeys = {
       ["vercel", "deployments", appId] as const,
     syncPreview: ({ appId }: { appId: number | null }) =>
       ["vercel", "syncPreview", appId] as const,
+  },
+
+  cloudflare: {
+    all: ["cloudflare"] as const,
+    accounts: ["cloudflare", "accounts"] as const,
+    workers: ({ accountId }: { accountId: string | null }) =>
+      ["cloudflare", "workers", accountId] as const,
+    appStatus: ({ appId }: { appId: number }) =>
+      ["cloudflare", "appStatus", appId] as const,
+    repoAccess: ({ appId, accountId }: { appId: number; accountId: string }) =>
+      ["cloudflare", "repoAccess", appId, accountId] as const,
+    deploymentStatus: ({
+      appId,
+      rootDirectory,
+    }: {
+      appId: number;
+      rootDirectory: string;
+    }) => ["cloudflare", "deploymentStatus", appId, rootDirectory] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────

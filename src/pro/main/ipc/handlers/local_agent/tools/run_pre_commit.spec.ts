@@ -197,14 +197,14 @@ describe("runPreCommitTool", () => {
 
   it("is registered only when hook detection enabled it for the turn", () => {
     expect(
-      runPreCommitTool.isEnabled?.(
+      runPreCommitTool.isDiscoverable?.(
         context(repo, {
           preCommitHookAvailable: true,
         }),
       ),
     ).toBe(true);
     expect(
-      runPreCommitTool.isEnabled?.(
+      runPreCommitTool.isDiscoverable?.(
         context(repo, {
           preCommitHookAvailable: false,
         }),
@@ -445,7 +445,7 @@ describe("runPreCommitTool", () => {
     expect(mocks.deleteSupabaseFunction).not.toHaveBeenCalled();
   });
 
-  it("deletes a Supabase function removed by the hook instead of queueing a deploy", async () => {
+  async function mockHookRemovingFunction() {
     const removedEntryPoint = path.join(
       repo,
       "supabase",
@@ -479,6 +479,25 @@ describe("runPreCommitTool", () => {
         return processResult();
       },
     );
+  }
+
+  it("deletes hook-removed Supabase functions after releasing the pre-commit claim", async () => {
+    await mockHookRemovingFunction();
+    let acquiredConflictingClaim = false;
+    mocks.deleteSupabaseFunction.mockImplementationOnce(async () => {
+      // Real deletion admits a same-app deployment claim; inside the
+      // pre-commit claim this would never be admitted.
+      await appOperationCoordinator.run(
+        {
+          appId: 42,
+          operation: "deploy",
+          resources: ["repository", "provider"],
+        },
+        async () => {
+          acquiredConflictingClaim = true;
+        },
+      );
+    });
     const ctx = context(repo, {
       supabaseProjectId: "project-id",
       supabaseOrganizationSlug: "org-slug",
@@ -487,12 +506,30 @@ describe("runPreCommitTool", () => {
 
     await runPreCommitTool.execute({}, ctx);
 
-    expect(mocks.deleteSupabaseFunction).toHaveBeenCalledWith({
-      supabaseProjectId: "project-id",
-      functionName: "removed",
-      organizationSlug: "org-slug",
-    });
+    expect(mocks.deleteSupabaseFunction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appId: 42,
+        supabaseProjectId: "project-id",
+        functionName: "removed",
+        organizationSlug: "org-slug",
+      }),
+    );
+    expect(acquiredConflictingClaim).toBe(true);
+    expect(ctx.pendingFunctionDeletes).toEqual([]);
     expect(ctx.pendingFunctionDeploys).toEqual([]);
+  });
+
+  it("keeps a failed hook-removal deletion queued for turn finalization", async () => {
+    await mockHookRemovingFunction();
+    mocks.deleteSupabaseFunction.mockRejectedValueOnce(new Error("offline"));
+    const ctx = context(repo, {
+      supabaseProjectId: "project-id",
+      supabaseOrganizationSlug: "org-slug",
+    });
+
+    await runPreCommitTool.execute({}, ctx);
+
+    expect(ctx.pendingFunctionDeletes).toEqual(["removed"]);
   });
 
   it("keeps removed remote functions when pruning is disabled", async () => {

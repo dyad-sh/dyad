@@ -1130,7 +1130,13 @@ describe("buildAddDependencyCommand", () => {
     "builds the right command for %s with sfw=%s",
     (manager, useSfw, expected) => {
       expect(
-        buildAddDependencyCommand(["react", "zod"], manager, useSfw),
+        buildAddDependencyCommand(
+          ["react", "zod"],
+          manager,
+          useSfw,
+          {},
+          "darwin",
+        ),
       ).toEqual(expected);
     },
   );
@@ -1184,7 +1190,13 @@ describe("buildAddDependencyCommand", () => {
     "installs as a devDependency for %s with sfw=%s when dev:true",
     (manager, useSfw, expected) => {
       expect(
-        buildAddDependencyCommand(["nitro"], manager, useSfw, { dev: true }),
+        buildAddDependencyCommand(
+          ["nitro"],
+          manager,
+          useSfw,
+          { dev: true },
+          "darwin",
+        ),
       ).toEqual(expected);
     },
   );
@@ -1225,10 +1237,45 @@ describe("buildAddDependencyCommand", () => {
     ],
   ])("saves exact versions for %s with sfw=%s", (manager, useSfw, expected) => {
     expect(
-      buildAddDependencyCommand(["react@19.1.0"], manager, useSfw, {
-        saveExact: true,
-      }),
+      buildAddDependencyCommand(
+        ["react@19.1.0"],
+        manager,
+        useSfw,
+        { saveExact: true },
+        "darwin",
+      ),
     ).toEqual(expected);
+  });
+
+  it.each<[PackageManager, string]>([
+    ["pnpm", "pnpm.cmd"],
+    ["npm", "npm.cmd"],
+  ])(
+    "names the %s .cmd shim for sfw on Windows so sfw does not pick the .ps1 shim",
+    (manager, expectedShim) => {
+      const { command, args } = buildAddDependencyCommand(
+        ["react"],
+        manager,
+        true,
+        {},
+        "win32",
+      );
+      expect(command).toBe("npx");
+      expect(args.slice(0, 4)).toEqual([
+        "--prefer-offline",
+        "--yes",
+        "sfw@2.0.4",
+        expectedShim,
+      ]);
+      expect(args.at(-1)).toBe("react");
+    },
+  );
+
+  it("leaves the bare package manager name alone on Windows without sfw", () => {
+    // The Windows spawner resolves the bare name to the .cmd shim itself.
+    expect(
+      buildAddDependencyCommand(["react"], "pnpm", false, {}, "win32").command,
+    ).toBe("pnpm");
   });
 });
 
@@ -1270,10 +1317,31 @@ describe("buildUpdateDependencyCommand", () => {
     "builds a constraint-preserving update for %s with sfw=%s",
     (manager, useSfw, expected) => {
       expect(
-        buildUpdateDependencyCommand(["react", "zod"], manager, useSfw),
+        buildUpdateDependencyCommand(
+          ["react", "zod"],
+          manager,
+          useSfw,
+          "darwin",
+        ),
       ).toEqual(expected);
     },
   );
+
+  it("names the pnpm .cmd shim for sfw on Windows", () => {
+    expect(
+      buildUpdateDependencyCommand(["react"], "pnpm", true, "win32").args,
+    ).toEqual([
+      "--prefer-offline",
+      "--yes",
+      "sfw@2.0.4",
+      "pnpm.cmd",
+      "--config.pm-on-fail=ignore",
+      "--config.confirmModulesPurge=false",
+      "--config.strictDepBuilds=false",
+      "update",
+      "react",
+    ]);
+  });
 });
 
 describe("ensureSocketFirewallInstalled", () => {
@@ -1345,7 +1413,8 @@ describe("buildPtyInvocation", () => {
       buildPtyInvocation("npx", ["--yes", "sfw@2.0.4"], "win32", "cmd.exe"),
     ).toEqual({
       command: "cmd.exe",
-      args: ["/d", "/s", "/c", "npx.cmd --yes sfw@2.0.4"],
+      args: ["/d", "/s", "/c", '"npx.cmd --yes sfw@2.0.4"'],
+      useVerbatimArguments: true,
     });
   });
 
@@ -1363,8 +1432,9 @@ describe("buildPtyInvocation", () => {
         "/d",
         "/s",
         "/c",
-        'npx.cmd --message "value with spaces and ""quotes"""',
+        '"npx.cmd --message "value with spaces and ""quotes""""',
       ],
+      useVerbatimArguments: true,
     });
   });
 
@@ -1378,7 +1448,8 @@ describe("buildPtyInvocation", () => {
       ),
     ).toEqual({
       command: "cmd.exe",
-      args: ["/d", "/s", "/c", 'npx.cmd --filter "name&echo^(injected)"'],
+      args: ["/d", "/s", "/c", '"npx.cmd --filter "name&echo^(injected)""'],
+      useVerbatimArguments: true,
     });
   });
 
@@ -1387,7 +1458,8 @@ describe("buildPtyInvocation", () => {
       buildPtyInvocation("npx", ["--flag", ""], "win32", "cmd.exe"),
     ).toEqual({
       command: "cmd.exe",
-      args: ["/d", "/s", "/c", 'npx.cmd --flag ""'],
+      args: ["/d", "/s", "/c", '"npx.cmd --flag """'],
+      useVerbatimArguments: true,
     });
   });
 
@@ -1420,9 +1492,12 @@ describe("runCommand", () => {
 
       expect(runPtyCommandMock).toHaveBeenCalledWith(
         expect.stringMatching(/cmd\.exe$/i),
-        ["/d", "/s", "/c", "npx.cmd --yes sfw@2.0.4"],
+        ["/d", "/s", "/c", '"npx.cmd --yes sfw@2.0.4"'],
         expect.objectContaining({
           displayCommand: "npx --yes sfw@2.0.4",
+          // runCommand forwards the verbatim flag so node-pty doesn't
+          // re-escape the cmd-quoted `/c` payload.
+          useVerbatimArguments: true,
         }),
       );
     });

@@ -20,11 +20,18 @@ import {
   tryBeginTurnFinalization,
 } from "../subagents/mutation_activity_tracker";
 
-vi.mock("@/ipc/utils/mcp_manager", () => ({
-  mcpManager: {
-    getClient: vi.fn(),
-  },
-}));
+vi.mock("@/ipc/utils/mcp_manager", () => {
+  const getClient = vi.fn();
+  return {
+    mcpManager: {
+      getClient,
+      // Mirror the real wrapper so tests can stub the client alone.
+      listToolsWithin: vi.fn((serverId: number) =>
+        getClient(serverId).then((client: any) => client.tools()),
+      ),
+    },
+  };
+});
 
 vi.mock("@/ipc/utils/mcp_consent", () => ({
   requireMcpToolConsent: vi.fn(),
@@ -378,6 +385,50 @@ describe("buildMcpCapabilityMap", () => {
     endTurnFinalization(turnId);
   });
 
+  it("holds the turn open during the client lookup and skips execution after a Stop", async () => {
+    vi.mocked(requireMcpToolConsent).mockResolvedValue({ approved: true });
+    const execute = vi.fn().mockResolvedValue({ content: [] });
+    let finishLookup!: (client: unknown) => void;
+    vi.mocked(mcpManager.getClient).mockReturnValue(
+      new Promise<any>((resolve) => {
+        finishLookup = resolve;
+      }),
+    );
+    const abortController = new AbortController();
+    const ctx = createCtx();
+    ctx.abortSignal = abortController.signal;
+    const turnId = "sandbox-mcp-lookup-test";
+    ctx.mutationActivityOwner = createMutationActivityOwner({
+      appId: ctx.appId,
+      chatId: ctx.chatId,
+      turnId,
+      actorRunId: "root",
+    });
+    const call = buildMcpCapabilityMap({
+      event: {} as any,
+      ctx,
+      defs: [makeDef()],
+    }).srv__hello({});
+
+    await vi.waitFor(() =>
+      expect(mcpManager.getClient).toHaveBeenCalledWith(42),
+    );
+    expect(mcpManager.listToolsWithin).toHaveBeenCalledWith(42, {
+      signal: abortController.signal,
+    });
+    // The lookup is in flight, so the turn must not be finalizable yet.
+    expect(tryBeginTurnFinalization(turnId)).toBe(false);
+    abortController.abort();
+    finishLookup({ tools: async () => ({ hello: { execute } }) });
+
+    await expect(call).rejects.toMatchObject({
+      kind: DyadErrorKind.UserCancelled,
+    });
+    expect(execute).not.toHaveBeenCalled();
+    expect(tryBeginTurnFinalization(turnId)).toBe(true);
+    endTurnFinalization(turnId);
+  });
+
   it("wraps a plain-string MCP result into the declared McpResult shape", async () => {
     vi.mocked(requireMcpToolConsent).mockResolvedValue({ approved: true });
     const execute = vi.fn().mockResolvedValue("hello world");
@@ -574,3 +625,30 @@ describe("buildMcpCapabilityMap", () => {
 // prefix on every toolKey makes a bare match like `read_file`
 // unreachable today. The seeded reserved set in `collectMcpToolDefs`
 // is defense in depth for future key-format or built-in changes.
+
+describe("MCP shell fallback evidence", () => {
+  it.each([true, false])(
+    "records execution failures without promoting consent denial (approved=%s)",
+    async (approved) => {
+      vi.mocked(requireMcpToolConsent).mockResolvedValue({ approved });
+      const execute = vi
+        .fn()
+        .mockRejectedValue(new Error("Service unavailable"));
+      vi.mocked(mcpManager.getClient).mockResolvedValue({
+        tools: async () => ({ hello: { execute } }),
+      } as any);
+      const ctx = createCtx();
+      ctx.shellReviewContext = { tools: [], history: [] };
+      const map = buildMcpCapabilityMap({
+        event: {} as any,
+        ctx,
+        defs: [makeDef()],
+      });
+      await expect(map.srv__hello({})).rejects.toThrow();
+      expect(ctx.shellReviewContext.history[0].outcome).toContain(
+        approved ? "execution_failed" : "not_executed_or_denied",
+      );
+      expect(execute).toHaveBeenCalledTimes(approved ? 1 : 0);
+    },
+  );
+});

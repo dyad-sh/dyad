@@ -35,6 +35,8 @@ export type ChatTabOwnership = z.infer<typeof ChatTabOwnershipSchema>;
 export const ChatTabPresentationStateSchema = z.object({
   draftInput: z.string().max(1_000_000),
   scrollTop: z.number().finite().nonnegative(),
+  // Older saved presentations only contain the absolute pixel offset.
+  scrollAtBottom: z.boolean().optional(),
   selectedFile: z
     .object({
       path: z.string().max(10_000),
@@ -172,6 +174,7 @@ export const QueryInvalidationScopeSchema = z.discriminatedUnion("family", [
   z.object({ family: z.literal("user-budget") }),
   z.object({ family: z.literal("free-agent-quota") }),
   z.object({ family: z.literal("free-model-quota") }),
+  z.object({ family: z.literal("codex-subscription") }),
   z.object({
     family: z.literal("app"),
     appId: z.number().int().positive(),

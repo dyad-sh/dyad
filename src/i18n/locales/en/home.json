@@ -177,6 +177,7 @@
     "systemInfoFailed": "Your system information could not be included. Filing the report without it.",
     "screenshotRestoreFailed": "Your screenshot could not be restored. Filing the report without it.",
     "screenshotDropped": "Your screenshot could no longer be restored, so it was removed from this report.",
+    "screenshotUploadFailed": "Your screenshot could not be attached. Dyad will put it on your clipboard so you can paste it into the issue instead.",
     "filingFailed": "Something went wrong while filing your report. Please try again.",
     "updaterLogs": "Auto-Updater Logs",
     "appMetadata": "App Metadata",
@@ -188,17 +189,17 @@
     "screenshot": "Screenshot",
     "addScreenshot": "Add a screenshot",
     "takingScreenshot": "Taking screenshot...",
-    "screenshotHint": "This dialog steps aside so you can go to where the bug is first. You will paste it into GitHub at the end.",
+    "screenshotHint": "This dialog steps aside so you can go to where the bug is first. The screenshot is attached to your report for you.",
     "captureBarLabel": "Screenshot for your bug report",
     "captureBarHeading": "Go to where the bug is.",
     "captureBarHint": "When it is on screen, capture it. Your report is saved and will reopen with the screenshot.",
     "captureBarCapture": "Capture screenshot",
     "captureBarCancel": "Back to report",
     "filedHeading": "Did you paste your screenshot?",
-    "filedPasteBody": "Dyad cannot attach it for you, so it is waiting on your clipboard. Press {{shortcut}} in the GitHub issue to add it. If you already submitted without it, edit the issue and paste it there. If it is already in, you are all set.",
+    "filedPasteBody": "Your screenshot could not be attached automatically, so it is waiting on your clipboard. Press {{shortcut}} in the GitHub issue to add it. If you already submitted without it, edit the issue and paste it there. If it is already in, you are all set.",
     "filedDone": "Done",
     "screenshotAlt": "Screenshot of the Dyad window",
-    "screenshotPasteHint": "Copied to your clipboard. Press {{shortcut}} in the GitHub issue to attach it.",
+    "screenshotAttachHint": "This image will be attached to your GitHub issue, where anyone can see it. Check it for anything you would not want public.",
     "screenshotFailed": "Could not take a screenshot.",
     "screenshotStillFile": "You can still send the report without one.",
     "retake": "Retake",
@@ -267,6 +268,25 @@
     "security": "Security",
     "publish": "Publish",
     "tests": "Tests",
+    "testQueued": "Queued",
+    "testRunsQueued_one": "{{count}} run queued",
+    "testRunsQueued_other": "{{count}} runs queued",
+    "cancelQueued": "Cancel queued",
+    "cancelQueuedTests": "Cancel queued tests",
+    "allTests": "All tests",
+    "queueAll": "Queue all",
+    "queueAllTests": "Queue all tests",
+    "testGate": {
+      "settingsLoading": "Loading settings…",
+      "settingsUnavailable": "Dyad couldn't load your settings, so it can't tell how tests would run.",
+      "retry": "Retry",
+      "startApp": "Start the app to run tests.",
+      "start": "Start",
+      "neonRefusalRuntime": "Tests can't run for this app: isolated test servers aren't available in {{runtime}} runtime yet, and Dyad won't run Neon tests against your real database. Switch to host runtime to run them.",
+      "neonRefusalDisabled": "Tests can't run for this app: isolated test servers are turned off in Settings, and Dyad won't run Neon tests against your real database. Turn them back on to run them.",
+      "turnOnSandbox": "Turn on",
+      "openSettings": "Open Settings"
+    },
     "plan": "Plan",
     "moreOptions": "More options",
     "rebuild": "Rebuild",
@@ -468,7 +488,9 @@
       "proFeatureTitle": "Annotator is a Pro Feature",
       "proFeatureDescription": "Unlock the ability to annotate screenshots and enhance your workflow with Dyad Pro.",
       "getDyadPro": "Get Dyad Pro"
-    }
+    },
+    "openDevServer": "Open dev server address",
+    "openDevServerDescription": "For browsers that cannot open the preview address. Shares browser storage with other localhost apps."
   },
   "integrations": {
     "github": {
@@ -740,7 +762,8 @@
       "redeploySucceededWithPruning_other": "Redeployed {{count}} edge functions and removed remote-only functions: {{functions}}",
       "redeployPrunedOnly": "Removed remote-only edge functions: {{functions}}",
       "noFunctionsToRedeploy": "No local edge functions found to redeploy",
-      "redeployFailed": "Edge function redeployment finished with issues: {{error}}"
+      "redeployFailed": "Edge function redeployment finished with issues: {{error}}",
+      "previewRedirectNotice": "Dyad automatically adds local preview URLs to the Auth redirect allowlist for {{project}}. These entries remain after disconnecting or deleting an app because teammates may use the same URLs. Remove unused entries in Supabase → Authentication → URL Configuration."
     },
     "neon": {
       "title": "Neon Integration",
@@ -802,7 +825,10 @@
       "disconnectAccountConfirmation": "Are you sure you want to disconnect your Neon account? You will need to re-authenticate via OAuth to reconnect.",
       "removeVercelEnvVars": "Remove Neon environment variables from Vercel",
       "removeVercelEnvVarsHelp": "Deletes DATABASE_URL and Neon Auth variables from the linked Vercel project so they don't point at a disconnected database.",
-      "failedRemoveVercelEnvVars": "Disconnected, but failed to remove Neon environment variables from Vercel."
+      "failedRemoveVercelEnvVars": "Disconnected, but failed to remove Neon environment variables from Vercel.",
+      "removeCloudflareEnvVars": "Remove Neon secrets from Cloudflare",
+      "removeCloudflareEnvVarsHelp": "Deletes DATABASE_URL and NEON_AUTH_BASE_URL from the connected Workers so they don't point at a disconnected database.",
+      "failedRemoveCloudflareEnvVars": "Disconnected, but failed to remove Neon secrets from Cloudflare."
     },
     "db": {
       "projectInfo": "{{provider}} Project Info",
@@ -871,7 +897,11 @@
       "syncSuccess": "Synced database configuration to Vercel, but a redeploy is required for your live app to use it.",
       "syncError": "Failed to sync to Vercel.",
       "selectBranchError": "Failed to save your database branch selection.",
-      "clearBranchError": "Failed to clear your database branch selection."
+      "clearBranchError": "Failed to clear your database branch selection.",
+      "syncToCloudflare": "Sync to Cloudflare",
+      "syncToCloudflareHelp": "Set database secrets on your Cloudflare Workers and add their addresses to Neon's auth redirect allowlist.",
+      "syncToCloudflareSuccess": "Synced database configuration to Cloudflare. Your live app uses it right away.",
+      "syncToCloudflareError": "Failed to sync to Cloudflare."
     },
     "migration": {
       "title": "Database Migration",
@@ -928,5 +958,10 @@
       "neonUnavailable": "Neon is unavailable because a Supabase project is already connected. Only one database integration can be active at a time.",
       "chooseOne": "Choose one database integration. Connecting either Supabase or Neon will lock out the other for this app."
     }
+  },
+  "previewAuth": {
+    "neonPending": "Registering this app's preview address with Neon in the background. OAuth sign-in and authentication redirects may not work until registration finishes.",
+    "supabasePending": "Registering this app's preview redirect URLs with Supabase in the background. Authentication redirects may not work until registration finishes.",
+    "retry": "Restart and retry"
   }
 }

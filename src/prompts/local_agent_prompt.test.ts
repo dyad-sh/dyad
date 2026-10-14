@@ -6,6 +6,7 @@ import {
   resolveImplementerProvider,
 } from "@/prompts/local_agent_prompt";
 import {
+  SUPABASE_AUTH_REDIRECT_RULE,
   SUPABASE_DISCONNECTED_SYSTEM_PROMPT,
   SUPABASE_EDGE_FUNCTION_JWT_RULE,
   SUPABASE_GRANTS_AND_RLS_RULE,
@@ -50,6 +51,9 @@ describe("local_agent_prompt", () => {
   it("keeps Supabase safety invariants in the disconnected root prompt", () => {
     expect(SUPABASE_DISCONNECTED_SYSTEM_PROMPT).toContain(
       SUPABASE_SERVICE_ROLE_BROWSER_RULE,
+    );
+    expect(SUPABASE_DISCONNECTED_SYSTEM_PROMPT).toContain(
+      SUPABASE_AUTH_REDIRECT_RULE,
     );
     expect(SUPABASE_DISCONNECTED_SYSTEM_PROMPT).toContain(
       SUPABASE_EDGE_FUNCTION_JWT_RULE,
@@ -181,6 +185,7 @@ describe("local_agent_prompt", () => {
 
     expect(prompt).toContain("You are Dyad Implementer");
     expect(prompt).toContain('<provider_invariants provider="supabase">');
+    expect(prompt).toContain(SUPABASE_AUTH_REDIRECT_RULE);
     expect(prompt).toContain(SUPABASE_SERVICE_ROLE_BROWSER_RULE);
     expect(prompt).toContain(SUPABASE_GRANTS_AND_RLS_RULE);
     expect(prompt).toContain(SUPABASE_IMPLEMENTER_RLS_RULE);
@@ -480,6 +485,19 @@ describe("local_agent_prompt", () => {
       testingEnabled: true,
     });
     expect(prompt).toContain("# Writing end-to-end tests");
+    expect(prompt).toContain(
+      'testFiles: ["e2e-tests/signup.spec.ts", "e2e-tests/checkout.spec.ts"]',
+    );
+    expect(prompt).toContain(
+      "isolated per test case and retry, including across files",
+    );
+    expect(prompt).toContain("Seed each case independently");
+    expect(prompt).not.toContain("no reset between files");
+    expect(prompt).toContain("no part of the batch runs");
+    expect(prompt).toContain("10-minute execution deadline");
+    expect(prompt).toContain("tripled for per-test database isolation");
+    expect(prompt).not.toContain("one spec per call");
+    expect(prompt).not.toContain("run_tests({ testFile:");
   });
 
   it("basic agent mode gates test-writing guidance on testingEnabled", () => {
@@ -493,6 +511,54 @@ describe("local_agent_prompt", () => {
       testingEnabled: true,
     });
     expect(enabled).toContain("# Writing end-to-end tests");
+  });
+
+  it.each(["root", "basic", "implementer"] as const)(
+    "%s inspects Supabase auth requirements before choosing test-user setup",
+    (audience) => {
+      const prompt =
+        audience === "implementer"
+          ? constructImplementerPrompt(undefined, {
+              provider: "supabase",
+              supabaseConnected: true,
+              testingEnabled: true,
+            })
+          : constructLocalAgentPrompt(undefined, undefined, {
+              basicAgentMode: audience === "basic",
+              testingEnabled: true,
+            });
+
+      const inspect = prompt.indexOf(
+        "FIRST inspect the database and the app's signup code",
+      );
+      const choose = prompt.indexOf(
+        "If a single default user satisfies those requirements",
+      );
+      expect(inspect).toBeGreaterThan(-1);
+      expect(choose).toBeGreaterThan(inspect);
+      expect(prompt).toContain("relevant triggers and functions");
+      expect(prompt).toContain("foreign keys, defaults, and RLS policies");
+      expect(prompt).toContain('guide="custom-supabase-test-fixtures"');
+      expect(prompt).not.toContain("supabase.auth.admin.createUser");
+      expect(prompt).not.toContain("must succeed before custom setup can run");
+      expect(prompt).not.toContain(
+        "You do NOT need to write any setup/teardown code",
+      );
+    },
+  );
+
+  it("routes missing trigger inspection through root for Implementers", () => {
+    const prompt = constructImplementerPrompt(undefined, {
+      provider: "supabase",
+      supabaseConnected: false,
+      testingEnabled: true,
+    });
+
+    expect(prompt).toContain(
+      "ask the root Agent to obtain them with read-only catalog queries",
+    );
+    expect(prompt).toContain('guide="custom-supabase-test-fixtures"');
+    expect(prompt).not.toContain("through `execute_sql`");
   });
 
   it("gates pre-commit workflow guidance on hook availability", () => {

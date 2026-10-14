@@ -8,6 +8,8 @@ vi.mock("react-i18next", () => ({
       ({
         changesDatabaseSchema: "Changes database schema",
         destructiveDataChange: "Destructive data change",
+        flaggedForReview: "Flagged for review",
+        safetyReviewUnavailable: "Safety review unavailable",
         aiReviewingRequest:
           "AI is reviewing this request to decide if it's safe to auto-approve…",
       })[key] ?? key,
@@ -119,4 +121,47 @@ describe("AgentConsentBanner", () => {
     expect(screen.getByRole("button", { name: "Allow once" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Decline" })).toBeTruthy();
   });
+});
+
+it("does not offer persistent approval for turn-scoped operations", () => {
+  const { container } = render(
+    <AgentConsentBanner
+      consent={{
+        kind: "agent",
+        requestId: "scoped",
+        chatId: 1,
+        toolName: "Claude Code: Edit",
+        allowAlways: false,
+      }}
+      onDecision={vi.fn()}
+      onClose={vi.fn()}
+    />,
+  );
+  expect(container.textContent).not.toContain("Always allow");
+  expect(container.textContent).toContain("Allow once");
+});
+
+it("offers a review retry without offering command approval", () => {
+  const { container } = render(
+    <AgentConsentBanner
+      consent={{
+        kind: "agent",
+        requestId: "retry",
+        chatId: 1,
+        toolName: "run_shell",
+        allowAlways: false,
+        confirmation: "shell-review-retry",
+        toolDescription: "Safety review timed out. Retry runs the check again.",
+        inputPreview: "Bash: gcloud logging read severity=ERROR --limit=50",
+      }}
+      onDecision={vi.fn()}
+      onClose={vi.fn()}
+    />,
+  );
+  expect(screen.getByRole("button", { name: "Retry review" })).toBeTruthy();
+  expect(container.textContent).not.toContain("Always allow");
+  expect(container.textContent).not.toContain("Allow once");
+  expect(container.textContent).toContain("Safety review timed out");
+  expect(container.textContent).toContain("Safety review unavailable");
+  expect(container.textContent).not.toContain("Flagged for review");
 });

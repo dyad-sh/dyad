@@ -37,7 +37,9 @@ it("enables usage polling only while the subscription submenu is open", async ()
   await user.click(screen.getByRole("button", { name: "Models" }));
   expect(account).toHaveBeenLastCalledWith(false);
   await user.hover(
-    screen.getByRole("menuitem", { name: /Subscription.*Open submenu/ }),
+    screen.getByRole("menuitem", {
+      name: /ChatGPT subscription.*Open submenu/,
+    }),
   );
   await waitFor(() => expect(account).toHaveBeenLastCalledWith(true));
   await user.keyboard("{Escape}");

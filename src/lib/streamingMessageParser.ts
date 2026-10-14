@@ -64,6 +64,7 @@ const DYAD_CUSTOM_TAG_NAMES = [
   "dyad-neon-table-schema",
   "dyad-read-guide",
   "dyad-status",
+  "dyad-claude-tool",
   "dyad-compaction",
   "dyad-copy",
   "dyad-image-generation",

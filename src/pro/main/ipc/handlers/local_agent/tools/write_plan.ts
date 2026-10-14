@@ -2,7 +2,10 @@ import { z } from "zod";
 import log from "electron-log";
 import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
 import { broadcastToRegisteredWindows } from "@/ipc/utils/window_broadcast";
-import { savePlanToDisk } from "@/ipc/handlers/planPersistence";
+import {
+  savePlanToDisk,
+  readPlanFromDisk,
+} from "@/ipc/handlers/planPersistence";
 import { rememberPlanDraft } from "@/ipc/services/plan_handoff_service";
 
 const logger = log.scope("write_plan");
@@ -65,34 +68,28 @@ export const writePlanTool: ToolDefinition<z.infer<typeof writePlanSchema>> = {
 
   execute: async (args, ctx: AgentContext) => {
     logger.log(`Writing plan: ${args.title}`);
-    rememberPlanDraft(ctx.chatId, {
-      title: args.title,
-      summary: args.summary,
-      content: args.plan,
-    });
-
-    broadcastToRegisteredWindows(ctx.event.sender, "plan:update", {
+    // Publish only the durable representation. The plan-file parser normalizes
+    // outer whitespace, so broadcasting raw model text would create a version
+    // that cannot pass exact-version acceptance after a reload.
+    await savePlanToDisk({
+      appPath: ctx.appPath,
       chatId: ctx.chatId,
       title: args.title,
       summary: args.summary,
-      plan: args.plan,
+      content: args.plan,
+      status: "draft",
     });
-
-    // Persist the plan as a draft so it survives an app restart before the user
-    // accepts it. Best-effort: the plan is still shown in-memory even if the
-    // write fails, so a persistence error must not fail the tool call.
-    try {
-      await savePlanToDisk({
-        appPath: ctx.appPath,
-        chatId: ctx.chatId,
-        title: args.title,
-        summary: args.summary,
-        content: args.plan,
-        status: "draft",
-      });
-    } catch (error) {
-      logger.warn("Failed to persist plan draft", error);
-    }
+    const plan = await readPlanFromDisk({
+      appPath: ctx.appPath,
+      chatId: ctx.chatId,
+    });
+    rememberPlanDraft(ctx.chatId, plan);
+    broadcastToRegisteredWindows(ctx.event.sender, "plan:update", {
+      chatId: ctx.chatId,
+      title: plan.title,
+      summary: plan.summary,
+      plan: plan.content,
+    });
 
     return `Implementation plan "${args.title}" has been presented to the user. They can review it in the preview panel and either accept it or request changes.`;
   },

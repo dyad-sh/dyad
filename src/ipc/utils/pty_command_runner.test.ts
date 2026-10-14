@@ -330,4 +330,49 @@ describe("runPtyCommand", () => {
       expect(controller.pty.kill).not.toHaveBeenCalled();
     });
   });
+
+  it("passes args as a pre-built command-line string when useVerbatimArguments is set", async () => {
+    // The Windows batch path hands runPtyCommand the already cmd-quoted
+    // `/d /s /c "..."` payload and asks node-pty to forward it verbatim (as a
+    // string) so node-pty's argsToCommandLine doesn't MSVC-escape it a second
+    // time.
+    const controller = createMockPtyController();
+    spawnMock.mockReturnValue(controller.pty);
+
+    const promise = runPtyCommand(
+      "cmd.exe",
+      ["/d", "/s", "/c", '"npx.cmd playwright test --grep "(a|b) c""'],
+      {
+        useVerbatimArguments: true,
+      },
+    );
+
+    expect(spawnMock).toHaveBeenCalledWith(
+      "cmd.exe",
+      // Joined into a single verbatim command line, NOT an array.
+      '/d /s /c "npx.cmd playwright test --grep "(a|b) c""',
+      expect.objectContaining({ encoding: "utf8" }),
+    );
+
+    controller.emitExit({ exitCode: 0 });
+    await expect(promise).resolves.toEqual({ output: "" });
+  });
+
+  it("passes args as an array (letting node-pty MSVC-quote them) without useVerbatimArguments", async () => {
+    const controller = createMockPtyController();
+    spawnMock.mockReturnValue(controller.pty);
+
+    const promise = runPtyCommand("node.exe", ["script.js", "a b"], {});
+
+    // For a real executable, args stay an array so node-pty applies its
+    // normal argv-quoting (e.g. quoting "a b" for its embedded space).
+    expect(spawnMock).toHaveBeenCalledWith(
+      "node.exe",
+      ["script.js", "a b"],
+      expect.objectContaining({ encoding: "utf8" }),
+    );
+
+    controller.emitExit({ exitCode: 0 });
+    await expect(promise).resolves.toEqual({ output: "" });
+  });
 });

@@ -78,17 +78,26 @@ describe("createDyadEngine", () => {
     expect(String(request.input)).toBe(
       "https://engine.example.test/v1/messages",
     );
-    expect(request.init?.headers).toMatchObject({
-      authorization: "Bearer dyad-pro-key",
-      "X-Dyad-Request-Id": "request-1:attempt-1",
-    });
+    expect(new Headers(request.init?.headers).get("authorization")).toBe(
+      "Bearer dyad-pro-key",
+    );
+    expect(new Headers(request.init?.headers).get("X-Dyad-Request-Id")).toBe(
+      "request-1:attempt-1",
+    );
+    expect(new Headers(request.init?.headers).get("anthropic-beta")).toContain(
+      "thinking-binding-controls-2026-08-01",
+    );
 
     const body = JSON.parse(String(request.init?.body));
     expect(body).toMatchObject({
       model: "claude-sonnet-4-20250514",
       messages: [{ role: "user", content: [{ type: "text", text: "Hello" }] }],
       system: [{ type: "text", text: "You are concise." }],
-      thinking: { type: "adaptive", display: "summarized" },
+      thinking: {
+        type: "adaptive",
+        display: "summarized",
+        block_binding: { prefix_mismatch_behavior: "drop_block" },
+      },
       output_config: { effort: "medium" },
       dyad_options: {
         app_id: 42,

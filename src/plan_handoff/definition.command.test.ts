@@ -1,7 +1,17 @@
+vi.mock("./persistence", () => ({
+  persistPlanHandoff: vi.fn(),
+  hydratePlanHandoff: () => ({
+    intent: null,
+    targetChatId: null,
+    phase: "idle",
+    failure: null,
+  }),
+}));
 import { createHash } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  appPath: "/tmp/app",
   createChatForApp: vi.fn(async () => 99),
   savePlanToDisk: vi.fn(async () => "accepted-plan"),
   routePlanHandoffPresentation: vi.fn(),
@@ -17,14 +27,29 @@ vi.mock("@/db", () => ({
     select: () => ({
       from: () => ({
         where: () => ({
-          get: () => ({ path: "/tmp/app" }),
+          get: () => ({
+            path: mocks.appPath,
+            id: 7,
+            appId: 3,
+            modelSelection: JSON.stringify({
+              provider: "claude-code",
+              name: "sonnet",
+            }),
+          }),
         }),
       }),
     }),
     update: () => ({
       set: (values: unknown) => ({
         where: () => ({
-          run: () => mocks.setChatMode(values),
+          run: () => {
+            if (
+              typeof values === "object" &&
+              values !== null &&
+              "chatMode" in values
+            )
+              mocks.setChatMode(values);
+          },
         }),
       }),
     }),
@@ -35,6 +60,10 @@ vi.mock("@/ipc/utils/chat_creation_utils", () => ({
 }));
 vi.mock("@/ipc/handlers/planPersistence", () => ({
   savePlanToDisk: mocks.savePlanToDisk,
+  readPlanFromDisk: vi.fn(async () => ({
+    title: "Ship it",
+    content: "Implement it",
+  })),
 }));
 vi.mock("@/ipc/services/chat_actor_platform", () => ({
   publishChatInvalidations: mocks.publishChatInvalidations,
@@ -106,6 +135,7 @@ function commandRunner() {
 describe("plan handoff command ownership", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.appPath = "/tmp/app";
     mocks.createChatForApp.mockResolvedValue(99);
     mocks.savePlanToDisk.mockResolvedValue("accepted-plan");
     mocks.waitForChatActorIdle.mockResolvedValue(undefined);
@@ -121,7 +151,7 @@ describe("plan handoff command ownership", () => {
 
     await runner({ type: "run-handoff", intent: intent() }, emit);
 
-    expect(mocks.savePlanToDisk).toHaveBeenCalledOnce();
+    expect(mocks.savePlanToDisk).toHaveBeenCalledTimes(2);
     expect(mocks.savePlanToDisk).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({ status: "draft" }),
@@ -148,11 +178,18 @@ describe("plan handoff command ownership", () => {
     );
     expect(mocks.savePlanToDisk).toHaveBeenNthCalledWith(
       2,
-      expect.objectContaining({ status: "accepted" }),
+      expect.objectContaining({ status: "accepted", chatId: 99 }),
     );
     expect(
       mocks.dispatchPlanImplementationTurn.mock.invocationCallOrder[0],
-    ).toBeLessThan(mocks.savePlanToDisk.mock.invocationCallOrder[1]);
+    ).toBeLessThan(mocks.savePlanToDisk.mock.invocationCallOrder[2]);
+    expect(mocks.savePlanToDisk).toHaveBeenNthCalledWith(
+      2,
+      expect.not.objectContaining({ immutableVersion: expect.anything() }),
+    );
+    expect(mocks.savePlanToDisk.mock.invocationCallOrder[1]).toBeLessThan(
+      mocks.dispatchPlanImplementationTurn.mock.invocationCallOrder[0],
+    );
     expect(mocks.deleteOwnedChatAfterSettlingActors).not.toHaveBeenCalled();
     expect(mocks.routePlanHandoffPresentation).toHaveBeenCalledWith({
       handoffId: "handoff-1",
@@ -178,6 +215,7 @@ describe("plan handoff command ownership", () => {
     const metadataFailure = new Error("accepted plan write failed");
     mocks.savePlanToDisk
       .mockResolvedValueOnce("draft-plan")
+      .mockResolvedValueOnce("working-plan")
       .mockRejectedValueOnce(metadataFailure);
     const consoleError = vi
       .spyOn(console, "error")
@@ -218,7 +256,9 @@ describe("plan handoff command ownership", () => {
 
     await runner({ type: "run-handoff", intent: currentChatIntent }, emit);
 
-    expect(mocks.setChatMode).not.toHaveBeenCalled();
+    expect(mocks.setChatMode).not.toHaveBeenCalledWith({
+      chatMode: "local-agent",
+    });
 
     mocks.dispatchPlanImplementationTurn.mockResolvedValueOnce(undefined);
     await runner({ type: "run-handoff", intent: currentChatIntent }, emit);
@@ -230,4 +270,72 @@ describe("plan handoff command ownership", () => {
       mocks.dispatchPlanImplementationTurn.mock.invocationCallOrder[1],
     ).toBeLessThan(mocks.setChatMode.mock.invocationCallOrder[0]);
   });
+});
+
+it.each(["begin-handoff", "run-handoff"] as const)(
+  "reports %s checkpoint write failure without starting implementation",
+  async (type) => {
+    const { persistPlanHandoff } = await import("./persistence");
+    vi.mocked(persistPlanHandoff).mockImplementation(() => {
+      throw new Error("disk full");
+    });
+    mocks.dispatchPlanImplementationTurn.mockClear();
+    const { runner } = commandRunner();
+    const emit = vi.fn();
+    try {
+      await runner({ type, intent: intent() }, emit);
+      expect(emit).toHaveBeenCalledWith({
+        type: "FAILED",
+        handoffId: "handoff-1",
+        error: "disk full",
+      });
+      expect(mocks.dispatchPlanImplementationTurn).not.toHaveBeenCalled();
+    } finally {
+      vi.mocked(persistPlanHandoff).mockReset();
+    }
+  },
+);
+
+it("still publishes admitted success when the final checkpoint cannot be saved", async () => {
+  const { persistPlanHandoff } = await import("./persistence");
+  vi.mocked(persistPlanHandoff).mockImplementation((_chatId, state) => {
+    if (state.phase === "started") throw new Error("disk full after admission");
+  });
+  const { runner } = commandRunner();
+  const emit = vi.fn();
+  try {
+    await runner({ type: "run-handoff", intent: intent() }, emit);
+    expect(emit).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "CHECKPOINT", phase: "started" }),
+    );
+    expect(emit).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "FAILED" }),
+    );
+  } finally {
+    vi.mocked(persistPlanHandoff).mockReset();
+  }
+});
+
+it("re-reads the app path after the planning turn drains", async () => {
+  const { readPlanFromDisk } = await import("@/ipc/handlers/planPersistence");
+  mocks.appPath = "/tmp/old-app";
+  mocks.waitForChatActorIdle.mockImplementation(async () => {
+    mocks.appPath = "/tmp/moved-app";
+  });
+  const { runner } = commandRunner();
+  const emit = vi.fn();
+  await runner({ type: "run-handoff", intent: intent() }, emit);
+  expect(readPlanFromDisk).toHaveBeenCalledWith({
+    appPath: "/tmp/moved-app",
+    chatId: 7,
+  });
+  expect(mocks.savePlanToDisk).toHaveBeenCalledWith(
+    expect.objectContaining({
+      appPath: "/tmp/moved-app",
+      immutableVersion: intent().planHash,
+    }),
+  );
+  expect(emit).not.toHaveBeenCalledWith(
+    expect.objectContaining({ type: "FAILED" }),
+  );
 });

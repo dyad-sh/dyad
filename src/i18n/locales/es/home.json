@@ -177,6 +177,7 @@
     "systemInfoFailed": "No se pudo incluir la información de tu sistema. El informe se enviará sin ella.",
     "screenshotRestoreFailed": "No se pudo restaurar tu captura de pantalla. El informe se enviará sin ella.",
     "screenshotDropped": "Tu captura de pantalla ya no se pudo restaurar, así que se ha quitado de este informe.",
+    "screenshotUploadFailed": "No se pudo adjuntar tu captura de pantalla. Dyad la pondrá en tu portapapeles para que puedas pegarla en la incidencia.",
     "filingFailed": "Algo ha fallado al enviar tu informe. Vuelve a intentarlo.",
     "updaterLogs": "Registros del Actualizador",
     "appMetadata": "Metadatos de la Aplicación",
@@ -188,17 +189,17 @@
     "screenshot": "Captura de pantalla",
     "addScreenshot": "Añadir una captura de pantalla",
     "takingScreenshot": "Tomando captura...",
-    "screenshotHint": "Este diálogo se aparta para que primero vayas a donde está el error. La pegarás en GitHub al final.",
+    "screenshotHint": "Este diálogo se aparta para que primero vayas a donde está el error. La captura de pantalla se adjunta a tu informe automáticamente.",
     "captureBarLabel": "Captura de pantalla para tu informe de error",
     "captureBarHeading": "Ve a donde está el error.",
     "captureBarHint": "Cuando esté en pantalla, captúralo. Tu informe está guardado y se reabrirá con la captura.",
     "captureBarCapture": "Capturar pantalla",
     "captureBarCancel": "Volver al informe",
     "filedHeading": "¿Pegaste tu captura de pantalla?",
-    "filedPasteBody": "Dyad no puede adjuntarla por ti, así que está esperando en tu portapapeles. Pulsa {{shortcut}} en la incidencia de GitHub para añadirla. Si ya la enviaste sin ella, edita la incidencia y pégala allí. Si ya está incluida, no tienes que hacer nada más.",
+    "filedPasteBody": "Tu captura de pantalla no se pudo adjuntar automáticamente, así que está esperando en tu portapapeles. Pulsa {{shortcut}} en la incidencia de GitHub para añadirla. Si ya la enviaste sin ella, edita la incidencia y pégala allí. Si ya está incluida, no tienes que hacer nada más.",
     "filedDone": "Listo",
     "screenshotAlt": "Captura de pantalla de la ventana de Dyad",
-    "screenshotPasteHint": "Copiada en tu portapapeles. Pulsa {{shortcut}} en la incidencia de GitHub para adjuntarla.",
+    "screenshotAttachHint": "Esta imagen se adjuntará a tu incidencia de GitHub, donde cualquiera puede verla. Revísala por si muestra algo que no quieras hacer público.",
     "screenshotFailed": "No se pudo tomar la captura de pantalla.",
     "screenshotStillFile": "Aún puedes enviar el informe sin ella.",
     "retake": "Repetir",
@@ -267,6 +268,25 @@
     "security": "Seguridad",
     "publish": "Publicar",
     "tests": "Pruebas",
+    "testQueued": "En cola",
+    "testRunsQueued_one": "{{count}} ejecución en cola",
+    "testRunsQueued_other": "{{count}} ejecuciones en cola",
+    "cancelQueued": "Cancelar en cola",
+    "cancelQueuedTests": "Cancelar pruebas en cola",
+    "allTests": "Todas las pruebas",
+    "queueAll": "Poner todas en cola",
+    "queueAllTests": "Poner todas las pruebas en cola",
+    "testGate": {
+      "settingsLoading": "Cargando configuración…",
+      "settingsUnavailable": "Dyad no pudo cargar tu configuración, así que no puede saber cómo se ejecutarían las pruebas.",
+      "retry": "Reintentar",
+      "startApp": "Inicia la aplicación para ejecutar las pruebas.",
+      "start": "Iniciar",
+      "neonRefusalRuntime": "Las pruebas no pueden ejecutarse en esta aplicación: los servidores de prueba aislados aún no están disponibles en el entorno de ejecución {{runtime}}, y Dyad no ejecutará pruebas de Neon contra tu base de datos real. Cambia al entorno de ejecución host para ejecutarlas.",
+      "neonRefusalDisabled": "Las pruebas no pueden ejecutarse en esta aplicación: los servidores de prueba aislados están desactivados en Configuración, y Dyad no ejecutará pruebas de Neon contra tu base de datos real. Vuelve a activarlos para ejecutarlas.",
+      "turnOnSandbox": "Activar",
+      "openSettings": "Abrir Configuración"
+    },
     "plan": "Plan",
     "moreOptions": "Más opciones",
     "rebuild": "Reconstruir",
@@ -451,7 +471,9 @@
       "proFeatureTitle": "El Anotador es una Función Pro",
       "proFeatureDescription": "Desbloquea la capacidad de anotar capturas de pantalla y mejora tu flujo de trabajo con Dyad Pro.",
       "getDyadPro": "Consigue Dyad Pro"
-    }
+    },
+    "openDevServer": "Abrir dirección del servidor de desarrollo",
+    "openDevServerDescription": "Para navegadores que no pueden abrir la dirección de vista previa. Comparte el almacenamiento del navegador con otras apps en localhost."
   },
   "integrations": {
     "github": {
@@ -718,7 +740,8 @@
       "redeploySucceededWithPruning_other": "Se volvieron a desplegar {{count}} funciones Edge y se eliminaron las funciones remotas: {{functions}}",
       "redeployPrunedOnly": "Se eliminaron las funciones Edge que solo existían de forma remota: {{functions}}",
       "noFunctionsToRedeploy": "No se encontraron funciones Edge locales para volver a desplegar",
-      "redeployFailed": "El despliegue de las funciones Edge finalizó con problemas: {{error}}"
+      "redeployFailed": "El despliegue de las funciones Edge finalizó con problemas: {{error}}",
+      "previewRedirectNotice": "Dyad añade automáticamente las URL de vista previa locales a la lista de redirecciones de Auth de {{project}}. Estas entradas permanecen al desconectar o eliminar una app porque otros miembros del equipo pueden usar las mismas URL. Elimina las entradas que no se usen en Supabase → Authentication → URL Configuration."
     },
     "neon": {
       "title": "Integración con Neon",
@@ -776,7 +799,10 @@
       "connecting": "Conectando...",
       "disconnectAccountTitle": "Desconectar Cuenta de Neon",
       "disconnectAccountConfirmation": "¿Estás seguro de que quieres desconectar tu cuenta de Neon? Necesitarás volver a autenticarte a través de OAuth para reconectarte.",
-      "connectFailed": "Error al conectar con Neon"
+      "connectFailed": "Error al conectar con Neon",
+      "removeCloudflareEnvVars": "Eliminar los secretos de Neon de Cloudflare",
+      "removeCloudflareEnvVarsHelp": "Elimina DATABASE_URL y NEON_AUTH_BASE_URL de los Workers conectados para que no apunten a una base de datos desconectada.",
+      "failedRemoveCloudflareEnvVars": "Desconectado, pero no se pudieron eliminar los secretos de Neon de Cloudflare."
     },
     "db": {
       "projectInfo": "Información del Proyecto {{provider}}",
@@ -870,5 +896,10 @@
       "neonUnavailable": "Neon no está disponible porque ya hay un proyecto de Supabase conectado. Solo puede haber una integración de base de datos activa a la vez.",
       "chooseOne": "Elige una integración de base de datos. Conectar Supabase o Neon bloqueará la otra para esta aplicación."
     }
+  },
+  "previewAuth": {
+    "neonPending": "Registrando la dirección de vista previa de esta app en Neon en segundo plano. El inicio de sesión OAuth y las redirecciones de autenticación podrían no funcionar hasta que termine el registro.",
+    "supabasePending": "Registrando las URL de redirección de vista previa de esta app en Supabase en segundo plano. Las redirecciones de autenticación podrían no funcionar hasta que termine el registro.",
+    "retry": "Reiniciar y reintentar"
   }
 }

@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import log from "electron-log";
-import { session } from "electron";
+import { clearPreviewStorage } from "../services/preview_storage";
 import { eq } from "drizzle-orm";
 
 import { db } from "../../db";
@@ -78,39 +78,6 @@ async function getApp(appId: number) {
 /** The isolation's auth setup and the renderer-facing auth shape are identical. */
 function toRecordingAuth(setup: IsolationAuthSetup | undefined): RecordingAuth {
   return setup ?? NO_AUTH;
-}
-
-/**
- * Drop everything the preview's browser session holds for the app's origin.
- *
- * Called at both ends of a recording. Setup uses it to start capture from the
- * pristine, signed-out state the generated test replays from; teardown uses it
- * to take the temporary identity back out. The auth bootstrap seeds that
- * identity into storage the preview keeps — a Supabase session under
- * `sb-<ref>-auth-token`, a Better Auth cookie — and deleting the test user is a
- * server-side change an already-issued JWT does not see. Left behind, the
- * preview goes on acting as a user Dyad has disowned, against the real project.
- *
- * The `origin` filter is honest for localStorage/IndexedDB/service workers,
- * which are genuinely origin-keyed, but NOT for cookies: cookies have never been
- * port-scoped on the web, so clearing `http://localhost:<proxyPort>` clears
- * cookies for every other `localhost` origin in this session too — other
- * previews included. There is no API that narrows it, and `session.clearData`'s
- * `origins` filter is wider still (Electron deletes cookies at the registrable
- * domain there). Only the dedicated `session.fromPartition()` noted below would
- * actually contain it; until then the confirmation dialog says so out loud.
- */
-async function clearPreviewStorage(origin: string): Promise<void> {
-  await session.defaultSession.clearStorageData({
-    origin,
-    storages: [
-      "cookies",
-      "localstorage",
-      "indexdb",
-      "serviceworkers",
-      "cachestorage",
-    ],
-  });
 }
 
 function infraResult(appId: number, message: string): StartRecordingResult {
@@ -226,6 +193,7 @@ export function registerRecordingHandlers() {
           readAppResource("repository-ref"),
           "repository-worktree",
           "provider",
+          "supabase-functions",
           "runtime",
           "runtime-config",
           "test-files",
@@ -306,6 +274,11 @@ export function registerRecordingHandlers() {
               let started = false;
               let endReason: RecordingEndReason = "stopped";
               let endMessage: string | undefined;
+              // Whether the throwaway branch/test user this recording created
+              // is actually gone. Fails closed for the same reason
+              // `envRestored` does: a teardown that never returned has told us
+              // nothing, and "unknown" must not read as "cleaned up".
+              let remoteCleanupCompleted = true;
               try {
                 // The session was already ended before admission — the owning
                 // window closed, or Stop was pressed while this waited behind
@@ -468,10 +441,13 @@ export function registerRecordingHandlers() {
                   // returns gets to say the environment is restored.
                   summary.envRestored = false;
                   try {
-                    summary.envRestored = (
-                      await prepared.teardown(teardownOptions)
-                    ).envRestored;
+                    const teardownResult =
+                      await prepared.teardown(teardownOptions);
+                    summary.envRestored = teardownResult.envRestored;
+                    remoteCleanupCompleted =
+                      teardownResult.remoteCleanupCompleted;
                   } catch (error) {
+                    remoteCleanupCompleted = false;
                     logger.error(
                       `Recording teardown failed for app ${appId}: ${error}`,
                     );
@@ -485,13 +461,30 @@ export function registerRecordingHandlers() {
                   endReason = "error";
                   endMessage =
                     "Dyad couldn't restore your app's real database settings after recording. Restore .env.local before running the app again.";
+                } else if (!remoteCleanupCompleted) {
+                  // The env came back, so the app is usable — but something the
+                  // recording created is still in the user's account: a
+                  // temporary Neon branch, or a test user in their Supabase
+                  // project. The test-run path reports this and the recorder
+                  // was silently dropping it, which is how a leak becomes
+                  // invisible until the user finds it themselves.
+                  endReason = "error";
+                  const resource =
+                    prepared?.cleanupProvider === "supabase-test-user"
+                      ? "temporary Supabase test user"
+                      : "temporary database";
+                  endMessage = `Dyad couldn't finish cleaning up the ${resource} it created for this recording. Your app settings were restored; Dyad will retry the cleanup on next startup.`;
                 }
                 clearRegistration();
                 // A setup failure normally has no live recorder to notify. The
                 // exception is failed teardown: even before capture started,
                 // the app may still point at its temporary database branch and
                 // the renderer must surface that recovery error.
-                if (started || !summary.envRestored) {
+                if (
+                  started ||
+                  !summary.envRestored ||
+                  !remoteCleanupCompleted
+                ) {
                   safeSend(event.sender, "recording:ended", {
                     appId,
                     sessionId,

@@ -37,7 +37,7 @@ const {
   providerErrorState,
   settingsLoadingState,
   appLoadingState,
-  unsolicitedReturnCallback,
+  connectionFlowState,
   refreshedSettings,
   organizationsState,
   createState,
@@ -102,8 +102,8 @@ const {
   },
   settingsLoadingState: { current: false },
   appLoadingState: { current: false },
-  unsolicitedReturnCallback: {
-    current: null as null | (() => void),
+  connectionFlowState: {
+    current: { status: "idle" } as Record<string, unknown>,
   },
   refreshedSettings: { refreshed: true },
   redeployState: {
@@ -225,12 +225,9 @@ vi.mock("@/hooks/useSupabase", () => ({
 
 vi.mock("@/hooks/useConnectionFlow", () => ({
   useConnectionFlow: () => ({
-    flowState: { status: "idle" },
+    flowState: connectionFlowState.current,
     isFlowActive: false,
   }),
-  useUnsolicitedConnectionReturn: (_provider: string, callback: () => void) => {
-    unsolicitedReturnCallback.current = callback;
-  },
   acknowledgeConnectionFlow: vi.fn(),
   cancelConnectionFlow: vi.fn(),
   startConnectionFlow: vi.fn(),
@@ -244,6 +241,20 @@ function renderConnector() {
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   );
   return render(<SupabaseConnector appId={7} />, { wrapper });
+}
+
+function renderSuccessfulConnection() {
+  connectionFlowState.current = {
+    status: "connected",
+    provider: "supabase",
+    revision: 3,
+    invocationRef: {
+      kind: "connection-flow",
+      entityKey: "supabase",
+      operationId: "connection-flow:test",
+    },
+  };
+  return renderConnector();
 }
 
 const BUTTON = "supabase-update-api-key-button";
@@ -278,7 +289,7 @@ beforeEach(() => {
   providerErrorState.projects = null;
   settingsLoadingState.current = false;
   appLoadingState.current = false;
-  unsolicitedReturnCallback.current = null;
+  connectionFlowState.current = { status: "idle" };
   refreshSettingsMock.mockResolvedValue(refreshedSettings);
   refreshAppMock.mockResolvedValue(undefined);
   refetchOrganizationsMock.mockResolvedValue({ data: [] });
@@ -304,9 +315,7 @@ it("migrates a legacy project link to the organization found after reconnect", a
     ],
   });
 
-  renderConnector();
-  expect(unsolicitedReturnCallback.current).not.toBeNull();
-  unsolicitedReturnCallback.current?.();
+  renderSuccessfulConnection();
 
   await waitFor(() =>
     expect(recoverAppProjectMock).toHaveBeenCalledWith({
@@ -337,8 +346,7 @@ it("uses the parent project to migrate a legacy branch link", async () => {
     ],
   });
 
-  renderConnector();
-  unsolicitedReturnCallback.current?.();
+  renderSuccessfulConnection();
 
   await waitFor(() =>
     expect(recoverAppProjectMock).toHaveBeenCalledWith({
@@ -411,8 +419,7 @@ it("refreshes app state when automatic legacy relinking fails", async () => {
   });
   recoverAppProjectMock.mockRejectedValue(new Error("write failed"));
 
-  renderConnector();
-  unsolicitedReturnCallback.current?.();
+  renderSuccessfulConnection();
 
   await waitFor(() => expect(refreshAppMock).toHaveBeenCalled());
   expect(recoverAppProjectMock).toHaveBeenCalled();
@@ -438,8 +445,7 @@ it("migrates a link whose stored organization is stale", async () => {
     ],
   });
 
-  renderConnector();
-  unsolicitedReturnCallback.current?.();
+  renderSuccessfulConnection();
 
   await waitFor(() =>
     expect(recoverAppProjectMock).toHaveBeenCalledWith({
@@ -468,8 +474,7 @@ it("does not recover a legacy link from stale project data after a failed refetc
     isError: true,
   });
 
-  renderConnector();
-  unsolicitedReturnCallback.current?.();
+  renderSuccessfulConnection();
 
   await waitFor(() => expect(refreshAppMock).toHaveBeenCalled());
   expect(recoverAppProjectMock).not.toHaveBeenCalled();
@@ -490,8 +495,7 @@ it("does not recover a legacy link without refreshed organization credentials", 
     isError: false,
   });
 
-  renderConnector();
-  unsolicitedReturnCallback.current?.();
+  renderSuccessfulConnection();
 
   await waitFor(() => expect(refreshAppMock).toHaveBeenCalled());
   expect(recoverAppProjectMock).not.toHaveBeenCalled();

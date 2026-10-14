@@ -6,6 +6,7 @@ type QueueTask<T> = {
   bundleOnly: boolean;
   resolve: (value: T) => void;
   reject: (error: unknown) => void;
+  detachAbort: () => void;
 };
 
 class SupabaseDeployQueue {
@@ -13,14 +14,30 @@ class SupabaseDeployQueue {
   private activeActivatingCount = 0;
   private readonly pendingTasks: QueueTask<unknown>[] = [];
 
-  enqueue<T>(bundleOnly: boolean, operation: () => Promise<T>): Promise<T> {
+  enqueue<T>(
+    bundleOnly: boolean,
+    operation: () => Promise<T>,
+    signal?: AbortSignal,
+  ): Promise<T> {
     return new Promise<T>((resolve, reject) => {
-      this.pendingTasks.push({
+      signal?.throwIfAborted();
+      const onAbort = () => {
+        const index = this.pendingTasks.indexOf(task);
+        if (index < 0) return;
+        this.pendingTasks.splice(index, 1);
+        task.detachAbort();
+        reject(signal?.reason);
+        this.drain();
+      };
+      const task: QueueTask<unknown> = {
         operation,
         bundleOnly,
         resolve: resolve as (value: unknown) => void,
         reject,
-      });
+        detachAbort: () => signal?.removeEventListener("abort", onAbort),
+      };
+      signal?.addEventListener("abort", onAbort, { once: true });
+      this.pendingTasks.push(task);
       this.drain();
     });
   }
@@ -32,6 +49,7 @@ class SupabaseDeployQueue {
         return;
       }
       this.pendingTasks.shift();
+      task.detachAbort();
       this.incrementActiveCount(task);
       void this.runTask(task);
     }
@@ -85,13 +103,14 @@ export function enqueueSupabaseDeploy<T>(
   supabaseProjectId: string,
   bundleOnly: boolean,
   operation: () => Promise<T>,
+  signal?: AbortSignal,
 ): Promise<T> {
   let queue = deployQueuesByProject.get(supabaseProjectId);
   if (!queue) {
     queue = new SupabaseDeployQueue();
     deployQueuesByProject.set(supabaseProjectId, queue);
   }
-  return queue.enqueue(bundleOnly, operation);
+  return queue.enqueue(bundleOnly, operation, signal);
 }
 
 export function resetSupabaseDeployQueuesForTests() {

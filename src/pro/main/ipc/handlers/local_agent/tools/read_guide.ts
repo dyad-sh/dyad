@@ -5,7 +5,9 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import addAuthentication from "@/prompts/guides/add-authentication.md?raw";
 import addEmailVerification from "@/prompts/guides/add-email-verification.md?raw";
 import addPasswordReset from "@/prompts/guides/add-password-reset.md?raw";
-import { filterGuideByFramework } from "@/prompts/guides/filter_guide_by_framework";
+import customSupabaseTestFixtures from "@/prompts/guides/custom-supabase-test-fixtures.md?raw";
+import { renderGuide } from "@/prompts/guides/render_guide";
+import { readSettings } from "@/main/settings";
 
 /**
  * Registry of available guides. To add a new guide, import its .md file
@@ -15,6 +17,7 @@ const GUIDES: Record<string, string> = {
   "add-authentication": addAuthentication,
   "add-email-verification": addEmailVerification,
   "add-password-reset": addPasswordReset,
+  "custom-supabase-test-fixtures": customSupabaseTestFixtures,
 };
 
 const readGuideSchema = z.object({
@@ -48,6 +51,10 @@ export const readGuideTool: ToolDefinition<z.infer<typeof readGuideSchema>> = {
         DyadErrorKind.NotFound,
       );
     }
-    return filterGuideByFramework(content, ctx.frameworkType);
+    // Fixture setup runs in Node and is identical across app frameworks.
+    if (args.guide === "custom-supabase-test-fixtures") return content;
+    return renderGuide(content, ctx.frameworkType, {
+      enableAppPreviewDomains: readSettings().enableAppPreviewDomains,
+    });
   },
 };

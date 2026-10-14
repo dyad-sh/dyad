@@ -1,3 +1,4 @@
+import { withAnthropicPreservedThinking } from "./anthropic_preserved_thinking";
 import type { ExternalModelAdmission } from "../services/external_model_admission";
 import {
   AUTO_DYAD_PRO_MODEL_ALIASES,
@@ -33,6 +34,7 @@ import { resolveBuiltinModelAlias } from "../shared/remote_language_model_catalo
 import { LanguageModelProvider } from "@/ipc/types";
 import {
   createDyadEngine,
+  isDyadEngineFreeModel,
   type DyadEngineProvider,
 } from "./llm_engine_provider";
 
@@ -55,8 +57,9 @@ import { getModelPreferenceKey } from "@/lib/modelEffort";
 import { getAutoSidekickRuntimeModel } from "@/lib/autoSidekick";
 import { usesOpenAIResponsesApi } from "./openai_responses_utils";
 import { createCodexSubscriptionModel } from "./codex_subscription_provider";
+import { ClaudeCodeModel } from "../services/claude_code/model";
 import { resolveSubscriptionModel } from "../services/resolve_subscription_model";
-import { shouldBillChatGPTSubscription } from "../services/subscription_billing";
+import { subscriptionBillingKey } from "../services/subscription_billing";
 
 // The test-only fetch seam lives in ./test_fetch_override (dependency-free,
 // so secondary factories can use it without import cycles). Re-exported here
@@ -83,11 +86,18 @@ export interface ModelClient {
   getRuntimeModel?: () => ModelSelection;
 }
 
-// Callers supply the accepted turn's settings (or an auxiliary-call snapshot).
-function subscriptionBillingKey(settings: UserSettings): string | null {
-  return shouldBillChatGPTSubscription(settings)
-    ? (settings.providerSettings?.auto?.apiKey?.value ?? null)
-    : null;
+// Providers whose APIs reject or silently drop inline PDF file parts.
+const PDF_UNSUPPORTED_PROVIDERS = new Set(["xai", "ollama", "lmstudio"]);
+
+/**
+ * Whether this client can send inline PDF file parts. Unknown providers are
+ * assumed to support them; their API errors surface like any other.
+ */
+export function modelClientSupportsPdfInput(modelClient: ModelClient) {
+  if (isDyadEngineFreeModel(modelClient.model)) {
+    return false;
+  }
+  return !PDF_UNSUPPORTED_PROVIDERS.has(modelClient.builtinProviderId ?? "");
 }
 
 async function createResolvedAliasClient({
@@ -196,7 +206,30 @@ export async function getModelClient(
       : await resolveSubscriptionModel(selectedModelSelection, settings),
   );
   const connection = modelSelection.connection;
+  if (
+    connection === "api-key" &&
+    model.provider === "auto" &&
+    ["value", "free-pro"].includes(model.name)
+  )
+    throw new DyadError(
+      "This Auto option requires Pro credits. Select Pro credits or choose an API-key or local model.",
+      DyadErrorKind.Validation,
+    );
   if (connection === "subscription") {
+    if (modelSelection.provider === "claude-code") {
+      return {
+        modelClient: {
+          model: new ClaudeCodeModel(
+            modelSelection.name,
+            subscriptionBillingKey(settings),
+            context?.externalModelAdmission,
+          ),
+          getRuntimeModel: () => modelSelection,
+        },
+        runtimeModel: modelSelection,
+        isEngineEnabled: false,
+      };
+    }
     if (modelSelection.provider !== "openai")
       throw new DyadError(
         "Subscription supports OpenAI models only. Choose a ChatGPT model.",
@@ -266,7 +299,10 @@ export async function getModelClient(
   // Direct providers retain their transport while Engine bills reported usage.
   if (
     isDyadProEnabledForRequest &&
-    (isLocalProvider || providerConfig.type === "custom")
+    model.provider !== "auto" &&
+    (connection === "api-key" ||
+      isLocalProvider ||
+      providerConfig.type === "custom")
   ) {
     const regular = getRegularModelClient(
       model,
@@ -294,7 +330,11 @@ export async function getModelClient(
   }
 
   // Handle Dyad Pro override
-  if (isDyadProEnabledForRequest && !isLocalProvider) {
+  if (
+    isDyadProEnabledForRequest &&
+    !isLocalProvider &&
+    connection !== "api-key"
+  ) {
     const dyadEngineUrl = process.env.DYAD_ENGINE_URL;
     // Check if the selected provider supports Dyad Pro (has a gateway prefix) OR
     // we're using local engine.
@@ -346,7 +386,7 @@ export async function getModelClient(
       };
     } else {
       throw new DyadError(
-        "This provider is not available through Pro credits. Turn off Dyad Pro to use your own API key.",
+        "This provider is not available through Pro credits. Select Your API keys in the Pro menu.",
         DyadErrorKind.Validation,
       );
     }
@@ -366,13 +406,23 @@ export async function getModelClient(
       return {
         modelClient: {
           model: createFallback({
-            models: FREE_OPENROUTER_MODEL_NAMES.map(
-              (name: string) =>
-                getRegularModelClient(
-                  { provider: "openrouter", name },
-                  settings,
-                  openRouterProvider,
-                ).modelClient.model,
+            models: await Promise.all(
+              FREE_OPENROUTER_MODEL_NAMES.map(
+                async (name: string) =>
+                  (
+                    await getModelClient(
+                      { provider: "openrouter", name },
+                      settings,
+                      {
+                        ...modelSelection,
+                        provider: "openrouter",
+                        name,
+                        connection: "api-key",
+                      },
+                      context,
+                    )
+                  ).modelClient.model,
+              ),
             ),
           }),
           builtinProviderId: "openrouter",
@@ -381,7 +431,12 @@ export async function getModelClient(
         isEngineEnabled: false,
       };
     }
-    for (const autoModelAlias of AUTO_MODEL_ALIASES) {
+    const aliases =
+      model.name === AUTO_BALANCED_MODEL_NAME
+        ? [AUTO_BALANCED_ALIAS]
+        : AUTO_MODEL_ALIASES;
+    const candidateProviders = new Set<string>();
+    for (const autoModelAlias of aliases) {
       const resolvedModel = await resolveBuiltinModelAlias(autoModelAlias);
       if (!resolvedModel) {
         continue;
@@ -391,6 +446,7 @@ export async function getModelClient(
         (p) => p.id === resolvedModel.providerId,
       );
       const envVarName = providerInfo?.envVarName;
+      candidateProviders.add(providerInfo?.name ?? resolvedModel.providerId);
 
       const apiKey = getProviderApiKeyForRequest(
         settings.providerSettings?.[resolvedModel.providerId]?.apiKey?.value ||
@@ -428,12 +484,19 @@ export async function getModelClient(
             ...(connection ? { connection } : {}),
           },
           settings,
+          {
+            ...modelSelection,
+            provider: resolvedModel.providerId,
+            name: resolvedModel.apiName,
+          },
+          context,
         );
       }
     }
     // If no models have API keys, throw an error
-    throw new Error(
-      "No API keys available for any model supported by the 'auto' provider.",
+    throw new DyadError(
+      `No API key is available for ${model.name === AUTO_BALANCED_MODEL_NAME ? "Auto (balanced)" : "Auto"}. Configure an API key for ${[...candidateProviders].join(" or ") || "a supported provider"} in Settings, or select Pro credits.`,
+      DyadErrorKind.Validation,
     );
   }
   const regular = getRegularModelClient(model, settings, providerConfig);
@@ -692,7 +755,9 @@ function getRegularModelClient(
     case "anthropic": {
       const provider = createAnthropic({
         apiKey,
-        ...getModelClientFetchOption(),
+        fetch: withAnthropicPreservedThinking(
+          getModelClientFetchOption().fetch,
+        ),
       });
       return {
         modelClient: {
@@ -771,6 +836,7 @@ function getRegularModelClient(
     case "openrouter": {
       const provider = createOpenAICompatible({
         name: "openrouter",
+        includeUsage,
         baseURL: "https://openrouter.ai/api/v1",
         apiKey,
         headers: getOpenRouterAppAttributionHeaders(),
@@ -793,6 +859,7 @@ function getRegularModelClient(
         logger.info(`Using test Azure base URL: ${testAzureBaseUrl}`);
         const provider = createOpenAICompatible({
           name: "azure-test",
+          includeUsage,
           baseURL: testAzureBaseUrl,
           apiKey: "fake-api-key-for-testing",
           ...getModelClientFetchOption(),
@@ -905,6 +972,7 @@ function getRegularModelClient(
     case "minimax": {
       const provider = createOpenAICompatible({
         name: "minimax",
+        includeUsage,
         baseURL: "https://api.minimax.io/v1",
         apiKey,
         ...getModelClientFetchOption(),

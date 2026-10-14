@@ -1,4 +1,9 @@
 import { BrowserWindow, clipboard } from "electron";
+import {
+  discardCapture,
+  getCapture,
+  retainCapture,
+} from "@/ipc/utils/screenshot_captures";
 import { platform, arch } from "os";
 import { randomUUID } from "node:crypto";
 import { readSettings } from "../../main/settings";
@@ -310,18 +315,6 @@ function readAppLogs(linesOfLogs: number, level: "warn" | "info"): string {
   }
 }
 
-/**
- * Recent captures at full resolution, keyed so a report can ask for its own.
- * They are put back on the clipboard when the report is filed, because the
- * reporter pastes into GitHub minutes later and anything they copy in between
- * would replace it. Keyed rather than latest-wins: a second report can be
- * started and captured while the first is still uploading.
- */
-const captures = new Map<string, Electron.NativeImage>();
-
-/** Enough for a couple of overlapping reports; these are megabytes each. */
-const MAX_RETAINED_CAPTURES = 3;
-
 /** Twice the preview's max-h-72, so it stays sharp on a HiDPI display. */
 const PREVIEW_MAX_HEIGHT = 576;
 
@@ -552,19 +545,16 @@ export function registerDebugHandlers() {
     if (!image || image.isEmpty()) {
       throw new DyadError(SCREENSHOT_ERRORS.emptyImage, DyadErrorKind.External);
     }
-    // Write the image to the clipboard
-    clipboard.writeImage(image);
-
+    // Held here, not written to the clipboard: the report uploads it when it
+    // is filed, and only falls back to the clipboard if that fails. Writing
+    // it now would replace whatever the reporter had copied for nothing.
     const captureId = randomUUID();
-    captures.set(captureId, image);
-    while (captures.size > MAX_RETAINED_CAPTURES) {
-      captures.delete(captures.keys().next().value as string);
-    }
+    retainCapture(captureId, image);
 
-    // The clipboard keeps the full-resolution capture; the returned data URL
-    // only ever feeds a preview 288 CSS pixels tall. Encoding the untouched
-    // image blocks this process for the whole PNG pass and ships megabytes
-    // over IPC.
+    // Main keeps the full-resolution capture; the returned data URL only ever
+    // feeds a preview 288 CSS pixels tall. Encoding the untouched image
+    // blocks this process for the whole PNG pass and ships megabytes over
+    // IPC.
     const preview =
       image.getSize().height > PREVIEW_MAX_HEIGHT
         ? image.resize({ height: PREVIEW_MAX_HEIGHT, quality: "good" })
@@ -574,16 +564,19 @@ export function registerDebugHandlers() {
   });
 
   createTypedHandler(systemContracts.discardScreenshot, async (_, params) => {
-    return { discarded: captures.delete(params.captureId) };
+    return { discarded: discardCapture(params.captureId) };
   });
 
+  // The fallback when the upload fails: the reporter pastes into GitHub
+  // instead, so the image goes on the clipboard right before the browser
+  // opens, when nothing they copied since can have replaced it.
   createTypedHandler(systemContracts.recopyScreenshot, async (_, params) => {
-    const image = captures.get(params.captureId);
+    const image = getCapture(params.captureId);
     if (!image) return { copied: false };
     clipboard.writeImage(image);
     // A full-resolution picture of the window can show source, paths or an
     // open .env, and the clipboard is its last stop. Nothing reads it again.
-    captures.delete(params.captureId);
+    discardCapture(params.captureId);
     return { copied: true };
   });
 }

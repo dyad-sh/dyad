@@ -226,7 +226,7 @@ function DropdownMenuSubTrigger({
       {...props}
     >
       {children}
-      {!hideChevron && <ChevronRightIcon className="ml-auto size-4" />}
+      {!hideChevron && <ChevronRightIcon className="ml-auto size-4 shrink-0" />}
     </MenuPrimitive.SubmenuTrigger>
   );
 }

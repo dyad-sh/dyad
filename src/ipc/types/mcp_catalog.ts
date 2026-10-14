@@ -9,10 +9,10 @@ import { z } from "zod";
 // it without pulling the main-process catalog client into the renderer
 // bundle.
 
-// A value the user must supply during setup. `kind` selects the input to
-// render and where the value is stored. Discriminated union: an unknown
-// kind fails validation and drops the whole entry, so newer field kinds
-// don't break this client.
+// A value a server needs during setup, entered by the user or supplied by
+// the catalog. `kind` selects the input to render and where the value is
+// stored. Discriminated union: an unknown kind fails validation and drops
+// the whole entry, so newer field kinds don't break this client.
 export const CatalogInputSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("oauthClientId") }),
   z.object({ kind: z.literal("oauthClientSecret") }),
@@ -21,15 +21,47 @@ export const CatalogInputSchema = z.discriminatedUnion("kind", [
     name: z.string().min(1),
     prefix: z.string().optional(),
     label: z.string().min(1),
+    optional: z.boolean().optional(),
   }),
   z.object({
     kind: z.literal("env"),
     name: z.string().min(1),
     label: z.string().min(1),
+    optional: z.boolean().optional(),
+  }),
+  // An OAuth client registered by Dyad, for servers without dynamic client
+  // registration. The catalog supplies it, so the user never sees it. A
+  // secret, when a provider requires one, ships to every client, so it
+  // isn't confidential.
+  z.object({
+    kind: z.literal("vendoredOAuthClient"),
+    clientId: z.string().min(1),
+    clientSecret: z.string().min(1).optional(),
   }),
 ]);
 
 export type CatalogInput = z.infer<typeof CatalogInputSchema>;
+
+// An input the user must fill before the server is set up. `optional`
+// only exists on header and env inputs; a client that predates the flag
+// strips it and treats the field as required, which is the safe default.
+export function isRequiredInput(input: CatalogInput): boolean {
+  return !("optional" in input && input.optional === true);
+}
+
+// An input the user fills in on the setup page.
+export type UserSuppliedInput = Exclude<
+  CatalogInput,
+  { kind: "vendoredOAuthClient" }
+>;
+
+export function userSuppliedInputs(
+  inputs: CatalogInput[] = [],
+): UserSuppliedInput[] {
+  return inputs.filter(
+    (input): input is UserSuppliedInput => input.kind !== "vendoredOAuthClient",
+  );
+}
 
 const baseEntry = {
   slug: z
@@ -41,7 +73,16 @@ const baseEntry = {
   category: z.string().optional(),
   // Surfaced in a Featured section as well as its category.
   featured: z.boolean().optional(),
-  // Values the user must supply on the plugin's setup page.
+  // Absolute http(s) URL of a square icon served by the catalog. A bad
+  // value drops the icon, not the entry.
+  iconUrl: z
+    .string()
+    .url()
+    .refine((u) => /^https?:\/\//i.test(u), "URL must be http(s)")
+    .optional()
+    .catch(undefined),
+  // Values the server needs during setup, entered by the user or supplied
+  // by the catalog.
   inputs: z.array(CatalogInputSchema).optional(),
 } as const;
 

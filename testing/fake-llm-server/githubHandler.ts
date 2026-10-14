@@ -135,7 +135,7 @@ const mockRepos = [
     name: "test-repo-1",
     full_name: "testuser/test-repo-1",
     private: false,
-    owner: { login: "testuser" },
+    owner: { login: "testuser", id: 12345 },
     default_branch: "main",
   },
   {
@@ -143,7 +143,7 @@ const mockRepos = [
     name: "test-repo-2",
     full_name: "testuser/test-repo-2",
     private: true,
-    owner: { login: "testuser" },
+    owner: { login: "testuser", id: 12345 },
     default_branch: "main",
   },
   {
@@ -151,7 +151,7 @@ const mockRepos = [
     name: "existing-app",
     full_name: "testuser/existing-app",
     private: false,
-    owner: { login: "testuser" },
+    owner: { login: "testuser", id: 12345 },
     default_branch: "main",
   },
   // A repo that is pre-seeded with real content (Vite app) so it can be
@@ -162,7 +162,7 @@ const mockRepos = [
     name: "existing-vite-app",
     full_name: "testuser/existing-vite-app",
     private: false,
-    owner: { login: "testuser" },
+    owner: { login: "testuser", id: 12345 },
     default_branch: "main",
   },
 ];
@@ -318,7 +318,7 @@ export function handleUserRepos(req: Request, res: Response) {
       name,
       full_name: `${mockUser.login}/${name}`,
       private: !!isPrivate,
-      owner: { login: mockUser.login },
+      owner: { login: mockUser.login, id: mockUser.id },
       default_branch: "main",
     };
 

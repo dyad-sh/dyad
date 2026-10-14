@@ -2,6 +2,9 @@ const MEBIBYTE = 1024 * 1024;
 
 export const MAX_CHAT_ATTACHMENTS = 10;
 export const MAX_CHAT_ATTACHMENT_BYTES = 10 * MEBIBYTE;
+// PDFs are sent inline and replayed on later turns, so they get a lower cap to
+// keep several PDF turns under the Dyad Engine's 30 MB request limit.
+export const MAX_CHAT_PDF_ATTACHMENT_BYTES = 5 * MEBIBYTE;
 export const MAX_CHAT_ATTACHMENTS_TOTAL_BYTES = 25 * MEBIBYTE;
 export const MAX_CHAT_PROMPT_CHARS = MEBIBYTE;
 export const MAX_CHAT_ERROR_CHARS = 64 * 1024;
@@ -59,6 +62,24 @@ function formatBytes(bytes: number): string {
 
 function displayName(name: string): string {
   return name.trim() || "Unnamed attachment";
+}
+
+function fileTooLargeMessage(
+  name: string,
+  size: number,
+  maxBytes: number,
+): string {
+  const kind =
+    maxBytes === MAX_CHAT_PDF_ATTACHMENT_BYTES
+      ? "PDF attachment"
+      : "attachment";
+  return `"${displayName(name)}" is ${formatBytes(size)}. Each ${kind} must be ${formatBytes(maxBytes)} or smaller.`;
+}
+
+function maxAttachmentBytes(name: string): number {
+  return name.trim().toLowerCase().endsWith(".pdf")
+    ? MAX_CHAT_PDF_ATTACHMENT_BYTES
+    : MAX_CHAT_ATTACHMENT_BYTES;
 }
 
 function isBase64Character(code: number): boolean {
@@ -147,11 +168,16 @@ export function validateChatAttachmentFiles(
         message: `Could not determine the size of "${displayName(attachment.name)}".`,
       };
     }
-    if (attachment.size > MAX_CHAT_ATTACHMENT_BYTES) {
+    const maxBytes = maxAttachmentBytes(attachment.name);
+    if (attachment.size > maxBytes) {
       return {
         ok: false,
         code: "file-too-large",
-        message: `"${displayName(attachment.name)}" is ${formatBytes(attachment.size)}. Each attachment must be ${formatBytes(MAX_CHAT_ATTACHMENT_BYTES)} or smaller.`,
+        message: fileTooLargeMessage(
+          attachment.name,
+          attachment.size,
+          maxBytes,
+        ),
       };
     }
 
@@ -197,11 +223,16 @@ export function validateSerializedChatAttachments(
         message: `"${displayName(attachment.name)}" is not a valid base64 attachment.`,
       };
     }
-    if (inspection.decodedBytes > MAX_CHAT_ATTACHMENT_BYTES) {
+    const maxBytes = maxAttachmentBytes(attachment.name);
+    if (inspection.decodedBytes > maxBytes) {
       return {
         ok: false,
         code: "file-too-large",
-        message: `"${displayName(attachment.name)}" is ${formatBytes(inspection.decodedBytes)}. Each attachment must be ${formatBytes(MAX_CHAT_ATTACHMENT_BYTES)} or smaller.`,
+        message: fileTooLargeMessage(
+          attachment.name,
+          inspection.decodedBytes,
+          maxBytes,
+        ),
       };
     }
 

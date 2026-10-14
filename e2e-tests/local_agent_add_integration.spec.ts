@@ -62,7 +62,9 @@ testSkipIfWindows(
 
     // Finish the connector where the card sent the user.
     await po.appManagement.clickConnectSupabaseButton();
-    await expect(po.page.getByText("Fake Supabase Project")).toBeVisible({
+    await expect(
+      po.page.getByText("Fake Supabase Project", { exact: true }),
+    ).toBeVisible({
       timeout: Timeout.MEDIUM,
     });
 

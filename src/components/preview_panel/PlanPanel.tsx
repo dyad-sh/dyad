@@ -20,6 +20,9 @@ import { useStreamChat } from "@/hooks/useStreamChat";
 import { usePlan } from "@/hooks/usePlan";
 import { useChatMode } from "@/hooks/useChatMode";
 import { usePlanDocument } from "@/hooks/usePlanDocument";
+import { showError } from "@/lib/toast";
+import { sha256Hex } from "@/lib/browser_hash";
+import { serializePlanDocument } from "@/plan_handoff/transport";
 import {
   usePlanHandoff,
   usePlanHandoffState,
@@ -37,11 +40,29 @@ export const PlanPanel: React.FC = () => {
   const appId = useAtomValue(selectedAppIdAtom);
   const planData = usePlanDocument(chatId);
   const handoff = usePlanHandoffState(chatId);
+  const document = planData ? serializePlanDocument(planData) : null;
+  const [version, setVersion] = useState<{
+    document: string;
+    hash: string;
+  } | null>(null);
+  useEffect(() => {
+    let active = true;
+    if (document)
+      void sha256Hex(document).then((hash) => {
+        if (active) setVersion({ document, hash });
+      });
+    return () => {
+      active = false;
+    };
+  }, [document]);
+  const sameVersion =
+    version?.document === document && version?.hash === handoff.planVersion;
   const handoffFailure =
-    handoff.phase === "failed"
+    handoff.phase === "failed" && (!handoff.planVersion || sameVersion)
       ? (handoff.failure ?? "Plan implementation could not be started.")
       : null;
   const isAccepted =
+    sameVersion &&
     handoff.phase !== "idle" &&
     handoff.phase !== "failed" &&
     handoff.phase !== "cancelled";
@@ -198,35 +219,21 @@ export const PlanPanel: React.FC = () => {
     if (isSubmitting) return;
     setIsSubmitting(true);
 
-    // Record the choice so usePlanEvents can route the implementation to a new
-    // chat or continue in the current one once the exit_plan event fires.
+    // The host handoff consumes this destination alongside the displayed
+    // immutable plan version; no model-generated approval turn is needed.
     setPlanAcceptInNewChat((prev) => {
       const next = new Map(prev);
       next.set(chatId, useNewChat);
       return next;
     });
 
-    if (handoffFailure) {
-      void acceptPlan({ chatId, appId })
-        .catch((error) => {
-          console.error("Failed to retry plan handoff", error);
-        })
-        .finally(() => {
-          setIsSubmitting(false);
-        });
-      return;
-    }
-    streamMessage({
-      chatId,
-      prompt:
-        "I accept this plan. Call the exit_plan tool now with confirmation: true to begin implementation.",
-      planAcceptInNewChat: useNewChat,
-      onSettled: () => {
-        // A successful handoff replaces the buttons with its own lifecycle UI.
-        // If the turn fails or completes without exit_plan, restore the buttons.
+    void acceptPlan({ chatId, appId })
+      .catch((error) => {
+        showError(error);
+      })
+      .finally(() => {
         setIsSubmitting(false);
-      },
-    });
+      });
   };
 
   // Don't render anything if there's no plan - effect will switch to preview mode

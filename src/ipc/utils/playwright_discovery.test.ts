@@ -6,6 +6,22 @@ import {
 } from "./playwright_discovery";
 
 describe("parsePreviewTestDiscovery", () => {
+  it("resolves test-directory-relative files against the report root", () => {
+    const result = parsePreviewTestDiscovery(
+      {
+        config: { rootDir: "/apps/demo/e2e-tests" },
+        suites: [
+          {
+            file: "nested/auth.spec.ts",
+            specs: [{ title: "signs in", line: 4 }],
+          },
+        ],
+      },
+      "/apps/demo",
+    );
+    expect(result.tests[0].file).toBe("e2e-tests/nested/auth.spec.ts");
+  });
+
   // Shape copied from real `playwright test --list --reporter=json` output:
   // every serialized suite carries `file`, describe blocks included, so nesting
   // depth is what separates the file suite from a describe.

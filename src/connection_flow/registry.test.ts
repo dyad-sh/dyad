@@ -3,7 +3,10 @@ import {
   createFakeClock,
   createSequentialIdSource,
 } from "@/state_machines/testing";
-import { createConnectionFlowRegistry } from "./registry";
+import {
+  createConnectionFlowRegistry,
+  DUPLICATE_RETURN_WINDOW_MS,
+} from "./registry";
 
 function setup() {
   const clock = createFakeClock();
@@ -132,7 +135,7 @@ describe("connection flow registry", () => {
     });
   });
 
-  it("structurally claims deep-link returns that cannot echo the ref", () => {
+  it("structurally claims trusted callbacks that cannot echo the ref", () => {
     const { registry } = setup();
     const started = admittedStart(registry, "supabase");
     registry.markPrepared("supabase", started.invocationRef);
@@ -155,6 +158,72 @@ describe("connection flow registry", () => {
     expect(registry.start("neon", 0)).toMatchObject({
       admitted: false,
       reason: "disposed",
+    });
+  });
+
+  describe("isDuplicateOfAcceptedReturn", () => {
+    function awaitingReturn(
+      registry: ReturnType<typeof createConnectionFlowRegistry>,
+    ) {
+      const started = admittedStart(registry, "supabase");
+      registry.markPrepared("supabase", started.invocationRef);
+      return started.invocationRef;
+    }
+
+    it("recognizes repeats while exchanging and after connecting", () => {
+      const { registry } = setup();
+      const ref = awaitingReturn(registry);
+      expect(registry.isDuplicateOfAcceptedReturn("supabase", ref)).toBe(false);
+
+      expect(registry.claimReturn("supabase", ref)).toMatchObject({
+        claimed: true,
+      });
+      expect(registry.isDuplicateOfAcceptedReturn("supabase", ref)).toBe(true);
+
+      registry.completeTokenExchange("supabase", ref);
+      expect(registry.getState("supabase").status).toBe("connected");
+      expect(registry.isDuplicateOfAcceptedReturn("supabase", ref)).toBe(true);
+    });
+
+    it("keeps recognizing a connected ref after acknowledgement until the window ends", () => {
+      const { registry, clock } = setup();
+      const ref = awaitingReturn(registry);
+      registry.claimReturn("supabase", ref);
+      registry.completeTokenExchange("supabase", ref);
+      registry.acknowledge(
+        "supabase",
+        ref,
+        registry.getState("supabase").revision,
+      );
+      expect(registry.getState("supabase").status).not.toBe("connected");
+      expect(registry.isDuplicateOfAcceptedReturn("supabase", ref)).toBe(true);
+
+      clock.advanceBy(DUPLICATE_RETURN_WINDOW_MS + 1);
+      expect(registry.isDuplicateOfAcceptedReturn("supabase", ref)).toBe(false);
+    });
+
+    it("does not treat unknown, cross-provider, or timed-out refs as repeats", () => {
+      const { registry, clock } = setup();
+      const ref = awaitingReturn(registry);
+      expect(
+        registry.isDuplicateOfAcceptedReturn("supabase", {
+          ...ref,
+          operationId: "connection-flow:forged",
+        }),
+      ).toBe(false);
+      expect(
+        registry.isDuplicateOfAcceptedReturn("neon", {
+          ...ref,
+          entityKey: "neon",
+        }),
+      ).toBe(false);
+
+      clock.advanceBy(10 * 60_000);
+      expect(registry.getState("supabase")).toMatchObject({
+        status: "failed",
+        reason: "timeout",
+      });
+      expect(registry.isDuplicateOfAcceptedReturn("supabase", ref)).toBe(false);
     });
   });
 });

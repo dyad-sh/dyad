@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => {
     where,
     generateCookieSecret: vi.fn(() => "generated".padEnd(64, "0")),
     readEnvVarsOrEmpty: vi.fn(),
+    getNeonClient: vi.fn(),
   };
 });
 
@@ -37,7 +38,7 @@ vi.mock("@/ipc/utils/app_env_var_utils", () => ({
 }));
 
 vi.mock("@/neon_admin/neon_management_client", () => ({
-  getNeonClient: vi.fn(),
+  getNeonClient: mocks.getNeonClient,
 }));
 
 vi.mock("@/neon_admin/neon_context", () => ({
@@ -56,6 +57,7 @@ vi.mock("electron-log", () => ({
 }));
 
 import {
+  ensureNeonAuthTrustedOrigin,
   getOrCreateNeonAuthCookieSecret,
   syncActiveNeonAuthCookieSecretFromEnv,
 } from "@/ipc/utils/neon_utils";
@@ -321,5 +323,188 @@ describe("syncActiveNeonAuthCookieSecretFromEnv", () => {
 
     expect(result).toBeUndefined();
     expect(mocks.set).not.toHaveBeenCalled();
+  });
+});
+
+describe("ensureNeonAuthTrustedOrigin", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("backs off and retries when Neon rate-limits the lookup", async () => {
+    // Running several specs back to back is exactly the burst that trips Neon's
+    // rate limit. Every other Neon call in this flow retries; an unretried
+    // clash here refused the entire run, including specs that never sign in.
+    const rateLimited = Object.assign(new Error("Too many requests"), {
+      response: { status: 429 },
+    });
+    const listBranchNeonAuthTrustedDomains = vi
+      .fn()
+      .mockRejectedValueOnce(rateLimited)
+      .mockResolvedValue({ data: { domains: [] } });
+    const addBranchNeonAuthTrustedDomain = vi
+      .fn()
+      .mockResolvedValue({ data: undefined });
+    mocks.getNeonClient.mockResolvedValue({
+      listBranchNeonAuthTrustedDomains,
+      addBranchNeonAuthTrustedDomain,
+    });
+
+    await expect(
+      ensureNeonAuthTrustedOrigin({
+        projectId: "proj-1",
+        branchId: "br-test",
+        origin: "http://127.0.0.1:52150",
+      }),
+    ).resolves.toBe("http://127.0.0.1:52150");
+    expect(listBranchNeonAuthTrustedDomains).toHaveBeenCalledTimes(2);
+  }, 30_000);
+
+  it("preserves an HTTP loopback origin exactly", async () => {
+    const listBranchNeonAuthTrustedDomains = vi.fn().mockResolvedValue({
+      data: { domains: [] },
+    });
+    const addBranchNeonAuthTrustedDomain = vi
+      .fn()
+      .mockResolvedValue({ data: undefined });
+    mocks.getNeonClient.mockResolvedValue({
+      listBranchNeonAuthTrustedDomains,
+      addBranchNeonAuthTrustedDomain,
+    });
+
+    const result = await ensureNeonAuthTrustedOrigin({
+      projectId: "proj-1",
+      branchId: "br-test",
+      origin: "http://127.0.0.1:35129/path",
+    });
+
+    expect(result).toBe("http://127.0.0.1:35129");
+    expect(addBranchNeonAuthTrustedDomain).toHaveBeenCalledWith(
+      "proj-1",
+      "br-test",
+      {
+        domain: "http://127.0.0.1:35129",
+        auth_provider: "better_auth",
+      },
+    );
+  });
+
+  it("does not add an origin that is already trusted", async () => {
+    const listBranchNeonAuthTrustedDomains = vi.fn().mockResolvedValue({
+      data: {
+        domains: [
+          {
+            domain: "http://127.0.0.1:35129",
+            auth_provider: "better_auth",
+          },
+        ],
+      },
+    });
+    const addBranchNeonAuthTrustedDomain = vi.fn();
+    mocks.getNeonClient.mockResolvedValue({
+      listBranchNeonAuthTrustedDomains,
+      addBranchNeonAuthTrustedDomain,
+    });
+
+    const result = await ensureNeonAuthTrustedOrigin({
+      projectId: "proj-1",
+      branchId: "br-test",
+      origin: "http://127.0.0.1:35129",
+    });
+
+    expect(result).toBeNull();
+    expect(addBranchNeonAuthTrustedDomain).not.toHaveBeenCalled();
+  });
+});
+
+describe("ensureNeonAuthTrustedDomain cancellation", () => {
+  it("preserves the conflict when the recovery listing has no data", async () => {
+    const { getNeonClient } =
+      await import("@/neon_admin/neon_management_client");
+    const { ensureNeonAuthTrustedDomain } = await import("./neon_utils");
+    const conflict = { response: { status: 409 } };
+    vi.mocked(getNeonClient).mockResolvedValue({
+      listBranchNeonAuthTrustedDomains: vi
+        .fn()
+        .mockResolvedValueOnce({ data: { domains: [] } })
+        .mockResolvedValueOnce({}),
+      addBranchNeonAuthTrustedDomain: vi.fn().mockRejectedValue(conflict),
+    } as any);
+    await expect(
+      ensureNeonAuthTrustedDomain({
+        projectId: "project",
+        branchId: "branch",
+        origin: "http://app-42.localhost:42142",
+      }),
+    ).rejects.toBe(conflict);
+  });
+  it("does not list or mutate domains after credentials arrive for a cancelled request", async () => {
+    const { getNeonClient } =
+      await import("@/neon_admin/neon_management_client");
+    const { ensureNeonAuthTrustedDomain } = await import("./neon_utils");
+    let provide!: (client: any) => void;
+    vi.mocked(getNeonClient).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          provide = resolve;
+        }),
+    );
+    const client = {
+      listBranchNeonAuthTrustedDomains: vi.fn(),
+      addBranchNeonAuthTrustedDomain: vi.fn(),
+    };
+    const controller = new AbortController();
+    const work = ensureNeonAuthTrustedDomain({
+      projectId: "project",
+      branchId: "branch",
+      origin: "http://app-42.localhost:42142",
+      signal: controller.signal,
+    });
+    controller.abort(new Error("Stopped"));
+    await expect(work).rejects.toThrow("Stopped");
+    provide(client);
+    await Promise.resolve();
+    expect(client.listBranchNeonAuthTrustedDomains).not.toHaveBeenCalled();
+    expect(client.addBranchNeonAuthTrustedDomain).not.toHaveBeenCalled();
+  });
+
+  it("keeps the exact HTTP origin and accepts a concurrent already-existing domain", async () => {
+    const { getNeonClient } =
+      await import("@/neon_admin/neon_management_client");
+    const { ensureNeonAuthTrustedDomain } = await import("./neon_utils");
+    const origin = "http://app-42.localhost:42999";
+    const list = vi
+      .fn()
+      .mockResolvedValueOnce({ data: { domains: [] } })
+      .mockResolvedValue({ data: { domains: [{ domain: origin }] } });
+    const add = vi.fn().mockRejectedValue({ response: { status: 409 } });
+    vi.mocked(getNeonClient).mockResolvedValue({
+      listBranchNeonAuthTrustedDomains: list,
+      addBranchNeonAuthTrustedDomain: add,
+    } as any);
+    const signal = new AbortController().signal;
+    await expect(
+      ensureNeonAuthTrustedDomain({
+        projectId: "project",
+        branchId: "branch",
+        origin,
+        signal,
+      }),
+    ).resolves.toBe(origin);
+    expect(add).toHaveBeenCalledWith(
+      "project",
+      "branch",
+      expect.objectContaining({ domain: origin }),
+      { signal },
+    );
+    await expect(
+      ensureNeonAuthTrustedDomain({
+        projectId: "project",
+        branchId: "branch",
+        origin,
+        signal,
+      }),
+    ).resolves.toBeNull();
+    expect(add).toHaveBeenCalledTimes(1);
   });
 });

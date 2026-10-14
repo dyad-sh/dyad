@@ -2,6 +2,54 @@ import fs from "node:fs";
 import path from "node:path";
 import { buildFrontmatter, parsePlanFile, validatePlanId } from "./planUtils";
 import { ensureDyadGitignored } from "./gitignoreUtils";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+
+/** Shared current-draft selection for UI and acceptance. Immutable handoff
+ * snapshots are references, not revisions of the editable plan. */
+export async function loadPlanForChat(appPath: string, chatId: number) {
+  const directory = planDirForAppPath(appPath);
+  let files: string[];
+  try {
+    files = await fs.promises.readdir(directory);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+  const parsed = await Promise.all(
+    files
+      .filter(
+        (name) =>
+          name.startsWith(`chat-${chatId}-`) &&
+          name.endsWith(".md") &&
+          !new RegExp(`^chat-${chatId}-plan-[a-f0-9]{64}\\.md$`).test(name),
+      )
+      .map(async (name) => {
+        try {
+          return {
+            slug: name.slice(0, -3),
+            ...parsePlanFile(
+              await fs.promises.readFile(path.join(directory, name), "utf8"),
+            ),
+          };
+        } catch {
+          // Preserve the UI's legacy behavior: one unreadable old file must
+          // not hide the other drafts. Acceptance uses this same selection.
+          return null;
+        }
+      }),
+  );
+  return (
+    parsed
+      .filter((p) => p !== null)
+      .sort(
+        (a, b) =>
+          (a.meta.updatedAt || a.meta.createdAt || "").localeCompare(
+            b.meta.updatedAt || b.meta.createdAt || "",
+          ) || a.slug.localeCompare(b.slug),
+      )
+      .at(-1) ?? null
+  );
+}
 
 export type PlanStatus = "draft" | "accepted";
 
@@ -35,13 +83,9 @@ export async function readPlanFromDisk(params: {
   appPath: string;
   chatId: number;
 }): Promise<{ title: string; summary?: string; content: string }> {
-  const filePath = path.join(
-    planDirForAppPath(params.appPath),
-    `${planSlugForChat(params.chatId)}.md`,
-  );
-  const { meta, content } = parsePlanFile(
-    await fs.promises.readFile(filePath, "utf-8"),
-  );
+  const plan = await loadPlanForChat(params.appPath, params.chatId);
+  if (!plan) throw new DyadError("Plan not found", DyadErrorKind.NotFound);
+  const { meta, content } = plan;
   return {
     title: meta.title ?? "",
     ...(meta.summary ? { summary: meta.summary } : {}),
@@ -62,13 +106,25 @@ export async function savePlanToDisk(params: {
   summary?: string;
   content: string;
   status: PlanStatus;
+  /** A handoff reads this immutable accepted version, never a moving draft. */
+  immutableVersion?: string;
 }): Promise<string> {
   const { appPath, chatId, title, summary, content, status } = params;
   const planDir = planDirForAppPath(appPath);
   await fs.promises.mkdir(planDir, { recursive: true });
   await ensureDyadGitignored(appPath);
 
-  const slug = planSlugForChat(chatId);
+  if (
+    params.immutableVersion &&
+    !/^[a-f0-9]{64}$/.test(params.immutableVersion)
+  )
+    throw new DyadError(
+      "Invalid immutable plan version",
+      DyadErrorKind.Validation,
+    );
+  const slug = params.immutableVersion
+    ? `${planSlugForChat(chatId)}-${params.immutableVersion}`
+    : planSlugForChat(chatId);
   const filePath = path.join(planDir, `${slug}.md`);
   const now = new Date().toISOString();
 
@@ -91,7 +147,28 @@ export async function savePlanToDisk(params: {
     updatedAt: now,
   };
   const frontmatter = buildFrontmatter(meta);
-  await fs.promises.writeFile(filePath, frontmatter + content, "utf-8");
+  if (params.immutableVersion) {
+    try {
+      await fs.promises.writeFile(filePath, frontmatter + content, {
+        encoding: "utf8",
+        flag: "wx",
+      });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      const existing = parsePlanFile(
+        await fs.promises.readFile(filePath, "utf8"),
+      );
+      if (
+        existing.content !== content.trim() ||
+        existing.meta.title !== title ||
+        (existing.meta.summary ?? "") !== (summary ?? "")
+      )
+        throw new DyadError(
+          "Immutable plan version conflicts with stored content",
+          DyadErrorKind.Conflict,
+        );
+    }
+  } else await fs.promises.writeFile(filePath, frontmatter + content, "utf-8");
 
   return slug;
 }

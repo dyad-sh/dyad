@@ -1,3 +1,4 @@
+import { modelForChatBackend } from "@/shared/execution_backend";
 import { useCallback } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAtomValue } from "jotai";
@@ -39,8 +40,7 @@ export function useChatMode(chatId: number | null | undefined) {
     enabled: activeChatId !== null,
   });
 
-  const selectedModel =
-    chatQuery.data?.modelSelection ?? settings?.selectedModel;
+  const selectedModel = modelForChatBackend(chatQuery.data, settings);
   const effectiveDefaultMode = settings
     ? getFreeProCompatibleChatMode(
         selectedModel ?? settings.selectedModel,

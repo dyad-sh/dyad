@@ -11,14 +11,17 @@ import {
 } from "./cloud_sandbox_provider";
 import { readSettings } from "../../main/settings";
 import { endRecordingForApp } from "../services/recording_registry";
-import type { AppRunInvocationRef } from "@/app_run/state";
+import type { AppRunInvocationRef, PreviewAuthStatus } from "@/app_run/state";
 import type { AppRuntimeOutput } from "@/ipc/types/app_runtime";
 import { killProcessTreeSync } from "./kill_process_tree_sync";
+import type { PreviewAuthTarget } from "../services/preview_auth_target";
 
 const logger = log.scope("process_manager");
 
 // Define a type for the value stored in runningApps
 export interface RunningAppInfo {
+  /** Preview address choice captured at startup; settings changes need a restart. */
+  previewHostname?: string;
   process: ChildProcess | null;
   processId: number;
   /** Correlation identity of the run/restart that owns this producer. */
@@ -37,6 +40,25 @@ export interface RunningAppInfo {
   lastViewedAt: number;
   /** Proxy URL for the running app, set when the proxy server starts */
   proxyUrl?: string;
+  previewAuthTarget?: PreviewAuthTarget | null;
+  /** Fences startup lookups against provider switches, including disconnects. */
+  previewAuthTargetRevision?: number;
+  previewAuth?: PreviewAuthStatus;
+  /** Runtime-owned registration; cancelled and drained on stop or replacement. */
+  previewAuthRegistration?: {
+    target: PreviewAuthTarget;
+    origin: string;
+    invocationRef?: AppRunInvocationRef;
+    output?: AppRuntimeOutput;
+    controller: AbortController;
+    settled: Promise<void>;
+  };
+  proxyStartup?: Promise<void>;
+  proxyStartupError?: Error;
+  /** Releases a pending readiness wait for a queued, intentional Stop. */
+  stopRequested?: boolean;
+  proxyAbortController?: AbortController;
+  previewAbortSignal?: AbortSignal;
   /**
    * Capability embedded in proxied HTML and returned only to the trusted
    * renderer. Auth bootstrap messages must echo it before the preview will
@@ -152,6 +174,74 @@ export function killProcess(process: ChildProcess): Promise<void> {
 }
 
 /**
+ * Escalate to SIGKILL for a tree that outlived `killProcess`'s SIGTERM window,
+ * and wait (bounded) for it to actually close.
+ *
+ * `killProcess` resolves on its own 5s timeout with the tree still alive, which
+ * is fine for a caller that only needs the port back. It is not fine for one
+ * that is about to delete the directory the tree is running in: a survivor
+ * keeps serving, and on Windows keeps the directory locked.
+ *
+ * Resolves to whether the tree is CONFIRMED closed, which is narrower than
+ * "the signal was sent". Confirmation comes from the root's `close` event, so
+ * a root that had already exited resolves `false` — its descendants may have
+ * been reparented beyond anything this pid can reach or observe. A caller that
+ * needs certainty in that case must check something a survivor would still be
+ * holding, such as the port it was serving on.
+ */
+export function forceKillProcessTree(
+  process: ChildProcess,
+  timeoutMs = 5000,
+): Promise<boolean> {
+  const pid = process.pid;
+  if (!pid) {
+    return Promise.resolve(false);
+  }
+  // Deliberately NOT short-circuited on the root having exited. The E2E runtime
+  // spawns a shell, and a shell that has exited says nothing about the dev
+  // server it started: `npm run dev` forks a child that routinely outlives its
+  // parent. Reporting "closed" from the root's exit code alone would skip the
+  // SIGKILL for exactly the survivor that still holds the sandbox directory.
+  // `tree-kill` walks the tree from this pid, and a pid whose whole tree is
+  // already gone makes it a no-op that resolves on the timeout below.
+  const rootAlreadyExited =
+    process.exitCode !== null || process.signalCode !== null;
+  return new Promise<boolean>((resolve) => {
+    const timeout = setTimeout(() => {
+      logger.warn(
+        `Process tree (PID: ${pid}) survived SIGKILL within ${timeoutMs}ms.`,
+      );
+      resolve(false);
+    }, timeoutMs);
+    const settle = (closed: boolean) => {
+      clearTimeout(timeout);
+      resolve(closed);
+    };
+    if (!rootAlreadyExited) {
+      // `close` fires after the root's stdio has drained, which is the closest
+      // signal Node gives that its descendants sharing those pipes are gone.
+      process.once("close", () => settle(true));
+      process.once("error", () => settle(false));
+    }
+    logger.info(`Escalating to SIGKILL for process tree at PID ${pid}.`);
+    treeKill(pid, "SIGKILL", (err: Error | undefined) => {
+      if (err) {
+        logger.warn(`tree-kill SIGKILL error for PID ${pid}: ${err.message}`);
+        settle(false);
+      }
+      // An exited root has already emitted its `close`, so there is nothing
+      // left here to observe — and a descendant that daemonized or was
+      // reparented is no longer reachable from this pid at all, so tree-kill's
+      // own success says nothing about it either. Report "not confirmed" rather
+      // than waiting out the timeout for an event that cannot arrive; a caller
+      // that needs certainty has to check something the survivor would still be
+      // holding.
+      if (rootAlreadyExited) settle(false);
+    });
+  });
+}
+
+/**
  * Gracefully stops a Docker container by name. Resolves even if the container doesn't exist.
  */
 export function stopDockerContainer(containerName: string): Promise<void> {
@@ -192,10 +282,14 @@ export async function stopAppByInfo(
   appInfo: RunningAppInfo,
   options: { recordingOwnedRestart?: boolean } = {},
 ): Promise<void> {
+  appInfo.proxyAbortController?.abort();
+  appInfo.previewAuthRegistration?.controller.abort();
   if (options.recordingOwnedRestart) {
     appInfo.recordingOwnedRestart = true;
   }
   try {
+    if (appInfo.previewAuthRegistration)
+      await appInfo.previewAuthRegistration.settled;
     stopCloudSandboxFileSync(appId);
 
     if (appInfo.mode === "cloud") {
@@ -218,6 +312,16 @@ export async function stopAppByInfo(
     appInfo.cloudLogAbortController = undefined;
     unregisterRunningCloudSandbox({ appId });
     runningApps.delete(appId);
+  } catch (error) {
+    // A failed cloud teardown retains the running app. Drain the cancelled
+    // startup before allowing later URL output/restart to rebuild its proxy.
+    await appInfo.proxyStartup;
+    if (runningApps.get(appId) === appInfo) {
+      appInfo.proxyAbortController = new AbortController();
+      appInfo.previewAuthRegistration = undefined;
+      appInfo.proxyStartupError = undefined;
+    }
+    throw error;
   } finally {
     // The marker only has to outlive the kill, whose `close` listener runs
     // inside the await above. Left latched on a stop that threw, it would sit
@@ -239,6 +343,8 @@ export function removeAppIfCurrentProcess(
 ): void {
   const currentAppInfo = runningApps.get(appId);
   if (currentAppInfo && currentAppInfo.process === process) {
+    currentAppInfo.proxyAbortController?.abort();
+    currentAppInfo.previewAuthRegistration?.controller.abort();
     if (currentAppInfo.proxyWorker) {
       void currentAppInfo.proxyWorker.terminate();
       currentAppInfo.proxyWorker = undefined;
@@ -454,6 +560,8 @@ export function stopAllAppsSync(): void {
     const appInfo = runningApps.get(appId);
     if (!appInfo) continue;
 
+    appInfo.proxyAbortController?.abort();
+    appInfo.previewAuthRegistration?.controller.abort();
     if (appInfo.proxyWorker) {
       void appInfo.proxyWorker.terminate();
       appInfo.proxyWorker = undefined;

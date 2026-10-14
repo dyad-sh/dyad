@@ -1,0 +1,1351 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import { Provider, createStore } from "jotai";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { selectedChatIdAtom } from "@/atoms/chatAtoms";
+
+/**
+ * Which step of the setup the tab puts in front of the user, and what it
+ * sends when they act on it.
+ */
+
+const settings = vi.hoisted(() => ({
+  value: {} as Record<string, unknown>,
+  refreshSettings: vi.fn(),
+}));
+vi.mock("@/hooks/useSettings", () => ({
+  useSettings: () => ({
+    settings: settings.value,
+    refreshSettings: settings.refreshSettings,
+  }),
+}));
+
+const cloudflare = vi.hoisted(() => ({
+  saveToken: vi.fn(),
+  listAccounts: vi.fn(),
+  listWorkers: vi.fn(),
+  getAppStatus: vi.fn(),
+  checkRepoAccess: vi.fn(),
+  connectWorker: vi.fn(),
+  getDeploymentStatus: vi.fn(),
+  disconnect: vi.fn(),
+}));
+const openExternalUrl = vi.hoisted(() => vi.fn());
+const focusWindow = vi.hoisted(() => vi.fn());
+vi.mock("@/ipc/types", () => ({
+  ipc: { cloudflare, system: { openExternalUrl, focusWindow } },
+}));
+
+const showWarning = vi.hoisted(() => vi.fn());
+const showError = vi.hoisted(() => vi.fn());
+const showInfo = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/toast", () => ({ showWarning, showError, showInfo }));
+
+// The app record, for whether it has a Neon database to put on the Worker.
+const loadedApp = vi.hoisted(() => ({
+  value: {
+    neonProjectId: null as string | null,
+    selectedDatabaseBranchType: null as string | null,
+  },
+}));
+vi.mock("@/hooks/useLoadApp", () => ({
+  useLoadApp: () => ({ app: loadedApp.value, loading: false }),
+}));
+
+// The deployment card's "Fix with AI" sends into the selected chat, which is
+// outside this tab: the send and the chat's mode are stood in for here.
+const streamMessage = vi.hoisted(() => vi.fn());
+const chatStream = vi.hoisted(() => ({ isStreaming: false }));
+vi.mock("@/hooks/useStreamChat", () => ({
+  useStreamChat: () => ({ streamMessage, isStreaming: chatStream.isStreaming }),
+}));
+const chatMode = vi.hoisted(() => ({
+  value: "local-agent" as string,
+  isLoading: false,
+}));
+vi.mock("@/hooks/useChatMode", () => ({
+  useChatMode: () => ({
+    selectedMode: chatMode.value,
+    isLoading: chatMode.isLoading,
+  }),
+}));
+
+const { CloudflareConnector } = await import("./CloudflareConnector");
+
+const TARGET = {
+  kind: "wrangler" as const,
+  rootDirectory: "worker",
+  configPath: "worker/wrangler.jsonc",
+  nitro: false,
+  label: "worker",
+  suggestedWorkerName: "shop-api",
+};
+const CONNECTION = {
+  rootDirectory: "worker",
+  accountId: "acct-1",
+  workerName: "shop-api",
+  workerUrl: "https://shop-api.acme.workers.dev",
+  dashboardUrl: "https://dash.cloudflare.com/acct-1/workers/shop-api",
+};
+
+function appStatus(overrides: Record<string, unknown> = {}) {
+  return {
+    synced: true,
+    branch: "main",
+    targets: [TARGET],
+    connections: [],
+    ...overrides,
+  };
+}
+
+const CHAT_ID = 42;
+
+function renderConnector({
+  chatId = CHAT_ID,
+}: { chatId?: number | null } = {}) {
+  const queryClient = new QueryClient({
+    // The app's own defaults: a result stays "fresh" for a minute unless a
+    // query says otherwise.
+    defaultOptions: { queries: { retry: false, staleTime: 60_000 } },
+  });
+  const store = createStore();
+  store.set(selectedChatIdAtom, chatId);
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <Provider store={store}>
+        <CloudflareConnector appId={7} />
+      </Provider>
+    </QueryClientProvider>,
+  );
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  chatMode.value = "local-agent";
+  chatMode.isLoading = false;
+  chatStream.isStreaming = false;
+  loadedApp.value = { neonProjectId: null, selectedDatabaseBranchType: null };
+  streamMessage.mockResolvedValue(true);
+  settings.value = { cloudflareAccessToken: { value: "cf-token" } };
+  cloudflare.listAccounts.mockResolvedValue([{ id: "acct-1", name: "Acme" }]);
+  cloudflare.listWorkers.mockResolvedValue([]);
+  cloudflare.getAppStatus.mockResolvedValue(appStatus());
+  cloudflare.checkRepoAccess.mockResolvedValue({
+    hasAccess: true,
+  });
+  cloudflare.getDeploymentStatus.mockResolvedValue({
+    state: "live",
+    commitHash: "abc1234def",
+    logTail: [],
+    tokenRevoked: false,
+    ruleMissing: false,
+    ruleDeploys: null,
+    workerUrl: CONNECTION.workerUrl,
+  });
+});
+
+afterEach(cleanup);
+
+describe("without an API token", () => {
+  beforeEach(() => {
+    settings.value = {};
+  });
+
+  it("sends the user to the prefilled token form and asks Cloudflare for nothing", () => {
+    renderConnector();
+
+    fireEvent.click(screen.getByRole("button", { name: "Create API Token" }));
+
+    const url = new URL(openExternalUrl.mock.calls[0][0]);
+    expect(url.pathname).toBe("/profile/api-tokens");
+    expect(url.searchParams.get("permissionGroupKeys")).toContain("workers_ci");
+    expect(cloudflare.listAccounts).not.toHaveBeenCalled();
+    expect(cloudflare.getAppStatus).not.toHaveBeenCalled();
+  });
+
+  it("saves the pasted token and reloads settings", async () => {
+    cloudflare.saveToken.mockResolvedValue(undefined);
+    renderConnector();
+
+    fireEvent.change(screen.getByLabelText("Cloudflare API Token"), {
+      target: { value: "  pasted-token " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save API Token" }));
+
+    await waitFor(() =>
+      expect(settings.refreshSettings).toHaveBeenCalledTimes(1),
+    );
+    expect(cloudflare.saveToken).toHaveBeenCalledWith({
+      token: "pasted-token",
+    });
+  });
+
+  it("shows why a token was refused and keeps the form", async () => {
+    cloudflare.saveToken.mockRejectedValue(
+      new Error("This API token is missing a permission."),
+    );
+    renderConnector();
+
+    fireEvent.change(screen.getByLabelText("Cloudflare API Token"), {
+      target: { value: "bad-token" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save API Token" }));
+
+    expect(await screen.findByText(/missing a permission/)).toBeTruthy();
+    expect(settings.refreshSettings).not.toHaveBeenCalled();
+  });
+});
+
+describe("before a Worker can be connected", () => {
+  it("explains what is needed when the app has no Worker", async () => {
+    cloudflare.getAppStatus.mockResolvedValue(appStatus({ targets: [] }));
+    renderConnector();
+
+    expect(await screen.findByText("No Cloudflare Worker found")).toBeTruthy();
+    expect(cloudflare.checkRepoAccess).not.toHaveBeenCalled();
+  });
+
+  it("asks for a sync first, without offering the Worker form", async () => {
+    cloudflare.getAppStatus.mockResolvedValue(appStatus({ synced: false }));
+    renderConnector();
+
+    expect(await screen.findByText("Sync to GitHub first")).toBeTruthy();
+    expect(screen.queryByTestId("cloudflare-worker-form")).toBeNull();
+    // Nothing is asked of Cloudflare about a repository that is out of date.
+    expect(cloudflare.checkRepoAccess).not.toHaveBeenCalled();
+  });
+
+  it("says so when the token can no longer see any account", async () => {
+    cloudflare.listAccounts.mockResolvedValue([]);
+    renderConnector();
+
+    expect(await screen.findByTestId("cloudflare-no-accounts")).toBeTruthy();
+    expect(cloudflare.checkRepoAccess).not.toHaveBeenCalled();
+  });
+
+  it("shows why the accounts could not be listed when a folder needs setting up, and retries from Refresh", async () => {
+    cloudflare.listAccounts.mockRejectedValueOnce(
+      new Error("Authentication error"),
+    );
+    renderConnector();
+
+    const error = await screen.findByTestId("cloudflare-accounts-error");
+    expect(error.textContent).toContain("Authentication error");
+    expect(screen.queryByTestId("cloudflare-worker-form")).toBeNull();
+    expect(cloudflare.listAccounts).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+
+    expect(await screen.findByTestId("cloudflare-worker-form")).toBeTruthy();
+    expect(cloudflare.listAccounts).toHaveBeenCalledTimes(2);
+    expect(cloudflare.getAppStatus).toHaveBeenCalledTimes(2);
+  });
+
+  it("sends the user to the Cloudflare dashboard, with Refresh on the same row", async () => {
+    cloudflare.checkRepoAccess.mockResolvedValue({ hasAccess: false });
+    renderConnector();
+
+    const card = await screen.findByTestId("cloudflare-repo-access");
+    fireEvent.click(
+      within(card).getByRole("button", { name: "Open Cloudflare Dashboard" }),
+    );
+
+    expect(openExternalUrl).toHaveBeenCalledWith(
+      // The account chosen in Dyad, so access is not granted on another one.
+      "https://dash.cloudflare.com/acct-1/workers-and-pages/create",
+    );
+    // The card's only actions: the dashboard, then Refresh.
+    expect(
+      within(card)
+        .getAllByRole("button")
+        .map((button) => button.textContent),
+    ).toEqual(["Open Cloudflare Dashboard", "Refresh"]);
+    expect(screen.getAllByRole("button", { name: "Refresh" })).toHaveLength(1);
+    expect(screen.queryByTestId("cloudflare-target-rescan")).toBeNull();
+    expect(screen.queryByTestId("cloudflare-worker-form")).toBeNull();
+    expect(focusWindow).not.toHaveBeenCalled();
+  });
+
+  it("checks access again from Refresh, without waiting for the next poll", async () => {
+    cloudflare.checkRepoAccess.mockResolvedValue({
+      hasAccess: false,
+    });
+    renderConnector();
+
+    // Refresh shows in a row while the setup loads, then moves into the card.
+    const card = await screen.findByTestId("cloudflare-repo-access");
+    const check = within(card).getByRole("button", { name: "Refresh" });
+    expect(cloudflare.checkRepoAccess).toHaveBeenCalledTimes(1);
+
+    cloudflare.checkRepoAccess.mockResolvedValue({
+      hasAccess: true,
+    });
+    fireEvent.click(check);
+
+    expect(await screen.findByTestId("cloudflare-worker-form")).toBeTruthy();
+    expect(cloudflare.checkRepoAccess).toHaveBeenCalledTimes(2);
+    // The user is in a browser when this happens, and Cloudflare says nothing.
+    expect(focusWindow).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports a failed access check from Refresh in a toast", async () => {
+    cloudflare.checkRepoAccess.mockResolvedValue({
+      hasAccess: false,
+    });
+    renderConnector();
+    const card = await screen.findByTestId("cloudflare-repo-access");
+    const check = within(card).getByRole("button", { name: "Refresh" });
+
+    cloudflare.checkRepoAccess.mockRejectedValueOnce(
+      new Error("Authentication error"),
+    );
+    fireEvent.click(check);
+
+    await waitFor(() =>
+      expect(showError).toHaveBeenCalledWith("Authentication error"),
+    );
+    // The prompt itself stays, since a failed check is not an answer.
+    expect(screen.getByTestId("cloudflare-repo-access")).toBeTruthy();
+  });
+
+  it("leaves the window alone when access was never missing", async () => {
+    renderConnector();
+
+    expect(await screen.findByTestId("cloudflare-worker-form")).toBeTruthy();
+    expect(focusWindow).not.toHaveBeenCalled();
+  });
+});
+
+describe("an app with no Wrangler config", () => {
+  beforeEach(() => {
+    cloudflare.getAppStatus.mockResolvedValue(appStatus({ targets: [] }));
+  });
+
+  it("looks for a config again when asked, without waiting", async () => {
+    renderConnector();
+    const check = await screen.findByRole("button", { name: "Refresh" });
+    expect(screen.getByTestId("cloudflare-no-targets")).toBeTruthy();
+    expect(cloudflare.getAppStatus).toHaveBeenCalledTimes(1);
+
+    // The user has since added a Worker and synced it.
+    cloudflare.getAppStatus.mockResolvedValue(appStatus());
+    fireEvent.click(check);
+
+    expect(await screen.findByTestId("cloudflare-worker-form")).toBeTruthy();
+    expect(cloudflare.getAppStatus).toHaveBeenCalledTimes(2);
+    expect(screen.queryByTestId("cloudflare-no-targets")).toBeNull();
+  });
+
+  it("reports a failed check in a toast and keeps the notice", async () => {
+    renderConnector();
+    const check = await screen.findByRole("button", { name: "Refresh" });
+
+    cloudflare.getAppStatus.mockRejectedValueOnce(
+      new Error("Could not read the branch"),
+    );
+    fireEvent.click(check);
+
+    await waitFor(() =>
+      expect(showError).toHaveBeenCalledWith("Could not read the branch"),
+    );
+    expect(showError).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("cloudflare-no-targets")).toBeTruthy();
+  });
+});
+
+describe("an app whose Wrangler configs are already listed", () => {
+  it("picks up a folder added since, when asked", async () => {
+    renderConnector();
+    expect(await screen.findByTestId("cloudflare-worker-form")).toBeTruthy();
+    expect(screen.queryByTestId("cloudflare-target-list")).toBeNull();
+    expect(cloudflare.getAppStatus).toHaveBeenCalledTimes(1);
+
+    cloudflare.getAppStatus.mockResolvedValue(
+      appStatus({
+        targets: [
+          TARGET,
+          {
+            kind: "wrangler" as const,
+            rootDirectory: "api",
+            configPath: "api/wrangler.toml",
+            nitro: false,
+            label: "api",
+            suggestedWorkerName: "shop-api-api",
+          },
+        ],
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+
+    const list = await screen.findByTestId("cloudflare-target-list");
+    expect(list.textContent).toContain("api");
+    expect(cloudflare.getAppStatus).toHaveBeenCalledTimes(2);
+    // The button sits inside the Worker form but must not submit it.
+    expect(cloudflare.connectWorker).not.toHaveBeenCalled();
+  });
+
+  it("keeps the button while the folder's setup is waiting on Cloudflare", async () => {
+    cloudflare.checkRepoAccess.mockResolvedValue({ hasAccess: false });
+    renderConnector();
+
+    await screen.findByTestId("cloudflare-repo-access");
+    expect(screen.getAllByRole("button", { name: "Refresh" })).toHaveLength(1);
+    expect(screen.queryByTestId("cloudflare-worker-form")).toBeNull();
+  });
+
+  it("keeps the button when the folder's setup cannot reach Cloudflare, and retries from it", async () => {
+    cloudflare.listWorkers.mockRejectedValueOnce(
+      new Error("Cloudflare is down"),
+    );
+    renderConnector();
+
+    await screen.findByText("Cloudflare is down");
+    expect(cloudflare.listWorkers).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+
+    expect(await screen.findByTestId("cloudflare-worker-form")).toBeTruthy();
+    expect(cloudflare.listWorkers).toHaveBeenCalledTimes(2);
+    expect(cloudflare.checkRepoAccess).toHaveBeenCalledTimes(2);
+    expect(cloudflare.getAppStatus).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not repeat an error the setup already shows when a retry fails again", async () => {
+    cloudflare.listWorkers.mockRejectedValue(new Error("Cloudflare is down"));
+    renderConnector();
+    await screen.findByText("Cloudflare is down");
+
+    const refresh = screen.getByRole("button", { name: "Refresh" });
+    fireEvent.click(refresh);
+    await waitFor(() =>
+      expect(cloudflare.listWorkers).toHaveBeenCalledTimes(2),
+    );
+    await waitFor(() => expect(refresh.hasAttribute("disabled")).toBe(false));
+
+    expect(screen.getAllByText("Cloudflare is down")).toHaveLength(1);
+    expect(showError).not.toHaveBeenCalled();
+  });
+
+  it("does not repeat the accounts error when a retry fails again", async () => {
+    cloudflare.listAccounts.mockRejectedValue(
+      new Error("Authentication error"),
+    );
+    renderConnector();
+    await screen.findByTestId("cloudflare-accounts-error");
+
+    const refresh = screen.getByRole("button", { name: "Refresh" });
+    fireEvent.click(refresh);
+    await waitFor(() =>
+      expect(cloudflare.listAccounts).toHaveBeenCalledTimes(2),
+    );
+    await waitFor(() => expect(refresh.hasAttribute("disabled")).toBe(false));
+
+    expect(screen.getAllByText("Authentication error")).toHaveLength(1);
+    expect(showError).not.toHaveBeenCalled();
+  });
+
+  it("leaves the accounts alone when refreshing a connected folder", async () => {
+    cloudflare.getAppStatus.mockResolvedValue(
+      appStatus({ connections: [CONNECTION] }),
+    );
+    // A revoked token fails the accounts call; the connected view does not use it.
+    cloudflare.listAccounts.mockRejectedValue(
+      new Error("Authentication error"),
+    );
+    renderConnector();
+    await screen.findByText("Live");
+    const accountCalls = cloudflare.listAccounts.mock.calls.length;
+
+    const refresh = screen.getByRole("button", { name: "Refresh" });
+    fireEvent.click(refresh);
+    await waitFor(() =>
+      expect(cloudflare.getAppStatus).toHaveBeenCalledTimes(2),
+    );
+    await waitFor(() => expect(refresh.hasAttribute("disabled")).toBe(false));
+
+    expect(cloudflare.listAccounts).toHaveBeenCalledTimes(accountCalls);
+    expect(showError).not.toHaveBeenCalled();
+  });
+
+  it("reports a failed check from the Worker form in a toast", async () => {
+    renderConnector();
+    const form = await screen.findByTestId("cloudflare-worker-form");
+
+    cloudflare.getAppStatus.mockRejectedValueOnce(new Error("Branch gone"));
+    fireEvent.click(within(form).getByRole("button", { name: "Refresh" }));
+
+    await waitFor(() => expect(showError).toHaveBeenCalledWith("Branch gone"));
+    expect(screen.getByTestId("cloudflare-worker-form")).toBeTruthy();
+    expect(cloudflare.connectWorker).not.toHaveBeenCalled();
+  });
+
+  it("puts the button on the Worker form's first row while a folder is being set up", async () => {
+    renderConnector();
+    const form = await screen.findByTestId("cloudflare-worker-form");
+
+    expect(within(form).getByRole("button", { name: "Refresh" })).toBeTruthy();
+    expect(screen.queryByTestId("cloudflare-target-rescan")).toBeNull();
+    // The button is explained even when there is no folder list, but the
+    // list is not described.
+    const text = screen.getByTestId("cloudflare-connector").textContent;
+    expect(text).toMatch(/click Refresh/);
+    expect(text).not.toMatch(/Each folder here/);
+  });
+
+  it("gives the button its own row, naming the only folder, once it is connected", async () => {
+    cloudflare.getAppStatus.mockResolvedValue(
+      appStatus({ connections: [CONNECTION] }),
+    );
+    renderConnector();
+    await screen.findByTestId("cloudflare-connector");
+
+    const row = screen.getByTestId("cloudflare-target-rescan");
+    expect(row.textContent).toContain(TARGET.label);
+    expect(within(row).getByRole("button", { name: "Refresh" })).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "Refresh" })).toHaveLength(1);
+  });
+});
+
+describe("choosing a Worker", () => {
+  it("defaults to creating one named after the Wrangler config", async () => {
+    cloudflare.connectWorker.mockResolvedValue({
+      status: "connected",
+      connection: CONNECTION,
+    });
+    renderConnector();
+
+    const name = (await screen.findByTestId(
+      "cloudflare-worker-name",
+    )) as HTMLInputElement;
+    expect(name.value).toBe("shop-api");
+    fireEvent.click(screen.getByRole("button", { name: "Connect and Deploy" }));
+
+    await waitFor(() =>
+      expect(cloudflare.connectWorker).toHaveBeenCalledWith({
+        appId: 7,
+        accountId: "acct-1",
+        rootDirectory: "worker",
+        workerName: "shop-api",
+        mode: "create",
+        overwrite: false,
+      }),
+    );
+  });
+
+  it("defaults to the existing Worker when one already has that name", async () => {
+    cloudflare.listWorkers.mockResolvedValue([{ name: "shop-api" }]);
+    cloudflare.connectWorker.mockResolvedValue({
+      status: "connected",
+      connection: CONNECTION,
+    });
+    renderConnector();
+
+    await screen.findByTestId("cloudflare-worker-select");
+    fireEvent.click(screen.getByRole("button", { name: "Connect and Deploy" }));
+
+    await waitFor(() =>
+      expect(cloudflare.connectWorker).toHaveBeenCalledWith(
+        expect.objectContaining({ workerName: "shop-api", mode: "existing" }),
+      ),
+    );
+  });
+
+  it("will not submit a name Cloudflare would refuse or one that is taken", async () => {
+    cloudflare.listWorkers.mockResolvedValue([{ name: "taken" }]);
+    renderConnector();
+
+    const name = await screen.findByTestId("cloudflare-worker-name");
+    const submit = screen.getByRole("button", {
+      name: "Connect and Deploy",
+    }) as HTMLButtonElement;
+
+    fireEvent.change(name, { target: { value: "Not Valid" } });
+    expect(submit.disabled).toBe(true);
+    fireEvent.change(name, { target: { value: "taken" } });
+    expect(submit.disabled).toBe(true);
+    expect(screen.getByText(/already exists/)).toBeTruthy();
+    fireEvent.change(name, { target: { value: "free-name" } });
+    expect(submit.disabled).toBe(false);
+  });
+
+  it("asks before taking over a Worker that deploys from another repository", async () => {
+    cloudflare.connectWorker
+      .mockResolvedValueOnce({
+        status: "conflict",
+        existingRepo: "someone/other-site",
+      })
+      .mockResolvedValueOnce({ status: "connected", connection: CONNECTION });
+    renderConnector();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Connect and Deploy" }),
+    );
+    expect(await screen.findByText(/someone\/other-site/)).toBeTruthy();
+    expect(cloudflare.connectWorker).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Replace Rule" }));
+
+    await waitFor(() =>
+      expect(cloudflare.connectWorker).toHaveBeenLastCalledWith(
+        expect.objectContaining({ overwrite: true }),
+      ),
+    );
+  });
+
+  it("goes back to the form when the user declines", async () => {
+    cloudflare.connectWorker.mockResolvedValue({
+      status: "conflict",
+      existingRepo: "someone/other-site",
+    });
+    renderConnector();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Connect and Deploy" }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+
+    expect(screen.getByTestId("cloudflare-worker-form")).toBeTruthy();
+    expect(cloudflare.connectWorker).toHaveBeenCalledTimes(1);
+  });
+
+  it("passes on the warning when the first deployment did not start", async () => {
+    cloudflare.connectWorker.mockResolvedValue({
+      status: "connected",
+      connection: CONNECTION,
+      warning:
+        "The Worker is connected, but the first deployment did not start.",
+    });
+    renderConnector();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Connect and Deploy" }),
+    );
+
+    await waitFor(() =>
+      expect(showWarning).toHaveBeenCalledWith(
+        "The Worker is connected, but the first deployment did not start.",
+      ),
+    );
+  });
+
+  it("tells a Neon app what Dyad will put on the Worker, for the branch it deploys", async () => {
+    loadedApp.value = {
+      neonProjectId: "neon-1",
+      selectedDatabaseBranchType: "development",
+    };
+    renderConnector();
+
+    const notice = await screen.findByTestId("cloudflare-neon-notice");
+    expect(notice.textContent).toMatch(/development Neon database/);
+    expect(notice.textContent).toMatch(/sign-in/);
+  });
+
+  it("says nothing about a database for an app without Neon", async () => {
+    renderConnector();
+
+    await screen.findByTestId("cloudflare-worker-form");
+    expect(screen.queryByTestId("cloudflare-neon-notice")).toBeNull();
+  });
+
+  it("says nothing extra when the connection went through cleanly", async () => {
+    cloudflare.connectWorker.mockResolvedValue({
+      status: "connected",
+      connection: CONNECTION,
+    });
+    renderConnector();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Connect and Deploy" }),
+    );
+
+    await waitFor(() => expect(cloudflare.connectWorker).toHaveBeenCalled());
+    expect(showWarning).not.toHaveBeenCalled();
+  });
+
+  it("shows why the setup failed", async () => {
+    cloudflare.connectWorker.mockRejectedValue(
+      new Error("Could not connect the Worker: simulated"),
+    );
+    renderConnector();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Connect and Deploy" }),
+    );
+
+    expect(await screen.findByText(/simulated/)).toBeTruthy();
+  });
+});
+
+describe("a connected Worker", () => {
+  beforeEach(() => {
+    cloudflare.getAppStatus.mockResolvedValue(
+      appStatus({ connections: [CONNECTION] }),
+    );
+  });
+
+  it("says a folder deploys on changes inside it, not on every sync", async () => {
+    renderConnector();
+
+    expect(
+      await screen.findByText(
+        "Deploys whenever a sync pushes changes inside worker to GitHub.",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("says the app root deploys on any pushed commit", async () => {
+    cloudflare.getAppStatus.mockResolvedValue(
+      appStatus({
+        targets: [{ ...TARGET, rootDirectory: "", label: "App root" }],
+        connections: [{ ...CONNECTION, rootDirectory: "" }],
+      }),
+    );
+    renderConnector();
+
+    expect(
+      await screen.findByText(
+        "Deploys whenever a sync pushes new commits to GitHub.",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("shows where it is live and which commit", async () => {
+    renderConnector();
+
+    expect(await screen.findByText("Live")).toBeTruthy();
+    expect(screen.getByText("abc1234")).toBeTruthy();
+    fireEvent.click(screen.getByText(CONNECTION.workerUrl));
+    expect(openExternalUrl).toHaveBeenCalledWith(CONNECTION.workerUrl);
+    // Connected means no setup questions are asked again.
+    expect(cloudflare.checkRepoAccess).not.toHaveBeenCalled();
+  });
+
+  it("shows no address for a Worker that is not served at workers.dev", async () => {
+    // The route was on when it was connected and has been turned off since.
+    cloudflare.getAppStatus.mockResolvedValue(
+      appStatus({ connections: [CONNECTION] }),
+    );
+    cloudflare.getDeploymentStatus.mockResolvedValue({
+      state: "live",
+      commitHash: "abc1234def",
+      logTail: [],
+      tokenRevoked: false,
+      ruleMissing: false,
+      ruleDeploys: null,
+      workerUrl: null,
+    });
+    renderConnector();
+
+    await screen.findByText("Live");
+    expect(screen.queryByTestId("cloudflare-worker-url")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Cloudflare" }));
+    expect(openExternalUrl).toHaveBeenCalledWith(CONNECTION.dashboardUrl);
+  });
+
+  it("shows an address the Worker gained after it was connected", async () => {
+    cloudflare.getAppStatus.mockResolvedValue(
+      appStatus({ connections: [{ ...CONNECTION, workerUrl: null }] }),
+    );
+    renderConnector();
+
+    const link = await screen.findByTestId("cloudflare-worker-url");
+    expect(link.textContent).toBe(CONNECTION.workerUrl);
+  });
+
+  it("shows the end of the log for a failed deployment", async () => {
+    cloudflare.getDeploymentStatus.mockResolvedValue({
+      state: "failed",
+      commitHash: null,
+      logTail: ["npm error missing script: build"],
+      tokenRevoked: false,
+      ruleMissing: false,
+    });
+    renderConnector();
+
+    expect(await screen.findByText("Deployment failed")).toBeTruthy();
+    expect(screen.getByText(/missing script: build/)).toBeTruthy();
+  });
+
+  describe("Fix with AI for a failed deployment", () => {
+    beforeEach(() => {
+      cloudflare.getDeploymentStatus.mockResolvedValue({
+        state: "failed",
+        commitHash: "abc1234def",
+        logTail: ["npm error missing script: build"],
+        tokenRevoked: false,
+        ruleMissing: false,
+        ruleDeploys: null,
+        workerUrl: CONNECTION.workerUrl,
+      });
+    });
+
+    it("sends the log to the selected chat in the chat's own mode", async () => {
+      renderConnector();
+
+      fireEvent.click(await screen.findByTestId("cloudflare-fix-with-ai"));
+
+      expect(streamMessage).toHaveBeenCalledTimes(1);
+      const request = streamMessage.mock.calls[0][0];
+      expect(request.chatId).toBe(CHAT_ID);
+      // Agent mode can edit files, so the chat is left in its own mode.
+      expect(request.requestedChatMode).toBeUndefined();
+      expect(request.prompt).toContain("npm error missing script: build");
+      expect(request.prompt).toContain("`worker/wrangler.jsonc`");
+      expect(request.prompt).toContain('Worker "shop-api"');
+      await waitFor(() =>
+        expect(showInfo).toHaveBeenCalledWith(
+          expect.stringMatching(/Sent to chat/),
+        ),
+      );
+      expect(screen.queryByTestId("agent-mode-required-dialog")).toBeNull();
+    });
+
+    it("does not claim a send that the chat refused", async () => {
+      // The chat reports its own refusal, such as an over-long prompt.
+      streamMessage.mockResolvedValue(false);
+      renderConnector();
+
+      fireEvent.click(await screen.findByTestId("cloudflare-fix-with-ai"));
+
+      await waitFor(() => expect(streamMessage).toHaveBeenCalledTimes(1));
+      expect(showInfo).not.toHaveBeenCalled();
+    });
+
+    it("waits for the chat's mode before it can be clicked", async () => {
+      chatMode.isLoading = true;
+      renderConnector();
+
+      const button = await screen.findByTestId("cloudflare-fix-with-ai");
+      expect(button).toHaveProperty("disabled", true);
+    });
+
+    it("cannot be clicked again while the chat is already streaming", async () => {
+      chatStream.isStreaming = true;
+      renderConnector();
+
+      const button = await screen.findByTestId("cloudflare-fix-with-ai");
+      expect(button).toHaveProperty("disabled", true);
+    });
+
+    it("keeps a Build mode chat in Build mode, with no confirmation", async () => {
+      chatMode.value = "build";
+      renderConnector();
+
+      fireEvent.click(await screen.findByTestId("cloudflare-fix-with-ai"));
+
+      expect(streamMessage).toHaveBeenCalledTimes(1);
+      expect(streamMessage.mock.calls[0][0].requestedChatMode).toBeUndefined();
+      expect(screen.queryByTestId("agent-mode-required-dialog")).toBeNull();
+    });
+
+    it("asks before sending from a chat whose mode cannot edit files", async () => {
+      chatMode.value = "ask";
+      renderConnector();
+
+      fireEvent.click(await screen.findByTestId("cloudflare-fix-with-ai"));
+
+      expect(streamMessage).not.toHaveBeenCalled();
+      const dialog = await screen.findByTestId("agent-mode-required-dialog");
+      expect(dialog.textContent).toMatch(/failed deployment/);
+      fireEvent.click(within(dialog).getByTestId("agent-mode-continue"));
+
+      await waitFor(() => expect(streamMessage).toHaveBeenCalledTimes(1));
+      expect(streamMessage.mock.calls[0][0].requestedChatMode).toBe(
+        "local-agent",
+      );
+    });
+
+    it("says to open a chat when none is selected, instead of sending nowhere", async () => {
+      // With no chat the mode falls back to the default, which may be one that
+      // would otherwise ask first. There is nothing to confirm a send into.
+      chatMode.value = "ask";
+      renderConnector({ chatId: null });
+
+      fireEvent.click(await screen.findByTestId("cloudflare-fix-with-ai"));
+
+      expect(streamMessage).not.toHaveBeenCalled();
+      expect(screen.queryByTestId("agent-mode-required-dialog")).toBeNull();
+      expect(showInfo).toHaveBeenCalledWith(
+        expect.stringMatching(/Open a chat/),
+      );
+    });
+
+    it("is not offered for a revoked token, which no code change fixes", async () => {
+      cloudflare.getDeploymentStatus.mockResolvedValue({
+        state: "failed",
+        commitHash: null,
+        logTail: ["Failed: The build token ... has been deleted or rolled"],
+        tokenRevoked: true,
+        ruleMissing: false,
+        ruleDeploys: null,
+        workerUrl: CONNECTION.workerUrl,
+      });
+      renderConnector();
+
+      await screen.findByTestId("cloudflare-token-revoked");
+      expect(screen.queryByTestId("cloudflare-fix-with-ai")).toBeNull();
+    });
+
+    it("is not offered while the deployment is live", async () => {
+      cloudflare.getDeploymentStatus.mockResolvedValue({
+        state: "live",
+        commitHash: "abc1234def",
+        logTail: [],
+        tokenRevoked: false,
+        ruleMissing: false,
+        ruleDeploys: null,
+        workerUrl: CONNECTION.workerUrl,
+      });
+      renderConnector();
+
+      await screen.findByText("Live");
+      expect(screen.queryByTestId("cloudflare-fix-with-ai")).toBeNull();
+    });
+  });
+
+  it("warns that syncing no longer deploys when the rule is gone", async () => {
+    cloudflare.getDeploymentStatus.mockResolvedValue({
+      state: "live",
+      commitHash: null,
+      logTail: [],
+      tokenRevoked: false,
+      ruleMissing: true,
+    });
+    renderConnector();
+
+    const warning = await screen.findByTestId("cloudflare-rule-missing");
+    expect(warning.textContent).toMatch(/no longer exists on Cloudflare/);
+    // It would contradict the warning.
+    expect(screen.queryByText(/Deploys whenever/)).toBeNull();
+    // "Live" alone would say everything is fine.
+    expect(screen.getByText("Live")).toBeTruthy();
+  });
+
+  it("warns when the rule deploys something other than what the app syncs", async () => {
+    cloudflare.getAppStatus.mockResolvedValue(
+      appStatus({ connections: [CONNECTION] }),
+    );
+    cloudflare.getDeploymentStatus.mockResolvedValue({
+      state: "live",
+      commitHash: "abc1234def",
+      logTail: [],
+      tokenRevoked: false,
+      ruleMissing: false,
+      ruleDeploys: "acme/shop (branch main, folder worker)",
+    });
+    renderConnector();
+
+    const warning = await screen.findByTestId("cloudflare-rule-elsewhere");
+    expect(warning.textContent).toContain(
+      "acme/shop (branch main, folder worker)",
+    );
+    // It would be untrue here.
+    expect(screen.queryByText(/Deploys whenever/)).toBeNull();
+  });
+
+  it("says a new token is needed when the old one was revoked", async () => {
+    cloudflare.getDeploymentStatus.mockResolvedValue({
+      state: "failed",
+      commitHash: null,
+      logTail: ["Failed: The build token ... has been deleted or rolled"],
+      tokenRevoked: true,
+      ruleMissing: false,
+    });
+    renderConnector();
+
+    const notice = await screen.findByTestId("cloudflare-token-revoked");
+    // It outlives a new token until the next deploy, so it speaks of the
+    // token last used and says when it goes away.
+    expect(notice.textContent).toMatch(/token last used for this deployment/);
+    expect(notice.textContent).toMatch(/clears on the next deploy/);
+  });
+
+  it("does not show a reconnected folder the status of the connection it replaced", async () => {
+    cloudflare.getDeploymentStatus.mockResolvedValue({
+      state: "live",
+      commitHash: null,
+      logTail: [],
+      tokenRevoked: false,
+      ruleMissing: true,
+    });
+    cloudflare.disconnect.mockResolvedValue(undefined);
+    cloudflare.connectWorker.mockResolvedValue({
+      status: "connected",
+      connection: CONNECTION,
+    });
+    renderConnector();
+    await screen.findByTestId("cloudflare-rule-missing");
+
+    // Disconnect: the folder goes back to the Worker form.
+    cloudflare.getAppStatus.mockResolvedValue(appStatus());
+    fireEvent.click(screen.getByRole("button", { name: "Disconnect worker" }));
+    await screen.findByTestId("cloudflare-worker-form");
+
+    // Reconnect, moments later. Cloudflare takes a while to answer.
+    let answer: (status: unknown) => void = () => {};
+    cloudflare.getDeploymentStatus.mockReturnValue(
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+    );
+    cloudflare.getAppStatus.mockResolvedValue(
+      appStatus({ connections: [CONNECTION] }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Connect and Deploy" }));
+
+    // While it waits, the card must not fall back on the old connection's
+    // answer: that is the warning the user just acted on.
+    await screen.findByTestId("cloudflare-deployment");
+    expect(screen.getByText("Checking deployment...")).toBeTruthy();
+    expect(screen.queryByTestId("cloudflare-rule-missing")).toBeNull();
+
+    answer({
+      state: "queued",
+      commitHash: null,
+      logTail: [],
+      tokenRevoked: false,
+      ruleMissing: false,
+    });
+    expect(await screen.findByText("Deployment queued")).toBeTruthy();
+    expect(screen.queryByTestId("cloudflare-rule-missing")).toBeNull();
+  });
+
+  it("stays reachable after its Wrangler config leaves the branch", async () => {
+    // The rule is still on Cloudflare, so the way to remove it has to be here.
+    cloudflare.getAppStatus.mockResolvedValue(
+      appStatus({ targets: [], connections: [CONNECTION] }),
+    );
+    cloudflare.disconnect.mockResolvedValue(undefined);
+    renderConnector();
+
+    const warning = await screen.findByTestId("cloudflare-config-missing");
+    // Also shown when the branch cannot be read, so it does not claim the
+    // config is gone.
+    expect(warning.textContent).toMatch(
+      /Dyad cannot find a Wrangler config or a Nitro app in worker on main\./,
+    );
+    expect(screen.queryByText("No Cloudflare Worker found")).toBeNull();
+    // Cloudflare cannot build it, so the card must not say that it deploys.
+    expect(screen.queryByText(/Deploys whenever/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Disconnect worker" }));
+    await waitFor(() =>
+      expect(cloudflare.disconnect).toHaveBeenCalledWith({
+        appId: 7,
+        rootDirectory: "worker",
+      }),
+    );
+  });
+
+  it("stays reachable when the token can no longer see an account", async () => {
+    cloudflare.listAccounts.mockResolvedValue([]);
+    renderConnector();
+
+    expect(
+      await screen.findByRole("button", { name: "Disconnect worker" }),
+    ).toBeTruthy();
+    expect(screen.queryByTestId("cloudflare-no-accounts")).toBeNull();
+  });
+
+  it("stays reachable when the accounts cannot be listed", async () => {
+    // A revoked token fails this call, which is when the card matters most.
+    cloudflare.listAccounts.mockRejectedValue(
+      new Error("Authentication error"),
+    );
+    cloudflare.getAppStatus.mockResolvedValue(
+      appStatus({ connections: [CONNECTION] }),
+    );
+    renderConnector();
+
+    expect(await screen.findByTestId("cloudflare-deployment")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Disconnect worker" }),
+    ).toBeTruthy();
+    expect(screen.queryByText(/Authentication error/)).toBeNull();
+  });
+
+  it("disconnects the target it is showing", async () => {
+    cloudflare.disconnect.mockResolvedValue(undefined);
+    renderConnector();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Disconnect worker" }),
+    );
+
+    await waitFor(() =>
+      expect(cloudflare.disconnect).toHaveBeenCalledWith({
+        appId: 7,
+        rootDirectory: "worker",
+      }),
+    );
+  });
+});
+
+describe("a Nitro app", () => {
+  const NITRO_TARGET = {
+    kind: "nitro" as const,
+    rootDirectory: "",
+    label: "App root",
+    suggestedWorkerName: "shop",
+  };
+  const NITRO_CONNECTION = {
+    ...CONNECTION,
+    rootDirectory: "",
+    workerName: "shop",
+  };
+
+  it("is set up from the app root under the name the app gives it", async () => {
+    cloudflare.getAppStatus.mockResolvedValue(
+      appStatus({ targets: [NITRO_TARGET] }),
+    );
+    cloudflare.connectWorker.mockResolvedValue({
+      status: "connected",
+      connection: NITRO_CONNECTION,
+    });
+    renderConnector();
+
+    const name = (await screen.findByTestId(
+      "cloudflare-worker-name",
+    )) as HTMLInputElement;
+    expect(name.value).toBe("shop");
+    fireEvent.click(screen.getByRole("button", { name: "Connect and Deploy" }));
+
+    await waitFor(() =>
+      expect(cloudflare.connectWorker).toHaveBeenCalledWith(
+        expect.objectContaining({ rootDirectory: "", workerName: "shop" }),
+      ),
+    );
+  });
+
+  it("tells the AI it is a Nitro app when a deployment fails", async () => {
+    cloudflare.getAppStatus.mockResolvedValue(
+      appStatus({ targets: [NITRO_TARGET], connections: [NITRO_CONNECTION] }),
+    );
+    cloudflare.getDeploymentStatus.mockResolvedValue({
+      state: "failed",
+      commitHash: "abc1234def",
+      logTail: ["Error: no wrangler config"],
+      tokenRevoked: false,
+      ruleMissing: false,
+      ruleDeploys: null,
+      workerUrl: NITRO_CONNECTION.workerUrl,
+    });
+    renderConnector();
+
+    expect(
+      await screen.findByText(/Deploys whenever a sync pushes new commits/),
+    ).toBeTruthy();
+    fireEvent.click(await screen.findByTestId("cloudflare-fix-with-ai"));
+
+    expect(streamMessage).toHaveBeenCalledTimes(1);
+    const prompt = streamMessage.mock.calls[0][0].prompt;
+    expect(prompt).toContain("It is a Nitro app:");
+    expect(prompt).toContain("NITRO_PRESET=cloudflare_module");
+    expect(prompt).not.toContain("wrangler.jsonc");
+  });
+});
+
+describe("an app with several Workers", () => {
+  const CRON_TARGET = {
+    kind: "wrangler" as const,
+    rootDirectory: "cron",
+    configPath: "cron/wrangler.toml",
+    nitro: false,
+    label: "cron",
+    suggestedWorkerName: "shop-cron",
+  };
+
+  beforeEach(() => {
+    cloudflare.getAppStatus.mockResolvedValue(
+      appStatus({
+        targets: [TARGET, CRON_TARGET],
+        connections: [CONNECTION],
+      }),
+    );
+  });
+
+  it("shows every folder and its state at once, not one at a time", async () => {
+    renderConnector();
+
+    const list = await screen.findByTestId("cloudflare-target-list");
+    expect(list.textContent).toContain("worker");
+    expect(list.textContent).toContain("Connected to shop-api");
+    expect(list.textContent).toContain("cron");
+    expect(list.textContent).toContain("Not connected");
+    // Both can be connected; the tab says so rather than implying a choice.
+    expect(screen.getByTestId("cloudflare-connector").textContent).toMatch(
+      /each connected one deploys/,
+    );
+  });
+
+  it("opens on the first folder, showing its deployment", async () => {
+    renderConnector();
+
+    expect(await screen.findByText("Live")).toBeTruthy();
+    expect(
+      screen
+        .getByRole("button", { name: /^worker/ })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+  });
+
+  it("sets up a second folder without touching the first", async () => {
+    cloudflare.connectWorker.mockResolvedValue({
+      status: "connected",
+      connection: { ...CONNECTION, rootDirectory: "cron" },
+    });
+    renderConnector();
+
+    fireEvent.click(await screen.findByRole("button", { name: /^cron/ }));
+
+    const name = (await screen.findByTestId(
+      "cloudflare-worker-name",
+    )) as HTMLInputElement;
+    expect(name.value).toBe("shop-cron");
+    fireEvent.click(screen.getByRole("button", { name: "Connect and Deploy" }));
+
+    await waitFor(() =>
+      expect(cloudflare.connectWorker).toHaveBeenCalledWith(
+        expect.objectContaining({
+          rootDirectory: "cron",
+          workerName: "shop-cron",
+        }),
+      ),
+    );
+    expect(cloudflare.disconnect).not.toHaveBeenCalled();
+    // The first folder is still listed as connected while this one is set up.
+    expect(screen.getByTestId("cloudflare-target-list").textContent).toContain(
+      "Connected to shop-api",
+    );
+  });
+
+  it("does not offer a Worker another folder already deploys to", async () => {
+    // Both Wrangler configs name the same Worker, which is what copying a
+    // Worker folder produces.
+    cloudflare.getAppStatus.mockResolvedValue(
+      appStatus({
+        targets: [TARGET, { ...CRON_TARGET, suggestedWorkerName: "shop-api" }],
+        connections: [CONNECTION],
+      }),
+    );
+    cloudflare.listWorkers.mockResolvedValue([{ name: "shop-api" }]);
+    renderConnector();
+
+    fireEvent.click(await screen.findByRole("button", { name: /^cron/ }));
+
+    // It opens on "create", not on the Worker the first folder is using, and
+    // that Worker is the only one in the account, so there is none to pick.
+    await screen.findByTestId("cloudflare-worker-name");
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Use existing Worker",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Connect and Deploy",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(screen.getByText(/Each folder needs its own/)).toBeTruthy();
+  });
+
+  it("disconnects only the folder being shown", async () => {
+    cloudflare.disconnect.mockResolvedValue(undefined);
+    renderConnector();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Disconnect worker" }),
+    );
+
+    await waitFor(() =>
+      expect(cloudflare.disconnect).toHaveBeenCalledWith({
+        appId: 7,
+        rootDirectory: "worker",
+      }),
+    );
+    expect(cloudflare.disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not show one folder's failed disconnect under another", async () => {
+    cloudflare.getAppStatus.mockResolvedValue(
+      appStatus({
+        targets: [TARGET, CRON_TARGET],
+        connections: [
+          CONNECTION,
+          { ...CONNECTION, rootDirectory: "cron", workerName: "shop-cron" },
+        ],
+      }),
+    );
+    cloudflare.disconnect.mockRejectedValue(new Error("Cloudflare refused"));
+    renderConnector();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Disconnect worker" }),
+    );
+    expect(await screen.findByText(/Cloudflare refused/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /^cron/ }));
+
+    await screen.findByRole("button", { name: "Disconnect cron" });
+    expect(screen.queryByText(/Cloudflare refused/)).toBeNull();
+  });
+
+  it("keeps showing a folder's deployment when a later status check fails", async () => {
+    let calls = 0;
+    cloudflare.getAppStatus.mockImplementation(async () => {
+      calls += 1;
+      // Unsynced, so the tab polls; every poll after the first fails.
+      if (calls === 1) return appStatus({ synced: false });
+      throw new Error("offline");
+    });
+    renderConnector();
+
+    expect(await screen.findByText("Sync to GitHub first")).toBeTruthy();
+    await waitFor(() => expect(calls).toBeGreaterThan(1), { timeout: 8000 });
+
+    expect(screen.getByText("Sync to GitHub first")).toBeTruthy();
+    expect(screen.queryByText("offline")).toBeNull();
+  }, 12_000);
+});
+
+describe("a folder that lost its config beside one that still has it", () => {
+  it("lists both, and sets up only the one that can deploy", async () => {
+    cloudflare.getAppStatus.mockResolvedValue(
+      appStatus({
+        connections: [{ ...CONNECTION, rootDirectory: "old-worker" }],
+      }),
+    );
+    renderConnector();
+
+    const list = await screen.findByTestId("cloudflare-target-list");
+    expect(list.textContent).toContain("old-worker");
+    expect(list.textContent).toContain(
+      "Connected to shop-api, no longer found",
+    );
+    // The deployable folder comes first and opens on its setup form.
+    expect(await screen.findByTestId("cloudflare-worker-form")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /^old-worker/ }));
+    expect(await screen.findByTestId("cloudflare-config-missing")).toBeTruthy();
+    expect(screen.queryByTestId("cloudflare-worker-form")).toBeNull();
+  });
+});
+
+describe("an app with one Worker", () => {
+  it("shows no list, since there is nothing to switch between", async () => {
+    renderConnector();
+
+    await screen.findByTestId("cloudflare-worker-form");
+    expect(screen.queryByTestId("cloudflare-target-list")).toBeNull();
+  });
+});

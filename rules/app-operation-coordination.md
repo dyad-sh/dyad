@@ -14,6 +14,7 @@ actually touches; never use a raw numeric `appId` with `withLock`.
 | `media`               | Files in the app media collection.                                                                                                                            |
 | `metadata`            | Read-modify-write app metadata fields.                                                                                                                        |
 | `provider`            | Neon/Supabase associations and provider lifecycle state.                                                                                                      |
+| `supabase-functions`  | Captured Supabase function deployments, project reassociation, and recording exclusion. Tests use `provider` independently after snapshot capture.            |
 | `repository`          | Umbrella claim for both repository subresources below. Existing general repository operations should keep using it.                                           |
 | `repository-ref`      | Git HEAD and refs. A read captures a stable commit without excluding a working-tree-only session such as E2E execution or recording.                          |
 | `repository-worktree` | Git index and working-tree files. Test and recording sessions write this while reading `repository-ref`, keeping code stable without blocking HEAD snapshots. |
@@ -23,7 +24,10 @@ actually touches; never use a raw numeric `appId` with `withLock`.
 
 For one app, operations acquire all resources atomically, so callers must
 declare the full set up front rather than nesting another operation for that
-app. Cross-app operations may compose per-app acquisitions only in ascending
+app. Snapshot workflows may use the callback's `releaseResources` to drop
+preparation claims after capturing every input; keep the remaining claims and
+deletion admission until all network work settles. Released claims cannot be
+reacquired through that context. Cross-app operations may compose per-app acquisitions only in ascending
 numeric app-ID order, after deduplicating the IDs, so every caller uses the
 same global order. Use direct unlocked service primitives only when the outer
 operation already owns the required resources, and document that ownership at
@@ -33,6 +37,18 @@ When a coordinated callback starts parallel subprocesses, wait for every
 subprocess to settle before returning or throwing. `Promise.all` rejects early
 and can release the claim while sibling processes are still mutating or reading
 the protected resource; use an all-settled barrier and rethrow afterward.
+
+Honor boolean process-settlement verdicts: `false` means cleanup must be deferred.
+Before returning or throwing, call `blockConflictingOperations` under the existing claim to reject queued/new conflicts and deletion until recovery.
+Deleting a Supabase user does not revoke issued JWTs; keep provider cleanup markers until test processes are confirmed stopped.
+
+Sanitize copied dotenv files throughout a disposable test workspace's lifetime.
+Preserve only provider-rewritten keys, never whole files, plus public Supabase
+URL/anon/publishable settings for RLS-scoped tests; strip privileged database credentials.
+
+Start a provider request's timeout after acquiring its shared project lock, so
+other apps' queued updates do not consume its API budget. Keep caller cancellation
+active during both admission and retry backoff, and cancel backoff timers on abort.
 
 App deletion closes coordinator admission before draining admitted work. Every
 new app-scoped main-process mutation must therefore use the coordinator unless
@@ -49,9 +65,14 @@ release until the destructive mutation commits or aborts.
 
 Spawning the long-lived install/dev child is not the end of runtime startup.
 Retain app-path and runtime-config admission until the preview is ready. Start,
-restart, and rebuild intentionally do not claim the repository, so repository-only
-writers may interleave throughout install and readiness. This includes chat
-checkpoints, commit/discard operations, switch/pull/merge/rebase, and agent or
+restart, and rebuild intentionally do not claim the repository or provider. Auth
+targets are read after publishing the runtime so provider reconciliation can
+find it; discard a startup lookup if a newer provider reconciliation changed
+the target, including a disconnect. Never nest provider admission inside runtime
+admission: a provider writer may also be waiting for runtime-config. Provider-only
+work such as Local Agent Supabase function reconciliation remains admitted, and
+repository-only writers may interleave throughout install and readiness. This
+includes chat checkpoints, commit/discard operations, switch/pull/merge/rebase, and agent or
 test file writes. Operations that also write runtime-config remain excluded;
 some restore/checkout paths do, while repository-only GitHub branch operations
 do not.
@@ -80,7 +101,7 @@ global `withLock(appId, ...)` pattern from returning.
 
 ## Sessions that hold claims for a user-controlled duration
 
-A recording session holds `repository-worktree`, `provider`, `runtime`,
+A recording session holds `repository-worktree`, `provider`, `supabase-functions`, `runtime`,
 `runtime-config` and `test-files` until the user ends it (capped at 30 minutes),
 while retaining read access to `repository-ref`. The
 coordinator queues conflicting work with **no timeout** — read-vs-write counts
@@ -98,8 +119,10 @@ this flag only on a long-lived owner: bypass is allowed only while every direct
 blocker of the queued operation opts in and the later operation is compatible
 with those blockers. Every conflict being bypassed must also be on a resource
 owned by those blockers, so a repository session cannot reorder operations in
-an unrelated domain such as chat content. Normal writer fairness resumes when
-the owner releases.
+an unrelated domain such as chat content. Domains a snapshot owner released
+count as owned only when the queued operation also opts in (a later deploy):
+ordinary exclusive work such as a revert must not be overtaken for the length
+of an upload. Normal writer fairness resumes when the owner releases.
 
 For cross-app operations, apply recording refusal per app according to that
 app's claims, not to the whole operation indiscriminately. For example, moving
@@ -145,6 +168,10 @@ assuming map-entry ordering distinguishes them.
 
 ## Clearing data on temporary Neon test branches
 
+Batch runs may share the outer provider/runtime claims and temporary branch,
+but must retain the per-case lifecycle hooks and single-worker execution.
+Database data and auth users remain isolated for every case and retry across files.
+
 Preserve `neon_auth.project_config` and `neon_auth.jwks` when clearing test data;
 they configure the auth service, and deleting them causes signup to fail with
 `404 Project config not found`. Clear user/session data with one `TRUNCATE ...
@@ -153,6 +180,9 @@ RESTRICT` so unexpected foreign keys cannot cascade into that configuration.
 Also preserve extension-owned tables (`pg_depend.deptype = 'e'`) and migration
 bookkeeping. Verify the connection hostname belongs to the temporary branch
 before exposing the cleanup callback.
+
+Use `retryTestDatabaseCleanup` for repeatable test cleanup; rate-limit retries do not cover network failures.
+Neon wraps fetch errors in `sourceError`, while native fetch uses `cause`; log the underlying code.
 
 Lifecycle shutdown must drain provider mutations before releasing its claims.
 In particular, don't abort a Supabase user-creation response before persisting

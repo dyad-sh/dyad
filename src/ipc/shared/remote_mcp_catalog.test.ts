@@ -115,6 +115,39 @@ describe("remote_mcp_catalog", () => {
     }
   });
 
+  it("carries an input's optional flag through", async () => {
+    mockCatalogResponse([
+      {
+        ...VALID_ENTRY,
+        slug: "mailtrap",
+        transport: "stdio",
+        url: undefined,
+        command: "npx",
+        args: ["-y", "mcp-mailtrap@0.9.0"],
+        inputs: [
+          { kind: "env", name: "MAILTRAP_API_TOKEN", label: "API token" },
+          {
+            kind: "env",
+            name: "MAILTRAP_ACCOUNT_ID",
+            label: "Account ID",
+            optional: true,
+          },
+        ],
+      },
+    ]);
+    const entries = await getRemoteMcpCatalog();
+    expect(entries.map((e) => e.slug)).toEqual(["mailtrap"]);
+    expect(entries[0].inputs).toEqual([
+      { kind: "env", name: "MAILTRAP_API_TOKEN", label: "API token" },
+      {
+        kind: "env",
+        name: "MAILTRAP_ACCOUNT_ID",
+        label: "Account ID",
+        optional: true,
+      },
+    ]);
+  });
+
   it("drops an entry whose input kind this client doesn't know", async () => {
     // A whole entry drops if any input kind is unrecognized, so a newer
     // field type can't cause a half-configured add on this client.
@@ -268,6 +301,30 @@ describe("remote_mcp_catalog", () => {
     await getRemoteMcpCatalog();
     await getRemoteMcpCatalog();
     expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
+  });
+
+  it("carries an icon URL through", async () => {
+    mockCatalogResponse([
+      {
+        ...VALID_ENTRY,
+        iconUrl: "https://api.dyad.sh/v1/mcp-catalog/icons/figma.svg",
+      },
+    ]);
+    const entries = await getRemoteMcpCatalog();
+    expect(entries[0].iconUrl).toBe(
+      "https://api.dyad.sh/v1/mcp-catalog/icons/figma.svg",
+    );
+  });
+
+  it("drops a bad icon URL but keeps the entry", async () => {
+    mockCatalogResponse([
+      { ...VALID_ENTRY, iconUrl: "javascript:alert(1)" },
+      { ...VALID_STDIO_ENTRY, iconUrl: 42 },
+    ]);
+    const entries = await getRemoteMcpCatalog();
+    expect(entries).toHaveLength(2);
+    expect(entries[0].iconUrl).toBeUndefined();
+    expect(entries[1].iconUrl).toBeUndefined();
   });
 
   it("drops entries whose URL is not http(s)", async () => {

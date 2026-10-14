@@ -1,6 +1,12 @@
 import { useAtomValue, useSetAtom, useStore } from "jotai";
 import { useTranslation } from "react-i18next";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
+import {
+  useIsMutating,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import {
   memo,
   useCallback,
@@ -30,7 +36,6 @@ import {
   Settings2,
 } from "lucide-react";
 import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
-import { previewNativeViewAppIdAtom } from "@/atoms/previewAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useCurrentAppUrl } from "@/hooks/useAppRun";
 import { selectedFileAtom } from "@/atoms/viewAtoms";
@@ -40,8 +45,6 @@ import {
   recordingStartRequestAtom,
 } from "@/atoms/recorderAtoms";
 import {
-  applyTestRunFinishedAtom,
-  applyTestRunStartedAtom,
   currentTestRunOutputAtom,
   currentTestSpecsAtom,
   currentTestRunStateAtom,
@@ -52,6 +55,7 @@ import {
 } from "@/atoms/testRuntimeAtoms";
 import type { TestCase, TestCaseResult, FileAttachment } from "@/ipc/types";
 import { ipc } from "@/ipc/types";
+import { useTestRunQueue } from "@/hooks/useTestRunQueue";
 import { useDeleteAppTest } from "@/hooks/useDeleteAppTest";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { useSwitchToPublishableKey } from "@/hooks/useLegacySupabaseKey";
@@ -87,6 +91,11 @@ import { queryKeys } from "@/lib/queryKeys";
 import { cn } from "@/lib/utils";
 import { showError, showInfo, showSuccess } from "@/lib/toast";
 import { findCaseResult, statusLabel, testKey } from "@/lib/testResultUtils";
+import {
+  isNeonOnlyApp,
+  refusesUnsandboxedTestRun,
+  usesSandboxedE2eTests,
+} from "@/lib/e2eSandbox";
 import { usePreviewIframeController } from "@/preview_iframe/usePreviewIframe";
 import { sameOriginStartPath } from "./previewAddressPath";
 
@@ -494,6 +503,7 @@ function TestCaseRow({
 
 interface FileRowProps {
   appId: number;
+  queued: boolean;
   file: string;
   tests: TestCase[];
   status: TestStatus;
@@ -518,6 +528,7 @@ interface FileRowProps {
 
 function FileRow({
   appId,
+  queued,
   file,
   tests,
   status,
@@ -533,6 +544,7 @@ function FileRow({
   caseResult,
   onAskAiToFix,
 }: FileRowProps) {
+  const { t } = useTranslation("home");
   const fileName = file.split("/").pop() ?? file;
   const hasTests = tests.length > 0;
   const isFailing = status === "failed" || status === "inconclusive";
@@ -550,7 +562,12 @@ function FileRow({
 
   return (
     <div className="border-b border-border/60 last:border-b-0">
-      <div className="group flex items-center gap-2 px-3 py-2">
+      <div
+        className={cn(
+          "group flex items-center gap-2 px-3 py-2",
+          queued && "bg-amber-50 dark:bg-amber-950/30",
+        )}
+      >
         <button
           onClick={toggle}
           disabled={!hasTests}
@@ -584,6 +601,11 @@ function FileRow({
               statusTextClass(status),
             )}
           >
+            {queued && (
+              <span className="mr-1.5 inline-block rounded bg-amber-100 px-1 font-medium text-amber-900 dark:bg-amber-900/50 dark:text-amber-200">
+                {t("preview.testQueued")}
+              </span>
+            )}
             {statusLabel(status)}
             {hasTests &&
               ` · ${tests.length} ${tests.length === 1 ? "test" : "tests"}`}
@@ -646,16 +668,42 @@ function FileRow({
 
 export function TestsPanel() {
   const { t } = useTranslation("home");
+  const navigate = useNavigate();
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const specs = useAtomValue(currentTestSpecsAtom);
   const runState = useAtomValue(currentTestRunStateAtom);
+  const { data: testQueue } = useTestRunQueue(selectedAppId);
+  const runMutationKey = queryKeys.tests.run({ appId: selectedAppId });
+  // Keep one outstanding panel submission per app, including across tab remounts.
+  const isSubmitting = useIsMutating({ mutationKey: runMutationKey }) > 0;
+  const { mutate: submitRun } = useMutation({
+    mutationKey: runMutationKey,
+    mutationFn: ipc.tests.runAppTests,
+    onSuccess: (res) => {
+      // Lifecycle failures are rendered inline; cancellation is an ordinary outcome.
+      if (res.preflightRefused && res.infraError)
+        showError(res.infraError.message);
+    },
+    onError: (error) => showError(error),
+  });
+  const queuedCount = testQueue?.queuedRuns.length ?? 0;
+  const queuedFiles = useMemo(() => {
+    const files = new Set<string>();
+    for (const run of testQueue?.queuedRuns ?? []) {
+      const selection =
+        run.testFiles ??
+        (run.testFile ? [run.testFile] : specs.map((spec) => spec.file));
+      for (const file of selection)
+        files.add(file.replace(/\\/g, "/").replace(/^\.\//, ""));
+    }
+    return files;
+  }, [testQueue?.queuedRuns, specs]);
   const appUrl = useCurrentAppUrl(selectedAppId);
   const { state: previewIframeState } =
     usePreviewIframeController(selectedAppId);
   const setSpecs = useSetAtom(setTestSpecsForAppAtom);
   const setRunState = useSetAtom(setTestRunStateForAppAtom);
   const setPreviewMode = useSetAtom(previewModeAtom);
-  const setPreviewNativeViewAppId = useSetAtom(previewNativeViewAppIdAtom);
   const setSelectedFile = useSetAtom(selectedFileAtom);
   const clearStagedDiff = useSetAtom(clearStagedDiffAtom);
   // For lazy, subscription-free reads of the streamed output (askAiToFix runs
@@ -666,7 +714,12 @@ export function TestsPanel() {
   const recordingState = useAtomValue(currentRecordingStateAtom);
   const requestRecording = useSetAtom(recordingStartRequestAtom);
   const { app } = useLoadApp(selectedAppId);
-  const { settings, updateSettings } = useSettings();
+  const {
+    settings,
+    updateSettings,
+    loading: settingsLoading,
+    refreshSettings,
+  } = useSettings();
   const { runApp } = useRunApp();
   const { setTestingEnabled, isLoading: isTogglingTesting } =
     useSetTestingEnabled();
@@ -732,10 +785,72 @@ export function TestsPanel() {
   const slowMo = settings?.testSlowMo ?? false;
 
   const devServerRunning = appUrl.appUrl !== null;
+  // A sandboxed run serves the app itself, on its own port, from its own copy —
+  // the user's preview is not involved, so requiring it would block the whole
+  // point of the feature. The fallback path (Docker/cloud runtime, or the
+  // opt-out) still runs Playwright against the preview and still needs it up.
+  // Recording is unaffected either way: it drives the live preview.
+  //
+  // While settings are still loading there is nothing to disclose yet:
+  // `usesSandboxedE2eTests` answers false for absent settings, which would
+  // flash the amber "Start the app to run tests." banner and a disabled Run
+  // button on every mount for a state that may not apply at all.
+  //
+  // Tri-state on purpose: `undefined` means settings haven't loaded, and that
+  // is neither a refusal nor a promise. `usesSandboxedE2eTests` answers false
+  // for absent settings, so reading it directly would flash the amber gate on
+  // every mount — and the Neon disclosure below has the opposite default, so
+  // reading `!disableSandboxedE2eTests` there would briefly promise sandboxing
+  // to a user who turned it off. One value, two explicit comparisons.
+  const sandboxAvailable = settings
+    ? usesSandboxedE2eTests(settings)
+    : undefined;
+  // A Neon app with no sandbox available cannot run tests at all: the main
+  // process refuses every such run rather than pointing Playwright at the
+  // user's real database. Disclosed here, before the click, because the refusal
+  // is otherwise only discoverable by pressing Run and reading the error — and
+  // the Settings hint doesn't cover the Docker/cloud case at all.
+  // Which remedy the refusal has, so the banner can offer it in one click
+  // instead of describing it. `null` when there is no refusal at all.
+  const neonRefusalRemedy =
+    sandboxAvailable === false && refusesUnsandboxedTestRun(app)
+      ? (settings?.runtimeMode2 ?? "host") !== "host"
+        ? ("runtime" as const)
+        : ("sandbox-setting" as const)
+      : null;
+  const neonSandboxRefusal =
+    neonRefusalRemedy === "runtime"
+      ? t("preview.testGate.neonRefusalRuntime", {
+          runtime: settings?.runtimeMode2,
+        })
+      : neonRefusalRemedy === "sandbox-setting"
+        ? t("preview.testGate.neonRefusalDisabled")
+        : null;
+  // Disabled while settings are still loading too. The banners stay gated on
+  // `false` so nothing amber flashes on mount, but leaving Run *clickable* in a
+  // state we can't evaluate sends the user into the main-process refusal — the
+  // discoverable-only-by-pressing-Run path this block exists to remove.
+  // What the amber "Start the app" banner keys off: an evaluated `false`, never
+  // the loading state. Nothing should flash on mount for a gate that may not
+  // apply once settings arrive.
+  const showDevServerGate = sandboxAvailable === false && !devServerRunning;
+  // Settled without settings — the query errored, or resolved to nothing. The
+  // gates above stay quiet for `undefined` so nothing amber flashes during the
+  // brief load, but that same silence would otherwise make a permanent failure
+  // indistinguishable from it: a greyed-out Run, greyed-out per-file and
+  // per-test buttons, and not a word about why. Per **Principle #4: Transparent
+  // Over Magical**, a control that refuses to act has to say what it is waiting
+  // for.
+  const settingsUnavailable =
+    sandboxAvailable === undefined && !settingsLoading;
+  const testRunBlocked =
+    neonSandboxRefusal !== null ||
+    sandboxAvailable === undefined ||
+    showDevServerGate;
   // Owns the run's whole lifecycle, teardown included. Gates every action that
-  // must not interleave with it (Run, Record, Delete), because the per-app lock
+  // must not interleave with it (Record, Delete), because the per-app lock
   // is still held during `cleaning-up`.
-  const isRunning = runState.phase !== "idle";
+  const isRunning = runState.phase !== "idle" || testQueue?.activeRun != null;
   // Narrower: tests are executing or their completed results are waiting for
   // teardown to finish. A stopped run cannot produce more results, so only
   // that cleanup path drops the per-test spinners.
@@ -745,7 +860,11 @@ export function TestsPanel() {
     (runState.phase === "cleaning-up" && !runState.wasStopped);
   const isStopping = runState.phase === "stopping";
   const isCleaningUp = runState.phase === "cleaning-up";
-  const isRestoringApp =
+  // Nothing about the user's app is restored any more: the run had its own
+  // sandbox copy and its own server, so cleanup is deleting that sandbox and
+  // the temporary database it was pointed at. The real `.env.local` and the
+  // preview were never touched.
+  const isRemovingTestDatabase =
     isCleaningUp && runState.isolation?.mode === "neon-branch";
 
   // With the experiment enabled, "headed" means visible in Dyad's preview
@@ -789,10 +908,16 @@ export function TestsPanel() {
   });
 
   const loadingSpecs = specsQuery.isLoading && specs.length === 0;
-  const showNeonRestartDisclosure =
-    specs.length > 0 &&
-    !!app?.neonProjectId &&
-    (settings?.runtimeMode2 ?? "host") === "host";
+  // Host runs get the sandbox: a throwaway copy of the app, its own server, and
+  // a temporary Neon branch that only that copy points at. Worth saying, since
+  // the alternative a user would assume is "my tests hit my real database" —
+  // but it must not promise the preview restart the old env-swap path did.
+  // Neon-only, using the same precedence the runner applies: an app carrying
+  // both provider ids takes the Supabase path, which creates no temporary
+  // database, so promising one here would be the kind of overstated safety copy
+  // this work set out to remove.
+  const showNeonSandboxDisclosure =
+    specs.length > 0 && sandboxAvailable === true && isNeonOnlyApp(app);
 
   // Pop the output drawer when a run starts for the app being viewed. Keyed
   // off the global atom's phase transition — not the raw IPC event — so it
@@ -819,12 +944,6 @@ export function TestsPanel() {
     }
     prevRunRef.current = { appId: selectedAppId, phase: runState.phase };
   }, [selectedAppId, runState.phase]);
-
-  // Run-state transitions shared with the root-level agent-run subscriber
-  // (useTestRunEvents), so panel- and agent-initiated runs show the same
-  // spinners/cleared-output chrome.
-  const applyRunStarted = useSetAtom(applyTestRunStartedAtom);
-  const applyRunFinished = useSetAtom(applyTestRunFinishedAtom);
 
   // One-click swap of an app's generated Supabase client off the legacy anon
   // key it was created with. Offered beside the setup warning that detected it.
@@ -888,81 +1007,39 @@ export function TestsPanel() {
   }, [selectedAppId, switchKeyAsync, switchedIsolation, t]);
 
   const runTests = useCallback(
-    async (file?: string, line?: number) => {
+    (file?: string, line?: number) => {
       if (selectedAppId == null) return;
-      const appId = selectedAppId;
-      const isSingleTest = file != null && line != null;
-      const preview = runsInPreviewWebContentsView;
-      if (preview) {
-        setPreviewNativeViewAppId(appId);
-        setPreviewMode("preview");
-      }
-      const startedAt = Date.now();
-
-      applyRunStarted({
-        appId,
+      // Read the mutation cache synchronously so a second click in the same
+      // render cannot enqueue another expensive run before main acknowledges it.
+      if (
+        queryClient.isMutating({
+          mutationKey: queryKeys.tests.run({ appId: selectedAppId }),
+        })
+      )
+        return;
+      submitRun({
+        appId: selectedAppId,
         testFile: file,
         testLine: line,
-        startedAt,
-        source: "panel",
+        headed,
+        // Main decides whether preview execution must force serial mode.
+        parallel: parallel && !(file != null && line != null),
+        slowMo,
+        preview: runsInPreviewWebContentsView,
       });
-
-      try {
-        const res = await ipc.tests.runAppTests({
-          appId,
-          testFile: file,
-          testLine: line,
-          headed,
-          // A single targeted test can't parallelize. Preview runs share one
-          // browser surface and must stay serial too — but that is decided in
-          // main, which is the only side that knows whether the app's tsconfig
-          // let the run into the preview at all. Deciding it here would leave a
-          // run that fell back to an ordinary browser stuck serial for no
-          // reason, despite Parallel being on.
-          parallel: parallel && !isSingleTest,
-          slowMo,
-          preview,
-        });
-        applyRunFinished({
-          appId,
-          res,
-          isPartialRun: isSingleTest,
-          expectedStartedAt: startedAt,
-        });
-      } catch (err) {
-        setRunState({
-          appId,
-          update: (prev) =>
-            prev.startedAt === startedAt
-              ? {
-                  ...prev,
-                  phase: "idle",
-                  runningFiles: [],
-                  runningTests: [],
-                  runError: {
-                    message: err instanceof Error ? err.message : String(err),
-                    kind: "unknown",
-                  },
-                }
-              : prev,
-        });
-      }
     },
     [
       selectedAppId,
-      applyRunStarted,
-      applyRunFinished,
-      setRunState,
+      queryClient,
+      submitRun,
       headed,
       parallel,
       slowMo,
       runsInPreviewWebContentsView,
-      setPreviewMode,
-      setPreviewNativeViewAppId,
     ],
   );
 
-  // Agent-initiated runs (the tests:run-state lifecycle) are consumed by the
+  // Both sources' tests:run-state lifecycle events are consumed by the
   // root-level useTestRunEvents subscriber — NOT here — so the terminal
   // "finished" event still lands when this panel is unmounted mid-run.
 
@@ -990,7 +1067,8 @@ export function TestsPanel() {
     if (
       stopRequestRef.current?.appId === request.appId &&
       stopRequestRef.current.startedAt === request.startedAt &&
-      stopRequestRef.current.runId === request.runId
+      stopRequestRef.current.runId === request.runId &&
+      queuedCount === 0
     ) {
       return;
     }
@@ -1003,13 +1081,14 @@ export function TestsPanel() {
       }
       showError(error);
     });
-  }, [selectedAppId, runState.runId, runState.startedAt]);
+  }, [selectedAppId, runState.runId, runState.startedAt, queuedCount]);
 
   // The kill is under way. Covers the optimistic latch and the authoritative
   // phase, so the label survives a remount mid-stop and covers agent runs the
   // user stopped from the chat.
   const showStopping =
     isStopping || (stopRequestedForActiveRun && !isCleaningUp);
+  const canCancelQueued = queuedCount > 0 && (showStopping || isCleaningUp);
 
   // User-initiated: hand the failure back into an Agent-mode chat turn so the
   // agent can read the failure, fix it, and re-run it with the run_tests tool.
@@ -1135,7 +1214,7 @@ export function TestsPanel() {
   // which starts the session as soon as the preview mounts.
   const isRecordingSession = recordingState.phase !== "idle";
   const canStartRecording =
-    devServerRunning && !isRunning && !isRecordingSession;
+    devServerRunning && !isRunning && !isSubmitting && !isRecordingSession;
   const startRecording = useCallback(() => {
     if (selectedAppId == null) return;
     const currentPreviewUrl =
@@ -1492,62 +1571,82 @@ export function TestsPanel() {
             </button>
           </span>
         )}
-        {isRunning ? (
-          // During `cleaning-up` the tests are already gone and only the
-          // isolation teardown remains, so there is nothing left to stop. The
-          // button reports that state instead of offering a dead action.
+        {queuedCount > 0 && (
+          <span
+            className="text-xs text-muted-foreground"
+            role="status"
+            title={testQueue?.queuedRuns
+              .map(
+                (run, index) =>
+                  `${index + 1}. ${run.testFile ?? run.testFiles?.join(", ") ?? t("preview.allTests")}`,
+              )
+              .join("\n")}
+          >
+            {t("preview.testRunsQueued", { count: queuedCount })}
+          </span>
+        )}
+        {isRunning && (
+          // Cleanup cannot be interrupted, but pending requests can still be
+          // cancelled before they create another test environment.
           <button
             onClick={stop}
-            disabled={showStopping || isCleaningUp}
+            disabled={(showStopping || isCleaningUp) && queuedCount === 0}
             aria-label={
-              isCleaningUp
-                ? isRestoringApp
-                  ? "Restoring your app"
-                  : "Cleaning up test data"
-                : showStopping
-                  ? "Stopping tests"
-                  : "Stop running tests"
+              canCancelQueued
+                ? t("preview.cancelQueuedTests")
+                : isCleaningUp
+                  ? isRemovingTestDatabase
+                    ? "Removing the temporary test database"
+                    : runState.sandboxed
+                      ? "Cleaning up the test sandbox"
+                      : "Cleaning up test data"
+                  : showStopping
+                    ? "Stopping tests"
+                    : "Stop running tests"
             }
             className={cn(
               "flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md",
-              showStopping || isCleaningUp
+              (showStopping || isCleaningUp) && !canCancelQueued
                 ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 cursor-default"
                 : "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/60 cursor-pointer",
             )}
           >
-            {showStopping || isCleaningUp ? (
+            {(showStopping || isCleaningUp) && !canCancelQueued ? (
               <Loader2 size={14} className="animate-spin" />
             ) : (
               <Square size={14} />
             )}
-            {isCleaningUp
-              ? isRestoringApp
-                ? "Restoring…"
-                : "Cleaning up…"
-              : showStopping
-                ? "Stopping…"
-                : "Stop"}
+            {canCancelQueued
+              ? t("preview.cancelQueued")
+              : isCleaningUp
+                ? "Cleaning up…"
+                : showStopping
+                  ? "Stopping…"
+                  : "Stop"}{" "}
           </button>
-        ) : (
-          testingEnabled &&
-          specs.length > 0 && (
-            <button
-              onClick={() => runTests()}
-              disabled={!devServerRunning}
-              title={
-                "During database-isolated runs, other app operations may wait until the run finishes."
-              }
-              aria-label="Run all tests"
-              className={cn(
-                "flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md cursor-pointer",
-                "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-900/60",
-                !devServerRunning && "opacity-40 cursor-not-allowed",
-              )}
-            >
+        )}
+        {testingEnabled && specs.length > 0 && (
+          <button
+            onClick={() => runTests()}
+            disabled={testRunBlocked || isSubmitting}
+            title="During database-isolated runs, other app operations may wait until the run finishes."
+            aria-label={
+              isRunning ? t("preview.queueAllTests") : "Run all tests"
+            }
+            className={cn(
+              "flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md cursor-pointer",
+              "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-900/60",
+              (testRunBlocked || isSubmitting) &&
+                "opacity-40 cursor-not-allowed",
+            )}
+          >
+            {isSubmitting ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
               <Play size={14} />
-              Run all
-            </button>
-          )
+            )}
+            {isRunning ? t("preview.queueAll") : "Run all"}
+          </button>
         )}
       </div>
 
@@ -1574,16 +1673,32 @@ export function TestsPanel() {
                   )}
                 >
                   {isCleaningUp
-                    ? // The Neon teardown restarts the dev server, so the
-                      // preview visibly reloads and the copy has to account for
-                      // it. The Supabase teardown only deletes the test user.
+                    ? // The Neon teardown deletes the throwaway branch on
+                      // Neon's side, which retries with backoff and is the
+                      // slowest case worth naming. Otherwise it's the local
+                      // sandbox — when this run took one — and, for Supabase,
+                      // the temporary test user.
                       runState.isolation?.mode === "neon-branch"
-                      ? "Restoring your database and preview… "
-                      : "Cleaning up the test data… "
+                      ? "Removing the temporary test database… "
+                      : runState.sandboxed
+                        ? "Cleaning up the test sandbox… "
+                        : "Cleaning up the test data… "
                     : showStopping
                       ? "Stopping the tests… "
                       : runState.phase === "setup"
-                        ? "Setting up testing… "
+                        ? // A sandboxed run copies the app and installs its
+                          // dependencies from scratch before a single test
+                          // executes. That is minutes on a large project, and
+                          // naming it here is the difference between a wait and
+                          // an apparent hang — the streamed detail is in the
+                          // output drawer, but the header is what the user
+                          // watches.
+                          // The run's OWN recorded expectation, not the current
+                          // setting: a toggle mid-run must not relabel a run
+                          // that already picked its path.
+                          runState.sandboxed
+                          ? "Setting up the test sandbox — installing dependencies can take a few minutes… "
+                          : "Setting up testing… "
                         : "Running… "}
                 </span>
               )}
@@ -1667,15 +1782,12 @@ export function TestsPanel() {
               </div>
             )}
 
-          {!isRunning && showNeonRestartDisclosure && (
+          {!isRunning && showNeonSandboxDisclosure && (
             <div className="flex items-start gap-2 px-4 py-2 bg-teal-50 dark:bg-teal-900/20 border-b border-teal-200 dark:border-teal-800 text-sm text-teal-800 dark:text-teal-200">
               <ShieldCheck size={15} className="shrink-0 mt-0.5" />
               <span className="flex-1">
-                Neon test runs restart the preview to switch to a temporary
-                database, then restart it again afterward. Each test and retry
-                starts with empty application and auth-user data, including the
-                first test. Seed required rows in each test or beforeEach. Your
-                original branch is unchanged.
+                Tests run in a temporary database, cleared between test cases.
+                Your real data and preview stay unchanged.
               </span>
             </div>
           )}
@@ -1687,26 +1799,78 @@ export function TestsPanel() {
               <div className="flex items-start gap-2 px-4 py-2 bg-teal-50 dark:bg-teal-900/20 border-b border-teal-200 dark:border-teal-800 text-sm text-teal-800 dark:text-teal-200">
                 <ShieldCheck size={15} className="shrink-0 mt-0.5" />
                 <span className="flex-1">
-                  Each test and retry gets a fresh Supabase test user. Seed
-                  required user data in each test or beforeEach; supported
-                  user-owned rows are cleaned up afterward. Isolation relies on
-                  Row-Level Security and may not cover every table.
+                  Each test uses a temporary account, deleted afterward. Enable
+                  database backups before testing.
                 </span>
               </div>
             )}
 
-          {/* Dev-server gate banner */}
-          {!devServerRunning && specs.length > 0 && (
+          {/* Settings never arrived. Rendered before the gates below because
+          none of them can be evaluated without settings, and this is the only
+          banner that explains the disabled Run button in that state. */}
+          {sandboxAvailable === undefined &&
+            settingsLoading &&
+            specs.length > 0 && (
+              <p role="status" className="text-xs text-muted-foreground">
+                {t("preview.testGate.settingsLoading")}
+              </p>
+            )}
+          {settingsUnavailable && specs.length > 0 && (
             <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 text-sm text-amber-800 dark:text-amber-200">
               <AlertTriangle size={15} className="shrink-0" />
-              <span className="flex-1">Start the app to run tests.</span>
+              <span className="flex-1">
+                {t("preview.testGate.settingsUnavailable")}
+              </span>
+              <button
+                onClick={() => void refreshSettings()}
+                className="shrink-0 px-2 py-1 rounded-md bg-amber-200 dark:bg-amber-800 hover:bg-amber-300 dark:hover:bg-amber-700 cursor-pointer text-xs font-medium"
+              >
+                {t("preview.testGate.retry")}
+              </button>
+            </div>
+          )}
+
+          {/* Neon refusal — no Start button, because starting the preview would
+          not make this run possible. */}
+          {neonSandboxRefusal && specs.length > 0 && (
+            <div className="flex items-start gap-2 px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 text-sm text-amber-800 dark:text-amber-200">
+              <AlertTriangle size={15} className="shrink-0 mt-0.5" />
+              <span className="flex-1">{neonSandboxRefusal}</span>
+              {/* The disclosed remedy, one click away. Without this the user is
+              told to change a setting and left to find it — and for the
+              Docker/cloud case that setting is not even in this panel. */}
+              {neonRefusalRemedy === "sandbox-setting" ? (
+                <button
+                  onClick={() =>
+                    updateSettings({ disableSandboxedE2eTests: false })
+                  }
+                  className="shrink-0 px-2 py-1 rounded-md bg-amber-200 dark:bg-amber-800 hover:bg-amber-300 dark:hover:bg-amber-700 cursor-pointer text-xs font-medium"
+                >
+                  {t("preview.testGate.turnOnSandbox")}
+                </button>
+              ) : (
+                <button
+                  onClick={() => navigate({ to: "/settings" })}
+                  className="shrink-0 px-2 py-1 rounded-md bg-amber-200 dark:bg-amber-800 hover:bg-amber-300 dark:hover:bg-amber-700 cursor-pointer text-xs font-medium"
+                >
+                  {t("preview.testGate.openSettings")}
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Dev-server gate banner — only when the run actually needs it. */}
+          {showDevServerGate && !neonSandboxRefusal && specs.length > 0 && (
+            <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 text-sm text-amber-800 dark:text-amber-200">
+              <AlertTriangle size={15} className="shrink-0" />
+              <span className="flex-1">{t("preview.testGate.startApp")}</span>
               <button
                 onClick={() =>
                   runAppLifecycleInBackground("start", runApp(selectedAppId))
                 }
                 className="px-2 py-1 rounded-md bg-amber-200 dark:bg-amber-800 hover:bg-amber-300 dark:hover:bg-amber-700 cursor-pointer text-xs font-medium"
               >
-                Start
+                {t("preview.testGate.start")}
               </button>
             </div>
           )}
@@ -1721,10 +1885,10 @@ export function TestsPanel() {
               </span>
               <button
                 onClick={() => runTests()}
-                disabled={isRunning || !devServerRunning}
+                disabled={isSubmitting || testRunBlocked}
                 className={cn(
                   "shrink-0 px-2 py-1 rounded-md bg-amber-200 dark:bg-amber-800 hover:bg-amber-300 dark:hover:bg-amber-700 cursor-pointer text-xs font-medium",
-                  (isRunning || !devServerRunning) &&
+                  (isSubmitting || testRunBlocked) &&
                     "opacity-40 cursor-not-allowed",
                 )}
               >
@@ -1833,9 +1997,10 @@ export function TestsPanel() {
                 file={spec.file}
                 tests={spec.tests}
                 status={fileStatus(spec.file)}
+                queued={queuedFiles.has(spec.file)}
                 result={runState.results[spec.file]}
-                disabled={isRunning || !devServerRunning}
-                deleteDisabled={isRunning || isDeleting}
+                disabled={isSubmitting || testRunBlocked}
+                deleteDisabled={isRunning || isSubmitting || isDeleting}
                 onRunFile={() => runTests(spec.file)}
                 onRunCase={(line) => runTests(spec.file, line)}
                 onOpenInEditor={(line) => openInEditor(spec.file, line)}
@@ -1971,10 +2136,8 @@ function EnableTestingScreen({
         <div className="flex items-start gap-2 max-w-sm mb-5 px-3 py-2 rounded-md bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-800 text-left text-[13px] text-teal-800 dark:text-teal-200">
           <ShieldCheck size={15} className="shrink-0 mt-0.5" />
           <span>
-            Tests run against a temporary copy of your Neon database, so your
-            real data isn&apos;t touched. Each test and retry starts with empty
-            application and auth-user data, including the first test. Seed
-            required rows in each test or beforeEach.
+            Tests run in a temporary database, cleared between test cases. Your
+            real data and preview stay unchanged.
           </span>
         </div>
       ) : (
@@ -1982,7 +2145,7 @@ function EnableTestingScreen({
           <AlertTriangle size={15} className="shrink-0 mt-0.5" />
           <span>
             {hasSupabaseIsolation
-              ? "Each test and retry gets a fresh Supabase test user. Seed required user data in each test or beforeEach; supported user-owned rows are cleaned up afterward. Isolation relies on Row-Level Security, which may not cover every table. We strongly recommend enabling data backups before running tests, in case they do something unintended."
+              ? "Each test uses a temporary account, deleted afterward. Enable database backups before testing."
               : hasManagedDatabase
                 ? "Dyad can't isolate this database in the current setup. These tests can create, update, or delete current data, so we strongly recommend enabling data backups before running them."
                 : "These tests can create, update, or delete real data, and Dyad can't isolate a custom or non-database backend. We strongly recommend enabling data backups before running tests, in case they do something unintended."}

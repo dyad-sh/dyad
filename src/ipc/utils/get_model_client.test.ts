@@ -1,4 +1,7 @@
+import { getAuxiliarySettings } from "@/lib/auxiliaryModel";
 import { preflightSubscriptionTurn } from "../services/subscription_turn_preflight";
+import { checkSubscriptionCredits } from "../services/codex_subscription_credit_check";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import type { AutoModelCandidates } from "../services/auto_model_candidates";
 vi.mock("../services/codex_subscription_auth", () => ({
   getCodexSubscriptionCredentials: vi.fn(async () => ({})),
@@ -27,6 +30,7 @@ vi.mock("./codex_subscription_provider", () => ({
 import type { UserSettings } from "../../lib/schemas";
 import {
   getModelClient,
+  modelClientSupportsPdfInput,
   setModelClientFetchForTesting,
 } from "./get_model_client";
 import {
@@ -510,6 +514,25 @@ describe("getModelClient", () => {
       true,
     );
   });
+  test("routes BYO auxiliary Luna through the engine without OpenAI credentials or subscription fallback", async () => {
+    vi.mocked(getSubscriptionAccount).mockResolvedValue({
+      connected: true,
+      models: ["gpt-6-luna"],
+    } as any);
+    const settings = {
+      enableDyadPro: true,
+      proModelUsage: "api-key",
+      providerSettings: { auto: { apiKey: { value: "pro-key" } } },
+    } as unknown as UserSettings;
+    const result = await getModelClient(
+      { provider: "openai", name: "gpt-6-luna" },
+      getAuxiliarySettings(settings),
+    );
+    expect((result.modelClient.model as any).provider).toContain("dyad-engine");
+    expect(result.isEngineEnabled).toBe(true);
+    expect(createCodexSubscriptionModel).not.toHaveBeenCalled();
+    expect(settings.proModelUsage).toBe("api-key");
+  });
   test("keeps the accepted turn source pinned", async () => {
     vi.mocked(getSubscriptionAccount).mockResolvedValue({
       connected: true,
@@ -531,7 +554,144 @@ describe("getModelClient", () => {
     expect((result.modelClient.model as any).provider).toContain("dyad-engine");
     expect(createCodexSubscriptionModel).not.toHaveBeenCalled();
   });
+  test.each([
+    "openai",
+    "anthropic",
+    "google",
+    "openrouter",
+    "custom",
+    "ollama",
+    "lmstudio",
+  ])(
+    "uses the direct %s transport when Pro BYO is selected",
+    async (provider) => {
+      vi.mocked(getSubscriptionAccount).mockResolvedValue({
+        connected: true,
+        models: ["test-model"],
+      } as any);
+      const result = await getModelClient({ provider, name: "test-model" }, {
+        enableDyadPro: true,
+        proModelUsage: "api-key",
+        providerSettings: {
+          auto: { apiKey: { value: "dyad-key" } },
+          [provider]: { apiKey: { value: "provider-key" } },
+        },
+      } as unknown as UserSettings);
+      expect(
+        (result.modelClient.model as LanguageModelV3).provider,
+      ).not.toContain("dyad-engine");
+      expect(result.isEngineEnabled).toBe(false);
+      expect(createCodexSubscriptionModel).not.toHaveBeenCalled();
+    },
+  );
+  test.each(["auto", "balanced", "free"])(
+    "keeps BYO Auto %s off the engine",
+    async (name) => {
+      const result = await getModelClient({ provider: "auto", name }, {
+        enableDyadPro: true,
+        proModelUsage: "api-key",
+        providerSettings: {
+          auto: { apiKey: { value: "dyad-key" } },
+          openai: { apiKey: { value: "provider-key" } },
+          openrouter: { apiKey: { value: "router-key" } },
+        },
+      } as unknown as UserSettings);
+      expect(result.isEngineEnabled).toBe(false);
+      expect(
+        (result.modelClient.model as LanguageModelV3).provider,
+      ).not.toContain("dyad-engine");
+      expect(createCodexSubscriptionModel).not.toHaveBeenCalled();
+    },
+  );
+  test.each([true, false])(
+    "streams BYO with Pro=%s and only bills enabled Pro",
+    async (enableDyadPro) => {
+      const report = vi.fn(async () => new Response("{}"));
+      vi.stubGlobal("fetch", report);
+      const inference = vi.fn<typeof globalThis.fetch>(
+        async () =>
+          new Response(
+            [
+              'data: {"id":"test","model":"actual-model","choices":[{"index":0,"delta":{"content":"hi"},"finish_reason":null}]}',
+              'data: {"id":"test","model":"actual-model","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":100,"completion_tokens":10,"total_tokens":110}}',
+              "data: [DONE]",
+              "",
+            ].join("\n\n"),
+            { headers: { "content-type": "text/event-stream" } },
+          ),
+      );
+      setModelClientFetchForTesting(inference);
+      vi.mocked(checkSubscriptionCredits).mockClear();
+      const { modelClient } = await getModelClient(
+        { provider: "openrouter", name: "test-model" },
+        {
+          enableDyadPro,
+          proModelUsage: "api-key",
+          providerSettings: {
+            auto: { apiKey: { value: "dyad-key" } },
+            openrouter: { apiKey: { value: "provider-key" } },
+          },
+        } as unknown as UserSettings,
+      );
+      const result = streamText({
+        model: modelClient.model,
+        prompt: "hi",
+        maxRetries: 0,
+      });
+      await result.consumeStream();
+      expect(await result.text).toBe("hi");
+      expect(String(inference.mock.calls[0][0])).toBe(
+        "https://openrouter.ai/api/v1/chat/completions",
+      );
+      expect(
+        new Headers(inference.mock.calls[0][1]?.headers).get("Authorization"),
+      ).toBe("Bearer provider-key");
+      const body = JSON.parse(String(inference.mock.calls[0][1]?.body));
+      expect(body.stream_options?.include_usage).toBe(
+        enableDyadPro ? true : undefined,
+      );
+      expect(checkSubscriptionCredits).toHaveBeenCalledTimes(
+        enableDyadPro ? 1 : 0,
+      );
+      if (enableDyadPro) {
+        await vi.waitFor(() => expect(report).toHaveBeenCalledOnce());
+        const init = (
+          report.mock.calls[0] as unknown as Parameters<typeof fetch>
+        )[1];
+        expect(new Headers(init?.headers).get("Authorization")).toBe(
+          "Bearer dyad-key",
+        );
+        expect(JSON.parse(String(init?.body))).toMatchObject({
+          connection: "byok",
+          modelProvider: "openrouter",
+          modelId: "actual-model",
+          totalTokens: 110,
+        });
+      } else expect(report).not.toHaveBeenCalled();
+    },
+  );
+  test.each(["auto", "balanced"])(
+    "explains missing keys for BYO Auto %s as an expected error",
+    async (name) => {
+      const promise = getModelClient({ provider: "auto", name }, {
+        enableDyadPro: true,
+        proModelUsage: "api-key",
+        providerSettings: { auto: { apiKey: { value: "dyad-key" } } },
+      } as unknown as UserSettings);
+      await expect(promise).rejects.toBeInstanceOf(DyadError);
+      await expect(promise).rejects.toMatchObject({
+        kind: DyadErrorKind.Validation,
+      });
+      await expect(promise).rejects.toThrow(
+        "in Settings, or select Pro credits",
+      );
+      if (name === "balanced")
+        await expect(promise).rejects.toThrow("API key for OpenRouter");
+      expect(createCodexSubscriptionModel).not.toHaveBeenCalled();
+    },
+  );
   afterEach(() => {
+    vi.unstubAllGlobals();
     vi.mocked(getSubscriptionAccount).mockResolvedValue({
       connected: false,
       models: [],
@@ -987,4 +1147,41 @@ describe("getModelClient", () => {
       OPENROUTER_APP_CATEGORIES,
     );
   });
+});
+
+describe("modelClientSupportsPdfInput", () => {
+  const proSettings = {
+    enableDyadPro: true,
+    providerSettings: { auto: { apiKey: { value: "test-pro" } } },
+  } as unknown as UserSettings;
+  const apiKeySettings = {
+    enableDyadPro: false,
+    providerSettings: {
+      openai: { apiKey: { value: "test-openai" } },
+      google: { apiKey: { value: "test-google" } },
+    },
+  } as unknown as UserSettings;
+
+  test.each([
+    ["openai", "gpt-5.5", "api key", true, apiKeySettings],
+    ["google", "gemini-3.5-flash", "api key", true, apiKeySettings],
+    // Every paid Engine route passes PDF file parts through.
+    ["openai", "gpt-5.5", "pro", true, proSettings],
+    ["anthropic", "claude-sonnet-4-20250514", "pro", true, proSettings],
+    ["google", "gemini-3.5-flash", "pro", true, proSettings],
+    ["openrouter", "qwen/qwen3-coder", "pro", true, proSettings],
+    // The Engine's free route rejects file parts.
+    ["auto", "free-pro", "pro", false, proSettings],
+    ["lmstudio", "local-model", "api key", false, apiKeySettings],
+    ["ollama", "local-model", "pro", false, proSettings],
+  ] as const)(
+    "%s/%s via %s -> %s",
+    async (provider, name, _connection, expected, settings) => {
+      const { modelClient } = await getModelClient(
+        { provider, name },
+        settings,
+      );
+      expect(modelClientSupportsPdfInput(modelClient)).toBe(expected);
+    },
+  );
 });

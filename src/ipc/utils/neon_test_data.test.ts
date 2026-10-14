@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   query: vi.fn(),
@@ -16,6 +16,10 @@ vi.mock("./test_utils", () => ({
   get IS_TEST_BUILD() {
     return mocks.testBuild;
   },
+}));
+
+vi.mock("electron-log", () => ({
+  default: { scope: () => ({ warn: vi.fn() }) },
 }));
 
 import { createNeonTestDataCleaner } from "./neon_test_data";
@@ -41,6 +45,67 @@ beforeEach(() => {
 });
 
 describe("clearNeonTestData", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it.each(["discovery", "truncate"])(
+    "retries a wrapped connection error during %s",
+    async (phase) => {
+      vi.useFakeTimers();
+      const error = Object.assign(
+        new Error("Error connecting to database: fetch failed"),
+        {
+          sourceError: new TypeError("fetch failed", {
+            cause: Object.assign(new Error("socket hang up"), {
+              code: "ECONNRESET",
+            }),
+          }),
+        },
+      );
+      const tables = [{ schema_name: "public", table_name: "todos" }];
+      if (phase === "truncate") mocks.query.mockResolvedValueOnce(tables);
+      mocks.query
+        .mockRejectedValueOnce(error)
+        .mockResolvedValueOnce(tables)
+        .mockResolvedValueOnce([]);
+      const clearing = clearNeonTestData(target.databaseUrl);
+      await vi.runAllTimersAsync();
+      await expect(clearing).resolves.toBeUndefined();
+      expect(mocks.query).toHaveBeenCalledTimes(phase === "truncate" ? 4 : 3);
+      expect(mocks.query).toHaveBeenLastCalledWith(
+        'TRUNCATE TABLE "public"."todos" RESTART IDENTITY RESTRICT',
+      );
+      expect(mocks.listProjectBranchEndpoints).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("propagates exhausted network retries so the next case stays blocked", async () => {
+    vi.useFakeTimers();
+    const error = Object.assign(new Error("Error connecting to database"), {
+      sourceError: new TypeError("fetch failed"),
+    });
+    mocks.query.mockRejectedValue(error);
+    const rejected = expect(clearNeonTestData(target.databaseUrl)).rejects.toBe(
+      error,
+    );
+    await vi.runAllTimersAsync();
+    await rejected;
+    expect(mocks.query).toHaveBeenCalledTimes(4);
+  });
+
+  it("preserves cancellation from the Neon driver without retrying", async () => {
+    const controller = new AbortController();
+    const reason = new Error("Test case lifecycle is closing.");
+    const clear = await createNeonTestDataCleaner(target);
+    mocks.query.mockImplementation(async () => {
+      controller.abort(reason);
+      throw Object.assign(new Error("Error connecting to database"), {
+        sourceError: reason,
+      });
+    });
+    await expect(clear(controller.signal)).rejects.toBe(reason);
+    expect(mocks.query).toHaveBeenCalledTimes(1);
+  });
+
   it("preserves Neon Auth configuration and signing keys while clearing auth and application data", async () => {
     // The managed schema from the affected app: project_config and jwks live
     // alongside ordinary Better Auth records, so truncating the whole schema

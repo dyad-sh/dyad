@@ -179,6 +179,30 @@ describe("collectSuggestablePlugins", () => {
     ]);
   });
 
+  it("suggests an entry whose only inputs are optional", async () => {
+    mocks.catalog.mockResolvedValue([
+      {
+        slug: "optional-header",
+        name: "Optional Header",
+        transport: "http",
+        url: "https://mcp.example.com/mcp",
+        featured: true,
+        inputs: [
+          {
+            kind: "header",
+            name: "X-Workspace",
+            label: "Workspace",
+            optional: true,
+          },
+        ],
+      },
+    ]);
+
+    expect(slugs(await collectSuggestablePlugins({ chatId: 7 }))).toEqual([
+      "optional-header",
+    ]);
+  });
+
   it("re-suggests a plugin that is added but disabled or not authorized", async () => {
     mocks.rows = [row("exa", { enabled: false }), row("vercel"), row("stripe")];
 

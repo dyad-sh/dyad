@@ -818,6 +818,14 @@ describe("automation (preview test runs)", () => {
 });
 
 describe("waitForPreviewView", () => {
+  it("accepts a live view still loading the old page when the caller will rotate it", async () => {
+    const { asBrowserWindow } = createWindow();
+    showPreviewView(asBrowserWindow, { url: APP_URL, bounds: BOUNDS });
+    latestView().webContents.loading = true;
+    await expect(waitForPreviewView(asBrowserWindow, {})).resolves.toEqual({
+      ok: true,
+    });
+  });
   it("resolves once the view is showing the run's origin", async () => {
     const { asBrowserWindow } = createWindow();
     showPreviewView(asBrowserWindow, { url: APP_URL, bounds: BOUNDS });

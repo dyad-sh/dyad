@@ -1,3 +1,4 @@
+import { clickMenuItem } from "../interactions";
 // Portalis — checkpoint 1 CUJ suite (design/app-3-portalis.md, "CUJ suite
 // (checkpoint 1)" + "Security probes (checkpoint 1)").
 // 10 CUJs (all new) + 2 probes.
@@ -49,7 +50,7 @@ test.describe("portalis checkpoint 1", () => {
     const a = await world.signUp("m1-p1-02", "a");
 
     await a.page.goto("/orgs");
-    await a.page.getByTestId("sign-out-button").click();
+    await clickMenuItem(a.page, "user-menu", "sign-out-button");
     // signOut() is a background fetch; navigating before it settles cancels
     // it and the cached session cookie keeps the server answering signed-in.
     await a.page.waitForLoadState("networkidle").catch(() => {});

@@ -62,28 +62,11 @@ export function ScreenshotField({
           alt={t("home:report.screenshotAlt")}
           className="w-full max-h-72 object-contain rounded-md border bg-(--background-lightest)"
         />
-        {/* The image travels on the clipboard, not in the report, so the
-            reporter has to paste it once GitHub opens. */}
+        {/* The image is uploaded and embedded when the report is filed. This
+            is the reporter's one chance to notice a key, a path or a chat
+            they would rather not publish. */}
         <p className="text-xs text-muted-foreground">
-          {/* Split on the placeholder so the keys keep their <kbd> styling
-              without breaking the sentence into fragments, which would put
-              them in the wrong place in languages that reorder the verb. */}
-          {(() => {
-            const parts = t("home:report.screenshotPasteHint", {
-              shortcut: "\u0000",
-            }).split("\u0000");
-            // A translation that drops or repeats the placeholder still
-            // renders one readable sentence with one set of keys.
-            const before = parts[0];
-            const after = parts.slice(1).join("");
-            return (
-              <>
-                {before}
-                <kbd>Cmd</kbd>/<kbd>Ctrl</kbd> + <kbd>V</kbd>
-                {after}
-              </>
-            );
-          })()}
+          {t("home:report.screenshotAttachHint")}
         </p>
       </div>
     );

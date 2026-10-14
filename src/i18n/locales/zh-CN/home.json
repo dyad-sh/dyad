@@ -174,6 +174,7 @@
     "systemInfoFailed": "无法包含您的系统信息。报告将在不包含它的情况下提交。",
     "screenshotRestoreFailed": "无法恢复您的屏幕截图。报告将在不包含它的情况下提交。",
     "screenshotDropped": "您的屏幕截图已无法恢复，因此已从此报告中移除。",
+    "screenshotUploadFailed": "无法附加您的屏幕截图。Dyad 会将其放入您的剪贴板，以便您粘贴到 issue 中。",
     "filingFailed": "提交报告时出现问题。请重试。",
     "updaterLogs": "自动更新日志",
     "appMetadata": "应用元数据",
@@ -185,17 +186,17 @@
     "screenshot": "屏幕截图",
     "addScreenshot": "添加屏幕截图",
     "takingScreenshot": "正在截图...",
-    "screenshotHint": "此对话框会先让开，以便您前往出现问题的页面。最后您需要将其粘贴到 GitHub。",
+    "screenshotHint": "此对话框会先让开，以便您前往出现问题的页面。屏幕截图会自动附加到您的报告中。",
     "captureBarLabel": "错误报告的屏幕截图",
     "captureBarHeading": "前往出现问题的页面。",
     "captureBarHint": "问题出现在屏幕上时，进行截图。您的报告已保存，并将带着截图重新打开。",
     "captureBarCapture": "截取屏幕截图",
     "captureBarCancel": "返回报告",
     "filedHeading": "您粘贴屏幕截图了吗？",
-    "filedPasteBody": "Dyad 无法替您附加截图，它正在您的剪贴板中等待。请在 GitHub issue 中按 {{shortcut}} 添加。如果您已经提交但未包含截图，请编辑 issue 并粘贴。如果截图已经在其中，则无需再做任何操作。",
+    "filedPasteBody": "无法自动附加您的屏幕截图，它正在您的剪贴板中等待。请在 GitHub issue 中按 {{shortcut}} 添加。如果您已经提交但未包含截图，请编辑 issue 并粘贴。如果截图已经在其中，则无需再做任何操作。",
     "filedDone": "完成",
     "screenshotAlt": "Dyad 窗口的屏幕截图",
-    "screenshotPasteHint": "已复制到剪贴板。在 GitHub Issue 中按 {{shortcut}} 即可添加。",
+    "screenshotAttachHint": "此图片将附加到您的 GitHub issue 中，任何人都可以看到。请检查其中是否有您不希望公开的内容。",
     "screenshotFailed": "无法截取屏幕。",
     "screenshotStillFile": "您仍然可以提交不含截图的报告。",
     "retake": "重新截图",
@@ -264,6 +265,25 @@
     "security": "安全",
     "publish": "发布",
     "tests": "测试",
+    "testQueued": "排队中",
+    "testRunsQueued_one": "{{count}} 次运行排队中",
+    "testRunsQueued_other": "{{count}} 次运行排队中",
+    "cancelQueued": "取消排队",
+    "cancelQueuedTests": "取消排队中的测试",
+    "allTests": "所有测试",
+    "queueAll": "全部加入队列",
+    "queueAllTests": "将所有测试加入队列",
+    "testGate": {
+      "settingsLoading": "正在加载设置…",
+      "settingsUnavailable": "Dyad 无法加载你的设置，因此无法确定测试将如何运行。",
+      "retry": "重试",
+      "startApp": "启动应用以运行测试。",
+      "start": "启动",
+      "neonRefusalRuntime": "此应用无法运行测试：隔离测试服务器尚不支持 {{runtime}} 运行时，且 Dyad 不会针对你的真实数据库运行 Neon 测试。请切换到 host 运行时以运行测试。",
+      "neonRefusalDisabled": "此应用无法运行测试：隔离测试服务器已在设置中关闭，且 Dyad 不会针对你的真实数据库运行 Neon 测试。请重新开启以运行测试。",
+      "turnOnSandbox": "开启",
+      "openSettings": "打开设置"
+    },
     "plan": "计划",
     "moreOptions": "更多选项",
     "rebuild": "重新构建",
@@ -447,7 +467,9 @@
       "proFeatureTitle": "标注器是 Pro 功能",
       "proFeatureDescription": "解锁截图标注功能，使用 Dyad Pro 提升您的工作流程。",
       "getDyadPro": "获取 Dyad Pro"
-    }
+    },
+    "openDevServer": "打开开发服务器地址",
+    "openDevServerDescription": "适用于无法打开预览地址的浏览器。与其他 localhost 应用共享浏览器存储。"
   },
   "integrations": {
     "github": {
@@ -714,7 +736,8 @@
       "redeploySucceededWithPruning_other": "已重新部署 {{count}} 个边缘函数，并移除仅存在于远程的函数：{{functions}}",
       "redeployPrunedOnly": "已移除仅存在于远程的边缘函数：{{functions}}",
       "noFunctionsToRedeploy": "未找到可重新部署的本地边缘函数",
-      "redeployFailed": "边缘函数重新部署完成，但出现问题：{{error}}"
+      "redeployFailed": "边缘函数重新部署完成，但出现问题：{{error}}",
+      "previewRedirectNotice": "Dyad 会自动将本地预览 URL 添加到 {{project}} 的 Auth 重定向允许列表。由于团队成员可能使用相同的 URL，断开连接或删除应用后，这些条目仍会保留。请在 Supabase → Authentication → URL Configuration 中删除不再使用的条目。"
     },
     "neon": {
       "title": "Neon 集成",
@@ -773,7 +796,10 @@
       "connecting": "连接中...",
       "disconnectAccountTitle": "断开 Neon 账户",
       "disconnectAccountConfirmation": "确定要断开 Neon 账户吗？您需要通过 OAuth 重新认证才能重新连接。",
-      "connectFailed": "连接 Neon 失败"
+      "connectFailed": "连接 Neon 失败",
+      "removeCloudflareEnvVars": "从 Cloudflare 移除 Neon 密钥",
+      "removeCloudflareEnvVarsHelp": "从已连接的 Worker 中删除 DATABASE_URL 和 NEON_AUTH_BASE_URL，以免它们指向已断开的数据库。",
+      "failedRemoveCloudflareEnvVars": "已断开连接，但未能从 Cloudflare 移除 Neon 密钥。"
     },
     "db": {
       "projectInfo": "{{provider}} 项目信息",
@@ -870,5 +896,10 @@
       "neonUnavailable": "Neon 不可用，因为已连接 Supabase 项目。一次只能激活一个数据库集成。",
       "chooseOne": "请选择一个数据库集成。连接 Supabase 或 Neon 中任一个，将锁定本应用的另一个集成。"
     }
+  },
+  "previewAuth": {
+    "neonPending": "正在后台向 Neon 注册此应用的预览地址。注册完成前，OAuth 登录和身份验证重定向可能无法正常工作。",
+    "supabasePending": "正在后台向 Supabase 注册此应用的预览重定向 URL。注册完成前，身份验证重定向可能无法正常工作。",
+    "retry": "重启并重试"
   }
 }

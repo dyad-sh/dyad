@@ -16,6 +16,7 @@ import { isDyadProEnabled } from "@/lib/schemas";
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowLeft, ChevronRight, Unplug } from "lucide-react";
 import { Badge } from "./ui/badge";
+import { ProviderIcon } from "./ProviderIcon";
 import {
   CHATGPT_PLAN_LABELS,
   normalizeChatGPTPlanType,
@@ -94,14 +95,18 @@ export function SubscriptionModelMenu({ children }: { children?: ReactNode }) {
   const planType = normalizeChatGPTPlanType(status.data?.planType);
   const label = (
     <>
-      Subscription{" "}
-      <Badge variant="secondary" className="ml-2 px-1.5 py-0 text-[10px]">
-        New
+      <ProviderIcon providerId="openai" />
+      <span className="whitespace-nowrap">ChatGPT subscription</span>
+      <Badge
+        variant="secondary"
+        className="bg-violet-500/15 px-1.5 py-0 text-[10px] text-violet-700 hover:bg-violet-500/15 dark:text-violet-300"
+      >
+        Recommended
       </Badge>
     </>
   );
   const accessibleLabel =
-    "Subscription, New" +
+    "ChatGPT subscription, Recommended" +
     (connected ? ", ChatGPT connected" : "") +
     ". Open submenu.";
   const details = (
@@ -260,6 +265,7 @@ export function SubscriptionModelMenu({ children }: { children?: ReactNode }) {
         ) : (
           <DropdownMenuItem
             ref={trigger}
+            className="gap-2"
             closeOnClick={false}
             aria-label={accessibleLabel}
             onClick={() => setOpen(true)}
@@ -271,12 +277,13 @@ export function SubscriptionModelMenu({ children }: { children?: ReactNode }) {
             }}
           >
             {label}
-            <ChevronRight className="ml-auto size-4" />
+            <ChevronRight className="ml-auto size-4 shrink-0" />
           </DropdownMenuItem>
         )
       ) : (
         <DropdownMenuSub open={open} onOpenChange={setOpen}>
           <DropdownMenuSubTrigger
+            className="gap-2"
             openOnHover
             delay={100}
             closeDelay={150}

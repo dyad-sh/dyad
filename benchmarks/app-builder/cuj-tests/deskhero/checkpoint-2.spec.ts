@@ -92,12 +92,23 @@ test.describe("deskhero checkpoint 2", () => {
       .filter({ hasText: t2 })
       .first();
     // The assign-to-me control may be on the row or the ticket detail.
+    // Observe the write before navigating away, just as assignTo does. A click
+    // alone does not wait for fetch; goto can otherwise abort the assignment.
+    const assigned = agent.page
+      .waitForResponse(
+        (r) =>
+          r.request().method() === "PATCH" &&
+          new URL(r.url()).pathname === `/api/tickets/${t2Id}`,
+        { timeout: 10_000 },
+      )
+      .catch(() => null);
     if (await unassignedRow.getByTestId("assign-to-me").count()) {
       await unassignedRow.getByTestId("assign-to-me").click();
     } else {
       await agent.page.goto(`/tickets/${t2Id}`);
       await agent.page.getByTestId("assign-to-me").click();
     }
+    await assigned;
     await agent.page.goto("/agent");
     await expect(
       agent.page.getByTestId("queue-mine").filter({ hasText: t2 }),

@@ -173,6 +173,7 @@
     "systemInfoFailed": "시스템 정보를 포함하지 못했습니다. 해당 정보 없이 신고서를 제출합니다.",
     "screenshotRestoreFailed": "스크린샷을 복원하지 못했습니다. 스크린샷 없이 신고서를 제출합니다.",
     "screenshotDropped": "스크린샷을 더 이상 복원할 수 없어 이 신고서에서 제거했습니다.",
+    "screenshotUploadFailed": "스크린샷을 첨부하지 못했습니다. 대신 이슈에 붙여넣을 수 있도록 Dyad가 클립보드에 복사해 둡니다.",
     "filingFailed": "신고서를 제출하는 중 문제가 발생했습니다. 다시 시도해 주세요.",
     "updaterLogs": "자동 업데이트 로그",
     "appMetadata": "앱 메타데이터",
@@ -184,17 +185,17 @@
     "screenshot": "스크린샷",
     "addScreenshot": "스크린샷 추가",
     "takingScreenshot": "스크린샷 촬영 중...",
-    "screenshotHint": "먼저 버그가 있는 화면으로 이동할 수 있도록 이 대화 상자가 잠시 비켜납니다. 마지막에 GitHub에 붙여넣게 됩니다.",
+    "screenshotHint": "먼저 버그가 있는 화면으로 이동할 수 있도록 이 대화 상자가 잠시 비켜납니다. 스크린샷은 신고서에 자동으로 첨부됩니다.",
     "captureBarLabel": "버그 보고서용 스크린샷",
     "captureBarHeading": "버그가 있는 화면으로 이동하세요.",
     "captureBarHint": "화면에 표시되면 촬영하세요. 보고서는 저장되어 있으며 스크린샷과 함께 다시 열립니다.",
     "captureBarCapture": "스크린샷 촬영",
     "captureBarCancel": "보고서로 돌아가기",
     "filedHeading": "스크린샷을 붙여넣으셨나요?",
-    "filedPasteBody": "Dyad가 대신 첨부할 수 없어서 스크린샷이 클립보드에서 기다리고 있습니다. GitHub 이슈에서 {{shortcut}}를 눌러 추가하세요. 스크린샷 없이 이미 제출했다면 이슈를 편집해 붙여넣으세요. 이미 들어가 있다면 더 할 일은 없습니다.",
+    "filedPasteBody": "스크린샷을 자동으로 첨부하지 못해서 클립보드에서 기다리고 있습니다. GitHub 이슈에서 {{shortcut}}를 눌러 추가하세요. 스크린샷 없이 이미 제출했다면 이슈를 편집해 붙여넣으세요. 이미 들어가 있다면 더 할 일은 없습니다.",
     "filedDone": "완료",
     "screenshotAlt": "Dyad 창의 스크린샷",
-    "screenshotPasteHint": "클립보드에 복사되었습니다. GitHub 이슈에서 {{shortcut}}를 눌러 첨부하세요.",
+    "screenshotAttachHint": "이 이미지는 누구나 볼 수 있는 GitHub 이슈에 첨부됩니다. 공개하고 싶지 않은 내용이 없는지 확인하세요.",
     "screenshotFailed": "스크린샷을 촬영하지 못했습니다.",
     "screenshotStillFile": "스크린샷 없이도 신고서를 보낼 수 있습니다.",
     "retake": "다시 촬영",
@@ -263,6 +264,25 @@
     "security": "보안",
     "publish": "게시",
     "tests": "테스트",
+    "testQueued": "대기 중",
+    "testRunsQueued_one": "테스트 실행 {{count}}개 대기 중",
+    "testRunsQueued_other": "테스트 실행 {{count}}개 대기 중",
+    "cancelQueued": "대기 취소",
+    "cancelQueuedTests": "대기 중인 테스트 취소",
+    "allTests": "모든 테스트",
+    "queueAll": "모두 대기열에 추가",
+    "queueAllTests": "모든 테스트를 대기열에 추가",
+    "testGate": {
+      "settingsLoading": "설정을 불러오는 중…",
+      "settingsUnavailable": "Dyad가 설정을 불러오지 못해 테스트가 어떻게 실행될지 알 수 없습니다.",
+      "retry": "다시 시도",
+      "startApp": "테스트를 실행하려면 앱을 시작하세요.",
+      "start": "시작",
+      "neonRefusalRuntime": "이 앱에서는 테스트를 실행할 수 없습니다: 격리된 테스트 서버는 아직 {{runtime}} 런타임에서 사용할 수 없으며, Dyad는 실제 데이터베이스를 대상으로 Neon 테스트를 실행하지 않습니다. 실행하려면 호스트 런타임으로 전환하세요.",
+      "neonRefusalDisabled": "이 앱에서는 테스트를 실행할 수 없습니다: 격리된 테스트 서버가 설정에서 꺼져 있으며, Dyad는 실제 데이터베이스를 대상으로 Neon 테스트를 실행하지 않습니다. 실행하려면 다시 켜세요.",
+      "turnOnSandbox": "켜기",
+      "openSettings": "설정 열기"
+    },
     "plan": "계획",
     "moreOptions": "추가 옵션",
     "rebuild": "다시 빌드",
@@ -448,7 +468,9 @@
       "proFeatureTitle": "어노테이터는 Pro 기능입니다",
       "proFeatureDescription": "Dyad Pro로 스크린샷에 주석을 달고 작업 흐름을 개선하는 기능을 잠금 해제하세요.",
       "getDyadPro": "Dyad Pro 받기"
-    }
+    },
+    "openDevServer": "개발 서버 주소 열기",
+    "openDevServerDescription": "미리보기 주소를 열 수 없는 브라우저용입니다. 다른 localhost 앱과 브라우저 저장소를 공유합니다."
   },
   "integrations": {
     "github": {
@@ -720,7 +742,8 @@
       "redeploySucceededWithPruning_other": "Edge Function {{count}}개를 다시 배포하고 원격 전용 함수를 제거했습니다: {{functions}}",
       "redeployPrunedOnly": "원격에만 있던 Edge Function을 제거했습니다: {{functions}}",
       "noFunctionsToRedeploy": "다시 배포할 로컬 Edge Function이 없습니다",
-      "redeployFailed": "Edge Function 재배포가 문제와 함께 완료되었습니다: {{error}}"
+      "redeployFailed": "Edge Function 재배포가 문제와 함께 완료되었습니다: {{error}}",
+      "previewRedirectNotice": "Dyad는 {{project}}의 Auth 리디렉션 허용 목록에 로컬 미리보기 URL을 자동으로 추가합니다. 팀원이 같은 URL을 사용할 수 있으므로 앱을 연결 해제하거나 삭제해도 항목이 유지됩니다. 사용하지 않는 항목은 Supabase → Authentication → URL Configuration에서 삭제하세요."
     },
     "neon": {
       "title": "Neon 연동",
@@ -782,7 +805,10 @@
       "removeVercelEnvVars": "Vercel에서 Neon 환경 변수 제거",
       "removeVercelEnvVarsHelp": "연결된 Vercel 프로젝트가 연결 해제된 데이터베이스를 가리키지 않도록 DATABASE_URL 및 Neon Auth 변수를 삭제합니다.",
       "failedRemoveVercelEnvVars": "연결은 해제되었지만 Vercel에서 Neon 환경 변수 제거에 실패했습니다.",
-      "connectFailed": "Neon 연결에 실패했습니다"
+      "connectFailed": "Neon 연결에 실패했습니다",
+      "removeCloudflareEnvVars": "Cloudflare에서 Neon 시크릿 제거",
+      "removeCloudflareEnvVarsHelp": "연결된 Worker가 연결 해제된 데이터베이스를 가리키지 않도록 DATABASE_URL 및 NEON_AUTH_BASE_URL을 삭제합니다.",
+      "failedRemoveCloudflareEnvVars": "연결은 해제되었지만 Cloudflare에서 Neon 시크릿 제거에 실패했습니다."
     },
     "db": {
       "projectInfo": "{{provider}} 프로젝트 정보",
@@ -851,7 +877,11 @@
       "syncSuccess": "데이터베이스 설정을 Vercel에 동기화했지만, 라이브 앱에 적용하려면 재배포가 필요합니다.",
       "syncError": "Vercel 동기화에 실패했습니다.",
       "selectBranchError": "데이터베이스 브랜치 선택 저장에 실패했습니다.",
-      "clearBranchError": "데이터베이스 브랜치 선택 지우기에 실패했습니다."
+      "clearBranchError": "데이터베이스 브랜치 선택 지우기에 실패했습니다.",
+      "syncToCloudflare": "Cloudflare에 동기화",
+      "syncToCloudflareHelp": "Cloudflare Worker에 데이터베이스 시크릿을 설정하고 해당 주소를 Neon의 인증 리디렉션 허용 목록에 추가합니다.",
+      "syncToCloudflareSuccess": "데이터베이스 설정을 Cloudflare에 동기화했습니다. 라이브 앱에 바로 적용됩니다.",
+      "syncToCloudflareError": "Cloudflare 동기화에 실패했습니다."
     },
     "migration": {
       "title": "데이터베이스 마이그레이션",
@@ -908,5 +938,10 @@
       "neonUnavailable": "이미 Supabase 프로젝트가 연결되어 있어 Neon을 사용할 수 없습니다. 한 번에 하나의 데이터베이스 연동만 활성화할 수 있습니다.",
       "chooseOne": "데이터베이스 연동을 하나만 선택하세요. Supabase 또는 Neon 중 하나를 연결하면 이 앱에서 다른 하나는 사용할 수 없게 됩니다."
     }
+  },
+  "previewAuth": {
+    "neonPending": "백그라운드에서 이 앱의 미리보기 주소를 Neon에 등록하고 있습니다. 등록이 완료될 때까지 OAuth 로그인과 인증 리디렉션이 작동하지 않을 수 있습니다.",
+    "supabasePending": "백그라운드에서 이 앱의 미리보기 리디렉션 URL을 Supabase에 등록하고 있습니다. 등록이 완료될 때까지 인증 리디렉션이 작동하지 않을 수 있습니다.",
+    "retry": "다시 시작하고 재시도"
   }
 }

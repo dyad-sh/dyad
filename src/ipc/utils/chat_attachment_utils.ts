@@ -1,10 +1,14 @@
+import { readFile } from "node:fs/promises";
 import path from "node:path";
+import type { FilePart, ModelMessage } from "ai";
 
 import {
   isLocalAgentBackedMode,
   type ChatMode,
   type UserSettings,
 } from "@/lib/schemas";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { MAX_AI_MESSAGES_SIZE } from "@/ipc/utils/ai_messages_utils";
 import { isSandboxSupportedPlatform } from "@/ipc/utils/sandbox/runner";
 import { isSandboxScriptExecutionEnabled } from "@/pro/main/ipc/handlers/local_agent/tools/execute_sandbox_script";
 import {
@@ -69,6 +73,118 @@ export function isInlineImageAttachment(
   return isInlineImageAttachmentPath(attachment.filePath);
 }
 
+export function isPdfAttachmentPath(filePath: string): boolean {
+  return path.extname(filePath).toLowerCase() === ".pdf";
+}
+
+/**
+ * Chat-context PDFs are sent to the model as file parts. Uploads stay on disk
+ * so the model can copy them into the codebase without paying to read them.
+ */
+export function isInlinePdfAttachment(
+  attachment: Pick<StoredChatAttachment, "filePath" | "attachmentType">,
+): boolean {
+  return (
+    attachment.attachmentType === "chat-context" &&
+    isPdfAttachmentPath(attachment.filePath)
+  );
+}
+
+/**
+ * Read this turn's chat-context PDFs as file parts. Base64 strings (not
+ * Buffers) keep the parts compact when persisted in aiMessagesJson.
+ */
+export async function buildInlinePdfFileParts(
+  attachments: readonly Pick<
+    StoredChatAttachment,
+    "filePath" | "attachmentType" | "originalName"
+  >[],
+): Promise<FilePart[]> {
+  const parts: FilePart[] = [];
+  for (const attachment of attachments) {
+    if (!isInlinePdfAttachment(attachment)) continue;
+    const data = await readFile(attachment.filePath);
+    parts.push({
+      type: "file",
+      data: data.toString("base64"),
+      mediaType: "application/pdf",
+      filename: attachment.originalName,
+    });
+  }
+  return parts;
+}
+
+export const PDF_INPUT_UNSUPPORTED_MESSAGE =
+  "This model can't read PDF attachments. Switch to a model that supports PDFs or start a new chat.";
+
+/** Earlier turns replay their PDFs, so check the whole outgoing history. */
+export function messagesContainPdf(messages: readonly ModelMessage[]): boolean {
+  return messages.some(
+    (message) =>
+      message.role === "user" &&
+      Array.isArray(message.content) &&
+      message.content.some(
+        (part) => part.type === "file" && part.mediaType === "application/pdf",
+      ),
+  );
+}
+
+export const INLINE_ATTACHMENTS_TOO_LARGE_MESSAGE =
+  "The images and PDFs in this message are too large to send together. Remove some attachments or send them in separate messages.";
+
+// Room for the JSON envelope and message metadata around the inline parts.
+const AI_MESSAGE_JSON_HEADROOM_CHARS = 64 * 1024;
+
+/**
+ * Inline images and PDFs are persisted base64-encoded in the user message's
+ * aiMessagesJson. Past its size cap the structured message is not saved, and
+ * inference would silently receive only the plain-text prompt, so reject the
+ * turn before it is accepted instead.
+ */
+export function assertInlineAttachmentsFit(
+  attachments: readonly Pick<
+    StoredChatAttachment,
+    "filePath" | "attachmentType" | "sizeBytes"
+  >[],
+  promptChars: number,
+): void {
+  const encodedChars = attachments
+    .filter(isInlineAttachment)
+    .reduce(
+      (total, attachment) => total + 4 * Math.ceil(attachment.sizeBytes / 3),
+      0,
+    );
+  if (
+    encodedChars + promptChars + AI_MESSAGE_JSON_HEADROOM_CHARS >
+    MAX_AI_MESSAGES_SIZE
+  ) {
+    throw new DyadError(
+      INLINE_ATTACHMENTS_TOO_LARGE_MESSAGE,
+      DyadErrorKind.Validation,
+    );
+  }
+}
+
+/** Whether a message carries inline image or file parts. */
+export function hasInlineMediaParts(message: ModelMessage): boolean {
+  return (
+    message.role === "user" &&
+    Array.isArray(message.content) &&
+    message.content.some(
+      (part) => part.type === "image" || part.type === "file",
+    )
+  );
+}
+
+function isInlineAttachment(
+  attachment: Pick<StoredChatAttachment, "filePath" | "attachmentType">,
+): boolean {
+  return (
+    isInlineImageAttachmentPath(attachment.filePath) ||
+    isInlinePdfAttachment(attachment)
+  );
+}
+
 export async function isTextFile(filePath: string): Promise<boolean> {
   const ext = path.extname(filePath).toLowerCase();
   return TEXT_FILE_EXTENSIONS.includes(ext);
@@ -90,7 +206,7 @@ export function buildLocalAgentAttachmentInfo(
 ): string {
   const diskAttachments = attachments.filter(
     (attachment) =>
-      !isInlineImageAttachment(attachment) ||
+      !isInlineAttachment(attachment) ||
       (deliveryConfig.includeCopyFileHint &&
         attachment.attachmentType === "upload-to-codebase"),
   );
@@ -99,7 +215,7 @@ export function buildLocalAgentAttachmentInfo(
   }
 
   const hasReadableAttachment = diskAttachments.some(
-    (attachment) => !isInlineImageAttachment(attachment),
+    (attachment) => !isInlineAttachment(attachment),
   );
   const lines = hasReadableAttachment
     ? deliveryConfig.includeSandboxScriptHint
@@ -128,7 +244,7 @@ export function buildLocalAgentAttachmentInfo(
 export function hasScriptReadableAttachment(
   attachments: StoredChatAttachment[],
 ): boolean {
-  return attachments.some((attachment) => !isInlineImageAttachment(attachment));
+  return attachments.some((attachment) => !isInlineAttachment(attachment));
 }
 
 export function resolveAttachmentDeliveryConfig({

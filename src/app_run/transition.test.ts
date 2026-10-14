@@ -29,7 +29,7 @@ const FRESH_REF = makeRef("app-run:4");
 
 function makeUrl(n: number): RunUrl {
   return {
-    appUrl: `http://localhost:4210${n}`,
+    appUrl: `http://app-7.localhost:4210${n}`,
     originalUrl: `http://localhost:3210${n}`,
     mode: "host",
   };
@@ -417,7 +417,7 @@ describe("transition scenarios", () => {
       url: { ...url },
     });
     expect(readyResult.state).toBe(ready);
-    expect(commandsOf(readyResult)).toHaveLength(1);
+    expect(commandsOf(readyResult)).toEqual([]);
 
     const starting: RunState = {
       type: "starting",
@@ -721,4 +721,100 @@ describe("ignore", () => {
     });
     expect(ignore(state, "invalid-in-current-state").state).toBe(state);
   });
+});
+
+it("updates and clears the warning even when the proxy URL is unchanged", () => {
+  const state: RunState = {
+    type: "ready",
+    appId: APP_ID,
+    invocationRef: CURRENT_REF,
+    url: makeUrl(1),
+  };
+  const warning = transition(state, {
+    type: "PROXY_READY",
+    appId: APP_ID,
+    invocationRef: CURRENT_REF,
+    url: {
+      ...makeUrl(1),
+      previewAuth: {
+        provider: "supabase",
+        state: "error",
+        message: "Restart and retry",
+      },
+    },
+  });
+  expect(warning.state).not.toBe(state);
+  expect(warning.state).toMatchObject({
+    url: {
+      previewAuth: {
+        provider: "supabase",
+        state: "error",
+        message: "Restart and retry",
+      },
+    },
+  });
+  const recovered = transition(warning.state, {
+    type: "PROXY_READY",
+    appId: APP_ID,
+    invocationRef: CURRENT_REF,
+    url: makeUrl(1),
+  });
+  expect(recovered.state).toEqual(state);
+});
+
+it("updates registration progress without changing the preview URL", () => {
+  const state: RunState = {
+    type: "ready",
+    appId: APP_ID,
+    invocationRef: CURRENT_REF,
+    url: makeUrl(1),
+  };
+  const registering = transition(state, {
+    type: "PROXY_READY",
+    appId: APP_ID,
+    invocationRef: CURRENT_REF,
+    url: {
+      ...makeUrl(1),
+      previewAuth: { provider: "supabase", state: "pending" },
+    },
+  });
+  expect(registering.state).not.toBe(state);
+  expect(registering.state).toMatchObject({
+    url: { previewAuth: { provider: "supabase", state: "pending" } },
+  });
+  const duplicate = transition(registering.state, {
+    type: "PROXY_READY",
+    appId: APP_ID,
+    invocationRef: CURRENT_REF,
+    url: {
+      ...makeUrl(1),
+      previewAuth: { provider: "supabase", state: "pending" },
+    },
+  });
+  expect(duplicate.state).toBe(registering.state);
+  const switched = transition(registering.state, {
+    type: "PROXY_READY",
+    appId: APP_ID,
+    invocationRef: CURRENT_REF,
+    url: { ...makeUrl(1), previewAuth: { provider: "neon", state: "pending" } },
+  });
+  expect(switched.state).not.toBe(registering.state);
+  expect(switched.state).toMatchObject({
+    url: { previewAuth: { provider: "neon" } },
+  });
+  const registered = transition(registering.state, {
+    type: "PROXY_READY",
+    appId: APP_ID,
+    invocationRef: CURRENT_REF,
+    url: makeUrl(1),
+  });
+  expect(registered.state).toEqual(state);
+  if (registered.kind !== "applied")
+    throw new Error("Expected registration to finish");
+  expect(registered.commands).toEqual([]);
+  for (const result of [registering, switched]) {
+    if (result.kind !== "applied")
+      throw new Error("Expected auth status update");
+    expect(result.commands).toEqual([]);
+  }
 });

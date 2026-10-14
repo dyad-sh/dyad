@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import * as esbuild from "esbuild";
 import {
   TEST_CASE_ENDPOINT_ENV,
@@ -19,13 +20,16 @@ vi.mock("./spawn_streaming", () => ({
 import {
   buildPlaywrightConfig,
   buildPreviewShimSource,
+  canResolvePlaywrightRunner,
   configSetsTimeout,
   detectSystemBrowserChannel,
   DYAD_CONFIG_FILENAME,
   E2E_TSCONFIG_RELATIVE_PATH,
   ensurePlaywrightBootstrap,
   ensurePreviewShim,
+  ensurePreviewDnsPreload,
   isPlaywrightBrowserInstalled,
+  isPlaywrightInstalled,
   refreshGeneratedE2eTsconfig,
   PREVIEW_CDP_ENDPOINT_ENV,
   PREVIEW_CDP_TOKEN_ENV,
@@ -207,8 +211,7 @@ describe("preview shim fixtures", () => {
     // eslint-disable-next-line @typescript-eslint/no-implied-eval
     new Function("require", "module", "exports", "process", "fetch", code)(
       (specifier: string) => {
-        if (specifier === "node:crypto")
-          return { randomUUID: () => "test-case-id" };
+        if (specifier === "node:crypto") return { createHash };
         if (specifier !== "@playwright/test") {
           throw new Error(`Unexpected import in the shim: ${specifier}`);
         }
@@ -272,7 +275,11 @@ describe("preview shim fixtures", () => {
         expect(fixtures.env.SERVICE_ROLE_KEY).toBeUndefined();
         if (scenario === "test failure") throw new Error("assertion failed");
       });
-      const attempt = fixtures._dyadTestCase[0]({}, use, {});
+      const attempt = fixtures._dyadTestCase[0]({}, use, {
+        testId: "test-id",
+        retry: 0,
+        repeatEachIndex: 0,
+      });
       if (scenario === "success") await attempt;
       else
         await expect(attempt).rejects.toThrow(
@@ -281,9 +288,11 @@ describe("preview shim fixtures", () => {
             : "isolated test data",
         );
       expect(use).toHaveBeenCalledTimes(scenario === "setup failure" ? 0 : 1);
+      const caseId = requests[0].split("/").at(-1)!;
+      expect(caseId).toMatch(/^[a-f0-9]{64}$/);
       expect(requests).toEqual([
-        "http://127.0.0.1:12345/before/test-case-id",
-        "http://127.0.0.1:12345/after/test-case-id",
+        `http://127.0.0.1:12345/before/${caseId}`,
+        `http://127.0.0.1:12345/after/${caseId}`,
       ]);
       expect(fixtures.env.DYAD_TEST_USER_EMAIL).toBeUndefined();
       expect(fixtures.env.DYAD_TEST_USER_PASSWORD).toBeUndefined();
@@ -1053,6 +1062,50 @@ describe("buildPlaywrightConfig", () => {
 });
 
 describe("ensurePlaywrightBootstrap", () => {
+  it("adds Playwright with npm for an npm-only member under a pnpm-signaled root", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "dyad-pw-mixed-"));
+    tempDirs.push(root);
+    const appPath = path.join(root, "apps", "web");
+    fs.mkdirSync(appPath, { recursive: true });
+    fs.mkdirSync(path.join(root, ".git"));
+    fs.writeFileSync(
+      path.join(root, "package.json"),
+      JSON.stringify({ private: true, workspaces: ["apps/*"] }),
+    );
+    fs.writeFileSync(
+      path.join(root, "pnpm-workspace.yaml"),
+      'packages:\n  - "packages/*"\n',
+    );
+    fs.writeFileSync(
+      path.join(root, "pnpm-lock.yaml"),
+      "lockfileVersion: '9.0'\n",
+    );
+    fs.writeFileSync(path.join(appPath, "package.json"), '{"private":true}');
+    fs.writeFileSync(
+      path.join(appPath, DYAD_CONFIG_FILENAME),
+      "export default { use: { channel: 'chrome' } };",
+    );
+    h.spawnStreaming.mockResolvedValue({
+      code: 0,
+      stdout: "",
+      stderr: "",
+      aborted: false,
+      timedOut: false,
+    });
+    await ensurePlaywrightBootstrap({ appPath });
+    expect(h.spawnStreaming).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: "npm",
+        cwd: root,
+        args: expect.arrayContaining(["-w", "apps/web", "@playwright/test"]),
+      }),
+    );
+    expect(
+      h.spawnStreaming.mock.calls.some(
+        ([options]) => options.command === "pnpm",
+      ),
+    ).toBe(false);
+  });
   beforeEach(() => {
     const exists = fs.existsSync.bind(fs);
     // Keep app fixtures real while hiding machine-installed Chrome/Edge.
@@ -1079,6 +1132,12 @@ describe("ensurePlaywrightBootstrap", () => {
 
     await ensurePlaywrightBootstrap({ appPath });
 
+    expect(
+      fs.readFileSync(
+        path.join(appPath, "e2e-tests/fixtures/dyad/preview-dns.cjs"),
+        "utf8",
+      ),
+    ).toContain("dns.promises.lookup");
     // Ours lands under its own name, wired to the env var.
     const dyadConfigPath = path.join(appPath, DYAD_CONFIG_FILENAME);
     expect(fs.existsSync(dyadConfigPath)).toBe(true);
@@ -1464,6 +1523,20 @@ describe("detectSystemBrowserChannel", () => {
 });
 
 describe("isPlaywrightBrowserInstalled", () => {
+  it("reuses the hoisted package's browser marker for workspace members", () => {
+    const { appPath } = makeAppWithBrowserMarker({
+      packageVersion: "1.2.3",
+      executableExists: true,
+    });
+    const member = path.join(appPath, "packages", "app");
+    fs.mkdirSync(member, { recursive: true });
+    expect(isPlaywrightBrowserInstalled(member)).toBe(true);
+    fs.writeFileSync(
+      path.join(appPath, "node_modules", "@playwright", "test", "package.json"),
+      JSON.stringify({ version: "1.2.4" }),
+    );
+    expect(isPlaywrightBrowserInstalled(member)).toBe(false);
+  });
   it("accepts a marker only when the Playwright version and executable match", () => {
     const { appPath, executablePath } = makeAppWithBrowserMarker({
       packageVersion: "1.2.3",
@@ -1679,4 +1752,51 @@ describe("configSetsTimeout", () => {
       configSetsTimeout(makeAppWithConfig(buildPlaywrightConfig(null))),
     ).toBe(false);
   });
+});
+
+describe("canResolvePlaywrightRunner", () => {
+  it("finds a copy hoisted to a monorepo's workspace root", () => {
+    // A monorepo app installs at the workspace root, which hoists
+    // `@playwright/test` above the app directory. An app-directory-only check
+    // would refuse a sandbox `npx playwright` resolves fine.
+    const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), "dyad-pw-mono-"));
+    tempDirs.push(repoRoot);
+    const appPath = path.join(repoRoot, "packages", "app");
+    fs.mkdirSync(appPath, { recursive: true });
+    fs.mkdirSync(path.join(repoRoot, "node_modules", "@playwright", "test"), {
+      recursive: true,
+    });
+    fs.writeFileSync(
+      path.join(
+        repoRoot,
+        "node_modules",
+        "@playwright",
+        "test",
+        "package.json",
+      ),
+      JSON.stringify({ version: "1.50.0" }),
+    );
+
+    expect(isPlaywrightInstalled(appPath)).toBe(false);
+    expect(canResolvePlaywrightRunner(appPath)).toBe(true);
+  });
+
+  it("answers false when nothing above the app has it either", () => {
+    const appPath = fs.mkdtempSync(path.join(os.tmpdir(), "dyad-pw-none-"));
+    tempDirs.push(appPath);
+
+    expect(canResolvePlaywrightRunner(appPath)).toBe(false);
+  });
+});
+
+it("does not overwrite an app-owned preview DNS helper", () => {
+  const { appPath } = makeAppWithBrowserMarker({
+    packageVersion: "1.0.0",
+    executableExists: true,
+  });
+  const file = path.join(appPath, "e2e-tests/fixtures/dyad/preview-dns.cjs");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, "// My helper\n");
+  expect(() => ensurePreviewDnsPreload(appPath)).toThrow("app-owned");
+  expect(fs.readFileSync(file, "utf8")).toBe("// My helper\n");
 });

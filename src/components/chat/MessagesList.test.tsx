@@ -27,7 +27,11 @@ vi.mock("@/hooks/useVersionPreview", () => ({
 vi.mock("@/hooks/useSettings", () => ({
   useSettings: () => ({ settings: { isTestMode: true } }),
 }));
-vi.mock("@/hooks/useChatMode", () => ({ useChatMode: () => ({ chat: null }) }));
+vi.mock("@/hooks/useChatMode", () => ({
+  useChatMode: (chatId: number) => ({
+    chat: { executionBackend: chatId === 2 ? "claude-code" : "dyad" },
+  }),
+}));
 vi.mock("@/hooks/useLanguageModelProviders", () => ({
   useLanguageModelProviders: () => ({
     isAnyProviderSetup: () => true,
@@ -38,9 +42,13 @@ vi.mock("@/user_input/hooks", () => ({
   useUserInputRequests: () => new Map(),
 }));
 vi.mock("./ChatMessage", () => ({
-  default: ({ message }: { message: { content: string } }) => (
-    <div>{message.content}</div>
-  ),
+  default: ({
+    message,
+    executionBackend,
+  }: {
+    message: { content: string };
+    executionBackend?: string;
+  }) => <div data-backend={executionBackend}>{message.content}</div>,
 }));
 vi.mock("./ModifiedFilesCard", () => ({ ModifiedFilesCard: () => null }));
 vi.mock("./ExtraCommitsRevertDialog", () => ({
@@ -72,7 +80,9 @@ it("uses the rendered chat during navigation before global selection catches up"
     </Provider>,
   );
   expect(store.get(selectedChatIdAtom)).toBe(1);
-  expect(screen.getByText("History in B")).toBeTruthy();
+  expect(screen.getByText("History in B").getAttribute("data-backend")).toBe(
+    "claude-code",
+  );
   expect(screen.queryByText("Pending in A")).toBeNull();
   view.rerender(
     <Provider store={store}>

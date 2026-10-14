@@ -1,3 +1,5 @@
+import { recordShellReviewOutcome } from "./shell_review_history";
+import { shellExecutionGuidance } from "@/shared/shell_capability";
 import { SubscriptionBillingError } from "@/shared/subscription_billing_error";
 import {
   getInferenceSource,
@@ -13,6 +15,7 @@ import type { AutoModelCandidates } from "@/ipc/services/auto_model_candidates";
 import { IpcMainInvokeEvent } from "electron";
 import {
   streamText,
+  asSchema,
   ToolSet,
   stepCountIs,
   hasToolCall,
@@ -22,14 +25,10 @@ import {
 import log from "electron-log";
 
 import { db } from "@/db";
-import {
-  chats,
-  messages,
-  mcpServers,
-  type AiMessagesJsonV6,
-} from "@/db/schema";
+import { chats, messages, type AiMessagesJsonV6 } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { mcpManager } from "@/ipc/utils/mcp_manager";
+import { ClaudeCodeModel } from "@/ipc/services/claude_code/model";
+import { startTurnStallWatchdog } from "./turn_stall_watchdog";
 import { requireMcpToolConsent } from "@/ipc/utils/mcp_consent";
 import { buildMcpAutoApprove } from "./mcp_auto_consent";
 import { scheduleChatSearchIndexing } from "./chat_search_indexer";
@@ -47,7 +46,14 @@ import { isFreeProModel } from "@/lib/freeProModel";
 import { readSettings } from "@/main/settings";
 import { getDyadAppPath } from "@/paths/paths";
 import { detectFrameworkType } from "@/ipc/utils/framework_utils";
-import { getModelClient } from "@/ipc/utils/get_model_client";
+import {
+  getModelClient,
+  modelClientSupportsPdfInput,
+} from "@/ipc/utils/get_model_client";
+import {
+  messagesContainPdf,
+  PDF_INPUT_UNSUPPORTED_MESSAGE,
+} from "@/ipc/utils/chat_attachment_utils";
 import { safeSend } from "@/ipc/utils/safe_sender";
 import { sendChatChunk } from "@/ipc/utils/high_volume_delivery";
 import { broadcastToRegisteredWindows } from "@/ipc/utils/window_broadcast";
@@ -73,6 +79,7 @@ import {
   getAgentToolConsent,
   shouldIncludeTool,
   requireAgentToolConsent,
+  refreshShellReviewToolInventory,
 } from "./tool_definitions";
 import {
   deployAllFunctionsIfNeeded,
@@ -143,6 +150,7 @@ import {
 import { writeFileTool } from "./tools/write_file";
 import {
   collectMcpToolDefs,
+  loadEnabledMcpServerTools,
   estimateMcpInlineTokens,
   getMcpInlineTokenThreshold,
   type McpToolDef,
@@ -637,6 +645,7 @@ export async function handleLocalAgentStream(
      * Read-only tools can target these via an `app_name` parameter.
      */
     referencedApps?: {
+      appId?: number;
       appName: string;
       appPath: string;
     }[];
@@ -751,29 +760,6 @@ export async function handleLocalAgentStream(
     await updateResponseInDb(placeholderMessageId, fullResponse);
   };
 
-  // Check Pro status or Basic Agent mode
-  // Basic Agent mode allows non-Pro users with quota (quota check is done in chat_stream_handlers)
-  // Read-only mode (ask mode) is allowed for all users without Pro
-  if (
-    !buildMode &&
-    !readOnly &&
-    !planModeOnly &&
-    !isDyadProEnabled(settings) &&
-    !isBasicAgentMode(settings)
-  ) {
-    const errorMessage =
-      referencedApps.length > 0
-        ? "Referencing other apps (@app:Name) in local-agent mode requires Dyad Pro. Please enable Dyad Pro in Settings → Pro."
-        : "Agent v2 requires Dyad Pro. Please enable Dyad Pro in Settings → Pro.";
-    safeSend(event.sender, "chat:response:error", {
-      chatId: req.chatId,
-      invocationRef: req.invocationRef,
-      streamId: req.streamId,
-      error: errorMessage,
-    });
-    return false;
-  }
-
   const loadChat = async () =>
     db.query.chats.findFirst({
       where: eq(chats.id, req.chatId),
@@ -806,13 +792,38 @@ export async function handleLocalAgentStream(
       : await resolveDefaultModelSelection(storedSettings);
   settings = { ...storedSettings, selectedModel };
 
-  const appPath = getDyadAppPath(chat.app.path);
+  // Check Pro status or Basic Agent mode
+  // Basic Agent mode allows non-Pro users with quota (quota check is done in chat_stream_handlers)
+  // Read-only mode (ask mode) is allowed for all users without Pro
+  if (
+    !buildMode &&
+    !readOnly &&
+    !planModeOnly &&
+    !isDyadProEnabled(settings) &&
+    selectedModel.provider !== "claude-code" &&
+    !isBasicAgentMode(settings)
+  ) {
+    const errorMessage =
+      referencedApps.length > 0
+        ? "Referencing other apps (@app:Name) in local-agent mode requires Dyad Pro. Please enable Dyad Pro in Settings → Pro."
+        : "Agent v2 requires Dyad Pro. Please enable Dyad Pro in Settings → Pro.";
+    safeSend(event.sender, "chat:response:error", {
+      chatId: req.chatId,
+      invocationRef: req.invocationRef,
+      streamId: req.streamId,
+      error: errorMessage,
+    });
+    return false;
+  }
+
+  let appPath = getDyadAppPath(chat.app.path);
 
   const maybePerformPendingCompaction = async (options?: {
     showOnTopOfCurrentResponse?: boolean;
     force?: boolean;
   }) => {
     if (
+      selectedModel.provider === "claude-code" ||
       settings.enableContextCompaction === false ||
       (!options?.force && !(await isChatPendingCompaction(req.chatId)))
     ) {
@@ -918,8 +929,11 @@ export async function handleLocalAgentStream(
   const synthesizedExplorerThreadIds = new Set<string>();
   const mutationTurnId = `local-agent-turn:${placeholderMessageId}`;
   let rootMutationOwner: MutationActivityOwner | undefined;
+  let claudeRuntime: ClaudeCodeModel | undefined;
+  const stallWatchdog = startTurnStallWatchdog(req.chatId);
 
   try {
+    stallWatchdog.setPhase("creating model client");
     // Get model client
     const { modelClient, runtimeModel, isEngineEnabled } = await getModelClient(
       settings.selectedModel,
@@ -927,6 +941,16 @@ export async function handleLocalAgentStream(
       selectedModel,
       { chatId: req.chatId, autoModelCandidates, externalModelAdmission },
     );
+    if (modelClient.model instanceof ClaudeCodeModel) {
+      claudeRuntime = modelClient.model;
+      stallWatchdog.setPhase("starting Claude Code");
+      await claudeRuntime.prepare(abortController.signal);
+      const refreshed = await loadChat();
+      if (!refreshed?.app)
+        throw new DyadError("App no longer exists", DyadErrorKind.NotFound);
+      chat = refreshed;
+      appPath = getDyadAppPath(chat.app.path);
+    }
     currentInferenceSource = () =>
       getInferenceSource(
         modelClient.getRuntimeModel?.() ?? runtimeModel,
@@ -967,6 +991,7 @@ export async function handleLocalAgentStream(
     const effectiveFreeModelMode =
       freeModelMode ?? isFreeProModel(settings.selectedModel);
     const ctx: AgentContext = {
+      persistQuestionnaireRecovery: selectedModel.provider === "claude-code",
       inferenceSettings: settings,
       mutationActivityOwner: (rootMutationOwner = createMutationActivityOwner({
         appId: chat.app.id,
@@ -978,6 +1003,13 @@ export async function handleLocalAgentStream(
       appId: chat.app.id,
       appPath,
       referencedApps: referencedAppsMap,
+      referencedAppIds: new Map(
+        referencedApps.flatMap((ref) =>
+          ref.appId === undefined
+            ? []
+            : [[ref.appName.toLowerCase(), ref.appId]],
+        ),
+      ),
       chatId: chat.id,
       planAcceptInNewChat: req.planAcceptInNewChat,
       supabaseProjectId: chat.app.supabaseProjectId,
@@ -1056,6 +1088,7 @@ export async function handleLocalAgentStream(
       },
       requireConsent: async (params: {
         toolName: string;
+        confirmation?: "shell-approval" | "shell-review-retry";
         toolDescription?: string | null;
         inputPreview?: string | null;
         metadata?: SqlConsentMetadata | null;
@@ -1069,6 +1102,7 @@ export async function handleLocalAgentStream(
         return requireAgentToolConsent(event, {
           chatId: chat.id,
           toolName: params.toolName as AgentToolName,
+          confirmation: params.confirmation,
           toolDescription: params.toolDescription,
           inputPreview: params.inputPreview,
           metadata: params.metadata,
@@ -1149,7 +1183,11 @@ export async function handleLocalAgentStream(
     let mcpDefs: McpToolDef[] = [];
     if (mcpInSandboxEnabled) {
       try {
-        mcpDefs = await collectMcpToolDefs();
+        stallWatchdog.setPhase("loading MCP tools");
+        mcpDefs = await collectMcpToolDefs({
+          abortSignal: ctx.abortSignal,
+          onWarningMessage: ctx.onWarningMessage,
+        });
         ctx.mcpToolDefs = mcpDefs;
       } catch (e) {
         logger.warn("Failed to collect MCP tool defs", e);
@@ -1168,6 +1206,9 @@ export async function handleLocalAgentStream(
       estimateMcpInlineTokens(mcpDefs) > getMcpInlineTokenThreshold();
 
     const agentTools = buildAgentToolSet(ctx, buildOptions);
+    if (agentTools.run_shell) {
+      systemPrompt += `\n\n<shell_execution>\n${shellExecutionGuidance(process.platform, ctx.appPath)}\n</shell_execution>`;
+    }
     ctx.planningQuestionnaireAvailable =
       agentTools.planning_questionnaire != undefined;
     // search_mcp_tools returns full tool declarations, so it alone is enough for
@@ -1181,10 +1222,12 @@ export async function handleLocalAgentStream(
     // get_mcp_tool_schema can also be removed by tool permissions on its own, so
     // only advertise it in the description when it actually registered.
     const hasGetSchemaTool = agentTools.get_mcp_tool_schema != undefined;
+    stallWatchdog.setPhase("loading MCP tools");
     const mcpToolsForRegistration: ToolSet =
       !buildMode && !readOnly && !planModeOnly && !mcpInSandboxEnabled
         ? await getMcpTools(event, ctx)
         : {};
+    stallWatchdog.setPhase("preparing tools and prompt");
     if (agentTools.execute_sandbox_script != undefined) {
       // Start with the file-inspection-only preamble so a failure in the MCP
       // build below still leaves usable docs.
@@ -1211,7 +1254,17 @@ export async function handleLocalAgentStream(
       }
     }
     const allTools: ToolSet = { ...agentTools, ...mcpToolsForRegistration };
+    if (modelClient.model instanceof ClaudeCodeModel) {
+      modelClient.model.bindTools(allTools, ctx, () =>
+        pendingUserMessages.splice(0).flat(),
+      );
+    }
     const registeredToolNames = new Set(Object.keys(allTools));
+    if (ctx.shellReviewContext) {
+      ctx.refreshShellReviewTools = () =>
+        refreshShellReviewToolInventory(ctx, allTools, buildOptions);
+      ctx.refreshShellReviewTools();
+    }
 
     // Prepare message history with graceful fallback
     // Use messageOverride if provided (e.g., for summarization)
@@ -1222,6 +1275,15 @@ export async function handleLocalAgentStream(
       buildChatMessageHistory(chat.messages, {
         inferenceSource: currentInferenceSource() ?? undefined,
       });
+    if (
+      messagesContainPdf(messageHistory) &&
+      !modelClientSupportsPdfInput(modelClient)
+    ) {
+      throw new DyadError(
+        PDF_INPUT_UNSUPPORTED_MESSAGE,
+        DyadErrorKind.Validation,
+      );
+    }
     const latestUserMessage = [...messageHistory]
       .reverse()
       .find((message) => message.role === "user");
@@ -1363,6 +1425,7 @@ export async function handleLocalAgentStream(
         const responseBeforeAttempt = fullResponse;
 
         try {
+          stallWatchdog.setPhase("waiting for model response");
           const streamResult = streamText({
             output: fastTextOutput(),
             model: modelClient.model,
@@ -1569,7 +1632,8 @@ export async function handleLocalAgentStream(
                 .update(messages)
                 .set({
                   inferenceSource: currentInferenceSource(),
-                  ...(actualModel.connection === "subscription"
+                  ...(actualModel.connection === "subscription" &&
+                  actualModel.provider !== "claude-code"
                     ? {
                         model: `ChatGPT subscription (${step.response.modelId || actualModel.name})`,
                       }
@@ -1597,6 +1661,7 @@ export async function handleLocalAgentStream(
               }
 
               if (
+                selectedModel.provider === "claude-code" ||
                 settings.enableContextCompaction === false ||
                 compactedMidTurn ||
                 typeof step.usage.totalTokens !== "number"
@@ -1683,6 +1748,11 @@ export async function handleLocalAgentStream(
 
           try {
             for await (const part of fullStream) {
+              // `start`/`start-step` are lifecycle markers the SDK can emit
+              // before the provider has answered, so they don't count.
+              if (part.type !== "start" && part.type !== "start-step") {
+                stallWatchdog.stop();
+              }
               if (abortController.signal.aborted) {
                 logger.log(`Stream aborted for chat ${req.chatId}`);
                 // Clean up pending consent/questionnaire/integration requests to prevent stale UI banners
@@ -2021,7 +2091,10 @@ export async function handleLocalAgentStream(
       }
 
       // Track total steps for step limit detection
-      totalStepsExecuted += steps.length;
+      totalStepsExecuted +=
+        modelClient.model instanceof ClaudeCodeModel
+          ? modelClient.model.stepsExecuted
+          : steps.length;
 
       if (responseMessages.length > 0 || allInjectedMessages.length > 0) {
         // For mid-turn compaction, slice off pre-compaction messages
@@ -2428,6 +2501,10 @@ export async function handleLocalAgentStream(
     });
     return false; // Error - don't consume quota
   } finally {
+    stallWatchdog.stop();
+    await claudeRuntime
+      ?.close()
+      .catch((error) => logger.error("Claude admission cleanup failed", error));
     await persistCompactionFallback();
     endTurnFinalization(mutationTurnId);
     // If an in-progress tool's XML preview was overlaid in the renderer
@@ -2823,28 +2900,14 @@ async function getMcpTools(
   const mcpToolSet: ToolSet = {};
 
   try {
-    const servers = await db
-      .select()
-      .from(mcpServers)
-      .where(eq(mcpServers.enabled, true as any));
+    // One bad server (e.g. unconnected OAuth, or one that never answers)
+    // is skipped rather than stripping or blocking every other server's tools.
+    const loadedServers = await loadEnabledMcpServerTools({
+      abortSignal: ctx.abortSignal,
+      onWarningMessage: ctx.onWarningMessage,
+    });
 
-    for (const s of servers) {
-      // One bad server (e.g. unconnected OAuth) must not strip tools
-      // from every later enabled server in the same agent run.
-      const toolSet = await (async () => {
-        try {
-          const client = await mcpManager.getClient(s.id);
-          return await client.tools();
-        } catch (e) {
-          logger.warn(
-            `Failed to load tools for MCP server ${s.id} (${s.name})`,
-            e,
-          );
-          return null;
-        }
-      })();
-      if (!toolSet) continue;
-
+    for (const { server: s, tools: toolSet } of loadedServers) {
       for (const [name, mcpTool] of Object.entries(toolSet)) {
         const key = `${sanitizeMcpName(s.name || "")}__${sanitizeMcpName(name)}`;
 
@@ -2855,7 +2918,14 @@ async function getMcpTools(
             const { serverName, toolName } = parseMcpToolKey(key);
             const callId = execCtx.toolCallId;
             let callEmitted = false;
+            let executionStarted = false;
             try {
+              const schema = asSchema(mcpTool.inputSchema);
+              if (schema.validate) {
+                const parsed = await schema.validate(args);
+                if (!parsed.success) throw parsed.error;
+                args = parsed.value;
+              }
               const inputPreview =
                 typeof args === "string"
                   ? args
@@ -2864,6 +2934,7 @@ async function getMcpTools(
                     : JSON.stringify(args).slice(0, 500);
 
               const autoApprove = buildMcpAutoApprove({
+                signal: ctx.abortSignal,
                 settings: ctx.inferenceSettings ?? readSettings(),
                 isDyadPro: ctx.isDyadPro,
                 freeModelMode: ctx.freeModelMode,
@@ -2904,10 +2975,14 @@ async function getMcpTools(
               callEmitted = true;
 
               const res = await withTrackedMutation(ctx, async () => {
+                executionStarted = true;
                 return mcpTool.execute(args, execCtx);
               });
               ctx.mcpToolRan = true;
               const safeResult = sanitizeMcpToolResult(res);
+              recordShellReviewOutcome(ctx, key, args, {
+                result: safeResult.value,
+              });
 
               ctx.onXmlComplete(
                 `<dyad-mcp-tool-result server="${escapeXmlAttr(serverName)}" tool="${escapeXmlAttr(toolName)}" call-id="${escapeXmlAttr(callId)}">\n${escapeXmlContent(safeResult.serialized)}\n</dyad-mcp-tool-result>`,
@@ -2915,6 +2990,10 @@ async function getMcpTools(
 
               return safeResult.serialized;
             } catch (error) {
+              recordShellReviewOutcome(ctx, key, args, {
+                error,
+                executed: executionStarted,
+              });
               const errorMessage =
                 error instanceof Error ? error.message : String(error);
               const errorStack =

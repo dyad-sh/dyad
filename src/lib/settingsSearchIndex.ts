@@ -25,6 +25,7 @@ export const SETTING_IDS = {
   keepPreviewsRunning: "setting-keep-previews-running",
   appBlueprint: "setting-app-blueprint",
   testingForNewApps: "setting-testing-for-new-apps",
+  sandboxedE2eTests: "setting-sandboxed-e2e-tests",
   chatEventNotification: "setting-chat-event-notification",
   maxToolCallSteps: "setting-max-tool-call-steps",
   contextCompaction: "setting-context-compaction",
@@ -32,10 +33,12 @@ export const SETTING_IDS = {
   github: "setting-github",
   gitlab: "setting-gitlab",
   vercel: "setting-vercel",
+  cloudflare: "setting-cloudflare",
   supabase: "setting-supabase",
   neon: "setting-neon",
   enableCloudSandbox: "setting-enable-cloud-sandbox",
   autoApproveNonSchemaSql: "setting-auto-approve-non-schema-sql",
+  enableShellTool: "setting-enable-shell-tool",
   autoApproveSafeMcpTools: "setting-auto-approve-safe-mcp-tools",
   enableSandboxScriptExecution: "setting-enable-sandbox-script-execution",
   blockUnsafeNpmPackages: "setting-block-unsafe-npm-packages",
@@ -45,6 +48,8 @@ export const SETTING_IDS = {
   enableCodeExplorer: "setting-enable-code-explorer",
   runTypeScriptForWholeProject: "setting-run-typescript-for-whole-project",
   enableMultiWindow: "setting-enable-multi-window",
+  enableClaudeCodeSubscription: "setting-enable-claude-code-subscription",
+  enableAppPreviewDomains: "setting-enable-app-preview-domains",
   enableExplorerSubagent: "setting-enable-explorer-subagent",
   enableAutoReview: "setting-enable-auto-review",
   enableReviewButton: "setting-enable-review-button",
@@ -53,6 +58,7 @@ export const SETTING_IDS = {
   autoFixReviewIssues: "setting-auto-fix-review-issues",
   enableOwnServerDeployment: "setting-enable-own-server-deployment",
   enableGitlabPublishing: "setting-enable-gitlab-publishing",
+  enableCloudflareDeployment: "setting-enable-cloudflare-deployment",
   enableTestRunInPreview: "setting-enable-test-run-in-preview",
   reset: "setting-reset",
 } as const;
@@ -172,6 +178,25 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
       "new app",
       "opt in",
       "default",
+      "workflow",
+    ],
+    sectionId: SECTION_IDS.workflow,
+    sectionLabel: "Workflow",
+  },
+  {
+    id: SETTING_IDS.sandboxedE2eTests,
+    label: "Run E2E Tests in an Isolated Sandbox",
+    description:
+      "Copy the app into a throwaway workspace with its own server so test runs never touch your preview; Neon apps also get a temporary database",
+    keywords: [
+      "testing",
+      "tests",
+      "e2e",
+      "sandbox",
+      "isolated",
+      "copy",
+      "node_modules",
+      "slow",
       "workflow",
     ],
     sectionId: SECTION_IDS.workflow,
@@ -327,6 +352,14 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     sectionLabel: "Integrations",
   },
   {
+    id: SETTING_IDS.cloudflare,
+    label: "Cloudflare Integration",
+    description: "Manage the Cloudflare API token used for Worker deployments",
+    keywords: ["cloudflare", "workers", "deploy", "integration", "token"],
+    sectionId: SECTION_IDS.integrations,
+    sectionLabel: "Integrations",
+  },
+  {
     id: SETTING_IDS.supabase,
     label: "Supabase Integration",
     description: "Connect your Supabase project",
@@ -436,6 +469,32 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
   },
 
   // Experiments
+  {
+    id: SETTING_IDS.enableClaudeCodeSubscription,
+    label: "Enable Claude Code subscription",
+    description:
+      "Use the official local Claude Code CLI with your Claude subscription",
+    keywords: ["claude", "anthropic", "subscription", "cli", "experiment"],
+    sectionId: SECTION_IDS.experiments,
+    sectionLabel: "Experiments",
+  },
+  {
+    id: SETTING_IDS.enableShellTool,
+    label: "Shell tool (Pro)",
+    description:
+      "Allow reviewed Bash or PowerShell commands in Pro Agent mode on the local host",
+    keywords: [
+      "shell",
+      "bash",
+      "powershell",
+      "command",
+      "terminal",
+      "pro",
+      "experiment",
+    ],
+    sectionId: SECTION_IDS.experiments,
+    sectionLabel: "Experiments",
+  },
   {
     id: SETTING_IDS.autoApproveSafeMcpTools,
     label: "Skip consent for safe MCP tools",
@@ -551,6 +610,15 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     sectionLabel: "Experiments",
   },
   {
+    id: SETTING_IDS.enableAppPreviewDomains,
+    label: "App-specific localhost domains",
+    description:
+      "Use app-<id>.localhost preview addresses to keep each app's cookies separate. Restart running apps to apply changes",
+    keywords: ["preview", "localhost", "domain", "hostname", "cookies", "auth"],
+    sectionId: SECTION_IDS.experiments,
+    sectionLabel: "Experiments",
+  },
+  {
     id: SETTING_IDS.enableExplorerSubagent,
     label: "Use Explorer sub-agent",
     description: "Let Agent automatically delegate read-only code research",
@@ -641,6 +709,24 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
       "repository",
       "self-hosted",
       "self hosted",
+      "experiment",
+    ],
+    sectionId: SECTION_IDS.experiments,
+    sectionLabel: "Experiments",
+  },
+
+  {
+    id: SETTING_IDS.enableCloudflareDeployment,
+    label: "Allow deployment to Cloudflare Workers",
+    description:
+      "Deploy a Cloudflare Worker from your app when you sync changes to GitHub",
+    keywords: [
+      "deploy",
+      "deployment",
+      "cloudflare",
+      "workers",
+      "wrangler",
+      "publish",
       "experiment",
     ],
     sectionId: SECTION_IDS.experiments,

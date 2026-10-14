@@ -71,6 +71,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   enableCodeExplorer: true,
   runTypeScriptForWholeProject: false,
   enableMultiWindow: false,
+  enableClaudeCodeSubscription: false,
   enableExplorerSubagent: true,
   enableAutoReview: false,
   enableReviewButton: false,
@@ -78,7 +79,9 @@ export const DEFAULT_SETTINGS: UserSettings = {
   enableAdvancedSubagents: false,
   autoFixReviewIssues: false,
   autoApproveNonSchemaSql: true,
+  autoApproveSafeMcpTools: true,
   autoExpandPreviewPanel: true,
+  disableSandboxedE2eTests: false,
   enableContextCompaction: true,
   enablePnpmMinimumReleaseAgeWarning: true,
   previewIdleTimeoutPolicy: "default",
@@ -409,6 +412,11 @@ export function writeSettings(settings: Partial<UserSettings>): void {
         newSettings.vercelAccessToken.value,
       );
     }
+    if (newSettings.cloudflareAccessToken) {
+      newSettings.cloudflareAccessToken = encrypt(
+        newSettings.cloudflareAccessToken.value,
+      );
+    }
     if (newSettings.coolify?.accessToken) {
       newSettings.coolify = {
         ...newSettings.coolify,
@@ -685,6 +693,19 @@ function readExistingSettingsFile(
       combinedSettings.vercelAccessToken = resolved;
     } else {
       delete combinedSettings.vercelAccessToken;
+    }
+  }
+  if (combinedSettings.cloudflareAccessToken) {
+    const resolved = resolveStoredSecret(
+      combinedSettings.cloudflareAccessToken,
+      "Cloudflare access token",
+      ["cloudflareAccessToken"],
+      ctx,
+    );
+    if (resolved) {
+      combinedSettings.cloudflareAccessToken = resolved;
+    } else {
+      delete combinedSettings.cloudflareAccessToken;
     }
   }
   if (combinedSettings.coolify?.accessToken) {

@@ -10,6 +10,7 @@ import { safeSend } from "../ipc/utils/safe_sender";
 import { createUserInputRegistry } from "./registry";
 import type { UserInputCommand } from "./commands";
 import { dispatchDueFollowUp } from "./follow_up_dispatch";
+import { settleQuestionnaire } from "./questionnaire_journal";
 
 const subscribers = new Set<WebContents>();
 const logger = log.scope("user_input");
@@ -57,6 +58,10 @@ export const userInputRegistry = createUserInputRegistry({
   clock: systemClock,
   idSource: uuidIdSource,
   broadcast,
+  async persistOutcome(descriptor, value) {
+    if (descriptor.kind === "questionnaire" && descriptor.requiresRecovery)
+      await settleQuestionnaire(descriptor.requestId, value, descriptor.chatId);
+  },
   async persistAlways(descriptor, response) {
     if (
       descriptor.kind === "mcp-consent" &&

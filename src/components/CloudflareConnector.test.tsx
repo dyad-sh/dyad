@@ -36,6 +36,7 @@ const cloudflare = vi.hoisted(() => ({
   connectWorker: vi.fn(),
   getDeploymentStatus: vi.fn(),
   disconnect: vi.fn(),
+  convertToNitro: vi.fn(),
 }));
 const openExternalUrl = vi.hoisted(() => vi.fn());
 const focusWindow = vi.hoisted(() => vi.fn());
@@ -101,6 +102,7 @@ function appStatus(overrides: Record<string, unknown> = {}) {
     branch: "main",
     targets: [TARGET],
     connections: [],
+    canConvertToNitro: false,
     ...overrides,
   };
 }
@@ -1347,5 +1349,85 @@ describe("an app with one Worker", () => {
 
     await screen.findByTestId("cloudflare-worker-form");
     expect(screen.queryByTestId("cloudflare-target-list")).toBeNull();
+  });
+});
+
+describe("a plain Vite app with no Worker", () => {
+  const NITRO_TARGET = {
+    kind: "nitro" as const,
+    rootDirectory: "",
+    label: "App root",
+    suggestedWorkerName: "shop",
+  };
+
+  beforeEach(() => {
+    cloudflare.getAppStatus.mockResolvedValue(
+      appStatus({ targets: [], canConvertToNitro: true }),
+    );
+    cloudflare.convertToNitro.mockResolvedValue({ warnings: [] });
+  });
+
+  it("is offered a Nitro conversion beside the notice, after Refresh", async () => {
+    renderConnector();
+    expect(await screen.findByTestId("cloudflare-nitro-offer")).toBeTruthy();
+    expect(screen.getByTestId("cloudflare-no-targets")).toBeTruthy();
+    const refresh = screen.getByRole("button", { name: /refresh/i });
+    const convert = screen.getByRole("button", { name: "Convert to Nitro" });
+    expect(
+      refresh.compareDocumentPosition(convert) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("is not offered one when it is not a Vite app", async () => {
+    cloudflare.getAppStatus.mockResolvedValue(appStatus({ targets: [] }));
+    renderConnector();
+    await screen.findByTestId("cloudflare-no-targets");
+    expect(screen.queryByTestId("cloudflare-nitro-offer")).toBeNull();
+  });
+
+  it("converts on request, then asks for a sync of the new Nitro target", async () => {
+    renderConnector();
+    const convert = await screen.findByTestId("cloudflare-convert-to-nitro");
+
+    // The conversion commits, so the branch is ahead of GitHub afterwards.
+    cloudflare.getAppStatus.mockResolvedValue(
+      appStatus({ targets: [NITRO_TARGET], synced: false }),
+    );
+    fireEvent.click(convert);
+
+    await waitFor(() =>
+      expect(cloudflare.convertToNitro).toHaveBeenCalledWith({ appId: 7 }),
+    );
+    expect(await screen.findByTestId("cloudflare-not-synced")).toBeTruthy();
+    expect(screen.queryByTestId("cloudflare-no-targets")).toBeNull();
+    expect(screen.queryByTestId("cloudflare-worker-form")).toBeNull();
+  });
+
+  it("passes install warnings on as toasts", async () => {
+    cloudflare.convertToNitro.mockResolvedValue({
+      warnings: ["Socket firewall unavailable"],
+    });
+    renderConnector();
+    fireEvent.click(await screen.findByTestId("cloudflare-convert-to-nitro"));
+
+    await waitFor(() =>
+      expect(showWarning).toHaveBeenCalledWith("Socket firewall unavailable"),
+    );
+  });
+
+  it("shows a failed conversion under the button and keeps the offer", async () => {
+    cloudflare.convertToNitro.mockRejectedValue(
+      new Error("Failed to set up Nitro server layer: install failed"),
+    );
+    renderConnector();
+    fireEvent.click(await screen.findByTestId("cloudflare-convert-to-nitro"));
+
+    expect(
+      await screen.findByText(
+        "Failed to set up Nitro server layer: install failed",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByTestId("cloudflare-convert-to-nitro")).toBeTruthy();
   });
 });

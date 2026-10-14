@@ -3,6 +3,7 @@ import {
   buildsWithNitro,
   describeCloudflareTarget,
   detectCloudflareTargets,
+  isPlainViteRoot,
   readWranglerWorkerName,
 } from "./targets";
 
@@ -326,5 +327,77 @@ describe("readWranglerWorkerName", () => {
     expect(
       readWranglerWorkerName("wrangler.json", `{"name": "  "}`),
     ).toBeNull();
+  });
+});
+
+describe("isPlainViteRoot", () => {
+  const PLAIN_MANIFEST = JSON.stringify({
+    scripts: { build: "vite build" },
+    devDependencies: { vite: "^7.0.0" },
+  });
+  const VITE_APP = ["package.json", "vite.config.ts", "src/App.tsx"];
+
+  it("is a Vite app at the root with no Nitro and no Wrangler config", async () => {
+    expect(
+      await isPlainViteRoot(
+        VITE_APP,
+        committed({ "package.json": PLAIN_MANIFEST }),
+      ),
+    ).toBe(true);
+  });
+
+  it("is not once the app has a Nitro config", async () => {
+    expect(
+      await isPlainViteRoot(
+        [...VITE_APP, "nitro.config.ts"],
+        committed({ "package.json": PLAIN_MANIFEST }),
+      ),
+    ).toBe(false);
+  });
+
+  it("is not once the manifest depends on Nitro", async () => {
+    expect(
+      await isPlainViteRoot(
+        VITE_APP,
+        committed({ "package.json": NITRO_MANIFEST }),
+      ),
+    ).toBe(false);
+  });
+
+  it("is not when the root has a Wrangler config, which is a target already", async () => {
+    expect(
+      await isPlainViteRoot(
+        [...VITE_APP, "wrangler.toml"],
+        committed({ "package.json": PLAIN_MANIFEST }),
+      ),
+    ).toBe(false);
+  });
+
+  it("needs the Vite config at the root, not in a subfolder", async () => {
+    expect(
+      await isPlainViteRoot(
+        ["package.json", "web/vite.config.ts", "web/package.json"],
+        committed({
+          "package.json": "{}",
+          "web/package.json": PLAIN_MANIFEST,
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it("needs a manifest to install Nitro into", async () => {
+    expect(
+      await isPlainViteRoot(["vite.config.ts", "index.html"], committed()),
+    ).toBe(false);
+  });
+
+  it("is not when the manifest cannot be read", async () => {
+    expect(await isPlainViteRoot(VITE_APP, committed())).toBe(false);
+    expect(
+      await isPlainViteRoot(
+        VITE_APP,
+        committed({ "package.json": "not json" }),
+      ),
+    ).toBe(false);
   });
 });

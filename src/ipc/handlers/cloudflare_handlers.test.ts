@@ -20,6 +20,42 @@ const holder = vi.hoisted(() => ({
   githubOffline: false,
   githubStatus: null as number | null,
   localPnpmVersion: "11.4.2" as string | undefined,
+  // The working tree, as the conversion sees it.
+  frameworkType: "vite" as string | null,
+  mergeInProgress: false,
+  rebaseInProgress: false,
+  nitroSetups: 0,
+  nitroSetupError: null as Error | null,
+  nitroWarnings: [] as string[],
+  commits: [] as { path: string; message: string }[],
+  commitError: null as Error | null,
+  hasChangesToCommit: true,
+}));
+
+vi.mock("../utils/framework_utils", () => ({
+  detectFrameworkType: () => holder.frameworkType,
+}));
+
+vi.mock("../utils/nitro_setup", () => ({
+  ensureNitroOnViteApp: async () => {
+    if (holder.nitroSetupError) throw holder.nitroSetupError;
+    holder.nitroSetups += 1;
+    return { warningMessages: holder.nitroWarnings, rollback: async () => {} };
+  },
+}));
+
+vi.mock("../services/git_service", () => ({
+  gitService: {
+    stageAllAndCommitIfChanged: async (args: {
+      path: string;
+      message: string;
+    }) => {
+      if (holder.commitError) throw holder.commitError;
+      if (!holder.hasChangesToCommit) return null;
+      holder.commits.push(args);
+      return `commit-${holder.commits.length}`;
+    },
+  },
 }));
 
 vi.mock("../../db", () => ({
@@ -44,6 +80,8 @@ vi.mock("@/ipc/utils/github_endpoints", () => ({
 }));
 
 vi.mock("../utils/git_utils", () => ({
+  isGitMergeInProgress: () => holder.mergeInProgress,
+  isGitRebaseInProgress: () => holder.rebaseInProgress,
   execGit: async (
     args: string[],
     _path: string,
@@ -436,6 +474,15 @@ beforeEach(() => {
   holder.githubCalls = 0;
   holder.githubOffline = false;
   holder.githubStatus = null;
+  holder.frameworkType = "vite";
+  holder.mergeInProgress = false;
+  holder.rebaseInProgress = false;
+  holder.nitroSetups = 0;
+  holder.nitroSetupError = null;
+  holder.nitroWarnings = [];
+  holder.commits = [];
+  holder.commitError = null;
+  holder.hasChangesToCommit = true;
   handlers.clearGithubIdentityCache();
   holder.files = {
     "worker/wrangler.jsonc": `{ "name": "shop-api" }`,
@@ -2042,5 +2089,133 @@ describe("saving an API token", () => {
     expect(cloudflare.triggers[0].build_token_uuid).toBe(
       cloudflare.buildTokens[0].build_token_uuid,
     );
+  });
+});
+
+describe("a plain Vite app", () => {
+  // No target anywhere, but a Vite config and a manifest at the root, which
+  // the conversion can turn into a Nitro target.
+  beforeEach(() => {
+    holder.committedFiles = ["package.json", "vite.config.ts", "src/App.tsx"];
+    holder.files = {
+      "package.json": JSON.stringify({
+        scripts: { build: "vite build" },
+        devDependencies: { vite: "^7.0.0" },
+      }),
+    };
+  });
+
+  it("is offered a Nitro conversion in place of a target", async () => {
+    const status = await handlers.handleGetAppStatus(appId);
+    expect(status.targets).toEqual([]);
+    expect(status.canConvertToNitro).toBe(true);
+  });
+
+  it("is not offered one once it is a Nitro app", async () => {
+    holder.files["package.json"] = JSON.stringify({
+      dependencies: { nitro: "^3.0.0" },
+    });
+    const status = await handlers.handleGetAppStatus(appId);
+    expect(status.targets).toEqual([
+      expect.objectContaining({ kind: "nitro", rootDirectory: "" }),
+    ]);
+    expect(status.canConvertToNitro).toBe(false);
+  });
+
+  it("is not offered one when a subfolder already deploys a Worker", async () => {
+    holder.committedFiles.push("worker/wrangler.jsonc");
+    holder.files["worker/wrangler.jsonc"] = `{ "name": "shop-api" }`;
+    const status = await handlers.handleGetAppStatus(appId);
+    expect(status.targets).toHaveLength(1);
+    expect(status.canConvertToNitro).toBe(false);
+  });
+
+  it("is not offered one when the branch cannot be read but a Worker is connected", async () => {
+    db.insert(cloudflareAppConnections)
+      .values({
+        appId,
+        rootDirectory: "worker",
+        accountId: ACCOUNT,
+        workerName: "shop-api",
+        workerTag: "tag-1",
+        triggerUuid: "trigger-1",
+        workerUrl: null,
+      })
+      .run();
+    holder.refs = {};
+    const status = await handlers.handleGetAppStatus(appId);
+    expect(status.targets).toEqual([]);
+    expect(status.canConvertToNitro).toBe(false);
+  });
+
+  describe("converting it to Nitro", () => {
+    it("adds the server layer and commits it, reporting install warnings", async () => {
+      holder.nitroWarnings = ["Socket firewall unavailable"];
+      await expect(handlers.handleConvertToNitro(appId)).resolves.toEqual({
+        warnings: ["Socket firewall unavailable"],
+      });
+      expect(holder.nitroSetups).toBe(1);
+      expect(holder.commits).toEqual([
+        {
+          path: "/apps/shop",
+          message: "chore: add Nitro server layer for Cloudflare deployment",
+        },
+      ]);
+    });
+
+    it("only commits when the working tree already has Nitro", async () => {
+      // A Neon connect added it and nothing committed it since.
+      holder.frameworkType = "vite-nitro";
+      await handlers.handleConvertToNitro(appId);
+      expect(holder.nitroSetups).toBe(0);
+      expect(holder.commits).toHaveLength(1);
+    });
+
+    it("refuses an app that is not Vite, writing nothing", async () => {
+      holder.frameworkType = "nextjs";
+      await expect(handlers.handleConvertToNitro(appId)).rejects.toThrow(
+        /Only a Vite app/,
+      );
+      expect(holder.nitroSetups).toBe(0);
+      expect(holder.commits).toEqual([]);
+    });
+
+    it("refuses while a merge or rebase is in progress, writing nothing", async () => {
+      holder.mergeInProgress = true;
+      await expect(handlers.handleConvertToNitro(appId)).rejects.toThrow(
+        /merge is in progress/,
+      );
+      holder.mergeInProgress = false;
+      holder.rebaseInProgress = true;
+      await expect(handlers.handleConvertToNitro(appId)).rejects.toThrow(
+        /rebase is in progress/,
+      );
+      expect(holder.nitroSetups).toBe(0);
+      expect(holder.commits).toEqual([]);
+    });
+
+    it("reports a failed setup and commits nothing", async () => {
+      holder.nitroSetupError = new Error("No vite.config found");
+      await expect(handlers.handleConvertToNitro(appId)).rejects.toThrow(
+        /Failed to set up Nitro server layer: No vite.config found/,
+      );
+      expect(holder.commits).toEqual([]);
+    });
+
+    it("says the setup is there to commit when the commit fails", async () => {
+      holder.commitError = new Error("index.lock exists.");
+      await expect(handlers.handleConvertToNitro(appId)).rejects.toThrow(
+        /Nitro was added to the app, but committing it failed: index.lock exists. Commit the changes/,
+      );
+      expect(holder.nitroSetups).toBe(1);
+    });
+
+    it("says so when Nitro is committed, but not on the synced branch", async () => {
+      holder.frameworkType = "vite-nitro";
+      holder.hasChangesToCommit = false;
+      await expect(handlers.handleConvertToNitro(appId)).rejects.toThrow(
+        /already has a Nitro server layer, but not on the "main" branch/,
+      );
+    });
   });
 });

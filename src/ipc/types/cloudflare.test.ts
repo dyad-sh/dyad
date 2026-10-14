@@ -51,3 +51,17 @@ describe("cloudflare contract invalidations", () => {
     expect(scopes).toEqual([appScope]);
   });
 });
+
+describe("cloudflare conversion invalidations", () => {
+  it("refreshes the app record and its versions when Nitro is added", () => {
+    // The framework type on the app record changes, and a commit is made.
+    const scopes = cloudflareContracts.convertToNitro.invalidates!(
+      { appId: 7 },
+      { warnings: [] },
+    );
+    expect(scopes).toEqual([
+      { family: "app", appId: 7 },
+      { family: "versions", appId: 7 },
+    ]);
+  });
+});

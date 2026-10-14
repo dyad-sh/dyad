@@ -84,7 +84,8 @@ function splitPath(
   };
 }
 
-function dependsOnNitro(manifest: string): boolean {
+/** Whether the manifest depends on Nitro, or null when it cannot be read. */
+function manifestDependsOnNitro(manifest: string): boolean | null {
   try {
     const parsed = JSON.parse(manifest) as {
       dependencies?: Record<string, unknown>;
@@ -92,8 +93,12 @@ function dependsOnNitro(manifest: string): boolean {
     };
     return Boolean(parsed.dependencies?.nitro || parsed.devDependencies?.nitro);
   } catch {
-    return false;
+    return null;
   }
+}
+
+function dependsOnNitro(manifest: string): boolean {
+  return manifestDependsOnNitro(manifest) === true;
 }
 
 /**
@@ -275,4 +280,40 @@ function stripJsonComments(contents: string): string {
     result += char;
   }
   return result.replace(/,(\s*[}\]])/g, "$1");
+}
+
+/**
+ * Whether the repository root is a Vite app with nothing that would make it
+ * a target: no Nitro and no Wrangler config. Such an app cannot be deployed
+ * as it is, but Dyad can add a Nitro server layer to it, after which it is a
+ * Nitro target. A Vite config at the root settles that the app is Vite; the
+ * manifest is read to rule Nitro out, and must exist for the conversion to
+ * have anything to install into. Only the root is considered, because the
+ * conversion runs on the app folder, never on a subfolder.
+ */
+export async function isPlainViteRoot(
+  files: string[],
+  readFiles: (paths: string[]) => Promise<(string | null)[]>,
+): Promise<boolean> {
+  let hasViteConfig = false;
+  let hasManifest = false;
+  for (const rawFile of files) {
+    const split = splitPath(rawFile);
+    if (!split || split.rootDirectory !== "") continue;
+    const { fileName } = split;
+    if (
+      NITRO_CONFIG_FILES.includes(fileName) ||
+      (WRANGLER_CONFIG_FILES as readonly string[]).includes(fileName)
+    ) {
+      return false;
+    }
+    if (VITE_CONFIG_FILES.includes(fileName)) {
+      hasViteConfig = true;
+    } else if (fileName === "package.json") {
+      hasManifest = true;
+    }
+  }
+  if (!hasViteConfig || !hasManifest) return false;
+  const [manifest] = await readFiles(["package.json"]);
+  return manifest != null && manifestDependsOnNitro(manifest) === false;
 }

@@ -31,6 +31,7 @@ import {
   useCloudflareRepoAccess,
   useCloudflareWorkers,
   useConnectCloudflareWorker,
+  useConvertCloudflareAppToNitro,
   useDisconnectCloudflareWorker,
   useSaveCloudflareToken,
 } from "@/hooks/useCloudflareDeploy";
@@ -234,6 +235,55 @@ function RecheckButton({
   );
 }
 
+/**
+ * A plain Vite app is static files, which the Workers build has no way to
+ * run. Adding a Nitro server layer makes it an app whose build produces a
+ * Worker: the same change the Neon integration makes on connect. The change
+ * is committed so the deploy can see it; pushing stays with the user's sync,
+ * which the tab asks for once the new target appears.
+ */
+function NitroConversionOffer({
+  appId,
+  onRecheck,
+}: {
+  appId: number;
+  onRecheck: () => Promise<{ error: Error | null }>;
+}) {
+  const convert = useConvertCloudflareAppToNitro({ appId });
+  return (
+    <div className="mt-3 space-y-2" data-testid="cloudflare-nitro-offer">
+      <p>
+        This is a Vite app, so Dyad can convert it into a Nitro app to deploy it
+        to Cloudflare; the app will keep working as it does now.
+      </p>
+      <div className="flex items-center gap-2">
+        <RecheckButton onCheck={onRecheck} />
+        <Button
+          type="button"
+          size="sm"
+          onClick={() => convert.mutate()}
+          disabled={convert.isPending}
+          data-testid="cloudflare-convert-to-nitro"
+        >
+          {convert.isPending ? (
+            <>
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Converting...
+            </>
+          ) : (
+            "Convert to Nitro"
+          )}
+        </Button>
+      </div>
+      {convert.error && (
+        <div className={errorClass} data-testid="cloudflare-convert-error">
+          {errorMessage(convert.error)}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ConnectedAccount({ appId }: { appId: number }) {
   const accounts = useCloudflareAccounts();
   const status = useCloudflareAppStatus({ appId });
@@ -293,7 +343,14 @@ function ConnectedAccount({ appId }: { appId: number }) {
           (wrangler.jsonc, wrangler.json or wrangler.toml). Add one to this app,
           then sync it to GitHub and click Refresh.
         </p>
-        <RecheckButton className="mt-3" onCheck={() => status.refetch()} />
+        {status.data.canConvertToNitro ? (
+          <NitroConversionOffer
+            appId={appId}
+            onRecheck={() => status.refetch()}
+          />
+        ) : (
+          <RecheckButton className="mt-3" onCheck={() => status.refetch()} />
+        )}
       </div>
     );
   }

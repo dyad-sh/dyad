@@ -6,11 +6,18 @@ import { apps, cloudflareAppConnections } from "../../db/schema";
 import { readSettings, writeSettings } from "../../main/settings";
 import { getDyadAppPath } from "@/paths/paths";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { execGit } from "../utils/git_utils";
+import {
+  execGit,
+  isGitMergeInProgress,
+  isGitRebaseInProgress,
+} from "../utils/git_utils";
 import { getPnpmMinimumReleaseAgeSupport } from "../utils/socket_firewall";
 import { createAppOperationHandler } from "../utils/app_mutation_lock";
 import { readAppResource } from "../services/app_operation_coordinator";
+import { detectFrameworkType } from "../utils/framework_utils";
+import { ensureNitroOnViteApp } from "../utils/nitro_setup";
 import { createTypedHandler } from "./base";
+import { getHandlerContext } from "./handler_context";
 import { getGitHubApiBase } from "@/ipc/utils/github_endpoints";
 import {
   removeNeonEnvVarsFromCloudflare,
@@ -24,6 +31,7 @@ import {
   type CloudflareDeploymentStatus,
   type ConnectCloudflareWorkerParams,
   type ConnectCloudflareWorkerResult,
+  type ConvertCloudflareAppToNitroResult,
 } from "../types/cloudflare";
 import {
   CloudflareApiError,
@@ -75,6 +83,7 @@ import {
   buildsWithNitro,
   describeCloudflareTarget,
   detectCloudflareTargets,
+  isPlainViteRoot,
   readWranglerWorkerName,
   type CloudflareTarget,
 } from "@/cloudflare_deploy/targets";
@@ -155,10 +164,10 @@ async function revParse(appPath: string, ref: string): Promise<string | null> {
  * builds what is on GitHub, so a Wrangler config or Nitro setup that was never
  * committed is not something it can deploy.
  */
-async function listCommittedTargets(
+async function listCommittedFiles(
   appPath: string,
   branch: string,
-): Promise<CloudflareTarget[]> {
+): Promise<string[]> {
   const result = await execGit(
     ["ls-tree", "-r", "--name-only", "-z", `refs/heads/${branch}`],
     appPath,
@@ -171,10 +180,35 @@ async function listCommittedTargets(
       DyadErrorKind.Precondition,
     );
   }
+  return result.stdout.split("\0").filter(Boolean);
+}
+
+async function listCommittedTargets(
+  appPath: string,
+  branch: string,
+): Promise<CloudflareTarget[]> {
   return detectCloudflareTargets(
-    result.stdout.split("\0").filter(Boolean),
+    await listCommittedFiles(appPath, branch),
     (paths) => readCommittedFiles(appPath, branch, paths),
   );
+}
+
+/**
+ * The targets on the branch and, when there are none, whether the root is a
+ * plain Vite app that the conversion could turn into one.
+ */
+async function inspectCommittedBranch(
+  appPath: string,
+  branch: string,
+): Promise<{ targets: CloudflareTarget[]; canConvertToNitro: boolean }> {
+  const files = await listCommittedFiles(appPath, branch);
+  const read = (paths: string[]) => readCommittedFiles(appPath, branch, paths);
+  const targets = await detectCloudflareTargets(files, read);
+  return {
+    targets,
+    canConvertToNitro:
+      targets.length === 0 && (await isPlainViteRoot(files, read)),
+  };
 }
 
 /**
@@ -536,9 +570,13 @@ async function handleGetAppStatus(appId: number): Promise<CloudflareAppStatus> {
 
   const [synced, listing, rows] = await Promise.all([
     isBranchSynced(appPath, branch),
-    listCommittedTargets(appPath, branch).then(
-      (targets) => ({ targets, error: null }),
-      (error: unknown) => ({ targets: [] as CloudflareTarget[], error }),
+    inspectCommittedBranch(appPath, branch).then(
+      (inspection) => ({ ...inspection, error: null }),
+      (error: unknown) => ({
+        targets: [] as CloudflareTarget[],
+        canConvertToNitro: false,
+        error,
+      }),
     ),
     db.query.cloudflareAppConnections.findMany({
       where: eq(cloudflareAppConnections.appId, appId),
@@ -595,7 +633,91 @@ async function handleGetAppStatus(appId: number): Promise<CloudflareAppStatus> {
     branch,
     targets: targetSummaries,
     connections: rows.map(toConnection),
+    canConvertToNitro: listing.canConvertToNitro,
   };
+}
+
+const NITRO_COMMIT_MESSAGE =
+  "chore: add Nitro server layer for Cloudflare deployment";
+
+/**
+ * Turns a plain Vite app into a Nitro app and commits that, so the status
+ * call finds a target. Committed, never pushed: Cloudflare builds what is on
+ * GitHub, and the push stays with the user's sync, which the tab asks for
+ * once the new target shows up unsynced.
+ *
+ * The conversion is the one the Neon connect and the agent's `enable_nitro`
+ * tool run. A working tree that already has it, say from a Neon connect that
+ * was never committed, only gets the commit. As with the auto-commit before
+ * a GitHub connect, other uncommitted edits travel in the same commit.
+ */
+async function handleConvertToNitro(
+  appId: number,
+): Promise<ConvertCloudflareAppToNitroResult> {
+  const app = await requireApp(appId);
+  const appPath = getDyadAppPath(app.path);
+
+  const frameworkType = detectFrameworkType(appPath);
+  if (frameworkType !== "vite" && frameworkType !== "vite-nitro") {
+    throw new DyadError(
+      "Only a Vite app can be given a Nitro server layer.",
+      DyadErrorKind.Precondition,
+    );
+  }
+  // Checked before anything is written: a commit cannot be made in either
+  // state, and the setup would be left for the user to sort out by hand.
+  if (isGitMergeInProgress({ path: appPath })) {
+    throw new DyadError(
+      "Cannot commit the Nitro setup while a merge is in progress. Complete or abort the merge and try again.",
+      DyadErrorKind.Conflict,
+    );
+  }
+  if (isGitRebaseInProgress({ path: appPath })) {
+    throw new DyadError(
+      "Cannot commit the Nitro setup while a rebase is in progress. Complete or abort the rebase and try again.",
+      DyadErrorKind.Conflict,
+    );
+  }
+
+  let warnings: string[] = [];
+  if (frameworkType === "vite") {
+    try {
+      warnings = (await ensureNitroOnViteApp(appPath)).warningMessages;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new DyadError(
+        `Failed to set up Nitro server layer: ${message}`,
+        DyadErrorKind.External,
+      );
+    }
+  }
+
+  let commitHash: string | null;
+  try {
+    commitHash =
+      await getHandlerContext().gitService.stageAllAndCommitIfChanged({
+        path: appPath,
+        message: NITRO_COMMIT_MESSAGE,
+      });
+  } catch (error) {
+    // The setup stays in the working tree: it is idempotent, so clicking
+    // again only retries the commit, and the user can commit it themselves.
+    const message = error instanceof Error ? error.message : String(error);
+    throw new DyadError(
+      `Nitro was added to the app, but committing it failed: ${message} Commit the changes, then sync to GitHub.`,
+      DyadErrorKind.Conflict,
+    );
+  }
+  if (commitHash === null) {
+    // Nitro is committed, yet the synced branch has no target: the app is on
+    // another branch than the one it syncs to.
+    throw new DyadError(
+      `This app already has a Nitro server layer, but not on the "${app.githubBranch ?? DEFAULT_BRANCH}" branch it syncs to GitHub.`,
+      DyadErrorKind.Precondition,
+    );
+  }
+  logger.info(`Added Nitro to app ${appId} for Cloudflare (${commitHash})`);
+  return { warnings };
 }
 
 async function handleCheckRepoAccess({
@@ -1100,6 +1222,19 @@ export function registerCloudflareHandlers() {
     ),
   );
 
+  createTypedHandler(
+    cloudflareContracts.convertToNitro,
+    createAppOperationHandler(
+      "cloudflare:convert-to-nitro",
+      [readAppResource("app-path"), "repository"],
+      async (_, { appId }: { appId: number }) => {
+        assertCloudflareEnabled();
+        return handleConvertToNitro(appId);
+      },
+      "convert the app to Nitro",
+    ),
+  );
+
   createTypedHandler(cloudflareContracts.checkRepoAccess, async (_, params) => {
     assertCloudflareEnabled();
     return handleCheckRepoAccess(params);
@@ -1163,6 +1298,7 @@ export const cloudflareHandlersForTesting = {
   clearGithubIdentityCache: () => githubIdentityCache.clear(),
   handleSaveToken,
   handleGetAppStatus,
+  handleConvertToNitro,
   handleCheckRepoAccess,
   handleConnectWorker,
   handleGetDeploymentStatus,

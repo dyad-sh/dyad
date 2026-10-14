@@ -161,3 +161,21 @@ function forgetDeploymentStatus(
     queryKey: queryKeys.cloudflare.deploymentStatus({ appId, rootDirectory }),
   });
 }
+
+/**
+ * Adds a Nitro server layer to a plain Vite app and commits it, which makes
+ * the app a target. The app record and version list refresh through the
+ * contract; the status is this tab's own, so it is refreshed here.
+ */
+export function useConvertCloudflareAppToNitro({ appId }: { appId: number }) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => ipc.cloudflare.convertToNitro({ appId }),
+    onSuccess: (result) => {
+      for (const warning of result.warnings) showWarning(warning);
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.cloudflare.appStatus({ appId }),
+      });
+    },
+  });
+}

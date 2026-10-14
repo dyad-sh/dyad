@@ -63,9 +63,24 @@ export const CloudflareAppStatusSchema = z.object({
   branch: z.string(),
   targets: z.array(CloudflareTargetSchema),
   connections: z.array(CloudflareConnectionSchema),
+  /**
+   * Whether the app root is a plain Vite app that Dyad can turn into a Nitro
+   * target. Only true when there are no targets at all: an app that already
+   * deploys a Worker from a subfolder is not offered a conversion.
+   */
+  canConvertToNitro: z.boolean(),
 });
 
 export type CloudflareAppStatus = z.infer<typeof CloudflareAppStatusSchema>;
+
+export const ConvertCloudflareAppToNitroResultSchema = z.object({
+  /** Non-fatal messages from installing the Nitro packages. */
+  warnings: z.array(z.string()),
+});
+
+export type ConvertCloudflareAppToNitroResult = z.infer<
+  typeof ConvertCloudflareAppToNitroResultSchema
+>;
 
 export const CloudflareDeploymentStateSchema = z.enum([
   "none",
@@ -247,6 +262,17 @@ export const cloudflareContracts = {
       output.status === "connected"
         ? [{ family: "app", appId: input.appId }]
         : [],
+  }),
+
+  convertToNitro: defineContract({
+    channel: "cloudflare:convert-to-nitro",
+    input: CloudflareAppParamsSchema,
+    output: ConvertCloudflareAppToNitroResultSchema,
+    // The app's framework changes, and the change is committed.
+    invalidates: (input) => [
+      { family: "app", appId: input.appId },
+      { family: "versions", appId: input.appId },
+    ],
   }),
 
   getDeploymentStatus: defineContract({

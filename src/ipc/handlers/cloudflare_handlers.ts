@@ -10,8 +10,9 @@ import { execGit, inspectRepositoryHealth } from "../utils/git_utils";
 import { getPnpmMinimumReleaseAgeSupport } from "../utils/socket_firewall";
 import { createAppOperationHandler } from "../utils/app_mutation_lock";
 import { readAppResource } from "../services/app_operation_coordinator";
-import { detectFrameworkType, hasNitroConfig } from "../utils/framework_utils";
+import { detectFrameworkType } from "../utils/framework_utils";
 import { ensureNitroOnViteApp } from "../utils/nitro_setup";
+import { ExecuteAddDependencyError } from "../processors/executeAddDependency";
 import { createTypedHandler } from "./base";
 import { getHandlerContext } from "./handler_context";
 import { getGitHubApiBase } from "@/ipc/utils/github_endpoints";
@@ -643,9 +644,10 @@ const NITRO_COMMIT_MESSAGE =
  * once the new target shows up unsynced.
  *
  * The conversion is the one the Neon connect and the agent's `enable_nitro`
- * tool run. A working tree that already has it, say from a Neon connect that
- * was never committed, only gets the commit. As with the auto-commit before
- * a GitHub connect, other uncommitted edits travel in the same commit.
+ * tool run, and it runs even on a working tree that already has Nitro, say
+ * from a Neon connect that was never committed: it changes nothing there, and
+ * completes a setup that was cut short. As with the auto-commit before a
+ * GitHub connect, other uncommitted edits travel in the same commit.
  */
 async function handleConvertToNitro(
   appId: number,
@@ -697,32 +699,38 @@ async function handleConvertToNitro(
     );
   }
 
-  // The dependency alone does not make a Nitro app: an interrupted setup
-  // leaves it in the manifest with nothing else, and the config is only
-  // there once the setup has run through. The setup is idempotent, so a
-  // tree that has it all is left as it is.
-  let warnings: string[] = [];
-  if (frameworkType === "vite" || !hasNitroConfig(appPath)) {
-    try {
-      warnings = (await ensureNitroOnViteApp(appPath)).warningMessages;
-    } catch (error) {
-      // An External error is reported to telemetry, so only a classified
-      // error's own words go in the message: a Vite config the patcher
-      // cannot read is the user's to fix. Anything else, an install or
-      // filesystem failure, quotes commands, output or local paths, and is
-      // kept to the log.
-      logger.error(`Failed to set up Nitro for app ${appId}:`, error);
-      if (error instanceof DyadError) {
-        throw new DyadError(
-          `Failed to set up Nitro server layer: ${error.message}`,
-          error.kind,
-        );
-      }
+  // Run whether or not the tree already looks like Nitro. A setup that was
+  // interrupted or rolled back can leave any one of its files behind, and
+  // each of them alone passes for Nitro somewhere. The setup is idempotent,
+  // so on a complete tree it changes nothing.
+  let warnings: string[];
+  try {
+    warnings = (await ensureNitroOnViteApp(appPath)).warningMessages;
+  } catch (error) {
+    // An External error is reported to telemetry, so only a classified
+    // error's own words go in the message: a Vite config the patcher cannot
+    // read is the user's to fix. An install failure is named as such, in
+    // fixed words, since what it wraps can quote output or a local path.
+    // Anything else is a filesystem error quoting a path. Both stay in the
+    // log, with the install's warnings.
+    logger.error(`Failed to set up Nitro for app ${appId}:`, error);
+    if (error instanceof DyadError) {
       throw new DyadError(
-        "Failed to set up Nitro server layer.",
+        `Failed to set up Nitro server layer: ${error.message}`,
+        error.kind,
+      );
+    }
+    if (error instanceof ExecuteAddDependencyError) {
+      for (const warning of error.warningMessages) logger.warn(warning);
+      throw new DyadError(
+        "Failed to set up Nitro server layer: installing the Nitro packages failed. Check your network connection and try again.",
         DyadErrorKind.External,
       );
     }
+    throw new DyadError(
+      "Failed to set up Nitro server layer.",
+      DyadErrorKind.External,
+    );
   }
 
   let commitHash: string | null;

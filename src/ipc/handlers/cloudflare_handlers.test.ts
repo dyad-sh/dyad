@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { apps, cloudflareAppConnections } from "@/db/schema";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { ExecuteAddDependencyError } from "@/ipc/processors/executeAddDependency";
 import { createInMemoryTestDb, type TestDb } from "@/testing/test_db";
 
 /**
@@ -134,6 +135,7 @@ vi.mock("../utils/git_utils", () => ({
 }));
 
 vi.mock("../utils/socket_firewall", () => ({
+  getCommandExecutionDisplayDetails: () => undefined,
   getPnpmMinimumReleaseAgeSupport: async () => ({
     available: holder.localPnpmVersion !== undefined,
     minimumReleaseAgeSupported: true,
@@ -2237,12 +2239,31 @@ describe("a plain Vite app", () => {
       expect(holder.commits).toEqual([]);
     });
 
-    it("reports a failed setup and commits nothing", async () => {
-      holder.nitroSetupError = new Error("npm install failed");
+    it("reports a failed install by its command and commits nothing", async () => {
+      // The command's own message names the command and exit code only.
+      holder.nitroSetupError = new ExecuteAddDependencyError({
+        error: new Error("Command 'npm install nitro jiti' exited with code 1"),
+        warningMessages: [],
+      });
       await expect(handlers.handleConvertToNitro(appId)).rejects.toMatchObject({
-        message: expect.stringMatching(
-          /Failed to set up Nitro server layer: npm install failed/,
+        message:
+          "Failed to set up Nitro server layer: Command 'npm install nitro jiti' exited with code 1",
+        kind: DyadErrorKind.External,
+      });
+      expect(holder.commits).toEqual([]);
+    });
+
+    it("keeps a raw filesystem error's path out of the message", async () => {
+      // Node's own message quotes the path, and the thrown message is what
+      // telemetry sees.
+      holder.nitroSetupError = Object.assign(
+        new Error(
+          "EACCES: permission denied, open '/home/ryan/dyad-apps/shop/AI_RULES.md'",
         ),
+        { code: "EACCES" },
+      );
+      await expect(handlers.handleConvertToNitro(appId)).rejects.toMatchObject({
+        message: "Failed to set up Nitro server layer.",
         kind: DyadErrorKind.External,
       });
       expect(holder.commits).toEqual([]);

@@ -12,6 +12,7 @@ import { createAppOperationHandler } from "../utils/app_mutation_lock";
 import { readAppResource } from "../services/app_operation_coordinator";
 import { detectFrameworkType } from "../utils/framework_utils";
 import { ensureNitroOnViteApp } from "../utils/nitro_setup";
+import { ExecuteAddDependencyError } from "../processors/executeAddDependency";
 import { createTypedHandler } from "./base";
 import { getHandlerContext } from "./handler_context";
 import { getGitHubApiBase } from "@/ipc/utils/github_endpoints";
@@ -702,15 +703,24 @@ async function handleConvertToNitro(
     try {
       warnings = (await ensureNitroOnViteApp(appPath)).warningMessages;
     } catch (error) {
-      // A Vite config the patcher cannot read is the user's to fix, and
-      // keeps its kind; anything else is the install failing, whose message
-      // names only the command and its exit code. The install's output is
-      // left out: an External error is reported to telemetry, and that
-      // output can name registries and paths.
-      const message = error instanceof Error ? error.message : String(error);
+      // What the thrown message may carry, since an External error is
+      // reported to telemetry: a classified error's own words, as a Vite
+      // config the patcher cannot read is the user's to fix, and an install
+      // failure's command and exit code, which name no output. Anything
+      // else is a raw filesystem error quoting a local path, and is kept to
+      // the log.
+      logger.error(`Failed to set up Nitro for app ${appId}:`, error);
+      if (error instanceof DyadError) {
+        throw new DyadError(
+          `Failed to set up Nitro server layer: ${error.message}`,
+          error.kind,
+        );
+      }
       throw new DyadError(
-        `Failed to set up Nitro server layer: ${message}`,
-        error instanceof DyadError ? error.kind : DyadErrorKind.External,
+        error instanceof ExecuteAddDependencyError
+          ? `Failed to set up Nitro server layer: ${error.message}`
+          : "Failed to set up Nitro server layer.",
+        DyadErrorKind.External,
       );
     }
   }

@@ -703,9 +703,10 @@ async function handleConvertToNitro(
       warnings = (await ensureNitroOnViteApp(appPath)).warningMessages;
     } catch (error) {
       // A Vite config the patcher cannot read is the user's to fix, and
-      // keeps its kind; anything else is the install failing. The install's
-      // own output stays out of the message: an External error is reported
-      // to telemetry, and that output can name registries and paths.
+      // keeps its kind; anything else is the install failing, whose message
+      // names only the command and its exit code. The install's output is
+      // left out: an External error is reported to telemetry, and that
+      // output can name registries and paths.
       const message = error instanceof Error ? error.message : String(error);
       throw new DyadError(
         `Failed to set up Nitro server layer: ${message}`,
@@ -724,10 +725,13 @@ async function handleConvertToNitro(
   } catch (error) {
     // The setup stays in the working tree: it is idempotent, so clicking
     // again only retries the commit, and the user can commit it themselves.
-    const message = error instanceof Error ? error.message : String(error);
+    // Git's own words stay in the log: they quote local paths, and the
+    // thrown message is what telemetry sees. Same as the auto-commit before
+    // a GitHub connect.
+    logger.error(`Failed to commit the Nitro setup for app ${appId}:`, error);
     throw new DyadError(
-      `Nitro was added to the app, but committing it failed. Commit the changes, then sync to GitHub. ${message}`,
-      error instanceof DyadError ? error.kind : DyadErrorKind.Conflict,
+      "Nitro was added to the app, but committing it failed. Commit the changes, then sync to GitHub.",
+      DyadErrorKind.Conflict,
     );
   }
   if (commitHash === null) {

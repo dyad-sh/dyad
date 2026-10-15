@@ -2260,26 +2260,19 @@ describe("a plain Vite app", () => {
       });
     });
 
-    it("says the setup is there to commit when the commit fails", async () => {
-      holder.commitError = new Error("index.lock exists.");
-      await expect(handlers.handleConvertToNitro(appId)).rejects.toMatchObject({
-        message: expect.stringMatching(
-          /Nitro was added to the app, but committing it failed. Commit the changes, then sync to GitHub. index.lock exists./,
-        ),
-        kind: DyadErrorKind.Conflict,
-      });
-      expect(holder.nitroSetups).toBe(1);
-    });
-
-    it("keeps the kind of a commit failure that is already classified", async () => {
+    it("says the setup is there to commit when the commit fails, in Dyad's words", async () => {
+      // Git quotes the local path, which the thrown message must not carry:
+      // it is what telemetry sees.
       holder.commitError = new DyadError(
-        "Pre-commit checks could not start.",
+        "Failed to commit. fatal: Unable to create '/home/ryan/dyad-apps/shop/.git/index.lock': File exists.",
         DyadErrorKind.External,
       );
       await expect(handlers.handleConvertToNitro(appId)).rejects.toMatchObject({
-        message: expect.stringMatching(/Pre-commit checks could not start/),
-        kind: DyadErrorKind.External,
+        message:
+          "Nitro was added to the app, but committing it failed. Commit the changes, then sync to GitHub.",
+        kind: DyadErrorKind.Conflict,
       });
+      expect(holder.nitroSetups).toBe(1);
     });
 
     it("says the offer was stale when Nitro is already committed", async () => {

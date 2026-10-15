@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { apps, cloudflareAppConnections } from "@/db/schema";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { ExecuteAddDependencyError } from "@/ipc/processors/executeAddDependency";
 import { createInMemoryTestDb, type TestDb } from "@/testing/test_db";
 
 /**
@@ -135,7 +134,6 @@ vi.mock("../utils/git_utils", () => ({
 }));
 
 vi.mock("../utils/socket_firewall", () => ({
-  getCommandExecutionDisplayDetails: () => undefined,
   getPnpmMinimumReleaseAgeSupport: async () => ({
     available: holder.localPnpmVersion !== undefined,
     minimumReleaseAgeSupported: true,
@@ -2181,6 +2179,16 @@ describe("a plain Vite app", () => {
       expect(holder.commits).toHaveLength(1);
     });
 
+    it("refuses an offer the branch has since outgrown, writing nothing", async () => {
+      // A chat committed a Wrangler config after the tab last looked.
+      holder.committedFiles.push("wrangler.jsonc");
+      await expect(handlers.handleConvertToNitro(appId)).rejects.toThrow(
+        /This offer is out of date/,
+      );
+      expect(holder.nitroSetups).toBe(0);
+      expect(holder.commits).toEqual([]);
+    });
+
     it("refuses an app that is not Vite, writing nothing", async () => {
       holder.frameworkType = "nextjs";
       await expect(handlers.handleConvertToNitro(appId)).rejects.toThrow(
@@ -2252,24 +2260,11 @@ describe("a plain Vite app", () => {
       });
     });
 
-    it("reports why an install failed, not only that it did", async () => {
-      const installError = new ExecuteAddDependencyError({
-        error: new Error("Command failed with exit code 1: npm install"),
-        warningMessages: [],
-      });
-      // The line the install output is summarized to.
-      installError.displaySummary = "npm ERR! 403 Forbidden - GET nitro";
-      holder.nitroSetupError = installError;
-      await expect(handlers.handleConvertToNitro(appId)).rejects.toThrow(
-        /Failed to set up Nitro server layer: npm ERR! 403 Forbidden - GET nitro$/,
-      );
-    });
-
     it("says the setup is there to commit when the commit fails", async () => {
       holder.commitError = new Error("index.lock exists.");
       await expect(handlers.handleConvertToNitro(appId)).rejects.toMatchObject({
         message: expect.stringMatching(
-          /Nitro was added to the app, but committing it failed: index.lock exists. Commit the changes/,
+          /Nitro was added to the app, but committing it failed. Commit the changes, then sync to GitHub. index.lock exists./,
         ),
         kind: DyadErrorKind.Conflict,
       });

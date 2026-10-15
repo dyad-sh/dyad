@@ -116,7 +116,9 @@ describe("converting a plain Vite app to Nitro for Cloudflare (integration)", ()
   }, 30_000);
 
   it("refuses to commit on a branch other than the one the app syncs", async () => {
-    // The checked-out branch is main; the app now syncs release to GitHub.
+    // The checked-out branch is main; the app now syncs release to GitHub,
+    // a branch still at the plain Vite app, so the offer stands there.
+    git("branch", "release", "HEAD~1");
     await harness.db
       .update(apps)
       .set({ githubBranch: "release" })

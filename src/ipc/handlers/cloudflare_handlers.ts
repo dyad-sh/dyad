@@ -12,7 +12,6 @@ import { createAppOperationHandler } from "../utils/app_mutation_lock";
 import { readAppResource } from "../services/app_operation_coordinator";
 import { detectFrameworkType } from "../utils/framework_utils";
 import { ensureNitroOnViteApp } from "../utils/nitro_setup";
-import { ExecuteAddDependencyError } from "../processors/executeAddDependency";
 import { createTypedHandler } from "./base";
 import { getHandlerContext } from "./handler_context";
 import { getGitHubApiBase } from "@/ipc/utils/github_endpoints";
@@ -653,7 +652,16 @@ async function handleConvertToNitro(
 ): Promise<ConvertCloudflareAppToNitroResult> {
   const app = await requireApp(appId);
   const appPath = getDyadAppPath(app.path);
+  const branch = app.githubBranch ?? DEFAULT_BRANCH;
 
+  // The same read that made the offer: a target committed since the tab
+  // last looked, by a chat for instance, means the app needs no conversion.
+  if (!(await inspectCommittedBranch(appPath, branch)).canConvertToNitro) {
+    throw new DyadError(
+      "This offer is out of date: the app no longer needs a Nitro server layer to deploy. Click Refresh to see its current state.",
+      DyadErrorKind.Precondition,
+    );
+  }
   const frameworkType = detectFrameworkType(appPath);
   if (frameworkType !== "vite" && frameworkType !== "vite-nitro") {
     throw new DyadError(
@@ -680,7 +688,6 @@ async function handleConvertToNitro(
   // The commit goes to the checked-out branch, while the status reads the
   // branch the app syncs to GitHub. Committing anywhere else would report
   // success and leave the tab unchanged.
-  const branch = app.githubBranch ?? DEFAULT_BRANCH;
   if (health.branch !== branch) {
     throw new DyadError(
       health.branch === null
@@ -696,15 +703,10 @@ async function handleConvertToNitro(
       warnings = (await ensureNitroOnViteApp(appPath)).warningMessages;
     } catch (error) {
       // A Vite config the patcher cannot read is the user's to fix, and
-      // keeps its kind; anything else is the install failing, where the
-      // line picked out of the install output says why, and the raw
-      // message only says that it did.
-      const message =
-        error instanceof ExecuteAddDependencyError
-          ? error.displaySummary
-          : error instanceof Error
-            ? error.message
-            : String(error);
+      // keeps its kind; anything else is the install failing. The install's
+      // own output stays out of the message: an External error is reported
+      // to telemetry, and that output can name registries and paths.
+      const message = error instanceof Error ? error.message : String(error);
       throw new DyadError(
         `Failed to set up Nitro server layer: ${message}`,
         error instanceof DyadError ? error.kind : DyadErrorKind.External,
@@ -724,7 +726,7 @@ async function handleConvertToNitro(
     // again only retries the commit, and the user can commit it themselves.
     const message = error instanceof Error ? error.message : String(error);
     throw new DyadError(
-      `Nitro was added to the app, but committing it failed: ${message} Commit the changes, then sync to GitHub.`,
+      `Nitro was added to the app, but committing it failed. Commit the changes, then sync to GitHub. ${message}`,
       error instanceof DyadError ? error.kind : DyadErrorKind.Conflict,
     );
   }

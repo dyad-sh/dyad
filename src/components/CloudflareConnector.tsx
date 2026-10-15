@@ -272,7 +272,9 @@ function NitroConversionOffer({
         <Button
           type="button"
           size="sm"
-          variant="outline"
+          // The main action of a blue notice, styled as the token boxes
+          // style theirs.
+          className="bg-blue-600 hover:bg-blue-700 text-white"
           onClick={() => convert.mutate()}
           disabled={convert.isPending}
           data-testid="cloudflare-convert-to-nitro"

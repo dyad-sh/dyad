@@ -260,10 +260,19 @@ function NitroConversionOffer({
         to Cloudflare; the app will keep working as it does now.
       </p>
       <div className="flex items-center gap-2">
-        <RecheckButton onCheck={onRecheck} disabled={convert.isPending} />
+        <RecheckButton
+          onCheck={() => {
+            // A failure the user has since fixed outside Dyad would otherwise
+            // stay on screen beside the fresh status.
+            convert.reset();
+            return onRecheck();
+          }}
+          disabled={convert.isPending}
+        />
         <Button
           type="button"
           size="sm"
+          variant="outline"
           onClick={() => convert.mutate()}
           disabled={convert.isPending}
           data-testid="cloudflare-convert-to-nitro"

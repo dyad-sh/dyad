@@ -1454,4 +1454,21 @@ describe("a plain Vite app with no Worker", () => {
     ).toBeTruthy();
     expect(screen.getByTestId("cloudflare-convert-to-nitro")).toBeTruthy();
   });
+
+  it("clears a failed conversion when Refresh is clicked", async () => {
+    // The cause, say the wrong branch, may have been fixed outside Dyad.
+    cloudflare.convertToNitro.mockRejectedValue(
+      new Error('The app is on the "feature" branch but syncs "main"'),
+    );
+    renderConnector();
+    fireEvent.click(await screen.findByTestId("cloudflare-convert-to-nitro"));
+    await screen.findByTestId("cloudflare-convert-error");
+
+    fireEvent.click(screen.getByRole("button", { name: /refresh/i }));
+
+    await waitFor(() =>
+      expect(screen.queryByTestId("cloudflare-convert-error")).toBeNull(),
+    );
+    expect(screen.getByTestId("cloudflare-nitro-offer")).toBeTruthy();
+  });
 });

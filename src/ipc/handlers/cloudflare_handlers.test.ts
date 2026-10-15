@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { apps, cloudflareAppConnections } from "@/db/schema";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { ExecuteAddDependencyError } from "@/ipc/processors/executeAddDependency";
+import { CommandExecutionError } from "@/ipc/utils/socket_firewall";
 import { createInMemoryTestDb, type TestDb } from "@/testing/test_db";
 
 /**
@@ -24,6 +25,8 @@ const holder = vi.hoisted(() => ({
   localPnpmVersion: "11.4.2" as string | undefined,
   // The working tree, as the conversion sees it.
   frameworkType: "vite" as string | null,
+  // Whether the Nitro setup has run through: config and dependency both.
+  nitroComplete: false,
   currentBranch: "main" as string | null,
   operationInProgress: null as string | null,
   unmergedFiles: [] as string[],
@@ -40,6 +43,7 @@ vi.mock("../utils/framework_utils", () => ({
 }));
 
 vi.mock("../utils/nitro_setup", () => ({
+  hasCompleteNitroSetup: async () => holder.nitroComplete,
   ensureNitroOnViteApp: async () => {
     if (holder.nitroSetupError) throw holder.nitroSetupError;
     holder.nitroSetups += 1;
@@ -135,6 +139,11 @@ vi.mock("../utils/git_utils", () => ({
 }));
 
 vi.mock("../utils/socket_firewall", () => ({
+  CommandExecutionError: class CommandExecutionError extends Error {
+    constructor({ message }: { message: string }) {
+      super(message);
+    }
+  },
   getCommandExecutionDisplayDetails: () => undefined,
   getPnpmMinimumReleaseAgeSupport: async () => ({
     available: holder.localPnpmVersion !== undefined,
@@ -484,6 +493,7 @@ beforeEach(() => {
   holder.githubOffline = false;
   holder.githubStatus = null;
   holder.frameworkType = "vite";
+  holder.nitroComplete = false;
   holder.currentBranch = "main";
   holder.operationInProgress = null;
   holder.unmergedFiles = [];
@@ -2173,11 +2183,21 @@ describe("a plain Vite app", () => {
       ]);
     });
 
-    it("runs the setup on a tree that already looks like Nitro, then commits", async () => {
-      // A Neon connect that was never committed, or a setup cut short that
-      // left one of its files behind: the setup tells them apart, not the
-      // framework label.
+    it("only commits when the setup has already run through", async () => {
+      // A Neon connect added it and nothing committed it since. Running the
+      // setup again would update the packages.
       holder.frameworkType = "vite-nitro";
+      holder.nitroComplete = true;
+      await handlers.handleConvertToNitro(appId);
+      expect(holder.nitroSetups).toBe(0);
+      expect(holder.commits).toHaveLength(1);
+    });
+
+    it("finishes a setup that was cut short, then commits", async () => {
+      // One of the setup's files is there and the tree detects as Nitro, but
+      // the setup never ran through.
+      holder.frameworkType = "vite-nitro";
+      holder.nitroComplete = false;
       await handlers.handleConvertToNitro(appId);
       expect(holder.nitroSetups).toBe(1);
       expect(holder.commits).toHaveLength(1);
@@ -2241,13 +2261,13 @@ describe("a plain Vite app", () => {
       expect(holder.commits).toEqual([]);
     });
 
-    it("names a failed install in fixed words and commits nothing", async () => {
-      // An install failure can wrap a manifest read that quotes the path,
-      // and carries the firewall's warnings; neither goes in the message.
+    it("names a failed install command in fixed words and commits nothing", async () => {
+      // The command's output and the firewall's warnings stay out of the
+      // message.
       holder.nitroSetupError = new ExecuteAddDependencyError({
-        error: new Error(
-          "EACCES: permission denied, open '/home/ryan/dyad-apps/shop/package.json'",
-        ),
+        error: new CommandExecutionError({
+          message: "Command 'npm install nitro jiti' exited with code 1",
+        }),
         warningMessages: ["Socket firewall unavailable"],
       });
       await expect(handlers.handleConvertToNitro(appId)).rejects.toMatchObject({
@@ -2256,6 +2276,35 @@ describe("a plain Vite app", () => {
         kind: DyadErrorKind.External,
       });
       expect(holder.commits).toEqual([]);
+    });
+
+    it("tells the user about a manifest the install could not read", async () => {
+      // Found before any command runs, and the user's to fix, so it keeps
+      // its words and is not blamed on the network.
+      holder.nitroSetupError = new ExecuteAddDependencyError({
+        error: new DyadError(
+          "Cannot install dependencies because package.json contains invalid JSON: Unexpected token }",
+          DyadErrorKind.Validation,
+        ),
+        warningMessages: [],
+      });
+      await expect(handlers.handleConvertToNitro(appId)).rejects.toMatchObject({
+        message: expect.stringMatching(/package.json contains invalid JSON/),
+        kind: DyadErrorKind.Validation,
+      });
+    });
+
+    it("keeps a path the install's manifest read quoted out of the message", async () => {
+      holder.nitroSetupError = new ExecuteAddDependencyError({
+        error: new Error(
+          "EACCES: permission denied, open '/home/ryan/dyad-apps/shop/package.json'",
+        ),
+        warningMessages: [],
+      });
+      await expect(handlers.handleConvertToNitro(appId)).rejects.toMatchObject({
+        message: "Failed to set up Nitro server layer.",
+        kind: DyadErrorKind.External,
+      });
     });
 
     it("keeps a raw filesystem error's path out of the message", async () => {

@@ -7,11 +7,17 @@ import { readSettings, writeSettings } from "../../main/settings";
 import { getDyadAppPath } from "@/paths/paths";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { execGit, inspectRepositoryHealth } from "../utils/git_utils";
-import { getPnpmMinimumReleaseAgeSupport } from "../utils/socket_firewall";
+import {
+  CommandExecutionError,
+  getPnpmMinimumReleaseAgeSupport,
+} from "../utils/socket_firewall";
 import { createAppOperationHandler } from "../utils/app_mutation_lock";
 import { readAppResource } from "../services/app_operation_coordinator";
 import { detectFrameworkType } from "../utils/framework_utils";
-import { ensureNitroOnViteApp } from "../utils/nitro_setup";
+import {
+  ensureNitroOnViteApp,
+  hasCompleteNitroSetup,
+} from "../utils/nitro_setup";
 import { ExecuteAddDependencyError } from "../processors/executeAddDependency";
 import { createTypedHandler } from "./base";
 import { getHandlerContext } from "./handler_context";
@@ -699,38 +705,45 @@ async function handleConvertToNitro(
     );
   }
 
-  // Run whether or not the tree already looks like Nitro. A setup that was
-  // interrupted or rolled back can leave any one of its files behind, and
-  // each of them alone passes for Nitro somewhere. The setup is idempotent,
-  // so on a complete tree it changes nothing.
-  let warnings: string[];
-  try {
-    warnings = (await ensureNitroOnViteApp(appPath)).warningMessages;
-  } catch (error) {
-    // An External error is reported to telemetry, so only a classified
-    // error's own words go in the message: a Vite config the patcher cannot
-    // read is the user's to fix. An install failure is named as such, in
-    // fixed words, since what it wraps can quote output or a local path.
-    // Anything else is a filesystem error quoting a path. Both stay in the
-    // log, with the install's warnings.
-    logger.error(`Failed to set up Nitro for app ${appId}:`, error);
-    if (error instanceof DyadError) {
+  // Skipped only for a setup that ran through, say a Neon connect that was
+  // never committed: the framework label alone would also skip a setup cut
+  // short, and running it again on a finished tree updates the packages.
+  let warnings: string[] = [];
+  if (!(await hasCompleteNitroSetup(appPath))) {
+    try {
+      warnings = (await ensureNitroOnViteApp(appPath)).warningMessages;
+    } catch (error) {
+      // An External error is reported to telemetry, so only a classified
+      // error's own words go in the message: a Vite config the patcher
+      // cannot read, or a manifest that is not JSON, is the user's to fix.
+      // A failed install command is named as such in fixed words, since its
+      // output can quote registries and paths. Anything else is a
+      // filesystem error quoting a path. All of it stays in the log.
+      logger.error(`Failed to set up Nitro for app ${appId}:`, error);
+      const cause =
+        error instanceof ExecuteAddDependencyError
+          ? error.originalError
+          : error;
+      if (cause instanceof DyadError) {
+        throw new DyadError(
+          `Failed to set up Nitro server layer: ${cause.message}`,
+          cause.kind,
+        );
+      }
+      if (cause instanceof CommandExecutionError) {
+        if (error instanceof ExecuteAddDependencyError) {
+          for (const warning of error.warningMessages) logger.warn(warning);
+        }
+        throw new DyadError(
+          "Failed to set up Nitro server layer: installing the Nitro packages failed. Check your network connection and try again.",
+          DyadErrorKind.External,
+        );
+      }
       throw new DyadError(
-        `Failed to set up Nitro server layer: ${error.message}`,
-        error.kind,
-      );
-    }
-    if (error instanceof ExecuteAddDependencyError) {
-      for (const warning of error.warningMessages) logger.warn(warning);
-      throw new DyadError(
-        "Failed to set up Nitro server layer: installing the Nitro packages failed. Check your network connection and try again.",
+        "Failed to set up Nitro server layer.",
         DyadErrorKind.External,
       );
     }
-    throw new DyadError(
-      "Failed to set up Nitro server layer.",
-      DyadErrorKind.External,
-    );
   }
 
   let commitHash: string | null;

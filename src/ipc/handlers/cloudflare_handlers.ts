@@ -12,6 +12,7 @@ import { createAppOperationHandler } from "../utils/app_mutation_lock";
 import { readAppResource } from "../services/app_operation_coordinator";
 import { detectFrameworkType } from "../utils/framework_utils";
 import { ensureNitroOnViteApp } from "../utils/nitro_setup";
+import { ExecuteAddDependencyError } from "../processors/executeAddDependency";
 import { createTypedHandler } from "./base";
 import { getHandlerContext } from "./handler_context";
 import { getGitHubApiBase } from "@/ipc/utils/github_endpoints";
@@ -695,8 +696,15 @@ async function handleConvertToNitro(
       warnings = (await ensureNitroOnViteApp(appPath)).warningMessages;
     } catch (error) {
       // A Vite config the patcher cannot read is the user's to fix, and
-      // keeps its kind; anything else is the install failing.
-      const message = error instanceof Error ? error.message : String(error);
+      // keeps its kind; anything else is the install failing, where the
+      // line picked out of the install output says why, and the raw
+      // message only says that it did.
+      const message =
+        error instanceof ExecuteAddDependencyError
+          ? error.displaySummary
+          : error instanceof Error
+            ? error.message
+            : String(error);
       throw new DyadError(
         `Failed to set up Nitro server layer: ${message}`,
         error instanceof DyadError ? error.kind : DyadErrorKind.External,

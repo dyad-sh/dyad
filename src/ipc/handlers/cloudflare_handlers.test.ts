@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { apps, cloudflareAppConnections } from "@/db/schema";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { ExecuteAddDependencyError } from "@/ipc/processors/executeAddDependency";
 import { createInMemoryTestDb, type TestDb } from "@/testing/test_db";
 
 /**
@@ -134,6 +135,7 @@ vi.mock("../utils/git_utils", () => ({
 }));
 
 vi.mock("../utils/socket_firewall", () => ({
+  getCommandExecutionDisplayDetails: () => undefined,
   getPnpmMinimumReleaseAgeSupport: async () => ({
     available: holder.localPnpmVersion !== undefined,
     minimumReleaseAgeSupported: true,
@@ -2248,6 +2250,19 @@ describe("a plain Vite app", () => {
         message: expect.stringMatching(/Could not find defineConfig/),
         kind: DyadErrorKind.Precondition,
       });
+    });
+
+    it("reports why an install failed, not only that it did", async () => {
+      const installError = new ExecuteAddDependencyError({
+        error: new Error("Command failed with exit code 1: npm install"),
+        warningMessages: [],
+      });
+      // The line the install output is summarized to.
+      installError.displaySummary = "npm ERR! 403 Forbidden - GET nitro";
+      holder.nitroSetupError = installError;
+      await expect(handlers.handleConvertToNitro(appId)).rejects.toThrow(
+        /Failed to set up Nitro server layer: npm ERR! 403 Forbidden - GET nitro$/,
+      );
     });
 
     it("says the setup is there to commit when the commit fails", async () => {

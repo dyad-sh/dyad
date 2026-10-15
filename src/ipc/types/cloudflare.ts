@@ -272,6 +272,7 @@ export const cloudflareContracts = {
     invalidates: (input) => [
       { family: "app", appId: input.appId },
       { family: "versions", appId: input.appId },
+      { family: "uncommitted-files", appId: input.appId },
     ],
   }),
 

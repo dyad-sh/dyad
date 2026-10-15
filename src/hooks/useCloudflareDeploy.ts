@@ -177,5 +177,16 @@ export function useConvertCloudflareAppToNitro({ appId }: { appId: number }) {
         queryKey: queryKeys.cloudflare.appStatus({ appId }),
       });
     },
+    onError: () => {
+      // A failed commit leaves the setup in the working tree, which the
+      // contract's invalidations never report because the call failed. The
+      // file tree and uncommitted files of this window should show it.
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.apps.detail({ appId }),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.uncommittedFiles.byApp({ appId }),
+      });
+    },
   });
 }

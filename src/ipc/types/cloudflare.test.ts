@@ -62,6 +62,7 @@ describe("cloudflare conversion invalidations", () => {
     expect(scopes).toEqual([
       { family: "app", appId: 7 },
       { family: "versions", appId: 7 },
+      { family: "uncommitted-files", appId: 7 },
     ]);
   });
 });

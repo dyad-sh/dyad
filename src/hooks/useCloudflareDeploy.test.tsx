@@ -8,10 +8,15 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const checkRepoAccess = vi.hoisted(() => vi.fn());
-vi.mock("@/ipc/types", () => ({ ipc: { cloudflare: { checkRepoAccess } } }));
+const convertToNitro = vi.hoisted(() => vi.fn());
+vi.mock("@/ipc/types", () => ({
+  ipc: { cloudflare: { checkRepoAccess, convertToNitro } },
+}));
 vi.mock("@/lib/toast", () => ({ showWarning: vi.fn() }));
 
-const { useCloudflareRepoAccess } = await import("./useCloudflareDeploy");
+const { useCloudflareRepoAccess, useConvertCloudflareAppToNitro } =
+  await import("./useCloudflareDeploy");
+const { queryKeys } = await import("@/lib/queryKeys");
 
 function renderAccessCheck(queryClient: QueryClient) {
   return renderHook(
@@ -40,6 +45,55 @@ afterEach(() => {
   cleanup();
   focusManager.setFocused(undefined);
   vi.useRealTimers();
+});
+
+/**
+ * A failed conversion can still have changed the working tree, when the
+ * setup went in but the commit did not. The contract's invalidations only
+ * run on success, so the hook refreshes what this window shows of the tree.
+ */
+describe("converting to Nitro", () => {
+  function renderConvert(queryClient: QueryClient) {
+    return renderHook(() => useConvertCloudflareAppToNitro({ appId: 7 }), {
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={queryClient}>
+          {children}
+        </QueryClientProvider>
+      ),
+    });
+  }
+
+  it("refreshes the file tree and uncommitted files when it fails", async () => {
+    convertToNitro.mockRejectedValue(new Error("committing it failed"));
+    const queryClient = new QueryClient();
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+    const { result } = renderConvert(queryClient);
+
+    result.current.mutate();
+    await wait(0);
+
+    expect(result.current.isError).toBe(true);
+    const keys = invalidate.mock.calls.map(([filters]) => filters?.queryKey);
+    expect(keys).toContainEqual(queryKeys.apps.detail({ appId: 7 }));
+    expect(keys).toContainEqual(queryKeys.uncommittedFiles.byApp({ appId: 7 }));
+    expect(keys).not.toContainEqual(
+      queryKeys.cloudflare.appStatus({ appId: 7 }),
+    );
+  });
+
+  it("refreshes the status, not the tree, when it succeeds", async () => {
+    convertToNitro.mockResolvedValue({ warnings: [] });
+    const queryClient = new QueryClient();
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+    const { result } = renderConvert(queryClient);
+
+    result.current.mutate();
+    await wait(0);
+
+    expect(result.current.isSuccess).toBe(true);
+    const keys = invalidate.mock.calls.map(([filters]) => filters?.queryKey);
+    expect(keys).toEqual([queryKeys.cloudflare.appStatus({ appId: 7 })]);
+  });
 });
 
 describe("waiting for Cloudflare to see the repository", () => {

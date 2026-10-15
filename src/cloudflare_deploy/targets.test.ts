@@ -373,6 +373,17 @@ describe("isPlainViteRoot", () => {
     ).toBe(false);
   });
 
+  it("is not when a Next.js config sits beside the Vite one", async () => {
+    // Framework detection calls such an app Next.js, so the conversion would
+    // refuse it.
+    expect(
+      await isPlainViteRoot(
+        [...VITE_APP, "next.config.js"],
+        committed({ "package.json": PLAIN_MANIFEST }),
+      ),
+    ).toBe(false);
+  });
+
   it("needs the Vite config at the root, not in a subfolder", async () => {
     expect(
       await isPlainViteRoot(

@@ -8,6 +8,7 @@ import { getDyadAppPath } from "@/paths/paths";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
   execGit,
+  gitCurrentBranch,
   isGitMergeInProgress,
   isGitRebaseInProgress,
 } from "../utils/git_utils";
@@ -664,6 +665,19 @@ async function handleConvertToNitro(
       DyadErrorKind.Precondition,
     );
   }
+  // The commit goes to the checked-out branch, while the status reads the
+  // branch the app syncs to GitHub. Committing anywhere else would report
+  // success and leave the tab unchanged.
+  const branch = app.githubBranch ?? DEFAULT_BRANCH;
+  const currentBranch = await gitCurrentBranch({ path: appPath });
+  if (currentBranch !== branch) {
+    throw new DyadError(
+      currentBranch === null
+        ? `The app is not on a branch. Check out "${branch}", the branch it syncs to GitHub, and try again.`
+        : `The app is on the "${currentBranch}" branch but syncs "${branch}" to GitHub. Check out "${branch}" and try again.`,
+      DyadErrorKind.Precondition,
+    );
+  }
   // Checked before anything is written: a commit cannot be made in either
   // state, and the setup would be left for the user to sort out by hand.
   if (isGitMergeInProgress({ path: appPath })) {
@@ -684,10 +698,12 @@ async function handleConvertToNitro(
     try {
       warnings = (await ensureNitroOnViteApp(appPath)).warningMessages;
     } catch (error) {
+      // A Vite config the patcher cannot read is the user's to fix, and
+      // keeps its kind; anything else is the install failing.
       const message = error instanceof Error ? error.message : String(error);
       throw new DyadError(
         `Failed to set up Nitro server layer: ${message}`,
-        DyadErrorKind.External,
+        error instanceof DyadError ? error.kind : DyadErrorKind.External,
       );
     }
   }
@@ -709,10 +725,10 @@ async function handleConvertToNitro(
     );
   }
   if (commitHash === null) {
-    // Nitro is committed, yet the synced branch has no target: the app is on
-    // another branch than the one it syncs to.
+    // Nitro is committed on this very branch, so the status that offered the
+    // conversion is out of date.
     throw new DyadError(
-      `This app already has a Nitro server layer, but not on the "${app.githubBranch ?? DEFAULT_BRANCH}" branch it syncs to GitHub.`,
+      "This app already has a Nitro server layer. Click Refresh to see it.",
       DyadErrorKind.Precondition,
     );
   }

@@ -115,8 +115,8 @@ describe("converting a plain Vite app to Nitro for Cloudflare (integration)", ()
     expect(app.frameworkType).toBe("vite-nitro");
   }, 30_000);
 
-  it("refuses a second conversion of an app it finds no changes in", async () => {
-    // Nitro is committed on another branch than the one the app syncs to.
+  it("refuses to commit on a branch other than the one the app syncs", async () => {
+    // The checked-out branch is main; the app now syncs release to GitHub.
     await harness.db
       .update(apps)
       .set({ githubBranch: "release" })
@@ -125,7 +125,7 @@ describe("converting a plain Vite app to Nitro for Cloudflare (integration)", ()
 
     await expect(
       ipc.cloudflare.convertToNitro({ appId: harness.appId }),
-    ).rejects.toThrow(/already has a Nitro server layer/);
+    ).rejects.toThrow(/on the "main" branch but syncs "release" to GitHub/);
     expect(harness.gitLog()).toHaveLength(commitsBefore);
   });
 });

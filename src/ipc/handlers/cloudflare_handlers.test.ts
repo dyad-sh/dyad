@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { apps, cloudflareAppConnections } from "@/db/schema";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { createInMemoryTestDb, type TestDb } from "@/testing/test_db";
 
 /**
@@ -22,6 +23,7 @@ const holder = vi.hoisted(() => ({
   localPnpmVersion: "11.4.2" as string | undefined,
   // The working tree, as the conversion sees it.
   frameworkType: "vite" as string | null,
+  currentBranch: "main" as string | null,
   mergeInProgress: false,
   rebaseInProgress: false,
   nitroSetups: 0,
@@ -80,6 +82,7 @@ vi.mock("@/ipc/utils/github_endpoints", () => ({
 }));
 
 vi.mock("../utils/git_utils", () => ({
+  gitCurrentBranch: async () => holder.currentBranch,
   isGitMergeInProgress: () => holder.mergeInProgress,
   isGitRebaseInProgress: () => holder.rebaseInProgress,
   execGit: async (
@@ -475,6 +478,7 @@ beforeEach(() => {
   holder.githubOffline = false;
   holder.githubStatus = null;
   holder.frameworkType = "vite";
+  holder.currentBranch = "main";
   holder.mergeInProgress = false;
   holder.rebaseInProgress = false;
   holder.nitroSetups = 0;
@@ -2180,6 +2184,21 @@ describe("a plain Vite app", () => {
       expect(holder.commits).toEqual([]);
     });
 
+    it("refuses when another branch than the synced one is checked out", async () => {
+      // The status offered the conversion for main, which a commit here
+      // would not reach.
+      holder.currentBranch = "feature";
+      await expect(handlers.handleConvertToNitro(appId)).rejects.toThrow(
+        /on the "feature" branch but syncs "main" to GitHub/,
+      );
+      holder.currentBranch = null;
+      await expect(handlers.handleConvertToNitro(appId)).rejects.toThrow(
+        /not on a branch. Check out "main"/,
+      );
+      expect(holder.nitroSetups).toBe(0);
+      expect(holder.commits).toEqual([]);
+    });
+
     it("refuses while a merge or rebase is in progress, writing nothing", async () => {
       holder.mergeInProgress = true;
       await expect(handlers.handleConvertToNitro(appId)).rejects.toThrow(
@@ -2195,11 +2214,26 @@ describe("a plain Vite app", () => {
     });
 
     it("reports a failed setup and commits nothing", async () => {
-      holder.nitroSetupError = new Error("No vite.config found");
-      await expect(handlers.handleConvertToNitro(appId)).rejects.toThrow(
-        /Failed to set up Nitro server layer: No vite.config found/,
-      );
+      holder.nitroSetupError = new Error("npm install failed");
+      await expect(handlers.handleConvertToNitro(appId)).rejects.toMatchObject({
+        message: expect.stringMatching(
+          /Failed to set up Nitro server layer: npm install failed/,
+        ),
+        kind: DyadErrorKind.External,
+      });
       expect(holder.commits).toEqual([]);
+    });
+
+    it("keeps the kind of a setup error the user can fix", async () => {
+      // A Vite config the patcher cannot read is not an install failure.
+      holder.nitroSetupError = new DyadError(
+        "Could not find defineConfig in vite.config.ts.",
+        DyadErrorKind.Precondition,
+      );
+      await expect(handlers.handleConvertToNitro(appId)).rejects.toMatchObject({
+        message: expect.stringMatching(/Could not find defineConfig/),
+        kind: DyadErrorKind.Precondition,
+      });
     });
 
     it("says the setup is there to commit when the commit fails", async () => {
@@ -2210,11 +2244,11 @@ describe("a plain Vite app", () => {
       expect(holder.nitroSetups).toBe(1);
     });
 
-    it("says so when Nitro is committed, but not on the synced branch", async () => {
+    it("says the offer was stale when Nitro is already committed", async () => {
       holder.frameworkType = "vite-nitro";
       holder.hasChangesToCommit = false;
       await expect(handlers.handleConvertToNitro(appId)).rejects.toThrow(
-        /already has a Nitro server layer, but not on the "main" branch/,
+        /already has a Nitro server layer. Click Refresh/,
       );
     });
   });

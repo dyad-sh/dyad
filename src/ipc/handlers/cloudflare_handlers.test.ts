@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { apps, cloudflareAppConnections } from "@/db/schema";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { ExecuteAddDependencyError } from "@/ipc/processors/executeAddDependency";
 import { createInMemoryTestDb, type TestDb } from "@/testing/test_db";
 
 /**
@@ -24,6 +23,9 @@ const holder = vi.hoisted(() => ({
   localPnpmVersion: "11.4.2" as string | undefined,
   // The working tree, as the conversion sees it.
   frameworkType: "vite" as string | null,
+  // Whether a Nitro config file sits at the root, as opposed to the
+  // dependency alone, which a failed setup can leave behind.
+  nitroConfigPresent: false,
   currentBranch: "main" as string | null,
   operationInProgress: null as string | null,
   unmergedFiles: [] as string[],
@@ -37,6 +39,7 @@ const holder = vi.hoisted(() => ({
 
 vi.mock("../utils/framework_utils", () => ({
   detectFrameworkType: () => holder.frameworkType,
+  hasNitroConfig: () => holder.nitroConfigPresent,
 }));
 
 vi.mock("../utils/nitro_setup", () => ({
@@ -135,7 +138,6 @@ vi.mock("../utils/git_utils", () => ({
 }));
 
 vi.mock("../utils/socket_firewall", () => ({
-  getCommandExecutionDisplayDetails: () => undefined,
   getPnpmMinimumReleaseAgeSupport: async () => ({
     available: holder.localPnpmVersion !== undefined,
     minimumReleaseAgeSupported: true,
@@ -484,6 +486,7 @@ beforeEach(() => {
   holder.githubOffline = false;
   holder.githubStatus = null;
   holder.frameworkType = "vite";
+  holder.nitroConfigPresent = false;
   holder.currentBranch = "main";
   holder.operationInProgress = null;
   holder.unmergedFiles = [];
@@ -2176,8 +2179,19 @@ describe("a plain Vite app", () => {
     it("only commits when the working tree already has Nitro", async () => {
       // A Neon connect added it and nothing committed it since.
       holder.frameworkType = "vite-nitro";
+      holder.nitroConfigPresent = true;
       await handlers.handleConvertToNitro(appId);
       expect(holder.nitroSetups).toBe(0);
+      expect(holder.commits).toHaveLength(1);
+    });
+
+    it("finishes a setup that left only the dependency behind", async () => {
+      // A failed setup rolls its files back but never uninstalls, and the
+      // dependency alone is enough for the tree to detect as Nitro.
+      holder.frameworkType = "vite-nitro";
+      holder.nitroConfigPresent = false;
+      await handlers.handleConvertToNitro(appId);
+      expect(holder.nitroSetups).toBe(1);
       expect(holder.commits).toHaveLength(1);
     });
 
@@ -2239,15 +2253,13 @@ describe("a plain Vite app", () => {
       expect(holder.commits).toEqual([]);
     });
 
-    it("reports a failed install by its command and commits nothing", async () => {
-      // The command's own message names the command and exit code only.
-      holder.nitroSetupError = new ExecuteAddDependencyError({
-        error: new Error("Command 'npm install nitro jiti' exited with code 1"),
-        warningMessages: [],
-      });
+    it("reports a failed install in fixed words and commits nothing", async () => {
+      // An install failure can wrap a manifest read that quotes the path.
+      holder.nitroSetupError = new Error(
+        "EACCES: permission denied, open '/home/ryan/dyad-apps/shop/package.json'",
+      );
       await expect(handlers.handleConvertToNitro(appId)).rejects.toMatchObject({
-        message:
-          "Failed to set up Nitro server layer: Command 'npm install nitro jiti' exited with code 1",
+        message: "Failed to set up Nitro server layer.",
         kind: DyadErrorKind.External,
       });
       expect(holder.commits).toEqual([]);

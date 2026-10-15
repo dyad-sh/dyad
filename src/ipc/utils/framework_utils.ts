@@ -85,10 +85,18 @@ function hasNitro(
   appPath: string,
   deps: Record<string, string> | null,
 ): boolean {
-  for (const config of NITRO_CONFIG_FILES) {
-    if (fs.existsSync(path.join(appPath, config))) return true;
-  }
-  return Boolean(deps?.nitro);
+  return hasNitroConfig(appPath) || Boolean(deps?.nitro);
+}
+
+/**
+ * Whether a Nitro config file sits at the app root. Unlike the dependency,
+ * which an interrupted setup can leave behind on its own, the config is only
+ * there once the setup has run through.
+ */
+export function hasNitroConfig(appPath: string): boolean {
+  return NITRO_CONFIG_FILES.some((config) =>
+    fs.existsSync(path.join(appPath, config)),
+  );
 }
 
 /**

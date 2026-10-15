@@ -10,9 +10,8 @@ import { execGit, inspectRepositoryHealth } from "../utils/git_utils";
 import { getPnpmMinimumReleaseAgeSupport } from "../utils/socket_firewall";
 import { createAppOperationHandler } from "../utils/app_mutation_lock";
 import { readAppResource } from "../services/app_operation_coordinator";
-import { detectFrameworkType } from "../utils/framework_utils";
+import { detectFrameworkType, hasNitroConfig } from "../utils/framework_utils";
 import { ensureNitroOnViteApp } from "../utils/nitro_setup";
-import { ExecuteAddDependencyError } from "../processors/executeAddDependency";
 import { createTypedHandler } from "./base";
 import { getHandlerContext } from "./handler_context";
 import { getGitHubApiBase } from "@/ipc/utils/github_endpoints";
@@ -698,17 +697,20 @@ async function handleConvertToNitro(
     );
   }
 
+  // The dependency alone does not make a Nitro app: an interrupted setup
+  // leaves it in the manifest with nothing else, and the config is only
+  // there once the setup has run through. The setup is idempotent, so a
+  // tree that has it all is left as it is.
   let warnings: string[] = [];
-  if (frameworkType === "vite") {
+  if (frameworkType === "vite" || !hasNitroConfig(appPath)) {
     try {
       warnings = (await ensureNitroOnViteApp(appPath)).warningMessages;
     } catch (error) {
-      // What the thrown message may carry, since an External error is
-      // reported to telemetry: a classified error's own words, as a Vite
-      // config the patcher cannot read is the user's to fix, and an install
-      // failure's command and exit code, which name no output. Anything
-      // else is a raw filesystem error quoting a local path, and is kept to
-      // the log.
+      // An External error is reported to telemetry, so only a classified
+      // error's own words go in the message: a Vite config the patcher
+      // cannot read is the user's to fix. Anything else, an install or
+      // filesystem failure, quotes commands, output or local paths, and is
+      // kept to the log.
       logger.error(`Failed to set up Nitro for app ${appId}:`, error);
       if (error instanceof DyadError) {
         throw new DyadError(
@@ -717,9 +719,7 @@ async function handleConvertToNitro(
         );
       }
       throw new DyadError(
-        error instanceof ExecuteAddDependencyError
-          ? `Failed to set up Nitro server layer: ${error.message}`
-          : "Failed to set up Nitro server layer.",
+        "Failed to set up Nitro server layer.",
         DyadErrorKind.External,
       );
     }

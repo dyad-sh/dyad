@@ -24,8 +24,8 @@ const holder = vi.hoisted(() => ({
   // The working tree, as the conversion sees it.
   frameworkType: "vite" as string | null,
   currentBranch: "main" as string | null,
-  mergeInProgress: false,
-  rebaseInProgress: false,
+  operationInProgress: null as string | null,
+  unmergedFiles: [] as string[],
   nitroSetups: 0,
   nitroSetupError: null as Error | null,
   nitroWarnings: [] as string[],
@@ -82,9 +82,13 @@ vi.mock("@/ipc/utils/github_endpoints", () => ({
 }));
 
 vi.mock("../utils/git_utils", () => ({
-  gitCurrentBranch: async () => holder.currentBranch,
-  isGitMergeInProgress: () => holder.mergeInProgress,
-  isGitRebaseInProgress: () => holder.rebaseInProgress,
+  inspectRepositoryHealth: async () => ({
+    branch: holder.currentBranch,
+    headOid: "abc123",
+    isClean: true,
+    unmergedFiles: holder.unmergedFiles,
+    operationInProgress: holder.operationInProgress,
+  }),
   execGit: async (
     args: string[],
     _path: string,
@@ -479,8 +483,8 @@ beforeEach(() => {
   holder.githubStatus = null;
   holder.frameworkType = "vite";
   holder.currentBranch = "main";
-  holder.mergeInProgress = false;
-  holder.rebaseInProgress = false;
+  holder.operationInProgress = null;
+  holder.unmergedFiles = [];
   holder.nitroSetups = 0;
   holder.nitroSetupError = null;
   holder.nitroWarnings = [];
@@ -2199,15 +2203,19 @@ describe("a plain Vite app", () => {
       expect(holder.commits).toEqual([]);
     });
 
-    it("refuses while a merge or rebase is in progress, writing nothing", async () => {
-      holder.mergeInProgress = true;
+    it("refuses while Git is in the middle of an operation, writing nothing", async () => {
+      // Staging the whole tree would complete any of these under the Nitro
+      // message, conflict markers included.
+      for (const operation of ["merge", "rebase", "cherry-pick", "revert"]) {
+        holder.operationInProgress = operation;
+        await expect(handlers.handleConvertToNitro(appId)).rejects.toThrow(
+          new RegExp(`a Git ${operation} is in progress`),
+        );
+      }
+      holder.operationInProgress = null;
+      holder.unmergedFiles = ["src/App.tsx"];
       await expect(handlers.handleConvertToNitro(appId)).rejects.toThrow(
-        /merge is in progress/,
-      );
-      holder.mergeInProgress = false;
-      holder.rebaseInProgress = true;
-      await expect(handlers.handleConvertToNitro(appId)).rejects.toThrow(
-        /rebase is in progress/,
+        /unresolved file conflicts/,
       );
       expect(holder.nitroSetups).toBe(0);
       expect(holder.commits).toEqual([]);
@@ -2238,10 +2246,24 @@ describe("a plain Vite app", () => {
 
     it("says the setup is there to commit when the commit fails", async () => {
       holder.commitError = new Error("index.lock exists.");
-      await expect(handlers.handleConvertToNitro(appId)).rejects.toThrow(
-        /Nitro was added to the app, but committing it failed: index.lock exists. Commit the changes/,
-      );
+      await expect(handlers.handleConvertToNitro(appId)).rejects.toMatchObject({
+        message: expect.stringMatching(
+          /Nitro was added to the app, but committing it failed: index.lock exists. Commit the changes/,
+        ),
+        kind: DyadErrorKind.Conflict,
+      });
       expect(holder.nitroSetups).toBe(1);
+    });
+
+    it("keeps the kind of a commit failure that is already classified", async () => {
+      holder.commitError = new DyadError(
+        "Pre-commit checks could not start.",
+        DyadErrorKind.External,
+      );
+      await expect(handlers.handleConvertToNitro(appId)).rejects.toMatchObject({
+        message: expect.stringMatching(/Pre-commit checks could not start/),
+        kind: DyadErrorKind.External,
+      });
     });
 
     it("says the offer was stale when Nitro is already committed", async () => {

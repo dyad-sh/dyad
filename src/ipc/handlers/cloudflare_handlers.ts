@@ -6,12 +6,7 @@ import { apps, cloudflareAppConnections } from "../../db/schema";
 import { readSettings, writeSettings } from "../../main/settings";
 import { getDyadAppPath } from "@/paths/paths";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import {
-  execGit,
-  gitCurrentBranch,
-  isGitMergeInProgress,
-  isGitRebaseInProgress,
-} from "../utils/git_utils";
+import { execGit, inspectRepositoryHealth } from "../utils/git_utils";
 import { getPnpmMinimumReleaseAgeSupport } from "../utils/socket_firewall";
 import { createAppOperationHandler } from "../utils/app_mutation_lock";
 import { readAppResource } from "../services/app_operation_coordinator";
@@ -665,31 +660,32 @@ async function handleConvertToNitro(
       DyadErrorKind.Precondition,
     );
   }
+  // All checked before anything is written. The commit stages the whole
+  // tree, which Git would take as resolving conflicts or finishing a merge,
+  // cherry-pick or other operation it is in the middle of.
+  const health = await inspectRepositoryHealth({ path: appPath });
+  if (health.unmergedFiles.length > 0) {
+    throw new DyadError(
+      "Cannot commit the Nitro setup while the app has unresolved file conflicts. Resolve them and try again.",
+      DyadErrorKind.Conflict,
+    );
+  }
+  if (health.operationInProgress) {
+    throw new DyadError(
+      `Cannot commit the Nitro setup while a Git ${health.operationInProgress} is in progress. Finish or cancel it outside Dyad, then try again.`,
+      DyadErrorKind.Conflict,
+    );
+  }
   // The commit goes to the checked-out branch, while the status reads the
   // branch the app syncs to GitHub. Committing anywhere else would report
   // success and leave the tab unchanged.
   const branch = app.githubBranch ?? DEFAULT_BRANCH;
-  const currentBranch = await gitCurrentBranch({ path: appPath });
-  if (currentBranch !== branch) {
+  if (health.branch !== branch) {
     throw new DyadError(
-      currentBranch === null
+      health.branch === null
         ? `The app is not on a branch. Check out "${branch}", the branch it syncs to GitHub, and try again.`
-        : `The app is on the "${currentBranch}" branch but syncs "${branch}" to GitHub. Check out "${branch}" and try again.`,
+        : `The app is on the "${health.branch}" branch but syncs "${branch}" to GitHub. Check out "${branch}" and try again.`,
       DyadErrorKind.Precondition,
-    );
-  }
-  // Checked before anything is written: a commit cannot be made in either
-  // state, and the setup would be left for the user to sort out by hand.
-  if (isGitMergeInProgress({ path: appPath })) {
-    throw new DyadError(
-      "Cannot commit the Nitro setup while a merge is in progress. Complete or abort the merge and try again.",
-      DyadErrorKind.Conflict,
-    );
-  }
-  if (isGitRebaseInProgress({ path: appPath })) {
-    throw new DyadError(
-      "Cannot commit the Nitro setup while a rebase is in progress. Complete or abort the rebase and try again.",
-      DyadErrorKind.Conflict,
     );
   }
 
@@ -721,7 +717,7 @@ async function handleConvertToNitro(
     const message = error instanceof Error ? error.message : String(error);
     throw new DyadError(
       `Nitro was added to the app, but committing it failed: ${message} Commit the changes, then sync to GitHub.`,
-      DyadErrorKind.Conflict,
+      error instanceof DyadError ? error.kind : DyadErrorKind.Conflict,
     );
   }
   if (commitHash === null) {

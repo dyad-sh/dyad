@@ -1379,11 +1379,35 @@ describe("a plain Vite app with no Worker", () => {
     ).toBeTruthy();
   });
 
+  it("is not told to add a Wrangler config while offered the conversion", async () => {
+    renderConnector();
+    const notice = await screen.findByTestId("cloudflare-no-targets");
+    expect(notice.textContent).toContain("contain a Wrangler config");
+    expect(notice.textContent).not.toContain("Add one to this app");
+  });
+
   it("is not offered one when it is not a Vite app", async () => {
     cloudflare.getAppStatus.mockResolvedValue(appStatus({ targets: [] }));
     renderConnector();
-    await screen.findByTestId("cloudflare-no-targets");
+    const notice = await screen.findByTestId("cloudflare-no-targets");
     expect(screen.queryByTestId("cloudflare-nitro-offer")).toBeNull();
+    expect(notice.textContent).toContain("Add one to this app");
+  });
+
+  it("keeps Refresh out of reach while converting", async () => {
+    // The conversion never settles here, so the pending state is what shows.
+    cloudflare.convertToNitro.mockReturnValue(new Promise(() => {}));
+    renderConnector();
+    const convert = await screen.findByTestId<HTMLButtonElement>(
+      "cloudflare-convert-to-nitro",
+    );
+    const refresh = screen.getByRole<HTMLButtonElement>("button", {
+      name: /refresh/i,
+    });
+    expect(refresh.disabled).toBe(false);
+    fireEvent.click(convert);
+    await waitFor(() => expect(convert.disabled).toBe(true));
+    expect(refresh.disabled).toBe(true);
   });
 
   it("converts on request, then asks for a sync of the new Nitro target", async () => {

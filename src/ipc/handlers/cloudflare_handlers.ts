@@ -1238,7 +1238,9 @@ export function registerCloudflareHandlers() {
     cloudflareContracts.convertToNitro,
     createAppOperationHandler(
       "cloudflare:convert-to-nitro",
-      [readAppResource("app-path"), "repository"],
+      // Metadata is read for the branch the app syncs to GitHub, which a
+      // disconnect clears.
+      [readAppResource("app-path"), readAppResource("metadata"), "repository"],
       async (_, { appId }: { appId: number }) => {
         assertCloudflareEnabled();
         return handleConvertToNitro(appId);

@@ -194,9 +194,12 @@ function hiddenRefetchError(
 function RecheckButton({
   onCheck,
   className,
+  disabled = false,
 }: {
   onCheck: () => Promise<{ error: Error | null }>;
   className?: string;
+  /** While another action on the same view is running. */
+  disabled?: boolean;
 }) {
   const [checking, setChecking] = useState(false);
   const check = async () => {
@@ -222,7 +225,7 @@ function RecheckButton({
         size="sm"
         variant="ghost"
         onClick={check}
-        disabled={checking}
+        disabled={checking || disabled}
       >
         {checking ? (
           <Loader2 className="h-3 w-3 animate-spin" />
@@ -257,7 +260,7 @@ function NitroConversionOffer({
         to Cloudflare; the app will keep working as it does now.
       </p>
       <div className="flex items-center gap-2">
-        <RecheckButton onCheck={onRecheck} />
+        <RecheckButton onCheck={onRecheck} disabled={convert.isPending} />
         <Button
           type="button"
           size="sm"
@@ -340,8 +343,9 @@ function ConnectedAccount({ appId }: { appId: number }) {
         <p className="font-medium mb-1">No Cloudflare Worker found</p>
         <p>
           Dyad deploys Nitro apps and folders that contain a Wrangler config
-          (wrangler.jsonc, wrangler.json or wrangler.toml). Add one to this app,
-          then sync it to GitHub and click Refresh.
+          (wrangler.jsonc, wrangler.json or wrangler.toml).
+          {!status.data.canConvertToNitro &&
+            " Add one to this app, then sync it to GitHub and click Refresh."}
         </p>
         {status.data.canConvertToNitro ? (
           <NitroConversionOffer

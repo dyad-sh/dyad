@@ -2206,7 +2206,13 @@ describe("a plain Vite app", () => {
     it("refuses while Git is in the middle of an operation, writing nothing", async () => {
       // Staging the whole tree would complete any of these under the Nitro
       // message, conflict markers included.
-      for (const operation of ["merge", "rebase", "cherry-pick", "revert"]) {
+      for (const operation of [
+        "merge",
+        "rebase",
+        "cherry-pick",
+        "revert",
+        "bisect",
+      ]) {
         holder.operationInProgress = operation;
         await expect(handlers.handleConvertToNitro(appId)).rejects.toThrow(
           new RegExp(`a Git ${operation} is in progress`),

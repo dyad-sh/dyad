@@ -1429,7 +1429,15 @@ function normalizeGitRemote(remote: string): string | null {
   if (scp) return `${scp[1]}/${scp[2]}`.toLowerCase();
   try {
     const url = new URL(trimmed);
-    return `${url.hostname}${url.pathname}`.replace(/\/+$/, "").toLowerCase();
+    // URL normalizes HTTP(S) default ports, but not SSH's default port.
+    const port =
+      (url.protocol === "ssh:" || url.protocol === "git+ssh:") &&
+      url.port === "22"
+        ? ""
+        : url.port;
+    return `${url.hostname}${port ? `:${port}` : ""}${url.pathname}`
+      .replace(/\/+$/, "")
+      .toLowerCase();
   } catch {
     return null;
   }
@@ -1491,8 +1499,13 @@ export async function verifyGithubConnection({
           DyadErrorKind.Precondition,
         );
       }
-      // Runs under the repository lock, and the deploy dialog cannot be closed
-      // while it waits, so a stalled request must not hang forever.
+      // Bound both headers and body reads while holding the repository lock.
+      const signal = AbortSignal.timeout(GITHUB_VERIFY_TIMEOUT_MS);
+      const timeoutError = () =>
+        new DyadError(
+          "GitHub verification timed out after 15 seconds. Retry in a moment.",
+          DyadErrorKind.External,
+        );
       let response: Awaited<ReturnType<typeof fetch>>;
       try {
         response = await fetch(
@@ -1502,22 +1515,38 @@ export async function verifyGithubConnection({
               Authorization: `Bearer ${token}`,
               Accept: "application/vnd.github+json",
             },
-            signal: AbortSignal.timeout(GITHUB_VERIFY_TIMEOUT_MS),
+            signal,
           },
         );
       } catch {
+        if (signal.aborted) throw timeoutError();
         throw new DyadError(
           "Could not reach GitHub to verify the repository. Check your connection and retry.",
           DyadErrorKind.External,
         );
       }
       if (!response.ok) {
+        if (response.status === 401) {
+          throw new DyadError(
+            "GitHub authentication expired or was revoked. Reconnect your GitHub account and retry.",
+            DyadErrorKind.Auth,
+          );
+        }
+        if (response.status === 404) {
+          throw new DyadError(
+            "GitHub could not find this repository or branch. Check repository access, then sync or push your code first.",
+            DyadErrorKind.Precondition,
+          );
+        }
         throw new DyadError(
-          "Could not verify the GitHub repository and branch. Check access and sync your code, then retry.",
-          DyadErrorKind.Precondition,
+          `Could not verify the GitHub repository (HTTP ${response.status}). Check GitHub access or rate limits and retry in a moment.`,
+          DyadErrorKind.External,
         );
       }
-      const remoteBranch = (await response.json().catch(() => null)) as {
+      const remoteBranch = (await response.json().catch(() => {
+        if (signal.aborted) throw timeoutError();
+        return null;
+      })) as {
         commit?: { sha?: unknown };
       } | null;
       const remoteSha = remoteBranch?.commit?.sha;

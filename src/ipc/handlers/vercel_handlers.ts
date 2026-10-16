@@ -10,7 +10,10 @@ import {
   VERCEL_API_BASE,
   type VercelProjectFramework,
 } from "../utils/vercel_utils";
-import { getVercelProjectCreationError } from "../utils/vercel_errors";
+import {
+  getVercelDeploymentError,
+  getVercelProjectCreationError,
+} from "../utils/vercel_errors";
 import * as fs from "fs";
 import * as path from "path";
 import { getDyadAppPath } from "@/paths/paths";
@@ -298,7 +301,7 @@ async function handleIsProjectAvailable(
 // --- Vercel Create Project Handler ---
 async function handleCreateProject(
   event: IpcMainInvokeEvent,
-  { name: rawName, appId }: CreateVercelProjectParams,
+  { name: rawName, appId, deferDeployment }: CreateVercelProjectParams,
 ): Promise<CreateVercelProjectResult> {
   // Normalize to a kebab-case slug so the project name is valid for Vercel
   // (which requires lowercase names) regardless of how it was entered.
@@ -371,6 +374,10 @@ async function handleCreateProject(
     logger.info(
       `Successfully created Vercel project: ${projectData.id} with GitHub repo: ${app.githubOrg}/${app.githubRepo}`,
     );
+
+    // The guided flow owns env setup and the build it verifies. Other callers
+    // retain the existing first-deploy behavior below.
+    if (deferDeployment) return;
 
     // First-deploy auto-config: for Neon-connected apps, push env vars and add
     // the new deployment domain to Neon Auth's trusted domains BEFORE the first
@@ -605,7 +612,7 @@ async function handleCreateVercelDeployment(
   } catch (err: any) {
     if (err instanceof DyadError) throw err;
     logger.error("[Vercel Handler] Failed to create deployment:", err);
-    throw new Error(err.message || "Failed to start a Vercel deployment.");
+    throw getVercelDeploymentError(err);
   }
 }
 

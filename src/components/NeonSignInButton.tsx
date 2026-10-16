@@ -25,6 +25,7 @@ export function NeonSignInButton({ appId }: { appId: number }) {
   const queryClient = useQueryClient();
   const { flowState, isFlowActive } = useConnectionFlow("neon");
   const handledRevision = useRef<number | null>(null);
+  const isFinishing = flowState.status === "connected";
 
   useEffect(() => {
     if (
@@ -65,6 +66,7 @@ export function NeonSignInButton({ appId }: { appId: number }) {
 
   const signIn = useMutation({
     mutationFn: async () => {
+      if (!settings || isFlowActive || isFinishing) return;
       const { started, invocationRef } = await startConnectionFlow("neon");
       if (!started) return;
       try {
@@ -89,12 +91,12 @@ export function NeonSignInButton({ appId }: { appId: number }) {
         type="button"
         variant="outline"
         onClick={() => signIn.mutate()}
-        disabled={isFlowActive || signIn.isPending}
+        disabled={!settings || isFlowActive || isFinishing || signIn.isPending}
         className="w-auto h-10 flex items-center justify-center px-4 py-2 border-2 transition-colors font-medium text-sm dark:bg-gray-900 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
         data-testid="connect-neon-button"
         aria-label={t("integrations.neon.connectTo") + " Neon"}
       >
-        {isFlowActive || signIn.isPending ? (
+        {isFlowActive || isFinishing || signIn.isPending ? (
           <>
             <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
             {t("integrations.neon.completingSignIn")}

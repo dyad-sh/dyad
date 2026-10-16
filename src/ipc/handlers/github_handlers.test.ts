@@ -212,6 +212,8 @@ describe("verifyGithubConnection", () => {
   it.each([
     "git@github.com:acme/demo.git",
     "ssh://git@github.com/Acme/Demo.git",
+    "ssh://git@github.com:22/acme/demo.git",
+    "https://github.com:443/acme/demo.git",
     "https://github.com/acme/demo/",
   ])("accepts %s as the app's remote", async (remoteUrl) => {
     const succeed = vi.mocked(execGit).getMockImplementation()!;
@@ -226,6 +228,71 @@ describe("verifyGithubConnection", () => {
       branch: "feature/deploy",
     });
   });
+
+  it.each([
+    "https://github.com:8443/acme/demo.git",
+    "ssh://git@github.com:2222/acme/demo.git",
+    "git+ssh://git@github.com:2222/acme/demo.git",
+  ])("rejects a different server at %s", async (remote) => {
+    vi.mocked(execGit).mockResolvedValueOnce({
+      exitCode: 0,
+      stdout: remote,
+      stderr: "",
+    } as never);
+    await expect(verifyGithubConnection({ appId: 1 })).rejects.toMatchObject({
+      kind: DyadErrorKind.Precondition,
+      message: expect.stringContaining("remote does not match"),
+    });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [401, DyadErrorKind.Auth, "Reconnect your GitHub account"],
+    [404, DyadErrorKind.Precondition, "sync or push your code first"],
+    [403, DyadErrorKind.External, "retry in a moment"],
+    [429, DyadErrorKind.External, "retry in a moment"],
+    [500, DyadErrorKind.External, "retry in a moment"],
+  ])(
+    "provides actionable guidance for GitHub HTTP %s",
+    async (status, kind, message) => {
+      vi.mocked(fetch).mockResolvedValueOnce({ ok: false, status } as never);
+      await expect(verifyGithubConnection({ appId: 1 })).rejects.toMatchObject({
+        kind,
+        message: expect.stringContaining(message),
+      });
+    },
+  );
+
+  it.each(["headers", "body"])(
+    "reports a timeout while reading %s",
+    async (phase) => {
+      const controller = new AbortController();
+      const timeout = vi
+        .spyOn(AbortSignal, "timeout")
+        .mockReturnValueOnce(controller.signal);
+      const abort = async () => {
+        controller.abort();
+        throw new Error("The operation was aborted");
+      };
+      if (phase === "headers") vi.mocked(fetch).mockImplementationOnce(abort);
+      else
+        vi.mocked(fetch).mockResolvedValueOnce({
+          ok: true,
+          json: abort,
+        } as never);
+      try {
+        await expect(
+          verifyGithubConnection({ appId: 1 }),
+        ).rejects.toMatchObject({
+          kind: DyadErrorKind.External,
+          message: expect.stringContaining("timed out after 15 seconds"),
+        });
+        expect(timeout).toHaveBeenCalledWith(15_000);
+      } finally {
+        timeout.mockRestore();
+      }
+    },
+  );
 
   it.each([
     ["remote", "local GitHub remote"],

@@ -3,7 +3,43 @@ import { ResponseValidationError } from "@vercel/sdk/models/responsevalidationer
 import { SDKError } from "@vercel/sdk/models/sdkerror.js";
 import { z } from "zod/v3";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { getVercelProjectCreationError } from "./vercel_errors";
+import {
+  getVercelDeploymentError,
+  getVercelProjectCreationError,
+} from "./vercel_errors";
+
+describe("getVercelDeploymentError", () => {
+  it.each([
+    [401, DyadErrorKind.Auth, "Reconnect Vercel"],
+    [403, DyadErrorKind.Auth, "access to this project"],
+    [404, DyadErrorKind.NotFound, "Reconnect an existing project"],
+    [400, DyadErrorKind.Precondition, "Vercel GitHub integration has access"],
+    [422, DyadErrorKind.Precondition, "repository and branch exist"],
+    [429, DyadErrorKind.RateLimited, "rate limit"],
+    [500, DyadErrorKind.External, "retry in a moment"],
+  ])("classifies HTTP %s with recovery guidance", (status, kind, guidance) => {
+    const error = new SDKError("Raw provider error", {
+      response: new Response(null, { status }),
+      request: new Request("https://api.vercel.com/v13/deployments"),
+      body: '{"error":{"message":"private-project-details"}}',
+    });
+    const result = getVercelDeploymentError(error);
+    expect(result).toMatchObject({
+      kind,
+      message: expect.stringContaining(guidance),
+    });
+    expect(result.message).not.toContain("private-project-details");
+  });
+
+  it("preserves unexpected failures and existing classifications", () => {
+    for (const error of [
+      new Error("Unexpected bug"),
+      new DyadError("Missing token", DyadErrorKind.Auth),
+    ]) {
+      expect(getVercelDeploymentError(error)).toBe(error);
+    }
+  });
+});
 
 describe("getVercelProjectCreationError", () => {
   it.each([200, 400, 403, 500])(

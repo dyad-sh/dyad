@@ -16,7 +16,11 @@ import {
 const vercel = vi.hoisted(() => {
   process.env.E2E_TEST_BUILD = "true";
   return {
-    projects: { createProjectEnv: vi.fn(), getProjectDomains: vi.fn() },
+    projects: {
+      createProject: vi.fn(),
+      createProjectEnv: vi.fn(),
+      getProjectDomains: vi.fn(),
+    },
     deployments: { createDeployment: vi.fn(), getDeployments: vi.fn() },
   };
 });
@@ -107,6 +111,10 @@ describe("guided deployment (renderer and real IPC)", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     vercel.projects.createProjectEnv.mockResolvedValue({});
+    vercel.projects.createProject.mockResolvedValue({
+      id: "prj-guided-new",
+      name: "guided",
+    });
     vercel.projects.getProjectDomains.mockResolvedValue({
       domains: [{ name: "guided.vercel.app" }],
     });
@@ -538,6 +546,79 @@ describe("guided deployment (renderer and real IPC)", () => {
     await click("Finish");
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(vercel.deployments.createDeployment).toHaveBeenCalledTimes(2);
+  }, 60_000);
+
+  it("commits and syncs dirty local files from the GitHub step before continuing", async () => {
+    await open();
+    await click("Development database");
+    await click("Continue to GitHub");
+    await createRepo();
+    fs.writeFileSync(path.join(appDir, "latest.txt"), "latest code\n");
+    await act(() =>
+      harness.queryClient().invalidateQueries({
+        queryKey: queryKeys.uncommittedFiles.byApp({ appId }),
+      }),
+    );
+    await click("Commit changes and sync to GitHub");
+    await waitFor(
+      async () => {
+        expect(git("status", "--porcelain")).toBe("");
+        expect(await remoteHead()).toBe(git("rev-parse", "HEAD"));
+      },
+      { timeout: 20_000 },
+    );
+    expect(git("log", "-1", "--format=%s")).toBe("Prepare deployment");
+    expect(
+      screen.getByRole("heading", { name: "Step 2 — GitHub repository" }),
+    ).toBeTruthy();
+    await click("Continue to deployment");
+    await screen.findByRole("heading", { name: "Step 3 — Deployment" });
+  }, 60_000);
+
+  it("creates one production build after configuring a new Vercel project's environment", async () => {
+    const originalFetch = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+      if (String(input).endsWith("/v2/teams?limit=1")) {
+        return Promise.resolve(
+          Response.json({ teams: [{ id: "team-guided" }] }),
+        );
+      }
+      return originalFetch(input, init);
+    });
+    vercel.deployments.getDeployments.mockResolvedValue({
+      deployments: [
+        {
+          uid: "new-build",
+          readyState: "READY",
+          state: "READY",
+          target: "production",
+          url: "guided.vercel.app",
+          createdAt: 1,
+        },
+      ],
+    });
+    await open();
+    await click("Development database");
+    await click("Continue to GitHub");
+    await createRepo();
+    await click("Continue to deployment");
+    await click("Create Project");
+    await screen.findByText(
+      "Deployment verified and environment variables configured.",
+      {},
+      { timeout: 15_000 },
+    );
+    await harness.bridge.settleInFlight();
+    expect(calls("vercel:create-project")).toHaveLength(1);
+    expect(vercel.projects.createProjectEnv).toHaveBeenCalledOnce();
+    expect(vercel.deployments.createDeployment).toHaveBeenCalledOnce();
+    expect(
+      vercel.projects.createProjectEnv.mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      vercel.deployments.createDeployment.mock.invocationCallOrder[0],
+    );
+    expect(calls("vercel:create-deployment")).toHaveLength(1);
+    expect((await appRow())?.vercelProjectId).toBe("prj-guided-new");
   }, 60_000);
 
   it("checks GitHub before changing a hosted production schema, then commits and pushes the approved update", async () => {

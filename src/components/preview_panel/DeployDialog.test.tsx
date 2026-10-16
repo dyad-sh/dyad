@@ -19,6 +19,9 @@ import { projectGithubOps } from "@/github_ops/projection";
 const h = vi.hoisted(() => ({
   app: {} as App,
   cloudflare: false,
+  settingsLoaded: true,
+  isTestMode: false,
+  fakeConnect: vi.fn(),
   projection: {} as GithubOpsProjection,
   getProject: vi.fn(),
   setBranch: vi.fn(),
@@ -49,6 +52,7 @@ vi.mock("@/ipc/types", () => ({
     app: { getApp: vi.fn(async () => h.app) },
     system: { openExternalUrl: h.openExternalUrl },
     neon: {
+      fakeConnect: h.fakeConnect,
       getProject: h.getProject,
       setSelectedDatabaseBranchType: h.setBranch,
     },
@@ -89,7 +93,9 @@ vi.mock("@/contexts/ThemeContext", () => ({
 }));
 vi.mock("@/hooks/useSettings", () => ({
   useSettings: () => ({
-    settings: { enableCloudflareDeployment: h.cloudflare },
+    settings: h.settingsLoaded
+      ? { enableCloudflareDeployment: h.cloudflare, isTestMode: h.isTestMode }
+      : null,
   }),
 }));
 vi.mock("@/hooks/useNeon", () => ({
@@ -231,6 +237,9 @@ beforeEach(() => {
     },
   } as App;
   h.cloudflare = false;
+  h.settingsLoaded = true;
+  h.isTestMode = false;
+  h.fakeConnect.mockResolvedValue(undefined);
   h.neonFlow = { status: "disconnected", revision: 0 };
   h.startConnection.mockResolvedValue({
     started: true,
@@ -296,6 +305,57 @@ describe.each([false, true])("Neon sign-in (hosted: %s)", (hosted) => {
       </QueryClientProvider>,
     );
   }
+
+  it("waits for settings before choosing fake sign-in or OAuth", async () => {
+    h.settingsLoaded = false;
+    h.isTestMode = true;
+    h.getProject.mockRejectedValue(
+      new DyadError(missingToken, DyadErrorKind.Auth),
+    );
+    const view = mount();
+    await screen.findByRole("button", { name: connectLabel });
+    expect(button(connectLabel).disabled).toBe(true);
+    fireEvent.click(button(connectLabel));
+    expect(h.startConnection).not.toHaveBeenCalled();
+    h.settingsLoaded = true;
+    setFlow(view, h.neonFlow);
+    fireEvent.click(button(connectLabel));
+    await waitFor(() => expect(h.fakeConnect).toHaveBeenCalledOnce());
+    expect(h.openExternalUrl).not.toHaveBeenCalled();
+  });
+
+  it("prevents a second OAuth flow while connected queries are refreshing", async () => {
+    h.getProject.mockRejectedValue(
+      new DyadError(missingToken, DyadErrorKind.Auth),
+    );
+    const view = mount();
+    fireEvent.click(await screen.findByRole("button", { name: connectLabel }));
+    await waitFor(() => expect(h.openExternalUrl).toHaveBeenCalledOnce());
+    let finish!: () => void;
+    // All invalidations share one deferred promise so they settle together.
+    const pending = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const refresh = vi
+      .spyOn(client, "invalidateQueries")
+      .mockReturnValue(pending);
+    setFlow(view, {
+      status: "connected",
+      revision: 2,
+      provider: "neon",
+      invocationRef: neonInvocation,
+    });
+    expect(button(connectLabel).disabled).toBe(true);
+    fireEvent.click(button(connectLabel));
+    expect(h.startConnection).toHaveBeenCalledOnce();
+    expect(h.acknowledgeConnection).not.toHaveBeenCalled();
+    await act(async () => finish());
+    await waitFor(() => expect(h.acknowledgeConnection).toHaveBeenCalledOnce());
+    expect(button(connectLabel).disabled).toBe(true);
+    setFlow(view, { status: "disconnected", revision: 3 });
+    expect(button(connectLabel).disabled).toBe(false);
+    refresh.mockRestore();
+  });
 
   it("offers sign-in alongside the auth error and rechecks branches after connecting", async () => {
     h.getProject.mockRejectedValueOnce(
@@ -630,6 +690,123 @@ describe.each([false, true])(
 );
 
 describe("first deployment", () => {
+  it("commits dirty files and starts a sync without advancing before GitHub verification", async () => {
+    h.app.neonActiveBranchId = "prod";
+    h.files.mockResolvedValue(["index.ts"]);
+    h.commit.mockImplementation(async () => {
+      h.files.mockResolvedValue([]);
+      return "new-commit";
+    });
+    mount();
+    await continueDatabase();
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Commit changes and sync to GitHub",
+      }),
+    );
+    await waitFor(() =>
+      expect(h.dispatch).toHaveBeenCalledWith({
+        type: "OP_REQUESTED",
+        op: { type: "push", mode: "normal", provider: "github" },
+      }),
+    );
+    expect(h.commit).toHaveBeenCalledWith({
+      appId: 1,
+      message: "Prepare deployment",
+      operationId: expect.stringMatching(/^deploy:/),
+    });
+    expectDeploymentStep(2, "GitHub repository");
+    expect(h.verify).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(button("Continue to deployment").disabled).toBe(false),
+    );
+    fireEvent.click(button("Continue to deployment"));
+    await screen.findByText("Vercel setup controls");
+    expect(h.verify).toHaveBeenCalledWith({ appId: 1, requireSynced: true });
+  });
+
+  it.each(["READY", "ERROR", "CANCELED"])(
+    "stops polling once the tracked Vercel build is %s",
+    async (readyState) => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        h.deployments.mockResolvedValue([
+          { uid: "new", readyState: "BUILDING" },
+        ]);
+        await reachDeployment();
+        await connectVercel();
+        await screen.findByText("Building on Vercel…");
+        h.deployments.mockResolvedValue([{ uid: "new", readyState }]);
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(5_000);
+        });
+        const count = h.deployments.mock.calls.length;
+        expect(count).toBeGreaterThan(1);
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(15_000);
+        });
+        expect(h.deployments).toHaveBeenCalledTimes(count);
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  it("does not start a build after the dialog closes during environment setup", async () => {
+    let finish!: () => void;
+    h.sync.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = () =>
+            resolve({ envPushed: true, domainsAdded: [], skipped: [] });
+        }),
+    );
+    await reachDeployment();
+    await connectVercel();
+    await screen.findByText("Configuring Vercel environment variables…");
+    fireEvent.click(button("Close"));
+    expect(onClose).toHaveBeenCalledOnce();
+    cleanup();
+    await act(async () => finish());
+    expect(h.createDeployment).not.toHaveBeenCalled();
+  });
+
+  it.each(["failed", "cancelled", "query error"])(
+    "explains Cloudflare %s and retries status",
+    async (state) => {
+      h.cloudflare = true;
+      h.cfStatus.mockResolvedValue({
+        connections: [{ rootDirectory: "" }],
+        synced: true,
+      });
+      h.cfDeployment.mockResolvedValue({ state: "building" });
+      await reachDeployment();
+      fireEvent.click(button("Cloudflare"));
+      await screen.findByText("Building on Cloudflare…");
+      if (state === "query error")
+        h.cfDeployment.mockRejectedValue(new Error("Cloudflare unavailable"));
+      else h.cfDeployment.mockResolvedValue({ state });
+      await act(() =>
+        client.refetchQueries({ queryKey: queryKeys.cloudflare.all }),
+      );
+      await screen.findByText(
+        state === "query error"
+          ? "Cloudflare unavailable"
+          : /A Cloudflare deployment failed or was cancelled/,
+      );
+      expect(screen.queryByRole("button", { name: "Finish" })).toBeNull();
+      h.cfDeployment.mockResolvedValue({
+        state: "live",
+        ruleMissing: false,
+        ruleDeploys: null,
+        tokenRevoked: false,
+      });
+      fireEvent.click(button("Retry deployment status"));
+      await screen.findByText("Cloudflare deployment verified.");
+      expect(button("Finish")).toBeTruthy();
+    },
+  );
+
   describe.each(["Close", "Escape"])("dismissal via %s", (dismissal) => {
     function dismiss() {
       if (dismissal === "Close") fireEvent.click(button("Close"));
@@ -1064,6 +1241,49 @@ describe("first deployment", () => {
 });
 
 describe("already hosted", () => {
+  it.each(["verify", "files"])(
+    "does not commit or push after closing during %s preflight",
+    async (phase) => {
+      h.app.neonActiveBranchId = "prod";
+      let finish!: () => void;
+      if (phase === "verify") {
+        h.verify.mockResolvedValueOnce({
+          owner: "acme",
+          repo: "demo",
+          branch: "main",
+        });
+        h.verify.mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              finish = () =>
+                resolve({ owner: "acme", repo: "demo", branch: "main" });
+            }),
+        );
+      } else
+        h.files.mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              finish = () => resolve(["index.ts"]);
+            }),
+        );
+      const view = mount();
+      const review = await screen.findByRole("button", {
+        name: "Review and deploy",
+      });
+      await waitFor(() =>
+        expect((review as HTMLButtonElement).disabled).toBe(false),
+      );
+      fireEvent.click(review);
+      await waitFor(() => expect(finish).toBeDefined());
+      fireEvent.click(button("Close"));
+      expect(onClose).toHaveBeenCalledOnce();
+      view.unmount();
+      await act(async () => finish());
+      expect(h.commit).not.toHaveBeenCalled();
+      expect(h.dispatch).not.toHaveBeenCalled();
+    },
+  );
+
   beforeEach(() => {
     h.app.vercelProjectId = "vercel-1";
   });

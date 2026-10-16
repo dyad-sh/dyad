@@ -241,7 +241,13 @@ function FirstDeploy({
           }}
         />
       )}
-      {step === 1 && <GithubStep app={app} onComplete={() => setStep(2)} />}
+      {step === 1 && (
+        <GithubStep
+          app={app}
+          onComplete={() => setStep(2)}
+          onBusyChange={onBusyChange}
+        />
+      )}
       {step === 2 && <DeploymentStep app={app} branch={branch} />}
     </div>
   );
@@ -401,17 +407,109 @@ function BusyState({
   return null;
 }
 
-function GithubStep({ app, onComplete }: { app: App; onComplete: () => void }) {
+function useDeploymentLifetime() {
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  return mounted;
+}
+
+function useDeploymentCommit(
+  appId: number,
+  onBusyChange: (busy: boolean) => void,
+) {
+  const mounted = useDeploymentLifetime();
+  useEffect(() => () => onBusyChange(false), [onBusyChange]);
+  const commit = async () => {
+    if (!mounted.current) return false;
+    const files = await ipc.git.getUncommittedFiles({ appId });
+    if (!mounted.current) return false;
+    if (files.length) {
+      onBusyChange(true);
+      try {
+        await ipc.git.commitChanges({
+          appId,
+          message: "Prepare deployment",
+          operationId: `deploy:${crypto.randomUUID()}`,
+        });
+      } finally {
+        onBusyChange(false);
+      }
+    }
+    return mounted.current;
+  };
+  return { commit, mounted };
+}
+
+function GithubStep({
+  app,
+  onComplete,
+  onBusyChange,
+}: {
+  app: App;
+  onComplete: () => void;
+  onBusyChange: (busy: boolean) => void;
+}) {
   const { app: current } = useLoadApp(app.id);
-  const { projection, connection } = useGithubOps(app.id);
+  const { projection, connection, dispatch } = useGithubOps(app.id);
+  const { commit, mounted } = useDeploymentCommit(app.id, onBusyChange);
+  const files = useQuery({
+    queryKey: queryKeys.uncommittedFiles.byApp({ appId: app.id }),
+    queryFn: () => ipc.git.getUncommittedFiles({ appId: app.id }),
+    staleTime: 0,
+  });
+  const sync = useMutation({
+    mutationFn: async () => {
+      if (!(await commit())) return;
+      await dispatch({ type: "BANNER_DISMISSED" });
+      if (!mounted.current) return;
+      const receipt = await dispatch({
+        type: "OP_REQUESTED",
+        op: { type: "push", mode: "normal", provider: "github" },
+      });
+      if (!isAppliedGithubOpsReceipt(receipt))
+        throw new Error(
+          "GitHub could not start the sync. Resolve any pending GitHub operation and retry.",
+        );
+    },
+    onSettled: () => files.refetch(),
+  });
   const verify = useMutation({
     mutationFn: () =>
       ipc.github.verifyConnection({ appId: app.id, requireSynced: true }),
-    onSuccess: onComplete,
+    onSuccess: () => {
+      if (mounted.current) onComplete();
+    },
   });
   return (
     <div className="space-y-4">
       <GitHubConnector appId={app.id} folderName={app.name} expanded />
+      {!!files.data?.length && (
+        <div className="space-y-2">
+          <p className="text-sm">
+            Commit your local changes and sync them to GitHub before deploying.
+          </p>
+          <Button
+            disabled={
+              connection !== "ready" ||
+              projection.isOperationInFlight ||
+              sync.isPending ||
+              verify.isPending ||
+              !current?.githubRepo
+            }
+            onClick={() => sync.mutate()}
+          >
+            {sync.isPending
+              ? "Committing and syncing…"
+              : "Commit changes and sync to GitHub"}
+          </Button>
+        </div>
+      )}
+      <ErrorNotice error={files.error ?? sync.error} />
       <ErrorNotice error={verify.error} />
       <div className="flex justify-end">
         <Button
@@ -420,6 +518,7 @@ function GithubStep({ app, onComplete }: { app: App; onComplete: () => void }) {
             !current.githubRepo ||
             connection !== "ready" ||
             projection.isOperationInFlight ||
+            sync.isPending ||
             verify.isPending
           }
           onClick={() => verify.mutate()}
@@ -488,6 +587,7 @@ function VercelDeployStep({
   const { app: current } = useLoadApp(app.id);
   const queryClient = useQueryClient();
   const startedProject = useRef<string | null>(null);
+  const mounted = useDeploymentLifetime();
   // Vercel applies environment variables only to builds that start after
   // they are set, and a connected project's latest deployment can predate
   // this flow, so the step starts its own build and verifies that one.
@@ -510,7 +610,9 @@ function VercelDeployStep({
         );
       return result;
     },
-    onSuccess: () => redeploy.mutate(),
+    onSuccess: () => {
+      if (mounted.current) redeploy.mutate();
+    },
   });
   useEffect(() => {
     if (
@@ -542,7 +644,14 @@ function VercelDeployStep({
     queryFn: () => ipc.vercel.getDeployments({ appId: app.id }),
     enabled: !!deploymentUid,
     staleTime: 0,
-    refetchInterval: 5000,
+    refetchInterval: (query) =>
+      query.state.data?.some(
+        (deployment) =>
+          deployment.uid === deploymentUid &&
+          ["READY", "ERROR", "CANCELED"].includes(deployment.readyState),
+      )
+        ? false
+        : 5000,
     retry: false,
   });
   const started = deployments.data?.find(
@@ -554,7 +663,7 @@ function VercelDeployStep({
     !!deploymentUid && !deployments.error && started?.readyState === "READY";
   return (
     <div className="space-y-4">
-      <VercelConnector appId={app.id} folderName={app.name} />
+      <VercelConnector appId={app.id} folderName={app.name} deferDeployment />
       {sync.isPending && (
         <Progress>Configuring Vercel environment variables…</Progress>
       )}
@@ -633,9 +742,41 @@ function CloudflareDeployStep({ app }: { app: App }) {
     (query) =>
       query.data && ["live", "failed", "cancelled"].includes(query.data.state),
   );
+  const error = status.error ?? deployments.find((query) => query.error)?.error;
+  const failed = deployments.some(
+    (query) =>
+      query.data?.state === "failed" || query.data?.state === "cancelled",
+  );
+  const pending = deployments.some(
+    (query) =>
+      query.isLoading ||
+      query.data?.state === "queued" ||
+      query.data?.state === "building",
+  );
   return (
     <div className="space-y-4">
       <CloudflareConnector appId={app.id} />
+      {pending && <Progress>Building on Cloudflare…</Progress>}
+      <ErrorNotice error={error} />
+      {failed && (
+        <ErrorNotice
+          error={
+            new Error(
+              "A Cloudflare deployment failed or was cancelled. Check its build logs in Cloudflare and retry the build there, or sync a code fix from GitHub.",
+            )
+          }
+        />
+      )}
+      {(error || failed) && (
+        <Button
+          onClick={() => {
+            void status.refetch();
+            for (const deployment of deployments) void deployment.refetch();
+          }}
+        >
+          Retry deployment status
+        </Button>
+      )}
       {complete && (
         <p role="status" className="text-sm text-green-600">
           Cloudflare deployment verified.
@@ -742,26 +883,15 @@ function PushDeployment({
   onBusyChange: (busy: boolean) => void;
 }) {
   const github = useGithubOps(app.id);
-  const [committing, setCommitting] = useState(false);
+  const { commit, mounted } = useDeploymentCommit(app.id, onBusyChange);
   const started = useRef(false);
   const verifiedBanner = useRef(github.projection.banner);
   const push = useMutation({
     mutationFn: async () => {
       await ipc.github.verifyConnection({ appId: app.id });
-      const files = await ipc.git.getUncommittedFiles({ appId: app.id });
-      if (files.length) {
-        setCommitting(true);
-        try {
-          await ipc.git.commitChanges({
-            appId: app.id,
-            message: "Prepare deployment",
-            operationId: `deploy:${crypto.randomUUID()}`,
-          });
-        } finally {
-          setCommitting(false);
-        }
-      }
+      if (!(await commit())) return;
       await github.dispatch({ type: "BANNER_DISMISSED" });
+      if (!mounted.current) return;
       const receipt = await github.dispatch({
         type: "OP_REQUESTED",
         op: { type: "push", mode: "normal", provider: "github" },
@@ -845,7 +975,6 @@ function PushDeployment({
         </>
       )}
       {verification.isSuccess && !usesCoolify && <FinishDeploymentButton />}
-      <BusyState busy={committing} onChange={onBusyChange} />
     </div>
   );
 }

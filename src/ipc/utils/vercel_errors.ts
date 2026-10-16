@@ -45,6 +45,47 @@ function getResponseErrorMessage(value: unknown): string | undefined {
   return undefined;
 }
 
+/** Deployment recovery guidance must not expose the SDK's raw response body. */
+export function getVercelDeploymentError(error: unknown): Error {
+  if (error instanceof VercelError) {
+    let guidance: string;
+    switch (error.statusCode) {
+      case 401:
+      case 403:
+        guidance =
+          "Reconnect Vercel with a token that has access to this project and its team, then retry.";
+        break;
+      case 404:
+      case 410:
+        guidance =
+          "The Vercel project could not be found. Reconnect an existing project in Publish, then retry.";
+        break;
+      case 400:
+      case 422:
+        guidance =
+          "Check that the connected GitHub repository and branch exist and that the Vercel GitHub integration has access, then retry.";
+        break;
+      case 429:
+        guidance = "Vercel's rate limit was reached. Wait a moment and retry.";
+        break;
+      default:
+        guidance =
+          error.statusCode >= 200 && error.statusCode < 300
+            ? "Dyad could not read Vercel's response. Check the Vercel dashboard for a deployment before retrying."
+            : "Vercel could not start the deployment. Check the project in Vercel and retry in a moment.";
+    }
+    return new DyadError(
+      `Vercel deployment failed (HTTP ${error.statusCode}). ${guidance}`,
+      error.statusCode === 400 || error.statusCode === 422
+        ? DyadErrorKind.Precondition
+        : getVercelErrorKind(error.statusCode),
+    );
+  }
+  return error instanceof Error
+    ? error
+    : new Error("Failed to start a Vercel deployment.");
+}
+
 export function getVercelProjectCreationError(error: unknown): Error {
   if (error instanceof VercelError) {
     // Surface the API's error message, not the entire project response (which

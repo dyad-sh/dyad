@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import type { ChildProcess } from "node:child_process";
 import * as bufferedProcess from "@/ipc/utils/buffered_process";
+import * as gitUtils from "@/ipc/utils/git_utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -26,6 +27,56 @@ afterEach(() => {
 function status(...fields: string[]): string {
   return `${fields.join("\0")}\0`;
 }
+
+it.each(["win32", "linux", "darwin"])(
+  "uses the shared Git environment for workspace commands (%s)",
+  async (platform) => {
+    Object.defineProperty(process, "platform", {
+      configurable: true,
+      value: platform,
+    });
+    const gitEnvironment = {
+      gitLocation: "git",
+      env: {
+        PATH: "test-path",
+        ...(platform === "win32"
+          ? {
+              GIT_CONFIG_COUNT: "1",
+              GIT_CONFIG_KEY_0: "core.longpaths",
+              GIT_CONFIG_VALUE_0: "true",
+            }
+          : {}),
+      },
+    };
+    vi.spyOn(gitUtils, "getGitProcessEnvironment").mockReturnValue(
+      gitEnvironment,
+    );
+    const run = vi
+      .spyOn(bufferedProcess, "runBufferedProcess")
+      .mockResolvedValue({
+        code: 0,
+        signal: null,
+        stdout: "",
+        stderr: "",
+        stdoutTruncated: false,
+        stderrTruncated: false,
+        aborted: false,
+        timedOut: false,
+      });
+    const signal = new AbortController().signal;
+    await listGitOverlayTrackedPaths(process.cwd(), signal, ["supabase"]);
+
+    expect(run).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: gitEnvironment.gitLocation,
+        args: ["ls-files", "-z", "--", "supabase"],
+        cwd: process.cwd(),
+        env: gitEnvironment.env,
+        signal,
+      }),
+    );
+  },
+);
 
 it("streams complete tracked paths beyond the diagnostic output limit", async () => {
   const entry = "source/" + "a".repeat(200) + ".ts";

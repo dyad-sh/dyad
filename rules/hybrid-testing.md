@@ -157,6 +157,9 @@ can retain handles briefly on Windows, so teardown should use bounded
 `fs.rm` retries (`maxRetries` plus `retryDelay`) rather than making successful
 test logic fail with a transient `EBUSY`.
 
+For Vitest `node:os` mocks, expose overrides through both named and default exports: build `mockedOs = { ...actual, platform: vi.fn(actual.platform) }` and return `{ ...mockedOs, default: mockedOs }`. A named-only mock can leave production imports using the real platform.
+When exercising Windows Git policy with the host's real Git, mock `os.platform()` rather than `process.platform`; Dugite uses the latter to locate its platform-specific executable.
+
 When a hybrid Git fixture creates commits directly, pass an explicit test
 identity with `git -c user.email=... -c user.name=... commit` (or configure it
 locally first). CI and fresh developer environments may have no global Git

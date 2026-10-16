@@ -1,4 +1,15 @@
 {
+  "testRunQueue": {
+    "title": "Test kuyruğu",
+    "openTests": "Testleri aç",
+    "allTests": "Tüm testler",
+    "queued": "Sırada",
+    "running": "Çalışıyor",
+    "stopping": "Durduruluyor",
+    "passed": "Başarılı",
+    "failed": "Başarısız",
+    "inconclusive": "Sonuçsuz"
+  },
   "newChat": "Yeni Sohbet",
   "viewAllApps": "Tüm uygulamalar",
   "searchChats": "Sohbetlerde ara",

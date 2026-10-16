@@ -1,4 +1,15 @@
 {
+  "testRunQueue": {
+    "title": "Cola de pruebas",
+    "openTests": "Abrir Pruebas",
+    "allTests": "Todas las pruebas",
+    "queued": "En cola",
+    "running": "En ejecución",
+    "stopping": "Deteniendo",
+    "passed": "Correcta",
+    "failed": "Fallida",
+    "inconclusive": "No concluyente"
+  },
   "newChat": "Nuevo Chat",
   "viewAllApps": "Todos los apps",
   "searchChats": "Buscar chats",

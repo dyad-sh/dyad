@@ -155,6 +155,8 @@ Target a Vitest file with `npm test -- path/to/file.test.ts`. Do not pass Jest-o
 
 The pinned Vitest version does not support `--repeat`; it fails with `Unknown option '--repeat'`. Stress-run a target by repeating the supported `npm test -- path/to/file.test.ts` command externally.
 
+Loopback-server tests should request OS-selected ports with `listen(0)` instead of fixed high ports, which Windows can reject with `EACCES` in excluded ranges. Wait for listener readiness rather than sleeping before sending requests; keep a conflicting listener bound when testing port-in-use handling.
+
 Tests that inspect repository text files must account for Git's platform-specific line endings. Normalize newlines or match `\r?\n`; for a Windows-only failure, exercise synthetic LF and CRLF inputs locally so the regression does not depend on the runner OS.
 
 When a Git unit test needs an unmerged index, seed explicit stage 1/2/3 blob entries instead of relying on `git merge` to reject. On Windows, a merge can reject later in the workflow while leaving a stage-0 entry, so rejection alone does not prove the intended conflict fixture exists.

@@ -143,12 +143,12 @@ test("publishes to Vercel with production database config and verifies the curre
   await deploy.createVercelProject("guided-vercel");
   await expect(deploy.vercelBuilding).toBeVisible();
 
-  // Project creation starts a build; the guided flow starts its own after
-  // syncing the selected branch's configuration. Assert the HTTP payloads and
-  // the env snapshot each build received, not just the success message.
+  // Guided project creation defers deployment until the selected branch's
+  // configuration is synced. Assert there is only one build and inspect the
+  // environment it actually received, not just the success message.
   await expect
     .poll(async () => (await vercel.getState()).deployments.length)
-    .toBe(2);
+    .toBe(1);
   const state = await vercel.getState();
   expect(state.projects).toHaveLength(1);
   expect(state.projects[0]).toMatchObject({
@@ -156,9 +156,8 @@ test("publishes to Vercel with production database config and verifies the curre
     framework: "vite",
     gitRepository: { type: "github", repo: "testuser/guided-vercel" },
   });
-  const [initialBuild, guidedBuild] = state.deployments;
-  expect(initialBuild.envRevision).toBeGreaterThan(0);
-  expect(guidedBuild.envRevision).toBeGreaterThan(initialBuild.envRevision);
+  const [guidedBuild] = state.deployments;
+  expect(guidedBuild.envRevision).toBeGreaterThan(0);
   expect(guidedBuild).toMatchObject({
     projectId: state.projects[0].id,
     target: "production",
@@ -184,13 +183,6 @@ test("publishes to Vercel with production database config and verifies the curre
     ],
   });
 
-  // An earlier READY deployment must not complete the build being verified.
-  await vercel.setBuildState(initialBuild.id, "READY");
-  await deploy.button("Refresh Deployments").click();
-  await expect(deploy.dialog.getByText("READY", { exact: true })).toBeVisible();
-  await expect(deploy.vercelBuilding).toBeVisible();
-  await expect(deploy.button("Finish")).toBeHidden();
-
   await vercel.setBuildState(guidedBuild.id, "ERROR");
   await deploy.button("Refresh Deployments").click();
   await expect(
@@ -200,12 +192,21 @@ test("publishes to Vercel with production database config and verifies the curre
   await deploy.button("Retry deployment").click();
   await expect
     .poll(async () => (await vercel.getState()).deployments.length)
-    .toBe(3);
+    .toBe(2);
   await expect(deploy.vercelBuilding).toBeVisible();
   await expect(deploy.button("Finish")).toBeHidden();
-  const retryBuild = (await vercel.getState()).deployments[2];
+  const retryBuild = (await vercel.getState()).deployments[1];
   expect(retryBuild.id).not.toBe(guidedBuild.id);
   expect(retryBuild.env).toEqual(guidedBuild.env);
+
+  // A stale READY result for the previous attempt must not complete the
+  // retry currently being verified.
+  await vercel.setBuildState(guidedBuild.id, "READY");
+  await deploy.button("Refresh Deployments").click();
+  await expect(deploy.dialog.getByText("READY", { exact: true })).toBeVisible();
+  await expect(deploy.vercelBuilding).toBeVisible();
+  await expect(deploy.button("Finish")).toBeHidden();
+
   await vercel.setBuildState(retryBuild.id, "READY");
   await deploy.button("Refresh Deployments").click();
   await expect(

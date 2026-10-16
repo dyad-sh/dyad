@@ -1,6 +1,7 @@
 // @vitest-environment node
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createServer } from "node:net";
 
 // In-memory replacement for the `mcp_servers` table. The mocked db
 // reads/writes from here so we can exercise the flow without spinning
@@ -119,6 +120,31 @@ function seedRow(row: Partial<Row> & { id: number }): void {
   });
 }
 
+// Let the OS choose a usable port: fixed high ports can fall inside Windows'
+// excluded port ranges. Release the reservation before the flow binds both
+// loopback stacks, keeping one port for every superseding flow in a test.
+async function getAvailableCallbackPort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        server.close();
+        reject(new Error("Failed to select an OAuth callback port"));
+        return;
+      }
+      server.close((error) => {
+        if (error) {
+          reject(error);
+        } else {
+          resolve(address.port);
+        }
+      });
+    });
+  });
+}
+
 describe("runOAuthFlow validation", () => {
   beforeEach(() => {
     dbStore.clear();
@@ -162,9 +188,7 @@ describe("runOAuthFlow happy path (auth resolves AUTHORIZED first call)", () => 
     authMock.mockResolvedValueOnce("AUTHORIZED");
     const result = await runOAuthFlow({
       serverId: 3,
-      // Random high port to avoid colliding with the prod default
-      // (53682) during parallel test runs.
-      callbackPort: 53690,
+      callbackPort: await getAvailableCallbackPort(),
     });
     expect(result.success).toBe(true);
     expect(result.error).toBeNull();
@@ -175,15 +199,16 @@ describe("runOAuthFlow happy path (auth resolves AUTHORIZED first call)", () => 
     seedRow({ id: 4, transport: "http", url: "https://example.com/mcp" });
     authMock.mockResolvedValueOnce("AUTHORIZED");
 
+    const callbackPort = await getAvailableCallbackPort();
     const first = runOAuthFlow({
       serverId: 4,
       rendererMessageId: "stable-message",
-      callbackPort: 53_691,
+      callbackPort,
     });
     const retry = runOAuthFlow({
       serverId: 4,
       rendererMessageId: "stable-message",
-      callbackPort: 53_691,
+      callbackPort,
     });
 
     expect(retry).toBe(first);
@@ -204,17 +229,18 @@ describe("runOAuthFlow happy path (auth resolves AUTHORIZED first call)", () => 
       .mockResolvedValueOnce("REDIRECT")
       .mockResolvedValueOnce("AUTHORIZED");
 
+    const callbackPort = await getAvailableCallbackPort();
     const older = runOAuthFlow({
       serverId: 6,
       rendererMessageId: "older",
-      callbackPort: 53_692,
+      callbackPort,
     });
     const newer = runOAuthFlow({
       serverId: 6,
       rendererMessageId: "newer",
-      callbackPort: 53_692,
+      callbackPort,
     });
-    await new Promise((resolve) => setTimeout(resolve, 25));
+    await vi.waitFor(() => expect(authMock).toHaveBeenCalledTimes(1));
     releaseOlder();
 
     await expect(older).resolves.toMatchObject({
@@ -224,7 +250,7 @@ describe("runOAuthFlow happy path (auth resolves AUTHORIZED first call)", () => 
     const cleanup = await runOAuthFlow({
       serverId: 6,
       rendererMessageId: "cleanup",
-      callbackPort: 53_692,
+      callbackPort,
     });
     expect(cleanup.success).toBe(true);
     await expect(newer).resolves.toMatchObject({
@@ -242,10 +268,11 @@ describe("runOAuthFlow happy path (auth resolves AUTHORIZED first call)", () => 
         releasePreparation = resolve;
       }),
     );
+    const callbackPort = await getAvailableCallbackPort();
     const preparation = runOAuthFlow({
       serverId: 8,
       rendererMessageId: "before-mutation",
-      callbackPort: 53_693,
+      callbackPort,
     });
 
     await withMcpOAuthServerMutation(
@@ -266,7 +293,7 @@ describe("runOAuthFlow happy path (auth resolves AUTHORIZED first call)", () => 
       runOAuthFlow({
         serverId: 8,
         rendererMessageId: "before-mutation",
-        callbackPort: 53_693,
+        callbackPort,
       }),
     ).resolves.toMatchObject({ success: true });
     expect(authMock).toHaveBeenCalledOnce();
@@ -316,7 +343,7 @@ describe("OAuth loopback listener (state CSRF check)", () => {
     authMock.mockResolvedValueOnce("REDIRECT");
     authMock.mockResolvedValueOnce("AUTHORIZED");
 
-    const callbackPort = 53693;
+    const callbackPort = await getAvailableCallbackPort();
     const flowPromise = runOAuthFlow({ serverId: 10, callbackPort });
 
     // The flow's `state` is cryptographically random and flow-scoped,
@@ -325,7 +352,7 @@ describe("OAuth loopback listener (state CSRF check)", () => {
     // ECONNREFUSED) proves the listener accepted the connection on the
     // IPv6 stack. CSRF correctness itself is covered by the
     // state-mismatch test below.
-    await new Promise((r) => setTimeout(r, 50));
+    await vi.waitFor(() => expect(authMock).toHaveBeenCalledTimes(1));
     const probe = await fetch(
       `http://[::1]:${callbackPort}/callback?code=x&state=wrong`,
     );
@@ -355,15 +382,14 @@ describe("OAuth loopback listener (state CSRF check)", () => {
     authMock.mockResolvedValueOnce("REDIRECT");
     authMock.mockResolvedValueOnce("AUTHORIZED");
 
-    const callbackPort = 53697;
+    const callbackPort = await getAvailableCallbackPort();
     const firstPromise = runOAuthFlow({ serverId: 11, callbackPort });
-    // Let the first flow's listener bind.
-    await new Promise((r) => setTimeout(r, 50));
+    // auth() runs only after the listener has bound.
+    await vi.waitFor(() => expect(authMock).toHaveBeenCalledTimes(1));
 
     // Second click on the same port: must not reject with port-busy.
     const secondPromise = runOAuthFlow({ serverId: 12, callbackPort });
-    // Give supersede + bind a moment.
-    await new Promise((r) => setTimeout(r, 200));
+    await vi.waitFor(() => expect(authMock).toHaveBeenCalledTimes(2));
 
     // The new listener must be reachable -- probe via a malformed
     // state callback that the listener will 400 (proving the new
@@ -394,13 +420,13 @@ describe("OAuth loopback listener (state CSRF check)", () => {
     authMock.mockResolvedValueOnce("REDIRECT");
     authMock.mockResolvedValueOnce("AUTHORIZED");
 
-    const callbackPort = 53691;
+    const callbackPort = await getAvailableCallbackPort();
     const flowPromise = runOAuthFlow({ serverId: 7, callbackPort });
 
-    // Give the listener a moment to bind, then send a forged
+    // Wait for the listener to bind, then send a forged
     // callback with a `state` value that cannot possibly match (the
     // expected `state` is a 22-char base64url string we don't know).
-    await new Promise((r) => setTimeout(r, 50));
+    await vi.waitFor(() => expect(authMock).toHaveBeenCalledTimes(1));
     const callbackResponse = await fetch(
       `http://127.0.0.1:${callbackPort}/callback?code=fake-code&state=not-the-real-state`,
     );
@@ -426,15 +452,18 @@ describe("OAuth loopback listener (state CSRF check)", () => {
     seedRow({ id: 21, transport: "http", url: "https://example.com/mcp" });
     authMock.mockResolvedValueOnce("REDIRECT");
 
-    const { createServer: createNetServer } = await import("node:net");
-    const callbackPort = 53694;
-    const blocker = createNetServer();
+    const blocker = createServer();
     await new Promise<void>((resolve, reject) => {
       blocker.once("error", reject);
-      blocker.listen(callbackPort, "127.0.0.1", () => resolve());
+      blocker.listen(0, "127.0.0.1", () => resolve());
     });
 
     try {
+      const address = blocker.address();
+      if (!address || typeof address === "string") {
+        throw new Error("Failed to select an OAuth callback port");
+      }
+      const callbackPort = address.port;
       const result = await runOAuthFlow({ serverId: 21, callbackPort });
       expect(result.success).toBe(false);
       expect(result.error ?? "").toMatch(/another local process is holding/i);

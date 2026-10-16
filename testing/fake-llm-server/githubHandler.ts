@@ -129,7 +129,7 @@ const mockUser = {
 
 let mockReposRoot = fs.mkdtempSync(path.join(os.tmpdir(), "dyad-git-mock-"));
 
-const mockRepos = [
+const initialMockRepos = [
   {
     id: 1,
     name: "test-repo-1",
@@ -166,6 +166,8 @@ const mockRepos = [
     default_branch: "main",
   },
 ];
+
+let mockRepos = structuredClone(initialMockRepos);
 
 const mockBranches = [
   { name: "main", commit: { sha: "abc123" } },
@@ -498,6 +500,13 @@ export function handleResetRepos(req: Request, res: Response) {
     console.warn("* Warning: failed to remove old repos root", err);
   }
   mockReposRoot = fs.mkdtempSync(path.join(os.tmpdir(), "dyad-git-mock-"));
+  // Retries reuse the server process. Reset the API catalog alongside the
+  // bare repositories so names created by a previous attempt are available.
+  mockRepos = structuredClone(initialMockRepos);
+  for (const repo of Object.keys(repoCollaborators)) {
+    delete repoCollaborators[repo];
+  }
+  pushEvents.length = 0;
   fakeLlmLog(`* New repos root: ${mockReposRoot}`);
   res.json({ reset: true, timestamp: new Date() });
 }

@@ -3,6 +3,12 @@ import { createStore, Provider } from "jotai";
 import { describe, expect, it, vi } from "vitest";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({ t: (key: string) => key }),
+}));
+vi.mock("@/hooks/useSettings", () => ({
+  useSettings: () => ({ settings: {}, settingsLoading: false }),
+}));
 vi.mock("@/hooks/useLoadApp", () => ({
   useLoadApp: (appId: number | null) => ({
     app:
@@ -12,13 +18,18 @@ vi.mock("@/hooks/useLoadApp", () => ({
             id: appId,
             name: "app",
             files: [],
-            neonProjectId: appId === 1 ? "neon-project" : null,
+            neonProjectId: appId !== 2 ? "neon-project" : null,
+            ...(appId === 3 && {
+              gitlabInstanceUrl: "https://gitlab.com",
+              gitlabProjectId: 9,
+              gitlabProjectPath: "me/app",
+            }),
           },
     loading: false,
   }),
 }));
-vi.mock("@/components/GitHubConnector", () => ({
-  GitHubConnector: () => <div>GitHub connector</div>,
+vi.mock("@/components/RepositoryConnector", () => ({
+  RepositoryConnector: () => <div>Repository connector</div>,
 }));
 vi.mock("@/components/preview_panel/DeploymentSection", () => ({
   DeploymentSection: () => <div>Deployment section</div>,
@@ -49,7 +60,7 @@ describe("PublishPanel", () => {
       </Provider>,
     );
 
-    expect(screen.getByText("GitHub connector")).toBeTruthy();
+    expect(screen.getByText("Repository connector")).toBeTruthy();
     expect(screen.getByText("Deployment section")).toBeTruthy();
     expect(screen.queryByRole("dialog")).toBeNull();
 
@@ -69,7 +80,7 @@ describe("PublishPanel", () => {
       </Provider>,
     );
 
-    expect(screen.getByText("GitHub connector")).toBeTruthy();
+    expect(screen.getByText("Repository connector")).toBeTruthy();
     expect(screen.getByText("Deployment section")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Publish app" })).toBeNull();
     expect(screen.queryByRole("dialog")).toBeNull();
@@ -91,6 +102,21 @@ describe("PublishPanel", () => {
     expect(screen.queryByRole("button", { name: "Publish app" })).toBeNull();
     act(() => store.set(selectedAppIdAtom, 1));
     expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByRole("button", { name: "Publish app" })).toBeTruthy();
+  });
+
+  it("preserves the GitLab repository card alongside the Neon publish button", () => {
+    const store = createStore();
+    store.set(selectedAppIdAtom, 3);
+    render(
+      <Provider store={store}>
+        <PublishPanel />
+      </Provider>,
+    );
+
+    expect(screen.getByText("preview.publish_panel.gitlab")).toBeTruthy();
+    expect(screen.queryByText("preview.publish_panel.github")).toBeNull();
+    expect(screen.getByText("Repository connector")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Publish app" })).toBeTruthy();
   });
 });

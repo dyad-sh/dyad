@@ -25,7 +25,8 @@ test("guides production migration, publishes to Cloudflare, and reviews migratio
   await deploy.button("Migrate to Production").click();
   await expect(deploy.planning).toBeVisible();
   await expect(deploy.button("Cancel")).toBeEnabled();
-  await expect(deploy.button("Development database")).toBeDisabled();
+  await expect(deploy.button("Development database")).toBeEnabled();
+  await expect(deploy.button("Close")).toBeEnabled();
   await deploy.button("Cancel").click();
   await expect(deploy.planning).toBeHidden();
   await expect(deploy.button("Migrate to Production")).toBeFocused();

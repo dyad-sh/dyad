@@ -1472,7 +1472,7 @@ export async function verifyGithubConnection({
       const branch = app.githubBranch || "main";
       const remote = await execGit(["remote", "get-url", "origin"], appPath);
       const expected = normalizeGitRemote(
-        `${getGitHubGitBase()}/${app.githubOrg}/${app.githubRepo}`,
+        githubRemote({ owner: app.githubOrg, repo: app.githubRepo }).httpsUrl,
       );
       if (
         remote.exitCode !== 0 ||

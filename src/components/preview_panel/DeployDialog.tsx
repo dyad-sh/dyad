@@ -764,7 +764,7 @@ function PushDeployment({
       await github.dispatch({ type: "BANNER_DISMISSED" });
       const receipt = await github.dispatch({
         type: "OP_REQUESTED",
-        op: { type: "push", mode: "normal" },
+        op: { type: "push", mode: "normal", provider: "github" },
       });
       if (!isAppliedGithubOpsReceipt(receipt))
         throw new Error(

@@ -42,8 +42,8 @@ import {
   normalizeGitHubRepoName,
   prepareLocalBranch,
   verifyGithubConnection,
-  getGitHubApiBase,
 } from "@/ipc/handlers/github_handlers";
+import { getGitHubApiBase } from "@/ipc/utils/github_endpoints";
 import { createAppOperationHandler } from "@/ipc/utils/app_mutation_lock";
 import { DyadErrorKind } from "@/errors/dyad_error";
 import { db } from "@/db";

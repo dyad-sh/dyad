@@ -615,7 +615,7 @@ describe.each([false, true])(
           await waitFor(() =>
             expect(h.dispatch).toHaveBeenCalledWith({
               type: "OP_REQUESTED",
-              op: { type: "push", mode: "normal" },
+              op: { type: "push", mode: "normal", provider: "github" },
             }),
           );
         else {
@@ -1109,7 +1109,7 @@ describe("already hosted", () => {
         await waitFor(() =>
           expect(h.dispatch).toHaveBeenCalledWith({
             type: "OP_REQUESTED",
-            op: { type: "push", mode: "normal" },
+            op: { type: "push", mode: "normal", provider: "github" },
           }),
         );
       } else await screen.findByText("Commit failed");
@@ -1137,7 +1137,7 @@ describe("already hosted", () => {
     await waitFor(() =>
       expect(h.dispatch).toHaveBeenCalledWith({
         type: "OP_REQUESTED",
-        op: { type: "push", mode: "normal" },
+        op: { type: "push", mode: "normal", provider: "github" },
       }),
     );
     expect(h.migrate.mock.invocationCallOrder[0]).toBeLessThan(
@@ -1187,7 +1187,7 @@ describe("already hosted", () => {
     await waitFor(() =>
       expect(h.dispatch).toHaveBeenCalledWith({
         type: "OP_REQUESTED",
-        op: { type: "push", mode: "normal" },
+        op: { type: "push", mode: "normal", provider: "github" },
       }),
     );
     expect(h.migrate).not.toHaveBeenCalled();
@@ -1266,7 +1266,7 @@ describe("already hosted", () => {
     await waitFor(() =>
       expect(h.dispatch).toHaveBeenCalledWith({
         type: "OP_REQUESTED",
-        op: { type: "push", mode: "normal" },
+        op: { type: "push", mode: "normal", provider: "github" },
       }),
     );
     let finishVerification!: () => void;
@@ -1314,7 +1314,7 @@ describe("already hosted", () => {
       await waitFor(() =>
         expect(h.dispatch).toHaveBeenCalledWith({
           type: "OP_REQUESTED",
-          op: { type: "push", mode: "normal" },
+          op: { type: "push", mode: "normal", provider: "github" },
         }),
       );
       expect(h.preview).not.toHaveBeenCalled();
@@ -1393,7 +1393,7 @@ describe("already hosted on Coolify", () => {
     await waitFor(() =>
       expect(h.dispatch).toHaveBeenCalledWith({
         type: "OP_REQUESTED",
-        op: { type: "push", mode: "normal" },
+        op: { type: "push", mode: "normal", provider: "github" },
       }),
     );
     h.projection = projectGithubOps({

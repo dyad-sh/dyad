@@ -225,7 +225,8 @@ describe("guided deployment (renderer and real IPC)", () => {
       await click("Migrate to Production");
       await screen.findByText("Computing migration plan...");
       await waitFor(() => expect(planner).toHaveBeenCalledOnce());
-      expect(button("Development database").disabled).toBe(true);
+      expect(button("Development database").disabled).toBe(false);
+      expect(button("Close").disabled).toBe(false);
       expect(button("Cancel").disabled).toBe(false);
       expect(button("Continue to GitHub").disabled).toBe(true);
 

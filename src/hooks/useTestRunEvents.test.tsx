@@ -92,6 +92,45 @@ function makeWrapper() {
 }
 
 describe("useTestRunEvents", () => {
+  it("keeps only the ten latest distinct run summaries per app without needing start events", () => {
+    const { queryClient, Wrapper } = makeWrapper();
+    renderHook(() => useTestRunEvents(), { wrapper: Wrapper });
+    act(() => {
+      for (let runId = 1; runId <= 12; runId++) {
+        emitRunState({
+          appId: 1,
+          runId,
+          source: "agent",
+          state: "finished",
+          results: [{ file: "a.spec.ts", status: "passed" }],
+        });
+      }
+      emitRunState({
+        appId: 1,
+        runId: 12,
+        source: "agent",
+        state: "finished",
+        results: [{ file: "a.spec.ts", status: "passed" }],
+      });
+      emitRunState({
+        appId: 2,
+        runId: 1,
+        source: "panel",
+        state: "finished",
+        results: [],
+      });
+    });
+    expect(
+      queryClient
+        .getQueryData<Array<{ runId: number }>>(
+          queryKeys.tests.recentRuns({ appId: 1 }),
+        )
+        ?.map((run) => run.runId),
+    ).toEqual([3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+    expect(
+      queryClient.getQueryData(queryKeys.tests.recentRuns({ appId: 2 })),
+    ).toEqual([expect.objectContaining({ runId: 1, status: "inconclusive" })]);
+  });
   it.each(["panel", "agent"])(
     "merges the authoritative terminal sandbox flag for %s runs",
     (source) => {

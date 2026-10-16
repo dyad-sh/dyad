@@ -30,6 +30,20 @@ let rememberedOrigin = null; // e.g. "http://localhost:5173"
 let rememberedBaseUrl = null;
 const fixedHeaders = workerData?.fixedHeaders || {};
 const authBootstrapToken = workerData?.authBootstrapToken;
+// Shared-localhost previews share one cookie jar across ports, so apps that
+// use the same cookie name (e.g. Neon Auth's session token) overwrite each
+// other's sessions. When set (e.g. "dyad-a12."), HttpOnly cookies are renamed
+// with this prefix at the browser boundary and restored on the way upstream.
+// Page scripts cannot read HttpOnly cookies, so the app never sees the rename.
+const COOKIE_NAMESPACE = workerData?.cookieNamespace;
+if (
+  COOKIE_NAMESPACE !== undefined &&
+  (typeof COOKIE_NAMESPACE !== "string" ||
+    !/^dyad-a[1-9]\d*\.$/.test(COOKIE_NAMESPACE))
+) {
+  throw new Error("Invalid cookie namespace");
+}
+const NAMESPACED_COOKIE_RE = /^dyad-a[1-9]\d*\./;
 
 /* ---------- pre-configure rememberedOrigin from workerData ------- */
 {
@@ -404,12 +418,78 @@ function rewriteCookieForIframe(cookieStr) {
   return [nameValue, ...attrs].join("; ");
 }
 
+function isExpiringCookie(attrs) {
+  return attrs.some((p) => {
+    const match = /^(max-age|expires)\s*=\s*(.*)$/i.exec(p);
+    if (!match) return false;
+    if (match[1].toLowerCase() === "max-age") return Number(match[2]) <= 0;
+    const expires = Date.parse(match[2]);
+    return !Number.isNaN(expires) && expires <= Date.now();
+  });
+}
+
+/**
+ * Returns the Set-Cookie strings the browser should receive for one upstream
+ * cookie. HttpOnly cookies are moved into this app's namespace. A deletion
+ * also clears the legacy shared copy, otherwise subsequent requests can
+ * fall back to the old session after the namespaced session is removed.
+ */
+function namespaceSetCookie(cookieStr) {
+  if (!COOKIE_NAMESPACE) return [cookieStr];
+  const [nameValue, ...attrs] = cookieStr.split("; ");
+  const eq = nameValue.indexOf("=");
+  if (eq <= 0) return [cookieStr];
+  const namespaced = [COOKIE_NAMESPACE + nameValue, ...attrs].join("; ");
+  if (isExpiringCookie(attrs)) return [cookieStr, namespaced];
+  if (attrs.some((p) => p.toLowerCase() === "httponly")) return [namespaced];
+  return [cookieStr];
+}
+
 /* Rewrites the Set-Cookie header (an array in Node) in place on `headers`. */
 function rewriteSetCookieHeaders(headers) {
   const sc = headers["set-cookie"];
   if (!sc) return headers;
   const list = Array.isArray(sc) ? sc : [sc];
-  headers["set-cookie"] = list.map(rewriteCookieForIframe);
+  headers["set-cookie"] = list
+    .map(rewriteCookieForIframe)
+    .flatMap((cookie) =>
+      typeof cookie === "string" ? namespaceSetCookie(cookie) : [cookie],
+    );
+  return headers;
+}
+
+/**
+ * Restores this app's namespaced cookies before forwarding upstream and drops
+ * every other app's. A namespaced cookie wins over a shared cookie of the same
+ * name, which may be a stale session left by another app before namespacing.
+ */
+function rewriteRequestCookies(headers) {
+  if (!COOKIE_NAMESPACE || !headers.cookie) return headers;
+  const pairs = String(headers.cookie)
+    .split(";")
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const restored = [];
+  const restoredNames = new Set();
+  const shared = [];
+  for (const pair of pairs) {
+    if (pair.startsWith(COOKIE_NAMESPACE)) {
+      const original = pair.slice(COOKIE_NAMESPACE.length);
+      const name = original.split("=", 1)[0];
+      if (!restoredNames.has(name)) {
+        restoredNames.add(name);
+        restored.push(original);
+      }
+    } else if (!NAMESPACED_COOKIE_RE.test(pair)) {
+      shared.push(pair);
+    }
+  }
+  const forwarded = [
+    ...restored,
+    ...shared.filter((pair) => !restoredNames.has(pair.split("=", 1)[0])),
+  ];
+  if (forwarded.length) headers.cookie = forwarded.join("; ");
+  else delete headers.cookie;
   return headers;
 }
 
@@ -483,6 +563,7 @@ const server = http.createServer((clientReq, clientRes) => {
 
   /* Copy request headers but rewrite Host / Origin / Referer */
   const headers = { ...clientReq.headers, host: target.host, ...fixedHeaders };
+  rewriteRequestCookies(headers);
   if (headers.origin) headers.origin = target.origin;
   if (headers.referer) {
     try {
@@ -608,6 +689,7 @@ server.on("upgrade", (req, socket, _head) => {
 
   const isTLS = target.protocol === "https:";
   const headers = { ...req.headers, host: target.host, ...fixedHeaders };
+  rewriteRequestCookies(headers);
   if (headers.origin) headers.origin = target.origin;
 
   const upReq = (isTLS ? https : http).request({

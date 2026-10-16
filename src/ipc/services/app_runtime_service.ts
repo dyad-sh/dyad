@@ -8,7 +8,10 @@ import killPort from "kill-port";
 import log from "electron-log";
 import { eq } from "drizzle-orm";
 
-import { getAppPreviewHostname } from "../../../shared/preview_hostname";
+import {
+  getAppPreviewHostname,
+  getPreviewCookieNamespace,
+} from "../../../shared/preview_hostname";
 import {
   ensureSupabasePreviewRedirects,
   resolveSupabasePreviewTarget,
@@ -794,6 +797,11 @@ export async function ensureProxyForRunningApp({
       worker = await startProxy(originalUrl, {
         port: getAppProxyPort(appId),
         hostname,
+        // App-specific hostnames already isolate cookies.
+        cookieNamespace:
+          hostname === "localhost"
+            ? getPreviewCookieNamespace(appId)
+            : undefined,
         authBootstrapToken,
         signal,
         onStarted: resolveReady,

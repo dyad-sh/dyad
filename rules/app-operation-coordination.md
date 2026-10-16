@@ -6,6 +6,8 @@ actually touches; never use a raw numeric `appId` with `withLock`.
 
 ## Resource domains
 
+Shared-localhost preview cookie namespacing must expire both the per-app and legacy shared cookie on deletion, including HttpOnly deletions. Otherwise removing the namespaced cookie lets request forwarding fall back to the stale shared session.
+
 | Resource              | Protects                                                                                                                                                      |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `app-path`            | The app row's path and directory identity. Path consumers take read access; rename, relocation, template path swaps, and deletion take write access.          |

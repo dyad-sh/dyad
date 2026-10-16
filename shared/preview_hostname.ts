@@ -15,3 +15,13 @@ export function isAppPreviewHostname(hostname: string): boolean {
   const match = /^app-([1-9]\d*)\.localhost$/.exec(hostname);
   return !!match && Number.isSafeInteger(Number(match[1]));
 }
+
+/**
+ * Browser-side cookie prefix for shared-localhost previews. Keep the format
+ * aligned with the validation in worker/proxy_server.js.
+ */
+export function getPreviewCookieNamespace(appId: number): string {
+  // Reuse the hostname's app ID validation.
+  getAppPreviewHostname(appId);
+  return `dyad-a${appId}.`;
+}

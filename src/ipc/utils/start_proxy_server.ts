@@ -16,6 +16,8 @@ export async function startProxy(
   opts: {
     port: number;
     hostname: string;
+    /** Per-app HttpOnly cookie prefix; see worker/proxy_server.js. */
+    cookieNamespace?: string;
     onStarted?: (proxyUrl: string) => void;
     onError?: (error: DyadError) => void;
     fixedHeaders?: Record<string, string>;
@@ -38,6 +40,7 @@ export async function startProxy(
       workerData: {
         targetOrigin,
         hostname: opts.hostname,
+        cookieNamespace: opts.cookieNamespace,
         port,
         fallbackPortStart,
         maxPortAttempts: PROXY_FALLBACK_MAX_ATTEMPTS,

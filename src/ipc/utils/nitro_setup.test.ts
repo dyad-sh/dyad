@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ensureNitroOnViteApp, hasCompleteNitroSetup } from "./nitro_setup";
+import { ensureNitroOnViteApp } from "./nitro_setup";
 
 const { installPackagesMock } = vi.hoisted(() => ({
   installPackagesMock: vi.fn(),
@@ -46,39 +46,6 @@ export default defineConfig({
 
   afterEach(async () => {
     await fs.rm(appPath, { recursive: true, force: true });
-  });
-
-  it("knows a finished setup from a tree missing either of its halves", async () => {
-    await fs.writeFile(
-      path.join(appPath, "package.json"),
-      JSON.stringify({ name: "demo", scripts: { build: "vite build" } }),
-      "utf8",
-    );
-    expect(await hasCompleteNitroSetup(appPath)).toBe(false);
-
-    // The install writes the dependencies, as the real one does.
-    installPackagesMock.mockImplementation(async () => {
-      const manifestPath = path.join(appPath, "package.json");
-      const manifest = JSON.parse(await fs.readFile(manifestPath, "utf8"));
-      manifest.dependencies = { nitro: "^3.0.0", jiti: "^2.0.0" };
-      await fs.writeFile(manifestPath, JSON.stringify(manifest), "utf8");
-      return { warningMessages: [] };
-    });
-    await ensureNitroOnViteApp(appPath);
-    expect(await hasCompleteNitroSetup(appPath)).toBe(true);
-
-    // A setup killed after the config was written, before the install.
-    const manifestPath = path.join(appPath, "package.json");
-    const complete = await fs.readFile(manifestPath, "utf8");
-    const manifest = JSON.parse(complete);
-    delete manifest.dependencies.nitro;
-    await fs.writeFile(manifestPath, JSON.stringify(manifest), "utf8");
-    expect(await hasCompleteNitroSetup(appPath)).toBe(false);
-
-    // A setup that failed after the install and rolled its files back.
-    await fs.writeFile(manifestPath, complete, "utf8");
-    await fs.rm(path.join(appPath, "nitro.config.ts"));
-    expect(await hasCompleteNitroSetup(appPath)).toBe(false);
   });
 
   it("adds a start script in the manifest's own style", async () => {

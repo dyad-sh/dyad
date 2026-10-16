@@ -31,7 +31,6 @@ import {
   useCloudflareRepoAccess,
   useCloudflareWorkers,
   useConnectCloudflareWorker,
-  useConvertCloudflareAppToNitro,
   useDisconnectCloudflareWorker,
   useSaveCloudflareToken,
 } from "@/hooks/useCloudflareDeploy";
@@ -42,6 +41,7 @@ import {
   isValidWorkerName,
   type CloudflareDeploymentState,
 } from "@/cloudflare_deploy/build_config";
+import { buildCloudflareNitroConversionPrompt } from "@/cloudflare_deploy/convert_prompt";
 import { buildCloudflareDeployFixPrompt } from "@/cloudflare_deploy/fix_prompt";
 
 /**
@@ -194,12 +194,9 @@ function hiddenRefetchError(
 function RecheckButton({
   onCheck,
   className,
-  disabled = false,
 }: {
   onCheck: () => Promise<{ error: Error | null }>;
   className?: string;
-  /** While another action on the same view is running. */
-  disabled?: boolean;
 }) {
   const [checking, setChecking] = useState(false);
   const check = async () => {
@@ -225,7 +222,7 @@ function RecheckButton({
         size="sm"
         variant="ghost"
         onClick={check}
-        disabled={checking || disabled}
+        disabled={checking}
       >
         {checking ? (
           <Loader2 className="h-3 w-3 animate-spin" />
@@ -241,18 +238,49 @@ function RecheckButton({
 /**
  * A plain Vite app is static files, which the Workers build has no way to
  * run. Adding a Nitro server layer makes it an app whose build produces a
- * Worker: the same change the Neon integration makes on connect. The change
- * is committed so the deploy can see it; pushing stays with the user's sync,
- * which the tab asks for once the new target appears.
+ * Worker: the same change the Neon integration makes on connect, and the one
+ * the agent's `enable_nitro` tool makes, so the offer sends that request to
+ * the chat. Only Agent mode has the tool, so a chat in any other mode is
+ * asked to switch first. The chat commits the change; pushing stays with the
+ * user's sync, which the tab asks for once the new target appears.
  */
 function NitroConversionOffer({
-  appId,
   onRecheck,
 }: {
-  appId: number;
   onRecheck: () => Promise<{ error: Error | null }>;
 }) {
-  const convert = useConvertCloudflareAppToNitro({ appId });
+  const chatId = useAtomValue(selectedChatIdAtom);
+  const { streamMessage, isStreaming } = useStreamChat();
+  const { selectedMode, isLoading: isChatModeLoading } = useChatMode(chatId);
+  // Open while the Agent-mode confirmation is showing.
+  const [needsAgentMode, setNeedsAgentMode] = useState(false);
+
+  const send = async ({ inAgentMode }: { inAgentMode: boolean }) => {
+    if (chatId == null) return;
+    // A refused send reports itself, so the confirmation is only for a send
+    // that went through.
+    const sent = await streamMessage({
+      prompt: buildCloudflareNitroConversionPrompt(),
+      chatId,
+      ...(inAgentMode ? { requestedChatMode: "local-agent" as const } : {}),
+    });
+    if (sent) {
+      showInfo("Sent to chat — asking the AI to convert the app to Nitro…");
+    }
+  };
+
+  const handleConvert = () => {
+    if (chatId == null) {
+      showInfo("Open a chat to ask the AI to convert this app.");
+      return;
+    }
+    if (selectedMode === "local-agent") {
+      void send({ inAgentMode: false });
+    } else {
+      setNeedsAgentMode(true);
+    }
+  };
+
   return (
     <div className="mt-3 space-y-2" data-testid="cloudflare-nitro-offer">
       <p>
@@ -260,40 +288,35 @@ function NitroConversionOffer({
         to Cloudflare; the app will keep working as it does now.
       </p>
       <div className="flex items-center gap-2">
-        <RecheckButton
-          onCheck={() => {
-            // A failure the user has since fixed outside Dyad would otherwise
-            // stay on screen beside the fresh status.
-            convert.reset();
-            return onRecheck();
-          }}
-          disabled={convert.isPending}
-        />
+        <RecheckButton onCheck={onRecheck} />
         <Button
           type="button"
           size="sm"
           // The main action of a blue notice, styled as the token boxes
           // style theirs.
           className="bg-blue-600 hover:bg-blue-700 text-white"
-          onClick={() => convert.mutate()}
-          disabled={convert.isPending}
+          onClick={handleConvert}
+          // The mode decides whether to ask first, so it has to be known.
+          // While the chat is already streaming, another click would only
+          // queue the same request again.
+          disabled={isChatModeLoading || isStreaming}
           data-testid="cloudflare-convert-to-nitro"
         >
-          {convert.isPending ? (
-            <>
-              <Loader2 className="h-3 w-3 animate-spin" />
-              Converting...
-            </>
-          ) : (
-            "Convert to Nitro"
-          )}
+          <Sparkles className="h-3 w-3" />
+          Convert to Nitro
         </Button>
       </div>
-      {convert.error && (
-        <div className={errorClass} data-testid="cloudflare-convert-error">
-          {errorMessage(convert.error)}
-        </div>
-      )}
+      <AgentModeRequiredDialog
+        open={needsAgentMode}
+        onOpenChange={(open) => {
+          if (!open) setNeedsAgentMode(false);
+        }}
+        action="convert"
+        onContinue={() => {
+          setNeedsAgentMode(false);
+          void send({ inAgentMode: true });
+        }}
+      />
     </div>
   );
 }
@@ -359,10 +382,7 @@ function ConnectedAccount({ appId }: { appId: number }) {
             " Add one to this app, then sync it to GitHub and click Refresh."}
         </p>
         {status.data.canConvertToNitro ? (
-          <NitroConversionOffer
-            appId={appId}
-            onRecheck={() => status.refetch()}
-          />
+          <NitroConversionOffer onRecheck={() => status.refetch()} />
         ) : (
           <RecheckButton className="mt-3" onCheck={() => status.refetch()} />
         )}

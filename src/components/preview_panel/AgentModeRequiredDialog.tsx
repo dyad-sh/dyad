@@ -13,7 +13,7 @@ interface AgentModeRequiredDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onContinue: () => void;
-  action: "generate" | "fix" | "assertions" | "deploy";
+  action: "generate" | "fix" | "assertions" | "deploy" | "convert";
 }
 
 const DESCRIPTIONS: Record<AgentModeRequiredDialogProps["action"], string> = {
@@ -24,6 +24,8 @@ const DESCRIPTIONS: Record<AgentModeRequiredDialogProps["action"], string> = {
     "Generating a test proposal runs in Agent mode, which names the test, describes your recorded steps and proposes checks you review before the test file is created. Continue will send this request in Agent mode.",
   deploy:
     "Fixing a failed deployment means editing your deployment config or code, which this chat's mode cannot do. Continue will send this request in Agent mode.",
+  convert:
+    "Adding a Nitro server layer runs in Agent mode, which has the tool that sets it up. Continue will send this request in Agent mode.",
 };
 
 /**

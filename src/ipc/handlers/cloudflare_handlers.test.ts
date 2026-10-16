@@ -1,9 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { apps, cloudflareAppConnections } from "@/db/schema";
-import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { ExecuteAddDependencyError } from "@/ipc/processors/executeAddDependency";
-import { CommandExecutionError } from "@/ipc/utils/socket_firewall";
 import { createInMemoryTestDb, type TestDb } from "@/testing/test_db";
 
 /**
@@ -23,46 +20,6 @@ const holder = vi.hoisted(() => ({
   githubOffline: false,
   githubStatus: null as number | null,
   localPnpmVersion: "11.4.2" as string | undefined,
-  // The working tree, as the conversion sees it.
-  frameworkType: "vite" as string | null,
-  // Whether the Nitro setup has run through: config and dependency both.
-  nitroComplete: false,
-  currentBranch: "main" as string | null,
-  operationInProgress: null as string | null,
-  unmergedFiles: [] as string[],
-  nitroSetups: 0,
-  nitroSetupError: null as Error | null,
-  nitroWarnings: [] as string[],
-  commits: [] as { path: string; message: string }[],
-  commitError: null as Error | null,
-  hasChangesToCommit: true,
-}));
-
-vi.mock("../utils/framework_utils", () => ({
-  detectFrameworkType: () => holder.frameworkType,
-}));
-
-vi.mock("../utils/nitro_setup", () => ({
-  hasCompleteNitroSetup: async () => holder.nitroComplete,
-  ensureNitroOnViteApp: async () => {
-    if (holder.nitroSetupError) throw holder.nitroSetupError;
-    holder.nitroSetups += 1;
-    return { warningMessages: holder.nitroWarnings, rollback: async () => {} };
-  },
-}));
-
-vi.mock("../services/git_service", () => ({
-  gitService: {
-    stageAllAndCommitIfChanged: async (args: {
-      path: string;
-      message: string;
-    }) => {
-      if (holder.commitError) throw holder.commitError;
-      if (!holder.hasChangesToCommit) return null;
-      holder.commits.push(args);
-      return `commit-${holder.commits.length}`;
-    },
-  },
 }));
 
 vi.mock("../../db", () => ({
@@ -87,13 +44,6 @@ vi.mock("@/ipc/utils/github_endpoints", () => ({
 }));
 
 vi.mock("../utils/git_utils", () => ({
-  inspectRepositoryHealth: async () => ({
-    branch: holder.currentBranch,
-    headOid: "abc123",
-    isClean: true,
-    unmergedFiles: holder.unmergedFiles,
-    operationInProgress: holder.operationInProgress,
-  }),
   execGit: async (
     args: string[],
     _path: string,
@@ -139,12 +89,6 @@ vi.mock("../utils/git_utils", () => ({
 }));
 
 vi.mock("../utils/socket_firewall", () => ({
-  CommandExecutionError: class CommandExecutionError extends Error {
-    constructor({ message }: { message: string }) {
-      super(message);
-    }
-  },
-  getCommandExecutionDisplayDetails: () => undefined,
   getPnpmMinimumReleaseAgeSupport: async () => ({
     available: holder.localPnpmVersion !== undefined,
     minimumReleaseAgeSupported: true,
@@ -492,17 +436,6 @@ beforeEach(() => {
   holder.githubCalls = 0;
   holder.githubOffline = false;
   holder.githubStatus = null;
-  holder.frameworkType = "vite";
-  holder.nitroComplete = false;
-  holder.currentBranch = "main";
-  holder.operationInProgress = null;
-  holder.unmergedFiles = [];
-  holder.nitroSetups = 0;
-  holder.nitroSetupError = null;
-  holder.nitroWarnings = [];
-  holder.commits = [];
-  holder.commitError = null;
-  holder.hasChangesToCommit = true;
   handlers.clearGithubIdentityCache();
   holder.files = {
     "worker/wrangler.jsonc": `{ "name": "shop-api" }`,
@@ -2168,194 +2101,12 @@ describe("a plain Vite app", () => {
     expect(status.canConvertToNitro).toBe(false);
   });
 
-  describe("converting it to Nitro", () => {
-    it("adds the server layer and commits it, reporting install warnings", async () => {
-      holder.nitroWarnings = ["Socket firewall unavailable"];
-      await expect(handlers.handleConvertToNitro(appId)).resolves.toEqual({
-        warnings: ["Socket firewall unavailable"],
-      });
-      expect(holder.nitroSetups).toBe(1);
-      expect(holder.commits).toEqual([
-        {
-          path: "/apps/shop",
-          message: "chore: add Nitro server layer for Cloudflare deployment",
-        },
-      ]);
-    });
-
-    it("only commits when the setup has already run through", async () => {
-      // A Neon connect added it and nothing committed it since. Running the
-      // setup again would update the packages.
-      holder.frameworkType = "vite-nitro";
-      holder.nitroComplete = true;
-      await handlers.handleConvertToNitro(appId);
-      expect(holder.nitroSetups).toBe(0);
-      expect(holder.commits).toHaveLength(1);
-    });
-
-    it("finishes a setup that was cut short, then commits", async () => {
-      // One of the setup's files is there and the tree detects as Nitro, but
-      // the setup never ran through.
-      holder.frameworkType = "vite-nitro";
-      holder.nitroComplete = false;
-      await handlers.handleConvertToNitro(appId);
-      expect(holder.nitroSetups).toBe(1);
-      expect(holder.commits).toHaveLength(1);
-    });
-
-    it("refuses an offer the branch has since outgrown, writing nothing", async () => {
-      // A chat committed a Wrangler config after the tab last looked.
-      holder.committedFiles.push("wrangler.jsonc");
-      await expect(handlers.handleConvertToNitro(appId)).rejects.toThrow(
-        /This offer is out of date/,
-      );
-      expect(holder.nitroSetups).toBe(0);
-      expect(holder.commits).toEqual([]);
-    });
-
-    it("refuses an app that is not Vite, writing nothing", async () => {
-      holder.frameworkType = "nextjs";
-      await expect(handlers.handleConvertToNitro(appId)).rejects.toThrow(
-        /Only a Vite app/,
-      );
-      expect(holder.nitroSetups).toBe(0);
-      expect(holder.commits).toEqual([]);
-    });
-
-    it("refuses when another branch than the synced one is checked out", async () => {
-      // The status offered the conversion for main, which a commit here
-      // would not reach.
-      holder.currentBranch = "feature";
-      await expect(handlers.handleConvertToNitro(appId)).rejects.toThrow(
-        /on the "feature" branch but syncs "main" to GitHub/,
-      );
-      holder.currentBranch = null;
-      await expect(handlers.handleConvertToNitro(appId)).rejects.toThrow(
-        /not on a branch. Check out "main"/,
-      );
-      expect(holder.nitroSetups).toBe(0);
-      expect(holder.commits).toEqual([]);
-    });
-
-    it("refuses while Git is in the middle of an operation, writing nothing", async () => {
-      // Staging the whole tree would complete any of these under the Nitro
-      // message, conflict markers included.
-      for (const operation of [
-        "merge",
-        "rebase",
-        "cherry-pick",
-        "revert",
-        "bisect",
-      ]) {
-        holder.operationInProgress = operation;
-        await expect(handlers.handleConvertToNitro(appId)).rejects.toThrow(
-          new RegExp(`a Git ${operation} is in progress`),
-        );
-      }
-      holder.operationInProgress = null;
-      holder.unmergedFiles = ["src/App.tsx"];
-      await expect(handlers.handleConvertToNitro(appId)).rejects.toThrow(
-        /unresolved file conflicts/,
-      );
-      expect(holder.nitroSetups).toBe(0);
-      expect(holder.commits).toEqual([]);
-    });
-
-    it("names a failed install command in fixed words and commits nothing", async () => {
-      // The command's output and the firewall's warnings stay out of the
-      // message.
-      holder.nitroSetupError = new ExecuteAddDependencyError({
-        error: new CommandExecutionError({
-          message: "Command 'npm install nitro jiti' exited with code 1",
-        }),
-        warningMessages: ["Socket firewall unavailable"],
-      });
-      await expect(handlers.handleConvertToNitro(appId)).rejects.toMatchObject({
-        message:
-          "Failed to set up Nitro server layer: installing the Nitro packages failed. Check your network connection and try again.",
-        kind: DyadErrorKind.External,
-      });
-      expect(holder.commits).toEqual([]);
-    });
-
-    it("tells the user about a manifest the install could not read", async () => {
-      // Found before any command runs, and the user's to fix, so it keeps
-      // its words and is not blamed on the network.
-      holder.nitroSetupError = new ExecuteAddDependencyError({
-        error: new DyadError(
-          "Cannot install dependencies because package.json contains invalid JSON: Unexpected token }",
-          DyadErrorKind.Validation,
-        ),
-        warningMessages: [],
-      });
-      await expect(handlers.handleConvertToNitro(appId)).rejects.toMatchObject({
-        message: expect.stringMatching(/package.json contains invalid JSON/),
-        kind: DyadErrorKind.Validation,
-      });
-    });
-
-    it("keeps a path the install's manifest read quoted out of the message", async () => {
-      holder.nitroSetupError = new ExecuteAddDependencyError({
-        error: new Error(
-          "EACCES: permission denied, open '/home/ryan/dyad-apps/shop/package.json'",
-        ),
-        warningMessages: [],
-      });
-      await expect(handlers.handleConvertToNitro(appId)).rejects.toMatchObject({
-        message: "Failed to set up Nitro server layer.",
-        kind: DyadErrorKind.External,
-      });
-    });
-
-    it("keeps a raw filesystem error's path out of the message", async () => {
-      // Node's own message quotes the path, and the thrown message is what
-      // telemetry sees.
-      holder.nitroSetupError = Object.assign(
-        new Error(
-          "EACCES: permission denied, open '/home/ryan/dyad-apps/shop/AI_RULES.md'",
-        ),
-        { code: "EACCES" },
-      );
-      await expect(handlers.handleConvertToNitro(appId)).rejects.toMatchObject({
-        message: "Failed to set up Nitro server layer.",
-        kind: DyadErrorKind.External,
-      });
-      expect(holder.commits).toEqual([]);
-    });
-
-    it("keeps the kind of a setup error the user can fix", async () => {
-      // A Vite config the patcher cannot read is not an install failure.
-      holder.nitroSetupError = new DyadError(
-        "Could not find defineConfig in vite.config.ts.",
-        DyadErrorKind.Precondition,
-      );
-      await expect(handlers.handleConvertToNitro(appId)).rejects.toMatchObject({
-        message: expect.stringMatching(/Could not find defineConfig/),
-        kind: DyadErrorKind.Precondition,
-      });
-    });
-
-    it("says the setup is there to commit when the commit fails, in Dyad's words", async () => {
-      // Git quotes the local path, which the thrown message must not carry:
-      // it is what telemetry sees.
-      holder.commitError = new DyadError(
-        "Failed to commit. fatal: Unable to create '/home/ryan/dyad-apps/shop/.git/index.lock': File exists.",
-        DyadErrorKind.External,
-      );
-      await expect(handlers.handleConvertToNitro(appId)).rejects.toMatchObject({
-        message:
-          "Nitro was added to the app, but committing it failed. Commit the changes, then sync to GitHub.",
-        kind: DyadErrorKind.Conflict,
-      });
-      expect(holder.nitroSetups).toBe(1);
-    });
-
-    it("says the offer was stale when Nitro is already committed", async () => {
-      holder.frameworkType = "vite-nitro";
-      holder.hasChangesToCommit = false;
-      await expect(handlers.handleConvertToNitro(appId)).rejects.toThrow(
-        /already has a Nitro server layer. Click Refresh/,
-      );
-    });
+  it("is not offered one when the app is on Supabase", async () => {
+    // The agent's enable_nitro tool is withheld from an app on Supabase, so
+    // the offer would send a request the chat cannot carry out.
+    db.update(apps).set({ supabaseProjectId: "supa-proj" }).run();
+    const status = await handlers.handleGetAppStatus(appId);
+    expect(status.targets).toEqual([]);
+    expect(status.canConvertToNitro).toBe(false);
   });
 });

@@ -307,7 +307,6 @@ export type {
   CloudflareDeploymentStatus,
   ConnectCloudflareWorkerParams,
   ConnectCloudflareWorkerResult,
-  ConvertCloudflareAppToNitroResult,
 } from "./cloudflare";
 
 // Supabase types

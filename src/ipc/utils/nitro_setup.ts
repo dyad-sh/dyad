@@ -13,10 +13,7 @@ import {
   ViteConfigBackup,
 } from "@/ipc/utils/vite_config_patcher";
 import { detectFrameworkType } from "@/ipc/utils/framework_utils";
-import {
-  NITRO_CONFIG_FILES,
-  NITRO_START_COMMAND,
-} from "@/lib/framework_constants";
+import { NITRO_START_COMMAND } from "@/lib/framework_constants";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("nitro_setup");
@@ -216,43 +213,6 @@ export async function ensureNitroOnViteApp(
       throw error;
     }
     throw error;
-  }
-}
-
-/**
- * Whether `ensureNitroOnViteApp` has run through on this app.
- *
- * Framework detection calls a tree Nitro on either the config file or the
- * dependency, which is right for what the agent should know but not for
- * whether the setup is finished: a setup cut short can leave either one on
- * its own. The two together settle it, given the order above. The dependency
- * is written only after the config, server folder and Vite patch, so its
- * presence means those were written; and the rollback removes the config but
- * never uninstalls, so the config's presence means no rollback ran. Running
- * the setup on a tree that passes here is not free: the install sees the
- * packages as already present and updates them instead.
- */
-export async function hasCompleteNitroSetup(appPath: string): Promise<boolean> {
-  let hasConfig = false;
-  for (const name of NITRO_CONFIG_FILES) {
-    try {
-      await fs.access(path.join(appPath, name));
-      hasConfig = true;
-      break;
-    } catch {
-      // Not this one.
-    }
-  }
-  if (!hasConfig) return false;
-  try {
-    const manifest = JSON.parse(
-      await fs.readFile(path.join(appPath, "package.json"), "utf8"),
-    );
-    return Boolean(
-      manifest.dependencies?.nitro || manifest.devDependencies?.nitro,
-    );
-  } catch {
-    return false;
   }
 }
 

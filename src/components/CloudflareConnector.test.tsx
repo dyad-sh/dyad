@@ -36,7 +36,6 @@ const cloudflare = vi.hoisted(() => ({
   connectWorker: vi.fn(),
   getDeploymentStatus: vi.fn(),
   disconnect: vi.fn(),
-  convertToNitro: vi.fn(),
 }));
 const openExternalUrl = vi.hoisted(() => vi.fn());
 const focusWindow = vi.hoisted(() => vi.fn());
@@ -1353,18 +1352,10 @@ describe("an app with one Worker", () => {
 });
 
 describe("a plain Vite app with no Worker", () => {
-  const NITRO_TARGET = {
-    kind: "nitro" as const,
-    rootDirectory: "",
-    label: "App root",
-    suggestedWorkerName: "shop",
-  };
-
   beforeEach(() => {
     cloudflare.getAppStatus.mockResolvedValue(
       appStatus({ targets: [], canConvertToNitro: true }),
     );
-    cloudflare.convertToNitro.mockResolvedValue({ warnings: [] });
   });
 
   it("is offered a Nitro conversion beside the notice, after Refresh", async () => {
@@ -1394,81 +1385,75 @@ describe("a plain Vite app with no Worker", () => {
     expect(notice.textContent).toContain("Add one to this app");
   });
 
-  it("keeps Refresh out of reach while converting", async () => {
-    // The conversion never settles here, so the pending state is what shows.
-    cloudflare.convertToNitro.mockReturnValue(new Promise(() => {}));
+  it("asks an Agent mode chat to add Nitro, in its own mode", async () => {
     renderConnector();
-    const convert = await screen.findByTestId<HTMLButtonElement>(
-      "cloudflare-convert-to-nitro",
-    );
-    const refresh = screen.getByRole<HTMLButtonElement>("button", {
-      name: /refresh/i,
-    });
-    expect(refresh.disabled).toBe(false);
-    fireEvent.click(convert);
-    await waitFor(() => expect(convert.disabled).toBe(true));
-    expect(refresh.disabled).toBe(true);
-  });
 
-  it("converts on request, then asks for a sync of the new Nitro target", async () => {
-    renderConnector();
-    const convert = await screen.findByTestId("cloudflare-convert-to-nitro");
-
-    // The conversion commits, so the branch is ahead of GitHub afterwards.
-    cloudflare.getAppStatus.mockResolvedValue(
-      appStatus({ targets: [NITRO_TARGET], synced: false }),
-    );
-    fireEvent.click(convert);
-
-    await waitFor(() =>
-      expect(cloudflare.convertToNitro).toHaveBeenCalledWith({ appId: 7 }),
-    );
-    expect(await screen.findByTestId("cloudflare-not-synced")).toBeTruthy();
-    expect(screen.queryByTestId("cloudflare-no-targets")).toBeNull();
-    expect(screen.queryByTestId("cloudflare-worker-form")).toBeNull();
-  });
-
-  it("passes install warnings on as toasts", async () => {
-    cloudflare.convertToNitro.mockResolvedValue({
-      warnings: ["Socket firewall unavailable"],
-    });
-    renderConnector();
     fireEvent.click(await screen.findByTestId("cloudflare-convert-to-nitro"));
 
+    expect(streamMessage).toHaveBeenCalledTimes(1);
+    const request = streamMessage.mock.calls[0][0];
+    expect(request.chatId).toBe(CHAT_ID);
+    expect(request.requestedChatMode).toBeUndefined();
+    expect(request.prompt).toContain("`enable_nitro` tool");
     await waitFor(() =>
-      expect(showWarning).toHaveBeenCalledWith("Socket firewall unavailable"),
-    );
-  });
-
-  it("shows a failed conversion under the button and keeps the offer", async () => {
-    cloudflare.convertToNitro.mockRejectedValue(
-      new Error("Failed to set up Nitro server layer: install failed"),
-    );
-    renderConnector();
-    fireEvent.click(await screen.findByTestId("cloudflare-convert-to-nitro"));
-
-    expect(
-      await screen.findByText(
-        "Failed to set up Nitro server layer: install failed",
+      expect(showInfo).toHaveBeenCalledWith(
+        expect.stringMatching(/Sent to chat/),
       ),
-    ).toBeTruthy();
-    expect(screen.getByTestId("cloudflare-convert-to-nitro")).toBeTruthy();
+    );
+    expect(screen.queryByTestId("agent-mode-required-dialog")).toBeNull();
   });
 
-  it("clears a failed conversion when Refresh is clicked", async () => {
-    // The cause, say the wrong branch, may have been fixed outside Dyad.
-    cloudflare.convertToNitro.mockRejectedValue(
-      new Error('The app is on the "feature" branch but syncs "main"'),
-    );
+  it("asks before sending from a Build mode chat, which cannot add Nitro", async () => {
+    // Unlike a deployment fix, which Build mode can make, the server layer is
+    // added by a tool only Agent mode has.
+    chatMode.value = "build";
     renderConnector();
+
     fireEvent.click(await screen.findByTestId("cloudflare-convert-to-nitro"));
-    await screen.findByTestId("cloudflare-convert-error");
 
-    fireEvent.click(screen.getByRole("button", { name: /refresh/i }));
+    expect(streamMessage).not.toHaveBeenCalled();
+    const dialog = await screen.findByTestId("agent-mode-required-dialog");
+    expect(dialog.textContent).toMatch(/Nitro server layer/);
+    fireEvent.click(within(dialog).getByTestId("agent-mode-continue"));
 
-    await waitFor(() =>
-      expect(screen.queryByTestId("cloudflare-convert-error")).toBeNull(),
+    await waitFor(() => expect(streamMessage).toHaveBeenCalledTimes(1));
+    expect(streamMessage.mock.calls[0][0].requestedChatMode).toBe(
+      "local-agent",
     );
-    expect(screen.getByTestId("cloudflare-nitro-offer")).toBeTruthy();
+  });
+
+  it("does not claim a send that the chat refused", async () => {
+    streamMessage.mockResolvedValue(false);
+    renderConnector();
+
+    fireEvent.click(await screen.findByTestId("cloudflare-convert-to-nitro"));
+
+    await waitFor(() => expect(streamMessage).toHaveBeenCalledTimes(1));
+    expect(showInfo).not.toHaveBeenCalled();
+  });
+
+  it("says to open a chat when none is selected, instead of sending nowhere", async () => {
+    chatMode.value = "build";
+    renderConnector({ chatId: null });
+
+    fireEvent.click(await screen.findByTestId("cloudflare-convert-to-nitro"));
+
+    expect(streamMessage).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("agent-mode-required-dialog")).toBeNull();
+    expect(showInfo).toHaveBeenCalledWith(expect.stringMatching(/Open a chat/));
+  });
+
+  it("cannot be clicked while the chat is streaming or its mode is unknown", async () => {
+    chatStream.isStreaming = true;
+    renderConnector();
+    const streaming = await screen.findByTestId("cloudflare-convert-to-nitro");
+    expect(streaming).toHaveProperty("disabled", true);
+    cleanup();
+
+    chatStream.isStreaming = false;
+    chatMode.isLoading = true;
+    renderConnector();
+    const loading = await screen.findByTestId("cloudflare-convert-to-nitro");
+    expect(loading).toHaveProperty("disabled", true);
   });
 });

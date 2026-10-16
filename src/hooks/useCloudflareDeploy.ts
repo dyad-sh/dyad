@@ -161,32 +161,3 @@ function forgetDeploymentStatus(
     queryKey: queryKeys.cloudflare.deploymentStatus({ appId, rootDirectory }),
   });
 }
-
-/**
- * Adds a Nitro server layer to a plain Vite app and commits it, which makes
- * the app a target. The app record and version list refresh through the
- * contract; the status is this tab's own, so it is refreshed here.
- */
-export function useConvertCloudflareAppToNitro({ appId }: { appId: number }) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: () => ipc.cloudflare.convertToNitro({ appId }),
-    onSuccess: (result) => {
-      for (const warning of result.warnings) showWarning(warning);
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.cloudflare.appStatus({ appId }),
-      });
-    },
-    onError: () => {
-      // A failed commit leaves the setup in the working tree, which the
-      // contract's invalidations never report because the call failed. The
-      // file tree and uncommitted files of this window should show it.
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.apps.detail({ appId }),
-      });
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.uncommittedFiles.byApp({ appId }),
-      });
-    },
-  });
-}

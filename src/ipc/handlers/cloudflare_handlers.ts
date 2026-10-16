@@ -6,21 +6,11 @@ import { apps, cloudflareAppConnections } from "../../db/schema";
 import { readSettings, writeSettings } from "../../main/settings";
 import { getDyadAppPath } from "@/paths/paths";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { execGit, inspectRepositoryHealth } from "../utils/git_utils";
-import {
-  CommandExecutionError,
-  getPnpmMinimumReleaseAgeSupport,
-} from "../utils/socket_firewall";
+import { execGit } from "../utils/git_utils";
+import { getPnpmMinimumReleaseAgeSupport } from "../utils/socket_firewall";
 import { createAppOperationHandler } from "../utils/app_mutation_lock";
 import { readAppResource } from "../services/app_operation_coordinator";
-import { detectFrameworkType } from "../utils/framework_utils";
-import {
-  ensureNitroOnViteApp,
-  hasCompleteNitroSetup,
-} from "../utils/nitro_setup";
-import { ExecuteAddDependencyError } from "../processors/executeAddDependency";
 import { createTypedHandler } from "./base";
-import { getHandlerContext } from "./handler_context";
 import { getGitHubApiBase } from "@/ipc/utils/github_endpoints";
 import {
   removeNeonEnvVarsFromCloudflare,
@@ -34,7 +24,6 @@ import {
   type CloudflareDeploymentStatus,
   type ConnectCloudflareWorkerParams,
   type ConnectCloudflareWorkerResult,
-  type ConvertCloudflareAppToNitroResult,
 } from "../types/cloudflare";
 import {
   CloudflareApiError,
@@ -636,145 +625,12 @@ async function handleGetAppStatus(appId: number): Promise<CloudflareAppStatus> {
     branch,
     targets: targetSummaries,
     connections: rows.map(toConnection),
-    canConvertToNitro: listing.canConvertToNitro,
+    // The conversion is the agent's enable_nitro tool, which an app on
+    // Supabase does not get: its Edge Functions already serve as the server
+    // layer. Offering it would send a request the chat cannot carry out.
+    canConvertToNitro:
+      listing.canConvertToNitro && app.supabaseProjectId === null,
   };
-}
-
-const NITRO_COMMIT_MESSAGE =
-  "chore: add Nitro server layer for Cloudflare deployment";
-
-/**
- * Turns a plain Vite app into a Nitro app and commits that, so the status
- * call finds a target. Committed, never pushed: Cloudflare builds what is on
- * GitHub, and the push stays with the user's sync, which the tab asks for
- * once the new target shows up unsynced.
- *
- * The conversion is the one the Neon connect and the agent's `enable_nitro`
- * tool run, and it runs even on a working tree that already has Nitro, say
- * from a Neon connect that was never committed: it changes nothing there, and
- * completes a setup that was cut short. As with the auto-commit before a
- * GitHub connect, other uncommitted edits travel in the same commit.
- */
-async function handleConvertToNitro(
-  appId: number,
-): Promise<ConvertCloudflareAppToNitroResult> {
-  const app = await requireApp(appId);
-  const appPath = getDyadAppPath(app.path);
-  const branch = app.githubBranch ?? DEFAULT_BRANCH;
-
-  // The same read that made the offer: a target committed since the tab
-  // last looked, by a chat for instance, means the app needs no conversion.
-  if (!(await inspectCommittedBranch(appPath, branch)).canConvertToNitro) {
-    throw new DyadError(
-      "This offer is out of date: the app no longer needs a Nitro server layer to deploy. Click Refresh to see its current state.",
-      DyadErrorKind.Precondition,
-    );
-  }
-  const frameworkType = detectFrameworkType(appPath);
-  if (frameworkType !== "vite" && frameworkType !== "vite-nitro") {
-    throw new DyadError(
-      "Only a Vite app can be given a Nitro server layer.",
-      DyadErrorKind.Precondition,
-    );
-  }
-  // All checked before anything is written. The commit stages the whole
-  // tree, which Git would take as resolving conflicts or finishing a merge,
-  // cherry-pick or other operation it is in the middle of.
-  const health = await inspectRepositoryHealth({ path: appPath });
-  if (health.unmergedFiles.length > 0) {
-    throw new DyadError(
-      "Cannot commit the Nitro setup while the app has unresolved file conflicts. Resolve them and try again.",
-      DyadErrorKind.Conflict,
-    );
-  }
-  if (health.operationInProgress) {
-    throw new DyadError(
-      `Cannot commit the Nitro setup while a Git ${health.operationInProgress} is in progress. Finish or cancel it outside Dyad, then try again.`,
-      DyadErrorKind.Conflict,
-    );
-  }
-  // The commit goes to the checked-out branch, while the status reads the
-  // branch the app syncs to GitHub. Committing anywhere else would report
-  // success and leave the tab unchanged.
-  if (health.branch !== branch) {
-    throw new DyadError(
-      health.branch === null
-        ? `The app is not on a branch. Check out "${branch}", the branch it syncs to GitHub, and try again.`
-        : `The app is on the "${health.branch}" branch but syncs "${branch}" to GitHub. Check out "${branch}" and try again.`,
-      DyadErrorKind.Precondition,
-    );
-  }
-
-  // Skipped only for a setup that ran through, say a Neon connect that was
-  // never committed: the framework label alone would also skip a setup cut
-  // short, and running it again on a finished tree updates the packages.
-  let warnings: string[] = [];
-  if (!(await hasCompleteNitroSetup(appPath))) {
-    try {
-      warnings = (await ensureNitroOnViteApp(appPath)).warningMessages;
-    } catch (error) {
-      // An External error is reported to telemetry, so only a classified
-      // error's own words go in the message: a Vite config the patcher
-      // cannot read, or a manifest that is not JSON, is the user's to fix.
-      // A failed install command is named as such in fixed words, since its
-      // output can quote registries and paths. Anything else is a
-      // filesystem error quoting a path. All of it stays in the log.
-      logger.error(`Failed to set up Nitro for app ${appId}:`, error);
-      const cause =
-        error instanceof ExecuteAddDependencyError
-          ? error.originalError
-          : error;
-      if (cause instanceof DyadError) {
-        throw new DyadError(
-          `Failed to set up Nitro server layer: ${cause.message}`,
-          cause.kind,
-        );
-      }
-      if (cause instanceof CommandExecutionError) {
-        if (error instanceof ExecuteAddDependencyError) {
-          for (const warning of error.warningMessages) logger.warn(warning);
-        }
-        throw new DyadError(
-          "Failed to set up Nitro server layer: installing the Nitro packages failed. Check your network connection and try again.",
-          DyadErrorKind.External,
-        );
-      }
-      throw new DyadError(
-        "Failed to set up Nitro server layer.",
-        DyadErrorKind.External,
-      );
-    }
-  }
-
-  let commitHash: string | null;
-  try {
-    commitHash =
-      await getHandlerContext().gitService.stageAllAndCommitIfChanged({
-        path: appPath,
-        message: NITRO_COMMIT_MESSAGE,
-      });
-  } catch (error) {
-    // The setup stays in the working tree: it is idempotent, so clicking
-    // again only retries the commit, and the user can commit it themselves.
-    // Git's own words stay in the log: they quote local paths, and the
-    // thrown message is what telemetry sees. Same as the auto-commit before
-    // a GitHub connect.
-    logger.error(`Failed to commit the Nitro setup for app ${appId}:`, error);
-    throw new DyadError(
-      "Nitro was added to the app, but committing it failed. Commit the changes, then sync to GitHub.",
-      DyadErrorKind.Conflict,
-    );
-  }
-  if (commitHash === null) {
-    // Nitro is committed on this very branch, so the status that offered the
-    // conversion is out of date.
-    throw new DyadError(
-      "This app already has a Nitro server layer. Click Refresh to see it.",
-      DyadErrorKind.Precondition,
-    );
-  }
-  logger.info(`Added Nitro to app ${appId} for Cloudflare (${commitHash})`);
-  return { warnings };
 }
 
 async function handleCheckRepoAccess({
@@ -1279,21 +1135,6 @@ export function registerCloudflareHandlers() {
     ),
   );
 
-  createTypedHandler(
-    cloudflareContracts.convertToNitro,
-    createAppOperationHandler(
-      "cloudflare:convert-to-nitro",
-      // Metadata is read for the branch the app syncs to GitHub, which a
-      // disconnect clears.
-      [readAppResource("app-path"), readAppResource("metadata"), "repository"],
-      async (_, { appId }: { appId: number }) => {
-        assertCloudflareEnabled();
-        return handleConvertToNitro(appId);
-      },
-      "convert the app to Nitro",
-    ),
-  );
-
   createTypedHandler(cloudflareContracts.checkRepoAccess, async (_, params) => {
     assertCloudflareEnabled();
     return handleCheckRepoAccess(params);
@@ -1357,7 +1198,6 @@ export const cloudflareHandlersForTesting = {
   clearGithubIdentityCache: () => githubIdentityCache.clear(),
   handleSaveToken,
   handleGetAppStatus,
-  handleConvertToNitro,
   handleCheckRepoAccess,
   handleConnectWorker,
   handleGetDeploymentStatus,

@@ -6,12 +6,23 @@ import {
 import { act, cleanup, renderHook } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { queryKeys } from "@/lib/queryKeys";
 
-const checkRepoAccess = vi.hoisted(() => vi.fn());
-vi.mock("@/ipc/types", () => ({ ipc: { cloudflare: { checkRepoAccess } } }));
+const { checkRepoAccess, saveToken, getAppStatus } = vi.hoisted(() => ({
+  checkRepoAccess: vi.fn(),
+  saveToken: vi.fn(),
+  getAppStatus: vi.fn(),
+}));
+vi.mock("@/ipc/types", () => ({
+  ipc: { cloudflare: { checkRepoAccess, saveToken, getAppStatus } },
+}));
 vi.mock("@/lib/toast", () => ({ showWarning: vi.fn() }));
 
-const { useCloudflareRepoAccess } = await import("./useCloudflareDeploy");
+const {
+  useCloudflareRepoAccess,
+  useCloudflareAppStatus,
+  useSaveCloudflareToken,
+} = await import("./useCloudflareDeploy");
 
 function renderAccessCheck(queryClient: QueryClient) {
   return renderHook(
@@ -89,4 +100,55 @@ describe("waiting for Cloudflare to see the repository", () => {
 
     expect(checkRepoAccess).toHaveBeenCalledTimes(1);
   });
+});
+
+it("keeps a mounted deployment observer connected after saving a token", async () => {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
+  const unconnected = { synced: true, targets: [], connections: [] };
+  getAppStatus.mockResolvedValue(unconnected);
+  saveToken.mockResolvedValue(undefined);
+  queryClient.setQueryData(queryKeys.cloudflare.accounts, [
+    { id: "old-token-account" },
+  ]);
+  const wizard = renderHook(() => useCloudflareAppStatus({ appId: 7 }), {
+    wrapper,
+  });
+  const tokenForm = renderHook(() => useSaveCloudflareToken(), { wrapper });
+  await wait(1);
+  expect(wizard.result.current.data).toEqual(unconnected);
+
+  await act(async () => {
+    await tokenForm.result.current.mutateAsync("new-token");
+  });
+  await wait(1);
+  expect(
+    queryClient.getQueryData(queryKeys.cloudflare.accounts),
+  ).toBeUndefined();
+
+  // The connector mounts its authenticated content after token setup while
+  // the wizard's status observer stays mounted throughout.
+  const connector = renderHook(() => useCloudflareAppStatus({ appId: 7 }), {
+    wrapper,
+  });
+  await wait(1);
+  const connected = {
+    ...unconnected,
+    connections: [{ rootDirectory: "worker" }],
+  };
+  getAppStatus.mockResolvedValue(connected);
+  await act(async () => {
+    await queryClient.invalidateQueries({
+      queryKey: queryKeys.cloudflare.appStatus({ appId: 7 }),
+    });
+  });
+  await wait(1);
+
+  expect(connector.result.current.data).toEqual(connected);
+  expect(wizard.result.current.data).toEqual(connected);
+  queryClient.clear();
 });

@@ -34,8 +34,9 @@ export function useSaveCloudflareToken() {
     mutationFn: (token: string) => ipc.cloudflare.saveToken({ token }),
     onSuccess: () => {
       // Accounts, Workers and statuses fetched with another token are not
-      // this token's.
-      queryClient.removeQueries({ queryKey: queryKeys.cloudflare.all });
+      // this token's. Reset without detaching mounted observers, including
+      // the guided deployment dialog watching the connection being created.
+      return queryClient.resetQueries({ queryKey: queryKeys.cloudflare.all });
     },
   });
 }

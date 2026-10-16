@@ -38,6 +38,7 @@ import { PromptLibrary } from "./components/PromptLibrary";
 import { Plugins } from "./components/Plugins";
 import { Catalog } from "./components/Catalog";
 import { BrowserNotifications } from "./components/BrowserNotifications";
+import { DeployDialog } from "./components/DeployDialog";
 
 // Import dialog page objects
 import { Timeout } from "../constants";
@@ -181,6 +182,7 @@ export class PageObject {
   public plugins: Plugins;
   public catalog: Catalog;
   public browserNotifications: BrowserNotifications;
+  public deployDialog: DeployDialog;
   private stableMessageSnapshotIndex = 0;
 
   constructor(
@@ -213,6 +215,7 @@ export class PageObject {
     this.plugins = new Plugins(this.page);
     this.catalog = new Catalog(this.page);
     this.browserNotifications = new BrowserNotifications(this.page);
+    this.deployDialog = new DeployDialog(this.page, this.githubConnector);
   }
 
   private testInfo?: TestInfo;

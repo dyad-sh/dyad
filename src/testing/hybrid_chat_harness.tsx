@@ -194,6 +194,11 @@ const LazyDatabaseSection = lazy(() =>
     default: module.DatabaseSection,
   })),
 );
+const LazyDeployButton = lazy(() =>
+  import("@/components/preview_panel/DeployButton").then((module) => ({
+    default: module.DeployButton,
+  })),
+);
 const LazyPluginsPage = lazy(() => import("@/pages/plugins"));
 const LazyPluginDetailPage = lazy(() =>
   import("@/components/plugins/PluginDetailPage").then((module) => ({
@@ -240,6 +245,7 @@ export type HybridSurfaceRoute =
   | "/chat"
   | "/app-details"
   | "/database"
+  | "/deploy"
   | "/import-app"
   | "/settings"
   | "/plugins"
@@ -840,6 +846,17 @@ export async function setupHybridChatHarness(
           );
         },
       });
+      const deployTestRoute = createRoute({
+        getParentRoute: () => rootRoute,
+        path: "/deploy",
+        component: function HybridDeployRoute() {
+          return (
+            <Suspense fallback={<div data-testid="hybrid-surface-loading" />}>
+              <LazyDeployButton appId={appId} />
+            </Suspense>
+          );
+        },
+      });
       const settingsTestRoute = createRoute({
         getParentRoute: () => rootRoute,
         path: "/settings",
@@ -943,6 +960,7 @@ export async function setupHybridChatHarness(
         chatTestRoute,
         appDetailsTestRoute,
         databaseTestRoute,
+        deployTestRoute,
         settingsTestRoute,
         providerSettingsTestRoute,
         mediaTestRoute,
@@ -957,8 +975,8 @@ export async function setupHybridChatHarness(
         initialPath = `/chat${encodeSearch({ id: chatId, appId, ...search })}`;
       } else if (route === "/app-details") {
         initialPath = `/app-details${encodeSearch({ appId, ...search })}`;
-      } else if (route === "/database") {
-        initialPath = `/database${encodeSearch(search)}`;
+      } else if (route === "/database" || route === "/deploy") {
+        initialPath = `${route}${encodeSearch(search)}`;
       } else if (route === "/settings/providers/$provider") {
         const provider = opts.params?.provider ?? "auto";
         initialPath = `/settings/providers/${provider}${encodeSearch(search)}`;

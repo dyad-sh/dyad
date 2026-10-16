@@ -61,6 +61,8 @@ export type IsVercelProjectAvailableResponse = z.infer<
 export const CreateVercelProjectParamsSchema = z.object({
   name: z.string(),
   appId: z.number(),
+  /** The guided flow configures env and starts its own verified build. */
+  deferDeployment: z.boolean().optional(),
 });
 
 export type CreateVercelProjectParams = z.infer<
@@ -73,6 +75,14 @@ export const GetVercelDeploymentsParamsSchema = z.object({
 
 export type GetVercelDeploymentsParams = z.infer<
   typeof GetVercelDeploymentsParamsSchema
+>;
+
+export const CreateVercelDeploymentParamsSchema = z.object({
+  appId: z.number(),
+});
+
+export type CreateVercelDeploymentParams = z.infer<
+  typeof CreateVercelDeploymentParamsSchema
 >;
 
 export const DisconnectVercelProjectParamsSchema = z.object({
@@ -183,6 +193,13 @@ export const vercelContracts = {
     channel: "vercel:get-deployments",
     input: GetVercelDeploymentsParamsSchema,
     output: z.array(VercelDeploymentSchema),
+  }),
+
+  /** Starts a production build of the connected GitHub branch. */
+  createDeployment: defineContract({
+    channel: "vercel:create-deployment",
+    input: CreateVercelDeploymentParamsSchema,
+    output: z.object({ uid: z.string() }),
   }),
 
   disconnect: defineContract({

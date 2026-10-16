@@ -1,7 +1,9 @@
+import { useEffect, useState } from "react";
 import { useAtomValue } from "jotai";
 import { useTranslation } from "react-i18next";
-import { Gitlab } from "lucide-react";
+import { CloudUpload, Gitlab } from "lucide-react";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { Button } from "@/components/ui/button";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { useSettings } from "@/hooks/useSettings";
 import { RepositoryConnector } from "@/components/RepositoryConnector";
@@ -11,6 +13,7 @@ import { GithubCollaboratorManager } from "@/components/GithubCollaboratorManage
 import { DatabaseSection } from "@/components/preview_panel/DatabaseSection";
 import { DeploymentSection } from "@/components/preview_panel/DeploymentSection";
 import { describeLinkedRemote } from "@/shared/linked_remote";
+import { DeployDialog } from "@/components/preview_panel/DeployDialog";
 
 function GitHubMark() {
   return (
@@ -32,6 +35,11 @@ export const PublishPanel = () => {
   // until settings arrive — so waiting for them here keeps the card from
   // naming GitHub for a moment on an app whose provider is still unknown.
   const { settings, settingsLoading } = useSettings();
+  const [deployAppId, setDeployAppId] = useState<number | null>(null);
+  // Otherwise switching back to the app reopens its dialog unprompted.
+  useEffect(() => {
+    setDeployAppId(null);
+  }, [selectedAppId]);
 
   if (loading || settingsLoading) {
     return (
@@ -103,11 +111,27 @@ export const PublishPanel = () => {
   return (
     <div className="flex flex-col h-full overflow-y-auto">
       <div className="p-4 space-y-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">
-            Publish App
-          </h1>
-        </div>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+          Publish App
+        </h1>
+        {app.neonProjectId && (
+          <Button
+            type="button"
+            className="w-full"
+            data-testid="guided-deployment-button"
+            onClick={() => setDeployAppId(selectedAppId)}
+          >
+            <CloudUpload className="size-4" aria-hidden="true" />
+            Publish app
+          </Button>
+        )}
+        {deployAppId !== null && deployAppId === selectedAppId && (
+          <DeployDialog
+            key={deployAppId}
+            appId={deployAppId}
+            onClose={() => setDeployAppId(null)}
+          />
+        )}
 
         {/* Unified Database section - branch selection + migration + env vars when the
             app has a neon project and branch context, otherwise fall back to PortalMigrate

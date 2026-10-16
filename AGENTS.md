@@ -138,7 +138,7 @@ For a chat that hangs with no error: a packaged macOS build logs to `~/Library/L
 - Keep Electron security practices in mind (no `remote`, validate/lock by `appId` when mutating shared resources).
 - **Never embed GitHub tokens in git remote URLs** (e.g., `https://<token>@github.com/...`) — they persist in plaintext in users' `.git/config` and leak via git error output. Native git network operations (clone/fetch/pull/push) in `src/ipc/utils/git_utils.ts` inject auth per-invocation via `getGitNetworkEnv(accessToken)` (`GIT_CONFIG_*` env vars); any new network-touching git command must pass this env or auth will silently be missing for private repos.
 - Add tests in the same folder tree when touching renderer components.
-- **Sandbox hook restrictions:** inline `python3 -c "..."` is blocked, and Python scripts only run when the file lives inside the repo's `.claude/` directory — write helper scripts to `.claude/tmp/` (and clean them up before committing).
+- **Sandbox hook restrictions:** inline `python3 -c "..."` is blocked, and Python scripts only run when the file lives inside the repo's `.claude/` directory — write helper scripts to `.claude/tmp/` (and clean them up before committing). jq string interpolation (`"\(.field)"`) in a `gh api --jq` filter is rejected with `Command contains shell metacharacters`; emit plain JSON instead and format it with `jq` string concatenation (`.a + " " + .b`) over the saved output.
 - **Always use Base UI (`@base-ui/react`) for UI primitives, never Radix UI.** This includes menus, tooltips, accordions, context menus, and other headless UI components. See [rules/base-ui-components.md](rules/base-ui-components.md) for component-specific guidance.
 
 Use these guidelines whenever you work within this repository.
@@ -154,6 +154,8 @@ Use unit testing for pure business logic and util functions.
 Target a Vitest file with `npm test -- path/to/file.test.ts`. Do not pass Jest-only flags such as `--runInBand`; Vitest will fail with `Unknown option '--runInBand'`.
 
 The pinned Vitest version does not support `--repeat`; it fails with `Unknown option '--repeat'`. Stress-run a target by repeating the supported `npm test -- path/to/file.test.ts` command externally.
+
+Loopback-server tests should request OS-selected ports with `listen(0)` instead of fixed high ports, which Windows can reject with `EACCES` in excluded ranges. Wait for listener readiness rather than sleeping before sending requests; keep a conflicting listener bound when testing port-in-use handling.
 
 Tests that inspect repository text files must account for Git's platform-specific line endings. Normalize newlines or match `\r?\n`; for a Windows-only failure, exercise synthetic LF and CRLF inputs locally so the regression does not depend on the runner OS.
 

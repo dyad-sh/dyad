@@ -24,6 +24,7 @@ import { slugifyAppPath } from "@/shared/slugify";
 interface VercelConnectorProps {
   appId: number | null;
   folderName: string;
+  deferDeployment?: boolean;
 }
 
 interface VercelProject {
@@ -41,6 +42,7 @@ interface ConnectedVercelConnectorProps {
 interface UnconnectedVercelConnectorProps {
   appId: number | null;
   folderName: string;
+  deferDeployment?: boolean;
   settings: any;
   neonProjectId: string | null;
   refreshSettings: () => void;
@@ -221,6 +223,7 @@ function ConnectedVercelConnector({
 function UnconnectedVercelConnector({
   appId,
   folderName,
+  deferDeployment,
   settings,
   neonProjectId,
   refreshSettings,
@@ -377,6 +380,7 @@ function UnconnectedVercelConnector({
         const result = await ipc.vercel.createProject({
           name: projectName,
           appId,
+          deferDeployment,
         });
         if (result?.syncWarning) {
           toast.warning(result.syncWarning);
@@ -711,7 +715,11 @@ function UnconnectedVercelConnector({
   );
 }
 
-export function VercelConnector({ appId, folderName }: VercelConnectorProps) {
+export function VercelConnector({
+  appId,
+  folderName,
+  deferDeployment,
+}: VercelConnectorProps) {
   const { app, refreshApp } = useLoadApp(appId);
   const { settings, refreshSettings } = useSettings();
 
@@ -728,6 +736,7 @@ export function VercelConnector({ appId, folderName }: VercelConnectorProps) {
       <UnconnectedVercelConnector
         appId={appId}
         folderName={folderName}
+        deferDeployment={deferDeployment}
         settings={settings}
         neonProjectId={app?.neonProjectId ?? null}
         refreshSettings={refreshSettings}

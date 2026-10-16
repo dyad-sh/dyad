@@ -1,4 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import fetch from "node-fetch";
+import { readSettings } from "@/main/settings";
+
+vi.mock("node-fetch", () => ({ default: vi.fn() }));
+vi.mock("@/main/settings", () => ({
+  readSettings: vi.fn(),
+  writeSettings: vi.fn(),
+}));
 
 vi.mock("@/db", () => ({
   db: {
@@ -22,6 +30,7 @@ vi.mock("@/ipc/utils/git_utils", async (importOriginal) => ({
   gitListRemoteBranches: vi.fn(),
   gitSetRemoteUrl: vi.fn(),
   isGitStatusClean: vi.fn(),
+  execGit: vi.fn(),
 }));
 
 import {
@@ -32,8 +41,11 @@ import {
   handleGetMergeConflicts,
   normalizeGitHubRepoName,
   prepareLocalBranch,
+  verifyGithubConnection,
 } from "@/ipc/handlers/github_handlers";
+import { getGitHubApiBase } from "@/ipc/utils/github_endpoints";
 import { createAppOperationHandler } from "@/ipc/utils/app_mutation_lock";
+import { DyadErrorKind } from "@/errors/dyad_error";
 import { db } from "@/db";
 import {
   gitCheckout,
@@ -41,6 +53,7 @@ import {
   gitListBranches,
   isGitRebaseInProgress,
   isGitStatusClean,
+  execGit,
 } from "@/ipc/utils/git_utils";
 
 describe("normalizeGitHubRepoName", () => {
@@ -82,6 +95,249 @@ describe("normalizeGitHubRepoName", () => {
 
   it("should split acronym boundaries", () => {
     expect(normalizeGitHubRepoName("APIClient")).toBe("api-client");
+  });
+});
+
+describe("verifyGithubConnection", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(readSettings).mockReturnValue({
+      githubAccessToken: { value: "test-token" },
+    } as never);
+    vi.mocked(db.query.apps.findFirst).mockResolvedValue({
+      id: 1,
+      path: "demo",
+      githubOrg: "acme",
+      githubRepo: "demo",
+      githubBranch: "feature/deploy",
+    } as never);
+    vi.mocked(execGit).mockImplementation(
+      async (args) =>
+        ({
+          exitCode: 0,
+          stderr: "",
+          stdout:
+            args[0] === "remote"
+              ? "https://github.com/acme/demo.git\n"
+              : args[0] === "branch"
+                ? "feature/deploy\n"
+                : "local-sha\n",
+        }) as never,
+    );
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ commit: { sha: "local-sha" } }),
+    } as never);
+    vi.mocked(isGitStatusClean).mockResolvedValue(true);
+  });
+
+  it("verifies the local remote and the exact remote branch with authenticated GitHub access", async () => {
+    await expect(
+      verifyGithubConnection({ appId: 1, requireSynced: true }),
+    ).resolves.toEqual({
+      owner: "acme",
+      repo: "demo",
+      branch: "feature/deploy",
+    });
+    expect(fetch).toHaveBeenCalledWith(
+      `${getGitHubApiBase()}/repos/acme/demo/branches/feature%2Fdeploy`,
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer test-token",
+        }),
+      }),
+    );
+  });
+
+  it("rejects stale saved metadata when origin points elsewhere", async () => {
+    vi.mocked(execGit).mockResolvedValueOnce({
+      exitCode: 0,
+      stdout: "https://github.com/other/repo.git",
+      stderr: "",
+    } as never);
+    await expect(verifyGithubConnection({ appId: 1 })).rejects.toThrow(
+      "local GitHub remote",
+    );
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("rejects a local branch that differs from the deployment branch", async () => {
+    vi.mocked(execGit)
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: "https://github.com/acme/demo.git",
+        stderr: "",
+      } as never)
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: "other",
+        stderr: "",
+      } as never);
+    await expect(verifyGithubConnection({ appId: 1 })).rejects.toThrow(
+      "connected GitHub branch",
+    );
+  });
+
+  it("rejects missing credentials and repositories", async () => {
+    vi.mocked(readSettings).mockReturnValueOnce({} as never);
+    await expect(verifyGithubConnection({ appId: 1 })).rejects.toThrow(
+      "Reconnect your GitHub",
+    );
+    vi.mocked(db.query.apps.findFirst).mockResolvedValueOnce({
+      id: 1,
+    } as never);
+    await expect(verifyGithubConnection({ appId: 1 })).rejects.toThrow(
+      "Create or connect",
+    );
+    vi.mocked(fetch).mockResolvedValueOnce({ ok: false } as never);
+    await expect(verifyGithubConnection({ appId: 1 })).rejects.toThrow(
+      "Could not verify",
+    );
+  });
+
+  it("rejects incomplete pushes and uncommitted changes", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ commit: { sha: "old-sha" } }),
+    } as never);
+    await expect(
+      verifyGithubConnection({ appId: 1, requireSynced: true }),
+    ).rejects.toThrow("not in sync");
+    vi.mocked(isGitStatusClean).mockResolvedValueOnce(false);
+    await expect(
+      verifyGithubConnection({ appId: 1, requireSynced: true }),
+    ).rejects.toThrow("not in sync");
+  });
+
+  it.each([
+    "git@github.com:acme/demo.git",
+    "ssh://git@github.com/Acme/Demo.git",
+    "ssh://git@github.com:22/acme/demo.git",
+    "https://github.com:443/acme/demo.git",
+    "https://github.com/acme/demo/",
+  ])("accepts %s as the app's remote", async (remoteUrl) => {
+    const succeed = vi.mocked(execGit).getMockImplementation()!;
+    vi.mocked(execGit).mockImplementation(async (args, cwd) =>
+      args[0] === "remote"
+        ? ({ exitCode: 0, stdout: `${remoteUrl}\n`, stderr: "" } as never)
+        : succeed(args, cwd),
+    );
+    await expect(verifyGithubConnection({ appId: 1 })).resolves.toEqual({
+      owner: "acme",
+      repo: "demo",
+      branch: "feature/deploy",
+    });
+  });
+
+  it.each([
+    "https://github.com:8443/acme/demo.git",
+    "ssh://git@github.com:2222/acme/demo.git",
+    "git+ssh://git@github.com:2222/acme/demo.git",
+  ])("rejects a different server at %s", async (remote) => {
+    vi.mocked(execGit).mockResolvedValueOnce({
+      exitCode: 0,
+      stdout: remote,
+      stderr: "",
+    } as never);
+    await expect(verifyGithubConnection({ appId: 1 })).rejects.toMatchObject({
+      kind: DyadErrorKind.Precondition,
+      message: expect.stringContaining("remote does not match"),
+    });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [401, DyadErrorKind.Auth, "Reconnect your GitHub account"],
+    [404, DyadErrorKind.Precondition, "sync or push your code first"],
+    [403, DyadErrorKind.External, "retry in a moment"],
+    [429, DyadErrorKind.External, "retry in a moment"],
+    [500, DyadErrorKind.External, "retry in a moment"],
+  ])(
+    "provides actionable guidance for GitHub HTTP %s",
+    async (status, kind, message) => {
+      vi.mocked(fetch).mockResolvedValueOnce({ ok: false, status } as never);
+      await expect(verifyGithubConnection({ appId: 1 })).rejects.toMatchObject({
+        kind,
+        message: expect.stringContaining(message),
+      });
+    },
+  );
+
+  it.each(["headers", "body"])(
+    "reports a timeout while reading %s",
+    async (phase) => {
+      const controller = new AbortController();
+      const timeout = vi
+        .spyOn(AbortSignal, "timeout")
+        .mockReturnValueOnce(controller.signal);
+      const abort = async () => {
+        controller.abort();
+        throw new Error("The operation was aborted");
+      };
+      if (phase === "headers") vi.mocked(fetch).mockImplementationOnce(abort);
+      else
+        vi.mocked(fetch).mockResolvedValueOnce({
+          ok: true,
+          json: abort,
+        } as never);
+      try {
+        await expect(
+          verifyGithubConnection({ appId: 1 }),
+        ).rejects.toMatchObject({
+          kind: DyadErrorKind.External,
+          message: expect.stringContaining("timed out after 15 seconds"),
+        });
+        expect(timeout).toHaveBeenCalledWith(15_000);
+      } finally {
+        timeout.mockRestore();
+      }
+    },
+  );
+
+  it.each([
+    ["remote", "local GitHub remote"],
+    ["branch", "connected GitHub branch"],
+    ["rev-parse", "not in sync"],
+  ])("rejects when git %s fails", async (command, message) => {
+    const succeed = vi.mocked(execGit).getMockImplementation()!;
+    vi.mocked(execGit).mockImplementation(async (args, cwd) =>
+      args[0] === command
+        ? ({ ...(await succeed(args, cwd)), exitCode: 1 } as never)
+        : succeed(args, cwd),
+    );
+    await expect(
+      verifyGithubConnection({ appId: 1, requireSynced: true }),
+    ).rejects.toThrow(message);
+  });
+
+  it("bounds the GitHub request and classifies network failures", async () => {
+    vi.mocked(fetch).mockRejectedValueOnce(new TypeError("fetch failed"));
+    await expect(verifyGithubConnection({ appId: 1 })).rejects.toMatchObject({
+      name: "DyadError",
+      kind: DyadErrorKind.External,
+      message: expect.stringContaining("Could not reach GitHub"),
+    });
+    expect(fetch).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+  });
+
+  it.each([
+    ["a branch without a commit", async () => ({ name: "feature/deploy" })],
+    ["a non-object body", async () => null],
+    [
+      "an unreadable body",
+      async () => {
+        throw new SyntaxError("Unexpected token");
+      },
+    ],
+  ])("rejects %s from GitHub", async (_, json) => {
+    vi.mocked(fetch).mockResolvedValueOnce({ ok: true, json } as never);
+    await expect(verifyGithubConnection({ appId: 1 })).rejects.toMatchObject({
+      kind: DyadErrorKind.External,
+      message: expect.stringContaining("unexpected response"),
+    });
   });
 });
 

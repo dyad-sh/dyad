@@ -129,7 +129,7 @@ const mockUser = {
 
 let mockReposRoot = fs.mkdtempSync(path.join(os.tmpdir(), "dyad-git-mock-"));
 
-const mockRepos = [
+const initialMockRepos = [
   {
     id: 1,
     name: "test-repo-1",
@@ -166,6 +166,8 @@ const mockRepos = [
     default_branch: "main",
   },
 ];
+
+let mockRepos = structuredClone(initialMockRepos);
 
 const mockBranches = [
   { name: "main", commit: { sha: "abc123" } },
@@ -360,6 +362,32 @@ export function handleRepo(req: Request, res: Response) {
 }
 
 // Get repository branches
+export function handleRepoBranch(req: Request, res: Response) {
+  const { owner, repo, branch } = req.params;
+  if (!req.headers.authorization?.includes(mockAccessToken)) {
+    return res.status(401).json({ message: "Bad credentials" });
+  }
+  if (!mockRepos.some((item) => item.full_name === `${owner}/${repo}`)) {
+    return res.status(404).json({ message: "Not Found" });
+  }
+  try {
+    const sha = execFileSync(
+      "git",
+      [
+        "--git-dir",
+        path.join(mockReposRoot, `${repo}.git`),
+        "rev-parse",
+        "--verify",
+        `refs/heads/${branch}`,
+      ],
+      { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+    ).trim();
+    return res.json({ name: branch, commit: { sha } });
+  } catch {
+    return res.status(404).json({ message: "Branch not found" });
+  }
+}
+
 export function handleRepoBranches(req: Request, res: Response) {
   fakeLlmLog("* GitHub Repo branches requested");
 
@@ -472,6 +500,13 @@ export function handleResetRepos(req: Request, res: Response) {
     console.warn("* Warning: failed to remove old repos root", err);
   }
   mockReposRoot = fs.mkdtempSync(path.join(os.tmpdir(), "dyad-git-mock-"));
+  // Retries reuse the server process. Reset the API catalog alongside the
+  // bare repositories so names created by a previous attempt are available.
+  mockRepos = structuredClone(initialMockRepos);
+  for (const repo of Object.keys(repoCollaborators)) {
+    delete repoCollaborators[repo];
+  }
+  pushEvents.length = 0;
   fakeLlmLog(`* New repos root: ${mockReposRoot}`);
   res.json({ reset: true, timestamp: new Date() });
 }

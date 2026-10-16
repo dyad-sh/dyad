@@ -10,7 +10,10 @@ import {
   VERCEL_API_BASE,
   type VercelProjectFramework,
 } from "../utils/vercel_utils";
-import { getVercelProjectCreationError } from "../utils/vercel_errors";
+import {
+  getVercelDeploymentError,
+  getVercelProjectCreationError,
+} from "../utils/vercel_errors";
 import * as fs from "fs";
 import * as path from "path";
 import { getDyadAppPath } from "@/paths/paths";
@@ -24,6 +27,7 @@ import {
   CreateVercelProjectResult,
   ConnectToExistingVercelProjectParams,
   GetVercelDeploymentsParams,
+  CreateVercelDeploymentParams,
   DisconnectVercelProjectParams,
   VercelProject,
   VercelDeployment,
@@ -297,7 +301,7 @@ async function handleIsProjectAvailable(
 // --- Vercel Create Project Handler ---
 async function handleCreateProject(
   event: IpcMainInvokeEvent,
-  { name: rawName, appId }: CreateVercelProjectParams,
+  { name: rawName, appId, deferDeployment }: CreateVercelProjectParams,
 ): Promise<CreateVercelProjectResult> {
   // Normalize to a kebab-case slug so the project name is valid for Vercel
   // (which requires lowercase names) regardless of how it was entered.
@@ -370,6 +374,10 @@ async function handleCreateProject(
     logger.info(
       `Successfully created Vercel project: ${projectData.id} with GitHub repo: ${app.githubOrg}/${app.githubRepo}`,
     );
+
+    // The guided flow owns env setup and the build it verifies. Other callers
+    // retain the existing first-deploy behavior below.
+    if (deferDeployment) return;
 
     // First-deploy auto-config: for Neon-connected apps, push env vars and add
     // the new deployment domain to Neon Auth's trusted domains BEFORE the first
@@ -555,6 +563,59 @@ async function handleGetVercelDeployments(
   }
 }
 
+// --- Vercel Create Deployment Handler ---
+// Vercel applies environment variables only to builds that start after they
+// are set, so a connected project's latest deployment can predate them.
+async function handleCreateVercelDeployment(
+  event: IpcMainInvokeEvent,
+  { appId }: CreateVercelDeploymentParams,
+): Promise<{ uid: string }> {
+  try {
+    const accessToken = readSettings().vercelAccessToken?.value;
+    if (!accessToken) {
+      throw new DyadError("Not authenticated with Vercel.", DyadErrorKind.Auth);
+    }
+
+    const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+    if (!app?.vercelProjectId) {
+      throw new DyadError(
+        "App is not linked to a Vercel project.",
+        DyadErrorKind.Precondition,
+      );
+    }
+    if (!app.githubOrg || !app.githubRepo) {
+      throw new DyadError(
+        "Connect a GitHub repository before deploying to Vercel.",
+        DyadErrorKind.Precondition,
+      );
+    }
+
+    logger.info(
+      `Creating deployment for Vercel project: ${app.vercelProjectId} for app ${appId}`,
+    );
+    const deployment = await createVercelClient(
+      accessToken,
+    ).deployments.createDeployment({
+      requestBody: {
+        name: app.vercelProjectName ?? app.vercelProjectId,
+        project: app.vercelProjectId,
+        target: "production",
+        gitSource: {
+          type: "github",
+          org: app.githubOrg,
+          repo: app.githubRepo,
+          ref: app.githubBranch || "main",
+        },
+      },
+    });
+    return { uid: deployment.id };
+  } catch (err: any) {
+    if (err instanceof DyadError) throw err;
+    logger.error("[Vercel Handler] Failed to create deployment:", err);
+    throw getVercelDeploymentError(err);
+  }
+}
+
 async function handleDisconnectVercelProject(
   event: IpcMainInvokeEvent,
   { appId }: DisconnectVercelProjectParams,
@@ -613,6 +674,13 @@ export function registerVercelHandlers() {
   createTypedHandler(vercelContracts.getDeployments, async (event, params) => {
     return handleGetVercelDeployments(event, params);
   });
+
+  createTypedHandler(
+    vercelContracts.createDeployment,
+    async (event, params) => {
+      return handleCreateVercelDeployment(event, params);
+    },
+  );
 
   createTypedHandler(vercelContracts.disconnect, async (event, params) => {
     await handleDisconnectVercelProject(event, params);

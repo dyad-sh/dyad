@@ -29,13 +29,25 @@ function status(...fields: string[]): string {
 }
 
 it.each(["win32", "linux", "darwin"])(
-  "enables long paths only for Windows workspace Git commands (%s)",
+  "uses the shared Git environment for workspace commands (%s)",
   async (platform) => {
     Object.defineProperty(process, "platform", {
       configurable: true,
       value: platform,
     });
-    const gitEnvironment = { gitLocation: "git", env: { PATH: "test-path" } };
+    const gitEnvironment = {
+      gitLocation: "git",
+      env: {
+        PATH: "test-path",
+        ...(platform === "win32"
+          ? {
+              GIT_CONFIG_COUNT: "1",
+              GIT_CONFIG_KEY_0: "core.longpaths",
+              GIT_CONFIG_VALUE_0: "true",
+            }
+          : {}),
+      },
+    };
     vi.spyOn(gitUtils, "getGitProcessEnvironment").mockReturnValue(
       gitEnvironment,
     );
@@ -57,13 +69,7 @@ it.each(["win32", "linux", "darwin"])(
     expect(run).toHaveBeenCalledWith(
       expect.objectContaining({
         command: gitEnvironment.gitLocation,
-        args: [
-          ...(platform === "win32" ? ["-c", "core.longpaths=true"] : []),
-          "ls-files",
-          "-z",
-          "--",
-          "supabase",
-        ],
+        args: ["ls-files", "-z", "--", "supabase"],
         cwd: process.cwd(),
         env: gitEnvironment.env,
         signal,

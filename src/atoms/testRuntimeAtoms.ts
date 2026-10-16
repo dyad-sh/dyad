@@ -18,6 +18,11 @@ export const dismissedLegacyTestMigrationAppIdsAtom = atom<Set<number>>(
   new Set<number>(),
 );
 
+/** Last completed batch hidden from each app's chat card in this window/session. */
+export const dismissedTestRunThroughIdByAppIdAtom = atom<Map<number, number>>(
+  new Map(),
+);
+
 /**
  * Result-state taxonomy for a single test (see plan's "Result-State Model").
  * Extends the on-disk run statuses ("passed" | "failed" | "inconclusive",
@@ -403,6 +408,12 @@ export const applyTestRunFinishedAtom = atom(
 export const clearTestRuntimeForAppAtom = atom(
   null,
   (_get, set, appId: number) => {
+    set(dismissedTestRunThroughIdByAppIdAtom, (prev) => {
+      if (!prev.has(appId)) return prev;
+      const next = new Map(prev);
+      next.delete(appId);
+      return next;
+    });
     set(testSpecsByAppIdAtom, (prev) => {
       if (!prev.has(appId)) return prev;
       const next = new Map(prev);

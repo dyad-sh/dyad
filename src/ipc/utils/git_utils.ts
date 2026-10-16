@@ -172,12 +172,23 @@ function getSanitizedGitEnv(
 
   if (sanitizedEnv) {
     const pathKey = getPathEnvKey(sanitizedEnv);
-    return {
+    const env = {
       ...sanitizedEnv,
       ...callerEnv,
       // Keep the sanitized PATH authoritative even when a caller supplies env.
       [pathKey]: sanitizedEnv[pathKey],
     };
+    // Both regular checkouts and isolated workspaces can exceed MAX_PATH.
+    // Append to the effective per-process config so inherited settings and
+    // getGitNetworkEnv's authentication entries survive, without writing config.
+    const configCount = Number(env.GIT_CONFIG_COUNT ?? 0);
+    if (Number.isSafeInteger(configCount) && configCount >= 0) {
+      env.GIT_CONFIG_COUNT = String(configCount + 1);
+      env[`GIT_CONFIG_KEY_${configCount}`] = "core.longpaths";
+      env[`GIT_CONFIG_VALUE_${configCount}`] = "true";
+    }
+    // Leave invalid counts untouched so Git reports its configuration error.
+    return env;
   }
 
   const shimDir = ensureLibcurlShimOnLinux();

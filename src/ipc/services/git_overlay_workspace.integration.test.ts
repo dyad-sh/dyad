@@ -22,11 +22,7 @@ it.each(["e2e-test", "build"] as const)(
       path.join("supabase", "migrations", `${version}_${"m".repeat(171)}.sql`),
     );
     const git = async (...args: string[]) => {
-      // Fixture creation must work even if the source path itself is long.
-      const result = await execGit(
-        ["-c", "core.longpaths=true", ...args],
-        sourcePath,
-      );
+      const result = await execGit(args, sourcePath);
       expect(result.exitCode, result.stderr).toBe(0);
       return result.stdout;
     };

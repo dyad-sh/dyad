@@ -25,15 +25,15 @@ const DESCRIPTIONS: Record<AgentModeRequiredDialogProps["action"], string> = {
   deploy:
     "Fixing a failed deployment means editing your deployment config or code, which this chat's mode cannot do. Continue will send this request in Agent mode.",
   convert:
-    "Adding a Nitro server layer runs in Agent mode, which has the tool that sets it up. Continue will send this request in Agent mode.",
+    "Adding a Nitro server layer means changing your app's config and dependencies, which this chat's mode cannot do. Continue will send this request in Agent mode.",
 };
 
 /**
  * Confirmation shown when the user triggers "Generate test" / "Fix with AI" /
- * "Generate test proposal" / a deployment fix while the current chat isn't in
- * Agent mode. All of them run in Agent mode (they read the app and write
- * files), so Continue sends the request in Agent mode regardless of the chat's
- * current mode.
+ * "Generate test proposal" / a deployment fix / a Nitro conversion while the
+ * current chat isn't in Agent mode. All of them run in Agent mode (they read
+ * the app and write files), so Continue sends the request in Agent mode
+ * regardless of the chat's current mode.
  */
 export function AgentModeRequiredDialog({
   open,

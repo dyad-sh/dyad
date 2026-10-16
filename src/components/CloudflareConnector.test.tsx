@@ -1403,10 +1403,20 @@ describe("a plain Vite app with no Worker", () => {
     expect(screen.queryByTestId("agent-mode-required-dialog")).toBeNull();
   });
 
-  it("asks before sending from a Build mode chat, which cannot add Nitro", async () => {
-    // Unlike a deployment fix, which Build mode can make, the server layer is
-    // added by a tool only Agent mode has.
+  it("keeps a Build mode chat in Build mode, with no confirmation", async () => {
+    // Build mode has the tool too, and its turns are not billed.
     chatMode.value = "build";
+    renderConnector();
+
+    fireEvent.click(await screen.findByTestId("cloudflare-convert-to-nitro"));
+
+    expect(streamMessage).toHaveBeenCalledTimes(1);
+    expect(streamMessage.mock.calls[0][0].requestedChatMode).toBeUndefined();
+    expect(screen.queryByTestId("agent-mode-required-dialog")).toBeNull();
+  });
+
+  it("asks before sending from a chat whose mode cannot edit files", async () => {
+    chatMode.value = "ask";
     renderConnector();
 
     fireEvent.click(await screen.findByTestId("cloudflare-convert-to-nitro"));
@@ -1433,7 +1443,7 @@ describe("a plain Vite app with no Worker", () => {
   });
 
   it("says to open a chat when none is selected, instead of sending nowhere", async () => {
-    chatMode.value = "build";
+    chatMode.value = "ask";
     renderConnector({ chatId: null });
 
     fireEvent.click(await screen.findByTestId("cloudflare-convert-to-nitro"));

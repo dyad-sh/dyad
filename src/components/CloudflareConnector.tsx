@@ -240,9 +240,10 @@ function RecheckButton({
  * run. Adding a Nitro server layer makes it an app whose build produces a
  * Worker: the same change the Neon integration makes on connect, and the one
  * the agent's `enable_nitro` tool makes, so the offer sends that request to
- * the chat. Only Agent mode has the tool, so a chat in any other mode is
- * asked to switch first. The chat commits the change; pushing stays with the
- * user's sync, which the tab asks for once the new target appears.
+ * the chat. Build and Agent mode both have the tool; Ask and Plan mode cannot
+ * write, so a chat in one of those is asked to switch first. The chat commits
+ * the change; pushing stays with the user's sync, which the tab asks for once
+ * the new target appears.
  */
 function NitroConversionOffer({
   onRecheck,
@@ -265,7 +266,11 @@ function NitroConversionOffer({
       ...(inAgentMode ? { requestedChatMode: "local-agent" as const } : {}),
     });
     if (sent) {
-      showInfo("Sent to chat — asking the AI to convert the app to Nitro…");
+      // Nothing tells this tab when the chat is done, so the user is told
+      // how to see the result.
+      showInfo(
+        "Sent to chat — asking the AI to convert the app to Nitro. Click Refresh here once it is done.",
+      );
     }
   };
 
@@ -274,7 +279,9 @@ function NitroConversionOffer({
       showInfo("Open a chat to ask the AI to convert this app.");
       return;
     }
-    if (selectedMode === "local-agent") {
+    // Build and Agent mode both have the tool, and a Build chat stays a Build
+    // chat: for a Pro user, an Agent turn is billed where a Build turn is not.
+    if (selectedMode === "build" || selectedMode === "local-agent") {
       void send({ inAgentMode: false });
     } else {
       setNeedsAgentMode(true);

@@ -23,6 +23,13 @@ import {
   isMissingRemoteBranchError,
 } from "../utils/git_utils";
 import { gitService } from "../services/git_service";
+import {
+  collectSyncSnapshot,
+  measurePush,
+  readHeadCommit,
+} from "../utils/git_sync_diagnostics";
+import { summarizePush } from "@/github_ops/push_summary";
+import type { PushSummary } from "@/github_ops/state";
 import * as schema from "../../db/schema";
 import fs from "node:fs";
 import { getDyadAppPath, isAppLocationAccessible } from "../../paths/paths";
@@ -831,7 +838,7 @@ export async function handlePushToGithub(
     /** What the caller believes this app is linked to; refused if it is not. */
     provider?: GitRemoteProvider;
   },
-): Promise<void> {
+): Promise<PushSummary> {
   const app = await findAppOrThrow(appId);
   const remote = requireAppGitRemote(app);
   assertRemoteProvider(remote, provider);
@@ -839,55 +846,107 @@ export async function handlePushToGithub(
   const appPath = getDyadAppPath(app.path);
   const branch = remote.branch;
 
-  // Set up remote URL (credentials are never stored in the URL; auth is
-  // injected per-invocation in git_utils). Re-setting it on every push also
-  // scrubs tokens that older versions embedded in .git/config.
-  await gitSetRemoteUrl({
-    path: appPath,
-    remoteUrl: remote.httpsUrl,
-  });
+  // Measured before anything changes, so a failure still logs what the
+  // repository looked like, and the push can be compared against it after.
+  const before = await collectSyncSnapshot({ path: appPath, branch });
+  const syncContext = {
+    appId,
+    repo: remote.displayPath,
+    pushedBranch: branch,
+    currentBranch: before.currentBranch ?? "(detached)",
+    uncommittedFiles: before.uncommittedFiles,
+    branchesNotOnRemote: before.branchesNotOnRemote,
+  };
+  let headAfterPull: string | null = before.head;
 
-  // Pull changes first (unless force push)
-  if (!force && !forceWithLease) {
+  try {
+    // Set up remote URL (credentials are never stored in the URL; auth is
+    // injected per-invocation in git_utils). Re-setting it on every push also
+    // scrubs tokens that older versions embedded in .git/config.
+    await gitSetRemoteUrl({
+      path: appPath,
+      remoteUrl: remote.httpsUrl,
+    });
+
+    // Pull changes first (unless force push)
+    if (!force && !forceWithLease) {
+      try {
+        await gitPull({
+          path: appPath,
+          remote: "origin",
+          branch,
+          auth,
+        });
+      } catch (pullError: any) {
+        const errorMessage = pullError?.message || "";
+        const isMissingRemoteBranch = isMissingRemoteBranchError(pullError);
+
+        // If it's just that remote doesn't have the branch yet, we can ignore and push
+        if (!isMissingRemoteBranch) {
+          throw pullError;
+        } else {
+          logger.debug(
+            "[GitHub Handler] Remote branch missing during pull, continuing with push",
+            errorMessage,
+          );
+        }
+      }
+      headAfterPull = await readHeadCommit(appPath);
+    }
+
+    // Push to the linked remote
     try {
-      await gitPull({
+      await gitPush({
         path: appPath,
-        remote: "origin",
         branch,
         auth,
+        force,
+        forceWithLease,
       });
-    } catch (pullError: any) {
-      const errorMessage = pullError?.message || "";
-      const isMissingRemoteBranch = isMissingRemoteBranchError(pullError);
-
-      // If it's just that remote doesn't have the branch yet, we can ignore and push
-      if (!isMissingRemoteBranch) {
-        throw pullError;
-      } else {
-        logger.debug(
-          "[GitHub Handler] Remote branch missing during pull, continuing with push",
-          errorMessage,
-        );
-      }
+    } catch (error) {
+      // A GitLab protected-branch refusal gets told where to change that. The
+      // remedy depends on whether this push was forced, so pass that along.
+      throw withPushHint(error, remote, {
+        forced: Boolean(force || forceWithLease),
+      });
     }
+  } catch (error) {
+    logger.error("[GitHub Handler] sync failed", {
+      ...syncContext,
+      head: abbreviateCommit(before.head),
+      headAfterPull: abbreviateCommit(headAfterPull),
+      remoteTip: abbreviateCommit(before.remoteTip),
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
   }
 
-  // Push to the linked remote
-  try {
-    await gitPush({
-      path: appPath,
-      branch,
-      auth,
-      force,
-      forceWithLease,
-    });
-  } catch (error) {
-    // A GitLab protected-branch refusal gets told where to change that. The
-    // remedy depends on whether this push was forced, so pass that along.
-    throw withPushHint(error, remote, {
-      forced: Boolean(force || forceWithLease),
-    });
-  }
+  const measured = await measurePush({ path: appPath, branch, before });
+  const summary = summarizePush(measured);
+  logger.info("[GitHub Handler] sync summary", {
+    ...syncContext,
+    currentBranch: measured.currentBranch ?? "(detached)",
+    head: {
+      before: abbreviateCommit(before.head),
+      afterPull: abbreviateCommit(headAfterPull),
+      afterPush: summary.head,
+    },
+    remoteTip: {
+      before: abbreviateCommit(measured.remoteTipBefore),
+      after: summary.remoteTip,
+    },
+    pushed:
+      summary.commitsPushed === null
+        ? null
+        : { commits: summary.commitsPushed, files: summary.files },
+    commitsNotOnRemote: summary.commitsNotOnRemote,
+    outcome: summary.outcome,
+  });
+  return summary;
+}
+
+function abbreviateCommit(commit: string | null): string | null {
+  return commit ? commit.slice(0, 7) : null;
 }
 
 export async function handleAbortRebase(

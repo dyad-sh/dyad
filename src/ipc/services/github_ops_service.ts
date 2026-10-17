@@ -1,6 +1,9 @@
 import type { IpcMainInvokeEvent } from "electron";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import type { GithubOperation } from "@/github_ops/state";
+import type {
+  GithubOperation,
+  GithubOperationResult,
+} from "@/github_ops/state";
 import {
   handleAbortRebase,
   handleConnectToExistingRepo,
@@ -98,7 +101,10 @@ export class GithubOpsService {
   private readonly pendingByApp = new Map<number, Set<Promise<unknown>>>();
   private resetFenceCount = 0;
 
-  run(appId: number, op: GithubOperation): Promise<void> {
+  run(
+    appId: number,
+    op: GithubOperation,
+  ): Promise<GithubOperationResult | void> {
     // Check before queueing so deletion never waits on a command that is
     // itself queued behind the deletion's per-app lock.
     try {
@@ -156,18 +162,23 @@ export class GithubOpsService {
     await Promise.allSettled(pending);
   }
 
-  private runUnlocked(appId: number, op: GithubOperation): Promise<void> {
+  private async runUnlocked(
+    appId: number,
+    op: GithubOperation,
+  ): Promise<GithubOperationResult | void> {
     switch (op.type) {
-      case "push":
+      case "push": {
         // The provider travels with the operation so the handler can refuse
         // one that no longer matches the app row — a window holding a stale
         // row would otherwise get a banner naming the wrong provider.
-        return handlePushToGithub(MAIN_SERVICE_EVENT, {
+        const summary = await handlePushToGithub(MAIN_SERVICE_EVENT, {
           appId,
           force: op.mode === "force",
           forceWithLease: op.mode === "lease",
           provider: op.provider,
         });
+        return { type: "push", summary };
+      }
       case "pull":
         return handlePullFromGithub(MAIN_SERVICE_EVENT, { appId });
       case "fetch":

@@ -129,3 +129,90 @@ describe("github_ops wire contracts", () => {
     expect(serialized).not.toContain("claim-1");
   });
 });
+
+describe("push summary wire shape", () => {
+  const invocationRef = {
+    kind: GITHUB_OPS_INVOCATION_KIND,
+    entityKey: 7,
+    operationId: "push-1",
+  };
+  const op = { type: "push", mode: "normal", provider: "github" };
+
+  it("accepts a settlement with or without a summary", () => {
+    expect(
+      GithubOpsProducerEventSchema.safeParse({
+        type: "OP_SUCCEEDED",
+        op,
+        invocationRef,
+      }).success,
+    ).toBe(true);
+    expect(
+      GithubOpsProducerEventSchema.safeParse({
+        type: "OP_SUCCEEDED",
+        op,
+        invocationRef,
+        result: {
+          type: "push",
+          summary: {
+            outcome: "wrong-branch",
+            pushedBranch: "other2",
+            currentBranch: "main",
+            commitsPushed: 0,
+            files: null,
+            uncommittedFiles: 0,
+            commitsNotOnRemote: 5,
+            head: "ffb1463",
+            remoteTip: "c872cc3",
+          },
+        },
+      }).success,
+    ).toBe(true);
+  });
+
+  it("rejects summaries carrying anything but counts, names, and commits", () => {
+    expect(
+      GithubOpsProducerEventSchema.safeParse({
+        type: "OP_SUCCEEDED",
+        op,
+        invocationRef,
+        result: {
+          type: "push",
+          summary: {
+            outcome: "pushed",
+            pushedBranch: "main",
+            currentBranch: "main",
+            commitsPushed: 1,
+            files: null,
+            uncommittedFiles: 0,
+            commitsNotOnRemote: 0,
+            head: "/Users/someone/app",
+            remoteTip: null,
+          },
+        },
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe("banner detail on the wire", () => {
+  it("carries the second banner line through the snapshot schema", () => {
+    const snapshot = GithubOpsRemoteSnapshotSchema.parse(
+      projectGithubOpsRemoteSnapshot(7, 3, {
+        conflictResolutionClaimId: null,
+        activeInvocationRef: null,
+        state: {
+          type: "idle",
+          banner: {
+            kind: "warning",
+            completedOperation: "push",
+            message: "Dyad pushed other2, but you're working on main.",
+            detail: "5 commits on main are not on GitHub.",
+          },
+        },
+      }),
+    );
+    expect(snapshot.state).toMatchObject({
+      banner: { detail: "5 commits on main are not on GitHub." },
+    });
+  });
+});

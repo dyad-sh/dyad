@@ -845,45 +845,72 @@ export async function listRuleBuilds(
 
 export interface CloudflareWorkerVersion {
   id: string;
+  createdOn: string | null;
+  /** Whether the version is served at an address of its own. */
+  hasPreview: boolean;
 }
 
 /**
- * The Worker's newest versions, newest first. Every deploy uploads one, and
- * so does creating the Worker.
+ * One page of the Worker's versions, newest first. Every deploy uploads one,
+ * and so does creating the Worker.
  */
 export async function listWorkerVersions(
   token: string,
   accountId: string,
   name: string,
-  limit: number,
+  { page, perPage }: { page: number; perPage: number },
 ): Promise<CloudflareWorkerVersion[]> {
-  const result = await request<{ items?: { id: string }[] } | null>(
+  const result = await request<{
+    items?: {
+      id: string;
+      metadata?: {
+        created_on?: string | null;
+        // On the wire as has_preview; the docs call it hasPreview.
+        has_preview?: boolean | null;
+        hasPreview?: boolean | null;
+      } | null;
+    }[];
+  } | null>(
     token,
     "GET",
-    apiPath`/accounts/${accountId}/workers/scripts/${name}/versions?per_page=${String(limit)}`,
+    apiPath`/accounts/${accountId}/workers/scripts/${name}/versions?page=${String(page)}&per_page=${String(perPage)}`,
   );
-  return (result?.items ?? []).map((item) => ({ id: item.id }));
+  return (result?.items ?? []).map((item) => ({
+    id: item.id,
+    createdOn: item.metadata?.created_on ?? null,
+    hasPreview:
+      (item.metadata?.has_preview ?? item.metadata?.hasPreview) === true,
+  }));
 }
+
+/** The most version ids Cloudflare answers about in one request. */
+export const VERSION_IDS_PER_REQUEST = 20;
 
 /**
  * The build that uploaded each version, by version id. Nothing on a build
  * says which version it deployed; this is the only way to match them. A
  * version no build uploaded, such as the one a new Worker starts as, is
- * absent. Cloudflare rejects an empty list of ids.
+ * absent. Asked in batches of what Cloudflare takes at once; it refuses an
+ * empty list, so none is sent.
  */
 export async function findBuildsForVersions(
   token: string,
   accountId: string,
   versionIds: string[],
 ): Promise<Record<string, CloudflareBuild | null | undefined>> {
-  const result = await request<{
-    builds?: Record<string, CloudflareBuild | null>;
-  } | null>(
-    token,
-    "GET",
-    apiPath`/accounts/${accountId}/builds/builds?version_ids=${versionIds.join(",")}`,
-  );
-  return result?.builds ?? {};
+  const builds: Record<string, CloudflareBuild | null | undefined> = {};
+  for (let i = 0; i < versionIds.length; i += VERSION_IDS_PER_REQUEST) {
+    const batch = versionIds.slice(i, i + VERSION_IDS_PER_REQUEST);
+    const result = await request<{
+      builds?: Record<string, CloudflareBuild | null>;
+    } | null>(
+      token,
+      "GET",
+      apiPath`/accounts/${accountId}/builds/builds?version_ids=${batch.join(",")}`,
+    );
+    Object.assign(builds, result?.builds ?? {});
+  }
+  return builds;
 }
 
 export async function getBuildLogLines(

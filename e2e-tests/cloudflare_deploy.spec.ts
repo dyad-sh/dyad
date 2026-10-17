@@ -111,7 +111,10 @@ test("deploys a Worker from a subfolder and shows it live", async ({
   const history = po.page.getByTestId("cloudflare-recent-builds");
   await expect(history.getByTestId("recent-deployment")).toHaveCount(1);
   await expect(history.getByText("Live")).toBeVisible();
-  await expect(history.getByText("View")).toBeVisible();
+  await expect(history.getByText("View")).toHaveAttribute(
+    "href",
+    /^https:\/\/[0-9a-f]{8}-e2e-worker\.fake-subdomain\.workers\.dev$/,
+  );
 
   const state = await cloudflareState(fakeLlmPort);
   expect(state.workers).toEqual([

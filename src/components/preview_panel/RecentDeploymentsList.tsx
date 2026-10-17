@@ -1,4 +1,5 @@
 import { Globe } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { ipc } from "@/ipc/types";
 
 /** What a pill says about a deployment at a glance. */
@@ -41,10 +42,13 @@ export function RecentDeploymentsList({
   className?: string;
   testId?: string;
 }) {
+  const { t } = useTranslation("home");
   if (rows.length === 0) return null;
   return (
     <div className={className} data-testid={testId}>
-      <h4 className="font-medium mb-2">Recent Deployments:</h4>
+      <h4 className="font-medium mb-2">
+        {t("integrations.vercel.recentDeployments")}
+      </h4>
       <div className="space-y-2">
         {rows.map((row) => (
           <DeploymentRow key={row.key} row={row} />
@@ -81,6 +85,7 @@ function DeploymentRow({ row }: { row: RecentDeploymentRow }) {
         </div>
         {url && (
           <a
+            href={url}
             onClick={(e) => {
               e.preventDefault();
               ipc.system.openExternalUrl(url);

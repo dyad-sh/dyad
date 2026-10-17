@@ -39,6 +39,7 @@ interface FakeVersion {
   id: string;
   workerName: string;
   buildUuid: string;
+  createdOn: string;
 }
 
 interface State {
@@ -314,6 +315,7 @@ export function registerFakeCloudflare(app: Express): void {
         id: randomUUID(),
         workerName: worker.name,
         buildUuid: build.build_uuid,
+        createdOn: new Date().toISOString(),
       });
     }
     ok(res, build);
@@ -329,10 +331,16 @@ export function registerFakeCloudflare(app: Express): void {
 
   app.get(`${account}/workers/scripts/:name/versions`, (req, res) => {
     if (!authed(req, res)) return;
+    const page = Number(req.query.page ?? "1");
+    const perPage = Number(req.query.per_page ?? "10");
     const items = state.versions
       .filter((v) => v.workerName === req.params.name)
       .reverse()
-      .map((v) => ({ id: v.id, metadata: { has_preview: true } }));
+      .slice((page - 1) * perPage, page * perPage)
+      .map((v) => ({
+        id: v.id,
+        metadata: { has_preview: true, created_on: v.createdOn },
+      }));
     ok(res, { items });
   });
 
@@ -342,7 +350,8 @@ export function registerFakeCloudflare(app: Express): void {
     const ids = String(req.query.version_ids ?? "")
       .split(",")
       .filter(Boolean);
-    if (ids.length === 0) {
+    // Cloudflare answers about 20 versions at most.
+    if (ids.length === 0 || ids.length > 20) {
       return fail(res, 400, 12013, "Invalid query parameter");
     }
     const builds: Record<string, FakeBuild> = {};

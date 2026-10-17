@@ -168,7 +168,15 @@ interface FakeCloudflare {
     { tag: string; routeEnabled: boolean; previewsEnabled?: boolean }
   >;
   /** Each Worker's versions, newest first, and the build that uploaded each. */
-  versions: Record<string, { id: string; buildUuid: string | null }[]>;
+  versions: Record<
+    string,
+    {
+      id: string;
+      buildUuid: string | null;
+      createdOn?: string;
+      hasPreview?: boolean;
+    }[]
+  >;
   /** Each Worker's runtime secrets by name. */
   secrets: Record<string, Record<string, string>>;
   /** Custom domains attached to Workers in the account. */
@@ -284,16 +292,26 @@ async function fakeFetch(
     });
   }
   if ((match = /\/workers\/scripts\/([^/]+)\/versions$/.exec(path))) {
+    const page = Number(url.searchParams.get("page") ?? "1");
+    const perPage = Number(url.searchParams.get("per_page") ?? "10");
     return ok({
-      items: (cloudflare.versions[match[1]] ?? []).map((version) => ({
-        id: version.id,
-        metadata: { has_preview: true },
-      })),
+      items: (cloudflare.versions[match[1]] ?? [])
+        .slice((page - 1) * perPage, page * perPage)
+        .map((version) => ({
+          id: version.id,
+          metadata: {
+            has_preview: version.hasPreview ?? true,
+            // Newer than any build the tests make, unless a test says.
+            created_on: version.createdOn ?? "2026-06-01T00:00:00Z",
+          },
+        })),
     });
   }
   if (path === `${account}/builds/builds`) {
     const ids = url.searchParams.get("version_ids")?.split(",") ?? [];
-    if (ids.length === 0) return fail(400, 12013, "Invalid query parameter");
+    if (ids.length === 0 || ids.length > 20) {
+      return fail(400, 12013, "Invalid query parameter");
+    }
     const builds: Record<string, unknown> = {};
     for (const versions of Object.values(cloudflare.versions)) {
       for (const version of versions) {
@@ -1830,6 +1848,71 @@ describe("deployment status", () => {
     it("does not ask again about a finished build that matched no version", async () => {
       cloudflare.versions["shop-api"] = [];
       await handlers.handleGetDeploymentStatus(target());
+      await handlers.handleGetDeploymentStatus(target());
+      expect(versionCalls()).toHaveLength(1);
+    });
+
+    /** Versions from elsewhere, such as a preview rule, newer than every build. */
+    const otherVersions = (count: number) =>
+      Array.from({ length: count }, (_, i) => ({
+        id: `other-${i}`,
+        buildUuid: null,
+      }));
+
+    it("reads further back when newer versions came from elsewhere", async () => {
+      cloudflare.versions["shop-api"] = [
+        ...otherVersions(30),
+        { id: "c9118799-7147-4fd2-8162-dd3607756164", buildUuid: "b-1" },
+      ];
+      const status = await handlers.handleGetDeploymentStatus(target());
+      expect(status.recentBuilds[2].previewUrl).toBe(
+        "https://c9118799-shop-api.acme.workers.dev",
+      );
+      expect(versionCalls()).toHaveLength(2);
+
+      await handlers.handleGetDeploymentStatus(target());
+      expect(versionCalls()).toHaveLength(2);
+    });
+
+    it("stops once the history is older than the build it is looking for", async () => {
+      cloudflare.versions["shop-api"] = Array.from({ length: 40 }, (_, i) => ({
+        id: `old-${i}`,
+        buildUuid: null,
+        createdOn: "2025-12-01T00:00:00Z",
+      }));
+      const status = await handlers.handleGetDeploymentStatus(target());
+      expect(status.recentBuilds[2].previewUrl).toBeNull();
+      expect(versionCalls()).toHaveLength(1);
+
+      // Settled: nothing older can be the build's version.
+      await handlers.handleGetDeploymentStatus(target());
+      expect(versionCalls()).toHaveLength(1);
+    });
+
+    it("asks again next time when the search ran out before reaching the build", async () => {
+      cloudflare.versions["shop-api"] = [
+        ...otherVersions(120),
+        { id: "c9118799-7147-4fd2-8162-dd3607756164", buildUuid: "b-1" },
+      ];
+      const first = await handlers.handleGetDeploymentStatus(target());
+      expect(first.recentBuilds[2].previewUrl).toBeNull();
+      expect(versionCalls()).toHaveLength(5);
+
+      await handlers.handleGetDeploymentStatus(target());
+      expect(versionCalls()).toHaveLength(10);
+    });
+
+    it("gives no address to a version that is not served on its own", async () => {
+      cloudflare.versions["shop-api"] = [
+        {
+          id: "c9118799-7147-4fd2-8162-dd3607756164",
+          buildUuid: "b-1",
+          hasPreview: false,
+        },
+      ];
+      const status = await handlers.handleGetDeploymentStatus(target());
+      expect(status.recentBuilds[2].previewUrl).toBeNull();
+
       await handlers.handleGetDeploymentStatus(target());
       expect(versionCalls()).toHaveLength(1);
     });

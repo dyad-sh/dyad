@@ -6,7 +6,9 @@ import {
   getTriggerRootDirectory,
   CloudflareApiError,
   deleteTrigger,
+  findBuildsForVersions,
   isCloudflareAuthFailure,
+  listWorkerVersions,
   listWorkers,
   restoreTrigger,
   toCloudflareDyadError,
@@ -242,5 +244,66 @@ describe("restoreTrigger", () => {
       branch_excludes: [],
       path_includes: ["*"],
     });
+  });
+});
+
+describe("matching versions to builds", () => {
+  it("asks about at most 20 versions per request and merges the answers", async () => {
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const ids = new URL(String(input)).searchParams
+        .get("version_ids")!
+        .split(",");
+      return new Response(
+        ok({ builds: { [ids[0]]: { build_uuid: `build-for-${ids[0]}` } } }),
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const ids = Array.from({ length: 25 }, (_, i) => `v-${i}`);
+
+    const builds = await findBuildsForVersions("token", "acct", ids);
+
+    const sent = fetchMock.mock.calls.map(
+      (call) =>
+        new URL(String(call[0])).searchParams.get("version_ids")!.split(",")
+          .length,
+    );
+    expect(sent).toEqual([20, 5]);
+    expect(builds["v-0"]?.build_uuid).toBe("build-for-v-0");
+    expect(builds["v-20"]?.build_uuid).toBe("build-for-v-20");
+  });
+
+  it("sends nothing for no versions", async () => {
+    const fetchMock = respondWith(ok({ builds: {} }));
+    expect(await findBuildsForVersions("token", "acct", [])).toEqual({});
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("reads when each version was made and whether it has an address of its own", async () => {
+    const fetchMock = respondWith(
+      ok({
+        items: [
+          {
+            id: "v-1",
+            metadata: { created_on: "2026-01-01T00:00:00Z", has_preview: true },
+          },
+          { id: "v-2", metadata: { has_preview: false } },
+          { id: "v-3" },
+        ],
+      }),
+    );
+
+    expect(
+      await listWorkerVersions("token", "acct", "shop-api", {
+        page: 2,
+        perPage: 20,
+      }),
+    ).toEqual([
+      { id: "v-1", createdOn: "2026-01-01T00:00:00Z", hasPreview: true },
+      { id: "v-2", createdOn: null, hasPreview: false },
+      { id: "v-3", createdOn: null, hasPreview: false },
+    ]);
+    expect(new URL(String(fetchMock.mock.calls[0][0])).search).toBe(
+      "?page=2&per_page=20",
+    );
   });
 });

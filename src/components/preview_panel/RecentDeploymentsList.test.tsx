@@ -15,6 +15,9 @@ const openExternalUrl = vi.hoisted(() => vi.fn());
 vi.mock("@/ipc/types", () => ({
   ipc: { system: { openExternalUrl } },
 }));
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({ t: (key: string) => key }),
+}));
 
 afterEach(cleanup);
 
@@ -64,11 +67,39 @@ describe("the recent deployments list", () => {
     expect(screen.getByText("Ready").className).toContain("bg-green-100");
   });
 
+  it("colors a failed deployment red", () => {
+    render(
+      <RecentDeploymentsList
+        rows={[
+          {
+            key: "k",
+            label: "Error",
+            tone: "failure",
+            createdAt: null,
+            url: null,
+          },
+        ]}
+      />,
+    );
+    expect(screen.getByText("Error").className).toContain("bg-red-100");
+  });
+
+  it("heads the list with the translated title", () => {
+    render(<RecentDeploymentsList rows={ROWS} />);
+    expect(
+      screen.getByText("integrations.vercel.recentDeployments"),
+    ).toBeTruthy();
+  });
+
   it("opens a row's address from View, and offers none without an address", () => {
     render(<RecentDeploymentsList rows={ROWS} />);
 
     const rows = screen.getAllByTestId("recent-deployment");
     expect(within(rows[0]).queryByText("View")).toBeNull();
+    // A real link, so it can be reached from the keyboard.
+    expect(
+      within(rows[1]).getByRole("link", { name: "View" }).getAttribute("href"),
+    ).toBe("https://older.example.workers.dev");
     fireEvent.click(within(rows[1]).getByText("View"));
     expect(openExternalUrl).toHaveBeenCalledWith(
       "https://older.example.workers.dev",

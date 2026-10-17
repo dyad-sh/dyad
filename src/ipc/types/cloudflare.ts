@@ -90,7 +90,8 @@ export const CloudflareRecentBuildSchema = z.object({
   createdAt: z.string().nullable(),
   /**
    * Where the version this build deployed is served, so an older build can
-   * still be looked at. Null for a build that deployed nothing, and while the
+   * still be looked at. Null for a build that deployed nothing, for one whose
+   * version has no address of its own or has not been found, and while the
    * Worker's version URLs are off.
    */
   previewUrl: z.string().nullable(),

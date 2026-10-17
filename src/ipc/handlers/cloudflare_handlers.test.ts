@@ -188,6 +188,8 @@ interface FakeCloudflare {
   startedBuilds: string[];
   buildVariables: Record<string, Record<string, unknown>>;
   failOn: ((method: string, path: string) => boolean) | null;
+  /** How long a response takes, in milliseconds. */
+  delayOn: ((method: string, path: string) => number) | null;
   /** The status a simulated failure answers with. */
   failStatus: number;
   calls: string[];
@@ -246,6 +248,8 @@ async function fakeFetch(
 
   const path = url.pathname.replace("/client/v4", "");
   cloudflare.calls.push(`${method} ${path}`);
+  const delay = cloudflare.delayOn?.(method, path) ?? 0;
+  if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
   if (cloudflare.failOn?.(method, path)) {
     return fail(cloudflare.failStatus, 1, "simulated failure");
   }
@@ -517,6 +521,7 @@ beforeEach(() => {
     startedBuilds: [],
     buildVariables: {},
     failOn: null,
+    delayOn: null,
     failStatus: 500,
     calls: [],
   };
@@ -1852,6 +1857,9 @@ describe("deployment status", () => {
       expect(versionCalls()).toHaveLength(1);
     });
 
+    /** A moment well after the builds above, for a mocked clock. */
+    const LATER = Date.parse("2026-03-01T00:00:00Z");
+
     /** Versions from elsewhere, such as a preview rule, newer than every build. */
     const otherVersions = (count: number) =>
       Array.from({ length: count }, (_, i) => ({
@@ -1896,17 +1904,17 @@ describe("deployment status", () => {
       ];
       const now = vi.spyOn(Date, "now");
       try {
-        now.mockReturnValue(1_000_000);
+        now.mockReturnValue(LATER);
         const first = await handlers.handleGetDeploymentStatus(target());
         expect(first.recentBuilds[2].previewUrl).toBeNull();
         expect(versionCalls()).toHaveLength(5);
 
         // Polls in between cost nothing.
-        now.mockReturnValue(1_000_000 + 14 * 60 * 1000);
+        now.mockReturnValue(LATER + 14 * 60 * 1000);
         await handlers.handleGetDeploymentStatus(target());
         expect(versionCalls()).toHaveLength(5);
 
-        now.mockReturnValue(1_000_000 + 16 * 60 * 1000);
+        now.mockReturnValue(LATER + 16 * 60 * 1000);
         await handlers.handleGetDeploymentStatus(target());
         expect(versionCalls()).toHaveLength(10);
       } finally {
@@ -1921,12 +1929,12 @@ describe("deployment status", () => {
       ];
       const now = vi.spyOn(Date, "now");
       try {
-        now.mockReturnValue(1_000_000);
+        now.mockReturnValue(LATER);
         const first = await handlers.handleGetDeploymentStatus(target());
         expect(first.recentBuilds[2].previewUrl).toBeNull();
 
         cloudflare.versions["shop-api"][0].buildUuid = "b-1";
-        now.mockReturnValue(1_000_000 + 16 * 60 * 1000);
+        now.mockReturnValue(LATER + 16 * 60 * 1000);
         const later = await handlers.handleGetDeploymentStatus(target());
         expect(later.recentBuilds[2].previewUrl).toBe(
           "https://c9118799-shop-api.acme.workers.dev",
@@ -1953,7 +1961,7 @@ describe("deployment status", () => {
       expect(versionCalls()).toHaveLength(2);
     });
 
-    it("gives no address to a version that is not served on its own", async () => {
+    it("gives no address to a version that is not served on its own, and does not look again", async () => {
       cloudflare.versions["shop-api"] = [
         {
           id: "c9118799-7147-4fd2-8162-dd3607756164",
@@ -1961,11 +1969,73 @@ describe("deployment status", () => {
           hasPreview: false,
         },
       ];
-      const status = await handlers.handleGetDeploymentStatus(target());
-      expect(status.recentBuilds[2].previewUrl).toBeNull();
+      const now = vi.spyOn(Date, "now");
+      try {
+        now.mockReturnValue(LATER);
+        const status = await handlers.handleGetDeploymentStatus(target());
+        expect(status.recentBuilds[2].previewUrl).toBeNull();
 
-      await handlers.handleGetDeploymentStatus(target());
-      expect(versionCalls()).toHaveLength(1);
+        // Found, so there is nothing to retry.
+        now.mockReturnValue(LATER + 16 * 60 * 1000);
+        await handlers.handleGetDeploymentStatus(target());
+        expect(versionCalls()).toHaveLength(1);
+      } finally {
+        now.mockRestore();
+      }
+    });
+
+    it("looks again soon for a build that has just finished", async () => {
+      const finished = Date.parse("2026-01-01T00:05:00Z");
+      cloudflare.builds[0].stopped_on = "2026-01-01T00:05:00Z";
+      // Right after a build finishes, the mapping can still be empty.
+      cloudflare.versions["shop-api"] = [
+        { id: "c9118799-7147-4fd2-8162-dd3607756164", buildUuid: null },
+      ];
+      const now = vi.spyOn(Date, "now");
+      try {
+        now.mockReturnValue(finished + 10_000);
+        const first = await handlers.handleGetDeploymentStatus(target());
+        expect(first.recentBuilds[2].previewUrl).toBeNull();
+        expect(versionCalls()).toHaveLength(1);
+
+        now.mockReturnValue(finished + 25_000);
+        await handlers.handleGetDeploymentStatus(target());
+        expect(versionCalls()).toHaveLength(1);
+
+        cloudflare.versions["shop-api"][0].buildUuid = "b-1";
+        now.mockReturnValue(finished + 45_000);
+        const later = await handlers.handleGetDeploymentStatus(target());
+        expect(later.recentBuilds[2].previewUrl).toBe(
+          "https://c9118799-shop-api.acme.workers.dev",
+        );
+        expect(versionCalls()).toHaveLength(2);
+      } finally {
+        now.mockRestore();
+      }
+    });
+
+    it("answers without waiting on a slow search, which the next poll then has", async () => {
+      handlers.setBuildVersionWaitMs(20);
+      cloudflare.delayOn = (_method, path) =>
+        path.endsWith("/versions") ? 150 : 0;
+      try {
+        const first = await handlers.handleGetDeploymentStatus(target());
+        expect(first.state).toBe("building");
+        expect(first.recentBuilds[2].previewUrl).toBeNull();
+        // A poll while the search is under way does not start another.
+        await handlers.handleGetDeploymentStatus(target());
+        expect(versionCalls()).toHaveLength(1);
+
+        await handlers.settleBuildVersionSearches();
+        const later = await handlers.handleGetDeploymentStatus(target());
+        expect(later.recentBuilds[2].previewUrl).toBe(
+          "https://c9118799-shop-api.acme.workers.dev",
+        );
+        expect(versionCalls()).toHaveLength(1);
+      } finally {
+        handlers.setBuildVersionWaitMs(2_500);
+        cloudflare.delayOn = null;
+      }
     });
 
     it("still reports the status when the versions cannot be read, and asks again next time", async () => {

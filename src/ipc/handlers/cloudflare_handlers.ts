@@ -96,17 +96,19 @@ const RECENT_BUILDS_LIMIT = 5;
 /**
  * The version each finished build deployed, by build id. Nothing on a build
  * says which version it uploaded: the Worker's versions are listed and
- * matched back to builds. A stopped build's version never changes, so a
- * match is kept for good. A build matched to nothing is asked about again
- * once its retry time has passed, since the search is bounded and the
- * mapping can lag a little behind a build finishing.
+ * matched back to builds. A build matched to a version is kept for good,
+ * with or without an address. A build matched to none is asked about again:
+ * soon while the build is fresh, since the mapping can lag a little behind
+ * a build finishing, and rarely once it is old, since the search is bounded.
  */
 const buildVersionCache = new Map<
   string,
   { versionId: string | null; retryAt: number | null }
 >();
 const BUILD_VERSION_CACHE_LIMIT = 500;
-const BUILD_VERSION_MISS_RETRY_MS = 15 * 60 * 1000;
+const FRESH_BUILD_MS = 15 * 60 * 1000;
+const FRESH_MISS_RETRY_MS = 30 * 1000;
+const MISS_RETRY_MS = 15 * 60 * 1000;
 /**
  * A Worker's versions also come from its other rules and from the dashboard,
  * so the card's builds can sit well down the history. Each page costs two
@@ -114,18 +116,27 @@ const BUILD_VERSION_MISS_RETRY_MS = 15 * 60 * 1000;
  */
 const VERSIONS_PER_PAGE = VERSION_IDS_PER_REQUEST;
 const VERSION_LOOKUP_PAGES = 5;
+/**
+ * How long a status waits for the search before answering without it. The
+ * search runs on, and the next poll reads what it found.
+ */
+let buildVersionWaitMs = 2_500;
+/** The search under way for each Worker, so polls do not stack them. */
+const buildVersionSearches = new Map<string, Promise<void>>();
 
-function rememberBuildVersion(buildUuid: string, versionId: string | null) {
+function rememberBuildVersion(
+  buildUuid: string,
+  entry: { versionId: string | null; retryAt: number | null },
+) {
   // The oldest entry goes first, so the builds still on the card stay.
-  if (buildVersionCache.size >= BUILD_VERSION_CACHE_LIMIT) {
+  if (
+    !buildVersionCache.has(buildUuid) &&
+    buildVersionCache.size >= BUILD_VERSION_CACHE_LIMIT
+  ) {
     const oldest = buildVersionCache.keys().next().value;
     if (oldest !== undefined) buildVersionCache.delete(oldest);
   }
-  buildVersionCache.set(buildUuid, {
-    versionId,
-    retryAt:
-      versionId === null ? Date.now() + BUILD_VERSION_MISS_RETRY_MS : null,
-  });
+  buildVersionCache.set(buildUuid, entry);
 }
 
 function isBuildVersionDue(buildUuid: string): boolean {
@@ -134,6 +145,13 @@ function isBuildVersionDue(buildUuid: string): boolean {
     entry === undefined ||
     (entry.retryAt !== null && entry.retryAt <= Date.now())
   );
+}
+
+function missRetryAt(build: CloudflareBuild): number {
+  const finished = Date.parse(build.stopped_on ?? build.created_on ?? "");
+  const fresh =
+    Number.isFinite(finished) && Date.now() - finished < FRESH_BUILD_MS;
+  return Date.now() + (fresh ? FRESH_MISS_RETRY_MS : MISS_RETRY_MS);
 }
 
 /**
@@ -189,6 +207,34 @@ async function matchBuildsToVersions(
   return matched;
 }
 
+async function searchBuildVersions(
+  token: string,
+  accountId: string,
+  workerName: string,
+  builds: CloudflareBuild[],
+): Promise<void> {
+  try {
+    const matched = await matchBuildsToVersions(
+      token,
+      accountId,
+      workerName,
+      builds,
+    );
+    for (const build of builds) {
+      const versionId = matched.get(build.build_uuid);
+      rememberBuildVersion(
+        build.build_uuid,
+        versionId === undefined
+          ? { versionId: null, retryAt: missRetryAt(build) }
+          : { versionId, retryAt: null },
+      );
+    }
+  } catch {
+    // Not knowing which version an older build is is not worth failing the
+    // status over, and the next poll asks again.
+  }
+}
+
 async function resolveBuildVersions(
   token: string,
   accountId: string,
@@ -202,23 +248,20 @@ async function resolveBuildVersions(
       isBuildVersionDue(build.build_uuid),
   );
   if (due.length > 0) {
-    try {
-      const matched = await matchBuildsToVersions(
-        token,
-        accountId,
-        workerName,
-        due,
+    const key = `${accountId}/${workerName}`;
+    let search = buildVersionSearches.get(key);
+    if (!search) {
+      search = searchBuildVersions(token, accountId, workerName, due).finally(
+        () => buildVersionSearches.delete(key),
       );
-      for (const build of due) {
-        rememberBuildVersion(
-          build.build_uuid,
-          matched.get(build.build_uuid) ?? null,
-        );
-      }
-    } catch {
-      // Not knowing which version an older build is is not worth failing the
-      // status over, and the next poll asks again.
+      buildVersionSearches.set(key, search);
     }
+    await Promise.race([
+      search,
+      new Promise<void>((resolve) => {
+        setTimeout(resolve, buildVersionWaitMs).unref?.();
+      }),
+    ]);
   }
   const result = new Map<string, string>();
   for (const build of builds) {
@@ -1363,6 +1406,11 @@ export const cloudflareHandlersForTesting = {
   handleListWorkers,
   clearGithubIdentityCache: () => githubIdentityCache.clear(),
   clearBuildVersionCache: () => buildVersionCache.clear(),
+  setBuildVersionWaitMs: (ms: number) => {
+    buildVersionWaitMs = ms;
+  },
+  settleBuildVersionSearches: () =>
+    Promise.all(buildVersionSearches.values()).then(() => undefined),
   handleSaveToken,
   handleGetAppStatus,
   handleCheckRepoAccess,

@@ -809,6 +809,7 @@ export interface CloudflareBuild {
   status?: string | null;
   build_outcome?: string | null;
   created_on?: string | null;
+  stopped_on?: string | null;
   build_trigger_metadata?: { commit_hash?: string | null } | null;
   /** The rule that started the build. */
   trigger?: { trigger_uuid?: string | null } | null;

@@ -37,9 +37,19 @@ export interface SyncSnapshot {
   branchesNotOnRemote: string[];
 }
 
+/**
+ * Where HEAD and the remote branch stand right before the push, after the
+ * pull has fetched. The push is measured against this, not against the
+ * snapshot taken before the pull, because the pull moves the tracking ref too.
+ */
+export interface PushBaseline {
+  head: string | null;
+  remoteTip: string | null;
+}
+
 export interface PushMeasurement extends PushFacts {
-  /** Full remote tip before the push, for the log. */
-  remoteTipBefore: string | null;
+  /** Full remote tip the push was compared against, for the log. */
+  remoteTipBeforePush: string | null;
 }
 
 interface HeadPosition {
@@ -86,6 +96,23 @@ async function readHeadPosition(path: string): Promise<HeadPosition> {
       : null,
     head: head.trim() || null,
   };
+}
+
+/**
+ * The ref tips plus HEAD. A pull or push never moves HEAD off its branch, so
+ * when the branch is known HEAD is simply that branch's tip and the one
+ * `for-each-ref` call covers both; only a detached HEAD needs a second read.
+ */
+async function readTipsAndHead(
+  path: string,
+  currentBranch: string | null,
+): Promise<{ tips: Map<string, string>; head: string | null }> {
+  const tips = await readRefTips(path);
+  const head =
+    currentBranch === null
+      ? (await readHeadPosition(path)).head
+      : (tips.get(`refs/heads/${currentBranch}`) ?? null);
+  return { tips, head };
 }
 
 /**
@@ -149,13 +176,21 @@ function afterFields(line: string, count: number): string {
   return line.slice(index);
 }
 
+/** Local branches with commits the given commit does not contain. */
 async function readBranchesNotMergedInto(
   path: string,
   commit: string,
   except: string,
 ): Promise<string[]> {
+  // `for-each-ref` lists real branches only; `git branch` would also print a
+  // "(HEAD detached from ...)" entry on a detached HEAD.
   const result = await execGit(
-    ["branch", "--no-merged", commit, "--format=%(refname:short)"],
+    [
+      "for-each-ref",
+      `--no-merged=${commit}`,
+      "--format=%(refname:short)",
+      "refs/heads",
+    ],
     path,
   );
   if (result.exitCode !== 0) return [];
@@ -184,7 +219,7 @@ async function countChangedFiles(
   to: string,
 ): Promise<PushedFileCounts | null> {
   const result = await execGit(
-    ["diff", "--name-status", "--no-renames", from ?? EMPTY_TREE, to],
+    ["diff", "--name-status", from ?? EMPTY_TREE, to],
     path,
   );
   if (result.exitCode !== 0) return null;
@@ -255,24 +290,56 @@ export async function collectSyncSnapshot({
 }
 
 /**
+ * Reads where HEAD and the remote branch stand after the pull. When the pull
+ * found no such branch on the remote, the tracking ref is ignored: it may be
+ * left over from a remote this repository was linked to before. Never throws.
+ */
+export async function collectPushBaseline({
+  path,
+  branch,
+  before,
+  remoteBranchMissing,
+}: {
+  path: string;
+  branch: string;
+  before: SyncSnapshot;
+  remoteBranchMissing: boolean;
+}): Promise<PushBaseline> {
+  try {
+    const { tips, head } = await readTipsAndHead(path, before.currentBranch);
+    return {
+      head,
+      remoteTip: remoteBranchMissing
+        ? null
+        : (tips.get(`refs/remotes/origin/${branch}`) ?? null),
+    };
+  } catch (error) {
+    logger.warn("Could not read the repository state after pulling", error);
+    return { head: before.head, remoteTip: null };
+  }
+}
+
+/**
  * Reads the repository state after a push that exited 0 and compares it with
- * the snapshot taken before. Never throws; unreadable facts come back null.
+ * the baseline. Never throws; unreadable facts come back null.
  */
 export async function measurePush({
   path,
   branch,
   before,
+  baseline,
 }: {
   path: string;
   branch: string;
   before: SyncSnapshot;
+  baseline: PushBaseline;
 }): Promise<PushMeasurement> {
   const fallback: PushMeasurement = {
     pushedBranch: branch,
     currentBranch: before.currentBranch,
-    head: before.head ?? "",
+    head: baseline.head ?? "",
     remoteTip: null,
-    remoteTipBefore: before.remoteTip,
+    remoteTipBeforePush: baseline.remoteTip,
     remoteMoved: false,
     commitsPushed: null,
     files: null,
@@ -280,18 +347,15 @@ export async function measurePush({
     commitsNotOnRemote: 0,
   };
   try {
-    const [{ currentBranch, head }, tips] = await Promise.all([
-      readHeadPosition(path),
-      readRefTips(path),
-    ]);
+    const { tips, head } = await readTipsAndHead(path, before.currentBranch);
     const remoteTip = tips.get(`refs/remotes/origin/${branch}`) ?? null;
-    const remoteMoved = remoteTip !== null && remoteTip !== before.remoteTip;
+    const remoteMoved = remoteTip !== null && remoteTip !== baseline.remoteTip;
     const [commitsPushed, files, commitsNotOnRemote] = await Promise.all([
       remoteMoved && remoteTip
-        ? countCommits(path, before.remoteTip, remoteTip)
-        : Promise.resolve(remoteMoved ? null : 0),
+        ? countCommits(path, baseline.remoteTip, remoteTip)
+        : Promise.resolve(remoteTip === null ? null : 0),
       remoteMoved && remoteTip
-        ? countChangedFiles(path, before.remoteTip, remoteTip)
+        ? countChangedFiles(path, baseline.remoteTip, remoteTip)
         : Promise.resolve(null),
       remoteTip && head && head !== remoteTip
         ? countCommits(path, remoteTip, head)
@@ -299,10 +363,10 @@ export async function measurePush({
     ]);
     return {
       pushedBranch: branch,
-      currentBranch,
+      currentBranch: before.currentBranch,
       head: head ?? "",
       remoteTip,
-      remoteTipBefore: before.remoteTip,
+      remoteTipBeforePush: baseline.remoteTip,
       remoteMoved,
       commitsPushed,
       files,
@@ -313,9 +377,4 @@ export async function measurePush({
     logger.warn("Could not read the repository state after syncing", error);
     return fallback;
   }
-}
-
-/** Full commit HEAD resolves to, or null when it cannot be read. */
-export async function readHeadCommit(path: string): Promise<string | null> {
-  return (await readHeadPosition(path)).head;
 }

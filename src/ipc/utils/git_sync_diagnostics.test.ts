@@ -17,7 +17,11 @@ vi.mock("electron-log", () => ({
   },
 }));
 
-import { collectSyncSnapshot, measurePush } from "./git_sync_diagnostics";
+import {
+  collectPushBaseline,
+  collectSyncSnapshot,
+  measurePush,
+} from "./git_sync_diagnostics";
 import { getGitUncommittedFiles } from "./git_utils";
 import { classifyPushOutcome } from "@/github_ops/push_summary";
 
@@ -102,6 +106,7 @@ describe("git sync diagnostics", () => {
       path: repo.work,
       branch: "main",
       before,
+      baseline: { head: before.head, remoteTip: before.remoteTip },
     });
 
     expect(measured).toMatchObject({
@@ -132,6 +137,7 @@ describe("git sync diagnostics", () => {
       path: repo.work,
       branch: "main",
       before,
+      baseline: { head: before.head, remoteTip: before.remoteTip },
     });
 
     expect(measured).toMatchObject({
@@ -184,6 +190,7 @@ describe("git sync diagnostics", () => {
       path: repo.work,
       branch: "other",
       before,
+      baseline: { head: before.head, remoteTip: before.remoteTip },
     });
 
     expect(measured).toMatchObject({
@@ -208,11 +215,14 @@ describe("git sync diagnostics", () => {
       branch: "main",
     });
     expect(before.currentBranch).toBeNull();
+    // Git's "(HEAD detached from ...)" pseudo-branch must not be listed.
+    expect(before.branchesNotOnRemote).toEqual([]);
     await git(repo.work, "push", "-q", "origin", "main:main");
     const measured = await measurePush({
       path: repo.work,
       branch: "main",
       before,
+      baseline: { head: before.head, remoteTip: before.remoteTip },
     });
 
     expect(measured).toMatchObject({
@@ -239,6 +249,7 @@ describe("git sync diagnostics", () => {
       path: repo.work,
       branch: "feature",
       before,
+      baseline: { head: before.head, remoteTip: before.remoteTip },
     });
 
     expect(measured).toMatchObject({
@@ -262,8 +273,143 @@ describe("git sync diagnostics", () => {
       uncommittedFiles: 0,
       branchesNotOnRemote: [],
     });
-    const measured = await measurePush({ path: root, branch: "main", before });
+    const measured = await measurePush({
+      path: root,
+      branch: "main",
+      before,
+      baseline: { head: before.head, remoteTip: before.remoteTip },
+    });
     expect(measured.remoteTip).toBeNull();
     expect(measured.head).toBe("");
+  });
+});
+
+describe("push baseline", () => {
+  let root: string | undefined;
+
+  afterEach(async () => {
+    if (root) {
+      await fs.promises.rm(root, {
+        recursive: true,
+        force: true,
+        maxRetries: 3,
+        retryDelay: 100,
+      });
+      root = undefined;
+    }
+  });
+
+  it("does not count commits the pull brought down as pushed", async () => {
+    const repo = await createRepoWithRemote();
+    root = repo.root;
+    // A collaborator moves the remote; this clone has nothing new.
+    const other = path.join(repo.root, "other");
+    await git(
+      repo.root,
+      "clone",
+      "-q",
+      "-b",
+      "main",
+      path.join(repo.root, "remote.git"),
+      other,
+    );
+    await commitFile(other, "theirs.txt", "from a collaborator");
+    await git(other, "push", "-q", "origin", "main:main");
+
+    const before = await collectSyncSnapshot({
+      path: repo.work,
+      branch: "main",
+    });
+    await git(repo.work, "pull", "-q", "--rebase=false", "origin", "main");
+    const baseline = await collectPushBaseline({
+      path: repo.work,
+      branch: "main",
+      before,
+      remoteBranchMissing: false,
+    });
+    expect(baseline.remoteTip).not.toBe(before.remoteTip);
+    expect(baseline.head).toBe(baseline.remoteTip);
+    await git(repo.work, "push", "-q", "origin", "main:main");
+    const measured = await measurePush({
+      path: repo.work,
+      branch: "main",
+      before,
+      baseline,
+    });
+
+    expect(measured).toMatchObject({
+      remoteMoved: false,
+      commitsPushed: 0,
+      commitsNotOnRemote: 0,
+    });
+    expect(classifyPushOutcome(measured)).toBe("up-to-date");
+  });
+
+  it("ignores a tracking ref the remote no longer has", async () => {
+    const repo = await createRepoWithRemote();
+    root = repo.root;
+    // The remote lost its branch (or the repository was re-linked elsewhere),
+    // but `origin/main` still points at the old tip, which equals HEAD.
+    await git(
+      repo.root,
+      "--git-dir",
+      path.join(repo.root, "remote.git"),
+      "update-ref",
+      "-d",
+      "refs/heads/main",
+    );
+
+    const before = await collectSyncSnapshot({
+      path: repo.work,
+      branch: "main",
+    });
+    expect(before.remoteTip).toBe(before.head);
+    const baseline = await collectPushBaseline({
+      path: repo.work,
+      branch: "main",
+      before,
+      remoteBranchMissing: true,
+    });
+    expect(baseline.remoteTip).toBeNull();
+    await git(repo.work, "push", "-q", "origin", "main:main");
+    const measured = await measurePush({
+      path: repo.work,
+      branch: "main",
+      before,
+      baseline,
+    });
+
+    expect(measured).toMatchObject({
+      remoteMoved: true,
+      commitsPushed: 1,
+      files: { added: 1, modified: 0, deleted: 0, renamed: 0 },
+    });
+    expect(classifyPushOutcome(measured)).toBe("pushed");
+  });
+
+  it("counts a renamed file as renamed", async () => {
+    const repo = await createRepoWithRemote();
+    root = repo.root;
+    await git(repo.work, "mv", "a.txt", "renamed.txt");
+    await git(repo.work, "commit", "-q", "-m", "rename");
+
+    const before = await collectSyncSnapshot({
+      path: repo.work,
+      branch: "main",
+    });
+    await git(repo.work, "push", "-q", "origin", "main:main");
+    const measured = await measurePush({
+      path: repo.work,
+      branch: "main",
+      before,
+      baseline: { head: before.head, remoteTip: before.remoteTip },
+    });
+
+    expect(measured.files).toEqual({
+      added: 0,
+      modified: 0,
+      deleted: 0,
+      renamed: 1,
+    });
   });
 });

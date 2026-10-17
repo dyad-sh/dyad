@@ -25,8 +25,9 @@ import {
 import { gitService } from "../services/git_service";
 import {
   collectSyncSnapshot,
+  collectPushBaseline,
   measurePush,
-  readHeadCommit,
+  type PushBaseline,
 } from "../utils/git_sync_diagnostics";
 import { summarizePush } from "@/github_ops/push_summary";
 import type { PushSummary } from "@/github_ops/state";
@@ -857,7 +858,13 @@ export async function handlePushToGithub(
     uncommittedFiles: before.uncommittedFiles,
     branchesNotOnRemote: before.branchesNotOnRemote,
   };
-  let headAfterPull: string | null = before.head;
+  // The push is measured against where things stand after the pull, since
+  // the pull's fetch moves the tracking ref too. Until the pull runs, that is
+  // the snapshot.
+  let baseline: PushBaseline = {
+    head: before.head,
+    remoteTip: before.remoteTip,
+  };
 
   try {
     // Set up remote URL (credentials are never stored in the URL; auth is
@@ -870,6 +877,7 @@ export async function handlePushToGithub(
 
     // Pull changes first (unless force push)
     if (!force && !forceWithLease) {
+      let remoteBranchMissing = false;
       try {
         await gitPull({
           path: appPath,
@@ -885,13 +893,19 @@ export async function handlePushToGithub(
         if (!isMissingRemoteBranch) {
           throw pullError;
         } else {
+          remoteBranchMissing = true;
           logger.debug(
             "[GitHub Handler] Remote branch missing during pull, continuing with push",
             errorMessage,
           );
         }
       }
-      headAfterPull = await readHeadCommit(appPath);
+      baseline = await collectPushBaseline({
+        path: appPath,
+        branch,
+        before,
+        remoteBranchMissing,
+      });
     }
 
     // Push to the linked remote
@@ -914,25 +928,32 @@ export async function handlePushToGithub(
     logger.error("[GitHub Handler] sync failed", {
       ...syncContext,
       head: abbreviateCommit(before.head),
-      headAfterPull: abbreviateCommit(headAfterPull),
+      headAfterPull: abbreviateCommit(baseline.head),
       remoteTip: abbreviateCommit(before.remoteTip),
+      remoteTipAfterPull: abbreviateCommit(baseline.remoteTip),
       error: error instanceof Error ? error.message : String(error),
     });
     throw error;
   }
 
-  const measured = await measurePush({ path: appPath, branch, before });
+  const measured = await measurePush({
+    path: appPath,
+    branch,
+    before,
+    baseline,
+  });
   const summary = summarizePush(measured);
-  logger.info("[GitHub Handler] sync summary", {
+  logger.debug("[GitHub Handler] sync summary", {
     ...syncContext,
     currentBranch: measured.currentBranch ?? "(detached)",
     head: {
       before: abbreviateCommit(before.head),
-      afterPull: abbreviateCommit(headAfterPull),
+      afterPull: abbreviateCommit(baseline.head),
       afterPush: summary.head,
     },
     remoteTip: {
-      before: abbreviateCommit(measured.remoteTipBefore),
+      before: abbreviateCommit(before.remoteTip),
+      afterPull: abbreviateCommit(measured.remoteTipBeforePush),
       after: summary.remoteTip,
     },
     pushed:

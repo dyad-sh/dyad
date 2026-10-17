@@ -80,6 +80,12 @@ export class GitLabConnector {
 
   async sync() {
     await this.page.getByRole("button", { name: "Sync to GitLab" }).click();
+    // A banner from an earlier sync can still be showing, so make sure this
+    // sync has started before waiting for it to finish. The button reads
+    // "Syncing..." while it runs, so match either label.
+    await expect(
+      this.page.getByRole("button", { name: /Sync to GitLab|Syncing/ }),
+    ).toBeDisabled({ timeout: Timeout.MEDIUM });
     await this.waitForSyncToFinish();
   }
 
@@ -93,12 +99,17 @@ export class GitLabConnector {
   async waitForSyncToFinish() {
     const connected = this.getConnectedRepo();
     await expect(connected).toBeVisible({ timeout: Timeout.LONG });
-    await expect(
-      connected.getByText("Successfully pushed to GitLab!"),
-    ).toBeVisible({ timeout: Timeout.LONG });
+    // The Sync button is enabled again only once the whole operation has
+    // finished, including the push that follows a connect, so the banner
+    // checked afterwards is the push's own. A sync that finds the remote
+    // already current reports "already up to date" rather than "Successfully
+    // pushed", so wait for the success banner itself rather than a wording.
     await expect(
       connected.getByRole("button", { name: "Sync to GitLab" }),
     ).toBeEnabled({ timeout: Timeout.LONG });
+    await expect(connected.getByTestId("github-sync-success")).toBeVisible({
+      timeout: Timeout.LONG,
+    });
   }
 
   async reset() {

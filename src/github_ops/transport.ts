@@ -4,8 +4,10 @@ import type { InvocationRef } from "@/state_machines/invocation_ref";
 import type {
   GithubOperation,
   GithubOperationFailure,
+  GithubOperationResult,
   GithubOpsEvent,
   GithubOpsState,
+  PushSummary,
 } from "./state";
 import {
   MAX_GITHUB_OPS_ERROR_MESSAGE_LENGTH,
@@ -190,10 +192,11 @@ const operationTypeSchema = z.enum([
 
 const githubOpsBannerSchema = z
   .object({
-    kind: z.enum(["success", "error", "info"]),
+    kind: z.enum(["success", "error", "info", "warning"]),
     code: z.string().optional(),
     completedOperation: operationTypeSchema.optional(),
     message: z.string().max(MAX_GITHUB_OPS_ERROR_MESSAGE_LENGTH),
+    detail: z.string().max(MAX_GITHUB_OPS_ERROR_MESSAGE_LENGTH).optional(),
   })
   .strict();
 
@@ -327,11 +330,65 @@ const operationFailureSchema: z.ZodType<GithubOperationFailure> = z
   })
   .strict();
 
+const nonNegativeCount = z.number().int().nonnegative();
+// Empty when HEAD could not be read, which the summary tolerates.
+const abbreviatedCommitSchema = z.string().regex(/^[0-9a-f]{0,64}$/);
+const pushSummarySchema = z
+  .object({
+    outcome: z.enum([
+      "pushed",
+      "up-to-date",
+      "uncommitted-changes",
+      "wrong-branch",
+      "detached-head",
+      "unverified",
+    ]),
+    pushedBranch: z.string().min(1),
+    currentBranch: z.string().min(1).nullable(),
+    commitsPushed: nonNegativeCount.nullable(),
+    files: z
+      .object({
+        added: nonNegativeCount,
+        modified: nonNegativeCount,
+        deleted: nonNegativeCount,
+        renamed: nonNegativeCount,
+      })
+      .strict()
+      .nullable(),
+    uncommittedFiles: nonNegativeCount,
+    commitsNotOnRemote: nonNegativeCount,
+    head: abbreviatedCommitSchema,
+    remoteTip: abbreviatedCommitSchema.nullable(),
+  })
+  .strict();
+export const GithubOperationResultSchema = z
+  .object({ type: z.literal("push"), summary: pushSummarySchema })
+  .strict();
+
+// The state types are hand-written so `state.ts` stays free of zod. Either
+// side drifting from the other fails type-checking here.
+type MutuallyAssignable<Left, Right> = [Left] extends [Right]
+  ? [Right] extends [Left]
+    ? true
+    : false
+  : false;
+type AssertTrue<Value extends true> = Value;
+type _PushSummarySchemaMatchesState = AssertTrue<
+  MutuallyAssignable<z.infer<typeof pushSummarySchema>, PushSummary>
+>;
+type _OperationResultSchemaMatchesState = AssertTrue<
+  MutuallyAssignable<
+    z.infer<typeof GithubOperationResultSchema>,
+    GithubOperationResult
+  >
+>;
+
 export const GithubOpsProducerEventSchema = z.union([
   z
     .object({
       type: z.literal("OP_SUCCEEDED"),
       op: GithubOperationSchema,
+      result: GithubOperationResultSchema.optional(),
       invocationRef: GithubOpsInvocationRefSchema,
     })
     .strict(),
@@ -450,7 +507,9 @@ export function toGithubOpsDomainEvent(
     case "OP_REQUESTED":
       return { type: "OP_REQUESTED", op: event.op };
     case "OP_SUCCEEDED":
-      return { type: "OP_SUCCEEDED", op: event.op };
+      return event.result
+        ? { type: "OP_SUCCEEDED", op: event.op, result: event.result }
+        : { type: "OP_SUCCEEDED", op: event.op };
     case "OP_FAILED":
       return { type: "OP_FAILED", op: event.op, failure: event.failure };
     case "CONFLICTS":

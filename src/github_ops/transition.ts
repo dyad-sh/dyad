@@ -5,6 +5,7 @@ import type {
   ConflictOrigin,
   GithubOperation,
   GithubOperationFailure,
+  GithubOperationResult,
   GithubOpsBanner,
   GithubOpsCommand,
   GithubOpsEvent,
@@ -14,6 +15,7 @@ import type {
   GitRemoteProviderName,
 } from "./state";
 import { truncateGithubOpsErrorMessage } from "./error_message";
+import { describePushSummary } from "./push_summary";
 
 /**
  * The normal push that follows `op`, against the same provider.
@@ -49,7 +51,7 @@ export function transition(
     case "OP_REQUESTED":
       return requestOperation(state, event.op);
     case "OP_SUCCEEDED":
-      return operationSucceeded(state, event.op);
+      return operationSucceeded(state, event.op, event.result);
     case "OP_FAILED":
       return operationFailed(state, event.op, event.failure);
     case "CONFLICTS":
@@ -158,6 +160,7 @@ function beginOperation(
 function operationSucceeded(
   state: GithubOpsState,
   op: GithubOperation,
+  result: GithubOperationResult | undefined,
 ): GithubOpsTransitionResult {
   switch (state.type) {
     case "running":
@@ -181,13 +184,13 @@ function operationSucceeded(
       state: {
         type: "running",
         op: state.next,
-        banner: successBanner(op),
+        banner: successBanner(op, result),
       },
       commands: [...mutationCommands, { type: "run-op", op: state.next }],
     };
   }
 
-  const banner = successBanner(op);
+  const banner = successBanner(op, result);
   return {
     kind: "applied",
     state: { type: "idle", banner },
@@ -895,18 +898,29 @@ function completionCommands(op: GithubOperation): GithubOpsCommand[] {
   }
 }
 
-function successBanner(op: GithubOperation): GithubOpsBanner | null {
-  const banner = successBannerContent(op);
+function successBanner(
+  op: GithubOperation,
+  result: GithubOperationResult | undefined,
+): GithubOpsBanner | null {
+  const banner = successBannerContent(op, result);
   return banner ? { ...banner, completedOperation: op.type } : null;
 }
 
-function successBannerContent(op: GithubOperation): GithubOpsBanner | null {
+function successBannerContent(
+  op: GithubOperation,
+  result: GithubOperationResult | undefined,
+): GithubOpsBanner | null {
   switch (op.type) {
-    case "push":
+    case "push": {
+      const providerLabel = op.provider === "gitlab" ? "GitLab" : "GitHub";
+      if (result?.type === "push") {
+        return describePushSummary(result.summary, providerLabel);
+      }
       return {
         kind: "success",
-        message: `Successfully pushed to ${op.provider === "gitlab" ? "GitLab" : "GitHub"}!`,
+        message: `Successfully pushed to ${providerLabel}!`,
       };
+    }
     case "pull":
       return { kind: "success", message: "Pulled latest changes from remote" };
     case "fetch":

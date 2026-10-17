@@ -247,10 +247,11 @@ function createCommandRunner(
         gitStateProbeGeneration += 1;
         conflictProbeGeneration += 1;
         void githubOpsService.run(appId, command.op).then(
-          () => {
+          (result) => {
             emit({
               type: "OP_SUCCEEDED",
               op: command.op,
+              ...(result ? { result } : {}),
               invocationRef,
             });
           },

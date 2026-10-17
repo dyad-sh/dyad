@@ -662,7 +662,26 @@ export function ConnectedGitHubConnector({
         </p>
       )}
       {banner?.kind === "success" && (
-        <p className="text-green-600 mt-2">{banner.message}</p>
+        <div className="mt-2" data-testid="github-sync-success" role="status">
+          <p className="text-green-600">{banner.message}</p>
+          {banner.detail && (
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {banner.detail}
+            </p>
+          )}
+        </div>
+      )}
+      {banner?.kind === "warning" && (
+        <div className="mt-2" data-testid="github-sync-warning" role="status">
+          <p className="text-amber-700 dark:text-amber-400 text-sm">
+            {banner.message}
+          </p>
+          {banner.detail && (
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {banner.detail}
+            </p>
+          )}
+        </div>
       )}
 
       {/* Force Push Warning Dialog */}

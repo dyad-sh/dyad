@@ -12,6 +12,7 @@ import {
 } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
+import { eq } from "drizzle-orm";
 import { apps, chats } from "@/db/schema";
 import { readSettings, writeSettings } from "@/main/settings";
 import {
@@ -431,5 +432,77 @@ describe("Git collaboration actions (integration)", () => {
       },
       { timeout: 15_000 },
     );
+  }, 90_000);
+
+  it("reports what a sync pushed", async () => {
+    const app = await setupLinkedApp(
+      "git-collab-counted-push",
+      `test-git-counted-push-hybrid-${Date.now()}`,
+    );
+    fs.writeFileSync(path.join(app.appDir, "added.txt"), "new\n");
+    git(app.appDir, "add", "added.txt");
+    git(app.appDir, "commit", "-m", "Add a file");
+    fs.writeFileSync(path.join(app.appDir, "added.txt"), "changed\n");
+    git(app.appDir, "add", "added.txt");
+    git(app.appDir, "commit", "-m", "Change it");
+
+    cleanup();
+    await mountAppDetails(app);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Sync to GitHub" }),
+    );
+
+    // The banner from the initial push survives the remount, so wait for the
+    // text of this sync rather than for the element.
+    await waitFor(
+      () => {
+        expect(screen.getByTestId("github-sync-success").textContent).toBe(
+          "Successfully pushed to GitHub!2 commits on main: 1 file added.",
+        );
+      },
+      { timeout: 30_000 },
+    );
+    await harness.bridge.settleInFlight();
+  }, 90_000);
+
+  it("warns instead of claiming success when Dyad pushes a branch the user is not on", async () => {
+    const app = await setupLinkedApp(
+      "git-collab-wrong-branch",
+      `test-git-wrong-branch-hybrid-${Date.now()}`,
+    );
+    // The stored push branch drifts from the checked-out one: a `feature`
+    // branch exists locally and remotely, the app row names it, and the user
+    // keeps committing on `main`. Dyad's push of `feature:feature` sends
+    // nothing and exits 0.
+    git(app.appDir, "branch", "feature");
+    await gitNetwork(app.appDir, "push", "origin", "feature:feature");
+    await harness.db
+      .update(apps)
+      .set({ githubBranch: "feature" })
+      .where(eq(apps.id, app.appId));
+    fs.writeFileSync(path.join(app.appDir, "work.txt"), "on main\n");
+    git(app.appDir, "add", "work.txt");
+    git(app.appDir, "commit", "-m", "Work on main");
+
+    cleanup();
+    await mountAppDetails(app);
+    await harness.github.clearPushEvents();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Sync to GitHub" }),
+    );
+
+    const warning = await screen.findByTestId(
+      "github-sync-warning",
+      undefined,
+      { timeout: 30_000 },
+    );
+    expect(warning.textContent).toBe(
+      "You're working on main, but Dyad syncs feature." +
+        "feature was already up to date. 1 commit on main is not on GitHub's feature.",
+    );
+    expect(screen.queryByText("Successfully pushed to GitHub!")).toBeNull();
+    await harness.bridge.settleInFlight();
+    // Nothing reached the remote: an up-to-date push never sends a receive-pack.
+    expect(await harness.github.pushEvents()).toEqual([]);
   }, 90_000);
 });

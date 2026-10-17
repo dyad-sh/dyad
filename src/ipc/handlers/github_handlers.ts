@@ -23,6 +23,14 @@ import {
   isMissingRemoteBranchError,
 } from "../utils/git_utils";
 import { gitService } from "../services/git_service";
+import {
+  collectSyncSnapshot,
+  collectPushBaseline,
+  measurePush,
+  type PushBaseline,
+} from "../utils/git_sync_diagnostics";
+import { summarizePush } from "@/github_ops/push_summary";
+import type { PushSummary } from "@/github_ops/state";
 import * as schema from "../../db/schema";
 import fs from "node:fs";
 import { getDyadAppPath, isAppLocationAccessible } from "../../paths/paths";
@@ -831,7 +839,7 @@ export async function handlePushToGithub(
     /** What the caller believes this app is linked to; refused if it is not. */
     provider?: GitRemoteProvider;
   },
-): Promise<void> {
+): Promise<PushSummary> {
   const app = await findAppOrThrow(appId);
   const remote = requireAppGitRemote(app);
   assertRemoteProvider(remote, provider);
@@ -839,55 +847,143 @@ export async function handlePushToGithub(
   const appPath = getDyadAppPath(app.path);
   const branch = remote.branch;
 
-  // Set up remote URL (credentials are never stored in the URL; auth is
-  // injected per-invocation in git_utils). Re-setting it on every push also
-  // scrubs tokens that older versions embedded in .git/config.
-  await gitSetRemoteUrl({
-    path: appPath,
-    remoteUrl: remote.httpsUrl,
-  });
+  // Measured before anything changes, so a failure still logs what the
+  // repository looked like, and the push can be compared against it after.
+  const before = await collectSyncSnapshot({ path: appPath, branch });
+  const syncContext = {
+    appId,
+    repo: remote.displayPath,
+    pushedBranch: branch,
+    currentBranch: describeBranch(before),
+    uncommittedFiles: before.uncommittedFiles,
+    branchesNotOnRemote: before.branchesNotOnRemote,
+  };
+  // The push is measured against where things stand after the pull, since
+  // the pull's fetch moves the tracking ref too. Until the pull runs, that is
+  // the snapshot.
+  let baseline: PushBaseline = {
+    head: before.head,
+    remoteTip: before.remoteTip,
+  };
 
-  // Pull changes first (unless force push)
-  if (!force && !forceWithLease) {
-    try {
-      await gitPull({
+  try {
+    // Set up remote URL (credentials are never stored in the URL; auth is
+    // injected per-invocation in git_utils). Re-setting it on every push also
+    // scrubs tokens that older versions embedded in .git/config.
+    await gitSetRemoteUrl({
+      path: appPath,
+      remoteUrl: remote.httpsUrl,
+    });
+
+    // Pull changes first (unless force push)
+    if (!force && !forceWithLease) {
+      let remoteBranchMissing = false;
+      try {
+        await gitPull({
+          path: appPath,
+          remote: "origin",
+          branch,
+          auth,
+        });
+      } catch (pullError: any) {
+        const errorMessage = pullError?.message || "";
+        const isMissingRemoteBranch = isMissingRemoteBranchError(pullError);
+
+        // If it's just that remote doesn't have the branch yet, we can ignore and push
+        if (!isMissingRemoteBranch) {
+          // The fetch half of the pull may have moved the tracking ref before
+          // the merge failed, so the failure log gets the refreshed tip.
+          baseline = await collectPushBaseline({
+            path: appPath,
+            branch,
+            before,
+            remoteBranchMissing: false,
+          });
+          throw pullError;
+        } else {
+          remoteBranchMissing = true;
+          logger.debug(
+            "[GitHub Handler] Remote branch missing during pull, continuing with push",
+            errorMessage,
+          );
+        }
+      }
+      baseline = await collectPushBaseline({
         path: appPath,
-        remote: "origin",
+        branch,
+        before,
+        remoteBranchMissing,
+      });
+    }
+
+    // Push to the linked remote
+    try {
+      await gitPush({
+        path: appPath,
         branch,
         auth,
+        force,
+        forceWithLease,
       });
-    } catch (pullError: any) {
-      const errorMessage = pullError?.message || "";
-      const isMissingRemoteBranch = isMissingRemoteBranchError(pullError);
-
-      // If it's just that remote doesn't have the branch yet, we can ignore and push
-      if (!isMissingRemoteBranch) {
-        throw pullError;
-      } else {
-        logger.debug(
-          "[GitHub Handler] Remote branch missing during pull, continuing with push",
-          errorMessage,
-        );
-      }
+    } catch (error) {
+      // A GitLab protected-branch refusal gets told where to change that. The
+      // remedy depends on whether this push was forced, so pass that along.
+      throw withPushHint(error, remote, {
+        forced: Boolean(force || forceWithLease),
+      });
     }
+  } catch (error) {
+    logger.error("[GitHub Handler] sync failed", {
+      ...syncContext,
+      head: abbreviateCommit(before.head),
+      headAfterPull: abbreviateCommit(baseline.head),
+      remoteTip: abbreviateCommit(before.remoteTip),
+      remoteTipAfterPull: abbreviateCommit(baseline.remoteTip),
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
   }
 
-  // Push to the linked remote
-  try {
-    await gitPush({
-      path: appPath,
-      branch,
-      auth,
-      force,
-      forceWithLease,
-    });
-  } catch (error) {
-    // A GitLab protected-branch refusal gets told where to change that. The
-    // remedy depends on whether this push was forced, so pass that along.
-    throw withPushHint(error, remote, {
-      forced: Boolean(force || forceWithLease),
-    });
-  }
+  const measured = await measurePush({
+    path: appPath,
+    branch,
+    before,
+    baseline,
+  });
+  const summary = summarizePush(measured);
+  logger.debug("[GitHub Handler] sync summary", {
+    ...syncContext,
+    currentBranch: describeBranch(measured),
+    head: {
+      before: abbreviateCommit(before.head),
+      afterPull: abbreviateCommit(baseline.head),
+      afterPush: summary.head,
+    },
+    remoteTip: {
+      before: abbreviateCommit(before.remoteTip),
+      afterPull: abbreviateCommit(measured.remoteTipBeforePush),
+      after: summary.remoteTip,
+    },
+    pushed:
+      summary.commitsPushed === null
+        ? null
+        : { commits: summary.commitsPushed, files: summary.files },
+    commitsNotOnRemote: summary.commitsNotOnRemote,
+    outcome: summary.outcome,
+  });
+  return summary;
+}
+
+function describeBranch(reading: {
+  currentBranch: string | null;
+  branchKnown: boolean;
+}): string {
+  if (!reading.branchKnown) return "(unknown)";
+  return reading.currentBranch ?? "(detached)";
+}
+
+function abbreviateCommit(commit: string | null): string | null {
+  return commit ? commit.slice(0, 7) : null;
 }
 
 export async function handleAbortRebase(

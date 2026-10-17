@@ -662,7 +662,7 @@ export function ConnectedGitHubConnector({
         </p>
       )}
       {banner?.kind === "success" && (
-        <div className="mt-2" data-testid="github-sync-success">
+        <div className="mt-2" data-testid="github-sync-success" role="status">
           <p className="text-green-600">{banner.message}</p>
           {banner.detail && (
             <p className="text-xs text-muted-foreground mt-0.5">
@@ -672,7 +672,7 @@ export function ConnectedGitHubConnector({
         </div>
       )}
       {banner?.kind === "warning" && (
-        <div className="mt-2" data-testid="github-sync-warning">
+        <div className="mt-2" data-testid="github-sync-warning" role="status">
           <p className="text-amber-700 dark:text-amber-400 text-sm">
             {banner.message}
           </p>

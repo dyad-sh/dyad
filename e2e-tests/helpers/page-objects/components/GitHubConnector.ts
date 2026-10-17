@@ -73,9 +73,12 @@ export class GitHubConnector {
   async waitForSyncToFinish() {
     const connectedRepo = this.page.getByTestId("github-connected-repo");
     await expect(connectedRepo).toBeVisible({ timeout: Timeout.LONG });
-    await expect(
-      connectedRepo.getByText("Successfully pushed to GitHub!"),
-    ).toBeVisible({ timeout: Timeout.LONG });
+    // A sync that finds the remote already current reports "already up to
+    // date" rather than "Successfully pushed", so wait for the success banner
+    // itself rather than one of its wordings.
+    await expect(connectedRepo.getByTestId("github-sync-success")).toBeVisible({
+      timeout: Timeout.LONG,
+    });
     await expect(
       connectedRepo.getByRole("button", { name: "Sync to GitHub" }),
     ).toBeEnabled({ timeout: Timeout.LONG });

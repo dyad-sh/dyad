@@ -333,7 +333,7 @@ const operationFailureSchema: z.ZodType<GithubOperationFailure> = z
 const nonNegativeCount = z.number().int().nonnegative();
 // Empty when HEAD could not be read, which the summary tolerates.
 const abbreviatedCommitSchema = z.string().regex(/^[0-9a-f]{0,64}$/);
-const pushSummarySchema: z.ZodType<PushSummary> = z
+const pushSummarySchema = z
   .object({
     outcome: z.enum([
       "pushed",
@@ -361,9 +361,27 @@ const pushSummarySchema: z.ZodType<PushSummary> = z
     remoteTip: abbreviatedCommitSchema.nullable(),
   })
   .strict();
-export const GithubOperationResultSchema: z.ZodType<GithubOperationResult> = z
+export const GithubOperationResultSchema = z
   .object({ type: z.literal("push"), summary: pushSummarySchema })
   .strict();
+
+// The state types are hand-written so `state.ts` stays free of zod. Either
+// side drifting from the other fails type-checking here.
+type MutuallyAssignable<Left, Right> = [Left] extends [Right]
+  ? [Right] extends [Left]
+    ? true
+    : false
+  : false;
+type AssertTrue<Value extends true> = Value;
+type _PushSummarySchemaMatchesState = AssertTrue<
+  MutuallyAssignable<z.infer<typeof pushSummarySchema>, PushSummary>
+>;
+type _OperationResultSchemaMatchesState = AssertTrue<
+  MutuallyAssignable<
+    z.infer<typeof GithubOperationResultSchema>,
+    GithubOperationResult
+  >
+>;
 
 export const GithubOpsProducerEventSchema = z.union([
   z

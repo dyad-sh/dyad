@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   GITHUB_OPS_INVOCATION_KIND,
+  GithubOperationResultSchema,
   GithubOpsIntentEventSchema,
   GithubOpsProducerEventSchema,
   GithubOpsRemoteSnapshotSchema,
@@ -170,27 +171,30 @@ describe("push summary wire shape", () => {
   });
 
   it("rejects summaries carrying anything but counts, names, and commits", () => {
-    expect(
-      GithubOpsProducerEventSchema.safeParse({
-        type: "OP_SUCCEEDED",
-        op,
-        invocationRef,
-        result: {
-          type: "push",
-          summary: {
-            outcome: "pushed",
-            pushedBranch: "main",
-            currentBranch: "main",
-            commitsPushed: 1,
-            files: null,
-            uncommittedFiles: 0,
-            commitsNotOnRemote: 0,
-            head: "/Users/someone/app",
-            remoteTip: null,
-          },
-        },
-      }).success,
-    ).toBe(false);
+    const summary = {
+      outcome: "pushed",
+      pushedBranch: "main",
+      currentBranch: "main",
+      commitsPushed: 1,
+      files: null,
+      uncommittedFiles: 0,
+      commitsNotOnRemote: 0,
+      head: "ffb1463",
+      remoteTip: null,
+    };
+    const parse = (overrides: Record<string, unknown>) =>
+      GithubOperationResultSchema.safeParse({
+        type: "push",
+        summary: { ...summary, ...overrides },
+      });
+
+    const pathAsCommit = parse({ head: "/Users/someone/app" });
+    expect(pathAsCommit.success).toBe(false);
+    expect(pathAsCommit.error?.issues[0]?.path).toEqual(["summary", "head"]);
+
+    const extraField = parse({ repoPath: "/Users/someone/app" });
+    expect(extraField.success).toBe(false);
+    expect(extraField.error?.issues[0]?.code).toBe("unrecognized_keys");
   });
 });
 

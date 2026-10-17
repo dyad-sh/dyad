@@ -93,9 +93,12 @@ export class GitLabConnector {
   async waitForSyncToFinish() {
     const connected = this.getConnectedRepo();
     await expect(connected).toBeVisible({ timeout: Timeout.LONG });
-    await expect(
-      connected.getByText("Successfully pushed to GitLab!"),
-    ).toBeVisible({ timeout: Timeout.LONG });
+    // A sync that finds the remote already current reports "already up to
+    // date" rather than "Successfully pushed", so wait for the success banner
+    // itself rather than one of its wordings.
+    await expect(connected.getByTestId("github-sync-success")).toBeVisible({
+      timeout: Timeout.LONG,
+    });
     await expect(
       connected.getByRole("button", { name: "Sync to GitLab" }),
     ).toBeEnabled({ timeout: Timeout.LONG });

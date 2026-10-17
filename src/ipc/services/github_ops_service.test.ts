@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DyadErrorKind } from "@/errors/dyad_error";
+import type { PushSummary } from "@/github_ops/state";
 import { activeRecordings } from "./recording_registry";
 import {
   getGithubOperationResources,
@@ -8,8 +9,20 @@ import {
 
 const handlers = vi.hoisted(() => ({
   disconnect: vi.fn<() => Promise<void>>(),
-  push: vi.fn<() => Promise<void>>(),
+  push: vi.fn<() => Promise<PushSummary>>(),
 }));
+
+const pushSummary: PushSummary = {
+  outcome: "pushed",
+  pushedBranch: "main",
+  currentBranch: "main",
+  commitsPushed: 1,
+  files: { added: 1, modified: 0, deleted: 0, renamed: 0 },
+  uncommittedFiles: 0,
+  commitsNotOnRemote: 0,
+  head: "ffb1463",
+  remoteTip: "ffb1463",
+};
 
 vi.mock("../handlers/github_handlers", () => ({
   handlePushToGithub: handlers.push,
@@ -107,18 +120,18 @@ describe("GithubOpsService lifecycle", () => {
     expect(handlers.push).not.toHaveBeenCalled();
 
     service.endReset();
-    handlers.push.mockResolvedValue();
+    handlers.push.mockResolvedValue(pushSummary);
     await expect(
       service.run(7, { type: "push", mode: "normal", provider: "github" }),
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual({ type: "push", summary: pushSummary });
   });
 
   it("keeps settlement pending until an admitted operation finishes", async () => {
     let release!: () => void;
     handlers.push.mockImplementation(
       () =>
-        new Promise<void>((resolve) => {
-          release = resolve;
+        new Promise<PushSummary>((resolve) => {
+          release = () => resolve(pushSummary);
         }),
     );
     const service = new GithubOpsService();
@@ -137,7 +150,7 @@ describe("GithubOpsService lifecycle", () => {
     expect(settled).toBe(false);
 
     release();
-    await expect(run).resolves.toBeUndefined();
+    await expect(run).resolves.toEqual({ type: "push", summary: pushSummary });
     await settlement;
     expect(settled).toBe(true);
   });

@@ -462,6 +462,7 @@ describe("Git collaboration actions (integration)", () => {
       },
       { timeout: 30_000 },
     );
+    await harness.bridge.settleInFlight();
   }, 90_000);
 
   it("warns instead of claiming success when Dyad pushes a branch the user is not on", async () => {
@@ -500,5 +501,8 @@ describe("Git collaboration actions (integration)", () => {
         "feature was already up to date. 1 commit on main is not on GitHub.",
     );
     expect(screen.queryByText("Successfully pushed to GitHub!")).toBeNull();
+    await harness.bridge.settleInFlight();
+    // Nothing reached the remote: an up-to-date push never sends a receive-pack.
+    expect(await harness.github.pushEvents()).toEqual([]);
   }, 90_000);
 });

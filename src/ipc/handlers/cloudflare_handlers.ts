@@ -94,19 +94,23 @@ const LOG_TAIL_LINES = 30;
 const RECENT_BUILDS_LIMIT = 5;
 
 /**
- * The version each finished build deployed, by build id, or null for a build
- * matched to no address. Nothing on a build says which version it uploaded:
- * the Worker's versions are listed and matched back to builds. A stopped
- * build's version never changes, so each build is matched once, however
- * often the card polls.
+ * The version each finished build deployed, by build id. Nothing on a build
+ * says which version it uploaded: the Worker's versions are listed and
+ * matched back to builds. A stopped build's version never changes, so a
+ * match is kept for good. A build matched to nothing is asked about again
+ * once its retry time has passed, since the search is bounded and the
+ * mapping can lag a little behind a build finishing.
  */
-const buildVersionCache = new Map<string, string | null>();
+const buildVersionCache = new Map<
+  string,
+  { versionId: string | null; retryAt: number | null }
+>();
 const BUILD_VERSION_CACHE_LIMIT = 500;
+const BUILD_VERSION_MISS_RETRY_MS = 15 * 60 * 1000;
 /**
  * A Worker's versions also come from its other rules and from the dashboard,
  * so the card's builds can sit well down the history. Each page costs two
- * requests, so the search is bounded; a build it does not reach is asked
- * about again on the next poll rather than remembered as missing.
+ * requests, so the search is bounded.
  */
 const VERSIONS_PER_PAGE = VERSION_IDS_PER_REQUEST;
 const VERSION_LOOKUP_PAGES = 5;
@@ -117,34 +121,49 @@ function rememberBuildVersion(buildUuid: string, versionId: string | null) {
     const oldest = buildVersionCache.keys().next().value;
     if (oldest !== undefined) buildVersionCache.delete(oldest);
   }
-  buildVersionCache.set(buildUuid, versionId);
+  buildVersionCache.set(buildUuid, {
+    versionId,
+    retryAt:
+      versionId === null ? Date.now() + BUILD_VERSION_MISS_RETRY_MS : null,
+  });
+}
+
+function isBuildVersionDue(buildUuid: string): boolean {
+  const entry = buildVersionCache.get(buildUuid);
+  return (
+    entry === undefined ||
+    (entry.retryAt !== null && entry.retryAt <= Date.now())
+  );
 }
 
 /**
  * Matches builds to the versions they uploaded, reading pages of the
- * Worker's history until each is found or the history is older than the
- * oldest build still being looked for: a version is uploaded after its
- * build starts, so nothing older can be the one. Exhaustive means every
- * build not matched has no version to find.
+ * Worker's history until each is found, the history runs out, or the pages
+ * reach versions older than every build still being looked for: a version
+ * is uploaded after its build starts, so nothing older can be the one. A
+ * version with no address of its own is matched to null.
  */
 async function matchBuildsToVersions(
   token: string,
   accountId: string,
   workerName: string,
   builds: CloudflareBuild[],
-): Promise<{ matched: Map<string, string | null>; exhaustive: boolean }> {
+): Promise<Map<string, string | null>> {
   const matched = new Map<string, string | null>();
   const pending = new Set(builds.map((build) => build.build_uuid));
   const starts = builds
     .map((build) => Date.parse(build.created_on ?? ""))
     .filter(Number.isFinite);
-  const oldestStart = starts.length > 0 ? Math.min(...starts) : null;
+  // An undated build could be anywhere in the history, so then there is no
+  // point past which to stop.
+  const oldestStart =
+    starts.length === builds.length ? Math.min(...starts) : null;
   for (let page = 1; page <= VERSION_LOOKUP_PAGES; page++) {
     const versions = await listWorkerVersions(token, accountId, workerName, {
       page,
       perPage: VERSIONS_PER_PAGE,
     });
-    if (versions.length === 0) return { matched, exhaustive: true };
+    if (versions.length === 0) break;
     const byVersion = await findBuildsForVersions(
       token,
       accountId,
@@ -153,23 +172,21 @@ async function matchBuildsToVersions(
     for (const version of versions) {
       const buildUuid = byVersion[version.id]?.build_uuid;
       if (!buildUuid || !pending.has(buildUuid)) continue;
-      // A version with no address of its own is matched, to no address.
       matched.set(buildUuid, version.hasPreview ? version.id : null);
       pending.delete(buildUuid);
     }
-    if (pending.size === 0) return { matched, exhaustive: true };
+    if (pending.size === 0) break;
     const lastMade = Date.parse(versions[versions.length - 1].createdOn ?? "");
     if (
       oldestStart !== null &&
       Number.isFinite(lastMade) &&
       lastMade < oldestStart
     ) {
-      return { matched, exhaustive: true };
+      break;
     }
-    if (versions.length < VERSIONS_PER_PAGE)
-      return { matched, exhaustive: true };
+    if (versions.length < VERSIONS_PER_PAGE) break;
   }
-  return { matched, exhaustive: false };
+  return matched;
 }
 
 async function resolveBuildVersions(
@@ -179,26 +196,24 @@ async function resolveBuildVersions(
   builds: CloudflareBuild[],
 ): Promise<Map<string, string>> {
   // Only a successful build deploys a version.
-  const unmatched = builds.filter(
+  const due = builds.filter(
     (build) =>
       toDeploymentState(build) === "live" &&
-      !buildVersionCache.has(build.build_uuid),
+      isBuildVersionDue(build.build_uuid),
   );
-  if (unmatched.length > 0) {
+  if (due.length > 0) {
     try {
-      const { matched, exhaustive } = await matchBuildsToVersions(
+      const matched = await matchBuildsToVersions(
         token,
         accountId,
         workerName,
-        unmatched,
+        due,
       );
-      for (const build of unmatched) {
-        const versionId = matched.get(build.build_uuid);
-        if (versionId !== undefined) {
-          rememberBuildVersion(build.build_uuid, versionId);
-        } else if (exhaustive) {
-          rememberBuildVersion(build.build_uuid, null);
-        }
+      for (const build of due) {
+        rememberBuildVersion(
+          build.build_uuid,
+          matched.get(build.build_uuid) ?? null,
+        );
       }
     } catch {
       // Not knowing which version an older build is is not worth failing the
@@ -207,7 +222,7 @@ async function resolveBuildVersions(
   }
   const result = new Map<string, string>();
   for (const build of builds) {
-    const versionId = buildVersionCache.get(build.build_uuid);
+    const versionId = buildVersionCache.get(build.build_uuid)?.versionId;
     if (versionId) result.set(build.build_uuid, versionId);
   }
   return result;

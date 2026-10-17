@@ -1889,17 +1889,68 @@ describe("deployment status", () => {
       expect(versionCalls()).toHaveLength(1);
     });
 
-    it("asks again next time when the search ran out before reaching the build", async () => {
+    it("gives up a search after five pages, and tries again once the retry time has passed", async () => {
       cloudflare.versions["shop-api"] = [
         ...otherVersions(120),
         { id: "c9118799-7147-4fd2-8162-dd3607756164", buildUuid: "b-1" },
       ];
-      const first = await handlers.handleGetDeploymentStatus(target());
-      expect(first.recentBuilds[2].previewUrl).toBeNull();
-      expect(versionCalls()).toHaveLength(5);
+      const now = vi.spyOn(Date, "now");
+      try {
+        now.mockReturnValue(1_000_000);
+        const first = await handlers.handleGetDeploymentStatus(target());
+        expect(first.recentBuilds[2].previewUrl).toBeNull();
+        expect(versionCalls()).toHaveLength(5);
 
-      await handlers.handleGetDeploymentStatus(target());
-      expect(versionCalls()).toHaveLength(10);
+        // Polls in between cost nothing.
+        now.mockReturnValue(1_000_000 + 14 * 60 * 1000);
+        await handlers.handleGetDeploymentStatus(target());
+        expect(versionCalls()).toHaveLength(5);
+
+        now.mockReturnValue(1_000_000 + 16 * 60 * 1000);
+        await handlers.handleGetDeploymentStatus(target());
+        expect(versionCalls()).toHaveLength(10);
+      } finally {
+        now.mockRestore();
+      }
+    });
+
+    it("finds a build that Cloudflare had not yet matched to its version on an earlier poll", async () => {
+      // Right after a build finishes, the mapping can still be empty.
+      cloudflare.versions["shop-api"] = [
+        { id: "c9118799-7147-4fd2-8162-dd3607756164", buildUuid: null },
+      ];
+      const now = vi.spyOn(Date, "now");
+      try {
+        now.mockReturnValue(1_000_000);
+        const first = await handlers.handleGetDeploymentStatus(target());
+        expect(first.recentBuilds[2].previewUrl).toBeNull();
+
+        cloudflare.versions["shop-api"][0].buildUuid = "b-1";
+        now.mockReturnValue(1_000_000 + 16 * 60 * 1000);
+        const later = await handlers.handleGetDeploymentStatus(target());
+        expect(later.recentBuilds[2].previewUrl).toBe(
+          "https://c9118799-shop-api.acme.workers.dev",
+        );
+      } finally {
+        now.mockRestore();
+      }
+    });
+
+    it("reads past older versions while a build it is looking for has no date", async () => {
+      cloudflare.builds[0].created_on = undefined;
+      cloudflare.versions["shop-api"] = [
+        ...Array.from({ length: 20 }, (_, i) => ({
+          id: `old-${i}`,
+          buildUuid: null,
+          createdOn: "2025-12-01T00:00:00Z",
+        })),
+        { id: "c9118799-7147-4fd2-8162-dd3607756164", buildUuid: "b-1" },
+      ];
+      const status = await handlers.handleGetDeploymentStatus(target());
+      expect(status.recentBuilds[2].previewUrl).toBe(
+        "https://c9118799-shop-api.acme.workers.dev",
+      );
+      expect(versionCalls()).toHaveLength(2);
     });
 
     it("gives no address to a version that is not served on its own", async () => {

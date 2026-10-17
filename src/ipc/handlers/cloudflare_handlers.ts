@@ -37,13 +37,16 @@ import {
   enableWorkersDevRoute,
   ensureBuildToken,
   getAccountSubdomain,
+  findBuildsForVersions,
   getBuildLogLines,
-  getLatestBuild,
   getTriggerRepoConnectionUuid,
   getTriggerRootDirectory,
   isCloudflareAuthFailure,
+  getWorkersDevRoute,
   isWorkersDevRouteEnabled,
+  listWorkerVersions,
   listAccounts,
+  listRuleBuilds,
   listTriggers,
   listWorkers,
   probeBuildsAccess,
@@ -58,6 +61,7 @@ import {
   updateTrigger,
   upsertRepoConnection,
   verifyToken,
+  type CloudflareBuild,
   type CloudflareTrigger,
   type GithubRepoIdentity,
 } from "@/cloudflare_deploy/api";
@@ -70,6 +74,7 @@ import {
   pnpmVersionForBuild,
   suggestWorkerName,
   toDeploymentState,
+  buildCloudflareVersionUrl,
 } from "@/cloudflare_deploy/build_config";
 import {
   buildsWithNitro,
@@ -84,6 +89,82 @@ const logger = log.scope("cloudflare_handlers");
 
 const DEFAULT_BRANCH = "main";
 const LOG_TAIL_LINES = 30;
+/** How many of a folder's builds the deployment card lists. */
+const RECENT_BUILDS_LIMIT = 5;
+
+/**
+ * The version each finished build deployed, by build id. Nothing on a build
+ * says so: the Worker's versions are listed and matched back to builds. A
+ * stopped build's version never changes, so each build is matched once,
+ * however often the card polls. A build matched to no version is remembered
+ * as null for the same reason.
+ */
+const buildVersionCache = new Map<string, string | null>();
+const BUILD_VERSION_CACHE_LIMIT = 500;
+/**
+ * Versions to match against: enough for the builds the card lists, with room
+ * for versions that came from elsewhere, such as the one a new Worker starts
+ * as.
+ */
+const VERSION_LOOKUP_LIMIT = 25;
+
+async function resolveBuildVersions(
+  token: string,
+  accountId: string,
+  workerName: string,
+  builds: CloudflareBuild[],
+): Promise<Map<string, string>> {
+  // Only a successful build deploys a version.
+  const unmatched = builds.filter(
+    (build) =>
+      toDeploymentState(build) === "live" &&
+      !buildVersionCache.has(build.build_uuid),
+  );
+  if (unmatched.length > 0) {
+    try {
+      const versions = await listWorkerVersions(
+        token,
+        accountId,
+        workerName,
+        VERSION_LOOKUP_LIMIT,
+      );
+      const byVersion =
+        versions.length > 0
+          ? await findBuildsForVersions(
+              token,
+              accountId,
+              versions.map((version) => version.id),
+            )
+          : {};
+      if (
+        buildVersionCache.size + unmatched.length >
+        BUILD_VERSION_CACHE_LIMIT
+      ) {
+        buildVersionCache.clear();
+      }
+      const versionByBuild = new Map<string, string>();
+      for (const version of versions) {
+        const buildUuid = byVersion[version.id]?.build_uuid;
+        if (buildUuid) versionByBuild.set(buildUuid, version.id);
+      }
+      for (const build of unmatched) {
+        buildVersionCache.set(
+          build.build_uuid,
+          versionByBuild.get(build.build_uuid) ?? null,
+        );
+      }
+    } catch {
+      // Not knowing which version an older build is is not worth failing the
+      // status over, and the next poll asks again.
+    }
+  }
+  const matched = new Map<string, string>();
+  for (const build of builds) {
+    const versionId = buildVersionCache.get(build.build_uuid);
+    if (versionId) matched.set(build.build_uuid, versionId);
+  }
+  return matched;
+}
 
 type AppRow = typeof apps.$inferSelect;
 type ConnectionRow = typeof cloudflareAppConnections.$inferSelect;
@@ -963,8 +1044,8 @@ async function handleGetDeploymentStatus({
   }
 
   try {
-    const [build, rule, routeEnabled] = await Promise.all([
-      getLatestBuild(token, row.accountId, row.workerTag, row.triggerUuid),
+    const [builds, rule, route] = await Promise.all([
+      listRuleBuilds(token, row.accountId, row.workerTag, row.triggerUuid),
       // A rule deleted in the Cloudflare dashboard leaves the Worker and its
       // last build in place, so nothing else would show that deploys stopped.
       // Failing to list rules is not evidence that the rule is gone.
@@ -978,7 +1059,7 @@ async function handleGetDeploymentStatus({
         .catch(() => undefined),
       // The route can be switched in the dashboard, and a deploy applies
       // whatever the Wrangler config says. Not knowing keeps the stored address.
-      isWorkersDevRouteEnabled(token, row.accountId, row.workerName).catch(
+      getWorkersDevRoute(token, row.accountId, row.workerName).catch(
         () => undefined,
       ),
     ]);
@@ -987,7 +1068,7 @@ async function handleGetDeploymentStatus({
       row.accountId,
       row.workerName,
       row.workerUrl,
-      routeEnabled,
+      route?.enabled,
     );
     const ruleMissing = rule === null;
     // The rule stays on the branch and repository it was made for. An app
@@ -1002,11 +1083,33 @@ async function handleGetDeploymentStatus({
       })
         ? describeTriggerSource(rule)
         : null;
+    const recent = builds.slice(0, RECENT_BUILDS_LIMIT);
+    // A version's address sits beside the Worker's workers.dev address, so
+    // there is none to give without that, or while version URLs are off.
+    const versionUrlsOn = workerUrl !== null && route?.previewsEnabled === true;
+    const versions = versionUrlsOn
+      ? await resolveBuildVersions(token, row.accountId, row.workerName, recent)
+      : new Map<string, string>();
+    const recentBuilds = recent.map((build) => {
+      const versionId = versions.get(build.build_uuid);
+      return {
+        buildUuid: build.build_uuid,
+        state: toDeploymentState(build),
+        commitHash: build.build_trigger_metadata?.commit_hash ?? null,
+        createdAt: build.created_on ?? null,
+        previewUrl:
+          workerUrl !== null && versionId !== undefined
+            ? buildCloudflareVersionUrl({ workerUrl, versionId })
+            : null,
+      };
+    });
+    const build = builds[0];
     if (!build) {
       return {
         state: "none",
         commitHash: null,
         logTail: [],
+        recentBuilds,
         tokenRevoked: false,
         ruleMissing,
         ruleDeploys,
@@ -1025,6 +1128,7 @@ async function handleGetDeploymentStatus({
       state,
       commitHash: build.build_trigger_metadata?.commit_hash ?? null,
       logTail,
+      recentBuilds,
       tokenRevoked: isBuildTokenRevokedLog(logTail),
       ruleMissing,
       ruleDeploys,
@@ -1196,6 +1300,7 @@ export function registerCloudflareHandlers() {
 export const cloudflareHandlersForTesting = {
   handleListWorkers,
   clearGithubIdentityCache: () => githubIdentityCache.clear(),
+  clearBuildVersionCache: () => buildVersionCache.clear(),
   handleSaveToken,
   handleGetAppStatus,
   handleCheckRepoAccess,

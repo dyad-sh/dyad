@@ -9,6 +9,7 @@ import {
   suggestWorkerName,
   toDeploymentState,
   type DeployRuleInput,
+  buildCloudflareVersionUrl,
 } from "./build_config";
 
 describe("buildCloudflareTokenTemplateUrl", () => {
@@ -219,5 +220,16 @@ describe("deployment state", () => {
     expect(
       isBuildTokenRevokedLog(["npm error Could not resolve dependency"]),
     ).toBe(false);
+  });
+});
+
+describe("a version's address", () => {
+  it("puts the start of the version id in front of the Worker's host", () => {
+    expect(
+      buildCloudflareVersionUrl({
+        workerUrl: "https://vite-to-nitro.ryangroch.workers.dev",
+        versionId: "c9118799-7147-4fd2-8162-dd3607756164",
+      }),
+    ).toBe("https://c9118799-vite-to-nitro.ryangroch.workers.dev");
   });
 });

@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
-import { Globe, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ipc, App } from "@/ipc/types";
+import { ipc, App, type VercelDeployment } from "@/ipc/types";
 import { useSettings } from "@/hooks/useSettings";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { useVercelDeployments } from "@/hooks/useVercelDeployments";
@@ -20,6 +20,11 @@ import {} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { slugifyAppPath } from "@/shared/slugify";
+import {
+  RecentDeploymentsList,
+  type DeploymentTone,
+  type RecentDeploymentRow,
+} from "@/components/preview_panel/RecentDeploymentsList";
 
 interface VercelConnectorProps {
   appId: number | null;
@@ -45,6 +50,27 @@ interface UnconnectedVercelConnectorProps {
   neonProjectId: string | null;
   refreshSettings: () => void;
   refreshApp: () => void;
+}
+
+const VERCEL_TONES: Record<string, DeploymentTone> = {
+  READY: "success",
+  BUILDING: "pending",
+  ERROR: "failure",
+};
+
+/** A deployment as the list shows it. Vercel's states are uppercase words. */
+export function toVercelDeploymentRow(
+  deployment: VercelDeployment,
+): RecentDeploymentRow {
+  return {
+    key: deployment.uid,
+    label:
+      deployment.readyState.charAt(0) +
+      deployment.readyState.slice(1).toLowerCase(),
+    tone: VERCEL_TONES[deployment.readyState] ?? "neutral",
+    createdAt: new Date(deployment.createdAt),
+    url: `https://${deployment.url}`,
+  };
 }
 
 function ConnectedVercelConnector({
@@ -167,50 +193,10 @@ function ConnectedVercelConnector({
           <p className="text-red-600">{deploymentsError}</p>
         </div>
       )}
-      {deployments.length > 0 && (
-        <div className="mt-4">
-          <h4 className="font-medium mb-2">Recent Deployments:</h4>
-          <div className="space-y-2">
-            {deployments.map((deployment) => (
-              <div
-                key={deployment.uid}
-                className="bg-gray-50 dark:bg-gray-800 rounded-md p-3"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                        deployment.readyState === "READY"
-                          ? "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-300"
-                          : deployment.readyState === "BUILDING"
-                            ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-300"
-                            : "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300"
-                      }`}
-                    >
-                      {deployment.readyState}
-                    </span>
-                    <span className="text-sm text-gray-600 dark:text-gray-300">
-                      {new Date(deployment.createdAt).toLocaleString()}
-                    </span>
-                  </div>
-                  <a
-                    onClick={(e) => {
-                      e.preventDefault();
-                      ipc.system.openExternalUrl(`https://${deployment.url}`);
-                    }}
-                    className="cursor-pointer text-blue-600 hover:underline dark:text-blue-400 text-sm"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <Globe className="h-4 w-4 inline mr-1" />
-                    View
-                  </a>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      <RecentDeploymentsList
+        className="mt-4"
+        rows={deployments.map(toVercelDeploymentRow)}
+      />
       {disconnectError && (
         <p className="text-red-600 mt-2">{disconnectError}</p>
       )}

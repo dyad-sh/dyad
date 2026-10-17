@@ -298,18 +298,43 @@ export async function enableWorkersDevRoute(
   );
 }
 
+export interface CloudflareWorkersDevRoute {
+  /** Whether the Worker is served at its workers.dev address. */
+  enabled: boolean;
+  /**
+   * Whether each version of the Worker is served at an address of its own
+   * beside that one. Cloudflare's "version URLs", `previews_enabled` on the
+   * wire.
+   */
+  previewsEnabled: boolean;
+}
+
+export async function getWorkersDevRoute(
+  token: string,
+  accountId: string,
+  name: string,
+): Promise<CloudflareWorkersDevRoute> {
+  const result = await request<{
+    enabled?: boolean;
+    previews_enabled?: boolean;
+  }>(
+    token,
+    "GET",
+    apiPath`/accounts/${accountId}/workers/scripts/${name}/subdomain`,
+  );
+  return {
+    enabled: result?.enabled === true,
+    previewsEnabled: result?.previews_enabled === true,
+  };
+}
+
 /** Whether the Worker is served at its workers.dev address. */
 export async function isWorkersDevRouteEnabled(
   token: string,
   accountId: string,
   name: string,
 ): Promise<boolean> {
-  const result = await request<{ enabled?: boolean }>(
-    token,
-    "GET",
-    apiPath`/accounts/${accountId}/workers/scripts/${name}/subdomain`,
-  );
-  return result?.enabled === true;
+  return (await getWorkersDevRoute(token, accountId, name)).enabled;
 }
 
 /**
@@ -790,36 +815,75 @@ export interface CloudflareBuild {
 }
 
 /**
- * The newest build a rule ran, or null before the first one.
+ * The builds a rule ran, newest first, or an empty list before the first one.
  *
  * A Worker's builds include those of its other rules, such as a preview rule
  * for other branches, and those Cloudflare skipped without deploying anything.
- * Neither says what this rule last deployed. A build listed without its rule
- * is kept.
+ * Neither says what this rule deployed. A build listed without its rule is
+ * kept.
  */
-export async function getLatestBuild(
+export async function listRuleBuilds(
   token: string,
   accountId: string,
   workerTag: string,
   triggerUuid: string,
-): Promise<CloudflareBuild | null> {
+): Promise<CloudflareBuild[]> {
   const builds = await request<CloudflareBuild[]>(
     token,
     "GET",
     apiPath`/accounts/${accountId}/builds/workers/${workerTag}/builds`,
   );
-  const own = (builds ?? []).filter(
-    (build) =>
-      build.build_outcome !== "skipped" &&
-      (!build.trigger?.trigger_uuid ||
-        build.trigger.trigger_uuid === triggerUuid),
+  return (builds ?? [])
+    .filter(
+      (build) =>
+        build.build_outcome !== "skipped" &&
+        (!build.trigger?.trigger_uuid ||
+          build.trigger.trigger_uuid === triggerUuid),
+    )
+    .sort((a, b) => (b.created_on ?? "").localeCompare(a.created_on ?? ""));
+}
+
+export interface CloudflareWorkerVersion {
+  id: string;
+}
+
+/**
+ * The Worker's newest versions, newest first. Every deploy uploads one, and
+ * so does creating the Worker.
+ */
+export async function listWorkerVersions(
+  token: string,
+  accountId: string,
+  name: string,
+  limit: number,
+): Promise<CloudflareWorkerVersion[]> {
+  const result = await request<{ items?: { id: string }[] } | null>(
+    token,
+    "GET",
+    apiPath`/accounts/${accountId}/workers/scripts/${name}/versions?per_page=${String(limit)}`,
   );
-  if (own.length === 0) {
-    return null;
-  }
-  return [...own].sort((a, b) =>
-    (b.created_on ?? "").localeCompare(a.created_on ?? ""),
-  )[0];
+  return (result?.items ?? []).map((item) => ({ id: item.id }));
+}
+
+/**
+ * The build that uploaded each version, by version id. Nothing on a build
+ * says which version it deployed; this is the only way to match them. A
+ * version no build uploaded, such as the one a new Worker starts as, is
+ * absent. Cloudflare rejects an empty list of ids.
+ */
+export async function findBuildsForVersions(
+  token: string,
+  accountId: string,
+  versionIds: string[],
+): Promise<Record<string, CloudflareBuild | null | undefined>> {
+  const result = await request<{
+    builds?: Record<string, CloudflareBuild | null>;
+  } | null>(
+    token,
+    "GET",
+    apiPath`/accounts/${accountId}/builds/builds?version_ids=${versionIds.join(",")}`,
+  );
+  return result?.builds ?? {};
 }
 
 export async function getBuildLogLines(

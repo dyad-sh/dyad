@@ -3,6 +3,11 @@ import { useAtomValue } from "jotai";
 import { ExternalLink, Loader2, RefreshCw, Sparkles } from "lucide-react";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { AgentModeRequiredDialog } from "@/components/preview_panel/AgentModeRequiredDialog";
+import {
+  RecentDeploymentsList,
+  type DeploymentTone,
+  type RecentDeploymentRow,
+} from "@/components/preview_panel/RecentDeploymentsList";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,6 +22,7 @@ import { ipc } from "@/ipc/types";
 import { showError, showInfo } from "@/lib/toast";
 import type {
   CloudflareConnection,
+  CloudflareRecentBuild,
   CloudflareTargetSummary,
   CloudflareWorkerSummary,
 } from "@/ipc/types";
@@ -978,6 +984,26 @@ const STATE_LABELS: Record<CloudflareDeploymentState, string> = {
   cancelled: "Deployment cancelled",
 };
 
+const BUILD_TONES: Record<CloudflareDeploymentState, DeploymentTone> = {
+  none: "neutral",
+  queued: "pending",
+  building: "pending",
+  live: "success",
+  failed: "failure",
+  cancelled: "neutral",
+};
+
+function toBuildRow(build: CloudflareRecentBuild): RecentDeploymentRow {
+  return {
+    key: build.buildUuid,
+    label: STATE_LABELS[build.state],
+    tone: BUILD_TONES[build.state],
+    createdAt: build.createdAt ? new Date(build.createdAt) : null,
+    url: build.previewUrl,
+    detail: build.commitHash?.slice(0, 7) ?? null,
+  };
+}
+
 function DeploymentCard({
   appId,
   connection,
@@ -1141,6 +1167,16 @@ function DeploymentCard({
         </div>
       ) : (
         stateLine
+      )}
+
+      {/* Listed from the first build, as the Vercel card does: even the
+          build the status line describes gets its time and its own address
+          here. */}
+      {status.data && status.data.recentBuilds.length > 0 && (
+        <RecentDeploymentsList
+          testId="cloudflare-recent-builds"
+          rows={status.data.recentBuilds.map(toBuildRow)}
+        />
       )}
 
       {status.error && (

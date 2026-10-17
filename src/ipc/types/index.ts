@@ -305,6 +305,7 @@ export type {
   CloudflareConnection,
   CloudflareAppStatus,
   CloudflareDeploymentStatus,
+  CloudflareRecentBuild,
   ConnectCloudflareWorkerParams,
   ConnectCloudflareWorkerResult,
 } from "./cloudflare";

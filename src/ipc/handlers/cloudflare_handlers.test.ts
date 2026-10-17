@@ -163,7 +163,12 @@ interface FakeCloudflare {
   canUseBuilds: boolean;
   subdomain: string | null;
   visibleRepoIds: Set<string>;
-  workers: Map<string, { tag: string; routeEnabled: boolean }>;
+  workers: Map<
+    string,
+    { tag: string; routeEnabled: boolean; previewsEnabled?: boolean }
+  >;
+  /** Each Worker's versions, newest first, and the build that uploaded each. */
+  versions: Record<string, { id: string; buildUuid: string | null }[]>;
   /** Each Worker's runtime secrets by name. */
   secrets: Record<string, Record<string, string>>;
   /** Custom domains attached to Workers in the account. */
@@ -273,7 +278,33 @@ async function fakeFetch(
     if (method === "POST") {
       worker.routeEnabled = true;
     }
-    return ok({ enabled: worker.routeEnabled });
+    return ok({
+      enabled: worker.routeEnabled,
+      previews_enabled: worker.previewsEnabled ?? true,
+    });
+  }
+  if ((match = /\/workers\/scripts\/([^/]+)\/versions$/.exec(path))) {
+    return ok({
+      items: (cloudflare.versions[match[1]] ?? []).map((version) => ({
+        id: version.id,
+        metadata: { has_preview: true },
+      })),
+    });
+  }
+  if (path === `${account}/builds/builds`) {
+    const ids = url.searchParams.get("version_ids")?.split(",") ?? [];
+    if (ids.length === 0) return fail(400, 12013, "Invalid query parameter");
+    const builds: Record<string, unknown> = {};
+    for (const versions of Object.values(cloudflare.versions)) {
+      for (const version of versions) {
+        if (!ids.includes(version.id)) continue;
+        const build = cloudflare.builds.find(
+          (b) => b.build_uuid === version.buildUuid,
+        );
+        if (build) builds[version.id] = build;
+      }
+    }
+    return ok({ builds });
   }
   if (
     (match = /\/workers\/scripts\/([^/]+)\/secrets$/.exec(path)) &&
@@ -437,6 +468,7 @@ beforeEach(() => {
   holder.githubOffline = false;
   holder.githubStatus = null;
   handlers.clearGithubIdentityCache();
+  handlers.clearBuildVersionCache();
   holder.files = {
     "worker/wrangler.jsonc": `{ "name": "shop-api" }`,
   };
@@ -457,6 +489,7 @@ beforeEach(() => {
     subdomain: "acme",
     visibleRepoIds: new Set(["501"]),
     workers: new Map(),
+    versions: {},
     secrets: {},
     domains: [],
     buildTokens: [],
@@ -1698,66 +1731,145 @@ describe("deployment status", () => {
         appId,
         rootDirectory: "worker",
       }),
-    ).toMatchObject({ state: "none", logTail: [] });
+    ).toMatchObject({ state: "none", logTail: [], recentBuilds: [] });
   });
 
-  it("reports the newest build, whatever order Cloudflare lists them in", async () => {
-    cloudflare.builds = [
-      {
-        build_uuid: "b-1",
-        status: "stopped",
-        build_outcome: "fail",
-        created_on: "2026-01-01T00:00:00Z",
-      },
-      {
-        build_uuid: "b-2",
-        status: "running",
-        created_on: "2026-01-02T00:00:00Z",
-        build_trigger_metadata: { commit_hash: "abc1234def" },
-      },
-    ];
-    expect(
-      await handlers.handleGetDeploymentStatus({
-        appId,
-        rootDirectory: "worker",
-      }),
-    ).toMatchObject({ state: "building", commitHash: "abc1234def" });
-  });
-
-  it("reports what this folder's rule last deployed, not the Worker's other builds", async () => {
+  it("lists the rule's newest builds, newest first, and not more than the card shows", async () => {
     const own = { trigger_uuid: cloudflare.triggers[0].trigger_uuid };
-    cloudflare.builds = [
+    cloudflare.builds = Array.from({ length: 7 }, (_, i) => ({
+      build_uuid: `b-${i + 1}`,
+      status: "stopped",
+      build_outcome: i === 2 ? "fail" : "success",
+      created_on: `2026-01-0${i + 1}T00:00:00Z`,
+      build_trigger_metadata: { commit_hash: `sha${i + 1}` },
+      trigger: own,
+    }));
+    // Another rule's build, newer than all of them, is not this folder's.
+    cloudflare.builds.push({
+      build_uuid: "b-preview",
+      status: "running",
+      created_on: "2026-01-09T00:00:00Z",
+      trigger: { trigger_uuid: "preview-rule" },
+    });
+    const status = await handlers.handleGetDeploymentStatus({
+      appId,
+      rootDirectory: "worker",
+    });
+    expect(status.state).toBe("live");
+    expect(status.recentBuilds).toEqual([
       {
-        build_uuid: "b-1",
-        status: "stopped",
-        build_outcome: "success",
-        created_on: "2026-01-01T00:00:00Z",
-        build_trigger_metadata: { commit_hash: "abc1234def" },
-        trigger: own,
+        buildUuid: "b-7",
+        state: "live",
+        commitHash: "sha7",
+        createdAt: "2026-01-07T00:00:00Z",
+        previewUrl: null,
       },
-      // A preview rule on the same Worker, building some other branch.
-      {
-        build_uuid: "b-2",
-        status: "stopped",
-        build_outcome: "fail",
-        created_on: "2026-01-02T00:00:00Z",
-        trigger: { trigger_uuid: "preview-rule" },
-      },
-      // A push Cloudflare looked at and deployed nothing for.
-      {
-        build_uuid: "b-3",
-        status: "stopped",
-        build_outcome: "skipped",
-        created_on: "2026-01-03T00:00:00Z",
-        trigger: own,
-      },
-    ];
-    expect(
-      await handlers.handleGetDeploymentStatus({
-        appId,
-        rootDirectory: "worker",
+      expect.objectContaining({ buildUuid: "b-6" }),
+      expect.objectContaining({ buildUuid: "b-5" }),
+      expect.objectContaining({ buildUuid: "b-4" }),
+      expect.objectContaining({
+        buildUuid: "b-3",
+        state: "failed",
+        previewUrl: null,
       }),
-    ).toMatchObject({ state: "live", commitHash: "abc1234def" });
+    ]);
+  });
+
+  describe("where each build is served", () => {
+    const own = () => ({ trigger_uuid: cloudflare.triggers[0].trigger_uuid });
+    const target = () => ({ appId, rootDirectory: "worker" });
+    const versionCalls = () =>
+      cloudflare.calls.filter((call) => call.includes("/versions"));
+
+    beforeEach(() => {
+      cloudflare.builds = [
+        {
+          build_uuid: "b-1",
+          status: "stopped",
+          build_outcome: "success",
+          created_on: "2026-01-01T00:00:00Z",
+          trigger: own(),
+        },
+        {
+          build_uuid: "b-2",
+          status: "stopped",
+          build_outcome: "fail",
+          created_on: "2026-01-02T00:00:00Z",
+          trigger: own(),
+        },
+        {
+          build_uuid: "b-3",
+          status: "running",
+          created_on: "2026-01-03T00:00:00Z",
+          trigger: own(),
+        },
+      ];
+      cloudflare.versions["shop-api"] = [
+        { id: "c9118799-7147-4fd2-8162-dd3607756164", buildUuid: "b-1" },
+        // The version the Worker was created as, before any build.
+        { id: "9d656cdf-7d0f-43b6-ba30-38a90c0ba417", buildUuid: null },
+      ];
+    });
+
+    it("links a finished build to the version it deployed, matching once", async () => {
+      const first = await handlers.handleGetDeploymentStatus(target());
+      expect(first.recentBuilds.map((b) => b.previewUrl)).toEqual([
+        null,
+        null,
+        "https://c9118799-shop-api.acme.workers.dev",
+      ]);
+      expect(versionCalls()).toHaveLength(1);
+
+      const second = await handlers.handleGetDeploymentStatus(target());
+      expect(second.recentBuilds[2].previewUrl).toBe(
+        "https://c9118799-shop-api.acme.workers.dev",
+      );
+      expect(versionCalls()).toHaveLength(1);
+    });
+
+    it("does not ask again about a finished build that matched no version", async () => {
+      cloudflare.versions["shop-api"] = [];
+      await handlers.handleGetDeploymentStatus(target());
+      await handlers.handleGetDeploymentStatus(target());
+      expect(versionCalls()).toHaveLength(1);
+    });
+
+    it("still reports the status when the versions cannot be read, and asks again next time", async () => {
+      cloudflare.failOn = (_method, path) => path.endsWith("/versions");
+      expect(await handlers.handleGetDeploymentStatus(target())).toMatchObject({
+        state: "building",
+        recentBuilds: [
+          expect.anything(),
+          expect.anything(),
+          expect.objectContaining({ previewUrl: null }),
+        ],
+      });
+
+      cloudflare.failOn = null;
+      expect(
+        (await handlers.handleGetDeploymentStatus(target())).recentBuilds[2]
+          .previewUrl,
+      ).toBe("https://c9118799-shop-api.acme.workers.dev");
+    });
+
+    it("gives no addresses, and asks for none, while the Worker's version URLs are off", async () => {
+      cloudflare.workers.get("shop-api")!.previewsEnabled = false;
+      const status = await handlers.handleGetDeploymentStatus(target());
+      expect(status.recentBuilds.every((b) => b.previewUrl === null)).toBe(
+        true,
+      );
+      expect(versionCalls()).toHaveLength(0);
+    });
+
+    it("gives no addresses while the Worker is not served at workers.dev", async () => {
+      cloudflare.workers.get("shop-api")!.routeEnabled = false;
+      const status = await handlers.handleGetDeploymentStatus(target());
+      expect(status.workerUrl).toBeNull();
+      expect(status.recentBuilds.every((b) => b.previewUrl === null)).toBe(
+        true,
+      );
+      expect(versionCalls()).toHaveLength(0);
+    });
   });
 
   it("explains a failure with the end of its log", async () => {

@@ -267,6 +267,7 @@ describe("git sync diagnostics", () => {
     const before = await collectSyncSnapshot({ path: root, branch: "main" });
     expect(before).toEqual({
       currentBranch: null,
+      branchKnown: false,
       head: null,
       branchTip: null,
       remoteTip: null,
@@ -281,6 +282,9 @@ describe("git sync diagnostics", () => {
     });
     expect(measured.remoteTip).toBeNull();
     expect(measured.head).toBe("");
+    // Unreadable, not detached: the outcome must not claim a specific cause.
+    expect(measured.branchKnown).toBe(false);
+    expect(classifyPushOutcome(measured)).toBe("unverified");
   });
 });
 

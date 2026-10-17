@@ -209,14 +209,18 @@ describe("banner detail on the wire", () => {
           banner: {
             kind: "warning",
             completedOperation: "push",
-            message: "Dyad pushed other2, but you're working on main.",
-            detail: "5 commits on main are not on GitHub.",
+            message: "You're working on main, but Dyad syncs other2.",
+            detail:
+              "other2 was already up to date. 5 commits on main are not on GitHub's other2.",
           },
         },
       }),
     );
     expect(snapshot.state).toMatchObject({
-      banner: { detail: "5 commits on main are not on GitHub." },
+      banner: {
+        detail:
+          "other2 was already up to date. 5 commits on main are not on GitHub's other2.",
+      },
     });
   });
 });

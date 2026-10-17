@@ -854,7 +854,7 @@ export async function handlePushToGithub(
     appId,
     repo: remote.displayPath,
     pushedBranch: branch,
-    currentBranch: before.currentBranch ?? "(detached)",
+    currentBranch: describeBranch(before),
     uncommittedFiles: before.uncommittedFiles,
     branchesNotOnRemote: before.branchesNotOnRemote,
   };
@@ -953,7 +953,7 @@ export async function handlePushToGithub(
   const summary = summarizePush(measured);
   logger.debug("[GitHub Handler] sync summary", {
     ...syncContext,
-    currentBranch: measured.currentBranch ?? "(detached)",
+    currentBranch: describeBranch(measured),
     head: {
       before: abbreviateCommit(before.head),
       afterPull: abbreviateCommit(baseline.head),
@@ -972,6 +972,14 @@ export async function handlePushToGithub(
     outcome: summary.outcome,
   });
   return summary;
+}
+
+function describeBranch(reading: {
+  currentBranch: string | null;
+  branchKnown: boolean;
+}): string {
+  if (!reading.branchKnown) return "(unknown)";
+  return reading.currentBranch ?? "(detached)";
 }
 
 function abbreviateCommit(commit: string | null): string | null {

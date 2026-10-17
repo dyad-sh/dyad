@@ -25,6 +25,8 @@ const MAX_REPORTED_BRANCHES = 8;
 export interface SyncSnapshot {
   /** The branch HEAD is on, or null when detached. */
   currentBranch: string | null;
+  /** False when the branch could not be read, so null above means unknown. */
+  branchKnown: boolean;
   /** Full commit HEAD resolves to, or null in an unborn repository. */
   head: string | null;
   /** Full tip of the local branch about to be pushed, or null if absent. */
@@ -122,10 +124,15 @@ async function readTipsAndHead(
  */
 async function readWorkingState(
   path: string,
-): Promise<HeadPosition & { uncommittedFiles: number }> {
+): Promise<HeadPosition & { branchKnown: boolean; uncommittedFiles: number }> {
   const result = await execGit(["status", "--porcelain=v2", "--branch"], path);
   if (result.exitCode !== 0) {
-    return { currentBranch: null, head: null, uncommittedFiles: 0 };
+    return {
+      currentBranch: null,
+      branchKnown: false,
+      head: null,
+      uncommittedFiles: 0,
+    };
   }
   let head: string | null = null;
   let currentBranch: string | null = null;
@@ -142,7 +149,7 @@ async function readWorkingState(
         porcelainV2EntryPaths(line).filter(isUserVisibleGitPath).length;
     }
   }
-  return { currentBranch, head, uncommittedFiles };
+  return { currentBranch, branchKnown: true, head, uncommittedFiles };
 }
 
 /**
@@ -268,6 +275,7 @@ export async function collectSyncSnapshot({
     const remoteTip = tips.get(`refs/remotes/origin/${branch}`) ?? null;
     return {
       currentBranch: working.currentBranch,
+      branchKnown: working.branchKnown,
       head: working.head,
       branchTip: tips.get(`refs/heads/${branch}`) ?? null,
       remoteTip,
@@ -280,6 +288,7 @@ export async function collectSyncSnapshot({
     logger.warn("Could not read the repository state before syncing", error);
     return {
       currentBranch: null,
+      branchKnown: false,
       head: null,
       branchTip: null,
       remoteTip: null,
@@ -337,6 +346,7 @@ export async function measurePush({
   const fallback: PushMeasurement = {
     pushedBranch: branch,
     currentBranch: before.currentBranch,
+    branchKnown: before.branchKnown,
     head: baseline.head ?? "",
     remoteTip: null,
     remoteTipBeforePush: baseline.remoteTip,
@@ -364,6 +374,7 @@ export async function measurePush({
     return {
       pushedBranch: branch,
       currentBranch: before.currentBranch,
+      branchKnown: before.branchKnown,
       head: head ?? "",
       remoteTip,
       remoteTipBeforePush: baseline.remoteTip,

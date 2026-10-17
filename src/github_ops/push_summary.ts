@@ -15,6 +15,8 @@ import type {
 export interface PushFacts {
   pushedBranch: string;
   currentBranch: string | null;
+  /** False when the branch could not be read, so null above means unknown. */
+  branchKnown: boolean;
   /** Full commit the user is on. */
   head: string;
   /** Full remote branch tip after the push, or null when it could not be read. */
@@ -33,13 +35,17 @@ export function classifyPushOutcome(facts: PushFacts): PushOutcome {
   // A branch mismatch is reported before anything else, even when every
   // commit so far is on the remote, since the next commit on the branch the
   // user is on would not be synced.
-  if (facts.currentBranch === null) return "detached-head";
-  if (facts.currentBranch !== facts.pushedBranch) return "wrong-branch";
+  if (facts.branchKnown) {
+    if (facts.currentBranch === null) return "detached-head";
+    if (facts.currentBranch !== facts.pushedBranch) return "wrong-branch";
+  }
   if (facts.remoteTip !== null && facts.remoteTip === facts.head) {
     if (facts.remoteMoved) return "pushed";
     return facts.uncommittedFiles > 0 ? "uncommitted-changes" : "up-to-date";
   }
-  if (facts.remoteTip === null) return "unverified";
+  // An unreadable branch or remote tip is reported as unknown, never as a
+  // specific diagnosis the readings cannot support.
+  if (!facts.branchKnown || facts.remoteTip === null) return "unverified";
   // HEAD is behind the remote tip, so everything local is already there.
   if (facts.commitsNotOnRemote === 0) {
     return facts.uncommittedFiles > 0 ? "uncommitted-changes" : "up-to-date";
@@ -166,11 +172,14 @@ export function describePushSummary(
       };
     }
     case "unverified":
-      if (summary.remoteTip === null) {
+      if (summary.remoteTip === null || !summary.head) {
         return {
           kind: "warning",
           message: "Dyad couldn't confirm the push.",
-          detail: `Git reported success, but ${providerLabel}'s ${branch} couldn't be read afterwards.`,
+          detail:
+            summary.remoteTip === null
+              ? `Git reported success, but ${providerLabel}'s ${branch} couldn't be read afterwards.`
+              : "Git reported success, but your current commit couldn't be read afterwards.",
         };
       }
       return {

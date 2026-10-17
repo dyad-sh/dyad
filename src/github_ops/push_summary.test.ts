@@ -12,6 +12,7 @@ const older = "c872cc36c4c5c1feb2d046d9d20d4f68c4598283";
 const base: PushFacts = {
   pushedBranch: "main",
   currentBranch: "main",
+  branchKnown: true,
   head,
   remoteTip: head,
   remoteMoved: true,
@@ -307,5 +308,44 @@ describe("classifyPushOutcome with matching tips", () => {
     expect(classifyPushOutcome({ ...sameCommit, currentBranch: null })).toBe(
       "detached-head",
     );
+  });
+});
+
+describe("classifyPushOutcome with an unreadable branch", () => {
+  const unknownBranch = { ...base, currentBranch: null, branchKnown: false };
+
+  it("is not mistaken for a detached HEAD", () => {
+    expect(
+      classifyPushOutcome({
+        ...unknownBranch,
+        head: older,
+        remoteMoved: false,
+        commitsPushed: 0,
+        commitsNotOnRemote: 1,
+      }),
+    ).toBe("unverified");
+  });
+
+  it("still trusts a remote tip that matches HEAD", () => {
+    expect(classifyPushOutcome(unknownBranch)).toBe("pushed");
+  });
+
+  it("admits it could not read the current commit", () => {
+    expect(
+      describePushSummary(
+        summarizePush({
+          ...unknownBranch,
+          head: "",
+          remoteMoved: false,
+          commitsPushed: 0,
+        }),
+        "GitHub",
+      ),
+    ).toEqual({
+      kind: "warning",
+      message: "Dyad couldn't confirm the push.",
+      detail:
+        "Git reported success, but your current commit couldn't be read afterwards.",
+    });
   });
 });

@@ -60,6 +60,12 @@ export class GitHubConnector {
 
   async sync() {
     await this.page.getByRole("button", { name: "Sync to GitHub" }).click();
+    // A banner from an earlier sync can still be showing, so make sure this
+    // sync has started before waiting for it to finish. The button reads
+    // "Syncing..." while it runs, so match either label.
+    await expect(
+      this.page.getByRole("button", { name: /Sync to GitHub|Syncing/ }),
+    ).toBeDisabled({ timeout: Timeout.MEDIUM });
     await this.waitForSyncToFinish();
   }
 

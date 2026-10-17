@@ -43,6 +43,13 @@ import trChat from "./locales/tr/chat.json";
 import trHome from "./locales/tr/home.json";
 import trErrors from "./locales/tr/errors.json";
 
+// French
+import frCommon from "./locales/fr/common.json";
+import frSettings from "./locales/fr/settings.json";
+import frChat from "./locales/fr/chat.json";
+import frHome from "./locales/fr/home.json";
+import frErrors from "./locales/fr/errors.json";
+
 const resources = {
   en: {
     common: enCommon,
@@ -85,6 +92,13 @@ const resources = {
     chat: trChat,
     home: trHome,
     errors: trErrors,
+  },
+  fr: {
+    common: frCommon,
+    settings: frSettings,
+    chat: frChat,
+    home: frHome,
+    errors: frErrors,
   },
 };
 

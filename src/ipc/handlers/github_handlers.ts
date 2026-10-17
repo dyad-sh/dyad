@@ -891,6 +891,14 @@ export async function handlePushToGithub(
 
         // If it's just that remote doesn't have the branch yet, we can ignore and push
         if (!isMissingRemoteBranch) {
+          // The fetch half of the pull may have moved the tracking ref before
+          // the merge failed, so the failure log gets the refreshed tip.
+          baseline = await collectPushBaseline({
+            path: appPath,
+            branch,
+            before,
+            remoteBranchMissing: false,
+          });
           throw pullError;
         } else {
           remoteBranchMissing = true;

@@ -30,15 +30,15 @@ export interface PushFacts {
 }
 
 export function classifyPushOutcome(facts: PushFacts): PushOutcome {
+  // A branch mismatch is reported before anything else, even when every
+  // commit so far is on the remote, since the next commit on the branch the
+  // user is on would not be synced.
+  if (facts.currentBranch === null) return "detached-head";
+  if (facts.currentBranch !== facts.pushedBranch) return "wrong-branch";
   if (facts.remoteTip !== null && facts.remoteTip === facts.head) {
     if (facts.remoteMoved) return "pushed";
     return facts.uncommittedFiles > 0 ? "uncommitted-changes" : "up-to-date";
   }
-  // The user's commit is not the remote tip. A branch mismatch is reported
-  // even when every commit so far is on the remote, since the next commit on
-  // the branch the user is on would not be synced.
-  if (facts.currentBranch === null) return "detached-head";
-  if (facts.currentBranch !== facts.pushedBranch) return "wrong-branch";
   if (facts.remoteTip === null) return "unverified";
   // HEAD is behind the remote tip, so everything local is already there.
   if (facts.commitsNotOnRemote === 0) {
@@ -95,9 +95,11 @@ export function describePushSummary(
 ): Pick<GithubOpsBanner, "kind" | "message" | "detail"> {
   const branch = summary.pushedBranch;
   const missing = summary.commitsNotOnRemote;
+  // Counted against the synced branch on the remote: the commits may exist
+  // there under another name, so the branch is named rather than the host.
   const missingSentence =
     missing > 0
-      ? `${plural(missing, "commit")} ${missing === 1 ? "is" : "are"} not on ${providerLabel}.`
+      ? `${plural(missing, "commit")} ${missing === 1 ? "is" : "are"} not on ${providerLabel}'s ${branch}.`
       : null;
   // What the sync did to the pushed branch, for the outcomes where the user's
   // own work went nowhere. A repeat click pushes nothing and must say so; an
@@ -147,8 +149,8 @@ export function describePushSummary(
         detail: sentences(
           pushedBranchStatus,
           missing > 0
-            ? `${plural(missing, "commit")} on ${current} ${missing === 1 ? "is" : "are"} not on ${providerLabel}.`
-            : `Everything on ${current} is already on ${providerLabel}, but new commits on ${current} won't be synced.`,
+            ? `${plural(missing, "commit")} on ${current} ${missing === 1 ? "is" : "are"} not on ${providerLabel}'s ${branch}.`
+            : `Everything on ${current} is already on ${providerLabel}'s ${branch}, but new commits on ${current} won't be synced.`,
         ),
       };
     }

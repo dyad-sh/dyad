@@ -873,7 +873,7 @@ describe("main-hosted github_ops actor", () => {
         completedOperation: "push",
         message: "You're working on main, but Dyad syncs other2.",
         detail:
-          "other2 was already up to date. 5 commits on main are not on GitHub.",
+          "other2 was already up to date. 5 commits on main are not on GitHub's other2.",
       },
     });
   });

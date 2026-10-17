@@ -225,7 +225,7 @@ describe("describePushSummary edge wording", () => {
       kind: "warning",
       message: "You're working on main, but Dyad syncs feature.",
       detail:
-        "feature was already up to date. Everything on main is already on GitHub, but new commits on main won't be synced.",
+        "feature was already up to date. Everything on main is already on GitHub's feature, but new commits on main won't be synced.",
     });
   });
 
@@ -235,7 +235,7 @@ describe("describePushSummary edge wording", () => {
         { ...wrongBranch, commitsPushed: null, commitsNotOnRemote: 2 },
         "GitHub",
       ).detail,
-    ).toBe("2 commits on main are not on GitHub.");
+    ).toBe("2 commits on main are not on GitHub's feature.");
   });
 
   it("softens the detached headline when nothing is missing", () => {
@@ -283,5 +283,29 @@ describe("describePushSummary edge wording", () => {
       detail:
         "Git reported success, but GitLab's main couldn't be read afterwards.",
     });
+  });
+});
+
+describe("classifyPushOutcome with matching tips", () => {
+  const sameCommit = {
+    ...base,
+    remoteMoved: false,
+    commitsPushed: 0,
+    commitsNotOnRemote: 0,
+  };
+
+  it("reports a branch mismatch even when HEAD is the remote tip", () => {
+    // Right after creating a branch and switching back, both branches point
+    // at the same commit; the next commit on the current branch is still
+    // the one that would not be synced.
+    expect(
+      classifyPushOutcome({ ...sameCommit, pushedBranch: "feature" }),
+    ).toBe("wrong-branch");
+  });
+
+  it("reports a detached HEAD even when it is the remote tip", () => {
+    expect(classifyPushOutcome({ ...sameCommit, currentBranch: null })).toBe(
+      "detached-head",
+    );
   });
 });

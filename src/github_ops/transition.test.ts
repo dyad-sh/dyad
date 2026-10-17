@@ -1338,7 +1338,7 @@ describe("push summaries", () => {
       kind: "warning",
       message: "You're working on main, but Dyad syncs other2.",
       detail:
-        "other2 was already up to date. 5 commits on main are not on GitHub.",
+        "other2 was already up to date. 5 commits on main are not on GitHub's other2.",
     });
     // A warning is not a completed success, so it must not auto-dismiss.
     expect(projectGithubOps(idle).completedOperation).toBeNull();
@@ -1355,7 +1355,7 @@ describe("push summaries", () => {
         remoteTip: "c872cc3",
       }).banner?.detail,
     ).toBe(
-      "Dyad pushed 2 commits to other2. 5 commits on main are not on GitHub.",
+      "Dyad pushed 2 commits to other2. 5 commits on main are not on GitHub's other2.",
     );
   });
 
@@ -1370,7 +1370,7 @@ describe("push summaries", () => {
     ).toMatchObject({
       kind: "warning",
       message: "You're not on a branch, so your latest work wasn't pushed.",
-      detail: "main was already up to date. 1 commit is not on GitHub.",
+      detail: "main was already up to date. 1 commit is not on GitHub's main.",
     });
     expect(
       complete({
@@ -1380,7 +1380,7 @@ describe("push summaries", () => {
         commitsNotOnRemote: 1,
         remoteTip: "c872cc3",
       }).banner?.detail,
-    ).toBe("Dyad pushed 1 commit to main. 1 commit is not on GitHub.");
+    ).toBe("Dyad pushed 1 commit to main. 1 commit is not on GitHub's main.");
   });
 
   it("falls back to the two commits when nothing else explains the gap", () => {

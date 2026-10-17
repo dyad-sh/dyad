@@ -498,7 +498,7 @@ describe("Git collaboration actions (integration)", () => {
     );
     expect(warning.textContent).toBe(
       "You're working on main, but Dyad syncs feature." +
-        "feature was already up to date. 1 commit on main is not on GitHub.",
+        "feature was already up to date. 1 commit on main is not on GitHub's feature.",
     );
     expect(screen.queryByText("Successfully pushed to GitHub!")).toBeNull();
     await harness.bridge.settleInFlight();

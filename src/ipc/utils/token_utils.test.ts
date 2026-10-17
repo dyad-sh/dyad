@@ -1,12 +1,14 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   getCompactionThreshold,
+  getContextWindow,
   getTemperature,
   estimateToolResultTokens,
   shouldTriggerCompaction,
 } from "@/ipc/utils/token_utils";
 import { findLanguageModel } from "@/ipc/utils/findLanguageModel";
+import { fetchLMStudioModelContextLength } from "@/ipc/utils/lm_studio_utils";
 
 vi.mock("@/main/settings", () => ({
   readSettings: vi.fn(),
@@ -16,7 +18,18 @@ vi.mock("@/ipc/utils/findLanguageModel", () => ({
   findLanguageModel: vi.fn(),
 }));
 
+vi.mock("@/ipc/utils/lm_studio_utils", () => ({
+  fetchLMStudioModelContextLength: vi.fn(),
+}));
+
 const mockFindLanguageModel = vi.mocked(findLanguageModel);
+const mockFetchLMStudioContextLength = vi.mocked(
+  fetchLMStudioModelContextLength,
+);
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 describe("estimateToolResultTokens", () => {
   it("estimates provider-bound tool result envelopes without recounting input", () => {
@@ -90,6 +103,52 @@ describe("estimateToolResultTokens", () => {
   });
 });
 
+describe("getContextWindow", () => {
+  it("uses the catalog context window when the model has one", async () => {
+    mockFindLanguageModel.mockResolvedValueOnce({
+      apiName: "cloud-model",
+      displayName: "Cloud Model",
+      type: "cloud",
+      contextWindow: 400_000,
+    });
+
+    await expect(
+      getContextWindow({ provider: "openai", name: "cloud-model" }),
+    ).resolves.toBe(400_000);
+    expect(mockFetchLMStudioContextLength).not.toHaveBeenCalled();
+  });
+
+  it("asks LM Studio for the context window of a local LM Studio model", async () => {
+    mockFindLanguageModel.mockResolvedValueOnce(undefined);
+    mockFetchLMStudioContextLength.mockResolvedValueOnce(204_800);
+
+    await expect(
+      getContextWindow({ provider: "lmstudio", name: "qwen/qwen3-30b" }),
+    ).resolves.toBe(204_800);
+    expect(mockFetchLMStudioContextLength).toHaveBeenCalledWith(
+      "qwen/qwen3-30b",
+    );
+  });
+
+  it("falls back to the default window when LM Studio cannot report one", async () => {
+    mockFindLanguageModel.mockResolvedValueOnce(undefined);
+    mockFetchLMStudioContextLength.mockResolvedValueOnce(undefined);
+
+    await expect(
+      getContextWindow({ provider: "lmstudio", name: "qwen/qwen3-30b" }),
+    ).resolves.toBe(128_000);
+  });
+
+  it("does not query LM Studio for other providers", async () => {
+    mockFindLanguageModel.mockResolvedValueOnce(undefined);
+
+    await expect(
+      getContextWindow({ provider: "ollama", name: "llama3" }),
+    ).resolves.toBe(128_000);
+    expect(mockFetchLMStudioContextLength).not.toHaveBeenCalled();
+  });
+});
+
 describe("getTemperature", () => {
   it("does not set a default temperature for models without metadata", async () => {
     mockFindLanguageModel.mockResolvedValueOnce({
@@ -144,6 +203,20 @@ describe("getCompactionThreshold", () => {
 
     it("leaves 25k headroom for the Auto model's configured context", () => {
       expect(getCompactionThreshold(250_000, "auto")).toBe(225_000);
+    });
+  });
+
+  describe("small context windows", () => {
+    it("scales the headroom down instead of clamping the threshold to zero", () => {
+      // A 4k window used to yield `max(0, 4096 - 25000) = 0`, which made
+      // `shouldTriggerCompaction` true after every single message.
+      expect(getCompactionThreshold(4_096, "lmstudio")).toBe(3_277);
+      expect(getCompactionThreshold(32_768, "lmstudio")).toBe(26_215);
+    });
+
+    it("keeps the full 25k headroom at and above 125k", () => {
+      expect(getCompactionThreshold(125_000, "lmstudio")).toBe(100_000);
+      expect(getCompactionThreshold(128_000, "lmstudio")).toBe(103_000);
     });
   });
 

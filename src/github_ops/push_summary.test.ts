@@ -81,7 +81,7 @@ describe("classifyPushOutcome", () => {
     ).toBe("unverified");
   });
 
-  it("trusts the exit code when the remote tip cannot be read", () => {
+  it("is unverified rather than pushed when the remote tip cannot be read", () => {
     expect(
       classifyPushOutcome({
         ...base,
@@ -90,7 +90,34 @@ describe("classifyPushOutcome", () => {
         commitsPushed: null,
         files: null,
       }),
-    ).toBe("pushed");
+    ).toBe("unverified");
+  });
+
+  it("is up to date when HEAD is behind the remote tip on the same branch", () => {
+    const behind = {
+      ...base,
+      head: older,
+      remoteMoved: false,
+      commitsPushed: 0,
+      commitsNotOnRemote: 0,
+    };
+    expect(classifyPushOutcome(behind)).toBe("up-to-date");
+    expect(classifyPushOutcome({ ...behind, uncommittedFiles: 1 })).toBe(
+      "uncommitted-changes",
+    );
+  });
+
+  it("still reports a branch mismatch when nothing is missing yet", () => {
+    expect(
+      classifyPushOutcome({
+        ...base,
+        pushedBranch: "feature",
+        head: older,
+        remoteMoved: false,
+        commitsPushed: 0,
+        commitsNotOnRemote: 0,
+      }),
+    ).toBe("wrong-branch");
   });
 
   it("still reports the branch problem when something else was pushed", () => {
@@ -159,6 +186,88 @@ describe("describePushSummary", () => {
   it("keeps the headline alone when the push could not be counted", () => {
     expect(
       describePushSummary(
+        summarizePush({ ...base, commitsPushed: null, files: null }),
+        "GitHub",
+      ),
+    ).toEqual({ kind: "success", message: "Successfully pushed to GitHub!" });
+  });
+
+  it("names both commits when the branches agree but the tips do not", () => {
+    expect(
+      describePushSummary(
+        {
+          ...summarizePush(base),
+          outcome: "unverified",
+          remoteTip: "c872cc3",
+        },
+        "GitHub",
+      ),
+    ).toEqual({
+      kind: "warning",
+      message: "Sync finished, but your latest commit is not on GitHub.",
+      detail: "Your main is at ffb1463; GitHub's main is at c872cc3.",
+    });
+  });
+});
+
+describe("describePushSummary edge wording", () => {
+  const wrongBranch = {
+    ...summarizePush(base),
+    outcome: "wrong-branch" as const,
+    pushedBranch: "feature",
+    currentBranch: "main",
+    commitsPushed: 0,
+    commitsNotOnRemote: 0,
+  };
+
+  it("keeps the mismatch warning but says nothing is missing yet", () => {
+    expect(describePushSummary(wrongBranch, "GitHub")).toEqual({
+      kind: "warning",
+      message: "You're working on main, but Dyad syncs feature.",
+      detail:
+        "feature was already up to date. Everything on main is already on GitHub, but new commits on main won't be synced.",
+    });
+  });
+
+  it("leaves out what it could not count", () => {
+    expect(
+      describePushSummary(
+        { ...wrongBranch, commitsPushed: null, commitsNotOnRemote: 2 },
+        "GitHub",
+      ).detail,
+    ).toBe("2 commits on main are not on GitHub.");
+  });
+
+  it("softens the detached headline when nothing is missing", () => {
+    expect(
+      describePushSummary(
+        {
+          ...wrongBranch,
+          outcome: "detached-head",
+          currentBranch: null,
+          pushedBranch: "main",
+        },
+        "GitHub",
+      ),
+    ).toEqual({
+      kind: "warning",
+      message: "You're not on a branch, so new commits won't be synced.",
+      detail: "main was already up to date.",
+    });
+  });
+
+  it("never shows a zero count under the success headline", () => {
+    expect(
+      describePushSummary(
+        { ...summarizePush(base), outcome: "pushed", commitsPushed: 0 },
+        "GitHub",
+      ),
+    ).toEqual({ kind: "success", message: "Successfully pushed to GitHub!" });
+  });
+
+  it("admits when the push could not be confirmed", () => {
+    expect(
+      describePushSummary(
         summarizePush({
           ...base,
           remoteTip: null,
@@ -166,25 +275,13 @@ describe("describePushSummary", () => {
           commitsPushed: null,
           files: null,
         }),
-        "GitHub",
-      ),
-    ).toEqual({ kind: "success", message: "Successfully pushed to GitHub!" });
-  });
-
-  it("says the remote tip is unknown when it could not be read", () => {
-    expect(
-      describePushSummary(
-        {
-          ...summarizePush(base),
-          outcome: "unverified",
-          remoteTip: null,
-        },
-        "GitHub",
+        "GitLab",
       ),
     ).toEqual({
       kind: "warning",
-      message: "Sync finished, but your latest commit is not on GitHub.",
-      detail: "Your main is at ffb1463; GitHub's main is at an unknown commit.",
+      message: "Dyad couldn't confirm the push.",
+      detail:
+        "Git reported success, but GitLab's main couldn't be read afterwards.",
     });
   });
 });

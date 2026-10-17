@@ -21,24 +21,29 @@ export interface PushFacts {
   remoteTip: string | null;
   /** Whether the remote branch tip changed during this sync. */
   remoteMoved: boolean;
+  /** Commits the push added to the remote branch; null when unmeasurable. */
   commitsPushed: number | null;
   files: PushedFileCounts | null;
   uncommittedFiles: number;
+  /** Commits reachable from HEAD that the remote branch does not have. */
   commitsNotOnRemote: number;
 }
 
 export function classifyPushOutcome(facts: PushFacts): PushOutcome {
-  const headOnRemote =
-    facts.remoteTip !== null && facts.remoteTip === facts.head;
-  if (headOnRemote) {
+  if (facts.remoteTip !== null && facts.remoteTip === facts.head) {
     if (facts.remoteMoved) return "pushed";
     return facts.uncommittedFiles > 0 ? "uncommitted-changes" : "up-to-date";
   }
+  // The user's commit is not the remote tip. A branch mismatch is reported
+  // even when every commit so far is on the remote, since the next commit on
+  // the branch the user is on would not be synced.
   if (facts.currentBranch === null) return "detached-head";
   if (facts.currentBranch !== facts.pushedBranch) return "wrong-branch";
-  // The remote tip could not be read: nothing to compare against, so trust
-  // the exit code rather than alarm every repository with an unusual remote.
-  if (facts.remoteTip === null) return "pushed";
+  if (facts.remoteTip === null) return "unverified";
+  // HEAD is behind the remote tip, so everything local is already there.
+  if (facts.commitsNotOnRemote === 0) {
+    return facts.uncommittedFiles > 0 ? "uncommitted-changes" : "up-to-date";
+  }
   return "unverified";
 }
 
@@ -73,6 +78,11 @@ function describeFiles(files: PushedFileCounts): string {
   return parts.join(", ");
 }
 
+function sentences(...parts: Array<string | null>): string | undefined {
+  const text = parts.filter((part) => part).join(" ");
+  return text || undefined;
+}
+
 /**
  * The banner for a completed push: a one-line headline in `message`, and the
  * measured specifics in `detail`, which the connector renders smaller
@@ -84,18 +94,24 @@ export function describePushSummary(
   providerLabel: string,
 ): Pick<GithubOpsBanner, "kind" | "message" | "detail"> {
   const branch = summary.pushedBranch;
-  const missing = plural(summary.commitsNotOnRemote, "commit");
-  const isAre = summary.commitsNotOnRemote === 1 ? "is" : "are";
+  const missing = summary.commitsNotOnRemote;
+  const missingSentence =
+    missing > 0
+      ? `${plural(missing, "commit")} ${missing === 1 ? "is" : "are"} not on ${providerLabel}.`
+      : null;
   // What the sync did to the pushed branch, for the outcomes where the user's
-  // own work went nowhere: a repeat click pushes nothing, and must say so.
+  // own work went nowhere. A repeat click pushes nothing and must say so; an
+  // unknown count says nothing rather than guessing.
   const pushedBranchStatus =
-    summary.commitsPushed !== null && summary.commitsPushed > 0
-      ? `Dyad pushed ${plural(summary.commitsPushed, "commit")} to ${branch}.`
-      : `${branch} was already up to date.`;
+    summary.commitsPushed === null
+      ? null
+      : summary.commitsPushed > 0
+        ? `Dyad pushed ${plural(summary.commitsPushed, "commit")} to ${branch}.`
+        : `${branch} was already up to date.`;
   switch (summary.outcome) {
     case "pushed": {
       const message = `Successfully pushed to ${providerLabel}!`;
-      if (summary.commitsPushed === null) {
+      if (!summary.commitsPushed) {
         return { kind: "success", message };
       }
       const files =
@@ -123,27 +139,42 @@ export function describePushSummary(
           `${summary.uncommittedFiles === 1 ? "hasn't" : "haven't"} been committed yet, ` +
           `so ${summary.uncommittedFiles === 1 ? "it isn't" : "they aren't"} on ${branch}.`,
       };
-    case "wrong-branch":
+    case "wrong-branch": {
+      const current = summary.currentBranch;
       return {
         kind: "warning",
-        message: `You're working on ${summary.currentBranch}, but Dyad syncs ${branch}.`,
-        detail:
-          `${pushedBranchStatus} ${missing} on ${summary.currentBranch} ` +
-          `${isAre} not on ${providerLabel}.`,
+        message: `You're working on ${current}, but Dyad syncs ${branch}.`,
+        detail: sentences(
+          pushedBranchStatus,
+          missing > 0
+            ? `${plural(missing, "commit")} on ${current} ${missing === 1 ? "is" : "are"} not on ${providerLabel}.`
+            : `Everything on ${current} is already on ${providerLabel}, but new commits on ${current} won't be synced.`,
+        ),
       };
-    case "detached-head":
+    }
+    case "detached-head": {
+      const detail = sentences(pushedBranchStatus, missingSentence);
       return {
         kind: "warning",
-        message: "You're not on a branch, so your latest work wasn't pushed.",
-        detail: `${pushedBranchStatus} ${missing} ${isAre} not on ${providerLabel}.`,
+        message:
+          missing > 0
+            ? "You're not on a branch, so your latest work wasn't pushed."
+            : "You're not on a branch, so new commits won't be synced.",
+        ...(detail ? { detail } : {}),
       };
+    }
     case "unverified":
+      if (summary.remoteTip === null) {
+        return {
+          kind: "warning",
+          message: "Dyad couldn't confirm the push.",
+          detail: `Git reported success, but ${providerLabel}'s ${branch} couldn't be read afterwards.`,
+        };
+      }
       return {
         kind: "warning",
         message: `Sync finished, but your latest commit is not on ${providerLabel}.`,
-        detail:
-          `Your ${branch} is at ${summary.head}; ${providerLabel}'s ${branch} is at ` +
-          `${summary.remoteTip ?? "an unknown commit"}.`,
+        detail: `Your ${branch} is at ${summary.head}; ${providerLabel}'s ${branch} is at ${summary.remoteTip}.`,
       };
   }
 }

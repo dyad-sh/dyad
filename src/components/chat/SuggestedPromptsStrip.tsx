@@ -62,7 +62,7 @@ export function SuggestedPromptsStrip({
         title={t("suggestedPrompts.dismiss")}
         className="ml-auto hover:bg-muted-foreground/20 rounded-full p-1 text-muted-foreground cursor-pointer"
       >
-        <X size={12} />
+        <X size={12} aria-hidden="true" />
       </button>
     </div>
   );

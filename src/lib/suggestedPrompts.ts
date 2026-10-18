@@ -16,9 +16,11 @@ const SUGGESTED_PROMPTS_REGEX = new RegExp(
   "g",
 );
 
-// An error block after the suggestions means post-turn work, such as a
-// Supabase deploy, failed, so the turn did not fully complete.
-const ERROR_OUTPUT_REGEX = /<dyad-output\b[^>]*\btype="error"/;
+// Markers the agent appends after its reply when the turn did not fully
+// complete: a post-turn error such as a failed Supabase deploy, the step
+// limit pause, or an Implementer that stopped early or was cancelled.
+const INCOMPLETE_TURN_MARKER_REGEX =
+  /<dyad-output\b[^>]*\btype="error"|<dyad-step-limit\b|<dyad-status\b[^>]*\btitle="Implementer (?:step limit|cancelled)"/;
 
 /**
  * Extracts the follow-up prompts from a completed assistant message. Only the
@@ -33,7 +35,7 @@ export function extractSuggestedPrompts(content: string): string[] {
     lastEnd = match.index + match[0].length;
   }
   if (lastBody === null) return [];
-  if (ERROR_OUTPUT_REGEX.test(content.slice(lastEnd))) return [];
+  if (INCOMPLETE_TURN_MARKER_REGEX.test(content.slice(lastEnd))) return [];
 
   const seen = new Set<string>();
   const prompts: string[] = [];

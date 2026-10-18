@@ -51,6 +51,18 @@ Add tests
     expect(extractSuggestedPrompts(content)).toEqual([]);
   });
 
+  it("returns nothing when the step limit paused the turn", () => {
+    const content = `Done!\n<dyad-suggested-prompts>\nAdd a dark mode toggle\n</dyad-suggested-prompts>\n\n<dyad-step-limit steps="50" limit="50">Automatically paused after 50 tool calls.</dyad-step-limit>`;
+    expect(extractSuggestedPrompts(content)).toEqual([]);
+  });
+
+  it("returns nothing when an Implementer stopped early or was cancelled", () => {
+    for (const title of ["Implementer step limit", "Implementer cancelled"]) {
+      const content = `Done!\n<dyad-suggested-prompts>\nAdd a dark mode toggle\n</dyad-suggested-prompts>\n\n<dyad-status title="${title}" state="warning">Partial changes were preserved.</dyad-status>`;
+      expect(extractSuggestedPrompts(content)).toEqual([]);
+    }
+  });
+
   it("ignores error blocks from earlier in the turn", () => {
     const content = `<dyad-output type="error" message="Tool failed">retrying</dyad-output>\nDone!\n<dyad-suggested-prompts>\nAdd a dark mode toggle\n</dyad-suggested-prompts>\n<dyad-output type="warning" message="Deploy warning">slow</dyad-output>`;
     expect(extractSuggestedPrompts(content)).toEqual([

@@ -1,7 +1,8 @@
 import fs from "node:fs";
+import fsPromises from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   extractZipArchive,
@@ -265,7 +266,41 @@ describe("extractZipArchive", () => {
     expect(listFiles(dest)).toEqual([]);
   });
 
-  it("stops between entries when the signal aborts", async () => {
+  it("stops between entries when the signal aborts mid-extraction", async () => {
+    const archive = buildZip([
+      { name: "first.txt", data: "1" },
+      { name: "second.txt", data: "2" },
+    ]);
+    const controller = new AbortController();
+    const realWriteFile = fsPromises.writeFile;
+    const writeSpy = vi
+      .spyOn(fsPromises, "writeFile")
+      .mockImplementation(async (...args) => {
+        await realWriteFile(...args);
+        controller.abort();
+      });
+    try {
+      await expect(
+        extractZipArchive(archive, dest, { signal: controller.signal }),
+      ).rejects.toMatchObject({ name: "AbortError" });
+    } finally {
+      writeSpy.mockRestore();
+    }
+    expect(listFiles(dest)).toEqual(["first.txt"]);
+  });
+
+  it("counts every central-directory entry, not only written files", async () => {
+    const archive = buildZip([
+      { name: "dir", directory: true },
+      { name: "dir/a.txt", data: "a" },
+      { name: "__MACOSX/._a.txt", data: "noise" },
+    ]);
+    const result = await extractZipArchive(archive, dest);
+    expect(result.files).toHaveLength(1);
+    expect(result.entryCount).toBe(3);
+  });
+
+  it("stops before writing when the signal is already aborted", async () => {
     const archive = buildZip([
       { name: "first.txt", data: "1" },
       { name: "second.txt", data: "2" },

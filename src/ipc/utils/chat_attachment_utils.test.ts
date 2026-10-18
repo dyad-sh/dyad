@@ -207,6 +207,7 @@ describe("archive attachments", () => {
         skipped: { ignored: 2, encrypted: 1 },
         strippedRootDir: "proj",
         totalBytes: 44,
+        entryCount: 2,
       },
       ...overrides,
     };
@@ -258,6 +259,26 @@ describe("archive attachments", () => {
     expect(text).not.toContain("Do not copy archive contents");
   });
 
+  it("asks for the files without naming copy_file when the mode cannot copy", () => {
+    const text = buildLocalAgentAttachmentInfo(
+      [archiveAttachment({ attachmentType: "upload-to-codebase" })],
+      {
+        ...resolveAttachmentDeliveryConfig({
+          mode: "plan",
+          settings: { enableSandboxScriptExecution: false },
+          hasImageAttachments: false,
+          hasUploadedAttachments: true,
+        }),
+        useOnDiskAttachmentBlock: true,
+      },
+    );
+    expect(text).toContain(
+      "  The user wants these files added to the project.",
+    );
+    expect(text).not.toContain("copy_file");
+    expect(text).not.toContain("Do not copy archive contents");
+  });
+
   it("caps the inline entry list", () => {
     const files = Array.from(
       { length: MAX_ARCHIVE_ENTRIES_IN_PROMPT + 5 },
@@ -275,6 +296,7 @@ describe("archive attachments", () => {
             skipped: {},
             strippedRootDir: null,
             totalBytes: files.length,
+            entryCount: files.length,
           },
         }),
       ],
@@ -311,6 +333,7 @@ describe("archive attachments", () => {
             skipped: {},
             strippedRootDir: null,
             totalBytes: files.length,
+            entryCount: files.length,
           },
         }),
       ],

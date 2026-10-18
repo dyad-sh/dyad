@@ -248,12 +248,11 @@ export function buildArchiveAttachmentInfo(
     );
   }
   lines.push(`  ${access.join(", ")}.`);
-  if (
-    hints.includeCopyFileHint &&
-    attachment.attachmentType === "upload-to-codebase"
-  ) {
+  if (attachment.attachmentType === "upload-to-codebase") {
     lines.push(
-      "  The user wants these files added to the project: copy each relevant entry into the right place with copy_file.",
+      hints.includeCopyFileHint
+        ? "  The user wants these files added to the project: copy each relevant entry into the right place with copy_file."
+        : "  The user wants these files added to the project.",
     );
   } else {
     lines.push(

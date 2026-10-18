@@ -74,6 +74,8 @@ export interface ZipExtractionResult {
   /** Name of the single top-level folder that was stripped, if any. */
   strippedRootDir: string | null;
   totalBytes: number;
+  /** Every central-directory entry, as counted against `maxEntries`. */
+  entryCount: number;
 }
 
 export interface ExtractZipOptions {
@@ -294,5 +296,11 @@ export async function extractZipArchive(
     }
   }
 
-  return { files, skipped, strippedRootDir, totalBytes };
+  return {
+    files,
+    skipped,
+    strippedRootDir,
+    totalBytes,
+    entryCount: entries.length,
+  };
 }

@@ -30,6 +30,7 @@ describe("withFinalizedEntryNames", () => {
     skipped: {},
     strippedRootDir: null,
     totalBytes: 6,
+    entryCount: 3,
   };
 
   it("advertises the names the manifest registered", async () => {

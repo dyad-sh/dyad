@@ -92,7 +92,9 @@ export const DyadAttachment: React.FC<DyadAttachmentProps> = ({
   return (
     <DyadCard
       accentColor={accentColor}
-      onClick={filePath ? () => openFile(filePath) : undefined}
+      // Archives are unpacked for the agent; the OS has nothing useful to
+      // open them with from here.
+      onClick={filePath && !isArchive ? () => openFile(filePath) : undefined}
     >
       <DyadCardHeader
         icon={

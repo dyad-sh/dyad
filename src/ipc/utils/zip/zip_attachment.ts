@@ -44,6 +44,8 @@ export interface ExtractedArchiveSummary {
   skipped: Partial<Record<ZipSkipReason, number>>;
   strippedRootDir: string | null;
   totalBytes: number;
+  /** Every central-directory entry, as counted against the entry cap. */
+  entryCount: number;
 }
 
 export function extractedDirNameForStoredFile(storedFileName: string): string {
@@ -125,6 +127,7 @@ export async function extractZipAttachment({
       skipped,
       strippedRootDir: result.strippedRootDir,
       totalBytes: result.totalBytes,
+      entryCount: result.entryCount,
     };
   });
 }

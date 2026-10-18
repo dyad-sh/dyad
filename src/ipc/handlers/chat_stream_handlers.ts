@@ -1420,7 +1420,7 @@ export function registerChatStreamHandlers() {
                 throw error;
               }
               remainingArchiveBytes -= archiveSummary.totalBytes;
-              remainingArchiveEntries -= archiveSummary.files.length;
+              remainingArchiveEntries -= archiveSummary.entryCount;
               if (!extractionDirExisted) {
                 turnCreatedMediaPaths.push(extractionDir);
               }
@@ -1619,54 +1619,48 @@ export function registerChatStreamHandlers() {
         await discardTurnCreatedMedia();
         throw error;
       }
-      const finalizedManifestEntries =
-        await appendAttachmentManifestEntriesWithLogicalNames(
-          appPath,
-          manifestEntries,
-        );
-      storedAttachments = finalizedManifestEntries.map((entry, index) => ({
-        ...entry,
-        filePath: pendingStoredAttachments[index].filePath,
-        attachmentType: pendingStoredAttachments[index].attachmentType,
-        archive: pendingArchiveSummaries[index],
-      }));
-
-      // Register unpacked archive entries under the archive's final logical
-      // name (which may have gained a suffix) so attachments:<archive>/<path>
-      // resolves through the manifest like any other attachment. The prompt
-      // then lists the names the manifest actually assigned.
-      for (const attachment of storedAttachments) {
-        if (!attachment.archive) {
-          continue;
-        }
-        const finalizedEntries =
+      try {
+        const finalizedManifestEntries =
           await appendAttachmentManifestEntriesWithLogicalNames(
             appPath,
-            buildArchiveManifestEntries(
-              attachment.logicalName,
-              attachment.archive,
-              attachment.createdAt ?? new Date().toISOString(),
-            ),
+            manifestEntries,
           );
-        attachment.archive = withFinalizedEntryNames(
-          attachment.archive,
-          attachment.logicalName,
-          finalizedEntries,
-        );
+        storedAttachments = finalizedManifestEntries.map((entry, index) => ({
+          ...entry,
+          filePath: pendingStoredAttachments[index].filePath,
+          attachmentType: pendingStoredAttachments[index].attachmentType,
+          archive: pendingArchiveSummaries[index],
+        }));
+
+        // Register unpacked archive entries under the archive's final logical
+        // name (which may have gained a suffix) so attachments:<archive>/<path>
+        // resolves through the manifest like any other attachment. The prompt
+        // then lists the names the manifest actually assigned.
+        for (const attachment of storedAttachments) {
+          if (!attachment.archive) {
+            continue;
+          }
+          const finalizedEntries =
+            await appendAttachmentManifestEntriesWithLogicalNames(
+              appPath,
+              buildArchiveManifestEntries(
+                attachment.logicalName,
+                attachment.archive,
+                attachment.createdAt ?? new Date().toISOString(),
+              ),
+            );
+          attachment.archive = withFinalizedEntryNames(
+            attachment.archive,
+            attachment.logicalName,
+            finalizedEntries,
+          );
+        }
+      } catch (error) {
+        await discardTurnCreatedMedia();
+        throw error;
       }
       // Everything this turn stored is now in the manifest.
       releaseMediaReservations();
-      for (const attachment of storedAttachments) {
-        if (!attachment.archive) {
-          continue;
-        }
-        // Modes that inline attachments instead of using the on-disk block
-        // still need to know how to reach the archive's entries.
-        attachmentInfo += `\n${buildArchiveAttachmentInfo(
-          { ...attachment, archive: attachment.archive },
-          { includeSandboxScriptHint: false, includeCopyFileHint: true },
-        ).join("\n")}\n`;
-      }
 
       // Expand /implement-plan= into full implementation prompt
       // Keep a human-readable title for display in the UI; the expanded
@@ -2236,10 +2230,26 @@ ${componentSnippet}
         }
         const useReferencedAppManifest =
           willUseLocalAgentStream && referencedAppsForAgent.length > 0;
+        // Modes that inline attachments instead of using the on-disk block
+        // still need to know how to reach an archive's entries, with the
+        // hints the final mode allows.
+        const inlineArchiveInfo = storedAttachments
+          .flatMap((attachment) =>
+            attachment.archive
+              ? [
+                  buildArchiveAttachmentInfo(
+                    { ...attachment, archive: attachment.archive },
+                    attachmentDeliveryConfig,
+                  ).join("\n"),
+                ]
+              : [],
+          )
+          .map((info) => `\n${info}\n`)
+          .join("");
         const effectiveAiUserPrompt =
           attachmentDeliveryConfig.useOnDiskAttachmentBlock
             ? localAgentAiUserPrompt
-            : defaultAiUserPrompt;
+            : defaultAiUserPrompt + inlineArchiveInfo;
 
         // Every currently selectable chat mode returns through the tool-backed
         // handlers below. This legacy full-context path is intentionally

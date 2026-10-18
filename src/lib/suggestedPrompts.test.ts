@@ -46,6 +46,18 @@ Add tests
     ]);
   });
 
+  it("returns nothing when an error block follows the tag", () => {
+    const content = `Done!\n<dyad-suggested-prompts>\nAdd a dark mode toggle\n</dyad-suggested-prompts>\n<dyad-output type="error" message="Failed to deploy Supabase functions">boom</dyad-output>`;
+    expect(extractSuggestedPrompts(content)).toEqual([]);
+  });
+
+  it("ignores error blocks from earlier in the turn", () => {
+    const content = `<dyad-output type="error" message="Tool failed">retrying</dyad-output>\nDone!\n<dyad-suggested-prompts>\nAdd a dark mode toggle\n</dyad-suggested-prompts>\n<dyad-output type="warning" message="Deploy warning">slow</dyad-output>`;
+    expect(extractSuggestedPrompts(content)).toEqual([
+      "Add a dark mode toggle",
+    ]);
+  });
+
   it("uses the last closed tag and unescapes XML entities", () => {
     const content = `<dyad-suggested-prompts>\nOld idea\n</dyad-suggested-prompts>\nMore work...\n<dyad-suggested-prompts>\nAdd search &amp; filters\n</dyad-suggested-prompts>`;
     expect(extractSuggestedPrompts(content)).toEqual(["Add search & filters"]);

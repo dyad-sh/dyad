@@ -16,6 +16,10 @@ const SUGGESTED_PROMPTS_REGEX = new RegExp(
   "g",
 );
 
+// An error block after the suggestions means post-turn work, such as a
+// Supabase deploy, failed, so the turn did not fully complete.
+const ERROR_OUTPUT_REGEX = /<dyad-output\b[^>]*\btype="error"/;
+
 /**
  * Extracts the follow-up prompts from a completed assistant message. Only the
  * last closed tag counts, so a stray earlier mention cannot win over the
@@ -23,10 +27,13 @@ const SUGGESTED_PROMPTS_REGEX = new RegExp(
  */
 export function extractSuggestedPrompts(content: string): string[] {
   let lastBody: string | null = null;
+  let lastEnd = 0;
   for (const match of content.matchAll(SUGGESTED_PROMPTS_REGEX)) {
     lastBody = match[1];
+    lastEnd = match.index + match[0].length;
   }
   if (lastBody === null) return [];
+  if (ERROR_OUTPUT_REGEX.test(content.slice(lastEnd))) return [];
 
   const seen = new Set<string>();
   const prompts: string[] = [];

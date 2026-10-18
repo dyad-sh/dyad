@@ -158,6 +158,7 @@ import {
   appendAttachmentManifestEntriesWithLogicalNames,
   createUniqueAttachmentLogicalName,
   DYAD_MEDIA_DIR_NAME,
+  removeUnreferencedMediaPaths,
   type AttachmentManifestEntryInput,
 } from "../utils/media_path_utils";
 import {
@@ -1289,16 +1290,17 @@ export function registerChatStreamHandlers() {
       let remainingArchiveBytes =
         DEFAULT_ZIP_EXTRACTION_LIMITS.maxTotalUncompressedBytes;
       // Stored files and extraction directories this turn created. Stored
-      // files are shared by content hash across chats, so only what this
-      // turn brought into being is removed if the turn is rejected before
-      // the manifest records it.
+      // files are shared by content hash across chats, so if the turn is
+      // rejected before the manifest records them, only paths that no other
+      // turn has registered meanwhile are removed.
       const turnCreatedMediaPaths: string[] = [];
       const discardTurnCreatedMedia = async () => {
-        for (const createdPath of turnCreatedMediaPaths.splice(0)) {
-          await fs.promises
-            .rm(createdPath, { recursive: true, force: true })
-            .catch(() => undefined);
-        }
+        const candidates = turnCreatedMediaPaths.splice(0);
+        await removeUnreferencedMediaPaths(appPath, candidates).catch(
+          (error) => {
+            logger.warn("Failed to discard media from a rejected turn:", error);
+          },
+        );
       };
       const usedLogicalNames = new Set<string>();
       const appPath = getDyadAppPath(chat.app.path);
@@ -1378,7 +1380,6 @@ export function registerChatStreamHandlers() {
                   mediaDir,
                   storedFileName: filename,
                   archive: fileBuffer,
-                  excludeDotenvFiles: chat.executionBackend === "claude-code",
                   limits: { maxTotalUncompressedBytes: remainingArchiveBytes },
                 });
               } catch (error) {

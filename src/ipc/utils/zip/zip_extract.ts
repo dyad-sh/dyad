@@ -55,7 +55,6 @@ export type ZipSkipReason =
   | "unsafe-path"
   | "symlink"
   | "ignored"
-  | "excluded"
   | "unwritable";
 
 export interface ExtractedZipFile {
@@ -79,12 +78,6 @@ export interface ZipExtractionResult {
 
 export interface ExtractZipOptions {
   limits?: Partial<ZipExtractionLimits>;
-  /**
-   * Skip entries matching this predicate (by normalized relative path, before
-   * root stripping). Used to keep dotenv files away from backends that must
-   * not read them.
-   */
-  exclude?: (relativePath: string) => boolean;
 }
 
 const IGNORED_SEGMENTS = new Set([
@@ -235,10 +228,6 @@ export async function extractZipArchive(
     }
     if (!isSupportedZipCompression(entry)) {
       skipped.push({ name: entry.name, reason: "unsupported-compression" });
-      continue;
-    }
-    if (options.exclude?.(segments.join("/"))) {
-      skipped.push({ name: entry.name, reason: "excluded" });
       continue;
     }
     planned.push({ entry, segments });

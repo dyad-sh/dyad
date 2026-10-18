@@ -372,6 +372,43 @@ export async function pruneAttachmentManifest(
 }
 
 /**
+ * Remove stored files or extraction directories that no manifest entry
+ * points at. Stored names are content hashes shared across chats, so a turn
+ * that is rejected before registering its attachments must not delete media
+ * another turn registered meanwhile. The check and the removal run under
+ * the manifest lock, which registration also takes.
+ */
+export async function removeUnreferencedMediaPaths(
+  appPath: string,
+  candidatePaths: readonly string[],
+): Promise<string[]> {
+  if (candidatePaths.length === 0) {
+    return [];
+  }
+  return withLock(`attachments-manifest:${appPath}`, async () => {
+    const mediaDir = getDyadMediaDir(appPath);
+    const referenced = (await readAttachmentManifest(appPath))
+      .map((entry) => resolveStoredFilePath(mediaDir, entry.storedFileName))
+      .filter((filePath): filePath is string => filePath !== null)
+      .map((filePath) => path.resolve(filePath));
+    const removed: string[] = [];
+    for (const candidate of candidatePaths) {
+      const resolved = path.resolve(candidate);
+      const isReferenced = referenced.some(
+        (filePath) =>
+          filePath === resolved || filePath.startsWith(resolved + path.sep),
+      );
+      if (isReferenced) {
+        continue;
+      }
+      await fs.rm(resolved, { recursive: true, force: true });
+      removed.push(resolved);
+    }
+    return removed;
+  });
+}
+
+/**
  * Resolve a manifest `storedFileName` to its path inside the media directory,
  * or null when the name could point anywhere else. Uploads are a single
  * segment; archive entries are `<dir>/<path>` with forward slashes. Every

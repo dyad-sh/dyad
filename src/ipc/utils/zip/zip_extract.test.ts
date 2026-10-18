@@ -123,19 +123,6 @@ describe("extractZipArchive", () => {
     expect(result.strippedRootDir).toBeNull();
   });
 
-  it("applies the caller's exclusion predicate", async () => {
-    const result = await extractZipArchive(
-      fixture("python-hostile.zip"),
-      dest,
-      {
-        exclude: (relativePath) =>
-          path.basename(relativePath).startsWith(".env"),
-      },
-    );
-    expect(skippedByReason(result).excluded).toEqual([".env"]);
-    expect(listFiles(dest)).toEqual(["ok.txt"]);
-  });
-
   it("skips encrypted entries with a reason", async () => {
     const result = await extractZipArchive(
       fixture("infozip-encrypted.zip"),

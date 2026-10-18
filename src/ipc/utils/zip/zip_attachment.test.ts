@@ -1,7 +1,8 @@
 import fs from "node:fs";
+import fsPromises from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   appendAttachmentManifestEntriesWithLogicalNames,
@@ -76,18 +77,17 @@ describe("extractZipAttachment", () => {
   it("unpacks next to the stored file and honors a caller-supplied byte budget", async () => {
     const archive = buildZip([
       { name: "a.txt", data: "x".repeat(600) },
-      { name: ".env", data: "SECRET=1" },
+      { name: "__MACOSX/._a.txt", data: "noise" },
     ]);
     const mediaDir = getDyadMediaDir(appPath);
     const summary = await extractZipAttachment({
       mediaDir,
       storedFileName: "abc123.zip",
       archive,
-      excludeDotenvFiles: true,
     });
     expect(summary.extractedDirName).toBe("abc123");
     expect(summary.files.map((file) => file.relativePath)).toEqual(["a.txt"]);
-    expect(summary.skipped).toEqual({ excluded: 1 });
+    expect(summary.skipped).toEqual({ ignored: 1 });
     expect(fs.existsSync(path.join(mediaDir, "abc123", "a.txt"))).toBe(true);
 
     await expect(
@@ -95,7 +95,6 @@ describe("extractZipAttachment", () => {
         mediaDir,
         storedFileName: "abc123.zip",
         archive,
-        excludeDotenvFiles: false,
         limits: { maxTotalUncompressedBytes: 100 },
       }),
     ).rejects.toThrow(ZipLimitError);
@@ -114,11 +113,44 @@ describe("extractZipAttachment", () => {
         mediaDir,
         storedFileName: "fresh.zip",
         archive: buildZip([{ name: "a.txt", data: "x".repeat(600) }]),
-        excludeDotenvFiles: false,
         limits: { maxTotalUncompressedBytes: 100 },
       }),
     ).rejects.toThrow(ZipLimitError);
     expect(fs.readdirSync(mediaDir)).toEqual([]);
+  });
+
+  it("restores the earlier extraction when the final swap fails", async () => {
+    const mediaDir = getDyadMediaDir(appPath);
+    await extractZipAttachment({
+      mediaDir,
+      storedFileName: "shared.zip",
+      archive: buildZip([{ name: "old.txt", data: "old" }]),
+    });
+    const destinationDir = path.join(mediaDir, "shared");
+    const realRename = fsPromises.rename;
+    const renameSpy = vi
+      .spyOn(fsPromises, "rename")
+      .mockImplementation(async (from, to) => {
+        if (to === destinationDir && String(from).includes(".extracting-")) {
+          throw Object.assign(new Error("simulated rename failure"), {
+            code: "EPERM",
+          });
+        }
+        return realRename(from, to);
+      });
+    try {
+      await expect(
+        extractZipAttachment({
+          mediaDir,
+          storedFileName: "shared.zip",
+          archive: buildZip([{ name: "new.txt", data: "new" }]),
+        }),
+      ).rejects.toThrow("simulated rename failure");
+    } finally {
+      renameSpy.mockRestore();
+    }
+    expect(fs.readdirSync(destinationDir)).toEqual(["old.txt"]);
+    expect(fs.readdirSync(mediaDir)).toEqual(["shared"]);
   });
 
   it("replaces an earlier extraction when a later attempt succeeds", async () => {
@@ -127,13 +159,11 @@ describe("extractZipAttachment", () => {
       mediaDir,
       storedFileName: "shared.zip",
       archive: buildZip([{ name: "old.txt", data: "old" }]),
-      excludeDotenvFiles: false,
     });
     await extractZipAttachment({
       mediaDir,
       storedFileName: "shared.zip",
       archive: buildZip([{ name: "new.txt", data: "new" }]),
-      excludeDotenvFiles: false,
     });
     expect(fs.readdirSync(path.join(mediaDir, "shared"))).toEqual(["new.txt"]);
     expect(fs.readdirSync(mediaDir).sort()).toEqual(["shared"]);
@@ -148,7 +178,6 @@ describe("extractZipAttachment", () => {
           mediaDir,
           storedFileName: "same.zip",
           archive,
-          excludeDotenvFiles: false,
         }),
       ),
     );

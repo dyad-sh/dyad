@@ -9,6 +9,7 @@ import {
   getDyadMediaDir,
   listStoredAttachments,
   pruneAttachmentManifest,
+  removeUnreferencedMediaPaths,
   resolveAttachmentLogicalPath,
   resolveStoredFilePath,
 } from "./media_path_utils";
@@ -145,6 +146,49 @@ describe("manifest with extracted archive entries", () => {
     expect(
       (await listStoredAttachments(appPath)).map((a) => a.logicalName),
     ).toEqual(["proj.zip"]);
+  });
+
+  it("removes only media that no manifest entry references", async () => {
+    writeStored("orphan.zip", "zipbytes");
+    writeStored("orphan/a.txt", "a");
+    writeStored("claimed.zip", "zipbytes");
+    writeStored("claimed/a.txt", "a");
+    await appendAttachmentManifestEntriesWithLogicalNames(appPath, [
+      {
+        requestedLogicalName: "claimed.zip",
+        originalName: "claimed.zip",
+        storedFileName: "claimed.zip",
+        mimeType: "application/zip",
+        sizeBytes: 8,
+        createdAt: "2026-01-01T00:00:00.000Z",
+      },
+      {
+        requestedLogicalName: "claimed.zip/a.txt",
+        nestedLogicalName: true,
+        originalName: "a.txt",
+        storedFileName: "claimed/a.txt",
+        mimeType: "text/plain",
+        sizeBytes: 1,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        archiveLogicalName: "claimed.zip",
+      },
+    ]);
+    const mediaDir = getDyadMediaDir(appPath);
+    const removed = await removeUnreferencedMediaPaths(appPath, [
+      path.join(mediaDir, "orphan.zip"),
+      path.join(mediaDir, "orphan"),
+      path.join(mediaDir, "claimed.zip"),
+      path.join(mediaDir, "claimed"),
+    ]);
+    expect(removed.map((p) => path.basename(p)).sort()).toEqual([
+      "orphan",
+      "orphan.zip",
+    ]);
+    expect(fs.readdirSync(mediaDir).sort()).toEqual([
+      "attachments-manifest.json",
+      "claimed",
+      "claimed.zip",
+    ]);
   });
 
   it("ignores manifest entries whose stored name could escape the media directory", async () => {

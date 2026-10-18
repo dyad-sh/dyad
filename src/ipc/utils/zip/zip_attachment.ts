@@ -2,7 +2,6 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import { isDotenvFilePath } from "@/utils/dotenv_redaction";
 import { withLock } from "../lock_utils";
 import type {
   AttachmentManifestEntry,
@@ -55,24 +54,23 @@ export function extractedDirNameForStoredFile(storedFileName: string): string {
 }
 
 /**
- * Unpack an archive attachment next to its stored file. Extraction runs in a
- * staging directory that replaces the target only on success, so a failed
- * attempt leaves an earlier extraction of the same archive (which other chats
- * may reference) untouched. The target is locked so two chats uploading the
- * same archive at once cannot interleave. Throws `ZipFormatError` or
- * `ZipLimitError`.
+ * Unpack an archive attachment next to its stored file. The result depends
+ * only on the archive bytes, so a re-upload from any chat produces the same
+ * directory. Extraction runs in a staging directory that replaces the target
+ * only on success, so a failed attempt leaves an earlier extraction of the
+ * same archive (which other chats may reference) untouched. The target is
+ * locked so two chats uploading the same archive at once cannot interleave.
+ * Throws `ZipFormatError` or `ZipLimitError`.
  */
 export async function extractZipAttachment({
   mediaDir,
   storedFileName,
   archive,
-  excludeDotenvFiles,
   limits,
 }: {
   mediaDir: string;
   storedFileName: string;
   archive: Buffer;
-  excludeDotenvFiles: boolean;
   limits?: Partial<ZipExtractionLimits>;
 }): Promise<ExtractedArchiveSummary> {
   const extractedDirName = extractedDirNameForStoredFile(storedFileName);
@@ -83,10 +81,7 @@ export async function extractZipAttachment({
     await fs.mkdir(stagingDir, { recursive: true });
     let result;
     try {
-      result = await extractZipArchive(archive, stagingDir, {
-        limits,
-        exclude: excludeDotenvFiles ? isDotenvFilePath : undefined,
-      });
+      result = await extractZipArchive(archive, stagingDir, { limits });
     } catch (error) {
       await fs
         .rm(stagingDir, { recursive: true, force: true })
@@ -102,7 +97,16 @@ export async function extractZipAttachment({
         throw error;
       }
     });
-    await fs.rename(stagingDir, destinationDir);
+    try {
+      await fs.rename(stagingDir, destinationDir);
+    } catch (error) {
+      // Put the previous extraction back so other chats keep their files.
+      await fs.rename(retiredDir, destinationDir).catch(() => undefined);
+      await fs
+        .rm(stagingDir, { recursive: true, force: true })
+        .catch(() => undefined);
+      throw error;
+    }
     await fs
       .rm(retiredDir, { recursive: true, force: true })
       .catch(() => undefined);
@@ -229,7 +233,6 @@ const SKIP_REASON_LABELS: Record<ZipSkipReason, string> = {
   "unsafe-path": "unsafe path",
   symlink: "symlink",
   ignored: "packaging noise such as node_modules or __MACOSX",
-  excluded: "dotenv file",
   unwritable: "not writable on this filesystem",
 };
 

@@ -229,13 +229,13 @@
       {
         "type": "function",
         "name": "list_files",
-        "description": "List files in the application directory. By default, lists only the immediate directory contents. Use recursive=true to list all files recursively. Use include_ignored=true to include git-ignored and hidden paths; recursive ignored listings require directory to be set. Results are capped at 1000 paths.",
+        "description": "List files in the application directory. By default, lists only the immediate directory contents. Use recursive=true to list all files recursively. Use include_ignored=true to include git-ignored and hidden paths; recursive ignored listings require directory to be set. Set directory to \"attachments:\" or \"attachments:<archive>\" to list uploaded attachments and unpacked archive entries by their attachments: paths. Results are capped at 1000 paths.",
         "parameters": {
           "$schema": "http://json-schema.org/draft-07/schema#",
           "type": "object",
           "properties": {
             "directory": {
-              "description": "Optional subdirectory to list",
+              "description": "Optional subdirectory to list. Use \"attachments:\" to list uploaded attachments, or \"attachments:<archive>\" to list every entry unpacked from that archive.",
               "type": "string"
             },
             "app_name": {

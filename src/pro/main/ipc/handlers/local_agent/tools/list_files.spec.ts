@@ -165,13 +165,37 @@ describe("listFilesTool", () => {
       { directory: "attachments:" },
       mockContext,
     );
-    expect(everything).toContain(" - attachments:notes.txt");
-    expect(everything).toContain(" - attachments:proj.zip");
-    expect(everything).toContain(" - attachments:proj.zip/src/index.ts");
-    expect(everything).toContain(" - attachments:proj.zip-notes.txt");
+    expect(everything.split("\n")).toEqual([
+      " - attachments:notes.txt",
+      " - attachments:proj.zip",
+      " - attachments:proj.zip-notes.txt",
+      " - attachments:proj.zip/README.md",
+      " - attachments:proj.zip/src/index.ts",
+    ]);
     expect(mockContext.onXmlComplete).toHaveBeenLastCalledWith(
       expect.stringContaining('directory="attachments:" count="5"'),
     );
+
+    const narrowed = await listFilesTool.execute(
+      { directory: "attachments:proj.zip/src" },
+      mockContext,
+    );
+    expect(narrowed.split("\n")).toEqual([
+      " - attachments:proj.zip/src/index.ts",
+    ]);
+
+    await expect(
+      listFilesTool.execute(
+        { directory: "attachments:missing.zip" },
+        mockContext,
+      ),
+    ).rejects.toMatchObject({ kind: DyadErrorKind.NotFound });
+    await expect(
+      listFilesTool.execute(
+        { directory: "attachments:", app_name: "other" },
+        mockContext,
+      ),
+    ).rejects.toMatchObject({ kind: DyadErrorKind.Validation });
   });
 
   it("accepts include_ignored in the schema", () => {

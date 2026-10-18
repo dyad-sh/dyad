@@ -280,7 +280,7 @@ export function buildArchiveAttachmentInfo(
     const remaining = fileCount - listed;
     if (remaining > 0) {
       lines.push(
-        `    ...and ${remaining} more ${remaining === 1 ? "entry" : "entries"} not listed here; list_files with directory "${logicalPath}" enumerates all of them.`,
+        `    ...and ${remaining} more ${remaining === 1 ? "entry" : "entries"} not listed here; list_files with directory "${logicalPath}" lists up to 1000 of them per call, or narrow it to "${logicalPath}/<folder>".`,
       );
     }
   }

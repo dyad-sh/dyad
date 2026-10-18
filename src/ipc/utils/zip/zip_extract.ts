@@ -177,7 +177,6 @@ const UNWRITABLE_ERROR_CODES = new Set([
   "EISDIR",
   "EINVAL",
   "ENAMETOOLONG",
-  "ENOENT",
 ]);
 
 function isUnwritableEntryError(error: unknown): boolean {
@@ -252,6 +251,7 @@ export async function extractZipArchive(
   if (declaredTotal > limits.maxTotalUncompressedBytes) {
     throw new ZipLimitError(
       `archive would expand to ${declaredTotal} bytes, more than the ${limits.maxTotalUncompressedBytes} allowed`,
+      "bytes",
     );
   }
 
@@ -271,6 +271,7 @@ export async function extractZipArchive(
     if (totalBytes > limits.maxTotalUncompressedBytes) {
       throw new ZipLimitError(
         `archive expanded past the ${limits.maxTotalUncompressedBytes} bytes allowed`,
+        "bytes",
       );
     }
 

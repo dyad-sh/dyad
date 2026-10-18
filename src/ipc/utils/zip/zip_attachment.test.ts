@@ -99,8 +99,44 @@ describe("extractZipAttachment", () => {
         limits: { maxTotalUncompressedBytes: 100 },
       }),
     ).rejects.toThrow(ZipLimitError);
-    // A failed extraction leaves no directory behind.
-    expect(fs.existsSync(path.join(mediaDir, "abc123"))).toBe(false);
+    // The failed attempt leaves the earlier extraction untouched.
+    expect(
+      fs.readFileSync(path.join(mediaDir, "abc123", "a.txt"), "utf8"),
+    ).toBe("x".repeat(600));
+    // No staging or retired directories are left behind.
+    expect(fs.readdirSync(mediaDir).sort()).toEqual(["abc123"]);
+  });
+
+  it("fails cleanly when there is no earlier extraction", async () => {
+    const mediaDir = getDyadMediaDir(appPath);
+    await expect(
+      extractZipAttachment({
+        mediaDir,
+        storedFileName: "fresh.zip",
+        archive: buildZip([{ name: "a.txt", data: "x".repeat(600) }]),
+        excludeDotenvFiles: false,
+        limits: { maxTotalUncompressedBytes: 100 },
+      }),
+    ).rejects.toThrow(ZipLimitError);
+    expect(fs.readdirSync(mediaDir)).toEqual([]);
+  });
+
+  it("replaces an earlier extraction when a later attempt succeeds", async () => {
+    const mediaDir = getDyadMediaDir(appPath);
+    await extractZipAttachment({
+      mediaDir,
+      storedFileName: "shared.zip",
+      archive: buildZip([{ name: "old.txt", data: "old" }]),
+      excludeDotenvFiles: false,
+    });
+    await extractZipAttachment({
+      mediaDir,
+      storedFileName: "shared.zip",
+      archive: buildZip([{ name: "new.txt", data: "new" }]),
+      excludeDotenvFiles: false,
+    });
+    expect(fs.readdirSync(path.join(mediaDir, "shared"))).toEqual(["new.txt"]);
+    expect(fs.readdirSync(mediaDir).sort()).toEqual(["shared"]);
   });
 
   it("serializes concurrent extractions of the same archive", async () => {

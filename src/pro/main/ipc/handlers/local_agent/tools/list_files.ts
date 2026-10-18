@@ -101,13 +101,20 @@ async function listAttachmentPaths(
   const scope = stripAttachmentLogicalPrefix(directory).replace(/\/+$/, "");
   const prefix = scope ? `${scope}/` : "";
   const attachments = await listStoredAttachments(appPath);
-  return attachments
+  const entries = attachments
     .filter((attachment) => attachment.logicalName.startsWith(prefix))
     .map((attachment) => ({
       path: toAttachmentLogicalPath(attachment.logicalName),
       isDirectory: false,
     }))
     .sort((a, b) => a.path.localeCompare(b.path));
+  if (scope && entries.length === 0) {
+    throw new DyadError(
+      `Directory not found: ${directory}`,
+      DyadErrorKind.NotFound,
+    );
+  }
+  return entries;
 }
 
 function buildListFilesResult(
@@ -169,15 +176,23 @@ export const listFilesTool: ToolDefinition<ListFilesArgs> = {
   },
 
   execute: async (args, ctx: AgentContext) => {
-    const targetAppPath = resolveTargetAppPath(ctx, args.app_name);
-
     if (args.directory?.startsWith("attachments:")) {
+      // Attachments belong to the current app; a referenced app's .dyad
+      // internals stay private, as they do for read_file.
+      if (args.app_name) {
+        throw new DyadError(
+          "Attachments of a referenced app cannot be listed.",
+          DyadErrorKind.Validation,
+        );
+      }
       return buildListFilesResult(
         args,
         ctx,
-        await listAttachmentPaths(targetAppPath, args.directory),
+        await listAttachmentPaths(ctx.appPath, args.directory),
       );
     }
+
+    const targetAppPath = resolveTargetAppPath(ctx, args.app_name);
 
     // Validate directory path to prevent path traversal attacks
     let sanitizedDirectory: string | undefined;

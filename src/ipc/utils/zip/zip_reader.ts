@@ -39,7 +39,10 @@ export class ZipFormatError extends Error {
 
 /** The archive is well formed but exceeds a caller-supplied limit. */
 export class ZipLimitError extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    public readonly limit: "entries" | "bytes",
+  ) {
     super(message);
     this.name = "ZipLimitError";
   }
@@ -414,6 +417,7 @@ export function readZipDirectory(
   ) {
     throw new ZipLimitError(
       `archive declares ${eocd.totalEntries} entries, more than the ${options.maxEntries} allowed`,
+      "entries",
     );
   }
   // Each header is at least CENTRAL_HEADER_SIZE bytes, so a count the archive

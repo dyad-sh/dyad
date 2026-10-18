@@ -435,9 +435,16 @@ export async function sandboxListFiles(
     // attachments:<archive> lists the entries unpacked from that archive.
     const prefix = `${stripAttachmentLogicalPrefix(dir).replace(/\/+$/, "")}/`;
     const attachments = await listStoredAttachments(appPath);
-    return attachments
+    const entries = attachments
       .filter((attachment) => attachment.logicalName.startsWith(prefix))
       .map((attachment) => toAttachmentLogicalPath(attachment.logicalName));
+    if (entries.length === 0) {
+      throw new DyadError(
+        `Directory not found: ${dir}`,
+        DyadErrorKind.NotFound,
+      );
+    }
+    return entries;
   }
 
   assertAllowedGuestPath(dir);

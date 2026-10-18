@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { DyadErrorKind } from "@/errors/dyad_error";
 import {
   appendAttachmentManifestEntries,
   appendAttachmentManifestEntriesWithLogicalNames,
@@ -289,6 +290,37 @@ describe("sandbox capabilities", () => {
     await expect(sandboxListFiles(appPath, "attachments:")).resolves.toEqual([
       "attachments:server.log",
     ]);
+  });
+
+  it("lists unpacked archive entries under attachments:<archive>", async () => {
+    const mediaDir = getDyadMediaDir(appPath);
+    await fs.mkdir(path.join(mediaDir, "hash", "src"), { recursive: true });
+    await fs.writeFile(
+      path.join(mediaDir, "hash", "src", "index.ts"),
+      "export {};",
+      "utf8",
+    );
+    await appendAttachmentManifestEntriesWithLogicalNames(appPath, [
+      {
+        requestedLogicalName: "proj.zip/src/index.ts",
+        nestedLogicalName: true,
+        originalName: "src/index.ts",
+        storedFileName: "hash/src/index.ts",
+        mimeType: "text/typescript",
+        sizeBytes: 12,
+        createdAt: new Date("2026-04-22T00:00:00.000Z").toISOString(),
+        archiveLogicalName: "proj.zip",
+      },
+    ]);
+    await expect(
+      sandboxListFiles(appPath, "attachments:proj.zip"),
+    ).resolves.toEqual(["attachments:proj.zip/src/index.ts"]);
+    await expect(
+      sandboxListFiles(appPath, "attachments:proj.zip/src/"),
+    ).resolves.toEqual(["attachments:proj.zip/src/index.ts"]);
+    await expect(
+      sandboxListFiles(appPath, "attachments:missing.zip"),
+    ).rejects.toMatchObject({ kind: DyadErrorKind.NotFound });
   });
 
   it("lists attachment logical paths and returns file stats", async () => {

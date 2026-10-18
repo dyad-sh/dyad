@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -54,12 +55,12 @@ export function extractedDirNameForStoredFile(storedFileName: string): string {
 }
 
 /**
- * Unpack an archive attachment next to its stored file. The target directory
- * is recreated from scratch so a re-upload of the same archive never leaves
- * stale entries behind, and the directory is locked so two chats uploading
- * the same archive at once cannot delete each other's extraction. Throws
- * `ZipFormatError` or `ZipLimitError`; the directory is removed again on any
- * failure.
+ * Unpack an archive attachment next to its stored file. Extraction runs in a
+ * staging directory that replaces the target only on success, so a failed
+ * attempt leaves an earlier extraction of the same archive (which other chats
+ * may reference) untouched. The target is locked so two chats uploading the
+ * same archive at once cannot interleave. Throws `ZipFormatError` or
+ * `ZipLimitError`.
  */
 export async function extractZipAttachment({
   mediaDir,
@@ -77,30 +78,46 @@ export async function extractZipAttachment({
   const extractedDirName = extractedDirNameForStoredFile(storedFileName);
   const destinationDir = path.join(mediaDir, extractedDirName);
   return withLock(`archive-extract:${destinationDir}`, async () => {
-    await fs.rm(destinationDir, { recursive: true, force: true });
-    await fs.mkdir(destinationDir, { recursive: true });
+    const token = crypto.randomUUID();
+    const stagingDir = `${destinationDir}.extracting-${token}`;
+    await fs.mkdir(stagingDir, { recursive: true });
+    let result;
     try {
-      const result = await extractZipArchive(archive, destinationDir, {
+      result = await extractZipArchive(archive, stagingDir, {
         limits,
         exclude: excludeDotenvFiles ? isDotenvFilePath : undefined,
       });
-      const skipped: Partial<Record<ZipSkipReason, number>> = {};
-      for (const entry of result.skipped) {
-        skipped[entry.reason] = (skipped[entry.reason] ?? 0) + 1;
-      }
-      return {
-        extractedDirName,
-        files: result.files,
-        skipped,
-        strippedRootDir: result.strippedRootDir,
-        totalBytes: result.totalBytes,
-      };
     } catch (error) {
       await fs
-        .rm(destinationDir, { recursive: true, force: true })
+        .rm(stagingDir, { recursive: true, force: true })
         .catch(() => undefined);
       throw error;
     }
+
+    // Swap the finished extraction into place. Files already open from the
+    // previous extraction stay readable until the old directory is removed.
+    const retiredDir = `${destinationDir}.old-${token}`;
+    await fs.rename(destinationDir, retiredDir).catch((error: unknown) => {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        throw error;
+      }
+    });
+    await fs.rename(stagingDir, destinationDir);
+    await fs
+      .rm(retiredDir, { recursive: true, force: true })
+      .catch(() => undefined);
+
+    const skipped: Partial<Record<ZipSkipReason, number>> = {};
+    for (const entry of result.skipped) {
+      skipped[entry.reason] = (skipped[entry.reason] ?? 0) + 1;
+    }
+    return {
+      extractedDirName,
+      files: result.files,
+      skipped,
+      strippedRootDir: result.strippedRootDir,
+      totalBytes: result.totalBytes,
+    };
   });
 }
 
@@ -141,9 +158,19 @@ export function isZipExtractionError(error: unknown): boolean {
 export function toZipExtractionErrorMessage(
   attachmentName: string,
   error: unknown,
+  options: {
+    /**
+     * The byte limit the extraction ran with was what remained of a budget
+     * shared by every archive in the message, not the full per-archive cap.
+     */
+    sharedBudgetBytes?: number;
+  } = {},
 ): string {
   const detail = error instanceof Error ? error.message : String(error);
   if (error instanceof ZipLimitError) {
+    if (error.limit === "bytes" && options.sharedBudgetBytes !== undefined) {
+      return `"${attachmentName}" cannot be unpacked: together, the archives in this message would expand past the ${Math.round(options.sharedBudgetBytes / (1024 * 1024))} MiB they can share.`;
+    }
     return `"${attachmentName}" is too large to extract: ${detail}.`;
   }
   return `"${attachmentName}" is not a readable zip archive: ${detail}.`;

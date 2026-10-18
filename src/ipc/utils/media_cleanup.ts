@@ -15,8 +15,10 @@ const logger = log.scope("media_cleanup");
 export const MEDIA_TTL_DAYS = 30;
 
 // Unpacked zip attachments live in a directory named by the archive's
-// SHA-256; no other directories are expected under .dyad/media.
-const EXTRACTED_ARCHIVE_DIR_NAME = /^[0-9a-f]{64}$/;
+// SHA-256, with ".extracting-<id>" or ".old-<id>" suffixes while one is being
+// swapped in; no other directories are expected under .dyad/media.
+const EXTRACTED_ARCHIVE_DIR_NAME =
+  /^[0-9a-f]{64}(?:\.(?:extracting|old)-[0-9a-f-]+)?$/;
 
 function isPathWithinDirectory(filePath: string, directoryPath: string) {
   const relativePath = path.relative(directoryPath, filePath);

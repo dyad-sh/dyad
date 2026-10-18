@@ -783,9 +783,9 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const suggestedPrompts = useMemo(
     () =>
       suggestedPromptsEnabled
-        ? selectSuggestedPrompts({ messages, isStreaming })
+        ? selectSuggestedPrompts({ messages, isStreaming, hasError: !!error })
         : null,
-    [suggestedPromptsEnabled, messages, isStreaming],
+    [suggestedPromptsEnabled, messages, isStreaming, error],
   );
   const handleSelectSuggestedPrompt = useCallback(
     (prompt: string) => {

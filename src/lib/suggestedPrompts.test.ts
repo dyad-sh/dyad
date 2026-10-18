@@ -84,6 +84,16 @@ describe("selectSuggestedPrompts", () => {
     ).toBeNull();
   });
 
+  it("offers nothing when the last turn errored", () => {
+    expect(
+      selectSuggestedPrompts({
+        messages: [user, withPrompts],
+        isStreaming: false,
+        hasError: true,
+      }),
+    ).toBeNull();
+  });
+
   it("offers nothing for a cancelled turn", () => {
     expect(
       selectSuggestedPrompts({

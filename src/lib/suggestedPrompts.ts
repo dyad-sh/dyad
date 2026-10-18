@@ -60,11 +60,14 @@ export interface SuggestedPromptsSelection {
 export function selectSuggestedPrompts({
   messages,
   isStreaming,
+  hasError = false,
 }: {
   messages: readonly Message[];
   isStreaming: boolean;
+  /** The last turn failed, possibly after the tag streamed, so it may be incomplete. */
+  hasError?: boolean;
 }): SuggestedPromptsSelection | null {
-  if (isStreaming) return null;
+  if (isStreaming || hasError) return null;
   const last = messages.at(-1);
   if (
     !last ||

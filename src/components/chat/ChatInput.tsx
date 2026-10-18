@@ -789,7 +789,15 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   );
   const handleSelectSuggestedPrompt = useCallback(
     (prompt: string) => {
-      if (!chatId || isStreaming) return;
+      if (!chatId || isStreaming || isAwaitingTurnAcceptanceRef.current) {
+        return;
+      }
+      // Same latch as handleSubmit, so a second click before the optimistic
+      // user message renders cannot queue a duplicate turn.
+      isAwaitingTurnAcceptanceRef.current = true;
+      const releaseLatch = () => {
+        isAwaitingTurnAcceptanceRef.current = false;
+      };
       void openPreviewIfSetupRequired(appId);
       void streamMessage({
         prompt,
@@ -797,6 +805,9 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         redo: false,
         showOptimisticMessage: true,
         requestedChatMode: isChatModeLoading ? null : storedChatMode,
+        onAccepted: releaseLatch,
+        onAcceptanceRejected: releaseLatch,
+        onSettled: releaseLatch,
       });
     },
     [

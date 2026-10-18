@@ -13,7 +13,7 @@ import { parseFullMessage } from "@/lib/streamingMessageParser";
  * Bump CHAT_SEARCH_PROJECTION_VERSION whenever the policy here changes so
  * ChatSearchIndexer rebuilds existing documents in the background.
  */
-export const CHAT_SEARCH_PROJECTION_VERSION = 1;
+export const CHAT_SEARCH_PROJECTION_VERSION = 2;
 
 export interface ChatSearchProjectionInput {
   role: "user" | "assistant";
@@ -65,6 +65,8 @@ const DROP_ENTIRELY_TAGS = new Set([
   "think",
   "dyad-search-chats",
   "dyad-read-chat",
+  // Rendered as chips above the composer, never as visible message text.
+  "dyad-suggested-prompts",
 ]);
 
 /**

@@ -104,6 +104,15 @@ describe("projectChatMessageForSearch", () => {
       expect(result.text).not.toContain("RETRIEVED_MESSAGES");
     });
 
+    it("drops suggested follow-up prompts, which are shown as chips not text", () => {
+      const result = assistant(
+        "Added the form.\n<dyad-suggested-prompts>\nAdd a dark mode toggle\n</dyad-suggested-prompts>",
+      );
+      expect(result.text).toContain("Added the form.");
+      expect(result.text).not.toContain("dark mode");
+      expect(result.text).not.toContain("suggested prompts");
+    });
+
     it("fails closed for unrecognized dyad tags", () => {
       const result = assistant(
         "Before text <dyad-future-tool foo='bar'>HUGE_PAYLOAD</dyad-future-tool> after text",

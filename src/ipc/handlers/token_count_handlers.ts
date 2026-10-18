@@ -3,6 +3,7 @@ import {
   shellExecutionGuidance,
 } from "@/shared/shell_capability";
 import { isFreeProModel } from "@/lib/freeProModel";
+import { DEFAULT_ENABLE_SUGGESTED_PROMPTS } from "@/shared/settings_defaults";
 import { db } from "../../db";
 import { chats } from "../../db/schema";
 import { eq } from "drizzle-orm";
@@ -136,6 +137,8 @@ export function registerTokenCountHandlers() {
         planningQuestionnaireAvailable,
         appBlueprintQuestionnaireCompleted,
         appBlueprint,
+        suggestedPromptsEnabled:
+          settings.enableSuggestedPrompts ?? DEFAULT_ENABLE_SUGGESTED_PROMPTS,
       });
       let supabaseContext = "";
       const supabaseProviderToolsAvailable = Boolean(

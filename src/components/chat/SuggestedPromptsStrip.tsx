@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useAtom } from "jotai";
 import { useTranslation } from "react-i18next";
 import { Sparkles, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { dismissedSuggestedPromptMessageIdsAtom } from "@/atoms/suggestedPromptsAtoms";
 
 interface SuggestedPromptsStripProps {
   /** Assistant message the prompts came from; dismissal is scoped to it. */
@@ -21,11 +22,11 @@ export function SuggestedPromptsStrip({
   onSelect,
 }: SuggestedPromptsStripProps) {
   const { t } = useTranslation("chat");
-  const [dismissedMessageId, setDismissedMessageId] = useState<number | null>(
-    null,
+  const [dismissedMessageIds, setDismissedMessageIds] = useAtom(
+    dismissedSuggestedPromptMessageIdsAtom,
   );
 
-  if (prompts.length === 0 || dismissedMessageId === messageId) return null;
+  if (prompts.length === 0 || dismissedMessageIds.has(messageId)) return null;
 
   return (
     <div
@@ -50,7 +51,9 @@ export function SuggestedPromptsStrip({
       ))}
       <button
         type="button"
-        onClick={() => setDismissedMessageId(messageId)}
+        onClick={() =>
+          setDismissedMessageIds((prev) => new Set(prev).add(messageId))
+        }
         aria-label={t("suggestedPrompts.dismiss")}
         title={t("suggestedPrompts.dismiss")}
         className="ml-auto hover:bg-muted-foreground/20 rounded-full p-1 text-muted-foreground cursor-pointer"

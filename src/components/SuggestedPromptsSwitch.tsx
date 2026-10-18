@@ -14,10 +14,12 @@ export function SuggestedPromptsSwitch() {
         id="suggested-prompts"
         aria-label="Suggested follow-up prompts"
         checked={isEnabled}
+        disabled={!settings}
         onCheckedChange={(checked) => {
-          updateSettings({
-            enableSuggestedPrompts: checked,
-          });
+          // The settings mutation shows its own error toast.
+          void updateSettings({ enableSuggestedPrompts: checked }).catch(
+            () => {},
+          );
         }}
       />
       <Label htmlFor="suggested-prompts">Suggested follow-up prompts</Label>

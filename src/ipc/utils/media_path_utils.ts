@@ -42,10 +42,19 @@ export const SCREENSHOT_FILENAME_REGEX = /^[0-9a-f]{40}\.png$/;
 export interface AttachmentManifestEntry {
   logicalName: string;
   originalName: string;
+  /**
+   * Path of the stored file relative to the media directory. A plain file
+   * name for uploads; a `<dir>/<path>` for files extracted from an archive.
+   */
   storedFileName: string;
   mimeType: string;
   sizeBytes: number;
   createdAt: string;
+  /**
+   * Logical name of the archive attachment this file was extracted from.
+   * Present only on extracted entries.
+   */
+  archiveLogicalName?: string;
 }
 
 export interface StoredAttachmentInfo {
@@ -55,6 +64,8 @@ export interface StoredAttachmentInfo {
   mimeType: string;
   sizeBytes: number;
   filePath: string;
+  createdAt?: string;
+  archiveLogicalName?: string;
 }
 
 export type AttachmentManifestEntryInput = Omit<
@@ -62,6 +73,12 @@ export type AttachmentManifestEntryInput = Omit<
   "logicalName"
 > & {
   requestedLogicalName: string;
+  /**
+   * Keep the directory segments of `requestedLogicalName` (for files
+   * extracted from an archive, named `<archive>/<path>`). Uploads keep the
+   * default, which reduces the name to its final segment.
+   */
+  nestedLogicalName?: boolean;
 };
 
 /**
@@ -124,21 +141,39 @@ export function stripAttachmentLogicalPrefix(logicalPath: string): string {
     : logicalPath;
 }
 
-function normalizeAttachmentLogicalName(originalName: string): string {
-  const fileName = originalName.split(/[\\/]/).filter(Boolean).pop()?.trim();
-  const sanitized = (fileName || "attachment")
+function sanitizeLogicalNameSegment(segment: string): string {
+  return segment
     .replace(/```/g, "_")
     .replace(/[<>{}`:\0\r\n]/g, "_")
     .slice(0, 160)
     .trim();
-  return sanitized || "attachment";
+}
+
+function normalizeAttachmentLogicalName(
+  originalName: string,
+  options?: { nested?: boolean },
+): string {
+  const segments = originalName
+    .split(/[\\/]/)
+    .map((segment) => segment.trim())
+    .filter((segment) => segment !== "" && segment !== "." && segment !== "..");
+  if (options?.nested) {
+    const sanitized = segments
+      .map(sanitizeLogicalNameSegment)
+      .filter(Boolean)
+      .join("/");
+    return sanitized || "attachment";
+  }
+  const fileName = segments.pop();
+  return sanitizeLogicalNameSegment(fileName || "attachment") || "attachment";
 }
 
 export function createUniqueAttachmentLogicalName(
   originalName: string,
   usedNames: Set<string>,
+  options?: { nested?: boolean },
 ): string {
-  const logicalName = normalizeAttachmentLogicalName(originalName);
+  const logicalName = normalizeAttachmentLogicalName(originalName, options);
   if (!usedNames.has(logicalName)) {
     usedNames.add(logicalName);
     return logicalName;
@@ -174,7 +209,9 @@ async function readAttachmentManifest(
         typeof entry.storedFileName === "string" &&
         typeof entry.mimeType === "string" &&
         typeof entry.sizeBytes === "number" &&
-        typeof entry.createdAt === "string",
+        typeof entry.createdAt === "string" &&
+        (entry.archiveLogicalName === undefined ||
+          typeof entry.archiveLogicalName === "string"),
     );
   } catch (error) {
     if (
@@ -233,7 +270,7 @@ async function appendAttachmentManifestEntriesWithLogicalNamesUnlocked(
   }
 
   const finalized: AttachmentManifestEntry[] = [];
-  for (const { requestedLogicalName, ...entry } of entries) {
+  for (const { requestedLogicalName, nestedLogicalName, ...entry } of entries) {
     const existingEntry = byStoredFileName.get(entry.storedFileName);
     if (existingEntry) {
       finalized.push(existingEntry);
@@ -245,6 +282,7 @@ async function appendAttachmentManifestEntriesWithLogicalNamesUnlocked(
       logicalName: createUniqueAttachmentLogicalName(
         requestedLogicalName,
         usedNames,
+        { nested: nestedLogicalName },
       ),
     };
     finalized.push(newEntry);
@@ -333,11 +371,40 @@ export async function pruneAttachmentManifest(
   );
 }
 
+/**
+ * Resolve a manifest `storedFileName` to its path inside the media directory,
+ * or null when the name could point anywhere else. Uploads are a single
+ * segment; archive entries are `<dir>/<path>` with forward slashes. Every
+ * segment must be a plain name, so a tampered manifest cannot reach outside
+ * the media directory.
+ */
+export function resolveStoredFilePath(
+  mediaDir: string,
+  storedFileName: string,
+): string | null {
+  const segments = storedFileName.split("/");
+  for (const segment of segments) {
+    if (
+      segment === "" ||
+      segment === "." ||
+      segment === ".." ||
+      segment.includes("\\") ||
+      segment.includes("\0")
+    ) {
+      return null;
+    }
+  }
+  return path.join(mediaDir, ...segments);
+}
+
 async function toStoredAttachmentInfoIfPresent(
   mediaDir: string,
   entry: AttachmentManifestEntry,
 ): Promise<StoredAttachmentInfo | null> {
-  const filePath = path.join(mediaDir, path.basename(entry.storedFileName));
+  const filePath = resolveStoredFilePath(mediaDir, entry.storedFileName);
+  if (!filePath) {
+    return null;
+  }
   try {
     const stat = await fs.stat(filePath);
     if (!stat.isFile()) {

@@ -90,7 +90,13 @@ export async function cleanupOldMediaFiles(): Promise<void> {
             const filePath = path.join(safeMediaDir.path, file);
             try {
               const entryStat = await fs.lstat(filePath);
-              if (entryStat.isSymbolicLink() || !entryStat.isFile()) {
+              if (entryStat.isSymbolicLink()) {
+                return 0;
+              }
+              // Unpacked zip attachments live in a directory named after the
+              // archive's stored hash; they age out with the archive itself.
+              const isExtractedArchiveDir = entryStat.isDirectory();
+              if (!isExtractedArchiveDir && !entryStat.isFile()) {
                 return 0;
               }
               const realFilePath = await fs.realpath(filePath);
@@ -99,7 +105,11 @@ export async function cleanupOldMediaFiles(): Promise<void> {
               }
               const stat = await fs.stat(filePath);
               if (stat.mtimeMs < cutoffMs) {
-                await fs.unlink(filePath);
+                if (isExtractedArchiveDir) {
+                  await fs.rm(filePath, { recursive: true, force: true });
+                } else {
+                  await fs.unlink(filePath);
+                }
                 return 1;
               }
             } catch (err) {

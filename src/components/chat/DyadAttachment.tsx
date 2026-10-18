@@ -1,6 +1,6 @@
 import type React from "react";
 import { useEffect, useState } from "react";
-import { ExternalLink, FileText, Image } from "lucide-react";
+import { ExternalLink, FileArchive, FileText, Image } from "lucide-react";
 import { DyadCard, DyadCardHeader, DyadBadge } from "./DyadCardPrimitives";
 import { ImageLightbox, openFile } from "./ImageLightbox";
 
@@ -36,6 +36,8 @@ export const DyadAttachment: React.FC<DyadAttachmentProps> = ({
   const attachmentType = node?.properties?.attachmentType || "chat-context";
 
   const isImage = type.startsWith("image/");
+  const isArchive =
+    type === "application/zip" || name.toLowerCase().endsWith(".zip");
   const accentColor =
     attachmentType === "upload-to-codebase" ? "blue" : "green";
   const [imageError, setImageError] = useState(false);
@@ -93,7 +95,15 @@ export const DyadAttachment: React.FC<DyadAttachmentProps> = ({
       onClick={filePath ? () => openFile(filePath) : undefined}
     >
       <DyadCardHeader
-        icon={isImage ? <Image size={15} /> : <FileText size={15} />}
+        icon={
+          isImage ? (
+            <Image size={15} />
+          ) : isArchive ? (
+            <FileArchive size={15} />
+          ) : (
+            <FileText size={15} />
+          )
+        }
         accentColor={accentColor}
       >
         <span className="font-medium text-sm text-foreground truncate">

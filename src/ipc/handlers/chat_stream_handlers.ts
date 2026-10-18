@@ -194,6 +194,7 @@ import { getAiMessagesJsonIfWithinLimit } from "../utils/ai_messages_utils";
 import { readSettings, setSentinelActiveChat } from "@/main/settings";
 import { recordAppSizeForSession } from "@/main/last_session_store";
 import {
+  buildArchiveAttachmentInfo,
   buildLocalAgentAttachmentInfo,
   assertInlineAttachmentsFit,
   buildInlinePdfFileParts,
@@ -206,6 +207,14 @@ import {
   type PendingStoredChatAttachment,
   type StoredChatAttachment,
 } from "../utils/chat_attachment_utils";
+import {
+  buildArchiveManifestEntries,
+  extractZipAttachment,
+  isZipAttachmentName,
+  isZipExtractionError,
+  toZipExtractionErrorMessage,
+  type ExtractedArchiveSummary,
+} from "../utils/zip/zip_attachment";
 import { inspectBase64DataUrl } from "../../shared/chatAttachmentLimits";
 import { toRendererMessages } from "../utils/renderer_chat_message";
 
@@ -1267,6 +1276,11 @@ export function registerChatStreamHandlers() {
       let storedAttachments: StoredChatAttachment[] = [];
       const pendingStoredAttachments: PendingStoredChatAttachment[] = [];
       const manifestEntries: AttachmentManifestEntryInput[] = [];
+      // Parallel to pendingStoredAttachments: the unpacked contents of each
+      // zip attachment, registered under the archive's final logical name
+      // once that name is known.
+      const pendingArchiveSummaries: (ExtractedArchiveSummary | undefined)[] =
+        [];
       const usedLogicalNames = new Set<string>();
       const appPath = getDyadAppPath(chat.app.path);
 
@@ -1318,6 +1332,40 @@ export function registerChatStreamHandlers() {
           // Save to .dyad/media dir
           const persistentPath = path.join(mediaDir, filename);
           await writeFile(persistentPath, fileBuffer);
+
+          // Unpack zip archives next to the stored file so the agent can
+          // reach each entry as attachments:<archive>/<path>. A corrupt or
+          // oversized archive rejects the turn with a clear message.
+          let archiveSummary: ExtractedArchiveSummary | undefined;
+          if (isZipAttachmentName(attachment.name)) {
+            try {
+              archiveSummary = await extractZipAttachment({
+                mediaDir,
+                storedFileName: filename,
+                archive: fileBuffer,
+                excludeDotenvFiles: chat.executionBackend === "claude-code",
+              });
+            } catch (error) {
+              await fs.promises
+                .rm(persistentPath, { force: true })
+                .catch(() => undefined);
+              if (isZipExtractionError(error)) {
+                throw new DyadError(
+                  toZipExtractionErrorMessage(attachment.name, error),
+                  DyadErrorKind.Validation,
+                );
+              }
+              throw error;
+            }
+            sendTelemetryEvent("attachment.archive_extracted", {
+              appId: chat.app.id,
+              chatId: req.chatId,
+              fileCount: archiveSummary.files.length,
+              totalBytes: archiveSummary.totalBytes,
+              skipped: archiveSummary.skipped,
+            });
+          }
+          pendingArchiveSummaries.push(archiveSummary);
           attachmentPaths.push(persistentPath);
           pendingStoredAttachments.push({
             filePath: persistentPath,
@@ -1501,7 +1549,37 @@ export function registerChatStreamHandlers() {
         ...entry,
         filePath: pendingStoredAttachments[index].filePath,
         attachmentType: pendingStoredAttachments[index].attachmentType,
+        archive: pendingArchiveSummaries[index],
       }));
+
+      // Register unpacked archive entries under the archive's final logical
+      // name (which may have gained a suffix) so attachments:<archive>/<path>
+      // resolves through the manifest like any other attachment.
+      const archiveManifestEntries = storedAttachments.flatMap((attachment) =>
+        attachment.archive
+          ? buildArchiveManifestEntries(
+              attachment.logicalName,
+              attachment.archive,
+              attachment.createdAt ?? new Date().toISOString(),
+            )
+          : [],
+      );
+      if (archiveManifestEntries.length > 0) {
+        await appendAttachmentManifestEntriesWithLogicalNames(
+          appPath,
+          archiveManifestEntries,
+        );
+        // Modes that inline attachments instead of using the on-disk block
+        // still need to know how to reach the archive's entries.
+        for (const attachment of storedAttachments) {
+          if (attachment.archive) {
+            attachmentInfo += `\n${buildArchiveAttachmentInfo(
+              { ...attachment, archive: attachment.archive },
+              { includeSandboxScriptHint: false, includeCopyFileHint: false },
+            ).join("\n")}\n`;
+          }
+        }
+      }
 
       // Expand /implement-plan= into full implementation prompt
       // Keep a human-readable title for display in the UI; the expanded

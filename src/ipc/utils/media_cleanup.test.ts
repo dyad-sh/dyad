@@ -8,6 +8,7 @@ const fsMocks = vi.hoisted(() => {
     lstat: vi.fn(),
     stat: vi.fn(),
     unlink: vi.fn(),
+    rm: vi.fn(),
   };
 });
 
@@ -73,6 +74,7 @@ describe("cleanupOldMediaFiles", () => {
     fsMocks.lstat.mockReset();
     fsMocks.stat.mockReset();
     fsMocks.unlink.mockReset();
+    fsMocks.rm.mockReset();
     logMocks.log.mockClear();
     logMocks.warn.mockClear();
     dbMocks.select.mockClear();
@@ -97,6 +99,7 @@ describe("cleanupOldMediaFiles", () => {
         });
       }
       return Promise.resolve({
+        isDirectory: () => false,
         isFile: () => true,
         isSymbolicLink: () => false,
       });
@@ -198,17 +201,45 @@ describe("cleanupOldMediaFiles", () => {
     expect(logMocks.warn.mock.calls[0][1]).toBe(statError);
   });
 
-  it("should skip subdirectories inside .dyad/media", async () => {
+  it("should remove aged extracted-archive directories inside .dyad/media", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2025-01-31T00:00:00.000Z"));
 
     const oldMtimeMs = Date.now() - 31 * 24 * 60 * 60 * 1000;
+    const recentMtimeMs = Date.now() - 5 * 24 * 60 * 60 * 1000;
 
     dbMocks.from.mockResolvedValue([{ path: "my-app" }]);
 
-    fsMocks.readdir.mockResolvedValue(["some-subdir", "old-file.png"]);
+    fsMocks.readdir.mockResolvedValue([
+      "some-subdir",
+      "recent-subdir",
+      "old-file.png",
+    ]);
+    fsMocks.lstat.mockImplementation((filePath: string) => {
+      if (filePath.endsWith(path.join(".dyad", "media"))) {
+        return Promise.resolve({
+          isDirectory: () => true,
+          isSymbolicLink: () => false,
+        });
+      }
+      if (filePath.includes("subdir")) {
+        return Promise.resolve({
+          isDirectory: () => true,
+          isSymbolicLink: () => false,
+          isFile: () => false,
+        });
+      }
+      return Promise.resolve({
+        isDirectory: () => false,
+        isFile: () => true,
+        isSymbolicLink: () => false,
+      });
+    });
 
     fsMocks.stat.mockImplementation((filePath: string) => {
+      if (filePath.includes("recent-subdir")) {
+        return Promise.resolve({ isFile: () => false, mtimeMs: recentMtimeMs });
+      }
       if (filePath.includes("some-subdir")) {
         return Promise.resolve({ isFile: () => false, mtimeMs: oldMtimeMs });
       }
@@ -216,6 +247,7 @@ describe("cleanupOldMediaFiles", () => {
     });
 
     fsMocks.unlink.mockResolvedValue(undefined);
+    fsMocks.rm.mockResolvedValue(undefined);
 
     await cleanupOldMediaFiles();
 
@@ -223,9 +255,15 @@ describe("cleanupOldMediaFiles", () => {
     expect(fsMocks.unlink).toHaveBeenCalledWith(
       expect.stringContaining("old-file.png"),
     );
+    expect(fsMocks.rm).toHaveBeenCalledTimes(1);
+    expect(fsMocks.rm).toHaveBeenCalledWith(
+      expect.stringContaining("some-subdir"),
+      { recursive: true, force: true },
+    );
     expect(mediaPathMocks.pruneAttachmentManifest).toHaveBeenCalledWith(
       path.join("/home/user/dyad-apps", "my-app"),
     );
+    expect(logMocks.log).toHaveBeenCalledWith("Cleaned up 2 old media files");
   });
 
   it("should keep cleanup going when attachment manifest pruning fails", async () => {

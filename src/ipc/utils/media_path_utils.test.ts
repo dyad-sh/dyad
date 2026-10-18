@@ -1,0 +1,174 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
+import {
+  appendAttachmentManifestEntriesWithLogicalNames,
+  createUniqueAttachmentLogicalName,
+  getDyadMediaDir,
+  listStoredAttachments,
+  pruneAttachmentManifest,
+  resolveAttachmentLogicalPath,
+  resolveStoredFilePath,
+} from "./media_path_utils";
+
+describe("createUniqueAttachmentLogicalName", () => {
+  it("reduces upload names to their final segment", () => {
+    expect(
+      createUniqueAttachmentLogicalName("dir/sub/notes.txt", new Set()),
+    ).toBe("notes.txt");
+  });
+
+  it("keeps directory segments for nested names", () => {
+    expect(
+      createUniqueAttachmentLogicalName("proj.zip/src/index.ts", new Set(), {
+        nested: true,
+      }),
+    ).toBe("proj.zip/src/index.ts");
+  });
+
+  it("sanitizes every segment of a nested name", () => {
+    expect(
+      createUniqueAttachmentLogicalName(
+        "a<b>.zip\\sub:dir/../x`y.ts",
+        new Set(),
+        {
+          nested: true,
+        },
+      ),
+    ).toBe("a_b_.zip/sub_dir/x_y.ts");
+  });
+
+  it("suffixes a nested name that collides", () => {
+    const used = new Set(["proj.zip/src/index.ts"]);
+    expect(
+      createUniqueAttachmentLogicalName("proj.zip/src/index.ts", used, {
+        nested: true,
+      }),
+    ).toBe("proj.zip/src/index-2.ts");
+  });
+});
+
+describe("resolveStoredFilePath", () => {
+  const mediaDir = path.join("/apps", "demo", ".dyad", "media");
+
+  it("resolves plain and nested stored names inside the media directory", () => {
+    expect(resolveStoredFilePath(mediaDir, "abc.png")).toBe(
+      path.join(mediaDir, "abc.png"),
+    );
+    expect(resolveStoredFilePath(mediaDir, "abc/src/index.ts")).toBe(
+      path.join(mediaDir, "abc", "src", "index.ts"),
+    );
+  });
+
+  it("refuses names that could leave the media directory", () => {
+    for (const name of [
+      "../x",
+      "a/../x",
+      "/abs",
+      "a//b",
+      "a\\b",
+      ".",
+      "a/.",
+      "a\u0000",
+    ]) {
+      expect(resolveStoredFilePath(mediaDir, name)).toBeNull();
+    }
+  });
+});
+
+describe("manifest with extracted archive entries", () => {
+  let appPath: string;
+
+  beforeEach(() => {
+    appPath = fs.mkdtempSync(path.join(os.tmpdir(), "dyad-manifest-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(appPath, { recursive: true, force: true });
+  });
+
+  function writeStored(relative: string, content: string) {
+    const filePath = path.join(
+      getDyadMediaDir(appPath),
+      ...relative.split("/"),
+    );
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, content);
+  }
+
+  it("resolves nested logical names to extracted files and prunes them when gone", async () => {
+    writeStored("hash.zip", "zipbytes");
+    writeStored("hash/src/index.ts", "export {};");
+    const [archive] = await appendAttachmentManifestEntriesWithLogicalNames(
+      appPath,
+      [
+        {
+          requestedLogicalName: "proj.zip",
+          originalName: "proj.zip",
+          storedFileName: "hash.zip",
+          mimeType: "application/zip",
+          sizeBytes: 8,
+          createdAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    );
+    expect(archive.logicalName).toBe("proj.zip");
+    await appendAttachmentManifestEntriesWithLogicalNames(appPath, [
+      {
+        requestedLogicalName: "proj.zip/src/index.ts",
+        nestedLogicalName: true,
+        originalName: "src/index.ts",
+        storedFileName: "hash/src/index.ts",
+        mimeType: "text/typescript",
+        sizeBytes: 10,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        archiveLogicalName: "proj.zip",
+      },
+    ]);
+
+    const resolved = await resolveAttachmentLogicalPath(
+      appPath,
+      "attachments:proj.zip/src/index.ts",
+    );
+    expect(resolved?.filePath).toBe(
+      path.join(getDyadMediaDir(appPath), "hash", "src", "index.ts"),
+    );
+    expect(resolved?.archiveLogicalName).toBe("proj.zip");
+    expect(
+      (await listStoredAttachments(appPath)).map((a) => a.logicalName),
+    ).toEqual(["proj.zip", "proj.zip/src/index.ts"]);
+
+    fs.rmSync(path.join(getDyadMediaDir(appPath), "hash"), { recursive: true });
+    expect(await pruneAttachmentManifest(appPath)).toBe(1);
+    expect(
+      (await listStoredAttachments(appPath)).map((a) => a.logicalName),
+    ).toEqual(["proj.zip"]);
+  });
+
+  it("ignores manifest entries whose stored name could escape the media directory", async () => {
+    const manifestPath = path.join(
+      getDyadMediaDir(appPath),
+      "attachments-manifest.json",
+    );
+    fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
+    fs.writeFileSync(
+      manifestPath,
+      JSON.stringify([
+        {
+          logicalName: "evil",
+          originalName: "evil",
+          storedFileName: "../../etc/passwd",
+          mimeType: "text/plain",
+          sizeBytes: 1,
+          createdAt: "2026-01-01T00:00:00.000Z",
+        },
+      ]),
+    );
+    expect(
+      await resolveAttachmentLogicalPath(appPath, "attachments:evil"),
+    ).toBeNull();
+    expect(await listStoredAttachments(appPath)).toEqual([]);
+  });
+});

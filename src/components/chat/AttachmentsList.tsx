@@ -1,4 +1,4 @@
-import { FileText, X, MessageSquare, Upload } from "lucide-react";
+import { FileArchive, FileText, X, MessageSquare, Upload } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { FileAttachment } from "@/ipc/types";
 import { useTranslation } from "react-i18next";
@@ -69,6 +69,8 @@ export function AttachmentsList({
             )}
             {attachment.file.type.startsWith("image/") ? (
               <ImageAttachmentThumbnail file={attachment.file} />
+            ) : attachment.file.name.toLowerCase().endsWith(".zip") ? (
+              <FileArchive size={12} />
             ) : (
               <FileText size={12} />
             )}

@@ -8,6 +8,7 @@ import {
   buildInlinePdfFileParts,
   buildLocalAgentAttachmentInfo,
   hasScriptReadableAttachment,
+  MAX_ARCHIVE_ENTRIES_IN_PROMPT,
   messagesContainPdf,
   resolveAttachmentDeliveryConfig,
   type StoredChatAttachment,
@@ -181,5 +182,114 @@ describe("assertInlineAttachmentsFit", () => {
         10,
       ),
     ).not.toThrow();
+  });
+});
+
+describe("archive attachments", () => {
+  function archiveAttachment(
+    overrides: Partial<StoredChatAttachment> = {},
+  ): StoredChatAttachment {
+    return {
+      logicalName: "proj.zip",
+      originalName: "proj.zip",
+      storedFileName: "hash.zip",
+      mimeType: "application/zip",
+      sizeBytes: 2048,
+      filePath: "/apps/demo/.dyad/media/hash.zip",
+      attachmentType: "chat-context",
+      archive: {
+        extractedDirName: "hash",
+        files: [
+          { relativePath: "README.md", sizeBytes: 18 },
+          { relativePath: "src/index.ts", sizeBytes: 26 },
+        ],
+        skipped: { ignored: 2, encrypted: 1 },
+        strippedRootDir: "proj",
+        totalBytes: 44,
+      },
+      ...overrides,
+    };
+  }
+
+  it("describes the archive, its entries and how to read them", () => {
+    const text = buildLocalAgentAttachmentInfo(
+      [archiveAttachment()],
+      resolveAttachmentDeliveryConfig({
+        mode: "local-agent",
+        settings: { enableSandboxScriptExecution: false },
+        hasImageAttachments: false,
+        hasUploadedAttachments: false,
+      }),
+    );
+    expect(text).toContain(
+      '- attachments:proj.zip (2 KB, application/zip): zip archive unpacked into 2 files (44 B); its single top-level folder "proj" was unwrapped; 3 entries skipped (1 encrypted, 2 packaging noise such as node_modules or __MACOSX).',
+    );
+    expect(text).toContain(
+      "Read an entry with read_file using attachments:proj.zip/<entry path>.",
+    );
+    expect(text).not.toContain("execute_sandbox_script");
+    expect(text).toContain(
+      "Do not copy archive contents into the project unless the user asks for that.",
+    );
+    expect(text).toContain("    README.md (18 B)");
+    expect(text).toContain("    src/index.ts (26 B)");
+  });
+
+  it("adds the sandbox hint and the upload instruction when they apply", () => {
+    const text = buildLocalAgentAttachmentInfo(
+      [archiveAttachment({ attachmentType: "upload-to-codebase" })],
+      {
+        ...resolveAttachmentDeliveryConfig({
+          mode: "local-agent",
+          settings: { enableSandboxScriptExecution: true },
+          hasImageAttachments: false,
+          hasUploadedAttachments: true,
+        }),
+        includeSandboxScriptHint: true,
+      },
+    );
+    expect(text).toContain(
+      'or process many entries at once with execute_sandbox_script (list_files("attachments:") enumerates them).',
+    );
+    expect(text).toContain(
+      "The user wants these files added to the project: copy each relevant entry into the right place with copy_file.",
+    );
+    expect(text).not.toContain("Do not copy archive contents");
+  });
+
+  it("caps the inline entry list", () => {
+    const files = Array.from(
+      { length: MAX_ARCHIVE_ENTRIES_IN_PROMPT + 5 },
+      (_, i) => ({
+        relativePath: `f${i}.txt`,
+        sizeBytes: 1,
+      }),
+    );
+    const text = buildLocalAgentAttachmentInfo(
+      [
+        archiveAttachment({
+          archive: {
+            extractedDirName: "hash",
+            files,
+            skipped: {},
+            strippedRootDir: null,
+            totalBytes: files.length,
+          },
+        }),
+      ],
+      resolveAttachmentDeliveryConfig({
+        mode: "local-agent",
+        settings: { enableSandboxScriptExecution: false },
+        hasImageAttachments: false,
+        hasUploadedAttachments: false,
+      }),
+    );
+    expect(text).toContain(
+      `    f${MAX_ARCHIVE_ENTRIES_IN_PROMPT - 1}.txt (1 B)`,
+    );
+    expect(text).not.toContain(`    f${MAX_ARCHIVE_ENTRIES_IN_PROMPT}.txt`);
+    expect(text).toContain("    ...and 5 more entries not listed here.");
+    expect(text).not.toContain("was unwrapped");
+    expect(text).not.toContain("skipped");
   });
 });

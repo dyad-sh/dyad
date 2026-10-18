@@ -15,9 +15,15 @@ import {
   toAttachmentLogicalPath,
   type StoredAttachmentInfo,
 } from "@/ipc/utils/media_path_utils";
+import {
+  describeSkippedArchiveEntries,
+  type ExtractedArchiveSummary,
+} from "@/ipc/utils/zip/zip_attachment";
 
 export type StoredChatAttachment = StoredAttachmentInfo & {
   attachmentType: "upload-to-codebase" | "chat-context";
+  /** Present when the attachment is a zip archive that was unpacked. */
+  archive?: ExtractedArchiveSummary;
 };
 
 export type PendingStoredChatAttachment = Omit<
@@ -200,6 +206,82 @@ function formatAttachmentSize(sizeBytes: number): string {
   return `${Math.round((sizeBytes / (1024 * 1024)) * 10) / 10} MB`;
 }
 
+/** Entries listed inline for an archive before the model must enumerate. */
+export const MAX_ARCHIVE_ENTRIES_IN_PROMPT = 100;
+
+/**
+ * Prompt lines describing an unpacked archive attachment: how it was
+ * unpacked, how to reach its entries, and the entries themselves (up to a
+ * cap). The caller supplies only the hints that apply to the current mode.
+ */
+export function buildArchiveAttachmentInfo(
+  attachment: StoredChatAttachment & { archive: ExtractedArchiveSummary },
+  hints: { includeSandboxScriptHint: boolean; includeCopyFileHint: boolean },
+): string[] {
+  const { archive } = attachment;
+  const logicalPath = toAttachmentLogicalPath(attachment.logicalName);
+  const fileCount = archive.files.length;
+  const summaryParts = [
+    `zip archive unpacked into ${fileCount} ${fileCount === 1 ? "file" : "files"} (${formatAttachmentSize(archive.totalBytes)})`,
+  ];
+  if (archive.strippedRootDir) {
+    summaryParts.push(
+      `its single top-level folder "${archive.strippedRootDir}" was unwrapped`,
+    );
+  }
+  const skippedSummary = describeSkippedArchiveEntries(archive.skipped);
+  if (skippedSummary) {
+    summaryParts.push(skippedSummary);
+  }
+  const lines = [
+    `- ${logicalPath} (${formatAttachmentSize(attachment.sizeBytes)}, ${attachment.mimeType}): ${summaryParts.join("; ")}.`,
+  ];
+
+  const access = [
+    `Read an entry with read_file using ${logicalPath}/<entry path>`,
+  ];
+  if (hints.includeSandboxScriptHint) {
+    access.push(
+      `or process many entries at once with execute_sandbox_script (list_files("attachments:") enumerates them)`,
+    );
+  }
+  lines.push(`  ${access.join(", ")}.`);
+  if (
+    hints.includeCopyFileHint &&
+    attachment.attachmentType === "upload-to-codebase"
+  ) {
+    lines.push(
+      "  The user wants these files added to the project: copy each relevant entry into the right place with copy_file.",
+    );
+  } else {
+    lines.push(
+      "  Do not copy archive contents into the project unless the user asks for that.",
+    );
+  }
+
+  if (fileCount > 0) {
+    lines.push("  Entries:");
+    for (const file of archive.files.slice(0, MAX_ARCHIVE_ENTRIES_IN_PROMPT)) {
+      lines.push(
+        `    ${file.relativePath} (${formatAttachmentSize(file.sizeBytes)})`,
+      );
+    }
+    const remaining = fileCount - MAX_ARCHIVE_ENTRIES_IN_PROMPT;
+    if (remaining > 0) {
+      lines.push(
+        `    ...and ${remaining} more ${remaining === 1 ? "entry" : "entries"} not listed here.`,
+      );
+    }
+  }
+  return lines;
+}
+
+function hasArchive(
+  attachment: StoredChatAttachment,
+): attachment is StoredChatAttachment & { archive: ExtractedArchiveSummary } {
+  return attachment.archive !== undefined;
+}
+
 export function buildLocalAgentAttachmentInfo(
   attachments: StoredChatAttachment[],
   deliveryConfig: AttachmentDeliveryConfig,
@@ -228,6 +310,10 @@ export function buildLocalAgentAttachmentInfo(
     : ["Attachments available on disk for copying into the codebase:"];
 
   for (const attachment of diskAttachments) {
+    if (hasArchive(attachment)) {
+      lines.push(...buildArchiveAttachmentInfo(attachment, deliveryConfig));
+      continue;
+    }
     const uploadNote =
       deliveryConfig.includeCopyFileHint &&
       attachment.attachmentType === "upload-to-codebase"

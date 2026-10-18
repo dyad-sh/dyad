@@ -1,5 +1,6 @@
 import { unescapeXmlContent } from "../../shared/xmlEscape";
 import type { Message } from "@/ipc/types";
+import { isCancelledResponseContent } from "@/shared/chatCancellation";
 
 /**
  * Tag the model appends to the end of a completed writable turn with short
@@ -65,7 +66,12 @@ export function selectSuggestedPrompts({
 }): SuggestedPromptsSelection | null {
   if (isStreaming) return null;
   const last = messages.at(-1);
-  if (!last || last.role !== "assistant" || last.approvalState === "rejected") {
+  if (
+    !last ||
+    last.role !== "assistant" ||
+    last.approvalState === "rejected" ||
+    isCancelledResponseContent(last.content)
+  ) {
     return null;
   }
   const prompts = extractSuggestedPrompts(last.content);

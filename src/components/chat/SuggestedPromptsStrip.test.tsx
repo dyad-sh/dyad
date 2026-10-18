@@ -27,6 +27,7 @@ describe("SuggestedPromptsStrip", () => {
     const onSelect = vi.fn();
     render(
       <SuggestedPromptsStrip
+        chatId={7}
         messageId={1}
         prompts={["Add a dark mode toggle", "Make the header responsive"]}
         onSelect={onSelect}
@@ -51,6 +52,7 @@ describe("SuggestedPromptsStrip", () => {
     const wrapper = makeWrapper();
     const { rerender } = render(
       <SuggestedPromptsStrip
+        chatId={7}
         messageId={1}
         prompts={["Add a dark mode toggle"]}
         onSelect={vi.fn()}
@@ -63,6 +65,7 @@ describe("SuggestedPromptsStrip", () => {
 
     rerender(
       <SuggestedPromptsStrip
+        chatId={7}
         messageId={1}
         prompts={["Add a dark mode toggle"]}
         onSelect={vi.fn()}
@@ -72,6 +75,7 @@ describe("SuggestedPromptsStrip", () => {
 
     rerender(
       <SuggestedPromptsStrip
+        chatId={7}
         messageId={2}
         prompts={["Connect a database"]}
         onSelect={vi.fn()}
@@ -82,10 +86,11 @@ describe("SuggestedPromptsStrip", () => {
     ).toBeTruthy();
   });
 
-  it("stays hidden for a dismissed message after unmount and remount", () => {
+  it("keeps dismissals separate per chat", () => {
     const wrapper = makeWrapper();
     const first = render(
       <SuggestedPromptsStrip
+        chatId={7}
         messageId={1}
         prompts={["Add a dark mode toggle"]}
         onSelect={vi.fn()}
@@ -97,6 +102,35 @@ describe("SuggestedPromptsStrip", () => {
 
     render(
       <SuggestedPromptsStrip
+        chatId={8}
+        messageId={5}
+        prompts={["Connect a database"]}
+        onSelect={vi.fn()}
+      />,
+      { wrapper },
+    );
+    expect(
+      screen.getByRole("button", { name: "Connect a database" }),
+    ).toBeTruthy();
+  });
+
+  it("stays hidden for a dismissed message after unmount and remount", () => {
+    const wrapper = makeWrapper();
+    const first = render(
+      <SuggestedPromptsStrip
+        chatId={7}
+        messageId={1}
+        prompts={["Add a dark mode toggle"]}
+        onSelect={vi.fn()}
+      />,
+      { wrapper },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Hide suggestions" }));
+    first.unmount();
+
+    render(
+      <SuggestedPromptsStrip
+        chatId={7}
         messageId={1}
         prompts={["Add a dark mode toggle"]}
         onSelect={vi.fn()}

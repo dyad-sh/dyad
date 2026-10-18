@@ -84,6 +84,21 @@ describe("selectSuggestedPrompts", () => {
     ).toBeNull();
   });
 
+  it("offers nothing for a cancelled turn", () => {
+    expect(
+      selectSuggestedPrompts({
+        messages: [
+          user,
+          {
+            ...withPrompts,
+            content: `${withPrompts.content}\n\n[Response cancelled by user]`,
+          },
+        ],
+        isStreaming: false,
+      }),
+    ).toBeNull();
+  });
+
   it("offers nothing for a rejected message or one without the tag", () => {
     expect(
       selectSuggestedPrompts({

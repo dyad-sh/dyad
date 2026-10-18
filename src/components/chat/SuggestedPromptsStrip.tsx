@@ -2,9 +2,10 @@ import { useAtom } from "jotai";
 import { useTranslation } from "react-i18next";
 import { Sparkles, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { dismissedSuggestedPromptMessageIdsAtom } from "@/atoms/suggestedPromptsAtoms";
+import { dismissedSuggestedPromptsByChatIdAtom } from "@/atoms/suggestedPromptsAtoms";
 
 interface SuggestedPromptsStripProps {
+  chatId: number;
   /** Assistant message the prompts came from; dismissal is scoped to it. */
   messageId: number;
   prompts: string[];
@@ -17,16 +18,18 @@ interface SuggestedPromptsStripProps {
  * can keep iterating with one click.
  */
 export function SuggestedPromptsStrip({
+  chatId,
   messageId,
   prompts,
   onSelect,
 }: SuggestedPromptsStripProps) {
   const { t } = useTranslation("chat");
-  const [dismissedMessageIds, setDismissedMessageIds] = useAtom(
-    dismissedSuggestedPromptMessageIdsAtom,
+  const [dismissedByChatId, setDismissedByChatId] = useAtom(
+    dismissedSuggestedPromptsByChatIdAtom,
   );
 
-  if (prompts.length === 0 || dismissedMessageIds.has(messageId)) return null;
+  if (prompts.length === 0 || dismissedByChatId.get(chatId) === messageId)
+    return null;
 
   return (
     <div
@@ -43,16 +46,17 @@ export function SuggestedPromptsStrip({
           type="button"
           variant="outline"
           size="sm"
-          className="h-7 rounded-full px-3 text-xs font-normal whitespace-normal text-left"
+          className="h-7 max-w-full rounded-full px-3 text-xs font-normal"
+          title={prompt}
           onClick={() => onSelect(prompt)}
         >
-          {prompt}
+          <span className="truncate">{prompt}</span>
         </Button>
       ))}
       <button
         type="button"
         onClick={() =>
-          setDismissedMessageIds((prev) => new Set(prev).add(messageId))
+          setDismissedByChatId((prev) => new Map(prev).set(chatId, messageId))
         }
         aria-label={t("suggestedPrompts.dismiss")}
         title={t("suggestedPrompts.dismiss")}

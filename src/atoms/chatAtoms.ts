@@ -14,6 +14,7 @@ import {
   clearChatAnnotations,
 } from "@/atoms/chatAnnotationAtoms";
 import { planAcceptInNewChatByChatIdAtom } from "@/atoms/planAtoms";
+import { dismissedSuggestedPromptsByChatIdAtom } from "@/atoms/suggestedPromptsAtoms";
 import { createChatTabSessionStorage } from "@/window_infrastructure/chat_tab_session_storage";
 
 // Per-chat atoms implemented with maps keyed by chatId
@@ -530,6 +531,12 @@ export const removeChatIdFromAllTrackingAtom = atom(
       const next = new Map(planAcceptChoices);
       next.delete(chatId);
       set(planAcceptInNewChatByChatIdAtom, next);
+    }
+    const dismissedSuggestions = get(dismissedSuggestedPromptsByChatIdAtom);
+    if (dismissedSuggestions.has(chatId)) {
+      const next = new Map(dismissedSuggestions);
+      next.delete(chatId);
+      set(dismissedSuggestedPromptsByChatIdAtom, next);
     }
     // Clear unsent message annotations so they don't accumulate for a chat
     // that no longer exists (or resurface if the id is ever reused)

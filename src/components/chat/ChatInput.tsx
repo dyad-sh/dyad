@@ -809,6 +809,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         onAcceptanceRejected: releaseLatch,
         onSettled: releaseLatch,
       });
+      posthog.capture("chat:submit", { chatMode, source: "suggested_prompt" });
     },
     [
       chatId,
@@ -818,6 +819,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       streamMessage,
       isChatModeLoading,
       storedChatMode,
+      posthog,
+      chatMode,
     ],
   );
 
@@ -1105,13 +1108,17 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           />
 
           {/* Model-suggested follow-up prompts from the last reply */}
-          {suggestedPrompts && !pendingToolConsent && !disableSendButton && (
-            <SuggestedPromptsStrip
-              messageId={suggestedPrompts.messageId}
-              prompts={suggestedPrompts.prompts}
-              onSelect={handleSelectSuggestedPrompt}
-            />
-          )}
+          {chatId &&
+            suggestedPrompts &&
+            !pendingToolConsent &&
+            !disableSendButton && (
+              <SuggestedPromptsStrip
+                chatId={chatId}
+                messageId={suggestedPrompts.messageId}
+                prompts={suggestedPrompts.prompts}
+                onSelect={handleSelectSuggestedPrompt}
+              />
+            )}
 
           {/* Use the DragDropOverlay component */}
           <DragDropOverlay isDraggingOver={isDraggingOver} />

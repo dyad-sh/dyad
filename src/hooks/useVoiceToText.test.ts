@@ -75,6 +75,46 @@ describe("useVoiceToText", () => {
     vi.restoreAllMocks();
   });
 
+  it("reports voice as busy while the microphone is still being acquired", async () => {
+    let grantMicrophone: (stream: MediaStream) => void = () => {};
+    const stream = {
+      getTracks: () => [{ stop: trackStopMock }],
+    } as unknown as MediaStream;
+    Object.defineProperty(globalThis.navigator, "mediaDevices", {
+      value: {
+        getUserMedia: vi.fn(
+          () =>
+            new Promise<MediaStream>((resolve) => {
+              grantMicrophone = resolve;
+            }),
+        ),
+      },
+      configurable: true,
+    });
+
+    const { result, unmount } = renderHook(() =>
+      useVoiceToText({ enabled: true, onTranscription: vi.fn() }),
+    );
+    expect(result.current.isVoiceBusy).toBe(false);
+
+    await act(async () => {
+      result.current.toggleRecording();
+      await Promise.resolve();
+    });
+    expect(result.current.isRecording).toBe(false);
+    expect(result.current.isVoiceBusy).toBe(true);
+
+    await act(async () => {
+      grantMicrophone(stream);
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(result.current.isRecording).toBe(true));
+    expect(result.current.isVoiceBusy).toBe(true);
+
+    unmount();
+    await act(() => Promise.resolve());
+  });
+
   it("stops the active microphone stream when unmounted mid-recording", async () => {
     const onTranscription = vi.fn();
 

@@ -52,6 +52,8 @@ export function useVoiceToText({
   return {
     isRecording: isVoiceRecording(state),
     isTranscribing: isVoiceTranscribing(state),
+    // True from microphone acquisition through transcription.
+    isVoiceBusy: state.type !== "idle",
     toggleRecording,
   };
 }

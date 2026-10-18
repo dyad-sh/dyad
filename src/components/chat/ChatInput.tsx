@@ -336,11 +336,12 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     [setInputValue],
   );
 
-  const { isRecording, isTranscribing, toggleRecording } = useVoiceToText({
-    enabled: isProEnabled,
-    onTranscription: handleTranscription,
-    onError: (message) => showErrorToast(message),
-  });
+  const { isRecording, isTranscribing, isVoiceBusy, toggleRecording } =
+    useVoiceToText({
+      enabled: isProEnabled,
+      onTranscription: handleTranscription,
+      onError: (message) => showErrorToast(message),
+    });
 
   // Token counting for context limit banner
   const { result: tokenCountResult } = useCountTokens(
@@ -791,8 +792,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               hasComposerPayload ||
               selectedComponents.length > 0 ||
               !!pendingFiles ||
-              isRecording ||
-              isTranscribing,
+              isVoiceBusy,
           })
         : null,
     [
@@ -803,8 +803,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       hasComposerPayload,
       selectedComponents,
       pendingFiles,
-      isRecording,
-      isTranscribing,
+      isVoiceBusy,
     ],
   );
   const handleSelectSuggestedPrompt = useCallback(

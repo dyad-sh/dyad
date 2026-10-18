@@ -76,7 +76,7 @@ export function selectSuggestedPrompts({
   isStreaming: boolean;
   /** The last turn failed, possibly after the tag streamed, so it may be incomplete. */
   hasError?: boolean;
-  /** The user has typed or staged something, so a chip would leave it behind. */
+  /** The user is composing (typing, staging context, or using voice), so a chip would leave it behind. */
   composerHasContent?: boolean;
 }): SuggestedPromptsSelection | null {
   if (isStreaming || hasError || composerHasContent) return null;

@@ -790,7 +790,9 @@ export function ChatInput({ chatId }: { chatId?: number }) {
             composerHasContent:
               hasComposerPayload ||
               selectedComponents.length > 0 ||
-              !!pendingFiles,
+              !!pendingFiles ||
+              isRecording ||
+              isTranscribing,
           })
         : null,
     [
@@ -801,6 +803,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       hasComposerPayload,
       selectedComponents,
       pendingFiles,
+      isRecording,
+      isTranscribing,
     ],
   );
   const handleSelectSuggestedPrompt = useCallback(

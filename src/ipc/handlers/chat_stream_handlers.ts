@@ -213,8 +213,10 @@ import {
   isZipAttachmentName,
   isZipExtractionError,
   toZipExtractionErrorMessage,
+  withFinalizedEntryNames,
   type ExtractedArchiveSummary,
 } from "../utils/zip/zip_attachment";
+import { DEFAULT_ZIP_EXTRACTION_LIMITS } from "../utils/zip/zip_extract";
 import { inspectBase64DataUrl } from "../../shared/chatAttachmentLimits";
 import { toRendererMessages } from "../utils/renderer_chat_message";
 
@@ -1281,6 +1283,10 @@ export function registerChatStreamHandlers() {
       // once that name is known.
       const pendingArchiveSummaries: (ExtractedArchiveSummary | undefined)[] =
         [];
+      // One expansion budget for the whole turn, so several small archives
+      // cannot each expand to the full per-archive limit.
+      let remainingArchiveBytes =
+        DEFAULT_ZIP_EXTRACTION_LIMITS.maxTotalUncompressedBytes;
       const usedLogicalNames = new Set<string>();
       const appPath = getDyadAppPath(chat.app.path);
 
@@ -1344,7 +1350,9 @@ export function registerChatStreamHandlers() {
                 storedFileName: filename,
                 archive: fileBuffer,
                 excludeDotenvFiles: chat.executionBackend === "claude-code",
+                limits: { maxTotalUncompressedBytes: remainingArchiveBytes },
               });
+              remainingArchiveBytes -= archiveSummary.totalBytes;
             } catch (error) {
               await fs.promises
                 .rm(persistentPath, { force: true })
@@ -1402,7 +1410,10 @@ export function registerChatStreamHandlers() {
             attachmentType: attachment.attachmentType,
           });
 
-          if (attachment.attachmentType === "upload-to-codebase") {
+          if (archiveSummary) {
+            // Archives are described, with their entries, once the manifest
+            // has assigned their final names.
+          } else if (attachment.attachmentType === "upload-to-codebase") {
             // Provide the .dyad/media path so the AI can copy it into the codebase
             attachmentInfo += `\n\nFile to upload to codebase: "${attachment.name}" (path: ${persistentPath})\nUse the copy_file tool when tools are available, or emit a <dyad-copy> tag otherwise, to copy this file into the codebase at the appropriate location.\n`;
           } else {
@@ -1554,31 +1565,32 @@ export function registerChatStreamHandlers() {
 
       // Register unpacked archive entries under the archive's final logical
       // name (which may have gained a suffix) so attachments:<archive>/<path>
-      // resolves through the manifest like any other attachment.
-      const archiveManifestEntries = storedAttachments.flatMap((attachment) =>
-        attachment.archive
-          ? buildArchiveManifestEntries(
+      // resolves through the manifest like any other attachment. The prompt
+      // then lists the names the manifest actually assigned.
+      for (const attachment of storedAttachments) {
+        if (!attachment.archive) {
+          continue;
+        }
+        const finalizedEntries =
+          await appendAttachmentManifestEntriesWithLogicalNames(
+            appPath,
+            buildArchiveManifestEntries(
               attachment.logicalName,
               attachment.archive,
               attachment.createdAt ?? new Date().toISOString(),
-            )
-          : [],
-      );
-      if (archiveManifestEntries.length > 0) {
-        await appendAttachmentManifestEntriesWithLogicalNames(
-          appPath,
-          archiveManifestEntries,
+            ),
+          );
+        attachment.archive = withFinalizedEntryNames(
+          attachment.archive,
+          attachment.logicalName,
+          finalizedEntries,
         );
         // Modes that inline attachments instead of using the on-disk block
         // still need to know how to reach the archive's entries.
-        for (const attachment of storedAttachments) {
-          if (attachment.archive) {
-            attachmentInfo += `\n${buildArchiveAttachmentInfo(
-              { ...attachment, archive: attachment.archive },
-              { includeSandboxScriptHint: false, includeCopyFileHint: false },
-            ).join("\n")}\n`;
-          }
-        }
+        attachmentInfo += `\n${buildArchiveAttachmentInfo(
+          { ...attachment, archive: attachment.archive },
+          { includeSandboxScriptHint: false, includeCopyFileHint: true },
+        ).join("\n")}\n`;
       }
 
       // Expand /implement-plan= into full implementation prompt

@@ -9,6 +9,7 @@ import {
   buildLocalAgentAttachmentInfo,
   hasScriptReadableAttachment,
   MAX_ARCHIVE_ENTRIES_IN_PROMPT,
+  MAX_ARCHIVE_LISTING_CHARS,
   messagesContainPdf,
   resolveAttachmentDeliveryConfig,
   type StoredChatAttachment,
@@ -288,8 +289,48 @@ describe("archive attachments", () => {
       `    f${MAX_ARCHIVE_ENTRIES_IN_PROMPT - 1}.txt (1 B)`,
     );
     expect(text).not.toContain(`    f${MAX_ARCHIVE_ENTRIES_IN_PROMPT}.txt`);
-    expect(text).toContain("    ...and 5 more entries not listed here.");
+    expect(text).toContain(
+      '    ...and 5 more entries not listed here; list_files with directory "attachments:proj.zip" enumerates all of them.',
+    );
     expect(text).not.toContain("was unwrapped");
     expect(text).not.toContain("skipped");
+  });
+
+  it("caps the inline entry list by characters as well", () => {
+    const longName = "deeply/" + "nested/".repeat(30) + "x".repeat(200) + ".ts";
+    const files = Array.from({ length: 50 }, (_, i) => ({
+      relativePath: `${i}-${longName}`,
+      sizeBytes: 1,
+    }));
+    const text = buildLocalAgentAttachmentInfo(
+      [
+        archiveAttachment({
+          archive: {
+            extractedDirName: "hash",
+            files,
+            skipped: {},
+            strippedRootDir: null,
+            totalBytes: files.length,
+          },
+        }),
+      ],
+      resolveAttachmentDeliveryConfig({
+        mode: "local-agent",
+        settings: { enableSandboxScriptExecution: false },
+        hasImageAttachments: false,
+        hasUploadedAttachments: false,
+      }),
+    );
+    const listed = text
+      .split("\n")
+      .filter((line) => line.startsWith("    ") && line.includes(longName));
+    expect(listed.length).toBeGreaterThan(0);
+    expect(listed.length).toBeLessThan(files.length);
+    expect(listed.join("\n").length).toBeLessThanOrEqual(
+      MAX_ARCHIVE_LISTING_CHARS,
+    );
+    expect(text).toContain(
+      `...and ${files.length - listed.length} more entries not listed here`,
+    );
   });
 });

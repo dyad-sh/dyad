@@ -2,12 +2,17 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { isDotenvFilePath } from "@/utils/dotenv_redaction";
-import type { AttachmentManifestEntryInput } from "../media_path_utils";
+import { withLock } from "../lock_utils";
+import type {
+  AttachmentManifestEntry,
+  AttachmentManifestEntryInput,
+} from "../media_path_utils";
 import { getMimeType } from "../mime_utils";
 import {
   extractZipArchive,
   ZipLimitError,
   type ExtractedZipFile,
+  type ZipExtractionLimits,
   type ZipSkipReason,
 } from "./zip_extract";
 import { ZipFormatError } from "./zip_reader";
@@ -31,6 +36,10 @@ export function isZipAttachmentName(name: string): boolean {
 export interface ExtractedArchiveSummary {
   /** Directory under the media directory that holds the extracted files. */
   extractedDirName: string;
+  /**
+   * Extracted files. `relativePath` is the on-disk path until
+   * `withFinalizedEntryNames` replaces it with the manifest's logical path.
+   */
   files: ExtractedZipFile[];
   skipped: Partial<Record<ZipSkipReason, number>>;
   strippedRootDir: string | null;
@@ -47,45 +56,82 @@ export function extractedDirNameForStoredFile(storedFileName: string): string {
 /**
  * Unpack an archive attachment next to its stored file. The target directory
  * is recreated from scratch so a re-upload of the same archive never leaves
- * stale entries behind. Throws `ZipFormatError` or `ZipLimitError`; the
- * directory is removed again on any failure.
+ * stale entries behind, and the directory is locked so two chats uploading
+ * the same archive at once cannot delete each other's extraction. Throws
+ * `ZipFormatError` or `ZipLimitError`; the directory is removed again on any
+ * failure.
  */
 export async function extractZipAttachment({
   mediaDir,
   storedFileName,
   archive,
   excludeDotenvFiles,
+  limits,
 }: {
   mediaDir: string;
   storedFileName: string;
   archive: Buffer;
   excludeDotenvFiles: boolean;
+  limits?: Partial<ZipExtractionLimits>;
 }): Promise<ExtractedArchiveSummary> {
   const extractedDirName = extractedDirNameForStoredFile(storedFileName);
   const destinationDir = path.join(mediaDir, extractedDirName);
-  await fs.rm(destinationDir, { recursive: true, force: true });
-  await fs.mkdir(destinationDir, { recursive: true });
-  try {
-    const result = await extractZipArchive(archive, destinationDir, {
-      exclude: excludeDotenvFiles ? isDotenvFilePath : undefined,
-    });
-    const skipped: Partial<Record<ZipSkipReason, number>> = {};
-    for (const entry of result.skipped) {
-      skipped[entry.reason] = (skipped[entry.reason] ?? 0) + 1;
+  return withLock(`archive-extract:${destinationDir}`, async () => {
+    await fs.rm(destinationDir, { recursive: true, force: true });
+    await fs.mkdir(destinationDir, { recursive: true });
+    try {
+      const result = await extractZipArchive(archive, destinationDir, {
+        limits,
+        exclude: excludeDotenvFiles ? isDotenvFilePath : undefined,
+      });
+      const skipped: Partial<Record<ZipSkipReason, number>> = {};
+      for (const entry of result.skipped) {
+        skipped[entry.reason] = (skipped[entry.reason] ?? 0) + 1;
+      }
+      return {
+        extractedDirName,
+        files: result.files,
+        skipped,
+        strippedRootDir: result.strippedRootDir,
+        totalBytes: result.totalBytes,
+      };
+    } catch (error) {
+      await fs
+        .rm(destinationDir, { recursive: true, force: true })
+        .catch(() => undefined);
+      throw error;
     }
-    return {
-      extractedDirName,
-      files: result.files,
-      skipped,
-      strippedRootDir: result.strippedRootDir,
-      totalBytes: result.totalBytes,
-    };
-  } catch (error) {
-    await fs
-      .rm(destinationDir, { recursive: true, force: true })
-      .catch(() => undefined);
-    throw error;
-  }
+  });
+}
+
+/**
+ * Replace each file's path with the logical path the manifest actually
+ * registered (sanitized, truncated, or suffixed on collision), relative to
+ * the archive, so the prompt advertises names that resolve. `finalized` must
+ * be the entries returned for `buildArchiveManifestEntries` of this summary,
+ * in the same order.
+ */
+export function withFinalizedEntryNames(
+  summary: ExtractedArchiveSummary,
+  archiveLogicalName: string,
+  finalized: readonly AttachmentManifestEntry[],
+): ExtractedArchiveSummary {
+  const prefix = `${archiveLogicalName}/`;
+  return {
+    ...summary,
+    files: summary.files.map((file, index) => {
+      const logicalName = finalized[index]?.logicalName;
+      if (!logicalName) {
+        return file;
+      }
+      return {
+        ...file,
+        relativePath: logicalName.startsWith(prefix)
+          ? logicalName.slice(prefix.length)
+          : logicalName,
+      };
+    }),
+  };
 }
 
 export function isZipExtractionError(error: unknown): boolean {

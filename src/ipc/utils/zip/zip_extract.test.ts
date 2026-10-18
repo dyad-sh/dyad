@@ -183,6 +183,39 @@ describe("extractZipArchive", () => {
     expect(listFiles(dest)).toEqual(["other.txt", "sub/file.txt"]);
   });
 
+  it("rejects names Windows cannot hold as regular files, on every platform", async () => {
+    const archive = buildZip([
+      { name: "CON", data: "device" },
+      { name: "logs/nul.txt", data: "device with extension" },
+      { name: "com1.js", data: "serial port" },
+      { name: "README.md:hidden", data: "alternate stream" },
+      { name: "trailing./x.txt", data: "stripped dot" },
+      { name: "notes.txt ", data: "stripped space" },
+      { name: "console.ts", data: "fine, not a reserved name" },
+      { name: "nulls/ok.txt", data: "fine, directory is not reserved" },
+    ]);
+    const result = await extractZipArchive(archive, dest);
+    expect(skippedByReason(result)["unsafe-path"]).toEqual([
+      "CON",
+      "logs/nul.txt",
+      "com1.js",
+      "README.md:hidden",
+      "trailing./x.txt",
+      "notes.txt ",
+    ]);
+    expect(listFiles(dest)).toEqual(["console.ts", "nulls/ok.txt"]);
+  });
+
+  it("extracts names that merely start with two dots", async () => {
+    const archive = buildZip([
+      { name: "..config", data: "1" },
+      { name: "src/..hidden.ts", data: "2" },
+    ]);
+    const result = await extractZipArchive(archive, dest);
+    expect(result.skipped).toEqual([]);
+    expect(listFiles(dest)).toEqual(["..config", "src/..hidden.ts"]);
+  });
+
   it("rejects Windows drive paths and over-deep paths", async () => {
     const deep =
       Array.from({ length: 40 }, (_, i) => `d${i}`).join("/") + "/f.txt";
@@ -281,6 +314,11 @@ describe("toSafeZipSegments", () => {
       "./",
       "a/..",
       "x".repeat(300),
+      "a:b",
+      "NUL",
+      "lpt9.txt",
+      "dot.",
+      "space ",
     ]) {
       expect(toSafeZipSegments(name, 32)).toBeNull();
     }

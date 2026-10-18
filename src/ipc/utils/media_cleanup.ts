@@ -14,6 +14,10 @@ const logger = log.scope("media_cleanup");
 
 export const MEDIA_TTL_DAYS = 30;
 
+// Unpacked zip attachments live in a directory named by the archive's
+// SHA-256; no other directories are expected under .dyad/media.
+const EXTRACTED_ARCHIVE_DIR_NAME = /^[0-9a-f]{64}$/;
+
 function isPathWithinDirectory(filePath: string, directoryPath: string) {
   const relativePath = path.relative(directoryPath, filePath);
   return !relativePath.startsWith("..") && !path.isAbsolute(relativePath);
@@ -93,9 +97,10 @@ export async function cleanupOldMediaFiles(): Promise<void> {
               if (entryStat.isSymbolicLink()) {
                 return 0;
               }
-              // Unpacked zip attachments live in a directory named after the
-              // archive's stored hash; they age out with the archive itself.
-              const isExtractedArchiveDir = entryStat.isDirectory();
+              // Extracted archive directories age out with their archive.
+              const isExtractedArchiveDir =
+                entryStat.isDirectory() &&
+                EXTRACTED_ARCHIVE_DIR_NAME.test(file);
               if (!isExtractedArchiveDir && !entryStat.isFile()) {
                 return 0;
               }

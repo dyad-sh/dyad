@@ -5,6 +5,7 @@ import {
   getDyadMediaDir,
   listStoredAttachments,
   resolveAttachmentLogicalPath,
+  stripAttachmentLogicalPrefix,
   toAttachmentLogicalPath,
 } from "@/ipc/utils/media_path_utils";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
@@ -429,6 +430,14 @@ export async function sandboxListFiles(
     return attachments.map((attachment) =>
       toAttachmentLogicalPath(attachment.logicalName),
     );
+  }
+  if (dir.startsWith("attachments:")) {
+    // attachments:<archive> lists the entries unpacked from that archive.
+    const prefix = `${stripAttachmentLogicalPrefix(dir).replace(/\/+$/, "")}/`;
+    const attachments = await listStoredAttachments(appPath);
+    return attachments
+      .filter((attachment) => attachment.logicalName.startsWith(prefix))
+      .map((attachment) => toAttachmentLogicalPath(attachment.logicalName));
   }
 
   assertAllowedGuestPath(dir);

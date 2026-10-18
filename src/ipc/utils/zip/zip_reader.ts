@@ -1,4 +1,7 @@
+import { promisify } from "node:util";
 import zlib from "node:zlib";
+
+const inflateRaw = promisify(zlib.inflateRaw);
 
 /**
  * Minimal in-memory ZIP container reader.
@@ -34,6 +37,14 @@ export class ZipFormatError extends Error {
   }
 }
 
+/** The archive is well formed but exceeds a caller-supplied limit. */
+export class ZipLimitError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ZipLimitError";
+  }
+}
+
 export const ZIP_COMPRESSION_STORED = 0;
 export const ZIP_COMPRESSION_DEFLATE = 8;
 
@@ -57,8 +68,7 @@ export interface ZipEntry {
 export interface ReadZipDirectoryOptions {
   /**
    * Reject archives whose central directory declares more entries than this
-   * before walking it. The walk is bounds-checked regardless; this lets the
-   * caller fail fast with a clear message.
+   * with a `ZipLimitError`, before any header is parsed.
    */
   maxEntries?: number;
 }
@@ -155,16 +165,26 @@ function findEndOfCentralDirectory(buffer: Buffer): EndOfCentralDirectory {
     0,
     buffer.length - EOCD_MIN_SIZE - EOCD_MAX_COMMENT_LENGTH,
   );
+  // Prefer the record whose declared comment ends exactly at the end of the
+  // file; the signature bytes can also occur inside a comment. Fall back to
+  // the last record that fits, so archives with trailing junk still open.
   let eocdOffset = -1;
+  let fallbackOffset = -1;
   for (let i = buffer.length - EOCD_MIN_SIZE; i >= lowestStart; i--) {
     if (buffer.readUInt32LE(i) !== EOCD_SIGNATURE) {
       continue;
     }
-    const commentLength = buffer.readUInt16LE(i + 20);
-    if (i + EOCD_MIN_SIZE + commentLength <= buffer.length) {
+    const recordEnd = i + EOCD_MIN_SIZE + buffer.readUInt16LE(i + 20);
+    if (recordEnd === buffer.length) {
       eocdOffset = i;
       break;
     }
+    if (recordEnd < buffer.length && fallbackOffset === -1) {
+      fallbackOffset = i;
+    }
+  }
+  if (eocdOffset === -1) {
+    eocdOffset = fallbackOffset;
   }
   if (eocdOffset === -1) {
     throw new ZipFormatError("end of central directory record not found");
@@ -392,7 +412,7 @@ export function readZipDirectory(
     options.maxEntries !== undefined &&
     eocd.totalEntries > options.maxEntries
   ) {
-    throw new ZipFormatError(
+    throw new ZipLimitError(
       `archive declares ${eocd.totalEntries} entries, more than the ${options.maxEntries} allowed`,
     );
   }
@@ -422,12 +442,16 @@ export function isSupportedZipCompression(entry: ZipEntry): boolean {
 }
 
 /**
- * Decompress one entry's data. The output is bounded by the entry's declared
- * uncompressed size (zlib stops inflating past it), and the CRC-32 recorded
- * in the central directory must match, so a corrupted or lying entry fails
- * instead of producing garbage.
+ * Decompress one entry's data. Inflation runs on zlib's thread pool so the
+ * main thread is not blocked by large entries. The output is bounded by the
+ * entry's declared uncompressed size (zlib stops inflating past it), and the
+ * CRC-32 recorded in the central directory must match, so a corrupted or
+ * lying entry fails instead of producing garbage.
  */
-export function readZipEntryData(buffer: Buffer, entry: ZipEntry): Buffer {
+export async function readZipEntryData(
+  buffer: Buffer,
+  entry: ZipEntry,
+): Promise<Buffer> {
   if (entry.isEncrypted) {
     throw new ZipFormatError(`entry "${entry.name}" is encrypted`);
   }
@@ -470,12 +494,12 @@ export function readZipEntryData(buffer: Buffer, entry: ZipEntry): Buffer {
   let data: Buffer;
   if (entry.compressionMethod === ZIP_COMPRESSION_STORED) {
     data = Buffer.from(compressed);
-  } else if (entry.uncompressedSize === 0) {
-    data = Buffer.alloc(0);
   } else {
     try {
-      data = zlib.inflateRawSync(compressed, {
-        maxOutputLength: entry.uncompressedSize,
+      // zlib requires a positive output limit; an entry declared empty is
+      // still inflated so a non-empty stream fails the size check below.
+      data = await inflateRaw(compressed, {
+        maxOutputLength: Math.max(1, entry.uncompressedSize),
       });
     } catch (error) {
       throw new ZipFormatError(

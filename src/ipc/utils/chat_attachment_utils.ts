@@ -208,6 +208,8 @@ function formatAttachmentSize(sizeBytes: number): string {
 
 /** Entries listed inline for an archive before the model must enumerate. */
 export const MAX_ARCHIVE_ENTRIES_IN_PROMPT = 100;
+/** Characters the inline entry list may occupy, so long paths stay bounded. */
+export const MAX_ARCHIVE_LISTING_CHARS = 8 * 1024;
 
 /**
  * Prompt lines describing an unpacked archive attachment: how it was
@@ -261,15 +263,24 @@ export function buildArchiveAttachmentInfo(
 
   if (fileCount > 0) {
     lines.push("  Entries:");
-    for (const file of archive.files.slice(0, MAX_ARCHIVE_ENTRIES_IN_PROMPT)) {
-      lines.push(
-        `    ${file.relativePath} (${formatAttachmentSize(file.sizeBytes)})`,
-      );
+    let listed = 0;
+    let listingChars = 0;
+    for (const file of archive.files) {
+      const line = `    ${file.relativePath} (${formatAttachmentSize(file.sizeBytes)})`;
+      if (
+        listed >= MAX_ARCHIVE_ENTRIES_IN_PROMPT ||
+        (listed > 0 && listingChars + line.length > MAX_ARCHIVE_LISTING_CHARS)
+      ) {
+        break;
+      }
+      lines.push(line);
+      listed++;
+      listingChars += line.length;
     }
-    const remaining = fileCount - MAX_ARCHIVE_ENTRIES_IN_PROMPT;
+    const remaining = fileCount - listed;
     if (remaining > 0) {
       lines.push(
-        `    ...and ${remaining} more ${remaining === 1 ? "entry" : "entries"} not listed here.`,
+        `    ...and ${remaining} more ${remaining === 1 ? "entry" : "entries"} not listed here; list_files with directory "${logicalPath}" enumerates all of them.`,
       );
     }
   }

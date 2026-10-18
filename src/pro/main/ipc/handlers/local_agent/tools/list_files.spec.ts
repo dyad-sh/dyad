@@ -114,6 +114,66 @@ describe("listFilesTool", () => {
     vi.clearAllMocks();
   });
 
+  it("lists attachments and unpacked archive entries from the manifest", async () => {
+    const mediaDir = path.join(testDir, ".dyad", "media");
+    await fs.promises.mkdir(mediaDir, { recursive: true });
+    const entry = (
+      logicalName: string,
+      storedFileName: string,
+      archiveLogicalName?: string,
+    ) => ({
+      logicalName,
+      originalName: logicalName,
+      storedFileName,
+      mimeType: "text/plain",
+      sizeBytes: 1,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      ...(archiveLogicalName ? { archiveLogicalName } : {}),
+    });
+    await fs.promises.writeFile(
+      path.join(mediaDir, "attachments-manifest.json"),
+      JSON.stringify([
+        entry("notes.txt", "n.txt"),
+        entry("proj.zip", "h.zip"),
+        entry("proj.zip/src/index.ts", "h/src/index.ts", "proj.zip"),
+        entry("proj.zip/README.md", "h/README.md", "proj.zip"),
+        entry("proj.zip-notes.txt", "p.txt"),
+      ]),
+    );
+    for (const stored of [
+      "n.txt",
+      "h.zip",
+      "h/src/index.ts",
+      "h/README.md",
+      "p.txt",
+    ]) {
+      const filePath = path.join(mediaDir, ...stored.split("/"));
+      await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+      await fs.promises.writeFile(filePath, "x");
+    }
+
+    const archiveListing = await listFilesTool.execute(
+      { directory: "attachments:proj.zip" },
+      mockContext,
+    );
+    expect(archiveListing.split("\n")).toEqual([
+      " - attachments:proj.zip/README.md",
+      " - attachments:proj.zip/src/index.ts",
+    ]);
+
+    const everything = await listFilesTool.execute(
+      { directory: "attachments:" },
+      mockContext,
+    );
+    expect(everything).toContain(" - attachments:notes.txt");
+    expect(everything).toContain(" - attachments:proj.zip");
+    expect(everything).toContain(" - attachments:proj.zip/src/index.ts");
+    expect(everything).toContain(" - attachments:proj.zip-notes.txt");
+    expect(mockContext.onXmlComplete).toHaveBeenLastCalledWith(
+      expect.stringContaining('directory="attachments:" count="5"'),
+    );
+  });
+
   it("accepts include_ignored in the schema", () => {
     expect(() =>
       listFilesTool.inputSchema.parse({ include_ignored: true }),

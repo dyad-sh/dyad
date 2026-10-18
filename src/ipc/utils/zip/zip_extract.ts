@@ -6,8 +6,11 @@ import {
   readZipDirectory,
   readZipEntryData,
   ZipFormatError,
+  ZipLimitError,
   type ZipEntry,
 } from "./zip_reader";
+
+export { ZipLimitError };
 
 /**
  * Extraction policy on top of the container reader. The reader hands back
@@ -16,8 +19,11 @@ import {
  *
  * - Entry names are normalized to forward slashes and rejected when they are
  *   absolute, drive-qualified, contain ".." or control characters, or nest
- *   deeper than the limit. The final destination is also checked against the
- *   extraction root after resolution, so no entry can write outside it.
+ *   deeper than the limit. Names Windows cannot hold as regular files
+ *   (reserved device names, colons, trailing dots or spaces) are rejected on
+ *   every platform so an archive behaves the same everywhere. The final
+ *   destination is also checked against the extraction root after
+ *   resolution, so no entry can write outside it.
  * - Symlinks are never materialized (the reader reports them; they are skipped).
  * - Encrypted entries and unsupported compression methods are skipped with a
  *   reason rather than failing the whole archive.
@@ -30,13 +36,6 @@ import {
  *   "compress folder" tools package a project) that folder is stripped, and
  *   its name is reported so the caller can mention it.
  */
-
-export class ZipLimitError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "ZipLimitError";
-  }
-}
 
 export interface ZipExtractionLimits {
   maxEntries: number;
@@ -99,6 +98,21 @@ const MAX_SEGMENT_LENGTH = 255;
 // eslint-disable-next-line no-control-regex
 const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/;
 const WINDOWS_DRIVE_PREFIX = /^[A-Za-z]:/;
+// On Windows these open devices (CON, NUL, COM1...) or alternate data streams
+// (name:stream) instead of files, and trailing dots or spaces are stripped.
+const WINDOWS_RESERVED_NAME =
+  /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i;
+
+function isUnsafeSegment(segment: string): boolean {
+  return (
+    segment === ".." ||
+    segment.length > MAX_SEGMENT_LENGTH ||
+    segment.includes(":") ||
+    segment.endsWith(".") ||
+    segment.endsWith(" ") ||
+    WINDOWS_RESERVED_NAME.test(segment)
+  );
+}
 
 /**
  * Normalize an archive entry name into safe path segments, or return null
@@ -120,7 +134,7 @@ export function toSafeZipSegments(
     if (segment === "" || segment === ".") {
       continue;
     }
-    if (segment === ".." || segment.length > MAX_SEGMENT_LENGTH) {
+    if (isUnsafeSegment(segment)) {
       return null;
     }
     segments.push(segment);
@@ -175,7 +189,8 @@ function assertWithinRoot(destinationRoot: string, filePath: string): void {
   const relative = path.relative(destinationRoot, filePath);
   if (
     relative === "" ||
-    relative.startsWith("..") ||
+    relative === ".." ||
+    relative.startsWith(`..${path.sep}`) ||
     path.isAbsolute(relative)
   ) {
     throw new ZipFormatError(`entry resolves outside the extraction root`);
@@ -194,12 +209,7 @@ export async function extractZipArchive(
   options: ExtractZipOptions = {},
 ): Promise<ZipExtractionResult> {
   const limits = { ...DEFAULT_ZIP_EXTRACTION_LIMITS, ...options.limits };
-  const entries = readZipDirectory(archive);
-  if (entries.length > limits.maxEntries) {
-    throw new ZipLimitError(
-      `archive has ${entries.length} entries, more than the ${limits.maxEntries} allowed`,
-    );
-  }
+  const entries = readZipDirectory(archive, { maxEntries: limits.maxEntries });
 
   const skipped: SkippedZipEntry[] = [];
   const planned: PlannedEntry[] = [];
@@ -256,7 +266,7 @@ export async function extractZipArchive(
     const filePath = path.resolve(destinationRoot, ...segments);
     assertWithinRoot(destinationRoot, filePath);
 
-    const data = readZipEntryData(archive, entry);
+    const data = await readZipEntryData(archive, entry);
     totalBytes += data.length;
     if (totalBytes > limits.maxTotalUncompressedBytes) {
       throw new ZipLimitError(

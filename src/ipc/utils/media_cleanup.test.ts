@@ -201,7 +201,7 @@ describe("cleanupOldMediaFiles", () => {
     expect(logMocks.warn.mock.calls[0][1]).toBe(statError);
   });
 
-  it("should remove aged extracted-archive directories inside .dyad/media", async () => {
+  it("should remove aged extracted-archive directories but leave other subdirectories", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2025-01-31T00:00:00.000Z"));
 
@@ -211,6 +211,7 @@ describe("cleanupOldMediaFiles", () => {
     dbMocks.from.mockResolvedValue([{ path: "my-app" }]);
 
     fsMocks.readdir.mockResolvedValue([
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "some-subdir",
       "recent-subdir",
       "old-file.png",
@@ -222,7 +223,12 @@ describe("cleanupOldMediaFiles", () => {
           isSymbolicLink: () => false,
         });
       }
-      if (filePath.includes("subdir")) {
+      if (
+        filePath.includes("subdir") ||
+        filePath.includes(
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        )
+      ) {
         return Promise.resolve({
           isDirectory: () => true,
           isSymbolicLink: () => false,
@@ -240,7 +246,12 @@ describe("cleanupOldMediaFiles", () => {
       if (filePath.includes("recent-subdir")) {
         return Promise.resolve({ isFile: () => false, mtimeMs: recentMtimeMs });
       }
-      if (filePath.includes("some-subdir")) {
+      if (
+        filePath.includes("subdir") ||
+        filePath.includes(
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        )
+      ) {
         return Promise.resolve({ isFile: () => false, mtimeMs: oldMtimeMs });
       }
       return Promise.resolve({ isFile: () => true, mtimeMs: oldMtimeMs });
@@ -255,9 +266,13 @@ describe("cleanupOldMediaFiles", () => {
     expect(fsMocks.unlink).toHaveBeenCalledWith(
       expect.stringContaining("old-file.png"),
     );
+    // Only the hash-named directory is an unpacked archive; "some-subdir" is
+    // old too but is not touched.
     expect(fsMocks.rm).toHaveBeenCalledTimes(1);
     expect(fsMocks.rm).toHaveBeenCalledWith(
-      expect.stringContaining("some-subdir"),
+      expect.stringContaining(
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      ),
       { recursive: true, force: true },
     );
     expect(mediaPathMocks.pruneAttachmentManifest).toHaveBeenCalledWith(

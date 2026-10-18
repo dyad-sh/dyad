@@ -79,6 +79,11 @@ export function buildZip(
   }
 
   for (const entry of entries) {
+    if (entry.zip64 && entry.dataDescriptor) {
+      throw new Error(
+        "zip64 data descriptors are not supported by this writer",
+      );
+    }
     const isDirectory = entry.directory ?? false;
     const name =
       isDirectory && !entry.name.endsWith("/") ? `${entry.name}/` : entry.name;

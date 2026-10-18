@@ -10,6 +10,7 @@ import {
   listStoredAttachments,
   pruneAttachmentManifest,
   removeUnreferencedMediaPaths,
+  reserveMediaPath,
   resolveAttachmentLogicalPath,
   resolveStoredFilePath,
 } from "./media_path_utils";
@@ -189,6 +190,31 @@ describe("manifest with extracted archive entries", () => {
       "claimed",
       "claimed.zip",
     ]);
+  });
+
+  it("keeps media another turn has reserved but not yet registered", async () => {
+    writeStored("inflight.zip", "zipbytes");
+    writeStored("inflight/a.txt", "a");
+    const mediaDir = getDyadMediaDir(appPath);
+    const release = reserveMediaPath(path.join(mediaDir, "inflight"));
+    const releaseAgain = reserveMediaPath(path.join(mediaDir, "inflight"));
+    releaseAgain();
+    expect(
+      await removeUnreferencedMediaPaths(appPath, [
+        path.join(mediaDir, "inflight.zip"),
+        path.join(mediaDir, "inflight"),
+      ]),
+    ).toEqual([path.join(mediaDir, "inflight.zip")]);
+    expect(fs.existsSync(path.join(mediaDir, "inflight", "a.txt"))).toBe(true);
+
+    release();
+    release();
+    expect(
+      await removeUnreferencedMediaPaths(appPath, [
+        path.join(mediaDir, "inflight"),
+      ]),
+    ).toEqual([path.join(mediaDir, "inflight")]);
+    expect(fs.existsSync(path.join(mediaDir, "inflight"))).toBe(false);
   });
 
   it("ignores manifest entries whose stored name could escape the media directory", async () => {

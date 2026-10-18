@@ -67,11 +67,14 @@ export async function extractZipAttachment({
   storedFileName,
   archive,
   limits,
+  signal,
 }: {
   mediaDir: string;
   storedFileName: string;
   archive: Buffer;
   limits?: Partial<ZipExtractionLimits>;
+  /** Abandons the extraction between entries and before the swap. */
+  signal?: AbortSignal;
 }): Promise<ExtractedArchiveSummary> {
   const extractedDirName = extractedDirNameForStoredFile(storedFileName);
   const destinationDir = path.join(mediaDir, extractedDirName);
@@ -81,7 +84,8 @@ export async function extractZipAttachment({
     await fs.mkdir(stagingDir, { recursive: true });
     let result;
     try {
-      result = await extractZipArchive(archive, stagingDir, { limits });
+      result = await extractZipArchive(archive, stagingDir, { limits, signal });
+      signal?.throwIfAborted();
     } catch (error) {
       await fs
         .rm(stagingDir, { recursive: true, force: true })
@@ -168,12 +172,20 @@ export function toZipExtractionErrorMessage(
      * shared by every archive in the message, not the full per-archive cap.
      */
     sharedBudgetBytes?: number;
+    /** Same, for the entry count. */
+    sharedBudgetEntries?: number;
   } = {},
 ): string {
   const detail = error instanceof Error ? error.message : String(error);
   if (error instanceof ZipLimitError) {
     if (error.limit === "bytes" && options.sharedBudgetBytes !== undefined) {
       return `"${attachmentName}" cannot be unpacked: together, the archives in this message would expand past the ${Math.round(options.sharedBudgetBytes / (1024 * 1024))} MiB they can share.`;
+    }
+    if (
+      error.limit === "entries" &&
+      options.sharedBudgetEntries !== undefined
+    ) {
+      return `"${attachmentName}" cannot be unpacked: together, the archives in this message hold more than the ${options.sharedBudgetEntries} entries they can share.`;
     }
     return `"${attachmentName}" is too large to extract: ${detail}.`;
   }

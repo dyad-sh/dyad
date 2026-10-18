@@ -265,6 +265,19 @@ describe("extractZipArchive", () => {
     expect(listFiles(dest)).toEqual([]);
   });
 
+  it("stops between entries when the signal aborts", async () => {
+    const archive = buildZip([
+      { name: "first.txt", data: "1" },
+      { name: "second.txt", data: "2" },
+    ]);
+    const controller = new AbortController();
+    controller.abort();
+    await expect(
+      extractZipArchive(archive, dest, { signal: controller.signal }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(listFiles(dest)).toEqual([]);
+  });
+
   it("surfaces reader errors for archives that are not readable", async () => {
     await expect(extractZipArchive(Buffer.from("nope"), dest)).rejects.toThrow(
       ZipFormatError,

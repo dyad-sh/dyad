@@ -371,12 +371,41 @@ export async function pruneAttachmentManifest(
   );
 }
 
+// Media paths that an attachment turn is still working on, from the moment
+// it stores or unpacks them until the manifest records them. Stored names are
+// content hashes, so two turns can touch the same path at once.
+const inFlightMediaPaths = new Map<string, number>();
+
+/**
+ * Mark a media path as in use by a turn that has not registered it yet.
+ * Returns the matching release; releasing twice is harmless.
+ */
+export function reserveMediaPath(mediaPath: string): () => void {
+  const key = path.resolve(mediaPath);
+  inFlightMediaPaths.set(key, (inFlightMediaPaths.get(key) ?? 0) + 1);
+  let released = false;
+  return () => {
+    if (released) {
+      return;
+    }
+    released = true;
+    const remaining = (inFlightMediaPaths.get(key) ?? 1) - 1;
+    if (remaining <= 0) {
+      inFlightMediaPaths.delete(key);
+    } else {
+      inFlightMediaPaths.set(key, remaining);
+    }
+  };
+}
+
 /**
  * Remove stored files or extraction directories that no manifest entry
- * points at. Stored names are content hashes shared across chats, so a turn
- * that is rejected before registering its attachments must not delete media
- * another turn registered meanwhile. The check and the removal run under
- * the manifest lock, which registration also takes.
+ * points at and no other turn is still working on. Stored names are content
+ * hashes shared across chats, so a turn that is rejected before registering
+ * its attachments must not delete media another turn registered meanwhile
+ * or is about to register. The check and the removal run under the manifest
+ * lock, which registration also takes; callers release their own
+ * reservations first.
  */
 export async function removeUnreferencedMediaPaths(
   appPath: string,
@@ -398,7 +427,7 @@ export async function removeUnreferencedMediaPaths(
         (filePath) =>
           filePath === resolved || filePath.startsWith(resolved + path.sep),
       );
-      if (isReferenced) {
+      if (isReferenced || inFlightMediaPaths.has(resolved)) {
         continue;
       }
       await fs.rm(resolved, { recursive: true, force: true });

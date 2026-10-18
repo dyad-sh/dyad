@@ -13,6 +13,7 @@ import {
   buildArchiveManifestEntries,
   describeSkippedArchiveEntries,
   extractZipAttachment,
+  toZipExtractionErrorMessage,
   withFinalizedEntryNames,
   type ExtractedArchiveSummary,
 } from "./zip_attachment";
@@ -117,6 +118,39 @@ describe("extractZipAttachment", () => {
       }),
     ).rejects.toThrow(ZipLimitError);
     expect(fs.readdirSync(mediaDir)).toEqual([]);
+  });
+
+  it("abandons an aborted extraction and keeps the earlier one", async () => {
+    const mediaDir = getDyadMediaDir(appPath);
+    await extractZipAttachment({
+      mediaDir,
+      storedFileName: "shared.zip",
+      archive: buildZip([{ name: "old.txt", data: "old" }]),
+    });
+    const controller = new AbortController();
+    controller.abort();
+    await expect(
+      extractZipAttachment({
+        mediaDir,
+        storedFileName: "shared.zip",
+        archive: buildZip([{ name: "new.txt", data: "new" }]),
+        signal: controller.signal,
+      }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(fs.readdirSync(path.join(mediaDir, "shared"))).toEqual(["old.txt"]);
+    expect(fs.readdirSync(mediaDir)).toEqual(["shared"]);
+  });
+
+  it("reports a shared entry budget distinctly", () => {
+    const error = new ZipLimitError("archive declares 9 entries", "entries");
+    expect(
+      toZipExtractionErrorMessage("a.zip", error, {
+        sharedBudgetEntries: 5000,
+      }),
+    ).toContain("hold more than the 5000 entries they can share");
+    expect(toZipExtractionErrorMessage("a.zip", error)).toContain(
+      "too large to extract",
+    );
   });
 
   it("restores the earlier extraction when the final swap fails", async () => {

@@ -78,6 +78,8 @@ export interface ZipExtractionResult {
 
 export interface ExtractZipOptions {
   limits?: Partial<ZipExtractionLimits>;
+  /** Stops between entries; the caller removes whatever was written. */
+  signal?: AbortSignal;
 }
 
 const IGNORED_SEGMENTS = new Set([
@@ -251,6 +253,7 @@ export async function extractZipArchive(
   let totalBytes = 0;
 
   for (const { entry, segments } of planned) {
+    options.signal?.throwIfAborted();
     const relativePath = segments.join("/");
     const filePath = path.resolve(destinationRoot, ...segments);
     assertWithinRoot(destinationRoot, filePath);

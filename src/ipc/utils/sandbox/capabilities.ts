@@ -437,7 +437,8 @@ export async function sandboxListFiles(
     const attachments = await listStoredAttachments(appPath);
     const entries = attachments
       .filter((attachment) => attachment.logicalName.startsWith(prefix))
-      .map((attachment) => toAttachmentLogicalPath(attachment.logicalName));
+      .map((attachment) => toAttachmentLogicalPath(attachment.logicalName))
+      .sort();
     if (entries.length === 0) {
       throw new DyadError(
         `Directory not found: ${dir}`,

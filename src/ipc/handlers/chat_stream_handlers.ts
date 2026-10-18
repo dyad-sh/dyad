@@ -159,6 +159,7 @@ import {
   createUniqueAttachmentLogicalName,
   DYAD_MEDIA_DIR_NAME,
   removeUnreferencedMediaPaths,
+  reserveMediaPath,
   type AttachmentManifestEntryInput,
 } from "../utils/media_path_utils";
 import {
@@ -1289,12 +1290,22 @@ export function registerChatStreamHandlers() {
       // cannot each expand to the full per-archive limit.
       let remainingArchiveBytes =
         DEFAULT_ZIP_EXTRACTION_LIMITS.maxTotalUncompressedBytes;
+      let remainingArchiveEntries = DEFAULT_ZIP_EXTRACTION_LIMITS.maxEntries;
       // Stored files and extraction directories this turn created. Stored
       // files are shared by content hash across chats, so if the turn is
       // rejected before the manifest records them, only paths that no other
       // turn has registered meanwhile are removed.
       const turnCreatedMediaPaths: string[] = [];
+      // Every media path this turn touches is reserved until the manifest
+      // records it, so a concurrent turn's rollback leaves it alone.
+      const mediaReservations: Array<() => void> = [];
+      const releaseMediaReservations = () => {
+        for (const release of mediaReservations.splice(0)) {
+          release();
+        }
+      };
       const discardTurnCreatedMedia = async () => {
+        releaseMediaReservations();
         const candidates = turnCreatedMediaPaths.splice(0);
         await removeUnreferencedMediaPaths(appPath, candidates).catch(
           (error) => {
@@ -1359,6 +1370,7 @@ export function registerChatStreamHandlers() {
 
             // Save to .dyad/media dir
             const persistentPath = path.join(mediaDir, filename);
+            mediaReservations.push(reserveMediaPath(persistentPath));
             const storedFileExisted = fs.existsSync(persistentPath);
             await writeFile(persistentPath, fileBuffer);
             if (!storedFileExisted) {
@@ -1374,13 +1386,18 @@ export function registerChatStreamHandlers() {
                 mediaDir,
                 extractedDirNameForStoredFile(filename),
               );
+              mediaReservations.push(reserveMediaPath(extractionDir));
               const extractionDirExisted = fs.existsSync(extractionDir);
               try {
                 archiveSummary = await extractZipAttachment({
                   mediaDir,
                   storedFileName: filename,
                   archive: fileBuffer,
-                  limits: { maxTotalUncompressedBytes: remainingArchiveBytes },
+                  limits: {
+                    maxTotalUncompressedBytes: remainingArchiveBytes,
+                    maxEntries: remainingArchiveEntries,
+                  },
+                  signal: abortController.signal,
                 });
               } catch (error) {
                 if (isZipExtractionError(error)) {
@@ -1391,6 +1408,11 @@ export function registerChatStreamHandlers() {
                         DEFAULT_ZIP_EXTRACTION_LIMITS.maxTotalUncompressedBytes
                           ? DEFAULT_ZIP_EXTRACTION_LIMITS.maxTotalUncompressedBytes
                           : undefined,
+                      sharedBudgetEntries:
+                        remainingArchiveEntries <
+                        DEFAULT_ZIP_EXTRACTION_LIMITS.maxEntries
+                          ? DEFAULT_ZIP_EXTRACTION_LIMITS.maxEntries
+                          : undefined,
                     }),
                     DyadErrorKind.Validation,
                   );
@@ -1398,6 +1420,7 @@ export function registerChatStreamHandlers() {
                 throw error;
               }
               remainingArchiveBytes -= archiveSummary.totalBytes;
+              remainingArchiveEntries -= archiveSummary.files.length;
               if (!extractionDirExisted) {
                 turnCreatedMediaPaths.push(extractionDir);
               }
@@ -1630,6 +1653,13 @@ export function registerChatStreamHandlers() {
           attachment.logicalName,
           finalizedEntries,
         );
+      }
+      // Everything this turn stored is now in the manifest.
+      releaseMediaReservations();
+      for (const attachment of storedAttachments) {
+        if (!attachment.archive) {
+          continue;
+        }
         // Modes that inline attachments instead of using the on-disk block
         // still need to know how to reach the archive's entries.
         attachmentInfo += `\n${buildArchiveAttachmentInfo(

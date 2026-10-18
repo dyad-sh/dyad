@@ -97,6 +97,10 @@ const FALLBACK_NEXT_ERROR_PATTERNS = [
   "model is not available",
   "no such model",
   "unsupported model",
+  // A gateway allowlist rejection for one model (for example OpenRouter's
+  // "… is only available on agentic harnesses") says nothing about the next
+  // candidate, so move down the chain instead of failing the turn.
+  "only available on",
 ];
 
 function isRecord(value: unknown): value is Record<string, any> {
@@ -711,10 +715,25 @@ class FallbackModel implements LanguageModelV3 {
     }
   }
 
-  async doGenerate(): Promise<any> {
-    throw new DyadError(
-      "doGenerate is not supported for fallback model",
-      DyadErrorKind.External,
+  async doGenerate(options: LanguageModelV3CallOptions): Promise<any> {
+    this.checkAndResetModel();
+    const requestId = getRequestId(options);
+
+    // Mirrors doStream: try the current model, retry a transient failure on the
+    // same model, then move down the chain. Without this, wrapping a model in a
+    // fallback silently broke every non-streaming caller — `generateText` on a
+    // fallback-wrapped model threw "doGenerate is not supported" before the
+    // request was ever sent. Non-streaming and streaming turns must fail over
+    // identically.
+    return this.retry(
+      async () => {
+        return await this.getUnderlyingModel().doGenerate(
+          this.optionsForCurrentModel(options),
+        );
+      },
+      "generate",
+      requestId,
+      options.abortSignal,
     );
   }
 
@@ -747,11 +766,35 @@ class FallbackModel implements LanguageModelV3 {
     // eslint-disable-next-line @typescript-eslint/no-this-alias
     const fallbackModel = this;
 
+    // cancel() runs outside start()'s scope, so the abort handler lives here
+    // and start() assigns it once the controller exists.
+    let stopReading = () => {};
     return new ReadableStream<LanguageModelV3StreamPart>({
       async start(controller) {
         let hasStreamedContent = false;
         let reader: ReadableStreamDefaultReader<LanguageModelV3StreamPart> | null =
           null;
+
+        stopReading = () => {
+          // An abort must end a hanging provider read now, not when the
+          // provider decides to close. A rejection here means a concurrent
+          // release won the race and the stream is already ending.
+          const cancelPromise = reader?.cancel(options.abortSignal?.reason);
+          if (cancelPromise) {
+            cancelPromise.catch(() => {
+              // A concurrent release won the race; the stream is ending anyway.
+            });
+          }
+          try {
+            controller.error(options.abortSignal?.reason);
+          } catch {
+            // Controller already closed or errored; nothing left to signal.
+          }
+        };
+        throwIfAborted(options.abortSignal);
+        options.abortSignal?.addEventListener("abort", stopReading, {
+          once: true,
+        });
 
         const processStream = async (
           stream: ReadableStream<LanguageModelV3StreamPart>,
@@ -800,6 +843,7 @@ class FallbackModel implements LanguageModelV3 {
           if (!hasPendingError) {
             try {
               await processStream(currentStream);
+              options.abortSignal?.removeEventListener("abort", stopReading);
               return;
             } catch (error) {
               pendingError = error;
@@ -817,6 +861,7 @@ class FallbackModel implements LanguageModelV3 {
             logger.warn(
               `Stream error from model ${failedModelId}; not retrying or falling back (requestId=${getRequestId(options)}, hasStreamedContent=${hasStreamedContent}, attempt=${retryState.attemptNumber}/${fallbackModel.maxAttempts}, error="${formatFallbackErrorForLog(pendingError)}")`,
             );
+            options.abortSignal?.removeEventListener("abort", stopReading);
             controller.error(pendingError);
             return;
           }
@@ -829,6 +874,7 @@ class FallbackModel implements LanguageModelV3 {
             logger.error(
               `All ${fallbackModel.settings.models.length} models exhausted during streaming after ${retryState.attemptNumber} attempts (requestId=${getRequestId(options)}, error="${formatFallbackErrorForLog(pendingError)}")`,
             );
+            options.abortSignal?.removeEventListener("abort", stopReading);
             controller.error(
               fallbackModel.exhaustedError("streaming", pendingError),
             );
@@ -867,7 +913,7 @@ class FallbackModel implements LanguageModelV3 {
       },
 
       cancel() {
-        // Handle stream cancellation if needed
+        stopReading();
       },
     });
   }

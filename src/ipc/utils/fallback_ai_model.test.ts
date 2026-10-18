@@ -225,6 +225,16 @@ describe("fallback failure policy", () => {
     expect(
       getFallbackFailureAction(
         apiCallError({
+          message:
+            "thinkingmachines/inkling-small:free is only available on agentic harnesses.",
+          statusCode: 400,
+          isRetryable: false,
+        }),
+      ),
+    ).toBe("fallback-next");
+    expect(
+      getFallbackFailureAction(
+        apiCallError({
           message: "unexpected invalid temperature",
           statusCode: 400,
           isRetryable: false,
@@ -694,6 +704,39 @@ describe("fallback failure policy", () => {
     ).toBe(
       "status=503 providerRequestId=provider-request-456 code=ECONNRESET message=Gateway unavailable cause=socket hang up",
     );
+  });
+
+  it("ends a hanging provider read promptly when the call aborts", async () => {
+    const hangingModel = {
+      specificationVersion: "v3",
+      provider: "fake",
+      modelId: "hanging-model",
+      supportedUrls: {},
+      async doGenerate() {
+        throw new Error("not used");
+      },
+      async doStream() {
+        return {
+          stream: new ReadableStream<LanguageModelV3StreamPart>({
+            start() {},
+          }),
+        };
+      },
+    } as unknown as LanguageModelV3;
+    const model = createFallback({
+      models: [hangingModel],
+    }) as unknown as LanguageModelV3;
+    const abortController = new AbortController();
+    const result = await model.doStream({
+      prompt: [],
+      abortSignal: abortController.signal,
+      headers: { "x-dyad-internal-request-id": "request-abort" },
+    } as unknown as LanguageModelV3CallOptions);
+    const reader = result.stream.getReader();
+    const read = reader.read();
+    abortController.abort(new DOMException("Aborted", "AbortError"));
+    await expect(read).rejects.toThrow();
+    reader.releaseLock();
   });
 });
 

@@ -70,13 +70,16 @@ export function selectSuggestedPrompts({
   messages,
   isStreaming,
   hasError = false,
+  composerHasContent = false,
 }: {
   messages: readonly Message[];
   isStreaming: boolean;
   /** The last turn failed, possibly after the tag streamed, so it may be incomplete. */
   hasError?: boolean;
+  /** The user has typed or staged something, so a chip would leave it behind. */
+  composerHasContent?: boolean;
 }): SuggestedPromptsSelection | null {
-  if (isStreaming || hasError) return null;
+  if (isStreaming || hasError || composerHasContent) return null;
   const last = messages.at(-1);
   if (
     !last ||

@@ -108,6 +108,16 @@ describe("selectSuggestedPrompts", () => {
     ).toBeNull();
   });
 
+  it("offers nothing while the composer has content", () => {
+    expect(
+      selectSuggestedPrompts({
+        messages: [user, withPrompts],
+        isStreaming: false,
+        composerHasContent: true,
+      }),
+    ).toBeNull();
+  });
+
   it("offers nothing when the last turn errored", () => {
     expect(
       selectSuggestedPrompts({

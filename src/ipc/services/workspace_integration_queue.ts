@@ -701,11 +701,16 @@ export class WorkspaceIntegrationQueue {
         logger.warn("Could not inspect the original directory", error);
       }
     }
-    const result = await validateWorkspace({
-      appPath,
-      baselineAppPath,
-      signal,
-    });
+    const result = await runWorkspaceScopedOperation(
+      {
+        appId: workspace.appId,
+        workspaceKey: workspaceRuntimeId(workspace.id),
+        operation: "validate chat workspace",
+        appResources: [readAppResource("app-path")],
+        workspaceResources: [readAppResource("repository")],
+      },
+      () => validateWorkspace({ appPath, baselineAppPath, signal }),
+    );
     updateWorkspace(workspace.id, { validationJson: result.checks });
     updateOpenIntegrations(workspace.chatId, {
       validationJson: result.checks,

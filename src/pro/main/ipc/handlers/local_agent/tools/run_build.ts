@@ -8,6 +8,8 @@ import { z } from "zod";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { readAppResource } from "@/ipc/services/app_operation_coordinator";
 import {
+  BUILD_SNAPSHOT_PREFIX,
+  BUILD_SNAPSHOT_ROOT_NAME,
   copyGitOverlayEntriesOnWindows,
   createGitOverlayWorkspace,
   isGitOverlayWorkspaceActive,
@@ -41,9 +43,7 @@ const BUILD_TIMEOUT_MS = 10 * 60_000;
 const MAX_RESULT_OUTPUT_CHARS = 16_000;
 const BUILD_OUTPUT_PREVIEW_INTERVAL_MS = 250;
 const STALE_SNAPSHOT_AGE_MS = 60 * 60_000;
-const SNAPSHOT_PREFIX = ".dyad-build-";
 const SNAPSHOT_NAME_PATTERN = /^\.dyad-build-[A-Za-z0-9]{6}$/;
-const SNAPSHOT_ROOT_NAME = "build-snapshots";
 const SNAPSHOT_EXCLUDED_NAMES = new Set([
   "node_modules",
   ".next",
@@ -207,7 +207,7 @@ export async function secureSnapshotSymlinks(
 }
 
 function getBuildSnapshotRoot(): string {
-  return path.join(getUserDataPath(), SNAPSHOT_ROOT_NAME);
+  return path.join(getUserDataPath(), BUILD_SNAPSHOT_ROOT_NAME);
 }
 
 export async function createBuildWorktree(
@@ -218,7 +218,7 @@ export async function createBuildWorktree(
   const workspace = await createGitOverlayWorkspace({
     sourceTargetPath: appPath,
     scratchRoot: snapshotRoot,
-    directoryPrefix: SNAPSHOT_PREFIX,
+    directoryPrefix: BUILD_SNAPSHOT_PREFIX,
     purpose: "build",
     excludedTargetRootNames: SNAPSHOT_EXCLUDED_NAMES,
     cleanupFailureMode: "background",

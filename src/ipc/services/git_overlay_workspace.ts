@@ -13,6 +13,11 @@ const MAX_GIT_OUTPUT_BYTES = 4 * 1024 * 1024;
 const MARKER_SUFFIX = ".owner.json";
 const MARKER_SCHEMA = "dyad-git-overlay-worktree-v1";
 const LEGACY_BUILD_MARKER_SCHEMA = "dyad-build-worktree-v1";
+
+// Shared by agent builds and workspace integration validation so the same
+// startup sweep can recover disposable checkouts left by an interrupted run.
+export const BUILD_SNAPSHOT_ROOT_NAME = "build-snapshots";
+export const BUILD_SNAPSHOT_PREFIX = ".dyad-build-";
 /**
  * Roots dropped at ANY depth in the repository, and never preserved even when
  * Git tracks them.

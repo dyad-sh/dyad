@@ -6,6 +6,13 @@ import type { WorkspaceValidationCheck } from "@/db/schema";
 import { runTypeScriptCheck } from "@/ipc/processors/tsc";
 import { spawnStreaming } from "@/ipc/utils/spawn_streaming";
 import { getPackageManagerCommandEnv } from "@/ipc/utils/socket_firewall";
+import { getUserDataPath } from "@/paths/paths";
+import {
+  BUILD_SNAPSHOT_PREFIX,
+  BUILD_SNAPSHOT_ROOT_NAME,
+  createGitOverlayWorkspace,
+  removeGitOverlayWorkspace,
+} from "./git_overlay_workspace";
 import {
   resolvePackageManager,
   runCleanPackageInstall,
@@ -21,10 +28,10 @@ const INSTALL_MARKER = ".dyad-workspace-install";
 /**
  * Validation of a workspace's combined result before integration.
  *
- * Checks run against the workspace's own dependency tree, installed into the
- * worktree, so a preview or install in the app's original directory is never
- * reused or disturbed. A missing check is reported as "missing" rather than
- * silently counted as a pass.
+ * Checks run in a disposable checkout with its own dependency tree. Installs
+ * and build scripts must not dirty the chat's checkout: integration can wait
+ * for the original writer or merge a newer target and require a clean retry.
+ * A missing check is reported as "missing" rather than silently passed.
  */
 export interface ValidationRunInput {
   appPath: string;
@@ -310,6 +317,37 @@ async function runScript(
  * later check would fail for the same reason.
  */
 export async function validateWorkspace(
+  input: ValidationRunInput,
+): Promise<ValidationResult> {
+  const snapshot = await createGitOverlayWorkspace({
+    sourceTargetPath: input.appPath,
+    scratchRoot: path.join(getUserDataPath(), BUILD_SNAPSHOT_ROOT_NAME),
+    directoryPrefix: BUILD_SNAPSHOT_PREFIX,
+    purpose: "build",
+    excludedTargetRootNames: new Set([
+      ".output",
+      ".next",
+      ".nuxt",
+      ".vite",
+      ".svelte-kit",
+      "dist",
+      "build",
+      "out",
+      "coverage",
+    ]),
+    signal: input.signal,
+  });
+  try {
+    return await runWorkspaceChecks({ ...input, appPath: snapshot.targetPath });
+  } finally {
+    await removeGitOverlayWorkspace(
+      snapshot.worktreePath,
+      snapshot.sourceRepoPath,
+    );
+  }
+}
+
+async function runWorkspaceChecks(
   input: ValidationRunInput,
 ): Promise<ValidationResult> {
   const checks: WorkspaceValidationCheck[] = [];

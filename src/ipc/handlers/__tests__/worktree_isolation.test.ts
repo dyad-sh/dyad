@@ -60,6 +60,7 @@ import {
   listIntegrationsForChat,
 } from "@/ipc/services/chat_workspace_store";
 import { workspaceIntegrationQueue } from "@/ipc/services/workspace_integration_queue";
+import * as fileOperations from "@/pro/main/ipc/handlers/local_agent/processors/file_operations";
 import {
   setupChatFlowHarness,
   type ChatFlowHarness,
@@ -655,4 +656,62 @@ describe("worktree isolation (integration)", () => {
       "- [x] step one\n- [ ] step two\n",
     );
   }, 60_000);
+
+  it("creates and integrates the workspace checkpoint when the original writer finishes first", async () => {
+    const isolatedChatId = await createChat();
+    const commitAllChanges = fileOperations.commitAllChanges;
+    let releaseCheckpoint!: () => void;
+    const checkpointGate = new Promise<void>((resolve) => {
+      releaseCheckpoint = resolve;
+    });
+    let checkpointWaiting = false;
+    const commitSpy = vi
+      .spyOn(fileOperations, "commitAllChanges")
+      .mockImplementation(async (...args) => {
+        if (args[0].chatId === isolatedChatId) {
+          checkpointWaiting = true;
+          await checkpointGate;
+        }
+        return commitAllChanges(...args);
+      });
+    const original = await startSlowWriter("workspace-isolation-slow-shared");
+    const isolatedTurn = harness.streamChat("tc=local-agent/write-index", {
+      chatId: isolatedChatId,
+    });
+    try {
+      await vi.waitFor(() => expect(checkpointWaiting).toBe(true), {
+        timeout: 20_000,
+      });
+      const workspace = getWorkspaceForChat(isolatedChatId)!;
+      expect(workspace.status).toBe("active");
+      expect(
+        (await original.turn).event("chat:response:error"),
+      ).toBeUndefined();
+      const originalReply = await lastAssistant(original.chatId);
+      expect(originalReply.commitHash).toBeTruthy();
+      expect((await lastAssistant(isolatedChatId)).commitHash).toBeNull();
+
+      releaseCheckpoint();
+      expect((await isolatedTurn).event("chat:response:error")).toBeUndefined();
+      const isolatedReply = await lastAssistant(isolatedChatId);
+      expect(isolatedReply.commitHash).toBeTruthy();
+      await vi.waitFor(
+        () =>
+          expect(getWorkspaceForChat(isolatedChatId)?.integrationStatus).toBe(
+            "merged",
+          ),
+        { timeout: 30_000 },
+      );
+      expect(isAncestor(originalReply.commitHash!, targetBranch)).toBe(true);
+      expect(isAncestor(isolatedReply.commitHash!, targetBranch)).toBe(true);
+      expect(
+        git(["status", "--porcelain"], getWorkspaceAppPath(workspace)),
+      ).toBe("");
+      expect(git(["status", "--porcelain"])).toBe("");
+    } finally {
+      releaseCheckpoint();
+      await Promise.allSettled([original.turn, isolatedTurn]);
+      commitSpy.mockRestore();
+    }
+  }, 90_000);
 });

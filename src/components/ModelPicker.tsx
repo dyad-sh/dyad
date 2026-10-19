@@ -1563,7 +1563,7 @@ export function ModelPicker() {
       <DropdownMenu open={open} onOpenChange={handleOpenChange}>
         <DropdownMenuTrigger
           disabled={isChatRoute && chatId != null && chatLoading}
-          className="inline-flex items-center justify-center whitespace-nowrap rounded-lg text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border-none bg-transparent shadow-none text-foreground/80 hover:text-foreground hover:bg-muted/60 h-7 max-w-[220px] px-2 gap-1.5 cursor-pointer"
+          className="inline-flex min-w-0 items-center justify-center whitespace-nowrap rounded-lg text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border-none bg-transparent shadow-none text-foreground/80 hover:text-foreground hover:bg-muted/60 h-7 max-w-[220px] px-2 gap-1.5 cursor-pointer"
           data-testid="model-picker"
           title={modelDisplayName}
         >

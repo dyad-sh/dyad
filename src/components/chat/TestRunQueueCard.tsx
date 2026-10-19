@@ -1,6 +1,6 @@
 import { skipToken, useQuery } from "@tanstack/react-query";
 import { useAtom } from "jotai";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   CheckCircle2,
@@ -15,6 +15,9 @@ import { queryKeys } from "@/lib/queryKeys";
 import type { CompletedTestRun } from "@/lib/testRunSummary";
 import type { TestRunRequest } from "@/test_run_queue/state";
 import { cn } from "@/lib/utils";
+
+/** How long a batch's final outcomes stay readable/announced after it drains. */
+export const DRAINED_BATCH_LINGER_MS = 5_000;
 
 type RunStatus = CompletedTestRun["status"] | "queued" | "running" | "stopping";
 type QueueRow = TestRunRequest & { status: RunStatus };
@@ -72,6 +75,12 @@ export function TestRunQueueCard({
   // after its last run releases the queue slot, including stopping/cleanup.
   const queueIsIdle =
     queue?.activeRun === null && queue.queuedRuns.length === 0;
+  // A batch seen running here lingers after draining so its last outcome is
+  // readable; one that finished while chat was closed is dismissed on sight.
+  const [watchedBatch, setWatchedBatch] = useState(false);
+  if (isFetchedAfterMount && queue && !queueIsIdle && !watchedBatch) {
+    setWatchedBatch(true);
+  }
   const latestCompletedRunId = completed.reduce(
     (latest, run) => Math.max(latest, run.runId),
     0,
@@ -84,16 +93,27 @@ export function TestRunQueueCard({
       latestCompletedRunId <= dismissedThroughId
     )
       return;
-    setDismissedRunIds((previous) =>
-      new Map(previous).set(
-        appId,
-        Math.max(previous.get(appId) ?? 0, latestCompletedRunId),
-      ),
-    );
+    const dismiss = () => {
+      setWatchedBatch(false);
+      setDismissedRunIds((previous) =>
+        new Map(previous).set(
+          appId,
+          Math.max(previous.get(appId) ?? 0, latestCompletedRunId),
+        ),
+      );
+    };
+    if (!watchedBatch) {
+      dismiss();
+      return;
+    }
+    // A run queued during the linger keeps the batch open and cancels this.
+    const timer = setTimeout(dismiss, DRAINED_BATCH_LINGER_MS);
+    return () => clearTimeout(timer);
   }, [
     appId,
     isFetchedAfterMount,
     queueIsIdle,
+    watchedBatch,
     latestCompletedRunId,
     dismissedThroughId,
     setDismissedRunIds,
@@ -117,7 +137,13 @@ export function TestRunQueueCard({
   ];
   // Run IDs follow submission order; status changes must not move rows.
   rows.sort((a, b) => a.runId - b.runId);
-  if (appId === null || !queue || queueIsIdle || rows.length === 0) return null;
+  if (
+    appId === null ||
+    !queue ||
+    (queueIsIdle && !watchedBatch) ||
+    rows.length === 0
+  )
+    return null;
 
   function runLabel(run: TestRunRequest): string {
     const files = run.testFiles ?? (run.testFile ? [run.testFile] : []);

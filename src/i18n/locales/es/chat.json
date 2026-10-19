@@ -6,7 +6,7 @@
     "queued": "En cola",
     "running": "En ejecución",
     "stopping": "Deteniendo",
-    "passed": "Correcta",
+    "passed": "Aprobada",
     "failed": "Fallida",
     "inconclusive": "No concluyente"
   },

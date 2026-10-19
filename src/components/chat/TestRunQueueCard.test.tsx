@@ -8,7 +8,7 @@ import {
 } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createStore, Provider } from "jotai";
-import { beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useTestRunEvents } from "@/hooks/useTestRunEvents";
 import { queryKeys } from "@/lib/queryKeys";
@@ -16,7 +16,7 @@ import type {
   TestRunQueueSnapshot,
   TestsRunStatePayload,
 } from "@/ipc/types/tests";
-import { TestRunQueueCard } from "./TestRunQueueCard";
+import { DRAINED_BATCH_LINGER_MS, TestRunQueueCard } from "./TestRunQueueCard";
 
 type QueueEvent = TestRunQueueSnapshot & { appId: number };
 const mocks = vi.hoisted(() => ({
@@ -85,6 +85,15 @@ beforeEach(() => {
   mocks.getRunQueue.mockReset().mockResolvedValue(empty);
 });
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+/** Lets tests jump past the linger while RTL polling still advances in real time. */
+function installLingerClock() {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+}
+
 function publishQueue(queue: TestRunQueueSnapshot, appId = 1) {
   for (const listener of mocks.queueListeners) listener({ appId, ...queue });
 }
@@ -129,7 +138,16 @@ function row(label: string) {
   return screen.getByText(label).closest("li")!;
 }
 
+/** A batch drained while watched stays readable for the linger, then hides. */
+async function expectLingerThenDismiss(label: string, status: string) {
+  await act(() => vi.advanceTimersByTimeAsync(DRAINED_BATCH_LINGER_MS / 2));
+  expect(within(row(label)).getByText(status)).toBeTruthy();
+  await act(() => vi.advanceTimersByTimeAsync(DRAINED_BATCH_LINGER_MS));
+  expect(screen.queryByRole("region", { name: "Test queue" })).toBeNull();
+}
+
 it("shows live queued and running requests without mounting the Tests panel", async () => {
+  installLingerClock();
   mocks.getRunQueue.mockResolvedValue({
     activeRun: { ...first, stopping: false },
     queuedRuns: [second],
@@ -179,14 +197,17 @@ it("shows live queued and running requests without mounting the Tests panel", as
   expect(screen.getAllByRole("listitem")).toEqual(originalOrder);
   expect(screen.queryByText("Running")).toBeNull();
   act(() => publishQueue(empty));
-  await waitFor(() =>
-    expect(screen.queryByRole("region", { name: "Test queue" })).toBeNull(),
-  );
+  await expectLingerThenDismiss(second.testFile, "Failed");
 });
 
-it.each(["passed", "failed", "inconclusive"] as const)(
+it.each([
+  ["passed", "Passed"],
+  ["failed", "Failed"],
+  ["inconclusive", "Inconclusive"],
+] as const)(
   "automatically dismisses %s results after the queue drains, stays hidden on remount, and reappears for new runs",
-  async (status) => {
+  async (status, label) => {
+    installLingerClock();
     mocks.getRunQueue.mockResolvedValue({
       activeRun: { ...first, stopping: false },
       queuedRuns: [],
@@ -207,9 +228,7 @@ it.each(["passed", "failed", "inconclusive"] as const)(
     expect(screen.getByRole("region", { name: "Test queue" })).toBeTruthy();
     mocks.getRunQueue.mockResolvedValue(empty);
     act(() => publishQueue(empty));
-    await waitFor(() =>
-      expect(screen.queryByRole("region", { name: "Test queue" })).toBeNull(),
-    );
+    await expectLingerThenDismiss(first.testFile, label);
 
     view.rerender(<Harness visible={false} />);
     view.rerender(<Harness />);
@@ -234,11 +253,47 @@ it.each(["passed", "failed", "inconclusive"] as const)(
       });
       publishQueue(empty);
     });
-    await waitFor(() =>
-      expect(screen.queryByRole("region", { name: "Test queue" })).toBeNull(),
-    );
+    await expectLingerThenDismiss(second.testFile, "Passed");
   },
 );
+
+it("keeps lingering outcomes in the batch when another run is queued before dismissal", async () => {
+  installLingerClock();
+  mocks.getRunQueue.mockResolvedValue({
+    activeRun: { ...first, stopping: false },
+    queuedRuns: [],
+  });
+  const { Harness } = setup();
+  render(<Harness />);
+  await screen.findByText("Running");
+  act(() => {
+    publishRun({
+      appId: 1,
+      ...first,
+      state: "finished",
+      results: [{ file: first.testFile, status: "passed" }],
+    });
+    publishQueue(empty);
+  });
+  await act(() => vi.advanceTimersByTimeAsync(DRAINED_BATCH_LINGER_MS / 2));
+  act(() =>
+    publishQueue({ activeRun: { ...second, stopping: false }, queuedRuns: [] }),
+  );
+  await act(() => vi.advanceTimersByTimeAsync(DRAINED_BATCH_LINGER_MS * 2));
+  expect(within(row(first.testFile)).getByText("Passed")).toBeTruthy();
+  expect(within(row(second.testFile)).getByText("Running")).toBeTruthy();
+
+  act(() => {
+    publishRun({
+      appId: 1,
+      ...second,
+      state: "finished",
+      results: [{ file: second.testFile, status: "failed" }],
+    });
+    publishQueue(empty);
+  });
+  await expectLingerThenDismiss(first.testFile, "Passed");
+});
 
 it("automatically dismisses settled apps without hiding another app's ongoing batch", async () => {
   mocks.getRunQueue.mockImplementation(async ({ appId }) =>
@@ -407,7 +462,21 @@ it.each([
     results: [{ file: first.testFile, status: "inconclusive" as const }],
     expected: "Inconclusive",
   },
-  { results: [], infraError: { message: "Setup failed" }, expected: "Failed" },
+  {
+    results: [],
+    infraError: { message: "Test run stopped." },
+    expected: "Inconclusive",
+  },
+  {
+    results: [{ file: first.testFile, status: "passed" as const }],
+    infraError: { message: "Cleanup failed" },
+    expected: "Inconclusive",
+  },
+  {
+    results: [{ file: first.testFile, status: "failed" as const }],
+    infraError: { message: "Cleanup failed" },
+    expected: "Failed",
+  },
 ])(
   "reports incomplete/empty/failed runs honestly: $expected",
   async ({ expected, ...result }) => {

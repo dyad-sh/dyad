@@ -17,14 +17,16 @@ export function summarizeTestRun(
     testFiles: payload.testFiles,
     testLine: payload.testLine,
     grep: payload.grep,
-    status:
-      payload.infraError || results.some((result) => result.status === "failed")
-        ? "failed"
-        : results.length === 0 ||
-            results.some(
-              (result) => result.incomplete || result.status === "inconclusive",
-            )
-          ? "inconclusive"
-          : "passed",
+    // Only a real failed test result is "failed"; an infrastructure, stop, or
+    // cleanup error is inconclusive, matching the Tests panel's amber banner.
+    status: results.some((result) => result.status === "failed")
+      ? "failed"
+      : payload.infraError ||
+          results.length === 0 ||
+          results.some(
+            (result) => result.incomplete || result.status === "inconclusive",
+          )
+        ? "inconclusive"
+        : "passed",
   };
 }

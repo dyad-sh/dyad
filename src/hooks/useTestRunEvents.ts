@@ -135,8 +135,17 @@ export function useTestRunEvents() {
       if (payload.state === "finished") {
         // Retain recent outcomes even with the chat/Tests panel unmounted, or
         // when this window missed the start. Never infer success from dequeueing.
+        const recentRunsKey = queryKeys.tests.recentRuns({
+          appId: payload.appId,
+        });
+        // Often unobserved for longer than a batch takes, so opt out of the
+        // default 5-minute GC; the list is bounded to ten compact entries.
+        queryClient.setQueryDefaults(recentRunsKey, {
+          gcTime: Infinity,
+          staleTime: Infinity,
+        });
         queryClient.setQueryData<CompletedTestRun[]>(
-          queryKeys.tests.recentRuns({ appId: payload.appId }),
+          recentRunsKey,
           (previous = []) =>
             [
               ...previous.filter((run) => run.runId !== payload.runId),

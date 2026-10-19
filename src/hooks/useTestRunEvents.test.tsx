@@ -131,6 +131,27 @@ describe("useTestRunEvents", () => {
       queryClient.getQueryData(queryKeys.tests.recentRuns({ appId: 2 })),
     ).toEqual([expect.objectContaining({ runId: 1, status: "inconclusive" })]);
   });
+  it("retains unobserved run summaries past React Query's default garbage collection", () => {
+    vi.useFakeTimers();
+    try {
+      const { queryClient, Wrapper } = makeWrapper();
+      renderHook(() => useTestRunEvents(), { wrapper: Wrapper });
+      act(() => {
+        emitRunState({
+          appId: 1,
+          source: "agent",
+          state: "finished",
+          results: [{ file: "a.spec.ts", status: "passed" }],
+        });
+        vi.advanceTimersByTime(60 * 60 * 1000);
+      });
+      expect(
+        queryClient.getQueryData(queryKeys.tests.recentRuns({ appId: 1 })),
+      ).toEqual([expect.objectContaining({ runId: 1, status: "passed" })]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it.each(["panel", "agent"])(
     "merges the authoritative terminal sandbox flag for %s runs",
     (source) => {

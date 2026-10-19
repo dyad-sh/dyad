@@ -99,12 +99,14 @@ const WINDOWS_DRIVE_PREFIX = /^[A-Za-z]:/;
 // (name:stream) instead of files, and trailing dots or spaces are stripped.
 const WINDOWS_RESERVED_NAME =
   /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i;
+// Characters Windows does not allow in file names.
+const WINDOWS_INVALID_CHARACTERS = /[:<>"|?*]/;
 
 function isUnsafeSegment(segment: string): boolean {
   return (
     segment === ".." ||
     segment.length > MAX_SEGMENT_LENGTH ||
-    segment.includes(":") ||
+    WINDOWS_INVALID_CHARACTERS.test(segment) ||
     segment.endsWith(".") ||
     segment.endsWith(" ") ||
     WINDOWS_RESERVED_NAME.test(segment)
@@ -271,11 +273,16 @@ export async function extractZipArchive(
 
     try {
       await fs.mkdir(path.dirname(filePath), { recursive: true });
-      await fs.writeFile(filePath, data);
+      // A new path is created exclusively, so on a case-insensitive host
+      // README.md and readme.md cannot both land on one file. A repeat of
+      // the same path overwrites it.
+      await fs.writeFile(filePath, data, {
+        flag: seenPaths.has(relativePath) ? "w" : "wx",
+      });
     } catch (error) {
       // Names that are valid inside an archive can still be unwritable on
-      // the host: a file and a directory sharing a path, characters the
-      // filesystem forbids, or a path that is too long once resolved.
+      // the host: a file and a directory sharing a path, two names the
+      // filesystem treats as one, or a path that is too long once resolved.
       if (isUnwritableEntryError(error)) {
         skipped.push({ name: entry.name, reason: "unwritable" });
         continue;

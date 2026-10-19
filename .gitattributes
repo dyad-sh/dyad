@@ -18,6 +18,5 @@ src/prompts/guides/*.md text eol=lf
 # https://docs.github.com/en/repositories/working-with-files/managing-files/customizing-how-changed-files-appear-on-github
 package-lock.json -linguist-generated
 
-
 # Binary zip fixtures for the archive reader tests.
 src/ipc/utils/zip/__fixtures__/*.zip binary

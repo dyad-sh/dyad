@@ -179,6 +179,9 @@ describe("extractZipArchive", () => {
       { name: "README.md:hidden", data: "alternate stream" },
       { name: "trailing./x.txt", data: "stripped dot" },
       { name: "notes.txt ", data: "stripped space" },
+      { name: "what?.md", data: "question mark" },
+      { name: 'a"b/c.txt', data: "quote in a directory" },
+      { name: "x<y>|*.txt", data: "angle brackets, pipe and star" },
       { name: "console.ts", data: "fine, not a reserved name" },
       { name: "nulls/ok.txt", data: "fine, directory is not reserved" },
     ]);
@@ -190,6 +193,9 @@ describe("extractZipArchive", () => {
       "README.md:hidden",
       "trailing./x.txt",
       "notes.txt ",
+      "what?.md",
+      'a"b/c.txt',
+      "x<y>|*.txt",
     ]);
     expect(listFiles(dest)).toEqual(["console.ts", "nulls/ok.txt"]);
   });
@@ -228,6 +234,51 @@ describe("extractZipArchive", () => {
     const result = await extractZipArchive(archive, dest);
     expect(result.files).toEqual([{ relativePath: "dup.txt", sizeBytes: 6 }]);
     expect(fs.readFileSync(path.join(dest, "dup.txt"), "utf8")).toBe("second");
+  });
+
+  it("never lists two case-variant names that share one file", async () => {
+    const archive = buildZip([
+      { name: "README.md", data: "upper" },
+      { name: "readme.md", data: "lower!" },
+    ]);
+    const result = await extractZipArchive(archive, dest);
+    // Case-sensitive hosts keep both; case-insensitive ones skip the second.
+    for (const file of result.files) {
+      expect(fs.statSync(path.join(dest, file.relativePath)).size).toBe(
+        file.sizeBytes,
+      );
+    }
+    expect(result.files.length + result.skipped.length).toBe(2);
+    expect(listFiles(dest)).toHaveLength(result.files.length);
+  });
+
+  it("skips a new path that already exists instead of overwriting it", async () => {
+    // Stands in for a case-insensitive host, where readme.md opens README.md.
+    const realWriteFile = fsPromises.writeFile;
+    const writeSpy = vi
+      .spyOn(fsPromises, "writeFile")
+      .mockImplementation(async (file, data, options) => {
+        if (String(file).endsWith("readme.md")) {
+          throw Object.assign(new Error("exists"), { code: "EEXIST" });
+        }
+        return realWriteFile(file, data, options);
+      });
+    try {
+      const result = await extractZipArchive(
+        buildZip([
+          { name: "README.md", data: "upper" },
+          { name: "readme.md", data: "lower!" },
+        ]),
+        dest,
+      );
+      expect(result.files).toEqual([
+        { relativePath: "README.md", sizeBytes: 5 },
+      ]);
+      expect(skippedByReason(result)).toEqual({ unwritable: ["readme.md"] });
+    } finally {
+      writeSpy.mockRestore();
+    }
+    expect(fs.readFileSync(path.join(dest, "README.md"), "utf8")).toBe("upper");
   });
 
   it("skips entries the host filesystem cannot hold instead of failing", async () => {

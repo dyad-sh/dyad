@@ -158,6 +158,40 @@ describe("extractZipAttachment", () => {
     );
   });
 
+  it("removes the staged extraction when the earlier one cannot be moved aside", async () => {
+    const mediaDir = getDyadMediaDir(appPath);
+    await extractZipAttachment({
+      mediaDir,
+      storedFileName: "shared.zip",
+      archive: buildZip([{ name: "old.txt", data: "old" }]),
+    });
+    const destinationDir = path.join(mediaDir, "shared-unpacked");
+    const realRename = fsPromises.rename;
+    const renameSpy = vi
+      .spyOn(fsPromises, "rename")
+      .mockImplementation(async (from, to) => {
+        if (from === destinationDir && String(to).includes(".old-")) {
+          throw Object.assign(new Error("simulated busy directory"), {
+            code: "EBUSY",
+          });
+        }
+        return realRename(from, to);
+      });
+    try {
+      await expect(
+        extractZipAttachment({
+          mediaDir,
+          storedFileName: "shared.zip",
+          archive: buildZip([{ name: "new.txt", data: "new" }]),
+        }),
+      ).rejects.toThrow("simulated busy directory");
+    } finally {
+      renameSpy.mockRestore();
+    }
+    expect(fs.readdirSync(destinationDir)).toEqual(["old.txt"]);
+    expect(fs.readdirSync(mediaDir)).toEqual(["shared-unpacked"]);
+  });
+
   it("restores the earlier extraction when the final swap fails", async () => {
     const mediaDir = getDyadMediaDir(appPath);
     await extractZipAttachment({

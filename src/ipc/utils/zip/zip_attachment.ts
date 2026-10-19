@@ -101,11 +101,16 @@ export async function extractZipAttachment({
     // Swap the finished extraction into place. Files already open from the
     // previous extraction stay readable until the old directory is removed.
     const retiredDir = `${destinationDir}.old-${token}`;
-    await fs.rename(destinationDir, retiredDir).catch((error: unknown) => {
+    try {
+      await fs.rename(destinationDir, retiredDir);
+    } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        await fs
+          .rm(stagingDir, { recursive: true, force: true })
+          .catch(() => undefined);
         throw error;
       }
-    });
+    }
     try {
       await fs.rename(stagingDir, destinationDir);
     } catch (error) {

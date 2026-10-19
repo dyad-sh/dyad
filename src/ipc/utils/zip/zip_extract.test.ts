@@ -258,7 +258,11 @@ describe("extractZipArchive", () => {
     const writeSpy = vi
       .spyOn(fsPromises, "writeFile")
       .mockImplementation(async (file, data, options) => {
-        if (String(file).endsWith("readme.md")) {
+        if (
+          String(file).endsWith("readme.md") &&
+          typeof options === "object" &&
+          options?.flag === "wx"
+        ) {
           throw Object.assign(new Error("exists"), { code: "EEXIST" });
         }
         return realWriteFile(file, data, options);
@@ -280,6 +284,19 @@ describe("extractZipArchive", () => {
     }
     expect(fs.readFileSync(path.join(dest, "README.md"), "utf8")).toBe("upper");
   });
+
+  it.skipIf(process.platform === "win32")(
+    "keeps execute bits from Unix-made entries",
+    async () => {
+      const archive = buildZip([
+        { name: "gradlew", data: "#!/bin/sh\n", unixMode: 0o100755 },
+        { name: "README.md", data: "docs", unixMode: 0o100644 },
+      ]);
+      await extractZipArchive(archive, dest);
+      expect(fs.statSync(path.join(dest, "gradlew")).mode & 0o111).not.toBe(0);
+      expect(fs.statSync(path.join(dest, "README.md")).mode & 0o111).toBe(0);
+    },
+  );
 
   it("skips entries the host filesystem cannot hold instead of failing", async () => {
     const archive = buildZip([

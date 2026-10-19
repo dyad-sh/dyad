@@ -58,6 +58,8 @@ export interface ZipEntry {
   isDirectory: boolean;
   /** Unix symlink according to the external attributes of a Unix-made entry. */
   isSymlink: boolean;
+  /** Unix-made entry with any execute bit set in its external attributes. */
+  isExecutable: boolean;
   /** Traditional PKWARE or strong encryption is flagged; data cannot be read. */
   isEncrypted: boolean;
   compressionMethod: number;
@@ -381,6 +383,7 @@ function readCentralHeader(
   const isSymlink =
     unixMode !== null &&
     (unixMode & UNIX_FILE_TYPE_MASK) === UNIX_FILE_TYPE_SYMLINK;
+  const isExecutable = unixMode !== null && (unixMode & 0o111) !== 0;
   const isDirectory =
     name.endsWith("/") ||
     name.endsWith("\\") ||
@@ -391,6 +394,7 @@ function readCentralHeader(
       name,
       isDirectory,
       isSymlink,
+      isExecutable,
       isEncrypted: (flags & (FLAG_ENCRYPTED | FLAG_STRONG_ENCRYPTION)) !== 0,
       compressionMethod,
       compressedSize,

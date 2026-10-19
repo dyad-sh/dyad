@@ -20,7 +20,8 @@ export { ZipLimitError };
  * - Entry names are normalized to forward slashes and rejected when they are
  *   absolute, drive-qualified, contain ".." or control characters, or nest
  *   deeper than the limit. Names Windows cannot hold as regular files
- *   (reserved device names, colons, trailing dots or spaces) are rejected on
+ *   (reserved device names, the characters `:<>"|?*`, trailing dots or
+ *   spaces) are rejected on
  *   every platform so an archive behaves the same everywhere. The final
  *   destination is also checked against the extraction root after
  *   resolution, so no entry can write outside it.
@@ -279,6 +280,10 @@ export async function extractZipArchive(
       await fs.writeFile(filePath, data, {
         flag: seenPaths.has(relativePath) ? "w" : "wx",
       });
+      // Keep scripts such as gradlew runnable once copied into the app.
+      if (entry.isExecutable) {
+        await fs.chmod(filePath, 0o755);
+      }
     } catch (error) {
       // Names that are valid inside an archive can still be unwritable on
       // the host: a file and a directory sharing a path, two names the

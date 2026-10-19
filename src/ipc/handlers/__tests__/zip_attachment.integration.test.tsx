@@ -1,14 +1,43 @@
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
 import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 import {
   setupHybridChatHarness,
   type HybridChatHarness,
 } from "@/testing/hybrid_chat_harness";
 import { h } from "@/testing/hybrid.setup";
+import { cancelActiveStreamsForChat } from "@/ipc/handlers/chat_stream_handlers";
+import { buildZip } from "@/ipc/utils/zip/testing/zip_writer";
+
+// Lets a test hold an extraction open, e.g. to press Stop in the middle of it.
+const extractionHook = vi.hoisted(() => ({
+  current: null as null | ((signal?: AbortSignal) => Promise<void>),
+}));
+vi.mock("@/ipc/utils/zip/zip_attachment", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/ipc/utils/zip/zip_attachment")>();
+  return {
+    ...actual,
+    extractZipAttachment: async (
+      args: Parameters<typeof actual.extractZipAttachment>[0],
+    ) => {
+      await extractionHook.current?.(args.signal);
+      return actual.extractZipAttachment(args);
+    },
+  };
+});
 
 // A Python-written archive with a single `project/` root folder holding
 // README.md, src/index.ts, src/util/empty.ts and assets/logo.png.
@@ -217,5 +246,59 @@ describe("zip attachment (integration)", () => {
       '<dyad-read path="attachments:project.zip/src/index.ts"',
     );
     expect(assistant?.content).not.toContain("<dyad-error");
+  }, 60_000);
+
+  it("treats Stop during extraction as a cancel and discards the archive", async () => {
+    const chatId = await harness.createChat();
+    harness.mount({ chatId });
+    // Unique bytes, so the stored archive is one this turn creates.
+    const archive = buildZip([{ name: "cancel-me.txt", data: "stop" }]);
+    const storedPath = path.join(
+      harness.appDir,
+      ".dyad",
+      "media",
+      `${crypto.createHash("sha256").update(archive).digest("hex")}.zip`,
+    );
+    harness.setChatAttachments([
+      {
+        name: "cancel.zip",
+        content: Buffer.from(archive),
+        mimeType: "application/zip",
+      },
+    ]);
+    await screen.findByText("cancel.zip");
+
+    let markStarted: () => void = () => {};
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    extractionHook.current = async (signal) => {
+      markStarted();
+      await new Promise<void>((resolve) => {
+        signal?.addEventListener("abort", () => resolve(), { once: true });
+      });
+      signal?.throwIfAborted();
+    };
+    try {
+      const errorsBefore = harness.bridge.sentEvents.filter(
+        (e) => e.channel === "chat:response:error",
+      ).length;
+      const { send } = await harness.typeInChat("[dump]", { chatId });
+      send();
+      await started;
+      expect(fs.existsSync(storedPath)).toBe(true);
+
+      // Resolves once the aborted handler has finished unwinding.
+      await cancelActiveStreamsForChat(chatId, undefined);
+
+      expect(
+        harness.bridge.sentEvents.filter(
+          (e) => e.channel === "chat:response:error",
+        ),
+      ).toHaveLength(errorsBefore);
+      expect(fs.existsSync(storedPath)).toBe(false);
+    } finally {
+      extractionHook.current = null;
+    }
   }, 60_000);
 });

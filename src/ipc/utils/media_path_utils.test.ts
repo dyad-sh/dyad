@@ -17,6 +17,22 @@ import {
 } from "./media_path_utils";
 
 describe("createUniqueAttachmentLogicalName", () => {
+  it("keeps a collision suffix within the segment limit", () => {
+    const used = new Set<string>();
+    const longName = `${"a".repeat(150)}.${"b".repeat(5)}.zip`;
+    const first = createUniqueAttachmentLogicalName(longName, used);
+    const second = createUniqueAttachmentLogicalName(longName, used);
+    expect(first).toBe(longName);
+    expect(second).toHaveLength(160);
+    expect(second.endsWith("-2.zip")).toBe(true);
+    // An archive's entries re-normalize the parent name; it must survive.
+    expect(
+      createUniqueAttachmentLogicalName(`${second}/a.txt`, new Set(), {
+        nested: true,
+      }),
+    ).toBe(`${second}/a.txt`);
+  });
+
   it("reduces upload names to their final segment", () => {
     expect(
       createUniqueAttachmentLogicalName("dir/sub/notes.txt", new Set()),

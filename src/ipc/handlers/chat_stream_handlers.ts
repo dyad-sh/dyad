@@ -1492,6 +1492,11 @@ export function registerChatStreamHandlers() {
           }
         } catch (error) {
           await discardTurnCreatedMedia();
+          // Stop during extraction is a cancel, not a failure;
+          // cancelTrackedStreams already sent the cancelled end events.
+          if (abortController.signal.aborted) {
+            return req.chatId;
+          }
           throw error;
         }
       }

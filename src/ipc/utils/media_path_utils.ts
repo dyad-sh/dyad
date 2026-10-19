@@ -142,11 +142,13 @@ export function stripAttachmentLogicalPrefix(logicalPath: string): string {
     : logicalPath;
 }
 
+const MAX_LOGICAL_SEGMENT_LENGTH = 160;
+
 function sanitizeLogicalNameSegment(segment: string): string {
   return segment
     .replace(/```/g, "_")
     .replace(/[<>{}`:\0\r\n]/g, "_")
-    .slice(0, 160)
+    .slice(0, MAX_LOGICAL_SEGMENT_LENGTH)
     .trim();
 }
 
@@ -182,9 +184,15 @@ export function createUniqueAttachmentLogicalName(
 
   const ext = path.extname(logicalName);
   const base = ext ? logicalName.slice(0, -ext.length) : logicalName;
+  const dirEnd = base.lastIndexOf("/") + 1;
+  const dir = base.slice(0, dirEnd);
+  const stem = base.slice(dirEnd);
   let suffix = 2;
   while (true) {
-    const candidate = `${base}-${suffix}${ext}`;
+    // Keep the suffix inside the segment limit, so normalizing the name again
+    // (as an archive's entries do with their parent's name) leaves it intact.
+    const tail = `-${suffix}${ext}`;
+    const candidate = `${dir}${stem.slice(0, Math.max(0, MAX_LOGICAL_SEGMENT_LENGTH - tail.length))}${tail}`;
     if (!usedNames.has(candidate)) {
       usedNames.add(candidate);
       return candidate;

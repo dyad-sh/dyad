@@ -280,9 +280,13 @@ export async function extractZipArchive(
       await fs.writeFile(filePath, data, {
         flag: seenPaths.has(relativePath) ? "w" : "wx",
       });
-      // Keep scripts such as gradlew runnable once copied into the app.
-      if (entry.isExecutable) {
-        await fs.chmod(filePath, 0o755);
+      // Keep scripts such as gradlew runnable once copied into the app. An
+      // overwrite keeps the old mode, so a repeated path gets the winning
+      // entry's. Best effort: some filesystems reject mode changes.
+      if (entry.isExecutable || seenPaths.has(relativePath)) {
+        await fs
+          .chmod(filePath, entry.isExecutable ? 0o755 : 0o644)
+          .catch(() => undefined);
       }
     } catch (error) {
       // Names that are valid inside an archive can still be unwritable on

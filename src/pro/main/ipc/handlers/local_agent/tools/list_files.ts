@@ -15,11 +15,7 @@ import {
   filterDyadInternalFiles,
   resolveTargetAppPath,
 } from "./resolve_app_context";
-import {
-  listStoredAttachments,
-  stripAttachmentLogicalPrefix,
-  toAttachmentLogicalPath,
-} from "@/ipc/utils/media_path_utils";
+import { listAttachmentLogicalPaths } from "@/ipc/utils/media_path_utils";
 
 const MAX_PATHS_TO_RETURN = 1_000;
 
@@ -98,23 +94,9 @@ async function listAttachmentPaths(
   appPath: string,
   directory: string,
 ): Promise<ListedPath[]> {
-  const scope = stripAttachmentLogicalPrefix(directory).replace(/\/+$/, "");
-  const prefix = scope ? `${scope}/` : "";
-  const attachments = await listStoredAttachments(appPath);
-  const entries = attachments
-    .filter((attachment) => attachment.logicalName.startsWith(prefix))
-    .map((attachment) => ({
-      path: toAttachmentLogicalPath(attachment.logicalName),
-      isDirectory: false,
-    }))
-    .sort((a, b) => a.path.localeCompare(b.path));
-  if (scope && entries.length === 0) {
-    throw new DyadError(
-      `Directory not found: ${directory}`,
-      DyadErrorKind.NotFound,
-    );
-  }
-  return entries;
+  return (await listAttachmentLogicalPaths(appPath, directory)).map(
+    (logicalPath) => ({ path: logicalPath, isDirectory: false }),
+  );
 }
 
 function buildListFilesResult(

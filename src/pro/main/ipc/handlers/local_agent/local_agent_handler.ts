@@ -564,6 +564,9 @@ function isAttachmentAccessToolCall(toolName: string, input: unknown): boolean {
   if (toolName === "copy_file" && typeof input.from === "string") {
     return input.from.startsWith("attachments:");
   }
+  if (toolName === "list_files" && typeof input.directory === "string") {
+    return input.directory.startsWith("attachments:");
+  }
   return false;
 }
 

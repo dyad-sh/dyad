@@ -1,6 +1,7 @@
 import path from "node:path";
 import fs from "node:fs/promises";
 import crypto from "node:crypto";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { withLock } from "./lock_utils";
 
 /**
@@ -550,6 +551,30 @@ export async function listStoredAttachments(
     }
   }
   return storedAttachments;
+}
+
+/**
+ * Sorted `attachments:` paths for a listing. `attachments:` lists everything;
+ * `attachments:<archive>` (or a folder inside it) lists the entries under it
+ * and throws NotFound when there are none, like a missing directory.
+ */
+export async function listAttachmentLogicalPaths(
+  appPath: string,
+  directory: string,
+): Promise<string[]> {
+  const scope = stripAttachmentLogicalPrefix(directory).replace(/\/+$/, "");
+  const prefix = scope ? `${scope}/` : "";
+  const paths = (await listStoredAttachments(appPath))
+    .filter((attachment) => attachment.logicalName.startsWith(prefix))
+    .map((attachment) => toAttachmentLogicalPath(attachment.logicalName))
+    .sort((a, b) => a.localeCompare(b));
+  if (scope && paths.length === 0) {
+    throw new DyadError(
+      `Directory not found: ${directory}`,
+      DyadErrorKind.NotFound,
+    );
+  }
+  return paths;
 }
 
 export async function resolveAttachmentLogicalPath(

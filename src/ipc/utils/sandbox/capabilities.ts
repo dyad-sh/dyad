@@ -3,9 +3,9 @@ import path from "node:path";
 import { assertMutationPathAllowed, safeJoin } from "@/ipc/utils/path_utils";
 import {
   getDyadMediaDir,
+  listAttachmentLogicalPaths,
   listStoredAttachments,
   resolveAttachmentLogicalPath,
-  stripAttachmentLogicalPrefix,
   toAttachmentLogicalPath,
 } from "@/ipc/utils/media_path_utils";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
@@ -433,19 +433,7 @@ export async function sandboxListFiles(
   }
   if (dir.startsWith("attachments:")) {
     // attachments:<archive> lists the entries unpacked from that archive.
-    const prefix = `${stripAttachmentLogicalPrefix(dir).replace(/\/+$/, "")}/`;
-    const attachments = await listStoredAttachments(appPath);
-    const entries = attachments
-      .filter((attachment) => attachment.logicalName.startsWith(prefix))
-      .map((attachment) => toAttachmentLogicalPath(attachment.logicalName))
-      .sort((a, b) => a.localeCompare(b));
-    if (entries.length === 0) {
-      throw new DyadError(
-        `Directory not found: ${dir}`,
-        DyadErrorKind.NotFound,
-      );
-    }
-    return entries;
+    return listAttachmentLogicalPaths(appPath, dir);
   }
 
   assertAllowedGuestPath(dir);

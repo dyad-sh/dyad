@@ -298,6 +298,42 @@ describe("extractZipArchive", () => {
     },
   );
 
+  it.skipIf(process.platform === "win32")(
+    "gives a repeated path the mode of the entry that wins",
+    async () => {
+      const archive = buildZip([
+        { name: "run.sh", data: "old", unixMode: 0o100755 },
+        { name: "run.sh", data: "new", unixMode: 0o100644 },
+      ]);
+      await extractZipArchive(archive, dest);
+      const filePath = path.join(dest, "run.sh");
+      expect(fs.readFileSync(filePath, "utf8")).toBe("new");
+      expect(fs.statSync(filePath).mode & 0o111).toBe(0);
+    },
+  );
+
+  it("still extracts a file when its mode cannot be changed", async () => {
+    const chmodSpy = vi
+      .spyOn(fsPromises, "chmod")
+      .mockRejectedValue(
+        Object.assign(new Error("operation not permitted"), { code: "EPERM" }),
+      );
+    try {
+      const result = await extractZipArchive(
+        buildZip([
+          { name: "gradlew", data: "#!/bin/sh\n", unixMode: 0o100755 },
+        ]),
+        dest,
+      );
+      expect(result.files).toEqual([
+        { relativePath: "gradlew", sizeBytes: 10 },
+      ]);
+      expect(chmodSpy).toHaveBeenCalled();
+    } finally {
+      chmodSpy.mockRestore();
+    }
+  });
+
   it("skips entries the host filesystem cannot hold instead of failing", async () => {
     const archive = buildZip([
       { name: "shared", data: "a file" },

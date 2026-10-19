@@ -99,7 +99,8 @@ export async function cleanupOldMediaFiles(): Promise<void> {
               if (entryStat.isSymbolicLink()) {
                 return 0;
               }
-              // Extracted archive directories age out with their archive.
+              // Extracted archive directories age out on the same schedule as
+              // stored files.
               const isExtractedArchiveDir =
                 entryStat.isDirectory() &&
                 EXTRACTED_ARCHIVE_DIR_NAME.test(file);

@@ -247,12 +247,18 @@ async function appendAttachmentManifestEntriesUnlocked(
   ]);
 }
 
-async function appendAttachmentManifestEntriesWithLogicalNamesUnlocked(
+async function appendAttachmentManifestEntryGroupsUnlocked(
   appPath: string,
   entries: AttachmentManifestEntryInput[],
-): Promise<AttachmentManifestEntry[]> {
+  buildChildEntries: (
+    finalized: AttachmentManifestEntry[],
+  ) => AttachmentManifestEntryInput[][],
+): Promise<{
+  entries: AttachmentManifestEntry[];
+  childEntries: AttachmentManifestEntry[][];
+}> {
   if (entries.length === 0) {
-    return [];
+    return { entries: [], childEntries: [] };
   }
 
   const manifestPath = getAttachmentsManifestPath(appPath);
@@ -269,32 +275,44 @@ async function appendAttachmentManifestEntriesWithLogicalNamesUnlocked(
     usedNames.add(entry.logicalName);
   }
 
-  const finalized: AttachmentManifestEntry[] = [];
-  for (const { requestedLogicalName, nestedLogicalName, ...entry } of entries) {
-    const existingEntry = byStoredFileName.get(entry.storedFileName);
-    if (existingEntry) {
-      finalized.push(existingEntry);
-      continue;
-    }
+  const finalize = (
+    inputs: AttachmentManifestEntryInput[],
+  ): AttachmentManifestEntry[] => {
+    const finalized: AttachmentManifestEntry[] = [];
+    for (const {
+      requestedLogicalName,
+      nestedLogicalName,
+      ...entry
+    } of inputs) {
+      const existingEntry = byStoredFileName.get(entry.storedFileName);
+      if (existingEntry) {
+        finalized.push(existingEntry);
+        continue;
+      }
 
-    const newEntry = {
-      ...entry,
-      logicalName: createUniqueAttachmentLogicalName(
-        requestedLogicalName,
-        usedNames,
-        { nested: nestedLogicalName },
-      ),
-    };
-    finalized.push(newEntry);
-    byLogicalName.set(newEntry.logicalName, newEntry);
-    byStoredFileName.set(newEntry.storedFileName, newEntry);
-  }
+      const newEntry = {
+        ...entry,
+        logicalName: createUniqueAttachmentLogicalName(
+          requestedLogicalName,
+          usedNames,
+          { nested: nestedLogicalName },
+        ),
+      };
+      finalized.push(newEntry);
+      byLogicalName.set(newEntry.logicalName, newEntry);
+      byStoredFileName.set(newEntry.storedFileName, newEntry);
+    }
+    return finalized;
+  };
+
+  const finalized = finalize(entries);
+  const childEntries = buildChildEntries(finalized).map(finalize);
 
   await writeAttachmentManifestAtomic(manifestPath, [
     ...byLogicalName.values(),
   ]);
 
-  return finalized;
+  return { entries: finalized, childEntries };
 }
 
 async function writeAttachmentManifestAtomic(
@@ -327,8 +345,36 @@ export async function appendAttachmentManifestEntriesWithLogicalNames(
   appPath: string,
   entries: AttachmentManifestEntryInput[],
 ): Promise<AttachmentManifestEntry[]> {
+  const { entries: finalized } = await appendAttachmentManifestEntryGroups(
+    appPath,
+    entries,
+    () => [],
+  );
+  return finalized;
+}
+
+/**
+ * Register entries plus entries that are named under them, such as an
+ * archive's unpacked files, in one manifest write so a failure leaves no
+ * partial registration. `buildChildEntries` receives the finalized entries
+ * and returns the inputs to register beneath each one, in the same order.
+ */
+export async function appendAttachmentManifestEntryGroups(
+  appPath: string,
+  entries: AttachmentManifestEntryInput[],
+  buildChildEntries: (
+    finalized: AttachmentManifestEntry[],
+  ) => AttachmentManifestEntryInput[][],
+): Promise<{
+  entries: AttachmentManifestEntry[];
+  childEntries: AttachmentManifestEntry[][];
+}> {
   return withLock(`attachments-manifest:${appPath}`, () =>
-    appendAttachmentManifestEntriesWithLogicalNamesUnlocked(appPath, entries),
+    appendAttachmentManifestEntryGroupsUnlocked(
+      appPath,
+      entries,
+      buildChildEntries,
+    ),
   );
 }
 

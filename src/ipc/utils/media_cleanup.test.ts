@@ -211,7 +211,7 @@ describe("cleanupOldMediaFiles", () => {
     dbMocks.from.mockResolvedValue([{ path: "my-app" }]);
 
     fsMocks.readdir.mockResolvedValue([
-      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-unpacked",
       "some-subdir",
       "recent-subdir",
       "old-file.png",

@@ -114,7 +114,7 @@ export const DyadAttachment: React.FC<DyadAttachmentProps> = ({
         <DyadBadge color={accentColor}>
           {attachmentType === "upload-to-codebase" ? "Upload" : "Context"}
         </DyadBadge>
-        {filePath && (
+        {filePath && !isArchive && (
           <ExternalLink
             size={14}
             className="ml-auto text-muted-foreground shrink-0"

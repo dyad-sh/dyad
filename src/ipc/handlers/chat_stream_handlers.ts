@@ -155,7 +155,7 @@ import { resolveMediaMentions } from "../utils/resolve_media_mentions";
 import { parsePlanFile, validatePlanId } from "./planUtils";
 import { ensureDyadGitignored } from "./gitignoreUtils";
 import {
-  appendAttachmentManifestEntriesWithLogicalNames,
+  appendAttachmentManifestEntryGroups,
   createUniqueAttachmentLogicalName,
   DYAD_MEDIA_DIR_NAME,
   removeUnreferencedMediaPaths,
@@ -1620,41 +1620,42 @@ export function registerChatStreamHandlers() {
         throw error;
       }
       try {
-        const finalizedManifestEntries =
-          await appendAttachmentManifestEntriesWithLogicalNames(
+        // Unpacked archive entries are registered under the archive's final
+        // logical name (which may have gained a suffix) so
+        // attachments:<archive>/<path> resolves through the manifest like any
+        // other attachment. The prompt then lists the names the manifest
+        // actually assigned.
+        const { entries: finalizedManifestEntries, childEntries } =
+          await appendAttachmentManifestEntryGroups(
             appPath,
             manifestEntries,
+            (finalized) =>
+              finalized.map((entry, index) => {
+                const archive = pendingArchiveSummaries[index];
+                return archive
+                  ? buildArchiveManifestEntries(
+                      entry.logicalName,
+                      archive,
+                      entry.createdAt,
+                    )
+                  : [];
+              }),
           );
-        storedAttachments = finalizedManifestEntries.map((entry, index) => ({
-          ...entry,
-          filePath: pendingStoredAttachments[index].filePath,
-          attachmentType: pendingStoredAttachments[index].attachmentType,
-          archive: pendingArchiveSummaries[index],
-        }));
-
-        // Register unpacked archive entries under the archive's final logical
-        // name (which may have gained a suffix) so attachments:<archive>/<path>
-        // resolves through the manifest like any other attachment. The prompt
-        // then lists the names the manifest actually assigned.
-        for (const attachment of storedAttachments) {
-          if (!attachment.archive) {
-            continue;
-          }
-          const finalizedEntries =
-            await appendAttachmentManifestEntriesWithLogicalNames(
-              appPath,
-              buildArchiveManifestEntries(
-                attachment.logicalName,
-                attachment.archive,
-                attachment.createdAt ?? new Date().toISOString(),
+        storedAttachments = finalizedManifestEntries.map((entry, index) => {
+          const archive = pendingArchiveSummaries[index];
+          return {
+            ...entry,
+            filePath: pendingStoredAttachments[index].filePath,
+            attachmentType: pendingStoredAttachments[index].attachmentType,
+            archive:
+              archive &&
+              withFinalizedEntryNames(
+                archive,
+                entry.logicalName,
+                childEntries[index],
               ),
-            );
-          attachment.archive = withFinalizedEntryNames(
-            attachment.archive,
-            attachment.logicalName,
-            finalizedEntries,
-          );
-        }
+          };
+        });
       } catch (error) {
         await discardTurnCreatedMedia();
         throw error;

@@ -48,11 +48,14 @@ export interface ExtractedArchiveSummary {
   entryCount: number;
 }
 
+// Stored files are named `<hash>` or `<hash>.<ext>`, so a dash right after
+// the hash keeps extraction directories from ever sharing a stored file's name.
 export function extractedDirNameForStoredFile(storedFileName: string): string {
-  return storedFileName.slice(
+  const hash = storedFileName.slice(
     0,
     storedFileName.length - path.extname(storedFileName).length,
   );
+  return `${hash}-unpacked`;
 }
 
 /**

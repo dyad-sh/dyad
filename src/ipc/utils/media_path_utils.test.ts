@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   appendAttachmentManifestEntriesWithLogicalNames,
+  appendAttachmentManifestEntryGroups,
   createUniqueAttachmentLogicalName,
   getDyadMediaDir,
   listStoredAttachments,
@@ -147,6 +148,63 @@ describe("manifest with extracted archive entries", () => {
     expect(
       (await listStoredAttachments(appPath)).map((a) => a.logicalName),
     ).toEqual(["proj.zip"]);
+  });
+
+  it("registers entries under their parent's final name in one write", async () => {
+    writeStored("first.zip", "zipbytes");
+    writeStored("second.zip", "zipbytes2");
+    writeStored("second/a.txt", "a");
+    await appendAttachmentManifestEntriesWithLogicalNames(appPath, [
+      {
+        requestedLogicalName: "proj.zip",
+        originalName: "proj.zip",
+        storedFileName: "first.zip",
+        mimeType: "application/zip",
+        sizeBytes: 8,
+        createdAt: "2026-01-01T00:00:00.000Z",
+      },
+    ]);
+    const archiveInput = {
+      requestedLogicalName: "proj.zip",
+      originalName: "proj.zip",
+      storedFileName: "second.zip",
+      mimeType: "application/zip",
+      sizeBytes: 9,
+      createdAt: "2026-01-01T00:00:00.000Z",
+    };
+    const childFor = (parent: string) => ({
+      requestedLogicalName: `${parent}/a.txt`,
+      nestedLogicalName: true,
+      originalName: "a.txt",
+      storedFileName: "second/a.txt",
+      mimeType: "text/plain",
+      sizeBytes: 1,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      archiveLogicalName: parent,
+    });
+
+    // Nothing is written when building the children fails.
+    await expect(
+      appendAttachmentManifestEntryGroups(appPath, [archiveInput], () => {
+        throw new Error("boom");
+      }),
+    ).rejects.toThrow("boom");
+    expect(
+      (await listStoredAttachments(appPath)).map((a) => a.logicalName),
+    ).toEqual(["proj.zip"]);
+
+    const { entries, childEntries } = await appendAttachmentManifestEntryGroups(
+      appPath,
+      [archiveInput],
+      (finalized) => finalized.map((entry) => [childFor(entry.logicalName)]),
+    );
+    expect(entries.map((entry) => entry.logicalName)).toEqual(["proj-2.zip"]);
+    expect(
+      childEntries.map((group) => group.map((e) => e.logicalName)),
+    ).toEqual([["proj-2.zip/a.txt"]]);
+    expect(
+      (await listStoredAttachments(appPath)).map((a) => a.logicalName),
+    ).toEqual(["proj.zip", "proj-2.zip", "proj-2.zip/a.txt"]);
   });
 
   it("removes only media that no manifest entry references", async () => {

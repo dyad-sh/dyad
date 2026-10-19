@@ -87,10 +87,12 @@ describe("extractZipAttachment", () => {
       storedFileName: "abc123.zip",
       archive,
     });
-    expect(summary.extractedDirName).toBe("abc123");
+    expect(summary.extractedDirName).toBe("abc123-unpacked");
     expect(summary.files.map((file) => file.relativePath)).toEqual(["a.txt"]);
     expect(summary.skipped).toEqual({ ignored: 1 });
-    expect(fs.existsSync(path.join(mediaDir, "abc123", "a.txt"))).toBe(true);
+    expect(fs.existsSync(path.join(mediaDir, "abc123-unpacked", "a.txt"))).toBe(
+      true,
+    );
 
     await expect(
       extractZipAttachment({
@@ -102,10 +104,10 @@ describe("extractZipAttachment", () => {
     ).rejects.toThrow(ZipLimitError);
     // The failed attempt leaves the earlier extraction untouched.
     expect(
-      fs.readFileSync(path.join(mediaDir, "abc123", "a.txt"), "utf8"),
+      fs.readFileSync(path.join(mediaDir, "abc123-unpacked", "a.txt"), "utf8"),
     ).toBe("x".repeat(600));
     // No staging or retired directories are left behind.
-    expect(fs.readdirSync(mediaDir).sort()).toEqual(["abc123"]);
+    expect(fs.readdirSync(mediaDir).sort()).toEqual(["abc123-unpacked"]);
   });
 
   it("fails cleanly when there is no earlier extraction", async () => {
@@ -138,8 +140,10 @@ describe("extractZipAttachment", () => {
         signal: controller.signal,
       }),
     ).rejects.toMatchObject({ name: "AbortError" });
-    expect(fs.readdirSync(path.join(mediaDir, "shared"))).toEqual(["old.txt"]);
-    expect(fs.readdirSync(mediaDir)).toEqual(["shared"]);
+    expect(fs.readdirSync(path.join(mediaDir, "shared-unpacked"))).toEqual([
+      "old.txt",
+    ]);
+    expect(fs.readdirSync(mediaDir)).toEqual(["shared-unpacked"]);
   });
 
   it("reports a shared entry budget distinctly", () => {
@@ -161,7 +165,7 @@ describe("extractZipAttachment", () => {
       storedFileName: "shared.zip",
       archive: buildZip([{ name: "old.txt", data: "old" }]),
     });
-    const destinationDir = path.join(mediaDir, "shared");
+    const destinationDir = path.join(mediaDir, "shared-unpacked");
     const realRename = fsPromises.rename;
     const renameSpy = vi
       .spyOn(fsPromises, "rename")
@@ -185,7 +189,7 @@ describe("extractZipAttachment", () => {
       renameSpy.mockRestore();
     }
     expect(fs.readdirSync(destinationDir)).toEqual(["old.txt"]);
-    expect(fs.readdirSync(mediaDir)).toEqual(["shared"]);
+    expect(fs.readdirSync(mediaDir)).toEqual(["shared-unpacked"]);
   });
 
   it("replaces an earlier extraction when a later attempt succeeds", async () => {
@@ -200,8 +204,27 @@ describe("extractZipAttachment", () => {
       storedFileName: "shared.zip",
       archive: buildZip([{ name: "new.txt", data: "new" }]),
     });
-    expect(fs.readdirSync(path.join(mediaDir, "shared"))).toEqual(["new.txt"]);
-    expect(fs.readdirSync(mediaDir).sort()).toEqual(["shared"]);
+    expect(fs.readdirSync(path.join(mediaDir, "shared-unpacked"))).toEqual([
+      "new.txt",
+    ]);
+    expect(fs.readdirSync(mediaDir).sort()).toEqual(["shared-unpacked"]);
+  });
+
+  it("keeps an extensionless upload of the same bytes intact", async () => {
+    const archive = buildZip([{ name: "a.txt", data: "alpha" }]);
+    const mediaDir = getDyadMediaDir(appPath);
+    fs.mkdirSync(mediaDir, { recursive: true });
+    // The same bytes uploaded without an extension are stored as "<hash>".
+    fs.writeFileSync(path.join(mediaDir, "abc123"), archive);
+    await extractZipAttachment({
+      mediaDir,
+      storedFileName: "abc123.zip",
+      archive,
+    });
+    expect(fs.readFileSync(path.join(mediaDir, "abc123"))).toEqual(archive);
+    expect(
+      fs.readFileSync(path.join(mediaDir, "abc123-unpacked", "a.txt"), "utf8"),
+    ).toBe("alpha");
   });
 
   it("serializes concurrent extractions of the same archive", async () => {
@@ -219,9 +242,9 @@ describe("extractZipAttachment", () => {
     for (const run of runs) {
       expect(run.files).toEqual([{ relativePath: "a.txt", sizeBytes: 5 }]);
     }
-    expect(fs.readFileSync(path.join(mediaDir, "same", "a.txt"), "utf8")).toBe(
-      "alpha",
-    );
+    expect(
+      fs.readFileSync(path.join(mediaDir, "same-unpacked", "a.txt"), "utf8"),
+    ).toBe("alpha");
   });
 });
 

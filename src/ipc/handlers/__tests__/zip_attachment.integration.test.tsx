@@ -120,7 +120,7 @@ describe("zip attachment (integration)", () => {
       mimeType: "application/zip",
     });
     const storedFileName = archiveEntry!.storedFileName as string;
-    const extractedDirName = storedFileName.replace(/\.zip$/, "");
+    const extractedDirName = storedFileName.replace(/\.zip$/, "-unpacked");
     expect(manifest).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

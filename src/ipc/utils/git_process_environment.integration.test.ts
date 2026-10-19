@@ -21,9 +21,10 @@ describe.each(["execGit", "getGitProcessEnvironment"] as const)(
     let repo: string;
     let globalConfigPath: string;
     let localConfigBefore: string;
+    // Disable long paths in the local config below. Git for Windows can cache
+    // a global core.longpaths=false while loading config, before applying the
+    // per-process override, causing filesystem operations to ignore that override.
     const globalConfig = [
-      "[core]",
-      "longpaths = false",
       "[user]",
       "name = Test User",
       "email = test@example.com",
@@ -150,6 +151,9 @@ describe.each(["execGit", "getGitProcessEnvironment"] as const)(
     );
 
     it("stages, commits, inspects, and restores long paths in a regular checkout", async () => {
+      expect((await git(["config", "--get", "core.longpaths"])).trim()).toBe(
+        process.platform === "win32" ? "true" : "false",
+      );
       const relativePath = [
         "nested-" + "a".repeat(75),
         "nested-" + "b".repeat(75),

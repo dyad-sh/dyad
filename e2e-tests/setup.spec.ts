@@ -12,7 +12,7 @@ testSetup("setup ai provider", async ({ po }) => {
   });
 
   await expect(providerButtons.nth(0)).toHaveAccessibleName(
-    /ChatGPT subscription Recommended/,
+    /ChatGPT subscription/,
   );
   await expect(providerButtons.nth(1)).toHaveAccessibleName(/OpenRouter/);
 

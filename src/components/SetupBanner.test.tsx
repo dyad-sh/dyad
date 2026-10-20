@@ -96,13 +96,13 @@ it("offers ChatGPT sign-in without a Pro key and keeps other providers accessibl
   expect(screen.queryByText(/No Dyad usage fees/)).not.toBeInTheDocument();
   expect(
     screen.getByRole("button", {
-      name: /^ChatGPT subscription Recommended .*Free$/,
+      name: /^ChatGPT subscription .*Free$/,
     }),
   ).toBeVisible();
   expect(screen.getByText(/Your prompt is saved/)).toBeVisible();
   await user.click(
     screen.getByRole("button", {
-      name: /^ChatGPT subscription Recommended .*Free$/,
+      name: /^ChatGPT subscription .*Free$/,
     }),
   );
   expect(mocks.connect).toHaveBeenCalledWith({
@@ -117,7 +117,7 @@ it("keeps sign-in errors visible so users can retry", async () => {
   const user = setup();
   await user.click(
     screen.getByRole("button", {
-      name: /^ChatGPT subscription Recommended .*Free$/,
+      name: /^ChatGPT subscription .*Free$/,
     }),
   );
   expect(await screen.findByRole("alert")).toHaveTextContent(
@@ -125,7 +125,7 @@ it("keeps sign-in errors visible so users can retry", async () => {
   );
   expect(
     screen.getByRole("button", {
-      name: /^ChatGPT subscription Recommended .*Free$/,
+      name: /^ChatGPT subscription .*Free$/,
     }),
   ).toBeEnabled();
 });
@@ -135,7 +135,7 @@ it("keeps the pending provider disabled and offers a separate cancellation actio
   const cancelButton = screen.getByRole("button", { name: "Cancel sign-in" });
   expect(cancelButton).toBeEnabled();
   const providerButton = screen.getByRole("button", {
-    name: /^ChatGPT subscription Recommended .*needed\.$/,
+    name: /^ChatGPT subscription .*needed\.$/,
   });
   expect(providerButton).toBeDisabled();
   await user.click(providerButton);
@@ -151,7 +151,7 @@ it("omits subscription pricing when Pro is active", () => {
   expect(screen.queryByText(/1.5 Pro credits/)).not.toBeInTheDocument();
   expect(
     screen.getByRole("button", {
-      name: /^ChatGPT subscription Recommended .*needed\.$/,
+      name: /^ChatGPT subscription .*needed\.$/,
     }),
   ).toBeVisible();
   expect(screen.queryByText(/No Dyad usage fees/)).not.toBeInTheDocument();
@@ -164,7 +164,7 @@ it("waits for settings before showing fees or permitting connection", () => {
   expect(screen.queryByText(/No Dyad usage fees/)).not.toBeInTheDocument();
   expect(
     screen.getByRole("button", {
-      name: /^ChatGPT subscription Recommended .*needed\.$/,
+      name: /^ChatGPT subscription .*needed\.$/,
     }),
   ).toBeDisabled();
 });
@@ -173,7 +173,7 @@ it("waits for subscription status before showing the Free badge", () => {
   setup();
   expect(
     screen.getByRole("button", {
-      name: /^ChatGPT subscription Recommended .*needed\.$/,
+      name: /^ChatGPT subscription .*needed\.$/,
     }),
   ).toBeDisabled();
 });
@@ -190,7 +190,7 @@ it("preserves Pro model and mode preferences when connecting", async () => {
   const user = setup();
   await user.click(
     screen.getByRole("button", {
-      name: /^ChatGPT subscription Recommended .*needed\.$/,
+      name: /^ChatGPT subscription .*needed\.$/,
     }),
   );
   expect(mocks.connect).toHaveBeenCalledWith({
@@ -199,7 +199,7 @@ it("preserves Pro model and mode preferences when connecting", async () => {
   });
 });
 
-it("lists the recommended ChatGPT subscription first and keeps its badge while loading", () => {
+it("lists the ChatGPT subscription first with its subtitle while loading", () => {
   mocks.subscriptionLoading = true;
   setup();
   const options = screen
@@ -210,7 +210,7 @@ it("lists the recommended ChatGPT subscription first and keeps its badge while l
       ),
     );
   expect(options.map((button) => button.textContent)).toEqual([
-    "ChatGPT subscriptionRecommendedSign in with your ChatGPT account. No API key needed.",
+    "ChatGPT subscriptionSign in with your ChatGPT account. No API key needed.",
     "OpenRouterFree",
     "Other providers",
   ]);

@@ -185,11 +185,8 @@ export function SetupBanner({
                 <ProviderIcon providerId="openai" className="size-4" />
               </span>
               <span className="min-w-0">
-                <span className="flex flex-wrap items-center gap-1.5 text-sm font-semibold text-foreground">
+                <span className="block text-sm font-semibold text-foreground">
                   ChatGPT subscription
-                  <span className="rounded-full border border-violet-600/25 bg-violet-500/15 px-1.5 py-px text-[11px] font-semibold leading-tight text-violet-700 dark:border-violet-400/25 dark:text-violet-300">
-                    Recommended
-                  </span>
                 </span>
                 <span className="mt-0.5 block text-xs text-muted-foreground">
                   Sign in with your ChatGPT account. No API key needed.

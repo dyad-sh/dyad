@@ -59,6 +59,78 @@ describe("generateNeonMigrationStatements", () => {
     });
   });
 
+  it("rejects plans that use a new enum value added earlier in the same plan", async () => {
+    generateSchemaDiffMock.mockResolvedValue({
+      statements: [
+        {
+          sql: `ALTER TYPE "public"."mood" ADD VALUE 'ok'`,
+          type: "additive",
+        },
+        {
+          sql: `ALTER TABLE "public"."messages" ALTER COLUMN "mood" SET DEFAULT 'ok'::"public"."mood"`,
+          type: "additive",
+        },
+      ],
+    });
+
+    await expect(
+      generateNeonMigrationStatements({
+        currentDatabaseUrl: "postgresql://prod",
+        desiredDatabaseUrl: "postgresql://dev",
+      }),
+    ).rejects.toMatchObject({
+      kind: DyadErrorKind.Precondition,
+      message: expect.stringContaining(`'ok' to enum "public"."mood"`),
+    });
+  });
+
+  it("rejects check constraints that cast to a new unqualified enum value", async () => {
+    generateSchemaDiffMock.mockResolvedValue({
+      statements: [
+        {
+          sql: `ALTER TYPE "public"."mood" ADD VALUE 'ok' BEFORE 'sad'`,
+          type: "additive",
+        },
+        {
+          sql: `ALTER TABLE "public"."messages" ADD CONSTRAINT "mood_check" CHECK ((mood <> 'ok'::mood)) NOT VALID`,
+          type: "additive",
+        },
+      ],
+    });
+
+    await expect(
+      generateNeonMigrationStatements({
+        currentDatabaseUrl: "postgresql://prod",
+        desiredDatabaseUrl: "postgresql://dev",
+      }),
+    ).rejects.toMatchObject({ kind: DyadErrorKind.Precondition });
+  });
+
+  it("allows new enum values that are not used later in the same plan", async () => {
+    const statements = [
+      {
+        sql: `ALTER TYPE "public"."mood" ADD VALUE 'ok'`,
+        type: "additive" as const,
+      },
+      {
+        sql: `ALTER TABLE "public"."messages" ADD CONSTRAINT "status_check" CHECK ((status = 'ok'::text))`,
+        type: "additive" as const,
+      },
+      {
+        sql: `ALTER TABLE "public"."messages" ALTER COLUMN "mood" SET DEFAULT 'happy'::mood`,
+        type: "additive" as const,
+      },
+    ];
+    generateSchemaDiffMock.mockResolvedValue({ statements });
+
+    await expect(
+      generateNeonMigrationStatements({
+        currentDatabaseUrl: "postgresql://prod",
+        desiredDatabaseUrl: "postgresql://dev",
+      }),
+    ).resolves.toEqual(statements);
+  });
+
   it("maps unsupported schema changes to precondition errors", async () => {
     generateSchemaDiffMock.mockRejectedValue(
       new NotImplementedMigrationError(

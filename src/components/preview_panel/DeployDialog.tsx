@@ -150,9 +150,9 @@ export function DeployDialog({
     >
       <DialogContent
         showCloseButton={!busy}
-        className="sm:max-w-2xl max-h-[85vh] overflow-y-auto scrollbar-on-hover"
+        className="sm:max-w-2xl max-h-[85vh] flex flex-col overflow-hidden"
       >
-        <DialogHeader>
+        <DialogHeader className="shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <CloudUpload className="size-5" />
             Deploy{initialApp ? ` ${initialApp.name}` : " app"}
@@ -168,13 +168,17 @@ export function DeployDialog({
           ) : (
             <FirstDeploy app={initialApp} onBusyChange={setBusy} />
           )
-        ) : appQuery.error ? (
-          <>
-            <ErrorNotice error={appQuery.error} />
-            <Button onClick={() => void appQuery.refetch()}>Retry</Button>
-          </>
         ) : (
-          <Progress>Checking app…</Progress>
+          <div className="min-h-0 overflow-y-auto scrollbar-on-hover space-y-4">
+            {appQuery.error ? (
+              <>
+                <ErrorNotice error={appQuery.error} />
+                <Button onClick={() => void appQuery.refetch()}>Retry</Button>
+              </>
+            ) : (
+              <Progress>Checking app…</Progress>
+            )}
+          </div>
         )}
       </DialogContent>
     </Dialog>
@@ -189,7 +193,7 @@ function DeploymentStepIndicator({
   step: number;
 }) {
   return (
-    <>
+    <div className="shrink-0 space-y-5">
       <ol
         aria-label="Deployment steps"
         className="flex gap-3 text-xs text-muted-foreground"
@@ -212,7 +216,7 @@ function DeploymentStepIndicator({
       <h2 className="font-semibold" aria-live="polite">
         Step {step + 1} — {steps[step]}
       </h2>
-    </>
+    </div>
   );
 }
 
@@ -226,29 +230,31 @@ function FirstDeploy({
   const [step, setStep] = useState<0 | 1 | 2>(0);
   const [branch, setBranch] = useState<DatabaseBranch>("production");
   return (
-    <div className="space-y-5">
+    <div className="flex min-h-0 flex-col gap-5">
       <DeploymentStepIndicator
         steps={["Database", "GitHub repository", "Deployment"]}
         step={step}
       />
-      {step === 0 && (
-        <DatabaseStep
-          app={app}
-          onBusyChange={onBusyChange}
-          onComplete={(selected) => {
-            setBranch(selected);
-            setStep(1);
-          }}
-        />
-      )}
-      {step === 1 && (
-        <GithubStep
-          app={app}
-          onComplete={() => setStep(2)}
-          onBusyChange={onBusyChange}
-        />
-      )}
-      {step === 2 && <DeploymentStep app={app} branch={branch} />}
+      <div className="min-h-0 overflow-y-auto scrollbar-on-hover">
+        {step === 0 && (
+          <DatabaseStep
+            app={app}
+            onBusyChange={onBusyChange}
+            onComplete={(selected) => {
+              setBranch(selected);
+              setStep(1);
+            }}
+          />
+        )}
+        {step === 1 && (
+          <GithubStep
+            app={app}
+            onComplete={() => setStep(2)}
+            onBusyChange={onBusyChange}
+          />
+        )}
+        {step === 2 && <DeploymentStep app={app} branch={branch} />}
+      </div>
     </div>
   );
 }
@@ -810,67 +816,73 @@ function HostedDeploy({
     app.selectedDatabaseBranchType !== "development";
   const step = !confirmed ? 0 : needsMigration && !databaseVerified ? 1 : 2;
   return (
-    <div className="space-y-4">
+    <div className="flex min-h-0 flex-col gap-4">
       <DeploymentStepIndicator
         steps={["Overview", "Database", "Deployment"]}
         step={step}
       />
-      {!confirmed ? (
-        <>
-          <p className="text-sm">This app is already hosted. Deploy will:</p>
-          <ol className="list-decimal pl-5 text-sm space-y-2">
-            <li>
-              Check whether a database migration is required and ask you to
-              review and approve any changes.
-            </li>
-            <li>
-              Push the latest codebase changes to GitHub to trigger your hosting
-              provider’s deployment.
-            </li>
-            {app.deploymentProvidersInUse.coolify && (
+      <div className="min-h-0 overflow-y-auto scrollbar-on-hover space-y-4">
+        {!confirmed ? (
+          <>
+            <p className="text-sm">This app is already hosted. Deploy will:</p>
+            <ol className="list-decimal pl-5 text-sm space-y-2">
               <li>
-                Start a deployment on your Coolify server, which does not build
-                on push.
+                Check whether a database migration is required and ask you to
+                review and approve any changes.
               </li>
+              <li>
+                Push the latest codebase changes to GitHub to trigger your
+                hosting provider’s deployment.
+              </li>
+              {app.deploymentProvidersInUse.coolify && (
+                <li>
+                  Start a deployment on your Coolify server, which does not
+                  build on push.
+                </li>
+              )}
+            </ol>
+            {!ready &&
+              (project.isFetching ? (
+                <Progress>Checking database branches…</Progress>
+              ) : (
+                <DatabaseCheckError
+                  appId={app.id}
+                  error={
+                    project.error ??
+                    new Error("Could not verify the database branches.")
+                  }
+                  onRetry={() => void project.refetch()}
+                />
+              ))}
+            {preflight.isError && (
+              <>
+                <ErrorNotice error={preflight.error} />
+                <GitHubConnector
+                  appId={app.id}
+                  folderName={app.name}
+                  expanded
+                />
+              </>
             )}
-          </ol>
-          {!ready &&
-            (project.isFetching ? (
-              <Progress>Checking database branches…</Progress>
-            ) : (
-              <DatabaseCheckError
-                appId={app.id}
-                error={
-                  project.error ??
-                  new Error("Could not verify the database branches.")
-                }
-                onRetry={() => void project.refetch()}
-              />
-            ))}
-          {preflight.isError && (
-            <>
-              <ErrorNotice error={preflight.error} />
-              <GitHubConnector appId={app.id} folderName={app.name} expanded />
-            </>
-          )}
-          <Button
-            disabled={!ready || preflight.isPending}
-            onClick={() => preflight.mutate()}
-          >
-            {preflight.isPending ? "Checking GitHub…" : "Review and deploy"}
-          </Button>
-        </>
-      ) : needsMigration && !databaseVerified ? (
-        <MigrationPanelBody
-          appId={app.id}
-          presentation="inline"
-          autoPreview
-          onBusyChange={onBusyChange}
-          onVerified={() => setDatabaseVerified(true)}
-        />
-      ) : (
-        <PushDeployment app={app} onBusyChange={onBusyChange} />
-      )}
+            <Button
+              disabled={!ready || preflight.isPending}
+              onClick={() => preflight.mutate()}
+            >
+              {preflight.isPending ? "Checking GitHub…" : "Review and deploy"}
+            </Button>
+          </>
+        ) : needsMigration && !databaseVerified ? (
+          <MigrationPanelBody
+            appId={app.id}
+            presentation="inline"
+            autoPreview
+            onBusyChange={onBusyChange}
+            onVerified={() => setDatabaseVerified(true)}
+          />
+        ) : (
+          <PushDeployment app={app} onBusyChange={onBusyChange} />
+        )}
+      </div>
     </div>
   );
 }

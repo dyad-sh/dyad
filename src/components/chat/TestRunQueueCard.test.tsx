@@ -10,6 +10,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createStore, Provider } from "jotai";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useTestRunEvents } from "@/hooks/useTestRunEvents";
 import { queryKeys } from "@/lib/queryKeys";
 import type {
@@ -24,6 +25,11 @@ const mocks = vi.hoisted(() => ({
   queueListeners: new Set<(event: QueueEvent) => void>(),
   runListeners: new Set<(event: TestsRunStatePayload) => void>(),
   openTests: vi.fn(),
+  navigate: vi.fn(),
+}));
+
+vi.mock("@tanstack/react-router", () => ({
+  useNavigate: () => mocks.navigate,
 }));
 
 vi.mock("@/ipc/types", () => ({
@@ -56,6 +62,9 @@ vi.mock("react-i18next", () => ({
         "testRunQueue.title": "Test queue",
         "testRunQueue.openTests": "Open Tests",
         "testRunQueue.allTests": "All tests",
+        "testRunQueue.currentChat": "Current chat",
+        "testRunQueue.openChat": "Open chat",
+        "testRunQueue.testsPanel": "Tests panel",
         "testRunQueue.queued": "Queued",
         "testRunQueue.running": "Running",
         "testRunQueue.stopping": "Stopping",
@@ -70,6 +79,7 @@ const empty = { activeRun: null, queuedRuns: [] };
 const first = {
   runId: 1,
   source: "agent" as const,
+  chatId: 11,
   testFile: "e2e-tests/login.spec.ts",
 };
 const second = {
@@ -82,6 +92,7 @@ beforeEach(() => {
   mocks.queueListeners.clear();
   mocks.runListeners.clear();
   mocks.openTests.mockReset();
+  mocks.navigate.mockReset();
   mocks.getRunQueue.mockReset().mockResolvedValue(empty);
 });
 
@@ -115,9 +126,11 @@ function setup() {
   });
   function Harness({
     appId = 1,
+    chatId = 11,
     visible = true,
   }: {
     appId?: number | null;
+    chatId?: number;
     visible?: boolean;
   }) {
     return (
@@ -125,13 +138,17 @@ function setup() {
         <Provider store={store}>
           <LifecycleObserver />
           {visible && (
-            <TestRunQueueCard appId={appId} onOpenTests={mocks.openTests} />
+            <TestRunQueueCard
+              appId={appId}
+              chatId={chatId}
+              onOpenTests={mocks.openTests}
+            />
           )}
         </Provider>
       </QueryClientProvider>
     );
   }
-  return { Harness, client };
+  return { Harness, client, store };
 }
 
 function row(label: string) {
@@ -198,6 +215,83 @@ it("shows live queued and running requests without mounting the Tests panel", as
   expect(screen.queryByText("Running")).toBeNull();
   act(() => publishQueue(empty));
   await expectLingerThenDismiss(second.testFile, "Failed");
+});
+
+it("identifies each run's chat, opens other chats, and retains attribution after completion and chat switches", async () => {
+  const otherChatRun = {
+    ...first,
+    runId: 3,
+    chatId: 22,
+    testFile: "e2e-tests/profile.spec.ts",
+  };
+  mocks.getRunQueue.mockResolvedValue({
+    activeRun: { ...first, stopping: false },
+    queuedRuns: [second, otherChatRun],
+  });
+  const { Harness, store } = setup();
+  const view = render(<Harness />);
+  await screen.findByText(first.testFile);
+
+  expect(within(row(first.testFile)).getByText("Current chat")).toBeTruthy();
+  expect(within(row(first.testFile)).queryByRole("button")).toBeNull();
+  expect(within(row(second.testFile)).getByText("Tests panel")).toBeTruthy();
+  expect(within(row(second.testFile)).queryByRole("button")).toBeNull();
+  fireEvent.click(
+    within(row(otherChatRun.testFile)).getByRole("button", {
+      name: "Open chat",
+    }),
+  );
+  expect(mocks.navigate).toHaveBeenCalledWith({
+    to: "/chat",
+    search: { id: otherChatRun.chatId, appId: 1 },
+  });
+  expect(store.get(selectedChatIdAtom)).toBe(otherChatRun.chatId);
+  expect(store.get(selectedAppIdAtom)).toBe(1);
+
+  act(() => {
+    publishRun({
+      appId: 1,
+      ...first,
+      state: "finished",
+      results: [{ file: first.testFile, status: "passed" }],
+    });
+    publishQueue({
+      activeRun: { ...second, stopping: false },
+      queuedRuns: [otherChatRun],
+    });
+  });
+  await waitFor(() =>
+    expect(within(row(first.testFile)).getByText("Passed")).toBeTruthy(),
+  );
+  expect(within(row(first.testFile)).getByText("Current chat")).toBeTruthy();
+
+  view.rerender(<Harness chatId={otherChatRun.chatId} />);
+  expect(
+    within(row(otherChatRun.testFile)).getByText("Current chat"),
+  ).toBeTruthy();
+  expect(within(row(otherChatRun.testFile)).queryByRole("button")).toBeNull();
+  fireEvent.click(
+    within(row(first.testFile)).getByRole("button", { name: "Open chat" }),
+  );
+  expect(mocks.navigate).toHaveBeenLastCalledWith({
+    to: "/chat",
+    search: { id: first.chatId, appId: 1 },
+  });
+  expect(screen.getAllByRole("listitem")).toHaveLength(3);
+});
+
+it("does not invent a chat destination for runs without chat metadata", async () => {
+  const { chatId: _chatId, ...unattributed } = first;
+  mocks.getRunQueue.mockResolvedValue({
+    activeRun: { ...unattributed, stopping: false },
+    queuedRuns: [],
+  });
+  const { Harness } = setup();
+  render(<Harness />);
+  await screen.findByText(first.testFile);
+  expect(within(row(first.testFile)).queryByRole("button")).toBeNull();
+  expect(screen.queryByText("Current chat")).toBeNull();
+  expect(screen.queryByText("Tests panel")).toBeNull();
 });
 
 it.each([

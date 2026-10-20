@@ -7,6 +7,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentContext } from "./types";
 import type { spawnStreaming } from "@/ipc/utils/spawn_streaming";
 import type { prepareIsolatedTestDatabase } from "@/ipc/services/isolated_test_db";
+import {
+  TestRunQueueSchema,
+  TestsRunStatePayloadSchema,
+} from "@/ipc/types/tests";
 
 // Exercise real tool calls, spec discovery, queue, resource coordination,
 // runner lifecycle and report parsing. Only external boundaries are faked:
@@ -88,9 +92,10 @@ function gate() {
   return { promise, release };
 }
 
-function makeContext(signal?: AbortSignal): AgentContext {
+function makeContext(chatId: number, signal?: AbortSignal): AgentContext {
   return {
     appId: APP_ID,
+    chatId,
     appPath: h.appPath,
     event: { sender: {} },
     fileEditTracker: Object.create(null),
@@ -275,9 +280,9 @@ describe("synthetic overlapping run_tests calls", () => {
 
       const cancelB = new AbortController();
       const contexts = [
-        makeContext(),
-        makeContext(cancelB.signal),
-        makeContext(),
+        makeContext(101),
+        makeContext(102, cancelB.signal),
+        makeContext(103),
       ];
       const submit = (index: number) => {
         const call = runTestsTool.execute(
@@ -298,6 +303,18 @@ describe("synthetic overlapping run_tests calls", () => {
       expect(
         getAppTestRunQueue(APP_ID).queuedRuns.map((run) => run.testFiles?.[0]),
       ).toEqual(SPECS.slice(1));
+      const queue = TestRunQueueSchema.parse(getAppTestRunQueue(APP_ID));
+      expect(queue.activeRun?.chatId).toBe(contexts[0].chatId);
+      expect(queue.queuedRuns.map((run) => run.chatId)).toEqual([
+        contexts[1].chatId,
+        contexts[2].chatId,
+      ]);
+      const queueBroadcasts = h.broadcast.mock.calls.filter(
+        ([, channel]) => channel === "tests:queue-state",
+      );
+      expect(TestRunQueueSchema.parse(queueBroadcasts.at(-1)![2])).toEqual(
+        queue,
+      );
       expect(emittedXml(contexts[0])).toContain(`Running ${SPECS[0]}`);
       expect(emittedXml(contexts[1])).toBe("");
       expect(emittedXml(contexts[2])).toBe("");
@@ -332,6 +349,9 @@ describe("synthetic overlapping run_tests calls", () => {
         processGates[index].release();
         await vi.waitFor(() => expect(trace).toContain(`cleanup held ${spec}`));
         expect(getAppTestRunQueue(APP_ID).activeRun?.testFiles?.[0]).toBe(spec);
+        expect(getAppTestRunQueue(APP_ID).activeRun?.chatId).toBe(
+          contexts[index].chatId,
+        );
         expect(prepared).toEqual(throughCurrent);
         expect(restored).toHaveLength(position);
         expect(settled).not.toContain(index);
@@ -349,6 +369,20 @@ describe("synthetic overlapping run_tests calls", () => {
       }
 
       await Promise.all(calls);
+      const lifecycle = h.broadcast.mock.calls
+        .filter(([, channel]) => channel === "tests:run-state")
+        .map(([, , payload]) => TestsRunStatePayloadSchema.parse(payload));
+      for (const state of ["started", "finished"] as const) {
+        expect(
+          lifecycle
+            .filter((event) => event.state === state)
+            .map((event) => event.chatId),
+        ).toEqual(executed.map((index) => contexts[index].chatId));
+      }
+      for (const event of lifecycle) {
+        const index = SPECS.indexOf(event.testFiles![0]);
+        expect(event.chatId).toBe(contexts[index].chatId);
+      }
       expect(started).toEqual(executed.map((index) => SPECS[index]));
       expect(restored).toEqual(started);
       expect(signals.every((signal) => !signal.aborted)).toBe(true);

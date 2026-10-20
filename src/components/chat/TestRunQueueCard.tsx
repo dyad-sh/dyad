@@ -10,6 +10,9 @@ import {
   XCircle,
 } from "lucide-react";
 import { dismissedTestRunThroughIdByAppIdAtom } from "@/atoms/testRuntimeAtoms";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { useSelectChat } from "@/hooks/useSelectChat";
 import { useTestRunQueue } from "@/hooks/useTestRunQueue";
 import { queryKeys } from "@/lib/queryKeys";
 import type { CompletedTestRun } from "@/lib/testRunSummary";
@@ -54,12 +57,15 @@ function RunIcon({ status }: { status: RunStatus }) {
 
 export function TestRunQueueCard({
   appId,
+  chatId,
   onOpenTests,
 }: {
   appId: number | null;
+  chatId?: number;
   onOpenTests: () => void;
 }) {
   const { t } = useTranslation("chat");
+  const { selectChat } = useSelectChat();
   const [dismissedRunIds, setDismissedRunIds] = useAtom(
     dismissedTestRunThroughIdByAppIdAtom,
   );
@@ -181,6 +187,7 @@ export function TestRunQueueCard({
       >
         {rows.map((run) => {
           const label = runLabel(run);
+          const runChatId = run.chatId;
           return (
             <li
               key={run.runId}
@@ -196,6 +203,33 @@ export function TestRunQueueCard({
               <span className="shrink-0">
                 {t(`testRunQueue.${run.status}`)}
               </span>
+              {runChatId != null ? (
+                runChatId === chatId ? (
+                  <Badge
+                    variant="secondary"
+                    className="shrink-0 whitespace-nowrap rounded-full px-2 font-normal"
+                  >
+                    {t("testRunQueue.currentChat")}
+                  </Badge>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-6 px-2 text-xs text-foreground"
+                    onClick={() => selectChat({ appId, chatId: runChatId })}
+                  >
+                    {t("testRunQueue.openChat")}
+                  </Button>
+                )
+              ) : run.source === "panel" ? (
+                <Badge
+                  variant="secondary"
+                  className="shrink-0 whitespace-nowrap rounded-full px-2 font-normal"
+                >
+                  {t("testRunQueue.testsPanel")}
+                </Badge>
+              ) : null}
             </li>
           );
         })}

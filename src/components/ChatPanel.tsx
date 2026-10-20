@@ -324,6 +324,7 @@ export function ChatPanel({
                   <TestRunQueueCard
                     key={selectedAppId}
                     appId={selectedAppId}
+                    chatId={chatId}
                     onOpenTests={() => {
                       setPreviewMode("tests");
                       if (!isPreviewOpen) onTogglePreview();

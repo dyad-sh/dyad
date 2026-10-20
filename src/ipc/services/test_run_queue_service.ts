@@ -61,6 +61,7 @@ export function withAppTestRun<Result>(
     request: {
       runId,
       source: options.source,
+      chatId: options.chatId,
       testFile: options.testFile,
       testFiles: options.testFiles,
       testLine: options.testLine,

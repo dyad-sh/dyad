@@ -345,6 +345,7 @@ async function runSpecs(
   return runAppTestsWithIsolation({
     event: ctx.event,
     appId: ctx.appId,
+    chatId: ctx.chatId,
     testFiles,
     grep,
     source: "agent",
@@ -644,6 +645,7 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
     return withAppTestRun(
       {
         appId: ctx.appId,
+        chatId: ctx.chatId,
         event: ctx.event,
         source: "agent",
         testFiles: args.testFiles,

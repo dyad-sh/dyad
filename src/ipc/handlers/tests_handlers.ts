@@ -2158,6 +2158,8 @@ export interface RunTestsWithIsolationOptions {
   timeoutMs?: number;
   /** Identifies the initiating surface in lifecycle events and queue snapshots. */
   source: "panel" | "agent";
+  /** Originating agent chat; absent for manual Tests-panel runs. */
+  chatId?: number;
   /**
    * Aborts the run when the caller's own lifecycle ends (e.g. the agent turn is
    * cancelled). Wired into the same AbortController the Stop button uses, so
@@ -2215,6 +2217,7 @@ async function executeAppTestsWithIsolation(
     timing,
     event,
     appId,
+    chatId,
     testFile,
     testFiles,
     testLine,
@@ -2335,6 +2338,7 @@ async function executeAppTestsWithIsolation(
       appId,
       runId,
       source,
+      chatId,
       state,
       wasStopped: signal.aborted,
       testFile: normalizedTestFile,
@@ -2355,6 +2359,7 @@ async function executeAppTestsWithIsolation(
     appId,
     runId,
     source,
+    chatId,
     state: "started",
     testFile: normalizedTestFile,
     testFiles: testFile === undefined ? normalizedTestFiles : undefined,
@@ -2384,6 +2389,7 @@ async function executeAppTestsWithIsolation(
       appId,
       runId,
       source,
+      chatId,
       state: "preview-fallback",
       preview: true,
       testFile: normalizedTestFile,
@@ -2563,6 +2569,7 @@ async function executeAppTestsWithIsolation(
               appId,
               runId,
               source,
+              chatId,
               state: "preview-fallback",
               preview: true,
               testFile: normalizedTestFile,
@@ -3061,6 +3068,7 @@ async function executeAppTestsWithIsolation(
                 appId,
                 runId,
                 source,
+                chatId,
                 state: "preview-fallback",
                 preview: true,
                 testFile: normalizedTestFile,
@@ -3251,6 +3259,7 @@ async function executeAppTestsWithIsolation(
       appId,
       runId,
       source,
+      chatId,
       state: "finished",
       testFile: normalizedTestFile,
       testFiles: testFile === undefined ? normalizedTestFiles : undefined,

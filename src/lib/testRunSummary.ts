@@ -13,6 +13,7 @@ export function summarizeTestRun(
   return {
     runId: payload.runId,
     source: payload.source,
+    chatId: payload.chatId,
     testFile: payload.testFile,
     testFiles: payload.testFiles,
     testLine: payload.testLine,

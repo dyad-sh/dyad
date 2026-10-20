@@ -151,9 +151,11 @@
     "contentPlaceholder": "Content"
   },
   "report": {
-    "whatHappened": "What happened? (required)",
+    "whatHappened": "What happened?",
     "descriptionPlaceholder": "Describe the problem and how to reproduce it. The more detail, the faster we can help.",
     "descriptionRequired": "Please describe what happened — one sentence is enough.",
+    "skipDescription": "Submit without a description",
+    "skipDescriptionHint": "Bug descriptions help us help you faster",
     "capReached": "Character limit reached. You can finish writing your description on GitHub in the next step.",
     "preparing": "Preparing your report...",
     "createIssue": "Create GitHub issue",

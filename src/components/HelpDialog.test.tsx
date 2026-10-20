@@ -395,6 +395,51 @@ describe("HelpDialog report flow", () => {
     expect(bodyOfOpenedIssue()).toContain("it crashed");
   });
 
+  it("offers an explicit opt-out after a blocked submit and files without a description", async () => {
+    renderHelp();
+    fireEvent.click(await screen.findByText("Report a Bug"));
+    await screen.findByLabelText(/What happened/);
+    expect(
+      screen.queryByRole("checkbox", { name: "Submit without a description" }),
+    ).toBeNull();
+
+    submit();
+    expect(mocks.openExternalUrl).not.toHaveBeenCalled();
+    expect(
+      screen.getByText("Bug descriptions help us help you faster"),
+    ).toBeTruthy();
+    const skip = screen.getByRole("checkbox", {
+      name: "Submit without a description",
+    });
+    fireEvent.click(skip);
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(
+      screen.getByLabelText(/What happened/).hasAttribute("required"),
+    ).toBe(false);
+
+    await fileIt();
+    expect(bodyOfOpenedIssue()).toContain("## What happened");
+    expect(bodyOfOpenedIssue()).toContain("Screenshot status: declined");
+  });
+
+  it("restores the description requirement when the opt-out is unchecked", async () => {
+    renderHelp();
+    fireEvent.click(await screen.findByText("Report a Bug"));
+    await screen.findByLabelText(/What happened/);
+    submit();
+    const skip = screen.getByRole("checkbox", {
+      name: "Submit without a description",
+    });
+    fireEvent.click(skip);
+    fireEvent.click(skip);
+    submit();
+    expect(screen.getByRole("alert")).toBeTruthy();
+    expect(mocks.openExternalUrl).not.toHaveBeenCalled();
+    expect(
+      screen.getByLabelText(/What happened/).hasAttribute("required"),
+    ).toBe(true);
+  });
+
   it("treats whitespace as empty and clears the message once filled", async () => {
     renderHelp();
     fireEvent.click(await screen.findByText("Report a Bug"));

@@ -482,7 +482,7 @@ export function buildIssueBody({
     "<!-- Please fill in all fields in English -->",
     "",
     formatSection(
-      "## What happened (required)",
+      "## What happened",
       "<!-- Please describe the issue you're experiencing -->",
       description,
     ),

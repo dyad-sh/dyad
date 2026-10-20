@@ -90,6 +90,45 @@ async function firstIssueUrl(electronApp: ElectronApplication) {
   return new URL((await read())[0]).searchParams;
 }
 
+test("file a bug report without a description after acknowledging the caveat", async ({
+  po,
+}, testInfo) => {
+  await po.setUp();
+  await recordIssueUrls(po.electronApp);
+  await po.page.getByRole("button", { name: "Help" }).click();
+  await po.page.getByRole("button", { name: "Report a Bug" }).click();
+
+  const description = po.page.getByLabel("What happened?");
+  await expect(description).toBeVisible({ timeout: Timeout.MEDIUM });
+  const submit = po.page.getByRole("button", { name: "Create GitHub issue" });
+  await submit.click();
+  await expect(po.page.getByRole("alert")).toContainText(
+    "Please describe what happened",
+  );
+  const skip = po.page.getByRole("checkbox", {
+    name: "Submit without a description",
+  });
+  await expect(skip).not.toBeChecked();
+  await expect(
+    po.page.getByText("Bug descriptions help us help you faster"),
+  ).toBeVisible();
+  await po.page.screenshot({
+    path: testInfo.outputPath("description-opt-out.png"),
+  });
+
+  await skip.check();
+  await expect(description).toHaveAttribute("aria-invalid", "false");
+  await po.page
+    .getByRole("checkbox", { name: "Basic system information and logs" })
+    .uncheck();
+  await submit.click();
+  const params = await firstIssueUrl(po.electronApp);
+  expect(params.get("body")).toContain(
+    "## What happened\n<!-- Please describe the issue you're experiencing -->",
+  );
+  expect(params.get("body")).not.toContain("What happened (required)");
+});
+
 test("file a bug report with nothing attached", async ({ po }) => {
   await po.setUp();
   await recordIssueUrls(po.electronApp);

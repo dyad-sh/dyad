@@ -7,12 +7,14 @@ const testSetup = testWithConfig({
 
 testSetup("setup ai provider", async ({ po }) => {
   const dialog = await openAiSetupDialog(po);
-  const providerButtons = dialog.locator(".grid").getByRole("button");
+  const providerButtons = dialog.getByRole("button", {
+    name: /ChatGPT subscription|OpenRouter|Other providers/,
+  });
 
-  await expect(providerButtons.nth(0)).toHaveAccessibleName(/OpenRouter/);
-  await expect(providerButtons.nth(1)).toHaveAccessibleName(
+  await expect(providerButtons.nth(0)).toHaveAccessibleName(
     /ChatGPT subscription/,
   );
+  await expect(providerButtons.nth(1)).toHaveAccessibleName(/OpenRouter/);
 
   await dialog.getByRole("button", { name: "Other providers" }).click();
   await po.page

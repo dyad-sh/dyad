@@ -1,5 +1,10 @@
 # Claude Code backend
 
+## MCP progress and timeout diagnosis
+
+- Send progress with the request handler's `extra.sendNotification` so it carries `relatedRequestId`; stateless HTTP servers have no standalone GET/SSE stream, and unscoped `server.notification` heartbeats are silently discarded.
+- Keep execution results separate from delivery evidence: `aiMessagesJson` records host results, while Claude Code's idle watchdog can reject without cancelling the underlying MCP request. Test that path separately from SDK timeouts that send `notifications/cancelled`; retain FIFO ownership until execution settles.
+
 ## Model switching and the new-chat prompt
 
 Decide whether to show "Start a new chat?" from the current chat's actual

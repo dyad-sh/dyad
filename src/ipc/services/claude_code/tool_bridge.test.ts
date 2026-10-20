@@ -12,6 +12,59 @@ import {
 } from "@/pro/main/ipc/handlers/local_agent/tool_definitions";
 import type { AgentContext } from "@/pro/main/ipc/handlers/local_agent/tools/types";
 
+it("delivers progress on the tool POST while execution is still pending", async () => {
+  // Advance only the heartbeat interval: leave real HTTP and SDK deadlines live.
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  let finish!: () => void;
+  const pending = new Promise<void>((resolve) => (finish = resolve));
+  const invoke = vi.fn(async () => {
+    await pending;
+    return { content: [{ type: "text" as const, text: "completed once" }] };
+  });
+  const bridge = await createDyadToolBridge({
+    tools: { slow: { inputSchema: z.object({}) } },
+    signal: new AbortController().signal,
+    invoke,
+  });
+  const config = JSON.parse(await readFile(bridge.configPath, "utf8"))
+    .mcpServers.dyad;
+  const client = new Client({ name: "progress-test", version: "1" });
+  let call: ReturnType<typeof client.callTool> | undefined;
+  try {
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL(config.url), {
+        fetch: fetch as unknown as typeof globalThis.fetch,
+        requestInit: { headers: config.headers },
+      }),
+    );
+    const onprogress = vi.fn();
+    call = client.callTool({ name: "slow", arguments: {} }, undefined, {
+      timeout: 10_000,
+      onprogress,
+      resetTimeoutOnProgress: true,
+    });
+    await vi.waitFor(() => expect(invoke).toHaveBeenCalledOnce());
+    await vi.advanceTimersByTimeAsync(15_000);
+    // GET is forbidden by this stateless bridge. Progress must travel on the
+    // original POST, before its final result; a standalone notification is lost.
+    await vi.waitFor(() =>
+      expect(onprogress).toHaveBeenCalledWith({
+        progress: 1,
+        message: "Waiting for Dyad tool completion",
+      }),
+    );
+    finish();
+    expect(await call).toMatchObject({ content: [{ text: "completed once" }] });
+    expect(invoke).toHaveBeenCalledOnce();
+  } finally {
+    finish();
+    await call?.catch(() => {});
+    await client.close();
+    await bridge.close();
+    vi.useRealTimers();
+  }
+});
+
 it("adapts every registered schema plus dynamic third-party tools without a Claude catalog", async () => {
   const tools = Object.fromEntries(
     TOOL_DEFINITIONS.map((t) => [

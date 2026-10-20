@@ -567,8 +567,8 @@ it("releases a parked questionnaire when the CLI stops waiting and keeps serving
   calls.operate.mockImplementationOnce(async (turn) => {
     const client = await connectTools(turn);
     try {
-      // The CLI's MCP tool timeout: the SDK client rejects locally and sends
-      // notifications/cancelled, exactly what Claude Code does at its deadline.
+      // An SDK request timeout rejects locally and sends notifications/cancelled.
+      // The CLI's independent idle watchdog takes a different path (see below).
       const abandoned = client.callTool(
         {
           name: "planning_questionnaire",
@@ -611,6 +611,134 @@ it("releases a parked questionnaire when the CLI stops waiting and keeps serving
   );
   expect(content).toContain("Request timed out");
 }, 15_000);
+
+it.each(["SDK cancellation", "CLI idle abandonment"] as const)(
+  "persists late execution success separately from %s and fences queued edits appropriately",
+  async (timeoutMode) => {
+    const { runTypeChecksTool } =
+      await import("@/pro/main/ipc/handlers/local_agent/tools/run_type_checks");
+    const chatId = await ipc.chat.createChat({
+      appId: harness.appId,
+      initialChatMode: "local-agent",
+    });
+    let finish!: () => void;
+    const pending = new Promise<void>((resolve) => (finish = resolve));
+    let executionSignal: AbortSignal | undefined;
+    // Model a subprocess/API which has already started and doesn't cooperate
+    // with cancellation. Keep the real model adapter, FIFO, MCP and persistence.
+    const execute = vi
+      .spyOn(runTypeChecksTool, "execute")
+      .mockImplementationOnce(async (_args, ctx) => {
+        executionSignal = ctx.abortSignal;
+        await pending;
+        ctx.onXmlComplete(
+          '<dyad-status title="Type check passed" state="finished">Late verification passed.</dyad-status>',
+        );
+        return "Late verification passed.";
+      });
+    const skippedPath = `abandoned-${chatId}.txt`;
+    calls.operate.mockImplementationOnce(async (turn) => {
+      const client = await connectTools(turn);
+      const lateResponses: Promise<unknown>[] = [];
+      const timers: ReturnType<typeof setTimeout>[] = [];
+      const callWithDeadline = (
+        params: Parameters<typeof client.callTool>[0],
+        timeout: number,
+      ) => {
+        const transport = client.callTool(params, undefined, {
+          timeout: timeoutMode === "SDK cancellation" ? timeout : 10_000,
+        });
+        lateResponses.push(transport.catch(() => {}));
+        // Claude Code's idle watchdog races the underlying SDK call without
+        // aborting its signal. Unlike an SDK request timeout, this sends no
+        // notifications/cancelled. The eventual response loses that race.
+        const observed =
+          timeoutMode === "SDK cancellation"
+            ? transport
+            : Promise.race([
+                transport,
+                new Promise<never>((_resolve, reject) => {
+                  timers.push(
+                    setTimeout(
+                      () => reject(new Error("Idle timed out")),
+                      timeout,
+                    ),
+                  );
+                }),
+              ]);
+        return observed.then(
+          () => "delivered",
+          (error: Error) => error.message,
+        );
+      };
+      try {
+        const slow = callWithDeadline(
+          { name: "run_type_checks", arguments: {} },
+          1000,
+        );
+        await vi.waitFor(() => expect(executionSignal).toBeDefined());
+        const queued = callWithDeadline(
+          {
+            name: "write_file",
+            arguments: { path: skippedPath, content: "applied once" },
+          },
+          100,
+        );
+        expect(await queued).toMatch(/timed out/i);
+        expect(await slow).toMatch(/timed out/i);
+        if (timeoutMode === "SDK cancellation") {
+          await vi.waitFor(() => expect(executionSignal!.aborted).toBe(true));
+        } else {
+          expect(executionSignal!.aborted).toBe(false);
+        }
+        // The FIFO remains owned until execution settles, whether cancellation
+        // was signalled or the caller only abandoned its wait.
+        expect(execute).toHaveBeenCalledOnce();
+        finish();
+        const next = await client.callTool({
+          name: "list_files",
+          arguments: {},
+        });
+        expect(next.isError).toBeFalsy();
+        await Promise.all(lateResponses);
+      } finally {
+        finish();
+        timers.forEach(clearTimeout);
+        await client.close();
+      }
+    });
+    try {
+      await harness.streamChat("Verify then inspect the workspace", { chatId });
+      const saved = await harness.db.query.messages.findMany({
+        where: eq(messages.chatId, chatId),
+      });
+      const assistant = saved.find((m) => m.role === "assistant")!;
+      expect(assistant.content).toContain("Type check passed");
+      const recorded = JSON.stringify(assistant.aiMessagesJson);
+      expect(recorded).toContain("Late verification passed.");
+      if (timeoutMode === "SDK cancellation") {
+        expect(assistant.content).toContain(
+          "Claude Code stopped waiting for run_type_checks",
+        );
+        expect(recorded).not.toContain(skippedPath);
+        await expect(
+          readFile(path.join(harness.appDir, skippedPath), "utf8"),
+        ).rejects.toMatchObject({ code: "ENOENT" });
+      } else {
+        expect(assistant.content).not.toContain("Claude Code stopped waiting");
+        expect(recorded).toContain(skippedPath);
+        expect(
+          await readFile(path.join(harness.appDir, skippedPath), "utf8"),
+        ).toBe("applied once");
+      }
+      expect(execute).toHaveBeenCalledOnce();
+    } finally {
+      finish();
+      execute.mockRestore();
+    }
+  },
+  15_000,
+);
 
 it("preserves Dyad whole-line edit, grep, rename/delete and Git semantics through MCP", async () => {
   const chatId = await ipc.chat.createChat({ appId: harness.appId });

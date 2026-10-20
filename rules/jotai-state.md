@@ -56,6 +56,10 @@ a generation token so stale callbacks cannot overwrite a later selection.
 
 ## Entity Scoping
 
+Open chats through `useSelectChat().selectChat({ chatId, appId })` so navigation
+also registers the chat in the session-opened tab set. Direct `/chat` navigation
+alone can display a chat whose tab is filtered out by `ChatTabs`.
+
 When state belongs to an entity, key it by that entity id instead of using a
 singleton selected-entity value.
 

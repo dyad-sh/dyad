@@ -135,8 +135,11 @@ export async function createDyadToolBridge(options: {
         progressToken === undefined
           ? undefined
           : setInterval(() => {
-              void server
-                .notification({
+              // A stateless server has no standalone GET/SSE stream. Bind the
+              // heartbeat to this tools/call POST or the transport discards it,
+              // letting the CLI's idle deadline fire despite ongoing execution.
+              void extra
+                .sendNotification({
                   method: "notifications/progress",
                   params: {
                     progressToken,

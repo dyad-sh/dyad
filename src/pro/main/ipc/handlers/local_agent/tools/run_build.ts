@@ -7,6 +7,7 @@ import { z } from "zod";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
   appOperationCoordinator,
+  type AppOperationContext,
   readAppResource,
 } from "@/ipc/services/app_operation_coordinator";
 import {
@@ -345,6 +346,65 @@ function streamBuildOutput(ctx: AgentContext, accumulatedOutput: string): void {
   );
 }
 
+// Settle the tool result as soon as host execution ends, while the original
+// coordinator operation retains app-path protection until cleanup finishes.
+// A separate cleanup admission could lose its place to a queued rename/delete.
+function runBuildOperation(
+  ctx: AgentContext,
+  operation: (
+    releaseResources: AppOperationContext["releaseResources"],
+    registerSnapshot: (snapshot: Snapshot) => void,
+  ) => Promise<string>,
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    void appOperationCoordinator
+      .run(
+        {
+          appId: ctx.appId,
+          operation: "run production build",
+          resources: [
+            readAppResource("app-path"),
+            readAppResource("repository-ref"),
+            { resource: "repository-worktree", mode: "write" },
+            readAppResource("runtime"),
+          ],
+          refuseWhenRecording: "run a production build",
+          signal: ctx.abortSignal,
+        },
+        async ({ releaseResources }) => {
+          let snapshot: Snapshot | undefined;
+          try {
+            resolve(
+              await operation(releaseResources, (captured) => {
+                snapshot = captured;
+              }),
+            );
+          } catch (error) {
+            reject(error);
+          } finally {
+            releaseResources([
+              "repository-ref",
+              "repository-worktree",
+              "runtime",
+            ]);
+            if (snapshot) {
+              await removeSnapshot(
+                snapshot.worktreePath,
+                snapshot.sourceRepoPath,
+              ).catch((error) => {
+                logger.warn(
+                  "Failed to clean production build snapshot:",
+                  error,
+                );
+              });
+            }
+          }
+        },
+      )
+      .catch(reject);
+  });
+}
+
 export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
   name: "run_build",
   description: `Run the app's production build as a selective, expensive verification step.
@@ -375,20 +435,9 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
 
     activeBuilds.add(ctx.appId);
     try {
-      return await appOperationCoordinator.run(
-        {
-          appId: ctx.appId,
-          operation: "run production build",
-          resources: [
-            readAppResource("app-path"),
-            readAppResource("repository-ref"),
-            { resource: "repository-worktree", mode: "write" },
-            readAppResource("runtime"),
-          ],
-          refuseWhenRecording: "run a production build",
-          signal: ctx.abortSignal,
-        },
-        async ({ releaseResources }) => {
+      return await runBuildOperation(
+        ctx,
+        async (releaseResources, registerSnapshot) => {
           const state = (ctx.buildAttemptState ??= {
             count: 0,
           } satisfies BuildAttemptState);
@@ -439,6 +488,7 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
             "snapshot setup";
           try {
             snapshot = await createSnapshot(ctx.appPath, abortScope.signal);
+            registerSnapshot(snapshot);
             const resolution = await resolvePackageManager(
               snapshot.sourceAppPath,
               snapshot.sourceRepoPath,
@@ -454,11 +504,7 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
             // Capture package-manager selection while live workspace inputs
             // (including node_modules layout) are still protected. From here
             // on, install and build only read the private snapshot.
-            releaseResources([
-              "repository-ref",
-              "repository-worktree",
-              "runtime",
-            ]);
+            releaseResources(["repository-ref", "repository-worktree"]);
             phase = "dependency installation";
             ctx.onXmlStream(
               '<dyad-status title="Installing isolated build dependencies"></dyad-status>',
@@ -494,7 +540,7 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
             }
             if (installResult.code !== 0) {
               state.mutationCountAtLastSetupFailure = currentMutationCount;
-              const body = `Could not install dependencies for the isolated production build (exit code ${installResult.code}). The build was not attempted.\n\n${installOutput}`;
+              const body = `Could not install dependencies for the isolated production build (exit code ${installResult.code}). The build was not attempted. A clean install may require registry access and configured registry credentials even when the live app already has dependencies installed.\n\n${installOutput}`;
               completeStatus(
                 ctx,
                 "Dependency installation failed",
@@ -558,12 +604,6 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
             throw error;
           } finally {
             abortScope.dispose();
-            if (snapshot) {
-              await removeSnapshot(
-                snapshot.worktreePath,
-                snapshot.sourceRepoPath,
-              );
-            }
           }
         },
       );

@@ -99,6 +99,11 @@ describe("isolated production build execution", () => {
 
   afterEach(async () => {
     vi.useRealTimers();
+    await vi.waitFor(() =>
+      expect(appOperationCoordinator.isBusy(ctx.appId, ["app-path"])).toBe(
+        false,
+      ),
+    );
     runningApps.clear();
     await fs.rm(root, { recursive: true, force: true });
   });
@@ -149,6 +154,7 @@ describe("isolated production build execution", () => {
     });
     const execution = runBuildTool.execute({}, ctx);
     let edit: Promise<void> | undefined;
+    let runtimeChange: Promise<void> | undefined;
     try {
       await vi.waitFor(() =>
         expect(createGitOverlayWorkspace).toHaveBeenCalledOnce(),
@@ -172,9 +178,7 @@ describe("isolated production build execution", () => {
       );
       await edit;
       expect(edited).toBe(true);
-      expect(appOperationCoordinator.isBusy(ctx.appId, ["runtime"])).toBe(
-        false,
-      );
+      expect(appOperationCoordinator.isBusy(ctx.appId, ["runtime"])).toBe(true);
       const e2eSetup = vi.fn(async () => {});
       await appOperationCoordinator.run(
         {
@@ -189,8 +193,21 @@ describe("isolated production build execution", () => {
         await fs.readFile(path.join(workspacePath, "source.txt"), "utf8"),
       ).toBe("captured edit");
       expect(resolvePackageManager).toHaveBeenCalledWith(appPath, appPath);
+      const switchToCloud = vi.fn(async () => {
+        runningApps.set(ctx.appId, { mode: "cloud" } as never);
+      });
+      runtimeChange = appOperationCoordinator.run(
+        {
+          appId: ctx.appId,
+          operation: "switch-to-cloud",
+          resources: ["runtime"],
+        },
+        switchToCloud,
+      );
+      expect(switchToCloud).not.toHaveBeenCalled();
       install.resolve();
       await vi.waitFor(() => expect(spawnStreaming).toHaveBeenCalledOnce());
+      expect(switchToCloud).not.toHaveBeenCalled();
       expect(
         appOperationCoordinator.isBusy(ctx.appId, ["repository-worktree"]),
       ).toBe(false);
@@ -207,19 +224,31 @@ describe("isolated production build execution", () => {
       expect(appOperationCoordinator.isBusy(ctx.appId, ["app-path"])).toBe(
         true,
       );
-      cleanup.resolve();
       await expect(execution).resolves.toContain(
         "passed for the captured snapshot",
       );
+      await runtimeChange;
+      expect(switchToCloud).toHaveBeenCalledOnce();
+      // Tool completion and runtime changes do not wait for slow disk cleanup.
       expect(appOperationCoordinator.isBusy(ctx.appId, ["app-path"])).toBe(
-        false,
+        true,
+      );
+      cleanup.resolve();
+      await vi.waitFor(() =>
+        expect(appOperationCoordinator.isBusy(ctx.appId, ["app-path"])).toBe(
+          false,
+        ),
       );
     } finally {
       capture.resolve();
       install.resolve();
       build.resolve();
       cleanup.resolve();
-      await Promise.allSettled([execution, ...(edit ? [edit] : [])]);
+      await Promise.allSettled([
+        execution,
+        ...(edit ? [edit] : []),
+        ...(runtimeChange ? [runtimeChange] : []),
+      ]);
     }
   });
 
@@ -272,13 +301,81 @@ describe("isolated production build execution", () => {
         await expect(execution).resolves.toContain(
           outcome === "timeout" ? "timed out" : "Could not install",
         );
+      if (outcome === "failure")
+        await expect(execution).resolves.toContain(
+          "registry access and configured registry credentials",
+        );
       expect(spawnStreaming).not.toHaveBeenCalled();
       expect(removeGitOverlayWorkspace).toHaveBeenCalledOnce();
-      expect(appOperationCoordinator.isBusy(ctx.appId, ["app-path"])).toBe(
-        false,
+      await vi.waitFor(() =>
+        expect(appOperationCoordinator.isBusy(ctx.appId, ["app-path"])).toBe(
+          false,
+        ),
       );
     },
   );
+
+  it.each(["cancel", "timeout"])(
+    "settles %s before cleanup but protects the path from a queued rename",
+    async (outcome) => {
+      const cleanup = deferred();
+      const controller = new AbortController();
+      ctx.abortSignal = controller.signal;
+      vi.mocked(removeGitOverlayWorkspace).mockImplementation(async () => {
+        await cleanup.promise;
+      });
+      vi.mocked(spawnStreaming).mockImplementation(async () => {
+        if (outcome === "cancel") controller.abort();
+        return {
+          ...success,
+          code: null,
+          aborted: outcome === "cancel",
+          timedOut: outcome === "timeout",
+        };
+      });
+      const execution = runBuildTool.execute({}, ctx);
+      let rename: Promise<void> | undefined;
+      try {
+        if (outcome === "cancel")
+          await expect(execution).rejects.toMatchObject({
+            kind: "user_cancelled",
+          });
+        else await expect(execution).resolves.toContain("timed out");
+        expect(removeGitOverlayWorkspace).toHaveBeenCalledOnce();
+        const renameApp = vi.fn(async () => {});
+        rename = appOperationCoordinator.run(
+          { appId: ctx.appId, operation: "rename", resources: ["app-path"] },
+          renameApp,
+        );
+        expect(renameApp).not.toHaveBeenCalled();
+        expect(appOperationCoordinator.isBusy(ctx.appId, ["runtime"])).toBe(
+          false,
+        );
+        cleanup.resolve();
+        await rename;
+        expect(renameApp).toHaveBeenCalledOnce();
+      } finally {
+        cleanup.resolve();
+        await Promise.allSettled([execution, ...(rename ? [rename] : [])]);
+      }
+    },
+  );
+
+  it("allows another build after execution settles while prior cleanup continues", async () => {
+    const cleanup = deferred();
+    vi.mocked(removeGitOverlayWorkspace).mockImplementationOnce(async () => {
+      await cleanup.promise;
+    });
+    try {
+      await expect(runBuildTool.execute({}, ctx)).resolves.toContain("passed");
+      const nextCtx = { ...ctx, buildAttemptState: { count: 3 } };
+      await expect(runBuildTool.execute({}, nextCtx)).resolves.toContain(
+        "3-build limit",
+      );
+    } finally {
+      cleanup.resolve();
+    }
+  });
 
   it("aborts the build when its shared deadline expires", async () => {
     const controller = new AbortController();

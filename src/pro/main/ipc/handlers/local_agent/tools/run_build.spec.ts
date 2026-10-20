@@ -8,30 +8,18 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { runningApps } from "@/ipc/utils/process_manager";
 import type { AgentContext } from "./types";
 
-vi.mock("@/ipc/services/app_operation_coordinator", () => ({
-  appOperationCoordinator: {
-    run: vi.fn(async (_options: unknown, operation: () => Promise<unknown>) =>
-      operation(),
-    ),
-  },
-  readAppResource: vi.fn((resource: string) => ({ resource, mode: "read" })),
-}));
-
 import {
   accumulateBuildOutput,
   copySnapshotEntriesOnWindows,
   createBuildOutputPreview,
   createBuildWorktree,
   findPackageManagerRoot,
-  gatherBuildProjectFacts,
   getCleanInstallArgs,
   parseWorkspaceOverlayPaths,
   runBuildTool,
   removeSnapshot,
   removeStaleSnapshots,
   secureSnapshotSymlinks,
-  selectBuildExecutionMode,
-  type BuildProjectFacts,
 } from "./run_build";
 
 const execFileAsync = promisify(execFile);
@@ -48,16 +36,6 @@ function toPortablePath(filePath: string): string {
 function normalizeNewlines(content: string): string {
   return content.replace(/\r\n?/g, "\n");
 }
-
-const safeViteFacts: BuildProjectFacts = {
-  frameworkType: "vite",
-  buildScript: "vite build",
-  nextMajorVersion: null,
-  previewRunning: true,
-  previewInDocker: false,
-  nextDevOutputIsolated: false,
-  hasBuildLifecycleHooks: false,
-};
 
 describe("run_build", () => {
   const temporaryDirectories: string[] = [];
@@ -93,7 +71,7 @@ describe("run_build", () => {
     expect(runBuildTool.modifiesState).toBe(true);
     expect(runBuildTool.inputSchema.parse({})).toEqual({});
     expect(runBuildTool.getConsentPreview?.({})).toBe(
-      "Runs the app's current package.json build lifecycle (prebuild, build, and postbuild). An isolated build may prepare a temporary Git worktree and install dependencies first. This executes project and dependency code with your user account. The temporary worktree protects the live preview from ordinary build output, but is not a security sandbox.",
+      "Runs the app's current package.json build lifecycle (prebuild, build, and postbuild). Prepares a temporary Git worktree and installs clean dependencies before building. This executes project and dependency code with your user account. The temporary worktree protects the live preview from ordinary build output, but is not a security sandbox.",
     );
   });
 
@@ -475,127 +453,6 @@ describe("run_build", () => {
     await expect(
       fs.readFile(path.join(snapshotRoot, "file-64.txt"), "utf8"),
     ).resolves.toBe("64");
-  });
-
-  it("builds standard Vite in place beside a preview", () => {
-    expect(selectBuildExecutionMode(safeViteFacts)).toBe("in-place");
-    expect(
-      selectBuildExecutionMode({
-        ...safeViteFacts,
-        buildScript: "tsc -b && vite build",
-      }),
-    ).toBe("isolated");
-    expect(
-      selectBuildExecutionMode({
-        ...safeViteFacts,
-        hasBuildLifecycleHooks: true,
-      }),
-    ).toBe("isolated");
-    expect(
-      selectBuildExecutionMode({
-        ...safeViteFacts,
-        previewInDocker: true,
-      }),
-    ).toBe("isolated");
-  });
-
-  it("records Docker previews as requiring a clean host snapshot", async () => {
-    const appPath = await fs.mkdtemp(
-      path.join(os.tmpdir(), "dyad-build-test-"),
-    );
-    temporaryDirectories.push(appPath);
-    await Promise.all([
-      fs.writeFile(path.join(appPath, "vite.config.ts"), "export default {}"),
-      fs.writeFile(
-        path.join(appPath, "package.json"),
-        JSON.stringify({ devDependencies: { vite: "latest" } }),
-      ),
-    ]);
-    runningApps.set(123_457, { mode: "docker" } as never);
-
-    const facts = await gatherBuildProjectFacts(
-      {
-        appId: 123_457,
-        appPath,
-        frameworkType: "vite",
-      } as AgentContext,
-      "vite build",
-    );
-
-    expect(facts.previewInDocker).toBe(true);
-    expect(selectBuildExecutionMode(facts)).toBe("isolated");
-  });
-
-  it("refreshes framework facts after a Vite app gains Nitro", async () => {
-    const appPath = await fs.mkdtemp(
-      path.join(os.tmpdir(), "dyad-build-test-"),
-    );
-    temporaryDirectories.push(appPath);
-    await Promise.all([
-      fs.writeFile(path.join(appPath, "vite.config.ts"), "export default {}"),
-      fs.writeFile(path.join(appPath, "nitro.config.ts"), "export default {}"),
-      fs.writeFile(
-        path.join(appPath, "package.json"),
-        JSON.stringify({
-          devDependencies: { vite: "latest", nitro: "latest" },
-        }),
-      ),
-    ]);
-
-    const facts = await gatherBuildProjectFacts(
-      {
-        appId: 123_456,
-        appPath,
-        frameworkType: "vite",
-      } as AgentContext,
-      "vite build",
-    );
-
-    expect(facts.frameworkType).toBe("vite-nitro");
-  });
-
-  it("requires Next 16 isolated dev output before building beside a preview", () => {
-    const safeNextFacts: BuildProjectFacts = {
-      ...safeViteFacts,
-      frameworkType: "nextjs",
-      buildScript: "next build",
-      nextMajorVersion: 16,
-      nextDevOutputIsolated: true,
-    };
-
-    expect(selectBuildExecutionMode(safeNextFacts)).toBe("in-place");
-    expect(
-      selectBuildExecutionMode({ ...safeNextFacts, nextMajorVersion: 15 }),
-    ).toBe("isolated");
-    expect(
-      selectBuildExecutionMode({
-        ...safeNextFacts,
-        nextDevOutputIsolated: false,
-      }),
-    ).toBe("isolated");
-    expect(
-      selectBuildExecutionMode({
-        ...safeNextFacts,
-        previewRunning: false,
-        nextDevOutputIsolated: false,
-      }),
-    ).toBe("in-place");
-  });
-
-  it("isolates unknown builds only while a preview is running", () => {
-    expect(
-      selectBuildExecutionMode({
-        ...safeViteFacts,
-        frameworkType: null,
-      }),
-    ).toBe("isolated");
-    expect(
-      selectBuildExecutionMode({
-        ...safeViteFacts,
-        frameworkType: null,
-        previewRunning: false,
-      }),
-    ).toBe("in-place");
   });
 
   it("rewrites links to source dependencies into the private snapshot", async () => {

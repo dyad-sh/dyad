@@ -162,9 +162,9 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
   `disableSandboxedE2eTests: true` in its settings; otherwise the tool performs a
   real sandboxed run and fails differently on every machine (`spawn pnpm ENOENT`
   without pnpm, a download failure without network, a timeout locally).
-- Snapshot teardown is best-effort and must not delay a cancelled or timed-out
-  turn. Start cleanup without awaiting it; the marked-directory startup sweep
-  remains the fallback for interrupted cleanup.
+- Await completed build-snapshot teardown under the retained app-path claim,
+  including after cancellation or timeout. Cleanup remains best-effort, with
+  the marked-directory startup sweep as the fallback for interrupted cleanup.
 - `AgentContext.onXmlStream` replaces the previous preview with the full accumulated XML; callers receiving delta output chunks must append them to a bounded buffer before emitting each update.
 - Throttle full accumulated build-output previews rather than emitting once per
   stdout/stderr chunk, and synchronously flush the final buffered preview when

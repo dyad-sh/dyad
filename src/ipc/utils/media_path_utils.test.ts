@@ -312,9 +312,9 @@ describe("manifest with extracted archive entries", () => {
       })),
     );
     expect(
-      (await listStoredAttachments(appPath, "many.zip/")).map(
-        (a) => a.logicalName,
-      ),
+      (
+        await listStoredAttachments(appPath, { logicalNamePrefix: "many.zip/" })
+      ).map((a) => a.logicalName),
     ).toEqual(
       names
         .filter((name) => name !== "f20.txt")

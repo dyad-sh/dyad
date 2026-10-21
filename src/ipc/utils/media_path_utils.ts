@@ -560,15 +560,21 @@ const STAT_BATCH_SIZE = 32;
 
 /**
  * Manifest entries whose stored file still exists, in manifest order.
- * `logicalNamePrefix` limits the check to matching entries.
+ * `logicalNamePrefix` limits the check to matching entries, and
+ * `topLevelOnly` leaves out entries unpacked from archives.
  */
 export async function listStoredAttachments(
   appPath: string,
-  logicalNamePrefix = "",
+  {
+    logicalNamePrefix = "",
+    topLevelOnly = false,
+  }: { logicalNamePrefix?: string; topLevelOnly?: boolean } = {},
 ): Promise<StoredAttachmentInfo[]> {
   const mediaDir = getDyadMediaDir(appPath);
-  const entries = (await readAttachmentManifest(appPath)).filter((entry) =>
-    entry.logicalName.startsWith(logicalNamePrefix),
+  const entries = (await readAttachmentManifest(appPath)).filter(
+    (entry) =>
+      entry.logicalName.startsWith(logicalNamePrefix) &&
+      !(topLevelOnly && entry.archiveLogicalName !== undefined),
   );
   const storedAttachments: StoredAttachmentInfo[] = [];
   for (let start = 0; start < entries.length; start += STAT_BATCH_SIZE) {
@@ -587,9 +593,10 @@ export async function listStoredAttachments(
 }
 
 /**
- * Sorted `attachments:` paths for a listing. `attachments:` lists everything;
- * `attachments:<archive>` (or a folder inside it) lists the entries under it
- * and throws NotFound when there are none, like a missing directory.
+ * Sorted `attachments:` paths for a listing. `attachments:` lists uploaded
+ * files, archives included but not their entries; `attachments:<archive>` (or
+ * a folder inside it) lists the entries under it and throws NotFound when
+ * there are none, like a missing directory.
  */
 export async function listAttachmentLogicalPaths(
   appPath: string,
@@ -597,7 +604,12 @@ export async function listAttachmentLogicalPaths(
 ): Promise<string[]> {
   const scope = stripAttachmentLogicalPrefix(directory).replace(/\/+$/, "");
   const prefix = scope ? `${scope}/` : "";
-  const paths = (await listStoredAttachments(appPath, prefix))
+  const paths = (
+    await listStoredAttachments(appPath, {
+      logicalNamePrefix: prefix,
+      topLevelOnly: !scope,
+    })
+  )
     .map((attachment) => toAttachmentLogicalPath(attachment.logicalName))
     .sort((a, b) => a.localeCompare(b));
   if (scope && paths.length === 0) {

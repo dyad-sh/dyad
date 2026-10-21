@@ -26,9 +26,7 @@ export const fixture: LocalAgentFixture = {
             description: "List project.zip entries",
             script: `
 async function main() {
-  const entries = (await list_files("attachments:"))
-    .filter((name) => name.startsWith("attachments:project.zip/"))
-    .sort();
+  const entries = await list_files("attachments:project.zip");
   const readme = await read_file("attachments:project.zip/README.md");
   return { entries, readme };
 }

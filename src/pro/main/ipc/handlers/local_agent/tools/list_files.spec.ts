@@ -114,7 +114,7 @@ describe("listFilesTool", () => {
     vi.clearAllMocks();
   });
 
-  it("lists attachments and unpacked archive entries from the manifest", async () => {
+  it("lists attachments and, per archive, its unpacked entries from the manifest", async () => {
     const mediaDir = path.join(testDir, ".dyad", "media");
     await fs.promises.mkdir(mediaDir, { recursive: true });
     const entry = (
@@ -161,19 +161,18 @@ describe("listFilesTool", () => {
       " - attachments:proj.zip/src/index.ts",
     ]);
 
-    const everything = await listFilesTool.execute(
+    // The top level lists the archive itself, not its entries.
+    const topLevel = await listFilesTool.execute(
       { directory: "attachments:" },
       mockContext,
     );
-    expect(everything.split("\n")).toEqual([
+    expect(topLevel.split("\n")).toEqual([
       " - attachments:notes.txt",
       " - attachments:proj.zip",
       " - attachments:proj.zip-notes.txt",
-      " - attachments:proj.zip/README.md",
-      " - attachments:proj.zip/src/index.ts",
     ]);
     expect(mockContext.onXmlComplete).toHaveBeenLastCalledWith(
-      expect.stringContaining('directory="attachments:" count="5"'),
+      expect.stringContaining('directory="attachments:" count="3"'),
     );
 
     const narrowed = await listFilesTool.execute(

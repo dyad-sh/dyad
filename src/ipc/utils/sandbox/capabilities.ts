@@ -426,7 +426,10 @@ export async function sandboxListFiles(
 ): Promise<string[]> {
   const dir = guestDir ?? ".";
   if (dir === "attachments:" || dir === "attachments") {
-    const attachments = await listStoredAttachments(appPath);
+    // Archive entries are listed with attachments:<archive>.
+    const attachments = await listStoredAttachments(appPath, {
+      topLevelOnly: true,
+    });
     return attachments.map((attachment) =>
       toAttachmentLogicalPath(attachment.logicalName),
     );

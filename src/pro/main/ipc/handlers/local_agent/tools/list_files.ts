@@ -24,7 +24,7 @@ const listFilesSchema = z.object({
     .string()
     .optional()
     .describe(
-      'Optional subdirectory to list. Use "attachments:" to list uploaded attachments, or "attachments:<archive>" to list every entry unpacked from that archive.',
+      'Optional subdirectory to list. Use "attachments:" to list uploaded attachments (archives appear as one path each), or "attachments:<archive>" to list every entry unpacked from that archive.',
     ),
   app_name: z
     .string()
@@ -86,8 +86,8 @@ function getXmlAttributes(args: ListFilesArgs, count?: number, total?: number) {
 
 /**
  * Attachment listings come from the manifest, not the filesystem. The
- * directory is "attachments:" for everything, or "attachments:<name>" for the
- * entries under one unpacked archive. Both are returned as logical paths that
+ * directory is "attachments:" for uploaded files, or "attachments:<name>" for
+ * the entries under one unpacked archive. Both are returned as logical paths that
  * read_file and copy_file accept.
  */
 async function listAttachmentPaths(
@@ -138,7 +138,7 @@ function buildListFilesResult(
 export const listFilesTool: ToolDefinition<ListFilesArgs> = {
   name: "list_files",
   description:
-    'List files in the application directory. By default, lists only the immediate directory contents. Use recursive=true to list all files recursively. Use include_ignored=true to include git-ignored and hidden paths; recursive ignored listings require directory to be set. Set directory to "attachments:" or "attachments:<archive>" to list uploaded attachments and unpacked archive entries by their attachments: paths. Results are capped at 1000 paths.',
+    'List files in the application directory. By default, lists only the immediate directory contents. Use recursive=true to list all files recursively. Use include_ignored=true to include git-ignored and hidden paths; recursive ignored listings require directory to be set. Set directory to "attachments:" to list uploaded attachments, or "attachments:<archive>" to list the entries unpacked from an archive, by their attachments: paths. Results are capped at 1000 paths.',
   inputSchema: listFilesSchema,
   defaultConsent: "always",
 

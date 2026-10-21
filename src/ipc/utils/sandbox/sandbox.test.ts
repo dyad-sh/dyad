@@ -321,6 +321,9 @@ describe("sandbox capabilities", () => {
     await expect(
       sandboxListFiles(appPath, "attachments:missing.zip"),
     ).rejects.toMatchObject({ kind: DyadErrorKind.NotFound });
+    await expect(sandboxListFiles(appPath, "attachments:")).resolves.toEqual([
+      "attachments:server.log",
+    ]);
   });
 
   it("lists attachment logical paths and returns file stats", async () => {

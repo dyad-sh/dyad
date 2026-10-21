@@ -399,7 +399,9 @@ describe("run_build", () => {
 
     const snapshot = await createBuildWorktree(repoPath, snapshotsPath);
     await removeSnapshot(snapshot.worktreePath, snapshot.sourceRepoPath);
-  });
+    // Like the nested-app case, this runs real Git setup, worktree creation,
+    // and cleanup, which can exceed the default timeout on Windows CI.
+  }, 15_000);
 
   it("accumulates streamed build output instead of replacing earlier chunks", () => {
     const first = accumulateBuildOutput("", "compiling...\n");

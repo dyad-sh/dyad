@@ -1358,7 +1358,9 @@ describe("state-machine boundaries", () => {
       visit(sourceFile);
     }
     expectExactAllowlist("atom-projection-call", violations);
-  });
+    // Parsing and walking every production AST can exceed Vitest's five-second
+    // default while the full CI suite is competing for CPU.
+  }, 15_000);
 
   it("allows only inventoried cross-machine atom reads", () => {
     type AtomAccess = {

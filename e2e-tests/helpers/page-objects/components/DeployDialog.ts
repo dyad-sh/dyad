@@ -97,11 +97,13 @@ export class DeployDialog {
     await expect(
       this.dialog.getByText("Cloudflare deployment verified."),
     ).toBeVisible({ timeout: Timeout.LONG });
+    // Neon setup is handled by the connector; the wizard must not ask users
+    // to repeat it manually after deployment succeeds.
     await expect(
       this.dialog.getByText(
         /Configure your required environment variables in Cloudflare/,
       ),
-    ).toBeVisible();
+    ).toBeHidden();
     await this.finish();
   }
 

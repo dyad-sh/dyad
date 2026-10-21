@@ -8,6 +8,7 @@ import {
   appendAttachmentManifestEntriesWithLogicalNames,
   appendAttachmentManifestEntryGroups,
   createUniqueAttachmentLogicalName,
+  getAttachmentsManifestPath,
   getDyadMediaDir,
   listAttachmentLogicalPaths,
   listStoredAttachments,
@@ -194,6 +195,53 @@ describe("manifest with extracted archive entries", () => {
     expect(
       (await listStoredAttachments(appPath)).map((a) => a.logicalName),
     ).toEqual(["proj.zip"]);
+  });
+
+  it("parses the manifest once while it is unchanged", async () => {
+    writeStored("a.txt", "a");
+    writeStored("b.txt", "b");
+    const entry = (name: string) => ({
+      requestedLogicalName: name,
+      originalName: name,
+      storedFileName: name,
+      mimeType: "text/plain",
+      sizeBytes: 1,
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+    await appendAttachmentManifestEntriesWithLogicalNames(appPath, [
+      entry("a.txt"),
+    ]);
+    const manifestPath = getAttachmentsManifestPath(appPath);
+    const readSpy = vi.spyOn(fsPromises, "readFile");
+    const manifestReads = () =>
+      readSpy.mock.calls.filter(([target]) => String(target) === manifestPath)
+        .length;
+    try {
+      for (let i = 0; i < 3; i++) {
+        expect(
+          (await resolveAttachmentLogicalPath(appPath, "attachments:a.txt"))
+            ?.logicalName,
+        ).toBe("a.txt");
+      }
+      expect(manifestReads()).toBe(1);
+
+      // A write through the manifest helpers is picked up.
+      await appendAttachmentManifestEntriesWithLogicalNames(appPath, [
+        entry("b.txt"),
+      ]);
+      expect(
+        (await resolveAttachmentLogicalPath(appPath, "attachments:b.txt"))
+          ?.logicalName,
+      ).toBe("b.txt");
+
+      // So is a change made to the file directly.
+      fs.writeFileSync(manifestPath, "[]");
+      expect(
+        await resolveAttachmentLogicalPath(appPath, "attachments:a.txt"),
+      ).toBeNull();
+    } finally {
+      readSpy.mockRestore();
+    }
   });
 
   it("prunes entries whose archive is gone even if their files remain", async () => {

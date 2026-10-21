@@ -226,6 +226,41 @@ describe("extractZipAttachment", () => {
     expect(fs.readdirSync(mediaDir)).toEqual(["shared-unpacked"]);
   });
 
+  it("retries a swap that is briefly blocked", async () => {
+    const mediaDir = getDyadMediaDir(appPath);
+    await extractZipAttachment({
+      mediaDir,
+      storedFileName: "shared.zip",
+      archive: buildZip([{ name: "old.txt", data: "old" }]),
+    });
+    const destinationDir = path.join(mediaDir, "shared-unpacked");
+    const realRename = fsPromises.rename;
+    let failures = 0;
+    const renameSpy = vi
+      .spyOn(fsPromises, "rename")
+      .mockImplementation(async (from, to) => {
+        if (to === destinationDir && failures < 2) {
+          failures++;
+          throw Object.assign(new Error("simulated scan lock"), {
+            code: "EPERM",
+          });
+        }
+        return realRename(from, to);
+      });
+    try {
+      await extractZipAttachment({
+        mediaDir,
+        storedFileName: "shared.zip",
+        archive: buildZip([{ name: "new.txt", data: "new" }]),
+      });
+    } finally {
+      renameSpy.mockRestore();
+    }
+    expect(failures).toBe(2);
+    expect(fs.readdirSync(destinationDir)).toEqual(["new.txt"]);
+    expect(fs.readdirSync(mediaDir)).toEqual(["shared-unpacked"]);
+  });
+
   it("replaces an earlier extraction when a later attempt succeeds", async () => {
     const mediaDir = getDyadMediaDir(appPath);
     await extractZipAttachment({

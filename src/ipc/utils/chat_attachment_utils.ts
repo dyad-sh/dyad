@@ -339,10 +339,15 @@ export function buildLocalAgentAttachmentInfo(
   return `\n\n${lines.join("\n")}\n`;
 }
 
+/** Archives with no extracted files have nothing to read. */
 export function hasScriptReadableAttachment(
   attachments: StoredChatAttachment[],
 ): boolean {
-  return attachments.some((attachment) => !isInlineAttachment(attachment));
+  return attachments.some(
+    (attachment) =>
+      !isInlineAttachment(attachment) &&
+      !(attachment.archive && attachment.archive.files.length === 0),
+  );
 }
 
 /**

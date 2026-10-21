@@ -246,6 +246,8 @@ describe("archive attachments", () => {
     const emptyArchive = archiveAttachment();
     emptyArchive.archive!.files = [];
     expect(hasArchiveAttachment([emptyArchive])).toBe(false);
+    expect(hasScriptReadableAttachment([archiveAttachment()])).toBe(true);
+    expect(hasScriptReadableAttachment([emptyArchive])).toBe(false);
   });
 
   it("adds the sandbox hint and the upload instruction when they apply", () => {

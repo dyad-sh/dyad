@@ -29,6 +29,32 @@ import { ZipFormatError } from "./zip_reader";
 
 export const ZIP_ATTACHMENT_MIME_TYPE = "application/zip";
 
+// Windows refuses to rename a directory while any file inside it is open,
+// which antivirus and the indexer often do briefly after files are written.
+const TRANSIENT_RENAME_ERRORS = new Set(["EPERM", "EACCES", "EBUSY"]);
+const RENAME_RETRY_DELAYS_MS = [50, 100, 200, 400];
+
+async function renameWithRetry(from: string, to: string): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await fs.rename(from, to);
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (
+        attempt >= RENAME_RETRY_DELAYS_MS.length ||
+        !code ||
+        !TRANSIENT_RENAME_ERRORS.has(code)
+      ) {
+        throw error;
+      }
+      await new Promise((resolve) =>
+        setTimeout(resolve, RENAME_RETRY_DELAYS_MS[attempt]),
+      );
+    }
+  }
+}
+
 export interface ExtractedArchiveSummary {
   /** Directory under the media directory that holds the extracted files. */
   extractedDirName: string;
@@ -98,7 +124,7 @@ export async function extractZipAttachment({
     // previous extraction stay readable until the old directory is removed.
     const retiredDir = `${destinationDir}.old-${token}`;
     try {
-      await fs.rename(destinationDir, retiredDir);
+      await renameWithRetry(destinationDir, retiredDir);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
         await fs
@@ -108,10 +134,10 @@ export async function extractZipAttachment({
       }
     }
     try {
-      await fs.rename(stagingDir, destinationDir);
+      await renameWithRetry(stagingDir, destinationDir);
     } catch (error) {
       // Put the previous extraction back so other chats keep their files.
-      await fs.rename(retiredDir, destinationDir).catch(() => undefined);
+      await renameWithRetry(retiredDir, destinationDir).catch(() => undefined);
       await fs
         .rm(stagingDir, { recursive: true, force: true })
         .catch(() => undefined);

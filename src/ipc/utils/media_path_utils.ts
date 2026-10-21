@@ -212,11 +212,81 @@ export function createUniqueAttachmentLogicalName(
   }
 }
 
+interface ParsedAttachmentManifest {
+  entries: readonly AttachmentManifestEntry[];
+  byLogicalName: ReadonlyMap<string, AttachmentManifestEntry>;
+}
+
+// Parsed manifests, reused while the file is unchanged. Archives can add
+// thousands of rows, and a sandbox script may read every entry in one go.
+// Writes clear the entry, and the stat check catches any other change.
+const manifestCache = new Map<
+  string,
+  { mtimeMs: number; size: number; ino: number } & ParsedAttachmentManifest
+>();
+const MAX_CACHED_MANIFESTS = 8;
+
+const EMPTY_MANIFEST: ParsedAttachmentManifest = {
+  entries: [],
+  byLogicalName: new Map(),
+};
+
+async function readParsedAttachmentManifest(
+  appPath: string,
+): Promise<ParsedAttachmentManifest> {
+  const manifestPath = getAttachmentsManifestPath(appPath);
+  let stat;
+  try {
+    stat = await fs.stat(manifestPath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      manifestCache.delete(manifestPath);
+      return EMPTY_MANIFEST;
+    }
+    throw error;
+  }
+  const cached = manifestCache.get(manifestPath);
+  if (
+    cached &&
+    cached.mtimeMs === stat.mtimeMs &&
+    cached.size === stat.size &&
+    cached.ino === stat.ino
+  ) {
+    return cached;
+  }
+
+  const entries = await parseAttachmentManifest(manifestPath);
+  const byLogicalName = new Map<string, AttachmentManifestEntry>();
+  for (const entry of entries) {
+    if (!byLogicalName.has(entry.logicalName)) {
+      byLogicalName.set(entry.logicalName, entry);
+    }
+  }
+  manifestCache.delete(manifestPath);
+  manifestCache.set(manifestPath, {
+    mtimeMs: stat.mtimeMs,
+    size: stat.size,
+    ino: stat.ino,
+    entries,
+    byLogicalName,
+  });
+  if (manifestCache.size > MAX_CACHED_MANIFESTS) {
+    manifestCache.delete(manifestCache.keys().next().value!);
+  }
+  return { entries, byLogicalName };
+}
+
 async function readAttachmentManifest(
   appPath: string,
+): Promise<readonly AttachmentManifestEntry[]> {
+  return (await readParsedAttachmentManifest(appPath)).entries;
+}
+
+async function parseAttachmentManifest(
+  manifestPath: string,
 ): Promise<AttachmentManifestEntry[]> {
   try {
-    const raw = await fs.readFile(getAttachmentsManifestPath(appPath), "utf8");
+    const raw = await fs.readFile(manifestPath, "utf8");
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) {
       return [];
@@ -346,6 +416,7 @@ async function writeAttachmentManifestAtomic(
   try {
     await fs.writeFile(tempPath, JSON.stringify(entries, null, 2), "utf8");
     await fs.rename(tempPath, manifestPath);
+    manifestCache.delete(manifestPath);
   } catch (error) {
     await fs.rm(tempPath, { force: true }).catch(() => undefined);
     throw error;
@@ -641,8 +712,8 @@ export async function resolveAttachmentLogicalPath(
 ): Promise<StoredAttachmentInfo | null> {
   const logicalName = stripAttachmentLogicalPrefix(logicalPath);
   const entry =
-    (await readAttachmentManifest(appPath)).find(
-      (manifestEntry) => manifestEntry.logicalName === logicalName,
+    (await readParsedAttachmentManifest(appPath)).byLogicalName.get(
+      logicalName,
     ) ?? null;
   if (!entry) {
     return null;

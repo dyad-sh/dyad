@@ -68,18 +68,18 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
 
   const providerOptions = [
     {
+      id: "neon" as const,
+      name: t("integrations.databaseSetup.providers.neon.name"),
+      description: t("integrations.databaseSetup.providers.neon.description"),
+      url: "https://neon.tech",
+    },
+    {
       id: "supabase" as const,
       name: t("integrations.databaseSetup.providers.supabase.name"),
       description: t(
         "integrations.databaseSetup.providers.supabase.description",
       ),
       url: "https://supabase.com",
-    },
-    {
-      id: "neon" as const,
-      name: t("integrations.databaseSetup.providers.neon.name"),
-      description: t("integrations.databaseSetup.providers.neon.description"),
-      url: "https://neon.tech",
     },
   ];
 
@@ -90,7 +90,7 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
     userSelectedProvider ??
     requestedProvider ??
     pendingIntegration?.provider ??
-    "supabase";
+    "neon";
 
   const lockedProvider = requestedProvider ?? pendingIntegration?.provider;
 
@@ -403,7 +403,7 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
                         <span className="text-sm font-semibold text-foreground">
                           {option.name}
                         </span>
-                        {option.id === "supabase" && (
+                        {option.id === "neon" && (
                           <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-700 dark:bg-blue-900/60 dark:text-blue-200">
                             {t("integrations.databaseSetup.recommended")}
                           </span>

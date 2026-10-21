@@ -5,15 +5,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { integrationProviderSelectionAtom } from "@/atoms/integrationAtoms";
+import type { AppFrameworkType } from "@/lib/framework_constants";
 import { DyadAddIntegration } from "./DyadAddIntegration";
 
 const mocks = vi.hoisted(() => ({
   app: { frameworkType: "vite", files: [] } as
-    | { frameworkType: "vite"; files: string[] }
+    | { frameworkType: AppFrameworkType; files: string[] }
     | undefined,
   appLoading: false,
   posthogCapture: vi.fn(),
   requestId: "integration-1",
+  pendingProvider: undefined as "neon" | "supabase" | undefined,
 }));
 
 vi.mock("posthog-js/react", () => ({
@@ -42,7 +45,7 @@ vi.mock("@/user_input/hooks", () => ({
         {
           requestId: mocks.requestId,
           chatId: 7,
-          provider: undefined,
+          provider: mocks.pendingProvider,
         },
       ],
     ]),
@@ -73,7 +76,7 @@ vi.mock("@/ipc/types", () => ({
   ipc: { system: { openExternalUrl: vi.fn() } },
 }));
 
-function renderCard() {
+function renderCard(provider?: "neon" | "supabase") {
   const store = createStore();
   store.set(selectedAppIdAtom, 1);
   store.set(selectedChatIdAtom, 7);
@@ -82,9 +85,15 @@ function renderCard() {
     return <Provider store={store}>{children}</Provider>;
   }
 
-  return render(<DyadAddIntegration>Connect a database.</DyadAddIntegration>, {
-    wrapper: Wrapper,
-  });
+  return {
+    ...render(
+      <DyadAddIntegration provider={provider}>
+        Connect a database.
+      </DyadAddIntegration>,
+      { wrapper: Wrapper },
+    ),
+    store,
+  };
 }
 
 describe("DyadAddIntegration", () => {
@@ -93,56 +102,89 @@ describe("DyadAddIntegration", () => {
     mocks.appLoading = false;
     mocks.posthogCapture.mockReset();
     mocks.requestId = crypto.randomUUID();
+    mocks.pendingProvider = undefined;
   });
 
-  it("shows Supabase first and selects it by default", () => {
-    renderCard();
+  it("recommends Neon first and hands the default choice to Configure", () => {
+    const { store } = renderCard();
 
     const radios = screen.getAllByRole("radio");
     expect(radios).toHaveLength(2);
-    expect(radios[0].textContent).toContain("Supabase");
+    expect(radios[0].textContent).toContain("Neon");
     expect(radios[0].textContent).toContain("Recommended");
     expect(radios[0].getAttribute("aria-checked")).toBe("true");
-    expect(radios[1].textContent).toContain("Neon");
+    expect(radios[1].textContent).toContain("Supabase");
     expect(radios[1].textContent).not.toContain("Recommended");
     expect(radios[1].getAttribute("aria-checked")).toBe("false");
+
+    fireEvent.click(screen.getByRole("button", { name: "Continue with Neon" }));
+    expect(
+      store.get(integrationProviderSelectionAtom).get(mocks.requestId),
+    ).toBe("neon");
+  });
+
+  it("honors an explicitly requested Supabase provider", () => {
+    const { store } = renderCard("supabase");
+
+    expect(screen.getAllByRole("radio")).toHaveLength(1);
+    expect(
+      screen
+        .getByRole("radio", { name: /Supabase/ })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Continue with Supabase" }),
+    );
+    expect(
+      store.get(integrationProviderSelectionAtom).get(mocks.requestId),
+    ).toBe("supabase");
+  });
+
+  it("honors a pending provider that arrives after the card mounts", () => {
+    const view = renderCard();
+
+    mocks.pendingProvider = "supabase";
+    view.rerender(<DyadAddIntegration>Connect a database.</DyadAddIntegration>);
+
+    expect(screen.getAllByRole("radio")).toHaveLength(1);
+    expect(
+      screen
+        .getByRole("radio", { name: /Supabase/ })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
   });
 
   it("tracks each provider once when setup starts", () => {
     const view = renderCard();
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Continue with Supabase" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Continue with Neon" }));
     view.unmount();
     renderCard();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Continue with Supabase" }),
-    );
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: "integrations.databaseSetup.back",
-      }),
-    );
-    fireEvent.click(
-      screen.getByRole("button", { name: "Continue with Supabase" }),
-    );
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: "integrations.databaseSetup.back",
-      }),
-    );
-    fireEvent.click(screen.getByRole("radio", { name: /Neon/ }));
     fireEvent.click(screen.getByRole("button", { name: "Continue with Neon" }));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "integrations.databaseSetup.back",
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Continue with Neon" }));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "integrations.databaseSetup.back",
+      }),
+    );
+    fireEvent.click(screen.getByRole("radio", { name: /Supabase/ }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Continue with Supabase" }),
+    );
 
     expect(mocks.posthogCapture.mock.calls).toEqual([
       [
         "integration-setup:start",
-        { provider: "supabase", requestId: mocks.requestId },
+        { provider: "neon", requestId: mocks.requestId },
       ],
       [
         "integration-setup:start",
-        { provider: "neon", requestId: mocks.requestId },
+        { provider: "supabase", requestId: mocks.requestId },
       ],
     ]);
   });
@@ -150,18 +192,37 @@ describe("DyadAddIntegration", () => {
   it("waits for app metadata before committing the default provider", () => {
     mocks.app = undefined;
     mocks.appLoading = true;
-    renderCard();
+    const view = renderCard();
 
     const radios = screen.getAllByRole("radio");
     expect(radios).toHaveLength(2);
-    expect(radios[0].textContent).toContain("Supabase");
+    expect(radios[0].textContent).toContain("Neon");
     expect(radios[0].getAttribute("aria-checked")).toBe("true");
     expect(
       (
         screen.getByRole("button", {
-          name: "Continue with Supabase",
+          name: "Continue with Neon",
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);
+
+    mocks.app = { frameworkType: "other", files: [] };
+    mocks.appLoading = false;
+    view.rerender(<DyadAddIntegration>Connect a database.</DyadAddIntegration>);
+
+    expect(screen.getAllByRole("radio")).toHaveLength(1);
+    expect(
+      screen
+        .getByRole("radio", { name: /Supabase/ })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
+    const continueButton = screen.getByRole("button", {
+      name: "Continue with Supabase",
+    }) as HTMLButtonElement;
+    expect(continueButton.disabled).toBe(false);
+    fireEvent.click(continueButton);
+    expect(
+      view.store.get(integrationProviderSelectionAtom).get(mocks.requestId),
+    ).toBe("supabase");
   });
 });

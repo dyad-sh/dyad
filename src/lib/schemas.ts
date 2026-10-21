@@ -625,9 +625,6 @@ const BaseUserSettingsFields = {
   // explicitly turned on; it gates new GitLab connections only, so an app
   // already linked to GitLab keeps its GitLab card when this is off again.
   enableGitlabPublishing: z.boolean().optional(),
-  // Deploying Cloudflare Workers from the Publish panel. Off unless turned on
-  // while the integration is new; with it off the panel is unchanged.
-  enableCloudflareDeployment: z.boolean().optional(),
   enableTestRunInPreview: z.boolean().optional(),
   enableAutoUpdate: z.boolean(),
   releaseChannel: ReleaseChannelSchema,

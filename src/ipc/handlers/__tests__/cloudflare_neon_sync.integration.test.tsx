@@ -16,7 +16,6 @@ import { cleanup, screen } from "@testing-library/react";
 import { eq } from "drizzle-orm";
 
 import { apps, cloudflareAppConnections } from "@/db/schema";
-import { ipc } from "@/ipc/types";
 import { writeSettings } from "@/main/settings";
 import {
   setupHybridChatHarness,
@@ -25,9 +24,8 @@ import {
 import { h } from "@/testing/hybrid.setup";
 
 /**
- * The Cloudflare experiment flag hides the Cloudflare tab. These check what
- * the Neon sync does on either side of that flag: the Database section's
- * sync row goes with the tab, while the cleanup on Neon disconnect does not.
+ * The Database section offers to sync the Neon config to Cloudflare only for
+ * an app deployed to a Worker.
  */
 describe("Neon config sync to Cloudflare (integration)", () => {
   let harness: HybridChatHarness;
@@ -43,15 +41,15 @@ describe("Neon config sync to Cloudflare (integration)", () => {
   afterEach(async () => {
     cleanup();
     await harness.db.delete(cloudflareAppConnections);
-    writeSettings({ neon: undefined, enableCloudflareDeployment: false });
+    writeSettings({ neon: undefined });
   });
 
   afterAll(async () => {
     await harness?.dispose();
   });
 
-  /** A Neon app with a deploy branch chosen, deployed to Vercel and to a Worker. */
-  async function seedNeonAppWithWorker() {
+  /** A Neon app with a deploy branch chosen, deployed to Vercel and maybe to a Worker. */
+  async function seedNeonApp({ withWorker }: { withWorker: boolean }) {
     writeSettings({
       isTestMode: true,
       neon: {
@@ -71,6 +69,7 @@ describe("Neon config sync to Cloudflare (integration)", () => {
         vercelProjectId: "prj_test",
       })
       .where(eq(apps.id, harness.appId));
+    if (!withWorker) return;
     await harness.db.insert(cloudflareAppConnections).values({
       appId: harness.appId,
       rootDirectory: "",
@@ -86,34 +85,20 @@ describe("Neon config sync to Cloudflare (integration)", () => {
     harness.mountSurface({ route: "/database", appId: harness.appId });
   }
 
-  it("hides the Sync to Cloudflare row while the experiment is off", async () => {
-    await seedNeonAppWithWorker();
+  it("offers the Sync to Cloudflare row for an app deployed to a Worker", async () => {
+    await seedNeonApp({ withWorker: true });
+    mountDatabaseSection();
+
+    expect(await screen.findByTestId("sync-to-cloudflare")).toBeTruthy();
+  });
+
+  it("does not offer the row for an app with no Worker", async () => {
+    await seedNeonApp({ withWorker: false });
     mountDatabaseSection();
 
     // The Vercel row shows that the section reached the state where sync
     // rows are offered at all.
     await screen.findByTestId("sync-to-vercel");
     expect(screen.queryByTestId("sync-to-cloudflare")).toBeNull();
-  });
-
-  it("offers the row once the experiment is on", async () => {
-    await seedNeonAppWithWorker();
-    writeSettings({ enableCloudflareDeployment: true });
-    mountDatabaseSection();
-
-    expect(await screen.findByTestId("sync-to-cloudflare")).toBeTruthy();
-  });
-
-  it("lets the Neon disconnect cleanup through while the experiment is off", async () => {
-    // Only the gate is checked here: with no Worker connected there is nothing
-    // to delete. The deletion itself is covered in cloudflare_handlers.test.ts
-    // against the stand-in Cloudflare.
-    await expect(
-      ipc.cloudflare.removeNeonEnvVars({ appId: harness.appId }),
-    ).resolves.toEqual({ removedKeys: [] });
-    // Syncing stays with the tab.
-    await expect(
-      ipc.cloudflare.syncNeonConfig({ appId: harness.appId }),
-    ).rejects.toThrow(/not enabled/);
   });
 });

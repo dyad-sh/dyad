@@ -307,30 +307,6 @@ export default function SettingsPage() {
               <GitLabPublishingExperimentSwitch />
             </div>
 
-            <div
-              id={SETTING_IDS.enableCloudflareDeployment}
-              className="space-y-1.5"
-            >
-              <div className="flex items-center gap-2">
-                <Switch
-                  id="enable-cloudflare-deployment"
-                  aria-label="Allow deployment to Cloudflare Workers"
-                  checked={!!settings?.enableCloudflareDeployment}
-                  onCheckedChange={(checked) => {
-                    updateSettings({ enableCloudflareDeployment: checked });
-                  }}
-                />
-                <Label htmlFor="enable-cloudflare-deployment">
-                  Allow deployment to Cloudflare Workers
-                </Label>
-              </div>
-              <p className={hint}>
-                Adds a Cloudflare tab to the Publish panel that deploys a Worker
-                from your app when you sync changes to GitHub. Turning this off
-                hides the tab, but Workers you already connected keep deploying.
-              </p>
-            </div>
-
             <div id={SETTING_IDS.enableMcpToolSearch} className="space-y-1.5">
               <div className="flex items-center gap-2">
                 <Switch

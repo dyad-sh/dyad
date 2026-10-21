@@ -13,8 +13,6 @@ export function CloudflareIntegration() {
   const { settings, updateSettings } = useSettings();
   const [isDisconnecting, setIsDisconnecting] = useState(false);
 
-  // Shown for a saved token even with the experiment off, or turning it off
-  // would leave a stored token with no way to remove it.
   if (!settings?.cloudflareAccessToken) {
     return null;
   }
@@ -41,8 +39,6 @@ export function CloudflareIntegration() {
           Your Cloudflare API token is saved. Removing it does not stop
           connected Workers from deploying: disconnect them in each app's
           Publish panel first.
-          {!settings.enableCloudflareDeployment &&
-            " The Cloudflare tab is hidden while the Cloudflare experiment is off, so turn it back on to do that."}
         </p>
       </div>
       <Button

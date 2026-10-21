@@ -60,7 +60,6 @@ export const SETTING_IDS = {
   autoFixReviewIssues: "setting-auto-fix-review-issues",
   enableOwnServerDeployment: "setting-enable-own-server-deployment",
   enableGitlabPublishing: "setting-enable-gitlab-publishing",
-  enableCloudflareDeployment: "setting-enable-cloudflare-deployment",
   enableTestRunInPreview: "setting-enable-test-run-in-preview",
   reset: "setting-reset",
 } as const;
@@ -745,24 +744,6 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
       "repository",
       "self-hosted",
       "self hosted",
-      "experiment",
-    ],
-    sectionId: SECTION_IDS.experiments,
-    sectionLabel: "Experiments",
-  },
-
-  {
-    id: SETTING_IDS.enableCloudflareDeployment,
-    label: "Allow deployment to Cloudflare Workers",
-    description:
-      "Deploy a Cloudflare Worker from your app when you sync changes to GitHub",
-    keywords: [
-      "deploy",
-      "deployment",
-      "cloudflare",
-      "workers",
-      "wrangler",
-      "publish",
       "experiment",
     ],
     sectionId: SECTION_IDS.experiments,

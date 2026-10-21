@@ -16,9 +16,8 @@ import { describeLinkedRemote } from "@/shared/linked_remote";
  * They are alternatives, so they share one card and a row of tabs rather than
  * stacking cards that each look like the next required step.
  *
- * Cloudflare and your own server are each off by default. With both off this
- * renders exactly the Vercel card that was here before the options existed —
- * no tabs, no mention of another destination.
+ * Your own server is off by default, and its tab is hidden until it is turned
+ * on.
  */
 
 interface AppSummary {
@@ -42,15 +41,13 @@ const PROVIDER_FOR_TAB: Record<DeploymentTab, keyof DeploymentProvidersInUse> =
 
 /** The tabs on screen, in display order. */
 export function visibleDeploymentTabs({
-  showCloudflare,
   showOwnServer,
 }: {
-  showCloudflare: boolean;
   showOwnServer: boolean;
 }): DeploymentTab[] {
   return [
     "vercel",
-    ...(showCloudflare ? (["cloudflare"] as const) : []),
+    "cloudflare",
     ...(showOwnServer ? (["own-server"] as const) : []),
   ];
 }
@@ -213,23 +210,7 @@ export function DeploymentSection({
 }) {
   const { settings } = useSettings();
 
-  const showCloudflare = !!settings?.enableCloudflareDeployment;
   const showOwnServer = !!settings?.enableOwnServerDeployment;
-
-  if (!showCloudflare && !showOwnServer) {
-    return (
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2">
-            <VercelDashboardLink />
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <VercelDeployment appId={appId} app={app} />
-        </CardContent>
-      </Card>
-    );
-  }
 
   return (
     <Card>
@@ -245,22 +226,18 @@ export function DeploymentSection({
         <Tabs
           key={appId}
           defaultValue={chooseDefaultDeploymentTab(
-            visibleDeploymentTabs({ showCloudflare, showOwnServer }),
+            visibleDeploymentTabs({ showOwnServer }),
             app.deploymentProvidersInUse,
           )}
         >
           <TabsList>
             <TabsTrigger value="vercel">Vercel</TabsTrigger>
-            {showCloudflare && (
-              <TabsTrigger value="cloudflare">Cloudflare</TabsTrigger>
-            )}
+            <TabsTrigger value="cloudflare">Cloudflare</TabsTrigger>
             {showOwnServer && (
               <TabsTrigger value="own-server">Your Own Server</TabsTrigger>
             )}
           </TabsList>
           <TabsContent value="vercel" className="pt-4 space-y-4">
-            {/* The link lived in the card header before the tabs, and the
-                header is no longer Vercel's alone. */}
             <div className="text-sm font-semibold">
               <VercelDashboardLink />
             </div>
@@ -271,15 +248,13 @@ export function DeploymentSection({
               server below, mounting it with the card would call Cloudflare
               every time Publish opens, for users who never leave the Vercel
               tab. */}
-          {showCloudflare && (
-            <TabsContent value="cloudflare" className="pt-4 space-y-4">
-              <div className="flex items-center gap-2 text-sm font-semibold">
-                <Cloud className="w-5 h-5" />
-                Cloudflare
-              </div>
-              <CloudflareDeployment appId={appId} app={app} />
-            </TabsContent>
-          )}
+          <TabsContent value="cloudflare" className="pt-4 space-y-4">
+            <div className="flex items-center gap-2 text-sm font-semibold">
+              <Cloud className="w-5 h-5" />
+              Cloudflare
+            </div>
+            <CloudflareDeployment appId={appId} app={app} />
+          </TabsContent>
           {/* Mounted with the card rather than on first click. The connector
               cannot read its status until it mounts, so a lazy panel opens on
               a spinner and then jumps to full height. The cost is that opening

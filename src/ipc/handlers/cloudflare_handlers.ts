@@ -276,15 +276,6 @@ type ConnectionRow = typeof cloudflareAppConnections.$inferSelect;
 
 // --- Helpers ---
 
-function assertCloudflareEnabled(): void {
-  if (!readSettings().enableCloudflareDeployment) {
-    throw new DyadError(
-      "Cloudflare deployment is not enabled. Turn it on in Settings > Experiments.",
-      DyadErrorKind.Precondition,
-    );
-  }
-}
-
 function requireToken(): string {
   const token = readSettings().cloudflareAccessToken?.value;
   if (!token) {
@@ -1311,12 +1302,10 @@ const STATUS_RESOURCES = [
 export function registerCloudflareHandlers() {
   // DO NOT LOG this handler because tokens are sensitive
   createTypedHandler(cloudflareContracts.saveToken, async (_, { token }) => {
-    assertCloudflareEnabled();
     await handleSaveToken(token);
   });
 
   createTypedHandler(cloudflareContracts.listAccounts, async () => {
-    assertCloudflareEnabled();
     try {
       return await listAccounts(requireToken());
     } catch (error) {
@@ -1327,7 +1316,6 @@ export function registerCloudflareHandlers() {
   createTypedHandler(
     cloudflareContracts.listWorkers,
     async (_, { accountId }) => {
-      assertCloudflareEnabled();
       return handleListWorkers(accountId);
     },
   );
@@ -1338,14 +1326,12 @@ export function registerCloudflareHandlers() {
       "cloudflare:get-app-status",
       STATUS_RESOURCES,
       async (_, { appId }: { appId: number }) => {
-        assertCloudflareEnabled();
         return handleGetAppStatus(appId);
       },
     ),
   );
 
   createTypedHandler(cloudflareContracts.checkRepoAccess, async (_, params) => {
-    assertCloudflareEnabled();
     return handleCheckRepoAccess(params);
   });
 
@@ -1355,7 +1341,6 @@ export function registerCloudflareHandlers() {
       "cloudflare:connect-worker",
       [...CONNECTION_RESOURCES, readAppResource("repository-ref")],
       async (_, params: ConnectCloudflareWorkerParams) => {
-        assertCloudflareEnabled();
         return handleConnectWorker(params);
       },
     ),
@@ -1364,7 +1349,6 @@ export function registerCloudflareHandlers() {
   createTypedHandler(
     cloudflareContracts.getDeploymentStatus,
     async (_, params) => {
-      assertCloudflareEnabled();
       return handleGetDeploymentStatus(params);
     },
   );
@@ -1375,7 +1359,6 @@ export function registerCloudflareHandlers() {
       "cloudflare:disconnect",
       CONNECTION_RESOURCES,
       async (_, params: { appId: number; rootDirectory: string }) => {
-        assertCloudflareEnabled();
         await handleDisconnect(params);
       },
     ),
@@ -1385,13 +1368,10 @@ export function registerCloudflareHandlers() {
   createTypedHandler(
     cloudflareContracts.syncNeonConfig,
     async (_, { appId, branchType }) => {
-      assertCloudflareEnabled();
       return syncNeonConfigToCloudflare({ appId, branchType });
     },
   );
 
-  // Not gated on the experiment: secrets pointing at a database the app no
-  // longer uses should come off whether or not the tab is still shown.
   createTypedHandler(
     cloudflareContracts.removeNeonEnvVars,
     async (_, { appId }) => {

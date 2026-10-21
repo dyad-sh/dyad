@@ -3,12 +3,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DeploymentProvidersInUse } from "@/ipc/types";
 
 /**
- * What the flag actually hides, and which tab the card opens on.
+ * What the own-server flag actually hides, and which tab the card opens on.
  *
- * Deploying to your own server is off by default, and off has to mean the
- * Publish panel looks the way it did before the option existed — not a
- * disabled tab, not a greyed-out card. Coolify is early enough that a user
- * who has not asked for it should never be offered it.
+ * Deploying to your own server is off by default, and off has to mean no tab
+ * for it at all, not a disabled one. Coolify is early enough that a user who
+ * has not asked for it should never be offered it.
  *
  * With tabs on screen, the card opens on the first one the app is actually
  * connected to. A user with a Cloudflare Worker and no Vercel project should
@@ -54,10 +53,7 @@ function app(inUse: Partial<DeploymentProvidersInUse> = {}) {
 }
 
 const APP = app();
-const ALL_ON = {
-  enableCloudflareDeployment: true,
-  enableOwnServerDeployment: true,
-};
+const OWN_SERVER_ON = { enableOwnServerDeployment: true };
 
 function selectedTab(): string | null {
   const tab = screen
@@ -71,67 +67,38 @@ beforeEach(() => {
 });
 
 describe("with deployment to your own server turned off", () => {
-  it("shows the Vercel card alone, with no tabs", () => {
+  it("offers Vercel and Cloudflare, opening on Vercel", () => {
     render(<DeploymentSection appId={1} app={APP} />);
 
+    const tabs = screen.getAllByRole("tab");
+    expect(tabs.map((t) => t.textContent)).toEqual(["Vercel", "Cloudflare"]);
+    // Vercel is where an app publishes unless the user says otherwise, so it
+    // is the tab that opens.
+    expect(tabs[0].getAttribute("aria-selected")).toBe("true");
     expect(screen.getByText("vercel-connector")).toBeTruthy();
     expect(screen.queryByText("coolify-connector")).toBeNull();
-    expect(screen.queryByRole("tab")).toBeNull();
     // Not even the name of the thing they did not opt into.
     expect(screen.queryByText(/own server/i)).toBeNull();
   });
 });
 
 describe("with it turned on", () => {
-  it("offers both destinations as tabs, Vercel first", () => {
-    settings.value = { enableOwnServerDeployment: true };
+  it("adds your own server as the last tab", () => {
+    settings.value = OWN_SERVER_ON;
     render(<DeploymentSection appId={1} app={APP} />);
 
     const tabs = screen.getAllByRole("tab");
     expect(tabs.map((t) => t.textContent)).toEqual([
       "Vercel",
-      "Your Own Server",
-    ]);
-    // Vercel is where an app publishes unless the user says otherwise, so it
-    // is the tab that opens.
-    expect(tabs[0].getAttribute("aria-selected")).toBe("true");
-    expect(screen.getByText("vercel-connector")).toBeTruthy();
-  });
-});
-
-describe("with Cloudflare deployment turned off", () => {
-  it("does not mention Cloudflare, even beside your own server", () => {
-    settings.value = { enableOwnServerDeployment: true };
-    render(<DeploymentSection appId={1} app={APP} />);
-
-    expect(screen.queryByText(/cloudflare/i)).toBeNull();
-  });
-});
-
-describe("with Cloudflare deployment turned on", () => {
-  it("adds a Cloudflare tab without bringing your own server along", () => {
-    settings.value = { enableCloudflareDeployment: true };
-    render(<DeploymentSection appId={1} app={APP} />);
-
-    const tabs = screen.getAllByRole("tab");
-    expect(tabs.map((t) => t.textContent)).toEqual(["Vercel", "Cloudflare"]);
-    expect(tabs[0].getAttribute("aria-selected")).toBe("true");
-    expect(screen.queryByText("coolify-connector")).toBeNull();
-  });
-
-  it("orders the tabs the same way whichever options are on", () => {
-    settings.value = ALL_ON;
-    render(<DeploymentSection appId={1} app={APP} />);
-
-    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual([
-      "Vercel",
       "Cloudflare",
       "Your Own Server",
     ]);
+    expect(tabs[0].getAttribute("aria-selected")).toBe("true");
   });
+});
 
+describe("the Cloudflare tab", () => {
   it("shows the connector once the app is on GitHub", () => {
-    settings.value = { enableCloudflareDeployment: true };
     render(<DeploymentSection appId={1} app={APP} />);
 
     fireEvent.click(screen.getByRole("tab", { name: "Cloudflare" }));
@@ -142,7 +109,6 @@ describe("with Cloudflare deployment turned on", () => {
   it("asks for GitHub first, before any Cloudflare setup", () => {
     // Cloudflare builds from the repository, so without one there is nothing
     // an API token could be used for yet.
-    settings.value = { enableCloudflareDeployment: true };
     render(
       <DeploymentSection
         appId={1}
@@ -161,7 +127,7 @@ describe("with Cloudflare deployment turned on", () => {
 
 describe("which tab opens", () => {
   it("opens on Cloudflare when that is where the app is deployed", () => {
-    settings.value = ALL_ON;
+    settings.value = OWN_SERVER_ON;
     render(<DeploymentSection appId={1} app={app({ cloudflare: true })} />);
 
     expect(selectedTab()).toBe("Cloudflare");
@@ -170,14 +136,14 @@ describe("which tab opens", () => {
   });
 
   it("opens on your own server when only Coolify is connected", () => {
-    settings.value = ALL_ON;
+    settings.value = OWN_SERVER_ON;
     render(<DeploymentSection appId={1} app={app({ coolify: true })} />);
 
     expect(selectedTab()).toBe("Your Own Server");
   });
 
   it("prefers the earlier tab when the app is deployed to several", () => {
-    settings.value = ALL_ON;
+    settings.value = OWN_SERVER_ON;
     render(
       <DeploymentSection
         appId={1}
@@ -189,10 +155,9 @@ describe("which tab opens", () => {
   });
 
   it("skips a destination whose tab is not on screen", () => {
-    // Connected to Coolify, but with only the Cloudflare option turned on
-    // there is no Coolify tab to open, so this is an app deployed nowhere
-    // the card can show.
-    settings.value = { enableCloudflareDeployment: true };
+    // Connected to Coolify, but with your own server turned off there is no
+    // Coolify tab to open, so this is an app deployed nowhere the card can
+    // show.
     render(<DeploymentSection appId={1} app={app({ coolify: true })} />);
 
     expect(selectedTab()).toBe("Vercel");
@@ -201,7 +166,7 @@ describe("which tab opens", () => {
   it("does not follow a connection made or removed after opening", () => {
     // A user who disconnects Cloudflare from its tab is reading the result
     // there; the card must not carry them off to Vercel mid-thought.
-    settings.value = ALL_ON;
+    settings.value = OWN_SERVER_ON;
     const { rerender } = render(
       <DeploymentSection appId={1} app={app({ cloudflare: true })} />,
     );
@@ -215,7 +180,7 @@ describe("which tab opens", () => {
   it("chooses again for the next app", () => {
     // The section stays mounted when the selected app changes, so the tab
     // picked for one app must not leak into another.
-    settings.value = ALL_ON;
+    settings.value = OWN_SERVER_ON;
     const { rerender } = render(
       <DeploymentSection appId={1} app={app({ cloudflare: true })} />,
     );
@@ -270,7 +235,7 @@ describe("for an app linked to GitLab", () => {
   });
 
   it("says the same on the Cloudflare tab and points to your own server", () => {
-    settings.value = ALL_ON;
+    settings.value = OWN_SERVER_ON;
     render(<DeploymentSection appId={1} app={GITLAB_APP} />);
 
     fireEvent.click(screen.getByRole("tab", { name: "Cloudflare" }));

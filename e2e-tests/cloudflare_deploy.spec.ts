@@ -1,6 +1,4 @@
 import { expect } from "@playwright/test";
-import fs from "node:fs/promises";
-import path from "node:path";
 import {
   testWithConfig,
   Timeout,
@@ -23,16 +21,9 @@ import { FAKE_LLM_BASE_PORT } from "./helpers/test-ports";
 const TEST_PNPM_VERSION = "11.4.2";
 
 const electronConfig: ElectronConfig = {
-  // Cloudflare deployment is off by default, so every spec here opts in.
-  preLaunchHook: async ({ userDataDir }) => {
+  preLaunchHook: async () => {
     // Set here because the fixture clears it before each launch.
     process.env.DYAD_TEST_PNPM_VERSION = TEST_PNPM_VERSION;
-    await fs.mkdir(userDataDir, { recursive: true });
-    await fs.writeFile(
-      path.join(userDataDir, "user-settings.json"),
-      JSON.stringify({ enableCloudflareDeployment: true }),
-      "utf8",
-    );
   },
 };
 

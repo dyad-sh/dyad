@@ -271,6 +271,15 @@ describe("useCopyToClipboard", () => {
       expect(text).not.toContain("dark mode");
     });
 
+    it("treats an unrecognized dyad-like tag inside the block as content", async () => {
+      const text = await copy(
+        "Done!\n<dyad-suggested-prompts>\nAdd a <dyad-widget> section\n</dyad-suggested-prompts>\nThanks",
+      );
+      expect(text).toContain("Thanks");
+      expect(text).not.toContain("dyad-widget");
+      expect(text).not.toContain("dyad-suggested-prompts");
+    });
+
     it("keeps a host notice that follows an unclosed suggestions block", async () => {
       const text = await copy(
         'Done!\n<dyad-suggested-prompts>\nAdd a dark\n\n<dyad-output type="error" message="Deploy failed">boom</dyad-output>',

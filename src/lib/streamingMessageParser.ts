@@ -88,6 +88,11 @@ const DYAD_CUSTOM_TAG_NAMES = [
 ];
 const DYAD_CUSTOM_TAG_SET = new Set(DYAD_CUSTOM_TAG_NAMES);
 
+/** Whether the parser treats `name` as a Dyad tag rather than plain text. */
+export function isDyadCustomTagName(name: string): boolean {
+  return DYAD_CUSTOM_TAG_SET.has(name);
+}
+
 export type Block =
   | {
       kind: "markdown";

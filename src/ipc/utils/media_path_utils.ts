@@ -219,10 +219,16 @@ interface ParsedAttachmentManifest {
 
 // Parsed manifests, reused while the file is unchanged. Archives can add
 // thousands of rows, and a sandbox script may read every entry in one go.
-// Writes clear the entry, and the stat check catches any other change.
+// Writes clear the entry, and the stat check catches any other change. The
+// parse is cached while in flight, so concurrent readers share it.
 const manifestCache = new Map<
   string,
-  { mtimeMs: number; size: number; ino: number } & ParsedAttachmentManifest
+  {
+    mtimeMs: number;
+    size: number;
+    ino: number;
+    parsed: Promise<ParsedAttachmentManifest>;
+  }
 >();
 const MAX_CACHED_MANIFESTS = 8;
 
@@ -252,28 +258,35 @@ async function readParsedAttachmentManifest(
     cached.size === stat.size &&
     cached.ino === stat.ino
   ) {
-    return cached;
+    return cached.parsed;
   }
 
-  const entries = await parseAttachmentManifest(manifestPath);
-  const byLogicalName = new Map<string, AttachmentManifestEntry>();
-  for (const entry of entries) {
-    if (!byLogicalName.has(entry.logicalName)) {
-      byLogicalName.set(entry.logicalName, entry);
+  const parsed = parseAttachmentManifest(manifestPath).then((entries) => {
+    const byLogicalName = new Map<string, AttachmentManifestEntry>();
+    for (const entry of entries) {
+      if (!byLogicalName.has(entry.logicalName)) {
+        byLogicalName.set(entry.logicalName, entry);
+      }
     }
-  }
-  manifestCache.delete(manifestPath);
-  manifestCache.set(manifestPath, {
+    return { entries, byLogicalName };
+  });
+  const cacheEntry = {
     mtimeMs: stat.mtimeMs,
     size: stat.size,
     ino: stat.ino,
-    entries,
-    byLogicalName,
-  });
+    parsed,
+  };
+  manifestCache.delete(manifestPath);
+  manifestCache.set(manifestPath, cacheEntry);
   if (manifestCache.size > MAX_CACHED_MANIFESTS) {
     manifestCache.delete(manifestCache.keys().next().value!);
   }
-  return { entries, byLogicalName };
+  parsed.catch(() => {
+    if (manifestCache.get(manifestPath) === cacheEntry) {
+      manifestCache.delete(manifestPath);
+    }
+  });
+  return parsed;
 }
 
 async function readAttachmentManifest(

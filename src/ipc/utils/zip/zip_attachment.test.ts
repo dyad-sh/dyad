@@ -158,53 +158,49 @@ describe("extractZipAttachment", () => {
     );
   });
 
-  it("removes the staged extraction when the earlier one cannot be moved aside", async () => {
+  it("keeps an earlier extraction in place and refreshes its time", async () => {
+    const archive = buildZip([{ name: "a.txt", data: "alpha" }]);
     const mediaDir = getDyadMediaDir(appPath);
     await extractZipAttachment({
       mediaDir,
       storedFileName: "shared.zip",
-      archive: buildZip([{ name: "old.txt", data: "old" }]),
+      archive,
     });
     const destinationDir = path.join(mediaDir, "shared-unpacked");
-    const realRename = fsPromises.rename;
-    const renameSpy = vi
-      .spyOn(fsPromises, "rename")
-      .mockImplementation(async (from, to) => {
-        if (from === destinationDir && String(to).includes(".old-")) {
-          throw Object.assign(new Error("simulated busy directory"), {
-            code: "EBUSY",
-          });
-        }
-        return realRename(from, to);
-      });
+    const longAgo = new Date("2020-01-01T00:00:00.000Z");
+    fs.utimesSync(destinationDir, longAgo, longAgo);
+    const renameSpy = vi.spyOn(fsPromises, "rename");
     try {
-      await expect(
-        extractZipAttachment({
-          mediaDir,
-          storedFileName: "shared.zip",
-          archive: buildZip([{ name: "new.txt", data: "new" }]),
-        }),
-      ).rejects.toThrow("simulated busy directory");
+      const summary = await extractZipAttachment({
+        mediaDir,
+        storedFileName: "shared.zip",
+        archive,
+      });
+      expect(summary.files).toEqual([{ relativePath: "a.txt", sizeBytes: 5 }]);
+      // The live directory is never renamed away.
+      expect(
+        renameSpy.mock.calls.some(
+          ([from, to]) => from === destinationDir || to === destinationDir,
+        ),
+      ).toBe(false);
     } finally {
       renameSpy.mockRestore();
     }
-    expect(fs.readdirSync(destinationDir)).toEqual(["old.txt"]);
+    expect(fs.readdirSync(destinationDir)).toEqual(["a.txt"]);
     expect(fs.readdirSync(mediaDir)).toEqual(["shared-unpacked"]);
+    expect(fs.statSync(destinationDir).mtimeMs).toBeGreaterThan(
+      longAgo.getTime(),
+    );
   });
 
-  it("restores the earlier extraction when the final swap fails", async () => {
+  it("removes the staged extraction when it cannot be moved into place", async () => {
     const mediaDir = getDyadMediaDir(appPath);
-    await extractZipAttachment({
-      mediaDir,
-      storedFileName: "shared.zip",
-      archive: buildZip([{ name: "old.txt", data: "old" }]),
-    });
-    const destinationDir = path.join(mediaDir, "shared-unpacked");
+    const destinationDir = path.join(mediaDir, "fresh-unpacked");
     const realRename = fsPromises.rename;
     const renameSpy = vi
       .spyOn(fsPromises, "rename")
       .mockImplementation(async (from, to) => {
-        if (to === destinationDir && String(from).includes(".extracting-")) {
+        if (to === destinationDir) {
           throw Object.assign(new Error("simulated rename failure"), {
             code: "EPERM",
           });
@@ -215,25 +211,19 @@ describe("extractZipAttachment", () => {
       await expect(
         extractZipAttachment({
           mediaDir,
-          storedFileName: "shared.zip",
-          archive: buildZip([{ name: "new.txt", data: "new" }]),
+          storedFileName: "fresh.zip",
+          archive: buildZip([{ name: "a.txt", data: "alpha" }]),
         }),
       ).rejects.toThrow("simulated rename failure");
     } finally {
       renameSpy.mockRestore();
     }
-    expect(fs.readdirSync(destinationDir)).toEqual(["old.txt"]);
-    expect(fs.readdirSync(mediaDir)).toEqual(["shared-unpacked"]);
+    expect(fs.readdirSync(mediaDir)).toEqual([]);
   });
 
-  it("retries a swap that is briefly blocked", async () => {
+  it("retries a move into place that is briefly blocked", async () => {
     const mediaDir = getDyadMediaDir(appPath);
-    await extractZipAttachment({
-      mediaDir,
-      storedFileName: "shared.zip",
-      archive: buildZip([{ name: "old.txt", data: "old" }]),
-    });
-    const destinationDir = path.join(mediaDir, "shared-unpacked");
+    const destinationDir = path.join(mediaDir, "fresh-unpacked");
     const realRename = fsPromises.rename;
     let failures = 0;
     const renameSpy = vi
@@ -250,33 +240,15 @@ describe("extractZipAttachment", () => {
     try {
       await extractZipAttachment({
         mediaDir,
-        storedFileName: "shared.zip",
-        archive: buildZip([{ name: "new.txt", data: "new" }]),
+        storedFileName: "fresh.zip",
+        archive: buildZip([{ name: "a.txt", data: "alpha" }]),
       });
     } finally {
       renameSpy.mockRestore();
     }
     expect(failures).toBe(2);
-    expect(fs.readdirSync(destinationDir)).toEqual(["new.txt"]);
-    expect(fs.readdirSync(mediaDir)).toEqual(["shared-unpacked"]);
-  });
-
-  it("replaces an earlier extraction when a later attempt succeeds", async () => {
-    const mediaDir = getDyadMediaDir(appPath);
-    await extractZipAttachment({
-      mediaDir,
-      storedFileName: "shared.zip",
-      archive: buildZip([{ name: "old.txt", data: "old" }]),
-    });
-    await extractZipAttachment({
-      mediaDir,
-      storedFileName: "shared.zip",
-      archive: buildZip([{ name: "new.txt", data: "new" }]),
-    });
-    expect(fs.readdirSync(path.join(mediaDir, "shared-unpacked"))).toEqual([
-      "new.txt",
-    ]);
-    expect(fs.readdirSync(mediaDir).sort()).toEqual(["shared-unpacked"]);
+    expect(fs.readdirSync(destinationDir)).toEqual(["a.txt"]);
+    expect(fs.readdirSync(mediaDir)).toEqual(["fresh-unpacked"]);
   });
 
   it("keeps an extensionless upload of the same bytes intact", async () => {

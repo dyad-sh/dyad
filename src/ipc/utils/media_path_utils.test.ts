@@ -244,6 +244,37 @@ describe("manifest with extracted archive entries", () => {
     }
   });
 
+  it("shares one manifest parse between concurrent lookups", async () => {
+    writeStored("a.txt", "a");
+    await appendAttachmentManifestEntriesWithLogicalNames(appPath, [
+      {
+        requestedLogicalName: "a.txt",
+        originalName: "a.txt",
+        storedFileName: "a.txt",
+        mimeType: "text/plain",
+        sizeBytes: 1,
+        createdAt: "2026-01-01T00:00:00.000Z",
+      },
+    ]);
+    const manifestPath = getAttachmentsManifestPath(appPath);
+    const readSpy = vi.spyOn(fsPromises, "readFile");
+    try {
+      const results = await Promise.all(
+        Array.from({ length: 10 }, () =>
+          resolveAttachmentLogicalPath(appPath, "attachments:a.txt"),
+        ),
+      );
+      expect(results.every((r) => r?.logicalName === "a.txt")).toBe(true);
+      expect(
+        readSpy.mock.calls.filter(
+          ([target]) => String(target) === manifestPath,
+        ),
+      ).toHaveLength(1);
+    } finally {
+      readSpy.mockRestore();
+    }
+  });
+
   it("prunes entries whose archive is gone even if their files remain", async () => {
     writeStored("notes.txt", "n");
     writeStored("hash/a.txt", "a");

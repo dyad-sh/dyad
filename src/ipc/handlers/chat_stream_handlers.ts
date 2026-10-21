@@ -1492,7 +1492,8 @@ export function registerChatStreamHandlers() {
             }
           }
           // A Stop that lands after the extractor's last check (for example
-          // during its directory swap) still discards this turn's media.
+          // while moving its directory into place) still discards this
+          // turn's media.
           abortController.signal.throwIfAborted();
         } catch (error) {
           await discardTurnCreatedMedia();

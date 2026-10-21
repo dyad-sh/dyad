@@ -34,6 +34,17 @@ export const ZIP_ATTACHMENT_MIME_TYPE = "application/zip";
 const TRANSIENT_RENAME_ERRORS = new Set(["EPERM", "EACCES", "EBUSY"]);
 const RENAME_RETRY_DELAYS_MS = [50, 100, 200, 400];
 
+async function isDirectory(target: string): Promise<boolean> {
+  try {
+    return (await fs.stat(target)).isDirectory();
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return false;
+    }
+    throw error;
+  }
+}
+
 async function renameWithRetry(from: string, to: string): Promise<void> {
   for (let attempt = 0; ; attempt++) {
     try {
@@ -83,10 +94,10 @@ export function extractedDirNameForStoredFile(storedFileName: string): string {
 /**
  * Unpack an archive attachment next to its stored file. The result depends
  * only on the archive bytes, so a re-upload from any chat produces the same
- * directory. Extraction runs in a staging directory that replaces the target
- * only on success, so a failed attempt leaves an earlier extraction of the
- * same archive (which other chats may reference) untouched. The target is
- * locked so two chats uploading the same archive at once cannot interleave.
+ * directory. Extraction runs in a staging directory that is moved into place
+ * only on success. If an earlier upload already put the directory in place,
+ * that one is kept, so other chats reading it are never disturbed. The target
+ * is locked so two chats uploading the same archive at once cannot interleave.
  * Throws `ZipFormatError` or `ZipLimitError`.
  */
 export async function extractZipAttachment({
@@ -100,7 +111,7 @@ export async function extractZipAttachment({
   storedFileName: string;
   archive: Buffer;
   limits?: Partial<ZipExtractionLimits>;
-  /** Abandons the extraction between entries and before the swap. */
+  /** Abandons the extraction between entries and before it is moved into place. */
   signal?: AbortSignal;
 }): Promise<ExtractedArchiveSummary> {
   const extractedDirName = extractedDirNameForStoredFile(storedFileName);
@@ -120,32 +131,25 @@ export async function extractZipAttachment({
       throw error;
     }
 
-    // Swap the finished extraction into place. Files already open from the
-    // previous extraction stay readable until the old directory is removed.
-    const retiredDir = `${destinationDir}.old-${token}`;
-    try {
-      await renameWithRetry(destinationDir, retiredDir);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+    // Only a finished extraction of these same bytes is ever moved to this
+    // name, so an existing directory already holds the same files. Keep it,
+    // and refresh its time so cleanup ages it out with the re-uploaded zip.
+    if (await isDirectory(destinationDir)) {
+      await fs
+        .rm(stagingDir, { recursive: true, force: true })
+        .catch(() => undefined);
+      const now = new Date();
+      await fs.utimes(destinationDir, now, now).catch(() => undefined);
+    } else {
+      try {
+        await renameWithRetry(stagingDir, destinationDir);
+      } catch (error) {
         await fs
           .rm(stagingDir, { recursive: true, force: true })
           .catch(() => undefined);
         throw error;
       }
     }
-    try {
-      await renameWithRetry(stagingDir, destinationDir);
-    } catch (error) {
-      // Put the previous extraction back so other chats keep their files.
-      await renameWithRetry(retiredDir, destinationDir).catch(() => undefined);
-      await fs
-        .rm(stagingDir, { recursive: true, force: true })
-        .catch(() => undefined);
-      throw error;
-    }
-    await fs
-      .rm(retiredDir, { recursive: true, force: true })
-      .catch(() => undefined);
 
     const skipped: Partial<Record<ZipSkipReason, number>> = {};
     for (const entry of result.skipped) {

@@ -180,7 +180,13 @@
     "deny": "拒绝"
   },
   "experiments": {
-    "title": "实验性功能"
+    "title": "实验性功能",
+    "previewCookieIsolation": {
+      "label": "隔离预览登录 Cookie",
+      "description": "在共享的 localhost 上分别存储各应用的 HttpOnly 登录 Cookie。默认开启。重启 Dyad 以将更改应用到所有预览。",
+      "loading": "正在加载设置…",
+      "loadError": "无法加载设置"
+    }
   },
   "dangerZone": {
     "title": "危险区域",

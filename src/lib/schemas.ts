@@ -607,6 +607,7 @@ const BaseUserSettingsFields = {
   enableMultiWindow: z.boolean().optional(),
   enableClaudeCodeSubscription: z.boolean().optional(),
   enableAppPreviewDomains: z.boolean().optional(),
+  enablePreviewCookieIsolation: z.boolean().optional(),
   enableExplorerSubagent: z.boolean().optional(),
   enableAutoReview: z.boolean().optional(),
   enableReviewButton: z.boolean().optional(),

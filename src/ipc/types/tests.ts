@@ -367,6 +367,7 @@ export type ApplyTestAssertionsResult = z.infer<
 const QueuedTestRunSchema = z.object({
   runId: z.number().int().positive(),
   source: z.enum(["panel", "agent"]),
+  chatId: z.number().int().positive().optional(),
   testFile: z.string().optional(),
   testFiles: z.array(z.string()).readonly().optional(),
   testLine: z.number().optional(),
@@ -412,6 +413,8 @@ export const TestsRunStatePayloadSchema = z.object({
    */
   runId: z.number().int().positive(),
   source: z.enum(["panel", "agent"]),
+  /** Originating agent chat; absent for runs started from the Tests panel. */
+  chatId: z.number().int().positive().optional(),
   /**
    * `stopping` and `cleaning-up` are progress-only states covering the two
    * waits between a Stop and the terminal `finished`: the kill of the

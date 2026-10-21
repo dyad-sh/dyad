@@ -40,6 +40,16 @@ const fakeAuth = (): Plugin => ({
         return;
       }
 
+      if (pathname === "/api/auth/security-prefix-session") {
+        response.setHeader("Content-Type", "application/json");
+        if (request.method === "POST") {
+          request.resume();
+          response.setHeader("Set-Cookie", "__Host-protected-session=authenticated; Path=/; Secure; HttpOnly");
+        }
+        response.end(JSON.stringify({ cookie: request.headers.cookie ?? "" }));
+        return;
+      }
+
       next();
     });
   },

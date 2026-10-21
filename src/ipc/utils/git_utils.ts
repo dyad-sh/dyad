@@ -40,7 +40,7 @@ const GIT_STATE_FINGERPRINT_MAX_PATH_BYTES = 16 * 1024 * 1024;
 const GIT_STATE_FINGERPRINT_MAX_UNTRACKED_PATHS = 10_000;
 let didReportGitLaunchFailure = false;
 
-function isUserVisibleGitPath(filePath: string) {
+export function isUserVisibleGitPath(filePath: string) {
   return !filePath.startsWith(".dyad/") && filePath !== "pnpm-workspace.yaml";
 }
 

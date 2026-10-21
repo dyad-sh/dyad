@@ -169,7 +169,42 @@ export function SetupBanner({
           <p className="mb-2 text-sm font-medium text-muted-foreground">
             Or use your own subscription or API key
           </p>
-          <div className="grid gap-2 sm:grid-cols-3">
+          <button
+            type="button"
+            onClick={handleSubscriptionSetupClick}
+            disabled={
+              connection.isPending ||
+              subscription.data?.pending ||
+              !settings ||
+              subscription.isLoading
+            }
+            className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-md border border-border bg-(--background-lighter) px-3 py-2.5 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 disabled:cursor-default disabled:opacity-50"
+          >
+            <span className="flex min-w-0 items-center gap-2.5">
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-background">
+                <ProviderIcon providerId="openai" className="size-4" />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold text-foreground">
+                  ChatGPT subscription
+                </span>
+                <span className="mt-0.5 block text-xs text-muted-foreground">
+                  Sign in with your ChatGPT account. No API key needed.
+                </span>
+              </span>
+            </span>
+            {settings &&
+            !hasPro &&
+            subscription.data &&
+            !subscription.data.pending ? (
+              <span className="shrink-0 rounded-full border border-emerald-600/25 bg-emerald-500/10 px-1.5 py-px text-[11px] font-semibold text-emerald-700 dark:border-emerald-400/25 dark:text-emerald-300">
+                Free
+              </span>
+            ) : (
+              <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+            )}
+          </button>
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">
             <ProviderOptionButton
               label="OpenRouter"
               chip="Free"
@@ -181,25 +216,6 @@ export function SetupBanner({
                   className="size-4 dark:invert"
                 />
               }
-            />
-            <ProviderOptionButton
-              label="ChatGPT subscription"
-              chip={
-                settings &&
-                !hasPro &&
-                subscription.data &&
-                !subscription.data.pending
-                  ? "Free"
-                  : undefined
-              }
-              onClick={handleSubscriptionSetupClick}
-              disabled={
-                connection.isPending ||
-                subscription.data?.pending ||
-                !settings ||
-                subscription.isLoading
-              }
-              icon={<ProviderIcon providerId="openai" className="size-4" />}
             />
             <ProviderOptionButton
               label="Other providers"

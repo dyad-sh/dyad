@@ -145,6 +145,7 @@ beforeEach(() => {
     state: "live",
     commitHash: "abc1234def",
     logTail: [],
+    recentBuilds: [],
     tokenRevoked: false,
     ruleMissing: false,
     ruleDeploys: null,
@@ -737,6 +738,7 @@ describe("a connected Worker", () => {
       state: "live",
       commitHash: "abc1234def",
       logTail: [],
+      recentBuilds: [],
       tokenRevoked: false,
       ruleMissing: false,
       ruleDeploys: null,
@@ -760,11 +762,92 @@ describe("a connected Worker", () => {
     expect(link.textContent).toBe(CONNECTION.workerUrl);
   });
 
+  it("lists the folder's recent deployments, newest first", async () => {
+    cloudflare.getDeploymentStatus.mockResolvedValue({
+      state: "building",
+      commitHash: "bbb2222ccc",
+      logTail: [],
+      recentBuilds: [
+        {
+          buildUuid: "b-2",
+          state: "building",
+          commitHash: "bbb2222ccc",
+          createdAt: "2026-01-02T00:00:00Z",
+          // Still building, so no version to serve yet.
+          previewUrl: null,
+        },
+        {
+          buildUuid: "b-1",
+          state: "live",
+          commitHash: "aaa1111bbb",
+          createdAt: "2026-01-01T00:00:00Z",
+          previewUrl: "https://v1-e2e-worker.acme.workers.dev",
+        },
+      ],
+      tokenRevoked: false,
+      ruleMissing: false,
+      ruleDeploys: null,
+      workerUrl: CONNECTION.workerUrl,
+    });
+    renderConnector();
+
+    const list = await screen.findByTestId("cloudflare-recent-builds");
+    const rows = within(list).getAllByTestId("recent-deployment");
+    expect(rows.map((row) => row.textContent)).toEqual([
+      expect.stringContaining("Deploying"),
+      expect.stringContaining("Live"),
+    ]);
+    expect(within(rows[0]).getByText("bbb2222")).toBeTruthy();
+    expect(within(rows[1]).getByText("aaa1111")).toBeTruthy();
+    expect(
+      within(rows[1]).getByText(
+        new Date("2026-01-01T00:00:00Z").toLocaleString(),
+      ),
+    ).toBeTruthy();
+    // An older build is still served at its version's own address.
+    fireEvent.click(within(rows[1]).getByText("View"));
+    expect(openExternalUrl).toHaveBeenCalledWith(
+      "https://v1-e2e-worker.acme.workers.dev",
+    );
+    expect(within(rows[0]).queryByText("View")).toBeNull();
+  });
+
+  it("lists the first deployment on its own, with its address", async () => {
+    cloudflare.getDeploymentStatus.mockResolvedValue({
+      state: "live",
+      commitHash: "abc1234def",
+      logTail: [],
+      recentBuilds: [
+        {
+          buildUuid: "b-1",
+          state: "live",
+          commitHash: "abc1234def",
+          createdAt: "2026-01-01T00:00:00Z",
+          previewUrl: "https://v1-e2e-worker.acme.workers.dev",
+        },
+      ],
+      tokenRevoked: false,
+      ruleMissing: false,
+      ruleDeploys: null,
+      workerUrl: CONNECTION.workerUrl,
+    });
+    renderConnector();
+
+    const list = await screen.findByTestId("cloudflare-recent-builds");
+    const rows = within(list).getAllByTestId("recent-deployment");
+    expect(rows).toHaveLength(1);
+    fireEvent.click(within(rows[0]).getByText("View"));
+    expect(openExternalUrl).toHaveBeenCalledWith(
+      "https://v1-e2e-worker.acme.workers.dev",
+    );
+  });
+
   it("shows the end of the log for a failed deployment", async () => {
     cloudflare.getDeploymentStatus.mockResolvedValue({
       state: "failed",
       commitHash: null,
       logTail: ["npm error missing script: build"],
+      recentBuilds: [],
       tokenRevoked: false,
       ruleMissing: false,
     });
@@ -780,6 +863,7 @@ describe("a connected Worker", () => {
         state: "failed",
         commitHash: "abc1234def",
         logTail: ["npm error missing script: build"],
+        recentBuilds: [],
         tokenRevoked: false,
         ruleMissing: false,
         ruleDeploys: null,
@@ -883,6 +967,7 @@ describe("a connected Worker", () => {
         state: "failed",
         commitHash: null,
         logTail: ["Failed: The build token ... has been deleted or rolled"],
+        recentBuilds: [],
         tokenRevoked: true,
         ruleMissing: false,
         ruleDeploys: null,
@@ -899,6 +984,7 @@ describe("a connected Worker", () => {
         state: "live",
         commitHash: "abc1234def",
         logTail: [],
+        recentBuilds: [],
         tokenRevoked: false,
         ruleMissing: false,
         ruleDeploys: null,
@@ -916,6 +1002,7 @@ describe("a connected Worker", () => {
       state: "live",
       commitHash: null,
       logTail: [],
+      recentBuilds: [],
       tokenRevoked: false,
       ruleMissing: true,
     });
@@ -937,6 +1024,7 @@ describe("a connected Worker", () => {
       state: "live",
       commitHash: "abc1234def",
       logTail: [],
+      recentBuilds: [],
       tokenRevoked: false,
       ruleMissing: false,
       ruleDeploys: "acme/shop (branch main, folder worker)",
@@ -956,6 +1044,7 @@ describe("a connected Worker", () => {
       state: "failed",
       commitHash: null,
       logTail: ["Failed: The build token ... has been deleted or rolled"],
+      recentBuilds: [],
       tokenRevoked: true,
       ruleMissing: false,
     });
@@ -973,6 +1062,7 @@ describe("a connected Worker", () => {
       state: "live",
       commitHash: null,
       logTail: [],
+      recentBuilds: [],
       tokenRevoked: false,
       ruleMissing: true,
     });
@@ -1011,6 +1101,7 @@ describe("a connected Worker", () => {
       state: "queued",
       commitHash: null,
       logTail: [],
+      recentBuilds: [],
       tokenRevoked: false,
       ruleMissing: false,
     });
@@ -1132,6 +1223,7 @@ describe("a Nitro app", () => {
       state: "failed",
       commitHash: "abc1234def",
       logTail: ["Error: no wrangler config"],
+      recentBuilds: [],
       tokenRevoked: false,
       ruleMissing: false,
       ruleDeploys: null,

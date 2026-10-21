@@ -8,6 +8,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Github, Loader2Icon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { applyDescriptionEdit, describesSomething } from "@/lib/issueBody";
@@ -43,12 +44,14 @@ export function IssueForm({
   const { t } = useTranslation(["home", "common"]);
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
   const [blocked, setBlocked] = useState<{ attempt: number } | null>(null);
+  const [skipDescription, setSkipDescription] = useState(false);
   const [caret, setCaret] = useState<{ start: number; end: number } | null>(
     null,
   );
 
   const missing = !describesSomething(description);
-  const showBlocked = blocked !== null && missing;
+  const showDescriptionOverride = blocked !== null && missing;
+  const showBlocked = showDescriptionOverride && !skipDescription;
 
   // Focus after the render that sets aria-invalid and mounts the alert, so a
   // screen reader reaches the field already carrying its error. Keyed on the
@@ -58,7 +61,7 @@ export function IssueForm({
   }, [blocked]);
 
   const handleSubmit = () => {
-    if (missing) {
+    if (missing && !skipDescription) {
       setBlocked((previous) => ({ attempt: (previous?.attempt ?? 0) + 1 }));
       onBlocked();
       return;
@@ -100,7 +103,7 @@ export function IssueForm({
         <Textarea
           id="issue-description"
           ref={descriptionRef}
-          required
+          required={!skipDescription}
           disabled={isFiling}
           aria-invalid={showBlocked}
           aria-describedby={showBlocked ? "issue-description-error" : undefined}
@@ -117,6 +120,30 @@ export function IssueForm({
           >
             {t("home:report.descriptionRequired")}
           </p>
+        )}
+        {showDescriptionOverride && (
+          <div className="mt-1 flex items-start gap-2">
+            <Checkbox
+              id="skip-issue-description"
+              aria-label={t("home:report.skipDescription")}
+              checked={skipDescription}
+              onCheckedChange={setSkipDescription}
+              disabled={isFiling}
+              aria-describedby="skip-issue-description-hint"
+              className="mt-0.5"
+            />
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="skip-issue-description">
+                {t("home:report.skipDescription")}
+              </Label>
+              <p
+                id="skip-issue-description-hint"
+                className="text-xs text-muted-foreground"
+              >
+                {t("home:report.skipDescriptionHint")}
+              </p>
+            </div>
+          </div>
         )}
         {atCap && (
           <p

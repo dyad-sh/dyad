@@ -33,7 +33,10 @@ import {
   getRecoveryStats,
   recoverLegacySafeStorageSecret,
 } from "./safe_storage_legacy";
-import { DEFAULT_ENABLE_TESTING_FOR_NEW_APPS } from "@/shared/settings_defaults";
+import {
+  DEFAULT_ENABLE_PREVIEW_COOKIE_ISOLATION,
+  DEFAULT_ENABLE_TESTING_FOR_NEW_APPS,
+} from "@/shared/settings_defaults";
 
 const logger = log.scope("settings");
 
@@ -84,6 +87,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   disableSandboxedE2eTests: false,
   enableContextCompaction: true,
   enablePnpmMinimumReleaseAgeWarning: true,
+  enablePreviewCookieIsolation: DEFAULT_ENABLE_PREVIEW_COOKIE_ISOLATION,
   previewIdleTimeoutPolicy: "default",
   nodeRuntimePreference: "system",
   disablePreviewNodeAutoInstall: false,

@@ -1684,8 +1684,8 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                           className={cn(
                             "no-app-region-drag group relative flex h-8 min-w-[160px] max-w-52 items-center gap-1 px-2 py-0.5",
                             isActive
-                              ? "z-10 rounded-t-md rounded-b-none border border-b-0 border-border bg-background text-foreground"
-                              : "rounded-md bg-transparent text-muted-foreground hover:bg-muted/70",
+                              ? "z-10 rounded-t-md rounded-b-none border border-b-0 border-border bg-background text-foreground dark:border-foreground/50 dark:bg-muted"
+                              : "rounded-md bg-transparent text-muted-foreground hover:bg-muted/70 dark:border dark:border-foreground/15 dark:hover:border-foreground/30",
                             isDragging && "opacity-60",
                           )}
                         />

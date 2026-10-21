@@ -89,6 +89,7 @@ import { VisualEditingToolbar } from "./VisualEditingToolbar";
 import { recordingStatusMessage } from "./RecordingBanner";
 import { RecordingBannerHost } from "./RecordingBannerHost";
 import { RecordingStorageWarningDialog } from "./RecordingStorageWarningDialog";
+import { isAppPreviewHostname } from "../../../shared/preview_hostname";
 import { resolvePreviewBrowserUrl } from "./previewBrowserUrl";
 import { PreviewLoadingScreen } from "./PreviewLoadingScreen";
 import { PreviewErrorBanner } from "./PreviewErrorBanner";
@@ -1594,6 +1595,11 @@ export const PreviewIframe = ({
 
       <RecordingStorageWarningDialog
         open={recorder.pendingStart !== null}
+        // The running proxy's hostname, not the setting: toggling it only
+        // applies once the app restarts.
+        isAppSpecificDomain={isAppPreviewHostname(
+          URL.parse(appUrl ?? "")?.hostname ?? "",
+        )}
         onOpenChange={(open) => {
           if (!open) recorder.dismissStartRecording();
         }}

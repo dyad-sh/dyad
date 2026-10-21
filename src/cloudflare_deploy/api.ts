@@ -298,18 +298,43 @@ export async function enableWorkersDevRoute(
   );
 }
 
+export interface CloudflareWorkersDevRoute {
+  /** Whether the Worker is served at its workers.dev address. */
+  enabled: boolean;
+  /**
+   * Whether each version of the Worker is served at an address of its own
+   * beside that one. Cloudflare's "version URLs", `previews_enabled` on the
+   * wire.
+   */
+  previewsEnabled: boolean;
+}
+
+export async function getWorkersDevRoute(
+  token: string,
+  accountId: string,
+  name: string,
+): Promise<CloudflareWorkersDevRoute> {
+  const result = await request<{
+    enabled?: boolean;
+    previews_enabled?: boolean;
+  }>(
+    token,
+    "GET",
+    apiPath`/accounts/${accountId}/workers/scripts/${name}/subdomain`,
+  );
+  return {
+    enabled: result?.enabled === true,
+    previewsEnabled: result?.previews_enabled === true,
+  };
+}
+
 /** Whether the Worker is served at its workers.dev address. */
 export async function isWorkersDevRouteEnabled(
   token: string,
   accountId: string,
   name: string,
 ): Promise<boolean> {
-  const result = await request<{ enabled?: boolean }>(
-    token,
-    "GET",
-    apiPath`/accounts/${accountId}/workers/scripts/${name}/subdomain`,
-  );
-  return result?.enabled === true;
+  return (await getWorkersDevRoute(token, accountId, name)).enabled;
 }
 
 /**
@@ -784,42 +809,109 @@ export interface CloudflareBuild {
   status?: string | null;
   build_outcome?: string | null;
   created_on?: string | null;
+  stopped_on?: string | null;
   build_trigger_metadata?: { commit_hash?: string | null } | null;
   /** The rule that started the build. */
   trigger?: { trigger_uuid?: string | null } | null;
 }
 
 /**
- * The newest build a rule ran, or null before the first one.
+ * The builds a rule ran, newest first, or an empty list before the first one.
  *
  * A Worker's builds include those of its other rules, such as a preview rule
  * for other branches, and those Cloudflare skipped without deploying anything.
- * Neither says what this rule last deployed. A build listed without its rule
- * is kept.
+ * Neither says what this rule deployed. A build listed without its rule is
+ * kept.
  */
-export async function getLatestBuild(
+export async function listRuleBuilds(
   token: string,
   accountId: string,
   workerTag: string,
   triggerUuid: string,
-): Promise<CloudflareBuild | null> {
+): Promise<CloudflareBuild[]> {
   const builds = await request<CloudflareBuild[]>(
     token,
     "GET",
     apiPath`/accounts/${accountId}/builds/workers/${workerTag}/builds`,
   );
-  const own = (builds ?? []).filter(
-    (build) =>
-      build.build_outcome !== "skipped" &&
-      (!build.trigger?.trigger_uuid ||
-        build.trigger.trigger_uuid === triggerUuid),
+  return (builds ?? [])
+    .filter(
+      (build) =>
+        build.build_outcome !== "skipped" &&
+        (!build.trigger?.trigger_uuid ||
+          build.trigger.trigger_uuid === triggerUuid),
+    )
+    .sort((a, b) => (b.created_on ?? "").localeCompare(a.created_on ?? ""));
+}
+
+export interface CloudflareWorkerVersion {
+  id: string;
+  createdOn: string | null;
+  /** Whether the version is served at an address of its own. */
+  hasPreview: boolean;
+}
+
+/**
+ * One page of the Worker's versions, newest first. Every deploy uploads one,
+ * and so does creating the Worker.
+ */
+export async function listWorkerVersions(
+  token: string,
+  accountId: string,
+  name: string,
+  { page, perPage }: { page: number; perPage: number },
+): Promise<CloudflareWorkerVersion[]> {
+  const result = await request<{
+    items?: {
+      id: string;
+      metadata?: {
+        created_on?: string | null;
+        // On the wire as has_preview; the docs call it hasPreview.
+        has_preview?: boolean | null;
+        hasPreview?: boolean | null;
+      } | null;
+    }[];
+  } | null>(
+    token,
+    "GET",
+    apiPath`/accounts/${accountId}/workers/scripts/${name}/versions?page=${String(page)}&per_page=${String(perPage)}`,
   );
-  if (own.length === 0) {
-    return null;
+  return (result?.items ?? []).map((item) => ({
+    id: item.id,
+    createdOn: item.metadata?.created_on ?? null,
+    hasPreview:
+      (item.metadata?.has_preview ?? item.metadata?.hasPreview) === true,
+  }));
+}
+
+/** The most version ids Cloudflare answers about in one request. */
+export const VERSION_IDS_PER_REQUEST = 20;
+
+/**
+ * The build that uploaded each version, by version id. Nothing on a build
+ * says which version it deployed; this is the only way to match them. A
+ * version no build uploaded, such as the one a new Worker starts as, is
+ * absent. Asked in batches of what Cloudflare takes at once; it refuses an
+ * empty list, so none is sent.
+ */
+export async function findBuildsForVersions(
+  token: string,
+  accountId: string,
+  versionIds: string[],
+): Promise<Record<string, CloudflareBuild | null | undefined>> {
+  const builds: Record<string, CloudflareBuild | null | undefined> = {};
+  for (let i = 0; i < versionIds.length; i += VERSION_IDS_PER_REQUEST) {
+    const batch = versionIds.slice(i, i + VERSION_IDS_PER_REQUEST);
+    const result = await request<{
+      builds?: Record<string, CloudflareBuild | null>;
+    } | null>(
+      token,
+      "GET",
+      apiPath`/accounts/${accountId}/builds/builds?version_ids=${batch.join(",")}`,
+    );
+    Object.assign(builds, result?.builds ?? {});
   }
-  return [...own].sort((a, b) =>
-    (b.created_on ?? "").localeCompare(a.created_on ?? ""),
-  )[0];
+  return builds;
 }
 
 export async function getBuildLogLines(

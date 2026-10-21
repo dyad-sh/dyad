@@ -16,6 +16,7 @@ import type {
   TestsRunStatePayload,
 } from "@/ipc/types/tests";
 import { queryKeys } from "@/lib/queryKeys";
+import { summarizeTestRun, type CompletedTestRun } from "@/lib/testRunSummary";
 import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import { previewNativeViewAppIdAtom } from "@/atoms/previewAtoms";
 import { getActiveWindowSessionId } from "@/window_infrastructure/chat_tab_session_storage";
@@ -131,6 +132,29 @@ export function useTestRunEvents() {
     };
 
     const onRunState = (payload: TestsRunStatePayload) => {
+      if (payload.state === "finished") {
+        // Retain recent outcomes even with the chat/Tests panel unmounted, or
+        // when this window missed the start. Never infer success from dequeueing.
+        const recentRunsKey = queryKeys.tests.recentRuns({
+          appId: payload.appId,
+        });
+        // Often unobserved for longer than a batch takes, so opt out of the
+        // default 5-minute GC; the list is bounded to ten compact entries.
+        queryClient.setQueryDefaults(recentRunsKey, {
+          gcTime: Infinity,
+          staleTime: Infinity,
+        });
+        queryClient.setQueryData<CompletedTestRun[]>(
+          recentRunsKey,
+          (previous = []) =>
+            [
+              ...previous.filter((run) => run.runId !== payload.runId),
+              summarizeTestRun(payload),
+            ]
+              .sort((a, b) => a.runId - b.runId)
+              .slice(-10),
+        );
+      }
       lastLifecycleByAppId.current.set(
         payload.appId,
         Math.max(

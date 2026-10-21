@@ -11,6 +11,8 @@ import {
 
 interface RecordingStorageWarningDialogProps {
   open: boolean;
+  /** Whether the running preview is served from its own `app-<id>.localhost`. */
+  isAppSpecificDomain: boolean;
   onOpenChange: (open: boolean) => void;
   onContinue: () => void;
 }
@@ -24,10 +26,14 @@ interface RecordingStorageWarningDialogProps {
  * — with no undo. Asking first is the difference between a documented step and
  * a surprise.
  *
- * App hostnames let cleanup leave other previews signed in.
+ * App hostnames let cleanup leave other previews signed in. On shared
+ * localhost only other apps' namespaced HttpOnly sessions survive. Keep the
+ * wording conservative: the saved preference may need a Dyad restart, and
+ * script-readable sessions still share the cookie jar even with isolation.
  */
 export function RecordingStorageWarningDialog({
   open,
+  isAppSpecificDomain,
   onOpenChange,
   onContinue,
 }: RecordingStorageWarningDialogProps) {
@@ -39,13 +45,12 @@ export function RecordingStorageWarningDialog({
             Start recording from a clean slate?
           </AlertDialogTitle>
           <AlertDialogDescription>
-            Dyad clears this preview's cookies and local storage before
-            recording. This usually signs you out and removes anything the app
-            stored in the browser. With app-specific localhost addresses, other
-            apps' storage is left alone; shared localhost cookies are kept and
-            may leave you signed in. With ordinary localhost addresses, cookies
-            are shared, so this may also sign you out of other apps. Your app's
-            code and database aren't touched.
+            Dyad clears this preview's cookies and local storage, which usually
+            signs you out.{" "}
+            {isAppSpecificDomain
+              ? "Other apps aren't affected."
+              : "Other apps on localhost may also be signed out if they use shared cookies."}{" "}
+            Your code and database aren't touched.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

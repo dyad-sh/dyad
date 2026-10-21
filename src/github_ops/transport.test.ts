@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   GITHUB_OPS_INVOCATION_KIND,
+  GithubOperationResultSchema,
   GithubOpsIntentEventSchema,
   GithubOpsProducerEventSchema,
   GithubOpsRemoteSnapshotSchema,
@@ -127,5 +128,99 @@ describe("github_ops wire contracts", () => {
     expect(serialized).not.toMatch(/accessToken|remoteUrl|appPath|repoPath/);
     expect(serialized).not.toContain("/Users/");
     expect(serialized).not.toContain("claim-1");
+  });
+});
+
+describe("push summary wire shape", () => {
+  const invocationRef = {
+    kind: GITHUB_OPS_INVOCATION_KIND,
+    entityKey: 7,
+    operationId: "push-1",
+  };
+  const op = { type: "push", mode: "normal", provider: "github" };
+
+  it("accepts a settlement with or without a summary", () => {
+    expect(
+      GithubOpsProducerEventSchema.safeParse({
+        type: "OP_SUCCEEDED",
+        op,
+        invocationRef,
+      }).success,
+    ).toBe(true);
+    expect(
+      GithubOpsProducerEventSchema.safeParse({
+        type: "OP_SUCCEEDED",
+        op,
+        invocationRef,
+        result: {
+          type: "push",
+          summary: {
+            outcome: "wrong-branch",
+            pushedBranch: "other2",
+            currentBranch: "main",
+            commitsPushed: 0,
+            files: null,
+            uncommittedFiles: 0,
+            commitsNotOnRemote: 5,
+            head: "ffb1463",
+            remoteTip: "c872cc3",
+          },
+        },
+      }).success,
+    ).toBe(true);
+  });
+
+  it("rejects summaries carrying anything but counts, names, and commits", () => {
+    const summary = {
+      outcome: "pushed",
+      pushedBranch: "main",
+      currentBranch: "main",
+      commitsPushed: 1,
+      files: null,
+      uncommittedFiles: 0,
+      commitsNotOnRemote: 0,
+      head: "ffb1463",
+      remoteTip: null,
+    };
+    const parse = (overrides: Record<string, unknown>) =>
+      GithubOperationResultSchema.safeParse({
+        type: "push",
+        summary: { ...summary, ...overrides },
+      });
+
+    const pathAsCommit = parse({ head: "/Users/someone/app" });
+    expect(pathAsCommit.success).toBe(false);
+    expect(pathAsCommit.error?.issues[0]?.path).toEqual(["summary", "head"]);
+
+    const extraField = parse({ repoPath: "/Users/someone/app" });
+    expect(extraField.success).toBe(false);
+    expect(extraField.error?.issues[0]?.code).toBe("unrecognized_keys");
+  });
+});
+
+describe("banner detail on the wire", () => {
+  it("carries the second banner line through the snapshot schema", () => {
+    const snapshot = GithubOpsRemoteSnapshotSchema.parse(
+      projectGithubOpsRemoteSnapshot(7, 3, {
+        conflictResolutionClaimId: null,
+        activeInvocationRef: null,
+        state: {
+          type: "idle",
+          banner: {
+            kind: "warning",
+            completedOperation: "push",
+            message: "You're working on main, but Dyad syncs other2.",
+            detail:
+              "other2 was already up to date. 5 commits on main are not on GitHub's other2.",
+          },
+        },
+      }),
+    );
+    expect(snapshot.state).toMatchObject({
+      banner: {
+        detail:
+          "other2 was already up to date. 5 commits on main are not on GitHub's other2.",
+      },
+    });
   });
 });

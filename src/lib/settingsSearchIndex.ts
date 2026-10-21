@@ -50,6 +50,7 @@ export const SETTING_IDS = {
   enableMultiWindow: "setting-enable-multi-window",
   enableClaudeCodeSubscription: "setting-enable-claude-code-subscription",
   enableAppPreviewDomains: "setting-enable-app-preview-domains",
+  enablePreviewCookieIsolation: "setting-enable-preview-cookie-isolation",
   enableExplorerSubagent: "setting-enable-explorer-subagent",
   enableAutoReview: "setting-enable-auto-review",
   enableReviewButton: "setting-enable-review-button",
@@ -615,6 +616,24 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     description:
       "Use app-<id>.localhost preview addresses to keep each app's cookies separate. Restart running apps to apply changes",
     keywords: ["preview", "localhost", "domain", "hostname", "cookies", "auth"],
+    sectionId: SECTION_IDS.experiments,
+    sectionLabel: "Experiments",
+  },
+  {
+    id: SETTING_IDS.enablePreviewCookieIsolation,
+    label: "Isolate preview sign-in cookies",
+    description:
+      "Keep each app's HttpOnly sign-in cookies separate on shared localhost. On by default. Restart Dyad to apply changes to all previews",
+    keywords: [
+      "preview",
+      "localhost",
+      "cookies",
+      "isolation",
+      "namespace",
+      "auth",
+      "session",
+      "experiment",
+    ],
     sectionId: SECTION_IDS.experiments,
     sectionLabel: "Experiments",
   },

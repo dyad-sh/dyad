@@ -57,6 +57,21 @@ describe.each([
     },
   );
 
+  it("forwards the cookie namespace to the worker", async () => {
+    await launch("http://localhost:3000", {
+      port: 42142,
+      hostname: "localhost",
+      cookieNamespace: "dyad-a42.",
+      authBootstrapToken: "token",
+    });
+    expect(createWorker).toHaveBeenLastCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        workerData: expect.objectContaining({ cookieNamespace: "dyad-a42." }),
+      }),
+    );
+  });
+
   it("reports an unexpected pre-ready exit but suppresses intentional cancellation", async () => {
     const onError = await start();
     worker.emit("exit", 0);

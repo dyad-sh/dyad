@@ -71,6 +71,7 @@ Anchor path rules to the checkout with `/${{ github.workspace }}/...` (the works
 
 ## Issue triage (`claude-triage.yml`) layout
 
+- Read issue environment variables with individually allowlisted literal commands such as `Bash(printenv ISSUE_NUMBER)` and matching prompt instructions. `Bash(echo:*)` does not pre-approve `echo "$ISSUE_NUMBER"`: Claude Code can reject variable expansion with "A variable in this command can't be checked before it runs". Never guess the triggering issue from recent issues when metadata cannot be read.
 - The agent only writes `tmp/issue-triage/triage.json`; `scripts/issue-triage/triage-comment.mjs` validates it (enum fields, link-host allowlist, @-mention stripping, length caps, `fixedIn` must be a published release) and composes the single reporter-facing comment. To change what the bot tells reporters, add or edit an entry in `.github/prompts/triage-playbook.md` first; edit the prompt only for behavior rules.
 - Trusted context (current version, `gh release list` minus drafts, GitHub/Supabase `status.json`, playbook) comes from `scripts/issue-triage/prepare-context.mjs` in a trusted step and reaches the prompt through `TEMPLATE_VARS_PATH` in `render-template.mjs`; the apply job rebuilds it rather than trusting the agent's artifact.
 - Preview a decision without posting: `node scripts/issue-triage/preview.mjs scripts/issue-triage/examples/node-not-found.json`. A missing or invalid decision still posts a fallback comment and adds `triage/failed`; `apply-triage` runs with `if: always()` for that reason.

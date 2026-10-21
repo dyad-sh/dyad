@@ -30,6 +30,28 @@ let rememberedOrigin = null; // e.g. "http://localhost:5173"
 let rememberedBaseUrl = null;
 const fixedHeaders = workerData?.fixedHeaders || {};
 const authBootstrapToken = workerData?.authBootstrapToken;
+// Shared-localhost previews share one cookie jar across ports, so apps that
+// use the same cookie name (e.g. Neon Auth's session token) overwrite each
+// other's sessions. When set (e.g. "dyad-a12."), HttpOnly cookies are renamed
+// with this prefix at the browser boundary and restored on the way upstream.
+// Page scripts cannot read HttpOnly cookies, so the app never sees the rename.
+const COOKIE_NAMESPACE = workerData?.cookieNamespace;
+if (
+  COOKIE_NAMESPACE !== undefined &&
+  (typeof COOKIE_NAMESPACE !== "string" ||
+    !/^dyad-a[1-9]\d*\.$/.test(COOKIE_NAMESPACE))
+) {
+  throw new Error("Invalid cookie namespace");
+}
+const NAMESPACED_COOKIE_RE = /^dyad-a[1-9]\d*\./;
+// Keep security prefixes first; moving __Host- behind the namespace disables
+// Chromium's host-only and Path=/ enforcement (including script writes).
+const COOKIE_SECURITY_PREFIX_RE = /^__(?:Host-Http-|Host-|Secure-|Http-)/i;
+
+function namespaceCookieName(name) {
+  const prefix = COOKIE_SECURITY_PREFIX_RE.exec(name)?.[0] ?? "";
+  return prefix + COOKIE_NAMESPACE + name.slice(prefix.length);
+}
 
 /* ---------- pre-configure rememberedOrigin from workerData ------- */
 {
@@ -392,16 +414,152 @@ function rewriteCookieForIframe(cookieStr) {
   // Host-only cookies isolate previews, including deletion cookies. Keep the
   // existing iframe SameSite handling for the packaged file:// shell.
   const attrs = parts.slice(1).filter((p) => {
-    const lower = p.toLowerCase();
+    const name = cookieAttributeName(p);
     return (
-      !lower.startsWith("samesite") &&
-      !/^domain\s*=/.test(lower) &&
-      lower !== "secure" &&
-      lower !== "partitioned"
+      name !== "samesite" &&
+      name !== "domain" &&
+      name !== "secure" &&
+      name !== "partitioned"
     );
   });
   attrs.push("Secure", "SameSite=None");
   return [nameValue, ...attrs].join("; ");
+}
+
+/* Browsers match attributes by name and ignore a flag attribute's value, so
+   `HttpOnly=false` still sets HttpOnly. */
+function cookieAttributeName(attr) {
+  return attr.split("=", 1)[0].trim().toLowerCase();
+}
+
+const EXPIRY_ATTR_RE = /^(max-age|expires)\s*=\s*(.*)$/i;
+const COOKIE_DATE_DELIMITER_RE = /[\x09\x20-\x2F\x3B-\x40\x5B-\x60\x7B-\x7E]+/;
+const COOKIE_DATE_MONTHS = [
+  "jan",
+  "feb",
+  "mar",
+  "apr",
+  "may",
+  "jun",
+  "jul",
+  "aug",
+  "sep",
+  "oct",
+  "nov",
+  "dec",
+];
+
+/* RFC 6265 §5.1.1 cookie-date parsing, which accepts dates such as
+   `Wed@09@Jun@2021@10:18:14@GMT` that Date.parse rejects. Returns NaN for a
+   date the browser would ignore. */
+function parseCookieDate(value) {
+  let time;
+  let day;
+  let month;
+  let year;
+  for (const token of value.split(COOKIE_DATE_DELIMITER_RE)) {
+    if (!token) continue;
+    const monthIndex = COOKIE_DATE_MONTHS.indexOf(
+      token.slice(0, 3).toLowerCase(),
+    );
+    let match;
+    if (
+      time === undefined &&
+      (match = /^(\d{1,2}):(\d{1,2}):(\d{1,2})(?:\D|$)/.exec(token))
+    ) {
+      time = match.slice(1, 4).map(Number);
+    } else if (
+      day === undefined &&
+      (match = /^(\d{1,2})(?:\D|$)/.exec(token))
+    ) {
+      day = Number(match[1]);
+    } else if (month === undefined && monthIndex !== -1) {
+      month = monthIndex;
+    } else if (
+      year === undefined &&
+      (match = /^(\d{2,4})(?:\D|$)/.exec(token))
+    ) {
+      year = Number(match[1]);
+    }
+  }
+  if (
+    time === undefined ||
+    day === undefined ||
+    month === undefined ||
+    year === undefined
+  )
+    return NaN;
+  if (year >= 70 && year <= 99) year += 1900;
+  else if (year <= 69) year += 2000;
+  const [hour, minute, second] = time;
+  if (
+    day < 1 ||
+    day > 31 ||
+    year < 1601 ||
+    hour > 23 ||
+    minute > 59 ||
+    second > 59
+  )
+    return NaN;
+  const date = new Date(Date.UTC(year, month, day, hour, minute, second));
+  // Reject days past the end of the month, e.g. 31 Feb.
+  return date.getUTCDate() === day ? date.getTime() : NaN;
+}
+
+/* RFC 6265 §5.3: the last of each attribute wins, and a valid Max-Age
+   overrides Expires. A Max-Age that is not an integer, or an Expires that is
+   not a cookie-date, is ignored. */
+function isExpiringCookie(attrs) {
+  let maxAge;
+  let expiresAt;
+  for (const p of attrs) {
+    const match = EXPIRY_ATTR_RE.exec(p);
+    if (!match) continue;
+    const value = match[2].trim();
+    if (match[1].toLowerCase() === "expires") {
+      const parsed = parseCookieDate(value);
+      if (!Number.isNaN(parsed)) expiresAt = parsed;
+    } else if (/^-?\d+$/.test(value)) maxAge = Number(value);
+  }
+  if (maxAge !== undefined) return maxAge <= 0;
+  return expiresAt !== undefined && expiresAt <= Date.now();
+}
+
+/* An unconditional deletion of `name` at the same path as `attrs`. */
+function cookieDeletion(name, attrs) {
+  return [
+    `${name}=`,
+    ...attrs.filter((p) => !EXPIRY_ATTR_RE.test(p)),
+    "Max-Age=0",
+  ].join("; ");
+}
+
+/**
+ * Returns the Set-Cookie strings the browser should receive for one upstream
+ * cookie. HttpOnly cookies are moved into this app's namespace. A deletion
+ * also clears the legacy shared copy, otherwise subsequent requests can
+ * fall back to the old session after the namespaced session is removed.
+ */
+function namespaceSetCookie(cookieStr) {
+  if (!COOKIE_NAMESPACE) return [cookieStr];
+  const [nameValue, ...attrs] = cookieStr.split("; ");
+  const eq = nameValue.indexOf("=");
+  if (eq <= 0) return [cookieStr];
+  const name = nameValue.slice(0, eq);
+  const namespaced = [
+    namespaceCookieName(name) + nameValue.slice(eq),
+    ...attrs,
+  ].join("; ");
+  if (isExpiringCookie(attrs)) {
+    // Emit the shared-name copy as an unconditional deletion so a
+    // misjudged expiry can never store a live session under the shared name.
+    return [cookieDeletion(name, attrs), namespaced];
+  }
+  if (attrs.some((p) => cookieAttributeName(p) === "httponly"))
+    return [namespaced];
+  // A cookie that was HttpOnly and is now script-readable must retire this
+  // app's namespaced copy, which would otherwise win on the way upstream.
+  return [cookieDeletion(namespaceCookieName(name), attrs), cookieStr];
 }
 
 /* Rewrites the Set-Cookie header (an array in Node) in place on `headers`. */
@@ -409,7 +567,51 @@ function rewriteSetCookieHeaders(headers) {
   const sc = headers["set-cookie"];
   if (!sc) return headers;
   const list = Array.isArray(sc) ? sc : [sc];
-  headers["set-cookie"] = list.map(rewriteCookieForIframe);
+  headers["set-cookie"] = list
+    .map(rewriteCookieForIframe)
+    .flatMap((cookie) =>
+      typeof cookie === "string" ? namespaceSetCookie(cookie) : [cookie],
+    );
+  return headers;
+}
+
+/**
+ * Restores this app's namespaced cookies before forwarding upstream and drops
+ * every other app's. A namespaced cookie wins over a shared cookie of the same
+ * name, which may be a stale session left by another app before namespacing.
+ */
+function rewriteRequestCookies(headers) {
+  if (!COOKIE_NAMESPACE || !headers.cookie) return headers;
+  const pairs = String(headers.cookie)
+    .split(";")
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const restored = [];
+  const restoredNames = new Set();
+  const shared = [];
+  for (const pair of pairs) {
+    const prefix = COOKIE_SECURITY_PREFIX_RE.exec(pair)?.[0] ?? "";
+    const unprefixed = pair.slice(prefix.length);
+    if (unprefixed.startsWith(COOKIE_NAMESPACE)) {
+      const originalNameValue = unprefixed.slice(COOKIE_NAMESPACE.length);
+      // Never restore old cookies whose browser-visible name lost a security
+      // prefix: scripts could have shadowed those at a narrower path.
+      if (!prefix && COOKIE_SECURITY_PREFIX_RE.test(originalNameValue))
+        continue;
+      const original = prefix + originalNameValue;
+      // Keep same-name copies (e.g. different paths), as the browser would.
+      restoredNames.add(original.split("=", 1)[0]);
+      restored.push(original);
+    } else if (!NAMESPACED_COOKIE_RE.test(unprefixed)) {
+      shared.push(pair);
+    }
+  }
+  const forwarded = [
+    ...restored,
+    ...shared.filter((pair) => !restoredNames.has(pair.split("=", 1)[0])),
+  ];
+  if (forwarded.length) headers.cookie = forwarded.join("; ");
+  else delete headers.cookie;
   return headers;
 }
 
@@ -447,7 +649,18 @@ function applyProxyFrameAncestorsCsp(headers) {
 /* 1. Plain HTTP request / response                                        */
 /* ----------------------------------------------------------------------- */
 
-const server = http.createServer((clientReq, clientRes) => {
+// Every app's namespaced cookies reach every shared-localhost port, so the
+// Cookie header grows with the number of signed-in apps. Accept Chromium's
+// whole per-host jar (180 cookies of up to 4 KiB) rather than Node's 16 KiB
+// default; rewriteRequestCookies() drops other apps' before forwarding.
+const MAX_REQUEST_HEADER_BYTES = 1024 * 1024;
+
+const server = http.createServer(
+  { maxHeaderSize: MAX_REQUEST_HEADER_BYTES },
+  handleHttpRequest,
+);
+
+function handleHttpRequest(clientReq, clientRes) {
   if (!hasPreviewAuthority(clientReq)) {
     clientRes.writeHead(421, { "content-type": "text/plain" });
     clientRes.end("This preview belongs to a different app hostname.");
@@ -483,6 +696,7 @@ const server = http.createServer((clientReq, clientRes) => {
 
   /* Copy request headers but rewrite Host / Origin / Referer */
   const headers = { ...clientReq.headers, host: target.host, ...fixedHeaders };
+  rewriteRequestCookies(headers);
   if (headers.origin) headers.origin = target.origin;
   if (headers.referer) {
     try {
@@ -571,10 +785,10 @@ const server = http.createServer((clientReq, clientRes) => {
     clientRes.writeHead(502, { "content-type": "text/plain" });
     clientRes.end("Upstream error: " + e.message);
   });
-});
+}
 
 /* ----------------------------------------------------------------------- */
-/* 2. WebSocket / generic Upgrade tunnelling                               */
+/* 2. WebSocket / generic Upgrade tunnelling                             */
 /* ----------------------------------------------------------------------- */
 
 server.on("upgrade", (req, socket, _head) => {
@@ -608,6 +822,7 @@ server.on("upgrade", (req, socket, _head) => {
 
   const isTLS = target.protocol === "https:";
   const headers = { ...req.headers, host: target.host, ...fixedHeaders };
+  rewriteRequestCookies(headers);
   if (headers.origin) headers.origin = target.origin;
 
   const upReq = (isTLS ? https : http).request({

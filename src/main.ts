@@ -1,4 +1,5 @@
 import { stopClaudeProcesses } from "./ipc/services/claude_code/runtime";
+import { isPreviewCookieIsolationEnabled } from "./ipc/services/preview_cookie_isolation";
 import {
   app,
   autoUpdater,
@@ -423,6 +424,9 @@ export async function onReady() {
   // the keychain and git all run below; if one of them kills us, a sentinel
   // still naming the previous session would report this crash as that one.
   const previousSession = claimCrashSentinel(LAUNCH_TIME);
+
+  // Cookie isolation changes require restarting Dyad, not individual apps.
+  isPreviewCookieIsolationEnabled();
 
   // Claimed here, before anything can overwrite it, so the record always
   // describes the session that just ended. Runs whether or not that session

@@ -20,6 +20,7 @@ import { ipc } from "@/ipc/types";
 import { ChatHeader } from "./chat/ChatHeader";
 import { MessagesList } from "./chat/MessagesList";
 import { ChatInput } from "./chat/ChatInput";
+import { TestRunQueueCard } from "./chat/TestRunQueueCard";
 import { VersionPane } from "./chat/VersionPane";
 import { FreeAgentQuotaBanner } from "./chat/FreeAgentQuotaBanner";
 import { NotificationBanner } from "./chat/NotificationBanner";
@@ -37,7 +38,7 @@ import { useChatMode } from "@/hooks/useChatMode";
 import { isDyadProEnabled } from "@/lib/schemas";
 import { isFreeProModel } from "@/lib/freeProModel";
 import { terminalOpenByChatIdAtom } from "@/atoms/terminalAtoms";
-import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useReducedMotionPref } from "@/hooks/useReducedMotion";
 import { useLoadApps } from "@/hooks/useLoadApps";
 import { useVersionPreview } from "@/hooks/useVersionPreview";
@@ -65,6 +66,7 @@ export function ChatPanel({
   onTogglePreview,
 }: ChatPanelProps) {
   const { t } = useTranslation("chat");
+  const setPreviewMode = useSetAtom(previewModeAtom);
   const messages = useChatMessages(chatId);
   const messagesLoaded = useChatMessagesLoaded(chatId);
   const setMessagesById = useSetAtom(chatMessagesByIdAtom);
@@ -319,6 +321,15 @@ export function ChatPanel({
                   )}
                   <SupabaseLegacyKeyBanner appId={selectedAppId} />
                   <NotificationBanner />
+                  <TestRunQueueCard
+                    key={selectedAppId}
+                    appId={selectedAppId}
+                    chatId={chatId}
+                    onOpenTests={() => {
+                      setPreviewMode("tests");
+                      if (!isPreviewOpen) onTogglePreview();
+                    }}
+                  />
                   <ChatInput chatId={chatId} />
                 </motion.div>
               )}

@@ -185,7 +185,13 @@
     "deny": "Deny"
   },
   "experiments": {
-    "title": "Experiments"
+    "title": "Experiments",
+    "previewCookieIsolation": {
+      "label": "Isolate preview sign-in cookies",
+      "description": "Keep each app's HttpOnly sign-in cookies separate on shared localhost. On by default. Restart Dyad to apply changes to all previews.",
+      "loading": "Loading setting…",
+      "loadError": "Unable to load setting"
+    }
   },
   "dangerZone": {
     "title": "Danger Zone",

@@ -68,6 +68,7 @@ export function resolveProxyWorkerPath(): string {
 export interface HeadlessStartProxyOptions {
   port: number;
   hostname: string;
+  cookieNamespace?: string;
   authBootstrapToken: string;
   signal?: AbortSignal;
   onStarted?: (proxyUrl: string) => void;
@@ -100,6 +101,7 @@ export function createHeadlessProxyModule(): {
       workerData: {
         targetOrigin,
         hostname: opts.hostname,
+        cookieNamespace: opts.cookieNamespace,
         authBootstrapToken: opts.authBootstrapToken,
         port,
         fallbackPortStart,

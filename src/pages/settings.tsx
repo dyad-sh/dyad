@@ -42,6 +42,7 @@ import { CloudSandboxExperimentSwitch } from "@/components/CloudSandboxExperimen
 import { MultiWindowExperimentSwitch } from "@/components/MultiWindowExperimentSwitch";
 import { ClaudeCodeSubscriptionExperimentSwitch } from "@/components/ClaudeCodeSubscriptionExperimentSwitch";
 import { AppPreviewDomainsSwitch } from "@/components/AppPreviewDomainsSwitch";
+import { PreviewCookieIsolationSwitch } from "@/components/PreviewCookieIsolationSwitch";
 import { TestRunInPreviewSwitch } from "@/components/TestRunInPreviewSwitch";
 import { AutoApproveSqlSwitch } from "@/components/AutoApproveSqlSwitch";
 import { AutoApproveMcpSwitch } from "@/components/AutoApproveMcpSwitch";
@@ -263,6 +264,10 @@ export default function SettingsPage() {
 
             <div id={SETTING_IDS.enableAppPreviewDomains}>
               <AppPreviewDomainsSwitch />
+            </div>
+
+            <div id={SETTING_IDS.enablePreviewCookieIsolation}>
+              <PreviewCookieIsolationSwitch />
             </div>
 
             <div id={SETTING_IDS.enableTestRunInPreview}>

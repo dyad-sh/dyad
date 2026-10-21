@@ -7,6 +7,7 @@ import { z } from "zod";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
   appOperationCoordinator,
+  type AppOperationContext,
   readAppResource,
 } from "@/ipc/services/app_operation_coordinator";
 import {
@@ -24,14 +25,9 @@ import {
   resolvePackageManager,
   runCleanPackageInstall,
 } from "@/ipc/services/isolated_package_install";
-import {
-  detectFrameworkType,
-  detectNextJsMajorVersion,
-} from "@/ipc/utils/framework_utils";
 import { runningApps } from "@/ipc/utils/process_manager";
 import { spawnStreaming } from "@/ipc/utils/spawn_streaming";
 import { getPackageManagerCommandEnv } from "@/ipc/utils/socket_firewall";
-import type { AppFrameworkType } from "@/lib/framework_constants";
 import { getUserDataPath } from "@/paths/paths";
 import type { AgentContext, ToolDefinition } from "./types";
 import { escapeXmlAttr, escapeXmlContent } from "./types";
@@ -58,37 +54,6 @@ const SNAPSHOT_EXCLUDED_NAMES = new Set([
 ]);
 
 const logger = log.scope("run_build");
-
-export type BuildExecutionMode = "in-place" | "isolated";
-
-export interface BuildProjectFacts {
-  frameworkType: AppFrameworkType | null;
-  buildScript: string;
-  nextMajorVersion: number | null;
-  previewRunning: boolean;
-  previewInDocker: boolean;
-  nextDevOutputIsolated: boolean;
-  hasBuildLifecycleHooks: boolean;
-}
-
-export function selectBuildExecutionMode(
-  facts: BuildProjectFacts,
-): BuildExecutionMode {
-  if (!facts.previewRunning) return "in-place";
-  if (facts.hasBuildLifecycleHooks || facts.previewInDocker) return "isolated";
-  if (facts.frameworkType === "vite" && facts.buildScript === "vite build") {
-    return "in-place";
-  }
-  if (
-    facts.frameworkType === "nextjs" &&
-    facts.buildScript === "next build" &&
-    (facts.nextMajorVersion ?? 0) >= 16 &&
-    facts.nextDevOutputIsolated
-  ) {
-    return "in-place";
-  }
-  return "isolated";
-}
 
 interface PackageJson {
   scripts?: Record<string, unknown>;
@@ -138,29 +103,6 @@ async function readPackageJson(appPath: string): Promise<PackageJson> {
 function getScript(packageJson: PackageJson, name: string): string | null {
   const value = packageJson.scripts?.[name];
   return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-export async function gatherBuildProjectFacts(
-  ctx: AgentContext,
-  buildScript: string,
-  hasBuildLifecycleHooks = false,
-): Promise<BuildProjectFacts> {
-  const runningApp = runningApps.get(ctx.appId);
-  const previewRunning = runningApp !== undefined;
-  return {
-    frameworkType: detectFrameworkType(ctx.appPath),
-    buildScript,
-    nextMajorVersion: detectNextJsMajorVersion(ctx.appPath),
-    previewRunning,
-    previewInDocker: runningApp?.mode === "docker",
-    hasBuildLifecycleHooks,
-    nextDevOutputIsolated:
-      !previewRunning ||
-      (await fs
-        .stat(path.join(ctx.appPath, ".next", "dev"))
-        .then((stat) => stat.isDirectory())
-        .catch(() => false)),
-  };
 }
 
 export function parseWorkspaceOverlayPaths(
@@ -404,6 +346,65 @@ function streamBuildOutput(ctx: AgentContext, accumulatedOutput: string): void {
   );
 }
 
+// Settle the tool result as soon as host execution ends, while the original
+// coordinator operation retains app-path protection until cleanup finishes.
+// A separate cleanup admission could lose its place to a queued rename/delete.
+function runBuildOperation(
+  ctx: AgentContext,
+  operation: (
+    releaseResources: AppOperationContext["releaseResources"],
+    registerSnapshot: (snapshot: Snapshot) => void,
+  ) => Promise<string>,
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    void appOperationCoordinator
+      .run(
+        {
+          appId: ctx.appId,
+          operation: "run production build",
+          resources: [
+            readAppResource("app-path"),
+            readAppResource("repository-ref"),
+            { resource: "repository-worktree", mode: "write" },
+            readAppResource("runtime"),
+          ],
+          refuseWhenRecording: "run a production build",
+          signal: ctx.abortSignal,
+        },
+        async ({ releaseResources }) => {
+          let snapshot: Snapshot | undefined;
+          try {
+            resolve(
+              await operation(releaseResources, (captured) => {
+                snapshot = captured;
+              }),
+            );
+          } catch (error) {
+            reject(error);
+          } finally {
+            releaseResources([
+              "repository-ref",
+              "repository-worktree",
+              "runtime",
+            ]);
+            if (snapshot) {
+              await removeSnapshot(
+                snapshot.worktreePath,
+                snapshot.sourceRepoPath,
+              ).catch((error) => {
+                logger.warn(
+                  "Failed to clean production build snapshot:",
+                  error,
+                );
+              });
+            }
+          }
+        },
+      )
+      .catch(reject);
+  });
+}
+
 export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
   name: "run_build",
   description: `Run the app's production build as a selective, expensive verification step.
@@ -411,13 +412,13 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
 - Use after build configuration, dependencies, framework routing, server/static-generation, environment loading, or substantial production-path changes, or when the user explicitly asks.
 - Do not use after routine small UI, styling, copy, or asset edits. Type checking is the normal verification step.
 - Finish related edits first and run once. A failed build may be retried only after making a relevant change.
-- The active preview stays running. Builds that could interfere with it are verified in an isolated workspace with clean dependencies.`,
+- Every build verifies a captured snapshot in an isolated workspace with clean dependencies. The active preview stays running, and edits and isolated E2E setup can continue after capture. Later edits are not included in this build result.`,
   inputSchema: runBuildSchema,
   defaultConsent: "always",
   modifiesState: true,
 
   getConsentPreview: () =>
-    "Runs the app's current package.json build lifecycle (prebuild, build, and postbuild). An isolated build may prepare a temporary Git worktree and install dependencies first. This executes project and dependency code with your user account. The temporary worktree protects the live preview from ordinary build output, but is not a security sandbox.",
+    "Runs the app's current package.json build lifecycle (prebuild, build, and postbuild). Prepares a temporary Git worktree and installs clean dependencies before building. This executes project and dependency code with your user account. The temporary worktree protects the live preview from ordinary build output, but is not a security sandbox.",
 
   buildXml: (_args, isComplete) =>
     isComplete
@@ -434,18 +435,9 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
 
     activeBuilds.add(ctx.appId);
     try {
-      return await appOperationCoordinator.run(
-        {
-          appId: ctx.appId,
-          operation: "run production build",
-          resources: [
-            readAppResource("app-path"),
-            { resource: "repository-worktree", mode: "write" },
-            readAppResource("runtime"),
-          ],
-          refuseWhenRecording: "run a production build",
-        },
-        async () => {
+      return await runBuildOperation(
+        ctx,
+        async (releaseResources, registerSnapshot) => {
           const state = (ctx.buildAttemptState ??= {
             count: 0,
           } satisfies BuildAttemptState);
@@ -485,17 +477,8 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
               DyadErrorKind.Precondition,
             );
           }
-          const facts = await gatherBuildProjectFacts(
-            ctx,
-            buildScript,
-            Boolean(
-              getScript(packageJson, "prebuild") ||
-              getScript(packageJson, "postbuild"),
-            ),
-          );
-          const mode = selectBuildExecutionMode(facts);
           ctx.onXmlStream(
-            `<dyad-status title="${escapeXmlAttr(mode === "in-place" ? "Building beside preview" : "Preparing isolated build")}"></dyad-status>`,
+            '<dyad-status title="Preparing isolated build"></dyad-status>',
           );
           const abortScope = createBuildAbortScope(ctx.abortSignal);
           const operationStartedAt = Date.now();
@@ -504,70 +487,69 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
           let phase: "snapshot setup" | "dependency installation" | "build" =
             "snapshot setup";
           try {
-            let packageManager: "npm" | "pnpm";
-            if (mode === "isolated") {
-              snapshot = await createSnapshot(ctx.appPath, abortScope.signal);
-              const resolution = await resolvePackageManager(
-                snapshot.sourceAppPath,
+            snapshot = await createSnapshot(ctx.appPath, abortScope.signal);
+            registerSnapshot(snapshot);
+            const resolution = await resolvePackageManager(
+              snapshot.sourceAppPath,
+              snapshot.sourceRepoPath,
+            );
+            const packageManager = resolution.packageManager;
+            const snapshotInstallPath = path.join(
+              snapshot.worktreePath,
+              path.relative(
                 snapshot.sourceRepoPath,
-              );
-              packageManager = resolution.packageManager;
-              const snapshotInstallPath = path.join(
-                snapshot.worktreePath,
-                path.relative(
-                  snapshot.sourceRepoPath,
-                  resolution.sourceInstallPath,
-                ),
-              );
-              phase = "dependency installation";
-              ctx.onXmlStream(
-                '<dyad-status title="Installing isolated build dependencies"></dyad-status>',
-              );
-              const installOutputPreview = createBuildOutputPreview((output) =>
-                streamBuildOutput(ctx, output),
-              );
-              const installStartedAt = Date.now();
-              const installResult = await runCleanPackageInstall({
-                cwd: snapshotInstallPath,
-                packageManager,
-                signal: abortScope.signal,
-                timeoutMs: Math.max(1, abortScope.deadlineAt - Date.now()),
-                onOutput: installOutputPreview.append,
-              }).finally(installOutputPreview.flush);
-              dependencyInstallMs = Date.now() - installStartedAt;
-              const installOutput = tail(
-                [installResult.stdout, installResult.stderr]
-                  .filter(Boolean)
-                  .join("\n"),
-              );
-              if (abortScope.timedOut() || installResult.timedOut) {
-                state.mutationCountAtLastSetupFailure = currentMutationCount;
-                const body = `Production build timed out after 10 minutes during dependency installation.\n\n${installOutput}`;
-                completeStatus(ctx, "Build timed out", body, "warning");
-                return body;
-              }
-              if (installResult.aborted) {
-                throw new DyadError(
-                  "Build cancelled.",
-                  DyadErrorKind.UserCancelled,
-                );
-              }
-              if (installResult.code !== 0) {
-                state.mutationCountAtLastSetupFailure = currentMutationCount;
-                const body = `Could not install dependencies for the isolated production build (exit code ${installResult.code}). The build was not attempted.\n\n${installOutput}`;
-                completeStatus(
-                  ctx,
-                  "Dependency installation failed",
-                  body,
-                  "warning",
-                );
-                return body;
-              }
-              state.mutationCountAtLastSetupFailure = undefined;
-            } else {
-              packageManager = (await resolvePackageManager(ctx.appPath))
-                .packageManager;
+                resolution.sourceInstallPath,
+              ),
+            );
+            // Capture package-manager selection while live workspace inputs
+            // (including node_modules layout) are still protected. From here
+            // on, install and build only read the private snapshot.
+            releaseResources(["repository-ref", "repository-worktree"]);
+            phase = "dependency installation";
+            ctx.onXmlStream(
+              '<dyad-status title="Installing isolated build dependencies"></dyad-status>',
+            );
+            const installOutputPreview = createBuildOutputPreview((output) =>
+              streamBuildOutput(ctx, output),
+            );
+            const installStartedAt = Date.now();
+            const installResult = await runCleanPackageInstall({
+              cwd: snapshotInstallPath,
+              packageManager,
+              signal: abortScope.signal,
+              timeoutMs: Math.max(1, abortScope.deadlineAt - Date.now()),
+              onOutput: installOutputPreview.append,
+            }).finally(installOutputPreview.flush);
+            dependencyInstallMs = Date.now() - installStartedAt;
+            const installOutput = tail(
+              [installResult.stdout, installResult.stderr]
+                .filter(Boolean)
+                .join("\n"),
+            );
+            if (abortScope.timedOut() || installResult.timedOut) {
+              state.mutationCountAtLastSetupFailure = currentMutationCount;
+              const body = `Production build timed out after 10 minutes during dependency installation.\n\n${installOutput}`;
+              completeStatus(ctx, "Build timed out", body, "warning");
+              return body;
             }
+            if (installResult.aborted) {
+              throw new DyadError(
+                "Build cancelled.",
+                DyadErrorKind.UserCancelled,
+              );
+            }
+            if (installResult.code !== 0) {
+              state.mutationCountAtLastSetupFailure = currentMutationCount;
+              const body = `Could not install dependencies for the isolated production build (exit code ${installResult.code}). The build was not attempted. A clean install may require registry access and configured registry credentials even when the live app already has dependencies installed.\n\n${installOutput}`;
+              completeStatus(
+                ctx,
+                "Dependency installation failed",
+                body,
+                "warning",
+              );
+              return body;
+            }
+            state.mutationCountAtLastSetupFailure = undefined;
             phase = "build";
             state.count += 1;
             state.mutationCountAtLastRun = currentMutationCount;
@@ -579,16 +561,14 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
               streamBuildOutput(ctx, output),
             );
             const result = await runBuildProcess({
-              cwd: snapshot?.path ?? ctx.appPath,
+              cwd: snapshot.path,
               packageManager,
               signal: abortScope.signal,
               timeoutMs: Math.max(1, abortScope.deadlineAt - Date.now()),
               onOutput: buildOutputPreview.append,
             }).finally(buildOutputPreview.flush);
             const buildMs = Date.now() - buildStartedAt;
-            const timing = snapshot
-              ? `Mode: isolated (${snapshot.strategy}); snapshot setup: ${snapshot.setupMs} ms; dependency install: ${dependencyInstallMs} ms; build: ${buildMs} ms.`
-              : `Mode: in-place; build: ${buildMs} ms.`;
+            const timing = `Mode: isolated (${snapshot.strategy}); snapshot setup: ${snapshot.setupMs} ms; dependency install: ${dependencyInstallMs} ms; build: ${buildMs} ms.`;
             const output = tail(
               [result.stdout, result.stderr].filter(Boolean).join("\n"),
             );
@@ -608,7 +588,7 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
               completeStatus(ctx, "Build failed", body, "warning");
               return body;
             }
-            const body = `Production build passed. ${timing}${output ? `\n\n${output}` : ""}`;
+            const body = `Production build passed for the captured snapshot. ${timing}${output ? `\n\n${output}` : ""}`;
             completeStatus(ctx, "Build passed", body);
             return body;
           } catch (error) {
@@ -624,12 +604,6 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
             throw error;
           } finally {
             abortScope.dispose();
-            if (snapshot) {
-              void removeSnapshot(
-                snapshot.worktreePath,
-                snapshot.sourceRepoPath,
-              );
-            }
           }
         },
       );

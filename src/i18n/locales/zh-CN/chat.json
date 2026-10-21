@@ -1,4 +1,18 @@
 {
+  "testRunQueue": {
+    "title": "测试队列",
+    "openTests": "打开测试",
+    "allTests": "所有测试",
+    "currentChat": "当前聊天",
+    "openChat": "打开聊天",
+    "testsPanel": "测试面板",
+    "queued": "排队中",
+    "running": "运行中",
+    "stopping": "正在停止",
+    "passed": "通过",
+    "failed": "失败",
+    "inconclusive": "无定论"
+  },
   "newChat": "新建聊天",
   "viewAllApps": "所有应用",
   "searchChats": "搜索聊天",

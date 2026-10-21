@@ -8,11 +8,19 @@ import killPort from "kill-port";
 import log from "electron-log";
 import { eq } from "drizzle-orm";
 
-import { getAppPreviewHostname } from "../../../shared/preview_hostname";
+import {
+  getAppPreviewHostname,
+  getPreviewCookieNamespace,
+} from "../../../shared/preview_hostname";
 import {
   ensureSupabasePreviewRedirects,
   resolveSupabasePreviewTarget,
 } from "./supabase_preview_redirect_service";
+import {
+  clearPreviewNamespacedCookies,
+  clearSharedPreviewSessionCookies,
+} from "./preview_storage";
+import { isPreviewCookieIsolationEnabled } from "./preview_cookie_isolation";
 import {
   samePreviewAuthTarget,
   type PreviewAuthTarget,
@@ -718,6 +726,7 @@ export async function ensureProxyForRunningApp({
     .enableAppPreviewDomains
     ? getAppPreviewHostname(appId)
     : "localhost");
+  const cookieIsolationEnabled = isPreviewCookieIsolationEnabled();
   // Install the promise before the first asynchronous boundary: dev servers
   // can print their URL more than once before the proxy has bound.
   while (appInfo.proxyStartup) {
@@ -791,9 +800,23 @@ export async function ensureProxyForRunningApp({
     void readyUrl.catch(() => undefined);
     let worker: RunningAppInfo["proxyWorker"];
     try {
+      if (!cookieIsolationEnabled) {
+        // Retire hidden localhost credentials even on app-specific domains,
+        // so returning to isolated localhost cannot restore an old login.
+        await clearPreviewNamespacedCookies(appId);
+      } else if (hostname === "localhost") {
+        // Do not serve requests until legacy shared credentials are gone.
+        await clearSharedPreviewSessionCookies();
+      }
+      if (!current()) return;
       worker = await startProxy(originalUrl, {
         port: getAppProxyPort(appId),
         hostname,
+        // App-specific hostnames already isolate cookies.
+        cookieNamespace:
+          hostname === "localhost" && cookieIsolationEnabled
+            ? getPreviewCookieNamespace(appId)
+            : undefined,
         authBootstrapToken,
         signal,
         onStarted: resolveReady,

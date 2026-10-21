@@ -180,7 +180,13 @@
     "deny": "Negar"
   },
   "experiments": {
-    "title": "Experimentos"
+    "title": "Experimentos",
+    "previewCookieIsolation": {
+      "label": "Isolar cookies de login da pré-visualização",
+      "description": "Mantenha separados os cookies HttpOnly de login de cada aplicativo no localhost compartilhado. Ativado por padrão. Reinicie o Dyad para aplicar as alterações a todas as pré-visualizações.",
+      "loading": "Carregando configuração…",
+      "loadError": "Não foi possível carregar a configuração"
+    }
   },
   "dangerZone": {
     "title": "Zona de Perigo",

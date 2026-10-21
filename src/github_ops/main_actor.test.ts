@@ -24,7 +24,7 @@ import {
 } from "./transport";
 
 const service = vi.hoisted(() => ({
-  run: vi.fn<() => Promise<void>>(),
+  run: vi.fn<() => Promise<import("./state").GithubOperationResult | void>>(),
   getGitState:
     vi.fn<
       () => Promise<{
@@ -839,5 +839,42 @@ describe("main-hosted github_ops actor", () => {
         },
       }),
     );
+  });
+
+  it("carries the push summary from the service into the banner", async () => {
+    service.run.mockResolvedValue({
+      type: "push",
+      summary: {
+        outcome: "wrong-branch",
+        pushedBranch: "other2",
+        currentBranch: "main",
+        commitsPushed: 0,
+        files: null,
+        uncommittedFiles: 0,
+        commitsNotOnRemote: 5,
+        head: "ffb1463",
+        remoteTip: "c872cc3",
+      },
+    });
+    const { actorA } = createHarness();
+    await actorA.resync();
+
+    await actorA.dispatch({
+      type: "OP_REQUESTED",
+      op: { type: "push", mode: "normal", provider: "github" },
+      operationId: "push-a",
+    });
+    await flush();
+
+    expect(actorA.getSnapshot().state).toMatchObject({
+      type: "idle",
+      banner: {
+        kind: "warning",
+        completedOperation: "push",
+        message: "You're working on main, but Dyad syncs other2.",
+        detail:
+          "other2 was already up to date. 5 commits on main are not on GitHub's other2.",
+      },
+    });
   });
 });

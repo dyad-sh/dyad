@@ -159,6 +159,7 @@ import type { AppSearchResult } from "@/lib/schemas";
 import { searchApps } from "../utils/app_search";
 import { endTestsForApp } from "./tests_handlers";
 import { removeE2eTestArtifactsForApp } from "../services/e2e_test_workspace";
+import { clearPreviewNamespacedCookies } from "../services/preview_storage";
 
 import {
   getRgExecutablePath,
@@ -579,6 +580,14 @@ async function deleteAppById(
   await removeE2eTestArtifactsForApp(appId).catch((error) =>
     logger.warn(
       `App ${appId} was deleted but its retained test artifacts could not be removed: ${error}`,
+    ),
+  );
+
+  // App IDs are never reused, so no later preview will clear these, and they
+  // fill the cookie quota shared by every app previewed on plain localhost.
+  await clearPreviewNamespacedCookies(appId).catch((error) =>
+    logger.warn(
+      `App ${appId} was deleted but its preview cookies could not be removed: ${error}`,
     ),
   );
 

@@ -82,11 +82,33 @@ export const CloudflareDeploymentStateSchema = z.enum([
   "cancelled",
 ]);
 
+export const CloudflareRecentBuildSchema = z.object({
+  buildUuid: z.string(),
+  state: CloudflareDeploymentStateSchema,
+  commitHash: z.string().nullable(),
+  /** When Cloudflare created the build, as it reports it. */
+  createdAt: z.string().nullable(),
+  /**
+   * Where the version this build deployed is served, so an older build can
+   * still be looked at. Null for a build that deployed nothing, for one whose
+   * version has no address of its own or has not been found, and while the
+   * Worker's version URLs are off.
+   */
+  previewUrl: z.string().nullable(),
+});
+
+export type CloudflareRecentBuild = z.infer<typeof CloudflareRecentBuildSchema>;
+
 export const CloudflareDeploymentStatusSchema = z.object({
   state: CloudflareDeploymentStateSchema,
   commitHash: z.string().nullable(),
   /** The end of the build log, only when the build failed. */
   logTail: z.array(z.string()),
+  /**
+   * The newest builds of this folder's rule, newest first. The first one is
+   * the build the state above describes.
+   */
+  recentBuilds: z.array(CloudflareRecentBuildSchema),
   /** The API token behind the deploy rule was deleted or rolled. */
   tokenRevoked: z.boolean(),
   /**

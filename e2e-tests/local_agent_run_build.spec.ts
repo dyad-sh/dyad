@@ -8,12 +8,10 @@ const TEST_TIMEOUT = 15 * 60_000;
 async function runBuildAndVerifyPreview({
   po,
   fixture,
-  expectedMode,
   previewText,
 }: {
   po: PageObject;
   fixture: "run-build-vite" | "run-build-next";
-  expectedMode: "isolated" | "in-place";
   previewText: string;
 }) {
   const preview = po.previewPanel.getPreviewIframeElement();
@@ -34,7 +32,7 @@ async function runBuildAndVerifyPreview({
     .last();
   await expect(buildCard).toBeVisible({ timeout: BUILD_TIMEOUT });
   await buildCard.click();
-  await expect(buildCard).toContainText(`Mode: ${expectedMode}`);
+  await expect(buildCard).toContainText("Mode: isolated");
   expect(await po.appManagement.getCurrentAppProcessId()).toBe(
     previewProcessId,
   );
@@ -73,7 +71,6 @@ test("local-agent builds a Vite scaffold without stopping its preview", async ({
   await runBuildAndVerifyPreview({
     po,
     fixture: "run-build-vite",
-    expectedMode: "in-place",
     previewText: "Welcome to Your Blank App",
   });
 });
@@ -89,7 +86,6 @@ test("local-agent builds Next.js 15 without stopping its preview", async ({
   await runBuildAndVerifyPreview({
     po,
     fixture: "run-build-next",
-    expectedMode: "isolated",
     previewText: "Next.js 15 build fixture",
   });
 });
@@ -105,7 +101,6 @@ test("local-agent builds Next.js 16 without stopping its preview", async ({
   await runBuildAndVerifyPreview({
     po,
     fixture: "run-build-next",
-    expectedMode: "in-place",
     previewText: "Next.js 16 build fixture",
   });
 });

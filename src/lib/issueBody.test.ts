@@ -243,7 +243,7 @@ describe("buildIssueBody", () => {
       diagnostics,
       sessionId: null,
     });
-    expect(body).toContain("## What happened (required)\nPreview goes blank.");
+    expect(body).toContain("## What happened\nPreview goes blank.");
     expect(body).toContain("Screenshot status: declined");
   });
 

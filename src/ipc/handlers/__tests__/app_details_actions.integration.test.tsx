@@ -2,10 +2,19 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from "vitest";
 
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { eq } from "drizzle-orm";
+import { session } from "electron";
 
 import { apps, chats } from "@/db/schema";
 import { writeSettings } from "@/main/settings";
@@ -211,6 +220,27 @@ describe("app details actions (integration)", () => {
 
   it("deletes an app from app details", async () => {
     const app = await createFixtureApp("delete-app");
+    const cookies = vi.mocked(session.defaultSession.cookies);
+    cookies.remove.mockClear();
+    cookies.get.mockResolvedValue([
+      {
+        name: `dyad-a${app.appId}.session`,
+        domain: "localhost",
+        path: "/",
+        secure: true,
+        httpOnly: true,
+      },
+      {
+        name: `dyad-a${app.appId + 1}.session`,
+        domain: "localhost",
+        path: "/",
+        secure: true,
+        httpOnly: true,
+      },
+    ] as Electron.Cookie[]);
+    onTestFinished(() => {
+      cookies.get.mockImplementation(() => Promise.resolve([]));
+    });
 
     await mountAppDetails(app);
     harness.seedAppRuntimeResidue(app.appId);
@@ -237,6 +267,10 @@ describe("app details actions (integration)", () => {
       expect(harness.currentLocation().pathname).toBe("/");
     });
     expect(harness.hasAppRuntimeResidue(app.appId)).toBe(false);
+    // Only the deleted app's shared-localhost preview cookies go with it.
+    expect(cookies.remove.mock.calls).toEqual([
+      ["https://localhost/", `dyad-a${app.appId}.session`],
+    ]);
   }, 60_000);
 
   it("renames an app and its folder", async () => {

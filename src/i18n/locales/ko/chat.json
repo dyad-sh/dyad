@@ -1,4 +1,18 @@
 {
+  "testRunQueue": {
+    "title": "테스트 대기열",
+    "openTests": "테스트 열기",
+    "allTests": "모든 테스트",
+    "currentChat": "현재 채팅",
+    "openChat": "채팅 열기",
+    "testsPanel": "테스트 패널",
+    "queued": "대기 중",
+    "running": "실행 중",
+    "stopping": "중지 중",
+    "passed": "통과",
+    "failed": "실패",
+    "inconclusive": "판정 불가"
+  },
   "newChat": "새 채팅",
   "viewAllApps": "모든 앱",
   "searchChats": "채팅 검색",

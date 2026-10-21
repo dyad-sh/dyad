@@ -171,6 +171,8 @@ export const queryKeys = {
       ["tests", appId, "run"] as const,
     queue: ({ appId }: { appId: number | null }) =>
       ["tests", appId, "queue"] as const,
+    recentRuns: ({ appId }: { appId: number | null }) =>
+      ["tests", appId, "recent-runs"] as const,
     list: ({ appId }: { appId: number | null }) =>
       ["tests", "list", appId] as const,
     legacy: ({ appId }: { appId: number | null }) =>

@@ -71,6 +71,22 @@ export function buildCloudflareWorkerDashboardUrl({
   return `https://dash.cloudflare.com/${accountId}/workers/services/view/${workerName}/production`;
 }
 
+/**
+ * Where one version of the Worker is served: the first eight characters of
+ * its id in front of the Worker's own workers.dev host.
+ */
+export function buildCloudflareVersionUrl({
+  workerUrl,
+  versionId,
+}: {
+  workerUrl: string;
+  versionId: string;
+}): string {
+  const url = new URL(workerUrl);
+  url.host = `${versionId.slice(0, 8)}-${url.host}`;
+  return url.origin;
+}
+
 // ---------------------------------------------------------------------------
 // Worker names
 // ---------------------------------------------------------------------------

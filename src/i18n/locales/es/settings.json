@@ -183,7 +183,13 @@
     "deny": "Denegar"
   },
   "experiments": {
-    "title": "Experimentos"
+    "title": "Experimentos",
+    "previewCookieIsolation": {
+      "label": "Aislar las cookies de inicio de sesión de la vista previa",
+      "description": "Mantén separadas las cookies HttpOnly de inicio de sesión de cada aplicación en localhost compartido. Activado de forma predeterminada. Reinicia Dyad para aplicar los cambios a todas las vistas previas.",
+      "loading": "Cargando ajuste…",
+      "loadError": "No se pudo cargar el ajuste"
+    }
   },
   "dangerZone": {
     "title": "Zona de Peligro",

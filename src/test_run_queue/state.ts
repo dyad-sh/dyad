@@ -7,6 +7,8 @@
 export interface TestRunRequest {
   readonly runId: number;
   readonly source: "panel" | "agent";
+  /** Originating agent chat; panel runs are not associated with a chat. */
+  readonly chatId?: number;
   readonly testFile?: string;
   readonly testFiles?: readonly string[];
   readonly testLine?: number;

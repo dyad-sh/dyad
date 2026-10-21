@@ -10,8 +10,8 @@
  *     harness via the `DYAD_DEV_USER_DATA_DIR` env var (read at call time so the
  *     harness can set it after this mock is constructed);
  *   - `BrowserWindow` / `safeStorage` / `Notification` / `shell` / `dialog` /
- *     `net` / `utilityProcess` are inert stand-ins so importing main-process
- *     code does not crash.
+ *     `net` / `session` / `utilityProcess` are inert stand-ins so importing
+ *     main-process code does not crash.
  *
  * Usage (must be hoisted so the vi.mock factory can see the shared Map):
  *
@@ -188,6 +188,14 @@ export function createElectronMock(shared: ElectronMockShared) {
       showMessageBox: vi.fn(() => Promise.resolve({ response: 0 })),
     },
     net: {},
+    session: {
+      defaultSession: {
+        cookies: {
+          get: vi.fn(() => Promise.resolve([])),
+          remove: vi.fn(() => Promise.resolve()),
+        },
+      },
+    },
     utilityProcess: {
       // Functional shim: forks the real worker bundle via child_process with
       // a parentPort bridge (code_explorer_fork_wrapper.cjs), so utility-

@@ -185,7 +185,13 @@
     "deny": "Reddet"
   },
   "experiments": {
-    "title": "Deneyler"
+    "title": "Deneyler",
+    "previewCookieIsolation": {
+      "label": "Önizleme oturum açma çerezlerini yalıt",
+      "description": "Paylaşılan localhost üzerinde her uygulamanın HttpOnly oturum açma çerezlerini ayrı tutar. Varsayılan olarak açıktır. Değişiklikleri tüm önizlemelere uygulamak için Dyad'ı yeniden başlatın.",
+      "loading": "Ayar yükleniyor…",
+      "loadError": "Ayar yüklenemedi"
+    }
   },
   "dangerZone": {
     "title": "Tehlikeli Bölge",

@@ -124,6 +124,7 @@ describe("readSettings", () => {
           "enableMcpToolSearch": true,
           "enableMultiWindow": false,
           "enablePnpmMinimumReleaseAgeWarning": true,
+          "enablePreviewCookieIsolation": true,
           "enableProLazyEditsMode": true,
           "enableProSmartFilesContextMode": true,
           "enableReviewButton": false,
@@ -183,6 +184,16 @@ describe("readSettings", () => {
       expect(result.enableAutoUpdate).toBe(true);
       expect(result.releaseChannel).toBe("stable");
       expect(result.autoApproveSafeMcpTools).toBe(true);
+      expect(result.enablePreviewCookieIsolation).toBe(true);
+    });
+
+    it("preserves an explicit opt-out of preview cookie isolation", () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(
+        JSON.stringify({ enablePreviewCookieIsolation: false }),
+      );
+
+      expect(readSettings().enablePreviewCookieIsolation).toBe(false);
     });
 
     it("preserves an explicit opt-out of safe MCP auto-approval", () => {
@@ -579,6 +590,7 @@ describe("readSettings", () => {
           "enableMcpToolSearch": true,
           "enableMultiWindow": false,
           "enablePnpmMinimumReleaseAgeWarning": true,
+          "enablePreviewCookieIsolation": true,
           "enableProLazyEditsMode": true,
           "enableProSmartFilesContextMode": true,
           "enableReviewButton": false,

@@ -83,15 +83,12 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 
 ## Production build snapshots
 
-- Keep the in-place-versus-isolated build decision independent of the host OS.
-  Create an isolated build from a detached Git worktree on every platform, then
+- Always build in an isolated detached Git worktree, including standard Vite
+  builds and builds without a running preview, on every platform. Then
   overlay the live repository's tracked edits and deletions plus untracked and
   relevant ignored inputs. The overlay copy backend may vary—use clone-on-write
   when Node and the filesystem support it and an ordinary bounded copy on
   Windows—but the resulting inputs must have the same semantics.
-- When a preview is Docker-backed, isolate even otherwise preview-safe builds.
-  The live dependency tree may contain Linux-native packages installed by the
-  container and must not be reused by a host-side production build.
 - Preserve the app's path relative to the Git top-level in the temporary
   worktree. Run the package manager from that corresponding app directory, but
   overlay repository-wide changes so monorepo configuration and sibling
@@ -165,27 +162,19 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
   `disableSandboxedE2eTests: true` in its settings; otherwise the tool performs a
   real sandboxed run and fails differently on every machine (`spawn pnpm ENOENT`
   without pnpm, a download failure without network, a timeout locally).
-- Snapshot teardown is best-effort and must not delay a cancelled or timed-out
-  turn. Start cleanup without awaiting it; the marked-directory startup sweep
-  remains the fallback for interrupted cleanup.
+- Keep completed build-snapshot teardown in the original coordinator operation
+  under its app-path claim, but settle the tool result before slow cleanup.
+  Release runtime protection after host execution; keep startup cleanup as fallback.
 - `AgentContext.onXmlStream` replaces the previous preview with the full accumulated XML; callers receiving delta output chunks must append them to a bounded buffer before emitting each update.
 - Throttle full accumulated build-output previews rather than emitting once per
   stdout/stderr chunk, and synchronously flush the final buffered preview when
   the child process settles so batching never hides terminal output.
-- Select build mode around preview continuity, not whether a build may generate
-  files. With no running preview, build in place. Beside a preview, run the exact
-  standard Vite build in place, run Next.js 16+ in place only when `.next/dev`
-  confirms separate development output, and isolate Next.js 15 and unknown or
-  custom build commands. Keep this decision independent of the host OS.
-  Because package managers may execute `prebuild` and `postbuild` around an
-  otherwise standard command, isolate any concurrent build with either hook.
-- Acquire app-operation claims before reading and validating build scripts,
-  lifecycle hooks, and preview facts. Re-detect framework facts from that
-  locked workspace instead of using turn-start context, because an integration
-  can change a Vite app into Vite/Nitro before `run_build`. If consent is
-  requested by the user's tool-permission settings, warn generically that the
-  package manager runs the current `prebuild`, `build`, and `postbuild`
-  lifecycle.
+- Hold repository-ref read and repository-worktree write claims through build
+  validation, snapshot capture, and package-manager resolution; release them
+  before dependency installation and building. Retain app-path protection through cleanup.
+- Capture all live-workspace inputs before releasing preparation claims; later
+  edits must not change this build's inputs. Keep queued admission cancellable
+  and describe results as verification of the captured snapshot.
 - A workspace snapshot is an operational boundary for ordinary build outputs,
   not a security sandbox for project code. Build approval must say that project
   and dependency code runs with the user's account; do not claim that changing

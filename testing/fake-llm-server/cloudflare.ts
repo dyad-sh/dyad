@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { Express, Request, Response } from "express";
 
 /**
@@ -33,6 +34,14 @@ interface FakeBuild {
   trigger: { trigger_uuid: string };
 }
 
+/** A Worker version, as every successful build uploads one. */
+interface FakeVersion {
+  id: string;
+  workerName: string;
+  buildUuid: string;
+  createdOn: string;
+}
+
 interface State {
   /** Whether Cloudflare's GitHub App can read repositories. */
   hasGithubAccess: boolean;
@@ -43,6 +52,8 @@ interface State {
   /** Build-time variables, by rule. */
   buildVariables: Record<string, Record<string, unknown>>;
   builds: FakeBuild[];
+  /** Newest last. */
+  versions: FakeVersion[];
 }
 
 // In Cloudflare's format: Dyad refuses an account id in any other.
@@ -57,6 +68,7 @@ function initialState(): State {
     triggers: [],
     buildVariables: {},
     builds: [],
+    versions: [],
   };
 }
 
@@ -284,6 +296,9 @@ export function registerFakeCloudflare(app: Express): void {
       (t) => t.trigger_uuid === req.params.uuid,
     );
     if (!trigger) return fail(res, 404, 12000, "Not found");
+    const worker = state.workers.find(
+      (w) => w.tag === trigger.external_script_id,
+    );
     const build: FakeBuild = {
       build_uuid: id("build"),
       status: "stopped",
@@ -294,6 +309,15 @@ export function registerFakeCloudflare(app: Express): void {
       trigger: { trigger_uuid: trigger.trigger_uuid },
     };
     state.builds.push(build);
+    // A successful deploy uploads a version of the Worker.
+    if (worker) {
+      state.versions.push({
+        id: randomUUID(),
+        workerName: worker.name,
+        buildUuid: build.build_uuid,
+        createdOn: new Date().toISOString(),
+      });
+    }
     ok(res, build);
   });
 
@@ -303,6 +327,42 @@ export function registerFakeCloudflare(app: Express): void {
       res,
       state.builds.filter((b) => b.external_script_id === req.params.tag),
     );
+  });
+
+  app.get(`${account}/workers/scripts/:name/versions`, (req, res) => {
+    if (!authed(req, res)) return;
+    const page = Number(req.query.page ?? "1");
+    const perPage = Number(req.query.per_page ?? "10");
+    const items = state.versions
+      .filter((v) => v.workerName === req.params.name)
+      .reverse()
+      .slice((page - 1) * perPage, page * perPage)
+      .map((v) => ({
+        id: v.id,
+        metadata: { has_preview: true, created_on: v.createdOn },
+      }));
+    ok(res, { items });
+  });
+
+  // Which build uploaded each of the versions asked about.
+  app.get(`${account}/builds/builds`, (req, res) => {
+    if (!authed(req, res)) return;
+    const ids = String(req.query.version_ids ?? "")
+      .split(",")
+      .filter(Boolean);
+    // Cloudflare answers about 20 versions at most.
+    if (ids.length === 0 || ids.length > 20) {
+      return fail(res, 400, 12013, "Invalid query parameter");
+    }
+    const builds: Record<string, FakeBuild> = {};
+    for (const version of state.versions) {
+      if (!ids.includes(version.id)) continue;
+      const build = state.builds.find(
+        (b) => b.build_uuid === version.buildUuid,
+      );
+      if (build) builds[version.id] = build;
+    }
+    ok(res, { builds });
   });
 
   app.get(`${account}/builds/builds/:uuid/logs`, (req, res) => {

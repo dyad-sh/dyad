@@ -1,4 +1,18 @@
 {
+  "testRunQueue": {
+    "title": "Test kuyruğu",
+    "openTests": "Testleri aç",
+    "allTests": "Tüm testler",
+    "currentChat": "Geçerli sohbet",
+    "openChat": "Sohbeti aç",
+    "testsPanel": "Test paneli",
+    "queued": "Sırada",
+    "running": "Çalışıyor",
+    "stopping": "Durduruluyor",
+    "passed": "Başarılı",
+    "failed": "Başarısız",
+    "inconclusive": "Sonuçsuz"
+  },
   "newChat": "Yeni Sohbet",
   "viewAllApps": "Tüm uygulamalar",
   "searchChats": "Sohbetlerde ara",

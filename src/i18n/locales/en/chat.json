@@ -1,4 +1,18 @@
 {
+  "testRunQueue": {
+    "title": "Test queue",
+    "openTests": "Open Tests",
+    "allTests": "All tests",
+    "currentChat": "Current chat",
+    "openChat": "Open chat",
+    "testsPanel": "Tests panel",
+    "queued": "Queued",
+    "running": "Running",
+    "stopping": "Stopping",
+    "passed": "Passed",
+    "failed": "Failed",
+    "inconclusive": "Inconclusive"
+  },
   "newChat": "New Chat",
   "viewAllApps": "All apps",
   "searchChats": "Search chats",

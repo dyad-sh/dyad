@@ -379,7 +379,7 @@ export function registerRecordingHandlers() {
                   // end is exactly the one that must still run. Re-deriving is
                   // no good either: the app may have been stopped by then.
                   previewOrigin = origin;
-                  await clearPreviewStorage(origin);
+                  await clearPreviewStorage(origin, appId);
                 } catch (error) {
                   logger.warn(
                     `Couldn't clear preview storage for app ${appId}: ${error}`,
@@ -426,7 +426,7 @@ export function registerRecordingHandlers() {
                 // preview must not be left holding it.
                 if (previewOrigin) {
                   try {
-                    await clearPreviewStorage(previewOrigin);
+                    await clearPreviewStorage(previewOrigin, appId);
                   } catch (error) {
                     logger.error(
                       `Couldn't clear the recording's preview session for app ${appId}; the preview may still hold the temporary test user's credentials: ${error}`,

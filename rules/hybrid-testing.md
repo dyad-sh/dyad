@@ -259,6 +259,11 @@ database foreign-key constraint before the behavior under test can run.
 
 ## Headless real-engine runs (benchmarks, evals through the chat-flow harness)
 
+- `src/testing/headless_proxy_server.ts` re-implements `startProxy` with its own
+  `workerData`. When you add an option to `startProxy` in
+  `src/ipc/utils/start_proxy_server.ts`, mirror it there and assert it in the
+  packaged/headless `describe.each` in `start_proxy_server.test.ts`; otherwise
+  headless suites silently run the worker without the new behavior.
 - Any code path through `runPtyCommand` (e.g. `add_dependency` → npm) fails under
   plain node/vitest with `posix_spawnp failed` — node-pty is built for Electron's
   ABI. Set `DYAD_DISABLE_PTY=1` to use the child_process fallback.

@@ -87,11 +87,59 @@ export type GithubOperationFailure = {
   message: string;
 };
 
+/**
+ * Why a sync left the remote where it did. `pushed`, `up-to-date`, and
+ * `uncommitted-changes` mean the user's current commit is on the remote
+ * branch; the other three mean it is not, and say why when that is known.
+ */
+export type PushOutcome =
+  | "pushed"
+  | "up-to-date"
+  | "uncommitted-changes"
+  | "wrong-branch"
+  | "detached-head"
+  | "unverified";
+
+export type PushedFileCounts = {
+  added: number;
+  modified: number;
+  deleted: number;
+  renamed: number;
+};
+
+/**
+ * What one sync did, measured from git before and after the push. Produced in
+ * the main process, carried on the success event, and read by the banner.
+ */
+export type PushSummary = {
+  outcome: PushOutcome;
+  /** The branch Dyad pushed: the one stored on the app row. */
+  pushedBranch: string;
+  /** The branch HEAD is on, or null when detached. */
+  currentBranch: string | null;
+  /** Commits the push added to the remote branch; null when unmeasurable. */
+  commitsPushed: number | null;
+  /** File-level changes across the pushed commits; null when nothing moved. */
+  files: PushedFileCounts | null;
+  /** Working-tree changes no commit contains yet. */
+  uncommittedFiles: number;
+  /** Commits reachable from HEAD that the remote branch does not have. */
+  commitsNotOnRemote: number;
+  /** Abbreviated commit the user is on. */
+  head: string;
+  /** Abbreviated remote branch tip after the push, or null if unknown. */
+  remoteTip: string | null;
+};
+
+export type GithubOperationResult = { type: "push"; summary: PushSummary };
+
 export type GithubOpsBanner = {
-  kind: "success" | "error" | "info";
+  kind: "success" | "error" | "info" | "warning";
   code?: string;
   completedOperation?: GithubOperation["type"];
   message: string;
+  /** A second, smaller line under `message` with the specifics. */
+  detail?: string;
 };
 
 interface GithubOpsContext {
@@ -150,7 +198,13 @@ export const INITIAL_GITHUB_OPS_STATE: GithubOpsState = {
 
 export type GithubOpsEvent =
   | { type: "OP_REQUESTED"; op: GithubOperation }
-  | { type: "OP_SUCCEEDED"; op: GithubOperation }
+  // `result` is present only for operations that measure what they did; a
+  // push without one (an older producer, or a test) keeps the plain banner.
+  | {
+      type: "OP_SUCCEEDED";
+      op: GithubOperation;
+      result?: GithubOperationResult;
+    }
   | {
       type: "OP_FAILED";
       op: GithubOperation;

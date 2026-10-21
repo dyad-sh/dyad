@@ -37,13 +37,17 @@ import {
   enableWorkersDevRoute,
   ensureBuildToken,
   getAccountSubdomain,
+  findBuildsForVersions,
   getBuildLogLines,
-  getLatestBuild,
   getTriggerRepoConnectionUuid,
   getTriggerRootDirectory,
   isCloudflareAuthFailure,
+  getWorkersDevRoute,
   isWorkersDevRouteEnabled,
+  listWorkerVersions,
+  VERSION_IDS_PER_REQUEST,
   listAccounts,
+  listRuleBuilds,
   listTriggers,
   listWorkers,
   probeBuildsAccess,
@@ -58,6 +62,7 @@ import {
   updateTrigger,
   upsertRepoConnection,
   verifyToken,
+  type CloudflareBuild,
   type CloudflareTrigger,
   type GithubRepoIdentity,
 } from "@/cloudflare_deploy/api";
@@ -70,6 +75,7 @@ import {
   pnpmVersionForBuild,
   suggestWorkerName,
   toDeploymentState,
+  buildCloudflareVersionUrl,
 } from "@/cloudflare_deploy/build_config";
 import {
   buildsWithNitro,
@@ -84,6 +90,186 @@ const logger = log.scope("cloudflare_handlers");
 
 const DEFAULT_BRANCH = "main";
 const LOG_TAIL_LINES = 30;
+/** How many of a folder's builds the deployment card lists. */
+const RECENT_BUILDS_LIMIT = 5;
+
+/**
+ * The version each finished build deployed, by build id. Nothing on a build
+ * says which version it uploaded: the Worker's versions are listed and
+ * matched back to builds. A build matched to a version is kept for good,
+ * with or without an address. A build matched to none is asked about again:
+ * soon while the build is fresh, since the mapping can lag a little behind
+ * a build finishing, and rarely once it is old, since the search is bounded.
+ */
+const buildVersionCache = new Map<
+  string,
+  { versionId: string | null; retryAt: number | null }
+>();
+const BUILD_VERSION_CACHE_LIMIT = 500;
+const FRESH_BUILD_MS = 15 * 60 * 1000;
+const FRESH_MISS_RETRY_MS = 30 * 1000;
+const MISS_RETRY_MS = 15 * 60 * 1000;
+/**
+ * A Worker's versions also come from its other rules and from the dashboard,
+ * so the card's builds can sit well down the history. Each page costs two
+ * requests, so the search is bounded.
+ */
+const VERSIONS_PER_PAGE = VERSION_IDS_PER_REQUEST;
+const VERSION_LOOKUP_PAGES = 5;
+/**
+ * How long a status waits for the search before answering without it. The
+ * search runs on, and the next poll reads what it found.
+ */
+let buildVersionWaitMs = 2_500;
+/** The search under way for each Worker, so polls do not stack them. */
+const buildVersionSearches = new Map<string, Promise<void>>();
+
+function rememberBuildVersion(
+  buildUuid: string,
+  entry: { versionId: string | null; retryAt: number | null },
+) {
+  // The oldest entry goes first, so the builds still on the card stay.
+  if (
+    !buildVersionCache.has(buildUuid) &&
+    buildVersionCache.size >= BUILD_VERSION_CACHE_LIMIT
+  ) {
+    const oldest = buildVersionCache.keys().next().value;
+    if (oldest !== undefined) buildVersionCache.delete(oldest);
+  }
+  buildVersionCache.set(buildUuid, entry);
+}
+
+function isBuildVersionDue(buildUuid: string): boolean {
+  const entry = buildVersionCache.get(buildUuid);
+  return (
+    entry === undefined ||
+    (entry.retryAt !== null && entry.retryAt <= Date.now())
+  );
+}
+
+function missRetryAt(build: CloudflareBuild): number {
+  const finished = Date.parse(build.stopped_on ?? build.created_on ?? "");
+  const fresh =
+    Number.isFinite(finished) && Date.now() - finished < FRESH_BUILD_MS;
+  return Date.now() + (fresh ? FRESH_MISS_RETRY_MS : MISS_RETRY_MS);
+}
+
+/**
+ * Matches builds to the versions they uploaded, reading pages of the
+ * Worker's history until each is found, the history runs out, or the pages
+ * reach versions older than every build still being looked for: a version
+ * is uploaded after its build starts, so nothing older can be the one. A
+ * version with no address of its own is matched to null.
+ */
+async function matchBuildsToVersions(
+  token: string,
+  accountId: string,
+  workerName: string,
+  builds: CloudflareBuild[],
+): Promise<Map<string, string | null>> {
+  const matched = new Map<string, string | null>();
+  const pending = new Set(builds.map((build) => build.build_uuid));
+  const starts = builds
+    .map((build) => Date.parse(build.created_on ?? ""))
+    .filter(Number.isFinite);
+  // An undated build could be anywhere in the history, so then there is no
+  // point past which to stop.
+  const oldestStart =
+    starts.length === builds.length ? Math.min(...starts) : null;
+  for (let page = 1; page <= VERSION_LOOKUP_PAGES; page++) {
+    const versions = await listWorkerVersions(token, accountId, workerName, {
+      page,
+      perPage: VERSIONS_PER_PAGE,
+    });
+    if (versions.length === 0) break;
+    const byVersion = await findBuildsForVersions(
+      token,
+      accountId,
+      versions.map((version) => version.id),
+    );
+    for (const version of versions) {
+      const buildUuid = byVersion[version.id]?.build_uuid;
+      if (!buildUuid || !pending.has(buildUuid)) continue;
+      matched.set(buildUuid, version.hasPreview ? version.id : null);
+      pending.delete(buildUuid);
+    }
+    if (pending.size === 0) break;
+    const lastMade = Date.parse(versions[versions.length - 1].createdOn ?? "");
+    if (
+      oldestStart !== null &&
+      Number.isFinite(lastMade) &&
+      lastMade < oldestStart
+    ) {
+      break;
+    }
+    if (versions.length < VERSIONS_PER_PAGE) break;
+  }
+  return matched;
+}
+
+async function searchBuildVersions(
+  token: string,
+  accountId: string,
+  workerName: string,
+  builds: CloudflareBuild[],
+): Promise<void> {
+  try {
+    const matched = await matchBuildsToVersions(
+      token,
+      accountId,
+      workerName,
+      builds,
+    );
+    for (const build of builds) {
+      const versionId = matched.get(build.build_uuid);
+      rememberBuildVersion(
+        build.build_uuid,
+        versionId === undefined
+          ? { versionId: null, retryAt: missRetryAt(build) }
+          : { versionId, retryAt: null },
+      );
+    }
+  } catch {
+    // Not knowing which version an older build is is not worth failing the
+    // status over, and the next poll asks again.
+  }
+}
+
+async function resolveBuildVersions(
+  token: string,
+  accountId: string,
+  workerName: string,
+  builds: CloudflareBuild[],
+): Promise<Map<string, string>> {
+  // Only a successful build deploys a version.
+  const due = builds.filter(
+    (build) =>
+      toDeploymentState(build) === "live" &&
+      isBuildVersionDue(build.build_uuid),
+  );
+  if (due.length > 0) {
+    const key = `${accountId}/${workerName}`;
+    let search = buildVersionSearches.get(key);
+    if (!search) {
+      search = searchBuildVersions(token, accountId, workerName, due).finally(
+        () => buildVersionSearches.delete(key),
+      );
+      buildVersionSearches.set(key, search);
+    }
+    await Promise.race([
+      search,
+      new Promise<void>((resolve) => {
+        setTimeout(resolve, buildVersionWaitMs).unref?.();
+      }),
+    ]);
+  }
+  const result = new Map<string, string>();
+  for (const build of builds) {
+    const versionId = buildVersionCache.get(build.build_uuid)?.versionId;
+    if (versionId) result.set(build.build_uuid, versionId);
+  }
+  return result;
+}
 
 type AppRow = typeof apps.$inferSelect;
 type ConnectionRow = typeof cloudflareAppConnections.$inferSelect;
@@ -963,8 +1149,8 @@ async function handleGetDeploymentStatus({
   }
 
   try {
-    const [build, rule, routeEnabled] = await Promise.all([
-      getLatestBuild(token, row.accountId, row.workerTag, row.triggerUuid),
+    const [builds, rule, route] = await Promise.all([
+      listRuleBuilds(token, row.accountId, row.workerTag, row.triggerUuid),
       // A rule deleted in the Cloudflare dashboard leaves the Worker and its
       // last build in place, so nothing else would show that deploys stopped.
       // Failing to list rules is not evidence that the rule is gone.
@@ -978,7 +1164,7 @@ async function handleGetDeploymentStatus({
         .catch(() => undefined),
       // The route can be switched in the dashboard, and a deploy applies
       // whatever the Wrangler config says. Not knowing keeps the stored address.
-      isWorkersDevRouteEnabled(token, row.accountId, row.workerName).catch(
+      getWorkersDevRoute(token, row.accountId, row.workerName).catch(
         () => undefined,
       ),
     ]);
@@ -987,7 +1173,7 @@ async function handleGetDeploymentStatus({
       row.accountId,
       row.workerName,
       row.workerUrl,
-      routeEnabled,
+      route?.enabled,
     );
     const ruleMissing = rule === null;
     // The rule stays on the branch and repository it was made for. An app
@@ -1002,11 +1188,33 @@ async function handleGetDeploymentStatus({
       })
         ? describeTriggerSource(rule)
         : null;
+    const recent = builds.slice(0, RECENT_BUILDS_LIMIT);
+    // A version's address sits beside the Worker's workers.dev address, so
+    // there is none to give without that, or while version URLs are off.
+    const versionUrlsOn = workerUrl !== null && route?.previewsEnabled === true;
+    const versions = versionUrlsOn
+      ? await resolveBuildVersions(token, row.accountId, row.workerName, recent)
+      : new Map<string, string>();
+    const recentBuilds = recent.map((build) => {
+      const versionId = versions.get(build.build_uuid);
+      return {
+        buildUuid: build.build_uuid,
+        state: toDeploymentState(build),
+        commitHash: build.build_trigger_metadata?.commit_hash ?? null,
+        createdAt: build.created_on ?? null,
+        previewUrl:
+          workerUrl !== null && versionId !== undefined
+            ? buildCloudflareVersionUrl({ workerUrl, versionId })
+            : null,
+      };
+    });
+    const build = builds[0];
     if (!build) {
       return {
         state: "none",
         commitHash: null,
         logTail: [],
+        recentBuilds,
         tokenRevoked: false,
         ruleMissing,
         ruleDeploys,
@@ -1025,6 +1233,7 @@ async function handleGetDeploymentStatus({
       state,
       commitHash: build.build_trigger_metadata?.commit_hash ?? null,
       logTail,
+      recentBuilds,
       tokenRevoked: isBuildTokenRevokedLog(logTail),
       ruleMissing,
       ruleDeploys,
@@ -1196,6 +1405,12 @@ export function registerCloudflareHandlers() {
 export const cloudflareHandlersForTesting = {
   handleListWorkers,
   clearGithubIdentityCache: () => githubIdentityCache.clear(),
+  clearBuildVersionCache: () => buildVersionCache.clear(),
+  setBuildVersionWaitMs: (ms: number) => {
+    buildVersionWaitMs = ms;
+  },
+  settleBuildVersionSearches: () =>
+    Promise.all(buildVersionSearches.values()).then(() => undefined),
   handleSaveToken,
   handleGetAppStatus,
   handleCheckRepoAccess,

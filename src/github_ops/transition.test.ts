@@ -13,6 +13,7 @@ import {
   type GithubOpsEvent,
   type GithubOpsCommand,
   type GithubOpsState,
+  type PushSummary,
 } from "./state";
 import { transition } from "./transition";
 import { projectGithubOps } from "./projection";
@@ -1237,6 +1238,177 @@ describe("github_ops transition with a GitLab provider", () => {
     expect(pushing).toMatchObject({
       type: "running",
       op: { type: "push", mode: "normal", provider: "gitlab" },
+    });
+  });
+});
+
+describe("push summaries", () => {
+  const push: GithubOperation = {
+    type: "push",
+    mode: "normal",
+    provider: "github",
+  };
+  const baseSummary: Omit<PushSummary, "outcome"> = {
+    pushedBranch: "main",
+    currentBranch: "main",
+    commitsPushed: 0,
+    files: null,
+    uncommittedFiles: 0,
+    commitsNotOnRemote: 0,
+    head: "ffb1463",
+    remoteTip: "ffb1463",
+  };
+
+  function complete(
+    summary: Partial<PushSummary> & Pick<PushSummary, "outcome">,
+  ) {
+    const running = transition(INITIAL_GITHUB_OPS_STATE, {
+      type: "OP_REQUESTED",
+      op: push,
+    }).state;
+    return transition(running, {
+      type: "OP_SUCCEEDED",
+      op: push,
+      result: {
+        type: "push",
+        summary: { ...baseSummary, ...summary },
+      },
+    }).state;
+  }
+
+  it("keeps the plain banner when the producer sent no summary", () => {
+    const running = transition(INITIAL_GITHUB_OPS_STATE, {
+      type: "OP_REQUESTED",
+      op: push,
+    }).state;
+    const idle = transition(running, { type: "OP_SUCCEEDED", op: push }).state;
+    expect(idle.banner).toEqual({
+      kind: "success",
+      completedOperation: "push",
+      message: "Successfully pushed to GitHub!",
+    });
+  });
+
+  it("reports what a push sent, keeping the sentence page objects look for", () => {
+    const idle = complete({
+      outcome: "pushed",
+      commitsPushed: 3,
+      files: { added: 5, modified: 2, deleted: 1, renamed: 0 },
+    });
+    expect(idle.banner).toEqual({
+      kind: "success",
+      completedOperation: "push",
+      message: "Successfully pushed to GitHub!",
+      detail: "3 commits on main: 5 files added, 2 modified, 1 deleted.",
+    });
+  });
+
+  it("says when the remote already had everything", () => {
+    expect(complete({ outcome: "up-to-date" }).banner).toMatchObject({
+      kind: "success",
+      message: "GitHub is already up to date.",
+      detail: "Your latest commit on main was already on GitHub.",
+    });
+  });
+
+  it("warns about uncommitted work instead of claiming success", () => {
+    expect(
+      complete({ outcome: "uncommitted-changes", uncommittedFiles: 4 }).banner,
+    ).toMatchObject({
+      kind: "warning",
+      message: "GitHub is up to date, but you have uncommitted changes.",
+      detail:
+        "4 changed files haven't been committed yet, so they aren't on main.",
+    });
+    expect(
+      complete({ outcome: "uncommitted-changes", uncommittedFiles: 1 }).banner
+        ?.detail,
+    ).toBe("1 changed file hasn't been committed yet, so it isn't on main.");
+  });
+
+  it("names both branches when the pushed branch is not the working one", () => {
+    const idle = complete({
+      outcome: "wrong-branch",
+      pushedBranch: "other2",
+      currentBranch: "main",
+      commitsNotOnRemote: 5,
+      remoteTip: "c872cc3",
+    });
+    expect(idle.banner).toMatchObject({
+      kind: "warning",
+      message: "You're working on main, but Dyad syncs other2.",
+      detail:
+        "other2 was already up to date. 5 commits on main are not on GitHub's other2.",
+    });
+    // A warning is not a completed success, so it must not auto-dismiss.
+    expect(projectGithubOps(idle).completedOperation).toBeNull();
+  });
+
+  it("says what did reach the pushed branch when the user is on another", () => {
+    expect(
+      complete({
+        outcome: "wrong-branch",
+        pushedBranch: "other2",
+        currentBranch: "main",
+        commitsPushed: 2,
+        commitsNotOnRemote: 5,
+        remoteTip: "c872cc3",
+      }).banner?.detail,
+    ).toBe(
+      "Dyad pushed 2 commits to other2. 5 commits on main are not on GitHub's other2.",
+    );
+  });
+
+  it("explains a detached HEAD", () => {
+    expect(
+      complete({
+        outcome: "detached-head",
+        currentBranch: null,
+        commitsNotOnRemote: 1,
+        remoteTip: "c872cc3",
+      }).banner,
+    ).toMatchObject({
+      kind: "warning",
+      message: "You're not on a branch, so your latest work wasn't pushed.",
+      detail: "main was already up to date. 1 commit is not on GitHub's main.",
+    });
+    expect(
+      complete({
+        outcome: "detached-head",
+        currentBranch: null,
+        commitsPushed: 1,
+        commitsNotOnRemote: 1,
+        remoteTip: "c872cc3",
+      }).banner?.detail,
+    ).toBe("Dyad pushed 1 commit to main. 1 commit is not on GitHub's main.");
+  });
+
+  it("falls back to the two commits when nothing else explains the gap", () => {
+    expect(
+      complete({ outcome: "unverified", remoteTip: "c872cc3" }).banner,
+    ).toMatchObject({
+      kind: "warning",
+      message: "Sync finished, but your latest commit is not on GitHub.",
+      detail: "Your main is at ffb1463; GitHub's main is at c872cc3.",
+    });
+  });
+
+  it("labels the provider from the operation", () => {
+    const running = transition(INITIAL_GITHUB_OPS_STATE, {
+      type: "OP_REQUESTED",
+      op: { ...push, provider: "gitlab" },
+    }).state;
+    const idle = transition(running, {
+      type: "OP_SUCCEEDED",
+      op: { ...push, provider: "gitlab" },
+      result: {
+        type: "push",
+        summary: { ...baseSummary, outcome: "up-to-date" },
+      },
+    }).state;
+    expect(idle.banner).toMatchObject({
+      message: "GitLab is already up to date.",
+      detail: "Your latest commit on main was already on GitLab.",
     });
   });
 });

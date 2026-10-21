@@ -838,7 +838,7 @@
       {
         "type": "function",
         "name": "run_build",
-        "description": "Run the app's production build as a selective, expensive verification step.\n\n- Use after build configuration, dependencies, framework routing, server/static-generation, environment loading, or substantial production-path changes, or when the user explicitly asks.\n- Do not use after routine small UI, styling, copy, or asset edits. Type checking is the normal verification step.\n- Finish related edits first and run once. A failed build may be retried only after making a relevant change.\n- The active preview stays running. Builds that could interfere with it are verified in an isolated workspace with clean dependencies.",
+        "description": "Run the app's production build as a selective, expensive verification step.\n\n- Use after build configuration, dependencies, framework routing, server/static-generation, environment loading, or substantial production-path changes, or when the user explicitly asks.\n- Do not use after routine small UI, styling, copy, or asset edits. Type checking is the normal verification step.\n- Finish related edits first and run once. A failed build may be retried only after making a relevant change.\n- Every build verifies a captured snapshot in an isolated workspace with clean dependencies. The active preview stays running, and edits and isolated E2E setup can continue after capture. Later edits are not included in this build result.",
         "parameters": {
           "$schema": "http://json-schema.org/draft-07/schema#",
           "type": "object",

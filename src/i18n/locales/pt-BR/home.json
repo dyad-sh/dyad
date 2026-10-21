@@ -155,7 +155,7 @@
     "descriptionPlaceholder": "Descreva o problema e como reproduzi-lo. Quanto mais detalhes, mais rápido poderemos ajudar.",
     "descriptionRequired": "Descreva o que aconteceu — uma frase já basta.",
     "skipDescription": "Enviar sem descrição",
-    "skipDescriptionHint": "Descrever o bug nos ajuda a ajudar você mais rápido",
+    "skipDescriptionHint": "Descrever o bug nos ajuda a resolver seu problema mais rápido",
     "capReached": "Limite de caracteres atingido. Você pode terminar de escrever sua descrição no GitHub na próxima etapa.",
     "preparing": "Preparando seu relatório...",
     "createIssue": "Criar issue no GitHub",
@@ -691,7 +691,7 @@
       "syncPreviewTitle": "Configuração automática do banco de dados",
       "syncPreviewLoading": "Carregando a configuração do banco de dados…",
       "syncPreviewError": "Não foi possível carregar a prévia da configuração automática do banco de dados. Você ainda pode criar o projeto.",
-      "syncPreviewIntro": "Quando você criar este projeto, o Dyad vai enviar estas variáveis de ambiente do seu banco de dados {{branchType}} para o Vercel (os valores secretos ficam ocultos e são enviados com segurança):",
+      "syncPreviewIntro": "Quando você criar este projeto, o Dyad vai enviar para o Vercel estas variáveis de ambiente do banco de dados da sua branch {{branchType}} (os valores secretos ficam ocultos e são enviados com segurança):",
       "syncPreviewAuthDomain": "O domínio da sua implantação em produção será adicionado aos domínios de redirecionamento confiáveis do Neon depois do primeiro deploy."
     },
     "supabase": {

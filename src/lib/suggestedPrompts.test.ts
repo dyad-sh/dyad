@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Message } from "@/ipc/types";
 import {
   extractSuggestedPrompts,
+  MAX_SUGGESTED_PROMPT_CHARS,
   selectSuggestedPrompts,
 } from "./suggestedPrompts";
 
@@ -79,6 +80,15 @@ Add tests
     const content = `<think>Draft:\n<dyad-suggested-prompts>\nDraft idea\n</dyad-suggested-prompts>\n</think>\nDone!\n<dyad-suggested-prompts>\nLet users save their favorites\n</dyad-suggested-prompts>`;
     expect(extractSuggestedPrompts(content)).toEqual([
       "Let users save their favorites",
+    ]);
+  });
+
+  it("drops prompts longer than the chip limit", () => {
+    const long = "Add a feature ".repeat(10).trim();
+    expect(long.length).toBeGreaterThan(MAX_SUGGESTED_PROMPT_CHARS);
+    const content = `<dyad-suggested-prompts>\n${long}\nAdd a dark mode toggle\n</dyad-suggested-prompts>`;
+    expect(extractSuggestedPrompts(content)).toEqual([
+      "Add a dark mode toggle",
     ]);
   });
 

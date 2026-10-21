@@ -11,6 +11,10 @@ export const SUGGESTED_PROMPTS_TAG = "dyad-suggested-prompts";
 
 export const MAX_SUGGESTED_PROMPTS = 3;
 
+// A chip shows a single line but sends its full text, so longer prompts are
+// dropped rather than sent unread.
+export const MAX_SUGGESTED_PROMPT_CHARS = 120;
+
 // Blocks the agent appends after its reply when the turn did not fully
 // complete: a post-turn error such as a failed Supabase deploy, the step
 // limit pause, or an Implementer that stopped early or was cancelled.
@@ -59,7 +63,7 @@ export function extractSuggestedPrompts(content: string): string[] {
       .trim()
       .replace(/^(?:[-*•]|\d+[.)])\s+/, "")
       .trim();
-    if (!prompt) continue;
+    if (!prompt || prompt.length > MAX_SUGGESTED_PROMPT_CHARS) continue;
     const key = prompt.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);

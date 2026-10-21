@@ -278,7 +278,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     (job) =>
       (!appId || job.targetAppId === appId) &&
       !dismissedImageJobIds.has(job.id) &&
-      job.status === "pending",
+      // A cancelling job can still finish and be attached to the next message.
+      (job.status === "pending" || job.status === "cancelling"),
   );
 
   // Use the attachments hook

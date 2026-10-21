@@ -398,6 +398,10 @@ export async function appendAttachmentManifestEntryGroups(
   );
 }
 
+// Archives can add thousands of manifest rows, so their files are checked a
+// batch at a time rather than one by one.
+const STAT_BATCH_SIZE = 32;
+
 async function pruneAttachmentManifestUnlocked(
   appPath: string,
 ): Promise<number> {
@@ -407,16 +411,30 @@ async function pruneAttachmentManifestUnlocked(
   }
 
   const mediaDir = getDyadMediaDir(appPath);
-  const keptEntries: AttachmentManifestEntry[] = [];
-  for (const entry of entries) {
-    const storedAttachment = await toStoredAttachmentInfoIfPresent(
-      mediaDir,
-      entry,
+  const presentEntries: AttachmentManifestEntry[] = [];
+  for (let start = 0; start < entries.length; start += STAT_BATCH_SIZE) {
+    const batch = entries.slice(start, start + STAT_BATCH_SIZE);
+    const present = await Promise.all(
+      batch.map((entry) => toStoredAttachmentInfoIfPresent(mediaDir, entry)),
     );
-    if (storedAttachment) {
-      keptEntries.push(entry);
-    }
+    batch.forEach((entry, index) => {
+      if (present[index]) {
+        presentEntries.push(entry);
+      }
+    });
   }
+  // Drop entries whose archive is gone, so a later upload of the same bytes
+  // under another name doesn't inherit their names.
+  const presentArchives = new Set(
+    presentEntries
+      .filter((entry) => entry.archiveLogicalName === undefined)
+      .map((entry) => entry.logicalName),
+  );
+  const keptEntries = presentEntries.filter(
+    (entry) =>
+      entry.archiveLogicalName === undefined ||
+      presentArchives.has(entry.archiveLogicalName),
+  );
 
   const removedCount = entries.length - keptEntries.length;
   if (removedCount > 0) {
@@ -553,10 +571,6 @@ async function toStoredAttachmentInfoIfPresent(
     filePath,
   };
 }
-
-// Archives can add thousands of manifest rows, so their files are checked a
-// batch at a time rather than one by one.
-const STAT_BATCH_SIZE = 32;
 
 /**
  * Manifest entries whose stored file still exists, in manifest order.

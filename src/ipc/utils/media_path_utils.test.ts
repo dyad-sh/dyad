@@ -196,6 +196,45 @@ describe("manifest with extracted archive entries", () => {
     ).toEqual(["proj.zip"]);
   });
 
+  it("prunes entries whose archive is gone even if their files remain", async () => {
+    writeStored("notes.txt", "n");
+    writeStored("hash/a.txt", "a");
+    await appendAttachmentManifestEntriesWithLogicalNames(appPath, [
+      {
+        requestedLogicalName: "notes.txt",
+        originalName: "notes.txt",
+        storedFileName: "notes.txt",
+        mimeType: "text/plain",
+        sizeBytes: 1,
+        createdAt: "2026-01-01T00:00:00.000Z",
+      },
+      {
+        requestedLogicalName: "proj.zip",
+        originalName: "proj.zip",
+        storedFileName: "hash.zip",
+        mimeType: "application/zip",
+        sizeBytes: 8,
+        createdAt: "2026-01-01T00:00:00.000Z",
+      },
+      {
+        requestedLogicalName: "proj.zip/a.txt",
+        nestedLogicalName: true,
+        originalName: "a.txt",
+        storedFileName: "hash/a.txt",
+        mimeType: "text/plain",
+        sizeBytes: 1,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        archiveLogicalName: "proj.zip",
+      },
+    ]);
+
+    // hash.zip was never written, as if cleanup removed it.
+    expect(await pruneAttachmentManifest(appPath)).toBe(2);
+    expect(
+      (await listStoredAttachments(appPath)).map((a) => a.logicalName),
+    ).toEqual(["notes.txt"]);
+  });
+
   it("registers entries under their parent's final name in one write", async () => {
     writeStored("first.zip", "zipbytes");
     writeStored("second.zip", "zipbytes2");

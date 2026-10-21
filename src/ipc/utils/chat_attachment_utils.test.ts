@@ -306,6 +306,34 @@ describe("archive attachments", () => {
     expect(text).toContain('list_files("attachments:my\\"proj.zip")');
   });
 
+  it("says when an archive has nothing to read", () => {
+    const text = buildLocalAgentAttachmentInfo(
+      [
+        archiveAttachment({
+          archive: {
+            extractedDirName: "hash",
+            files: [],
+            skipped: { encrypted: 2 },
+            strippedRootDir: null,
+            totalBytes: 0,
+            entryCount: 0,
+          },
+        }),
+      ],
+      resolveAttachmentDeliveryConfig({
+        mode: "local-agent",
+        settings: { enableSandboxScriptExecution: false },
+        hasImageAttachments: false,
+        hasUploadedAttachments: false,
+      }),
+    );
+    expect(text).toContain(
+      "  Nothing was extracted, so there are no entries to read.",
+    );
+    expect(text).not.toContain("Read an entry");
+    expect(text).not.toContain("Entries:");
+  });
+
   it("caps the inline entry list", () => {
     const files = Array.from(
       { length: MAX_ARCHIVE_ENTRIES_IN_PROMPT + 5 },

@@ -238,6 +238,10 @@ export function buildArchiveAttachmentInfo(
   const lines = [
     `- ${logicalPath} (${formatAttachmentSize(attachment.sizeBytes)}, ${attachment.mimeType}): ${summaryParts.join("; ")}.`,
   ];
+  if (fileCount === 0) {
+    lines.push("  Nothing was extracted, so there are no entries to read.");
+    return lines;
+  }
 
   const access = [
     `Read an entry with read_file using ${logicalPath}/<entry path>`,
@@ -260,28 +264,26 @@ export function buildArchiveAttachmentInfo(
     );
   }
 
-  if (fileCount > 0) {
-    lines.push("  Entries:");
-    let listed = 0;
-    let listingChars = 0;
-    for (const file of archive.files) {
-      const line = `    ${file.relativePath} (${formatAttachmentSize(file.sizeBytes)})`;
-      if (
-        listed >= MAX_ARCHIVE_ENTRIES_IN_PROMPT ||
-        (listed > 0 && listingChars + line.length > MAX_ARCHIVE_LISTING_CHARS)
-      ) {
-        break;
-      }
-      lines.push(line);
-      listed++;
-      listingChars += line.length;
+  lines.push("  Entries:");
+  let listed = 0;
+  let listingChars = 0;
+  for (const file of archive.files) {
+    const line = `    ${file.relativePath} (${formatAttachmentSize(file.sizeBytes)})`;
+    if (
+      listed >= MAX_ARCHIVE_ENTRIES_IN_PROMPT ||
+      (listed > 0 && listingChars + line.length > MAX_ARCHIVE_LISTING_CHARS)
+    ) {
+      break;
     }
-    const remaining = fileCount - listed;
-    if (remaining > 0) {
-      lines.push(
-        `    ...and ${remaining} more ${remaining === 1 ? "entry" : "entries"} not listed here; list_files with directory "${logicalPath}" lists up to 1000 of them per call, or narrow it to "${logicalPath}/<folder>".`,
-      );
-    }
+    lines.push(line);
+    listed++;
+    listingChars += line.length;
+  }
+  const remaining = fileCount - listed;
+  if (remaining > 0) {
+    lines.push(
+      `    ...and ${remaining} more ${remaining === 1 ? "entry" : "entries"} not listed here; list_files with directory "${logicalPath}" lists up to 1000 of them per call, or narrow it to "${logicalPath}/<folder>".`,
+    );
   }
   return lines;
 }

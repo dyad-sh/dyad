@@ -50,10 +50,26 @@ it("passes a suggestions block split across stream chunks", () => {
   );
 });
 
-it("escapes the suggestions block when it is not allowed", () => {
-  const output = runFilter(claudeTextFilter(), [SUGGESTIONS]);
-  expect(output).not.toContain("<dyad-suggested-prompts>");
-  expect(output).toContain("&lt;dyad-suggested-prompts>");
+it("removes a valid suggestions block when it is not allowed", () => {
+  expect(runFilter(claudeTextFilter(), [`Done.\n\n${SUGGESTIONS}`])).toBe(
+    "Done.\n\n",
+  );
+});
+
+it("still escapes an unsafe suggestions block when it is not allowed", () => {
+  const output = runFilter(claudeTextFilter(), [
+    "<dyad-suggested-prompts>\nAdd a dark mode toggle\nMore prose after it",
+  ]);
+  expect(output).toBe(
+    "&lt;dyad-suggested-prompts>\nAdd a dark mode toggle\nMore prose after it",
+  );
+});
+
+it("keeps escaping action markup after a removed suggestions block", () => {
+  const output = runFilter(claudeTextFilter(), [
+    `${SUGGESTIONS}\n<dyad-write path="a">x</dyad-write>`,
+  ]);
+  expect(output).toBe(`\n&lt;dyad-write path="a">x&lt;/dyad-write>`);
 });
 
 it("escapes an unclosed suggestions block so it cannot hide later text", () => {

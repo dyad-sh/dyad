@@ -19,7 +19,12 @@ export function allowsSuggestedPrompts(
   );
 }
 
-/** Keep model-authored Dyad action markup distinct from host-emitted tool cards. */
+/**
+ * Keep model-authored Dyad action markup distinct from host-emitted tool cards.
+ * A valid suggestions block passes through when `allowSuggestedPrompts` is set
+ * and is removed otherwise; anything else that looks like Dyad markup is
+ * escaped.
+ */
 export function claudeTextFilter(
   allowSecurityFindings = false,
   allowSuggestedPrompts = false,
@@ -52,7 +57,10 @@ export function claudeTextFilter(
         ) {
           // A short, closed block of plain text cannot hide or fake other
           // markup, so it is the only form that passes through unescaped.
-          out += held.slice(0, end);
+          // When suggestions are not allowed it is removed instead, since
+          // models keep copying the tag from earlier turns after the setting
+          // is turned off.
+          if (allowSuggestedPrompts) out += held.slice(0, end);
           pending = held.slice(end);
           held = null;
           continue;
@@ -71,9 +79,7 @@ export function claudeTextFilter(
         continue;
       }
 
-      const open = allowSuggestedPrompts
-        ? pending.indexOf(SUGGESTED_PROMPTS_OPEN)
-        : -1;
+      const open = pending.indexOf(SUGGESTED_PROMPTS_OPEN);
       if (open >= 0) {
         out += escapeTags(pending.slice(0, open));
         held = pending.slice(open);

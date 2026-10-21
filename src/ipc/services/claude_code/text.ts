@@ -1,3 +1,5 @@
+import { SUGGESTED_PROMPTS_GUIDANCE } from "@/prompts/local_agent_prompt";
+
 const SUGGESTED_PROMPTS_OPEN = "<dyad-suggested-prompts>";
 const SUGGESTED_PROMPTS_CLOSE = "</dyad-suggested-prompts>";
 // Two or three short prompts fit far below this. Anything longer is escaped
@@ -5,9 +7,10 @@ const SUGGESTED_PROMPTS_CLOSE = "</dyad-suggested-prompts>";
 const MAX_SUGGESTED_PROMPTS_BLOCK_CHARS = 1000;
 
 /**
- * Whether model text may carry a follow-up suggestions block. The setting must
- * be on, because the system prompt also holds app-controlled text such as
- * AI_RULES.md that could contain the tag.
+ * Whether model text may carry a follow-up suggestions block: the setting is on
+ * and this turn's system prompt includes the suggestions guidance. The full
+ * guidance is matched, not just the tag, because the system prompt also holds
+ * app-controlled text such as AI_RULES.md that could mention the tag.
  */
 export function allowsSuggestedPrompts(
   settingEnabled: boolean,
@@ -15,7 +18,7 @@ export function allowsSuggestedPrompts(
 ): boolean {
   return (
     settingEnabled &&
-    systemPrompts.some((prompt) => prompt.includes(SUGGESTED_PROMPTS_OPEN))
+    systemPrompts.some((prompt) => prompt.includes(SUGGESTED_PROMPTS_GUIDANCE))
   );
 }
 

@@ -1,4 +1,9 @@
 import { expect, it } from "vitest";
+import {
+  constructBuildAgentPrompt,
+  constructLocalAgentPrompt,
+  SUGGESTED_PROMPTS_GUIDANCE,
+} from "@/prompts/local_agent_prompt";
 import { allowsSuggestedPrompts, claudeTextFilter } from "./text";
 it("never turns split model text into host action cards", () => {
   const filter = claudeTextFilter();
@@ -111,9 +116,37 @@ it("keeps escaping action markup after a passed suggestions block", () => {
 });
 
 it("allows suggestions only when the setting is on and the prompt asks for them", () => {
-  const withGuidance = ["...end with <dyad-suggested-prompts> tag..."];
+  const withGuidance = [`Rules...\n${SUGGESTED_PROMPTS_GUIDANCE}\n...`];
   expect(allowsSuggestedPrompts(true, withGuidance)).toBe(true);
   // App text such as AI_RULES.md can contain the tag even with the setting off.
   expect(allowsSuggestedPrompts(false, withGuidance)).toBe(false);
   expect(allowsSuggestedPrompts(true, ["no suggestions guidance"])).toBe(false);
+  // App text that only mentions the tag does not count as the guidance.
+  expect(
+    allowsSuggestedPrompts(true, [
+      "AI_RULES: never use <dyad-suggested-prompts>",
+    ]),
+  ).toBe(false);
+});
+
+it("recognizes the guidance in the real writable prompts and not in read-only ones", () => {
+  const enabled = { suggestedPromptsEnabled: true };
+  expect(
+    allowsSuggestedPrompts(true, [
+      constructLocalAgentPrompt(undefined, undefined, enabled),
+    ]),
+  ).toBe(true);
+  expect(
+    allowsSuggestedPrompts(true, [
+      constructBuildAgentPrompt(undefined, undefined, enabled),
+    ]),
+  ).toBe(true);
+  expect(
+    allowsSuggestedPrompts(true, [
+      constructLocalAgentPrompt(undefined, undefined, {
+        ...enabled,
+        readOnly: true,
+      }),
+    ]),
+  ).toBe(false);
 });

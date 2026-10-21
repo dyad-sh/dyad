@@ -618,8 +618,7 @@ const BaseUserSettingsFields = {
   autoFixReviewIssues: z.boolean().optional(),
   // Deploying to a server the user runs themselves, through Coolify. Off
   // unless explicitly turned on: the integration is early, undocumented and
-  // still changing, and with it off the Publish panel keeps the Vercel card
-  // it has always had.
+  // still changing, and with it off the Publish panel has no tab for it.
   enableOwnServerDeployment: z.boolean().optional(),
   // Publishing to GitLab (gitlab.com or a self-hosted instance). Off unless
   // explicitly turned on; it gates new GitLab connections only, so an app

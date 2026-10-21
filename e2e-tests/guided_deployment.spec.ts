@@ -203,7 +203,7 @@ test("publishes to Vercel with production database config and verifies the curre
   // retry currently being verified.
   await vercel.setBuildState(guidedBuild.id, "READY");
   await deploy.button("Refresh Deployments").click();
-  await expect(deploy.dialog.getByText("READY", { exact: true })).toBeVisible();
+  await expect(deploy.dialog.getByText("Ready", { exact: true })).toBeVisible();
   await expect(deploy.vercelBuilding).toBeVisible();
   await expect(deploy.button("Finish")).toBeHidden();
 

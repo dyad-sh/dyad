@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { CancellationReason } from "@/shared/cancellation_reason";
 import { TestRunQueue } from "./controller";
 
 function gate() {
@@ -141,7 +142,7 @@ describe("test run queue", () => {
       execute,
     });
     await Promise.resolve();
-    queue.stop();
+    queue.stop({ kind: "tests-panel-stop" });
     expect(signal?.aborted).toBe(true);
     expect(await second).toBe("cancelled");
     const drained = vi.fn();
@@ -313,5 +314,88 @@ describe("test run queue", () => {
     expect(await Promise.all([first, third])).toEqual(["first", "third"]);
     expect(executeThird).toHaveBeenCalledOnce();
     expect(queue.getSnapshot().activeRun).toBeNull();
+  });
+
+  it("aborts the active run with the Stop's cause and hands it to cancelled queued requests", async () => {
+    const queue = createQueue();
+    const cleanup = gate();
+    let signal: AbortSignal | undefined;
+    const first = queue.enqueue({
+      request: request(1),
+      cancelled: () => "cancelled",
+      execute: async (run) => {
+        signal = run.signal;
+        await cleanup.promise;
+        return "first";
+      },
+    });
+    const second = queue.enqueue({
+      request: request(2),
+      cancelled: (reason) => reason,
+      execute: async () => {
+        throw new Error("unexpected execution");
+      },
+    });
+    await Promise.resolve();
+    queue.stop({ kind: "tests-panel-stop" });
+    expect(signal?.reason).toBeInstanceOf(CancellationReason);
+    expect(signal?.reason).toMatchObject({
+      name: "AbortError",
+      kind: "tests-panel-stop",
+    });
+    expect(queue.getSnapshot().activeRun?.stopReason).toEqual({
+      kind: "tests-panel-stop",
+    });
+    expect(await second).toEqual({ kind: "tests-panel-stop" });
+    cleanup.resolve();
+    expect(await first).toBe("first");
+  });
+
+  it("forwards the cause an external signal aborted with, and names a reasonless abort", async () => {
+    const queue = createQueue();
+    const cleanup = gate();
+    const external = new AbortController();
+    let signal: AbortSignal | undefined;
+    const first = queue.enqueue({
+      request: request(1),
+      signal: external.signal,
+      cancelled: () => "cancelled",
+      execute: async (run) => {
+        signal = run.signal;
+        await cleanup.promise;
+        return "first";
+      },
+    });
+    const queuedExternal = new AbortController();
+    const second = queue.enqueue({
+      request: request(2),
+      signal: queuedExternal.signal,
+      cancelled: (reason) => reason,
+      execute: async () => {
+        throw new Error("unexpected execution");
+      },
+    });
+    await Promise.resolve();
+    external.abort(
+      new CancellationReason("claude-code-call-abandoned", "Request timed out"),
+    );
+    expect(signal?.reason).toMatchObject({
+      kind: "claude-code-call-abandoned",
+      detail: "Request timed out",
+    });
+    queuedExternal.abort();
+    expect(await second).toEqual({ kind: "agent-cancelled" });
+    cleanup.resolve();
+    expect(await first).toBe("first");
+    await expect(
+      queue.enqueue({
+        request: request(3),
+        signal: AbortSignal.abort(new CancellationReason("chat-deleted")),
+        cancelled: (reason) => reason,
+        execute: async () => {
+          throw new Error("unexpected execution");
+        },
+      }),
+    ).resolves.toEqual({ kind: "chat-deleted" });
   });
 });

@@ -15,6 +15,8 @@ import { eq } from "drizzle-orm";
 import { withChatQueueLock } from "@/chat_stream/queue_lock";
 import { parkChatQueue } from "@/chat_stream/persistence";
 import { cancelActiveStreamsForChat } from "./chat_stream_handlers";
+import { beginChatCancellationCause } from "@/ipc/services/chat_cancellation_cause";
+import { CancellationReason } from "@/shared/cancellation_reason";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { preflightSubscriptionTurn } from "@/ipc/services/subscription_turn_preflight";
 import {
@@ -240,6 +242,62 @@ describe("redo turn admission", () => {
       await stream;
     }
   }, 30_000);
+
+  it.each([
+    { label: "the user's Stop", scoped: undefined, explicit: undefined },
+    { label: "a scoped cause", scoped: "chat-deleted", explicit: undefined },
+    {
+      label: "an explicit cause",
+      scoped: "chat-deleted",
+      explicit: "version-restored",
+    },
+  ] as const)(
+    "aborts the turn with $label so nested work can report it",
+    async ({ scoped, explicit }) => {
+      let entered!: (signal: AbortSignal) => void;
+      let release!: () => void;
+      const started = new Promise<AbortSignal>((resolve) => {
+        entered = resolve;
+      });
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      vi.mocked(preflightSubscriptionTurn).mockImplementationOnce(
+        async (model, _settings, signal) => {
+          entered(signal);
+          await gate;
+          return { model };
+        },
+      );
+      const stream = harness.streamChat("tc=no-code-response", { redo: true });
+      const signal = await started;
+      const releaseScope = scoped
+        ? beginChatCancellationCause(harness.chatId, scoped)
+        : undefined;
+      try {
+        await parkChatQueue(harness.db, harness.chatId);
+        const cancelling = cancelActiveStreamsForChat(
+          harness.chatId,
+          undefined,
+          undefined,
+          explicit,
+        );
+        expect(signal.aborted).toBe(true);
+        expect(signal.reason).toBeInstanceOf(CancellationReason);
+        expect(signal.reason).toMatchObject({
+          name: "AbortError",
+          kind: explicit ?? scoped ?? "chat-stop",
+        });
+        release();
+        await cancelling;
+      } finally {
+        releaseScope?.();
+        release();
+        await stream;
+      }
+    },
+    30_000,
+  );
 
   it("replaces only the latest exchange when preflight succeeds", async () => {
     const result = await harness.streamChat("tc=no-code-response", {

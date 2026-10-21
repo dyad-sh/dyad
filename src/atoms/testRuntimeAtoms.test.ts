@@ -275,6 +275,29 @@ describe("test runtime atoms", () => {
     });
   });
 
+  it("marks a run main reported as stopped with its cause", () => {
+    const store = createStore();
+    store.set(applyTestRunStartedAtom, { appId: 1, source: "agent" });
+    store.set(applyTestRunFinishedAtom, {
+      appId: 1,
+      res: {
+        appId: 1,
+        results: [],
+        infraError: {
+          message: "Test run stopped from the Tests panel.",
+          stopReason: { kind: "tests-panel-stop" },
+        },
+      },
+      isPartialRun: false,
+    });
+    const state = store.get(testRunStateByAppIdAtom).get(1)!;
+    expect(state.runError).toEqual({
+      message: "Test run stopped from the Tests panel.",
+      kind: "stopped",
+      stopReason: { kind: "tests-panel-stop" },
+    });
+  });
+
   it.each([false, true])(
     "keeps completed cases and marks interrupted files partial (filtered: %s)",
     (isPartialRun) => {

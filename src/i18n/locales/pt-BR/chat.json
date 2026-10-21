@@ -11,7 +11,21 @@
     "stopping": "Parando",
     "passed": "Aprovado",
     "failed": "Falhou",
-    "inconclusive": "Inconclusivo"
+    "inconclusive": "Inconclusivo",
+    "stopped": "Interrompido",
+    "stopReason": {
+      "tests-panel-stop": "Interrompido pelo painel de testes",
+      "chat-stop": "A resposta do chat foi interrompida",
+      "chat-deleted": "O chat foi excluído",
+      "version-restored": "Uma versão anterior foi restaurada",
+      "subagent-stopped": "O subagente foi interrompido",
+      "pro-revoked": "O Dyad Pro não está mais ativo",
+      "claude-code-call-abandoned": "O Claude Code parou de aguardar a chamada da ferramenta",
+      "claude-code-session-ended": "A sessão do Claude Code terminou",
+      "agent-cancelled": "O turno do agente foi cancelado",
+      "app-deleted": "O app está sendo excluído",
+      "app-quit": "O Dyad está sendo encerrado"
+    }
   },
   "newChat": "Novo Chat",
   "viewAllApps": "Todos os apps",

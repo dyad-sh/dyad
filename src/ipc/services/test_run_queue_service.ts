@@ -8,6 +8,7 @@ import {
 import {
   EMPTY_TEST_RUN_QUEUE,
   type TestRunRequest,
+  type TestRunStopReason,
 } from "@/test_run_queue/state";
 import { createTraceObserver } from "@/state_machines/trace";
 import { broadcastToRegisteredWindows } from "../utils/window_broadcast";
@@ -29,7 +30,7 @@ export function withAppTestRun<Result>(
     onQueued?: (position: number) => void;
   },
   execute: (run: TestRunExecution, timing: TestRunTiming) => Promise<Result>,
-  cancelled: () => Result,
+  cancelled: (reason: TestRunStopReason) => Result,
 ): Promise<Result> {
   const { appId, event } = options;
   if (deletingApps.has(appId))
@@ -73,10 +74,10 @@ export function withAppTestRun<Result>(
       signal = run.signal;
       return execute(run, timing);
     },
-    cancelled: () => {
+    cancelled: (reason) => {
       queueWait.end("cancelled");
       timing.finish("cancelled");
-      return cancelled();
+      return cancelled(reason);
     },
     onQueued: options.onQueued,
   });
@@ -103,12 +104,15 @@ export function ownsAppTestRun(appId: number, run: TestRunExecution): boolean {
   return testRunQueues.get(appId)?.ownsExecution(run) ?? false;
 }
 
-export function stopAppTestsForApp(appId: number): void {
-  testRunQueues.get(appId)?.stop();
+export function stopAppTestsForApp(
+  appId: number,
+  reason: TestRunStopReason,
+): void {
+  testRunQueues.get(appId)?.stop(reason);
 }
 
-export function stopAllAppTestRuns(): void {
-  for (const queue of testRunQueues.values()) queue.stop();
+export function stopAllAppTestRuns(reason: TestRunStopReason): void {
+  for (const queue of testRunQueues.values()) queue.stop(reason);
 }
 
 export function drainAppTestRuns(appId: number): Promise<void> {
@@ -128,7 +132,7 @@ export function isTestRunActive(appId: number): boolean {
 export function beginAppTestDeletion(appId: number) {
   deletingApps.add(appId);
   const queue = testRunQueues.get(appId);
-  queue?.stop();
+  queue?.stop({ kind: "app-deleted" });
   return {
     drain: () => queue?.drain() ?? Promise.resolve(),
     release: () => {

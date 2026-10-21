@@ -103,11 +103,11 @@ it("fences new requests and settles queued requests before app deletion drains c
     () => "cancelled",
   );
   const execute = vi.fn(async () => "unexpected");
-  const second = withAppTestRun(options, execute, () => "cancelled");
+  const second = withAppTestRun(options, execute, (reason) => reason.kind);
   await Promise.resolve();
   const deletion = beginAppTestDeletion(options.appId);
   try {
-    expect(await second).toBe("cancelled");
+    expect(await second).toBe("app-deleted");
     expect(execute).not.toHaveBeenCalled();
     await expect(
       withAppTestRun(options, execute, () => "cancelled"),
@@ -149,15 +149,23 @@ it("stops active and queued runs across apps while retaining their cleanup", asy
       () => "cancelled",
     );
     const executeQueued = vi.fn(async () => "unexpected");
-    const queued = withAppTestRun(options, executeQueued, () => "cancelled");
+    const queued = withAppTestRun(
+      options,
+      executeQueued,
+      (reason) => reason.kind,
+    );
     return { appId, active, queued, executeQueued };
   });
   await Promise.resolve();
-  stopAllAppTestRuns();
+  stopAllAppTestRuns({ kind: "app-quit" });
   expect(signals).toHaveLength(2);
   expect(signals.every((signal) => signal.aborted)).toBe(true);
+  expect(signals.map((signal) => signal.reason.kind)).toEqual([
+    "app-quit",
+    "app-quit",
+  ]);
   for (const run of pending) {
-    expect(await run.queued).toBe("cancelled");
+    expect(await run.queued).toBe("app-quit");
     expect(run.executeQueued).not.toHaveBeenCalled();
     expect(isTestRunActive(run.appId)).toBe(true);
   }

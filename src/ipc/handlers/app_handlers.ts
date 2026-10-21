@@ -692,19 +692,22 @@ async function deleteAppByIdExclusive(
     );
     for (const { id: chatId } of appChats) {
       releaseSubagentAdmission.push(
-        await settleSubagentsForChatDeletion(chatId),
+        await settleSubagentsForChatDeletion(chatId, "app-deleted"),
       );
     }
     await Promise.all(
       appChats.map(({ id: chatId }) =>
-        waitForChatActorIdle(chatId, { cancelActive: true }),
+        waitForChatActorIdle(chatId, {
+          cancelActive: true,
+          cancellationCause: "app-deleted",
+        }),
       ),
     );
     // Drain journal owners before removing their durable data; a late handoff
     // checkpoint or questionnaire settlement must not recreate deleted files.
     for (const { id: chatId } of appChats) {
       await userInputRegistry.settleChat(chatId);
-      await settleChatActorsForDeletion(chatId);
+      await settleChatActorsForDeletion(chatId, "app-deleted");
     }
 
     const { appPath, doomedRow } = await appOperationDeletion.runExclusive(

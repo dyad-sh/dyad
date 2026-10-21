@@ -11,7 +11,21 @@
     "stopping": "正在停止",
     "passed": "通过",
     "failed": "失败",
-    "inconclusive": "无定论"
+    "inconclusive": "无定论",
+    "stopped": "已停止",
+    "stopReason": {
+      "tests-panel-stop": "已从测试面板停止",
+      "chat-stop": "聊天回复已停止",
+      "chat-deleted": "聊天已删除",
+      "version-restored": "已恢复到早期版本",
+      "subagent-stopped": "子代理已停止",
+      "pro-revoked": "Dyad Pro 已不再有效",
+      "claude-code-call-abandoned": "Claude Code 已停止等待工具调用",
+      "claude-code-session-ended": "Claude Code 会话已结束",
+      "agent-cancelled": "代理轮次已取消",
+      "app-deleted": "正在删除应用",
+      "app-quit": "Dyad 正在退出"
+    }
   },
   "newChat": "新建聊天",
   "viewAllApps": "所有应用",

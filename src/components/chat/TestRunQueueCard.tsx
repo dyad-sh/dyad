@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import {
   CheckCircle2,
   Circle,
+  CircleStop,
   FlaskConical,
   Loader2,
   XCircle,
@@ -16,14 +17,17 @@ import { useSelectChat } from "@/hooks/useSelectChat";
 import { useTestRunQueue } from "@/hooks/useTestRunQueue";
 import { queryKeys } from "@/lib/queryKeys";
 import type { CompletedTestRun } from "@/lib/testRunSummary";
-import type { TestRunRequest } from "@/test_run_queue/state";
+import type { TestRunRequest, TestRunStopReason } from "@/test_run_queue/state";
 import { cn } from "@/lib/utils";
 
 /** How long a batch's final outcomes stay readable/announced after it drains. */
 export const DRAINED_BATCH_LINGER_MS = 5_000;
 
 type RunStatus = CompletedTestRun["status"] | "queued" | "running" | "stopping";
-type QueueRow = TestRunRequest & { status: RunStatus };
+type QueueRow = TestRunRequest & {
+  status: RunStatus;
+  stopReason?: TestRunStopReason;
+};
 
 const statusClasses: Record<RunStatus, string> = {
   queued: "text-yellow-700 dark:text-yellow-400",
@@ -32,6 +36,7 @@ const statusClasses: Record<RunStatus, string> = {
   passed: "text-green-600 dark:text-green-400",
   failed: "text-red-600 dark:text-red-400",
   inconclusive: "text-yellow-700 dark:text-yellow-400",
+  stopped: "text-gray-500 dark:text-gray-400",
 };
 
 function RunIcon({ status }: { status: RunStatus }) {
@@ -42,7 +47,9 @@ function RunIcon({ status }: { status: RunStatus }) {
         ? CheckCircle2
         : status === "failed"
           ? XCircle
-          : Circle;
+          : status === "stopped"
+            ? CircleStop
+            : Circle;
   return (
     <Icon
       aria-hidden="true"
@@ -188,6 +195,12 @@ export function TestRunQueueCard({
         {rows.map((run) => {
           const label = runLabel(run);
           const runChatId = run.chatId;
+          // Say why a run stopped (or is stopping) instead of a bare status.
+          const stopReason =
+            (run.status === "stopped" || run.status === "stopping") &&
+            run.stopReason
+              ? t(`testRunQueue.stopReason.${run.stopReason.kind}`)
+              : undefined;
           return (
             <li
               key={run.runId}
@@ -200,8 +213,11 @@ export function TestRunQueueCard({
               <span className="min-w-0 flex-1 truncate" title={label}>
                 {label}
               </span>
-              <span className="shrink-0">
+              <span className="shrink-0" title={stopReason}>
                 {t(`testRunQueue.${run.status}`)}
+                {stopReason && (
+                  <span className="sr-only">{`: ${stopReason}`}</span>
+                )}
               </span>
               {runChatId != null ? (
                 runChatId === chatId ? (

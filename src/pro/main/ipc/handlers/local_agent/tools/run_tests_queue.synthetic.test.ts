@@ -74,6 +74,7 @@ vi.mock("@/ipc/services/isolated_test_db", async (importOriginal) => ({
   prepareIsolatedTestDatabase: h.prepare,
 }));
 
+import { CancellationReason } from "@/shared/cancellation_reason";
 import { runTestsTool } from "./run_tests";
 import {
   getAppTestRunQueue,
@@ -160,7 +161,7 @@ describe("synthetic overlapping run_tests calls", () => {
     // Release held work even if an assertion fails; no live queue or temporary
     // environment should escape the scenario.
     tearingDown = true;
-    stopAppTestsForApp(APP_ID);
+    stopAppTestsForApp(APP_ID, { kind: "tests-panel-stop" });
     for (const pending of [...processGates, ...cleanupGates]) pending.release();
     await Promise.allSettled(calls);
     h.runningApps.clear();
@@ -324,8 +325,11 @@ describe("synthetic overlapping run_tests calls", () => {
       trace.push("active A; queued B, C; all three calls pending");
 
       if (scenario === "cancel queued B") {
-        cancelB.abort();
-        expect(await calls[1]).toContain("cancelled while queued");
+        cancelB.abort(new CancellationReason("chat-stop"));
+        expect(await calls[1]).toContain(
+          "Test run stopped before execution because the chat response that started it was stopped.",
+        );
+        expect(await calls[1]).toContain("still queued");
         expect(contexts[1].testRunCount ?? 0).toBe(0);
         expect(contexts[1].testRunAttempts.size).toBe(0);
         expect(emittedXml(contexts[1])).toBe("");

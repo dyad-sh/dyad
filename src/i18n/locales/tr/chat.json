@@ -11,7 +11,21 @@
     "stopping": "Durduruluyor",
     "passed": "Başarılı",
     "failed": "Başarısız",
-    "inconclusive": "Sonuçsuz"
+    "inconclusive": "Sonuçsuz",
+    "stopped": "Durduruldu",
+    "stopReason": {
+      "tests-panel-stop": "Test panelinden durduruldu",
+      "chat-stop": "Sohbet yanıtı durduruldu",
+      "chat-deleted": "Sohbet silindi",
+      "version-restored": "Önceki bir sürüm geri yüklendi",
+      "subagent-stopped": "Alt ajan durduruldu",
+      "pro-revoked": "Dyad Pro artık etkin değil",
+      "claude-code-call-abandoned": "Claude Code araç çağrısını beklemeyi bıraktı",
+      "claude-code-session-ended": "Claude Code oturumu sona erdi",
+      "agent-cancelled": "Ajan turu iptal edildi",
+      "app-deleted": "Uygulama siliniyor",
+      "app-quit": "Dyad kapanıyor"
+    }
   },
   "newChat": "Yeni Sohbet",
   "viewAllApps": "Tüm uygulamalar",

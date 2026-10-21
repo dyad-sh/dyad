@@ -22,6 +22,8 @@ import { db } from "@/db";
 import { chats } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import type { CancellationCause } from "@/shared/cancellation_reason";
+import { beginChatCancellationCause } from "./chat_cancellation_cause";
 import {
   PLAN_HANDOFF_MACHINE_ID,
   planHandoffKey,
@@ -34,12 +36,16 @@ import {
 
 export async function settleChatActorsForDeletion(
   chatId: number,
+  cancellationCause: CancellationCause = "chat-deleted",
 ): Promise<void> {
   await remoteMachineHost.entityDeleted(
     PLAN_HANDOFF_MACHINE_ID,
     planHandoffKey(chatId),
   );
-  await waitForChatActorIdle(chatId, { cancelActive: true });
+  await waitForChatActorIdle(chatId, {
+    cancelActive: true,
+    cancellationCause,
+  });
   await remoteMachineHost.entityDeleted(
     chatStreamDefinition.id,
     chatStreamKey(chatId),
@@ -69,7 +75,12 @@ export async function deleteOwnedChatAfterSettlingActors(
 
 export async function waitForChatActorIdle(
   chatId: number,
-  options: { cancelActive?: boolean; signal?: AbortSignal } = {},
+  options: {
+    cancelActive?: boolean;
+    signal?: AbortSignal;
+    /** Why the active turn is cancelled; defaults to the user's Stop. */
+    cancellationCause?: CancellationCause;
+  } = {},
 ): Promise<boolean> {
   options.signal?.throwIfAborted();
   const actor = remoteMachineHost.peek<
@@ -84,42 +95,52 @@ export async function waitForChatActorIdle(
     current.active &&
     (current.phase === "admitting" || current.phase === "streaming"),
   );
-  if (didRequestCancellation && current.active) {
-    actor.send({
-      type: "CANCEL",
-      invocationRef: current.active.invocationRef,
-    });
-  }
-  await new Promise<void>((resolve, reject) => {
-    let settled = false;
-    let unsubscribe: () => void = () => undefined;
-    const finish = () => {
-      if (settled) return;
-      settled = true;
-      unsubscribe();
-      options.signal?.removeEventListener("abort", abort);
-      resolve();
-    };
-    const abort = () => {
-      if (settled) return;
-      settled = true;
-      unsubscribe();
-      options.signal?.removeEventListener("abort", abort);
-      reject(options.signal?.reason);
-    };
-    const inspect = () => {
-      const phase = actor.getSnapshot().phase;
-      if (phase !== "idle" && phase !== "errored") return;
-      finish();
-    };
-    unsubscribe = actor.subscribe(inspect);
-    options.signal?.addEventListener("abort", abort, { once: true });
-    if (options.signal?.aborted) {
-      abort();
-      return;
+  // The actor's cancel-active command aborts the stream asynchronously and its
+  // wire events carry no cause, so scope it until the actor settles.
+  const releaseCause =
+    didRequestCancellation && options.cancellationCause
+      ? beginChatCancellationCause(chatId, options.cancellationCause)
+      : undefined;
+  try {
+    if (didRequestCancellation && current.active) {
+      actor.send({
+        type: "CANCEL",
+        invocationRef: current.active.invocationRef,
+      });
     }
-    inspect();
-  });
+    await new Promise<void>((resolve, reject) => {
+      let settled = false;
+      let unsubscribe: () => void = () => undefined;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        unsubscribe();
+        options.signal?.removeEventListener("abort", abort);
+        resolve();
+      };
+      const abort = () => {
+        if (settled) return;
+        settled = true;
+        unsubscribe();
+        options.signal?.removeEventListener("abort", abort);
+        reject(options.signal?.reason);
+      };
+      const inspect = () => {
+        const phase = actor.getSnapshot().phase;
+        if (phase !== "idle" && phase !== "errored") return;
+        finish();
+      };
+      unsubscribe = actor.subscribe(inspect);
+      options.signal?.addEventListener("abort", abort, { once: true });
+      if (options.signal?.aborted) {
+        abort();
+        return;
+      }
+      inspect();
+    });
+  } finally {
+    releaseCause?.();
+  }
   return didRequestCancellation;
 }
 
@@ -140,7 +161,7 @@ export function observeChatSubmissionStopPolicy(chatId: number): number {
 
 export async function waitForAppChatActorsIdle(
   appId: number,
-  options: { cancelActive?: boolean; signal?: AbortSignal } = {},
+  options: Parameters<typeof waitForChatActorIdle>[1] = {},
 ): Promise<boolean> {
   options.signal?.throwIfAborted();
   const appChats = await db.query.chats.findMany({

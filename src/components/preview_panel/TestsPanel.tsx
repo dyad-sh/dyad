@@ -25,6 +25,7 @@ import {
   XCircle,
   AlertTriangle,
   Circle,
+  CircleStop,
   ChevronDown,
   ChevronRight,
   Image as ImageIcon,
@@ -1876,10 +1877,24 @@ export function TestsPanel() {
           )}
 
           {/* Run-level infra error (includes the isolation dead-end). Offers a safe
-          Retry — never an option to run against real data. */}
+          Retry — never an option to run against real data. A stopped run is a
+          deliberate outcome, not a failure, so it reads as neutral and says why. */}
           {runState.runError && (
-            <div className="flex items-start gap-2 px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 text-sm text-amber-800 dark:text-amber-200">
-              <AlertTriangle size={15} className="shrink-0 mt-0.5" />
+            <div
+              data-testid="tests-run-error"
+              data-kind={runState.runError.kind}
+              className={cn(
+                "flex items-start gap-2 px-4 py-2 border-b text-sm",
+                runState.runError.kind === "stopped"
+                  ? "bg-gray-50 dark:bg-gray-800/40 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300"
+                  : "bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200",
+              )}
+            >
+              {runState.runError.kind === "stopped" ? (
+                <CircleStop size={15} className="shrink-0 mt-0.5" />
+              ) : (
+                <AlertTriangle size={15} className="shrink-0 mt-0.5" />
+              )}
               <span className="flex-1 whitespace-pre-wrap break-words">
                 {runState.runError.message}
               </span>
@@ -1887,12 +1902,15 @@ export function TestsPanel() {
                 onClick={() => runTests()}
                 disabled={isSubmitting || testRunBlocked}
                 className={cn(
-                  "shrink-0 px-2 py-1 rounded-md bg-amber-200 dark:bg-amber-800 hover:bg-amber-300 dark:hover:bg-amber-700 cursor-pointer text-xs font-medium",
+                  "shrink-0 px-2 py-1 rounded-md cursor-pointer text-xs font-medium",
+                  runState.runError.kind === "stopped"
+                    ? "bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600"
+                    : "bg-amber-200 dark:bg-amber-800 hover:bg-amber-300 dark:hover:bg-amber-700",
                   (isSubmitting || testRunBlocked) &&
                     "opacity-40 cursor-not-allowed",
                 )}
               >
-                Retry
+                {runState.runError.kind === "stopped" ? "Run again" : "Retry"}
               </button>
             </div>
           )}

@@ -2,6 +2,7 @@ import { atom } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import type { TestSpec, TestResult, TestIsolation } from "@/ipc/types";
 import type { RunAppTestsResult } from "@/ipc/types/tests";
+import type { TestRunStopReason } from "@/shared/test_run_stop";
 import {
   buildSingleTestFileResult,
   reconcileResultFile,
@@ -70,8 +71,15 @@ export interface TestRunState {
    * test under a running file shows a spinner.
    */
   runningTests?: string[];
-  /** Set when the whole run fails before producing per-test results. */
-  runError?: { message: string; kind: "infra" | "unknown" };
+  /**
+   * Set when the whole run fails before producing per-test results, or was
+   * stopped. A stop carries the cause main recorded.
+   */
+  runError?: {
+    message: string;
+    kind: "infra" | "stopped" | "unknown";
+    stopReason?: TestRunStopReason;
+  };
   /**
    * How the last completed run's database was isolated. Drives the "isolated
    * test data" badge and the Supabase/no-isolation disclosure. Undefined until
@@ -394,9 +402,15 @@ export const applyTestRunFinishedAtom = atom(
           runningFiles: [],
           runningTests: [],
           results: nextResults,
-          runError: res.infraError
-            ? { message: res.infraError.message, kind: "infra" }
-            : undefined,
+          runError: res.infraError?.stopReason
+            ? {
+                message: res.infraError.message,
+                kind: "stopped",
+                stopReason: res.infraError.stopReason,
+              }
+            : res.infraError
+              ? { message: res.infraError.message, kind: "infra" }
+              : undefined,
           isolation: res.isolation,
           sandboxed: sandboxed ?? prev.sandboxed,
         };

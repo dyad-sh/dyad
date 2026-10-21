@@ -6,6 +6,7 @@ import {
 import fs from "node:fs";
 import log from "electron-log";
 import { DyadError, DyadErrorKind } from "../../errors/dyad_error";
+import { testRunStoppedError, testRunStoppedInfraError } from "./test_run_stop";
 
 import { getDyadAppPath } from "../../paths/paths";
 import { apps } from "../../db/schema";
@@ -47,7 +48,7 @@ import { runningApps, stopAppByInfo } from "../utils/process_manager";
 import { cleanUpPort, executeApp } from "./app_runtime_service";
 import { appRunActorService } from "./app_run_actor_service";
 import { getAppPort } from "../../../shared/ports";
-import type { TestIsolation } from "../types/tests";
+import type { TestIsolation, TestRunInfraError } from "../types/tests";
 
 const logger = log.scope("isolated_test_db");
 
@@ -119,7 +120,7 @@ export type IsolationCleanupProvider = "neon-branch" | "supabase-test-user";
 export interface PreparedIsolation {
   isolation: TestIsolation;
   cleanupProvider?: IsolationCleanupProvider;
-  infraError?: { message: string };
+  infraError?: TestRunInfraError;
   /**
    * Extra env vars to inject into the test runner (e.g. the isolated test
    * user's credentials the generated test signs in with). Never contains
@@ -321,7 +322,7 @@ export async function prepareIsolatedTestDatabase({
     // Stop pressed during that wait before creating the branch, rewriting
     // .env.local, and restarting the dev server (twice) for nothing.
     if (signal?.aborted) {
-      throw new DyadError("Test run stopped.", DyadErrorKind.UserCancelled);
+      throw testRunStoppedError(signal);
     }
     emit("Setting up isolated test environment…\n", "setup");
 
@@ -479,7 +480,7 @@ export async function prepareIsolatedTestDatabase({
     // Honor Stop during the auth network calls before publishing a ready
     // session. The catch below restores the real branch.
     if (signal?.aborted) {
-      throw new DyadError("Test run stopped.", DyadErrorKind.UserCancelled);
+      throw testRunStoppedError(signal);
     }
 
     if (perTestCase)
@@ -599,10 +600,11 @@ export async function prepareIsolatedTestDatabase({
     // That's a deliberate cancellation, not an infra failure — don't show the
     // misleading "couldn't set up" banner for it.
     if (signal?.aborted) {
+      const stopped = testRunStoppedInfraError(signal);
       return {
-        isolation: { mode: "none", reason: "Test run stopped." },
+        isolation: { mode: "none", reason: stopped.message },
         cleanupProvider: "neon-branch",
-        infraError: { message: "Test run stopped." },
+        infraError: stopped,
         teardown: settledTeardown,
       };
     }
@@ -719,7 +721,7 @@ async function prepareSupabaseTestUserIsolation({
     // two of them so cancellation takes effect promptly instead of only after
     // the whole setup completes.
     if (signal?.aborted) {
-      throw new DyadError("Test run stopped.", DyadErrorKind.UserCancelled);
+      throw testRunStoppedError(signal);
     }
     // RLS gate (warn, don't refuse): surface unprotected tables to the user.
     const rls = await measureTestRunStep(timing, "supabase_rls_check", () =>
@@ -727,7 +729,7 @@ async function prepareSupabaseTestUserIsolation({
     );
 
     if (signal?.aborted) {
-      throw new DyadError("Test run stopped.", DyadErrorKind.UserCancelled);
+      throw testRunStoppedError(signal);
     }
     // The test signs the isolated user in through the app's OWN login UI, so a
     // legacy key in the app's generated client is a test failure waiting to
@@ -754,7 +756,7 @@ async function prepareSupabaseTestUserIsolation({
     const warning = buildRlsWarning(rls);
 
     if (signal?.aborted) {
-      throw new DyadError("Test run stopped.", DyadErrorKind.UserCancelled);
+      throw testRunStoppedError(signal);
     }
     if (!perTestCase) {
       emit("Creating an isolated test user…\n", "setup");
@@ -797,7 +799,7 @@ async function prepareSupabaseTestUserIsolation({
     // the catch below is what tears the temporary user back down and reports the
     // stopped result.
     if (signal?.aborted) {
-      throw new DyadError("Test run stopped.", DyadErrorKind.UserCancelled);
+      throw testRunStoppedError(signal);
     }
 
     const credentialsFor = (user: TempTestUser): Record<string, string> => ({
@@ -892,10 +894,11 @@ async function prepareSupabaseTestUserIsolation({
     // The pre-flight abort check above throws into this catch; a user Stop is
     // a deliberate cancellation, not a setup failure.
     if (signal?.aborted) {
+      const stopped = testRunStoppedInfraError(signal);
       return {
-        isolation: { mode: "none", reason: "Test run stopped." },
+        isolation: { mode: "none", reason: stopped.message },
         cleanupProvider: "supabase-test-user",
-        infraError: { message: "Test run stopped." },
+        infraError: stopped,
         teardown: settledTeardown,
       };
     }
@@ -1019,7 +1022,7 @@ async function waitForServerReady(
   let lastReason = "the dev server never started";
   while (Date.now() < deadline) {
     if (signal?.aborted) {
-      throw new DyadError("Test run stopped.", DyadErrorKind.UserCancelled);
+      throw testRunStoppedError(signal);
     }
     const appInfo = runningApps.get(appId);
     if (!appInfo) {

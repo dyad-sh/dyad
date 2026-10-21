@@ -1,3 +1,7 @@
+import {
+  CancellationReason,
+  getCancellationInfo,
+} from "@/shared/cancellation_reason";
 import { SnapshotStore } from "@/state_machines/snapshot_store";
 import {
   observeTransition,
@@ -9,18 +13,28 @@ import {
   type TestRunQueueEvent,
   type TestRunQueueState,
   type TestRunRequest,
+  type TestRunStopReason,
 } from "./state";
 import { transition } from "./transition";
 
 export interface TestRunExecution {
   readonly runId: number;
+  /** Aborts with a `CancellationReason` naming why the run was stopped. */
   readonly signal: AbortSignal;
+}
+
+/**
+ * Queue aborts always record a cause. An external signal (the agent turn that
+ * requested the run) may not; the run still reports that its caller went away.
+ */
+function stopReasonOf(signal: AbortSignal): TestRunStopReason {
+  return getCancellationInfo(signal.reason) ?? { kind: "agent-cancelled" };
 }
 
 interface PendingRun {
   controller: AbortController;
   execute: (run: TestRunExecution) => Promise<unknown>;
-  cancelled: () => unknown;
+  cancelled: (reason: TestRunStopReason) => unknown;
   resolve: (result: unknown) => void;
   reject: (error: unknown) => void;
   detach: () => void;
@@ -64,16 +78,23 @@ export class TestRunQueue {
     request: TestRunRequest;
     signal?: AbortSignal;
     execute: (run: TestRunExecution) => Promise<Result>;
-    cancelled: () => Result;
+    cancelled: (reason: TestRunStopReason) => Result;
     onQueued?: (position: number) => void;
   }): Promise<Result> {
     const { request, signal } = options;
     if (signal?.aborted)
-      return Promise.resolve().then(() => options.cancelled());
+      return Promise.resolve().then(() =>
+        options.cancelled(stopReasonOf(signal)),
+      );
     if (this.runs.has(request.runId))
       return Promise.reject(new Error("Duplicate test run identity"));
     return new Promise<Result>((resolve, reject) => {
-      const onAbort = () => this.send({ type: "cancel", runId: request.runId });
+      const onAbort = () =>
+        this.send({
+          type: "cancel",
+          runId: request.runId,
+          reason: stopReasonOf(signal!),
+        });
       this.runs.set(request.runId, {
         controller: new AbortController(),
         execute: options.execute,
@@ -88,8 +109,8 @@ export class TestRunQueue {
     });
   }
 
-  stop(): void {
-    this.send({ type: "stop" });
+  stop(reason: TestRunStopReason): void {
+    this.send({ type: "stop", reason });
   }
 
   async drain(): Promise<void> {
@@ -146,7 +167,7 @@ export class TestRunQueue {
         void Promise.resolve().then(async () => {
           try {
             const result = pending.controller.signal.aborted
-              ? pending.cancelled()
+              ? pending.cancelled(stopReasonOf(pending.controller.signal))
               : await pending.execute({
                   runId: command.runId,
                   signal: pending.controller.signal,
@@ -162,13 +183,15 @@ export class TestRunQueue {
         });
         break;
       case "abort":
-        pending.controller.abort();
+        pending.controller.abort(
+          new CancellationReason(command.reason.kind, command.reason.detail),
+        );
         break;
       case "cancel-queued":
         pending.detach();
         this.runs.delete(command.runId);
         try {
-          pending.resolve(pending.cancelled());
+          pending.resolve(pending.cancelled(command.reason));
         } catch (error) {
           pending.reject(error);
         }

@@ -11,7 +11,21 @@
     "stopping": "Stopping",
     "passed": "Passed",
     "failed": "Failed",
-    "inconclusive": "Inconclusive"
+    "inconclusive": "Inconclusive",
+    "stopped": "Stopped",
+    "stopReason": {
+      "tests-panel-stop": "Stopped from the Tests panel",
+      "chat-stop": "The chat response was stopped",
+      "chat-deleted": "The chat was deleted",
+      "version-restored": "An earlier version was restored",
+      "subagent-stopped": "The sub-agent was stopped",
+      "pro-revoked": "Dyad Pro is no longer active",
+      "claude-code-call-abandoned": "Claude Code stopped waiting for the tool call",
+      "claude-code-session-ended": "The Claude Code session ended",
+      "agent-cancelled": "The agent turn was cancelled",
+      "app-deleted": "The app is being deleted",
+      "app-quit": "Dyad is quitting"
+    }
   },
   "newChat": "New Chat",
   "viewAllApps": "All apps",

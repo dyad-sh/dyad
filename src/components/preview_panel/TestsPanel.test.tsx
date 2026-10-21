@@ -924,6 +924,45 @@ describe("TestsPanel", () => {
         else expect(mocks.showError).not.toHaveBeenCalled();
       },
     );
+
+    it.each([
+      {
+        runError: {
+          message: "Test run stopped from the Tests panel.",
+          kind: "stopped" as const,
+          stopReason: { kind: "tests-panel-stop" as const },
+        },
+        action: "Run again",
+        styling: "bg-gray-50",
+      },
+      {
+        runError: {
+          message: "Playwright couldn't start.",
+          kind: "infra" as const,
+        },
+        action: "Retry",
+        styling: "bg-amber-50",
+      },
+    ])(
+      "shows a $runError.kind run banner with its cause",
+      async ({ runError, action, styling }) => {
+        const { store } = renderPanel();
+        await screen.findByRole("button", { name: "Run all tests" });
+        act(() => {
+          store.set(
+            testRunStateByAppIdAtom,
+            new Map([[1, { ...EMPTY_TEST_RUN_STATE, runError }]]),
+          );
+        });
+        const banner = await screen.findByTestId("tests-run-error");
+        expect(banner.dataset.kind).toBe(runError.kind);
+        expect(banner.className).toContain(styling);
+        expect(banner.textContent).toContain(runError.message);
+        expect(
+          within(banner).getByRole("button", { name: action }),
+        ).toBeTruthy();
+      },
+    );
   });
 
   describe("queued test files", () => {

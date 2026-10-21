@@ -233,22 +233,6 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     sectionLabel: "Workflow",
   },
   {
-    id: SETTING_IDS.suggestedPrompts,
-    label: "Suggested follow-up prompts",
-    description:
-      "Show clickable follow-up prompt suggestions above the chat input after a Build or Agent response",
-    keywords: [
-      "suggest",
-      "suggestion",
-      "follow-up",
-      "prompt",
-      "chip",
-      "next step",
-    ],
-    sectionId: SECTION_IDS.workflow,
-    sectionLabel: "Workflow",
-  },
-  {
     id: SETTING_IDS.chatEventNotification,
     label: "Notifications",
     description:
@@ -260,6 +244,22 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
       "questionnaire",
       "alert",
       "background",
+    ],
+    sectionId: SECTION_IDS.workflow,
+    sectionLabel: "Workflow",
+  },
+  {
+    id: SETTING_IDS.suggestedPrompts,
+    label: "Suggested follow-up prompts",
+    description:
+      "Show clickable follow-up prompt suggestions above the chat input after a Build or Agent response",
+    keywords: [
+      "suggest",
+      "suggestion",
+      "follow-up",
+      "prompt",
+      "chip",
+      "next step",
     ],
     sectionId: SECTION_IDS.workflow,
     sectionLabel: "Workflow",

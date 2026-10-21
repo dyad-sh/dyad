@@ -112,7 +112,8 @@ type Mode =
   | "tag-attrs" // saw "<NAME ", reading attributes until ">"
   | "tag-content" // inside a tag's content
   | "tag-close-start" // saw "<" inside tag content
-  | "tag-close-name"; // saw "</", reading closing name until ">"
+  | "tag-close-name" // saw "</", reading closing name until ">"
+  | "tag-nested-open"; // saw "<NAME" inside a suggestions block
 
 interface OpenTag {
   tag: string;
@@ -167,6 +168,11 @@ export function initialParserState(): ParserState {
 }
 
 const NAME_CHAR = /[A-Za-z0-9-]/;
+
+// Renders as nothing, so it must not swallow later tags if it is never
+// closed, for example when a reply is cut off. Another Dyad tag inside it
+// ends the block as incomplete and is parsed normally.
+const SUGGESTED_PROMPTS_TAG = "dyad-suggested-prompts";
 
 function parseAttributes(attrsStr: string): Record<string, string> {
   const out: Record<string, string> = {};
@@ -366,6 +372,13 @@ export function advanceParser(prev: ParserState, content: string): ParserState {
         i++;
         continue;
       }
+      if (
+        state.currentTag?.tag === SUGGESTED_PROMPTS_TAG &&
+        NAME_CHAR.test(ch)
+      ) {
+        state.mode = "tag-nested-open";
+        continue;
+      }
       // Not a closing tag — '<' was content. Push pending into rawContent and resume.
       if (state.currentTag) {
         state.currentTag.rawContent += state.pending;
@@ -452,6 +465,50 @@ export function advanceParser(prev: ParserState, content: string): ParserState {
       // Reprocess this char as content.
       continue;
     }
+
+    if (state.mode === "tag-nested-open") {
+      if (NAME_CHAR.test(ch)) {
+        state.pending += ch;
+        i++;
+        continue;
+      }
+      const name = state.pending.slice(1);
+      if (
+        DYAD_CUSTOM_TAG_SET.has(name) &&
+        (ch === " " || ch === "\t" || ch === "\n" || ch === "\r" || ch === ">")
+      ) {
+        // End the suggestions block as incomplete, then parse this tag.
+        const open = state.openBlock;
+        if (open && open.kind === "custom-tag") {
+          state.blocks = [
+            ...state.blocks,
+            { ...open, complete: false, inProgress: false },
+          ];
+        }
+        state.openBlock = null;
+        state.currentTag = null;
+        state.tagStartOffset = i - state.pending.length;
+        state.pendingTagName = name;
+        state.pendingAttrs = "";
+        state.pending = "";
+        state.mode = "tag-attrs";
+        continue;
+      }
+      // Not a Dyad tag, such as "<Footer>": keep it as content.
+      if (state.currentTag) {
+        state.currentTag.rawContent += state.pending;
+        const open = state.openBlock;
+        if (open && open.kind === "custom-tag") {
+          state.openBlock = {
+            ...open,
+            content: unescapeXmlContent(state.currentTag.rawContent),
+          };
+        }
+      }
+      state.pending = "";
+      state.mode = "tag-content";
+      continue;
+    }
   }
 
   state.cursor = len;
@@ -474,7 +531,8 @@ export function getOpenBlock(state: ParserState): Block | null {
     synthesizedMarkdown = "<" + state.pendingTagName + state.pendingAttrs;
   } else if (
     state.mode === "tag-close-start" ||
-    state.mode === "tag-close-name"
+    state.mode === "tag-close-name" ||
+    state.mode === "tag-nested-open"
   ) {
     // Bytes buffered mid-closing-tag ("<", "</", "</NAME") — surface them in
     // the open custom-tag's visible content so they stream and aren't lost

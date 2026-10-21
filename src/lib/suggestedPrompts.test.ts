@@ -98,6 +98,11 @@ Add tests
     ]);
   });
 
+  it("returns nothing for an unclosed tag followed by a host notice", () => {
+    const content = `Done!\n<dyad-suggested-prompts>\nAdd a dark\n\n<dyad-step-limit steps="50" limit="50">Paused.</dyad-step-limit>`;
+    expect(extractSuggestedPrompts(content)).toEqual([]);
+  });
+
   it("drops prompts longer than the chip limit", () => {
     const long = "Add a feature ".repeat(10).trim();
     expect(long.length).toBeGreaterThan(MAX_SUGGESTED_PROMPT_CHARS);

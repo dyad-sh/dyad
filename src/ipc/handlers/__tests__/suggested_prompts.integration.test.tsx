@@ -85,6 +85,7 @@ describe("suggested follow-up prompts (integration)", () => {
     expect(storedMessages[2].content).toBe("Add a dark mode toggle");
     // The canned reply carries no suggestions, so nothing is offered now.
     expect(screen.queryByTestId("suggested-prompts")).toBeNull();
+    await harness.bridge.settleInFlight();
   }, 60_000);
 
   it("hides the chips when dismissed", async () => {
@@ -95,5 +96,6 @@ describe("suggested follow-up prompts (integration)", () => {
     );
 
     expect(screen.queryByTestId("suggested-prompts")).toBeNull();
+    await harness.bridge.settleInFlight();
   }, 60_000);
 });

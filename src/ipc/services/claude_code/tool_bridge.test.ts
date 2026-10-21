@@ -5,6 +5,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { z } from "zod";
 import { createDyadToolBridge } from "./tool_bridge";
+import { CancellationReason } from "@/shared/cancellation_reason";
 import {
   TOOL_DEFINITIONS,
   buildAgentToolSet,
@@ -223,7 +224,54 @@ it("releases an in-flight call when the client cancels it from a later POST", as
     expect(String((observed!.reason as Error).message)).toContain(
       "Claude Code stopped waiting for this tool call: MCP error -32001: Request timed out",
     );
+    // Nested work (e.g. a test run) reads the cause from the abort reason.
+    expect(observed!.reason).toBeInstanceOf(CancellationReason);
+    expect(observed!.reason).toMatchObject({
+      name: "AbortError",
+      kind: "claude-code-call-abandoned",
+      detail: "MCP error -32001: Request timed out",
+    });
   } finally {
     await bridge.close();
   }
+});
+
+it("aborts calls still running when the session closes with a session-ended reason", async () => {
+  let observed: AbortSignal | undefined;
+  const invoke = vi.fn(async (_name, _args, _id, signal: AbortSignal) => {
+    observed = signal;
+    await new Promise<void>((resolve) =>
+      signal.addEventListener("abort", () => resolve(), { once: true }),
+    );
+    return { content: [{ type: "text" as const, text: "released" }] };
+  });
+  const bridge = await createDyadToolBridge({
+    tools: { wait: { inputSchema: z.object({}) } },
+    signal: new AbortController().signal,
+    invoke,
+  });
+  const config = JSON.parse(await readFile(bridge.configPath, "utf8"))
+    .mcpServers.dyad;
+  const call = fetch(config.url, {
+    method: "POST",
+    headers: {
+      ...config.headers,
+      "Content-Type": "application/json",
+      Accept: "application/json, text/event-stream",
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 8,
+      method: "tools/call",
+      params: { name: "wait", arguments: {} },
+    }),
+  });
+  await vi.waitFor(() => expect(observed).toBeDefined());
+  await bridge.close();
+  await call.catch(() => undefined);
+  expect(observed!.aborted).toBe(true);
+  expect(observed!.reason).toBeInstanceOf(CancellationReason);
+  expect((observed!.reason as CancellationReason).kind).toBe(
+    "claude-code-session-ended",
+  );
 });

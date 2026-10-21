@@ -7,6 +7,7 @@ import { getUserDataPath } from "@/paths/paths";
 import type { TestIsolation } from "@/ipc/types/tests";
 import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { testRunStoppedError } from "./test_run_stop";
 import {
   createGitOverlayWorkspace,
   isGitOverlayWorkspaceActive,
@@ -140,8 +141,7 @@ export async function createE2eTestWorkspace({
   hasCustomCommands?: boolean;
   signal?: AbortSignal;
 }): Promise<E2eTestWorkspace> {
-  if (signal?.aborted)
-    throw new DyadError("Test run stopped.", DyadErrorKind.UserCancelled);
+  if (signal?.aborted) throw testRunStoppedError(signal);
 
   const sandboxRoot = await realpathRoot(
     path.join(getUserDataPath(), E2E_TEST_SANDBOX_DIR),
@@ -192,8 +192,7 @@ export async function createE2eTestWorkspace({
   };
 
   try {
-    if (signal?.aborted)
-      throw new DyadError("Test run stopped.", DyadErrorKind.UserCancelled);
+    if (signal?.aborted) throw testRunStoppedError(signal);
     // Custom installs can reach ancestor workspace packages too. Discover the
     // root without selecting a Node package manager for non-Node custom apps.
     const { packageManager, sourceInstallPath } = hasCustomCommands
@@ -388,8 +387,7 @@ export async function installE2eTestWorkspaceDependencies({
 }): Promise<void> {
   const { dependencyInstallPath, packageManager } = workspace;
   const packageRootPath = workspace.packageRootPath ?? dependencyInstallPath;
-  if (signal?.aborted)
-    throw new DyadError("Test run stopped.", DyadErrorKind.UserCancelled);
+  if (signal?.aborted) throw testRunStoppedError(signal);
 
   const startedAt = Date.now();
   // Every package this one install touches. The manager installs all workspace
@@ -471,7 +469,7 @@ export async function installE2eTestWorkspaceDependencies({
     }
   }
   if (installResult.aborted || signal?.aborted) {
-    throw new DyadError("Test run stopped.", DyadErrorKind.UserCancelled);
+    throw testRunStoppedError(signal);
   }
   const output = installOutputTail(installResult.stdout, installResult.stderr);
   if (installResult.timedOut) {

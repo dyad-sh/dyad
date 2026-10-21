@@ -31,8 +31,15 @@ export function transition(
       if (state.activeRun?.runId === event.runId) {
         if (state.activeRun.stopping) return ignore(state, "already-stopping");
         return change(
-          { ...state, activeRun: { ...state.activeRun, stopping: true } },
-          [{ type: "abort", runId: event.runId }],
+          {
+            ...state,
+            activeRun: {
+              ...state.activeRun,
+              stopping: true,
+              stopReason: event.reason,
+            },
+          },
+          [{ type: "abort", runId: event.runId, reason: event.reason }],
         );
       }
       if (!state.queuedRuns.some((run) => run.runId === event.runId)) {
@@ -45,7 +52,7 @@ export function transition(
             (run) => run.runId !== event.runId,
           ),
         },
-        [{ type: "cancel-queued", runId: event.runId }],
+        [{ type: "cancel-queued", runId: event.runId, reason: event.reason }],
       );
     }
     case "stop": {
@@ -53,16 +60,37 @@ export function transition(
       if (state.activeRun.stopping && state.queuedRuns.length === 0) {
         return ignore(state, "already-stopping");
       }
+      const queuedCancellations = state.queuedRuns.map(
+        (run): TestRunQueueCommand => ({
+          type: "cancel-queued",
+          runId: run.runId,
+          reason: event.reason,
+        }),
+      );
+      // A run already stopping keeps the cause that actually aborted it; this
+      // Stop only clears the requests queued behind it.
+      if (state.activeRun.stopping) {
+        return change(
+          { activeRun: state.activeRun, queuedRuns: [] },
+          queuedCancellations,
+        );
+      }
       return change(
-        { activeRun: { ...state.activeRun, stopping: true }, queuedRuns: [] },
+        {
+          activeRun: {
+            ...state.activeRun,
+            stopping: true,
+            stopReason: event.reason,
+          },
+          queuedRuns: [],
+        },
         [
-          ...state.queuedRuns.map(
-            (run): TestRunQueueCommand => ({
-              type: "cancel-queued",
-              runId: run.runId,
-            }),
-          ),
-          { type: "abort", runId: state.activeRun.runId },
+          ...queuedCancellations,
+          {
+            type: "abort",
+            runId: state.activeRun.runId,
+            reason: event.reason,
+          },
         ],
       );
     }

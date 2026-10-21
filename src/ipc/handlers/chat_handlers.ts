@@ -51,17 +51,25 @@ import {
   blockSubagentAdmissionsForChat,
   settleSubagentsForChatDeletion,
 } from "@/pro/main/ipc/handlers/local_agent/subagents/subagent_manager";
+import type { CancellationCause } from "@/shared/cancellation_reason";
 
 const logger = log.scope("chat_handlers");
 
 async function mutateChatAfterDrainingStreams({
   chatId,
   sender,
+  cancellationCause,
   beforeLock,
   mutation,
 }: {
   chatId: number;
   sender: WebContents;
+  /**
+   * Why the chat's in-flight turn is cancelled, reported to nested work.
+   * Omitted where the UI already refuses the mutation while the chat streams;
+   * a turn that races in anyway reports the user's Stop.
+   */
+  cancellationCause?: CancellationCause;
   beforeLock?: () => Promise<void | (() => void)>;
   mutation: () => Promise<void>;
 }): Promise<void> {
@@ -84,8 +92,16 @@ async function mutateChatAfterDrainingStreams({
       // Drain outside the app lock: an aborted stream may need the same lock to
       // finish a file write. The admission blocks close the gaps before and
       // after draining so another turn cannot enter around the mutation.
-      await waitForChatActorIdle(chatId, { cancelActive: true });
-      await cancelActiveStreamsForChat(chatId, sender);
+      await waitForChatActorIdle(chatId, {
+        cancelActive: true,
+        cancellationCause,
+      });
+      await cancelActiveStreamsForChat(
+        chatId,
+        sender,
+        undefined,
+        cancellationCause,
+      );
       await appOperationCoordinator.run(
         {
           appId: chat.appId,
@@ -326,11 +342,15 @@ export function registerChatHandlers() {
       await mutateChatAfterDrainingStreams({
         chatId,
         sender: event.sender,
+        cancellationCause: "chat-deleted",
         beforeLock: async () => {
           await userInputSettlement;
-          const releaseSubagents = await settleSubagentsForChatDeletion(chatId);
+          const releaseSubagents = await settleSubagentsForChatDeletion(
+            chatId,
+            "chat-deleted",
+          );
           try {
-            await settleChatActorsForDeletion(chatId);
+            await settleChatActorsForDeletion(chatId, "chat-deleted");
             return releaseSubagents;
           } catch (error) {
             releaseSubagents();

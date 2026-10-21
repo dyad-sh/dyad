@@ -12,6 +12,8 @@ import {
   MAX_PLAN_ITEMS,
 } from "../../lib/test_recorder/assertion_proposal";
 import { WindowSessionIdSchema } from "../../window_infrastructure/types";
+import { CANCELLATION_CAUSES } from "../../shared/cancellation_reason";
+import type { TestRunStopReason } from "../../shared/test_run_stop";
 import type { TestRunQueueState } from "../../test_run_queue/state";
 
 /** A UUID today; sized so a different id scheme doesn't have to revisit this. */
@@ -184,6 +186,26 @@ export const TestIsolationSchema = z.object({
 });
 export type TestIsolation = z.infer<typeof TestIsolationSchema>;
 
+export const TestRunStopReasonSchema = z.object({
+  kind: z.enum(CANCELLATION_CAUSES),
+  detail: z.string().optional(),
+});
+// Keep the shared stop reason and its wire codec mutually assignable.
+type AssertStopReasonShape<T extends TestRunStopReason> = T;
+type AssertStopReasonWire<T extends z.infer<typeof TestRunStopReasonSchema>> =
+  T;
+export type TestRunStopReasonSnapshot = AssertStopReasonShape<
+  z.infer<typeof TestRunStopReasonSchema>
+>;
+export type TestRunStopReasonWire = AssertStopReasonWire<TestRunStopReason>;
+
+export const TestRunInfraErrorSchema = z.object({
+  message: z.string(),
+  /** Present when the run was stopped rather than failing on its own. */
+  stopReason: TestRunStopReasonSchema.optional(),
+});
+export type TestRunInfraError = z.infer<typeof TestRunInfraErrorSchema>;
+
 export const RunAppTestsResultSchema = z.object({
   appId: z.number(),
   /** Refused before lifecycle publication; only these errors need a caller toast. */
@@ -192,15 +214,11 @@ export const RunAppTestsResultSchema = z.object({
   /**
    * Set when the run encountered an infrastructure or cleanup error (e.g.
    * Playwright/browser missing and bootstrap declined, dev server down, spawn
-   * error, or an isolated test database could not be set up). Renders as an
-   * amber, panel-level "inconclusive" banner. Completed results may accompany
-   * this warning; incomplete file results are marked separately.
+   * error, or an isolated test database could not be set up), or was stopped.
+   * Renders as a panel-level "inconclusive" banner. Completed results may
+   * accompany this warning; incomplete file results are marked separately.
    */
-  infraError: z
-    .object({
-      message: z.string(),
-    })
-    .optional(),
+  infraError: TestRunInfraErrorSchema.optional(),
   /**
    * How the run's database was isolated. Absent on legacy/no-DB paths; the UI
    * treats absent the same as `{ mode: "none" }`.
@@ -374,7 +392,10 @@ const QueuedTestRunSchema = z.object({
   grep: z.string().optional(),
 });
 export const TestRunQueueSchema = z.object({
-  activeRun: QueuedTestRunSchema.extend({ stopping: z.boolean() }).nullable(),
+  activeRun: QueuedTestRunSchema.extend({
+    stopping: z.boolean(),
+    stopReason: TestRunStopReasonSchema.optional(),
+  }).nullable(),
   queuedRuns: z.array(QueuedTestRunSchema).readonly(),
 });
 // Keep the pure machine read model and its wire codec mutually assignable.
@@ -453,7 +474,7 @@ export const TestsRunStatePayloadSchema = z.object({
   previewOwnerWindowSessionId: WindowSessionIdSchema.optional(),
   /** Present only on "finished". */
   results: z.array(TestResultSchema).optional(),
-  infraError: z.object({ message: z.string() }).optional(),
+  infraError: TestRunInfraErrorSchema.optional(),
   isolation: TestIsolationSchema.optional(),
   /**
    * Whether this run executed in an isolated sandbox — a throwaway copy of the

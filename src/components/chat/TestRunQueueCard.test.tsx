@@ -71,6 +71,10 @@ vi.mock("react-i18next", () => ({
         "testRunQueue.passed": "Passed",
         "testRunQueue.failed": "Failed",
         "testRunQueue.inconclusive": "Inconclusive",
+        "testRunQueue.stopped": "Stopped",
+        "testRunQueue.stopReason.tests-panel-stop":
+          "Stopped from the Tests panel",
+        "testRunQueue.stopReason.chat-stop": "The chat response was stopped",
       })[key] ?? key,
   }),
 }));
@@ -571,6 +575,23 @@ it.each([
     infraError: { message: "Cleanup failed" },
     expected: "Failed",
   },
+  {
+    results: [],
+    infraError: {
+      message: "Test run stopped from the Tests panel.",
+      stopReason: { kind: "tests-panel-stop" as const },
+    },
+    expected: "Stopped",
+  },
+  {
+    // A real failure observed before the stop still wins.
+    results: [{ file: first.testFile, status: "failed" as const }],
+    infraError: {
+      message: "Test run stopped from the Tests panel.",
+      stopReason: { kind: "tests-panel-stop" as const },
+    },
+    expected: "Failed",
+  },
 ])(
   "reports incomplete/empty/failed runs honestly: $expected",
   async ({ expected, ...result }) => {
@@ -586,6 +607,38 @@ it.each([
     expect(screen.queryByText("Passed")).toBeNull();
   },
 );
+
+it("says why a run stopped and why the active run is stopping", async () => {
+  mocks.getRunQueue.mockResolvedValue({
+    activeRun: {
+      ...first,
+      stopping: true,
+      stopReason: { kind: "chat-stop" },
+    },
+    queuedRuns: [],
+  });
+  const { Harness } = setup();
+  render(<Harness />);
+  const stopping = await screen.findByText("Stopping");
+  expect(stopping.getAttribute("title")).toBe("The chat response was stopped");
+  expect(stopping.textContent).toContain("The chat response was stopped");
+
+  act(() =>
+    publishRun({
+      appId: 1,
+      ...first,
+      state: "finished",
+      results: [],
+      infraError: {
+        message: "Test run stopped from the Tests panel.",
+        stopReason: { kind: "tests-panel-stop" },
+      },
+    }),
+  );
+  const stopped = await screen.findByText("Stopped");
+  expect(stopped.getAttribute("title")).toBe("Stopped from the Tests panel");
+  expect(stopped.textContent).toContain("Stopped from the Tests panel");
+});
 
 it("labels whole-suite, batch, single-case and grep selections", async () => {
   mocks.getRunQueue.mockResolvedValue({

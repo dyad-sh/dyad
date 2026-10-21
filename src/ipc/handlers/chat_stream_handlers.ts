@@ -1,5 +1,10 @@
 import { SubscriptionBillingError } from "@/shared/subscription_billing_error";
 import { DEFAULT_ENABLE_SUGGESTED_PROMPTS } from "@/shared/settings_defaults";
+import {
+  CancellationReason,
+  type CancellationCause,
+} from "@/shared/cancellation_reason";
+import { chatCancellationReason } from "../services/chat_cancellation_cause";
 import { modelForChatBackend } from "@/shared/execution_backend";
 import { isZipAttachmentName } from "@/shared/zip_attachments";
 import { isDotenvFilePath } from "@/utils/dotenv_redaction";
@@ -693,6 +698,7 @@ export function takePartialResponseForStream(
 async function cancelTrackedStreams(
   chatIds: number[],
   sender: SafeSender | undefined,
+  cause?: CancellationCause,
 ): Promise<boolean> {
   const trackedStreams = chatIds
     .map((chatId) => ({
@@ -716,7 +722,13 @@ async function cancelTrackedStreams(
       if (invocationRef)
         cancelledActorInvocations.add(invocationRef.operationId);
     }
-    streams.forEach(({ abortController }) => abortController.abort());
+    // The reason reaches nested work started by the turn (e.g. a test run), so
+    // it can report why it stopped. Without an explicit cause, a caller may
+    // have scoped one for this chat; otherwise this is the user's Stop.
+    const reason = cause
+      ? new CancellationReason(cause)
+      : chatCancellationReason(chatId);
+    streams.forEach(({ abortController }) => abortController.abort(reason));
     clearPendingLocalAgentInputsForChat(chatId);
     logger.log(`Aborted ${streams.length} stream(s) for chat ${chatId}`);
   }
@@ -813,6 +825,7 @@ export async function cancelActiveStreamsForChat(
   chatId: number,
   sender: SafeSender | undefined,
   pendingInvocationRef?: ChatStreamInvocationRef,
+  cause?: CancellationCause,
 ): Promise<boolean> {
   if (
     pendingInvocationRef &&
@@ -822,7 +835,7 @@ export async function cancelActiveStreamsForChat(
     markPendingActorStreamCancellation(pendingInvocationRef);
     return true;
   }
-  return cancelTrackedStreams([chatId], sender);
+  return cancelTrackedStreams([chatId], sender, cause);
 }
 
 /**
@@ -833,6 +846,7 @@ export async function cancelActiveStreamsForChat(
 export async function cancelActiveStreamsForApp(
   appId: number,
   sender?: SafeSender,
+  cause?: CancellationCause,
 ): Promise<boolean> {
   const inFlightChatIds = [
     ...new Set([...activeStreams.keys(), ...streamCompletions.keys()]),
@@ -853,6 +867,7 @@ export async function cancelActiveStreamsForApp(
   return cancelTrackedStreams(
     appChats.map(({ id }) => id),
     sender,
+    cause,
   );
 }
 
@@ -999,7 +1014,9 @@ export function registerChatStreamHandlers() {
   app?.on?.("before-quit", () => {
     userInputRegistry.dispose();
     for (const controllers of activeStreams.values()) {
-      controllers.forEach(({ abortController }) => abortController.abort());
+      controllers.forEach(({ abortController }) =>
+        abortController.abort(new CancellationReason("app-quit")),
+      );
     }
     activeStreams.clear();
     partialResponses.clear();
@@ -3546,7 +3563,11 @@ This conversation includes one or more image attachments. When the user uploads 
 
   // Handler to cancel an ongoing stream
   createTypedHandler(chatContracts.cancelStream, async (event, chatId) => {
-    const cancelled = await cancelTrackedStreams([chatId], event.sender);
+    const cancelled = await cancelTrackedStreams(
+      [chatId],
+      event.sender,
+      "chat-stop",
+    );
     if (!cancelled) {
       logger.warn(`No active stream found for chat ${chatId}`);
     }

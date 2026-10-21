@@ -36,6 +36,7 @@ import {
   readTestScreenshotDataUrl,
 } from "@/ipc/utils/test_screenshot";
 import { readSettings } from "@/main/settings";
+import { CancellationReason } from "@/shared/cancellation_reason";
 import { runTestsTool } from "./run_tests";
 import {
   getAppTestRunQueue,
@@ -45,7 +46,7 @@ import {
 
 const pendingRunnerResults = new Set<(result: RunAppTestsResult) => void>();
 afterEach(async () => {
-  stopAppTestsForApp(1);
+  stopAppTestsForApp(1, { kind: "tests-panel-stop" });
   for (const finish of pendingRunnerResults) finish({ appId: 1, results: [] });
   await drainAppTestRuns(1);
   pendingRunnerResults.clear();
@@ -172,7 +173,8 @@ describe("runTestsTool", () => {
       expect(preview).toContain("Running " + files[0]);
       expect(preview).not.toContain("Queued:");
       abort.abort();
-      expect(await second).toContain("cancelled while queued");
+      expect(await second).toContain("stopped before execution");
+      expect(await second).toContain("still queued");
       expect(preview).toContain("Running " + files[0]);
       expect(ctx.onXmlComplete).not.toHaveBeenCalled();
     } finally {
@@ -312,8 +314,11 @@ describe("runTestsTool", () => {
       { testFiles: ["e2e-tests/a.spec.ts"], flakeCheck: true },
       ctx,
     );
-    abort.abort();
-    expect(await second).toContain("cancelled while queued");
+    abort.abort(new CancellationReason("chat-stop"));
+    expect(await second).toContain(
+      "Test run stopped before execution because the chat response that started it was stopped.",
+    );
+    expect(await second).toContain("still queued");
     expect(ctx.testRunCount ?? 0).toBe(0);
     expect(ctx.testRunAttempts.size).toBe(0);
     finish(passedResult);
@@ -564,7 +569,7 @@ describe("runTestsTool", () => {
       ["empty", "some files not verified"],
       ["infra", "Test run couldn't complete"],
       ["throw", "Test run couldn't complete"],
-      ["cancel", "Test run couldn't complete"],
+      ["cancel", "Test run stopped"],
       ["invalid grep", "Invalid grep pattern"],
       ["attempt limit", "Test batch blocked"],
       ["turn limit", "Test run limit reached"],
@@ -850,7 +855,11 @@ describe("runTestsTool", () => {
           `${c}: observed 0 passed, 1 failed, 0 skipped — not verified`,
         );
         expect(out).toContain(`${d}: no results returned — not verified`);
-        expect(out).toContain("select a smaller batch");
+        expect(out).toContain(
+          reason === "cancel"
+            ? "NOT a test failure or an infrastructure problem"
+            : "select a smaller batch",
+        );
         for (const file of [a, b, c, d])
           expect(ctx.testRunAttempts.get(file)).toEqual({
             attempts: 0,
@@ -859,6 +868,23 @@ describe("runTestsTool", () => {
         expect(ctx.testRunCount).toBe(1);
       },
     );
+
+    it("tells the agent the user stopped its run from the Tests panel", async () => {
+      const ctx = makeCtx();
+      runner.mockImplementation(async () => {
+        stopAppTestsForApp(1, { kind: "tests-panel-stop" });
+        return { appId: 1, results: [{ file: a, status: "passed" }] };
+      });
+      const out = await runTestsTool.execute({ testFiles: [a] }, ctx);
+      expect(out).toContain("Test run stopped from the Tests panel.");
+      expect(out).toContain(
+        "Do not call run_tests again unless the user asks you to.",
+      );
+      expect(out).not.toContain("infrastructure problem, NOT");
+      expect(ctx.testRunAttempts.get(a)).toEqual({ attempts: 0 });
+      const xml = vi.mocked(ctx.onXmlComplete).mock.calls[0][0];
+      expect(xml).toContain('message="Test run stopped"');
+    });
 
     it.each(["infra", "throw", "cancel"])(
       "refunds all flake allowances and never verifies partial results after %s",

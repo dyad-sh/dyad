@@ -25,6 +25,11 @@ import type { TestRunExecution } from "@/test_run_queue/controller";
 import type { TestRunTiming } from "@/ipc/services/test_run_timing";
 import { readSettings } from "@/main/settings";
 import type { RunAppTestsResult, TestResult } from "@/ipc/types/tests";
+import { getCancellationInfo } from "@/shared/cancellation_reason";
+import {
+  describeTestRunStop,
+  type TestRunStopReason,
+} from "@/shared/test_run_stop";
 import { normalizeFailureSignature } from "./test_failure_signature";
 import {
   MAX_ATTEMPTS,
@@ -394,6 +399,26 @@ function reportInfraFailure(
   return body;
 }
 
+/**
+ * A stopped run is someone's decision, not an environment problem: name the
+ * cause instead of telling the agent to fix the environment and retry.
+ */
+function reportStopped(
+  stopReason: TestRunStopReason | undefined,
+  resultsSummary = "",
+): string {
+  return [
+    `${describeTestRunStop(stopReason)} This is NOT a test failure or an infrastructure problem, and it did NOT count as a fix attempt.`,
+    resultsSummary,
+    "No file was granted verification.",
+    stopReason?.kind === "tests-panel-stop"
+      ? "The user stopped this run on purpose. Do not call run_tests again unless the user asks you to."
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
 function reportPassed(params: {
   testFile: string;
   state: TestRunAttemptState;
@@ -718,15 +743,8 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
           return warn("App isn't running", devServerBlocked);
         if (queueRun.signal.aborted) {
           return warn(
-            "Test run couldn't complete",
-            reportInfraFailure({
-              kind: "infra",
-              passed: 0,
-              failed: 0,
-              skipped: 0,
-              allInconclusive: false,
-              message: "Test run stopped.",
-            }),
+            "Test run stopped",
+            reportStopped(getCancellationInfo(queueRun.signal.reason)),
           );
         }
 
@@ -780,19 +798,21 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
             });
             return `${file}: observed ${observed.passed} passed, ${observed.failed} failed, ${observed.skipped} skipped${results.some((result) => result.incomplete) ? " (file incomplete)" : ""} — not verified`;
           });
-          return warn(
-            "Test run couldn't complete",
-            reportInfraFailure(
-              queueRun.signal.aborted
-                ? {
-                    ...batchOutcome,
-                    kind: "infra",
-                    message: "Test run stopped.",
-                  }
-                : batchOutcome,
-              `Results returned before the batch warning:\n${observedResults.join("\n")}`,
-            ),
-          );
+          const resultsSummary = `Results returned before the batch warning:\n${observedResults.join("\n")}`;
+          // The kill behind a stop produces knock-on runner errors; the stop's
+          // cause is what explains the batch, so it replaces them.
+          return queueRun.signal.aborted
+            ? warn(
+                "Test run stopped",
+                reportStopped(
+                  getCancellationInfo(queueRun.signal.reason),
+                  resultsSummary,
+                ),
+              )
+            : warn(
+                "Test run couldn't complete",
+                reportInfraFailure(batchOutcome, resultsSummary),
+              );
         }
 
         const agentDetails: string[] = [];
@@ -852,9 +872,8 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
         else completeStatus(ctx, title, withSelectionNote(body));
         return withSelectionNote([body, ...agentDetails].join("\n\n"));
       },
-      () => {
-        const body =
-          "Test run cancelled while queued. No tests ran, and this did NOT count as a fix attempt.";
+      (reason) => {
+        const body = `${describeTestRunStop(reason, { beforeExecution: true })} It was still queued, so no tests ran, and this did NOT count as a fix attempt.`;
         // Completing root XML also clears the shared live preview. A request
         // cancelled before it starts must leave the executing run's card alone.
         if (ctx.onToolActivity) completeStatus(ctx, "Tests cancelled", body);

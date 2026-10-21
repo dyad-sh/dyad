@@ -11,7 +11,21 @@
     "stopping": "Deteniendo",
     "passed": "Aprobada",
     "failed": "Fallida",
-    "inconclusive": "No concluyente"
+    "inconclusive": "No concluyente",
+    "stopped": "Detenida",
+    "stopReason": {
+      "tests-panel-stop": "Detenida desde el panel de pruebas",
+      "chat-stop": "Se detuvo la respuesta del chat",
+      "chat-deleted": "Se eliminó el chat",
+      "version-restored": "Se restauró una versión anterior",
+      "subagent-stopped": "Se detuvo el subagente",
+      "pro-revoked": "Dyad Pro ya no está activo",
+      "claude-code-call-abandoned": "Claude Code dejó de esperar la llamada a la herramienta",
+      "claude-code-session-ended": "La sesión de Claude Code terminó",
+      "agent-cancelled": "Se canceló el turno del agente",
+      "app-deleted": "La app se está eliminando",
+      "app-quit": "Dyad se está cerrando"
+    }
   },
   "newChat": "Nuevo Chat",
   "viewAllApps": "Todos los apps",

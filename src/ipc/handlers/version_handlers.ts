@@ -1499,9 +1499,16 @@ export function registerVersionHandlers() {
       // cancellation must run before we re-acquire it.
       const didCancelActor =
         restoreCodebase &&
-        (await waitForAppChatActorsIdle(appId, { cancelActive: true }));
+        (await waitForAppChatActorsIdle(appId, {
+          cancelActive: true,
+          cancellationCause: "version-restored",
+        }));
       const didCancelTransport = restoreCodebase
-        ? await cancelActiveStreamsForApp(appId, event.sender)
+        ? await cancelActiveStreamsForApp(
+            appId,
+            event.sender,
+            "version-restored",
+          )
         : false;
       const preservedByActiveCancellation =
         didCancelActor || didCancelTransport;

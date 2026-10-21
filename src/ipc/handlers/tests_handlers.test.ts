@@ -22,6 +22,7 @@ import { TEST_BASE_URL_ENV } from "../utils/playwright_bootstrap";
 import { WindowSessionIdSchema } from "@/window_infrastructure/types";
 import { runningApps } from "../utils/process_manager";
 import { TestRunTiming } from "../services/test_run_timing";
+import { CancellationReason } from "@/shared/cancellation_reason";
 
 // Every app folder lives under one throwaway base so the delete handler runs
 // against real directories (its path guards resolve symlinks on disk).
@@ -459,7 +460,11 @@ describe("tests handlers", () => {
     );
 
     it.each([
-      { outcome: "cancelled", message: "Test run stopped." },
+      {
+        outcome: "cancelled",
+        message:
+          "Test run stopped because the chat response that started it was stopped.",
+      },
       {
         outcome: "timed out",
         message:
@@ -509,7 +514,8 @@ describe("tests handlers", () => {
           teardown,
         });
         ensurePlaywrightBootstrapMock.mockImplementation(async () => {
-          if (outcome === "cancelled") controller.abort();
+          if (outcome === "cancelled")
+            controller.abort(new CancellationReason("chat-stop"));
           return { installed: false, previewRouted: true };
         });
         const appPath = path.join(TEMP_BASE, "app");
@@ -920,7 +926,7 @@ describe("tests handlers", () => {
       const controller = new AbortController();
       startE2eTestRuntimeMock.mockImplementation(async () => {
         // Stop lands while the server is still starting.
-        controller.abort();
+        controller.abort(new CancellationReason("chat-stop"));
         throw new Error("Test run stopped.");
       });
 
@@ -931,9 +937,14 @@ describe("tests handlers", () => {
         externalSignal: controller.signal,
       });
 
-      expect(result.infraError?.message).toMatch(/Test run stopped/i);
+      expect(result.infraError?.message).toMatch(
+        /Test run stopped because the chat response/i,
+      );
       expect(result.infraError?.message).toMatch(/temporary test user/i);
       expect(result.infraError?.message).not.toMatch(/isolated test database/i);
+      // The leaked user needs attention, so this must not render as a
+      // neutral stop even though a stop caused it.
+      expect(result.infraError?.stopReason).toBeUndefined();
     });
 
     it("stays quiet when only the sandbox env was left unrestored", async () => {
@@ -1241,7 +1252,7 @@ describe("tests handlers", () => {
         .run();
       const stop = new AbortController();
       createE2eTestWorkspaceMock.mockImplementation(async () => {
-        stop.abort();
+        stop.abort(new CancellationReason("version-restored"));
         throw new Error("Test run stopped.");
       });
 
@@ -1252,7 +1263,11 @@ describe("tests handlers", () => {
         externalSignal: stop.signal,
       });
 
-      expect(result.infraError?.message).toBe("Test run stopped.");
+      expect(result.infraError).toEqual({
+        message:
+          "Test run stopped because an earlier version of the app was restored.",
+        stopReason: { kind: "version-restored" },
+      });
       expect(startE2eTestRuntimeMock).not.toHaveBeenCalled();
     });
 
@@ -2925,12 +2940,24 @@ describe("tests handlers", () => {
       );
       const second = runAppTestsWithIsolation(options);
       await harness.invokeHandler("tests:stop", { appId });
-      expect((await second).infraError?.message).toContain(
-        "stopped before execution",
-      );
+      expect((await second).infraError).toEqual({
+        message: "Test run stopped before execution from the Tests panel.",
+        stopReason: { kind: "tests-panel-stop" },
+      });
+      const activeSignal: AbortSignal =
+        prepareIsolatedTestDatabaseMock.mock.calls[0][0].signal;
+      expect(activeSignal.aborted).toBe(true);
+      expect(activeSignal.reason).toMatchObject({
+        name: "AbortError",
+        kind: "tests-panel-stop",
+      });
       expect(
-        prepareIsolatedTestDatabaseMock.mock.calls[0][0].signal.aborted,
-      ).toBe(true);
+        (await harness.invokeHandler<any>("tests:get-run-queue", { appId }))
+          .activeRun,
+      ).toMatchObject({
+        stopping: true,
+        stopReason: { kind: "tests-panel-stop" },
+      });
       expect(runStates()).toEqual(["started", "stopping"]);
       finish({
         isolation: { mode: "neon-branch" },

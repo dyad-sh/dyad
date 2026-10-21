@@ -11,7 +11,21 @@
     "stopping": "중지 중",
     "passed": "통과",
     "failed": "실패",
-    "inconclusive": "판정 불가"
+    "inconclusive": "판정 불가",
+    "stopped": "중지됨",
+    "stopReason": {
+      "tests-panel-stop": "테스트 패널에서 중지됨",
+      "chat-stop": "채팅 응답이 중지됨",
+      "chat-deleted": "채팅이 삭제됨",
+      "version-restored": "이전 버전이 복원됨",
+      "subagent-stopped": "하위 에이전트가 중지됨",
+      "pro-revoked": "Dyad Pro가 더 이상 활성 상태가 아님",
+      "claude-code-call-abandoned": "Claude Code가 도구 호출 대기를 중단함",
+      "claude-code-session-ended": "Claude Code 세션이 종료됨",
+      "agent-cancelled": "에이전트 턴이 취소됨",
+      "app-deleted": "앱을 삭제하는 중",
+      "app-quit": "Dyad를 종료하는 중"
+    }
   },
   "newChat": "새 채팅",
   "viewAllApps": "모든 앱",

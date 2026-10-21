@@ -13,6 +13,7 @@ import {
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { asSchema, type ToolSet } from "ai";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { CancellationReason } from "@/shared/cancellation_reason";
 
 const MAX_CANCELLATION_REASON_LENGTH = 200;
 
@@ -46,6 +47,8 @@ export async function createDyadToolBridge(options: {
   // in-flight calls here so a `notifications/cancelled` arriving on a later
   // POST can still release the call it names.
   const cancellations = new Map<string, AbortController>();
+  // A cancellation reason, not a failure: nested work (e.g. a test run) reports
+  // that Claude Code abandoned the call, with the CLI's own detail.
   const abandonmentError = (reason: unknown) => {
     const detail =
       typeof reason === "string" && reason.trim()
@@ -53,11 +56,9 @@ export async function createDyadToolBridge(options: {
         : reason instanceof Error
           ? reason.message.slice(0, MAX_CANCELLATION_REASON_LENGTH)
           : "";
-    return new DyadError(
-      detail
-        ? `Claude Code stopped waiting for this tool call: ${detail}`
-        : "Claude Code stopped waiting for this tool call.",
-      DyadErrorKind.External,
+    return new CancellationReason(
+      "claude-code-call-abandoned",
+      detail || undefined,
     );
   };
   const declarations = await Promise.all(
@@ -208,7 +209,7 @@ export async function createDyadToolBridge(options: {
     configPath,
     names: declarations.map((tool) => `mcp__dyad__${tool.name}`),
     async close() {
-      closing.abort();
+      closing.abort(new CancellationReason("claude-code-session-ended"));
       http.close();
       await Promise.allSettled(active);
       await Promise.allSettled([...servers].map((server) => server.close()));

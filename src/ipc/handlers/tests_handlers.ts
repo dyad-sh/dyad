@@ -137,6 +137,10 @@ import {
   drainAppTestRuns,
 } from "../services/test_run_queue_service";
 import {
+  testRunStopInfraError,
+  testRunStoppedInfraError,
+} from "../services/test_run_stop";
+import {
   createTestRunArtifactsDir,
   pruneTestRunArtifacts,
 } from "../utils/test_run_artifacts";
@@ -301,7 +305,7 @@ export {
 
 /** Abort every sandbox/test runner during Electron's synchronous quit phase. */
 export function stopAllAppTestsSync(): void {
-  stopAllAppTestRuns();
+  stopAllAppTestRuns({ kind: "app-quit" });
   // Aborting is not enough here. The abort listeners route into `killProcess`,
   // which tree-kills asynchronously, and `will-quit` does not await async work.
   // Tree-kill the run-scoped children synchronously too, or a sandbox dev
@@ -311,7 +315,7 @@ export function stopAllAppTestsSync(): void {
 }
 
 export async function endTestsForApp(appId: number): Promise<void> {
-  stopAppTestsForApp(appId);
+  stopAppTestsForApp(appId, { kind: "app-deleted" });
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     await Promise.race([
@@ -712,7 +716,7 @@ async function runPreviewTestBatch({
     }
 
     if (discoveryRun.aborted) {
-      result.infraError = { message: "Test run stopped." };
+      result.infraError = testRunStoppedInfraError(signal);
       return result;
     }
     if (discoveryRun.timedOut) {
@@ -860,7 +864,7 @@ async function runPreviewTestBatch({
       }
 
       if (run.aborted) {
-        result.infraError = { message: "Test run stopped." };
+        result.infraError = testRunStoppedInfraError(signal);
         break;
       }
       if (run.timedOut) {
@@ -1179,7 +1183,7 @@ async function runAppTestsCoreUnredacted({
   }
 
   if (signal?.aborted) {
-    return { appId, results: [], infraError: { message: "Test run stopped." } };
+    return { appId, results: [], infraError: testRunStoppedInfraError(signal) };
   }
 
   // Both preconditions live inside the branch that takes the route, so the
@@ -1342,7 +1346,7 @@ async function runAppTestsCoreUnredacted({
   }
 
   if (run.aborted) {
-    return { appId, results: [], infraError: { message: "Test run stopped." } };
+    return { appId, results: [], infraError: testRunStoppedInfraError(signal) };
   }
 
   // Classify a timeout BEFORE parsing the report: Playwright may have written
@@ -1556,7 +1560,7 @@ async function runTestsWithPreviewAutomation({
         return {
           appId,
           results: [],
-          infraError: { message: "Test run stopped." },
+          infraError: testRunStoppedInfraError(signal),
         };
       }
       if (source === "agent") {
@@ -2205,10 +2209,10 @@ export function runAppTestsWithIsolation(
     }
     return execute(options.queueRun, options.timing);
   }
-  return withAppTestRun<RunAppTestsResult>(options, execute, () => ({
+  return withAppTestRun<RunAppTestsResult>(options, execute, (reason) => ({
     appId: options.appId,
     results: [],
-    infraError: { message: "Test run stopped before execution." },
+    infraError: testRunStopInfraError(reason, { beforeExecution: true }),
   }));
 }
 
@@ -2232,7 +2236,7 @@ async function executeAppTestsWithIsolation(
   { runId, signal }: TestRunExecution,
 ): Promise<RunAppTestsResult> {
   if (signal.aborted)
-    return { appId, results: [], infraError: { message: "Test run stopped." } };
+    return { appId, results: [], infraError: testRunStoppedInfraError(signal) };
   const selection = normalizeRunTestSelection({
     testFile,
     testFiles,
@@ -2452,6 +2456,8 @@ async function executeAppTestsWithIsolation(
       return {
         ...result,
         isolation: result.isolation ?? lastIsolation,
+        // Deliberately drops any `stopReason`: a stop that left processes
+        // behind needs attention, so it must not render as a neutral stop.
         infraError: {
           message: result.infraError
             ? `${result.infraError.message}\n\n${PROCESS_SETTLEMENT_FAILED_MESSAGE}`
@@ -2478,7 +2484,8 @@ async function executeAppTestsWithIsolation(
     return {
       ...result,
       // Appended rather than substituted: an isolation-setup failure explains
-      // why the run produced nothing, and replacing it would hide that.
+      // why the run produced nothing, and replacing it would hide that. Any
+      // `stopReason` is dropped so a failed cleanup reads as a warning.
       infraError: {
         message: result.infraError
           ? `${result.infraError.message}\n\n${restoreMessage}`
@@ -2734,8 +2741,8 @@ async function executeAppTestsWithIsolation(
           return { installed, previewRouted, workspace, provider: captured };
         } catch (error) {
           // A Stop is not a setup failure — let it reach the outer catch, which
-          // turns it into the same "Test run stopped." result the in-run Stop
-          // path produces.
+          // turns it into the same stopped result, with its cause, that the
+          // in-run Stop path produces.
           if (signal.aborted) throw error;
           // Everything else here — a Playwright install that can't reach the
           // registry, a browser download that fails, a missing `node_modules`,
@@ -2849,7 +2856,7 @@ async function executeAppTestsWithIsolation(
             return {
               appId,
               results: [],
-              infraError: { message: "Test run stopped." },
+              infraError: testRunStoppedInfraError(signal),
             };
           // The snapshot's `.env.local` is a copy of whatever was live when the
           // capture ran, and the prepare stage claimed neither `provider` nor
@@ -2994,8 +3001,8 @@ async function executeAppTestsWithIsolation(
             );
           } catch (error) {
             // A Stop is not a setup failure — let it reach the outer catch,
-            // which turns it into the same "Test run stopped." result the
-            // in-run Stop path produces.
+            // which turns it into the same stopped result, with its cause,
+            // that the in-run Stop path produces.
             if (signal.aborted) throw error;
             // Everything else here is the most common user-facing failure of
             // the whole flow: a broken `dev` script, a server that never
@@ -3190,7 +3197,7 @@ async function executeAppTestsWithIsolation(
       finalResult = withIsolationCleanupWarning({
         appId,
         results: [],
-        infraError: { message: "Test run stopped." },
+        infraError: testRunStoppedInfraError(signal),
         isolation: lastIsolation,
       });
       return finalResult;
@@ -3322,7 +3329,7 @@ export function registerTestsHandlers() {
   });
 
   createTypedHandler(testsContracts.stopAppTests, async (_event, params) => {
-    stopAppTestsForApp(params.appId);
+    stopAppTestsForApp(params.appId, { kind: "tests-panel-stop" });
     return { ok: true as const };
   });
 

@@ -18,6 +18,7 @@ import { db } from "@/db";
 import { chats, messages } from "@/db/schema";
 import type { AgentContext } from "@/pro/main/ipc/handlers/local_agent/tools/types";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { CancellationReason } from "@/shared/cancellation_reason";
 import { createDyadToolBridge } from "./tool_bridge";
 import { runClaudeTurn, safeClaudeDiagnostic } from "./runtime";
 import { allowsSuggestedPrompts, claudeTextFilter } from "./text";
@@ -130,7 +131,7 @@ export class ClaudeCodeModel implements LanguageModelV3 {
         },
         cancel: async () => {
           cancelled = true;
-          local.abort();
+          local.abort(new CancellationReason("claude-code-session-ended"));
           await work;
         },
       }),
@@ -442,7 +443,8 @@ export class ClaudeCodeModel implements LanguageModelV3 {
       failed = true;
       throw error;
     } finally {
-      stop.abort();
+      // Releases tools the session leaves outstanding; they report why.
+      stop.abort(new CancellationReason("claude-code-session-ended"));
       // Cleanup failures must not strand the shared context or skip accounting.
       const cleanup = await Promise.allSettled([bridge?.close(), queue]);
       ctx.abortSignal = outerSignal;

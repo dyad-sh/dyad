@@ -11,6 +11,7 @@ import {
   isReservedDyadPort,
 } from "../../../shared/ports";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { testRunStoppedError } from "./test_run_stop";
 import { trackE2eTestProcess } from "@/ipc/services/e2e_test_process_registry";
 import {
   choosePackageManagerFromSignal,
@@ -410,7 +411,7 @@ export async function buildE2eTestStartCommand({
 function delay(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
-      reject(new DyadError("Test run stopped.", DyadErrorKind.UserCancelled));
+      reject(testRunStoppedError(signal));
       return;
     }
     // `{ once: true }` only removes the listener when it FIRES. The readiness
@@ -419,7 +420,7 @@ function delay(ms: number, signal?: AbortSignal): Promise<void> {
     // on the run's signal, and Node logs MaxListenersExceededWarning past 10.
     const onAbort = () => {
       clearTimeout(timer);
-      reject(new DyadError("Test run stopped.", DyadErrorKind.UserCancelled));
+      reject(testRunStoppedError(signal));
     };
     const timer = setTimeout(() => {
       signal?.removeEventListener("abort", onAbort);
@@ -470,8 +471,7 @@ async function waitForReady({
   // A port clash is the exception: the retry loop turns it into a fresh port,
   // and only a repeat failure reaches the user.
   const assertStillStarting = () => {
-    if (signal?.aborted)
-      throw new DyadError("Test run stopped.", DyadErrorKind.UserCancelled);
+    if (signal?.aborted) throw testRunStoppedError(signal);
     const startError = spawnError();
     if (startError) {
       if (reportsPortInUse(startError.message, port)) {
@@ -610,8 +610,7 @@ async function startE2eTestRuntimeOnce({
   onOutput?: (chunk: string) => void;
   excludePorts?: ReadonlySet<number>;
 }): Promise<E2eTestRuntime> {
-  if (signal?.aborted)
-    throw new DyadError("Test run stopped.", DyadErrorKind.UserCancelled);
+  if (signal?.aborted) throw testRunStoppedError(signal);
   const port = await allocateE2eTestPort(excludePorts);
   // Every exit from here on must hand the port back. Without this, anything
   // that throws before the try/catch below — a workspace read, the pnpm version

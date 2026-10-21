@@ -50,6 +50,16 @@ describe("chatCancellation", () => {
       );
     });
 
+    it("closes an unclosed suggestions tag before a following tool card", () => {
+      expect(
+        appendCancelledResponseNotice(
+          'Done.\n<dyad-suggested-prompts>\nAdd\n<dyad-write path="a">x</dyad-write>',
+        ),
+      ).toBe(
+        'Done.\n<dyad-suggested-prompts>\nAdd\n</dyad-suggested-prompts><dyad-write path="a">x</dyad-write>\n\n[Response cancelled by user]',
+      );
+    });
+
     it("closes an unclosed suggestions tag that has attributes", () => {
       expect(
         appendCancelledResponseNotice(

@@ -16,8 +16,8 @@ export const MAX_SUGGESTED_PROMPTS = 3;
 export const MAX_SUGGESTED_PROMPT_CHARS = 120;
 
 // Blocks the agent appends after its reply when the turn did not fully
-// complete: a post-turn error such as a failed Supabase deploy, an error
-// status such as a tool call that failed before running, the step limit
+// complete: a post-turn error such as a failed Supabase deploy, an error or
+// aborted status such as a tool call that failed before running, the step limit
 // pause, or an Implementer that stopped early or was cancelled.
 function marksIncompleteTurn(block: Block): boolean {
   if (block.kind !== "custom-tag") return false;
@@ -29,6 +29,7 @@ function marksIncompleteTurn(block: Block): boolean {
     case "dyad-status":
       return (
         block.attributes.state === "error" ||
+        block.attributes.state === "aborted" ||
         /^Implementer (?:step limit|cancelled)$/.test(
           block.attributes.title ?? "",
         )
@@ -47,7 +48,7 @@ function marksIncompleteTurn(block: Block): boolean {
 function mayFollowSuggestions(block: Block): boolean {
   if (block.kind === "markdown") return block.content.trim() === "";
   if (block.tag === "dyad-output" || block.tag === "dyad-status") {
-    return !marksIncompleteTurn(block);
+    return block.complete && !marksIncompleteTurn(block);
   }
   return false;
 }

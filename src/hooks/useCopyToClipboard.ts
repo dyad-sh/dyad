@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { getLanguage } from "@/utils/get_language";
 import { unescapeXmlAttr, unescapeXmlContent } from "../../shared/xmlEscape";
-import { isDyadCustomTagName } from "@/lib/streamingMessageParser";
+import { closeUnclosedSuggestedPrompts } from "@/lib/streamingMessageParser";
 
 const CUSTOM_TAG_NAMES = [
   "dyad-write",
@@ -21,49 +21,6 @@ const CUSTOM_TAG_NAMES = [
   "think",
   "dyad-command",
 ];
-const SUGGESTED_PROMPTS_OPEN = /<dyad-suggested-prompts(?:\s[^>]*)?>/g;
-const SUGGESTED_PROMPTS_CLOSE = "</dyad-suggested-prompts>";
-const NEXT_TAG = /<([A-Za-z0-9-]+)(?=[\s>])/g;
-
-/** Index of the next tag the chat parser recognizes, starting at `from`. */
-function nextDyadTagIndex(content: string, from: number): number {
-  NEXT_TAG.lastIndex = from;
-  for (
-    let match = NEXT_TAG.exec(content);
-    match;
-    match = NEXT_TAG.exec(content)
-  ) {
-    if (isDyadCustomTagName(match[1])) return match.index;
-  }
-  return -1;
-}
-
-/**
- * Closes an unclosed suggestions tag right before the next tag the chat parser
- * recognizes, as the parser does, so a cut-off block cannot swallow later host
- * notices.
- */
-function closeUnclosedSuggestedPrompts(content: string): string {
-  let result = content;
-  let from = 0;
-  for (;;) {
-    SUGGESTED_PROMPTS_OPEN.lastIndex = from;
-    const open = SUGGESTED_PROMPTS_OPEN.exec(result);
-    if (!open) return result;
-    const bodyStart = open.index + open[0].length;
-    const close = result.indexOf(SUGGESTED_PROMPTS_CLOSE, bodyStart);
-    const next = nextDyadTagIndex(result, bodyStart);
-    if (close >= 0 && (next < 0 || close < next)) {
-      from = close + SUGGESTED_PROMPTS_CLOSE.length;
-      continue;
-    }
-    if (next < 0) return result;
-    result =
-      result.slice(0, next) + SUGGESTED_PROMPTS_CLOSE + result.slice(next);
-    from = next + SUGGESTED_PROMPTS_CLOSE.length;
-  }
-}
-
 export const useCopyToClipboard = () => {
   const [copied, setCopied] = useState(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);

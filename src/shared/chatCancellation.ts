@@ -1,18 +1,6 @@
-const RESPONSE_CANCELLED_BY_USER_NOTICE = "[Response cancelled by user]";
-const SUGGESTED_PROMPTS_OPEN = /<dyad-suggested-prompts(?:\s[^>]*)?>/g;
-const SUGGESTED_PROMPTS_CLOSE = "</dyad-suggested-prompts>";
+import { closeUnclosedSuggestedPrompts } from "@/lib/streamingMessageParser";
 
-// Stopping mid-suggestions leaves the tag open, and the notice would then be
-// hidden inside it in the chat, search, and history. Close it first.
-function closeTrailingSuggestedPrompts(content: string): string {
-  let lastOpen = -1;
-  for (const match of content.matchAll(SUGGESTED_PROMPTS_OPEN)) {
-    lastOpen = match.index;
-  }
-  return lastOpen > content.lastIndexOf(SUGGESTED_PROMPTS_CLOSE)
-    ? `${content}${SUGGESTED_PROMPTS_CLOSE}`
-    : content;
-}
+const RESPONSE_CANCELLED_BY_USER_NOTICE = "[Response cancelled by user]";
 
 export function isCancelledResponseContent(content: string): boolean {
   return content.trimEnd().endsWith(RESPONSE_CANCELLED_BY_USER_NOTICE);
@@ -23,7 +11,9 @@ export function appendCancelledResponseNotice(content: string): string {
   if (isCancelledResponseContent(original)) {
     return original;
   }
-  const trimmedContent = closeTrailingSuggestedPrompts(original);
+  // Stopping mid-suggestions leaves the tag open, which would hide the notice
+  // in the chat, search, and history. Close it where the parser would.
+  const trimmedContent = closeUnclosedSuggestedPrompts(original);
 
   return trimmedContent
     ? `${trimmedContent}\n\n${RESPONSE_CANCELLED_BY_USER_NOTICE}`

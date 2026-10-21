@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   advanceParser,
+  closeUnclosedSuggestedPrompts,
   getParserBlocks,
   initialParserState,
   parseFullMessage,
@@ -414,5 +415,23 @@ describe("streamingMessageParser suggested prompts", () => {
       expect(blocksToShape(getParserBlocks(state))).toEqual(full);
     }
     expect(full.at(-1)).toMatchObject({ tag: "dyad-output", complete: true });
+  });
+});
+
+describe("closeUnclosedSuggestedPrompts", () => {
+  it("closes before the next recognized tag, or at the end", () => {
+    expect(
+      closeUnclosedSuggestedPrompts(
+        "<dyad-suggested-prompts>\nAdd <Footer>\n<dyad-step-limit>Paused.</dyad-step-limit>",
+      ),
+    ).toBe(
+      "<dyad-suggested-prompts>\nAdd <Footer>\n</dyad-suggested-prompts><dyad-step-limit>Paused.</dyad-step-limit>",
+    );
+    expect(closeUnclosedSuggestedPrompts("<dyad-suggested-prompts>\nAdd")).toBe(
+      "<dyad-suggested-prompts>\nAdd</dyad-suggested-prompts>",
+    );
+    const closed =
+      "<dyad-suggested-prompts>\nAdd\n</dyad-suggested-prompts>\n<dyad-output>x</dyad-output>";
+    expect(closeUnclosedSuggestedPrompts(closed)).toBe(closed);
   });
 });

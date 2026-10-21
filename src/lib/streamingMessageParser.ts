@@ -93,6 +93,48 @@ export function isDyadCustomTagName(name: string): boolean {
   return DYAD_CUSTOM_TAG_SET.has(name);
 }
 
+const SUGGESTED_PROMPTS_OPEN_TAG = /<dyad-suggested-prompts(?:\s[^>]*)?>/g;
+const SUGGESTED_PROMPTS_CLOSE_TAG = "</dyad-suggested-prompts>";
+const ANY_OPEN_TAG = /<([A-Za-z0-9-]+)(?=[\s>])/g;
+
+function nextDyadTagIndex(content: string, from: number): number {
+  ANY_OPEN_TAG.lastIndex = from;
+  for (
+    let match = ANY_OPEN_TAG.exec(content);
+    match;
+    match = ANY_OPEN_TAG.exec(content)
+  ) {
+    if (isDyadCustomTagName(match[1])) return match.index;
+  }
+  return -1;
+}
+
+/**
+ * Closes every unclosed suggestions tag where this parser would end it: right
+ * before the next recognized Dyad tag, or at the end of the content. Text
+ * consumers such as Copy and the cancel notice use it to agree with the chat.
+ */
+export function closeUnclosedSuggestedPrompts(content: string): string {
+  let result = content;
+  let from = 0;
+  for (;;) {
+    SUGGESTED_PROMPTS_OPEN_TAG.lastIndex = from;
+    const open = SUGGESTED_PROMPTS_OPEN_TAG.exec(result);
+    if (!open) return result;
+    const bodyStart = open.index + open[0].length;
+    const close = result.indexOf(SUGGESTED_PROMPTS_CLOSE_TAG, bodyStart);
+    const next = nextDyadTagIndex(result, bodyStart);
+    if (close >= 0 && (next < 0 || close < next)) {
+      from = close + SUGGESTED_PROMPTS_CLOSE_TAG.length;
+      continue;
+    }
+    if (next < 0) return result + SUGGESTED_PROMPTS_CLOSE_TAG;
+    result =
+      result.slice(0, next) + SUGGESTED_PROMPTS_CLOSE_TAG + result.slice(next);
+    from = next + SUGGESTED_PROMPTS_CLOSE_TAG.length;
+  }
+}
+
 export type Block =
   | {
       kind: "markdown";

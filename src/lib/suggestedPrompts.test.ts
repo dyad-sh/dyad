@@ -107,6 +107,20 @@ Add tests
     }
   });
 
+  it("returns nothing after an aborted status or an unfinished notice", () => {
+    const tag = `Done!\n<dyad-suggested-prompts>\nAdd a dark mode toggle\n</dyad-suggested-prompts>\n\n`;
+    expect(
+      extractSuggestedPrompts(
+        `${tag}<dyad-status title="Tool" state="aborted">Stopped</dyad-status>`,
+      ),
+    ).toEqual([]);
+    expect(
+      extractSuggestedPrompts(
+        `${tag}<dyad-output type="warning" message="Deploy">partial`,
+      ),
+    ).toEqual([]);
+  });
+
   it("still offers prompts after a non-error output notice", () => {
     const content = `Done!\n<dyad-suggested-prompts>\nAdd a dark mode toggle\n</dyad-suggested-prompts>\n\n<dyad-output type="warning" message="Supabase function deploy warning">slow</dyad-output>`;
     expect(extractSuggestedPrompts(content)).toEqual([

@@ -91,6 +91,11 @@ Add tests
     expect(extractSuggestedPrompts(laterStep)).toEqual([]);
   });
 
+  it("returns nothing when an error status follows the tag", () => {
+    const content = `Done!\n<dyad-suggested-prompts>\nAdd a dark mode toggle\n</dyad-suggested-prompts>\n\n<dyad-status title="write_file failed" state="error">Invalid arguments</dyad-status>`;
+    expect(extractSuggestedPrompts(content)).toEqual([]);
+  });
+
   it("still offers prompts when only host notices follow the tag", () => {
     const content = `Done!\n<dyad-suggested-prompts>\nAdd a dark mode toggle\n</dyad-suggested-prompts>\n\n<dyad-status title="Checks passed" state="finished">All checks passed.</dyad-status>\n`;
     expect(extractSuggestedPrompts(content)).toEqual([

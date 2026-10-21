@@ -40,6 +40,29 @@ describe("chatCancellation", () => {
   });
 
   describe("appendCancelledResponseNotice", () => {
+    it("closes an unclosed suggestions tag before the notice", () => {
+      expect(
+        appendCancelledResponseNotice(
+          "Done.\n<dyad-suggested-prompts>\nAdd a dark",
+        ),
+      ).toBe(
+        "Done.\n<dyad-suggested-prompts>\nAdd a dark</dyad-suggested-prompts>\n\n[Response cancelled by user]",
+      );
+    });
+
+    it("leaves a closed suggestions block and an existing notice alone", () => {
+      const closed =
+        "Done.\n<dyad-suggested-prompts>\nAdd a dark mode toggle\n</dyad-suggested-prompts>";
+      expect(appendCancelledResponseNotice(closed)).toBe(
+        `${closed}\n\n[Response cancelled by user]`,
+      );
+      const alreadyCancelled =
+        "Done.\n<dyad-suggested-prompts>\nAdd\n\n[Response cancelled by user]";
+      expect(appendCancelledResponseNotice(alreadyCancelled)).toBe(
+        alreadyCancelled,
+      );
+    });
+
     it("should append notice to content", () => {
       expect(appendCancelledResponseNotice("Some text")).toBe(
         "Some text\n\n[Response cancelled by user]",

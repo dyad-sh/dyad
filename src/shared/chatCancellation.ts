@@ -1,14 +1,26 @@
 const RESPONSE_CANCELLED_BY_USER_NOTICE = "[Response cancelled by user]";
+const SUGGESTED_PROMPTS_OPEN = "<dyad-suggested-prompts>";
+const SUGGESTED_PROMPTS_CLOSE = "</dyad-suggested-prompts>";
+
+// Stopping mid-suggestions leaves the tag open, and the notice would then be
+// hidden inside it in the chat, search, and history. Close it first.
+function closeTrailingSuggestedPrompts(content: string): string {
+  return content.lastIndexOf(SUGGESTED_PROMPTS_OPEN) >
+    content.lastIndexOf(SUGGESTED_PROMPTS_CLOSE)
+    ? `${content}${SUGGESTED_PROMPTS_CLOSE}`
+    : content;
+}
 
 export function isCancelledResponseContent(content: string): boolean {
   return content.trimEnd().endsWith(RESPONSE_CANCELLED_BY_USER_NOTICE);
 }
 
 export function appendCancelledResponseNotice(content: string): string {
-  const trimmedContent = content.trimEnd();
-  if (isCancelledResponseContent(trimmedContent)) {
-    return trimmedContent;
+  const original = content.trimEnd();
+  if (isCancelledResponseContent(original)) {
+    return original;
   }
+  const trimmedContent = closeTrailingSuggestedPrompts(original);
 
   return trimmedContent
     ? `${trimmedContent}\n\n${RESPONSE_CANCELLED_BY_USER_NOTICE}`

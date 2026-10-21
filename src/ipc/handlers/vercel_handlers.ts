@@ -38,6 +38,10 @@ import {
   removeNeonEnvVarsFromVercel,
 } from "../utils/vercel_neon_sync";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import {
+  getVercelProjectTeamId,
+  withVercelTeamScope,
+} from "../utils/vercel_project_scope";
 
 const logger = log.scope("vercel_handlers");
 
@@ -46,6 +50,7 @@ const logger = log.scope("vercel_handlers");
 interface VercelProjectResponse {
   id: string;
   name: string;
+  accountId: string;
   framework?: string | null;
   targets?: {
     production?: {
@@ -99,38 +104,6 @@ async function validateVercelToken(token: string): Promise<boolean> {
   } catch (error) {
     logger.error("Error validating Vercel token:", error);
     return false;
-  }
-}
-
-async function getDefaultTeamId(token: string): Promise<string> {
-  try {
-    const response = await fetch(`${VERCEL_API_BASE}/v2/teams?limit=1`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(
-        `Failed to fetch teams: ${response.status} ${response.statusText}`,
-      );
-    }
-
-    const data = await response.json();
-
-    // Use the first team (typically the personal account or default team)
-    if (data.teams && data.teams.length > 0) {
-      return data.teams[0].id;
-    }
-
-    throw new DyadError("No teams found for this user", DyadErrorKind.NotFound);
-  } catch (error) {
-    logger.error("Error getting default team ID:", error);
-    throw new DyadError(
-      "Failed to get team information",
-      DyadErrorKind.External,
-    );
   }
 }
 
@@ -354,11 +327,11 @@ async function handleCreateProject(
       );
     }
 
-    // Get the default team ID
-    const teamId = await getDefaultTeamId(accessToken);
+    const teamId = getVercelProjectTeamId(projectData);
 
     const projectDomains = await vercel.projects.getProjectDomains({
       idOrName: projectData.id,
+      teamId: teamId ?? undefined,
     });
     const projectUrl = "https://" + projectDomains.domains[0].name;
 
@@ -404,6 +377,7 @@ async function handleCreateProject(
     try {
       // Create deployment via Vercel SDK using the project settings we just created
       const deploymentData = await vercel.deployments.createDeployment({
+        teamId: teamId ?? undefined,
         requestBody: {
           name: projectData.name,
           project: projectData.id,
@@ -464,8 +438,7 @@ async function handleConnectToExistingProject(
       );
     }
 
-    // Get the default team ID
-    const teamId = await getDefaultTeamId(accessToken);
+    const teamId = getVercelProjectTeamId(projectData);
 
     // Store project info in the app's DB row
     await updateAppVercelProject({
@@ -516,11 +489,15 @@ async function handleGetVercelDeployments(
     const vercel = createVercelClient(accessToken);
 
     // Get deployments for the project
-    const deploymentsResponse = await vercel.deployments.getDeployments({
-      projectId: app.vercelProjectId,
-      teamId: app.vercelTeamId ?? undefined,
-      limit: 5, // Get last 5 deployments
-    });
+    const deploymentsResponse = await withVercelTeamScope(
+      app.vercelTeamId,
+      (teamId) =>
+        vercel.deployments.getDeployments({
+          projectId: app.vercelProjectId!,
+          teamId,
+          limit: 5, // Get last 5 deployments
+        }),
+    );
 
     if (!deploymentsResponse.deployments) {
       throw new DyadError(
@@ -594,22 +571,26 @@ async function handleCreateVercelDeployment(
     logger.info(
       `Creating deployment for Vercel project: ${app.vercelProjectId} for app ${appId}`,
     );
-    const deployment = await createVercelClient(
-      accessToken,
-    ).deployments.createDeployment({
-      teamId: app.vercelTeamId ?? undefined,
-      requestBody: {
-        name: app.vercelProjectName ?? app.vercelProjectId,
-        project: app.vercelProjectId,
-        target: "production",
-        gitSource: {
-          type: "github",
-          org: app.githubOrg,
-          repo: app.githubRepo,
-          ref: app.githubBranch || "main",
+    const projectId = app.vercelProjectId;
+    const owner = app.githubOrg;
+    const repo = app.githubRepo;
+    const vercel = createVercelClient(accessToken);
+    const deployment = await withVercelTeamScope(app.vercelTeamId, (teamId) =>
+      vercel.deployments.createDeployment({
+        teamId,
+        requestBody: {
+          name: app.vercelProjectName ?? projectId,
+          project: projectId,
+          target: "production",
+          gitSource: {
+            type: "github",
+            org: owner,
+            repo,
+            ref: app.githubBranch || "main",
+          },
         },
-      },
-    });
+      }),
+    );
     return { uid: deployment.id };
   } catch (err: any) {
     if (err instanceof DyadError) throw err;
@@ -720,7 +701,7 @@ export async function updateAppVercelProject({
   appId: number;
   projectId: string;
   projectName: string;
-  teamId: string;
+  teamId: string | null;
   deploymentUrl?: string | null;
 }): Promise<void> {
   await db

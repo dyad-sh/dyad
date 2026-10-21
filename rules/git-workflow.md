@@ -180,6 +180,12 @@ A worktree that symlinks the root `node_modules` must also link `testing/fake-ll
 
 After a commit with lint-staged hooks, re-check both `git status --short` and any untracked artifact files you intentionally left out of the commit. Hook cleanup can leave the tracked tree clean while untracked scratch files under directories like `.agents/` have been removed; restore or report them before finishing.
 
+## Token-authenticated GitHub preflight
+
+Fetch the canonical GitHub HTTPS URL after validating the app's origin.
+Passing HTTPS credentials while fetching an accepted SSH origin still requires
+a local SSH key.
+
 ## Runtime commit hook policy
 
 Dyad's low-level `gitCommit` helper is hook-free and does not expose a caller option. `--no-verify` alone is not enough: it bypasses only `pre-commit` and `commit-msg`, while Git still runs `prepare-commit-msg` (and `post-commit`), so a hook that appends to the message would rewrite it _after_ an explicit `commit-msg` run had already validated it. `gitCommit` therefore creates a fresh empty hooks directory under the OS temporary directory, passes its absolute path through `-c core.hooksPath=...`, and removes it after the commit. Never use a repository-relative suppression path: an imported repository could populate that path with executable hooks.

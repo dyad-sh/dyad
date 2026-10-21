@@ -181,6 +181,12 @@ connection flow and otherwise fail with "OAuth return did not match an active co
 
 ## Handler expectations
 
+- Vercel project scope comes from the project's `accountId`, not the first team
+  in the user's team list. Personal owners require unscoped requests; preserve
+  legacy rows with a bounded 403/404 fallback, never retries of ambiguous writes.
+- After repairing Vercel environment variables, explicitly start and verify a
+  build. A successful GitHub push can be a no-op and trigger no provider build.
+
 - Keep handler registration free of database-dependent startup work. Handlers
   register before `onReady()` initializes SQLite; run restart reconciliation
   immediately after `initializeDatabase()` instead, or the first access fails

@@ -572,9 +572,13 @@ function DeploymentStep({ app, branch }: { app: App; branch: DatabaseBranch }) {
 function VercelDeployStep({
   app,
   branch,
+  environmentConfigured = false,
+  completion,
 }: {
   app: App;
-  branch: DatabaseBranch;
+  branch?: DatabaseBranch;
+  environmentConfigured?: boolean;
+  completion?: React.ReactNode;
 }) {
   const { app: current } = useLoadApp(app.id);
   const queryClient = useQueryClient();
@@ -618,7 +622,7 @@ function VercelDeployStep({
     queueMicrotask(() => {
       if (disposed) return;
       startedProject.current = current.vercelProjectId;
-      if (app.neonProjectId) sync.mutate();
+      if (app.neonProjectId && !environmentConfigured) sync.mutate();
       else redeploy.mutate();
     });
     return () => {
@@ -626,6 +630,7 @@ function VercelDeployStep({
     };
   }, [
     app.neonProjectId,
+    environmentConfigured,
     current?.vercelProjectId,
     sync.mutate,
     redeploy.mutate,
@@ -655,7 +660,9 @@ function VercelDeployStep({
     !!deploymentUid && !deployments.error && started?.readyState === "READY";
   return (
     <div className="space-y-4">
-      <VercelConnector appId={app.id} folderName={app.name} deferDeployment />
+      {!environmentConfigured && (
+        <VercelConnector appId={app.id} folderName={app.name} deferDeployment />
+      )}
       {sync.isPending && (
         <Progress>Configuring Vercel environment variables…</Progress>
       )}
@@ -698,7 +705,7 @@ function VercelDeployStep({
           {app.neonProjectId ? " and environment variables configured" : ""}.
         </p>
       )}
-      {complete && <FinishDeploymentButton />}
+      {complete && (completion ?? <FinishDeploymentButton />)}
     </div>
   );
 }
@@ -816,6 +823,12 @@ function HostedDeploy({
                 Push the latest codebase changes to GitHub to trigger your
                 hosting provider’s deployment.
               </li>
+              {app.vercelProjectId && (
+                <li>
+                  Start and verify a Vercel build with the updated environment,
+                  even when there are no new code changes.
+                </li>
+              )}
               {app.deploymentProvidersInUse.coolify && (
                 <li>
                   Start a deployment on your Coolify server, which does not
@@ -952,6 +965,7 @@ function PushDeployment({
     }
   }, [push.isSuccess, github.projection, verification.mutate]);
   const usesCoolify = app.deploymentProvidersInUse.coolify;
+  const usesVercel = !!app.vercelProjectId;
   return (
     <div className="space-y-4">
       {environmentWarning && (
@@ -967,9 +981,21 @@ function PushDeployment({
           >
             <CheckCircle2 className="size-4" />
             Latest code verified on GitHub.
-            {usesCoolify ? "" : " Your hosting provider will build the update."}
+            {usesCoolify || usesVercel
+              ? ""
+              : " Your hosting provider will build the update."}
           </p>
-          {usesCoolify && <CoolifyRedeploy appId={app.id} />}
+          {usesVercel ? (
+            <VercelDeployStep
+              app={app}
+              environmentConfigured
+              completion={
+                usesCoolify ? <CoolifyRedeploy appId={app.id} /> : undefined
+              }
+            />
+          ) : usesCoolify ? (
+            <CoolifyRedeploy appId={app.id} />
+          ) : null}
         </>
       ) : (
         <>
@@ -991,7 +1017,9 @@ function PushDeployment({
           <GitHubConnector appId={app.id} folderName={app.name} expanded />
         </>
       )}
-      {verification.isSuccess && !usesCoolify && <FinishDeploymentButton />}
+      {verification.isSuccess && !usesCoolify && !usesVercel && (
+        <FinishDeploymentButton />
+      )}
     </div>
   );
 }

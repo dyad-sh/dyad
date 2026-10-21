@@ -45,6 +45,7 @@ import { eq } from "drizzle-orm";
 import { apps, chats } from "@/db/schema";
 import { writeSettings } from "@/main/settings";
 import { queryKeys } from "@/lib/queryKeys";
+import { ipc } from "@/ipc/types";
 import * as migrationUtils from "@/ipc/utils/migration_utils";
 import type { SchemaDiffStatement } from "ts-pg-schema-diff";
 import {
@@ -114,6 +115,7 @@ describe("guided deployment (renderer and real IPC)", () => {
     vercel.projects.createProject.mockResolvedValue({
       id: "prj-guided-new",
       name: "guided",
+      accountId: "team_actual_owner",
     });
     vercel.projects.getProjectDomains.mockResolvedValue({
       domains: [{ name: "guided.vercel.app" }],
@@ -584,15 +586,6 @@ describe("guided deployment (renderer and real IPC)", () => {
     vercel.projects.getProjectDomains.mockResolvedValueOnce({
       domains: [{ name: "guided.vercel.app" }],
     });
-    const originalFetch = globalThis.fetch;
-    vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
-      if (String(input).endsWith("/v2/teams?limit=1")) {
-        return Promise.resolve(
-          Response.json({ teams: [{ id: "team-guided" }] }),
-        );
-      }
-      return originalFetch(input, init);
-    });
     vercel.deployments.getDeployments.mockResolvedValue({
       deployments: [
         {
@@ -627,6 +620,10 @@ describe("guided deployment (renderer and real IPC)", () => {
     );
     expect(calls("vercel:create-deployment")).toHaveLength(1);
     expect((await appRow())?.vercelProjectId).toBe("prj-guided-new");
+    expect((await appRow())?.vercelTeamId).toBe("team_actual_owner");
+    expect(vercel.projects.createProjectEnv).toHaveBeenCalledWith(
+      expect.objectContaining({ teamId: "team_actual_owner" }),
+    );
     expect(calls("vercel:sync-neon-config").at(-1)?.result).toEqual(
       expect.objectContaining({
         ok: true,
@@ -638,6 +635,9 @@ describe("guided deployment (renderer and real IPC)", () => {
   }, 60_000);
 
   it("checks GitHub before changing a hosted production schema, then commits and pushes the approved update", async () => {
+    vercel.deployments.getDeployments.mockResolvedValue({
+      deployments: [{ uid: "new-build", readyState: "READY" }],
+    });
     await harness.db
       .update(apps)
       .set({
@@ -689,9 +689,114 @@ describe("guided deployment (renderer and real IPC)", () => {
         }),
       ]),
     );
+    await screen.findByText(
+      "Deployment verified and environment variables configured.",
+    );
+    expect(vercel.deployments.createDeployment).toHaveBeenCalledOnce();
     await click("Finish");
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   }, 60_000);
+
+  it("repairs a legacy Vercel scope and builds even when GitHub has no new commits", async () => {
+    await harness.db
+      .update(apps)
+      .set({
+        vercelProjectId: "prj-hosted",
+        vercelTeamId: "team_unrelated",
+        selectedDatabaseBranchType: "development",
+      })
+      .where(eq(apps.id, appId));
+    for (const request of [
+      vercel.projects.createProjectEnv,
+      vercel.projects.getProjectDomains,
+      vercel.deployments.createDeployment,
+      vercel.deployments.getDeployments,
+    ]) {
+      const succeed = request.getMockImplementation()!;
+      request.mockImplementation((params) =>
+        params.teamId ? Promise.reject({ statusCode: 404 }) : succeed(params),
+      );
+    }
+    await open();
+    await click("Review and deploy");
+    await createRepo();
+    const initialHead = git("rev-parse", "HEAD");
+    await harness.github.clearPushEvents();
+    await click("Review and deploy");
+    await screen.findByText("Building on Vercel…", {}, { timeout: 30_000 });
+    expect(git("rev-parse", "HEAD")).toBe(initialHead);
+    expect(await remoteHead()).toBe(initialHead);
+    expect(await harness.github.pushEvents()).toEqual([]);
+    expect(screen.queryByRole("button", { name: "Finish" })).toBeNull();
+    for (const request of [
+      vercel.projects.createProjectEnv,
+      vercel.projects.getProjectDomains,
+      vercel.deployments.createDeployment,
+      vercel.deployments.getDeployments,
+    ]) {
+      expect(request).toHaveBeenCalledWith(
+        expect.objectContaining({ teamId: "team_unrelated" }),
+      );
+      expect(request).toHaveBeenCalledWith(
+        expect.objectContaining({ teamId: undefined }),
+      );
+    }
+    expect(
+      vercel.projects.createProjectEnv.mock.invocationCallOrder.at(-1)!,
+    ).toBeLessThan(
+      vercel.deployments.createDeployment.mock.invocationCallOrder[0],
+    );
+    vercel.deployments.getDeployments.mockResolvedValue({
+      deployments: [{ uid: "new-build", readyState: "ERROR" }],
+    });
+    await act(async () => {
+      await harness.queryClient().invalidateQueries({
+        queryKey: queryKeys.vercel.deployments({ appId }),
+      });
+    });
+    await screen.findByText(/The Vercel deployment did not finish/);
+    expect(screen.queryByRole("button", { name: "Finish" })).toBeNull();
+    vercel.deployments.createDeployment.mockResolvedValue({
+      id: "retry-build",
+    });
+    vercel.deployments.getDeployments.mockResolvedValue({
+      deployments: [{ uid: "retry-build", readyState: "READY" }],
+    });
+    await click("Retry deployment");
+    await screen.findByText(
+      "Deployment verified and environment variables configured.",
+    );
+    await click("Finish");
+  }, 60_000);
+
+  it.each(["team_project_owner", "user_personal"])(
+    "connects an existing project using its actual owner (%s)",
+    async (accountId) => {
+      const originalFetch = globalThis.fetch;
+      vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+        if (String(input).endsWith("/v9/projects"))
+          return Promise.resolve(
+            Response.json({
+              projects: [{ id: "prj-existing", name: "existing", accountId }],
+            }),
+          );
+        return originalFetch(input, init);
+      });
+      await ipc.vercel.connectExistingProject({
+        appId,
+        projectId: "prj-existing",
+      });
+      const teamId = accountId.startsWith("team_") ? accountId : null;
+      expect((await appRow())?.vercelTeamId).toBe(teamId);
+      const result = await ipc.vercel.syncNeonConfig({
+        appId,
+      });
+      expect(result).toMatchObject({ envPushed: true });
+      expect(vercel.projects.createProjectEnv).toHaveBeenCalledWith(
+        expect.objectContaining({ teamId: teamId ?? undefined }),
+      );
+    },
+  );
 
   it.each(["behind", "diverged"])(
     "blocks production migration when local history is %s GitHub",

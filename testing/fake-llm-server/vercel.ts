@@ -100,9 +100,9 @@ export function registerFakeVercel(app: Express): void {
   });
   app.get(`${base}/v9/projects`, (req, res) => {
     res.json({
-      projects: state.projects.filter(
-        (p) => !req.query.search || p.name === req.query.search,
-      ),
+      projects: state.projects
+        .filter((p) => !req.query.search || p.name === req.query.search)
+        .map((project) => ({ ...project, accountId: TEAM_ID })),
     });
   });
   app.post(`${base}/v11/projects`, (req, res) => {

@@ -1503,7 +1503,14 @@ export async function verifyGithubConnection({
       }
       if (requirePushable) {
         // Fetch objects without changing local code before checking ancestry.
-        await gitFetch({ path: appPath, auth: githubRemoteAuth(token) });
+        await gitFetch({
+          path: appPath,
+          remote: githubRemote({
+            owner: app.githubOrg,
+            repo: app.githubRepo,
+          }).httpsUrl,
+          auth: githubRemoteAuth(token),
+        });
       }
       // Bound both headers and body reads while holding the repository lock.
       const signal = AbortSignal.timeout(GITHUB_VERIFY_TIMEOUT_MS);

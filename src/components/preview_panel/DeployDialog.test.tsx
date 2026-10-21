@@ -1470,6 +1470,9 @@ describe("already hosted", () => {
       appId: 1,
       requireSynced: true,
     });
+    await screen.findByText(
+      "Deployment verified and environment variables configured.",
+    );
     fireEvent.click(button("Finish"));
     expect(onClose).toHaveBeenCalledOnce();
   });

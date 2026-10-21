@@ -161,6 +161,7 @@ describe("verifyGithubConnection", () => {
     });
     expect(gitFetch).toHaveBeenCalledWith({
       path: "/mock/apps/demo",
+      remote: "https://github.com/acme/demo.git",
       auth: expect.objectContaining({
         username: "test-token",
         password: "x-oauth-basic",
@@ -265,10 +266,17 @@ describe("verifyGithubConnection", () => {
         ? ({ exitCode: 0, stdout: `${remoteUrl}\n`, stderr: "" } as never)
         : succeed(args, cwd),
     );
-    await expect(verifyGithubConnection({ appId: 1 })).resolves.toEqual({
+    await expect(
+      verifyGithubConnection({ appId: 1, requirePushable: true }),
+    ).resolves.toEqual({
       owner: "acme",
       repo: "demo",
       branch: "feature/deploy",
+    });
+    expect(gitFetch).toHaveBeenCalledWith({
+      path: "/mock/apps/demo",
+      remote: "https://github.com/acme/demo.git",
+      auth: expect.objectContaining({ username: "test-token" }),
     });
   });
 

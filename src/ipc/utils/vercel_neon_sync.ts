@@ -7,6 +7,7 @@ import { apps } from "../../db/schema";
 import { readSettings } from "../../main/settings";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { createVercelClient } from "./vercel_utils";
+import { withVercelTeamScope } from "./vercel_project_scope";
 import { getNeonClient } from "../../neon_admin/neon_management_client";
 import {
   combineWarnings,
@@ -89,10 +90,12 @@ async function getProjectDomainHosts(
   projectId: string,
   teamId: string | null,
 ): Promise<string[]> {
-  const response = await vercel.projects.getProjectDomains({
-    idOrName: projectId,
-    teamId: teamId ?? undefined,
-  });
+  const response = await withVercelTeamScope(teamId, (scope) =>
+    vercel.projects.getProjectDomains({
+      idOrName: projectId,
+      teamId: scope,
+    }),
+  );
   const domains =
     (response as { domains?: Array<{ name?: string }> } | undefined)?.domains ??
     [];
@@ -197,12 +200,6 @@ export async function syncNeonConfigToVercel({
       DyadErrorKind.Precondition,
     );
   }
-  if (!vercelTeamId) {
-    throw new DyadError(
-      "Vercel team ID is missing — reconnect your Vercel project to fix this.",
-      DyadErrorKind.Precondition,
-    );
-  }
   if (!neonProjectId) {
     throw new DyadError(
       "This app is not connected to a Neon project.",
@@ -220,14 +217,16 @@ export async function syncNeonConfigToVercel({
   // --- 1. Push env vars (upsert — idempotent) ---
   let envPushed = false;
   try {
-    await vercel.projects.createProjectEnv({
-      idOrName: vercelProjectId,
-      teamId: vercelTeamId,
-      upsert: "true",
-      requestBody: buildVercelEnvPayload(resolved, {
-        target: VERCEL_ENV_TARGETS,
+    await withVercelTeamScope(vercelTeamId, (teamId) =>
+      vercel.projects.createProjectEnv({
+        idOrName: vercelProjectId,
+        teamId,
+        upsert: "true",
+        requestBody: buildVercelEnvPayload(resolved, {
+          target: VERCEL_ENV_TARGETS,
+        }),
       }),
-    });
+    );
     envPushed = true;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -313,7 +312,7 @@ export async function removeNeonEnvVarsFromVercel({
   const appData = await loadSyncableApp(appId);
   const vercelProjectId = appData.vercelProjectId;
   const vercelTeamId = appData.vercelTeamId;
-  if (!vercelProjectId || !vercelTeamId) {
+  if (!vercelProjectId) {
     return { removedKeys: [] };
   }
 
@@ -321,10 +320,12 @@ export async function removeNeonEnvVarsFromVercel({
 
   let envs: Array<{ id?: string; key?: string }>;
   try {
-    const response = await vercel.projects.filterProjectEnvs({
-      idOrName: vercelProjectId,
-      teamId: vercelTeamId,
-    });
+    const response = await withVercelTeamScope(vercelTeamId, (teamId) =>
+      vercel.projects.filterProjectEnvs({
+        idOrName: vercelProjectId,
+        teamId,
+      }),
+    );
     envs =
       (response as { envs?: Array<{ id?: string; key?: string }> } | undefined)
         ?.envs ?? [];
@@ -345,11 +346,13 @@ export async function removeNeonEnvVarsFromVercel({
   const warnings: Array<string | undefined> = [];
   for (const env of toRemove) {
     try {
-      await vercel.projects.removeProjectEnv({
-        idOrName: vercelProjectId,
-        id: env.id,
-        teamId: vercelTeamId,
-      });
+      await withVercelTeamScope(vercelTeamId, (teamId) =>
+        vercel.projects.removeProjectEnv({
+          idOrName: vercelProjectId,
+          id: env.id,
+          teamId,
+        }),
+      );
       removedKeys.push(env.key);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

@@ -41,7 +41,11 @@ export class ZipFormatError extends Error {
 export class ZipLimitError extends Error {
   constructor(
     message: string,
-    public readonly limit: "entries" | "bytes",
+    /**
+     * "entries" counts the files to extract; "directory" counts every entry
+     * the archive declares, including folders and skipped ones.
+     */
+    public readonly limit: "entries" | "bytes" | "directory",
   ) {
     super(message);
     this.name = "ZipLimitError";

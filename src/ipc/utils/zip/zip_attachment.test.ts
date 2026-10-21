@@ -193,6 +193,103 @@ describe("extractZipAttachment", () => {
     );
   });
 
+  it("repairs an earlier extraction that is missing files", async () => {
+    const archive = buildZip([
+      { name: "a.txt", data: "alpha" },
+      { name: "b.txt", data: "beta" },
+    ]);
+    const mediaDir = getDyadMediaDir(appPath);
+    await extractZipAttachment({
+      mediaDir,
+      storedFileName: "shared.zip",
+      archive,
+    });
+    const destinationDir = path.join(mediaDir, "shared-unpacked");
+    fs.rmSync(path.join(destinationDir, "b.txt"));
+    await extractZipAttachment({
+      mediaDir,
+      storedFileName: "shared.zip",
+      archive,
+    });
+    expect(fs.readdirSync(destinationDir).sort()).toEqual(["a.txt", "b.txt"]);
+    expect(fs.readdirSync(mediaDir)).toEqual(["shared-unpacked"]);
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "replaces a symlink in place of the extraction with a real directory",
+    async () => {
+      const mediaDir = getDyadMediaDir(appPath);
+      const elsewhere = path.join(appPath, "elsewhere");
+      fs.mkdirSync(elsewhere);
+      fs.writeFileSync(path.join(elsewhere, "a.txt"), "alpha");
+      const destinationDir = path.join(mediaDir, "shared-unpacked");
+      fs.symlinkSync(elsewhere, destinationDir);
+      await extractZipAttachment({
+        mediaDir,
+        storedFileName: "shared.zip",
+        archive: buildZip([{ name: "a.txt", data: "alpha" }]),
+      });
+      expect(fs.lstatSync(destinationDir).isDirectory()).toBe(true);
+      expect(fs.readdirSync(destinationDir)).toEqual(["a.txt"]);
+      expect(fs.readdirSync(elsewhere)).toEqual(["a.txt"]);
+    },
+  );
+
+  it("removes the staged extraction when keeping the earlier one fails", async () => {
+    const archive = buildZip([{ name: "a.txt", data: "alpha" }]);
+    const mediaDir = getDyadMediaDir(appPath);
+    await extractZipAttachment({
+      mediaDir,
+      storedFileName: "shared.zip",
+      archive,
+    });
+    const utimesSpy = vi
+      .spyOn(fsPromises, "utimes")
+      .mockRejectedValue(
+        Object.assign(new Error("simulated utimes failure"), { code: "EPERM" }),
+      );
+    try {
+      await expect(
+        extractZipAttachment({
+          mediaDir,
+          storedFileName: "shared.zip",
+          archive,
+        }),
+      ).rejects.toThrow("simulated utimes failure");
+    } finally {
+      utimesSpy.mockRestore();
+    }
+    expect(fs.readdirSync(mediaDir)).toEqual(["shared-unpacked"]);
+  });
+
+  it("removes the staged extraction when the existing one cannot be checked", async () => {
+    const mediaDir = getDyadMediaDir(appPath);
+    const destinationDir = path.join(mediaDir, "fresh-unpacked");
+    const realLstat = fsPromises.lstat;
+    const lstatSpy = vi
+      .spyOn(fsPromises, "lstat")
+      .mockImplementation(async (target, ...rest) => {
+        if (target === destinationDir) {
+          throw Object.assign(new Error("simulated lstat failure"), {
+            code: "EACCES",
+          });
+        }
+        return realLstat(target, ...(rest as []));
+      });
+    try {
+      await expect(
+        extractZipAttachment({
+          mediaDir,
+          storedFileName: "fresh.zip",
+          archive: buildZip([{ name: "a.txt", data: "alpha" }]),
+        }),
+      ).rejects.toThrow("simulated lstat failure");
+    } finally {
+      lstatSpy.mockRestore();
+    }
+    expect(fs.readdirSync(mediaDir)).toEqual([]);
+  });
+
   it("removes the staged extraction when it cannot be moved into place", async () => {
     const mediaDir = getDyadMediaDir(appPath);
     const destinationDir = path.join(mediaDir, "fresh-unpacked");

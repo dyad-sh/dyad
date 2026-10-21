@@ -30,22 +30,30 @@ export { ZipLimitError };
  *   reason rather than failing the whole archive.
  * - Packaging noise (`__MACOSX`, `node_modules`, `.git`, `.DS_Store`,
  *   `Thumbs.db`) is skipped.
- * - The declared entry count and total uncompressed size are capped before any
- *   byte is written, and the bytes actually written are counted against the
- *   same cap in case an entry lied about its size.
+ * - The number of files to extract and their total uncompressed size are
+ *   capped before any byte is written, and the bytes actually written are
+ *   counted against the same cap in case an entry lied about its size. A
+ *   looser cap on every declared entry bounds parsing itself.
  * - When every file sits under one top-level folder (how Finder and most
  *   "compress folder" tools package a project) that folder is stripped, and
  *   its name is reported so the caller can mention it.
  */
 
 export interface ZipExtractionLimits {
+  /** Files to extract, after folders and skipped entries are left out. */
   maxEntries: number;
+  /**
+   * Every entry the archive declares. This bounds parsing, and is generous
+   * so a project zipped with node_modules or .git still opens.
+   */
+  maxDirectoryEntries: number;
   maxTotalUncompressedBytes: number;
   maxPathDepth: number;
 }
 
 export const DEFAULT_ZIP_EXTRACTION_LIMITS: ZipExtractionLimits = {
   maxEntries: 5_000,
+  maxDirectoryEntries: 50_000,
   maxTotalUncompressedBytes: 100 * 1024 * 1024,
   maxPathDepth: 32,
 };
@@ -75,7 +83,7 @@ export interface ZipExtractionResult {
   /** Name of the single top-level folder that was stripped, if any. */
   strippedRootDir: string | null;
   totalBytes: number;
-  /** Every central-directory entry, as counted against `maxEntries`. */
+  /** Files planned for extraction, as counted against `maxEntries`. */
   entryCount: number;
 }
 
@@ -208,7 +216,20 @@ export async function extractZipArchive(
   options: ExtractZipOptions = {},
 ): Promise<ZipExtractionResult> {
   const limits = { ...DEFAULT_ZIP_EXTRACTION_LIMITS, ...options.limits };
-  const entries = readZipDirectory(archive, { maxEntries: limits.maxEntries });
+  let entries;
+  try {
+    entries = readZipDirectory(archive, {
+      maxEntries: limits.maxDirectoryEntries,
+    });
+  } catch (error) {
+    if (error instanceof ZipLimitError) {
+      throw new ZipLimitError(
+        `${error.message}, counting folders and skipped entries such as node_modules and .git`,
+        "directory",
+      );
+    }
+    throw error;
+  }
 
   const skipped: SkippedZipEntry[] = [];
   const planned: PlannedEntry[] = [];
@@ -238,6 +259,13 @@ export async function extractZipArchive(
       continue;
     }
     planned.push({ entry, segments });
+  }
+
+  if (planned.length > limits.maxEntries) {
+    throw new ZipLimitError(
+      `archive holds ${planned.length} files to extract, more than the ${limits.maxEntries} allowed`,
+      "entries",
+    );
   }
 
   const declaredTotal = planned.reduce(
@@ -317,6 +345,6 @@ export async function extractZipArchive(
     skipped,
     strippedRootDir,
     totalBytes,
-    entryCount: entries.length,
+    entryCount: planned.length,
   };
 }

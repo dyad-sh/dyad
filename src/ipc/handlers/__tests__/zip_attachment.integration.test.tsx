@@ -285,7 +285,7 @@ describe("zip attachment (integration)", () => {
         signal?.addEventListener("abort", () => resolve(), { once: true });
       });
       // Before extraction the extractor's own check fires; after it, the
-      // turn carries on as if Stop had landed while the extraction was being
+      // turn carries on as if Stop had landed right after the extraction was
       // moved into place.
       if (phase === "before") {
         signal?.throwIfAborted();

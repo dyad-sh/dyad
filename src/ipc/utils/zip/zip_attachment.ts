@@ -34,15 +34,44 @@ export const ZIP_ATTACHMENT_MIME_TYPE = "application/zip";
 const TRANSIENT_RENAME_ERRORS = new Set(["EPERM", "EACCES", "EBUSY"]);
 const RENAME_RETRY_DELAYS_MS = [50, 100, 200, 400];
 
-async function isDirectory(target: string): Promise<boolean> {
+const FILE_CHECK_BATCH_SIZE = 32;
+
+/** Whether `dir` is a real directory that holds every one of `files`. */
+async function holdsExtractedFiles(
+  dir: string,
+  files: readonly ExtractedZipFile[],
+): Promise<boolean> {
+  const isFile = async (target: string) => {
+    try {
+      return (await fs.lstat(target)).isFile();
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return false;
+      }
+      throw error;
+    }
+  };
   try {
-    return (await fs.stat(target)).isDirectory();
+    if (!(await fs.lstat(dir)).isDirectory()) {
+      return false;
+    }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       return false;
     }
     throw error;
   }
+  for (let start = 0; start < files.length; start += FILE_CHECK_BATCH_SIZE) {
+    const present = await Promise.all(
+      files
+        .slice(start, start + FILE_CHECK_BATCH_SIZE)
+        .map((file) => isFile(path.join(dir, ...file.relativePath.split("/")))),
+    );
+    if (present.includes(false)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 async function renameWithRetry(from: string, to: string): Promise<void> {
@@ -77,7 +106,7 @@ export interface ExtractedArchiveSummary {
   skipped: Partial<Record<ZipSkipReason, number>>;
   strippedRootDir: string | null;
   totalBytes: number;
-  /** Every central-directory entry, as counted against the entry cap. */
+  /** Files planned for extraction, as counted against the entry cap. */
   entryCount: number;
 }
 
@@ -131,24 +160,29 @@ export async function extractZipAttachment({
       throw error;
     }
 
-    // Only a finished extraction of these same bytes is ever moved to this
-    // name, so an existing directory already holds the same files. Keep it,
-    // and refresh its time so cleanup ages it out with the re-uploaded zip.
-    if (await isDirectory(destinationDir)) {
+    try {
+      // Only a finished extraction of these same bytes is ever moved to this
+      // name, so an existing directory normally holds the same files. Keep it
+      // so chats reading it are never disturbed, and refresh its time so
+      // cleanup ages it out with the re-uploaded zip. Replace it only when
+      // files are missing from it.
+      if (await holdsExtractedFiles(destinationDir, result.files)) {
+        await fs.rm(stagingDir, { recursive: true, force: true });
+        const now = new Date();
+        await fs.utimes(destinationDir, now, now);
+      } else {
+        await fs.rm(destinationDir, {
+          recursive: true,
+          force: true,
+          maxRetries: RENAME_RETRY_DELAYS_MS.length,
+        });
+        await renameWithRetry(stagingDir, destinationDir);
+      }
+    } catch (error) {
       await fs
         .rm(stagingDir, { recursive: true, force: true })
         .catch(() => undefined);
-      const now = new Date();
-      await fs.utimes(destinationDir, now, now).catch(() => undefined);
-    } else {
-      try {
-        await renameWithRetry(stagingDir, destinationDir);
-      } catch (error) {
-        await fs
-          .rm(stagingDir, { recursive: true, force: true })
-          .catch(() => undefined);
-        throw error;
-      }
+      throw error;
     }
 
     const skipped: Partial<Record<ZipSkipReason, number>> = {};

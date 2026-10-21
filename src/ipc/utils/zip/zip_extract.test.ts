@@ -393,15 +393,36 @@ describe("extractZipArchive", () => {
     expect(listFiles(dest)).toEqual(["first.txt"]);
   });
 
-  it("counts every central-directory entry, not only written files", async () => {
+  it("counts only files to extract against the entry limit", async () => {
     const archive = buildZip([
       { name: "dir", directory: true },
       { name: "dir/a.txt", data: "a" },
+      ...Array.from({ length: 10 }, (_, i) => ({
+        name: `node_modules/pkg/f${i}.js`,
+        data: "noise",
+      })),
       { name: "__MACOSX/._a.txt", data: "noise" },
     ]);
-    const result = await extractZipArchive(archive, dest);
+    const result = await extractZipArchive(archive, dest, {
+      limits: { maxEntries: 1 },
+    });
     expect(result.files).toHaveLength(1);
-    expect(result.entryCount).toBe(3);
+    expect(result.entryCount).toBe(1);
+  });
+
+  it("still bounds every declared entry, folders and noise included", async () => {
+    const archive = buildZip([
+      { name: "a.txt", data: "a" },
+      { name: "node_modules/x.js", data: "x" },
+      { name: "node_modules/y.js", data: "y" },
+    ]);
+    const error = await extractZipArchive(archive, dest, {
+      limits: { maxDirectoryEntries: 2 },
+    }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ZipLimitError);
+    expect(error).toMatchObject({ limit: "directory" });
+    expect((error as Error).message).toContain("node_modules and .git");
+    expect(listFiles(dest)).toEqual([]);
   });
 
   it("stops before writing when the signal is already aborted", async () => {

@@ -1,6 +1,6 @@
 import { useAtom } from "jotai";
 import { useTranslation } from "react-i18next";
-import { Sparkles, X } from "lucide-react";
+import { Lightbulb, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -42,7 +42,7 @@ export function SuggestedPromptsStrip({
       data-testid="suggested-prompts"
     >
       <span className="flex items-center gap-1 text-xs text-muted-foreground mr-0.5">
-        <Sparkles size={12} aria-hidden="true" />
+        <Lightbulb size={12} aria-hidden="true" />
         {t("suggestedPrompts.label")}
       </span>
       {prompts.map((prompt) => (

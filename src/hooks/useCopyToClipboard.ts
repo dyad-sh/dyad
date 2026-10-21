@@ -20,6 +20,38 @@ const CUSTOM_TAG_NAMES = [
   "think",
   "dyad-command",
 ];
+const SUGGESTED_PROMPTS_OPEN = /<dyad-suggested-prompts(?:\s[^>]*)?>/g;
+const SUGGESTED_PROMPTS_CLOSE = "</dyad-suggested-prompts>";
+const NEXT_DYAD_TAG = /<(?:dyad-[\w-]+|think)(?=[\s>])/g;
+
+/**
+ * Closes an unclosed suggestions tag right before the next Dyad tag, as the
+ * chat parser does, so a cut-off block cannot swallow later host notices.
+ */
+function closeUnclosedSuggestedPrompts(content: string): string {
+  let result = content;
+  let from = 0;
+  for (;;) {
+    SUGGESTED_PROMPTS_OPEN.lastIndex = from;
+    const open = SUGGESTED_PROMPTS_OPEN.exec(result);
+    if (!open) return result;
+    const bodyStart = open.index + open[0].length;
+    const close = result.indexOf(SUGGESTED_PROMPTS_CLOSE, bodyStart);
+    NEXT_DYAD_TAG.lastIndex = bodyStart;
+    const next = NEXT_DYAD_TAG.exec(result);
+    if (close >= 0 && (!next || close < next.index)) {
+      from = close + SUGGESTED_PROMPTS_CLOSE.length;
+      continue;
+    }
+    if (!next) return result;
+    result =
+      result.slice(0, next.index) +
+      SUGGESTED_PROMPTS_CLOSE +
+      result.slice(next.index);
+    from = next.index + SUGGESTED_PROMPTS_CLOSE.length;
+  }
+}
+
 export const useCopyToClipboard = () => {
   const [copied, setCopied] = useState(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -315,7 +347,7 @@ export const useCopyToClipboard = () => {
 
   // Simplified version of preprocessUnclosedTags
   const preprocessUnclosedTags = (content: string) => {
-    let processedContent = content;
+    let processedContent = closeUnclosedSuggestedPrompts(content);
 
     for (const tagName of CUSTOM_TAG_NAMES) {
       const openTagPattern = new RegExp(`<${tagName}(?:\\s[^>]*)?>`, "g");

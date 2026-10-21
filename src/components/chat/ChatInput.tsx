@@ -274,6 +274,12 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     );
   }, [chatImageJobs, dismissedImageJobIds, appId]);
   const hasSuccessfulImageJobs = visibleSuccessfulImageJobs.length > 0;
+  const hasPendingImageJobs = chatImageJobs.some(
+    (job) =>
+      (!appId || job.targetAppId === appId) &&
+      !dismissedImageJobIds.has(job.id) &&
+      job.status === "pending",
+  );
 
   // Use the attachments hook
   const {
@@ -792,6 +798,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               hasComposerPayload ||
               selectedComponents.length > 0 ||
               !!pendingFiles ||
+              hasPendingImageJobs ||
               isVoiceBusy,
           })
         : null,
@@ -803,6 +810,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       hasComposerPayload,
       selectedComponents,
       pendingFiles,
+      hasPendingImageJobs,
       isVoiceBusy,
     ],
   );

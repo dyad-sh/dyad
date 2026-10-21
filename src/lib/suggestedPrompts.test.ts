@@ -83,6 +83,21 @@ Add tests
     ]);
   });
 
+  it("returns nothing when visible text follows the tag", () => {
+    const question = `Done!\n<dyad-suggested-prompts>\nAdd a dark mode toggle\n</dyad-suggested-prompts>\nWhich option do you prefer?`;
+    expect(extractSuggestedPrompts(question)).toEqual([]);
+
+    const laterStep = `<dyad-suggested-prompts>\nAdd a dark mode toggle\n</dyad-suggested-prompts>\nNow let me check the build.\n<dyad-read path="src/App.tsx"></dyad-read>\nAll good.`;
+    expect(extractSuggestedPrompts(laterStep)).toEqual([]);
+  });
+
+  it("still offers prompts when only host notices follow the tag", () => {
+    const content = `Done!\n<dyad-suggested-prompts>\nAdd a dark mode toggle\n</dyad-suggested-prompts>\n\n<dyad-status title="Checks passed" state="finished">All checks passed.</dyad-status>\n`;
+    expect(extractSuggestedPrompts(content)).toEqual([
+      "Add a dark mode toggle",
+    ]);
+  });
+
   it("drops prompts longer than the chip limit", () => {
     const long = "Add a feature ".repeat(10).trim();
     expect(long.length).toBeGreaterThan(MAX_SUGGESTED_PROMPT_CHARS);

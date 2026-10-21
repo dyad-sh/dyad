@@ -38,7 +38,8 @@ function marksIncompleteTurn(block: Block): boolean {
  * Extracts the follow-up prompts from a completed assistant message. Only a
  * closed, top-level tag counts, so a draft inside the model's reasoning or
  * another block is ignored, and only the last one counts, so a stray earlier
- * mention cannot win over the model's final list.
+ * mention cannot win over the model's final list. Text after it means the
+ * reply did not end with the suggestions, so none are offered.
  */
 export function extractSuggestedPrompts(content: string): string[] {
   const { blocks } = parseFullMessage(content);
@@ -53,7 +54,18 @@ export function extractSuggestedPrompts(content: string): string[] {
     }
   });
   if (lastIndex < 0) return [];
-  if (blocks.slice(lastIndex + 1).some(marksIncompleteTurn)) return [];
+  const after = blocks.slice(lastIndex + 1);
+  // Visible model text after the tag means the reply did not end with the
+  // suggestions, for example a closing question. Host notices are tag blocks.
+  if (
+    after.some(
+      (block) =>
+        (block.kind === "markdown" && block.content.trim() !== "") ||
+        marksIncompleteTurn(block),
+    )
+  ) {
+    return [];
+  }
 
   const seen = new Set<string>();
   const prompts: string[] = [];

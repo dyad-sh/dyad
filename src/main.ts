@@ -591,8 +591,13 @@ export async function onReady() {
   // heartbeat and app:initial-load can report it. A no-op off Windows.
   void queryWindowsPagefileSettings();
 
-  // Start performance monitoring
-  startPerformanceMonitoring();
+  // Start performance monitoring. The registry lookup is passed in rather
+  // than imported there: window registry internals stay inside main-only
+  // modules (see the boundaries test).
+  startPerformanceMonitoring({
+    isProductWebContents: (webContentsId) =>
+      windowRegistry.sessionForWebContents(webContentsId) !== undefined,
+  });
 
   // Handle dyad-media:// requests. Media-library tiles use bounded, cached
   // derivatives while explicit previews continue to receive the source file.

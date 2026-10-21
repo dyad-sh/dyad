@@ -18,9 +18,10 @@ const POWERSHELL_TIMEOUT_MS = 15_000;
 
 // A full process-table snapshot costs a shell-out (and on Windows a
 // PowerShell start-up), so it is taken every few minutes rather than on
-// every 30s heartbeat, and more often once memory is running short.
+// every 30s heartbeat. The cadence does not change under memory pressure:
+// the extra load would land exactly when the machine can least afford
+// it, and os.freemem() is not a usable pressure signal on macOS anyway.
 export const DEV_SERVER_SAMPLE_INTERVAL_MS = 5 * 60_000;
-export const DEV_SERVER_PRESSURE_SAMPLE_INTERVAL_MS = 60_000;
 
 /**
  * Memory of the dev servers Dyad launched, each measured as the whole
@@ -164,6 +165,10 @@ let latestSampleKey: string | null = null;
 // The pid set of the most recent heartbeat; a snapshot that finishes
 // after the set moved on is discarded.
 let requestedKey: string | null = null;
+// The pid set of the last snapshot started, successful or not. A changed
+// set starts a snapshot at once; after a failure the interval applies, so
+// a broken shell-out cannot respawn on every heartbeat.
+let attemptedKey: string | null = null;
 let sampleInFlight = false;
 let lastSampleStartedAt = 0;
 
@@ -174,7 +179,7 @@ function pidSetKey(pids: number[]): string {
 /**
  * The most recent dev-server memory sample for the current set of root
  * pids, starting a new one in the background when that set changed or the
- * previous sample is old enough. Never blocks the heartbeat: the shell-out
+ * previous attempt is old enough. Never blocks the heartbeat: the shell-out
  * runs asynchronously and lands in a later heartbeat. Null until a sample
  * for the current set exists.
  *
@@ -184,17 +189,9 @@ function pidSetKey(pids: number[]): string {
 export function getDevServerMemorySample(input: {
   rootPids: number[];
   now: number;
-  underMemoryPressure: boolean;
-  platform?: NodeJS.Platform;
   snapshot?: () => Promise<PsProcessEntry[]>;
 }): DevServerMemorySample | null {
-  const {
-    rootPids,
-    now,
-    underMemoryPressure,
-    platform = process.platform,
-    snapshot = snapshotProcessTable,
-  } = input;
+  const { rootPids, now, snapshot = snapshotProcessTable } = input;
   const key = pidSetKey(rootPids);
   requestedKey = key;
   if (rootPids.length === 0) {
@@ -209,19 +206,14 @@ export function getDevServerMemorySample(input: {
     return latestSample;
   }
 
-  // The faster cadence is for the cheap `ps` path only. On Windows each
-  // sample starts a PowerShell process and a CIM query, which would add
-  // load exactly when the machine is nearest to running out.
-  const interval =
-    underMemoryPressure && platform !== "win32"
-      ? DEV_SERVER_PRESSURE_SAMPLE_INTERVAL_MS
-      : DEV_SERVER_SAMPLE_INTERVAL_MS;
-  const pidSetChanged = key !== latestSampleKey;
+  const pidSetChanged = key !== attemptedKey;
   if (
     !sampleInFlight &&
-    (pidSetChanged || now - lastSampleStartedAt >= interval)
+    (pidSetChanged ||
+      now - lastSampleStartedAt >= DEV_SERVER_SAMPLE_INTERVAL_MS)
   ) {
     sampleInFlight = true;
+    attemptedKey = key;
     lastSampleStartedAt = now;
     void snapshot()
       .then((entries) => {
@@ -247,6 +239,7 @@ export function resetDevServerMemoryForTesting(): void {
   latestSample = null;
   latestSampleKey = null;
   requestedKey = null;
+  attemptedKey = null;
   sampleInFlight = false;
   lastSampleStartedAt = 0;
 }

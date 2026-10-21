@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
-  DEV_SERVER_PRESSURE_SAMPLE_INTERVAL_MS,
   DEV_SERVER_SAMPLE_INTERVAL_MS,
   getDevServerMemorySample,
   parseWindowsProcessTable,
@@ -111,12 +110,7 @@ describe("getDevServerMemorySample", () => {
   it("answers zeros at once with no dev servers and no shell-out", () => {
     const snapshot = vi.fn();
     expect(
-      getDevServerMemorySample({
-        rootPids: [],
-        now: 1000,
-        underMemoryPressure: false,
-        snapshot,
-      }),
+      getDevServerMemorySample({ rootPids: [], now: 1000, snapshot }),
     ).toEqual({
       sampledAt: 1000,
       count: 0,
@@ -133,7 +127,6 @@ describe("getDevServerMemorySample", () => {
       getDevServerMemorySample({
         rootPids: [100],
         now: 1000,
-        underMemoryPressure: false,
         snapshot: first.snapshot,
       }),
     ).toBeNull();
@@ -143,7 +136,6 @@ describe("getDevServerMemorySample", () => {
       getDevServerMemorySample({
         rootPids: [100],
         now: 2000,
-        underMemoryPressure: false,
         snapshot: first.snapshot,
       }),
     ).toMatchObject({ count: 1, totalMB: 100 });
@@ -155,7 +147,6 @@ describe("getDevServerMemorySample", () => {
       getDevServerMemorySample({
         rootPids: [100, 200],
         now: 3000,
-        underMemoryPressure: false,
         snapshot: second.snapshot,
       }),
     ).toBeNull();
@@ -165,7 +156,6 @@ describe("getDevServerMemorySample", () => {
       getDevServerMemorySample({
         rootPids: [100, 200],
         now: 4000,
-        underMemoryPressure: false,
         snapshot: second.snapshot,
       }),
     ).toMatchObject({ sampledAt: 3000, count: 2, totalMB: 200 });
@@ -176,14 +166,12 @@ describe("getDevServerMemorySample", () => {
     getDevServerMemorySample({
       rootPids: [100],
       now: 1000,
-      underMemoryPressure: false,
       snapshot: stale.snapshot,
     });
     // The app stopped while the snapshot was running.
     getDevServerMemorySample({
       rootPids: [],
       now: 2000,
-      underMemoryPressure: false,
       snapshot: stale.snapshot,
     });
     stale.resolve(entriesFor([100]));
@@ -192,35 +180,43 @@ describe("getDevServerMemorySample", () => {
       getDevServerMemorySample({
         rootPids: [],
         now: 3000,
-        underMemoryPressure: false,
         snapshot: stale.snapshot,
       }),
     ).toMatchObject({ count: 0 });
   });
 
-  it("keeps the slow interval under pressure on Windows", async () => {
+  it("resamples an unchanged pid set only after the interval", async () => {
     const snapshot = vi.fn(async () => entriesFor([100]));
-    const sample = (now: number, platform: NodeJS.Platform) =>
-      getDevServerMemorySample({
-        rootPids: [100],
-        now,
-        underMemoryPressure: true,
-        platform,
-        snapshot,
-      });
-    sample(0, "win32");
+    getDevServerMemorySample({ rootPids: [100], now: 0, snapshot });
     await flush();
-    sample(DEV_SERVER_PRESSURE_SAMPLE_INTERVAL_MS, "win32");
+    getDevServerMemorySample({ rootPids: [100], now: 30_000, snapshot });
     expect(snapshot).toHaveBeenCalledTimes(1);
-    sample(DEV_SERVER_SAMPLE_INTERVAL_MS, "win32");
+    getDevServerMemorySample({
+      rootPids: [100],
+      now: DEV_SERVER_SAMPLE_INTERVAL_MS,
+      snapshot,
+    });
     expect(snapshot).toHaveBeenCalledTimes(2);
+  });
 
-    // The cheap ps path does speed up.
-    resetDevServerMemoryForTesting();
-    snapshot.mockClear();
-    sample(0, "darwin");
+  it("waits for the interval before retrying a failed snapshot", async () => {
+    // A broken shell-out (PowerShell blocked, timeout) must not respawn on
+    // every heartbeat just because no sample for this set exists yet.
+    const snapshot = vi.fn(async () => {
+      throw new Error("powershell unavailable");
+    });
+    expect(
+      getDevServerMemorySample({ rootPids: [100], now: 0, snapshot }),
+    ).toBeNull();
     await flush();
-    sample(DEV_SERVER_PRESSURE_SAMPLE_INTERVAL_MS, "darwin");
+    getDevServerMemorySample({ rootPids: [100], now: 30_000, snapshot });
+    getDevServerMemorySample({ rootPids: [100], now: 60_000, snapshot });
+    expect(snapshot).toHaveBeenCalledTimes(1);
+    getDevServerMemorySample({
+      rootPids: [100],
+      now: DEV_SERVER_SAMPLE_INTERVAL_MS,
+      snapshot,
+    });
     expect(snapshot).toHaveBeenCalledTimes(2);
   });
 });

@@ -20,7 +20,11 @@ import { getCachedPagefileSettings } from "./windows_pagefile";
 import { getLatestRendererHeapReport } from "./renderer_heap_reports";
 import { getDevServerMemorySample } from "./dev_server_memory";
 import { getPreviewViewOSProcessIds } from "../main/preview_web_contents_view";
-import { windowRegistry } from "../window_infrastructure/main/window_registry";
+
+// Tells a registered product window from any other BrowserWindow (preview
+// popups, for one). Supplied by main.ts at start-up; the registry itself
+// stays inside main-only modules.
+let isProductWebContents: (webContentsId: number) => boolean = () => false;
 
 const logger = log.scope("performance-monitor");
 
@@ -100,10 +104,7 @@ function getRendererPidGroups(): {
   for (const window of BrowserWindow.getAllWindows()) {
     try {
       const contents = window.webContents;
-      if (
-        contents.isDestroyed() ||
-        windowRegistry.sessionForWebContents(contents.id) === undefined
-      ) {
+      if (contents.isDestroyed() || !isProductWebContents(contents.id)) {
         continue;
       }
       const mainPid = contents.getOSProcessId();
@@ -370,16 +371,11 @@ function capturePerformanceMetrics() {
     const mainExternal = getMainExternalMB();
     const rendererHeap = getLatestRendererHeapReport();
     const rendererSplit = processMetrics?.rendererSplit ?? null;
-    // Dev servers are sampled on their own cadence (a shell-out each time),
-    // faster once memory is running short anywhere on the machine.
-    const underMemoryPressure =
-      (commit !== null &&
-        commit.commitAvailableMB / commit.commitLimitMB < 0.1) ||
-      systemMemory.usagePercent >= 90;
+    // Dev servers are sampled on their own, slower cadence (a shell-out
+    // each time); this returns the latest sample for the current set.
     const devServers = getDevServerMemorySample({
       rootPids: getRunningAppProcessPids().map(({ pid }) => pid),
       now: Date.now(),
-      underMemoryPressure,
     });
 
     logger.debug(
@@ -483,11 +479,14 @@ function capturePerformanceMetrics() {
  * Start monitoring performance metrics
  * Captures metrics every 30 seconds
  */
-export function startPerformanceMonitoring() {
+export function startPerformanceMonitoring(options: {
+  isProductWebContents: (webContentsId: number) => boolean;
+}) {
   if (monitorInterval) {
     logger.warn("Performance monitoring already started");
     return;
   }
+  isProductWebContents = options.isProductWebContents;
 
   logger.info("Starting performance monitoring");
 

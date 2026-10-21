@@ -72,12 +72,14 @@ export function summarizeDevServerMemory(
   let maxKb = 0;
   let maxProcessCount = 0;
   for (const pid of rootPids) {
-    const tree = collectProcessTree(pid, entries);
-    if (tree.length === 0) {
-      // Root not in the snapshot: it exited between the pid list and the
-      // snapshot, so it is not a running dev server any more.
+    // A root missing from the snapshot exited between the pid list and
+    // the snapshot, so it is not a running dev server any more. Checked
+    // explicitly: the tree walk still finds the children of a vanished
+    // root through their parent pid.
+    if (!entries.some((entry) => entry.pid === pid)) {
       continue;
     }
+    const tree = collectProcessTree(pid, entries);
     count++;
     const treeKb = tree.reduce((sum, entry) => sum + entry.rssKb, 0);
     totalKb += treeKb;
@@ -131,8 +133,9 @@ async function snapshotProcessTable(): Promise<PsProcessEntry[]> {
       "v1.0",
       "powershell.exe",
     );
-    // No quotes inside the command: the array `-join` keeps it a single
-    // token so nothing needs escaping on the way to PowerShell.
+    // execFile hands the whole command to PowerShell as one argument, so
+    // its single quotes need no escaping. The array `-join` avoids a
+    // format string with double quotes inside.
     const output = await execCapture(
       powershell,
       [
@@ -153,14 +156,27 @@ async function snapshotProcessTable(): Promise<PsProcessEntry[]> {
   return parsePsProcessTable(output);
 }
 
+// Samples are keyed by the set of root pids they measured, so a sample for
+// dev servers that have since stopped or restarted is never reported as
+// if it described the current ones.
 let latestSample: DevServerMemorySample | null = null;
+let latestSampleKey: string | null = null;
+// The pid set of the most recent heartbeat; a snapshot that finishes
+// after the set moved on is discarded.
+let requestedKey: string | null = null;
 let sampleInFlight = false;
 let lastSampleStartedAt = 0;
 
+function pidSetKey(pids: number[]): string {
+  return [...pids].sort((a, b) => a - b).join(",");
+}
+
 /**
- * The most recent dev-server memory sample, starting a new one in the
- * background when the previous is old enough. Never blocks the heartbeat:
- * the shell-out runs asynchronously and lands in a later heartbeat.
+ * The most recent dev-server memory sample for the current set of root
+ * pids, starting a new one in the background when that set changed or the
+ * previous sample is old enough. Never blocks the heartbeat: the shell-out
+ * runs asynchronously and lands in a later heartbeat. Null until a sample
+ * for the current set exists.
  *
  * With no dev server running, the answer is immediate and no process is
  * spawned.
@@ -169,8 +185,18 @@ export function getDevServerMemorySample(input: {
   rootPids: number[];
   now: number;
   underMemoryPressure: boolean;
+  platform?: NodeJS.Platform;
+  snapshot?: () => Promise<PsProcessEntry[]>;
 }): DevServerMemorySample | null {
-  const { rootPids, now, underMemoryPressure } = input;
+  const {
+    rootPids,
+    now,
+    underMemoryPressure,
+    platform = process.platform,
+    snapshot = snapshotProcessTable,
+  } = input;
+  const key = pidSetKey(rootPids);
+  requestedKey = key;
   if (rootPids.length === 0) {
     latestSample = {
       sampledAt: now,
@@ -179,18 +205,32 @@ export function getDevServerMemorySample(input: {
       maxMB: 0,
       maxProcessCount: 0,
     };
+    latestSampleKey = key;
     return latestSample;
   }
 
-  const interval = underMemoryPressure
-    ? DEV_SERVER_PRESSURE_SAMPLE_INTERVAL_MS
-    : DEV_SERVER_SAMPLE_INTERVAL_MS;
-  if (!sampleInFlight && now - lastSampleStartedAt >= interval) {
+  // The faster cadence is for the cheap `ps` path only. On Windows each
+  // sample starts a PowerShell process and a CIM query, which would add
+  // load exactly when the machine is nearest to running out.
+  const interval =
+    underMemoryPressure && platform !== "win32"
+      ? DEV_SERVER_PRESSURE_SAMPLE_INTERVAL_MS
+      : DEV_SERVER_SAMPLE_INTERVAL_MS;
+  const pidSetChanged = key !== latestSampleKey;
+  if (
+    !sampleInFlight &&
+    (pidSetChanged || now - lastSampleStartedAt >= interval)
+  ) {
     sampleInFlight = true;
     lastSampleStartedAt = now;
-    void snapshotProcessTable()
+    void snapshot()
       .then((entries) => {
+        if (requestedKey !== key) {
+          logger.debug("Discarding dev server memory sample for stale pids");
+          return;
+        }
         latestSample = summarizeDevServerMemory(rootPids, entries, now);
+        latestSampleKey = key;
         logger.debug("Dev server memory:", latestSample);
       })
       .catch((error) => {
@@ -200,11 +240,13 @@ export function getDevServerMemorySample(input: {
         sampleInFlight = false;
       });
   }
-  return latestSample;
+  return latestSampleKey === key ? latestSample : null;
 }
 
 export function resetDevServerMemoryForTesting(): void {
   latestSample = null;
+  latestSampleKey = null;
+  requestedKey = null;
   sampleInFlight = false;
   lastSampleStartedAt = 0;
 }

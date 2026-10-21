@@ -30,9 +30,14 @@ export function clearRendererHeapReport(webContentsId: number): void {
   reports.delete(webContentsId);
 }
 
+function heapRatio(report: RendererHeapReport): number {
+  return report.heapLimitMB > 0 ? report.heapUsedMB / report.heapLimitMB : 0;
+}
+
 /**
- * The fresh report with the most heap in use. Several product windows can be
- * open; the one nearest its limit is the one that matters for a crash.
+ * The fresh report nearest its heap limit. Several product windows can be
+ * open; the one closest to running out is the one that matters for a
+ * crash. Compared as a ratio in case windows ever get different limits.
  */
 export function getLatestRendererHeapReport(
   now = Date.now(),
@@ -43,7 +48,7 @@ export function getLatestRendererHeapReport(
       reports.delete(id);
       continue;
     }
-    if (!best || report.heapUsedMB > best.heapUsedMB) {
+    if (!best || heapRatio(report) > heapRatio(best)) {
       best = report;
     }
   }

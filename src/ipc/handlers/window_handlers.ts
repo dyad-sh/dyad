@@ -8,9 +8,15 @@ import { getInitialLoadIsFirstSession } from "@/main/settings";
 import { getPreviousSessionAppSize } from "@/main/last_session_store";
 import { AppSizeTelemetrySchema } from "@/shared/app_size_telemetry";
 import { queryWindowsPagefileSettings } from "@/utils/windows_pagefile";
-import { recordRendererHeapReport } from "@/utils/renderer_heap_reports";
+import {
+  clearRendererHeapReport,
+  recordRendererHeapReport,
+} from "@/utils/renderer_heap_reports";
 
 const logger = log.scope("window-handlers");
+
+// Senders whose destroyed hook is already attached, by webContents id.
+const trackedHeapReporters = new Set<number>();
 
 export function registerWindowHandlers() {
   logger.debug("Registering window control handlers");
@@ -91,7 +97,17 @@ export function registerWindowHandlers() {
         assertTrustedRenderer(event);
         const report =
           systemSendContracts.reportRendererHeap.input.parse(input);
-        recordRendererHeapReport(event.sender.id, report);
+        const sender = event.sender;
+        if (!trackedHeapReporters.has(sender.id)) {
+          // Forget a closed window at once rather than after the report
+          // expiry, so its figure cannot be pinned on a later crash.
+          trackedHeapReporters.add(sender.id);
+          sender.once("destroyed", () => {
+            trackedHeapReporters.delete(sender.id);
+            clearRendererHeapReport(sender.id);
+          });
+        }
+        recordRendererHeapReport(sender.id, report);
       } catch (error) {
         logger.debug("Ignoring renderer heap report", error);
       }

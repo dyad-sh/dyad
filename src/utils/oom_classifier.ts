@@ -45,7 +45,9 @@ const HEAP_NEAR_LIMIT_PCT = 95;
 const SYSTEM_MEMORY_NEAR_LIMIT_RATIO = 0.95;
 // And for the Windows commit charge: with this much of the limit promised
 // out, the next allocation anywhere on the machine can fail outright,
-// whatever physical RAM looks like.
+// whatever physical RAM looks like. The signal reads the same whatever
+// the pagefile mode; the mode travels with the event so analysis can
+// weight it, since an automatic pagefile lets the limit grow on demand.
 const SYSTEM_COMMIT_NEAR_LIMIT_RATIO = 0.95;
 
 export function classifyOom(input: {

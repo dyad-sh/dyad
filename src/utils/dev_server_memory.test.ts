@@ -1,9 +1,16 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
+  DEV_SERVER_PRESSURE_SAMPLE_INTERVAL_MS,
+  DEV_SERVER_SAMPLE_INTERVAL_MS,
+  getDevServerMemorySample,
   parseWindowsProcessTable,
+  resetDevServerMemoryForTesting,
   summarizeDevServerMemory,
 } from "@/utils/dev_server_memory";
-import { parsePsProcessTable } from "@/utils/process_memory_diagnostics";
+import {
+  parsePsProcessTable,
+  type PsProcessEntry,
+} from "@/utils/process_memory_diagnostics";
 
 describe("parseWindowsProcessTable", () => {
   it("parses pid, parent pid and private bytes per line", () => {
@@ -68,5 +75,152 @@ describe("summarizeDevServerMemory", () => {
       maxMB: 0,
       maxProcessCount: 0,
     });
+  });
+});
+
+describe("summarizeDevServerMemory with a vanished root", () => {
+  it("does not count an orphaned child as a live dev server", () => {
+    // The root exited but its child survived and still names it as
+    // parent; the tree walk alone would find that child.
+    const entries = parsePsProcessTable(
+      ["  101   100 204800 node", "  300     1 999999 chrome"].join("\n"),
+    );
+    expect(summarizeDevServerMemory([100], entries, 1).count).toBe(0);
+  });
+});
+
+describe("getDevServerMemorySample", () => {
+  beforeEach(() => {
+    resetDevServerMemoryForTesting();
+  });
+
+  const entriesFor = (pids: number[]) =>
+    pids.map((pid) => ({ pid, ppid: 1, rssKb: 1024 * 100, command: "node" }));
+
+  // Lets the sampler's then/finally chain settle after a snapshot resolves.
+  const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  function deferredSnapshot() {
+    let resolve!: (entries: PsProcessEntry[]) => void;
+    const promise = new Promise<PsProcessEntry[]>((r) => {
+      resolve = r;
+    });
+    return { snapshot: () => promise, resolve };
+  }
+
+  it("answers zeros at once with no dev servers and no shell-out", () => {
+    const snapshot = vi.fn();
+    expect(
+      getDevServerMemorySample({
+        rootPids: [],
+        now: 1000,
+        underMemoryPressure: false,
+        snapshot,
+      }),
+    ).toEqual({
+      sampledAt: 1000,
+      count: 0,
+      totalMB: 0,
+      maxMB: 0,
+      maxProcessCount: 0,
+    });
+    expect(snapshot).not.toHaveBeenCalled();
+  });
+
+  it("samples as soon as the pid set changes, not on the interval", async () => {
+    const first = deferredSnapshot();
+    expect(
+      getDevServerMemorySample({
+        rootPids: [100],
+        now: 1000,
+        underMemoryPressure: false,
+        snapshot: first.snapshot,
+      }),
+    ).toBeNull();
+    first.resolve(entriesFor([100]));
+    await flush();
+    expect(
+      getDevServerMemorySample({
+        rootPids: [100],
+        now: 2000,
+        underMemoryPressure: false,
+        snapshot: first.snapshot,
+      }),
+    ).toMatchObject({ count: 1, totalMB: 100 });
+
+    // A second dev server starts: a fresh sample runs immediately, and the
+    // old one is not reported for the new set in the meantime.
+    const second = deferredSnapshot();
+    expect(
+      getDevServerMemorySample({
+        rootPids: [100, 200],
+        now: 3000,
+        underMemoryPressure: false,
+        snapshot: second.snapshot,
+      }),
+    ).toBeNull();
+    second.resolve(entriesFor([100, 200]));
+    await flush();
+    expect(
+      getDevServerMemorySample({
+        rootPids: [100, 200],
+        now: 4000,
+        underMemoryPressure: false,
+        snapshot: second.snapshot,
+      }),
+    ).toMatchObject({ sampledAt: 3000, count: 2, totalMB: 200 });
+  });
+
+  it("discards a snapshot that finishes after the pid set moved on", async () => {
+    const stale = deferredSnapshot();
+    getDevServerMemorySample({
+      rootPids: [100],
+      now: 1000,
+      underMemoryPressure: false,
+      snapshot: stale.snapshot,
+    });
+    // The app stopped while the snapshot was running.
+    getDevServerMemorySample({
+      rootPids: [],
+      now: 2000,
+      underMemoryPressure: false,
+      snapshot: stale.snapshot,
+    });
+    stale.resolve(entriesFor([100]));
+    await flush();
+    expect(
+      getDevServerMemorySample({
+        rootPids: [],
+        now: 3000,
+        underMemoryPressure: false,
+        snapshot: stale.snapshot,
+      }),
+    ).toMatchObject({ count: 0 });
+  });
+
+  it("keeps the slow interval under pressure on Windows", async () => {
+    const snapshot = vi.fn(async () => entriesFor([100]));
+    const sample = (now: number, platform: NodeJS.Platform) =>
+      getDevServerMemorySample({
+        rootPids: [100],
+        now,
+        underMemoryPressure: true,
+        platform,
+        snapshot,
+      });
+    sample(0, "win32");
+    await flush();
+    sample(DEV_SERVER_PRESSURE_SAMPLE_INTERVAL_MS, "win32");
+    expect(snapshot).toHaveBeenCalledTimes(1);
+    sample(DEV_SERVER_SAMPLE_INTERVAL_MS, "win32");
+    expect(snapshot).toHaveBeenCalledTimes(2);
+
+    // The cheap ps path does speed up.
+    resetDevServerMemoryForTesting();
+    snapshot.mockClear();
+    sample(0, "darwin");
+    await flush();
+    sample(DEV_SERVER_PRESSURE_SAMPLE_INTERVAL_MS, "darwin");
+    expect(snapshot).toHaveBeenCalledTimes(2);
   });
 });

@@ -20,6 +20,7 @@ import { getCachedPagefileSettings } from "./windows_pagefile";
 import { getLatestRendererHeapReport } from "./renderer_heap_reports";
 import { getDevServerMemorySample } from "./dev_server_memory";
 import { getPreviewViewOSProcessIds } from "../main/preview_web_contents_view";
+import { windowRegistry } from "../window_infrastructure/main/window_registry";
 
 const logger = log.scope("performance-monitor");
 
@@ -82,9 +83,13 @@ interface ProcessMemoryMetrics {
 /**
  * Which renderer processes host Dyad's own UI and which host an app
  * preview. Electron labels both "tab", so they are told apart by pid: a
- * product window's main frame is UI; a frame in that window running in
- * another process (an out-of-process preview iframe), or a preview
- * WebContentsView, is a preview.
+ * registered product window's main frame is UI; a frame in that window
+ * running in another process (an out-of-process preview iframe), or a
+ * preview WebContentsView, is a preview. Other windows, such as popups
+ * the preview opened, land in neither bucket.
+ *
+ * A preview iframe that shares the UI's process (same-site with the UI,
+ * which only happens in development) is counted as UI.
  */
 function getRendererPidGroups(): {
   uiPids: Set<number>;
@@ -95,7 +100,10 @@ function getRendererPidGroups(): {
   for (const window of BrowserWindow.getAllWindows()) {
     try {
       const contents = window.webContents;
-      if (contents.isDestroyed()) {
+      if (
+        contents.isDestroyed() ||
+        windowRegistry.sessionForWebContents(contents.id) === undefined
+      ) {
         continue;
       }
       const mainPid = contents.getOSProcessId();
@@ -127,6 +135,7 @@ function getProcessMemoryMetrics(): ProcessMemoryMetrics | null {
     const workingSetsMB: Record<string, number> = {};
     const commitMB: Record<string, number> = {};
     let sawCommit = false;
+    let matchedRenderer = false;
     let uiWorkingSet = 0;
     let previewWorkingSet = 0;
     let uiCommit = 0;
@@ -146,9 +155,11 @@ function getProcessMemoryMetrics(): ProcessMemoryMetrics | null {
         continue;
       }
       if (uiPids.has(metric.pid)) {
+        matchedRenderer = true;
         uiWorkingSet += workingSet;
         uiCommit += commit;
       } else if (previewPids.has(metric.pid)) {
+        matchedRenderer = true;
         previewWorkingSet += workingSet;
         previewCommit += commit;
       }
@@ -162,16 +173,16 @@ function getProcessMemoryMetrics(): ProcessMemoryMetrics | null {
     return {
       workingSetsMB,
       commitMB: sawCommit ? commitMB : null,
-      // Without a window there is nothing to attribute the renderers to.
-      rendererSplit:
-        uiPids.size > 0
-          ? {
-              uiWorkingSetMB: Math.round(uiWorkingSet),
-              previewWorkingSetMB: Math.round(previewWorkingSet),
-              uiCommitMB: sawCommit ? Math.round(uiCommit) : null,
-              previewCommitMB: sawCommit ? Math.round(previewCommit) : null,
-            }
-          : null,
+      // Omitted rather than zero when no renderer process was matched, as
+      // during a renderer reload: zero would read as a real measurement.
+      rendererSplit: matchedRenderer
+        ? {
+            uiWorkingSetMB: Math.round(uiWorkingSet),
+            previewWorkingSetMB: Math.round(previewWorkingSet),
+            uiCommitMB: sawCommit ? Math.round(uiCommit) : null,
+            previewCommitMB: sawCommit ? Math.round(previewCommit) : null,
+          }
+        : null,
     };
   } catch {
     return null;

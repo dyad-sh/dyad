@@ -64,10 +64,11 @@ export function crashPerformanceEventFields(
     last_known_renderer_heap_used_mb: perf.rendererHeapUsedMB,
     last_known_renderer_heap_limit_mb: perf.rendererHeapLimitMB,
     // Dev servers Dyad launched. Sampled on its own, slower cadence, hence
-    // the separate timestamp.
+    // the separate timestamp. Private commit on Windows, RSS elsewhere,
+    // so the names stay neutral.
     dev_server_count: perf.devServerCount,
-    dev_server_total_commit_mb: perf.devServerTotalMB,
-    dev_server_max_commit_mb: perf.devServerMaxMB,
+    dev_server_total_mb: perf.devServerTotalMB,
+    dev_server_max_mb: perf.devServerMaxMB,
     dev_server_max_process_count: perf.devServerMaxProcessCount,
     dev_server_sampled_at: perf.devServerSampledAt,
   };

@@ -6,8 +6,10 @@
 // Electron's process.getSystemMemoryInfo() surfaces these through Chromium's
 // SystemMemoryInfoKB, which on Windows fills swap_total from
 // MEMORYSTATUSEX.ullTotalPageFile (the commit limit) and swap_free from
-// ullAvailPageFile (available commit), despite the "swap" names. Verified
-// against Task Manager's "Committed X / Y" figures.
+// ullAvailPageFile (available commit), despite the "swap" names. That
+// mapping comes from reading Chromium's process_metrics_win.cc; it still
+// needs one check against Task Manager's "Committed X / Y" figures on a
+// real Windows machine before the numbers are relied on.
 
 const KB_PER_MB = 1024;
 

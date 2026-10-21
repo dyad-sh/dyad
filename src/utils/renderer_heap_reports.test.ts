@@ -50,3 +50,27 @@ describe("renderer heap reports", () => {
     expect(getLatestRendererHeapReport(0)).toBeNull();
   });
 });
+
+describe("renderer heap report selection", () => {
+  beforeEach(() => {
+    resetRendererHeapReportsForTesting();
+  });
+
+  it("prefers the window nearest its own limit over the largest heap", () => {
+    recordRendererHeapReport(1, { heapUsedMB: 900, heapLimitMB: 4096 }, 0);
+    recordRendererHeapReport(2, { heapUsedMB: 500, heapLimitMB: 1024 }, 0);
+    expect(getLatestRendererHeapReport(0)).toEqual({
+      heapUsedMB: 500,
+      heapLimitMB: 1024,
+    });
+  });
+
+  it("never picks a report with no limit over one with a limit", () => {
+    recordRendererHeapReport(1, { heapUsedMB: 900, heapLimitMB: 0 }, 0);
+    recordRendererHeapReport(2, { heapUsedMB: 10, heapLimitMB: 4096 }, 0);
+    expect(getLatestRendererHeapReport(0)).toEqual({
+      heapUsedMB: 10,
+      heapLimitMB: 4096,
+    });
+  });
+});

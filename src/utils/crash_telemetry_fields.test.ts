@@ -91,8 +91,8 @@ describe("crashPerformanceEventFields", () => {
     expect(fields.last_known_renderer_heap_used_mb).toBe(700);
     expect(fields.last_known_renderer_heap_limit_mb).toBe(4096);
     expect(fields.dev_server_count).toBe(2);
-    expect(fields.dev_server_total_commit_mb).toBe(1800);
-    expect(fields.dev_server_max_commit_mb).toBe(1200);
+    expect(fields.dev_server_total_mb).toBe(1800);
+    expect(fields.dev_server_max_mb).toBe(1200);
     expect(fields.dev_server_max_process_count).toBe(4);
     expect(fields.dev_server_sampled_at).toBe(1751499800000);
 

@@ -140,7 +140,10 @@ export async function extractZipAttachment({
   storedFileName: string;
   archive: Buffer;
   limits?: Partial<ZipExtractionLimits>;
-  /** Abandons the extraction between entries and before it is moved into place. */
+  /**
+   * Abandons the extraction between entries, during an entry's write, or
+   * before it is moved into place.
+   */
   signal?: AbortSignal;
 }): Promise<ExtractedArchiveSummary> {
   const extractedDirName = extractedDirNameForStoredFile(storedFileName);

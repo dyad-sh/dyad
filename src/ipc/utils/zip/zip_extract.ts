@@ -89,7 +89,10 @@ export interface ZipExtractionResult {
 
 export interface ExtractZipOptions {
   limits?: Partial<ZipExtractionLimits>;
-  /** Stops between entries; the caller removes whatever was written. */
+  /**
+   * Stops between entries or during an entry's write; the caller removes
+   * whatever was written.
+   */
   signal?: AbortSignal;
 }
 

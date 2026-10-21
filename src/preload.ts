@@ -11,6 +11,7 @@ import {
   type ValidSendChannel,
 } from "./ipc/preload/channels";
 import { isIpcInvokeEnvelope, unwrapIpcEnvelope } from "./ipc/contracts/core";
+import { systemSendContracts } from "./ipc/types/system";
 
 // Use the contract-derived channel arrays
 const validInvokeChannels = VALID_INVOKE_CHANNELS;
@@ -111,3 +112,26 @@ contextBridge.exposeInMainWorld("electron", {
     getZoomFactor: () => webFrame.getZoomFactor(),
   },
 });
+
+// Push this renderer's V8 heap to the main-process performance heartbeat.
+// The main process cannot read another process's heap, and this is the
+// figure that says how close the UI is to Electron's ~4 GB renderer cap.
+// Lives in the preload rather than React so a wedged UI still reports as
+// long as its event loop turns. Electron's sandboxed `process` reports KB.
+const RENDERER_HEAP_REPORT_INTERVAL_MS = 30_000;
+const KB_PER_MB = 1024;
+
+function reportRendererHeap(): void {
+  try {
+    const stats = process.getHeapStatistics();
+    ipcRenderer.send(systemSendContracts.reportRendererHeap.channel, {
+      heapUsedMB: Math.round(stats.usedHeapSize / KB_PER_MB),
+      heapLimitMB: Math.round(stats.heapSizeLimit / KB_PER_MB),
+    });
+  } catch {
+    // Best effort: the heartbeat simply lacks the renderer heap.
+  }
+}
+
+reportRendererHeap();
+setInterval(reportRendererHeap, RENDERER_HEAP_REPORT_INTERVAL_MS);

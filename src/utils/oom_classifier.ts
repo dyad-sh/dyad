@@ -26,7 +26,8 @@ export type OomSignal =
   | "v8_heap_oom_annotation"
   | "v8_oom_annotation"
   | "heap_near_limit"
-  | "system_memory_near_limit";
+  | "system_memory_near_limit"
+  | "system_commit_near_limit";
 
 export interface OomClassification {
   verdict: OomVerdict;
@@ -42,6 +43,10 @@ const CHROMIUM_OOM_EXCEPTION_CODE = 0xe0000008;
 const HEAP_NEAR_LIMIT_PCT = 95;
 // Same idea for whole-system memory at the last heartbeat.
 const SYSTEM_MEMORY_NEAR_LIMIT_RATIO = 0.95;
+// And for the Windows commit charge: with this much of the limit promised
+// out, the next allocation anywhere on the machine can fail outright,
+// whatever physical RAM looks like.
+const SYSTEM_COMMIT_NEAR_LIMIT_RATIO = 0.95;
 
 export function classifyOom(input: {
   nativeCrash: MinidumpSummary | null;
@@ -96,6 +101,19 @@ export function classifyOom(input: {
       usedMB / totalMB >= SYSTEM_MEMORY_NEAR_LIMIT_RATIO
     ) {
       signals.push("system_memory_near_limit");
+    }
+    // Machine-wide commit charge, only ever recorded on Windows. Unlike
+    // the physical-memory check it needs no platform gate: a commit limit
+    // is a hard ceiling wherever it was measured.
+    const commitLimitMB = performance.commitLimitMB ?? 0;
+    const commitAvailableMB = performance.commitAvailableMB;
+    if (
+      commitLimitMB > 0 &&
+      commitAvailableMB !== undefined &&
+      (commitLimitMB - commitAvailableMB) / commitLimitMB >=
+        SYSTEM_COMMIT_NEAR_LIMIT_RATIO
+    ) {
+      signals.push("system_commit_near_limit");
     }
   }
 

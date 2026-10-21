@@ -103,6 +103,7 @@ export function useSettings() {
         isFirstSession: initialLoadTelemetryContext.isFirstSession,
         previousSessionAppSize:
           initialLoadTelemetryContext.previousSessionAppSize,
+        pagefile: initialLoadTelemetryContext.pagefile,
       }),
     );
     initialLoadTelemetryState = "sent";

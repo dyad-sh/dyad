@@ -63,7 +63,7 @@ export type {
 export { supabaseContracts, supabaseEvents } from "./supabase";
 export { neonContracts } from "./neon";
 export { migrationContracts } from "./migration";
-export { systemContracts, systemEvents } from "./system";
+export { systemContracts, systemEvents, systemSendContracts } from "./system";
 export {
   versionContracts,
   versionEvents,

@@ -1,4 +1,5 @@
 import type { UserSettings } from "../lib/schemas";
+import { pagefileEventFields } from "../shared/pagefile_telemetry";
 import type { ActivitySnapshot } from "./memory_activity";
 
 export type PerformanceSnapshot = NonNullable<
@@ -39,6 +40,36 @@ export function crashPerformanceEventFields(
     ...workingSetFields("peak_working_set", perf.peakProcessWorkingSetsMB),
     ...activityFields("peak", perf.peakActivity),
     peak_timestamp: perf.peakTimestamp,
+    // Windows commit charge: was the whole machine out of promisable memory?
+    last_known_commit_limit_mb: perf.commitLimitMB,
+    last_known_commit_available_mb: perf.commitAvailableMB,
+    // Whether that limit could still grow. Same fields as app:initial-load.
+    ...pagefileEventFields(
+      perf.pagefileMode
+        ? { mode: perf.pagefileMode, maxMB: perf.pagefileMaxMB }
+        : null,
+    ),
+    // How much of the commit charge was Dyad's, per process type.
+    ...workingSetFields("last_known_commit", perf.processCommitMB),
+    // The renderer figures above, split into Dyad's UI and app previews.
+    last_known_ui_renderer_working_set_mb: perf.uiRendererWorkingSetMB,
+    last_known_preview_renderer_working_set_mb:
+      perf.previewRendererWorkingSetMB,
+    last_known_ui_renderer_commit_mb: perf.uiRendererCommitMB,
+    last_known_preview_renderer_commit_mb: perf.previewRendererCommitMB,
+    // Main process memory outside the heap: the "heap wasn't high, but
+    // memory was" case.
+    last_known_main_external_mb: perf.mainExternalMB,
+    last_known_main_array_buffers_mb: perf.mainArrayBuffersMB,
+    last_known_renderer_heap_used_mb: perf.rendererHeapUsedMB,
+    last_known_renderer_heap_limit_mb: perf.rendererHeapLimitMB,
+    // Dev servers Dyad launched. Sampled on its own, slower cadence, hence
+    // the separate timestamp.
+    dev_server_count: perf.devServerCount,
+    dev_server_total_commit_mb: perf.devServerTotalMB,
+    dev_server_max_commit_mb: perf.devServerMaxMB,
+    dev_server_max_process_count: perf.devServerMaxProcessCount,
+    dev_server_sampled_at: perf.devServerSampledAt,
   };
 }
 

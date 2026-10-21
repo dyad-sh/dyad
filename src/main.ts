@@ -72,6 +72,7 @@ import {
   startPerformanceMonitoring,
   stopPerformanceMonitoring,
 } from "./utils/performance_monitor";
+import { queryWindowsPagefileSettings } from "./utils/windows_pagefile";
 import {
   browserCrashAttribution,
   parseMinidumpSummary,
@@ -585,6 +586,10 @@ export async function onReady() {
     logger.warn("Could not read GPU status for crash context:", error);
   }
   logger.info("Crash dumps directory:", app.getPath("crashDumps"));
+
+  // Read the pagefile configuration once, in the background, so the
+  // heartbeat and app:initial-load can report it. A no-op off Windows.
+  void queryWindowsPagefileSettings();
 
   // Start performance monitoring
   startPerformanceMonitoring();

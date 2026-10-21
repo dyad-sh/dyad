@@ -4,6 +4,10 @@ import {
   appSizeEventFields,
   type AppSizeTelemetry,
 } from "@/shared/app_size_telemetry";
+import {
+  pagefileEventFields,
+  type PagefileSettings,
+} from "@/shared/pagefile_telemetry";
 
 type TelemetryProperties = Record<string, unknown> | undefined;
 
@@ -49,6 +53,7 @@ export type InitialLoadTelemetryInput = {
   platform: string | null;
   isFirstSession: boolean;
   previousSessionAppSize?: AppSizeTelemetry | null;
+  pagefile?: PagefileSettings | null;
 };
 
 export function getSettingsPersonTelemetryProperties(settings: UserSettings) {
@@ -67,6 +72,7 @@ export function getInitialLoadTelemetryProperties({
   platform,
   isFirstSession,
   previousSessionAppSize,
+  pagefile,
 }: InitialLoadTelemetryInput) {
   return {
     ...getSettingsPersonTelemetryProperties(settings),
@@ -82,6 +88,9 @@ export function getInitialLoadTelemetryProperties({
     // Fires on every launch, so this is the denominator for
     // app:crash_detected's size fields. Both bypass non-Pro sampling already.
     ...appSizeEventFields(previousSessionAppSize),
+    // Windows pagefile mode, every launch, so crash rates can be compared by
+    // it. The crash event carries the same fields from its heartbeat.
+    ...pagefileEventFields(pagefile),
   };
 }
 

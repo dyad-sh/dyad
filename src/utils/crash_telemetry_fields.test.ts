@@ -33,6 +33,24 @@ describe("crashPerformanceEventFields", () => {
         tsUtilityProcess: null,
       },
       peakTimestamp: 1751499970000,
+      commitLimitMB: 73728,
+      commitAvailableMB: 12288,
+      pagefileMode: "fixed",
+      pagefileMaxMB: 8192,
+      processCommitMB: { browser: 350, tab: 800, zygote: 10 },
+      uiRendererWorkingSetMB: 500,
+      previewRendererWorkingSetMB: 400,
+      uiRendererCommitMB: 450,
+      previewRendererCommitMB: 350,
+      mainExternalMB: 120,
+      mainArrayBuffersMB: 40,
+      rendererHeapUsedMB: 700,
+      rendererHeapLimitMB: 4096,
+      devServerCount: 2,
+      devServerTotalMB: 1800,
+      devServerMaxMB: 1200,
+      devServerMaxProcessCount: 4,
+      devServerSampledAt: 1751499800000,
     });
 
     expect(fields.last_known_working_set_browser_mb).toBe(400);
@@ -53,6 +71,30 @@ describe("crashPerformanceEventFields", () => {
     // Reported separately from used because space the platform withholds
     // sits between them: used + available is short of total.
     expect(fields.last_known_disk_available_mb).toBe(51000);
+    // Machine-wide commit charge and whether its limit can grow. The
+    // pagefile fields share their names with app:initial-load.
+    expect(fields.last_known_commit_limit_mb).toBe(73728);
+    expect(fields.last_known_commit_available_mb).toBe(12288);
+    expect(fields.pagefile_mode).toBe("fixed");
+    expect(fields.pagefile_max_mb).toBe(8192);
+    // Dyad's share of the commit charge, per type, with the same "other"
+    // bucket as the working sets.
+    expect(fields.last_known_commit_browser_mb).toBe(350);
+    expect(fields.last_known_commit_tab_mb).toBe(800);
+    expect(fields.last_known_commit_other_mb).toBe(10);
+    expect(fields.last_known_ui_renderer_working_set_mb).toBe(500);
+    expect(fields.last_known_preview_renderer_working_set_mb).toBe(400);
+    expect(fields.last_known_ui_renderer_commit_mb).toBe(450);
+    expect(fields.last_known_preview_renderer_commit_mb).toBe(350);
+    expect(fields.last_known_main_external_mb).toBe(120);
+    expect(fields.last_known_main_array_buffers_mb).toBe(40);
+    expect(fields.last_known_renderer_heap_used_mb).toBe(700);
+    expect(fields.last_known_renderer_heap_limit_mb).toBe(4096);
+    expect(fields.dev_server_count).toBe(2);
+    expect(fields.dev_server_total_commit_mb).toBe(1800);
+    expect(fields.dev_server_max_commit_mb).toBe(1200);
+    expect(fields.dev_server_max_process_count).toBe(4);
+    expect(fields.dev_server_sampled_at).toBe(1751499800000);
 
     // No object-valued properties: PostHog cannot filter nested JSON.
     for (const value of Object.values(fields)) {

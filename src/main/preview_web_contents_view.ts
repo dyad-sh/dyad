@@ -886,3 +886,22 @@ export function resetPreviewViewsForTesting(): void {
   entries.clear();
   automationReservations.clear();
 }
+
+/**
+ * OS pids of the live preview views' renderer processes, so the performance
+ * heartbeat can tell preview renderers apart from Dyad's own UI renderer.
+ */
+export function getPreviewViewOSProcessIds(): number[] {
+  const pids: number[] = [];
+  for (const entry of entries.values()) {
+    try {
+      const contents = entry.view.webContents;
+      if (!contents.isDestroyed()) {
+        pids.push(contents.getOSProcessId());
+      }
+    } catch {
+      // A view mid-teardown; nothing to attribute.
+    }
+  }
+  return pids;
+}

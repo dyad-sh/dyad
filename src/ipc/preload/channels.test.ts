@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { userInputContracts, userInputEvents } from "../types/user_input";
 import { supabaseEvents } from "../types/supabase";
+import { systemSendContracts } from "../types/system";
 import { gitEvents } from "../types/github";
 import { testsContracts, testsEvents } from "../types/tests";
 import {
@@ -88,6 +89,14 @@ describe("cloudflare preload channels", () => {
     // running app, as "Invalid channel", the first time the tab is used.
     for (const contract of Object.values(cloudflareContracts)) {
       expect(VALID_INVOKE_CHANNELS).toContain(contract.channel);
+    }
+  });
+});
+
+describe("system preload channels", () => {
+  it("allows the renderer heap report send contract", () => {
+    for (const contract of Object.values(systemSendContracts)) {
+      expect(VALID_SEND_CHANNELS).toContain(contract.channel);
     }
   });
 });

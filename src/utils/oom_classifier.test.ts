@@ -222,3 +222,59 @@ describe("classifyOom", () => {
     expect(result.signals).toEqual(["oom_exception_code", "heap_near_limit"]);
   });
 });
+
+describe("classifyOom system commit charge", () => {
+  const perf = (limitMB: number, availableMB: number) => ({
+    timestamp: 0,
+    memoryUsageMB: 100,
+    commitLimitMB: limitMB,
+    commitAvailableMB: availableMB,
+  });
+
+  it("suspects OOM when the machine had almost no commit left", () => {
+    // 72 GB limit with 3 GB unpromised: the next allocation anywhere on
+    // the machine can fail, whatever physical RAM looks like.
+    const result = classifyOom({
+      nativeCrash: null,
+      performance: perf(73728, 3072),
+    });
+    expect(result.verdict).toBe("suspected_oom");
+    expect(result.signals).toEqual(["system_commit_near_limit"]);
+  });
+
+  it("fires at the ratio and not below it", () => {
+    expect(
+      classifyOom({ nativeCrash: null, performance: perf(10000, 500) }).signals,
+    ).toEqual(["system_commit_near_limit"]);
+    expect(
+      classifyOom({ nativeCrash: null, performance: perf(10000, 501) }).signals,
+    ).toEqual([]);
+  });
+
+  it("needs no platform gate, since only Windows records the fields", () => {
+    const result = classifyOom({
+      nativeCrash: null,
+      performance: perf(10000, 100),
+      platform: "darwin",
+    });
+    expect(result.signals).toEqual(["system_commit_near_limit"]);
+  });
+
+  it("ignores a snapshot without a commit limit", () => {
+    expect(
+      classifyOom({
+        nativeCrash: null,
+        performance: { timestamp: 0, memoryUsageMB: 100, commitAvailableMB: 1 },
+      }),
+    ).toEqual({ verdict: "none", signals: [] });
+  });
+
+  it("keeps the signal but not the verdict when a dump explains the crash", () => {
+    const result = classifyOom({
+      nativeCrash: { exceptionCode: 0xc0000005 },
+      performance: perf(10000, 100),
+    });
+    expect(result.verdict).toBe("none");
+    expect(result.signals).toEqual(["system_commit_near_limit"]);
+  });
+});

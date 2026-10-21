@@ -2,10 +2,12 @@ import { z } from "zod";
 import {
   defineContract,
   defineEvent,
+  defineSendContract,
   createClient,
   createEventClient,
 } from "../contracts/core";
 import { AppSizeTelemetrySchema } from "../../shared/app_size_telemetry";
+import { PagefileSettingsSchema } from "../../shared/pagefile_telemetry";
 
 // =============================================================================
 // System Schemas
@@ -250,6 +252,8 @@ export const systemContracts = {
       isFirstSession: z.boolean(),
       // Absent when the previous session never measured an app.
       previousSessionAppSize: AppSizeTelemetrySchema.nullish(),
+      // Windows pagefile configuration; null elsewhere or when unreadable.
+      pagefile: PagefileSettingsSchema.nullable(),
     }),
   }),
 
@@ -510,6 +514,21 @@ export const systemContracts = {
 // =============================================================================
 // System Event Contracts
 // =============================================================================
+
+export const RendererHeapReportSchema = z.object({
+  heapUsedMB: z.number().nonnegative(),
+  heapLimitMB: z.number().nonnegative(),
+});
+export type RendererHeapReport = z.infer<typeof RendererHeapReportSchema>;
+
+// One-way renderer -> main. The preload pushes the renderer's V8 heap every
+// 30s so the main-process heartbeat can record it; nothing waits on a reply.
+export const systemSendContracts = {
+  reportRendererHeap: defineSendContract({
+    channel: "performance:report-renderer-heap",
+    input: RendererHeapReportSchema,
+  }),
+} as const;
 
 export const systemEvents = {
   nativeThemeUpdated: defineEvent({

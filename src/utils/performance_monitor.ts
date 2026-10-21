@@ -1,5 +1,5 @@
 import log from "electron-log";
-import { app } from "electron";
+import { app, BrowserWindow } from "electron";
 import { writeSettings } from "../main/settings";
 import os from "node:os";
 import v8 from "node:v8";
@@ -8,10 +8,18 @@ import {
   type ActivitySnapshot,
 } from "./memory_activity";
 import { getActiveStreamCount } from "../ipc/handlers/chat_stream_handlers";
-import { runningApps } from "../ipc/utils/process_manager";
+import {
+  getRunningAppProcessPids,
+  runningApps,
+} from "../ipc/utils/process_manager";
 import { typescriptUtilityProcessScheduler } from "../ipc/processors/typescript_utility_process_scheduler";
 import { getUserDataPath } from "../paths/paths";
 import { getDiskUsageMB } from "./disk_usage";
+import { getSystemCommitInfoMB } from "./system_commit_info";
+import { getCachedPagefileSettings } from "./windows_pagefile";
+import { getLatestRendererHeapReport } from "./renderer_heap_reports";
+import { getDevServerMemorySample } from "./dev_server_memory";
+import { getPreviewViewOSProcessIds } from "../main/preview_web_contents_view";
 
 const logger = log.scope("performance-monitor");
 
@@ -54,26 +62,134 @@ function getHeapStatsMB(): { heapUsedMB: number; heapLimitMB: number } {
   };
 }
 
+interface RendererSplitMB {
+  uiWorkingSetMB: number;
+  previewWorkingSetMB: number;
+  uiCommitMB: number | null;
+  previewCommitMB: number | null;
+}
+
+interface ProcessMemoryMetrics {
+  // Working set per Electron process type, e.g.
+  // { browser: 400, tab: 900, gpu: 120, utility: 300 }.
+  workingSetsMB: Record<string, number>;
+  // Private commit per type. Windows only; null elsewhere.
+  commitMB: Record<string, number> | null;
+  // The "tab" line above, split by what each renderer process hosts.
+  rendererSplit: RendererSplitMB | null;
+}
+
 /**
- * Get working set per Electron process type in MB, e.g.
- * { browser: 400, tab: 900, gpu: 120, utility: 300 }.
- * Main process RSS alone dramatically understates real usage.
- * Cheap (no shell-outs); safe for periodic capture.
+ * Which renderer processes host Dyad's own UI and which host an app
+ * preview. Electron labels both "tab", so they are told apart by pid: a
+ * product window's main frame is UI; a frame in that window running in
+ * another process (an out-of-process preview iframe), or a preview
+ * WebContentsView, is a preview.
  */
-function getProcessWorkingSetsMB(): Record<string, number> | null {
+function getRendererPidGroups(): {
+  uiPids: Set<number>;
+  previewPids: Set<number>;
+} {
+  const uiPids = new Set<number>();
+  const previewPids = new Set<number>();
+  for (const window of BrowserWindow.getAllWindows()) {
+    try {
+      const contents = window.webContents;
+      if (contents.isDestroyed()) {
+        continue;
+      }
+      const mainPid = contents.getOSProcessId();
+      uiPids.add(mainPid);
+      for (const frame of contents.mainFrame.framesInSubtree) {
+        if (frame.osProcessId !== mainPid) {
+          previewPids.add(frame.osProcessId);
+        }
+      }
+    } catch {
+      // A window mid-teardown; its process will be missing from the
+      // metrics anyway.
+    }
+  }
+  for (const pid of getPreviewViewOSProcessIds()) {
+    previewPids.add(pid);
+  }
+  return { uiPids, previewPids };
+}
+
+/**
+ * Memory per Electron process type. Main process RSS alone dramatically
+ * understates real usage. Cheap (no shell-outs); safe for periodic capture.
+ */
+function getProcessMemoryMetrics(): ProcessMemoryMetrics | null {
   try {
-    const sets: Record<string, number> = {};
-    for (const metric of app.getAppMetrics()) {
+    const metrics = app.getAppMetrics();
+    const { uiPids, previewPids } = getRendererPidGroups();
+    const workingSetsMB: Record<string, number> = {};
+    const commitMB: Record<string, number> = {};
+    let sawCommit = false;
+    let uiWorkingSet = 0;
+    let previewWorkingSet = 0;
+    let uiCommit = 0;
+    let previewCommit = 0;
+    for (const metric of metrics) {
       const key = metric.type.toLowerCase();
-      sets[key] = (sets[key] ?? 0) + metric.memory.workingSetSize / 1024;
+      const workingSet = metric.memory.workingSetSize / 1024;
+      workingSetsMB[key] = (workingSetsMB[key] ?? 0) + workingSet;
+      // privateBytes is only reported on Windows.
+      const privateBytes = metric.memory.privateBytes;
+      const commit = typeof privateBytes === "number" ? privateBytes / 1024 : 0;
+      if (typeof privateBytes === "number") {
+        sawCommit = true;
+        commitMB[key] = (commitMB[key] ?? 0) + commit;
+      }
+      if (key !== "tab") {
+        continue;
+      }
+      if (uiPids.has(metric.pid)) {
+        uiWorkingSet += workingSet;
+        uiCommit += commit;
+      } else if (previewPids.has(metric.pid)) {
+        previewWorkingSet += workingSet;
+        previewCommit += commit;
+      }
     }
-    for (const key of Object.keys(sets)) {
-      sets[key] = Math.round(sets[key]);
+    for (const key of Object.keys(workingSetsMB)) {
+      workingSetsMB[key] = Math.round(workingSetsMB[key]);
     }
-    return sets;
+    for (const key of Object.keys(commitMB)) {
+      commitMB[key] = Math.round(commitMB[key]);
+    }
+    return {
+      workingSetsMB,
+      commitMB: sawCommit ? commitMB : null,
+      // Without a window there is nothing to attribute the renderers to.
+      rendererSplit:
+        uiPids.size > 0
+          ? {
+              uiWorkingSetMB: Math.round(uiWorkingSet),
+              previewWorkingSetMB: Math.round(previewWorkingSet),
+              uiCommitMB: sawCommit ? Math.round(uiCommit) : null,
+              previewCommitMB: sawCommit ? Math.round(previewCommit) : null,
+            }
+          : null,
+    };
   } catch {
     return null;
   }
+}
+
+/**
+ * Main process memory outside the V8 heap that JS objects still own:
+ * Buffers, ArrayBuffers, file reads. Not all native memory (SQLite's own
+ * allocations are not in here), but it covers the case where the heap
+ * looked fine and memory did not.
+ */
+function getMainExternalMB(): { externalMB: number; arrayBuffersMB: number } {
+  const usage = process.memoryUsage();
+  return {
+    externalMB: Math.round(usage.external / BYTES_PER_MB),
+    arrayBuffersMB: Math.round(usage.arrayBuffers / BYTES_PER_MB),
+  };
 }
 
 /**
@@ -210,7 +326,8 @@ function getSystemCpuUsagePercent(): number | null {
 function capturePerformanceMetrics() {
   try {
     const memoryUsageMB = getMemoryUsageMB();
-    const processWorkingSetsMB = getProcessWorkingSetsMB();
+    const processMetrics = getProcessMemoryMetrics();
+    const processWorkingSetsMB = processMetrics?.workingSetsMB ?? null;
     const allProcessesMemoryMB = processWorkingSetsMB
       ? Object.values(processWorkingSetsMB).reduce((sum, mb) => sum + mb, 0)
       : null;
@@ -237,6 +354,22 @@ function capturePerformanceMetrics() {
     // to measure. The apps folder is user-configurable and can sit on a
     // different drive entirely.
     const diskUsage = getDiskUsageMB(getUserDataPath());
+    const commit = getSystemCommitInfoMB();
+    const pagefile = getCachedPagefileSettings();
+    const mainExternal = getMainExternalMB();
+    const rendererHeap = getLatestRendererHeapReport();
+    const rendererSplit = processMetrics?.rendererSplit ?? null;
+    // Dev servers are sampled on their own cadence (a shell-out each time),
+    // faster once memory is running short anywhere on the machine.
+    const underMemoryPressure =
+      (commit !== null &&
+        commit.commitAvailableMB / commit.commitLimitMB < 0.1) ||
+      systemMemory.usagePercent >= 90;
+    const devServers = getDevServerMemorySample({
+      rootPids: getRunningAppProcessPids().map(({ pid }) => pid),
+      now: Date.now(),
+      underMemoryPressure,
+    });
 
     logger.debug(
       `Performance: Memory=${memoryUsageMB}MB, Heap=${heapUsedMB}/${heapLimitMB}MB, All Processes=${allProcessesMemoryMB ?? "?"}MB, CPU=${cpuUsagePercent}%, System Memory=${systemMemory.usedMemoryMB}/${systemMemory.totalMemoryMB}MB (${systemMemory.usagePercent}%), System CPU=${systemCpuPercent}%`,
@@ -285,6 +418,42 @@ function capturePerformanceMetrics() {
         heapUsedMB,
         heapLimitMB,
         ...(processWorkingSetsMB && { processWorkingSetsMB }),
+        ...(commit && {
+          commitLimitMB: commit.commitLimitMB,
+          commitAvailableMB: commit.commitAvailableMB,
+        }),
+        ...(pagefile && {
+          pagefileMode: pagefile.mode,
+          ...(pagefile.maxMB !== undefined && {
+            pagefileMaxMB: pagefile.maxMB,
+          }),
+        }),
+        ...(processMetrics?.commitMB && {
+          processCommitMB: processMetrics.commitMB,
+        }),
+        ...(rendererSplit && {
+          uiRendererWorkingSetMB: rendererSplit.uiWorkingSetMB,
+          previewRendererWorkingSetMB: rendererSplit.previewWorkingSetMB,
+          ...(rendererSplit.uiCommitMB !== null && {
+            uiRendererCommitMB: rendererSplit.uiCommitMB,
+          }),
+          ...(rendererSplit.previewCommitMB !== null && {
+            previewRendererCommitMB: rendererSplit.previewCommitMB,
+          }),
+        }),
+        mainExternalMB: mainExternal.externalMB,
+        mainArrayBuffersMB: mainExternal.arrayBuffersMB,
+        ...(rendererHeap && {
+          rendererHeapUsedMB: rendererHeap.heapUsedMB,
+          rendererHeapLimitMB: rendererHeap.heapLimitMB,
+        }),
+        ...(devServers && {
+          devServerCount: devServers.count,
+          devServerTotalMB: devServers.totalMB,
+          devServerMaxMB: devServers.maxMB,
+          devServerMaxProcessCount: devServers.maxProcessCount,
+          devServerSampledAt: devServers.sampledAt,
+        }),
         activity,
         peakHeapUsedMB,
         peakHeapPct,

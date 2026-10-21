@@ -1,3 +1,4 @@
+import { PagefileModeSchema } from "../shared/pagefile_telemetry";
 import { z } from "zod";
 import {
   isGoogleProviderSetup,
@@ -507,6 +508,39 @@ export const LastKnownPerformanceSchema = z.object({
   // can come from different moments than this pair.
   peakActivity: PerformanceActivitySchema.optional(),
   peakTimestamp: z.number().optional(),
+  // Windows commit charge, machine-wide: the most memory Windows can promise
+  // (RAM plus the pagefile) and how much of that no program has claimed yet.
+  commitLimitMB: z.number().optional(),
+  commitAvailableMB: z.number().optional(),
+  // Pagefile configuration in effect for this session (Windows), read once
+  // at launch. Says whether the commit limit above can still grow.
+  pagefileMode: PagefileModeSchema.optional(),
+  pagefileMaxMB: z.number().optional(),
+  // Private commit per Electron process type (Windows only), the share of
+  // the machine-wide commit charge that is Dyad's.
+  processCommitMB: z.record(z.string(), z.number()).optional(),
+  // The "tab" working set split by what the renderer process hosts: Dyad's
+  // own UI, or an app preview (iframe or preview view). Commit is Windows
+  // only.
+  uiRendererWorkingSetMB: z.number().optional(),
+  previewRendererWorkingSetMB: z.number().optional(),
+  uiRendererCommitMB: z.number().optional(),
+  previewRendererCommitMB: z.number().optional(),
+  // Main process memory outside the V8 heap but owned by JS objects
+  // (Buffers, ArrayBuffers), from process.memoryUsage().
+  mainExternalMB: z.number().optional(),
+  mainArrayBuffersMB: z.number().optional(),
+  // The Dyad UI renderer's V8 heap, pushed by its preload every 30s.
+  rendererHeapUsedMB: z.number().optional(),
+  rendererHeapLimitMB: z.number().optional(),
+  // Dev servers Dyad launched, measured as whole process trees. Private
+  // commit on Windows, RSS elsewhere. Sampled every few minutes, so
+  // devServerSampledAt can trail the snapshot timestamp.
+  devServerCount: z.number().optional(),
+  devServerTotalMB: z.number().optional(),
+  devServerMaxMB: z.number().optional(),
+  devServerMaxProcessCount: z.number().optional(),
+  devServerSampledAt: z.number().optional(),
 });
 
 /**

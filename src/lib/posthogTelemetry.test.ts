@@ -973,3 +973,45 @@ describe("getExceptionTelemetryContext", () => {
     ).toBeUndefined();
   });
 });
+
+describe("getInitialLoadTelemetryProperties pagefile", () => {
+  it("flattens the Windows pagefile configuration", () => {
+    const properties = getInitialLoadTelemetryProperties({
+      settings: makeSettings(),
+      codexSubscriptionEnabled: false,
+      appVersion: "1.1.0",
+      platform: "win32",
+      isFirstSession: false,
+      pagefile: { mode: "fixed", maxMB: 4096 },
+    });
+    expect(properties).toMatchObject({
+      pagefile_mode: "fixed",
+      pagefile_max_mb: 4096,
+    });
+  });
+
+  it("omits the maximum for a system-managed pagefile", () => {
+    const properties = getInitialLoadTelemetryProperties({
+      settings: makeSettings(),
+      codexSubscriptionEnabled: false,
+      appVersion: "1.1.0",
+      platform: "win32",
+      isFirstSession: false,
+      pagefile: { mode: "auto" },
+    });
+    expect(properties).toMatchObject({ pagefile_mode: "auto" });
+    expect(properties).not.toHaveProperty("pagefile_max_mb");
+  });
+
+  it("omits the pagefile fields off Windows", () => {
+    const properties = getInitialLoadTelemetryProperties({
+      settings: makeSettings(),
+      codexSubscriptionEnabled: false,
+      appVersion: "1.1.0",
+      platform: "darwin",
+      isFirstSession: false,
+      pagefile: null,
+    });
+    expect(properties).not.toHaveProperty("pagefile_mode");
+  });
+});

@@ -36,7 +36,11 @@ import {
 import { supabaseContracts, supabaseEvents } from "../types/supabase";
 import { neonContracts } from "../types/neon";
 import { migrationContracts } from "../types/migration";
-import { systemContracts, systemEvents } from "../types/system";
+import {
+  systemContracts,
+  systemEvents,
+  systemSendContracts,
+} from "../types/system";
 import { versionContracts, versionEvents } from "../types/version";
 import { languageModelContracts } from "../types/language-model";
 import { promptContracts } from "../types/prompts";
@@ -174,6 +178,7 @@ export const VALID_INVOKE_CHANNELS = [
 export const VALID_SEND_CHANNELS = [
   ...getSendChannels(firstPromptSendContracts),
   ...getSendChannels(previewViewSendContracts),
+  ...getSendChannels(systemSendContracts),
 ] as const;
 
 // =============================================================================

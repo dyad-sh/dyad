@@ -172,10 +172,13 @@ export async function extractZipAttachment({
         await fs.utimes(destinationDir, now, now);
       } else {
         // Move a damaged directory aside rather than deleting it, so a failed
-        // install can put it back for chats still reading its files.
+        // install can put it back for chats still reading its files. Its time
+        // is refreshed first so cleanup doesn't take it as expired meanwhile.
         const retiredDir = `${destinationDir}.old-${token}`;
         let retired = false;
         try {
+          const now = new Date();
+          await fs.utimes(destinationDir, now, now).catch(() => undefined);
           await renameWithRetry(destinationDir, retiredDir);
           retired = true;
         } catch (error) {
@@ -195,7 +198,11 @@ export async function extractZipAttachment({
         }
         if (retired) {
           await fs
-            .rm(retiredDir, { recursive: true, force: true })
+            .rm(retiredDir, {
+              recursive: true,
+              force: true,
+              maxRetries: RENAME_RETRY_DELAYS_MS.length,
+            })
             .catch(() => undefined);
         }
       }

@@ -228,6 +228,8 @@ describe("extractZipAttachment", () => {
     });
     const destinationDir = path.join(mediaDir, "shared-unpacked");
     fs.rmSync(path.join(destinationDir, "b.txt"));
+    const longAgo = new Date("2020-01-01T00:00:00.000Z");
+    fs.utimesSync(destinationDir, longAgo, longAgo);
     const realRename = fsPromises.rename;
     const renameSpy = vi
       .spyOn(fsPromises, "rename")
@@ -250,9 +252,13 @@ describe("extractZipAttachment", () => {
     } finally {
       renameSpy.mockRestore();
     }
-    // The files other chats could still read are back in place.
+    // The files other chats could still read are back in place, and the
+    // directory was not left looking expired to cleanup.
     expect(fs.readdirSync(destinationDir)).toEqual(["a.txt"]);
     expect(fs.readdirSync(mediaDir)).toEqual(["shared-unpacked"]);
+    expect(fs.statSync(destinationDir).mtimeMs).toBeGreaterThan(
+      longAgo.getTime(),
+    );
   });
 
   it.skipIf(process.platform === "win32")(

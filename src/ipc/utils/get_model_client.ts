@@ -1,3 +1,4 @@
+import { DEFAULT_ENABLE_SUGGESTED_PROMPTS } from "@/shared/settings_defaults";
 import { withAnthropicPreservedThinking } from "./anthropic_preserved_thinking";
 import type { ExternalModelAdmission } from "../services/external_model_admission";
 import {
@@ -223,6 +224,7 @@ export async function getModelClient(
             modelSelection.name,
             subscriptionBillingKey(settings),
             context?.externalModelAdmission,
+            settings.enableSuggestedPrompts ?? DEFAULT_ENABLE_SUGGESTED_PROMPTS,
           ),
           getRuntimeModel: () => modelSelection,
         },

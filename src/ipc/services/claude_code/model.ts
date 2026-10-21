@@ -20,7 +20,7 @@ import type { AgentContext } from "@/pro/main/ipc/handlers/local_agent/tools/typ
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { createDyadToolBridge } from "./tool_bridge";
 import { runClaudeTurn, safeClaudeDiagnostic } from "./runtime";
-import { claudeTextFilter } from "./text";
+import { allowsSuggestedPrompts, claudeTextFilter } from "./text";
 import { startExternalModelUsage } from "../external_model_usage";
 import type { ExternalModelAdmission } from "../external_model_admission";
 import { reportClaudeUsage, type ClaudeUsageCheckpoint } from "./accounting";
@@ -82,6 +82,7 @@ export class ClaudeCodeModel implements LanguageModelV3 {
     readonly modelId: string,
     private billingKey: string | null,
     private admission?: ExternalModelAdmission,
+    private suggestedPromptsEnabled = false,
   ) {}
   bindTools(
     tools: ToolSet,
@@ -166,8 +167,10 @@ export class ClaudeCodeModel implements LanguageModelV3 {
       );
     const filter = claudeTextFilter(
       systemPromptIncludes("dyad-security-finding"),
-      // Only when the system prompt asked for follow-up suggestions.
-      systemPromptIncludes("<dyad-suggested-prompts>"),
+      allowsSuggestedPrompts(
+        this.suggestedPromptsEnabled,
+        options.prompt.flatMap((p) => (p.role === "system" ? [p.content] : [])),
+      ),
     );
     let textStarted = false;
     let queue = Promise.resolve();

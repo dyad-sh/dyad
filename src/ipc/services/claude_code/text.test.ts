@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { claudeTextFilter } from "./text";
+import { allowsSuggestedPrompts, claudeTextFilter } from "./text";
 it("never turns split model text into host action cards", () => {
   const filter = claudeTextFilter();
   const output =
@@ -92,4 +92,12 @@ it("keeps escaping action markup after a passed suggestions block", () => {
   ]);
   expect(output.startsWith(SUGGESTIONS)).toBe(true);
   expect(output).toContain('&lt;dyad-write path="a">x&lt;/dyad-write>');
+});
+
+it("allows suggestions only when the setting is on and the prompt asks for them", () => {
+  const withGuidance = ["...end with <dyad-suggested-prompts> tag..."];
+  expect(allowsSuggestedPrompts(true, withGuidance)).toBe(true);
+  // App text such as AI_RULES.md can contain the tag even with the setting off.
+  expect(allowsSuggestedPrompts(false, withGuidance)).toBe(false);
+  expect(allowsSuggestedPrompts(true, ["no suggestions guidance"])).toBe(false);
 });

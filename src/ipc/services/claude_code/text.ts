@@ -4,6 +4,21 @@ const SUGGESTED_PROMPTS_CLOSE = "</dyad-suggested-prompts>";
 // instead of being held back from the stream.
 const MAX_SUGGESTED_PROMPTS_BLOCK_CHARS = 1000;
 
+/**
+ * Whether model text may carry a follow-up suggestions block. The setting must
+ * be on, because the system prompt also holds app-controlled text such as
+ * AI_RULES.md that could contain the tag.
+ */
+export function allowsSuggestedPrompts(
+  settingEnabled: boolean,
+  systemPrompts: readonly string[],
+): boolean {
+  return (
+    settingEnabled &&
+    systemPrompts.some((prompt) => prompt.includes(SUGGESTED_PROMPTS_OPEN))
+  );
+}
+
 /** Keep model-authored Dyad action markup distinct from host-emitted tool cards. */
 export function claudeTextFilter(
   allowSecurityFindings = false,

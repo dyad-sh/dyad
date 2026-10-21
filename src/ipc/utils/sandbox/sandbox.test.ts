@@ -300,7 +300,16 @@ describe("sandbox capabilities", () => {
       "export {};",
       "utf8",
     );
+    await fs.writeFile(path.join(mediaDir, "hash.zip"), "zipbytes");
     await appendAttachmentManifestEntriesWithLogicalNames(appPath, [
+      {
+        requestedLogicalName: "proj.zip",
+        originalName: "proj.zip",
+        storedFileName: "hash.zip",
+        mimeType: "application/zip",
+        sizeBytes: 8,
+        createdAt: new Date("2026-04-22T00:00:00.000Z").toISOString(),
+      },
       {
         requestedLogicalName: "proj.zip/src/index.ts",
         nestedLogicalName: true,
@@ -321,8 +330,10 @@ describe("sandbox capabilities", () => {
     await expect(
       sandboxListFiles(appPath, "attachments:missing.zip"),
     ).rejects.toMatchObject({ kind: DyadErrorKind.NotFound });
+    // The archive itself is listed at the top level, but not its entries.
     await expect(sandboxListFiles(appPath, "attachments:")).resolves.toEqual([
       "attachments:server.log",
+      "attachments:proj.zip",
     ]);
   });
 

@@ -215,6 +215,46 @@ describe("extractZipAttachment", () => {
     expect(fs.readdirSync(mediaDir)).toEqual(["shared-unpacked"]);
   });
 
+  it("puts a damaged extraction back when its replacement cannot be installed", async () => {
+    const archive = buildZip([
+      { name: "a.txt", data: "alpha" },
+      { name: "b.txt", data: "beta" },
+    ]);
+    const mediaDir = getDyadMediaDir(appPath);
+    await extractZipAttachment({
+      mediaDir,
+      storedFileName: "shared.zip",
+      archive,
+    });
+    const destinationDir = path.join(mediaDir, "shared-unpacked");
+    fs.rmSync(path.join(destinationDir, "b.txt"));
+    const realRename = fsPromises.rename;
+    const renameSpy = vi
+      .spyOn(fsPromises, "rename")
+      .mockImplementation(async (from, to) => {
+        if (to === destinationDir && String(from).includes(".extracting-")) {
+          throw Object.assign(new Error("simulated install failure"), {
+            code: "EPERM",
+          });
+        }
+        return realRename(from, to);
+      });
+    try {
+      await expect(
+        extractZipAttachment({
+          mediaDir,
+          storedFileName: "shared.zip",
+          archive,
+        }),
+      ).rejects.toThrow("simulated install failure");
+    } finally {
+      renameSpy.mockRestore();
+    }
+    // The files other chats could still read are back in place.
+    expect(fs.readdirSync(destinationDir)).toEqual(["a.txt"]);
+    expect(fs.readdirSync(mediaDir)).toEqual(["shared-unpacked"]);
+  });
+
   it.skipIf(process.platform === "win32")(
     "replaces a symlink in place of the extraction with a real directory",
     async () => {

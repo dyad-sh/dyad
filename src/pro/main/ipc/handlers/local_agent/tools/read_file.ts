@@ -16,6 +16,7 @@ import {
 } from "@/ipc/utils/bounded_text_file";
 import { SANDBOX_READ_FILE_LIMIT_BYTES } from "@/ipc/utils/sandbox/limits";
 import {
+  isDotenvAttachment,
   isDotenvFilePath,
   redactDotenvValues,
   selectTextLineRange,
@@ -109,6 +110,7 @@ export const readFileTool: ToolDefinition<z.infer<typeof readFileSchema>> = {
   execute: async (args, ctx: AgentContext) => {
     const targetAppPath = resolveTargetAppPath(ctx, args.app_name);
     let fullFilePath: string;
+    let attachmentIsDotenv = false;
     if (args.path.startsWith("attachments:")) {
       const attachment = await resolveAttachmentLogicalPath(
         targetAppPath,
@@ -122,6 +124,7 @@ export const readFileTool: ToolDefinition<z.infer<typeof readFileSchema>> = {
         );
       }
       fullFilePath = attachment.filePath;
+      attachmentIsDotenv = isDotenvAttachment(attachment);
     } else {
       fullFilePath = safeJoin(targetAppPath, args.path);
     }
@@ -143,7 +146,9 @@ export const readFileTool: ToolDefinition<z.infer<typeof readFileSchema>> = {
       // The bounded reader below provides the user-facing filesystem error.
     }
     const shouldRedactDotenv =
-      isDotenvFilePath(args.path) || isDotenvFilePath(canonicalFilePath);
+      attachmentIsDotenv ||
+      isDotenvFilePath(args.path) ||
+      isDotenvFilePath(canonicalFilePath);
 
     if (shouldRedactDotenv) {
       const source = await readContainedTextFile({

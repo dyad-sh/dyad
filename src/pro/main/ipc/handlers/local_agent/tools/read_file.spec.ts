@@ -316,6 +316,57 @@ line 5`;
       expect(result).toBe("attachment line 2\n");
     });
 
+    it("redacts dotenv attachments even under a suffixed name", async () => {
+      const mediaDir = getDyadMediaDir(testDir);
+      // An ordinary dotenv entry unpacked from an archive, a suffixed archive
+      // entry, and a suffixed plain upload stored without an extension.
+      await fs.promises.mkdir(path.join(mediaDir, "hash", "a"), {
+        recursive: true,
+      });
+      await fs.promises.writeFile(
+        path.join(mediaDir, "hash", "a", ".env"),
+        "ZIPPED=1",
+      );
+      await fs.promises.mkdir(path.join(mediaDir, "hash", "b"), {
+        recursive: true,
+      });
+      await fs.promises.writeFile(
+        path.join(mediaDir, "hash", "b", ".env"),
+        "ALIASED=1",
+      );
+      await fs.promises.writeFile(
+        path.join(mediaDir, "plainhash"),
+        "UPLOADED=1",
+      );
+      const entry = (
+        logicalName: string,
+        originalName: string,
+        storedFileName: string,
+      ) => ({
+        logicalName,
+        originalName,
+        storedFileName,
+        mimeType: "text/plain",
+        sizeBytes: 8,
+        createdAt: new Date("2026-04-22T00:00:00.000Z").toISOString(),
+      });
+      await appendAttachmentManifestEntries(testDir, [
+        entry("proj.zip/a/.env", "a/.env", "hash/a/.env"),
+        entry("proj.zip/a/.env-2", "b/.env", "hash/b/.env"),
+        entry(".env-2", ".env", "plainhash"),
+      ]);
+
+      for (const [logicalPath, expected] of [
+        ["attachments:proj.zip/a/.env", "ZIPPED=[redacted]"],
+        ["attachments:proj.zip/a/.env-2", "ALIASED=[redacted]"],
+        ["attachments:.env-2", "UPLOADED=[redacted]"],
+      ]) {
+        await expect(
+          readFileTool.execute({ path: logicalPath }, mockContext),
+        ).resolves.toBe(expected);
+      }
+    });
+
     it("returns a bounded result with an explicit truncation notice", async () => {
       await fs.promises.writeFile(
         path.join(testDir, "large.txt"),

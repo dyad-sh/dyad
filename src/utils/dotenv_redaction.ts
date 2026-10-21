@@ -17,6 +17,22 @@ export function isDotenvFilePath(filePath: string): boolean {
   return DOTENV_FILE_NAME.test(path.basename(logicalPath));
 }
 
+/**
+ * Whether an attachment is a dotenv file. Its logical name can be suffixed on
+ * a collision (".env-2"), so the original name and stored path count too.
+ */
+export function isDotenvAttachment(attachment: {
+  logicalName: string;
+  originalName: string;
+  filePath: string;
+}): boolean {
+  return (
+    isDotenvFilePath(attachment.logicalName) ||
+    isDotenvFilePath(attachment.originalName) ||
+    isDotenvFilePath(attachment.filePath)
+  );
+}
+
 function isEmptyDotenvValue(value: string): boolean {
   const trimmed = value.trim();
   return (

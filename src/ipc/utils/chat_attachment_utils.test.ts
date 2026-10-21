@@ -369,7 +369,7 @@ describe("archive attachments", () => {
     );
     expect(text).not.toContain(`    f${MAX_ARCHIVE_ENTRIES_IN_PROMPT}.txt`);
     expect(text).toContain(
-      '    ...and 5 more entries not listed here; list_files with directory "attachments:proj.zip" lists up to 1000 of them per call, or narrow it to "attachments:proj.zip/<folder>".',
+      '    ...and 5 more entries not listed here; list_files with directory "attachments:proj.zip" lists up to 1000 of them, so narrow it to "attachments:proj.zip/<folder>" to see the rest.',
     );
     expect(text).not.toContain("was unwrapped");
     expect(text).not.toContain("skipped");

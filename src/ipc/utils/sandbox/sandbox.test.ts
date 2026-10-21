@@ -372,6 +372,44 @@ describe("sandbox capabilities", () => {
     ]);
   });
 
+  it("redacts dotenv attachments even under a suffixed name", async () => {
+    const mediaDir = getDyadMediaDir(appPath);
+    // An ordinary dotenv entry unpacked from an archive, a suffixed archive
+    // entry, and a suffixed plain upload stored without an extension.
+    await fs.mkdir(path.join(mediaDir, "hash", "a"), { recursive: true });
+    await fs.writeFile(path.join(mediaDir, "hash", "a", ".env"), "ZIPPED=1");
+    await fs.mkdir(path.join(mediaDir, "hash", "b"), { recursive: true });
+    await fs.writeFile(path.join(mediaDir, "hash", "b", ".env"), "ALIASED=1");
+    await fs.writeFile(path.join(mediaDir, "plainhash"), "UPLOADED=1");
+    const entry = (
+      logicalName: string,
+      originalName: string,
+      storedFileName: string,
+    ) => ({
+      logicalName,
+      originalName,
+      storedFileName,
+      mimeType: "text/plain",
+      sizeBytes: 8,
+      createdAt: new Date("2026-04-22T00:00:00.000Z").toISOString(),
+    });
+    await appendAttachmentManifestEntries(appPath, [
+      entry("proj.zip/a/.env", "a/.env", "hash/a/.env"),
+      entry("proj.zip/a/.env-2", "b/.env", "hash/b/.env"),
+      entry(".env-2", ".env", "plainhash"),
+    ]);
+
+    await expect(
+      sandboxReadFile(appPath, "attachments:proj.zip/a/.env"),
+    ).resolves.toBe("ZIPPED=[redacted]");
+    await expect(
+      sandboxReadFile(appPath, "attachments:proj.zip/a/.env-2"),
+    ).resolves.toBe("ALIASED=[redacted]");
+    await expect(sandboxReadFile(appPath, "attachments:.env-2")).resolves.toBe(
+      "UPLOADED=[redacted]",
+    );
+  });
+
   it("filters stale attachment manifest entries", async () => {
     await appendAttachmentManifestEntries(appPath, [
       {

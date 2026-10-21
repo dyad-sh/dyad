@@ -14,11 +14,11 @@ const logger = log.scope("media_cleanup");
 
 export const MEDIA_TTL_DAYS = 30;
 
-// Unpacked zip attachments live in "<sha256>-unpacked", staged under an
-// ".extracting-<id>" suffix while being unpacked; no other directories are
-// expected under .dyad/media.
+// Unpacked zip attachments live in "<sha256>-unpacked". A staging copy has an
+// ".extracting-<id>" suffix, and a damaged copy being replaced ".old-<id>";
+// no other directories are expected under .dyad/media.
 const EXTRACTED_ARCHIVE_DIR_NAME =
-  /^[0-9a-f]{64}-unpacked(?:\.extracting-[0-9a-f-]+)?$/;
+  /^[0-9a-f]{64}-unpacked(?:\.(?:extracting|old)-[0-9a-f-]+)?$/;
 
 function isPathWithinDirectory(filePath: string, directoryPath: string) {
   const relativePath = path.relative(directoryPath, filePath);

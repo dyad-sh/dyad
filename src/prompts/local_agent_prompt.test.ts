@@ -798,15 +798,34 @@ describe("build agent prompt", () => {
 });
 
 describe("suggested follow-up prompts guidance", () => {
-  it("is included for writable Pro, Basic, and Build prompts", () => {
-    expect(constructLocalAgentPrompt(undefined)).toContain(
-      SUGGESTED_PROMPTS_GUIDANCE,
+  it("is included for writable Pro, Basic, and Build prompts when enabled", () => {
+    expect(
+      constructLocalAgentPrompt(undefined, undefined, {
+        suggestedPromptsEnabled: true,
+      }),
+    ).toContain(SUGGESTED_PROMPTS_GUIDANCE);
+    expect(
+      constructLocalAgentPrompt(undefined, undefined, {
+        basicAgentMode: true,
+        suggestedPromptsEnabled: true,
+      }),
+    ).toContain(SUGGESTED_PROMPTS_GUIDANCE);
+    expect(
+      constructBuildAgentPrompt(undefined, undefined, {
+        suggestedPromptsEnabled: true,
+      }),
+    ).toContain(SUGGESTED_PROMPTS_GUIDANCE);
+  });
+
+  it("is omitted when the setting is unset", () => {
+    expect(constructLocalAgentPrompt(undefined)).not.toContain(
+      "dyad-suggested-prompts",
     );
     expect(
       constructLocalAgentPrompt(undefined, undefined, { basicAgentMode: true }),
-    ).toContain(SUGGESTED_PROMPTS_GUIDANCE);
-    expect(constructBuildAgentPrompt(undefined)).toContain(
-      SUGGESTED_PROMPTS_GUIDANCE,
+    ).not.toContain("dyad-suggested-prompts");
+    expect(constructBuildAgentPrompt(undefined)).not.toContain(
+      "dyad-suggested-prompts",
     );
   });
 
@@ -831,7 +850,10 @@ describe("suggested follow-up prompts guidance", () => {
 
   it("is omitted from read-only and Implementer prompts", () => {
     expect(
-      constructLocalAgentPrompt(undefined, undefined, { readOnly: true }),
+      constructLocalAgentPrompt(undefined, undefined, {
+        readOnly: true,
+        suggestedPromptsEnabled: true,
+      }),
     ).not.toContain("dyad-suggested-prompts");
     expect(constructImplementerPrompt(undefined)).not.toContain(
       "dyad-suggested-prompts",

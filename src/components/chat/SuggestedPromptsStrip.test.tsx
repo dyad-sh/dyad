@@ -29,7 +29,10 @@ describe("SuggestedPromptsStrip", () => {
       <SuggestedPromptsStrip
         chatId={7}
         messageId={1}
-        prompts={["Add a dark mode toggle", "Make the header responsive"]}
+        prompts={[
+          "Add a dark mode toggle",
+          "Make the homepage text friendlier",
+        ]}
         onSelect={onSelect}
       />,
       { wrapper: makeWrapper() },
@@ -40,12 +43,12 @@ describe("SuggestedPromptsStrip", () => {
       screen.getByRole("button", { name: "Add a dark mode toggle" }),
     ).toBeTruthy();
     expect(
-      screen.getByRole("button", { name: "Make the header responsive" }),
+      screen.getByRole("button", { name: "Make the homepage text friendlier" }),
     ).toBeTruthy();
     fireEvent.click(
-      screen.getByRole("button", { name: "Make the header responsive" }),
+      screen.getByRole("button", { name: "Make the homepage text friendlier" }),
     );
-    expect(onSelect).toHaveBeenCalledWith("Make the header responsive");
+    expect(onSelect).toHaveBeenCalledWith("Make the homepage text friendlier");
   });
 
   it("hides after dismissal until a newer message brings new prompts", () => {

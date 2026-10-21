@@ -54,12 +54,6 @@ Prefer the least expensive available action. Reinstalling dependencies already i
   - Don't add error handling, fallbacks, or validation for scenarios that can't happen. Trust internal code and framework guarantees. Only validate at system boundaries (user input, external APIs). Don't use feature flags or backwards-compatibility shims when you can just change the code.
   - Don't create helpers, utilities, or abstractions for one-time operations. Don't design for hypothetical future requirements. The right amount of complexity is the minimum needed for the current task—three similar lines of code is better than a premature abstraction.
   - Avoid backwards-compatibility hacks like renaming unused _vars, re-exporting types, adding // removed comments for removed code, etc. If you are certain that something is unused, you can delete it completely.
-- After you have finished implementing the user's request, end your final message with 2-3 suggested follow-up prompts the user could send next. Wrap them in a <dyad-suggested-prompts> tag with exactly one prompt per line and nothing else inside the tag. Each prompt must be a short, concrete next step for this app written as the user would type it (for example "Add a dark mode toggle"). Omit the tag when you are asking the user a question, waiting for their approval, or did not complete the request. Example:
-<dyad-suggested-prompts>
-Add a dark mode toggle
-Make the header responsive on mobile
-Show a confirmation toast after saving
-</dyad-suggested-prompts>
 </general_guidelines>
 
 <tool_calling>
@@ -232,12 +226,6 @@ Prefer the least expensive available action. Reinstalling dependencies already i
   - Don't add error handling, fallbacks, or validation for scenarios that can't happen. Trust internal code and framework guarantees. Only validate at system boundaries (user input, external APIs). Don't use feature flags or backwards-compatibility shims when you can just change the code.
   - Don't create helpers, utilities, or abstractions for one-time operations. Don't design for hypothetical future requirements. The right amount of complexity is the minimum needed for the current task—three similar lines of code is better than a premature abstraction.
   - Avoid backwards-compatibility hacks like renaming unused _vars, re-exporting types, adding // removed comments for removed code, etc. If you are certain that something is unused, you can delete it completely.
-- After you have finished implementing the user's request, end your final message with 2-3 suggested follow-up prompts the user could send next. Wrap them in a <dyad-suggested-prompts> tag with exactly one prompt per line and nothing else inside the tag. Each prompt must be a short, concrete next step for this app written as the user would type it (for example "Add a dark mode toggle"). Omit the tag when you are asking the user a question, waiting for their approval, or did not complete the request. Example:
-<dyad-suggested-prompts>
-Add a dark mode toggle
-Make the header responsive on mobile
-Show a confirmation toast after saving
-</dyad-suggested-prompts>
 </general_guidelines>
 
 <tool_calling>
@@ -417,12 +405,6 @@ Prefer the least expensive available action. Reinstalling dependencies already i
   - Don't add error handling, fallbacks, or validation for scenarios that can't happen. Trust internal code and framework guarantees. Only validate at system boundaries (user input, external APIs). Don't use feature flags or backwards-compatibility shims when you can just change the code.
   - Don't create helpers, utilities, or abstractions for one-time operations. Don't design for hypothetical future requirements. The right amount of complexity is the minimum needed for the current task—three similar lines of code is better than a premature abstraction.
   - Avoid backwards-compatibility hacks like renaming unused _vars, re-exporting types, adding // removed comments for removed code, etc. If you are certain that something is unused, you can delete it completely.
-- After you have finished implementing the user's request, end your final message with 2-3 suggested follow-up prompts the user could send next. Wrap them in a <dyad-suggested-prompts> tag with exactly one prompt per line and nothing else inside the tag. Each prompt must be a short, concrete next step for this app written as the user would type it (for example "Add a dark mode toggle"). Omit the tag when you are asking the user a question, waiting for their approval, or did not complete the request. Example:
-<dyad-suggested-prompts>
-Add a dark mode toggle
-Make the header responsive on mobile
-Show a confirmation toast after saving
-</dyad-suggested-prompts>
 </general_guidelines>
 
 <tool_calling>
@@ -589,12 +571,6 @@ Prefer the least expensive available action. Reinstalling dependencies already i
   - Don't add error handling, fallbacks, or validation for scenarios that can't happen. Trust internal code and framework guarantees. Only validate at system boundaries (user input, external APIs). Don't use feature flags or backwards-compatibility shims when you can just change the code.
   - Don't create helpers, utilities, or abstractions for one-time operations. Don't design for hypothetical future requirements. The right amount of complexity is the minimum needed for the current task—three similar lines of code is better than a premature abstraction.
   - Avoid backwards-compatibility hacks like renaming unused _vars, re-exporting types, adding // removed comments for removed code, etc. If you are certain that something is unused, you can delete it completely.
-- After you have finished implementing the user's request, end your final message with 2-3 suggested follow-up prompts the user could send next. Wrap them in a <dyad-suggested-prompts> tag with exactly one prompt per line and nothing else inside the tag. Each prompt must be a short, concrete next step for this app written as the user would type it (for example "Add a dark mode toggle"). Omit the tag when you are asking the user a question, waiting for their approval, or did not complete the request. Example:
-<dyad-suggested-prompts>
-Add a dark mode toggle
-Make the header responsive on mobile
-Show a confirmation toast after saving
-</dyad-suggested-prompts>
 </general_guidelines>
 
 <tool_calling>
@@ -761,12 +737,6 @@ Prefer the least expensive available action. Reinstalling dependencies already i
   - Don't add error handling, fallbacks, or validation for scenarios that can't happen. Trust internal code and framework guarantees. Only validate at system boundaries (user input, external APIs). Don't use feature flags or backwards-compatibility shims when you can just change the code.
   - Don't create helpers, utilities, or abstractions for one-time operations. Don't design for hypothetical future requirements. The right amount of complexity is the minimum needed for the current task—three similar lines of code is better than a premature abstraction.
   - Avoid backwards-compatibility hacks like renaming unused _vars, re-exporting types, adding // removed comments for removed code, etc. If you are certain that something is unused, you can delete it completely.
-- After you have finished implementing the user's request, end your final message with 2-3 suggested follow-up prompts the user could send next. Wrap them in a <dyad-suggested-prompts> tag with exactly one prompt per line and nothing else inside the tag. Each prompt must be a short, concrete next step for this app written as the user would type it (for example "Add a dark mode toggle"). Omit the tag when you are asking the user a question, waiting for their approval, or did not complete the request. Example:
-<dyad-suggested-prompts>
-Add a dark mode toggle
-Make the header responsive on mobile
-Show a confirmation toast after saving
-</dyad-suggested-prompts>
 </general_guidelines>
 
 <tool_calling>
@@ -945,12 +915,6 @@ Prefer the least expensive available action. Reinstalling dependencies already i
   - Don't add error handling, fallbacks, or validation for scenarios that can't happen. Trust internal code and framework guarantees. Only validate at system boundaries (user input, external APIs). Don't use feature flags or backwards-compatibility shims when you can just change the code.
   - Don't create helpers, utilities, or abstractions for one-time operations. Don't design for hypothetical future requirements. The right amount of complexity is the minimum needed for the current task—three similar lines of code is better than a premature abstraction.
   - Avoid backwards-compatibility hacks like renaming unused _vars, re-exporting types, adding // removed comments for removed code, etc. If you are certain that something is unused, you can delete it completely.
-- After you have finished implementing the user's request, end your final message with 2-3 suggested follow-up prompts the user could send next. Wrap them in a <dyad-suggested-prompts> tag with exactly one prompt per line and nothing else inside the tag. Each prompt must be a short, concrete next step for this app written as the user would type it (for example "Add a dark mode toggle"). Omit the tag when you are asking the user a question, waiting for their approval, or did not complete the request. Example:
-<dyad-suggested-prompts>
-Add a dark mode toggle
-Make the header responsive on mobile
-Show a confirmation toast after saving
-</dyad-suggested-prompts>
 </general_guidelines>
 
 <tool_calling>
@@ -1204,12 +1168,6 @@ Prefer the least expensive available action. Reinstalling dependencies already i
   - Don't add error handling, fallbacks, or validation for scenarios that can't happen. Trust internal code and framework guarantees. Only validate at system boundaries (user input, external APIs). Don't use feature flags or backwards-compatibility shims when you can just change the code.
   - Don't create helpers, utilities, or abstractions for one-time operations. Don't design for hypothetical future requirements. The right amount of complexity is the minimum needed for the current task—three similar lines of code is better than a premature abstraction.
   - Avoid backwards-compatibility hacks like renaming unused _vars, re-exporting types, adding // removed comments for removed code, etc. If you are certain that something is unused, you can delete it completely.
-- After you have finished implementing the user's request, end your final message with 2-3 suggested follow-up prompts the user could send next. Wrap them in a <dyad-suggested-prompts> tag with exactly one prompt per line and nothing else inside the tag. Each prompt must be a short, concrete next step for this app written as the user would type it (for example "Add a dark mode toggle"). Omit the tag when you are asking the user a question, waiting for their approval, or did not complete the request. Example:
-<dyad-suggested-prompts>
-Add a dark mode toggle
-Make the header responsive on mobile
-Show a confirmation toast after saving
-</dyad-suggested-prompts>
 </general_guidelines>
 
 <tool_calling>
@@ -1376,12 +1334,6 @@ Prefer the least expensive available action. Reinstalling dependencies already i
   - Don't add error handling, fallbacks, or validation for scenarios that can't happen. Trust internal code and framework guarantees. Only validate at system boundaries (user input, external APIs). Don't use feature flags or backwards-compatibility shims when you can just change the code.
   - Don't create helpers, utilities, or abstractions for one-time operations. Don't design for hypothetical future requirements. The right amount of complexity is the minimum needed for the current task—three similar lines of code is better than a premature abstraction.
   - Avoid backwards-compatibility hacks like renaming unused _vars, re-exporting types, adding // removed comments for removed code, etc. If you are certain that something is unused, you can delete it completely.
-- After you have finished implementing the user's request, end your final message with 2-3 suggested follow-up prompts the user could send next. Wrap them in a <dyad-suggested-prompts> tag with exactly one prompt per line and nothing else inside the tag. Each prompt must be a short, concrete next step for this app written as the user would type it (for example "Add a dark mode toggle"). Omit the tag when you are asking the user a question, waiting for their approval, or did not complete the request. Example:
-<dyad-suggested-prompts>
-Add a dark mode toggle
-Make the header responsive on mobile
-Show a confirmation toast after saving
-</dyad-suggested-prompts>
 </general_guidelines>
 
 <tool_calling>
@@ -1535,12 +1487,6 @@ Prefer the least expensive available action. Reinstalling dependencies already i
   - Don't add error handling, fallbacks, or validation for scenarios that can't happen. Trust internal code and framework guarantees. Only validate at system boundaries (user input, external APIs). Don't use feature flags or backwards-compatibility shims when you can just change the code.
   - Don't create helpers, utilities, or abstractions for one-time operations. Don't design for hypothetical future requirements. The right amount of complexity is the minimum needed for the current task—three similar lines of code is better than a premature abstraction.
   - Avoid backwards-compatibility hacks like renaming unused _vars, re-exporting types, adding // removed comments for removed code, etc. If you are certain that something is unused, you can delete it completely.
-- After you have finished implementing the user's request, end your final message with 2-3 suggested follow-up prompts the user could send next. Wrap them in a <dyad-suggested-prompts> tag with exactly one prompt per line and nothing else inside the tag. Each prompt must be a short, concrete next step for this app written as the user would type it (for example "Add a dark mode toggle"). Omit the tag when you are asking the user a question, waiting for their approval, or did not complete the request. Example:
-<dyad-suggested-prompts>
-Add a dark mode toggle
-Make the header responsive on mobile
-Show a confirmation toast after saving
-</dyad-suggested-prompts>
 </general_guidelines>
 
 <tool_calling>

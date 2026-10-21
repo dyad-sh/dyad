@@ -104,11 +104,11 @@ const IMPLEMENTATION_SIMPLICITY_GUIDANCE = `- Prioritize creating small, focused
 // Follow-up prompts shown as clickable chips above the chat input after a
 // writable turn. Read-only (Ask) and Plan prompts intentionally omit this, and
 // the user can turn it off with the "Suggested follow-up prompts" setting.
-export const SUGGESTED_PROMPTS_GUIDANCE = `- After you have finished implementing the user's request, end your final message with 2-3 suggested follow-up prompts the user could send next. Wrap them in a <dyad-suggested-prompts> tag with exactly one prompt per line and nothing else inside the tag. Each prompt must be a short, concrete next step for this app written as the user would type it (for example "Add a dark mode toggle"). Omit the tag when you are asking the user a question, waiting for their approval, or did not complete the request. Example:
+export const SUGGESTED_PROMPTS_GUIDANCE = `- After you have finished implementing the user's request, end your final message with 2-3 suggested follow-up prompts the user could send next. Wrap them in a <dyad-suggested-prompts> tag with exactly one prompt per line and nothing else inside the tag. Each prompt must be a short, concrete next step for this app written as the user would type it, about 3-8 words. Omit the tag when you are asking the user a question, waiting for their approval, or did not complete the request. Example:
 <dyad-suggested-prompts>
 Add a dark mode toggle
-Make the header responsive on mobile
-Show a confirmation toast after saving
+Make the homepage text friendlier
+Let users save their favorites
 </dyad-suggested-prompts>`;
 
 function generalGuidelinesBlock(suggestedPromptsEnabled: boolean): string {
@@ -990,7 +990,7 @@ export function constructLocalAgentPrompt(
   const reinstallAndRestartAppToolAvailable =
     options?.reinstallAndRestartAppToolAvailable !== false;
   const runBuildToolAvailable = options?.runBuildToolAvailable !== false;
-  const suggestedPromptsEnabled = options?.suggestedPromptsEnabled !== false;
+  const suggestedPromptsEnabled = options?.suggestedPromptsEnabled === true;
 
   // Select the appropriate base prompt
   let basePrompt: string;
@@ -1091,7 +1091,7 @@ export function constructBuildAgentPrompt(
     appBlueprint,
     options?.restartAppToolAvailable !== false,
     options?.reinstallAndRestartAppToolAvailable !== false,
-    options?.suggestedPromptsEnabled !== false,
+    options?.suggestedPromptsEnabled === true,
   )
     .replace("[[SERVER_LAYER]]", () => serverLayer)
     .replace("[[AI_RULES]]", () => aiRules ?? DEFAULT_AI_RULES);

@@ -21,6 +21,7 @@ describe("suggested follow-up prompts (integration)", () => {
       settings: {
         isTestMode: true,
         enableDyadPro: true,
+        enableSuggestedPrompts: true,
         providerSettings: { auto: { apiKey: { value: "testdyadkey" } } },
       },
     });
@@ -52,7 +53,9 @@ describe("suggested follow-up prompts (integration)", () => {
       within(strip).getByRole("button", { name: "Add a dark mode toggle" }),
     ).toBeTruthy();
     expect(
-      within(strip).getByRole("button", { name: "Make the header responsive" }),
+      within(strip).getByRole("button", {
+        name: "Make the homepage text friendlier",
+      }),
     ).toBeTruthy();
     // The tag itself never renders inline in the transcript.
     const list = within(screen.getByTestId("messages-list"));

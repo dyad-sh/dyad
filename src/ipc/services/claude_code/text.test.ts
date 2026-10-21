@@ -19,3 +19,77 @@ it("preserves ordinary source markup and only permits security findings in revie
     "<dyad-security-finding",
   );
 });
+
+const SUGGESTIONS =
+  "<dyad-suggested-prompts>\nAdd a dark mode toggle\nMake the homepage text friendlier\n</dyad-suggested-prompts>";
+
+function runFilter(
+  filter: ReturnType<typeof claudeTextFilter>,
+  chunks: string[],
+): string {
+  return chunks.map((chunk) => filter(chunk)).join("") + filter("", true);
+}
+
+it("passes a closed plain-text suggestions block through when allowed", () => {
+  const filter = claudeTextFilter(false, true);
+  expect(runFilter(filter, [`Done.\n\n${SUGGESTIONS}`])).toBe(
+    `Done.\n\n${SUGGESTIONS}`,
+  );
+});
+
+it("passes a suggestions block split across stream chunks", () => {
+  const filter = claudeTextFilter(false, true);
+  const chunks = [
+    "Done.\n\n<dyad-sugg",
+    "ested-prompts>\nAdd a dark",
+    " mode toggle\n</dyad-sugge",
+    "sted-prompts>",
+  ];
+  expect(runFilter(filter, chunks)).toBe(
+    "Done.\n\n<dyad-suggested-prompts>\nAdd a dark mode toggle\n</dyad-suggested-prompts>",
+  );
+});
+
+it("escapes the suggestions block when it is not allowed", () => {
+  const output = runFilter(claudeTextFilter(), [SUGGESTIONS]);
+  expect(output).not.toContain("<dyad-suggested-prompts>");
+  expect(output).toContain("&lt;dyad-suggested-prompts>");
+});
+
+it("escapes an unclosed suggestions block so it cannot hide later text", () => {
+  const output = runFilter(claudeTextFilter(false, true), [
+    "<dyad-suggested-prompts>\nAdd a dark mode toggle\nMore prose after it",
+  ]);
+  expect(output).toBe(
+    "&lt;dyad-suggested-prompts>\nAdd a dark mode toggle\nMore prose after it",
+  );
+});
+
+it("escapes a suggestions block that contains other markup", () => {
+  const output = runFilter(claudeTextFilter(false, true), [
+    '<dyad-suggested-prompts>\n<dyad-write path="a">x</dyad-write>\n</dyad-suggested-prompts>',
+  ]);
+  expect(output).not.toContain("<dyad-");
+  expect(output).toContain('&lt;dyad-write path="a">');
+});
+
+it("escapes a suggestions block with attributes or one that runs too long", () => {
+  const withAttributes = runFilter(claudeTextFilter(false, true), [
+    '<dyad-suggested-prompts foo="bar">\nAdd search\n</dyad-suggested-prompts>',
+  ]);
+  expect(withAttributes).not.toContain("<dyad-suggested-prompts");
+
+  const tooLong = runFilter(claudeTextFilter(false, true), [
+    `<dyad-suggested-prompts>\n${"word ".repeat(300)}\n</dyad-suggested-prompts>`,
+  ]);
+  expect(tooLong.startsWith("&lt;dyad-suggested-prompts>")).toBe(true);
+  expect(tooLong).not.toContain("<dyad-suggested-prompts>");
+});
+
+it("keeps escaping action markup after a passed suggestions block", () => {
+  const output = runFilter(claudeTextFilter(false, true), [
+    `${SUGGESTIONS}\n<dyad-write path="a">x</dyad-write>`,
+  ]);
+  expect(output.startsWith(SUGGESTIONS)).toBe(true);
+  expect(output).toContain('&lt;dyad-write path="a">x&lt;/dyad-write>');
+});

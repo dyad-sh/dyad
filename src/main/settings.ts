@@ -35,7 +35,6 @@ import {
 } from "./safe_storage_legacy";
 import {
   DEFAULT_ENABLE_PREVIEW_COOKIE_ISOLATION,
-  DEFAULT_ENABLE_SUGGESTED_PROMPTS,
   DEFAULT_ENABLE_TESTING_FOR_NEW_APPS,
 } from "@/shared/settings_defaults";
 
@@ -85,7 +84,6 @@ export const DEFAULT_SETTINGS: UserSettings = {
   autoApproveNonSchemaSql: true,
   autoApproveSafeMcpTools: true,
   autoExpandPreviewPanel: true,
-  enableSuggestedPrompts: DEFAULT_ENABLE_SUGGESTED_PROMPTS,
   disableSandboxedE2eTests: false,
   enableContextCompaction: true,
   enablePnpmMinimumReleaseAgeWarning: true,

@@ -2,6 +2,11 @@ import { useAtom } from "jotai";
 import { useTranslation } from "react-i18next";
 import { Sparkles, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { dismissedSuggestedPromptsByChatIdAtom } from "@/atoms/suggestedPromptsAtoms";
 
 interface SuggestedPromptsStripProps {
@@ -53,17 +58,25 @@ export function SuggestedPromptsStrip({
           <span className="truncate">{prompt}</span>
         </Button>
       ))}
-      <button
-        type="button"
-        onClick={() =>
-          setDismissedByChatId((prev) => new Map(prev).set(chatId, messageId))
-        }
-        aria-label={t("suggestedPrompts.dismiss")}
-        title={t("suggestedPrompts.dismiss")}
-        className="ml-auto hover:bg-muted-foreground/20 rounded-full p-1 text-muted-foreground cursor-pointer"
-      >
-        <X size={12} aria-hidden="true" />
-      </button>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button
+              type="button"
+              onClick={() =>
+                setDismissedByChatId((prev) =>
+                  new Map(prev).set(chatId, messageId),
+                )
+              }
+              aria-label={t("suggestedPrompts.dismiss")}
+              className="ml-auto hover:bg-muted-foreground/20 rounded-full p-1 text-muted-foreground cursor-pointer"
+            />
+          }
+        >
+          <X size={12} aria-hidden="true" />
+        </TooltipTrigger>
+        <TooltipContent>{t("suggestedPrompts.dismiss")}</TooltipContent>
+      </Tooltip>
     </div>
   );
 }

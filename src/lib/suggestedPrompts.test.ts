@@ -13,10 +13,10 @@ const user: Message = { id: 1, role: "user", content: "Build a todo app" };
 
 describe("extractSuggestedPrompts", () => {
   it("returns one prompt per line from the tag body", () => {
-    const content = `Done!\n<dyad-suggested-prompts>\nAdd a dark mode toggle\nMake the header responsive\n</dyad-suggested-prompts>`;
+    const content = `Done!\n<dyad-suggested-prompts>\nAdd a dark mode toggle\nMake the homepage text friendlier\n</dyad-suggested-prompts>`;
     expect(extractSuggestedPrompts(content)).toEqual([
       "Add a dark mode toggle",
-      "Make the header responsive",
+      "Make the homepage text friendlier",
     ]);
   });
 
@@ -33,7 +33,7 @@ describe("extractSuggestedPrompts", () => {
     const content = `<dyad-suggested-prompts>
 - Add a dark mode toggle
 
-1. Make the header responsive
+1. Make the homepage text friendlier
 * add a dark mode toggle
 • Connect a database
 2) Add user accounts
@@ -41,7 +41,7 @@ Add tests
 </dyad-suggested-prompts>`;
     expect(extractSuggestedPrompts(content)).toEqual([
       "Add a dark mode toggle",
-      "Make the header responsive",
+      "Make the homepage text friendlier",
       "Connect a database",
     ]);
   });

@@ -160,11 +160,14 @@ export class ClaudeCodeModel implements LanguageModelV3 {
     let failed = false;
     let cleanupFailure: PromiseRejectedResult | undefined;
     let stopAfterTool = false;
-    const filter = claudeTextFilter(
+    const systemPromptIncludes = (marker: string) =>
       options.prompt.some(
-        (p) =>
-          p.role === "system" && p.content.includes("dyad-security-finding"),
-      ),
+        (p) => p.role === "system" && p.content.includes(marker),
+      );
+    const filter = claudeTextFilter(
+      systemPromptIncludes("dyad-security-finding"),
+      // Only when the system prompt asked for follow-up suggestions.
+      systemPromptIncludes("<dyad-suggested-prompts>"),
     );
     let textStarted = false;
     let queue = Promise.resolve();

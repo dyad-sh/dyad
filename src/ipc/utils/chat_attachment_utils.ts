@@ -244,7 +244,7 @@ export function buildArchiveAttachmentInfo(
   ];
   if (hints.includeSandboxScriptHint) {
     access.push(
-      `or process many entries at once with execute_sandbox_script (list_files("${logicalPath}") enumerates them)`,
+      `or process many entries at once with execute_sandbox_script (list_files(${JSON.stringify(logicalPath)}) enumerates them)`,
     );
   }
   lines.push(`  ${access.join(", ")}.`);
@@ -345,12 +345,15 @@ export function hasScriptReadableAttachment(
 
 /**
  * An archive's entries are never inlined into the prompt, so even in modes
- * that inline attachments the model has to read them with a tool.
+ * that inline attachments the model has to read them with a tool. Archives
+ * with no extracted files have nothing to read.
  */
 export function hasArchiveAttachment(
   attachments: StoredChatAttachment[],
 ): boolean {
-  return attachments.some((attachment) => attachment.archive !== undefined);
+  return attachments.some(
+    (attachment) => (attachment.archive?.files.length ?? 0) > 0,
+  );
 }
 
 export function resolveAttachmentDeliveryConfig({

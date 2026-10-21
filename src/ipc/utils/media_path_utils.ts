@@ -171,6 +171,10 @@ function normalizeAttachmentLogicalName(
   return sanitizeLogicalNameSegment(fileName || "attachment") || "attachment";
 }
 
+// The next suffix to try for each colliding name, per set of used names, so
+// many entries sharing one name don't each rescan the suffixes from 2.
+const nextSuffixByUsedNames = new WeakMap<Set<string>, Map<string, number>>();
+
 export function createUniqueAttachmentLogicalName(
   originalName: string,
   usedNames: Set<string>,
@@ -187,7 +191,12 @@ export function createUniqueAttachmentLogicalName(
   const dirEnd = base.lastIndexOf("/") + 1;
   const dir = base.slice(0, dirEnd);
   const stem = base.slice(dirEnd);
-  let suffix = 2;
+  let nextSuffixes = nextSuffixByUsedNames.get(usedNames);
+  if (!nextSuffixes) {
+    nextSuffixes = new Map();
+    nextSuffixByUsedNames.set(usedNames, nextSuffixes);
+  }
+  let suffix = nextSuffixes.get(logicalName) ?? 2;
   while (true) {
     // Keep the suffix inside the segment limit, so normalizing the name again
     // (as an archive's entries do with their parent's name) leaves it intact.
@@ -196,6 +205,7 @@ export function createUniqueAttachmentLogicalName(
     const candidate = `${dir}${stem.slice(0, MAX_LOGICAL_SEGMENT_LENGTH - tail.length)}${tail}`;
     if (!usedNames.has(candidate)) {
       usedNames.add(candidate);
+      nextSuffixes.set(logicalName, suffix + 1);
       return candidate;
     }
     suffix++;

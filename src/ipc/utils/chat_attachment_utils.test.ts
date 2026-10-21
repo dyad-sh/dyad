@@ -243,6 +243,9 @@ describe("archive attachments", () => {
     expect(
       hasArchiveAttachment([archiveAttachment({ archive: undefined })]),
     ).toBe(false);
+    const emptyArchive = archiveAttachment();
+    emptyArchive.archive!.files = [];
+    expect(hasArchiveAttachment([emptyArchive])).toBe(false);
   });
 
   it("adds the sandbox hint and the upload instruction when they apply", () => {
@@ -285,6 +288,22 @@ describe("archive attachments", () => {
     );
     expect(text).not.toContain("copy_file");
     expect(text).not.toContain("Do not copy archive contents");
+  });
+
+  it("quotes the archive name in the sandbox hint", () => {
+    const text = buildLocalAgentAttachmentInfo(
+      [archiveAttachment({ logicalName: 'my"proj.zip' })],
+      {
+        ...resolveAttachmentDeliveryConfig({
+          mode: "local-agent",
+          settings: { enableSandboxScriptExecution: true },
+          hasImageAttachments: false,
+          hasUploadedAttachments: false,
+        }),
+        includeSandboxScriptHint: true,
+      },
+    );
+    expect(text).toContain('list_files("attachments:my\\"proj.zip")');
   });
 
   it("caps the inline entry list", () => {

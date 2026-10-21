@@ -49,6 +49,20 @@ describe("createUniqueAttachmentLogicalName", () => {
     ).toBe(`${second}/a.txt`);
   });
 
+  it("hands out increasing suffixes and skips ones already taken", () => {
+    const used = new Set(["notes-3.txt"]);
+    const names = Array.from({ length: 5 }, () =>
+      createUniqueAttachmentLogicalName("notes.txt", used),
+    );
+    expect(names).toEqual([
+      "notes.txt",
+      "notes-2.txt",
+      "notes-4.txt",
+      "notes-5.txt",
+      "notes-6.txt",
+    ]);
+  });
+
   it("reduces upload names to their final segment", () => {
     expect(
       createUniqueAttachmentLogicalName("dir/sub/notes.txt", new Set()),
@@ -271,6 +285,41 @@ describe("manifest with extracted archive entries", () => {
     } finally {
       statSpy.mockRestore();
     }
+  });
+
+  it("lists every entry in manifest order across stat batches", async () => {
+    // Reverse order, so manifest order differs from sorted order.
+    const names = Array.from(
+      { length: 70 },
+      (_, i) => `f${String(69 - i).padStart(2, "0")}.txt`,
+    );
+    for (const name of names) {
+      if (name !== "f20.txt") {
+        writeStored(`many/${name}`, "x");
+      }
+    }
+    await appendAttachmentManifestEntriesWithLogicalNames(
+      appPath,
+      names.map((name) => ({
+        requestedLogicalName: `many.zip/${name}`,
+        nestedLogicalName: true,
+        originalName: name,
+        storedFileName: `many/${name}`,
+        mimeType: "text/plain",
+        sizeBytes: 1,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        archiveLogicalName: "many.zip",
+      })),
+    );
+    expect(
+      (await listStoredAttachments(appPath, "many.zip/")).map(
+        (a) => a.logicalName,
+      ),
+    ).toEqual(
+      names
+        .filter((name) => name !== "f20.txt")
+        .map((name) => `many.zip/${name}`),
+    );
   });
 
   it("removes only media that no manifest entry references", async () => {

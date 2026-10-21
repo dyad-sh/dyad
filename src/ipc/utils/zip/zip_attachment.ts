@@ -29,10 +29,6 @@ import { ZipFormatError } from "./zip_reader";
 
 export const ZIP_ATTACHMENT_MIME_TYPE = "application/zip";
 
-export function isZipAttachmentName(name: string): boolean {
-  return name.trim().toLowerCase().endsWith(".zip");
-}
-
 export interface ExtractedArchiveSummary {
   /** Directory under the media directory that holds the extracted files. */
   extractedDirName: string;

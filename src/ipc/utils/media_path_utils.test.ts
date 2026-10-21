@@ -1,13 +1,15 @@
 import fs from "node:fs";
+import fsPromises from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   appendAttachmentManifestEntriesWithLogicalNames,
   appendAttachmentManifestEntryGroups,
   createUniqueAttachmentLogicalName,
   getDyadMediaDir,
+  listAttachmentLogicalPaths,
   listStoredAttachments,
   pruneAttachmentManifest,
   removeUnreferencedMediaPaths,
@@ -26,6 +28,20 @@ describe("createUniqueAttachmentLogicalName", () => {
     expect(second).toHaveLength(160);
     expect(second.endsWith("-2.zip")).toBe(true);
     // An archive's entries re-normalize the parent name; it must survive.
+    expect(
+      createUniqueAttachmentLogicalName(`${second}/a.txt`, new Set(), {
+        nested: true,
+      }),
+    ).toBe(`${second}/a.txt`);
+  });
+
+  it("keeps a suffixed name within the limit even with a long extension", () => {
+    const used = new Set<string>();
+    const longExtension = `a.${"b".repeat(158)}`;
+    createUniqueAttachmentLogicalName(longExtension, used);
+    const second = createUniqueAttachmentLogicalName(longExtension, used);
+    expect(second.length).toBeLessThanOrEqual(160);
+    expect(used.has(second)).toBe(true);
     expect(
       createUniqueAttachmentLogicalName(`${second}/a.txt`, new Set(), {
         nested: true,
@@ -221,6 +237,40 @@ describe("manifest with extracted archive entries", () => {
     expect(
       (await listStoredAttachments(appPath)).map((a) => a.logicalName),
     ).toEqual(["proj.zip", "proj-2.zip", "proj-2.zip/a.txt"]);
+  });
+
+  it("checks only the entries under the archive being listed", async () => {
+    writeStored("one/a.txt", "a");
+    writeStored("two/b.txt", "b");
+    const entry = (archive: string, stored: string, name: string) => ({
+      requestedLogicalName: `${archive}/${name}`,
+      nestedLogicalName: true,
+      originalName: name,
+      storedFileName: stored,
+      mimeType: "text/plain",
+      sizeBytes: 1,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      archiveLogicalName: archive,
+    });
+    await appendAttachmentManifestEntriesWithLogicalNames(appPath, [
+      entry("one.zip", "one/a.txt", "a.txt"),
+      entry("two.zip", "two/b.txt", "b.txt"),
+    ]);
+    const statSpy = vi.spyOn(fsPromises, "stat");
+    try {
+      expect(
+        await listAttachmentLogicalPaths(appPath, "attachments:one.zip"),
+      ).toEqual(["attachments:one.zip/a.txt"]);
+      const statted = statSpy.mock.calls.map(([target]) => String(target));
+      expect(
+        statted.some((target) => target.endsWith(path.join("two", "b.txt"))),
+      ).toBe(false);
+      expect(
+        statted.some((target) => target.endsWith(path.join("one", "a.txt"))),
+      ).toBe(true);
+    } finally {
+      statSpy.mockRestore();
+    }
   });
 
   it("removes only media that no manifest entry references", async () => {

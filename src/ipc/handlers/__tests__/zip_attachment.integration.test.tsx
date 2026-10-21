@@ -21,9 +21,11 @@ import { h } from "@/testing/hybrid.setup";
 import { cancelActiveStreamsForChat } from "@/ipc/handlers/chat_stream_handlers";
 import { buildZip } from "@/ipc/utils/zip/testing/zip_writer";
 
-// Lets a test hold an extraction open, e.g. to press Stop in the middle of it.
+// Lets a test hold the turn just before or just after an extraction, e.g. to
+// press Stop at that point.
 const extractionHook = vi.hoisted(() => ({
-  current: null as null | ((signal?: AbortSignal) => Promise<void>),
+  before: null as null | ((signal?: AbortSignal) => Promise<void>),
+  after: null as null | ((signal?: AbortSignal) => Promise<void>),
 }));
 vi.mock("@/ipc/utils/zip/zip_attachment", async (importOriginal) => {
   const actual =
@@ -33,8 +35,10 @@ vi.mock("@/ipc/utils/zip/zip_attachment", async (importOriginal) => {
     extractZipAttachment: async (
       args: Parameters<typeof actual.extractZipAttachment>[0],
     ) => {
-      await extractionHook.current?.(args.signal);
-      return actual.extractZipAttachment(args);
+      await extractionHook.before?.(args.signal);
+      const result = await actual.extractZipAttachment(args);
+      await extractionHook.after?.(args.signal);
+      return result;
     },
   };
 });
@@ -248,17 +252,20 @@ describe("zip attachment (integration)", () => {
     expect(assistant?.content).not.toContain("<dyad-error");
   }, 60_000);
 
-  it("treats Stop during extraction as a cancel and discards the archive", async () => {
+  // Sends a unique archive, presses Stop while the turn is held at `phase`,
+  // and checks the turn ends as a cancel with this turn's media removed.
+  async function expectStopDiscardsArchive(
+    phase: "before" | "after",
+    entryName: string,
+  ) {
     const chatId = await harness.createChat();
     harness.mount({ chatId });
     // Unique bytes, so the stored archive is one this turn creates.
-    const archive = buildZip([{ name: "cancel-me.txt", data: "stop" }]);
-    const storedPath = path.join(
-      harness.appDir,
-      ".dyad",
-      "media",
-      `${crypto.createHash("sha256").update(archive).digest("hex")}.zip`,
-    );
+    const archive = buildZip([{ name: entryName, data: "stop" }]);
+    const hash = crypto.createHash("sha256").update(archive).digest("hex");
+    const mediaDir = path.join(harness.appDir, ".dyad", "media");
+    const storedPath = path.join(mediaDir, `${hash}.zip`);
+    const extractionDir = path.join(mediaDir, `${hash}-unpacked`);
     harness.setChatAttachments([
       {
         name: "cancel.zip",
@@ -268,16 +275,20 @@ describe("zip attachment (integration)", () => {
     ]);
     await screen.findByText("cancel.zip");
 
-    let markStarted: () => void = () => {};
-    const started = new Promise<void>((resolve) => {
-      markStarted = resolve;
+    let markHeld: () => void = () => {};
+    const held = new Promise<void>((resolve) => {
+      markHeld = resolve;
     });
-    extractionHook.current = async (signal) => {
-      markStarted();
+    extractionHook[phase] = async (signal) => {
+      markHeld();
       await new Promise<void>((resolve) => {
         signal?.addEventListener("abort", () => resolve(), { once: true });
       });
-      signal?.throwIfAborted();
+      // Before extraction the extractor's own check fires; after it, the
+      // turn carries on as if Stop had landed during the final swap.
+      if (phase === "before") {
+        signal?.throwIfAborted();
+      }
     };
     try {
       const errorsBefore = harness.bridge.sentEvents.filter(
@@ -285,8 +296,9 @@ describe("zip attachment (integration)", () => {
       ).length;
       const { send } = await harness.typeInChat("[dump]", { chatId });
       send();
-      await started;
+      await held;
       expect(fs.existsSync(storedPath)).toBe(true);
+      expect(fs.existsSync(extractionDir)).toBe(phase === "after");
 
       // Resolves once the aborted handler has finished unwinding.
       await cancelActiveStreamsForChat(chatId, undefined);
@@ -297,8 +309,17 @@ describe("zip attachment (integration)", () => {
         ),
       ).toHaveLength(errorsBefore);
       expect(fs.existsSync(storedPath)).toBe(false);
+      expect(fs.existsSync(extractionDir)).toBe(false);
     } finally {
-      extractionHook.current = null;
+      extractionHook[phase] = null;
     }
+  }
+
+  it("treats Stop during extraction as a cancel and discards the archive", async () => {
+    await expectStopDiscardsArchive("before", "cancel-me.txt");
+  }, 60_000);
+
+  it("discards an archive whose extraction finished just as Stop arrived", async () => {
+    await expectStopDiscardsArchive("after", "cancel-after.txt");
   }, 60_000);
 });

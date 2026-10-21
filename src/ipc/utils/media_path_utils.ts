@@ -191,8 +191,9 @@ export function createUniqueAttachmentLogicalName(
   while (true) {
     // Keep the suffix inside the segment limit, so normalizing the name again
     // (as an archive's entries do with their parent's name) leaves it intact.
-    const tail = `-${suffix}${ext}`;
-    const candidate = `${dir}${stem.slice(0, Math.max(0, MAX_LOGICAL_SEGMENT_LENGTH - tail.length))}${tail}`;
+    const suffixText = `-${suffix}`;
+    const tail = `${suffixText}${ext.slice(0, MAX_LOGICAL_SEGMENT_LENGTH - suffixText.length)}`;
+    const candidate = `${dir}${stem.slice(0, MAX_LOGICAL_SEGMENT_LENGTH - tail.length)}${tail}`;
     if (!usedNames.has(candidate)) {
       usedNames.add(candidate);
       return candidate;
@@ -543,19 +544,33 @@ async function toStoredAttachmentInfoIfPresent(
   };
 }
 
+// Archives can add thousands of manifest rows, so their files are checked a
+// batch at a time rather than one by one.
+const STAT_BATCH_SIZE = 32;
+
+/**
+ * Manifest entries whose stored file still exists, in manifest order.
+ * `logicalNamePrefix` limits the check to matching entries.
+ */
 export async function listStoredAttachments(
   appPath: string,
+  logicalNamePrefix = "",
 ): Promise<StoredAttachmentInfo[]> {
   const mediaDir = getDyadMediaDir(appPath);
-  const entries = await readAttachmentManifest(appPath);
+  const entries = (await readAttachmentManifest(appPath)).filter((entry) =>
+    entry.logicalName.startsWith(logicalNamePrefix),
+  );
   const storedAttachments: StoredAttachmentInfo[] = [];
-  for (const entry of entries) {
-    const storedAttachment = await toStoredAttachmentInfoIfPresent(
-      mediaDir,
-      entry,
+  for (let start = 0; start < entries.length; start += STAT_BATCH_SIZE) {
+    const batch = await Promise.all(
+      entries
+        .slice(start, start + STAT_BATCH_SIZE)
+        .map((entry) => toStoredAttachmentInfoIfPresent(mediaDir, entry)),
     );
-    if (storedAttachment) {
-      storedAttachments.push(storedAttachment);
+    for (const storedAttachment of batch) {
+      if (storedAttachment) {
+        storedAttachments.push(storedAttachment);
+      }
     }
   }
   return storedAttachments;
@@ -572,8 +587,7 @@ export async function listAttachmentLogicalPaths(
 ): Promise<string[]> {
   const scope = stripAttachmentLogicalPrefix(directory).replace(/\/+$/, "");
   const prefix = scope ? `${scope}/` : "";
-  const paths = (await listStoredAttachments(appPath))
-    .filter((attachment) => attachment.logicalName.startsWith(prefix))
+  const paths = (await listStoredAttachments(appPath, prefix))
     .map((attachment) => toAttachmentLogicalPath(attachment.logicalName))
     .sort((a, b) => a.localeCompare(b));
   if (scope && paths.length === 0) {

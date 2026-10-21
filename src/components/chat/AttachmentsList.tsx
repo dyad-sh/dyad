@@ -1,6 +1,7 @@
 import { FileArchive, FileText, X, MessageSquare, Upload } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { FileAttachment } from "@/ipc/types";
+import { isZipAttachmentName } from "@/shared/zip_attachments";
 import { useTranslation } from "react-i18next";
 import { Tooltip, TooltipTrigger, TooltipContent } from "../ui/tooltip";
 
@@ -69,7 +70,7 @@ export function AttachmentsList({
             )}
             {attachment.file.type.startsWith("image/") ? (
               <ImageAttachmentThumbnail file={attachment.file} />
-            ) : attachment.file.name.toLowerCase().endsWith(".zip") ? (
+            ) : isZipAttachmentName(attachment.file.name) ? (
               <FileArchive size={12} />
             ) : (
               <FileText size={12} />

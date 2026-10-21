@@ -1,5 +1,6 @@
 import { SubscriptionBillingError } from "@/shared/subscription_billing_error";
 import { modelForChatBackend } from "@/shared/execution_backend";
+import { isZipAttachmentName } from "@/shared/zip_attachments";
 import { isDotenvFilePath } from "@/utils/dotenv_redaction";
 import type { ExternalModelAdmission } from "../services/external_model_admission";
 import { awaitTurnPreflight } from "../services/await_turn_preflight";
@@ -203,6 +204,7 @@ import {
   getInlineImageMimeType,
   hasInlineMediaParts,
   INLINE_ATTACHMENTS_TOO_LARGE_MESSAGE,
+  hasArchiveAttachment,
   hasScriptReadableAttachment,
   isTextFile,
   resolveAttachmentDeliveryConfig,
@@ -213,7 +215,6 @@ import {
   buildArchiveManifestEntries,
   extractedDirNameForStoredFile,
   extractZipAttachment,
-  isZipAttachmentName,
   isZipExtractionError,
   toZipExtractionErrorMessage,
   withFinalizedEntryNames,
@@ -1490,9 +1491,12 @@ export function registerChatStreamHandlers() {
               }
             }
           }
+          // A Stop that lands after the extractor's last check (for example
+          // during its directory swap) still discards this turn's media.
+          abortController.signal.throwIfAborted();
         } catch (error) {
           await discardTurnCreatedMedia();
-          // Stop during extraction is a cancel, not a failure;
+          // Stop during attachment handling is a cancel, not a failure;
           // cancelTrackedStreams already sent the cancelled end events.
           if (abortController.signal.aborted) {
             return req.chatId;
@@ -3044,7 +3048,8 @@ This conversation includes one or more image attachments. When the user uploads 
               externalModelAdmission,
               freeModelMode,
               referencedApps: referencedAppsForAgent,
-              currentTurnHasOnDiskAttachment: false,
+              currentTurnHasOnDiskAttachment:
+                hasArchiveAttachment(storedAttachments),
               supabaseProviderToolsAvailable:
                 initialSupabaseProviderToolsAvailable,
               neonProviderToolsAvailable: initialNeonProviderToolsAvailable,

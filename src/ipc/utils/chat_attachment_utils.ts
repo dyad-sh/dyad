@@ -244,7 +244,7 @@ export function buildArchiveAttachmentInfo(
   ];
   if (hints.includeSandboxScriptHint) {
     access.push(
-      `or process many entries at once with execute_sandbox_script (list_files("attachments:") enumerates them)`,
+      `or process many entries at once with execute_sandbox_script (list_files("${logicalPath}") enumerates them)`,
     );
   }
   lines.push(`  ${access.join(", ")}.`);
@@ -341,6 +341,16 @@ export function hasScriptReadableAttachment(
   attachments: StoredChatAttachment[],
 ): boolean {
   return attachments.some((attachment) => !isInlineAttachment(attachment));
+}
+
+/**
+ * An archive's entries are never inlined into the prompt, so even in modes
+ * that inline attachments the model has to read them with a tool.
+ */
+export function hasArchiveAttachment(
+  attachments: StoredChatAttachment[],
+): boolean {
+  return attachments.some((attachment) => attachment.archive !== undefined);
 }
 
 export function resolveAttachmentDeliveryConfig({

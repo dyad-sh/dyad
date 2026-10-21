@@ -7,6 +7,7 @@ import {
   assertInlineAttachmentsFit,
   buildInlinePdfFileParts,
   buildLocalAgentAttachmentInfo,
+  hasArchiveAttachment,
   hasScriptReadableAttachment,
   MAX_ARCHIVE_ENTRIES_IN_PROMPT,
   MAX_ARCHIVE_LISTING_CHARS,
@@ -237,6 +238,13 @@ describe("archive attachments", () => {
     expect(text).toContain("    src/index.ts (26 B)");
   });
 
+  it("treats only archives as needing a tool read in inline modes", () => {
+    expect(hasArchiveAttachment([archiveAttachment()])).toBe(true);
+    expect(
+      hasArchiveAttachment([archiveAttachment({ archive: undefined })]),
+    ).toBe(false);
+  });
+
   it("adds the sandbox hint and the upload instruction when they apply", () => {
     const text = buildLocalAgentAttachmentInfo(
       [archiveAttachment({ attachmentType: "upload-to-codebase" })],
@@ -251,7 +259,7 @@ describe("archive attachments", () => {
       },
     );
     expect(text).toContain(
-      'or process many entries at once with execute_sandbox_script (list_files("attachments:") enumerates them).',
+      'or process many entries at once with execute_sandbox_script (list_files("attachments:proj.zip") enumerates them).',
     );
     expect(text).toContain(
       "The user wants these files added to the project: copy each relevant entry into the right place with copy_file.",

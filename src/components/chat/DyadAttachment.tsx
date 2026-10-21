@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { ExternalLink, FileArchive, FileText, Image } from "lucide-react";
 import { DyadCard, DyadCardHeader, DyadBadge } from "./DyadCardPrimitives";
 import { ImageLightbox, openFile } from "./ImageLightbox";
+import { isZipAttachmentName } from "@/shared/zip_attachments";
 
 export type AttachmentSize = "sm" | "md" | "lg";
 
@@ -36,8 +37,7 @@ export const DyadAttachment: React.FC<DyadAttachmentProps> = ({
   const attachmentType = node?.properties?.attachmentType || "chat-context";
 
   const isImage = type.startsWith("image/");
-  const isArchive =
-    type === "application/zip" || name.toLowerCase().endsWith(".zip");
+  const isArchive = isZipAttachmentName(name);
   const accentColor =
     attachmentType === "upload-to-codebase" ? "blue" : "green";
   const [imageError, setImageError] = useState(false);

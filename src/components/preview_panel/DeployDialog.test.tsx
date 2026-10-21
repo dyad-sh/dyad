@@ -690,6 +690,30 @@ describe.each([false, true])(
 );
 
 describe("first deployment", () => {
+  it("offers commit and sync when files become dirty after the initial check", async () => {
+    h.app.neonActiveBranchId = "prod";
+    mount();
+    await continueDatabase();
+    await waitFor(() => expect(h.files).toHaveBeenCalled());
+    expect(
+      screen.queryByRole("button", {
+        name: "Commit changes and sync to GitHub",
+      }),
+    ).toBeNull();
+    h.files.mockResolvedValue([{ path: "index.ts", status: "modified" }]);
+    h.verify.mockRejectedValueOnce(
+      new Error("This app and GitHub are not in sync yet."),
+    );
+    fireEvent.click(button("Continue to deployment"));
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Commit changes and sync to GitHub",
+      }),
+    );
+    await waitFor(() => expect(h.commit).toHaveBeenCalledOnce());
+    expect(screen.queryByText("Vercel setup controls")).toBeNull();
+  });
+
   it("commits dirty files and starts a sync without advancing before GitHub verification", async () => {
     h.app.neonActiveBranchId = "prod";
     h.files.mockResolvedValue(["index.ts"]);
@@ -1041,7 +1065,7 @@ describe("first deployment", () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 
-  it("offers Cloudflare only when enabled and shows setup notes after a deployment is connected", async () => {
+  it("offers Cloudflare when enabled without asking users to repeat automated Neon setup", async () => {
     h.cloudflare = true;
     await reachDeployment();
     fireEvent.click(button("Cloudflare"));
@@ -1054,9 +1078,11 @@ describe("first deployment", () => {
         synced: true,
       });
     });
-    await screen.findByText(/find them in the Publish/);
     await screen.findByText("Cloudflare deployment verified.");
-    expect(screen.getByText(/Neon Auth redirect allowlist/)).toBeTruthy();
+    expect(
+      screen.queryByText(/Configure your required environment variables/),
+    ).toBeNull();
+    expect(screen.queryByText(/Neon Auth redirect allowlist/)).toBeNull();
     expect(h.sync).not.toHaveBeenCalled();
     fireEvent.click(button("Finish"));
     expect(onClose).toHaveBeenCalledOnce();
@@ -1241,7 +1267,55 @@ describe("first deployment", () => {
 });
 
 describe("already hosted", () => {
-  it.each(["verify", "files"])(
+  it("repairs abandoned Vercel environment setup before committing or pushing", async () => {
+    h.app.neonActiveBranchId = "prod";
+    h.files.mockResolvedValue([{ path: "index.ts", status: "modified" }]);
+    h.sync.mockResolvedValueOnce({
+      envPushed: false,
+      warning: "Environment setup failed",
+    });
+    mount();
+    const review = await screen.findByRole("button", {
+      name: "Review and deploy",
+    });
+    await waitFor(() =>
+      expect((review as HTMLButtonElement).disabled).toBe(false),
+    );
+    fireEvent.click(review);
+    await screen.findByText("Environment setup failed");
+    expect(h.commit).not.toHaveBeenCalled();
+    expect(h.dispatch).not.toHaveBeenCalled();
+    h.sync.mockResolvedValueOnce({
+      envPushed: true,
+      warning: "Retry Neon trusted domains in Publish",
+    });
+    fireEvent.click(button("Retry deployment push"));
+    await waitFor(() => expect(h.commit).toHaveBeenCalledOnce());
+    expect(h.sync).toHaveBeenLastCalledWith({ appId: 1 });
+    expect(h.sync.mock.invocationCallOrder.at(-1)!).toBeLessThan(
+      h.commit.mock.invocationCallOrder[0],
+    );
+    await screen.findByText("Retry Neon trusted domains in Publish");
+  });
+
+  it("blocks migration when GitHub history is not pushable", async () => {
+    h.verify.mockRejectedValueOnce(new Error("Sync GitHub before deploying"));
+    mount();
+    const review = await screen.findByRole("button", {
+      name: "Review and deploy",
+    });
+    await waitFor(() =>
+      expect((review as HTMLButtonElement).disabled).toBe(false),
+    );
+    fireEvent.click(review);
+    await screen.findByText("Sync GitHub before deploying");
+    expect(h.verify).toHaveBeenCalledWith({ appId: 1, requirePushable: true });
+    expect(h.preview).not.toHaveBeenCalled();
+    expect(h.migrate).not.toHaveBeenCalled();
+    expect(h.dispatch).not.toHaveBeenCalled();
+  });
+
+  it.each(["verify", "files", "environment"])(
     "does not commit or push after closing during %s preflight",
     async (phase) => {
       h.app.neonActiveBranchId = "prod";
@@ -1257,6 +1331,13 @@ describe("already hosted", () => {
             new Promise((resolve) => {
               finish = () =>
                 resolve({ owner: "acme", repo: "demo", branch: "main" });
+            }),
+        );
+      } else if (phase === "environment") {
+        h.sync.mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              finish = () => resolve({ envPushed: true });
             }),
         );
       } else
@@ -1576,7 +1657,10 @@ describe("already hosted", () => {
     expect(h.preview).not.toHaveBeenCalled();
     fireEvent.click(button("Review and deploy"));
     await screen.findByText(plan.statements[0]);
-    expect(h.verify).toHaveBeenNthCalledWith(2, { appId: 1 });
+    expect(h.verify).toHaveBeenNthCalledWith(2, {
+      appId: 1,
+      requirePushable: true,
+    });
     expectDeploymentStep(2, "Database");
     expect(h.verify.mock.invocationCallOrder[1]).toBeLessThan(
       h.preview.mock.invocationCallOrder[0],

@@ -49,6 +49,7 @@ import { DyadErrorKind } from "@/errors/dyad_error";
 import { db } from "@/db";
 import {
   gitCheckout,
+  gitFetch,
   gitGetMergeConflicts,
   gitListBranches,
   isGitRebaseInProgress,
@@ -148,6 +149,48 @@ describe("verifyGithubConnection", () => {
       }),
     );
   });
+
+  it("fetches with per-request authentication and accepts a fast-forward push with dirty files", async () => {
+    vi.mocked(isGitStatusClean).mockResolvedValue(false);
+    await expect(
+      verifyGithubConnection({ appId: 1, requirePushable: true }),
+    ).resolves.toEqual({
+      owner: "acme",
+      repo: "demo",
+      branch: "feature/deploy",
+    });
+    expect(gitFetch).toHaveBeenCalledWith({
+      path: "/mock/apps/demo",
+      auth: expect.objectContaining({
+        username: "test-token",
+        password: "x-oauth-basic",
+      }),
+    });
+    expect(execGit).toHaveBeenCalledWith(
+      ["merge-base", "--is-ancestor", "--", "local-sha", "HEAD"],
+      "/mock/apps/demo",
+    );
+  });
+
+  it.each([1, 128])(
+    "rejects remote history that is not a known ancestor (exit %i)",
+    async (exitCode) => {
+      const original = vi.mocked(execGit).getMockImplementation()!;
+      vi.mocked(execGit).mockImplementation(async (args, cwd) =>
+        args[0] === "merge-base"
+          ? ({ exitCode, stdout: "", stderr: "" } as never)
+          : original(args, cwd),
+      );
+      await expect(
+        verifyGithubConnection({ appId: 1, requirePushable: true }),
+      ).rejects.toMatchObject({
+        kind: DyadErrorKind.Precondition,
+        message: expect.stringContaining(
+          "Sync with GitHub and resolve any conflicts",
+        ),
+      });
+    },
+  );
 
   it("rejects stale saved metadata when origin points elsewhere", async () => {
     vi.mocked(execGit).mockResolvedValueOnce({

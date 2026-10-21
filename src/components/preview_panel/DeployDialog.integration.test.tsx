@@ -502,6 +502,7 @@ describe("guided deployment (renderer and real IPC)", () => {
       }),
     );
     expect(vercel.deployments.createDeployment).toHaveBeenCalledWith({
+      teamId: "team-guided",
       requestBody: {
         name: "guided",
         project: "prj-guided",
@@ -513,6 +514,11 @@ describe("guided deployment (renderer and real IPC)", () => {
           ref: "main",
         },
       },
+    });
+    expect(vercel.deployments.getDeployments).toHaveBeenCalledWith({
+      projectId: "prj-guided",
+      teamId: "team-guided",
+      limit: 5,
     });
     expect(
       vercel.projects.createProjectEnv.mock.invocationCallOrder.at(-1)!,
@@ -554,11 +560,8 @@ describe("guided deployment (renderer and real IPC)", () => {
     await click("Continue to GitHub");
     await createRepo();
     fs.writeFileSync(path.join(appDir, "latest.txt"), "latest code\n");
-    await act(() =>
-      harness.queryClient().invalidateQueries({
-        queryKey: queryKeys.uncommittedFiles.byApp({ appId }),
-      }),
-    );
+    await click("Continue to deployment");
+    await screen.findByText(/This app and GitHub are not in sync yet/);
     await click("Commit changes and sync to GitHub");
     await waitFor(
       async () => {
@@ -576,6 +579,11 @@ describe("guided deployment (renderer and real IPC)", () => {
   }, 60_000);
 
   it("creates one production build after configuring a new Vercel project's environment", async () => {
+    // Creation learns the domain, but Vercel's next listing is still empty.
+    vercel.projects.getProjectDomains.mockResolvedValue({ domains: [] });
+    vercel.projects.getProjectDomains.mockResolvedValueOnce({
+      domains: [{ name: "guided.vercel.app" }],
+    });
     const originalFetch = globalThis.fetch;
     vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
       if (String(input).endsWith("/v2/teams?limit=1")) {
@@ -619,6 +627,14 @@ describe("guided deployment (renderer and real IPC)", () => {
     );
     expect(calls("vercel:create-deployment")).toHaveLength(1);
     expect((await appRow())?.vercelProjectId).toBe("prj-guided-new");
+    expect(calls("vercel:sync-neon-config").at(-1)?.result).toEqual(
+      expect.objectContaining({
+        ok: true,
+        value: expect.objectContaining({
+          domainsAdded: ["https://guided.vercel.app"],
+        }),
+      }),
+    );
   }, 60_000);
 
   it("checks GitHub before changing a hosted production schema, then commits and pushes the approved update", async () => {
@@ -626,6 +642,7 @@ describe("guided deployment (renderer and real IPC)", () => {
       .update(apps)
       .set({
         vercelProjectId: "prj-hosted",
+        vercelTeamId: "team-hosted",
         selectedDatabaseBranchType: "production",
       })
       .where(eq(apps.id, appId));
@@ -656,6 +673,13 @@ describe("guided deployment (renderer and real IPC)", () => {
     expect(git("log", "-1", "--format=%s")).toBe("Prepare deployment");
     expect(git("status", "--porcelain")).toBe("");
     expect(await remoteHead()).toBe(git("rev-parse", "HEAD"));
+    expect(vercel.projects.createProjectEnv).toHaveBeenCalledWith(
+      expect.objectContaining({
+        idOrName: "prj-hosted",
+        teamId: "team-hosted",
+      }),
+    );
+    expect(calls("vercel:sync-neon-config")).toHaveLength(1);
     expect(await harness.github.pushEvents()).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -668,4 +692,43 @@ describe("guided deployment (renderer and real IPC)", () => {
     await click("Finish");
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   }, 60_000);
+
+  it.each(["behind", "diverged"])(
+    "blocks production migration when local history is %s GitHub",
+    async (history) => {
+      await harness.db
+        .update(apps)
+        .set({
+          vercelProjectId: "prj-hosted",
+          selectedDatabaseBranchType: "production",
+        })
+        .where(eq(apps.id, appId));
+      await open();
+      await click("Review and deploy");
+      await createRepo();
+      const base = git("rev-parse", "HEAD");
+      fs.writeFileSync(path.join(appDir, "remote.txt"), "remote update\n");
+      git("add", "remote.txt");
+      git("commit", "-m", "Remote update");
+      await promisify(execFile)("git", ["push", "origin", "main"], {
+        cwd: appDir,
+        timeout: 10_000,
+      });
+      git("reset", "--hard", base);
+      if (history === "diverged") {
+        fs.writeFileSync(path.join(appDir, "local.txt"), "local update\n");
+        git("add", "local.txt");
+        git("commit", "-m", "Local update");
+      }
+      const localHead = git("rev-parse", "HEAD");
+      await harness.github.clearPushEvents();
+      await click("Review and deploy");
+      await screen.findByText(/GitHub has changes that are not in this app/);
+      expect(calls("migration:preview")).toHaveLength(0);
+      expect(calls("migration:migrate")).toHaveLength(0);
+      expect(git("rev-parse", "HEAD")).toBe(localHead);
+      expect(await harness.github.pushEvents()).toEqual([]);
+    },
+    60_000,
+  );
 });

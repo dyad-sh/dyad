@@ -1447,9 +1447,11 @@ function normalizeGitRemote(remote: string): string | null {
 export async function verifyGithubConnection({
   appId,
   requireSynced = false,
+  requirePushable = false,
 }: {
   appId: number;
   requireSynced?: boolean;
+  requirePushable?: boolean;
 }) {
   return appOperationCoordinator.run(
     {
@@ -1458,7 +1460,7 @@ export async function verifyGithubConnection({
       resources: [
         readAppResource("app-path"),
         readAppResource("metadata"),
-        readAppResource("repository"),
+        requirePushable ? "repository" : readAppResource("repository"),
       ],
       refuseWhenRecording: "verify the GitHub repository",
     },
@@ -1498,6 +1500,10 @@ export async function verifyGithubConnection({
           "Switch to the connected GitHub branch before deploying.",
           DyadErrorKind.Precondition,
         );
+      }
+      if (requirePushable) {
+        // Fetch objects without changing local code before checking ancestry.
+        await gitFetch({ path: appPath, auth: githubRemoteAuth(token) });
       }
       // Bound both headers and body reads while holding the repository lock.
       const signal = AbortSignal.timeout(GITHUB_VERIFY_TIMEOUT_MS);
@@ -1565,6 +1571,18 @@ export async function verifyGithubConnection({
         ) {
           throw new DyadError(
             "This app and GitHub are not in sync yet. Sync with GitHub and retry.",
+            DyadErrorKind.Precondition,
+          );
+        }
+      }
+      if (requirePushable) {
+        const ancestor = await execGit(
+          ["merge-base", "--is-ancestor", "--", remoteSha, "HEAD"],
+          appPath,
+        );
+        if (ancestor.exitCode !== 0) {
+          throw new DyadError(
+            "GitHub has changes that are not in this app. Sync with GitHub and resolve any conflicts before deploying.",
             DyadErrorKind.Precondition,
           );
         }

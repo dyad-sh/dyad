@@ -181,6 +181,10 @@ request, before `git-receive-pack` finishes. Use them as evidence of a push
 attempt, then wait for the authoritative operation-success UI/state before
 asserting local and remote refs.
 
+When resetting fake GitHub repositories, clear deploy keys as well as API metadata.
+Capture each Git request's repository generation and reject late body/completion
+callbacks from a discarded generation so retries cannot inherit old push events.
+
 When a hybrid surface can temporarily return to a loading state during query
 invalidation, await the exact control with `findByRole` before interacting.
 Finding separate page text first does not guarantee a later `getByRole` is

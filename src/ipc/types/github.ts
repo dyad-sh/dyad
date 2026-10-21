@@ -142,6 +142,7 @@ export const githubContracts = {
     input: z.object({
       appId: z.number(),
       requireSynced: z.boolean().optional(),
+      requirePushable: z.boolean().optional(),
     }),
     output: z.object({
       owner: z.string(),

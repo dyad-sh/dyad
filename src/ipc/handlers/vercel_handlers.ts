@@ -518,6 +518,7 @@ async function handleGetVercelDeployments(
     // Get deployments for the project
     const deploymentsResponse = await vercel.deployments.getDeployments({
       projectId: app.vercelProjectId,
+      teamId: app.vercelTeamId ?? undefined,
       limit: 5, // Get last 5 deployments
     });
 
@@ -596,6 +597,7 @@ async function handleCreateVercelDeployment(
     const deployment = await createVercelClient(
       accessToken,
     ).deployments.createDeployment({
+      teamId: app.vercelTeamId ?? undefined,
       requestBody: {
         name: app.vercelProjectName ?? app.vercelProjectId,
         project: app.vercelProjectId,

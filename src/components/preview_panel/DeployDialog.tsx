@@ -490,6 +490,7 @@ function GithubStep({
     onSuccess: () => {
       if (mounted.current) onComplete();
     },
+    onError: () => files.refetch(),
   });
   return (
     <div className="space-y-4">
@@ -532,21 +533,6 @@ function GithubStep({
           {verify.isPending ? "Continuing…" : "Continue to deployment"}
         </Button>
       </div>
-    </div>
-  );
-}
-
-function CloudflareDeploymentNotes() {
-  return (
-    <div className="rounded-lg border bg-muted/40 p-4 space-y-2 text-sm">
-      <p>
-        Configure your required environment variables in Cloudflare. You can
-        find them in the Publish panel’s Database section.
-      </p>
-      <p>
-        If your app uses Neon Auth, add the deployed domain to the Neon Auth
-        redirect allowlist for the database you selected.
-      </p>
     </div>
   );
 }
@@ -744,10 +730,6 @@ function CloudflareDeployStep({ app }: { app: App }) {
         !query.data.ruleDeploys &&
         !query.data.tokenRevoked,
     );
-  const attemptFinished = deployments.some(
-    (query) =>
-      query.data && ["live", "failed", "cancelled"].includes(query.data.state),
-  );
   const error = status.error ?? deployments.find((query) => query.error)?.error;
   const failed = deployments.some(
     (query) =>
@@ -788,7 +770,6 @@ function CloudflareDeployStep({ app }: { app: App }) {
           Cloudflare deployment verified.
         </p>
       )}
-      {attemptFinished && app.neonProjectId && <CloudflareDeploymentNotes />}
       {complete && <FinishDeploymentButton />}
     </div>
   );
@@ -804,10 +785,11 @@ function HostedDeploy({
   const { project, ready, isProduction } = useDatabaseContext(app);
   const [confirmed, setConfirmed] = useState(false);
   const [databaseVerified, setDatabaseVerified] = useState(false);
-  // Check GitHub can take the push before the production schema changes, so a
-  // failed push cannot leave the live app on old code against a new schema.
+  // Reject remote history that would require a merge before changing production.
+  // A later remote change or network failure can still interrupt the push.
   const preflight = useMutation({
-    mutationFn: () => ipc.github.verifyConnection({ appId: app.id }),
+    mutationFn: () =>
+      ipc.github.verifyConnection({ appId: app.id, requirePushable: true }),
     onSuccess: () => setConfirmed(true),
   });
   const needsMigration =
@@ -898,9 +880,27 @@ function PushDeployment({
   const { commit, mounted } = useDeploymentCommit(app.id, onBusyChange);
   const started = useRef(false);
   const verifiedBanner = useRef(github.projection.banner);
+  const [environmentWarning, setEnvironmentWarning] = useState<string>();
   const push = useMutation({
     mutationFn: async () => {
-      await ipc.github.verifyConnection({ appId: app.id });
+      await ipc.github.verifyConnection({
+        appId: app.id,
+        requirePushable: true,
+      });
+      if (!mounted.current) return;
+      if (app.vercelProjectId && app.neonProjectId) {
+        setEnvironmentWarning(undefined);
+        // Also repairs a project whose first guided setup was abandoned.
+        const result = await ipc.vercel.syncNeonConfig({ appId: app.id });
+        if (!mounted.current) return;
+        if (!result.envPushed) {
+          throw new Error(
+            result.warning ??
+              "Could not configure Vercel environment variables.",
+          );
+        }
+        setEnvironmentWarning(result.warning);
+      }
       if (!(await commit())) return;
       await github.dispatch({ type: "BANNER_DISMISSED" });
       if (!mounted.current) return;
@@ -954,6 +954,11 @@ function PushDeployment({
   const usesCoolify = app.deploymentProvidersInUse.coolify;
   return (
     <div className="space-y-4">
+      {environmentWarning && (
+        <p role="status" className="text-sm text-amber-600">
+          {environmentWarning}
+        </p>
+      )}
       {verification.isSuccess ? (
         <>
           <p

@@ -87,9 +87,11 @@ function getVercelAccessToken(): string {
 async function getProjectDomainHosts(
   vercel: Vercel,
   projectId: string,
+  teamId: string | null,
 ): Promise<string[]> {
   const response = await vercel.projects.getProjectDomains({
     idOrName: projectId,
+    teamId: teamId ?? undefined,
   });
   const domains =
     (response as { domains?: Array<{ name?: string }> } | undefined)?.domains ??
@@ -140,6 +142,7 @@ export async function previewNeonVercelSync({
       const hosts = await getProjectDomainHosts(
         vercel,
         appData.vercelProjectId,
+        appData.vercelTeamId,
       );
       const neonClient = await getNeonClient();
       const existing = await neonClient.listBranchNeonAuthTrustedDomains(
@@ -243,9 +246,15 @@ export async function syncNeonConfigToVercel({
     // still process the explicitly-provided includeDomainHosts (e.g. a
     // freshly-created deployment URL) rather than dropping them because of an
     // unrelated listing failure.
-    const hosts = [...includeDomainHosts];
+    // Deferred project creation knows its domain before Vercel lists it.
+    const hosts = [
+      ...includeDomainHosts,
+      ...(appData.vercelDeploymentUrl ? [appData.vercelDeploymentUrl] : []),
+    ];
     try {
-      hosts.push(...(await getProjectDomainHosts(vercel, vercelProjectId)));
+      hosts.push(
+        ...(await getProjectDomainHosts(vercel, vercelProjectId, vercelTeamId)),
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       warnings.push(`Failed to fetch Vercel project domains: ${message}`);

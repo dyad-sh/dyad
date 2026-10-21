@@ -503,6 +503,7 @@ export function handleResetRepos(req: Request, res: Response) {
   // Retries reuse the server process. Reset the API catalog alongside the
   // bare repositories so names created by a previous attempt are available.
   mockRepos = structuredClone(initialMockRepos);
+  deployKeysByRepo.clear();
   for (const repo of Object.keys(repoCollaborators)) {
     delete repoCollaborators[repo];
   }
@@ -513,6 +514,7 @@ export function handleResetRepos(req: Request, res: Response) {
 
 // Handle Git operations (push, pull, clone, etc.) using git-http-mock-server
 export function handleGitPush(req: Request, res: Response, next?: Function) {
+  const requestReposRoot = mockReposRoot;
   fakeLlmLog("* GitHub Git operation requested:", req.method, req.url);
   // Log request headers to see git operation details
   fakeLlmLog("* Git Headers:", {
@@ -642,6 +644,12 @@ export function handleGitPush(req: Request, res: Response, next?: Function) {
         chunks.push(Buffer.from(chunk));
       });
       req.on("end", () => {
+        // A reset can run while the request body is arriving. Never record
+        // events or start receive-pack for a discarded repository generation.
+        if (requestReposRoot !== mockReposRoot) {
+          res.status(409).end();
+          return;
+        }
         const rawBody = Buffer.concat(chunks);
         const recordedEvents = recordPushEvents(
           repoName,
@@ -677,7 +685,7 @@ export function handleGitPush(req: Request, res: Response, next?: Function) {
         ps.stdin.end();
         ps.stdout.pipe(res);
         ps.on("close", (code) => {
-          if (code === 0) {
+          if (code === 0 && requestReposRoot === mockReposRoot) {
             ensureBareRepoHeadTracksCreatedBranch(bareRepoPath, recordedEvents);
           }
         });

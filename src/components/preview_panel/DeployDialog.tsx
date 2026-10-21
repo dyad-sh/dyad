@@ -11,7 +11,6 @@ import { queryKeys } from "@/lib/queryKeys";
 import { getErrorMessage } from "@/lib/errors";
 import { DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import { useLoadApp } from "@/hooks/useLoadApp";
-import { useSettings } from "@/hooks/useSettings";
 import { useCloudflareAppStatus } from "@/hooks/useCloudflareDeploy";
 import { useCoolifyDeploy } from "@/hooks/useCoolifyDeploy";
 import {
@@ -538,28 +537,25 @@ function GithubStep({
 }
 
 function DeploymentStep({ app, branch }: { app: App; branch: DatabaseBranch }) {
-  const { settings } = useSettings();
   const [provider, setProvider] = useState<"vercel" | "cloudflare">("vercel");
   return (
     <div className="space-y-4">
-      {settings?.enableCloudflareDeployment && (
-        <div className="flex gap-2" aria-label="Deployment provider">
-          <Button
-            variant={provider === "vercel" ? "default" : "outline"}
-            aria-pressed={provider === "vercel"}
-            onClick={() => setProvider("vercel")}
-          >
-            Vercel
-          </Button>
-          <Button
-            variant={provider === "cloudflare" ? "default" : "outline"}
-            aria-pressed={provider === "cloudflare"}
-            onClick={() => setProvider("cloudflare")}
-          >
-            Cloudflare
-          </Button>
-        </div>
-      )}
+      <div className="flex gap-2" aria-label="Deployment provider">
+        <Button
+          variant={provider === "vercel" ? "default" : "outline"}
+          aria-pressed={provider === "vercel"}
+          onClick={() => setProvider("vercel")}
+        >
+          Vercel
+        </Button>
+        <Button
+          variant={provider === "cloudflare" ? "default" : "outline"}
+          aria-pressed={provider === "cloudflare"}
+          onClick={() => setProvider("cloudflare")}
+        >
+          Cloudflare
+        </Button>
+      </div>
       {provider === "vercel" ? (
         <VercelDeployStep app={app} branch={branch} />
       ) : (

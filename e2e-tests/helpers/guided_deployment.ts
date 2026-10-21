@@ -13,7 +13,6 @@ export const test = testWithConfig({
     await fs.writeFile(
       path.join(userDataDir, "user-settings.json"),
       JSON.stringify({
-        enableCloudflareDeployment: true,
         neon: {
           accessToken: { value: "fake-neon-token" },
           refreshToken: { value: "fake-neon-refresh" },

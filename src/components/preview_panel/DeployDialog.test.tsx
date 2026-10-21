@@ -18,7 +18,6 @@ import { projectGithubOps } from "@/github_ops/projection";
 
 const h = vi.hoisted(() => ({
   app: {} as App,
-  cloudflare: false,
   settingsLoaded: true,
   isTestMode: false,
   fakeConnect: vi.fn(),
@@ -93,9 +92,7 @@ vi.mock("@/contexts/ThemeContext", () => ({
 }));
 vi.mock("@/hooks/useSettings", () => ({
   useSettings: () => ({
-    settings: h.settingsLoaded
-      ? { enableCloudflareDeployment: h.cloudflare, isTestMode: h.isTestMode }
-      : null,
+    settings: h.settingsLoaded ? { isTestMode: h.isTestMode } : null,
   }),
 }));
 vi.mock("@/hooks/useNeon", () => ({
@@ -236,7 +233,6 @@ beforeEach(() => {
       coolify: false,
     },
   } as App;
-  h.cloudflare = false;
   h.settingsLoaded = true;
   h.isTestMode = false;
   h.fakeConnect.mockResolvedValue(undefined);
@@ -798,7 +794,6 @@ describe("first deployment", () => {
   it.each(["failed", "cancelled", "query error"])(
     "explains Cloudflare %s and retries status",
     async (state) => {
-      h.cloudflare = true;
       h.cfStatus.mockResolvedValue({
         connections: [{ rootDirectory: "" }],
         synced: true,
@@ -856,7 +851,6 @@ describe("first deployment", () => {
     );
 
     it("allows dismissal during a pending Cloudflare deployment check", async () => {
-      h.cloudflare = true;
       h.cfStatus.mockResolvedValue({
         connections: [{ rootDirectory: "" }],
         synced: true,
@@ -950,7 +944,8 @@ describe("first deployment", () => {
       requireSynced: true,
     });
     expect(screen.queryByText("GitHub setup controls")).toBeNull();
-    expect(screen.queryByText("Cloudflare")).toBeNull();
+    expect(button("Vercel").getAttribute("aria-pressed")).toBe("true");
+    expect(screen.queryByText("Cloudflare setup controls")).toBeNull();
   });
 
   it("does not unlock GitHub after a failed migration or a cancelled review", async () => {
@@ -1065,8 +1060,7 @@ describe("first deployment", () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 
-  it("offers Cloudflare when enabled without asking users to repeat automated Neon setup", async () => {
-    h.cloudflare = true;
+  it("offers Cloudflare without asking users to repeat automated Neon setup", async () => {
     await reachDeployment();
     fireEvent.click(button("Cloudflare"));
     await screen.findByText("Cloudflare setup controls");

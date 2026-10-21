@@ -490,13 +490,6 @@ export const chatContracts = {
     invalidates: () => [{ family: "chats" }],
   }),
 
-  deleteMessages: defineContract({
-    channel: "delete-messages",
-    input: z.number(), // chatId
-    output: z.void(),
-    invalidates: (chatId) => [{ family: "chat", chatId }],
-  }),
-
   searchChats: defineContract({
     channel: "search-chats",
     input: z.object({

@@ -414,50 +414,6 @@ export function registerChatHandlers() {
     return updated[0];
   });
 
-  createTypedHandler(chatContracts.deleteMessages, async (event, chatId) => {
-    const inputSettlement = userInputRegistry.settleChat(chatId);
-    const releaseSubagentAdmission = blockSubagentAdmissionsForChat(chatId);
-    try {
-      await mutateChatAfterDrainingStreams({
-        chatId,
-        sender: event.sender,
-        beforeLock: async () => {
-          await inputSettlement;
-          const releaseSubagents = await settleSubagentsForChatDeletion(chatId);
-          try {
-            await settleChatActorsForDeletion(chatId);
-            return releaseSubagents;
-          } catch (error) {
-            releaseSubagents();
-            throw error;
-          }
-        },
-        mutation: async () => {
-          await deleteChatJournals(chatId);
-          // Clearing the conversation clears its referenced apps too: the
-          // mentions that established them are gone, so keeping the agent's
-          // read access to other apps would outlive anything the user can see.
-          // Both writes commit together — a failure or exit between them would
-          // leave sticky cross-app read access behind an empty history, where
-          // nothing on screen explains why the agent can still read that app.
-          db.transaction((tx) => {
-            tx.delete(messages).where(eq(messages.chatId, chatId)).run();
-            tx.update(chats)
-              .set({
-                referencedAppIds: [],
-                claudeSessionId: null,
-                claudeSessionState: null,
-              })
-              .where(eq(chats.id, chatId))
-              .run();
-          });
-        },
-      });
-    } finally {
-      releaseSubagentAdmission();
-    }
-  });
-
   createTypedHandler(chatContracts.searchChats, async (_, params) => {
     const { appId, query } = params;
     // 1) Find chats by title and map to ChatSearchResult with no matched message

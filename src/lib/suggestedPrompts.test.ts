@@ -70,6 +70,18 @@ Add tests
     ]);
   });
 
+  it("ignores a suggestions draft inside the model reasoning", () => {
+    const content = `<think>I will end with\n<dyad-suggested-prompts>\nAdd a dark mode toggle\n</dyad-suggested-prompts>\n</think>\nWhich color scheme do you want?`;
+    expect(extractSuggestedPrompts(content)).toEqual([]);
+  });
+
+  it("uses the top-level block when the reasoning also has a draft", () => {
+    const content = `<think>Draft:\n<dyad-suggested-prompts>\nDraft idea\n</dyad-suggested-prompts>\n</think>\nDone!\n<dyad-suggested-prompts>\nLet users save their favorites\n</dyad-suggested-prompts>`;
+    expect(extractSuggestedPrompts(content)).toEqual([
+      "Let users save their favorites",
+    ]);
+  });
+
   it("uses the last closed tag and unescapes XML entities", () => {
     const content = `<dyad-suggested-prompts>\nOld idea\n</dyad-suggested-prompts>\nMore work...\n<dyad-suggested-prompts>\nAdd search &amp; filters\n</dyad-suggested-prompts>`;
     expect(extractSuggestedPrompts(content)).toEqual(["Add search & filters"]);

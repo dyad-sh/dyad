@@ -1,4 +1,4 @@
-import { unescapeXmlContent } from "../../shared/xmlEscape";
+import { parseFullMessage, type Block } from "@/lib/streamingMessageParser";
 import type { Message } from "@/ipc/types";
 import { isCancelledResponseContent } from "@/shared/chatCancellation";
 
@@ -11,37 +11,51 @@ export const SUGGESTED_PROMPTS_TAG = "dyad-suggested-prompts";
 
 export const MAX_SUGGESTED_PROMPTS = 3;
 
-const SUGGESTED_PROMPTS_REGEX = new RegExp(
-  `<${SUGGESTED_PROMPTS_TAG}>([\\s\\S]*?)</${SUGGESTED_PROMPTS_TAG}>`,
-  "g",
-);
-
-// Markers the agent appends after its reply when the turn did not fully
+// Blocks the agent appends after its reply when the turn did not fully
 // complete: a post-turn error such as a failed Supabase deploy, the step
 // limit pause, or an Implementer that stopped early or was cancelled.
-const INCOMPLETE_TURN_MARKER_REGEX =
-  /<dyad-output\b[^>]*\btype="error"|<dyad-step-limit\b|<dyad-status\b[^>]*\btitle="Implementer (?:step limit|cancelled)"/;
+function marksIncompleteTurn(block: Block): boolean {
+  if (block.kind !== "custom-tag") return false;
+  switch (block.tag) {
+    case "dyad-output":
+      return block.attributes.type === "error";
+    case "dyad-step-limit":
+      return true;
+    case "dyad-status":
+      return /^Implementer (?:step limit|cancelled)$/.test(
+        block.attributes.title ?? "",
+      );
+    default:
+      return false;
+  }
+}
 
 /**
- * Extracts the follow-up prompts from a completed assistant message. Only the
- * last closed tag counts, so a stray earlier mention cannot win over the
- * model's final list. Returns an empty array when there is no closed tag.
+ * Extracts the follow-up prompts from a completed assistant message. Only a
+ * closed, top-level tag counts, so a draft inside the model's reasoning or
+ * another block is ignored, and only the last one counts, so a stray earlier
+ * mention cannot win over the model's final list.
  */
 export function extractSuggestedPrompts(content: string): string[] {
-  let lastBody: string | null = null;
-  let lastEnd = 0;
-  for (const match of content.matchAll(SUGGESTED_PROMPTS_REGEX)) {
-    lastBody = match[1];
-    lastEnd = match.index + match[0].length;
-  }
-  if (lastBody === null) return [];
-  if (INCOMPLETE_TURN_MARKER_REGEX.test(content.slice(lastEnd))) return [];
+  const { blocks } = parseFullMessage(content);
+  let lastIndex = -1;
+  blocks.forEach((block, index) => {
+    if (
+      block.kind === "custom-tag" &&
+      block.tag === SUGGESTED_PROMPTS_TAG &&
+      block.complete
+    ) {
+      lastIndex = index;
+    }
+  });
+  if (lastIndex < 0) return [];
+  if (blocks.slice(lastIndex + 1).some(marksIncompleteTurn)) return [];
 
   const seen = new Set<string>();
   const prompts: string[] = [];
-  for (const rawLine of lastBody.split(/\r?\n/)) {
+  for (const rawLine of blocks[lastIndex].content.split(/\r?\n/)) {
     // Models sometimes format the list anyway ("- Add X", "1. Add X").
-    const prompt = unescapeXmlContent(rawLine)
+    const prompt = rawLine
       .trim()
       .replace(/^(?:[-*•]|\d+[.)])\s+/, "")
       .trim();

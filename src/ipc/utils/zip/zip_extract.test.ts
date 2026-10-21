@@ -13,6 +13,24 @@ import {
 import { ZipFormatError } from "./zip_reader";
 import { buildZip } from "./testing/zip_writer";
 
+// Lets a test act right after an entry has been inflated.
+const inflateHook = vi.hoisted(() => ({
+  after: null as null | (() => void),
+}));
+vi.mock("./zip_reader", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./zip_reader")>();
+  return {
+    ...actual,
+    readZipEntryData: async (
+      ...args: Parameters<typeof actual.readZipEntryData>
+    ) => {
+      const data = await actual.readZipEntryData(...args);
+      inflateHook.after?.();
+      return data;
+    },
+  };
+});
+
 const FIXTURES = path.join(__dirname, "__fixtures__");
 
 function fixture(name: string): Buffer {
@@ -393,6 +411,25 @@ describe("extractZipArchive", () => {
     expect(listFiles(dest)).toEqual(["first.txt"]);
   });
 
+  it("stops before writing an entry when the signal aborts while it inflates", async () => {
+    const archive = buildZip([
+      { name: "dir/big.txt", data: "x".repeat(10_000) },
+    ]);
+    const controller = new AbortController();
+    inflateHook.after = () => controller.abort();
+    const writeSpy = vi.spyOn(fsPromises, "writeFile");
+    try {
+      await expect(
+        extractZipArchive(archive, dest, { signal: controller.signal }),
+      ).rejects.toMatchObject({ name: "AbortError" });
+      expect(writeSpy).not.toHaveBeenCalled();
+    } finally {
+      inflateHook.after = null;
+      writeSpy.mockRestore();
+    }
+    expect(fs.readdirSync(dest)).toEqual([]);
+  });
+
   it("counts only files to extract against the entry limit", async () => {
     const archive = buildZip([
       { name: "dir", directory: true },
@@ -461,6 +498,9 @@ describe("extractZipArchive", () => {
 describe("toSafeZipSegments", () => {
   it("accepts ordinary nested names", () => {
     expect(toSafeZipSegments("a/b/c.txt", 32)).toEqual(["a", "b", "c.txt"]);
+    // Close to device names, but not reserved.
+    expect(toSafeZipSegments("conin.txt", 32)).toEqual(["conin.txt"]);
+    expect(toSafeZipSegments("com10", 32)).toEqual(["com10"]);
   });
 
   it("rejects traversal, absolute, drive, control-character and empty names", () => {
@@ -477,6 +517,10 @@ describe("toSafeZipSegments", () => {
       "a:b",
       "NUL",
       "lpt9.txt",
+      "CONIN$",
+      "conout$.txt",
+      "COM¹",
+      "lpt³.log",
       "dot.",
       "space ",
     ]) {

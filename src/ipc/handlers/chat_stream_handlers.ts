@@ -221,6 +221,7 @@ import {
   type ExtractedArchiveSummary,
 } from "../utils/zip/zip_attachment";
 import { DEFAULT_ZIP_EXTRACTION_LIMITS } from "../utils/zip/zip_extract";
+import { fileExists } from "../utils/file_utils";
 import { inspectBase64DataUrl } from "../../shared/chatAttachmentLimits";
 import { toRendererMessages } from "../utils/renderer_chat_message";
 
@@ -1372,7 +1373,7 @@ export function registerChatStreamHandlers() {
             // Save to .dyad/media dir
             const persistentPath = path.join(mediaDir, filename);
             mediaReservations.push(reserveMediaPath(persistentPath));
-            const storedFileExisted = fs.existsSync(persistentPath);
+            const storedFileExisted = await fileExists(persistentPath);
             await writeFile(persistentPath, fileBuffer);
             if (!storedFileExisted) {
               turnCreatedMediaPaths.push(persistentPath);
@@ -1388,7 +1389,7 @@ export function registerChatStreamHandlers() {
                 extractedDirNameForStoredFile(filename),
               );
               mediaReservations.push(reserveMediaPath(extractionDir));
-              const extractionDirExisted = fs.existsSync(extractionDir);
+              const extractionDirExisted = await fileExists(extractionDir);
               try {
                 archiveSummary = await extractZipAttachment({
                   mediaDir,

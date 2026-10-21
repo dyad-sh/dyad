@@ -104,10 +104,11 @@ const MAX_SEGMENT_LENGTH = 255;
 // eslint-disable-next-line no-control-regex
 const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/;
 const WINDOWS_DRIVE_PREFIX = /^[A-Za-z]:/;
-// On Windows these open devices (CON, NUL, COM1...) or alternate data streams
-// (name:stream) instead of files, and trailing dots or spaces are stripped.
+// On Windows these open devices (CON, NUL, COM1, CONIN$...) or alternate data
+// streams (name:stream) instead of files, and trailing dots or spaces are
+// stripped. COM and LPT also take the superscript digits ¹, ² and ³.
 const WINDOWS_RESERVED_NAME =
-  /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i;
+  /^(?:con|prn|aux|nul|conin\$|conout\$|com[1-9¹²³]|lpt[1-9¹²³])(?:\..*)?$/i;
 // Characters Windows does not allow in file names.
 const WINDOWS_INVALID_CHARACTERS = /[:<>"|?*]/;
 
@@ -292,6 +293,9 @@ export async function extractZipArchive(
     assertWithinRoot(destinationRoot, filePath);
 
     const data = await readZipEntryData(archive, entry);
+    // Inflating one large entry can take a while, so check again before
+    // writing it.
+    options.signal?.throwIfAborted();
     totalBytes += data.length;
     if (totalBytes > limits.maxTotalUncompressedBytes) {
       throw new ZipLimitError(
@@ -307,6 +311,7 @@ export async function extractZipArchive(
       // the same path overwrites it.
       await fs.writeFile(filePath, data, {
         flag: seenPaths.has(relativePath) ? "w" : "wx",
+        signal: options.signal,
       });
       // Keep scripts such as gradlew runnable once copied into the app. An
       // overwrite keeps the old mode, so a repeated path gets the winning

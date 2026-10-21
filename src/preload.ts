@@ -133,5 +133,10 @@ function reportRendererHeap(): void {
   }
 }
 
-reportRendererHeap();
+// The first report waits for the document: sent from the top of the
+// preload, it arrives before the frame passes the main process's trusted
+// renderer check and is dropped.
+window.addEventListener("DOMContentLoaded", reportRendererHeap, {
+  once: true,
+});
 setInterval(reportRendererHeap, RENDERER_HEAP_REPORT_INTERVAL_MS);

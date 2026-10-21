@@ -172,13 +172,19 @@ export async function extractZipAttachment({
         await fs.utimes(destinationDir, now, now);
       } else {
         // Move a damaged directory aside rather than deleting it, so a failed
-        // install can put it back for chats still reading its files. Its time
-        // is refreshed first so cleanup doesn't take it as expired meanwhile.
+        // install can put it back for chats still reading its files. A real
+        // directory's time is refreshed first so cleanup doesn't take it as
+        // expired meanwhile; a symlink is skipped, as utimes would follow it.
         const retiredDir = `${destinationDir}.old-${token}`;
         let retired = false;
         try {
-          const now = new Date();
-          await fs.utimes(destinationDir, now, now).catch(() => undefined);
+          const destinationStat = await fs
+            .lstat(destinationDir)
+            .catch(() => null);
+          if (destinationStat?.isDirectory()) {
+            const now = new Date();
+            await fs.utimes(destinationDir, now, now).catch(() => undefined);
+          }
           await renameWithRetry(destinationDir, retiredDir);
           retired = true;
         } catch (error) {

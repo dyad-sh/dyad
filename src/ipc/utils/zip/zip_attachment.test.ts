@@ -268,6 +268,8 @@ describe("extractZipAttachment", () => {
       const elsewhere = path.join(appPath, "elsewhere");
       fs.mkdirSync(elsewhere);
       fs.writeFileSync(path.join(elsewhere, "a.txt"), "alpha");
+      const longAgo = new Date("2020-01-01T00:00:00.000Z");
+      fs.utimesSync(elsewhere, longAgo, longAgo);
       const destinationDir = path.join(mediaDir, "shared-unpacked");
       fs.symlinkSync(elsewhere, destinationDir);
       await extractZipAttachment({
@@ -277,7 +279,9 @@ describe("extractZipAttachment", () => {
       });
       expect(fs.lstatSync(destinationDir).isDirectory()).toBe(true);
       expect(fs.readdirSync(destinationDir)).toEqual(["a.txt"]);
+      // The link's target is never touched, not even its timestamps.
       expect(fs.readdirSync(elsewhere)).toEqual(["a.txt"]);
+      expect(fs.statSync(elsewhere).mtimeMs).toBe(longAgo.getTime());
     },
   );
 

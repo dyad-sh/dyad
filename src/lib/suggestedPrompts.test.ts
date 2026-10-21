@@ -96,6 +96,24 @@ Add tests
     expect(extractSuggestedPrompts(content)).toEqual([]);
   });
 
+  it("returns nothing when tool work or reasoning follows the tag", () => {
+    const tag = `Done!\n<dyad-suggested-prompts>\nAdd a dark mode toggle\n</dyad-suggested-prompts>\n`;
+    for (const after of [
+      `<dyad-write path="src/App.tsx" description="x">code</dyad-write>`,
+      `<dyad-read path="src/App.tsx"></dyad-read>`,
+      `<think>Let me also check the build.</think>`,
+    ]) {
+      expect(extractSuggestedPrompts(tag + after)).toEqual([]);
+    }
+  });
+
+  it("still offers prompts after a non-error output notice", () => {
+    const content = `Done!\n<dyad-suggested-prompts>\nAdd a dark mode toggle\n</dyad-suggested-prompts>\n\n<dyad-output type="warning" message="Supabase function deploy warning">slow</dyad-output>`;
+    expect(extractSuggestedPrompts(content)).toEqual([
+      "Add a dark mode toggle",
+    ]);
+  });
+
   it("still offers prompts when only host notices follow the tag", () => {
     const content = `Done!\n<dyad-suggested-prompts>\nAdd a dark mode toggle\n</dyad-suggested-prompts>\n\n<dyad-status title="Checks passed" state="finished">All checks passed.</dyad-status>\n`;
     expect(extractSuggestedPrompts(content)).toEqual([

@@ -39,6 +39,20 @@ function marksIncompleteTurn(block: Block): boolean {
 }
 
 /**
+ * Whether a block may come after the suggestions in a finished reply. Only the
+ * notices the agent appends after the model's last text qualify. Visible text,
+ * tool cards, or reasoning mean the model kept going, so the reply did not end
+ * with the suggestions.
+ */
+function mayFollowSuggestions(block: Block): boolean {
+  if (block.kind === "markdown") return block.content.trim() === "";
+  if (block.tag === "dyad-output" || block.tag === "dyad-status") {
+    return !marksIncompleteTurn(block);
+  }
+  return false;
+}
+
+/**
  * Extracts the follow-up prompts from a completed assistant message. Only a
  * closed, top-level tag counts, so a draft inside the model's reasoning or
  * another block is ignored, and only the last one counts, so a stray earlier
@@ -58,18 +72,7 @@ export function extractSuggestedPrompts(content: string): string[] {
     }
   });
   if (lastIndex < 0) return [];
-  const after = blocks.slice(lastIndex + 1);
-  // Visible model text after the tag means the reply did not end with the
-  // suggestions, for example a closing question. Host notices are tag blocks.
-  if (
-    after.some(
-      (block) =>
-        (block.kind === "markdown" && block.content.trim() !== "") ||
-        marksIncompleteTurn(block),
-    )
-  ) {
-    return [];
-  }
+  if (!blocks.slice(lastIndex + 1).every(mayFollowSuggestions)) return [];
 
   const seen = new Set<string>();
   const prompts: string[] = [];

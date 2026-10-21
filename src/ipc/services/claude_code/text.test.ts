@@ -150,3 +150,32 @@ it("recognizes the guidance in the real writable prompts and not in read-only on
     ]),
   ).toBe(false);
 });
+
+it("passes ordinary angle brackets inside a suggestions block", () => {
+  const block =
+    "<dyad-suggested-prompts>\nAdd a <Footer> component\nShow items under 10 < 20\n</dyad-suggested-prompts>";
+  expect(runFilter(claudeTextFilter(false, true), [block])).toBe(block);
+  expect(
+    runFilter(claudeTextFilter(false, true), [
+      "<dyad-suggested-prompts>\nAdd a <Foo",
+      "ter> component\n</dyad-sugg",
+      "ested-prompts>",
+    ]),
+  ).toBe(
+    "<dyad-suggested-prompts>\nAdd a <Footer> component\n</dyad-suggested-prompts>",
+  );
+});
+
+it("escapes a suggestions block containing a closing tag or a split Dyad tag", () => {
+  const withClosingTag = runFilter(claudeTextFilter(false, true), [
+    "<dyad-suggested-prompts>\nMake <b>bold</b> text\n</dyad-suggested-prompts>",
+  ]);
+  expect(withClosingTag.startsWith("&lt;dyad-suggested-prompts>")).toBe(true);
+
+  const withSplitDyadTag = runFilter(claudeTextFilter(false, true), [
+    "<dyad-suggested-prompts>\n<dy",
+    'ad-write path="a">x',
+    "</dyad-write>\n</dyad-suggested-prompts>",
+  ]);
+  expect(withSplitDyadTag).not.toContain("<dyad-");
+});

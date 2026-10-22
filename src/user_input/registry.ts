@@ -30,7 +30,6 @@ import {
 } from "./state";
 import { transition, type UserInputIgnoreReason } from "./transition";
 
-const CONSENT_DEADLINE_MS = 5 * 60 * 1_000;
 const INTEGRATION_DEADLINE_MS = 30 * 60 * 1_000;
 /**
  * Reviewing an assertion plan is an editing session — rewording checks, adding
@@ -124,7 +123,8 @@ export function createUserInputRegistry(deps: {
     // Connecting a plugin can include a browser OAuth step.
     if (kind === "plugin-suggestion") return INTEGRATION_DEADLINE_MS;
     if (kind === "test-assertions") return REVIEW_DEADLINE_MS;
-    return CONSENT_DEADLINE_MS;
+    // Tool consent waits for an explicit response or cancellation.
+    return null;
   }
 
   function addToChat(descriptor: UserInputDescriptor): void {

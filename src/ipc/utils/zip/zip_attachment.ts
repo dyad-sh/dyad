@@ -83,9 +83,15 @@ function isTransientRenameError(error: unknown): boolean {
  * Move a finished staging directory to `to`, which must not exist. A scan of
  * freshly written files can keep the directory from being renamed for longer
  * than the retries wait, though the files stay readable, so it is then
- * copied into place instead. A partial copy is removed before rethrowing.
+ * copied into place instead. A copy that fails is cleared out of `to` before
+ * rethrowing, so the caller can put back what was there.
  */
-async function installStagedDirectory(from: string, to: string): Promise<void> {
+async function installStagedDirectory(
+  from: string,
+  to: string,
+  signal: AbortSignal | undefined,
+): Promise<void> {
+  let renameError: unknown;
   try {
     await renameWithRetry(from, to);
     return;
@@ -93,21 +99,26 @@ async function installStagedDirectory(from: string, to: string): Promise<void> {
     if (!isTransientRenameError(error)) {
       throw error;
     }
+    renameError = error;
   }
+  signal?.throwIfAborted();
+  // Claiming `to` first means a directory that appeared there is never
+  // removed below, since only one this call created is.
+  await fs.mkdir(to);
   try {
-    await fs.cp(from, to, {
-      recursive: true,
-      errorOnExist: true,
-      force: false,
-    });
-  } catch (error) {
-    await fs
-      .rm(to, {
+    for (const entry of await fs.readdir(from)) {
+      await fs.cp(path.join(from, entry), path.join(to, entry), {
         recursive: true,
-        force: true,
-        maxRetries: RENAME_RETRY_DELAYS_MS.length,
-      })
-      .catch(() => undefined);
+        errorOnExist: true,
+        force: false,
+      });
+    }
+  } catch (error) {
+    await clearPartialCopy(to);
+    // Keep the lock that forced the copy visible in logs.
+    if (error instanceof Error && error.cause === undefined) {
+      error.cause = renameError;
+    }
     throw error;
   }
   // Best effort: media cleanup sweeps a staging directory left behind.
@@ -118,6 +129,24 @@ async function installStagedDirectory(from: string, to: string): Promise<void> {
       maxRetries: RENAME_RETRY_DELAYS_MS.length,
     })
     .catch(() => undefined);
+}
+
+// A copied file can still be held open by a scan, so if the partial copy
+// can't be removed it is moved aside under a staging name media cleanup
+// sweeps, freeing `dir` for the caller's restore.
+async function clearPartialCopy(dir: string): Promise<void> {
+  try {
+    await fs.rm(dir, {
+      recursive: true,
+      force: true,
+      maxRetries: RENAME_RETRY_DELAYS_MS.length,
+    });
+  } catch {
+    await renameWithRetry(
+      dir,
+      `${dir}.extracting-${crypto.randomUUID()}`,
+    ).catch(() => undefined);
+  }
 }
 
 async function renameWithRetry(from: string, to: string): Promise<void> {
@@ -240,7 +269,7 @@ export async function extractZipAttachment({
           }
         }
         try {
-          await installStagedDirectory(stagingDir, destinationDir);
+          await installStagedDirectory(stagingDir, destinationDir, signal);
         } catch (error) {
           if (retired) {
             await renameWithRetry(retiredDir, destinationDir).catch(

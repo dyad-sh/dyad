@@ -431,8 +431,7 @@ describe("extractZipAttachment", () => {
     const cpSpy = vi
       .spyOn(fsPromises, "cp")
       .mockImplementation(async (_from, to) => {
-        fs.mkdirSync(String(to));
-        fs.writeFileSync(path.join(String(to), "a.txt"), "partial");
+        fs.writeFileSync(String(to), "partial");
         throw Object.assign(new Error("simulated copy failure"), {
           code: "ENOSPC",
         });
@@ -444,7 +443,148 @@ describe("extractZipAttachment", () => {
           storedFileName: "fresh.zip",
           archive: buildZip([{ name: "a.txt", data: "alpha" }]),
         }),
+      ).rejects.toMatchObject({
+        message: "simulated copy failure",
+        // The lock that forced the copy stays visible.
+        cause: { code: "EBUSY" },
+      });
+    } finally {
+      renameSpy.mockRestore();
+      cpSpy.mockRestore();
+    }
+    expect(fs.readdirSync(mediaDir)).toEqual([]);
+  });
+
+  it("leaves a directory that appeared in place of the copy untouched", async () => {
+    const mediaDir = getDyadMediaDir(appPath);
+    const destinationDir = path.join(mediaDir, "fresh-unpacked");
+    const realRename = fsPromises.rename;
+    const renameSpy = vi
+      .spyOn(fsPromises, "rename")
+      .mockImplementation(async (from, to) => {
+        if (to === destinationDir) {
+          fs.mkdirSync(destinationDir, { recursive: true });
+          fs.writeFileSync(path.join(destinationDir, "other.txt"), "other");
+          throw Object.assign(new Error("simulated scan lock"), {
+            code: "EPERM",
+          });
+        }
+        return realRename(from, to);
+      });
+    const cpSpy = vi.spyOn(fsPromises, "cp");
+    try {
+      await expect(
+        extractZipAttachment({
+          mediaDir,
+          storedFileName: "fresh.zip",
+          archive: buildZip([{ name: "a.txt", data: "alpha" }]),
+        }),
+      ).rejects.toMatchObject({ code: "EEXIST" });
+      expect(cpSpy).not.toHaveBeenCalled();
+    } finally {
+      renameSpy.mockRestore();
+      cpSpy.mockRestore();
+    }
+    expect(fs.readdirSync(destinationDir)).toEqual(["other.txt"]);
+    expect(fs.readdirSync(mediaDir)).toEqual(["fresh-unpacked"]);
+  });
+
+  it("moves an undeletable partial copy aside so the damaged extraction is restored", async () => {
+    const archive = buildZip([
+      { name: "a.txt", data: "alpha" },
+      { name: "b.txt", data: "beta" },
+    ]);
+    const mediaDir = getDyadMediaDir(appPath);
+    await extractZipAttachment({
+      mediaDir,
+      storedFileName: "shared.zip",
+      archive,
+    });
+    const destinationDir = path.join(mediaDir, "shared-unpacked");
+    fs.rmSync(path.join(destinationDir, "b.txt"));
+    fs.writeFileSync(path.join(destinationDir, "old.txt"), "old");
+    const realRename = fsPromises.rename;
+    const renameSpy = vi
+      .spyOn(fsPromises, "rename")
+      .mockImplementation(async (from, to) => {
+        if (to === destinationDir && String(from).includes(".extracting-")) {
+          throw Object.assign(new Error("simulated scan lock"), {
+            code: "EPERM",
+          });
+        }
+        return realRename(from, to);
+      });
+    const cpSpy = vi
+      .spyOn(fsPromises, "cp")
+      .mockImplementation(async (_from, to) => {
+        fs.writeFileSync(String(to), "partial");
+        throw Object.assign(new Error("simulated copy failure"), {
+          code: "ENOSPC",
+        });
+      });
+    const realRm = fsPromises.rm;
+    const rmSpy = vi
+      .spyOn(fsPromises, "rm")
+      .mockImplementation(async (target, options) => {
+        if (target === destinationDir) {
+          throw Object.assign(new Error("simulated held file"), {
+            code: "EBUSY",
+          });
+        }
+        return realRm(target, options);
+      });
+    try {
+      await expect(
+        extractZipAttachment({
+          mediaDir,
+          storedFileName: "shared.zip",
+          archive,
+        }),
       ).rejects.toThrow("simulated copy failure");
+    } finally {
+      renameSpy.mockRestore();
+      cpSpy.mockRestore();
+      rmSpy.mockRestore();
+    }
+    expect(fs.readdirSync(destinationDir).sort()).toEqual(["a.txt", "old.txt"]);
+    expect(fs.readFileSync(path.join(destinationDir, "a.txt"), "utf8")).toBe(
+      "alpha",
+    );
+    // The partial copy waits under a staging name for media cleanup.
+    const movedAside = fs
+      .readdirSync(mediaDir)
+      .filter((name) => name !== "shared-unpacked");
+    expect(movedAside).toHaveLength(1);
+    expect(movedAside[0]).toMatch(/^shared-unpacked\.extracting-[0-9a-f-]+$/);
+  });
+
+  it("does not copy an extraction aborted while its move was blocked", async () => {
+    const mediaDir = getDyadMediaDir(appPath);
+    const destinationDir = path.join(mediaDir, "fresh-unpacked");
+    const controller = new AbortController();
+    const realRename = fsPromises.rename;
+    const renameSpy = vi
+      .spyOn(fsPromises, "rename")
+      .mockImplementation(async (from, to) => {
+        if (to === destinationDir) {
+          controller.abort();
+          throw Object.assign(new Error("simulated scan lock"), {
+            code: "EPERM",
+          });
+        }
+        return realRename(from, to);
+      });
+    const cpSpy = vi.spyOn(fsPromises, "cp");
+    try {
+      await expect(
+        extractZipAttachment({
+          mediaDir,
+          storedFileName: "fresh.zip",
+          archive: buildZip([{ name: "a.txt", data: "alpha" }]),
+          signal: controller.signal,
+        }),
+      ).rejects.toMatchObject({ name: "AbortError" });
+      expect(cpSpy).not.toHaveBeenCalled();
     } finally {
       renameSpy.mockRestore();
       cpSpy.mockRestore();

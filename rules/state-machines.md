@@ -77,6 +77,11 @@ Background and before/after examples of why this pattern exists:
   after the current transaction. Ignored events skip commit, projection,
   subscribers, outcomes, and commands, but notify observers at the equivalent
   point in FIFO order.
+- `ActorHost` refs' `send()` only enqueues, so `getSnapshot()` right after it
+  can still show the pre-event phase. A caller's check-then-send guard (e.g.
+  `phase === "streaming"` before `CANCEL`) does not exclude a concurrent caller;
+  side state recorded per sender (like `beginChatCancellationCause`) must expect
+  several, and the first queued event is the one the transition acts on.
 - The dispatcher isolates and reports projection, subscriber, observer,
   scheduler, and command failures. Adapters convert expected command failures
   to typed domain events; unexpected throws/rejections may be mapped by the

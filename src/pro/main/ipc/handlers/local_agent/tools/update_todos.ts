@@ -7,6 +7,7 @@ const todoSchema = z.object({
   id: z.string().describe("Unique identifier for the todo item"),
   content: z
     .string()
+    .max(500)
     .optional()
     .describe("The description/content of the todo item"),
   status: z
@@ -23,6 +24,7 @@ const updateTodosSchema = z.object({
     ),
   todos: z
     .array(todoSchema)
+    .max(50)
     .describe(
       "Array of todo items. When merge is true, only include todos that need updates. When merge is false, this is the complete list.",
     ),

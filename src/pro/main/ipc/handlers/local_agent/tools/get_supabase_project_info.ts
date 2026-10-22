@@ -7,6 +7,7 @@ import {
 } from "./types";
 import { getSupabaseProjectInfo } from "../../../../../../supabase_admin/supabase_context";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { boundToolOutput, MAX_PROJECT_INFO_CHARS } from "./tool_output_limits";
 
 const getSupabaseProjectInfoSchema = z.object({
   includeDbFunctions: z
@@ -51,6 +52,8 @@ export const getSupabaseProjectInfoTool: ToolDefinition<
       `<dyad-supabase-project-info>\n${escapeXmlContent(info)}\n</dyad-supabase-project-info>`,
     );
 
-    return info;
+    // The project info can be arbitrarily large (db functions, schemas, keys).
+    // It is re-sent on every step of the turn, so bound the model-facing copy.
+    return boundToolOutput(info, MAX_PROJECT_INFO_CHARS);
   },
 };

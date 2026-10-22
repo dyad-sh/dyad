@@ -20,6 +20,11 @@ import { readSettings } from "@/main/settings";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { AgentContext, escapeXmlAttr, escapeXmlContent } from "./types";
 import { jsonSchemaToTs } from "./json_schema_to_ts";
+import {
+  boundToolOutput,
+  MAX_MCP_TOOL_DECLARATION_CHARS,
+  MAX_MCP_TYPE_DEFS_BLOCK_CHARS,
+} from "./tool_output_limits";
 import { buildMcpAutoApprove } from "../mcp_auto_consent";
 import { sanitizeMcpToolResult } from "@/ipc/utils/mcp_result_sanitizer";
 import { withTrackedMutation } from "../subagents/mutation_activity_tracker";
@@ -373,7 +378,13 @@ export function buildMcpTypeDefsBlock(defs: McpToolDef[]): string {
   for (const [serverName, list] of byServer) {
     sections.push(`// ---- Server: ${serverName} ----`);
     for (const def of list) {
-      const argsType = jsonSchemaToTs(def.inputSchema, 0);
+      // A single declaration can be arbitrarily large (a deeply nested input
+      // schema). The block is embedded in a tool description that is re-sent
+      // on every step of the turn, so bound each declaration and the block.
+      const argsType = boundToolOutput(
+        jsonSchemaToTs(def.inputSchema, 0),
+        MAX_MCP_TOOL_DECLARATION_CHARS,
+      );
       if (def.description) {
         const oneLine = def.description.replace(/\s+/g, " ").trim();
         sections.push(`/** ${oneLine.replace(/\*\//g, "*\\/")} */`);
@@ -385,7 +396,7 @@ export function buildMcpTypeDefsBlock(defs: McpToolDef[]): string {
     }
   }
 
-  return sections.join("\n");
+  return boundToolOutput(sections.join("\n"), MAX_MCP_TYPE_DEFS_BLOCK_CHARS);
 }
 
 // The sandbox exposes MCP tools in one of two ways:
@@ -394,7 +405,7 @@ export function buildMcpTypeDefsBlock(defs: McpToolDef[]): string {
 //   demand via search_mcp_tools / get_mcp_tool_schema.
 // Search is used when inlining every declaration would exceed this many
 // estimated tokens; otherwise the tools are inlined.
-export const MCP_INLINE_TOKEN_THRESHOLD = 20_000;
+export const MCP_INLINE_TOKEN_THRESHOLD = 8_000;
 
 // Overrides the threshold for tests. 0 forces search on any catalog; a large
 // value forces inline. Invalid values fall back to the default.

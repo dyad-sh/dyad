@@ -7,6 +7,7 @@ import { SMALL_MODEL_NAME } from "@/ipc/shared/language_model_constants";
 import { resolveModelSelection } from "@/ipc/utils/model_effort";
 import { getModelPreferenceKey } from "@/lib/modelEffort";
 import { cleanMessage } from "@/ipc/utils/ai_messages_utils";
+import { pruneSubagentMessages } from "../subagents/subagent_context_budget";
 import { getModelClient } from "@/ipc/utils/get_model_client";
 import { getAiHeaders, getProviderOptions } from "@/ipc/utils/provider_options";
 import {
@@ -327,15 +328,18 @@ function prepareSubagentStep({
       : null;
 
   const cleanedMessages = messages.map(cleanMessage);
-  const hasCleanedMessages = cleanedMessages.some(
-    (message, index) => message !== messages[index],
-  );
-  if (!hasCleanedMessages) {
+  // The history explorer re-sends its whole transcript on every step, so bound
+  // the tool results it carries.
+  const prunedMessages = pruneSubagentMessages(cleanedMessages);
+  const hasChangedMessages =
+    cleanedMessages.some((message, index) => message !== messages[index]) ||
+    prunedMessages !== cleanedMessages;
+  if (!hasChangedMessages) {
     return forcedStep ?? undefined;
   }
   return {
     ...forcedStep,
-    messages: cleanedMessages,
+    messages: prunedMessages,
   };
 }
 

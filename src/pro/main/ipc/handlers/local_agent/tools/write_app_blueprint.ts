@@ -67,9 +67,11 @@ const VisualEntrySchema = z.object({
   ),
   description: z
     .string()
+    .max(1_000)
     .describe("What this visual is for and where it will be used in the app"),
   prompt: z
     .string()
+    .max(2_000)
     .describe(
       "A detailed image generation prompt for creating this visual. Be specific about style, composition, colors, and mood.",
     ),
@@ -83,6 +85,7 @@ const writeAppBlueprintSchema = z.object({
     ),
   user_prompt: z
     .string()
+    .max(4_000)
     .describe(
       "The original user prompt that describes what they want to build",
     ),
@@ -105,6 +108,7 @@ const writeAppBlueprintSchema = z.object({
     ),
   design_direction: z
     .string()
+    .max(2_000)
     .describe(
       "A brief description of the design direction for the app. Consider the industry, target audience, and mood. Example: 'Modern and professional with clean typography for a B2B SaaS dashboard'",
     ),

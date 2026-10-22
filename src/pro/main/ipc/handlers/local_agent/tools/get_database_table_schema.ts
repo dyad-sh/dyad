@@ -13,6 +13,10 @@ import { getSupabaseTableSchema } from "../../../../../../supabase_admin/supabas
 import { getNeonTableSchema } from "../../../../../../neon_admin/neon_context";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { resolveLinkedDatabaseProvider } from "@/shared/database_provider";
+import {
+  boundToolOutput,
+  MAX_DATABASE_SCHEMA_CHARS,
+} from "./tool_output_limits";
 
 const getDatabaseTableSchemaSchema = z.object({
   tableName: z
@@ -63,7 +67,7 @@ export const getDatabaseTableSchemaTool: ToolDefinition<
         `<dyad-db-table-schema provider="Supabase"${tableAttr}>\n${escapeXmlContent(schema)}\n</dyad-db-table-schema>`,
       );
 
-      return schema;
+      return boundToolOutput(schema, MAX_DATABASE_SCHEMA_CHARS);
     }
 
     if (provider === "neon" && canUseNeonTools(ctx)) {
@@ -81,7 +85,7 @@ export const getDatabaseTableSchemaTool: ToolDefinition<
         `<dyad-db-table-schema provider="Neon"${tableAttr}>\n${escapeXmlContent(schema)}\n</dyad-db-table-schema>`,
       );
 
-      return schema;
+      return boundToolOutput(schema, MAX_DATABASE_SCHEMA_CHARS);
     }
 
     throw new DyadError(

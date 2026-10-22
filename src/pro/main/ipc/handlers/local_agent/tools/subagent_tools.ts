@@ -16,6 +16,10 @@ import {
 } from "../subagents/subagent_manager";
 import { normalizeMutationScope } from "../subagents/mutation_activity_tracker";
 import {
+  boundReportForParent,
+  boundSubagentSummariesForParent,
+} from "../subagents/subagent_context_budget";
+import {
   escapeXmlAttr,
   escapeXmlContent,
   type AgentContext,
@@ -145,13 +149,46 @@ export function buildSubagentContext(
  * discovery/execution, sandbox scripts, nested agents/history explorers, and
  * root-owned provider or application configuration side effects.
  */
-const SUBAGENT_ALLOWED_TOOL_NAMES = [
+/**
+ * Child capabilities are explicit and fail closed: adding a new root tool does
+ * not silently grant it to every sub-agent. This intentionally excludes MCP
+ * discovery/execution, sandbox scripts, nested agents/history explorers, and
+ * root-owned provider or application configuration side effects.
+ *
+ * The allowlist is per persona. Every tool definition (name + description +
+ * JSON schema) is serialized into EVERY request of EVERY step of a sub-agent
+ * turn, so a tool a persona can never usefully call is pure context overhead.
+ * Research tools (chat history, web) belong to the root agent and the
+ * Explorer; the Implementer instead gets the build/verify tools.
+ */
+export const SUBAGENT_EXPLORER_TOOL_NAMES = [
   "read_file",
   "list_files",
   "grep",
   "code_search",
+  "explore_code",
   "search_chats",
   "read_chat",
+  "git_status",
+  "git_diff",
+  "git_log",
+  "git_show_commit",
+  "git_show_file",
+  "get_supabase_project_info",
+  "get_neon_project_info",
+  "get_database_table_schema",
+  "read_logs",
+  "read_guide",
+  "web_search",
+  "web_crawl",
+  "web_fetch",
+] as const;
+
+export const SUBAGENT_IMPLEMENTER_TOOL_NAMES = [
+  "read_file",
+  "list_files",
+  "grep",
+  "code_search",
   "explore_code",
   "write_file",
   "search_replace",
@@ -173,11 +210,21 @@ const SUBAGENT_ALLOWED_TOOL_NAMES = [
   "run_tests",
   "restart_app",
   "read_guide",
-  "web_search",
-  "web_crawl",
-  "web_fetch",
 ] as const;
-const SUBAGENT_ALLOWED_TOOLS = new Set<string>(SUBAGENT_ALLOWED_TOOL_NAMES);
+
+export type SubagentToolPersona = "explorer" | "implementer";
+
+/**
+ * Returns the tools a sub-agent persona may use.
+ */
+export function subagentToolNamesForPersona(
+  persona: SubagentToolPersona,
+): readonly string[] {
+  return persona === "explorer"
+    ? SUBAGENT_EXPLORER_TOOL_NAMES
+    : SUBAGENT_IMPLEMENTER_TOOL_NAMES;
+}
+
 
 export function validateSubagentAllowedToolNames(
   allowedNames: readonly string[],
@@ -197,10 +244,8 @@ export function validateSubagentAllowedToolNames(
 export function buildSubagentToolSet(
   params: SubagentToolContextParams,
 ): ToolSet {
-  validateSubagentAllowedToolNames(
-    SUBAGENT_ALLOWED_TOOL_NAMES,
-    TOOL_DEFINITIONS,
-  );
+  const allowedNames = subagentToolNamesForPersona(params.persona);
+  validateSubagentAllowedToolNames(allowedNames, TOOL_DEFINITIONS);
   const { ctx, persona } = params;
   const childCtx = buildSubagentContext(params);
   const allTools = buildAgentToolSet(childCtx, {
@@ -208,10 +253,9 @@ export function buildSubagentToolSet(
     enableAppBlueprint: ctx.enableAppBlueprint,
     freeModelMode: ctx.freeModelMode,
   });
+  const allowedTools = new Set<string>(allowedNames);
   return Object.fromEntries(
-    Object.entries(allTools).filter(([name]) =>
-      SUBAGENT_ALLOWED_TOOLS.has(name),
-    ),
+    Object.entries(allTools).filter(([name]) => allowedTools.has(name)),
   );
 }
 
@@ -338,7 +382,7 @@ export const spawnAgentTool: ToolDefinition<
       status: subagent.status,
       report:
         typeof subagent.result?.report === "string"
-          ? subagent.result.report
+          ? boundReportForParent(subagent.result.report)
           : null,
       error: subagent.error,
     });
@@ -362,7 +406,9 @@ export const listAgentsTool: ToolDefinition<{}> = {
   subagentOnly: true,
   isEnabled: canUseAdvancedSubagentTools,
   execute: async (_args, ctx) =>
-    JSON.stringify(await listSubagents(ctx.chatId)),
+    JSON.stringify(
+      boundSubagentSummariesForParent(await listSubagents(ctx.chatId)),
+    ),
 };
 
 export const waitAgentsTool: ToolDefinition<z.infer<typeof threadIdsSchema>> = {
@@ -382,7 +428,7 @@ export const waitAgentsTool: ToolDefinition<z.infer<typeof threadIdsSchema>> = {
       args.thread_ids,
       ctx.abortSignal,
     );
-    return JSON.stringify(summaries);
+    return JSON.stringify(boundSubagentSummariesForParent(summaries));
   },
 };
 

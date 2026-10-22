@@ -7,6 +7,7 @@ import {
 } from "./types";
 import { getNeonProjectInfo } from "../../../../../../neon_admin/neon_context";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { boundToolOutput, MAX_PROJECT_INFO_CHARS } from "./tool_output_limits";
 
 // At least one property is needed because Vertex AI rejects empty parameter schemas.
 const getNeonProjectInfoSchema = z.object({
@@ -49,6 +50,8 @@ export const getNeonProjectInfoTool: ToolDefinition<
       `<dyad-neon-project-info>\n${escapeXmlContent(info)}\n</dyad-neon-project-info>`,
     );
 
-    return info;
+    // The project info can be arbitrarily large (schemas, branches, keys). It is
+    // re-sent on every step of the turn, so bound the model-facing copy.
+    return boundToolOutput(info, MAX_PROJECT_INFO_CHARS);
   },
 };

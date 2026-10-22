@@ -30,6 +30,7 @@ type ToolErrorForTokenEstimate = {
 export const estimateToolResultTokens = (
   toolResults: readonly ToolResultForTokenEstimate[],
   toolErrors: readonly ToolErrorForTokenEstimate[] = [],
+  maxCharsPerResult?: number,
 ): number => {
   if (toolResults.length === 0 && toolErrors.length === 0) {
     return 0;
@@ -41,13 +42,19 @@ export const estimateToolResultTokens = (
         type: "tool-result",
         toolCallId,
         toolName,
-        output,
+        output: boundOutputForEstimate(output, maxCharsPerResult),
       })),
       ...toolErrors.map(({ toolCallId, toolName, error }) => ({
         type: "tool-result",
         toolCallId,
         toolName,
-        output: { type: "error-text", value: getErrorMessage(error) },
+        output: {
+          type: "error-text",
+          value: boundOutputForEstimate(
+            getErrorMessage(error),
+            maxCharsPerResult,
+          ),
+        },
       })),
     ],
     (_key, value) => (typeof value === "bigint" ? value.toString() : value),
@@ -55,6 +62,70 @@ export const estimateToolResultTokens = (
 
   return estimateTokens(serializedResults);
 };
+
+/**
+ * The provider only ever sees the bounded tool output, so the estimate must
+ * be computed against the bounded value or compaction would fire on bytes
+ * that are never sent.
+ */
+function boundOutputForEstimate(
+  output: unknown,
+  maxCharsPerResult?: number,
+): unknown {
+  if (maxCharsPerResult == null) {
+    return output;
+  }
+  if (typeof output === "string") {
+    return output.length > maxCharsPerResult
+      ? output.slice(0, maxCharsPerResult)
+      : output;
+  }
+  if (output && typeof output === "object" && "value" in output) {
+    const value = (output as { value?: unknown }).value;
+    if (typeof value === "string") {
+      return {
+        ...output,
+        value:
+          value.length > maxCharsPerResult
+            ? value.slice(0, maxCharsPerResult)
+            : value,
+      };
+    }
+  }
+  return output;
+}
+
+/**
+ * The provider only ever sees the bounded tool output, so the estimate must
+ * be computed against the bounded value or compaction would fire on bytes
+ * that are never sent.
+ */
+function boundOutputForEstimate(
+  output: unknown,
+  maxCharsPerResult?: number,
+): unknown {
+  if (maxCharsPerResult == null) {
+    return output;
+  }
+  if (typeof output === "string") {
+    return output.length > maxCharsPerResult
+      ? output.slice(0, maxCharsPerResult)
+      : output;
+  }
+  if (output && typeof output === "object" && "value" in output) {
+    const value = (output as { value?: unknown }).value;
+    if (typeof value === "string") {
+      return {
+        ...output,
+        value:
+          value.length > maxCharsPerResult
+            ? value.slice(0, maxCharsPerResult)
+            : value,
+      };
+    }
+  }
+  return output;
+}
 
 export const estimateMessagesTokens = (messages: Message[]): number => {
   return messages.reduce(

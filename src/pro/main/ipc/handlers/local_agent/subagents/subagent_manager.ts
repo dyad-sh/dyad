@@ -40,6 +40,12 @@ import type { AgentContext } from "../tools/types";
 import { runExploreCodeSubagent } from "../tools/explore_code_subagent";
 import { buildReviewTarget, type ReviewTarget } from "./review_target";
 import {
+  boundSubagentAssignmentsForModel,
+  MIN_SUBAGENT_HISTORY_CHARS,
+  pruneSubagentMessages,
+} from "./subagent_context_budget";
+import { boundReviewDiff } from "./review_diff_budget";
+import {
   closeAndDisposeTurnsForChat,
   closeMutationActor,
   createMutationActivityOwner,
@@ -75,7 +81,7 @@ const MODELS = {
 const MAX_DURABLE_REPORT_CHARS = 100_000;
 const MAX_ACTIVITY_XML_CHARS = 200_000;
 const MAX_ACTIVITY_OUTPUT_CHARS = 200_000;
-const MAX_MODEL_HISTORY_CHARS = 100_000;
+const MAX_MODEL_HISTORY_CHARS = 40_000;
 const AUTO_REVIEW_BARRIER_MAX_WAIT_MS = 10 * 60 * 1000;
 const ROOT_FINALIZATION_MAX_WAIT_MS = 20 * 60 * 1000;
 const SAFE_ABORT_DRAIN_MAX_WAIT_MS = 30 * 1000;
@@ -1713,12 +1719,14 @@ async function runReview(
   const entitlementWatcher = watchEntitlement(threadId, controller);
   try {
     if (!(await updateStatus(threadId, "running"))) return;
+    const boundedDiff = boundReviewDiff(target.diff);
+    const diffExcerpt = boundedDiff.text;
     const reviewResult = await runModel({
       threadId,
       chatId: thread.chatId,
       appId,
       persona: "reviewer",
-      assignment: `Review this exact diff. ${STRUCTURED_REVIEW_INSTRUCTIONS}${followup ? `\n\nFollow-up request: ${followup}` : ""}\n\nFiles: ${target.files.join(", ")}\nExcluded: ${target.exclusions.join(", ") || "none"}\n\n${target.diff}`,
+      assignment: `Review this exact diff. ${STRUCTURED_REVIEW_INSTRUCTIONS}${followup ? `\n\nFollow-up request: ${followup}` : ""}\n\nFiles: ${target.files.join(", ")}\nExcluded: ${target.exclusions.join(", ") || "none"}\n\n${diffExcerpt}`,
       tools: {},
       abortSignal: controller.signal,
     });
@@ -1871,7 +1879,7 @@ export function prepareSubagentStepMessages(
   stepMessages: ModelMessage[],
   rootMessages: string[],
 ): ModelMessage[] {
-  return sanitizeStepMessages([
+  const sanitized = sanitizeStepMessages([
     ...stepMessages,
     ...rootMessages.map(
       (message): ModelMessage => ({
@@ -1880,6 +1888,11 @@ export function prepareSubagentStepMessages(
       }),
     ),
   ]).messages;
+  // Sub-agent step loops re-send the whole transcript on every step. Bound the
+  // tool results so a single large read/grep/diff cannot dominate the request
+  // and so the accumulated transcript stays proportional to the budget instead
+  // of growing quadratically with the step count.
+  return pruneSubagentMessages(sanitized);
 }
 
 async function recordModelUsage(

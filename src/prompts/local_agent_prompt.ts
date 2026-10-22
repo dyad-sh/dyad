@@ -515,6 +515,22 @@ When you reach the Implement step and the implementation requires a server layer
 // App Blueprint Block (shared by Pro and Basic Agent modes)
 // ============================================================================
 
+/**
+ * The app blueprint is injected into the system prompt, which is re-sent on
+ * every step of the turn. Bound it so a very large blueprint cannot dominate
+ * the request.
+ */
+const MAX_BLUEPRINT_PROMPT_CHARS = 8_000;
+
+function boundBlueprintPromptText(value: string): string {
+  if (value.length <= MAX_BLUEPRINT_PROMPT_CHARS) {
+    return value;
+  }
+  const marker = `\n\n[... blueprint truncated to ${MAX_BLUEPRINT_PROMPT_CHARS} characters ...]\n\n`;
+  const available = Math.max(0, MAX_BLUEPRINT_PROMPT_CHARS - marker.length);
+  return `${value.slice(0, available)}${marker}`;
+}
+
 function appBlueprintBlock({
   hasAppBlueprint,
   planningQuestionnaireAvailable,
@@ -539,14 +555,16 @@ Do not call \`write_app_blueprint\` and do not start implementation. Explain tha
   }
 
   const serializedBlueprint = appBlueprint
-    ? JSON.stringify(appBlueprint, null, 2)
-        .replaceAll("<", "\\u003c")
-        .replaceAll(">", "\\u003e")
-        .replaceAll("[[AI_RULES]]", "\\u005b\\u005bAI_RULES\\u005d\\u005d")
-        .replaceAll(
-          "[[SERVER_LAYER]]",
-          "\\u005b\\u005bSERVER_LAYER\\u005d\\u005d",
-        )
+    ? boundBlueprintPromptText(
+        JSON.stringify(appBlueprint, null, 2)
+          .replaceAll("<", "\\u003c")
+          .replaceAll(">", "\\u003e")
+          .replaceAll("[[AI_RULES]]", "\\u005b\\u005bAI_RULES\\u005d\\u005d")
+          .replaceAll(
+            "[[SERVER_LAYER]]",
+            "\\u005b\\u005bSERVER_LAYER\\u005d\\u005d",
+          ),
+      )
     : undefined;
   const currentBlueprint =
     hasAppBlueprint && appBlueprint

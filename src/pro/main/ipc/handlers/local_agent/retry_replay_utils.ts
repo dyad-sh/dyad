@@ -4,6 +4,7 @@
  */
 
 import type { ModelMessage, UserModelMessage } from "ai";
+import { pruneRootMessages } from "./subagents/subagent_context_budget";
 
 export type RetryReplayEvent =
   | { type: "injected-user-message"; message: UserModelMessage }
@@ -255,15 +256,20 @@ export function maybeAppendRetryReplayForRetry(params: {
     return;
   }
 
+  // The replay is re-sent on every following step, so bound it with the same
+  // root context budget before it is appended to the turn history.
+  const boundedReplayMessages = pruneRootMessages(replayMessages);
   onCurrentMessageHistoryUpdate([
     ...currentMessageHistoryRef,
-    ...replayMessages,
+    ...boundedReplayMessages,
   ]);
   // Injections include synthetic instructions that belong only to this turn.
   accumulatedAiMessagesRef.push(
-    ...buildRetryReplayMessages(
-      retryReplayEvents.filter(
-        (event) => event.type !== "injected-user-message",
+    ...pruneRootMessages(
+      buildRetryReplayMessages(
+        retryReplayEvents.filter(
+          (event) => event.type !== "injected-user-message",
+        ),
       ),
     ),
   );

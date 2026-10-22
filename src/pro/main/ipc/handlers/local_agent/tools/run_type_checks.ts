@@ -15,6 +15,10 @@ import { broadcastToRegisteredWindows } from "@/ipc/utils/window_broadcast";
 import { DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 
 import { normalizePath } from "../../../../../../../shared/normalizePath";
+import {
+  boundToolOutput,
+  MAX_TYPE_CHECK_OUTPUT_CHARS,
+} from "./tool_output_limits";
 
 const runTypeChecksSchema = z.object({
   paths: z
@@ -78,9 +82,12 @@ function matchesPaths(problemFile: string, paths: string[]): boolean {
  * Format problems into a readable text output for the agent.
  */
 function formatProblemLines(problems: Problem[]): string {
-  return problems
-    .map((p) => `${p.file}:${p.line}:${p.column}: ${p.message}`)
-    .join("\n");
+  return boundToolOutput(
+    problems
+      .map((p) => `${p.file}:${p.line}:${p.column}: ${p.message}`)
+      .join("\n"),
+    MAX_TYPE_CHECK_OUTPUT_CHARS,
+  );
 }
 
 function pluralizeErrors(count: number): string {

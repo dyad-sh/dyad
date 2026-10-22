@@ -8,7 +8,7 @@ import type { CodeExplorerResult } from "../../../../../../../shared/code_explor
 // id, which is what keeps the final report grounded in real tool output.
 
 export const MAX_OBSERVATION_CHARS = 20_000;
-export const MAX_TOTAL_OBSERVATION_CHARS = 150_000;
+export const MAX_TOTAL_OBSERVATION_CHARS = 60_000;
 export const MAX_RANGE_LINES = 120;
 export const MAX_INTERNAL_CANDIDATES = 80;
 const OBSERVATION_BUDGET_EXHAUSTED_MESSAGE =

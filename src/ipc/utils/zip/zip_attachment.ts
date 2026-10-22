@@ -36,14 +36,18 @@ const RENAME_RETRY_DELAYS_MS = [50, 100, 200, 400];
 
 const FILE_CHECK_BATCH_SIZE = 32;
 
-/** Whether `dir` is a real directory that holds every one of `files`. */
+/**
+ * Whether `dir` is a real directory that holds every one of `files` at its
+ * extracted size, so a copy cut short partway through a file is caught.
+ */
 async function holdsExtractedFiles(
   dir: string,
   files: readonly ExtractedZipFile[],
 ): Promise<boolean> {
-  const isFile = async (target: string) => {
+  const holdsFile = async (target: string, sizeBytes: number) => {
     try {
-      return (await fs.lstat(target)).isFile();
+      const stat = await fs.lstat(target);
+      return stat.isFile() && stat.size === sizeBytes;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
         return false;
@@ -65,7 +69,12 @@ async function holdsExtractedFiles(
     const present = await Promise.all(
       files
         .slice(start, start + FILE_CHECK_BATCH_SIZE)
-        .map((file) => isFile(path.join(dir, ...file.relativePath.split("/")))),
+        .map((file) =>
+          holdsFile(
+            path.join(dir, ...file.relativePath.split("/")),
+            file.sizeBytes,
+          ),
+        ),
     );
     if (present.includes(false)) {
       return false;
@@ -101,25 +110,41 @@ async function installStagedDirectory(
     }
     renameError = error;
   }
+  // Keep the lock that forced the copy visible in logs.
+  const withRenameCause = (error: unknown) => {
+    if (
+      error instanceof Error &&
+      error !== signal?.reason &&
+      error.cause === undefined
+    ) {
+      error.cause = renameError;
+    }
+    return error;
+  };
   signal?.throwIfAborted();
   // Claiming `to` first means a directory that appeared there is never
   // removed below, since only one this call created is.
-  await fs.mkdir(to);
+  try {
+    await fs.mkdir(to);
+  } catch (error) {
+    throw withRenameCause(error);
+  }
   try {
     for (const entry of await fs.readdir(from)) {
       await fs.cp(path.join(from, entry), path.join(to, entry), {
         recursive: true,
         errorOnExist: true,
         force: false,
+        // Called for every file and directory, so a stop ends the copy soon.
+        filter: () => {
+          signal?.throwIfAborted();
+          return true;
+        },
       });
     }
   } catch (error) {
     await clearPartialCopy(to);
-    // Keep the lock that forced the copy visible in logs.
-    if (error instanceof Error && error.cause === undefined) {
-      error.cause = renameError;
-    }
-    throw error;
+    throw withRenameCause(error);
   }
   // Best effort: media cleanup sweeps a staging directory left behind.
   await fs
@@ -237,11 +262,12 @@ export async function extractZipAttachment({
     }
 
     try {
-      // Only a finished extraction of these same bytes is ever moved to this
+      // Only an extraction of these same bytes is ever installed under this
       // name, so an existing directory normally holds the same files. Keep it
       // so chats reading it are never disturbed, and refresh its time so
       // cleanup ages it out with the re-uploaded zip. Replace it only when
-      // files are missing from it.
+      // files are missing from it or cut short, as an interrupted copy into
+      // place leaves them.
       if (await holdsExtractedFiles(destinationDir, result.files)) {
         await fs.rm(stagingDir, { recursive: true, force: true });
         const now = new Date();

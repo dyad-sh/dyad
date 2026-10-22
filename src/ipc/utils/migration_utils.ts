@@ -138,6 +138,7 @@ export async function generateNeonMigrationStatements({
     ];
   }
 
+  let statements: readonly SchemaDiffStatement[];
   try {
     const diff = await generateSchemaDiff({
       currentDatabaseUrl,
@@ -146,10 +147,75 @@ export async function generateNeonMigrationStatements({
       noConcurrentIndexOperations: true,
       connection: MIGRATION_SCHEMA_DIFF_CONNECTION_OPTIONS,
     });
-    return diff.statements;
+    statements = diff.statements;
   } catch (error) {
     throw toMigrationDiffDyadError(error);
   }
+  assertNoSamePlanEnumValueUse(statements);
+  return statements;
+}
+
+// =============================================================================
+// New enum value usage detection
+// =============================================================================
+
+const ADD_ENUM_VALUE_REGEX =
+  /^\s*ALTER\s+TYPE\s+((?:(?:"(?:[^"]|"")+"|[A-Za-z_][\w$]*)\.)?("(?:[^"]|"")+"|[A-Za-z_][\w$]*))\s+ADD\s+VALUE\s+(?:IF\s+NOT\s+EXISTS\s+)?('(?:[^']|'')*')/iu;
+
+const IDENTIFIER_PATTERN = String.raw`(?:"(?:[^"]|"")+"|[A-Za-z_][\w$]*)`;
+
+/**
+ * PostgreSQL rejects using an enum label added by `ALTER TYPE ... ADD VALUE`
+ * until the adding transaction commits. Migrations are applied in a single
+ * Neon transaction, so a plan that adds a label and then uses it (e.g. in a
+ * column default or check constraint) would always fail on apply. Reject it
+ * up front with an actionable message instead.
+ */
+export function assertNoSamePlanEnumValueUse(
+  statements: readonly SchemaDiffStatement[],
+): void {
+  statements.forEach((statement, index) => {
+    const match = ADD_ENUM_VALUE_REGEX.exec(statement.sql);
+    if (!match) {
+      return;
+    }
+    const [, typeName, typeIdentifier, labelLiteral] = match;
+    const usageRegex = enumValueUsageRegex(typeIdentifier, labelLiteral);
+    const usedLater = statements
+      .slice(index + 1)
+      .some((later) => usageRegex.test(later.sql));
+    if (usedLater) {
+      throw new DyadError(
+        `This migration adds the value ${labelLiteral} to enum ${typeName} and uses it in the same migration, which PostgreSQL does not allow in a single transaction. Apply the enum value change to production first (without the changes that use it), then regenerate the migration preview.`,
+        DyadErrorKind.Precondition,
+      );
+    }
+  });
+}
+
+function enumValueUsageRegex(
+  typeIdentifier: string,
+  labelLiteral: string,
+): RegExp {
+  const unquotedName = typeIdentifier.startsWith('"')
+    ? typeIdentifier.slice(1, -1).replaceAll('""', '"')
+    : typeIdentifier.toLowerCase();
+  const nameAlternatives = [
+    escapeRegExp(`"${unquotedName.replaceAll('"', '""')}"`),
+  ];
+  if (/^[a-z_][a-z0-9_$]*$/u.test(unquotedName)) {
+    nameAlternatives.push(`${escapeRegExp(unquotedName)}(?![\\w$])`);
+  }
+  // Matches the label literal cast to the enum type, optionally
+  // schema-qualified, e.g. `'ok'::mood` or `'ok'::"public"."mood"`.
+  return new RegExp(
+    `${escapeRegExp(labelLiteral)}::(?:${IDENTIFIER_PATTERN}\\.)?(?:${nameAlternatives.join("|")})`,
+    "u",
+  );
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 }
 
 function toMigrationDiffDyadError(error: unknown): DyadError {

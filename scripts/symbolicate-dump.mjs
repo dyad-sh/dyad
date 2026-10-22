@@ -7,9 +7,12 @@
 //   node scripts/symbolicate-dump.mjs --prod            # newest dump of the installed Dyad
 //   node scripts/symbolicate-dump.mjs path/to/crash.dmp [more.dmp ...]
 //   node scripts/symbolicate-dump.mjs --json crash.dmp  # machine readable
+//   node scripts/symbolicate-dump.mjs --dump-file crash.dmp # save crash.txt beside dump
 //   node scripts/symbolicate-dump.mjs --help
 //
 // --prod only affects which dump is auto-picked; explicit paths ignore it.
+// --dump-file redirects stackwalk stdout to a sibling .txt file (overwritten
+// on subsequent runs), leaving diagnostics on stderr.
 // Other flags are passed through to minidump-stackwalk.
 //
 // Requires the minidump-stackwalk binary (from rust-minidump). Two ways to
@@ -108,16 +111,22 @@ Usage:
   node scripts/symbolicate-dump.mjs                   # newest dev dump
   node scripts/symbolicate-dump.mjs --prod            # newest dump of the installed Dyad
   node scripts/symbolicate-dump.mjs <dump.dmp> [more.dmp ...]
+  node scripts/symbolicate-dump.mjs --dump-file <dump.dmp> # save beside dump as .txt
 
 --prod only affects which dump is auto-picked; explicit paths ignore it.
+--dump-file saves stackwalk output to a sibling .txt file, overwriting it
+if it exists. Diagnostics remain on stderr. Works with auto-picked dumps too.
 Other flags pass through to minidump-stackwalk. Setup instructions are in
 this script's doc comment.`);
   process.exit(0);
 }
 
 const prod = args.includes("--prod");
+const dumpFile = args.includes("--dump-file");
 const dumps = args.filter((a) => a.endsWith(".dmp"));
-const flags = args.filter((a) => !a.endsWith(".dmp") && a !== "--prod");
+const flags = args.filter(
+  (a) => !a.endsWith(".dmp") && a !== "--prod" && a !== "--dump-file",
+);
 
 const missing = dumps.filter((d) => !fs.existsSync(d));
 if (missing.length > 0) {
@@ -261,20 +270,42 @@ for (const dump of dumps) {
     console.log(`\n===== ${dump} =====`);
   }
   await stageAliasedSymbols(dump);
-  const result = spawnSync(
-    binary,
-    [
-      "--symbols-url",
-      SYMBOL_URL,
-      "--symbols-cache",
-      cacheDir,
-      "--symbols-path",
-      aliasedDir,
-      ...flags,
-      dump,
-    ],
-    { stdio: "inherit" },
-  );
+  const outputPath = dumpFile ? dump.slice(0, -4) + ".txt" : null;
+  let outputFd;
+  let result;
+  try {
+    if (outputPath) {
+      outputFd = fs.openSync(outputPath, "w");
+    }
+    result = spawnSync(
+      binary,
+      [
+        "--symbols-url",
+        SYMBOL_URL,
+        "--symbols-cache",
+        cacheDir,
+        "--symbols-path",
+        aliasedDir,
+        ...flags,
+        dump,
+      ],
+      {
+        stdio:
+          outputFd === undefined ? "inherit" : ["inherit", outputFd, "inherit"],
+      },
+    );
+  } catch (error) {
+    console.error(`Cannot write output for ${dump}: ${error.message}`);
+    exitCode = 1;
+    continue;
+  } finally {
+    if (outputFd !== undefined) {
+      fs.closeSync(outputFd);
+    }
+  }
+  if (outputPath && result.status === 0) {
+    console.error(`Saved symbolicated dump to ${outputPath}`);
+  }
   // A failed dump should not prevent the remaining dumps from processing.
   if (result.status !== 0) {
     exitCode = result.status ?? 1;

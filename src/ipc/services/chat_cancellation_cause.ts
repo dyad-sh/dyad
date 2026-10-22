@@ -10,6 +10,10 @@ import {
  * wire events carry no cause, so callers that cancel for a reason (deleting the
  * chat, restoring a version) scope that reason here while they wait, and the
  * stream abort reads it. Outside any scope a cancellation is the user's Stop.
+ *
+ * Overlapping cancellers each scope a cause before their `CANCEL` is queued,
+ * and the actor acts only on the first one (a later `CANCEL` for the turn it is
+ * already cancelling is ignored), so the earliest scope is the real cause.
  */
 const scopedCauses = new Map<number, { cause: CancellationCause }[]>();
 
@@ -39,5 +43,5 @@ export function chatCancellationReason(
   fallback: CancellationCause = "chat-stop",
 ): CancellationReason {
   const entries = scopedCauses.get(chatId);
-  return new CancellationReason(entries?.at(-1)?.cause ?? fallback);
+  return new CancellationReason(entries?.[0]?.cause ?? fallback);
 }

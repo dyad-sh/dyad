@@ -273,6 +273,8 @@
     "allTests": "所有测试",
     "queueAll": "全部加入队列",
     "queueAllTests": "将所有测试加入队列",
+    "retryRun": "重试",
+    "runAgain": "再次运行",
     "testGate": {
       "settingsLoading": "正在加载设置…",
       "settingsUnavailable": "Dyad 无法加载你的设置，因此无法确定测试将如何运行。",

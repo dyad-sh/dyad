@@ -681,6 +681,11 @@ export async function startReview(params: {
 export async function cancelSubagent(
   chatId: number,
   threadId: string,
+  /**
+   * Why the sub-agent stops, reported to work it started (e.g. a test run).
+   * The owning turn passes its own reason when its cancellation stops it.
+   */
+  reason: CancellationReason = new CancellationReason("subagent-stopped"),
 ): Promise<void> {
   assertPro();
   const thread = await getOwnedThread(chatId, threadId);
@@ -694,7 +699,7 @@ export async function cancelSubagent(
   if (thread.status === "stopping") return;
   cancelledThreadIds.add(threadId);
   const activeRun = abortControllers.get(threadId);
-  activeRun?.controller.abort(new CancellationReason("subagent-stopped"));
+  activeRun?.controller.abort(reason);
   const pendingIndex = pendingRuns.findIndex(
     (run) => run.threadId === threadId,
   );

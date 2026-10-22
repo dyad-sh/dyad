@@ -1,4 +1,5 @@
 import { SubscriptionBillingError } from "@/shared/subscription_billing_error";
+import { CancellationReason } from "@/shared/cancellation_reason";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { IpcMainInvokeEvent, WebContents } from "electron";
 import {
@@ -5256,6 +5257,45 @@ describe("handleLocalAgentStream", () => {
       expect(mockSubagentManager.cancelSubagent).toHaveBeenCalledWith(
         1,
         "implementer-1",
+        undefined,
+      );
+    });
+
+    it("stops spawned sub-agents with the turn's cancellation reason", async () => {
+      const { event } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat();
+      vi.mocked(buildAgentToolSet).mockImplementationOnce((ctx) => {
+        ctx.spawnedSubagentThreadIds?.push("explorer-1");
+        return {};
+      });
+      const abortController = new AbortController();
+      const reason = new CancellationReason("chat-deleted");
+      mockStreamResult = {
+        fullStream: (async function* () {
+          yield { type: "text-delta", text: "Partial response" };
+          abortController.abort(reason);
+        })(),
+        response: Promise.resolve({ messages: [] }),
+      };
+
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        abortController,
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      // A test run the sub-agent started reports the chat's deletion, not
+      // "the sub-agent was stopped".
+      expect(mockSubagentManager.cancelSubagent).toHaveBeenCalledWith(
+        1,
+        "explorer-1",
+        reason,
       );
     });
 

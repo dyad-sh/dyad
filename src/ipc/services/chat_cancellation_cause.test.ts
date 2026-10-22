@@ -24,17 +24,18 @@ describe("chat cancellation cause", () => {
     expect(chatCancellationReason(102).kind).toBe("chat-stop");
   });
 
-  it("uses the most recent scope and releases each entry exactly once", () => {
-    const releaseOuter = beginChatCancellationCause(104, "version-restored");
-    const releaseInner = beginChatCancellationCause(104, "version-restored");
+  it("uses the earliest scope and releases each entry exactly once", () => {
+    // The earlier canceller's CANCEL is the one the actor acts on.
+    const releaseFirst = beginChatCancellationCause(104, "version-restored");
+    const releaseSecond = beginChatCancellationCause(104, "app-deleted");
     expect(chatCancellationReason(104).kind).toBe("version-restored");
 
-    releaseOuter();
-    expect(chatCancellationReason(104).kind).toBe("version-restored");
-    releaseOuter();
-    expect(chatCancellationReason(104).kind).toBe("version-restored");
+    releaseFirst();
+    expect(chatCancellationReason(104).kind).toBe("app-deleted");
+    releaseFirst();
+    expect(chatCancellationReason(104).kind).toBe("app-deleted");
 
-    releaseInner();
+    releaseSecond();
     expect(chatCancellationReason(104).kind).toBe("chat-stop");
   });
 });

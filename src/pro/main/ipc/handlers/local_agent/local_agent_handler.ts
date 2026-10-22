@@ -1,6 +1,7 @@
 import { recordShellReviewOutcome } from "./shell_review_history";
 import { shellExecutionGuidance } from "@/shared/shell_capability";
 import { SubscriptionBillingError } from "@/shared/subscription_billing_error";
+import { CancellationReason } from "@/shared/cancellation_reason";
 import {
   getInferenceSource,
   type InferenceSource,
@@ -2228,7 +2229,11 @@ export async function handleLocalAgentStream(
     if (abortController.signal.aborted) {
       await Promise.allSettled(
         spawnedSubagentThreadIds.map((threadId) =>
-          cancelSubagent(ctx.chatId, threadId),
+          cancelSubagent(
+            ctx.chatId,
+            threadId,
+            turnCancellationReason(abortController.signal),
+          ),
         ),
       );
     } else if (!readOnly && !planModeOnly) {
@@ -2476,7 +2481,11 @@ export async function handleLocalAgentStream(
     // Implementers, which may still have tracked mutation activity and edit files.
     await Promise.allSettled(
       spawnedSubagentThreadIds.map((threadId) =>
-        cancelSubagent(req.chatId, threadId),
+        cancelSubagent(
+          req.chatId,
+          threadId,
+          turnCancellationReason(abortController.signal),
+        ),
       ),
     );
 
@@ -2551,6 +2560,19 @@ async function clearTodosOnCancel(
     chatId,
     todos: priorTodos,
   });
+}
+
+/**
+ * The cause that cancelled this turn, if its canceller recorded one. Sub-agents
+ * the turn spawned stop with it, so a test run one of them started reports the
+ * real cause instead of "the sub-agent was stopped".
+ */
+function turnCancellationReason(
+  signal: AbortSignal,
+): CancellationReason | undefined {
+  return signal.aborted && signal.reason instanceof CancellationReason
+    ? signal.reason
+    : undefined;
 }
 
 function buildTerminatedRetryContinuationInstruction(): ModelMessage {

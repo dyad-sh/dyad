@@ -276,6 +276,8 @@
     "allTests": "Todas las pruebas",
     "queueAll": "Poner todas en cola",
     "queueAllTests": "Poner todas las pruebas en cola",
+    "retryRun": "Reintentar",
+    "runAgain": "Ejecutar de nuevo",
     "testGate": {
       "settingsLoading": "Cargando configuración…",
       "settingsUnavailable": "Dyad no pudo cargar tu configuración, así que no puede saber cómo se ejecutarían las pruebas.",

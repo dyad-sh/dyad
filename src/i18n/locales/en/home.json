@@ -278,6 +278,8 @@
     "allTests": "All tests",
     "queueAll": "Queue all",
     "queueAllTests": "Queue all tests",
+    "retryRun": "Retry",
+    "runAgain": "Run again",
     "testGate": {
       "settingsLoading": "Loading settings…",
       "settingsUnavailable": "Dyad couldn't load your settings, so it can't tell how tests would run.",

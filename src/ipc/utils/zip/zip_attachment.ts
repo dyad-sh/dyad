@@ -74,17 +74,61 @@ async function holdsExtractedFiles(
   return true;
 }
 
+function isTransientRenameError(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException).code;
+  return !!code && TRANSIENT_RENAME_ERRORS.has(code);
+}
+
+/**
+ * Move a finished staging directory to `to`, which must not exist. A scan of
+ * freshly written files can keep the directory from being renamed for longer
+ * than the retries wait, though the files stay readable, so it is then
+ * copied into place instead. A partial copy is removed before rethrowing.
+ */
+async function installStagedDirectory(from: string, to: string): Promise<void> {
+  try {
+    await renameWithRetry(from, to);
+    return;
+  } catch (error) {
+    if (!isTransientRenameError(error)) {
+      throw error;
+    }
+  }
+  try {
+    await fs.cp(from, to, {
+      recursive: true,
+      errorOnExist: true,
+      force: false,
+    });
+  } catch (error) {
+    await fs
+      .rm(to, {
+        recursive: true,
+        force: true,
+        maxRetries: RENAME_RETRY_DELAYS_MS.length,
+      })
+      .catch(() => undefined);
+    throw error;
+  }
+  // Best effort: media cleanup sweeps a staging directory left behind.
+  await fs
+    .rm(from, {
+      recursive: true,
+      force: true,
+      maxRetries: RENAME_RETRY_DELAYS_MS.length,
+    })
+    .catch(() => undefined);
+}
+
 async function renameWithRetry(from: string, to: string): Promise<void> {
   for (let attempt = 0; ; attempt++) {
     try {
       await fs.rename(from, to);
       return;
     } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
       if (
         attempt >= RENAME_RETRY_DELAYS_MS.length ||
-        !code ||
-        !TRANSIENT_RENAME_ERRORS.has(code)
+        !isTransientRenameError(error)
       ) {
         throw error;
       }
@@ -196,7 +240,7 @@ export async function extractZipAttachment({
           }
         }
         try {
-          await renameWithRetry(stagingDir, destinationDir);
+          await installStagedDirectory(stagingDir, destinationDir);
         } catch (error) {
           if (retired) {
             await renameWithRetry(retiredDir, destinationDir).catch(

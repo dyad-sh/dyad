@@ -241,6 +241,11 @@ describe("extractZipAttachment", () => {
         }
         return realRename(from, to);
       });
+    const cpSpy = vi.spyOn(fsPromises, "cp").mockRejectedValue(
+      Object.assign(new Error("simulated copy failure"), {
+        code: "EPERM",
+      }),
+    );
     try {
       await expect(
         extractZipAttachment({
@@ -248,9 +253,10 @@ describe("extractZipAttachment", () => {
           storedFileName: "shared.zip",
           archive,
         }),
-      ).rejects.toThrow("simulated install failure");
+      ).rejects.toThrow("simulated copy failure");
     } finally {
       renameSpy.mockRestore();
+      cpSpy.mockRestore();
     }
     // The files other chats could still read are back in place, and the
     // directory was not left looking expired to cleanup.
@@ -349,11 +355,12 @@ describe("extractZipAttachment", () => {
       .mockImplementation(async (from, to) => {
         if (to === destinationDir) {
           throw Object.assign(new Error("simulated rename failure"), {
-            code: "EPERM",
+            code: "EINVAL",
           });
         }
         return realRename(from, to);
       });
+    const cpSpy = vi.spyOn(fsPromises, "cp");
     try {
       await expect(
         extractZipAttachment({
@@ -362,8 +369,85 @@ describe("extractZipAttachment", () => {
           archive: buildZip([{ name: "a.txt", data: "alpha" }]),
         }),
       ).rejects.toThrow("simulated rename failure");
+      // Only a lock that may be a scan falls back to copying.
+      expect(cpSpy).not.toHaveBeenCalled();
     } finally {
       renameSpy.mockRestore();
+      cpSpy.mockRestore();
+    }
+    expect(fs.readdirSync(mediaDir)).toEqual([]);
+  });
+
+  it("copies the extraction into place when a move stays blocked", async () => {
+    const mediaDir = getDyadMediaDir(appPath);
+    const destinationDir = path.join(mediaDir, "fresh-unpacked");
+    const realRename = fsPromises.rename;
+    const renameSpy = vi
+      .spyOn(fsPromises, "rename")
+      .mockImplementation(async (from, to) => {
+        if (to === destinationDir) {
+          throw Object.assign(new Error("simulated scan lock"), {
+            code: "EPERM",
+          });
+        }
+        return realRename(from, to);
+      });
+    try {
+      const summary = await extractZipAttachment({
+        mediaDir,
+        storedFileName: "fresh.zip",
+        archive: buildZip([
+          { name: "a.txt", data: "alpha" },
+          { name: "nested/b.txt", data: "beta" },
+        ]),
+      });
+      expect(summary.files.map((file) => file.relativePath).sort()).toEqual([
+        "a.txt",
+        "nested/b.txt",
+      ]);
+    } finally {
+      renameSpy.mockRestore();
+    }
+    expect(
+      fs.readFileSync(path.join(destinationDir, "nested", "b.txt"), "utf8"),
+    ).toBe("beta");
+    expect(fs.readdirSync(mediaDir)).toEqual(["fresh-unpacked"]);
+  });
+
+  it("removes a partial copy when copying into place fails", async () => {
+    const mediaDir = getDyadMediaDir(appPath);
+    const destinationDir = path.join(mediaDir, "fresh-unpacked");
+    const realRename = fsPromises.rename;
+    const renameSpy = vi
+      .spyOn(fsPromises, "rename")
+      .mockImplementation(async (from, to) => {
+        if (to === destinationDir) {
+          throw Object.assign(new Error("simulated scan lock"), {
+            code: "EBUSY",
+          });
+        }
+        return realRename(from, to);
+      });
+    const cpSpy = vi
+      .spyOn(fsPromises, "cp")
+      .mockImplementation(async (_from, to) => {
+        fs.mkdirSync(String(to));
+        fs.writeFileSync(path.join(String(to), "a.txt"), "partial");
+        throw Object.assign(new Error("simulated copy failure"), {
+          code: "ENOSPC",
+        });
+      });
+    try {
+      await expect(
+        extractZipAttachment({
+          mediaDir,
+          storedFileName: "fresh.zip",
+          archive: buildZip([{ name: "a.txt", data: "alpha" }]),
+        }),
+      ).rejects.toThrow("simulated copy failure");
+    } finally {
+      renameSpy.mockRestore();
+      cpSpy.mockRestore();
     }
     expect(fs.readdirSync(mediaDir)).toEqual([]);
   });

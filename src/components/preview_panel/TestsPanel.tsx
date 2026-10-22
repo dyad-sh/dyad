@@ -1910,7 +1910,9 @@ export function TestsPanel() {
                     "opacity-40 cursor-not-allowed",
                 )}
               >
-                {runState.runError.kind === "stopped" ? "Run again" : "Retry"}
+                {runState.runError.kind === "stopped"
+                  ? t("preview.runAgain")
+                  : t("preview.retryRun")}
               </button>
             </div>
           )}

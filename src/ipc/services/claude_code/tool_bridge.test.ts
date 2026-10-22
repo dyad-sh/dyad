@@ -266,12 +266,18 @@ it("aborts calls still running when the session closes with a session-ended reas
       params: { name: "wait", arguments: {} },
     }),
   });
-  await vi.waitFor(() => expect(observed).toBeDefined());
-  await bridge.close();
-  await call.catch(() => undefined);
-  expect(observed!.aborted).toBe(true);
-  expect(observed!.reason).toBeInstanceOf(CancellationReason);
-  expect((observed!.reason as CancellationReason).kind).toBe(
-    "claude-code-session-ended",
-  );
+  try {
+    await vi.waitFor(() => expect(observed).toBeDefined());
+    await bridge.close();
+    await call.catch(() => undefined);
+    expect(observed!.aborted).toBe(true);
+    expect(observed!.reason).toBeInstanceOf(CancellationReason);
+    expect((observed!.reason as CancellationReason).kind).toBe(
+      "claude-code-session-ended",
+    );
+  } finally {
+    // Closing is the behavior under test; repeating it is a no-op, and it
+    // releases the listener and the pending call if an assertion failed first.
+    await bridge.close();
+  }
 });

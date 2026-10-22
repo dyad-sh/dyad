@@ -273,6 +273,8 @@
     "allTests": "Todos os testes",
     "queueAll": "Adicionar todos à fila",
     "queueAllTests": "Adicionar todos os testes à fila",
+    "retryRun": "Tentar novamente",
+    "runAgain": "Executar novamente",
     "testGate": {
       "settingsLoading": "Carregando configurações…",
       "settingsUnavailable": "O Dyad não conseguiu carregar suas configurações, então não sabe como os testes seriam executados.",

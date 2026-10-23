@@ -80,7 +80,9 @@
     "defaultChatModeDescription": "Controla o modo de chat padrão ao abrir um novo chat.",
     "selectDefaultChatMode": "Selecionar modo de chat padrão",
     "autoApprove": "Aprovar alterações automaticamente",
-    "autoApproveDescription": "Aprova automaticamente as alterações de código e as executa."
+    "autoApproveDescription": "Aprova automaticamente as alterações de código e as executa.",
+    "appBlueprint": "Esboço do App",
+    "appBlueprintDescription": "Ao criar um app novo, gera um esboço simples do app (nome, design, cor, template) antes de construir."
   },
   "ai": {
     "title": "Configurações de IA",
@@ -93,6 +95,9 @@
     "maxChatTurns": "Máximo de Turnos de Chat no Contexto",
     "maxChatTurnsDescription": "Limita quantos turnos recentes de chat são incluídos no contexto.",
     "selectMaxChatTurns": "Selecionar máximo de turnos",
+    "maxToolCallSteps": "Máximo de Chamadas de Ferramentas (Agente)",
+    "maxToolCallStepsDescription": "Limita quantas chamadas de ferramentas o agente pode fazer antes de pausar.",
+    "selectMaxToolCallSteps": "Selecione o máximo de chamadas de ferramentas",
     "unlimited": "Ilimitado",
     "turnCount_one": "{{count}} turno",
     "turnCount_other": "{{count}} turnos",

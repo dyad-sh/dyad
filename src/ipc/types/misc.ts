@@ -6,6 +6,7 @@ import {
   createEventClient,
 } from "../contracts/core";
 import { ConsoleEntrySchema } from "./supabase";
+import { MAX_LOGS_PER_APP } from "@/lib/log_store";
 import { ProblemReportSchema } from "./agent";
 import { ChatStreamInvocationRefSchema } from "./chat";
 import { AppRunInvocationRefSchema } from "./app";
@@ -490,6 +491,17 @@ export const miscContracts = {
   addLog: defineContract({
     channel: "add-log",
     input: ConsoleEntrySchema,
+    output: z.void(),
+  }),
+
+  // Batched form for high-volume sources such as the preview console. The
+  // main store keeps only MAX_LOGS_PER_APP entries per app, so a larger
+  // batch would be trimmed anyway.
+  addLogs: defineContract({
+    channel: "add-logs",
+    input: z.object({
+      entries: z.array(ConsoleEntrySchema).max(MAX_LOGS_PER_APP),
+    }),
     output: z.void(),
   }),
 

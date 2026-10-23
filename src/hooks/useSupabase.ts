@@ -23,6 +23,7 @@ import {
 import { useSettings } from "./useSettings";
 import { isSupabaseConnected } from "@/lib/schemas";
 import { queryKeys } from "@/lib/queryKeys";
+import { appLogForwarder } from "@/lib/app_log_forwarder";
 import { useAppRunRemoteManager } from "@/app_run/AppRunRemoteProvider";
 
 const EDGE_LOGS_POLL_INTERVAL_MS = 5_000;
@@ -289,9 +290,7 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
       : logs;
     if (newLogs.length === 0) return;
 
-    newLogs.forEach((log) => {
-      ipc.misc.addLog(log);
-    });
+    appLogForwarder.enqueue(newLogs);
     appRunManager.previewConsole.append(appId, newLogs);
 
     const latestLog = newLogs.reduce((latest, log) =>

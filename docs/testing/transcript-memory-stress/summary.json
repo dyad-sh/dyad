@@ -1,0 +1,168 @@
+{
+  "payloadBytes": 25004855,
+  "captureCount": 12,
+  "baseline": {
+    "time": 1792818382255,
+    "phase": "baseline",
+    "mainMiB": 559.4375,
+    "rendererMiB": 378.1875
+  },
+  "peakRendererMiB": 6660.09375,
+  "final": {
+    "time": 1792818503056,
+    "phase": "loading-25MB",
+    "mainMiB": 132.390625,
+    "rendererMiB": 5612.671875
+  },
+  "heartbeats": [
+    {
+      "elapsedMs": 12004,
+      "error": "Error: renderer heartbeat timed out"
+    },
+    {
+      "elapsedMs": 22004,
+      "error": "Error: renderer heartbeat timed out"
+    },
+    {
+      "elapsedMs": 32004,
+      "error": "Error: renderer heartbeat timed out"
+    },
+    {
+      "elapsedMs": 42004,
+      "error": "Error: renderer heartbeat timed out"
+    },
+    {
+      "elapsedMs": 52004,
+      "error": "Error: renderer heartbeat timed out"
+    },
+    {
+      "elapsedMs": 62008,
+      "error": "Error: renderer heartbeat timed out"
+    },
+    {
+      "elapsedMs": 72031,
+      "error": "Error: renderer heartbeat timed out"
+    },
+    {
+      "elapsedMs": 82026,
+      "error": "Error: renderer heartbeat timed out"
+    },
+    {
+      "elapsedMs": 92088,
+      "error": "Error: renderer heartbeat timed out"
+    },
+    {
+      "elapsedMs": 102047,
+      "error": "Error: renderer heartbeat timed out"
+    },
+    {
+      "elapsedMs": 112041,
+      "error": "Error: renderer heartbeat timed out"
+    }
+  ],
+  "captures": [
+    {
+      "name": "00-baseline",
+      "seconds": 0,
+      "actualElapsedMs": null,
+      "captureMs": 37,
+      "bytes": 138093
+    },
+    {
+      "name": "010s",
+      "seconds": 10,
+      "actualElapsedMs": 10003,
+      "captureMs": 32,
+      "bytes": 86983
+    },
+    {
+      "name": "020s",
+      "seconds": 20,
+      "actualElapsedMs": 20001,
+      "captureMs": 16,
+      "bytes": 86982
+    },
+    {
+      "name": "030s",
+      "seconds": 30,
+      "actualElapsedMs": 30002,
+      "captureMs": 32,
+      "bytes": 86979
+    },
+    {
+      "name": "040s",
+      "seconds": 40,
+      "actualElapsedMs": 40002,
+      "captureMs": 19,
+      "bytes": 89775
+    },
+    {
+      "name": "050s",
+      "seconds": 50,
+      "actualElapsedMs": 50000,
+      "captureMs": 17,
+      "bytes": 89775
+    },
+    {
+      "name": "060s",
+      "seconds": 60,
+      "actualElapsedMs": 60002,
+      "captureMs": 33,
+      "bytes": 89750
+    },
+    {
+      "name": "070s",
+      "seconds": 70,
+      "actualElapsedMs": 70004,
+      "captureMs": 56,
+      "bytes": 89753
+    },
+    {
+      "name": "080s",
+      "seconds": 80,
+      "actualElapsedMs": 80002,
+      "captureMs": 17,
+      "bytes": 89775
+    },
+    {
+      "name": "090s",
+      "seconds": 90,
+      "actualElapsedMs": 90000,
+      "captureMs": 24,
+      "bytes": 89765
+    },
+    {
+      "name": "100s",
+      "seconds": 100,
+      "actualElapsedMs": 100016,
+      "captureMs": 65,
+      "bytes": 89755
+    },
+    {
+      "name": "110s",
+      "seconds": 110,
+      "actualElapsedMs": 110000,
+      "captureMs": 18,
+      "bytes": 89749
+    },
+    {
+      "name": "120s",
+      "seconds": 120,
+      "actualElapsedMs": 120250,
+      "captureMs": 236,
+      "bytes": 89806
+    }
+  ],
+  "crashes": [],
+  "observations": [
+    "10–30 seconds: provider setup panel, Loading proposal, and Preparing preview / Waiting for server logs; no readable JSON message.",
+    "40–120 seconds: Loading proposal disappears, suggestion buttons appear; otherwise screen stays essentially unchanged, without readable JSON.",
+    "All recorded renderer JavaScript heartbeat checks timed out.",
+    "No renderer crash event observed."
+  ],
+  "limitations": [
+    "Fresh profile has no configured model provider.",
+    "Synthetic app has no Git repository or package manifest; provider setup and preview states are visible.",
+    "Completed-message load, not streaming."
+  ]
+}

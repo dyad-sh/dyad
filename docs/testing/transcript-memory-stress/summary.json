@@ -1,26 +1,29 @@
 {
   "payloadBytes": 25004855,
+  "recordCount": 240334,
+  "syntheticApiKeyConfigured": true,
+  "providerSetupHiddenBeforeLoad": true,
   "captureCount": 12,
   "baseline": {
-    "time": 1792818382255,
+    "time": 1792818948738,
     "phase": "baseline",
-    "mainMiB": 559.4375,
-    "rendererMiB": 378.1875
+    "mainMiB": 580.296875,
+    "rendererMiB": 370.265625
   },
-  "peakRendererMiB": 6660.09375,
+  "peakRendererMiB": 8671.671875,
   "final": {
-    "time": 1792818503056,
+    "time": 1792819069046,
     "phase": "loading-25MB",
-    "mainMiB": 132.390625,
-    "rendererMiB": 5612.671875
+    "mainMiB": 143.09375,
+    "rendererMiB": 7692.828125
   },
   "heartbeats": [
     {
-      "elapsedMs": 12004,
+      "elapsedMs": 12003,
       "error": "Error: renderer heartbeat timed out"
     },
     {
-      "elapsedMs": 22004,
+      "elapsedMs": 22002,
       "error": "Error: renderer heartbeat timed out"
     },
     {
@@ -28,35 +31,35 @@
       "error": "Error: renderer heartbeat timed out"
     },
     {
-      "elapsedMs": 42004,
+      "elapsedMs": 42005,
       "error": "Error: renderer heartbeat timed out"
     },
     {
-      "elapsedMs": 52004,
+      "elapsedMs": 52016,
       "error": "Error: renderer heartbeat timed out"
     },
     {
-      "elapsedMs": 62008,
+      "elapsedMs": 62012,
       "error": "Error: renderer heartbeat timed out"
     },
     {
-      "elapsedMs": 72031,
+      "elapsedMs": 72118,
       "error": "Error: renderer heartbeat timed out"
     },
     {
-      "elapsedMs": 82026,
+      "elapsedMs": 82014,
       "error": "Error: renderer heartbeat timed out"
     },
     {
-      "elapsedMs": 92088,
+      "elapsedMs": 92010,
       "error": "Error: renderer heartbeat timed out"
     },
     {
-      "elapsedMs": 102047,
+      "elapsedMs": 102084,
       "error": "Error: renderer heartbeat timed out"
     },
     {
-      "elapsedMs": 112041,
+      "elapsedMs": 112057,
       "error": "Error: renderer heartbeat timed out"
     }
   ],
@@ -65,104 +68,105 @@
       "name": "00-baseline",
       "seconds": 0,
       "actualElapsedMs": null,
-      "captureMs": 37,
-      "bytes": 138093
+      "captureMs": 31,
+      "bytes": 126538
     },
     {
       "name": "010s",
       "seconds": 10,
-      "actualElapsedMs": 10003,
-      "captureMs": 32,
-      "bytes": 86983
+      "actualElapsedMs": 10001,
+      "captureMs": 29,
+      "bytes": 72485
     },
     {
       "name": "020s",
       "seconds": 20,
-      "actualElapsedMs": 20001,
-      "captureMs": 16,
-      "bytes": 86982
+      "actualElapsedMs": 20000,
+      "captureMs": 30,
+      "bytes": 72485
     },
     {
       "name": "030s",
       "seconds": 30,
       "actualElapsedMs": 30002,
-      "captureMs": 32,
-      "bytes": 86979
+      "captureMs": 28,
+      "bytes": 72485
     },
     {
       "name": "040s",
       "seconds": 40,
       "actualElapsedMs": 40002,
-      "captureMs": 19,
-      "bytes": 89775
+      "captureMs": 28,
+      "bytes": 72485
     },
     {
       "name": "050s",
       "seconds": 50,
       "actualElapsedMs": 50000,
-      "captureMs": 17,
-      "bytes": 89775
+      "captureMs": 29,
+      "bytes": 72485
     },
     {
       "name": "060s",
       "seconds": 60,
-      "actualElapsedMs": 60002,
-      "captureMs": 33,
-      "bytes": 89750
+      "actualElapsedMs": 60001,
+      "captureMs": 30,
+      "bytes": 72477
     },
     {
       "name": "070s",
       "seconds": 70,
-      "actualElapsedMs": 70004,
-      "captureMs": 56,
-      "bytes": 89753
+      "actualElapsedMs": 70000,
+      "captureMs": 32,
+      "bytes": 72482
     },
     {
       "name": "080s",
       "seconds": 80,
-      "actualElapsedMs": 80002,
-      "captureMs": 17,
-      "bytes": 89775
+      "actualElapsedMs": 80001,
+      "captureMs": 28,
+      "bytes": 72477
     },
     {
       "name": "090s",
       "seconds": 90,
-      "actualElapsedMs": 90000,
-      "captureMs": 24,
-      "bytes": 89765
+      "actualElapsedMs": 90002,
+      "captureMs": 41,
+      "bytes": 72485
     },
     {
       "name": "100s",
       "seconds": 100,
-      "actualElapsedMs": 100016,
-      "captureMs": 65,
-      "bytes": 89755
+      "actualElapsedMs": 100023,
+      "captureMs": 204,
+      "bytes": 72502
     },
     {
       "name": "110s",
       "seconds": 110,
-      "actualElapsedMs": 110000,
-      "captureMs": 18,
-      "bytes": 89749
+      "actualElapsedMs": 110002,
+      "captureMs": 103,
+      "bytes": 72474
     },
     {
       "name": "120s",
       "seconds": 120,
-      "actualElapsedMs": 120250,
-      "captureMs": 236,
-      "bytes": 89806
+      "actualElapsedMs": 120004,
+      "captureMs": 30,
+      "bytes": 72478
     }
   ],
   "crashes": [],
   "observations": [
-    "10–30 seconds: provider setup panel, Loading proposal, and Preparing preview / Waiting for server logs; no readable JSON message.",
-    "40–120 seconds: Loading proposal disappears, suggestion buttons appear; otherwise screen stays essentially unchanged, without readable JSON.",
-    "All recorded renderer JavaScript heartbeat checks timed out.",
+    "Provider setup panel is absent after configuring an explicitly synthetic OpenAI API key.",
+    "10–120 seconds: assistant introduction, JSON language/copy toolbar, and SYNTHETIC_STRESS_TAIL are visible, but no JSON records are readable inside the code block.",
+    "Loading proposal and Preparing preview / Waiting for server logs remain visible.",
+    "All completed renderer JavaScript heartbeat checks timed out.",
     "No renderer crash event observed."
   ],
   "limitations": [
-    "Fresh profile has no configured model provider.",
-    "Synthetic app has no Git repository or package manifest; provider setup and preview states are visible.",
+    "Dummy key only; no real model request.",
+    "Synthetic app has no Git repository or package manifest; preview errors are present in the baseline.",
     "Completed-message load, not streaming."
   ]
 }

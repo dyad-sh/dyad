@@ -198,6 +198,8 @@ function generateRecords() {
       PATH: "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
       E2E_TEST_BUILD: "true",
       NODE_ENV: "production",
+      // Dummy value only: bypass provider setup without a usable credential.
+      OPENAI_API_KEY: "sk-test-synthetic-no-network",
       XDG_CONFIG_HOME: root + "/xdg",
       GIT_CONFIG_GLOBAL: root + "/empty-gitconfig",
       DYAD_ENGINE_URL: "http://127.0.0.1:9",
@@ -272,6 +274,9 @@ function generateRecords() {
   await page
     .getByText("Synthetic baseline assistant message.", { exact: true })
     .waitFor({ timeout: 30000 });
+  await page
+    .getByText("Start free Dyad Pro trial", { exact: true })
+    .waitFor({ state: "hidden", timeout: 15000 });
   sampling = setInterval(() => sample(), 1000);
   await mark("baseline");
   await sleep(5000);

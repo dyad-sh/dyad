@@ -110,6 +110,18 @@ A fake server that does not enforce what the real one enforces makes the spec un
 
 Let the semantics decide the role, not the selectors. A group of mutually exclusive options is a `radiogroup` of `radio`s; `aria-pressed` on buttons is for independent toggles, and is only a defensible shortcut for a segmented control when the churn is not worth it — say so in the code when you take it.
 
+## Capturing stalled renderers and reloading packaged routes
+
+For timed captures of an unresponsive Electron renderer, use main-process
+`webContents.capturePage()` with a bounded timeout; it can capture compositor
+output while renderer JavaScript checks time out. Record capture timing and
+renderer heartbeat results separately rather than inferring responsiveness from
+a screenshot.
+
+Reload a packaged app through its original file entry URL before navigating to
+`/chat`. Reloading the history-pushed `/chat` file URL fails with
+`net::ERR_FILE_NOT_FOUND`.
+
 ## Lexical editor in Playwright E2E tests
 
 The chat input uses a Lexical editor (contenteditable). Standard Playwright methods don't always work:

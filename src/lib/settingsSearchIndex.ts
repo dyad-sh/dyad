@@ -27,6 +27,7 @@ export const SETTING_IDS = {
   appBlueprint: "setting-app-blueprint",
   testingForNewApps: "setting-testing-for-new-apps",
   sandboxedE2eTests: "setting-sandboxed-e2e-tests",
+  parallelTestRuns: "setting-parallel-test-runs",
   chatEventNotification: "setting-chat-event-notification",
   suggestedPrompts: "setting-suggested-prompts",
   maxToolCallSteps: "setting-max-tool-call-steps",
@@ -75,6 +76,22 @@ type SearchableSettingItem = {
 };
 
 export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
+  {
+    id: SETTING_IDS.parallelTestRuns,
+    label: "Parallel E2E test runs",
+    description: "Resource-aware parallel runs and reusable sandboxes",
+    keywords: [
+      "tests",
+      "e2e",
+      "parallel",
+      "cpu",
+      "memory",
+      "sandboxes",
+      "worktrees",
+    ],
+    sectionId: SECTION_IDS.workflow,
+    sectionLabel: "Workflow",
+  },
   {
     id: SETTING_IDS.showSystemResourceUsage,
     label: "System resource usage",

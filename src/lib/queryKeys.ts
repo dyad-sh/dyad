@@ -168,6 +168,8 @@ export const queryKeys = {
     all: ["tests"] as const,
     activeRun: ({ appId }: { appId: number | null }) =>
       ["tests", appId, "active-run"] as const,
+    activeRuns: ({ appId }: { appId: number | null }) =>
+      ["tests", appId, "active-runs"] as const,
     run: ({ appId }: { appId: number | null }) =>
       ["tests", appId, "run"] as const,
     queue: ({ appId }: { appId: number | null }) =>

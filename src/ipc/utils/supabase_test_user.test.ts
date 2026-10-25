@@ -5,10 +5,21 @@ const mocks = vi.hoisted(() => {
   const set = vi.fn(() => ({ where }));
   const update = vi.fn(() => ({ set }));
   const selectWhere = vi.fn().mockResolvedValue([]);
-  const from = vi.fn(() => ({ where: selectWhere }));
+  const from = vi.fn((table: unknown) =>
+    table === "test-user-cleanup"
+      ? Promise.resolve([])
+      : { where: selectWhere },
+  );
   const select = vi.fn(() => ({ from }));
+  const insertValues = vi.fn().mockResolvedValue(undefined);
   return {
-    db: { update, select },
+    db: {
+      update,
+      select,
+      delete: vi.fn(() => ({ where: vi.fn().mockResolvedValue(undefined) })),
+      insert: vi.fn(() => ({ values: insertValues })),
+    },
+    insertValues,
     update,
     set,
     where,
@@ -25,9 +36,11 @@ vi.mock("@/db", () => ({ db: mocks.db }));
 vi.mock("../../db", () => ({ db: mocks.db }));
 vi.mock("@/db/schema", () => ({
   apps: { id: "id", supabaseTestUserId: "stu" },
+  testUserCleanup: "test-user-cleanup",
 }));
 vi.mock("../../db/schema", () => ({
   apps: { id: "id", supabaseTestUserId: "stu" },
+  testUserCleanup: "test-user-cleanup",
 }));
 vi.mock("drizzle-orm", async (importOriginal) => {
   const actual = await importOriginal<typeof import("drizzle-orm")>();
@@ -322,6 +335,40 @@ describe("createTempTestUser", () => {
     for (const [, init] of fetchSpy.mock.calls)
       expect(init.headers.apikey).toBe(SECRET_KEY);
   });
+  it("records overlapping case owners separately without replacing another run's user", async () => {
+    const ids = [UUID, "00000000-0000-4000-8000-000000000001"];
+    let index = 0;
+    mockFetch(() => new Response(JSON.stringify({ id: ids[index++] })));
+    const app = makeApp({ supabaseTestUserId: "legacy-recorder-user" });
+    await Promise.all([
+      createTempTestUser(app, { ownerId: "run-one:case-one" }),
+      createTempTestUser(app, { ownerId: "run-two:case-one" }),
+    ]);
+    expect(mocks.set).not.toHaveBeenCalled();
+    expect(mocks.insertValues).toHaveBeenCalledTimes(2);
+    for (const [value] of mocks.insertValues.mock.calls) {
+      expect(value).toMatchObject({
+        appId: 7,
+        projectId: "proj-1",
+        organizationSlug: "org-1",
+      });
+      expect(Object.keys(value).sort()).toEqual([
+        "appId",
+        "organizationSlug",
+        "ownerId",
+        "projectId",
+        "userId",
+      ]);
+    }
+    expect(
+      mocks.insertValues.mock.calls.map(([value]) => value.ownerId).sort(),
+    ).toEqual(["run-one:case-one", "run-two:case-one"]);
+    expect(
+      new Set(mocks.insertValues.mock.calls.map(([value]) => value.userId))
+        .size,
+    ).toBe(2);
+  });
+
   it("creates a confirmed admin user and persists the id immediately", async () => {
     const fetchSpy = mockFetch(
       () => new Response(JSON.stringify({ id: UUID })),
@@ -342,7 +389,7 @@ describe("createTempTestUser", () => {
       userId: UUID,
       projectUrl: "https://proj-1.supabase.co",
     });
-    expect(result.email).toMatch(/^dyad-test\+7-\d+@dyad\.test$/);
+    expect(result.email).toMatch(/^dyad-test\+7-[a-f0-9-]{36}@dyad\.test$/);
     // Persists the in-flight user id for crash reconciliation.
     expect(mocks.set).toHaveBeenCalledWith({ supabaseTestUserId: UUID });
   });

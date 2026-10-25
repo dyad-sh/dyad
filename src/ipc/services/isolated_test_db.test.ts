@@ -60,6 +60,23 @@ vi.mock("../utils/neon_test_branch", () => ({
   markAndDeleteTempTestBranch: mocks.markAndDeleteTempTestBranch,
   trackedTestBranchId: mocks.trackedTestBranchId,
 }));
+vi.mock("./shared_neon_test_branch", () => ({
+  acquireSharedNeonTestBranch: async (
+    app: unknown,
+    appPathOverride: string,
+    initialize: (branch: unknown) => Promise<void>,
+  ) => {
+    const branch = await mocks.createTempTestBranch(app, {
+      cleanupOnly: true,
+      appPathOverride,
+    });
+    await initialize(branch);
+    return {
+      branch,
+      release: () => mocks.markAndDeleteTempTestBranch(app, branch.branchId),
+    };
+  },
+}));
 vi.mock("../utils/neon_test_account", () => ({
   createNeonTestAccount: mocks.createNeonTestAccount,
 }));
@@ -205,7 +222,7 @@ describe("per-case database isolation", () => {
       });
       await prepared.testCaseLifecycle!.afterEach();
     }
-    expect(mocks.clearNeonTestData).toHaveBeenCalledTimes(4);
+    expect(mocks.clearNeonTestData).toHaveBeenCalledTimes(1);
     expect(mocks.updateNeonEnvVars).toHaveBeenCalledWith(
       expect.objectContaining({ appPath: "/sandboxes/run-1" }),
     );

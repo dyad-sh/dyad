@@ -133,16 +133,12 @@ export function TestRunQueueCard({
   ]);
   const completedIds = new Set(completed.map((run) => run.runId));
   const rows: QueueRow[] = [
-    ...(queue?.activeRun && !completedIds.has(queue.activeRun.runId)
-      ? [
-          {
-            ...queue.activeRun,
-            status: queue.activeRun.stopping
-              ? ("stopping" as const)
-              : ("running" as const),
-          },
-        ]
-      : []),
+    ...(queue?.activeRuns ?? (queue?.activeRun ? [queue.activeRun] : []))
+      .filter((run) => !completedIds.has(run.runId))
+      .map((run) => ({
+        ...run,
+        status: run.stopping ? ("stopping" as const) : ("running" as const),
+      })),
     ...(queue?.queuedRuns ?? [])
       .filter((run) => !completedIds.has(run.runId))
       .map((run) => ({ ...run, status: "queued" as const })),
@@ -213,7 +209,7 @@ export function TestRunQueueCard({
               <span className="min-w-0 flex-1 truncate" title={label}>
                 {label}
               </span>
-              <span className="shrink-0" title={stopReason}>
+              <span className="shrink-0" title={stopReason ?? run.queuedReason}>
                 {t(`testRunQueue.${run.status}`)}
                 {stopReason && (
                   <span className="sr-only">{`: ${stopReason}`}</span>

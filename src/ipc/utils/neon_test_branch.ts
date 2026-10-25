@@ -1,5 +1,5 @@
 import log from "electron-log";
-import { eq, isNotNull } from "drizzle-orm";
+import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import { EndpointType } from "@neondatabase/api-client";
 
 import { db } from "../../db";
@@ -78,7 +78,12 @@ export async function markTestBranchCleanupOnly(
   await db
     .update(apps)
     .set({ neonTestBranchId: marker })
-    .where(eq(apps.id, appData.id));
+    .where(
+      and(
+        eq(apps.id, appData.id),
+        inArray(apps.neonTestBranchId, [trackedBranchId(branchId), marker]),
+      ),
+    );
   return { ...appData, neonTestBranchId: marker };
 }
 
@@ -411,7 +416,7 @@ export async function deleteTempTestBranch(appData: AppRow): Promise<boolean> {
       await db
         .update(apps)
         .set({ neonTestBranchId: null })
-        .where(eq(apps.id, appData.id));
+        .where(and(eq(apps.id, appData.id), eq(apps.neonTestBranchId, marker)));
     } catch (error) {
       // The branch IS gone, which is what this function reports. A failed row
       // update leaves a stale marker the next sweep re-reads — and that sweep

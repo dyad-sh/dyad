@@ -36,7 +36,7 @@ vi.mock("@/ipc/types", () => ({
   ipc: {
     tests: {
       getRunQueue: mocks.getRunQueue,
-      getActiveRun: async () => null,
+      getActiveRuns: async () => [],
       listAppTests: async () => ({ specs: [] }),
     },
     events: {

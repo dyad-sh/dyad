@@ -490,7 +490,7 @@ describe("local_agent_prompt", () => {
       'testFiles: ["e2e-tests/signup.spec.ts", "e2e-tests/checkout.spec.ts"]',
     );
     expect(prompt).toContain(
-      "isolated per test case and retry, including across files",
+      "unique default account per case and retry, including across files",
     );
     expect(prompt).toContain("Seed each case independently");
     expect(prompt).not.toContain("no reset between files");

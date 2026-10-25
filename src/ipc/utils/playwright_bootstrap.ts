@@ -8,6 +8,7 @@ import path from "node:path";
 import log from "electron-log/main";
 import { globSync } from "glob";
 import { spawnStreaming } from "./spawn_streaming";
+import { trackE2eTestProcess } from "../services/e2e_test_process_registry";
 import {
   measureTestRunStep,
   type TestRunTiming,
@@ -1799,6 +1800,7 @@ export async function ensurePlaywrightBootstrap({
           command,
           args,
           cwd: install.cwd,
+          onProcess: (child) => trackE2eTestProcess(child, signal),
           signal,
           onOutput,
           // Disable Corepack's project spec so a stale `packageManager` pin can't
@@ -1895,6 +1897,7 @@ export async function ensurePlaywrightBootstrap({
         spawnStreaming({
           command: "npx",
           args: ["playwright", "install", "chromium"],
+          onProcess: (child) => trackE2eTestProcess(child, signal),
           cwd: appPath,
           signal,
           onOutput,

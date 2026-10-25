@@ -1,6 +1,7 @@
 import type { ChildProcess } from "node:child_process";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import log from "electron-log";
 
 import { getUserDataPath } from "@/paths/paths";
@@ -9,11 +10,18 @@ import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { testRunStoppedError } from "./test_run_stop";
 import {
-  createGitOverlayWorkspace,
   isGitOverlayWorkspaceActive,
   readGitOverlayWorkspaceMarker,
   removeGitOverlayWorkspace,
+  setGitOverlayDependencyCache,
 } from "@/ipc/services/git_overlay_workspace";
+import { e2eDependencyFingerprint } from "./e2e_dependency_fingerprint";
+import {
+  acquireE2eSandbox,
+  reconcileE2eSandboxPool,
+  isRetainedE2eSandbox,
+  removeE2eSandboxesForApp,
+} from "./e2e_sandbox_pool";
 import {
   findPackageManagerRoot,
   findWorkspacePackageDirectories,
@@ -85,12 +93,14 @@ const activeWorkspaceNames = new Set<string>();
 
 export interface E2eTestWorkspace {
   workspacePath: string;
+  worktreePath?: string;
   artifactPath: string;
   packageManager?: IsolatedPackageManager;
   /** Copied package root to sanitize, including when custom commands install. */
   packageRootPath?: string;
   dependencyInstallPath?: string;
   usesWorkspaceInstallRoot?: boolean;
+  reused?: boolean;
   dispose(): Promise<void>;
 }
 
@@ -157,7 +167,7 @@ export async function createE2eTestWorkspace({
   // produced replacements.
 
   const startedAt = Date.now();
-  const snapshot = await createGitOverlayWorkspace({
+  const lease = await acquireE2eSandbox(appId, {
     sourceTargetPath: appPath,
     scratchRoot: sandboxRoot,
     directoryPrefix: `${appId}-`,
@@ -165,12 +175,16 @@ export async function createE2eTestWorkspace({
     excludedTargetRootNames: EXCLUDED_ROOTS,
     signal,
   });
-  const runName = path.basename(snapshot.worktreePath);
+  const snapshot = lease.snapshot;
+  const workspaceName = path.basename(snapshot.worktreePath);
+  // A retained worktree is reused; reports belong to the invocation, never it.
+  const runName = `${appId}-${randomUUID()}`;
   const workspacePath = snapshot.targetPath;
   const artifactPath = path.join(artifactRoot, runName);
   assertOwnedPath(sandboxRoot, snapshot.worktreePath);
   assertOwnedPath(artifactRoot, artifactPath);
   activeWorkspaceNames.add(runName);
+  activeWorkspaceNames.add(workspaceName);
   let disposed = false;
   const dispose = async () => {
     if (disposed) return;
@@ -178,16 +192,14 @@ export async function createE2eTestWorkspace({
     assertOwnedPath(sandboxRoot, snapshot.worktreePath);
     const disposeStartedAt = Date.now();
     try {
-      await removeGitOverlayWorkspace(
-        snapshot.worktreePath,
-        snapshot.sourceRepoPath,
-      );
+      await lease.release();
       sendTelemetryEvent("e2e_test_workspace_disposed", {
         duration_ms: Date.now() - disposeStartedAt,
         platform: process.platform,
       });
     } finally {
       activeWorkspaceNames.delete(runName);
+      activeWorkspaceNames.delete(workspaceName);
     }
   };
 
@@ -216,6 +228,17 @@ export async function createE2eTestWorkspace({
       : packageRootPath;
     const usesWorkspaceInstallRoot =
       !hasCustomCommands && sourceInstallPath !== snapshot.sourceTargetPath;
+    if (hasCustomCommands) {
+      const dependencies = (
+        await readGitOverlayWorkspaceMarker(snapshot.worktreePath)
+      )?.pool?.dependencies;
+      await setGitOverlayDependencyCache(snapshot.worktreePath, undefined);
+      for (const entry of dependencies?.paths ?? [])
+        await fs.rm(path.join(snapshot.worktreePath, entry), {
+          recursive: true,
+          force: true,
+        });
+    }
     sendTelemetryEvent("e2e_test_workspace_created", {
       duration_ms: Date.now() - startedAt,
       snapshot_ms: snapshot.setupMs,
@@ -225,11 +248,13 @@ export async function createE2eTestWorkspace({
     });
     return {
       workspacePath,
+      worktreePath: snapshot.worktreePath,
       artifactPath,
       packageManager,
       packageRootPath,
       dependencyInstallPath,
       usesWorkspaceInstallRoot,
+      reused: lease.reused,
       dispose,
     };
   } catch (error) {
@@ -410,6 +435,60 @@ export async function installE2eTestWorkspaceDependencies({
   // Custom commands install as part of runtime startup, but their copied env
   // files need the same protection even without a managed package install.
   if (!dependencyInstallPath || !packageManager) return;
+  const env = getPackageManagerCommandEnv(withoutInheritedDatabaseEnv());
+  const fingerprint = await e2eDependencyFingerprint({
+    installPath: dependencyInstallPath,
+    packagePaths: installedPackagePaths,
+    packageManager,
+    env,
+  }).catch(() => null);
+  const worktreePath = workspace.worktreePath;
+  const previous = worktreePath
+    ? (await readGitOverlayWorkspaceMarker(worktreePath))?.pool?.dependencies
+    : undefined;
+  const dependencyPaths = installedPackagePaths.map((directory) =>
+    path.join(directory, "node_modules"),
+  );
+  const isInstalledDirectory = async (directory: string) => {
+    const stat = await fs.lstat(directory).catch(() => null);
+    return (
+      !!stat?.isDirectory() && (await fs.realpath(directory)) === directory
+    );
+  };
+  if (
+    fingerprint &&
+    previous?.fingerprint === fingerprint &&
+    worktreePath &&
+    previous.paths.includes(
+      path
+        .relative(
+          worktreePath,
+          path.join(dependencyInstallPath, "node_modules"),
+        )
+        .split(path.sep)
+        .join("/"),
+    ) &&
+    (
+      await Promise.all(
+        previous.paths.map((entry) =>
+          isInstalledDirectory(path.join(worktreePath, entry)),
+        ),
+      )
+    ).every(Boolean)
+  ) {
+    onOutput?.("Reusing installed dependencies from the sandbox.\n");
+    return;
+  }
+  // Invalidate before starting so failed/cancelled installs are never reused.
+  if (worktreePath) await setGitOverlayDependencyCache(worktreePath, undefined);
+  for (const directory of new Set([
+    ...dependencyPaths,
+    ...(worktreePath
+      ? (previous?.paths.map((entry) => path.join(worktreePath, entry)) ?? [])
+      : []),
+  ]))
+    await fs.rm(directory, { recursive: true, force: true });
+  onOutput?.("Installing clean dependencies in the test workspace…\n");
   let installChild: ChildProcess | undefined;
   // Defaults to "abnormal", so a throw out of the install — which leaves no
   // result to read — still settles the process tree.
@@ -424,7 +503,7 @@ export async function installE2eTestWorkspaceDependencies({
       // shell that launched Dyad would override the isolated value the
       // sandbox wrote — including the Neon branch URL a `prisma migrate` in
       // a lifecycle script is supposed to run against.
-      env: getPackageManagerCommandEnv(withoutInheritedDatabaseEnv()),
+      env,
       signal,
       timeoutMs: DEPENDENCY_INSTALL_TIMEOUT_MS,
       onOutput,
@@ -483,6 +562,16 @@ export async function installE2eTestWorkspaceDependencies({
       `Could not install dependencies in the isolated test workspace (exit code ${installResult.code}).${output ? `\n\n${output}` : ""}`,
       DyadErrorKind.Precondition,
     );
+  }
+  if (fingerprint && worktreePath) {
+    const paths: string[] = [];
+    for (const directory of dependencyPaths)
+      if (await isInstalledDirectory(directory))
+        paths.push(
+          path.relative(worktreePath, directory).split(path.sep).join("/"),
+        );
+    if (paths.length)
+      await setGitOverlayDependencyCache(worktreePath, { fingerprint, paths });
   }
   sendTelemetryEvent("e2e_test_workspace_dependencies_installed", {
     duration_ms: Date.now() - startedAt,
@@ -736,6 +825,7 @@ async function removeRunDirectories(
 export async function removeE2eTestArtifactsForApp(
   appId: number,
 ): Promise<void> {
+  await removeE2eSandboxesForApp(appId);
   await removeRunDirectories(
     path.join(getUserDataPath(), E2E_TEST_ARTIFACT_DIR),
     (name) => runDirectoryAppId(name) === appId,
@@ -772,11 +862,13 @@ export async function reconcileOrphanE2eTestWorkspaces({
   const sandboxRoot = await fs
     .realpath(path.join(userDataPath, E2E_TEST_SANDBOX_DIR))
     .catch(() => path.join(userDataPath, E2E_TEST_SANDBOX_DIR));
+  await reconcileE2eSandboxPool(sandboxRoot, await refreshKnownAppIds?.());
   await removeRunDirectories(
     sandboxRoot,
     async (name, runPath) => {
       if (
         activeWorkspaceNames.has(name) ||
+        isRetainedE2eSandbox(runPath) ||
         isGitOverlayWorkspaceActive(runPath)
       ) {
         return false;

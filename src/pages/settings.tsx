@@ -25,6 +25,7 @@ import { cn } from "@/lib/utils";
 import { AppBlueprintSwitch } from "@/components/AppBlueprintSwitch";
 import { TestingForNewAppsSwitch } from "@/components/TestingForNewAppsSwitch";
 import { SandboxedE2eTestsSwitch } from "@/components/SandboxedE2eTestsSwitch";
+import { ParallelTestRunSettings } from "@/components/ParallelTestRunSettings";
 import { AutoExpandPreviewSwitch } from "@/components/AutoExpandPreviewSwitch";
 import { KeepPreviewsRunningSwitch } from "@/components/KeepPreviewsRunningSwitch";
 import { ChatEventNotificationSwitch } from "@/components/ChatEventNotificationSwitch";
@@ -548,6 +549,10 @@ export function WorkflowSettings() {
           against your normal preview, and Neon-only apps won't run at all
           rather than test against your real data.
         </p>
+      </div>
+
+      <div id={SETTING_IDS.parallelTestRuns}>
+        <ParallelTestRunSettings />
       </div>
 
       <div id={SETTING_IDS.autoExpandPreview} className="space-y-1.5">

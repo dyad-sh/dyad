@@ -55,6 +55,8 @@ export type TestRunPhase =
 
 export interface TestRunState {
   phase: TestRunPhase;
+  /** Per-run presentation of main's lifecycle events; never schedules runs. */
+  activeRuns?: Record<number, TestRunProgress>;
   /** Main-owned per-app generation used to reject stale lifecycle events. */
   runId?: number;
   /** Surface that started the active run. */
@@ -93,6 +95,34 @@ export interface TestRunState {
    */
   sandboxed?: boolean;
   startedAt?: number;
+}
+
+export type TestRunProgress = Omit<TestRunState, "results" | "activeRuns">;
+
+function runProgress({
+  results: _results,
+  activeRuns: _runs,
+  ...progress
+}: TestRunState): TestRunProgress {
+  return progress;
+}
+
+/** Keep the app's summary active until every independently owned run settles. */
+function projectActiveRuns(state: TestRunState): TestRunState {
+  const runs = Object.values(state.activeRuns ?? {});
+  if (!runs.length) return state;
+  // Executing runs take precedence over another run's teardown in the toolbar.
+  const executing = runs.filter(
+    (run) => run.phase === "setup" || run.phase === "running",
+  );
+  const current = (executing.length ? executing : runs).reduce((latest, run) =>
+    (run.runId ?? 0) > (latest.runId ?? 0) ? run : latest,
+  );
+  return {
+    ...state,
+    ...current,
+    runningFiles: [...new Set(runs.flatMap((run) => run.runningFiles))],
+  };
 }
 
 // Frozen (deeply) so the shared default can't be mutated in place and leak
@@ -179,15 +209,32 @@ export const setTestRunStateForAppAtom = atom(
     set,
     {
       appId,
+      runId,
       update,
     }: {
       appId: number;
+      /** Scope progress updates to their producer, even while other runs execute. */
+      runId?: number;
       update: TestRunState | ((prev: TestRunState) => TestRunState);
     },
   ) => {
     set(testRunStateByAppIdAtom, (prev) => {
       const current = prev.get(appId) ?? EMPTY_TEST_RUN_STATE;
-      const nextState = typeof update === "function" ? update(current) : update;
+      const progress =
+        runId === undefined ? undefined : current.activeRuns?.[runId];
+      if (runId !== undefined && !progress) return prev;
+      const target = progress ? { ...current, ...progress } : current;
+      const updated = typeof update === "function" ? update(target) : update;
+      if (updated === target) return prev;
+      const nextState = progress
+        ? projectActiveRuns({
+            ...current,
+            activeRuns: {
+              ...current.activeRuns,
+              [runId!]: runProgress(updated),
+            },
+          })
+        : updated;
       // An updater may return the previous state to signal "no change" (e.g.
       // the streamed-output subscriber when the phase is unchanged) — skip the
       // Map copy so subscribers don't re-render for nothing.
@@ -285,45 +332,58 @@ export const applyTestRunStartedAtom = atom(
               ),
           )
         : null;
-    set(clearTestRunOutputForAppAtom, appId);
+    if (
+      !Object.keys(get(testRunStateByAppIdAtom).get(appId)?.activeRuns ?? {})
+        .length
+    )
+      set(clearTestRunOutputForAppAtom, appId);
     set(setTestRunStateForAppAtom, {
       appId,
-      update: (prev) => ({
-        ...prev,
-        // A run starts in setup: isolation prep and the Playwright bootstrap
-        // both run before the first test does. Setup-phase output keeps it
-        // here; the first running-phase output advances it.
-        phase: "setup",
-        runId,
-        source,
-        wasStopped: false,
-        runningFiles: targetFiles,
-        runningTests:
-          targetFiles.length === 1 && testLine != null
-            ? [testKey(targetFiles[0], testLine)]
-            : (grepMatchedTests ?? []),
-        // For a single-test run, keep the file's existing results (siblings
-        // keep their status; we merge the one test back in afterward). Grep
-        // runs are also partial because they return only the matched tests.
-        // For a file/all run, clear the targeted files.
-        results: isPartialRun
-          ? prev.results
-          : Object.fromEntries(
-              Object.entries(prev.results).filter(
-                ([f]) => !targetFiles.includes(f),
+      update: (prev) => {
+        const started: TestRunState = {
+          ...prev,
+          activeRuns: runId === undefined ? undefined : prev.activeRuns,
+          // A run starts in setup: isolation prep and the Playwright bootstrap
+          // both run before the first test does. Setup-phase output keeps it
+          // here; the first running-phase output advances it.
+          phase: "setup",
+          runId,
+          source,
+          wasStopped: false,
+          runningFiles: targetFiles,
+          runningTests:
+            targetFiles.length === 1 && testLine != null
+              ? [testKey(targetFiles[0], testLine)]
+              : (grepMatchedTests ?? []),
+          // For a single-test run, keep the file's existing results (siblings
+          // keep their status; we merge the one test back in afterward). Grep
+          // runs are also partial because they return only the matched tests.
+          // For a file/all run, clear the targeted files.
+          results: isPartialRun
+            ? prev.results
+            : Object.fromEntries(
+                Object.entries(prev.results).filter(
+                  ([f]) => !targetFiles.includes(f),
+                ),
               ),
-            ),
-        runError: undefined,
-        isolation: undefined,
-        // The starter's expectation; the main process confirms (or corrects)
-        // it on the progress and finished events. `?? prev` rather than a bare
-        // assignment: this atom is applied TWICE for one run — once optimistically
-        // at the click, then again when the main process broadcasts `started` —
-        // and a caller that omits the flag must not erase what the first call
-        // knew.
-        sandboxed: sandboxed ?? prev.sandboxed,
-        startedAt: startedAt ?? Date.now(),
-      }),
+          runError: undefined,
+          isolation: undefined,
+          // The starter's expectation; the main process confirms (or corrects)
+          // it on the progress and finished events. `?? prev` rather than a bare
+          // assignment: this atom is applied TWICE for one run — once optimistically
+          // at the click, then again when the main process broadcasts `started` —
+          // and a caller that omits the flag must not erase what the first call
+          // knew.
+          sandboxed: sandboxed ?? prev.sandboxed,
+          startedAt: startedAt ?? Date.now(),
+        };
+        return runId === undefined
+          ? started
+          : projectActiveRuns({
+              ...started,
+              activeRuns: { ...prev.activeRuns, [runId]: runProgress(started) },
+            });
+      },
     });
   },
 );
@@ -363,10 +423,14 @@ export const applyTestRunFinishedAtom = atom(
     set(setTestRunStateForAppAtom, {
       appId,
       update: (prev) => {
+        const progress =
+          expectedRunId === undefined
+            ? prev
+            : (prev.activeRuns?.[expectedRunId] ?? prev);
         if (
-          (expectedRunId !== undefined && prev.runId !== expectedRunId) ||
+          (expectedRunId !== undefined && progress.runId !== expectedRunId) ||
           (expectedStartedAt !== undefined &&
-            prev.startedAt !== expectedStartedAt)
+            progress.startedAt !== expectedStartedAt)
         ) {
           return prev;
         }
@@ -395,8 +459,11 @@ export const applyTestRunFinishedAtom = atom(
             };
           }
         }
-        return {
+        const activeRuns = { ...prev.activeRuns };
+        if (expectedRunId !== undefined) delete activeRuns[expectedRunId];
+        return projectActiveRuns({
           ...prev,
+          activeRuns: expectedRunId === undefined ? {} : activeRuns,
           phase: "idle",
           wasStopped: false,
           runningFiles: [],
@@ -413,7 +480,7 @@ export const applyTestRunFinishedAtom = atom(
               : undefined,
           isolation: res.isolation,
           sandboxed: sandboxed ?? prev.sandboxed,
-        };
+        });
       },
     });
   },

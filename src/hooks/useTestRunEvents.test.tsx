@@ -32,19 +32,19 @@ const {
   outputListeners,
   runStateListeners,
   listAppTestsMock,
-  getActiveRunMock,
+  getActiveRunsMock,
 } = vi.hoisted(() => ({
   outputListeners: new Set<(payload: unknown) => void>(),
   runStateListeners: new Set<(payload: unknown) => void>(),
   listAppTestsMock: vi.fn(),
-  getActiveRunMock: vi.fn(),
+  getActiveRunsMock: vi.fn(),
 }));
 
 vi.mock("@/ipc/types", () => ({
   ipc: {
     tests: {
       listAppTests: listAppTestsMock,
-      getActiveRun: getActiveRunMock,
+      getActiveRuns: getActiveRunsMock,
     },
     events: {
       tests: {
@@ -176,7 +176,7 @@ describe("useTestRunEvents", () => {
   beforeEach(() => {
     outputListeners.clear();
     runStateListeners.clear();
-    getActiveRunMock.mockReset().mockResolvedValue(null);
+    getActiveRunsMock.mockReset().mockResolvedValue([]);
     listAppTestsMock.mockReset();
     listAppTestsMock.mockResolvedValue({ specs: [] });
     configureChatTabWindowSession(PRIMARY_WINDOW_SESSION_ID, {
@@ -285,6 +285,116 @@ describe("useTestRunEvents", () => {
     expect(store.get(testRunStateByAppIdAtom).get(1)?.source).toBe("panel");
   });
 
+  it.each([1, 2])(
+    "handles concurrent lifecycle events when run %s finishes first",
+    async (firstFinished) => {
+      const { store, Wrapper } = makeWrapper();
+      const files = ["e2e-tests/a.spec.ts", "e2e-tests/b.spec.ts"];
+      renderHook(() => useTestRunEvents(), { wrapper: Wrapper });
+      act(() => {
+        for (const runId of [1, 2]) {
+          emitRunState({
+            appId: 1,
+            runId,
+            source: "panel",
+            state: "started",
+            testFile: files[runId - 1],
+          });
+          emitOutput({
+            appId: 1,
+            runId,
+            phase: "running",
+            chunk: `run ${runId}\n`,
+          });
+        }
+      });
+      expect(store.get(testRunStateByAppIdAtom).get(1)?.runningFiles).toEqual(
+        files,
+      );
+      const finish = async (runId: number) =>
+        act(async () => {
+          emitRunState({
+            appId: 1,
+            runId,
+            source: "panel",
+            state: "cleaning-up",
+          });
+          emitRunState({
+            appId: 1,
+            runId,
+            source: "panel",
+            state: "finished",
+            results: [{ file: files[runId - 1], status: "passed" }],
+          });
+        });
+      await finish(firstFinished);
+      const remaining = store.get(testRunStateByAppIdAtom).get(1)!;
+      expect(remaining.phase).toBe("running");
+      expect(remaining.runningFiles).toEqual([files[2 - firstFinished]]);
+      expect(remaining.results[files[firstFinished - 1]].status).toBe("passed");
+      await finish(3 - firstFinished);
+      const completed = store.get(testRunStateByAppIdAtom).get(1)!;
+      expect(completed.phase).toBe("idle");
+      expect(Object.keys(completed.results)).toHaveLength(2);
+      expect(store.get(testRunOutputByAppIdAtom).get(1)).toBe("run 1\nrun 2\n");
+    },
+  );
+
+  it("hydrates every overlapping run even when a newer live event arrives first", async () => {
+    const { store, Wrapper } = makeWrapper();
+    store.set(selectedAppIdAtom, 1);
+    let resolve!: (value: unknown) => void;
+    getActiveRunsMock.mockReturnValue(
+      new Promise((r) => {
+        resolve = r;
+      }),
+    );
+    renderHook(() => useTestRunEvents(), { wrapper: Wrapper });
+    await waitFor(() => expect(getActiveRunsMock).toHaveBeenCalledOnce());
+    act(() =>
+      emitRunState({
+        appId: 1,
+        runId: 2,
+        source: "panel",
+        state: "started",
+        testFile: "b.spec.ts",
+      }),
+    );
+    await act(async () =>
+      resolve([
+        {
+          run: {
+            appId: 1,
+            runId: 1,
+            source: "panel",
+            state: "started",
+            testFile: "a.spec.ts",
+          },
+          phase: "running",
+          output: "first",
+        },
+        {
+          run: {
+            appId: 1,
+            runId: 2,
+            source: "panel",
+            state: "started",
+            testFile: "b.spec.ts",
+          },
+          phase: "setup",
+          output: "stale second",
+        },
+      ]),
+    );
+    await waitFor(() =>
+      expect(store.get(testRunStateByAppIdAtom).get(1)?.runningFiles).toEqual([
+        "a.spec.ts",
+        "b.spec.ts",
+      ]),
+    );
+    expect(store.get(testRunOutputByAppIdAtom).get(1)).toBe("first");
+  });
+
   it.each(["agent", "panel"])(
     "opens the native preview when a %s run actually starts",
     (source) => {
@@ -315,20 +425,22 @@ describe("useTestRunEvents", () => {
     async (phase) => {
       const { store, Wrapper } = makeWrapper();
       store.set(selectedAppIdAtom, 1);
-      getActiveRunMock.mockResolvedValue({
-        run: {
-          appId: 1,
-          runId: 42,
-          source: "agent",
-          state: "started",
-          testFile: "e2e-tests/a.spec.ts",
-          sandboxed: true,
-          preview: true,
-          previewOwnerWindowSessionId: getActiveWindowSessionId(),
+      getActiveRunsMock.mockResolvedValue([
+        {
+          run: {
+            appId: 1,
+            runId: 42,
+            source: "agent",
+            state: "started",
+            testFile: "e2e-tests/a.spec.ts",
+            sandboxed: true,
+            preview: true,
+            previewOwnerWindowSessionId: getActiveWindowSessionId(),
+          },
+          phase,
+          output: "Earlier setup output\n",
         },
-        phase,
-        output: "Earlier setup output\n",
-      });
+      ]);
       renderHook(() => useTestRunEvents(), { wrapper: Wrapper });
       await waitFor(() =>
         expect(store.get(testRunStateByAppIdAtom).get(1)?.phase).toBe(phase),
@@ -357,14 +469,14 @@ describe("useTestRunEvents", () => {
     const { store, Wrapper } = makeWrapper();
     store.set(selectedAppIdAtom, 1);
     let finish!: (value: unknown) => void;
-    getActiveRunMock.mockImplementationOnce(
+    getActiveRunsMock.mockImplementationOnce(
       () =>
         new Promise((resolve) => {
           finish = resolve;
         }),
     );
     renderHook(() => useTestRunEvents(), { wrapper: Wrapper });
-    await waitFor(() => expect(getActiveRunMock).toHaveBeenCalledOnce());
+    await waitFor(() => expect(getActiveRunsMock).toHaveBeenCalledOnce());
     await act(async () => {
       emitRunState({
         appId: 1,
@@ -373,11 +485,13 @@ describe("useTestRunEvents", () => {
         state: "finished",
         results: [],
       });
-      finish({
-        run: { appId: 1, runId: 42, source: "agent", state: "started" },
-        phase: "running",
-        output: "stale",
-      });
+      finish([
+        {
+          run: { appId: 1, runId: 42, source: "agent", state: "started" },
+          phase: "running",
+          output: "stale",
+        },
+      ]);
     });
     expect(store.get(testRunStateByAppIdAtom).get(1)?.phase ?? "idle").toBe(
       "idle",
@@ -694,7 +808,7 @@ describe("useTestRunEvents", () => {
     expect(state.runningFiles).toEqual(["tests/home.spec.ts"]);
   });
 
-  it("ignores output and terminal events from an older generation", () => {
+  it("retains output from overlapping runs and ignores it after that run finishes", () => {
     vi.useFakeTimers();
     try {
       const { store, Wrapper } = makeWrapper();
@@ -728,6 +842,12 @@ describe("useTestRunEvents", () => {
           state: "finished",
           results: [],
         });
+        emitOutput({
+          appId: 1,
+          runId: 1,
+          chunk: "late output",
+          phase: "running",
+        });
         vi.advanceTimersByTime(100);
       });
 
@@ -735,7 +855,7 @@ describe("useTestRunEvents", () => {
       expect(state.runId).toBe(2);
       expect(state.phase).toBe("setup");
       expect(state.runningFiles).toEqual(["tests/new.spec.ts"]);
-      expect(store.get(testRunOutputByAppIdAtom).get(1)).toBeUndefined();
+      expect(store.get(testRunOutputByAppIdAtom).get(1)).toBe("old teardown\n");
     } finally {
       vi.useRealTimers();
     }

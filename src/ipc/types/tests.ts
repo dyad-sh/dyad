@@ -383,6 +383,9 @@ export type ApplyTestAssertionsResult = z.infer<
 // =============================================================================
 
 const QueuedTestRunSchema = z.object({
+  appId: z.number().int().optional(),
+  branch: z.string().optional(),
+  queuedReason: z.string().optional(),
   runId: z.number().int().positive(),
   source: z.enum(["panel", "agent"]),
   chatId: z.number().int().positive().optional(),
@@ -392,6 +395,15 @@ const QueuedTestRunSchema = z.object({
   grep: z.string().optional(),
 });
 export const TestRunQueueSchema = z.object({
+  activeRuns: z
+    .array(
+      QueuedTestRunSchema.extend({
+        stopping: z.boolean(),
+        stopReason: TestRunStopReasonSchema.optional(),
+      }),
+    )
+    .readonly()
+    .optional(),
   activeRun: QueuedTestRunSchema.extend({
     stopping: z.boolean(),
     stopReason: TestRunStopReasonSchema.optional(),
@@ -428,6 +440,7 @@ export type TestOutputPayload = z.infer<typeof TestOutputPayloadSchema>;
  */
 export const TestsRunStatePayloadSchema = z.object({
   appId: z.number(),
+  branch: z.string().optional(),
   /**
    * Main-owned per-app generation. Only active runs emit lifecycle events;
    * queued requests are projected separately through tests:queue-state.
@@ -493,8 +506,27 @@ export const ActiveTestRunSnapshotSchema = z.object({
   output: z.string(),
 });
 export type ActiveTestRunSnapshot = z.infer<typeof ActiveTestRunSnapshotSchema>;
+export const TestRunSnapshotSchema = ActiveTestRunSnapshotSchema.extend({
+  phase: z.enum(["setup", "running", "stopping", "cleaning-up", "finished"]),
+});
+export type TestRunSnapshot = z.infer<typeof TestRunSnapshotSchema>;
 
 export const testsContracts = {
+  getRuns: defineContract({
+    channel: "tests:get-runs",
+    input: z.object({ appId: z.number() }),
+    output: z.array(TestRunSnapshotSchema),
+  }),
+  getActiveRuns: defineContract({
+    channel: "tests:get-active-runs",
+    input: z.object({ appId: z.number() }),
+    output: z.array(ActiveTestRunSnapshotSchema),
+  }),
+  cancelRun: defineContract({
+    channel: "tests:cancel-run",
+    input: z.object({ appId: z.number(), runId: z.number().int().positive() }),
+    output: z.object({ ok: z.literal(true) }),
+  }),
   getActiveRun: defineContract({
     channel: "tests:get-active-run",
     input: z.object({ appId: z.number() }),

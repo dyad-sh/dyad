@@ -676,7 +676,7 @@ export function TestsPanel() {
   const { data: testQueue } = useTestRunQueue(selectedAppId);
   const runMutationKey = queryKeys.tests.run({ appId: selectedAppId });
   // Keep one outstanding panel submission per app, including across tab remounts.
-  const isSubmitting = useIsMutating({ mutationKey: runMutationKey }) > 0;
+  const pendingSubmissions = useIsMutating({ mutationKey: runMutationKey });
   const { mutate: submitRun } = useMutation({
     mutationKey: runMutationKey,
     mutationFn: ipc.tests.runAppTests,
@@ -721,6 +721,8 @@ export function TestsPanel() {
     loading: settingsLoading,
     refreshSettings,
   } = useSettings();
+  const isSubmitting =
+    !settings?.enableParallelTestRuns && pendingSubmissions > 0;
   const { runApp } = useRunApp();
   const { setTestingEnabled, isLoading: isTogglingTesting } =
     useSetTestingEnabled();
@@ -855,10 +857,16 @@ export function TestsPanel() {
   // Narrower: tests are executing or their completed results are waiting for
   // teardown to finish. A stopped run cannot produce more results, so only
   // that cleanup path drops the per-test spinners.
-  const isExecuting =
-    runState.phase === "setup" ||
-    runState.phase === "running" ||
-    (runState.phase === "cleaning-up" && !runState.wasStopped);
+  const executingRuns = useMemo(
+    () =>
+      Object.values(runState.activeRuns ?? { current: runState }).filter(
+        (run) =>
+          run.phase === "setup" ||
+          run.phase === "running" ||
+          (run.phase === "cleaning-up" && !run.wasStopped),
+      ),
+    [runState],
+  );
   const isStopping = runState.phase === "stopping";
   const isCleaningUp = runState.phase === "cleaning-up";
   // Nothing about the user's app is restored any more: the run had its own
@@ -871,7 +879,8 @@ export function TestsPanel() {
   // With the experiment enabled, "headed" means visible in Dyad's preview
   // rather than in a separate Playwright browser window.
   const previewRunEnabled = !!settings?.enableTestRunInPreview;
-  const runsInPreviewWebContentsView = previewRunEnabled && headed;
+  const runsInPreviewWebContentsView =
+    previewRunEnabled && headed && !settings?.enableParallelTestRuns;
   // Display only. The value SENT to the runner is the user's raw choice: main
   // decides whether the preview actually gets the run, and a run that falls
   // back to an ordinary browser can parallelize when it has no per-case data.
@@ -1013,6 +1022,7 @@ export function TestsPanel() {
       // Read the mutation cache synchronously so a second click in the same
       // render cannot enqueue another expensive run before main acknowledges it.
       if (
+        !settings?.enableParallelTestRuns &&
         queryClient.isMutating({
           mutationKey: queryKeys.tests.run({ appId: selectedAppId }),
         })
@@ -1037,6 +1047,7 @@ export function TestsPanel() {
       parallel,
       slowMo,
       runsInPreviewWebContentsView,
+      settings?.enableParallelTestRuns,
     ],
   );
 
@@ -1348,34 +1359,31 @@ export function TestsPanel() {
   // otherwise the parsed run result (or not-run).
   const fileStatus = useCallback(
     (file: string): TestStatus => {
-      if (isExecuting && runState.runningFiles.includes(file)) return "running";
+      if (executingRuns.some((run) => run.runningFiles.includes(file)))
+        return "running";
       return runState.results[file]?.status ?? "not-run";
     },
-    [isExecuting, runState.runningFiles, runState.results],
+    [executingRuns, runState.results],
   );
 
   // Per-test status. A test spins when it's the specific test being run, or
   // when its whole file is running (no single test targeted).
   const caseStatus = useCallback(
     (file: string, testCase: TestCase): TestStatus => {
-      if (isExecuting) {
-        const runningTests = runState.runningTests ?? [];
-        const isThisRunning =
-          runningTests.length > 0
+      if (
+        executingRuns.some((run) => {
+          const runningTests = run.runningTests ?? [];
+          return runningTests.length > 0
             ? runningTests.includes(testKey(file, testCase.line))
-            : runState.runningFiles.includes(file);
-        if (isThisRunning) return "running";
-      }
+            : run.runningFiles.includes(file);
+        })
+      )
+        return "running";
       return (
         findCaseResult(runState.results[file], testCase)?.status ?? "not-run"
       );
     },
-    [
-      isExecuting,
-      runState.runningFiles,
-      runState.runningTests,
-      runState.results,
-    ],
+    [executingRuns, runState.results],
   );
 
   const caseResult = useCallback(

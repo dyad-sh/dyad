@@ -1,6 +1,46 @@
 import { expect } from "@playwright/test";
 import { testSkipIfWindows, Timeout } from "./helpers/test_helper";
 
+testSkipIfWindows(
+  "parallel test runs are opt-in and sandbox retention is independently configurable",
+  async ({ po }) => {
+    await po.setUp({ autoApprove: true });
+    await po.navigation.goToSettingsTab();
+    await po.page
+      .getByRole("button", { name: "Workflow", exact: true })
+      .click();
+    const toggle = po.page.getByRole("switch", {
+      name: "Allow parallel E2E test runs",
+    });
+    const runs = po.page.getByLabel("Maximum active runs");
+    const sandboxes = po.page.getByLabel("Reusable sandboxes to keep");
+    await expect(toggle).not.toBeChecked();
+    await expect(runs).toHaveCount(0);
+    await expect(sandboxes).toHaveValue("8");
+    await toggle.click();
+    await expect(toggle).toBeChecked();
+    await expect
+      .poll(() => po.settings.recordSettings())
+      .toMatchObject({ enableParallelTestRuns: true });
+    await sandboxes.fill("1");
+    await sandboxes.blur();
+    await expect
+      .poll(() => po.settings.recordSettings())
+      .toMatchObject({
+        enableParallelTestRuns: true,
+        maxReusableTestSandboxes: 1,
+      });
+    await po.navigation.goToAppsTab();
+    await po.navigation.goToSettingsTab();
+    await po.page
+      .getByRole("button", { name: "Workflow", exact: true })
+      .click();
+    await expect(toggle).toBeChecked();
+    await expect(runs).toHaveCount(0);
+    await expect(sandboxes).toHaveValue("1");
+  },
+);
+
 // End-to-end coverage for the AI-generated E2E testing feature (the Tests
 // panel opt-in + isolation warnings). These drive the UI orchestration with the
 // fake LLM; they deliberately don't spawn a real Playwright run (that would be

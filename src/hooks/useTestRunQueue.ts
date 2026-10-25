@@ -20,6 +20,7 @@ export function useTestRunQueue(appId: number | null) {
     [appId, queryClient],
   );
   return useQuery({
+    networkMode: "always",
     queryKey: queryKeys.tests.queue({ appId }),
     enabled: appId !== null,
     // Events are only observed while mounted; always refresh after leaving the tab.

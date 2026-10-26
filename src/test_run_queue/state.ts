@@ -2,23 +2,6 @@ import type { TestRunStopReason } from "@/shared/test_run_stop";
 
 export type { TestRunStopReason };
 
-/** Whole-machine percentages observed during an admitted run, never predictions. */
-export interface TestRunResourcePeak {
-  readonly cpuPercent: number | null;
-  readonly memoryPercent: number | null;
-}
-
-export interface TestRunConcurrencyState {
-  readonly limit: number;
-  /** Closes admission until the current active group has finished cleanup. */
-  readonly overloadedBatchPeak: TestRunResourcePeak | null;
-}
-
-export const INITIAL_TEST_RUN_CONCURRENCY: TestRunConcurrencyState = {
-  limit: 1,
-  overloadedBatchPeak: null,
-};
-
 /**
  * Main-owned FIFO with optional manual admission for parallel execution.
  * Admitted requests own their slots through cleanup and result delivery.
@@ -42,7 +25,7 @@ export interface TestRunRequest {
 }
 
 export interface TestRunQueueState {
-  /** Present for the resource-admitted global queue. activeRun is its first run for legacy consumers. */
+  /** Present for the manually admitted global queue. activeRun is its first run for legacy consumers. */
   readonly activeRuns?: readonly NonNullable<TestRunQueueState["activeRun"]>[];
   readonly activeRun:
     | (TestRunRequest & {

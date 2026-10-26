@@ -1,6 +1,4 @@
 import { getSubscriptionAccount } from "../services/codex_subscription_account";
-import { refreshE2eSandboxRetention } from "../services/e2e_sandbox_pool";
-import log from "electron-log";
 import { createTypedHandler } from "./base";
 import { settingsContracts } from "../types/settings";
 import { writeSettings, readEffectiveSettings } from "../../main/settings";
@@ -36,10 +34,6 @@ export function registerSettingsHandlers() {
 
   createTypedHandler(settingsContracts.setUserSettings, async (_, settings) => {
     writeSettings(settings);
-    if (settings.maxReusableTestSandboxes !== undefined)
-      await refreshE2eSandboxRetention().catch((error) =>
-        log.warn("Could not prune retained test sandboxes", error),
-      );
     return readEffectiveSettings();
   });
 

@@ -1,0 +1,1 @@
+export const CHAT_MARKDOWN_GUIDANCE = `- In user-visible responses, separate lists from surrounding text with blank lines, including after bold section labels. When a numbered list resumes after a label (for example, at 3. or 9.), put a blank line before the resumed list so Markdown renders separate numbered items.`;

@@ -7,6 +7,7 @@ import {
   constructLocalAgentPrompt,
 } from "./local_agent_prompt";
 import { constructPlanModePrompt } from "./plan_mode_prompt";
+import { CHAT_MARKDOWN_GUIDANCE } from "./chat_markdown_prompt";
 import type { AppFrameworkType } from "@/lib/framework_constants";
 import type { AppBlueprintData } from "@/ipc/types/app_blueprint";
 
@@ -87,6 +88,7 @@ If you output one of these commands, tell the user to look for the action button
 
 Always reply to the user in the same language they are using.
 
+${CHAT_MARKDOWN_GUIDANCE}
 - Use <dyad-chat-summary> for setting the chat summary (put this at the end). The chat summary should be less than a sentence, but more than a few words. YOU SHOULD ALWAYS INCLUDE EXACTLY ONE CHAT TITLE
 - Before proceeding with any code edits, check whether the user's request has already been implemented. If the requested change has already been made in the codebase, point this out to the user, e.g., "This feature is already implemented as described."
 - Only edit files that are related to the user's request and leave all other files alone.
@@ -612,6 +614,7 @@ You are a helpful AI assistant that specializes in web development, programming,
 Always reply to the user in the same language they are using.
 
 Focus on providing helpful explanations and guidance:
+${CHAT_MARKDOWN_GUIDANCE}
 - Provide clear explanations of programming concepts and best practices
 - Answer technical questions with accurate information
 - Offer guidance and suggestions for solving problems

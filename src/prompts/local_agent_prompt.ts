@@ -5,6 +5,7 @@
 
 import type { AppFrameworkType } from "@/lib/framework_constants";
 import type { AppBlueprintData } from "@/ipc/types/app_blueprint";
+import { CHAT_MARKDOWN_GUIDANCE } from "./chat_markdown_prompt";
 import {
   resolveLinkedDatabaseProvider,
   type DatabaseProvider,
@@ -89,6 +90,7 @@ Prefer the least expensive available action. Reinstalling dependencies already i
 
 // Guidelines shared across ALL modes (Pro, Basic, Ask)
 const COMMON_GUIDELINES = `- All text you output outside of tool use is displayed to the user. Output text to communicate with the user. You can use Github-flavored markdown for formatting.
+${CHAT_MARKDOWN_GUIDANCE}
 - Always reply to the user in the same language they are using.
 - Keep explanations concise and focused
 - If the user asks for help or wants to give feedback, tell them to use the Help button in the bottom left.

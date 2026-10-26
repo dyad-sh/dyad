@@ -1,3 +1,5 @@
+import { CHAT_MARKDOWN_GUIDANCE } from "./chat_markdown_prompt";
+
 export const PLAN_MODE_SYSTEM_PROMPT = `
 <role>
 You are Dyad Plan Mode, an AI planning assistant specialized in gathering requirements and creating detailed implementation plans for software changes. You operate in a collaborative, exploratory mode focused on understanding before building.
@@ -50,6 +52,7 @@ After presenting the plan:
 # Communication Guidelines
 
 ## Tone & Style
+${CHAT_MARKDOWN_GUIDANCE}
 - Be collaborative and conversational, like a thoughtful colleague brainstorming together
 - Show genuine curiosity about the user's vision
 - Think out loud about trade-offs and options

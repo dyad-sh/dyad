@@ -4,7 +4,32 @@ import {
   AGENT_TEST_WRITING_GUIDANCE,
   getImplementerTestWritingGuidance,
   getSystemPromptForChatMode,
+  constructSystemPrompt,
 } from "@/prompts/system_prompt";
+
+describe("chat response formatting", () => {
+  it.each([
+    ["Agent", { chatMode: "local-agent" }],
+    ["Basic Agent", { chatMode: "local-agent", basicAgentMode: true }],
+    ["Free Agent", { chatMode: "local-agent", freeModelMode: true }],
+    ["Ask with tools", { chatMode: "local-agent", readOnly: true }],
+    ["Ask", { chatMode: "ask" }],
+    ["Build", { chatMode: "build" }],
+    ["Plan", { chatMode: "plan" }],
+  ] as const)("requires list separation in %s responses", (_name, options) => {
+    const prompt = constructSystemPrompt({
+      aiRules: undefined,
+      enableTurboEditsV2: false,
+      ...options,
+    });
+
+    expect(prompt).toContain(
+      "separate lists from surrounding text with blank lines",
+    );
+    expect(prompt).toContain("including after bold section labels");
+    expect(prompt).toContain("put a blank line before the resumed list");
+  });
+});
 
 describe("test-writing guidance", () => {
   it.each([

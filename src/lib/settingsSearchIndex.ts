@@ -27,6 +27,7 @@ export const SETTING_IDS = {
   appBlueprint: "setting-app-blueprint",
   testingForNewApps: "setting-testing-for-new-apps",
   sandboxedE2eTests: "setting-sandboxed-e2e-tests",
+  reusableTestSandboxes: "setting-reusable-test-sandboxes",
   chatEventNotification: "setting-chat-event-notification",
   suggestedPrompts: "setting-suggested-prompts",
   maxToolCallSteps: "setting-max-tool-call-steps",
@@ -75,6 +76,21 @@ type SearchableSettingItem = {
 };
 
 export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
+  {
+    id: SETTING_IDS.reusableTestSandboxes,
+    label: "Reusable test sandboxes",
+    description: "Keep test sandboxes and installed dependencies for reuse",
+    keywords: [
+      "tests",
+      "e2e",
+      "sandboxes",
+      "worktrees",
+      "retention",
+      "dependencies",
+    ],
+    sectionId: SECTION_IDS.workflow,
+    sectionLabel: "Workflow",
+  },
   {
     id: SETTING_IDS.showSystemResourceUsage,
     label: "System resource usage",

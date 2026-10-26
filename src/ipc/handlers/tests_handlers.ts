@@ -2942,10 +2942,6 @@ async function executeAppTestsWithIsolation(
           const withholdDatabaseEnv = isolationMode === "none";
           try {
             if (workspace!.dependencyInstallPath) {
-              emit(
-                "Installing clean dependencies in the test workspace…\n",
-                "setup",
-              );
               if (withholdDatabaseEnv) {
                 emit(
                   "Install scripts and the test server run without this app's database credentials, so they can't reach your real data. Code that needs a database will fail here.\n",

@@ -151,11 +151,41 @@ interface SubmoduleWorktree {
   snapshotPath: string;
 }
 
+export interface GitOverlayDependencyCache {
+  fingerprint: string;
+  /** Repository-relative node_modules directories installed in this worktree. */
+  paths: string[];
+}
+
+function isDependencyPath(value: unknown): value is string {
+  if (typeof value !== "string" || path.isAbsolute(value)) return false;
+  const segments = value.split("/");
+  return (
+    segments.at(-1) === "node_modules" &&
+    segments.every(
+      (segment, index) =>
+        segment !== "" &&
+        segment !== "." &&
+        segment !== ".." &&
+        segment !== ".git" &&
+        !segment.includes("\\") &&
+        !segment.includes(":") &&
+        (segment !== "node_modules" || index === segments.length - 1),
+    )
+  );
+}
+
 export interface GitOverlayWorkspaceMarker {
   schema: typeof MARKER_SCHEMA | typeof LEGACY_BUILD_MARKER_SCHEMA;
   purpose: GitOverlayWorkspacePurpose;
   sourceRepoPath: string;
   submoduleWorktrees: SubmoduleWorktree[];
+  pool?: {
+    appId: number;
+    state: "idle" | "leased";
+    gitFileContents: string;
+    dependencies?: GitOverlayDependencyCache;
+  };
 }
 
 export interface GitOverlayWorkspaceOptions {
@@ -166,6 +196,8 @@ export interface GitOverlayWorkspaceOptions {
   excludedTargetRootNames: ReadonlySet<string>;
   cleanupFailureMode?: "await" | "background";
   signal?: AbortSignal;
+  /** An exclusively leased, owned worktree. Never the user's checkout. */
+  reusePath?: string;
 }
 
 function throwIfCancelled(signal?: AbortSignal): void {
@@ -714,6 +746,7 @@ export async function secureGitOverlaySymlinks(
   sourceRoot: string,
   workspaceRoot: string,
   signal?: AbortSignal,
+  installedDependencyPaths: ReadonlySet<string> = new Set(),
 ): Promise<void> {
   const [realSourceRoot, realWorkspaceRoot] = await Promise.all([
     fs.realpath(sourceRoot),
@@ -726,6 +759,10 @@ export async function secureGitOverlaySymlinks(
     if (!directory) break;
     const entries = await inspectEntries(directory);
     for (const entry of entries) {
+      // These directories were installed in this exact sandbox, not copied
+      // from the source checkout. Avoid walking every dependency on reuse.
+      if (entry.isDirectory && installedDependencyPaths.has(entry.entryPath))
+        continue;
       if (!entry.isSymbolicLink) {
         if (entry.isDirectory) pendingDirectories.push(entry.entryPath);
         continue;
@@ -916,6 +953,24 @@ export async function readGitOverlayWorkspaceMarker(
       purpose,
       sourceRepoPath: parsed.sourceRepoPath,
       submoduleWorktrees,
+      ...(parsed.pool &&
+      Number.isSafeInteger(parsed.pool.appId) &&
+      typeof parsed.pool.gitFileContents === "string" &&
+      (parsed.pool.state === "idle" || parsed.pool.state === "leased")
+        ? {
+            pool: {
+              appId: parsed.pool.appId,
+              state: parsed.pool.state,
+              gitFileContents: parsed.pool.gitFileContents,
+              ...(typeof parsed.pool.dependencies?.fingerprint === "string" &&
+              /^[a-f0-9]{64}$/.test(parsed.pool.dependencies.fingerprint) &&
+              Array.isArray(parsed.pool.dependencies.paths) &&
+              parsed.pool.dependencies.paths.every(isDependencyPath)
+                ? { dependencies: parsed.pool.dependencies }
+                : {}),
+            },
+          }
+        : {}),
     };
   } catch {
     return null;
@@ -1257,10 +1312,12 @@ export async function createGitOverlayWorkspace({
   excludedTargetRootNames,
   cleanupFailureMode = "await",
   signal,
+  reusePath,
 }: GitOverlayWorkspaceOptions): Promise<GitOverlayWorkspace> {
   const startedAt = Date.now();
   let worktreePath: string | undefined;
   let sourceRepoPath: string | undefined;
+  let reusedPool: GitOverlayWorkspaceMarker["pool"];
   try {
     await fs.mkdir(scratchRoot, { recursive: true });
     const repoResult = await runWorkspaceGit(
@@ -1276,29 +1333,57 @@ export async function createGitOverlayWorkspace({
     const targetRelativePath = path.relative(sourceRepoPath, realTargetPath);
     const targetRelativePosix = targetRelativePath.split(path.sep).join("/");
 
-    worktreePath = await fs.mkdtemp(path.join(scratchRoot, directoryPrefix));
+    if (reusePath) {
+      const marker = await readGitOverlayWorkspaceMarker(reusePath);
+      if (
+        !marker ||
+        marker.purpose !== purpose ||
+        marker.sourceRepoPath !== sourceRepoPath ||
+        marker.submoduleWorktrees.length ||
+        path.dirname(reusePath) !== (await fs.realpath(scratchRoot))
+      )
+        throw new Error(
+          "The reusable worktree does not belong to this repository.",
+        );
+      worktreePath = reusePath;
+      await clearGitOverlayWorkspace(worktreePath);
+      reusedPool = marker.pool;
+    } else {
+      worktreePath = await fs.mkdtemp(path.join(scratchRoot, directoryPrefix));
+    }
     activeWorkspacePaths.add(worktreePath);
     const registeredWorktrees: SubmoduleWorktree[] = [];
     await writeMarker(worktreePath, {
       purpose,
       sourceRepoPath,
       submoduleWorktrees: registeredWorktrees,
+      ...(reusedPool ? { pool: reusedPool } : {}),
     });
     const emptyHooksPath = path.join(scratchRoot, ".empty-hooks");
     await fs.mkdir(emptyHooksPath, { recursive: true });
-    await runWorkspaceGit(
-      sourceRepoPath,
-      [
-        "-c",
-        `core.hooksPath=${emptyHooksPath}`,
-        "worktree",
-        "add",
-        "--detach",
+    if (reusePath) {
+      const head = (
+        await runWorkspaceGit(sourceRepoPath, ["rev-parse", "HEAD"], signal)
+      ).stdout.trim();
+      await runWorkspaceGit(
         worktreePath,
-        "HEAD",
-      ],
-      signal,
-    );
+        ["-c", `core.hooksPath=${emptyHooksPath}`, "reset", "--hard", head],
+        signal,
+      );
+    } else
+      await runWorkspaceGit(
+        sourceRepoPath,
+        [
+          "-c",
+          `core.hooksPath=${emptyHooksPath}`,
+          "worktree",
+          "add",
+          "--detach",
+          worktreePath,
+          "HEAD",
+        ],
+        signal,
+      );
     const targetPath = path.join(worktreePath, targetRelativePath);
     // Roots that survived removal because Git tracks them stay in the overlay:
     // excluding them there too would pin the sandbox to their `HEAD` contents
@@ -1335,7 +1420,16 @@ export async function createGitOverlayWorkspace({
       excludedTargetRootNames: overlayExcludedRootNames,
       signal,
     });
-    await secureGitOverlaySymlinks(sourceRepoPath, worktreePath, signal);
+    await secureGitOverlaySymlinks(
+      sourceRepoPath,
+      worktreePath,
+      signal,
+      new Set(
+        reusedPool?.dependencies?.paths.map((entry) =>
+          path.join(worktreePath!, entry),
+        ),
+      ),
+    );
     return {
       targetPath,
       worktreePath,
@@ -1368,6 +1462,92 @@ export async function createGitOverlayWorkspace({
 
 export function isGitOverlayWorkspaceActive(worktreePath: string): boolean {
   return activeWorkspacePaths.has(worktreePath);
+}
+
+/** Erase run-owned files; retain Git registration and eligible sandbox-installed dependencies. */
+export async function clearGitOverlayWorkspace(
+  worktreePath: string,
+): Promise<void> {
+  const marker = await readGitOverlayWorkspaceMarker(worktreePath);
+  if (
+    !marker ||
+    marker.purpose !== "e2e-test" ||
+    marker.submoduleWorktrees.length
+  )
+    throw new Error("This workspace cannot be safely retained.");
+  // A Git worktree has a .git FILE. Refuse a replaced directory/symlink or a
+  // main checkout before touching any children. rm does not follow symlinks.
+  const root = await fs.lstat(worktreePath);
+  const git = await fs.lstat(path.join(worktreePath, ".git"));
+  if (
+    !root.isDirectory() ||
+    root.isSymbolicLink() ||
+    !git.isFile() ||
+    git.isSymbolicLink()
+  )
+    throw new Error("Invalid reusable worktree identity.");
+  // The lease marker lives outside the run directory. Never follow a .git
+  // pointer a test replaced: reset --hard could otherwise target a live checkout.
+  if (
+    !marker.pool ||
+    (await fs.readFile(path.join(worktreePath, ".git"), "utf8")) !==
+      marker.pool.gitFileContents
+  )
+    throw new Error("The reusable worktree Git pointer changed during a run.");
+  const keep = new Set(marker.pool.dependencies?.paths ?? []);
+  const clear = async (directory: string, relative: string) => {
+    for (const name of await fs.readdir(directory)) {
+      if (!relative && name === ".git") continue;
+      const child = path.join(directory, name);
+      const childRelative = relative ? `${relative}/${name}` : name;
+      const stat = await fs.lstat(child);
+      if (stat.isDirectory() && keep.has(childRelative)) {
+        // Runtime caches can embed per-run env values and stale source transforms.
+        for (const cache of [".cache", ".vite", ".vite-temp"])
+          await fs.rm(path.join(child, cache), {
+            recursive: true,
+            force: true,
+          });
+      } else if (
+        stat.isDirectory() &&
+        [...keep].some((entry) => entry.startsWith(`${childRelative}/`))
+      ) {
+        await clear(child, childRelative);
+      } else {
+        await fs.rm(child, { recursive: true, force: true });
+      }
+    }
+  };
+  await clear(worktreePath, "");
+}
+
+export async function setGitOverlayDependencyCache(
+  worktreePath: string,
+  dependencies: GitOverlayDependencyCache | undefined,
+) {
+  const marker = await readGitOverlayWorkspaceMarker(worktreePath);
+  if (!marker?.pool || marker.purpose !== "e2e-test") return;
+  await writeMarker(worktreePath, {
+    ...marker,
+    pool: { ...marker.pool, dependencies },
+  });
+}
+
+export async function markGitOverlayWorkspacePool(
+  worktreePath: string,
+  appId: number,
+  state: "idle" | "leased",
+) {
+  const marker = await readGitOverlayWorkspaceMarker(worktreePath);
+  if (!marker || marker.purpose !== "e2e-test")
+    throw new Error("Missing workspace ownership marker.");
+  const gitFileContents =
+    marker.pool?.gitFileContents ??
+    (await fs.readFile(path.join(worktreePath, ".git"), "utf8"));
+  await writeMarker(worktreePath, {
+    ...marker,
+    pool: { ...marker.pool, appId, state, gitFileContents },
+  });
 }
 
 export async function removeGitOverlayWorkspace(

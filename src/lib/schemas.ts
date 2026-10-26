@@ -628,6 +628,7 @@ const BaseUserSettingsFields = {
   // preview with the missing isolation disclosed. Neon-only apps are refused rather
   // than run against the real database either way.
   disableSandboxedE2eTests: z.boolean().optional(),
+  maxReusableTestSandboxes: z.number().int().min(0).max(128).optional(),
   autoExpandPreviewPanel: z.boolean().optional(),
   // Follow-up prompt chips above the chat input after Build and Agent turns.
   enableSuggestedPrompts: z.boolean().optional(),

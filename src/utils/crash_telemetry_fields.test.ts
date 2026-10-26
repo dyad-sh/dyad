@@ -3,6 +3,7 @@ import {
   ALLOWED_ANNOTATION_KEYS,
   crashAnnotationEventFields,
   crashPerformanceEventFields,
+  crashStackEventFields,
 } from "@/utils/crash_telemetry_fields";
 
 describe("crashPerformanceEventFields", () => {
@@ -179,5 +180,32 @@ describe("crashAnnotationEventFields", () => {
       crash_annotation_electron_v8_fatal_message:
         "MarkCompactCollector: young object promotion failed",
     });
+  });
+});
+
+describe("crashStackEventFields", () => {
+  it("flattens a stack into module and frame strings", () => {
+    expect(
+      crashStackEventFields({
+        modules: [
+          { debugFile: "Electron Framework", debugId: "ABC0" },
+          { debugFile: "libc.so.6" },
+        ],
+        frames: [
+          "unknown",
+          { module: 0, offset: "0x1a" },
+          "other",
+          { module: 1, offset: "0x2b" },
+        ],
+      }),
+    ).toEqual({
+      stack_modules: "Electron Framework/ABC0;libc.so.6/",
+      stack_frames: "unknown;0+0x1a;other;1+0x2b",
+    });
+  });
+
+  it("adds nothing without frames", () => {
+    expect(crashStackEventFields(undefined)).toEqual({});
+    expect(crashStackEventFields({ modules: [], frames: [] })).toEqual({});
   });
 });

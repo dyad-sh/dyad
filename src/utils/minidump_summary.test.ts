@@ -39,6 +39,17 @@ function buildMinidump(opts: {
   annotationType?: number; // type written on annotation objects, default 1 (string)
   simpleAnnotations?: Record<string, string>; // process-level dictionary
   moduleSimpleAnnotations?: Record<string, string>; // module-level dictionary
+  // Crashing thread's captured stack, written as a ThreadList stream. The
+  // exception stream names thread 7, so a different threadId tests the
+  // lookup. sp and lr land in the CPU context at their arch offsets.
+  stack?: {
+    threadId?: number;
+    start: bigint; // address of words[0] in the crashed process
+    words: bigint[];
+    sp: bigint;
+    spOffset: number; // 152 (x64) / 256 (arm64)
+    lr?: bigint; // arm64 x30, at context offset 248
+  };
 }): Buffer {
   const buf = Buffer.alloc(16384);
   const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
@@ -56,7 +67,7 @@ function buildMinidump(opts: {
     opts.simpleAnnotations !== undefined ||
     opts.moduleSimpleAnnotations !== undefined ||
     opts.addressMask !== undefined;
-  const streamCount = hasCrashpadInfo ? 3 : 2;
+  const streamCount = 2 + (hasCrashpadInfo ? 1 : 0) + (opts.stack ? 1 : 0);
   let cursor = 32 + streamCount * 12;
 
   // Writes a length-prefixed UTF-8 string (u32 byte-length + bytes) at the
@@ -130,13 +141,43 @@ function buildMinidump(opts: {
   const contextRva = cursor;
   const contextSize = opts.ipOffset + 8;
   dv.setBigUint64(contextRva + opts.ipOffset, opts.ip, true);
+  if (opts.stack) {
+    dv.setBigUint64(contextRva + opts.stack.spOffset, opts.stack.sp, true);
+    if (opts.stack.lr !== undefined) {
+      dv.setBigUint64(contextRva + 248, opts.stack.lr, true);
+    }
+  }
   cursor = (contextRva + contextSize + 7) & ~7;
+
+  // --- Optional thread list stream with the crashing thread's stack ---
+  // The stack bytes first, then u32 count + one 48-byte MINIDUMP_THREAD:
+  // threadId @ +0, stack start address @ +24, stack size @ +32, stack
+  // RVA @ +36.
+  let threadListRva = 0;
+  let threadListSize = 0;
+  if (opts.stack) {
+    const stackRva = cursor;
+    opts.stack.words.forEach((w, i) =>
+      dv.setBigUint64(stackRva + i * 8, w, true),
+    );
+    cursor = stackRva + opts.stack.words.length * 8;
+    threadListRva = cursor;
+    dv.setUint32(threadListRva, 1, true);
+    const t = threadListRva + 4;
+    dv.setUint32(t, opts.stack.threadId ?? 7, true);
+    dv.setBigUint64(t + 24, opts.stack.start, true);
+    dv.setUint32(t + 32, opts.stack.words.length * 8, true);
+    dv.setUint32(t + 36, stackRva, true);
+    threadListSize = 4 + 48;
+    cursor = threadListRva + threadListSize;
+  }
 
   // --- Exception stream ---
   // exceptionCode @ +8; exceptionFlags @ +12; exceptionAddress @ +24;
   // numberParameters @ +32 with info[] @ +40; then a location descriptor
   // for the CPU context above (its size @ +160, its RVA @ +164).
   const exceptionRva = cursor;
+  dv.setUint32(exceptionRva, 7, true); // crashing thread id
   dv.setUint32(exceptionRva + 8, opts.exceptionCode, true);
   dv.setUint32(exceptionRva + 12, opts.exceptionFlags ?? 0, true);
   dv.setBigUint64(exceptionRva + 24, opts.exceptionAddress ?? 0n, true);
@@ -247,7 +288,8 @@ function buildMinidump(opts: {
 
   // --- Stream directory: one 12-byte entry per stream, each being
   // { u32 streamType @0, u32 dataSize @4, u32 rva @8 }, starting at offset 32.
-  // [0] module list (type 4), [1] exception (type 6), [2] CrashpadInfo.
+  // [0] module list (type 4), [1] exception (type 6), [2] CrashpadInfo,
+  // then the thread list when present.
   dv.setUint32(32, 4, true);
   dv.setUint32(36, moduleListSize, true);
   dv.setUint32(40, moduleListRva, true);
@@ -258,6 +300,13 @@ function buildMinidump(opts: {
     dv.setUint32(56, 0x43500001, true);
     dv.setUint32(60, opts.addressMask !== undefined ? 64 : 52, true);
     dv.setUint32(64, crashpadInfoRva, true);
+  }
+  if (opts.stack) {
+    // Thread list (type 3) takes the last directory entry.
+    const entry = 32 + (streamCount - 1) * 12;
+    dv.setUint32(entry, 3, true);
+    dv.setUint32(entry + 4, threadListSize, true);
+    dv.setUint32(entry + 8, threadListRva, true);
   }
 
   return Buffer.from(buf.subarray(0, cursor));
@@ -861,6 +910,302 @@ describe("parseMinidumpBuffer", () => {
 
   it("rejects a truncated buffer", () => {
     expect(parseMinidumpBuffer(Buffer.alloc(8), "linux", "x64")).toBeNull();
+  });
+});
+
+describe("stack scan", () => {
+  // A Linux app with the executable, a library beside it, a system
+  // library, and a library from an arbitrary directory.
+  const appModules = [
+    { base: 0x100000n, size: 0x10000, name: "/opt/Dyad/dyad" },
+    { base: 0x200000n, size: 0x1000, name: "/opt/Dyad/libffmpeg.so" },
+    { base: 0x300000n, size: 0x1000, name: "/usr/lib/libc.so.6" },
+    { base: 0x400000n, size: 0x1000, name: "/home/u/.hooks/libspy.so" },
+  ];
+
+  const scan = (
+    stack: NonNullable<Parameters<typeof buildMinidump>[0]["stack"]>,
+    overrides: Partial<Parameters<typeof buildMinidump>[0]> = {},
+  ) =>
+    parseMinidumpBuffer(
+      buildMinidump({
+        modules: appModules,
+        exceptionCode: 11,
+        ip: 0x100500n,
+        ipOffset: 248,
+        stack,
+        ...overrides,
+      }),
+      "linux",
+      "x64",
+    )!.stackTrace;
+
+  it("keeps the crash IP, then stack values that point into modules", () => {
+    const trace = scan({
+      start: 0x7000n,
+      sp: 0x7000n,
+      spOffset: 152,
+      words: [
+        0x100a10n, // return into the executable
+        0x12345n, // a plain integer
+        0x300020n, // return into libc
+        0x7ff0001n, // a heap pointer
+        0x200040n, // return into the bundled library
+      ],
+    });
+    expect(trace).toEqual({
+      modules: [
+        { debugFile: "dyad", debugId: undefined },
+        { debugFile: "libc.so.6", debugId: undefined },
+        { debugFile: "libffmpeg.so", debugId: undefined },
+      ],
+      frames: [
+        { module: 0, offset: "0x500" },
+        { module: 0, offset: "0xa10" },
+        { module: 1, offset: "0x20" },
+        { module: 2, offset: "0x40" },
+      ],
+    });
+  });
+
+  it("starts the scan at the stack pointer", () => {
+    // The first word sits below SP: left over from a call that returned.
+    const trace = scan({
+      start: 0x7000n,
+      sp: 0x7008n,
+      spOffset: 152,
+      words: [0x100a10n, 0x100b20n],
+    });
+    expect(trace!.frames).toEqual([
+      { module: 0, offset: "0x500" },
+      { module: 0, offset: "0xb20" },
+    ]);
+  });
+
+  it("reports modules outside the app and OS directories as other", () => {
+    const trace = scan({
+      start: 0x7000n,
+      sp: 0x7000n,
+      spOffset: 152,
+      words: [0x400010n, 0x400020n, 0x100a10n, 0x400030n],
+    });
+    // Consecutive third-party frames collapse, and the module's name never
+    // reaches the module table.
+    expect(trace!.frames).toEqual([
+      { module: 0, offset: "0x500" },
+      "other",
+      { module: 0, offset: "0xa10" },
+      "other",
+    ]);
+    expect(trace!.modules.map((m) => m.debugFile)).toEqual(["dyad"]);
+  });
+
+  it("skips values it has already seen", () => {
+    const trace = scan({
+      start: 0x7000n,
+      sp: 0x7000n,
+      spOffset: 152,
+      words: [0x100a10n, 0x100c00n, 0x100c00n, 0x100500n, 0x100a10n],
+    });
+    expect(trace!.frames).toEqual([
+      { module: 0, offset: "0x500" },
+      { module: 0, offset: "0xa10" },
+      { module: 0, offset: "0xc00" },
+    ]);
+  });
+
+  it("caps the number of frames", () => {
+    const words = Array.from({ length: 100 }, (_, i) => 0x100000n + BigInt(i));
+    const trace = scan({ start: 0x7000n, sp: 0x7000n, spOffset: 152, words });
+    expect(trace!.frames).toHaveLength(64);
+  });
+
+  it("marks a crash IP outside every module as unknown", () => {
+    const trace = scan(
+      { start: 0x7000n, sp: 0x7000n, spOffset: 152, words: [0x100a10n] },
+      { ip: 0x9990000n },
+    );
+    expect(trace!.frames).toEqual(["unknown", { module: 0, offset: "0xa10" }]);
+  });
+
+  it("keeps only the crash IP when the crashing thread is not listed", () => {
+    const trace = scan({
+      threadId: 8,
+      start: 0x7000n,
+      sp: 0x7000n,
+      spOffset: 152,
+      words: [0x100a10n],
+    });
+    expect(trace!.frames).toEqual([{ module: 0, offset: "0x500" }]);
+  });
+
+  it("carries the module's debug identity", () => {
+    const trace = scan(
+      { start: 0x7000n, sp: 0x7000n, spOffset: 152, words: [] },
+      {
+        cvRecord: {
+          kind: "pdb70",
+          guid: Array.from({ length: 16 }, (_, i) => i),
+          age: 1,
+          name: "dyad.pdb",
+        },
+      },
+    );
+    expect(trace!.modules).toEqual([
+      { debugFile: "dyad.pdb", debugId: "030201000504070608090A0B0C0D0E0F1" },
+    ]);
+  });
+
+  it("adds the arm64 link register as the caller of the crash frame", () => {
+    const dump = buildMinidump({
+      modules: appModules,
+      exceptionCode: 11,
+      ip: 0x100500n,
+      ipOffset: 264,
+      stack: {
+        start: 0x7000n,
+        sp: 0x7000n,
+        spOffset: 256,
+        lr: 0x100600n,
+        words: [0x100600n, 0x100700n],
+      },
+    });
+    expect(parseMinidumpBuffer(dump, "darwin", "arm64")!.stackTrace).toEqual({
+      modules: [{ debugFile: "dyad", debugId: undefined }],
+      frames: [
+        { module: 0, offset: "0x500" },
+        { module: 0, offset: "0x600" },
+        { module: 0, offset: "0x700" },
+      ],
+    });
+  });
+
+  it("names only allowlisted Linux libraries, whatever their directory", () => {
+    // Real Linux dumps record dlopen'd plugins by bare name too, and a
+    // system directory can hold them, so neither marks a library as safe.
+    const trace = scan(
+      {
+        start: 0x7000n,
+        sp: 0x7000n,
+        spOffset: 152,
+        words: [0x300010n, 0x500010n, 0x100a10n, 0x600010n],
+      },
+      {
+        modules: [
+          appModules[0],
+          { base: 0x300000n, size: 0x1000, name: "libglib-2.0.so.0" },
+          { base: 0x500000n, size: 0x1000, name: "im-ibus.so" },
+          {
+            base: 0x600000n,
+            size: 0x1000,
+            name: "/usr/lib/x86_64-linux-gnu/gtk-3.0/3.0.0/immodules/im-ibus.so",
+          },
+        ],
+      },
+    );
+    expect(trace!.modules.map((m) => m.debugFile)).toEqual([
+      "dyad",
+      "libglib-2.0.so.0",
+    ]);
+    expect(trace!.frames).toEqual([
+      { module: 0, offset: "0x500" },
+      { module: 1, offset: "0x10" },
+      "other",
+      { module: 0, offset: "0xa10" },
+      "other",
+    ]);
+  });
+
+  it("uses the outer .app bundle as the app directory on macOS", () => {
+    const dump = buildMinidump({
+      modules: [
+        {
+          base: 0x100000n,
+          size: 0x1000,
+          name: "/Applications/Dyad.app/Contents/MacOS/Dyad",
+        },
+        {
+          base: 0x200000n,
+          size: 0x1000,
+          name: "/Applications/Dyad.app/Contents/Frameworks/Electron Framework.framework/Electron Framework",
+        },
+        {
+          base: 0x300000n,
+          size: 0x1000,
+          name: "/usr/lib/system/libsystem_kernel.dylib",
+        },
+        {
+          base: 0x400000n,
+          size: 0x1000,
+          name: "/Library/Application Support/Vendor/hook.dylib",
+        },
+      ],
+      exceptionCode: 1,
+      ip: 0x100010n,
+      ipOffset: 264,
+      stack: {
+        start: 0x7000n,
+        sp: 0x7000n,
+        spOffset: 256,
+        words: [0x200010n, 0x300010n, 0x400010n],
+      },
+    });
+    const trace = parseMinidumpBuffer(dump, "darwin", "arm64")!.stackTrace!;
+    expect(trace.modules.map((m) => m.debugFile)).toEqual([
+      "Dyad",
+      "Electron Framework",
+      "libsystem_kernel.dylib",
+    ]);
+    expect(trace.frames.at(-1)).toBe("other");
+  });
+
+  it("matches Windows directories case-insensitively", () => {
+    const dump = buildMinidump({
+      modules: [
+        {
+          base: 0x100000n,
+          size: 0x1000,
+          name: "C:\\Users\\u\\AppData\\Local\\dyad\\app-1.0.0\\dyad.exe",
+        },
+        {
+          base: 0x200000n,
+          size: 0x1000,
+          name: "C:\\WINDOWS\\System32\\KERNELBASE.dll",
+        },
+        {
+          base: 0x300000n,
+          size: 0x1000,
+          name: "C:\\Program Files\\Vendor\\hook64.dll",
+        },
+        {
+          // A GPU driver installed into System32: not an OS library.
+          base: 0x400000n,
+          size: 0x1000,
+          name: "C:\\Windows\\System32\\nvoglv64.dll",
+        },
+      ],
+      exceptionCode: 0xc0000005,
+      ip: 0x100010n,
+      ipOffset: 248,
+      stack: {
+        start: 0x7000n,
+        sp: 0x7000n,
+        spOffset: 152,
+        words: [0x200010n, 0x300010n, 0x100020n, 0x400010n],
+      },
+    });
+    const trace = parseMinidumpBuffer(dump, "win32", "x64")!.stackTrace!;
+    expect(trace.modules.map((m) => m.debugFile)).toEqual([
+      "dyad.exe",
+      "KERNELBASE.dll",
+    ]);
+    expect(trace.frames).toEqual([
+      { module: 0, offset: "0x10" },
+      { module: 1, offset: "0x10" },
+      "other",
+      { module: 0, offset: "0x20" },
+      "other",
+    ]);
   });
 });
 

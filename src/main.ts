@@ -87,6 +87,7 @@ import {
 import {
   crashAnnotationEventFields,
   crashPerformanceEventFields,
+  crashStackEventFields,
 } from "./utils/crash_telemetry_fields";
 import { appSizeEventFields } from "./shared/app_size_telemetry";
 import {
@@ -299,11 +300,11 @@ let pendingNativeBrowserCrash: {
   attribution: "ptype" | "sentinel";
 } | null = null;
 
-// Summarize each new minidump (signal, faulting module + offset, process type —
-// no memory). A main-process crash is the app crash, so its summary is stashed
-// and attached to app:crash_detected; other (survived child) crashes are left
-// to their own paths. Each dump is then kept under a timestamped name for later
-// examination. Runs once per session.
+// Summarize each new minidump (signal, faulting module + offset, scanned stack
+// offsets, process type — no memory). A main-process crash is the app crash,
+// so its summary is stashed and attached to app:crash_detected; other
+// (survived child) crashes are left to their own paths. Each dump is then kept
+// under a timestamped name for later examination. Runs once per session.
 function processNativeCrashDumps(): void {
   if (nativeCrashDumpsProcessed) {
     return;
@@ -333,6 +334,7 @@ function processNativeCrashDumps(): void {
         summary.crashReason,
         summary.faultingModule,
         summary.faultingOffset,
+        crashStackEventFields(summary.stackTrace),
       );
       // The sentinel check in onReady runs before the window exists, so
       // pendingCrashDetected already reflects it by the time this runs
@@ -873,6 +875,9 @@ function deliverPendingCrashRecovery(target: BrowserWindow): void {
     }),
     ...(nativeCrash?.annotations &&
       crashAnnotationEventFields(nativeCrash.annotations)),
+    // Candidate frames of the crashing thread, as module-relative offsets.
+    // Resolve with scripts/resolve-crash-frames.mjs --stack.
+    ...crashStackEventFields(nativeCrash?.stackTrace),
     // The OOM verdict and the signals behind it (see classifyOom).
     // Comma-joined: crash event properties stay scalar for PostHog.
     oom_verdict: oom.verdict,

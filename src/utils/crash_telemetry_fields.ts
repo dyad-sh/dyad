@@ -1,6 +1,7 @@
 import type { UserSettings } from "../lib/schemas";
 import { pagefileEventFields } from "../shared/pagefile_telemetry";
 import type { ActivitySnapshot } from "./memory_activity";
+import type { StackTrace } from "./minidump_summary";
 
 export type PerformanceSnapshot = NonNullable<
   UserSettings["lastKnownPerformance"]
@@ -139,6 +140,27 @@ export function crashAnnotationEventFields(
     fields.crash_annotations_dropped = dropped;
   }
   return fields;
+}
+
+// A scanned crash stack as two scalar fields, for
+// scripts/resolve-crash-frames.mjs --stack. stack_modules lists
+// "<debugFile>/<debugId>" per module; stack_frames lists
+// "<moduleIndex>+<offset>", "other", or "unknown" per frame. Both are
+// ";"-joined because debug files can contain spaces ("Electron Framework").
+export function crashStackEventFields(
+  trace: StackTrace | undefined,
+): Record<string, string> {
+  if (!trace || trace.frames.length === 0) {
+    return {};
+  }
+  return {
+    stack_modules: trace.modules
+      .map((m) => `${m.debugFile}/${m.debugId ?? ""}`)
+      .join(";"),
+    stack_frames: trace.frames
+      .map((f) => (typeof f === "string" ? f : `${f.module}+${f.offset}`))
+      .join(";"),
+  };
 }
 
 function workingSetFields(

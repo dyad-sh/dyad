@@ -6,7 +6,14 @@
 // Usage:
 //   node scripts/resolve-crash-frames.mjs <debugFile>/<debugId>/<hexOffset> [more ...]
 //   node scripts/resolve-crash-frames.mjs --csv frames.csv
+//   node scripts/resolve-crash-frames.mjs --stack <stack_modules> <stack_frames> [--all]
 //   node scripts/resolve-crash-frames.mjs --help
+//
+// --stack takes the stack_modules and stack_frames properties of an
+// app:crash_detected event and prints the crashing thread's stack. Those
+// frames come from scanning the stack for code addresses, so they include
+// false candidates; frames that do not resolve as return addresses are
+// dropped unless --all is given.
 //
 // Example:
 //   node scripts/resolve-crash-frames.mjs dyad/DF23C4907A7C231BEA2D1962BED725290/0x6ed35df
@@ -46,6 +53,11 @@ const USAGE = `Resolve crash telemetry frames to function names.
 Usage:
   node scripts/resolve-crash-frames.mjs <debugFile>/<debugId>/<hexOffset> [more ...]
   node scripts/resolve-crash-frames.mjs --csv frames.csv
+  node scripts/resolve-crash-frames.mjs --stack <stack_modules> <stack_frames> [--all]
+
+--stack resolves the stack_modules and stack_frames properties of an
+app:crash_detected event. Quote both values. Scanned candidates that are
+not return addresses are dropped unless --all is given.
 
 Example:
   node scripts/resolve-crash-frames.mjs dyad/DF23C4907A7C231BEA2D1962BED725290/0x6ed35df
@@ -155,7 +167,39 @@ function parseCsv(file) {
   return frames;
 }
 
+// A stack from crash telemetry: stack_modules is ";"-joined
+// "<debugFile>/<debugId>" entries, and stack_frames is ";"-joined
+// "<moduleIndex>+<hexOffset>", "other", or "unknown" entries.
+function parseStack(modulesText, framesText) {
+  const modules = modulesText.split(";").map((entry) => {
+    const slash = entry.lastIndexOf("/");
+    const debugFile = slash >= 0 ? entry.slice(0, slash) : entry;
+    const debugId = slash >= 0 ? entry.slice(slash + 1) : "";
+    if (
+      !safePathSegment(debugFile) ||
+      (debugId !== "" && !safePathSegment(debugId))
+    ) {
+      usageError(`Bad stack module "${entry}".`);
+    }
+    return { debugFile, debugId };
+  });
+  const stackFrames = framesText.split(";").map((entry) => {
+    if (entry === "other" || entry === "unknown") {
+      return { kind: entry };
+    }
+    const match = /^(\d+)\+(0x[0-9a-fA-F]+)$/.exec(entry);
+    const module = match ? modules[Number(match[1])] : undefined;
+    if (!module) {
+      usageError(`Bad stack frame "${entry}".`);
+    }
+    return { kind: "code", module, offsetText: match[2] };
+  });
+  return stackFrames;
+}
+
 const frames = [];
+const stacks = [];
+const showAll = args.includes("--all");
 for (let i = 0; i < args.length; i++) {
   if (args[i] === "--csv") {
     const file = args[i + 1];
@@ -164,13 +208,28 @@ for (let i = 0; i < args.length; i++) {
     }
     frames.push(...parseCsv(file));
     i++;
+  } else if (args[i] === "--stack") {
+    let modulesText = args[i + 1];
+    let framesText = args[i + 2];
+    if (!modulesText || !framesText) {
+      usageError("--stack needs the stack_modules and stack_frames values.");
+    }
+    // The two values look nothing alike, so accept them in either order:
+    // frames start with "<index>+0x", "other", or "unknown".
+    if (/^(\d+\+0x|other\b|unknown\b)/.test(modulesText)) {
+      [modulesText, framesText] = [framesText, modulesText];
+    }
+    stacks.push(parseStack(modulesText, framesText));
+    i += 2;
+  } else if (args[i] === "--all") {
+    continue;
   } else if (args[i].startsWith("-")) {
     usageError(`Unknown flag "${args[i]}".`);
   } else {
     frames.push(parseFrameArg(args[i]));
   }
 }
-if (frames.length === 0) {
+if (frames.length === 0 && stacks.length === 0) {
   usageError("No frames given.");
 }
 
@@ -352,4 +411,67 @@ for (const { debugFile, debugId, offsetText } of frames) {
   const table = await tableFor(debugFile, debugId);
   const name = table ? resolveOffset(table, parseInt(offsetText, 16)) : null;
   console.log(`${debugFile}+${offsetText}  ${name ?? "<unresolved>"}`);
+}
+
+// Name for a scanned candidate, or null when it is not a plausible
+// return address. A return address points just past a call, so the
+// lookup uses offset - 1 to land on the call itself. Candidates that
+// fall outside every function (data such as vtables and globals) or
+// sit exactly on a function's first byte (a function pointer held in a
+// local, which no call returns to) are rejected. The PUBLIC fallback is
+// too loose to tell code from data, so it is used only when the module
+// has no FUNC records at all.
+function resolveReturnAddress(table, offset) {
+  if (table.funcs.length === 0) {
+    return resolveOffset(table, offset - 1);
+  }
+  const func = atOrBelow(table.funcs, offset - 1);
+  if (!func || offset - 1 >= func.addr + func.size || offset === func.addr) {
+    return null;
+  }
+  return func.name;
+}
+
+for (const [s, stack] of stacks.entries()) {
+  if (stacks.length > 1) {
+    console.log(`${s > 0 ? "\n" : ""}Stack ${s + 1}:`);
+  }
+  let shown = 0;
+  let dropped = 0;
+  for (const [i, frame] of stack.entries()) {
+    let label;
+    let name;
+    if (frame.kind === "other") {
+      label = "<other module>";
+      name = "(not the app's or an allowlisted OS library; name withheld)";
+    } else if (frame.kind === "unknown") {
+      label = "<no module>";
+      name = "(crash address outside every module, e.g. JIT code)";
+    } else {
+      const { debugFile, debugId } = frame.module;
+      label = `${debugFile}+${frame.offsetText}`;
+      const table = debugId ? await tableFor(debugFile, debugId) : null;
+      const offset = parseInt(frame.offsetText, 16);
+      // Frame 0 is the crash address itself, not a return address.
+      name = !table
+        ? "<unresolved>"
+        : i === 0
+          ? (resolveOffset(table, offset) ?? "<unresolved>")
+          : resolveReturnAddress(table, offset);
+      if (name === null) {
+        dropped++;
+        if (!showAll) {
+          continue;
+        }
+        name = "<dropped: not a return address>";
+      }
+    }
+    console.log(`#${shown}  ${label}  ${name}`);
+    shown++;
+  }
+  if (dropped > 0 && !showAll) {
+    console.log(
+      `(${dropped} scanned candidates were not return addresses; --all shows them)`,
+    );
+  }
 }

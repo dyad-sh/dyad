@@ -1,14 +1,16 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { IpcMainInvokeEvent } from "electron";
 import { performance } from "node:perf_hooks";
-import type { SystemResourceUsage } from "../types/system";
 import { sendTelemetryEvent } from "../utils/telemetry";
 import { measureTestRunStep } from "./test_run_timing";
 import { loadTestRunContext } from "./test_run_context";
 import { createTestRunQueueService } from "./test_run_queue_service";
 
 const h = vi.hoisted(() => ({
-  settings: { enableParallelTestRuns: false },
+  settings: {
+    enableParallelTestRuns: false,
+    maxConcurrentTestRuns: undefined as number | undefined,
+  },
   databaseKey: undefined as string | undefined,
   branch: "main",
   fingerprint: "inputs",
@@ -25,9 +27,6 @@ vi.mock("./test_run_context", () => ({
     branch: h.branch,
     revision: "abcdef",
   })),
-}));
-vi.mock("@/utils/system_resource_usage", () => ({
-  getSystemResourceUsage: vi.fn(),
 }));
 vi.mock("./e2e_test_process_registry", () => ({
   trackedE2eTestProcessesForOwner: () => h.remainingProcesses,
@@ -48,13 +47,7 @@ vi.mock("electron-log", () => ({
 }));
 
 let service: ReturnType<typeof createTestRunQueueService>;
-let usage: SystemResourceUsage;
-const sampleResources = vi.fn<() => Promise<SystemResourceUsage>>();
 const pending: { finish: () => void; result: Promise<string> }[] = [];
-const feedback = () =>
-  h.info.mock.calls
-    .filter(([name]) => name === "e2e_test_concurrency_updated")
-    .map(([, data]) => data);
 const admissions = () =>
   h.info.mock.calls
     .filter(([name]) => name === "e2e_test_admission_decision")
@@ -65,32 +58,13 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.info.mockReset();
   h.settings.enableParallelTestRuns = false;
+  h.settings.maxConcurrentTestRuns = undefined;
   h.databaseKey = undefined;
   h.branch = "main";
   h.fingerprint = "inputs";
   h.exclusive = false;
   h.remainingProcesses = [];
-  usage = {
-    sampledAt: Date.now(),
-    platform: "linux",
-    cpu: { logicalCores: 8, usedPercent: 10 },
-    memory: {
-      totalBytes: 1000,
-      usedBytes: 400,
-      source: "linux",
-      committedBytes: null,
-      commitLimitBytes: null,
-      compressedBytes: null,
-      swapUsedBytes: null,
-    },
-  };
-  sampleResources.mockReset().mockImplementation(async () => ({
-    ...usage,
-    sampledAt: Date.now(),
-    cpu: { ...usage.cpu },
-    memory: { ...usage.memory },
-  }));
-  service = createTestRunQueueService({ sampleResources });
+  service = createTestRunQueueService();
 });
 afterEach(async () => {
   service.stopAllAppTestRuns({ kind: "app-quit" });
@@ -128,14 +102,6 @@ function enqueue(appId = 1) {
 }
 async function tick(ms = 10) {
   await vi.advanceTimersByTimeAsync(ms);
-}
-async function learnTwo() {
-  h.settings.enableParallelTestRuns = true;
-  const first = enqueue();
-  await tick();
-  first.finish();
-  await first.result;
-  expect(feedback().at(-1)).toMatchObject({ previous_limit: 1, next_limit: 2 });
 }
 it("times queued cancellation separately and retains the active run through cleanup", async () => {
   let now = 0;
@@ -305,470 +271,10 @@ it("stops active and queued runs across apps while retaining their cleanup", asy
   );
 });
 
-it("starts at one without history, grows only at completion, and fills slots during startup", async () => {
-  h.settings.enableParallelTestRuns = true;
-  const first = enqueue(1);
-  const second = enqueue(2);
-  const third = enqueue(3);
-  await tick(6000);
-  expect(first.execute).toHaveBeenCalledOnce();
-  expect(second.execute).not.toHaveBeenCalled();
-  expect(third.execute).not.toHaveBeenCalled();
-  expect(feedback()).toEqual([]);
-  expect(
-    admissions().filter((entry) => entry.decision === "queued"),
-  ).toHaveLength(1);
-  first.finish();
-  await first.result;
-  await tick();
-  expect(second.execute).toHaveBeenCalledOnce();
-  expect(third.execute).toHaveBeenCalledOnce();
-  expect(feedback()).toEqual([
-    expect.objectContaining({
-      active_run_count: 1,
-      previous_limit: 1,
-      next_limit: 2,
-    }),
-  ]);
-  // These promises still represent startup: neither needs to finish setup to overlap.
-  expect(second.signal?.aborted).toBe(false);
-  expect(third.signal?.aborted).toBe(false);
-});
-
-it.each(["CPU", "memory"])(
-  "uses peak %s to drain the active batch and decrease only at its end",
-  async (resource) => {
-    await learnTwo();
-    const first = enqueue();
-    const second = enqueue();
-    const third = enqueue();
-    await tick();
-    if (resource === "CPU") usage.cpu.usedPercent = 95;
-    else usage.memory.usedBytes = 950;
-    await tick(2000);
-    usage.cpu.usedPercent = 10;
-    usage.memory.usedBytes = 400;
-    await tick(2000);
-    expect(feedback()).toHaveLength(1);
-    first.finish();
-    await first.result;
-    await tick();
-    expect(feedback().at(-1)).toMatchObject({
-      previous_limit: 2,
-      next_limit: 2,
-      batch_decrease_pending: true,
-    });
-    expect(
-      feedback().at(-1)[
-        resource === "CPU"
-          ? "peak_system_cpu_percent"
-          : "peak_system_memory_percent"
-      ],
-    ).toBe(95);
-    expect(second.signal?.aborted).toBe(false);
-    expect(third.execute).not.toHaveBeenCalled();
-    expect(service.getAppTestRunQueue(1).queuedRuns[0].queuedReason).toContain(
-      "active test batch",
-    );
-    second.finish();
-    await second.result;
-    await tick();
-    expect(third.execute).toHaveBeenCalledOnce();
-    expect(feedback().at(-1)).toMatchObject({
-      previous_limit: 2,
-      next_limit: 1,
-      batch_decrease_pending: false,
-    });
-  },
-);
-
-it("holds the limit for underutilized runs and has no ceiling at two", async () => {
-  await learnTwo();
-  const solo = enqueue();
-  await tick();
-  solo.finish();
-  await solo.result;
-  expect(feedback().at(-1)).toMatchObject({
-    active_run_count: 1,
-    previous_limit: 2,
-    next_limit: 2,
-  });
-  const first = enqueue();
-  const second = enqueue();
-  const third = enqueue();
-  const fourth = enqueue();
-  await tick();
-  first.finish();
-  await first.result;
-  await tick();
-  expect(feedback().at(-1)).toMatchObject({
-    active_run_count: 2,
-    previous_limit: 2,
-    next_limit: 3,
-  });
-  expect(service.getAppTestRunQueue(1).activeRuns).toHaveLength(3);
-  for (const run of [second, third, fourth])
-    expect(run.execute).toHaveBeenCalledOnce();
-});
-
-it("applies simultaneous completions once each using the active count before each release", async () => {
-  await learnTwo();
-  const first = enqueue();
-  const second = enqueue();
-  await tick();
-  first.finish();
-  second.finish();
-  await Promise.all([first.result, second.result]);
-  expect(feedback().slice(1)).toEqual([
-    expect.objectContaining({
-      active_run_count: 2,
-      previous_limit: 2,
-      next_limit: 3,
-    }),
-    expect.objectContaining({
-      active_run_count: 1,
-      previous_limit: 3,
-      next_limit: 3,
-    }),
-  ]);
-  expect(vi.getTimerCount()).toBe(0);
-});
-
-it("admits a solo run even during overload and never drops the limit below one", async () => {
-  h.settings.enableParallelTestRuns = true;
-  usage.cpu.usedPercent = 100;
-  usage.memory.usedBytes = 1000;
-  const first = enqueue();
-  const second = enqueue();
-  await tick();
-  expect(first.execute).toHaveBeenCalledOnce();
-  first.finish();
-  await first.result;
-  await tick();
-  expect(second.execute).toHaveBeenCalledOnce();
-  expect(feedback().at(-1)).toMatchObject({ previous_limit: 1, next_limit: 1 });
-});
-
-it.each(["CPU", "memory"])("holds at exactly 90%% %s", async (resource) => {
-  h.settings.enableParallelTestRuns = true;
-  if (resource === "CPU") usage.cpu.usedPercent = 90;
-  else usage.memory.usedBytes = 900;
-  const first = enqueue();
-  await tick();
-  first.finish();
-  await first.result;
-  expect(feedback().at(-1)).toMatchObject({ previous_limit: 1, next_limit: 1 });
-});
-
-it.each(["missing CPU", "fallback memory", "stale", "future", "failure"])(
-  "does not grow on %s measurements",
-  async (kind) => {
-    h.settings.enableParallelTestRuns = true;
-    if (kind === "missing CPU") usage.cpu.usedPercent = null;
-    if (kind === "fallback memory") usage.memory.source = "fallback";
-    if (kind === "stale")
-      sampleResources.mockImplementation(async () => ({
-        ...usage,
-        sampledAt: Date.now() - 20000,
-      }));
-    if (kind === "future")
-      sampleResources.mockImplementation(async () => ({
-        ...usage,
-        sampledAt: Date.now() + 20000,
-      }));
-    if (kind === "failure")
-      sampleResources.mockRejectedValue(new Error("unavailable"));
-    const first = enqueue();
-    const second = enqueue();
-    await tick();
-    first.finish();
-    await first.result;
-    await tick();
-    expect(feedback().at(-1)).toMatchObject({
-      previous_limit: 1,
-      next_limit: 1,
-    });
-    expect(second.execute).toHaveBeenCalledOnce();
-  },
-);
-
-it("waits for an in-flight sample from the run without inheriting it into the next run", async () => {
-  await learnTwo();
-  let sampled!: (sample: SystemResourceUsage) => void;
-  sampleResources.mockImplementationOnce(
-    () =>
-      new Promise((resolve) => {
-        sampled = resolve;
-      }),
-  );
-  const first = enqueue();
-  await tick();
-  const duringRun = Date.now();
-  const second = enqueue();
-  await tick();
-  first.finish();
-  await tick();
-  expect(service.getAppTestRunQueue(1).activeRuns).toHaveLength(2);
-  sampled({
-    ...usage,
-    sampledAt: duringRun,
-    cpu: { ...usage.cpu, usedPercent: 95 },
-  });
-  await first.result;
-  expect(feedback().at(-1)).toMatchObject({
-    previous_limit: 2,
-    next_limit: 2,
-    batch_decrease_pending: true,
-    peak_system_cpu_percent: 95,
-  });
-  second.finish();
-  await second.result;
-  expect(feedback().at(-1)).toMatchObject({
-    previous_limit: 2,
-    next_limit: 1,
-    batch_decrease_pending: false,
-    batch_peak_system_cpu_percent: 95,
-    peak_system_cpu_percent: null,
-    peak_system_memory_percent: null,
-  });
-});
-
-it("reduces a six-run batch to five once, then starts queued runs together across apps", async () => {
-  await learnTwo();
-  for (const limit of [2, 3, 4, 5]) {
-    const training = Array.from({ length: limit }, () => enqueue());
-    await tick();
-    training[0].finish();
-    await training[0].result;
-    for (const run of training.slice(1)) run.finish();
-    await Promise.all(training.map((run) => run.result));
-    expect(feedback().at(-1).next_limit).toBe(limit + 1);
-  }
-  h.info.mockClear();
-  usage.cpu.usedPercent = 100;
-  const runs = Array.from({ length: 8 }, (_, index) => enqueue(index + 10));
-  await tick(2010);
-  for (const run of runs.slice(0, 6))
-    expect(run.execute).toHaveBeenCalledOnce();
-  for (const run of runs.slice(6)) expect(run.execute).not.toHaveBeenCalled();
-  usage.cpu.usedPercent = 10;
-  for (const run of runs.slice(0, 5)) {
-    run.finish();
-    await run.result;
-    await tick();
-    expect(feedback().at(-1)).toMatchObject({
-      previous_limit: 6,
-      next_limit: 6,
-      batch_decrease_pending: true,
-    });
-    for (const queued of runs.slice(6))
-      expect(queued.execute).not.toHaveBeenCalled();
-  }
-  runs[5].finish();
-  await runs[5].result;
-  await tick();
-  expect(feedback().at(-1)).toMatchObject({
-    previous_limit: 6,
-    next_limit: 5,
-    batch_decrease_pending: false,
-  });
-  expect(
-    feedback().filter((event) => event.next_limit < event.previous_limit),
-  ).toHaveLength(1);
-  for (const queued of runs.slice(6)) {
-    expect(queued.execute).toHaveBeenCalledOnce();
-    expect(queued.signal?.aborted).toBe(false);
-  }
-  expect(
-    admissions()
-      .filter((event) => event.decision === "admitted")
-      .slice(-2),
-  ).toEqual([
-    expect.objectContaining({
-      admission: expect.objectContaining({
-        limit: 5,
-        batch_decrease_pending: false,
-      }),
-    }),
-    expect.objectContaining({
-      admission: expect.objectContaining({
-        limit: 5,
-        batch_decrease_pending: false,
-      }),
-    }),
-  ]);
-  // A later overloaded group gets its own single decrease.
-  usage.cpu.usedPercent = 95;
-  await tick(2000);
-  runs[6].finish();
-  await runs[6].result;
-  expect(feedback().at(-1)).toMatchObject({ previous_limit: 5, next_limit: 5 });
-  runs[7].finish();
-  await runs[7].result;
-  expect(feedback().at(-1)).toMatchObject({
-    previous_limit: 5,
-    next_limit: 4,
-    batch_decrease_pending: false,
-  });
-});
-
-it("cancellation retains the draining batch through cleanup and then releases admission", async () => {
-  await learnTwo();
-  usage.cpu.usedPercent = 95;
-  const first = enqueue();
-  const second = enqueue();
-  const third = enqueue();
-  await tick(2010);
-  first.finish();
-  await first.result;
-  await tick();
-  service.cancelAppTestRun(
-    1,
-    service.getAppTestRunQueue(1).activeRuns[0].runId,
-    { kind: "tests-panel-stop" },
-  );
-  await tick();
-  expect(second.signal?.aborted).toBe(true);
-  expect(third.execute).not.toHaveBeenCalled();
-  expect(feedback().at(-1)).toMatchObject({
-    next_limit: 2,
-    batch_decrease_pending: true,
-  });
-  second.finish();
-  await second.result;
-  await tick();
-  expect(third.execute).toHaveBeenCalledOnce();
-  expect(feedback().at(-1)).toMatchObject({
-    previous_limit: 2,
-    next_limit: 1,
-    batch_decrease_pending: false,
-  });
-});
-
-it("applies one decrease when overloaded batch members finish simultaneously", async () => {
-  await learnTwo();
-  usage.cpu.usedPercent = 95;
-  const first = enqueue();
-  const second = enqueue();
-  await tick(2010);
-  first.finish();
-  second.finish();
-  await Promise.all([first.result, second.result]);
-  expect(feedback().slice(1)).toEqual([
-    expect.objectContaining({
-      previous_limit: 2,
-      next_limit: 2,
-      batch_decrease_pending: true,
-    }),
-    expect.objectContaining({
-      previous_limit: 2,
-      next_limit: 1,
-      batch_decrease_pending: false,
-    }),
-  ]);
-  expect(vi.getTimerCount()).toBe(0);
-});
-
-it("rechecks the batch drain after awaiting admission metadata", async () => {
-  await learnTwo();
-  usage.cpu.usedPercent = 95;
-  const first = enqueue();
-  const second = enqueue();
-  await tick(2010);
-  let loaded!: (value: Awaited<ReturnType<typeof loadTestRunContext>>) => void;
-  vi.mocked(loadTestRunContext).mockImplementationOnce(
-    () =>
-      new Promise((resolve) => {
-        loaded = resolve;
-      }),
-  );
-  const third = enqueue();
-  await tick();
-  first.finish();
-  await first.result;
-  loaded({ inputFingerprint: "inputs", exclusive: false });
-  await tick();
-  expect(third.execute).not.toHaveBeenCalled();
-  expect(service.getAppTestRunQueue(1).queuedRuns[0].queuedReason).toContain(
-    "active test batch",
-  );
-  second.finish();
-  await second.result;
-  await tick();
-  expect(third.execute).toHaveBeenCalledOnce();
-});
-
-it("clears a pending batch decrease when parallel runs are disabled", async () => {
-  await learnTwo();
-  usage.cpu.usedPercent = 95;
-  const first = enqueue();
-  const second = enqueue();
-  const third = enqueue();
-  await tick(2010);
-  first.finish();
-  await first.result;
-  expect(feedback().at(-1).batch_decrease_pending).toBe(true);
-  h.settings.enableParallelTestRuns = false;
-  await tick();
-  expect(third.execute).not.toHaveBeenCalled();
-  second.finish();
-  await second.result;
-  third.finish();
-  await third.result;
-  usage.cpu.usedPercent = 10;
-  h.settings.enableParallelTestRuns = true;
-  const fresh = enqueue();
-  await tick();
-  fresh.finish();
-  await fresh.result;
-  expect(feedback().at(-1)).toMatchObject({
-    previous_limit: 1,
-    next_limit: 2,
-    batch_decrease_pending: false,
-  });
-});
-
-it("does not include a sample timestamped after a run ended", async () => {
-  h.settings.enableParallelTestRuns = true;
-  let sampled!: (sample: SystemResourceUsage) => void;
-  sampleResources.mockImplementationOnce(
-    () =>
-      new Promise((resolve) => {
-        sampled = resolve;
-      }),
-  );
-  const first = enqueue();
-  await tick();
-  first.finish();
-  await tick();
-  sampled({ ...usage, sampledAt: Date.now() });
-  await first.result;
-  expect(feedback().at(-1)).toMatchObject({
-    previous_limit: 1,
-    next_limit: 1,
-    peak_system_cpu_percent: null,
-  });
-});
-
-it("does not adjust concurrency for queued cancellations", async () => {
-  h.settings.enableParallelTestRuns = true;
-  const first = enqueue();
-  const second = enqueue();
-  await tick();
-  service.cancelAppTestRun(
-    1,
-    service.getAppTestRunQueue(1).queuedRuns[0].runId,
-    { kind: "tests-panel-stop" },
-  );
-  expect(await second.result).toBe("cancelled");
-  expect(feedback()).toHaveLength(0);
-  expect(first.signal?.aborted).toBe(false);
-});
-
 it.each([undefined, "neon:project:1", "supabase:project"])(
   "overlaps compatible runs with database %s and cancels them independently",
   async (databaseKey) => {
-    await learnTwo();
+    h.settings.enableParallelTestRuns = true;
     h.databaseKey = databaseKey;
     const first = enqueue();
     const second = enqueue();
@@ -788,7 +294,7 @@ it.each([undefined, "neon:project:1", "supabase:project"])(
 it.each(["database", "exclusive"])(
   "preserves %s compatibility checks",
   async (kind) => {
-    await learnTwo();
+    h.settings.enableParallelTestRuns = true;
     h.databaseKey = "neon:project:1";
     const first = enqueue();
     await tick();
@@ -835,11 +341,11 @@ it("rechecks cancellation after loading admission metadata", async () => {
   await tick();
   expect(await first.result).toBe("cancelled");
   expect(first.execute).not.toHaveBeenCalled();
-  expect(feedback()).toHaveLength(0);
 });
 
 it("fences admission when a run fails to stop its processes", async () => {
   h.settings.enableParallelTestRuns = true;
+  h.settings.maxConcurrentTestRuns = 1;
   const first = enqueue();
   const second = enqueue();
   await tick();
@@ -854,7 +360,7 @@ it("fences admission when a run fails to stop its processes", async () => {
 });
 
 it("returns to serial admission when parallel runs are disabled", async () => {
-  await learnTwo();
+  h.settings.enableParallelTestRuns = true;
   const first = enqueue();
   const second = enqueue();
   const third = enqueue();
@@ -868,10 +374,6 @@ it("returns to serial admission when parallel runs are disabled", async () => {
   second.finish();
   await second.result;
   expect(third.execute).toHaveBeenCalledOnce();
-  expect(feedback().at(-1)).toMatchObject({
-    next_limit: 1,
-    parallel_enabled: false,
-  });
 });
 
 it("diagnostic failures cannot prevent completion or the next admission", async () => {
@@ -886,4 +388,131 @@ it("diagnostic failures cannot prevent completion or the next admission", async 
   expect(await first.result).toBe("done");
   await tick();
   expect(second.execute).toHaveBeenCalledOnce();
+});
+
+it("starts two compatible runs immediately and keeps that limit after completions", async () => {
+  h.settings.enableParallelTestRuns = true;
+  const runs = [enqueue(1), enqueue(2), enqueue(3), enqueue(4)];
+  await tick();
+  expect(runs[0].execute).toHaveBeenCalledOnce();
+  expect(runs[1].execute).toHaveBeenCalledOnce();
+  expect(runs[2].execute).not.toHaveBeenCalled();
+  expect(runs[3].execute).not.toHaveBeenCalled();
+  runs[0].finish();
+  await runs[0].result;
+  await tick();
+  expect(runs[2].execute).toHaveBeenCalledOnce();
+  expect(runs[3].execute).not.toHaveBeenCalled();
+  expect(runs[1].signal?.aborted).toBe(false);
+  expect(admissions().every((entry) => entry.admission.limit === 2)).toBe(true);
+});
+
+it.each([1, 3, 5])("honors a saved concurrency limit of %i", async (limit) => {
+  h.settings.enableParallelTestRuns = true;
+  h.settings.maxConcurrentTestRuns = limit;
+  const runs = Array.from({ length: limit + 1 }, () => enqueue());
+  await tick();
+  expect(service.getAppTestRunQueue(1).activeRuns).toHaveLength(limit);
+  expect(runs[limit].execute).not.toHaveBeenCalled();
+  runs[0].finish();
+  await runs[0].result;
+  await tick();
+  expect(runs[limit].execute).toHaveBeenCalledOnce();
+  expect(service.getAppTestRunQueue(1).activeRuns).toHaveLength(limit);
+});
+
+it("fills newly available slots when the user raises the limit", async () => {
+  h.settings.enableParallelTestRuns = true;
+  const runs = [enqueue(), enqueue(), enqueue(), enqueue(), enqueue()];
+  await tick();
+  h.settings.maxConcurrentTestRuns = 4;
+  await tick(2000);
+  expect(service.getAppTestRunQueue(1).activeRuns).toHaveLength(4);
+  for (const run of runs.slice(0, 4))
+    expect(run.execute).toHaveBeenCalledOnce();
+  expect(runs[4].execute).not.toHaveBeenCalled();
+});
+
+it("lets active runs finish when the limit is lowered and waits for a free slot", async () => {
+  h.settings.enableParallelTestRuns = true;
+  h.settings.maxConcurrentTestRuns = 3;
+  const runs = [enqueue(), enqueue(), enqueue(), enqueue()];
+  await tick();
+  h.settings.maxConcurrentTestRuns = 1;
+  await tick(2000);
+  for (const run of runs.slice(0, 3)) expect(run.signal?.aborted).toBe(false);
+  for (const run of runs.slice(0, 2)) {
+    run.finish();
+    await run.result;
+    await tick();
+    expect(runs[3].execute).not.toHaveBeenCalled();
+  }
+  runs[2].finish();
+  await runs[2].result;
+  await tick();
+  expect(runs[3].execute).toHaveBeenCalledOnce();
+});
+
+it("rechecks the configured limit after loading admission metadata", async () => {
+  h.settings.enableParallelTestRuns = true;
+  const first = enqueue();
+  await tick();
+  let loaded!: (value: Awaited<ReturnType<typeof loadTestRunContext>>) => void;
+  vi.mocked(loadTestRunContext).mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        loaded = resolve;
+      }),
+  );
+  const second = enqueue();
+  await tick();
+  h.settings.maxConcurrentTestRuns = 1;
+  loaded({ inputFingerprint: "inputs", exclusive: false });
+  await tick();
+  expect(second.execute).not.toHaveBeenCalled();
+  first.finish();
+  await first.result;
+  await tick();
+  expect(second.execute).toHaveBeenCalledOnce();
+});
+
+it("retains a cancelled run's slot until cleanup settles", async () => {
+  h.settings.enableParallelTestRuns = true;
+  const first = enqueue();
+  const second = enqueue();
+  const third = enqueue();
+  await tick();
+  service.cancelAppTestRun(
+    1,
+    service.getAppTestRunQueue(1).activeRuns[0].runId,
+    { kind: "tests-panel-stop" },
+  );
+  await tick();
+  expect(first.signal?.aborted).toBe(true);
+  expect(second.signal?.aborted).toBe(false);
+  expect(third.execute).not.toHaveBeenCalled();
+  first.finish();
+  await first.result;
+  await tick();
+  expect(third.execute).toHaveBeenCalledOnce();
+});
+
+it("does not consume capacity for a queued cancellation", async () => {
+  h.settings.enableParallelTestRuns = true;
+  const first = enqueue();
+  enqueue();
+  const third = enqueue();
+  const fourth = enqueue();
+  await tick();
+  service.cancelAppTestRun(
+    1,
+    service.getAppTestRunQueue(1).queuedRuns[0].runId,
+    { kind: "tests-panel-stop" },
+  );
+  expect(await third.result).toBe("cancelled");
+  expect(third.execute).not.toHaveBeenCalled();
+  first.finish();
+  await first.result;
+  await tick();
+  expect(fourth.execute).toHaveBeenCalledOnce();
 });

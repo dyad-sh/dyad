@@ -629,7 +629,7 @@ const BaseUserSettingsFields = {
   // than run against the real database either way.
   disableSandboxedE2eTests: z.boolean().optional(),
   enableParallelTestRuns: z.boolean().optional(),
-  maxReusableTestSandboxes: z.number().int().min(0).max(128).optional(),
+  maxConcurrentTestRuns: z.number().int().min(1).max(128).optional(),
   autoExpandPreviewPanel: z.boolean().optional(),
   // Follow-up prompt chips above the chat input after Build and Agent turns.
   enableSuggestedPrompts: z.boolean().optional(),

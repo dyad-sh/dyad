@@ -6,23 +6,14 @@ import {
   TestRunQueue,
   type TestRunExecution,
 } from "@/test_run_queue/controller";
-import {
-  INITIAL_TEST_RUN_CONCURRENCY,
-  type TestRunResourcePeak,
-  type TestRunStopReason,
-} from "@/test_run_queue/state";
-import {
-  accumulateTestRunResourcePeak,
-  settleTestRunConcurrency,
-  TEST_RUN_RESOURCE_THRESHOLD_PERCENT,
-} from "@/test_run_queue/concurrency";
+import type { TestRunStopReason } from "@/test_run_queue/state";
+import { DEFAULT_MAX_CONCURRENT_TEST_RUNS } from "@/shared/settings_defaults";
 import {
   systemClock,
   type Clock,
   type ClockHandle,
 } from "@/state_machines/clock";
 import { createTraceObserver } from "@/state_machines/trace";
-import { getSystemResourceUsage } from "@/utils/system_resource_usage";
 import { broadcastToRegisteredWindows } from "../utils/window_broadcast";
 import { TestRunTiming } from "./test_run_timing";
 import { trackedE2eTestProcessesForOwner } from "./e2e_test_process_registry";
@@ -33,86 +24,35 @@ import {
 } from "./test_run_context";
 
 const logger = log.scope("test_run_queue");
-const SAMPLE_INTERVAL_MS = 2000;
+const ADMISSION_RETRY_INTERVAL_MS = 2000;
 type RunRecord = {
   request: TestRunContextRequest;
   context?: TestRunContext | null;
   signal?: AbortSignal;
-  startedAt?: number;
-  endedAt?: number;
-  adaptive: boolean;
-  peak: TestRunResourcePeak | null;
 };
 
 /**
  * One owner arbitrates admission across apps, windows and invocation sources.
- * The queue reserves slots before execution. This adapter samples system usage
- * and applies the pure concurrency policy synchronously at queue settlement;
- * async measurements never admit work or change the concurrency limit.
+ * The queue reserves slots through cleanup and result delivery. Admission uses
+ * the current user-configured limit and database/workspace compatibility.
+ * Lowering the limit only delays queued work; active runs finish normally.
  */
 export function createTestRunQueueService({
   clock = systemClock,
-  sampleResources = getSystemResourceUsage,
 }: {
   clock?: Clock;
-  sampleResources?: typeof getSystemResourceUsage;
 } = {}) {
   const deletingApps = new Set<number>();
   const senders = new Map<number, IpcMainInvokeEvent["sender"]>();
   const records = new Map<number, RunRecord>();
   let nextTestRunId = clock.now() * 1000;
-  let concurrency = INITIAL_TEST_RUN_CONCURRENCY;
   let driving = false;
   let driveTimer: ClockHandle | undefined;
-  let sampleTimer: ClockHandle | undefined;
-  let pendingSample: Promise<void> | undefined;
   let processCleanupBlocked = false;
 
   const queue = new TestRunQueue({
     manualAdmission: true,
     observer: createTraceObserver("test_run_queue", "global"),
-    onSettled(runId) {
-      const record = records.get(runId);
-      // An admitted run cancelled before execution still belongs to a draining
-      // group. Its settlement must release that group's admission fence.
-      if (!record?.adaptive && !concurrency.overloadedBatchPeak) return;
-      const previous = concurrency;
-      const activeCount = queue.getSnapshot().activeRuns!.length;
-      const parallelEnabled = !!readSettings().enableParallelTestRuns;
-      concurrency = parallelEnabled
-        ? settleTestRunConcurrency(
-            concurrency,
-            activeCount,
-            record?.peak ?? null,
-          )
-        : INITIAL_TEST_RUN_CONCURRENCY;
-      const batchPeak = previous.overloadedBatchPeak
-        ? record?.peak
-          ? accumulateTestRunResourcePeak(
-              previous.overloadedBatchPeak,
-              record.peak,
-            )
-          : previous.overloadedBatchPeak
-        : concurrency.overloadedBatchPeak;
-      try {
-        logger.info("e2e_test_concurrency_updated", {
-          app_id: record?.request.appId,
-          run_id: runId,
-          active_run_count: activeCount,
-          previous_limit: previous.limit,
-          next_limit: concurrency.limit,
-          peak_system_cpu_percent: record?.peak?.cpuPercent ?? null,
-          peak_system_memory_percent: record?.peak?.memoryPercent ?? null,
-          batch_decrease_pending: !!concurrency.overloadedBatchPeak,
-          batch_peak_system_cpu_percent: batchPeak?.cpuPercent ?? null,
-          batch_peak_system_memory_percent: batchPeak?.memoryPercent ?? null,
-          threshold_percent: TEST_RUN_RESOURCE_THRESHOLD_PERCENT,
-          parallel_enabled: parallelEnabled,
-        });
-      } catch {
-        // Diagnostics must not interfere with settlement or future admission.
-      }
-    },
     onChange() {
       for (const [appId, sender] of senders) {
         const state = getAppTestRunQueue(appId);
@@ -125,85 +65,14 @@ export function createTestRunQueueService({
       }
       startSerialRun();
       scheduleDrive();
-      if (!samplingOwners().length && sampleTimer !== undefined) {
-        clock.cancel(sampleTimer);
-        sampleTimer = undefined;
-      }
     },
     onError: (error) =>
       logger.error("Failed to publish test queue state", error),
   });
 
-  function samplingOwners() {
-    return [...records.values()].filter(
-      (run) =>
-        run.adaptive &&
-        run.startedAt !== undefined &&
-        run.endedAt === undefined,
-    );
-  }
-
-  function collectSample() {
-    if (pendingSample) return pendingSample;
-    const owners = samplingOwners();
-    if (!owners.length) return Promise.resolve();
-    // Capture owners before awaiting. A later run must not inherit a sample
-    // requested before it started, including a cached toolbar measurement.
-    pendingSample = (async () => {
-      try {
-        const sample = await sampleResources();
-        const now = clock.now();
-        if (
-          !Number.isFinite(sample.sampledAt) ||
-          sample.sampledAt > now ||
-          now - sample.sampledAt > 10000
-        )
-          return;
-        const cpu = sample.cpu.usedPercent;
-        const { totalBytes, usedBytes, source } = sample.memory;
-        const peak: TestRunResourcePeak = {
-          cpuPercent:
-            cpu !== null && Number.isFinite(cpu) && cpu >= 0 && cpu <= 100
-              ? cpu
-              : null,
-          memoryPercent:
-            source !== "fallback" &&
-            Number.isFinite(totalBytes) &&
-            totalBytes > 0 &&
-            Number.isFinite(usedBytes) &&
-            usedBytes >= 0 &&
-            usedBytes <= totalBytes
-              ? (usedBytes / totalBytes) * 100
-              : null,
-        };
-        for (const record of owners) {
-          if (
-            sample.sampledAt < record.startedAt! ||
-            (record.endedAt !== undefined && sample.sampledAt > record.endedAt)
-          )
-            continue;
-          record.peak = accumulateTestRunResourcePeak(record.peak, peak);
-        }
-      } catch (error) {
-        logger.debug("System resource measurements unavailable", error);
-      }
-    })().finally(() => {
-      pendingSample = undefined;
-      if (samplingOwners().length && sampleTimer === undefined) {
-        sampleTimer = clock.schedule(() => {
-          sampleTimer = undefined;
-          void collectSample();
-        }, SAMPLE_INTERVAL_MS);
-        sampleTimer.unref?.();
-      }
-    });
-    return pendingSample;
-  }
-
   function startSerialRun() {
     const state = queue.getSnapshot();
     if (readSettings().enableParallelTestRuns) return;
-    concurrency = INITIAL_TEST_RUN_CONCURRENCY;
     if (
       !processCleanupBlocked &&
       !state.activeRuns?.length &&
@@ -242,8 +111,9 @@ export function createTestRunQueueService({
       if (queue.getSnapshot().queuedRuns[0]?.runId !== candidate.runId) return;
       const active = queue.getSnapshot().activeRuns ?? [];
       const settings = readSettings();
-      const limit = settings.enableParallelTestRuns ? concurrency.limit : 1;
-      const batchDecreasePending = !!concurrency.overloadedBatchPeak;
+      const limit = settings.enableParallelTestRuns
+        ? (settings.maxConcurrentTestRuns ?? DEFAULT_MAX_CONCURRENT_TEST_RUNS)
+        : 1;
       const context = record.context;
       const compatible =
         !!context &&
@@ -261,13 +131,11 @@ export function createTestRunQueueService({
         });
       const reason = processCleanupBlocked
         ? "A test process could not be stopped. Restart Dyad before starting another run."
-        : batchDecreasePending
-          ? "Waiting for the active test batch to finish after resource overload"
-          : active.length >= limit
-            ? "Waiting for an active test run to finish"
-            : active.length && !compatible
-              ? "Waiting for a compatible database and workspace"
-              : null;
+        : active.length >= limit
+          ? "Waiting for an active test run to finish"
+          : active.length && !compatible
+            ? "Waiting for a compatible database and workspace"
+            : null;
       if (!reason || candidate.queuedReason !== reason) {
         try {
           logger.info("e2e_test_admission_decision", {
@@ -284,7 +152,6 @@ export function createTestRunQueueService({
             admission: {
               limit,
               compatible,
-              batch_decrease_pending: batchDecreasePending,
             },
           });
         } catch {
@@ -302,8 +169,8 @@ export function createTestRunQueueService({
       logger.error("Test admission failed", error);
     } finally {
       driving = false;
-      // Fill available slots without waiting for dependency setup or samples.
-      scheduleDrive(admitted ? 0 : SAMPLE_INTERVAL_MS);
+      // Fill available slots without waiting for dependency setup.
+      scheduleDrive(admitted ? 0 : ADMISSION_RETRY_INTERVAL_MS);
     }
   }
 
@@ -342,7 +209,7 @@ export function createTestRunQueueService({
       slowMo: options.slowMo,
       preview: options.preview,
     };
-    const record: RunRecord = { request, adaptive: false, peak: null };
+    const record: RunRecord = { request };
     records.set(runId, record);
     senders.set(options.appId, options.event.sender);
     const timing = new TestRunTiming({
@@ -359,18 +226,11 @@ export function createTestRunQueueService({
         execute: async (run) => {
           queueWait.end();
           record.signal = run.signal;
-          record.startedAt = clock.now();
-          record.adaptive = !!readSettings().enableParallelTestRuns;
-          if (record.adaptive) void collectSample();
           try {
             return await execute(run, timing);
           } finally {
-            record.endedAt = clock.now();
             if (trackedE2eTestProcessesForOwner(run.signal).length)
               processCleanupBlocked = true;
-            // Retain an in-flight sample taken during the run. Samples timestamped
-            // after its end are ignored; no new observation phase delays admission.
-            await pendingSample;
           }
         },
         cancelled: (reason) => {

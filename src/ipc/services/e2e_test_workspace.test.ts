@@ -8,9 +8,6 @@ import { config as loadDotenv } from "dotenv";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/paths/paths", () => ({ getUserDataPath: vi.fn() }));
-const poolSettings = vi.hoisted(() => ({ maxReusableTestSandboxes: 8 }));
-vi.mock("@/main/settings", () => ({ readSettings: () => poolSettings }));
-vi.mock("@/ipc/utils/telemetry", () => ({ sendTelemetryEvent: vi.fn() }));
 vi.mock("@/ipc/utils/process_manager", () => ({
   forceKillProcessTree: vi.fn(async () => true),
 }));
@@ -48,7 +45,6 @@ const roots: string[] = [];
 const execFileAsync = promisify(execFile);
 
 beforeEach(() => {
-  poolSettings.maxReusableTestSandboxes = 8;
   vi.mocked(resolvePackageManager).mockImplementation(async (appPath) => ({
     packageManager: "npm",
     sourceInstallPath: appPath,
@@ -141,303 +137,6 @@ async function createE2eTestWorkspace(
 }
 
 describe("E2E test workspace", () => {
-  it("keeps sandbox-installed dependencies across runs and skips unchanged installs", async () => {
-    const root = await tempRoot();
-    const appPath = path.join(root, "app");
-    vi.mocked(getUserDataPath).mockReturnValue(path.join(root, "data"));
-    await fs.mkdir(appPath, { recursive: true });
-    await fs.writeFile(path.join(appPath, "package-lock.json"), "{}");
-    const first = await createE2eTestWorkspace({ appId: 40, appPath });
-    vi.mocked(runCleanPackageInstall).mockClear();
-    await installE2eTestWorkspaceDependencies({ workspace: first });
-    const modules = path.join(first.workspacePath, "node_modules");
-    await fs.writeFile(path.join(modules, "installed-package"), "reusable");
-    await fs.mkdir(path.join(modules, ".vite"));
-    await fs.writeFile(path.join(modules, ".vite", "old-transform"), "old env");
-    await fs.writeFile(
-      path.join(first.workspacePath, ".env.local"),
-      "SECRET=old",
-    );
-    await first.dispose();
-    expect(
-      await fs.readFile(path.join(modules, "installed-package"), "utf8"),
-    ).toBe("reusable");
-    await expect(fs.stat(path.join(modules, ".vite"))).rejects.toThrow();
-    await expect(
-      fs.stat(path.join(first.workspacePath, ".env.local")),
-    ).rejects.toThrow();
-    await execFileAsync("git", ["switch", "-c", "new-source"], {
-      cwd: appPath,
-    });
-    await fs.writeFile(path.join(appPath, "app.ts"), "updated source");
-    await fs.writeFile(
-      path.join(appPath, ".env.local"),
-      "DATABASE_URL=postgres://live-secret\n",
-    );
-    const second = await createE2eTestWorkspace({ appId: 40, appPath });
-    const onOutput = vi.fn();
-    await installE2eTestWorkspaceDependencies({ workspace: second, onOutput });
-    expect(second.reused).toBe(true);
-    expect(second.workspacePath).toBe(first.workspacePath);
-    expect(
-      await fs.readFile(path.join(modules, "installed-package"), "utf8"),
-    ).toBe("reusable");
-    expect(
-      await fs.readFile(path.join(second.workspacePath, "app.ts"), "utf8"),
-    ).toBe("updated source");
-    expect(runCleanPackageInstall).toHaveBeenCalledTimes(1);
-    expect(onOutput).toHaveBeenCalledWith(
-      "Reusing installed dependencies from the sandbox.\n",
-    );
-    expect(
-      await fs.readFile(path.join(second.workspacePath, ".env.local"), "utf8"),
-    ).not.toContain("live-secret");
-    expect(
-      await fs.readFile(path.join(appPath, ".env.local"), "utf8"),
-    ).toContain("live-secret");
-    await second.dispose();
-  });
-
-  it.each(["package.json", "package-lock.json", ".npmrc", "missing modules"])(
-    "reinstalls retained dependencies after %s changes",
-    async (changed) => {
-      const root = await tempRoot();
-      const appPath = path.join(root, "app");
-      vi.mocked(getUserDataPath).mockReturnValue(path.join(root, "data"));
-      await fs.mkdir(appPath, { recursive: true });
-      await fs.writeFile(path.join(appPath, "package-lock.json"), "{}");
-      const first = await createE2eTestWorkspace({ appId: 41, appPath });
-      vi.mocked(runCleanPackageInstall).mockClear();
-      await installE2eTestWorkspaceDependencies({ workspace: first });
-      await fs.writeFile(
-        path.join(first.workspacePath, "node_modules", "stale"),
-        "old",
-      );
-      await first.dispose();
-      if (changed === "missing modules") {
-        await fs.rm(path.join(first.workspacePath, "node_modules"), {
-          recursive: true,
-        });
-      } else {
-        await fs.writeFile(
-          path.join(appPath, changed),
-          changed === ".npmrc" ? "audit=false\n" : '{"version":"2.0.0"}',
-        );
-      }
-      const second = await createE2eTestWorkspace({ appId: 41, appPath });
-      await installE2eTestWorkspaceDependencies({ workspace: second });
-      expect(runCleanPackageInstall).toHaveBeenCalledTimes(2);
-      await expect(
-        fs.stat(path.join(second.workspacePath, "node_modules", "stale")),
-      ).rejects.toThrow();
-      await second.dispose();
-    },
-  );
-
-  it("does not retain a partial dependency installation after failure", async () => {
-    const root = await tempRoot();
-    const appPath = path.join(root, "app");
-    vi.mocked(getUserDataPath).mockReturnValue(path.join(root, "data"));
-    await fs.mkdir(appPath, { recursive: true });
-    await fs.writeFile(path.join(appPath, "package-lock.json"), "{}");
-    const first = await createE2eTestWorkspace({ appId: 42, appPath });
-    vi.mocked(runCleanPackageInstall).mockClear();
-    vi.mocked(runCleanPackageInstall).mockImplementationOnce(
-      async ({ cwd }) => {
-        await fs.mkdir(path.join(cwd, "node_modules"));
-        await fs.writeFile(
-          path.join(cwd, "node_modules", "partial"),
-          "incomplete",
-        );
-        return {
-          code: 1,
-          stdout: "",
-          stderr: "install failed",
-          aborted: false,
-          timedOut: false,
-          hasLockfile: true,
-        };
-      },
-    );
-    await expect(
-      installE2eTestWorkspaceDependencies({ workspace: first }),
-    ).rejects.toThrow("Could not install");
-    await first.dispose();
-    await expect(
-      fs.stat(path.join(first.workspacePath, "node_modules")),
-    ).rejects.toThrow();
-    const second = await createE2eTestWorkspace({ appId: 42, appPath });
-    await installE2eTestWorkspaceDependencies({ workspace: second });
-    expect(runCleanPackageInstall).toHaveBeenCalledTimes(2);
-    await second.dispose();
-  });
-
-  it("invalidates retained dependencies when switching to custom install commands", async () => {
-    const root = await tempRoot();
-    const appPath = path.join(root, "app");
-    vi.mocked(getUserDataPath).mockReturnValue(path.join(root, "data"));
-    await fs.mkdir(appPath, { recursive: true });
-    await fs.writeFile(path.join(appPath, "package-lock.json"), "{}");
-    const first = await createE2eTestWorkspace({ appId: 44, appPath });
-    vi.mocked(runCleanPackageInstall).mockClear();
-    await installE2eTestWorkspaceDependencies({ workspace: first });
-    await first.dispose();
-    const custom = await createE2eTestWorkspace({
-      appId: 44,
-      appPath,
-      hasCustomCommands: true,
-    });
-    await expect(
-      fs.stat(path.join(custom.workspacePath, "node_modules")),
-    ).rejects.toThrow();
-    await installE2eTestWorkspaceDependencies({ workspace: custom });
-    expect(runCleanPackageInstall).toHaveBeenCalledTimes(1);
-    await custom.dispose();
-    const managed = await createE2eTestWorkspace({ appId: 44, appPath });
-    await installE2eTestWorkspaceDependencies({ workspace: managed });
-    expect(runCleanPackageInstall).toHaveBeenCalledTimes(2);
-    await managed.dispose();
-  });
-
-  it("retains workspace-member dependencies without retaining their source or credentials", async () => {
-    const root = await tempRoot();
-    const repo = path.join(root, "repo");
-    const appPath = path.join(repo, "packages", "app");
-    await fs.mkdir(appPath, { recursive: true });
-    await fs.writeFile(
-      path.join(repo, "package.json"),
-      JSON.stringify({ private: true, workspaces: ["packages/*"] }),
-    );
-    await fs.writeFile(path.join(repo, "package-lock.json"), "{}");
-    await fs.writeFile(path.join(appPath, "package.json"), '{"name":"app"}');
-    await ensureGitRepo(repo);
-    vi.mocked(getUserDataPath).mockReturnValue(path.join(root, "data"));
-    vi.mocked(resolvePackageManager).mockResolvedValue({
-      packageManager: "npm",
-      sourceInstallPath: await fs.realpath(repo),
-    });
-    vi.mocked(runCleanPackageInstall).mockClear();
-    vi.mocked(runCleanPackageInstall).mockImplementation(async ({ cwd }) => {
-      for (const directory of [cwd, path.join(cwd, "packages", "app")]) {
-        await fs.mkdir(path.join(directory, "node_modules"), {
-          recursive: true,
-        });
-        await fs.writeFile(
-          path.join(directory, "node_modules", "installed"),
-          "kept",
-        );
-      }
-      return {
-        code: 0,
-        stdout: "",
-        stderr: "",
-        aborted: false,
-        timedOut: false,
-        hasLockfile: true,
-      };
-    });
-    const first = await createE2eTestWorkspace({ appId: 43, appPath });
-    await installE2eTestWorkspaceDependencies({ workspace: first });
-    await fs.writeFile(
-      path.join(first.workspacePath, ".env.local"),
-      "SECRET=old",
-    );
-    await first.dispose();
-    const second = await createE2eTestWorkspace({ appId: 43, appPath });
-    await installE2eTestWorkspaceDependencies({ workspace: second });
-    expect(runCleanPackageInstall).toHaveBeenCalledTimes(1);
-    for (const directory of [
-      second.dependencyInstallPath!,
-      second.workspacePath,
-    ])
-      expect(
-        await fs.readFile(
-          path.join(directory, "node_modules", "installed"),
-          "utf8",
-        ),
-      ).toBe("kept");
-    await expect(
-      fs.stat(path.join(second.workspacePath, ".env.local")),
-    ).rejects.toThrow();
-    await second.dispose();
-  });
-
-  it("reuses an idle worktree across branches while keeping artifacts and credentials separate", async () => {
-    const root = await tempRoot();
-    const appPath = path.join(root, "app");
-    vi.mocked(getUserDataPath).mockReturnValue(path.join(root, "data"));
-    await fs.mkdir(appPath, { recursive: true });
-    await fs.writeFile(path.join(appPath, "app.ts"), "first");
-    const first = await createE2eTestWorkspace({ appId: 30, appPath });
-    await fs.writeFile(
-      path.join(first.workspacePath, ".env.local"),
-      "SECRET=run-one",
-    );
-    await fs.mkdir(path.join(first.workspacePath, "node_modules"));
-    await fs.writeFile(path.join(first.workspacePath, "leftover"), "private");
-    await first.dispose();
-    await execFileAsync("git", ["switch", "-c", "second"], { cwd: appPath });
-    await fs.writeFile(
-      path.join(appPath, "app.ts"),
-      "second with uncommitted edit",
-    );
-    const second = await createE2eTestWorkspace({ appId: 30, appPath });
-    expect(second.reused).toBe(true);
-    expect(second.workspacePath).toBe(first.workspacePath);
-    expect(second.artifactPath).not.toBe(first.artifactPath);
-    expect(
-      await fs.readFile(path.join(second.workspacePath, "app.ts"), "utf8"),
-    ).toBe("second with uncommitted edit");
-    for (const name of [".env.local", "node_modules", "leftover"])
-      await expect(
-        fs.stat(path.join(second.workspacePath, name)),
-      ).rejects.toThrow();
-    await second.dispose();
-  });
-
-  it("allows overflow when all retained sandboxes are leased and always removes overflow", async () => {
-    poolSettings.maxReusableTestSandboxes = 1;
-    const root = await tempRoot();
-    const appPath = path.join(root, "app");
-    vi.mocked(getUserDataPath).mockReturnValue(path.join(root, "data"));
-    await fs.mkdir(appPath, { recursive: true });
-    const retained = await createE2eTestWorkspace({ appId: 31, appPath });
-    const overflow = await createE2eTestWorkspace({ appId: 31, appPath });
-    expect(overflow.workspacePath).not.toBe(retained.workspacePath);
-    // A retained slot becoming idle never promotes this temporary lease.
-    await retained.dispose();
-    await overflow.dispose();
-    expect(await fs.readdir(retained.workspacePath)).toEqual([".git"]);
-    await expect(fs.stat(overflow.workspacePath)).rejects.toThrow();
-    poolSettings.maxReusableTestSandboxes = 0;
-    await reconcileOrphanE2eTestWorkspaces();
-    await expect(fs.stat(retained.workspacePath)).rejects.toThrow();
-  });
-  it("quarantines a retained worktree whose Git pointer was replaced", async () => {
-    const root = await tempRoot();
-    const appPath = path.join(root, "app");
-    vi.mocked(getUserDataPath).mockReturnValue(path.join(root, "data"));
-    await fs.mkdir(appPath, { recursive: true });
-    await fs.writeFile(path.join(appPath, "app.ts"), "live source");
-    const workspace = await createE2eTestWorkspace({ appId: 32, appPath });
-    await fs.writeFile(
-      path.join(workspace.workspacePath, ".git"),
-      `gitdir: ${path.join(appPath, ".git")}\n`,
-    );
-    await expect(workspace.dispose()).rejects.toThrow("Git pointer changed");
-    expect(await fs.readFile(path.join(appPath, "app.ts"), "utf8")).toBe(
-      "live source",
-    );
-    const next = await createE2eTestWorkspace({ appId: 32, appPath });
-    expect(next.workspacePath).not.toBe(workspace.workspacePath);
-    await next.dispose();
-    await removeE2eTestArtifactsForApp(32);
-    await expect(fs.stat(workspace.workspacePath)).rejects.toThrow();
-    expect(await fs.readFile(path.join(appPath, "app.ts"), "utf8")).toBe(
-      "live source",
-    );
-  });
-
   it("preserves live output-named source inside a submodule below the app", async () => {
     const root = await tempRoot();
     const source = path.join(root, "library");
@@ -546,7 +245,7 @@ describe("E2E test workspace", () => {
     ).toBe(path.resolve(await fs.realpath(workspace.workspacePath)));
 
     await workspace.dispose();
-    expect(await fs.readdir(workspace.workspacePath)).toEqual([".git"]);
+    await expect(fs.stat(workspace.workspacePath)).rejects.toThrow();
   });
 
   it("carries live edits into a tracked build-output root", async () => {
@@ -1064,8 +763,7 @@ describe("E2E test workspace", () => {
     const remaining = await fs.readdir(
       path.join(root, "user-data", E2E_TEST_SANDBOX_DIR),
     );
-    expect(remaining.filter((entry) => entry.startsWith("7-"))).toHaveLength(2);
-    expect(await fs.readdir(workspace.workspacePath)).toEqual([".git"]);
+    expect(remaining.filter((entry) => entry.startsWith("7-"))).toEqual([]);
   });
 
   it("allows a custom-command app to have no node_modules at all", async () => {
@@ -1589,7 +1287,7 @@ describe("E2E test workspace", () => {
 
     await live.dispose();
     await reconcileOrphanE2eTestWorkspaces();
-    expect(await fs.readdir(live.workspacePath)).toEqual([".git"]);
+    await expect(fs.stat(live.workspacePath)).rejects.toThrow();
   });
 
   it("prunes artifacts for apps that no longer exist", async () => {

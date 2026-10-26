@@ -37,7 +37,7 @@ import {
   DEFAULT_SHOW_SYSTEM_RESOURCE_USAGE,
   DEFAULT_ENABLE_PREVIEW_COOKIE_ISOLATION,
   DEFAULT_ENABLE_TESTING_FOR_NEW_APPS,
-  DEFAULT_MAX_REUSABLE_TEST_SANDBOXES,
+  DEFAULT_MAX_CONCURRENT_TEST_RUNS,
 } from "@/shared/settings_defaults";
 
 const logger = log.scope("settings");
@@ -88,7 +88,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   autoApproveSafeMcpTools: true,
   autoExpandPreviewPanel: true,
   disableSandboxedE2eTests: false,
-  maxReusableTestSandboxes: DEFAULT_MAX_REUSABLE_TEST_SANDBOXES,
+  maxConcurrentTestRuns: DEFAULT_MAX_CONCURRENT_TEST_RUNS,
   enableContextCompaction: true,
   enablePnpmMinimumReleaseAgeWarning: true,
   enablePreviewCookieIsolation: DEFAULT_ENABLE_PREVIEW_COOKIE_ISOLATION,

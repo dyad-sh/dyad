@@ -2,10 +2,12 @@ import { useSettings } from "@/hooks/useSettings";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { DEFAULT_MAX_REUSABLE_TEST_SANDBOXES } from "@/shared/settings_defaults";
+import { DEFAULT_MAX_CONCURRENT_TEST_RUNS } from "@/shared/settings_defaults";
 
 export function ParallelTestRunSettings() {
   const { settings, updateSettings } = useSettings();
+  const savedLimit =
+    settings?.maxConcurrentTestRuns ?? DEFAULT_MAX_CONCURRENT_TEST_RUNS;
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2">
@@ -22,48 +24,41 @@ export function ParallelTestRunSettings() {
         />
         <Label htmlFor="parallel-test-runs">Allow parallel E2E test runs</Label>
       </div>
-      <p className="text-sm text-muted-foreground">
-        Starts with one run. After each run finishes, concurrency increases when
-        all slots were in use and peak system CPU and memory stayed below 90%.
-        If either exceeded 90%, queued runs wait for the active batch to finish.
-        Concurrency then decreases by one for the whole batch. Running tests
-        continue, each in its own browser.
-      </p>
-      <div className="flex items-center gap-3">
-        <Label htmlFor="max-reusable-test-sandboxes">
-          Reusable sandboxes to keep
-        </Label>
+      <div className="flex flex-wrap items-center gap-3">
+        <Label htmlFor="max-concurrent-test-runs">Concurrent tests</Label>
         <Input
-          id="max-reusable-test-sandboxes"
+          id="max-concurrent-test-runs"
+          aria-describedby="concurrent-test-runs-description"
           className="w-24"
           type="number"
-          min={0}
+          min={1}
           max={128}
-          disabled={!settings}
-          key={`sandboxes-${settings?.maxReusableTestSandboxes}`}
-          defaultValue={
-            settings?.maxReusableTestSandboxes ??
-            DEFAULT_MAX_REUSABLE_TEST_SANDBOXES
-          }
+          step={1}
+          disabled={!settings?.enableParallelTestRuns}
+          key={savedLimit}
+          defaultValue={savedLimit}
           onBlur={(event) => {
-            const value = Number(event.target.value);
-            if (Number.isInteger(value) && value >= 0 && value <= 128)
-              void updateSettings({ maxReusableTestSandboxes: value }).catch(
-                () => {},
-              );
-            else
-              event.target.value = String(
-                settings?.maxReusableTestSandboxes ??
-                  DEFAULT_MAX_REUSABLE_TEST_SANDBOXES,
-              );
+            if (!settings?.enableParallelTestRuns) return;
+            const input = event.currentTarget;
+            const value = input.valueAsNumber;
+            if (Number.isInteger(value) && value >= 1 && value <= 128) {
+              if (value !== savedLimit)
+                void updateSettings({ maxConcurrentTestRuns: value }).catch(
+                  () => {
+                    input.value = String(savedLimit);
+                  },
+                );
+            } else input.value = String(savedLimit);
           }}
         />
       </div>
-      <p className="text-sm text-muted-foreground">
-        When the reusable pool is busy or full, eligible runs use temporary
-        sandboxes that are removed afterward. Idle sandboxes keep their Git
-        worktree and reusable dependencies; run files and credentials are
-        removed.
+      <p
+        id="concurrent-test-runs-description"
+        className="text-sm text-muted-foreground"
+      >
+        Maximum number of test runs at the same time across all apps. Each run
+        uses its own browser. Other runs wait for a slot or compatible database
+        and workspace. Lowering this limit lets running tests finish.
       </p>
     </div>
   );

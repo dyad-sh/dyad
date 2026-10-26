@@ -58,8 +58,6 @@ export class TestRunQueue {
       onChange: (state: TestRunQueueState) => void;
       onError: (error: unknown) => void;
       manualAdmission?: boolean;
-      /** Synchronous completion feedback, before releasing the active slot. */
-      onSettled?: (runId: number) => void;
       observer?: TransitionObserver<
         TestRunQueueState,
         TestRunQueueEvent,
@@ -200,11 +198,6 @@ export class TestRunQueue {
           } finally {
             pending.detach();
             this.runs.delete(command.runId);
-            try {
-              this.deps.onSettled?.(command.runId);
-            } catch (error) {
-              this.deps.onError(error);
-            }
             this.send({ type: "settled", runId: command.runId });
           }
         });

@@ -124,6 +124,7 @@ test("publishes with the development database and skips migration when redeployi
 test("publishes to Vercel with production database config and verifies the current build after a retry", async ({
   po,
 }) => {
+  await po.page.emulateMedia({ reducedMotion: "no-preference" });
   const vercel = new FakeVercel(po.page.request, po.fakeLlmPort);
   await vercel.reset();
   await prepareDeploymentApp(po);
@@ -142,6 +143,37 @@ test("publishes to Vercel with production database config and verifies the curre
   await expect(deploy.button("Finish")).toBeHidden();
   await deploy.createVercelProject("guided-vercel");
   await expect(deploy.vercelBuilding).toBeVisible();
+
+  // The spinner sits at the bottom of the scrolling step. Its rotated bounds
+  // must not create a one-pixel overflow that toggles the scrollbar each turn.
+  const overflowByFrame = await deploy.vercelBuilding.evaluate(
+    async (status) => {
+      const spinner = status.querySelector("svg");
+      const scrollArea = status.closest<HTMLElement>(".overflow-y-auto");
+      const animation = spinner?.getAnimations()[0];
+      if (!scrollArea || !animation) {
+        throw new Error("Expected the deployment spinner inside a scroll area");
+      }
+      const frames: { horizontal: number; vertical: number }[] = [];
+      animation.pause();
+      try {
+        for (let time = 0; time < 1000; time += 125) {
+          animation.currentTime = time;
+          await new Promise(requestAnimationFrame);
+          frames.push({
+            horizontal: scrollArea.scrollWidth - scrollArea.clientWidth,
+            vertical: scrollArea.scrollHeight - scrollArea.clientHeight,
+          });
+        }
+      } finally {
+        animation.play();
+      }
+      return frames;
+    },
+  );
+  expect(overflowByFrame).toEqual(
+    Array.from({ length: 8 }, () => ({ horizontal: 0, vertical: 0 })),
+  );
 
   // Guided project creation defers deployment until the selected branch's
   // configuration is synced. Assert there is only one build and inspect the

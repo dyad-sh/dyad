@@ -82,7 +82,10 @@ function Progress({ children }: { children: React.ReactNode }) {
       role="status"
       className="flex items-center gap-2 text-sm text-muted-foreground"
     >
-      <Loader2 className="size-4 animate-spin" />
+      {/* Rotated SVG bounds must not toggle the step's scrollbars. */}
+      <span className="size-4 shrink-0 overflow-hidden" aria-hidden="true">
+        <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
+      </span>
       {children}
     </p>
   );

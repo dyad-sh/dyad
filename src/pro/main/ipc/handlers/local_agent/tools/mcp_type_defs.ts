@@ -22,6 +22,7 @@ import { AgentContext, escapeXmlAttr, escapeXmlContent } from "./types";
 import { jsonSchemaToTs } from "./json_schema_to_ts";
 import { buildMcpAutoApprove } from "../mcp_auto_consent";
 import { sanitizeMcpToolResult } from "@/ipc/utils/mcp_result_sanitizer";
+import { prepareMcpToolCallArgs } from "@/ipc/utils/mcp_tool_call_args";
 import { withTrackedMutation } from "../subagents/mutation_activity_tracker";
 
 const logger = log.scope("mcp_tools");
@@ -219,12 +220,7 @@ export function buildMcpCapabilityMap(params: {
       // Correlates the call/result blocks for the merged UI card. The SDK
       // toolCallId isn't available on this sandbox path, so generate one.
       const callId = randomUUID();
-      const inputPreview =
-        typeof args === "string"
-          ? args
-          : Array.isArray(args)
-            ? args.join(" ")
-            : JSON.stringify(args).slice(0, 500);
+      const preparedArgs = prepareMcpToolCallArgs(args);
 
       const autoApprove = buildMcpAutoApprove({
         signal: params.ctx.abortSignal,
@@ -237,6 +233,7 @@ export function buildMcpCapabilityMap(params: {
         toolDescription: def.description,
         inputSchema: def.inputSchema,
         args,
+        argsTruncated: preparedArgs.truncated,
       });
 
       const { approved, autoApprovedReason } = await requireMcpToolConsent(
@@ -246,7 +243,7 @@ export function buildMcpCapabilityMap(params: {
           serverName: def.serverName,
           toolName: def.toolName,
           toolDescription: def.description,
-          inputPreview,
+          inputPreview: preparedArgs.consentPreview,
           chatId: params.ctx.chatId,
           autoApprove,
           abortSignal: params.ctx.abortSignal,
@@ -263,12 +260,14 @@ export function buildMcpCapabilityMap(params: {
         );
       }
 
-      const contentPretty = JSON.stringify(args, null, 2);
       const autoApprovedAttr = autoApprovedReason
         ? ` auto-approved-reason="${escapeXmlAttr(autoApprovedReason)}"`
         : "";
+      const truncatedAttr = preparedArgs.truncated
+        ? ` input-truncated="true"`
+        : "";
       params.ctx.onXmlComplete(
-        `<dyad-mcp-tool-call server="${escapeXmlAttr(def.serverName)}" tool="${escapeXmlAttr(def.toolName)}" call-id="${escapeXmlAttr(callId)}"${autoApprovedAttr}>\n${escapeXmlContent(contentPretty)}\n</dyad-mcp-tool-call>`,
+        `<dyad-mcp-tool-call server="${escapeXmlAttr(def.serverName)}" tool="${escapeXmlAttr(def.toolName)}" call-id="${escapeXmlAttr(callId)}"${autoApprovedAttr}${truncatedAttr}>\n${escapeXmlContent(preparedArgs.transcriptText)}\n</dyad-mcp-tool-call>`,
       );
 
       let executionStarted = false;

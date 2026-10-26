@@ -72,6 +72,8 @@ export function buildMcpAutoApprove(params: {
   toolDescription?: string | null;
   inputSchema?: unknown;
   args: unknown;
+  /** The arguments exceed the 128 KB review budget (see prepareMcpToolCallArgs). */
+  argsTruncated?: boolean;
 }): (() => Promise<McpAutoApproveResult>) | undefined {
   if (
     !params.settings.autoApproveSafeMcpTools ||
@@ -79,6 +81,14 @@ export function buildMcpAutoApprove(params: {
     params.freeModelMode
   ) {
     return undefined;
+  }
+  if (params.argsTruncated) {
+    // The reviewer cannot judge arguments it cannot see in full, so leave the
+    // decision to the user instead of sending a partial or huge payload.
+    return async () => ({
+      approved: false,
+      reason: "Arguments are too large to review automatically.",
+    });
   }
   return async () => {
     // On error, fall through to the consent prompt. Without this, the error

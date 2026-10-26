@@ -134,4 +134,19 @@ describe("buildMcpAutoApprove", () => {
 
     expect(autoApprove).toEqual(expect.any(Function));
   });
+
+  it("asks the user without calling the reviewer when arguments were truncated", async () => {
+    vi.clearAllMocks();
+    const autoApprove = buildMcpAutoApprove({
+      ...baseParams,
+      argsTruncated: true,
+    });
+
+    await expect(autoApprove?.()).resolves.toEqual({
+      approved: false,
+      reason: "Arguments are too large to review automatically.",
+    });
+    expect(mocks.streamText).not.toHaveBeenCalled();
+    expect(mocks.getModelClient).not.toHaveBeenCalled();
+  });
 });

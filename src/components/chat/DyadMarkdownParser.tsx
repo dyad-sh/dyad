@@ -375,6 +375,7 @@ const MemoMcpToolPair = React.memo(
             toolName: callBlock.attributes.tool || "",
             autoApprovedReason:
               callBlock.attributes["auto-approved-reason"] || "",
+            inputTruncated: callBlock.attributes["input-truncated"] || "",
           },
         }}
         resultContent={resultBlock?.content}
@@ -989,6 +990,7 @@ function renderCustomTag(
               serverName: attributes.server || "",
               toolName: attributes.tool || "",
               autoApprovedReason: attributes["auto-approved-reason"] || "",
+              inputTruncated: attributes["input-truncated"] || "",
             },
           }}
         >

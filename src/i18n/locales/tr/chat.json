@@ -224,6 +224,7 @@
   "destructiveDataChange": "Yıkıcı veri değişikliği",
   "flaggedForReview": "İnceleme için işaretlendi",
   "autoApproved": "Otomatik onaylandı",
+  "mcpInputTruncated": "Giriş, görüntüleme için kısaltıldı. Araç girişin tamamını aldı.",
   "aiReviewingRequest": "AI, otomatik onaylanmasının güvenli olup olmadığına karar vermek için bu isteği inceliyor…",
   "approved": "Onaylandı",
   "rejected": "Reddedildi",

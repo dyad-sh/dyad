@@ -93,6 +93,33 @@ ${exactContent}
     expect(result).toContain(exactContent);
   });
 
+  it("truncates large tool-call inputs", () => {
+    const longInput = "z".repeat(TOOL_RESULT_TRUNCATION_LIMIT + 100);
+    const content = `<dyad-mcp-tool-call server="fs" tool="write" call-id="c1" input-truncated="true">
+${longInput}
+</dyad-mcp-tool-call>`;
+
+    const result = transformToolTags(content);
+    expect(result).toContain(
+      `<tool-use name="write" server="fs" chars="${longInput.length}" truncated="true">`,
+    );
+    expect(result).toContain(
+      "z".repeat(TOOL_RESULT_TRUNCATION_LIMIT) + "\n...",
+    );
+    expect(result).not.toContain("z".repeat(TOOL_RESULT_TRUNCATION_LIMIT + 1));
+  });
+
+  it("does not truncate tool-call inputs at exactly the limit", () => {
+    const exactInput = "w".repeat(TOOL_RESULT_TRUNCATION_LIMIT);
+    const content = `<dyad-mcp-tool-call server="fs" tool="write">
+${exactInput}
+</dyad-mcp-tool-call>`;
+
+    expect(transformToolTags(content)).toBe(
+      `<tool-use name="write" server="fs">\n${exactInput}\n</tool-use>`,
+    );
+  });
+
   it("handles multiple tool calls and results in one message", () => {
     const content = `I'll read both files.
 <dyad-mcp-tool-call server="fs" tool="read_file">

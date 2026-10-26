@@ -1,10 +1,23 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import type { ReactNode } from "react";
 import { DyadMcpToolCall } from "./DyadMcpToolCall";
+
+vi.mock("./CodeHighlight", () => ({
+  CodeHighlight: ({ children }: { children: ReactNode }) => (
+    <pre>{children}</pre>
+  ),
+}));
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
-    t: (key: string) => ({ autoApproved: "Auto-approved" })[key] ?? key,
+    t: (key: string) =>
+      (
+        ({
+          autoApproved: "Auto-approved",
+          mcpInputTruncated: "Input shortened for display.",
+        }) as Record<string, string>
+      )[key] ?? key,
   }),
 }));
 
@@ -88,5 +101,29 @@ describe("DyadMcpToolCall", () => {
     );
     screen.getByText("Auto-approved");
     screen.getByText("matches allowlist");
+  });
+
+  it("explains a truncated input once expanded", () => {
+    render(
+      <DyadMcpToolCall
+        node={node({ inputTruncated: "true" })}
+        resultContent="3"
+        state="finished"
+      >
+        {`{"a":1}`}
+      </DyadMcpToolCall>,
+    );
+    fireEvent.click(screen.getByRole("button"));
+    screen.getByText("Input shortened for display.");
+  });
+
+  it("does not show the truncation notice for complete input", () => {
+    render(
+      <DyadMcpToolCall node={node()} resultContent="3" state="finished">
+        {`{"a":1}`}
+      </DyadMcpToolCall>,
+    );
+    fireEvent.click(screen.getByRole("button"));
+    expect(screen.queryByText("Input shortened for display.")).toBeNull();
   });
 });

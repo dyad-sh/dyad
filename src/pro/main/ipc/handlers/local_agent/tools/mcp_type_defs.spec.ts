@@ -494,6 +494,40 @@ describe("buildMcpCapabilityMap", () => {
     expect(resultXml).not.toContain(hugeImage);
   });
 
+  it("passes huge arguments to the tool but bounds the transcript and consent copies", async () => {
+    vi.mocked(requireMcpToolConsent).mockResolvedValue({ approved: true });
+    const execute = vi.fn().mockResolvedValue("ok");
+    vi.mocked(mcpManager.getClient).mockResolvedValue({
+      tools: async () => ({ hello: { execute } }),
+    } as any);
+    const hugeArgs = { content: "q".repeat(MCP_RESULT_MAX_BYTES * 3) };
+
+    const ctx = createCtx();
+    ctx.isDyadPro = true;
+    const map = buildMcpCapabilityMap({
+      event: {} as any,
+      ctx,
+      defs: [makeDef()],
+    });
+    await map.srv__hello(hugeArgs);
+
+    expect(execute.mock.calls[0][0]).toBe(hugeArgs);
+    const consent = vi.mocked(requireMcpToolConsent).mock.calls[0][1];
+    expect(consent.inputPreview).toHaveLength(500);
+    await expect(consent.autoApprove?.()).resolves.toMatchObject({
+      approved: false,
+    });
+    const callXml = vi
+      .mocked(ctx.onXmlComplete)
+      .mock.calls.map((call) => call[0])
+      .find((xml) => xml.startsWith("<dyad-mcp-tool-call"));
+    expect(callXml).toContain('input-truncated="true"');
+    expect(callXml).toContain("_dyadMcpTruncation");
+    expect(Buffer.byteLength(callXml!, "utf8")).toBeLessThan(
+      MCP_RESULT_MAX_BYTES + 1024,
+    );
+  });
+
   it("throws a DyadError(UserCancelled) and skips execution when consent is denied", async () => {
     vi.mocked(requireMcpToolConsent).mockResolvedValue({ approved: false });
     const execute = vi.fn();

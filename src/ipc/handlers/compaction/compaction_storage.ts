@@ -36,11 +36,18 @@ function getChatBackupDir(appPath: string, chatId: number): string {
  * and truncate large tool results for token efficiency.
  */
 export function transformToolTags(content: string): string {
-  // Transform <dyad-mcp-tool-call> to <tool-use>. Tolerates extra attributes
-  // (e.g. call-id); expects server before tool, which every emitter does.
+  // Transform <dyad-mcp-tool-call> to <tool-use>, truncating large inputs.
+  // Tolerates extra attributes (e.g. call-id); expects server before tool,
+  // which every emitter does.
   let result = content.replace(
     /<dyad-mcp-tool-call\b[^>]*?\bserver="([^"]*)"[^>]*?\btool="([^"]*)"[^>]*>\n([\s\S]*?)\n<\/dyad-mcp-tool-call>/g,
-    '<tool-use name="$2" server="$1">\n$3\n</tool-use>',
+    (_match, server, tool, input: string) => {
+      if (input.length <= TOOL_RESULT_TRUNCATION_LIMIT) {
+        return `<tool-use name="${tool}" server="${server}">\n${input}\n</tool-use>`;
+      }
+      const body = input.slice(0, TOOL_RESULT_TRUNCATION_LIMIT) + "\n...";
+      return `<tool-use name="${tool}" server="${server}" chars="${input.length}" truncated="true">\n${body}\n</tool-use>`;
+    },
   );
 
   // Transform <dyad-mcp-tool-result> to <tool-result> with truncation

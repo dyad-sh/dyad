@@ -35,6 +35,7 @@ import { buildMcpAutoApprove } from "./mcp_auto_consent";
 import { scheduleChatSearchIndexing } from "./chat_search_indexer";
 import { parseMcpToolKey, sanitizeMcpName } from "@/ipc/utils/mcp_tool_utils";
 import { sanitizeMcpToolResult } from "@/ipc/utils/mcp_result_sanitizer";
+import { prepareMcpToolCallArgs } from "@/ipc/utils/mcp_tool_call_args";
 
 import {
   isDyadProEnabled,
@@ -2953,12 +2954,7 @@ async function getMcpTools(
                 if (!parsed.success) throw parsed.error;
                 args = parsed.value;
               }
-              const inputPreview =
-                typeof args === "string"
-                  ? args
-                  : Array.isArray(args)
-                    ? args.join(" ")
-                    : JSON.stringify(args).slice(0, 500);
+              const preparedArgs = prepareMcpToolCallArgs(args);
 
               const autoApprove = buildMcpAutoApprove({
                 signal: ctx.abortSignal,
@@ -2971,6 +2967,7 @@ async function getMcpTools(
                 toolDescription: mcpTool.description,
                 inputSchema: mcpTool.inputSchema,
                 args,
+                argsTruncated: preparedArgs.truncated,
               });
 
               const { approved, autoApprovedReason } =
@@ -2979,7 +2976,7 @@ async function getMcpTools(
                   serverName: s.name,
                   toolName: name,
                   toolDescription: mcpTool.description,
-                  inputPreview,
+                  inputPreview: preparedArgs.consentPreview,
                   chatId: ctx.chatId,
                   autoApprove,
                   abortSignal: ctx.abortSignal,
@@ -2992,12 +2989,14 @@ async function getMcpTools(
                 );
 
               // Emit XML for UI (MCP tools don't stream, so use onXmlComplete directly)
-              const content = JSON.stringify(args, null, 2);
               const autoApprovedAttr = autoApprovedReason
                 ? ` auto-approved-reason="${escapeXmlAttr(autoApprovedReason)}"`
                 : "";
+              const truncatedAttr = preparedArgs.truncated
+                ? ` input-truncated="true"`
+                : "";
               ctx.onXmlComplete(
-                `<dyad-mcp-tool-call server="${escapeXmlAttr(serverName)}" tool="${escapeXmlAttr(toolName)}" call-id="${escapeXmlAttr(callId)}"${autoApprovedAttr}>\n${escapeXmlContent(content)}\n</dyad-mcp-tool-call>`,
+                `<dyad-mcp-tool-call server="${escapeXmlAttr(serverName)}" tool="${escapeXmlAttr(toolName)}" call-id="${escapeXmlAttr(callId)}"${autoApprovedAttr}${truncatedAttr}>\n${escapeXmlContent(preparedArgs.transcriptText)}\n</dyad-mcp-tool-call>`,
               );
               callEmitted = true;
 

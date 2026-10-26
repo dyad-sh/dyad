@@ -59,6 +59,7 @@ export const DyadMcpToolCall: React.FC<DyadMcpToolCallProps> = ({
   const serverName: string = node?.properties?.serverName || "";
   const toolName: string = node?.properties?.toolName || "";
   const autoApprovedReason: string = node?.properties?.autoApprovedReason || "";
+  const inputTruncated = node?.properties?.inputTruncated === "true";
   const [expanded, setExpanded] = useState(false);
 
   const merged = state !== undefined;
@@ -75,6 +76,12 @@ export const DyadMcpToolCall: React.FC<DyadMcpToolCallProps> = ({
         : null,
     [expanded, resultContent],
   );
+
+  const truncatedNotice = inputTruncated ? (
+    <div className="mb-1 text-xs text-muted-foreground italic">
+      {t("mcpInputTruncated")}
+    </div>
+  ) : null;
 
   return (
     <DyadCard
@@ -122,6 +129,7 @@ export const DyadMcpToolCall: React.FC<DyadMcpToolCallProps> = ({
             <div className="text-[11px] font-semibold text-muted-foreground mb-1">
               Input
             </div>
+            {truncatedNotice}
             <CodeHighlight className="language-json">
               {prettyInput}
             </CodeHighlight>
@@ -141,7 +149,12 @@ export const DyadMcpToolCall: React.FC<DyadMcpToolCallProps> = ({
             )}
           </>
         ) : (
-          <CodeHighlight className="language-json">{prettyInput}</CodeHighlight>
+          <>
+            {truncatedNotice}
+            <CodeHighlight className="language-json">
+              {prettyInput}
+            </CodeHighlight>
+          </>
         )}
       </DyadCardContent>
     </DyadCard>

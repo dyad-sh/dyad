@@ -226,6 +226,7 @@
   "destructiveDataChange": "Destructive data change",
   "flaggedForReview": "Flagged for review",
   "autoApproved": "Auto-approved",
+  "mcpInputTruncated": "Input shortened for display. The tool received the full input.",
   "aiReviewingRequest": "AI is reviewing this request to decide if it's safe to auto-approve…",
   "approved": "Approved",
   "rejected": "Rejected",

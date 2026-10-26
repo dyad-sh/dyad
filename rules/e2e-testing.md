@@ -438,6 +438,10 @@ When adding E2E test fixtures that need a `.dyad` directory for testing:
 - `write_app_blueprint` fixture args must include at least one entry in `visuals` (`.min(1)` in the tool schema). An empty `visuals: []` fails tool validation silently: the blueprint card still renders from the streamed XML tag and "Approve Plan" is clickable, but approval fails with "Blueprint data is unavailable. Please regenerate the plan." because the plan never reached the renderer atom.
 - After a rename/approval, the title bar's `data-app-path` can update a beat later than `data-app-name`. Assert the name AND the path inside a single `expect(async () => {...}).toPass()` poll instead of reading `getCurrentAppPath()` once after the name matches.
 
+## Manual renderer memory probes
+
+- Launch with `--enable-precise-memory-info` before reading `performance.memory.usedJSHeapSize`; without it Chromium reports a bucketed value that stays flat (e.g. 61 MiB through a multi-GiB spike). Add `--js-flags=--expose-gc` so `window.gc()` exists for retained-memory checks after navigating away. `scripts/manual-tests/mcp-transcript-stress.cjs` shows both.
+
 ## Benchmark harness interactions
 
 - A union locator (`a.or(b)`) is strict: a valid empty list can render both its container and empty-state element. Select a visible alternative, then separately assert no rows; do not mistake the two different test IDs for duplicate IDs.

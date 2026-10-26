@@ -225,6 +225,7 @@
   "changesDatabaseSchema": "更改数据库架构",
   "destructiveDataChange": "破坏性数据更改",
   "approved": "已批准",
+  "mcpInputTruncated": "输入已为显示而缩短。工具收到了完整输入。",
   "rejected": "已拒绝",
   "copy": "复制",
   "requestId": "请求 ID",

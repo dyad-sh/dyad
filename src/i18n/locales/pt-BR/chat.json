@@ -225,6 +225,7 @@
   "changesDatabaseSchema": "Altera o esquema do banco de dados",
   "destructiveDataChange": "Alteração destrutiva de dados",
   "approved": "Aprovado",
+  "mcpInputTruncated": "Entrada encurtada para exibição. A ferramenta recebeu a entrada completa.",
   "rejected": "Rejeitado",
   "copy": "Copiar",
   "requestId": "ID da Requisição",

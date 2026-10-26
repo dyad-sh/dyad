@@ -151,6 +151,8 @@ Our project relies on a combination of unit tests, Vitest integration tests, and
 
 Use unit testing for pure business logic and util functions.
 
+Component tests that expand a chat tool card fail with `useTheme must be used within a ThemeProvider` because the expanded body renders `CodeHighlight`. Mock `./CodeHighlight` with a plain `<pre>` (see `ClaudeCodeToolCard.test.tsx`) instead of wrapping in providers.
+
 Target a Vitest file with `npm test -- path/to/file.test.ts`. Do not pass Jest-only flags such as `--runInBand`; Vitest will fail with `Unknown option '--runInBand'`.
 
 The pinned Vitest version does not support `--repeat`; it fails with `Unknown option '--repeat'`. Stress-run a target by repeating the supported `npm test -- path/to/file.test.ts` command externally.

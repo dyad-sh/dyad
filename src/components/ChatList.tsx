@@ -18,7 +18,8 @@ import {
   Star,
 } from "lucide-react";
 import { motion } from "framer-motion";
-import { useAtom, useSetAtom } from "jotai";
+import { Virtuoso, type ItemProps, type ListProps } from "react-virtuoso";
+import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import {
   selectedChatIdAtom,
   removeChatIdFromAllTrackingAtom,
@@ -52,6 +53,7 @@ import { useSelectChat } from "@/hooks/useSelectChat";
 import { useLoadApps } from "@/hooks/useLoadApps";
 import { useSetChatFavorite } from "@/hooks/useSetChatFavorite";
 import { useReducedMotionPref } from "@/hooks/useReducedMotion";
+import type { ChatSummary } from "@/lib/schemas";
 import { cn } from "@/lib/utils";
 
 const CHAT_ACTION_SPRING = {
@@ -61,19 +63,67 @@ const CHAT_ACTION_SPRING = {
   mass: 0.45,
 };
 
+// Above this many chats, only the rows near the viewport are rendered. Every
+// row mounts motion values, a menu and icons, so a full list of thousands of
+// chats blocks the renderer for seconds each time the sidebar opens.
+const VIRTUALIZE_CHAT_LIST_THRESHOLD = 100;
+
+// Rows rendered before Virtuoso has measured the sidebar, so the list is not
+// blank for a frame when it first opens.
+const VIRTUAL_CHAT_LIST_INITIAL_ROWS = 30;
+
+type ChatListRowItem =
+  | { kind: "group"; key: string; label: string; isFirst: boolean }
+  | { kind: "chat"; chat: ChatSummary };
+
+function VirtualChatListRoot({ children, style, ref }: ListProps) {
+  return (
+    <div
+      ref={ref}
+      style={style}
+      role="list"
+      data-slot="sidebar-menu"
+      className="flex w-full min-w-0 flex-col"
+    >
+      {children}
+    </div>
+  );
+}
+
+function VirtualChatListItem({
+  item: _item,
+  children,
+  ...props
+}: ItemProps<ChatListRowItem>) {
+  return (
+    <div {...props} role="listitem" className="relative pb-1">
+      {children}
+    </div>
+  );
+}
+
 export function ChatList({
   show,
   showViewAllAppsButton,
   onViewAllApps,
+  appId,
 }: {
   show?: boolean;
   showViewAllAppsButton?: boolean;
   onViewAllApps?: () => void;
+  /**
+   * The app whose chats to list. Defaults to the selected app. The sidebar
+   * passes it explicitly so a list that is animating out keeps showing its
+   * own app's chats instead of re-rendering with every chat of every app
+   * once the selection is cleared.
+   */
+  appId?: number | null;
 }) {
   const { t } = useTranslation("chat");
   const navigate = useNavigate();
   const [selectedChatId, setSelectedChatId] = useAtom(selectedChatIdAtom);
-  const [selectedAppId] = useAtom(selectedAppIdAtom);
+  const atomSelectedAppId = useAtomValue(selectedAppIdAtom);
+  const selectedAppId = appId === undefined ? atomSelectedAppId : appId;
   const [, setIsDropdownOpen] = useAtom(dropdownOpenAtom);
 
   const { chats, loading, invalidateChats } = useChats(selectedAppId);
@@ -108,6 +158,19 @@ export function ChatList({
       { key: "older", label: t("groupOlder"), chats: older },
     ].filter((group) => group.chats.length > 0);
   }, [chats, t]);
+  const shouldVirtualize = chats.length > VIRTUALIZE_CHAT_LIST_THRESHOLD;
+  const virtualRows = useMemo<ChatListRowItem[]>(() => {
+    if (!shouldVirtualize) return [];
+    return chatGroups.flatMap((group, index) => [
+      {
+        kind: "group" as const,
+        key: group.key,
+        label: group.label,
+        isFirst: index === 0,
+      },
+      ...group.chats.map((chat) => ({ kind: "chat" as const, chat })),
+    ]);
+  }, [chatGroups, shouldVirtualize]);
   const routerState = useRouterState();
   const isChatRoute = routerState.location.pathname === "/chat";
 
@@ -133,15 +196,7 @@ export function ChatList({
     () => new Set<number>(),
   );
   const [favoriteAnnouncement, setFavoriteAnnouncement] = useState("");
-  const [hoveredChatActionsId, setHoveredChatActionsId] = useState<
-    number | null
-  >(null);
-  const [focusedChatActionsId, setFocusedChatActionsId] = useState<
-    number | null
-  >(null);
-  const [openChatActionsId, setOpenChatActionsId] = useState<number | null>(
-    null,
-  );
+  const [scrollParent, setScrollParent] = useState<HTMLDivElement | null>(null);
   const favoriteButtonRefs = useRef(new Map<number, HTMLButtonElement>());
   const pendingFavoriteChatIdsRef = useRef(new Set<number>());
   const pendingFavoriteFocusChatId = useRef<number | null>(null);
@@ -349,9 +404,42 @@ export function ChatList({
     }
   };
 
+  const renderChatRow = (chat: ChatSummary) => (
+    <ChatRow
+      chat={chat}
+      isSelected={selectedChatId === chat.id}
+      isFavoritePending={pendingFavoriteChatIds.has(chat.id)}
+      isFavoriteConfirmed={confirmedFavoriteChatIds.has(chat.id)}
+      reducedMotion={reducedMotion}
+      onSelect={() => handleChatClick({ chatId: chat.id, appId: chat.appId })}
+      onToggleFavorite={(restoreFocus) =>
+        void handleSetChatFavorite({
+          chatId: chat.id,
+          appId: chat.appId,
+          title: chat.title || t("newChat"),
+          isFavorite: !chat.isFavorite,
+          restoreFocus,
+        })
+      }
+      onRename={() => handleRenameChat(chat.id, chat.title || "")}
+      onDelete={() =>
+        handleDeleteChatClick(chat.id, chat.title || t("newChat"))
+      }
+      onActionsOpenChange={setIsDropdownOpen}
+      favoriteButtonRef={(element) => {
+        if (element) {
+          favoriteButtonRefs.current.set(chat.id, element);
+        } else {
+          favoriteButtonRefs.current.delete(chat.id);
+        }
+      }}
+    />
+  );
+
   return (
     <>
       <SidebarGroup
+        ref={setScrollParent}
         className="h-[calc(100vh-112px-var(--layout-bottom-bar-height))] overflow-x-hidden overflow-y-auto"
         data-testid="chat-list-container"
       >
@@ -417,6 +505,41 @@ export function ChatList({
               <div className="py-3 px-4 text-sm text-gray-500">
                 {t("noChatsFound")}
               </div>
+            ) : shouldVirtualize ? (
+              scrollParent && (
+                <Virtuoso
+                  customScrollParent={scrollParent}
+                  initialItemCount={Math.min(
+                    virtualRows.length,
+                    VIRTUAL_CHAT_LIST_INITIAL_ROWS,
+                  )}
+                  data={virtualRows}
+                  computeItemKey={(_, row) =>
+                    row.kind === "group"
+                      ? `group-${row.key}`
+                      : `chat-${row.chat.id}`
+                  }
+                  components={{
+                    List: VirtualChatListRoot,
+                    Item: VirtualChatListItem,
+                  }}
+                  itemContent={(_, row) =>
+                    row.kind === "group" ? (
+                      <div
+                        className={cn(
+                          "px-3 text-xs font-medium text-muted-foreground",
+                          !row.isFirst && "pt-2",
+                        )}
+                        data-testid={`chat-group-${row.key}`}
+                      >
+                        {row.label}
+                      </div>
+                    ) : (
+                      renderChatRow(row.chat)
+                    )
+                  }
+                />
+              )
             ) : (
               <div className="flex flex-col space-y-3">
                 {chatGroups.map((group) => (
@@ -427,229 +550,7 @@ export function ChatList({
                     <SidebarMenu className="space-y-1">
                       {group.chats.map((chat) => (
                         <SidebarMenuItem key={chat.id} className="mb-1">
-                          <div
-                            className="group/chat-row relative flex w-full items-center"
-                            onMouseEnter={() =>
-                              setHoveredChatActionsId(chat.id)
-                            }
-                            onMouseLeave={() => setHoveredChatActionsId(null)}
-                            onFocusCapture={() =>
-                              setFocusedChatActionsId(chat.id)
-                            }
-                            onBlurCapture={(event) => {
-                              if (
-                                !event.currentTarget.contains(
-                                  event.relatedTarget as Node | null,
-                                )
-                              ) {
-                                setFocusedChatActionsId(null);
-                              }
-                            }}
-                          >
-                            <Button
-                              variant="ghost"
-                              onClick={() =>
-                                handleChatClick({
-                                  chatId: chat.id,
-                                  appId: chat.appId,
-                                })
-                              }
-                              className={`justify-start w-full text-left py-3 pr-14 hover:bg-sidebar-accent/80 ${
-                                selectedChatId === chat.id
-                                  ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                                  : ""
-                              }`}
-                              data-testid={`chat-list-item-${chat.id}`}
-                            >
-                              <div className="flex flex-col w-full">
-                                <span className="truncate">
-                                  {chat.title || t("newChat")}
-                                </span>
-                                <span className="text-xs text-gray-500">
-                                  {formatDistanceToNow(
-                                    new Date(chat.createdAt),
-                                    { addSuffix: true },
-                                  )}
-                                </span>
-                              </div>
-                            </Button>
-
-                            <div className="absolute right-0 flex w-14 items-center">
-                              <motion.button
-                                ref={(element) => {
-                                  if (element) {
-                                    favoriteButtonRefs.current.set(
-                                      chat.id,
-                                      element,
-                                    );
-                                  } else {
-                                    favoriteButtonRefs.current.delete(chat.id);
-                                  }
-                                }}
-                                type="button"
-                                className={cn(
-                                  "flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-sidebar-accent hover:text-[#6c55dc] focus-visible:ring-2 focus-visible:ring-sidebar-ring",
-                                  "aria-disabled:cursor-wait aria-disabled:opacity-60",
-                                  !chat.isFavorite &&
-                                    !confirmedFavoriteChatIds.has(chat.id) &&
-                                    "pointer-events-none opacity-0 group-focus-within/chat-row:pointer-events-auto group-focus-within/chat-row:opacity-100",
-                                  chat.isFavorite && "text-[#6c55dc]",
-                                  "transition-[opacity,color] duration-200 ease-out motion-reduce:transition-none",
-                                )}
-                                initial={false}
-                                animate={{
-                                  x:
-                                    chat.isFavorite &&
-                                    hoveredChatActionsId !== chat.id &&
-                                    focusedChatActionsId !== chat.id &&
-                                    openChatActionsId !== chat.id
-                                      ? 28
-                                      : 0,
-                                }}
-                                transition={
-                                  reducedMotion
-                                    ? { duration: 0 }
-                                    : CHAT_ACTION_SPRING
-                                }
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  void handleSetChatFavorite({
-                                    chatId: chat.id,
-                                    appId: chat.appId,
-                                    title: chat.title || t("newChat"),
-                                    isFavorite: !chat.isFavorite,
-                                    restoreFocus: event.detail === 0,
-                                  });
-                                }}
-                                aria-disabled={pendingFavoriteChatIds.has(
-                                  chat.id,
-                                )}
-                                aria-label={t(
-                                  chat.isFavorite
-                                    ? "removeChatFromFavorites"
-                                    : "addChatToFavorites",
-                                  { title: chat.title || t("newChat") },
-                                )}
-                                aria-pressed={chat.isFavorite}
-                                title={t(
-                                  chat.isFavorite
-                                    ? "removeFromFavorites"
-                                    : "addToFavorites",
-                                )}
-                                data-testid={`chat-favorite-button-${chat.id}`}
-                              >
-                                <motion.span
-                                  className="flex"
-                                  initial={false}
-                                  animate={
-                                    confirmedFavoriteChatIds.has(chat.id) &&
-                                    !reducedMotion
-                                      ? { scale: [0.8, 1.2, 1] }
-                                      : { scale: 1 }
-                                  }
-                                  transition={{
-                                    duration: 0.22,
-                                    ease: "easeOut",
-                                  }}
-                                >
-                                  <Star
-                                    className={cn(
-                                      "h-4 w-4 transition-colors motion-reduce:transition-none",
-                                      chat.isFavorite && "fill-current",
-                                    )}
-                                  />
-                                </motion.span>
-                              </motion.button>
-
-                              <DropdownMenu
-                                modal={false}
-                                onOpenChange={(open) => {
-                                  setIsDropdownOpen(open);
-                                  setOpenChatActionsId((current) =>
-                                    open
-                                      ? chat.id
-                                      : current === chat.id
-                                        ? null
-                                        : current,
-                                  );
-                                }}
-                              >
-                                <DropdownMenuTrigger
-                                  className={buttonVariants({
-                                    variant: "ghost",
-                                    size: "icon",
-                                    className:
-                                      "pointer-events-none h-7 w-7 translate-x-1 scale-90 opacity-0 transition-[opacity,transform] duration-200 ease-out group-hover/chat-row:pointer-events-auto group-hover/chat-row:translate-x-0 group-hover/chat-row:scale-100 group-hover/chat-row:opacity-100 group-focus-within/chat-row:pointer-events-auto group-focus-within/chat-row:translate-x-0 group-focus-within/chat-row:scale-100 group-focus-within/chat-row:opacity-100 data-popup-open:pointer-events-auto data-popup-open:translate-x-0 data-popup-open:scale-100 data-popup-open:opacity-100 motion-reduce:transition-none",
-                                  })}
-                                  onClick={(e) => e.stopPropagation()}
-                                  aria-label={t("chatActions", {
-                                    title: chat.title || t("newChat"),
-                                  })}
-                                >
-                                  <MoreVertical className="h-4 w-4" />
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent
-                                  align="end"
-                                  className="space-y-1 p-2"
-                                >
-                                  <DropdownMenuItem
-                                    onClick={(event) =>
-                                      void handleSetChatFavorite({
-                                        chatId: chat.id,
-                                        appId: chat.appId,
-                                        title: chat.title || t("newChat"),
-                                        isFavorite: !chat.isFavorite,
-                                        restoreFocus: event.detail === 0,
-                                      })
-                                    }
-                                    disabled={pendingFavoriteChatIds.has(
-                                      chat.id,
-                                    )}
-                                    className="px-3 py-2"
-                                  >
-                                    <Star
-                                      className={cn(
-                                        "mr-2 h-4 w-4",
-                                        chat.isFavorite && "fill-current",
-                                      )}
-                                    />
-                                    <span>
-                                      {t(
-                                        chat.isFavorite
-                                          ? "removeFromFavorites"
-                                          : "addToFavorites",
-                                      )}
-                                    </span>
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    onClick={() =>
-                                      handleRenameChat(
-                                        chat.id,
-                                        chat.title || "",
-                                      )
-                                    }
-                                    className="px-3 py-2"
-                                  >
-                                    <Edit3 className="mr-2 h-4 w-4" />
-                                    <span>{t("renameChat")}</span>
-                                  </DropdownMenuItem>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem
-                                    onClick={() =>
-                                      handleDeleteChatClick(
-                                        chat.id,
-                                        chat.title || t("newChat"),
-                                      )
-                                    }
-                                    className="px-3 py-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/50 focus:bg-red-50 dark:focus:bg-red-950/50"
-                                  >
-                                    <Trash2 className="mr-2 h-4 w-4" />
-                                    <span>{t("deleteChat")}</span>
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            </div>
-                          </div>
+                          {renderChatRow(chat)}
                         </SidebarMenuItem>
                       ))}
                     </SidebarMenu>
@@ -692,5 +593,178 @@ export function ChatList({
         {favoriteAnnouncement}
       </p>
     </>
+  );
+}
+
+// Hover, focus and menu state live in each row so that moving the pointer
+// across the list re-renders one row instead of all of them.
+function ChatRow({
+  chat,
+  isSelected,
+  isFavoritePending,
+  isFavoriteConfirmed,
+  reducedMotion,
+  onSelect,
+  onToggleFavorite,
+  onRename,
+  onDelete,
+  onActionsOpenChange,
+  favoriteButtonRef,
+}: {
+  chat: ChatSummary;
+  isSelected: boolean;
+  isFavoritePending: boolean;
+  isFavoriteConfirmed: boolean;
+  reducedMotion: boolean;
+  onSelect: () => void;
+  onToggleFavorite: (restoreFocus: boolean) => void;
+  onRename: () => void;
+  onDelete: () => void;
+  onActionsOpenChange: (open: boolean) => void;
+  favoriteButtonRef: (element: HTMLButtonElement | null) => void;
+}) {
+  const { t } = useTranslation("chat");
+  const [isHovered, setIsHovered] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
+  const [isActionsOpen, setIsActionsOpen] = useState(false);
+  const title = chat.title || t("newChat");
+
+  return (
+    <div
+      className="group/chat-row relative flex w-full items-center"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      onFocusCapture={() => setIsFocused(true)}
+      onBlurCapture={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+          setIsFocused(false);
+        }
+      }}
+    >
+      <Button
+        variant="ghost"
+        onClick={onSelect}
+        className={`justify-start w-full text-left py-3 pr-14 hover:bg-sidebar-accent/80 ${
+          isSelected ? "bg-sidebar-accent text-sidebar-accent-foreground" : ""
+        }`}
+        data-testid={`chat-list-item-${chat.id}`}
+      >
+        <div className="flex flex-col w-full">
+          <span className="truncate">{title}</span>
+          <span className="text-xs text-gray-500">
+            {formatDistanceToNow(new Date(chat.createdAt), {
+              addSuffix: true,
+            })}
+          </span>
+        </div>
+      </Button>
+
+      <div className="absolute right-0 flex w-14 items-center">
+        <motion.button
+          ref={favoriteButtonRef}
+          type="button"
+          className={cn(
+            "flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-sidebar-accent hover:text-[#6c55dc] focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+            "aria-disabled:cursor-wait aria-disabled:opacity-60",
+            !chat.isFavorite &&
+              !isFavoriteConfirmed &&
+              "pointer-events-none opacity-0 group-focus-within/chat-row:pointer-events-auto group-focus-within/chat-row:opacity-100",
+            chat.isFavorite && "text-[#6c55dc]",
+            "transition-[opacity,color] duration-200 ease-out motion-reduce:transition-none",
+          )}
+          initial={false}
+          animate={{
+            x:
+              chat.isFavorite && !isHovered && !isFocused && !isActionsOpen
+                ? 28
+                : 0,
+          }}
+          transition={reducedMotion ? { duration: 0 } : CHAT_ACTION_SPRING}
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggleFavorite(event.detail === 0);
+          }}
+          aria-disabled={isFavoritePending}
+          aria-label={t(
+            chat.isFavorite ? "removeChatFromFavorites" : "addChatToFavorites",
+            { title },
+          )}
+          aria-pressed={chat.isFavorite}
+          title={t(chat.isFavorite ? "removeFromFavorites" : "addToFavorites")}
+          data-testid={`chat-favorite-button-${chat.id}`}
+        >
+          <motion.span
+            className="flex"
+            initial={false}
+            animate={
+              isFavoriteConfirmed && !reducedMotion
+                ? { scale: [0.8, 1.2, 1] }
+                : { scale: 1 }
+            }
+            transition={{
+              duration: 0.22,
+              ease: "easeOut",
+            }}
+          >
+            <Star
+              className={cn(
+                "h-4 w-4 transition-colors motion-reduce:transition-none",
+                chat.isFavorite && "fill-current",
+              )}
+            />
+          </motion.span>
+        </motion.button>
+
+        <DropdownMenu
+          modal={false}
+          onOpenChange={(open) => {
+            onActionsOpenChange(open);
+            setIsActionsOpen(open);
+          }}
+        >
+          <DropdownMenuTrigger
+            className={buttonVariants({
+              variant: "ghost",
+              size: "icon",
+              className:
+                "pointer-events-none h-7 w-7 translate-x-1 scale-90 opacity-0 transition-[opacity,transform] duration-200 ease-out group-hover/chat-row:pointer-events-auto group-hover/chat-row:translate-x-0 group-hover/chat-row:scale-100 group-hover/chat-row:opacity-100 group-focus-within/chat-row:pointer-events-auto group-focus-within/chat-row:translate-x-0 group-focus-within/chat-row:scale-100 group-focus-within/chat-row:opacity-100 data-popup-open:pointer-events-auto data-popup-open:translate-x-0 data-popup-open:scale-100 data-popup-open:opacity-100 motion-reduce:transition-none",
+            })}
+            onClick={(e) => e.stopPropagation()}
+            aria-label={t("chatActions", { title })}
+          >
+            <MoreVertical className="h-4 w-4" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="space-y-1 p-2">
+            <DropdownMenuItem
+              onClick={(event) => onToggleFavorite(event.detail === 0)}
+              disabled={isFavoritePending}
+              className="px-3 py-2"
+            >
+              <Star
+                className={cn(
+                  "mr-2 h-4 w-4",
+                  chat.isFavorite && "fill-current",
+                )}
+              />
+              <span>
+                {t(chat.isFavorite ? "removeFromFavorites" : "addToFavorites")}
+              </span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onRename} className="px-3 py-2">
+              <Edit3 className="mr-2 h-4 w-4" />
+              <span>{t("renameChat")}</span>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={onDelete}
+              className="px-3 py-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/50 focus:bg-red-50 dark:focus:bg-red-950/50"
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              <span>{t("deleteChat")}</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </div>
   );
 }

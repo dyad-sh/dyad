@@ -299,10 +299,15 @@ export function AppSidebar() {
                   exit={{ x: "100%" }}
                   transition={{ duration: 0.28, ease: [0.32, 0.72, 0, 1] }}
                 >
+                  {/* AnimatePresence keeps the last props of a list that is
+                      animating out, so passing the app id here (instead of
+                      ChatList reading the atom) keeps it on its own app after
+                      "View all apps" clears the selection. */}
                   <ChatList
                     show
                     showViewAllAppsButton
                     onViewAllApps={handleViewAllApps}
+                    appId={selectedAppId}
                   />
                 </motion.div>
               )}

@@ -1,5 +1,8 @@
 import { hasDyadProKey, type UserSettings } from "@/lib/schemas";
-import { DEFAULT_ENABLE_TESTING_FOR_NEW_APPS } from "@/shared/settings_defaults";
+import {
+  DEFAULT_ENABLE_TESTING_FOR_NEW_APPS,
+  DEFAULT_UI_FONT_FAMILY,
+} from "@/shared/settings_defaults";
 import {
   appSizeEventFields,
   type AppSizeTelemetry,
@@ -62,6 +65,7 @@ export function getSettingsPersonTelemetryProperties(settings: UserSettings) {
     enableAppBlueprint: settings.enableAppBlueprint ?? true,
     enableTestingForNewApps:
       settings.enableTestingForNewApps ?? DEFAULT_ENABLE_TESTING_FOR_NEW_APPS,
+    uiFontFamily: settings.uiFontFamily ?? DEFAULT_UI_FONT_FAMILY,
   };
 }
 

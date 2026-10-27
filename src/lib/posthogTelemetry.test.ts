@@ -697,6 +697,7 @@ describe("getInitialLoadTelemetryProperties", () => {
       modelProvider: "auto",
       defaultChatMode: "ask",
       runtimeMode2: "docker",
+      uiFontFamily: "geist",
     });
   });
 
@@ -724,6 +725,7 @@ describe("getInitialLoadTelemetryProperties", () => {
       modelProvider: "auto",
       defaultChatMode: null,
       runtimeMode2: "host",
+      uiFontFamily: "geist",
     });
   });
 
@@ -770,6 +772,7 @@ describe("getSettingsPersonTelemetryProperties", () => {
       isPro: true,
       enableAppBlueprint: false,
       enableTestingForNewApps: true,
+      uiFontFamily: "geist",
     });
   });
 });

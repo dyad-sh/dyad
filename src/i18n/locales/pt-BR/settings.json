@@ -72,7 +72,14 @@
     "managedNodeInstalled": "Node.js gerenciado pelo Dyad instalado com sucesso",
     "managedNodeInstallFailed": "Falha ao instalar Node.js gerenciado pelo Dyad",
     "managedNodeRemoved": "Node.js gerenciado pelo Dyad removido",
-    "managedNodeRemoveFailed": "Falha ao remover Node.js gerenciado pelo Dyad"
+    "managedNodeRemoveFailed": "Falha ao remover Node.js gerenciado pelo Dyad",
+    "uiFont": "Fonte do aplicativo",
+    "uiFontDescription": "Escolha a fonte usada na interface do Dyad.",
+    "selectUiFont": "Selecionar fonte",
+    "uiFontOptions": {
+      "geist": "Geist (Sans)",
+      "fraunces": "Fraunces (Serif)"
+    }
   },
   "workflow": {
     "title": "Configurações de Fluxo de Trabalho",

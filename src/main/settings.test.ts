@@ -149,6 +149,7 @@ describe("readSettings", () => {
           "showSystemResourceUsage": true,
           "telemetryConsent": "unset",
           "telemetryUserId": "[scrubbed]",
+          "uiFontFamily": "geist",
         }
       `);
     });
@@ -204,6 +205,24 @@ describe("readSettings", () => {
       );
 
       expect(readSettings().autoApproveSafeMcpTools).toBe(false);
+    });
+
+    it("preserves a chosen UI font", () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(
+        JSON.stringify({ uiFontFamily: "fraunces" }),
+      );
+
+      expect(readSettings().uiFontFamily).toBe("fraunces");
+    });
+
+    it("falls back to the default UI font for an unknown value", () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(
+        JSON.stringify({ uiFontFamily: "comic-sans" }),
+      );
+
+      expect(readSettings().uiFontFamily).toBe("geist");
     });
 
     it("should treat existing settings files without hasRunBefore as already run", () => {
@@ -616,6 +635,7 @@ describe("readSettings", () => {
           "showSystemResourceUsage": true,
           "telemetryConsent": "unset",
           "telemetryUserId": "[scrubbed]",
+          "uiFontFamily": "geist",
         }
       `);
     });

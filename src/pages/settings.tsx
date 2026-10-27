@@ -37,6 +37,7 @@ import { NodePathSelector } from "@/components/NodePathSelector";
 import { AgentToolsSettings } from "@/components/settings/AgentToolsSettings";
 import { ZoomSelector } from "@/components/ZoomSelector";
 import { LanguageSelector } from "@/components/LanguageSelector";
+import { UiFontSelector } from "@/components/UiFontSelector";
 import { DefaultChatModeSelector } from "@/components/DefaultChatModeSelector";
 import { ContextCompactionSwitch } from "@/components/ContextCompactionSwitch";
 import { BlockUnsafeNpmPackagesSwitch } from "@/components/BlockUnsafeNpmPackagesSwitch";
@@ -466,6 +467,10 @@ export function GeneralSettings({ appVersion }: { appVersion: string | null }) {
             </button>
           ))}
         </div>
+      </div>
+
+      <div id={SETTING_IDS.uiFontFamily}>
+        <UiFontSelector />
       </div>
 
       <LanguageSelector />

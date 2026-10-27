@@ -14,6 +14,7 @@ playwright-report/
 test-results/
 blob-report/
 flakiness-report/
+.playwright-mcp/
 
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json

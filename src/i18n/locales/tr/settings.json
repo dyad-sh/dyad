@@ -72,7 +72,14 @@
     "managedNodeInstalled": "Dyad tarafından yönetilen Node.js başarıyla kuruldu",
     "managedNodeInstallFailed": "Dyad tarafından yönetilen Node.js kurulamadı",
     "managedNodeRemoved": "Dyad tarafından yönetilen Node.js kaldırıldı",
-    "managedNodeRemoveFailed": "Dyad tarafından yönetilen Node.js kaldırılamadı"
+    "managedNodeRemoveFailed": "Dyad tarafından yönetilen Node.js kaldırılamadı",
+    "uiFont": "Uygulama yazı tipi",
+    "uiFontDescription": "Dyad arayüzünde kullanılan yazı tipini seçin.",
+    "selectUiFont": "Yazı tipi seçin",
+    "uiFontOptions": {
+      "geist": "Geist (Sans)",
+      "fraunces": "Fraunces (Serif)"
+    }
   },
   "workflow": {
     "title": "İş Akışı Ayarları",

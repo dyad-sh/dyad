@@ -457,6 +457,11 @@ export type SmartContextMode = z.infer<typeof SmartContextModeSchema>;
 export const AgentToolConsentSchema = z.enum(["ask", "always", "never"]);
 export type AgentToolConsent = z.infer<typeof AgentToolConsentSchema>;
 
+// The font used for Dyad's own UI. The ids match UI_FONT_FAMILY_IDS in
+// src/shared/settings_defaults.ts, which owns the default and the CSS stacks.
+export const UiFontFamilySchema = z.enum(["geist", "fraunces"]);
+export type UiFontFamily = z.infer<typeof UiFontFamilySchema>;
+
 // The kinds of TypeScript utility process the scheduler can run.
 export const TypeScriptUtilityProcessKindSchema = z.enum([
   "code-explorer",
@@ -607,6 +612,8 @@ const BaseUserSettingsFields = {
   zoomLevel: ZoomLevelSchema.optional(),
   language: LanguageSchema.optional(),
   previewDeviceMode: DeviceModeSchema.optional(),
+  // Font for Dyad's own UI chrome. Unset means the built-in default.
+  uiFontFamily: UiFontFamilySchema.optional(),
 
   enableAppBlueprint: z.boolean().optional(),
   // When enabled, newly created apps opt into the AI E2E testing feature by

@@ -17,6 +17,7 @@ import { useIntegrationEvents } from "@/hooks/useIntegrationEvents";
 import { useAppBlueprintEvents } from "@/hooks/useAppBlueprintEvents";
 import { useTestRunEvents } from "@/hooks/useTestRunEvents";
 import { useZoomShortcuts } from "@/hooks/useZoomShortcuts";
+import { useUiFontFamily } from "@/hooks/useUiFontFamily";
 import { useChatStreamRuntime } from "@/hooks/useChatStream";
 import { useBackgroundAutoReview } from "@/hooks/subagentReviewOrchestration";
 import { useReopenClosedTab } from "@/hooks/useReopenClosedTab";
@@ -128,6 +129,9 @@ function RootLayoutContent({ children }: { children: ReactNode }) {
 
   // Zoom keyboard shortcuts (Ctrl/Cmd + =/- /0)
   useZoomShortcuts();
+
+  // Apply the configured UI font to the document root.
+  useUiFontFamily();
 
   // Reopen closed tab shortcut (Ctrl/Cmd + Shift + T)
   const { reopenClosedTab } = useReopenClosedTab();

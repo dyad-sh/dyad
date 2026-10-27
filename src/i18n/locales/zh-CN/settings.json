@@ -72,7 +72,14 @@
     "managedNodeInstalled": "Dyad 托管 Node.js 已成功安装",
     "managedNodeInstallFailed": "安装 Dyad 托管 Node.js 失败",
     "managedNodeRemoved": "已移除 Dyad 托管 Node.js",
-    "managedNodeRemoveFailed": "移除 Dyad 托管 Node.js 失败"
+    "managedNodeRemoveFailed": "移除 Dyad 托管 Node.js 失败",
+    "uiFont": "应用字体",
+    "uiFontDescription": "选择 Dyad 界面使用的字体。",
+    "selectUiFont": "选择字体",
+    "uiFontOptions": {
+      "geist": "Geist (Sans)",
+      "fraunces": "Fraunces (Serif)"
+    }
   },
   "workflow": {
     "title": "工作流设置",

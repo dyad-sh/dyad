@@ -7,3 +7,27 @@ export const DEFAULT_ENABLE_PREVIEW_COOKIE_ISOLATION = true;
 export const DEFAULT_ENABLE_SUGGESTED_PROMPTS = false;
 
 export const DEFAULT_SHOW_SYSTEM_RESOURCE_USAGE = true;
+
+/**
+ * The font used for Dyad's own UI chrome. "geist" is the built-in default;
+ * the other entries are bundled via @fontsource and referenced by CSS family
+ * name in src/styles/globals.css.
+ */
+export const DEFAULT_UI_FONT_FAMILY = "geist";
+
+export type UiFontFamilyId = "geist" | "fraunces";
+
+export const UI_FONT_FAMILY_IDS: readonly UiFontFamilyId[] = [
+  "geist",
+  "fraunces",
+];
+
+/**
+ * The CSS `font-family` stack each option resolves to. Kept in one place so
+ * the settings preview, the applied style, and the fallback chain cannot
+ * drift apart.
+ */
+export const UI_FONT_FAMILY_STACKS: Record<UiFontFamilyId, string> = {
+  geist: '"Geist", system-ui, sans-serif',
+  fraunces: '"Fraunces Variable", Georgia, serif',
+};

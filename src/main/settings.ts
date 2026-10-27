@@ -37,6 +37,7 @@ import {
   DEFAULT_SHOW_SYSTEM_RESOURCE_USAGE,
   DEFAULT_ENABLE_PREVIEW_COOKIE_ISOLATION,
   DEFAULT_ENABLE_TESTING_FOR_NEW_APPS,
+  DEFAULT_UI_FONT_FAMILY,
 } from "@/shared/settings_defaults";
 
 const logger = log.scope("settings");
@@ -93,6 +94,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   previewIdleTimeoutPolicy: "default",
   nodeRuntimePreference: "system",
   disablePreviewNodeAutoInstall: false,
+  uiFontFamily: DEFAULT_UI_FONT_FAMILY,
 };
 
 const CRASH_SENTINEL_FILE = "session.lock";

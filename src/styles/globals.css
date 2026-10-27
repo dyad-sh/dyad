@@ -58,6 +58,26 @@
   font-display: swap;
 }
 
+/* Load Fraunces (variable). The "wght" variants carry the weight axis only,
+   so the display sizes use the font's default optical size. */
+@font-face {
+  font-family: "Fraunces Variable";
+  src: url("/node_modules/@fontsource-variable/fraunces/files/fraunces-latin-wght-normal.woff2")
+    format("woff2-variations");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Fraunces Variable";
+  src: url("/node_modules/@fontsource-variable/fraunces/files/fraunces-latin-wght-italic.woff2")
+    format("woff2-variations");
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: swap;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 .app-region-drag {
@@ -95,7 +115,9 @@ body[data-scroll-locked] .app-region-drag {
      panel both end above it rather than being covered by it. */
   --layout-bottom-bar-height: 0px;
   --docs-bg: #f5f5f5;
-  --default-font-family: "Geist", sans-serif;
+  /* The UI font. Overridden at runtime by the `uiFontFamily` setting (see
+     src/app/layout.tsx); the value here is the default. */
+  --default-font-family: "Geist", system-ui, sans-serif;
   --default-mono-font-family: "Geist Mono", monospace;
   /* --background: oklch(1 0 0); */
   --background-lightest: #fff;
@@ -188,6 +210,11 @@ body[data-scroll-locked] .app-region-drag {
 }
 
 @theme inline {
+  /* Follows the `uiFontFamily` setting, which overrides --default-font-family
+     on :root at runtime. `inline` keeps the var reference live rather than
+     resolving it at build time. */
+  --font-sans: var(--default-font-family);
+
   --container-6xs: 10rem;
   --container-5xs: 12rem;
   --container-4xs: 14rem;
@@ -236,6 +263,7 @@ body[data-scroll-locked] .app-region-drag {
   }
   body {
     @apply bg-background text-foreground;
+    font-family: var(--default-font-family);
   }
 }
 

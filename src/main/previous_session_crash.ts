@@ -4,7 +4,7 @@
  * dump that crash left.
  */
 
-// undefined: no crash detected. null: a crash that left no dump.
+// undefined: no crash detected. null: a crash with no readable dump tied to it.
 let crashDumpFile: string | null | undefined;
 
 export function recordPreviousSessionCrash(dumpFile: string | null): void {

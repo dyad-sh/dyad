@@ -467,7 +467,7 @@ async function printThread(stack, thread) {
 for (const { dumps, triggeringDump } of bundles) {
   if (triggeringDump === null) {
     console.log(
-      "Report started from the crash dialog; that crash left no dump.\n",
+      "Report started from the crash dialog; no readable dump was tied to that crash.\n",
     );
   } else if (
     triggeringDump !== undefined &&

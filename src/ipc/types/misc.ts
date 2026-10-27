@@ -422,8 +422,9 @@ export const CrashDumpsSchema = z.object({
   dumps: z.array(CrashDumpSchema),
   /**
    * Set only on a report started from the crash dialog: the `file` of the
-   * dump the crash left, or null when it left none (a force kill, the OOM
-   * killer, power loss). The named dump may have been pruned since. A dump
+   * dump the crash left, or null when no readable dump was tied to it (a
+   * force kill, the OOM killer, power loss, or a dump too damaged to read,
+   * which is still listed in `dumps`). The named dump may have been pruned since. A dump
    * labelled "browser" is certain; one with no process label is matched only
    * because the app did not quit cleanly, as with a main-process V8 OOM,
    * and could instead be a child that ran out of memory.

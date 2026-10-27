@@ -946,6 +946,43 @@ describe("HelpDialog disclosures", () => {
     expect(bodyOfOpenedIssue()).toContain("Session ID: v2:abc");
   });
 
+  it("uploads the session again when a surviving draft unticks crash dumps", async () => {
+    mocks.getSessionDebugBundle.mockResolvedValue({
+      ...bundle,
+      crashDumps: { dumps: [crashDump] },
+    });
+    screenshotUploadDown();
+    let release = (_: unknown) => {};
+    mocks.recopyScreenshot.mockReturnValueOnce(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+
+    await openForm("a slow one");
+    await addScreenshot();
+    submit();
+    await waitFor(() => expect(mocks.recopyScreenshot).toHaveBeenCalled());
+    fireEvent.click(screen.getByText("mock-dialog-dismiss"));
+    await act(async () => {
+      release({ copied: true });
+    });
+
+    fireEvent.click(screen.getByText("reopen-help"));
+    fireEvent.click(
+      await screen.findByRole("checkbox", {
+        name: "Native crash stack traces",
+      }),
+    );
+    await fileIt();
+
+    expect(mocks.uploadToSignedUrl).toHaveBeenCalledTimes(2);
+    expect(
+      mocks.uploadToSignedUrl.mock.calls.at(-1)?.[0]?.data,
+    ).not.toHaveProperty("crashDumps");
+    expect(bodyOfOpenedIssue()).not.toContain("Crash dumps");
+  });
+
   it("does not cite a session whose upload was cut short", async () => {
     mocks.uploadToSignedUrl.mockResolvedValue({ uploaded: false });
 

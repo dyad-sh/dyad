@@ -563,8 +563,15 @@ export function HelpDialog() {
     includeCrashDumps: boolean,
     token: number,
   ): Promise<UploadedSession | null> => {
+    // A kept draft can come back with the crash-dump box changed, and then
+    // the earlier upload no longer matches what the reporter chose.
     const alreadyUploaded = uploadedSession.current;
-    if (alreadyUploaded) return alreadyUploaded;
+    if (
+      alreadyUploaded &&
+      (alreadyUploaded.crashDumpTimes !== null) === includeCrashDumps
+    ) {
+      return alreadyUploaded;
+    }
 
     const read = loaded ?? (await readSession(chatId));
     if (captureToken.current !== token) return null;

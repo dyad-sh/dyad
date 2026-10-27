@@ -1191,6 +1191,19 @@ describe("stack scan", () => {
     expect(s!.stackTrace!.threads[0].frames).toEqual([]);
   });
 
+  it("scans nothing when the whole capture is below the stack pointer", () => {
+    const trace = scan({ stack: stack([0x100a10n], 0x9000n) });
+    expect(trace!.threads[0].frames).toEqual([{ module: 0, offset: "0x500" }]);
+  });
+
+  it("scans the whole capture when it is above the stack pointer", () => {
+    const trace = scan({ stack: stack([0x100a10n], 0x6000n) });
+    expect(trace!.threads[0].frames).toEqual([
+      { module: 0, offset: "0x500" },
+      { module: 0, offset: "0xa10" },
+    ]);
+  });
+
   it("scans nothing when the context ends before the IP", () => {
     // 160 bytes hold the x64 stack pointer (152) but not the IP (248).
     const dump = buildMinidump({

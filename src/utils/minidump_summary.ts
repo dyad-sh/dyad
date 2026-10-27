@@ -878,11 +878,12 @@ function scanThreads(input: {
     if (!stack || sp === 0n) return frames;
     // Values below the stack pointer belong to calls that already
     // returned. Crashpad captures a little below it (the red zone), so
-    // start at the stack pointer when it falls inside the capture.
+    // start at the stack pointer when it falls inside the capture. A
+    // capture wholly below it holds nothing live.
+    const stackEnd = stack.start + BigInt(stack.size);
+    if (sp >= stackEnd) return frames;
     let skip = 0;
-    if (sp >= stack.start && sp < stack.start + BigInt(stack.size)) {
-      skip = Number(sp - stack.start);
-    }
+    if (sp >= stack.start) skip = Number(sp - stack.start);
     // Return addresses sit in 8-byte slots relative to the stack's start.
     const start = stack.rva + Math.ceil(skip / 8) * 8;
     const end = Math.min(

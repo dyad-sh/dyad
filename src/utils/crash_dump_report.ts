@@ -23,7 +23,9 @@ export async function collectCrashDumps(
   // Each dump's crash time is found before sorting, so one whose stat fails
   // ranks by the time in its name rather than falling out of the newest.
   // A file gone since the listing was pruned and is skipped. Any other
-  // failure keeps the dump as unreadable, so it is not taken for absent.
+  // failure keeps the dump as unreadable, so it is not taken for absent,
+  // except a dump in crashpadDir whose stat fails: its name holds no time,
+  // so it has no crash time to list it under and is left out.
   const timed: { file: string; crashedAt: string }[] = [];
   for (const file of [
     ...listDumpFiles(retainedDir),

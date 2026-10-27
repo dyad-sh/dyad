@@ -738,9 +738,12 @@ describe("HelpDialog disclosures", () => {
         .getByRole("checkbox", { name: "Chat session" })
         .hasAttribute("data-disabled"),
     ).toBe(true);
+    // The crash-dump row gives the same reason rather than pointing at a
+    // session box that cannot be ticked.
     expect(
-      screen.getByText("Open a chat first to include a session."),
-    ).toBeTruthy();
+      screen.getAllByText("Open a chat first to include a session."),
+    ).toHaveLength(2);
+    expect(screen.queryByText("Sent with the chat session.")).toBeNull();
   });
 
   it("loads the session only when the disclosure is expanded", async () => {

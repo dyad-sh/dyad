@@ -258,7 +258,8 @@ export function ReportDisclosures({
         onCheckedChange={onIncludeCrashDumpsChange}
         disabled={locked || !includeSession}
         disabledReason={
-          includeSession ? undefined : t("home:report.crashDumpsNeedSession")
+          sessionUnavailableReason ??
+          (includeSession ? undefined : t("home:report.crashDumpsNeedSession"))
         }
         onExpand={onSessionExpand}
       >

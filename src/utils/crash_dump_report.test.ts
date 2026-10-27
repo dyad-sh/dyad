@@ -8,9 +8,10 @@ const parsed = vi.hoisted(() => new Map<string, MinidumpSummary | null>());
 
 // Parsing has its own tests; here each file's content names the summary
 // it parses to.
-vi.mock("@/utils/minidump_summary", () => ({
-  parseMinidumpBuffer: (buf: Buffer) => parsed.get(buf.toString()) ?? null,
-}));
+const parseMinidumpBuffer = vi.hoisted(() =>
+  vi.fn((buf: Buffer) => parsed.get(buf.toString()) ?? null),
+);
+vi.mock("@/utils/minidump_summary", () => ({ parseMinidumpBuffer }));
 
 const { collectCrashDumps } = await import("@/utils/crash_dump_report");
 
@@ -35,6 +36,7 @@ describe("collectCrashDumps", () => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), "crash-dump-report-test-"));
     crashpadDir = path.join(dir, "Crashpad");
     parsed.clear();
+    parseMinidumpBuffer.mockClear();
   });
 
   afterEach(() => {
@@ -86,6 +88,17 @@ describe("collectCrashDumps", () => {
         readable: false,
       },
     ]);
+  });
+
+  it("asks the parser for stacks, with this machine's platform and arch", async () => {
+    makeDump("crash-new.dmp", "browser", 0);
+    await collectCrashDumps(dir, crashpadDir, "linux", "arm64");
+    expect(parseMinidumpBuffer).toHaveBeenCalledWith(
+      Buffer.from("browser"),
+      "linux",
+      "arm64",
+      { stackTrace: true },
+    );
   });
 
   it("includes dumps written since startup and keeps the newest five", async () => {

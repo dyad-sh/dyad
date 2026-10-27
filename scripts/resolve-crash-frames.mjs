@@ -409,10 +409,11 @@ function resolveReturnAddress(table, offset) {
   if (table.funcs.length === 0) {
     return resolveOffset(table, offset - 1);
   }
+  // offset - 1 finds the function before one that starts at offset, so
+  // the entry check looks up offset itself.
+  if (atOrBelow(table.funcs, offset)?.addr === offset) return null;
   const func = atOrBelow(table.funcs, offset - 1);
-  if (!func || offset - 1 >= func.addr + func.size || offset === func.addr) {
-    return null;
-  }
+  if (!func || offset - 1 >= func.addr + func.size) return null;
   return func.name;
 }
 
@@ -467,6 +468,13 @@ for (const { dumps, triggeringDump } of bundles) {
   if (triggeringDump === null) {
     console.log(
       "Report started from the crash dialog; that crash left no dump.\n",
+    );
+  } else if (
+    triggeringDump !== undefined &&
+    !dumps.some((dump) => dump.file === triggeringDump)
+  ) {
+    console.log(
+      `Report is about ${triggeringDump}, which newer dumps pushed out before the upload.\n`,
     );
   }
   for (const dump of dumps) {

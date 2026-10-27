@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -73,6 +73,22 @@ describe("crash_dumps", () => {
     expect(fs.existsSync(src)).toBe(false);
     expect(fs.existsSync(dest)).toBe(true);
     expect(fs.existsSync(dest.replace(/\.dmp$/, ".meta"))).toBe(true);
+  });
+
+  it("keeps the crash time when the move falls back to a copy", () => {
+    const src = makeDump("a1b2c3d4.dmp", 600);
+    const crashTime = fs.statSync(src).mtimeMs;
+    const dest = path.join(dir, "copied.dmp");
+    const rename = vi.spyOn(fs, "renameSync").mockImplementation(() => {
+      throw Object.assign(new Error("cross-device"), { code: "EXDEV" });
+    });
+    try {
+      moveDump(src, dest);
+    } finally {
+      rename.mockRestore();
+    }
+    expect(fs.existsSync(src)).toBe(false);
+    expect(fs.statSync(dest).mtimeMs).toBeCloseTo(crashTime, -1);
   });
 
   it("deletes the source when the move fails, so it isn't reprocessed", () => {

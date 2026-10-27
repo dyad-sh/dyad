@@ -82,6 +82,7 @@ import {
 } from "./utils/minidump_summary";
 import {
   listDumpFilesRecursive,
+  MAX_RETAINED_DUMPS,
   moveDump,
   pruneDumps,
   RETAINED_DUMPS_DIR,
@@ -292,9 +293,6 @@ crashReporter.start({
 
 const logger = log.scope("main");
 
-// Cap retained dumps so they don't accumulate indefinitely; keep only a few
-// recent ones for examination/export.
-const MAX_RETAINED_DUMPS = 5;
 let nativeCrashDumpsProcessed = false;
 let pendingNativeBrowserCrash: {
   summary: MinidumpSummary;

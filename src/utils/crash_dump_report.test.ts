@@ -16,9 +16,16 @@ const { collectCrashDumps } = await import("@/utils/crash_dump_report");
 
 describe("collectCrashDumps", () => {
   let dir: string;
+  let crashpadDir: string;
 
-  function makeDump(name: string, content: string, ageSeconds: number) {
-    const dump = path.join(dir, name);
+  function makeDump(
+    name: string,
+    content: string,
+    ageSeconds: number,
+    inDir = dir,
+  ) {
+    const dump = path.join(inDir, name);
+    fs.mkdirSync(path.dirname(dump), { recursive: true });
     fs.writeFileSync(dump, content);
     const t = new Date("2026-07-15T20:00:00Z").getTime() / 1000 - ageSeconds;
     fs.utimesSync(dump, t, t);
@@ -26,6 +33,7 @@ describe("collectCrashDumps", () => {
 
   beforeEach(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), "crash-dump-report-test-"));
+    crashpadDir = path.join(dir, "Crashpad");
     parsed.clear();
   });
 
@@ -59,7 +67,7 @@ describe("collectCrashDumps", () => {
     makeDump("crash-old.dmp", "garbage", 60);
     makeDump("crash-new.dmp", "browser", 0);
 
-    expect(await collectCrashDumps(dir)).toEqual([
+    expect(await collectCrashDumps(dir, crashpadDir)).toEqual([
       {
         file: "crash-new.dmp",
         crashedAt: "2026-07-15T20:00:00.000Z",
@@ -80,7 +88,28 @@ describe("collectCrashDumps", () => {
     ]);
   });
 
-  it("returns nothing for a missing directory", async () => {
-    expect(await collectCrashDumps(path.join(dir, "missing"))).toEqual([]);
+  it("includes dumps written since startup and keeps the newest five", async () => {
+    for (let i = 1; i <= 5; i++) makeDump(`crash-${i}.dmp`, "kept", i * 60);
+    makeDump(path.join("pending", "since-startup.dmp"), "new", 0, crashpadDir);
+
+    const files = (await collectCrashDumps(dir, crashpadDir)).map(
+      (dump) => dump.file,
+    );
+    expect(files).toEqual([
+      "since-startup.dmp",
+      "crash-1.dmp",
+      "crash-2.dmp",
+      "crash-3.dmp",
+      "crash-4.dmp",
+    ]);
+  });
+
+  it("returns nothing for missing directories", async () => {
+    expect(
+      await collectCrashDumps(
+        path.join(dir, "missing"),
+        path.join(dir, "missing-crashpad"),
+      ),
+    ).toEqual([]);
   });
 });

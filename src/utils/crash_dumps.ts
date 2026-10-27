@@ -5,6 +5,9 @@ import path from "node:path";
 // userData. Separate from Crashpad's own dump dirs so its scan skips them.
 export const RETAINED_DUMPS_DIR = "dyad-crash-reports";
 
+// How many dumps are kept there, and so how many a report can include.
+export const MAX_RETAINED_DUMPS = 5;
+
 // Absolute paths of the minidump files in a directory, newest first.
 export function listDumpFiles(dir: string): string[] {
   let entries: string[];
@@ -63,7 +66,7 @@ export function pruneDumps(dir: string, max: number): void {
 
 // Sort paths newest-first, reading each file's mtime once (not inside the
 // comparator, which would re-stat on every comparison).
-function sortNewestFirst(paths: string[]): string[] {
+export function sortNewestFirst(paths: string[]): string[] {
   return paths
     .map((p) => ({ p, mtime: mtimeMs(p) }))
     .sort((a, b) => b.mtime - a.mtime)
@@ -96,6 +99,9 @@ function renameQuiet(src: string, dest: string): void {
   } catch {
     try {
       fs.copyFileSync(src, dest);
+      // The mtime is the crash time, which reports and pruning rely on.
+      const { atime, mtime } = fs.statSync(src);
+      fs.utimesSync(dest, atime, mtime);
     } catch {
       // source may be unreadable; still remove it below to avoid reprocessing
     }

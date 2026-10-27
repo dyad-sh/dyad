@@ -378,6 +378,7 @@ export function registerDebugHandlers() {
         }),
         collectCrashDumps(
           path.join(electronApp.getPath("userData"), RETAINED_DUMPS_DIR),
+          electronApp.getPath("crashDumps"),
         ).catch((err) => {
           console.error("Failed to collect crash dumps:", err);
           return [];

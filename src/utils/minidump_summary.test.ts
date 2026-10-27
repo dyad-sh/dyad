@@ -56,12 +56,13 @@ function buildMinidump(opts: {
   // main thread. It gets its own CPU context holding its ip and sp.
   mainThread?: TestStack & { threadId: number; ip: bigint };
   spOffset?: number; // where sp sits in a CPU context: 152 (x64, default) / 256 (arm64)
+  processorArchitecture?: number; // written as a SystemInfo stream when set
 }): Buffer {
   const buf = Buffer.alloc(16384);
   const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
-  // 2 streams (module list + exception), or 3 when a CrashpadInfo stream is
-  // included. Payloads start after the 32-byte header + the directory (one
-  // 12-byte entry per stream).
+  // Module list + exception, plus CrashpadInfo, thread list and SystemInfo
+  // streams when their options are set. Payloads start after the 32-byte
+  // header + the directory (one 12-byte entry per stream).
   const objectAnnotations: [string, string][] = [
     ...(opts.ptype !== undefined
       ? ([["ptype", opts.ptype]] as [string, string][])
@@ -75,7 +76,12 @@ function buildMinidump(opts: {
     opts.addressMask !== undefined;
   const hasThreadList =
     opts.stack !== undefined || opts.mainThread !== undefined;
-  const streamCount = 2 + (hasCrashpadInfo ? 1 : 0) + (hasThreadList ? 1 : 0);
+  const hasSystemInfo = opts.processorArchitecture !== undefined;
+  const streamCount =
+    2 +
+    (hasCrashpadInfo ? 1 : 0) +
+    (hasThreadList ? 1 : 0) +
+    (hasSystemInfo ? 1 : 0);
   let cursor = 32 + streamCount * 12;
 
   // Writes a length-prefixed UTF-8 string (u32 byte-length + bytes) at the
@@ -326,6 +332,14 @@ function buildMinidump(opts: {
     }
   }
 
+  // --- Optional SystemInfo stream: u16 ProcessorArchitecture @0 of 56 bytes ---
+  let systemInfoRva = 0;
+  if (hasSystemInfo) {
+    systemInfoRva = cursor;
+    dv.setUint16(systemInfoRva, opts.processorArchitecture!, true);
+    cursor = systemInfoRva + 56;
+  }
+
   // --- Header (signature @0, stream count @8, directory RVA @12) ---
   dv.setUint32(0, 0x504d444d, true); // "MDMP"
   dv.setUint32(8, streamCount, true);
@@ -333,26 +347,30 @@ function buildMinidump(opts: {
 
   // --- Stream directory: one 12-byte entry per stream, each being
   // { u32 streamType @0, u32 dataSize @4, u32 rva @8 }, starting at offset 32.
-  // [0] module list (type 4), [1] exception (type 6), [2] CrashpadInfo,
-  // then the thread list when present.
+  // [0] module list (type 4), [1] exception (type 6), then CrashpadInfo,
+  // the thread list and SystemInfo, each only when present.
   dv.setUint32(32, 4, true);
   dv.setUint32(36, moduleListSize, true);
   dv.setUint32(40, moduleListRva, true);
   dv.setUint32(44, 6, true);
   dv.setUint32(48, exceptionSize, true);
   dv.setUint32(52, exceptionRva, true);
+  let entry = 56;
+  const addEntry = (type: number, size: number, rva: number) => {
+    dv.setUint32(entry, type, true);
+    dv.setUint32(entry + 4, size, true);
+    dv.setUint32(entry + 8, rva, true);
+    entry += 12;
+  };
   if (hasCrashpadInfo) {
-    dv.setUint32(56, 0x43500001, true);
-    dv.setUint32(60, opts.addressMask !== undefined ? 64 : 52, true);
-    dv.setUint32(64, crashpadInfoRva, true);
+    addEntry(
+      0x43500001,
+      opts.addressMask !== undefined ? 64 : 52,
+      crashpadInfoRva,
+    );
   }
-  if (hasThreadList) {
-    // Thread list (type 3) takes the last directory entry.
-    const entry = 32 + (streamCount - 1) * 12;
-    dv.setUint32(entry, 3, true);
-    dv.setUint32(entry + 4, threadListSize, true);
-    dv.setUint32(entry + 8, threadListRva, true);
-  }
+  if (hasThreadList) addEntry(3, threadListSize, threadListRva);
+  if (hasSystemInfo) addEntry(7, 56, systemInfoRva);
 
   return Buffer.from(buf.subarray(0, cursor));
 }
@@ -655,6 +673,25 @@ describe("parseMinidumpBuffer", () => {
     const s = parseMinidumpBuffer(dump, "darwin", "arm64");
     expect(s!.faultingModule).toBe("libc.so.6");
     expect(s!.faultingOffset).toBe("0x800");
+  });
+
+  it("reads registers for the CPU the dump records, not the running one", () => {
+    const dump = buildMinidump({
+      modules: oneModule,
+      exceptionCode: 11,
+      ip: 0x10800n,
+      ipOffset: 248,
+      stack: { start: 0x7000n, words: [0x10900n], sp: 0x7000n },
+      processorArchitecture: 9, // AMD64
+    });
+    const s = parseMinidumpBuffer(dump, "darwin", "arm64", {
+      stackTrace: true,
+    });
+    expect(s!.faultingOffset).toBe("0x800");
+    expect(s!.stackTrace!.threads[0].frames).toEqual([
+      { module: 0, offset: "0x800" },
+      { module: 0, offset: "0x900" },
+    ]);
   });
 
   it("strips arm64 pointer-tag bits using the Crashpad address_mask", () => {

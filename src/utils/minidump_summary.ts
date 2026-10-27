@@ -65,6 +65,7 @@ const MINIDUMP_SIGNATURE = 0x504d444d;
 const STREAM_THREAD_LIST = 3; // ThreadListStream
 const STREAM_MODULE_LIST = 4; // ModuleListStream
 const STREAM_EXCEPTION = 6; // ExceptionStream
+const STREAM_SYSTEM_INFO = 7; // SystemInfoStream
 const STREAM_CRASHPAD_INFO = 0x43500001; // Crashpad's vendor extension
 
 // Each struct below is a flat C record, so a field's offset is the sum of the
@@ -273,6 +274,14 @@ const SP_OFFSET_IN_CONTEXT: Partial<Record<NodeJS.Architecture, number>> = {
   arm64: 256,
 };
 
+// MINIDUMP_SYSTEM_INFO starts with a u16 ProcessorArchitecture. Breakpad
+// writes 0x8003 for arm64 dumps from before Windows had its own id.
+const SYSTEM_INFO_ARCHITECTURES: Record<number, NodeJS.Architecture> = {
+  9: "x64", // PROCESSOR_ARCHITECTURE_AMD64
+  12: "arm64", // PROCESSOR_ARCHITECTURE_ARM64
+  0x8003: "arm64",
+};
+
 // arm64 calls put the return address in the link register (x30, iregs[30],
 // 8 + 30 * 8 = 248), and leaf functions never spill it to the stack, so
 // the caller of the crashing function is only found here.
@@ -361,6 +370,7 @@ export function parseMinidumpBuffer(
     let exceptionSize = 0;
     let crashpadInfoRva = 0;
     let crashpadInfoSize = 0;
+    let systemInfoRva = 0;
     for (let i = 0; i < numStreams; i++) {
       const entry = dirRva + i * DIR_ENTRY_SIZE;
       if (entry + DIR_ENTRY_SIZE > buf.length) break;
@@ -368,6 +378,7 @@ export function parseMinidumpBuffer(
       const size = view.getUint32(entry + DIR_ENTRY_SIZE_OFF, true);
       const rva = view.getUint32(entry + DIR_ENTRY_RVA_OFF, true);
       if (type === STREAM_THREAD_LIST) threadListRva = rva;
+      else if (type === STREAM_SYSTEM_INFO) systemInfoRva = rva;
       else if (type === STREAM_MODULE_LIST) moduleListRva = rva;
       else if (type === STREAM_EXCEPTION) {
         exceptionRva = rva;
@@ -386,6 +397,13 @@ export function parseMinidumpBuffer(
       return null;
     }
     const exceptionCode = view.getUint32(exceptionRva + EXC_CODE_OFF, true);
+
+    // A kept dump can come from another build of Dyad, such as an x64 build
+    // run before switching to arm64, so its own record of the CPU wins.
+    const cpu =
+      (systemInfoRva !== 0 && systemInfoRva + 2 <= buf.length
+        ? SYSTEM_INFO_ARCHITECTURES[view.getUint16(systemInfoRva, true)]
+        : undefined) ?? arch;
 
     // On arm64, saved addresses can carry pointer-auth / top-byte tag bits.
     // Crashpad records an address_mask to recover the real address.
@@ -417,7 +435,7 @@ export function parseMinidumpBuffer(
       view,
       buf,
       contextRva,
-      IP_OFFSET_IN_CONTEXT[arch],
+      IP_OFFSET_IN_CONTEXT[cpu],
       addressMask,
     );
 
@@ -458,7 +476,7 @@ export function parseMinidumpBuffer(
         stackTrace = scanThreads({
           view,
           buf,
-          arch,
+          arch: cpu,
           modules,
           threadListRva,
           crashingThreadId: view.getUint32(

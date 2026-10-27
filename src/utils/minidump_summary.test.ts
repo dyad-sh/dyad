@@ -57,6 +57,7 @@ function buildMinidump(opts: {
   mainThread?: TestStack & { threadId: number; ip: bigint };
   spOffset?: number; // where sp sits in a CPU context: 152 (x64, default) / 256 (arm64)
   processorArchitecture?: number; // written as a SystemInfo stream when set
+  systemInfoSize?: number; // the size its directory entry declares, default 56
 }): Buffer {
   const buf = Buffer.alloc(16384);
   const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
@@ -370,7 +371,7 @@ function buildMinidump(opts: {
     );
   }
   if (hasThreadList) addEntry(3, threadListSize, threadListRva);
-  if (hasSystemInfo) addEntry(7, 56, systemInfoRva);
+  if (hasSystemInfo) addEntry(7, opts.systemInfoSize ?? 56, systemInfoRva);
 
   return Buffer.from(buf.subarray(0, cursor));
 }
@@ -692,6 +693,20 @@ describe("parseMinidumpBuffer", () => {
       { module: 0, offset: "0x800" },
       { module: 0, offset: "0x900" },
     ]);
+  });
+
+  it("ignores a SystemInfo stream too short to hold the CPU", () => {
+    const dump = buildMinidump({
+      modules: oneModule,
+      exceptionCode: 11,
+      ip: 0x10800n,
+      ipOffset: 264,
+      processorArchitecture: 9, // AMD64, but the stream claims 0 bytes
+      systemInfoSize: 0,
+    });
+    expect(parseMinidumpBuffer(dump, "darwin", "arm64")!.faultingOffset).toBe(
+      "0x800",
+    );
   });
 
   it("strips arm64 pointer-tag bits using the Crashpad address_mask", () => {
@@ -1142,6 +1157,14 @@ describe("stack scan", () => {
 
   it('reports an IP outside every module as "unknown"', () => {
     const trace = scan({ ip: 0x9990000n, stack: stack([0x100a10n]) });
+    expect(trace!.threads[0].frames).toEqual([
+      "unknown",
+      { module: 0, offset: "0xa10" },
+    ]);
+  });
+
+  it('reports a zero IP, as from calling a null function, as "unknown"', () => {
+    const trace = scan({ ip: 0n, stack: stack([0x100a10n]) });
     expect(trace!.threads[0].frames).toEqual([
       "unknown",
       { module: 0, offset: "0xa10" },

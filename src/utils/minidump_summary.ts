@@ -378,7 +378,7 @@ export function parseMinidumpBuffer(
       const size = view.getUint32(entry + DIR_ENTRY_SIZE_OFF, true);
       const rva = view.getUint32(entry + DIR_ENTRY_RVA_OFF, true);
       if (type === STREAM_THREAD_LIST) threadListRva = rva;
-      else if (type === STREAM_SYSTEM_INFO) systemInfoRva = rva;
+      else if (type === STREAM_SYSTEM_INFO && size >= 2) systemInfoRva = rva;
       else if (type === STREAM_MODULE_LIST) moduleListRva = rva;
       else if (type === STREAM_EXCEPTION) {
         exceptionRva = rva;
@@ -822,16 +822,23 @@ function scanThreads(input: {
       frames.push(toFrame(module, address));
     };
 
+    const ipOffset = IP_OFFSET_IN_CONTEXT[arch];
     const ip = readContextRegister(
       view,
       buf,
       contextRva,
-      IP_OFFSET_IN_CONTEXT[arch],
+      ipOffset,
       addressMask,
     );
-    if (ip !== 0n) {
-      // Only the instruction pointer is reported when it misses every
-      // module; scanned values that miss are data, not frames.
+    // A zero ip is a real value when the context was read, as in a call
+    // through a null function pointer. Only the instruction pointer is
+    // reported when it misses every module; scanned values that miss are
+    // data, not frames.
+    const hasIp =
+      ipOffset !== undefined &&
+      contextRva !== 0 &&
+      contextRva + ipOffset + 8 <= buf.length;
+    if (hasIp) {
       if (findModule(modules, ip)) add(ip);
       else frames.push("unknown");
       seen.add(ip);

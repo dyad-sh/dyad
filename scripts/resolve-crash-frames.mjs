@@ -474,7 +474,7 @@ for (const { dumps, triggeringDump } of bundles) {
     !dumps.some((dump) => dump.file === triggeringDump)
   ) {
     console.log(
-      `Report is about ${triggeringDump}, which newer dumps pushed out before the upload.\n`,
+      `Report is about ${triggeringDump}, but its dump was not included in this upload.\n`,
     );
   }
   for (const dump of dumps) {

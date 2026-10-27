@@ -283,6 +283,16 @@ export function ReportDisclosures({
             {t("home:report.crashDumpsUnreadable")}
           </p>
         )}
+        {bundle?.crashDumps?.triggeringDump !== undefined && (
+          // Set on reports from the crash dialog, and sent with the dumps.
+          <p className="text-xs text-muted-foreground">
+            {bundle.crashDumps.triggeringDump === null
+              ? t("home:report.crashDumpsTriggeringNone")
+              : t("home:report.crashDumpsTriggering", {
+                  file: bundle.crashDumps.triggeringDump,
+                })}
+          </p>
+        )}
         {bundle?.crashDumps &&
           (bundle.crashDumps.dumps.length > 0 ? (
             <div className="space-y-1.5">
@@ -297,6 +307,9 @@ export function ReportDisclosures({
                           dump.crashReason ?? dump.exceptionCode ?? "?",
                         ]
                       : [t("home:report.crashDumpUnreadableTitle")]),
+                    ...(dump.file === bundle.crashDumps?.triggeringDump
+                      ? [t("home:report.crashDumpTriggeringMark")]
+                      : []),
                   ].join(" · ")}
                   data={dump}
                 />

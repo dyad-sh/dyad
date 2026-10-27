@@ -801,6 +801,38 @@ describe("HelpDialog disclosures", () => {
     expect(screen.queryByText(/· \? · \?$/)).toBeNull();
   });
 
+  it("shows which dump a crash report names before it is sent", async () => {
+    mocks.getSessionDebugBundle.mockResolvedValue({
+      ...bundle,
+      crashDumps: { dumps: [crashDump], triggeringDump: crashDump.file },
+    });
+    await openForm();
+    const summaries = screen.getAllByText("Show what will be sent");
+    fireEvent.click(summaries[summaries.length - 1]);
+
+    expect(
+      await screen.findByText(
+        `This report names ${crashDump.file} as its crash.`,
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText(/· this report's crash$/)).toBeTruthy();
+  });
+
+  it("says when a crash report names no dump", async () => {
+    mocks.getSessionDebugBundle.mockResolvedValue({
+      ...bundle,
+      crashDumps: { dumps: [crashDump], triggeringDump: null },
+    });
+    await openForm();
+    const summaries = screen.getAllByText("Show what will be sent");
+    fireEvent.click(summaries[summaries.length - 1]);
+
+    expect(
+      await screen.findByText("This report names no dump as its crash."),
+    ).toBeTruthy();
+    expect(screen.queryByText(/this report's crash$/)).toBeNull();
+  });
+
   it("says when there are no crash dumps", async () => {
     mocks.getSessionDebugBundle.mockResolvedValue({
       ...bundle,

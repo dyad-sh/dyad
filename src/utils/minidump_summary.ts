@@ -107,6 +107,7 @@ const EXC_ADDRESS_OFF = 24;
 const EXC_NUM_PARAMS_OFF = 32;
 const EXC_PARAMS_OFF = 40;
 const EXC_MAX_PARAMS = 15;
+const EXC_CONTEXT_SIZE_OFF = 160;
 const EXC_CONTEXT_RVA_OFF = 164;
 // The stream is a fixed-size struct. A smaller declared size means the dump
 // is corrupt, and reads past it would land in a neighboring stream's bytes.
@@ -430,11 +431,14 @@ export function parseMinidumpBuffer(
     // thread's CPU context — not ExceptionAddress, which on a null-deref/abort
     // is the (zero) data fault address. The exception stream points to that
     // context; the IP sits at an arch-specific offset within it.
-    const contextRva = view.getUint32(exceptionRva + EXC_CONTEXT_RVA_OFF, true);
+    const context: CpuContext = {
+      rva: view.getUint32(exceptionRva + EXC_CONTEXT_RVA_OFF, true),
+      size: view.getUint32(exceptionRva + EXC_CONTEXT_SIZE_OFF, true),
+    };
     const instructionPointer = readContextRegister(
       view,
       buf,
-      contextRva,
+      context,
       IP_OFFSET_IN_CONTEXT[cpu],
       addressMask,
     );
@@ -483,7 +487,7 @@ export function parseMinidumpBuffer(
             exceptionRva + EXC_THREAD_ID_OFF,
             true,
           ),
-          crashingContextRva: contextRva,
+          crashingContext: context,
           addressMask,
         });
       } catch {
@@ -704,29 +708,46 @@ function findModule(
   return undefined;
 }
 
+// Where a CPU context sits in the file and the size its descriptor gives it.
+interface CpuContext {
+  rva: number;
+  size: number;
+}
+
+// Whether the context holds a pointer-sized register at `offset`. Checked
+// against the declared size too, so a short context is not read past its end.
+function hasContextRegister(
+  buf: Buffer,
+  context: CpuContext | undefined,
+  offset: number | undefined,
+): boolean {
+  return (
+    context !== undefined &&
+    offset !== undefined &&
+    context.rva !== 0 &&
+    offset + 8 <= context.size &&
+    context.rva + offset + 8 <= buf.length
+  );
+}
+
 // A pointer-sized register from a CPU context, with tag bits stripped, or 0n
 // when the architecture or the context is unknown.
 function readContextRegister(
   view: DataView,
   buf: Buffer,
-  contextRva: number,
+  context: CpuContext | undefined,
   offset: number | undefined,
   addressMask: bigint,
 ): bigint {
-  if (
-    offset === undefined ||
-    contextRva === 0 ||
-    contextRva + offset + 8 > buf.length
-  ) {
-    return 0n;
-  }
-  const value = view.getBigUint64(contextRva + offset, true);
+  if (!context || offset === undefined) return 0n;
+  if (!hasContextRegister(buf, context, offset)) return 0n;
+  const value = view.getBigUint64(context.rva + offset, true);
   return value === 0n ? 0n : applyAddressMask(value, addressMask);
 }
 
 interface ThreadRecord {
   id: number;
-  contextRva: number; // 0 when the record has no context
+  context?: CpuContext; // absent when the record has none
   stack?: { start: bigint; size: number; rva: number }; // address, size, file offset
 }
 
@@ -747,10 +768,12 @@ function readThreadList(
     const contextSize = view.getUint32(t + THREAD_CONTEXT_SIZE_OFF, true);
     threads.push({
       id: view.getUint32(t + THREAD_ID_OFF, true),
-      contextRva:
-        contextSize > 0 && contextRva + contextSize <= buf.length
-          ? contextRva
-          : 0,
+      context:
+        contextRva !== 0 &&
+        contextSize > 0 &&
+        contextRva + contextSize <= buf.length
+          ? { rva: contextRva, size: contextSize }
+          : undefined,
       stack:
         stackRva !== 0 && stackRva + stackSize <= buf.length
           ? {
@@ -779,7 +802,7 @@ function scanThreads(input: {
   modules: MinidumpModule[]; // sorted by base address
   threadListRva: number;
   crashingThreadId: number;
-  crashingContextRva: number; // the exception's context, taken at the crash
+  crashingContext: CpuContext; // the exception's context, taken at the crash
   addressMask: bigint;
 }): StackTrace | undefined {
   const { view, buf, arch, modules, addressMask } = input;
@@ -806,7 +829,7 @@ function scanThreads(input: {
   };
 
   const scanThread = (
-    contextRva: number,
+    context: CpuContext | undefined,
     stack: ThreadRecord["stack"],
   ): StackFrame[] => {
     const frames: StackFrame[] = [];
@@ -823,22 +846,12 @@ function scanThreads(input: {
     };
 
     const ipOffset = IP_OFFSET_IN_CONTEXT[arch];
-    const ip = readContextRegister(
-      view,
-      buf,
-      contextRva,
-      ipOffset,
-      addressMask,
-    );
+    const ip = readContextRegister(view, buf, context, ipOffset, addressMask);
     // A zero ip is a real value when the context was read, as in a call
     // through a null function pointer. Only the instruction pointer is
     // reported when it misses every module; scanned values that miss are
     // data, not frames.
-    const hasIp =
-      ipOffset !== undefined &&
-      contextRva !== 0 &&
-      contextRva + ipOffset + 8 <= buf.length;
-    if (hasIp) {
+    if (hasContextRegister(buf, context, ipOffset)) {
       if (findModule(modules, ip)) add(ip);
       else frames.push("unknown");
       seen.add(ip);
@@ -848,7 +861,7 @@ function scanThreads(input: {
         readContextRegister(
           view,
           buf,
-          contextRva,
+          context,
           ARM64_LR_OFFSET_IN_CONTEXT,
           addressMask,
         ),
@@ -858,7 +871,7 @@ function scanThreads(input: {
     const sp = readContextRegister(
       view,
       buf,
-      contextRva,
+      context,
       SP_OFFSET_IN_CONTEXT[arch],
       0n,
     );
@@ -896,14 +909,14 @@ function scanThreads(input: {
     {
       crashing: true,
       main: crashingIsMain,
-      frames: scanThread(input.crashingContextRva, crashing?.stack),
+      frames: scanThread(input.crashingContext, crashing?.stack),
     },
   ];
-  if (main && !crashingIsMain && main.contextRva !== 0) {
+  if (main && !crashingIsMain && main.context) {
     result.push({
       crashing: false,
       main: true,
-      frames: scanThread(main.contextRva, main.stack),
+      frames: scanThread(main.context, main.stack),
     });
   }
   return { modules: traceModules, threads: result };

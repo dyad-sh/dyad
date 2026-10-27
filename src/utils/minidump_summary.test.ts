@@ -58,6 +58,7 @@ function buildMinidump(opts: {
   spOffset?: number; // where sp sits in a CPU context: 152 (x64, default) / 256 (arm64)
   processorArchitecture?: number; // written as a SystemInfo stream when set
   systemInfoSize?: number; // the size its directory entry declares, default 56
+  exceptionContextSize?: number; // the size the exception's context descriptor declares
 }): Buffer {
   const buf = Buffer.alloc(16384);
   const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
@@ -244,7 +245,11 @@ function buildMinidump(opts: {
       dv.setBigUint64(exceptionRva + 40 + i * 8, param, true);
     });
   }
-  dv.setUint32(exceptionRva + 160, contextSize, true);
+  dv.setUint32(
+    exceptionRva + 160,
+    opts.exceptionContextSize ?? contextSize,
+    true,
+  );
   dv.setUint32(exceptionRva + 164, contextRva, true);
   const exceptionSize = 168;
   cursor = (exceptionRva + exceptionSize + 3) & ~3;
@@ -1169,6 +1174,21 @@ describe("stack scan", () => {
       "unknown",
       { module: 0, offset: "0xa10" },
     ]);
+  });
+
+  it("reads no registers past the size the context declares", () => {
+    // The bytes after a short context belong to something else, so the
+    // zero found where the IP would be is not reported as a frame.
+    const dump = buildMinidump({
+      modules: [{ base: 0x100000n, size: 0x10000, name: "/opt/dyad/dyad" }],
+      exceptionCode: 11,
+      ip: 0n,
+      ipOffset: 248,
+      stack: stack([0x100a10n]),
+      exceptionContextSize: 16,
+    });
+    const s = parseMinidumpBuffer(dump, "linux", "x64", { stackTrace: true });
+    expect(s!.stackTrace!.threads[0].frames).toEqual([]);
   });
 
   it("keeps the IP when the crashing thread is not in the list", () => {

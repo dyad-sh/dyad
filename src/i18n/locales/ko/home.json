@@ -168,6 +168,7 @@
     "crashDumpsTitle": "네이티브 크래시 스택 트레이스",
     "crashDumpsSubtitle": "Dyad가 보관하는 크래시 덤프(최대 5개)의 스택 트레이스와 관련 라이브러리 이름입니다. 메모리 내용이나 파일 경로는 포함되지 않습니다.",
     "crashDumpsNeedSession": "채팅 세션과 함께 전송됩니다.",
+    "crashDumpsAlreadySent": "세션이 이미 이 선택으로 업로드되었습니다.",
     "crashDumpsNone": "이 컴퓨터에 크래시 덤프가 없습니다.",
     "reportAnIssue": "문제 신고",
     "reportBugBlurb": "무엇이 잘못되었는지 알려주세요. 함께 보낼 내용은 직접 선택할 수 있습니다.",

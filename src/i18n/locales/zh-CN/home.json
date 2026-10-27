@@ -169,6 +169,7 @@
     "crashDumpsTitle": "原生崩溃堆栈跟踪",
     "crashDumpsSubtitle": "来自 Dyad 保留的崩溃转储（最多 5 个）的堆栈跟踪，以及相关库的名称。不包含内存内容或文件路径。",
     "crashDumpsNeedSession": "随聊天会话一起发送。",
+    "crashDumpsAlreadySent": "会话已按此选择上传。",
     "crashDumpsNone": "此计算机上没有崩溃转储。",
     "reportAnIssue": "报告问题",
     "reportBugBlurb": "告诉我们出了什么问题。您可以选择一并发送哪些内容。",

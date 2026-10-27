@@ -169,6 +169,7 @@
     "crashDumpsTitle": "Rastreamentos de pilha de falhas nativas",
     "crashDumpsSubtitle": "Rastreamentos de pilha dos despejos de falha que o Dyad mantém (até 5), com os nomes das bibliotecas envolvidas. Sem conteúdo de memória nem caminhos de arquivos.",
     "crashDumpsNeedSession": "Enviado com a sessão de chat.",
+    "crashDumpsAlreadySent": "A sessão já foi enviada com esta escolha.",
     "crashDumpsNone": "Nenhum despejo de falha neste computador.",
     "reportAnIssue": "Relatar um problema",
     "reportBugBlurb": "Conte-nos o que deu errado. Você escolhe o que enviar junto.",

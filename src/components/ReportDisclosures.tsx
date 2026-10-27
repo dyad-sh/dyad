@@ -126,6 +126,8 @@ interface ReportDisclosuresProps {
   /** Crash dumps travel in the session upload, so they need it ticked. */
   includeCrashDumps: boolean;
   onIncludeCrashDumpsChange: (checked: boolean) => void;
+  /** The session is already on the service, along with or without the dumps. */
+  sessionUploaded: boolean;
   /** Locked once filing starts, since the choice has already been acted on. */
   locked: boolean;
 }
@@ -143,6 +145,7 @@ export function ReportDisclosures({
   sessionUnavailableReason,
   includeCrashDumps,
   onIncludeCrashDumpsChange,
+  sessionUploaded,
   locked,
 }: ReportDisclosuresProps) {
   const { t } = useTranslation(["home", "common"]);
@@ -256,10 +259,14 @@ export function ReportDisclosures({
         subtitle={t("home:report.crashDumpsSubtitle")}
         checked={includeCrashDumps && includeSession}
         onCheckedChange={onIncludeCrashDumpsChange}
-        disabled={locked || !includeSession}
+        disabled={locked || sessionUploaded || !includeSession}
         disabledReason={
           sessionUnavailableReason ??
-          (includeSession ? undefined : t("home:report.crashDumpsNeedSession"))
+          (sessionUploaded
+            ? t("home:report.crashDumpsAlreadySent")
+            : includeSession
+              ? undefined
+              : t("home:report.crashDumpsNeedSession"))
         }
         onExpand={onSessionExpand}
       >

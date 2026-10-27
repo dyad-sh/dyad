@@ -949,7 +949,7 @@ describe("HelpDialog disclosures", () => {
     expect(bodyOfOpenedIssue()).toContain("Session ID: v2:abc");
   });
 
-  it("uploads the session again when a surviving draft unticks crash dumps", async () => {
+  it("locks the crash-dump choice of a draft whose session is uploaded", async () => {
     mocks.getSessionDebugBundle.mockResolvedValue({
       ...bundle,
       crashDumps: { dumps: [crashDump] },
@@ -972,18 +972,21 @@ describe("HelpDialog disclosures", () => {
     });
 
     fireEvent.click(screen.getByText("reopen-help"));
-    fireEvent.click(
-      await screen.findByRole("checkbox", {
-        name: "Native crash stack traces",
-      }),
-    );
+    // The dumps are already on the service, so unticking could not take
+    // them back.
+    const dumps = await screen.findByRole("checkbox", {
+      name: "Native crash stack traces",
+    });
+    expect(dumps.hasAttribute("data-disabled")).toBe(true);
+    expect(
+      screen.getByText("The session was already uploaded with this choice."),
+    ).toBeTruthy();
     await fileIt();
 
-    expect(mocks.uploadToSignedUrl).toHaveBeenCalledTimes(2);
-    expect(
-      mocks.uploadToSignedUrl.mock.calls.at(-1)?.[0]?.data,
-    ).not.toHaveProperty("crashDumps");
-    expect(bodyOfOpenedIssue()).not.toContain("Crash dumps");
+    expect(mocks.uploadToSignedUrl).toHaveBeenCalledTimes(1);
+    expect(bodyOfOpenedIssue()).toContain(
+      "Crash dumps: 1 (2026-07-15T20:39:37.039Z)",
+    );
   });
 
   it("does not cite a session whose upload was cut short", async () => {

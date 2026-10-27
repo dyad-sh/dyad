@@ -172,6 +172,7 @@
     "crashDumpsTitle": "Trazas de pila de fallos nativos",
     "crashDumpsSubtitle": "Trazas de pila de los volcados de fallos que Dyad conserva (hasta 5), con los nombres de las bibliotecas implicadas. Sin contenido de memoria ni rutas de archivos.",
     "crashDumpsNeedSession": "Se envía con la sesión de chat.",
+    "crashDumpsAlreadySent": "La sesión ya se subió con esta elección.",
     "crashDumpsNone": "No hay volcados de fallos en este equipo.",
     "reportAnIssue": "Informar de un problema",
     "reportBugBlurb": "Cuéntanos qué ha fallado. Tú eliges qué enviar junto con el informe.",

@@ -172,6 +172,7 @@
     "crashDumpsTitle": "Yerel çökme yığın izleri",
     "crashDumpsSubtitle": "Dyad'ın sakladığı çökme dökümlerinden (en fazla 5) yığın izleri ve ilgili kitaplıkların adları. Bellek içeriği veya dosya yolu yok.",
     "crashDumpsNeedSession": "Sohbet oturumuyla birlikte gönderilir.",
+    "crashDumpsAlreadySent": "Oturum bu seçimle zaten yüklendi.",
     "crashDumpsNone": "Bu bilgisayarda çökme dökümü yok.",
     "reportAnIssue": "Sorun bildir",
     "reportBugBlurb": "Ne ters gittiğini bize anlatın. Yanında ne gönderileceğini siz seçersiniz.",

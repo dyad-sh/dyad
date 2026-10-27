@@ -300,6 +300,9 @@ export function HelpDialog() {
   // sending the reporter's chat and codebase a second time and leaving the
   // first copy on the service with no issue pointing at it.
   const uploadedSession = useRef<UploadedSession | null>(null);
+  // Whether a session upload exists for this draft, for the UI: what went
+  // with it can no longer be changed.
+  const [sessionUploaded, setSessionUploaded] = useState(false);
   // The screenshot this draft already uploaded. A resubmit reuses the URL:
   // main dropped the image once it was in the bucket, so it cannot be sent
   // again, and the copy already there would have no issue pointing at it.
@@ -563,15 +566,8 @@ export function HelpDialog() {
     includeCrashDumps: boolean,
     token: number,
   ): Promise<UploadedSession | null> => {
-    // A kept draft can come back with the crash-dump box changed, and then
-    // the earlier upload no longer matches what the reporter chose.
     const alreadyUploaded = uploadedSession.current;
-    if (
-      alreadyUploaded &&
-      (alreadyUploaded.crashDumpTimes !== null) === includeCrashDumps
-    ) {
-      return alreadyUploaded;
-    }
+    if (alreadyUploaded) return alreadyUploaded;
 
     const read = loaded ?? (await readSession(chatId));
     if (captureToken.current !== token) return null;
@@ -620,7 +616,10 @@ export function HelpDialog() {
     // Only the report that made this upload may remember it: a PUT can finish
     // after the reporter has pressed Back, and its continuation must not hand
     // the next report a session that was never its own.
-    if (captureToken.current === token) uploadedSession.current = session;
+    if (captureToken.current === token) {
+      uploadedSession.current = session;
+      setSessionUploaded(true);
+    }
     return session;
   };
 
@@ -794,6 +793,7 @@ export function HelpDialog() {
     setBundleLoading(false);
     if (!keepDraft) {
       uploadedSession.current = null;
+      setSessionUploaded(false);
       discardCapture();
     }
     const uploadId = activeUpload.current;
@@ -1243,6 +1243,7 @@ export function HelpDialog() {
               onSessionExpand={loadSessionBundle}
               includeCrashDumps={includeCrashDumps}
               onIncludeCrashDumpsChange={setIncludeCrashDumps}
+              sessionUploaded={sessionUploaded}
               locked={isFiling}
               sessionUnavailableReason={
                 sessionChatId == null

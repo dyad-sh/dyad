@@ -171,6 +171,7 @@
     "crashDumpsNeedSession": "Enviado com a sessão de chat.",
     "crashDumpsAlreadySent": "A sessão já foi enviada com esta escolha.",
     "crashDumpsNone": "Nenhum despejo de falha neste computador.",
+    "crashDumpsUnreadable": "Não foi possível ler os despejos de falha.",
     "reportAnIssue": "Relatar um problema",
     "reportBugBlurb": "Conte-nos o que deu errado. Você escolhe o que enviar junto.",
     "reportBugHeading": "Relatar um bug",

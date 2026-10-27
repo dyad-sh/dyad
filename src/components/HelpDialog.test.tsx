@@ -768,6 +768,32 @@ describe("HelpDialog disclosures", () => {
     );
   });
 
+  it("tells unreadable crash dumps apart from there being none", async () => {
+    // The bundle carries no crashDumps when main could not read them.
+    await openForm();
+    const summaries = screen.getAllByText("Show what will be sent");
+    fireEvent.click(summaries[summaries.length - 1]);
+
+    expect(
+      await screen.findByText("Crash dumps could not be read."),
+    ).toBeTruthy();
+    expect(screen.queryByText("No crash dumps on this machine.")).toBeNull();
+  });
+
+  it("says when there are no crash dumps", async () => {
+    mocks.getSessionDebugBundle.mockResolvedValue({
+      ...bundle,
+      crashDumps: { dumps: [] },
+    });
+    await openForm();
+    const summaries = screen.getAllByText("Show what will be sent");
+    fireEvent.click(summaries[summaries.length - 1]);
+
+    expect(
+      await screen.findByText("No crash dumps on this machine."),
+    ).toBeTruthy();
+  });
+
   it("does not let consent be withdrawn after it has been acted on", async () => {
     let release = (_: unknown) => {};
     mocks.uploadToSignedUrl.mockReturnValue(

@@ -176,6 +176,7 @@
     "crashDumpsNeedSession": "Sent with the chat session.",
     "crashDumpsAlreadySent": "The session was already uploaded with this choice.",
     "crashDumpsNone": "No crash dumps on this machine.",
+    "crashDumpsUnreadable": "Crash dumps could not be read.",
     "reportAnIssue": "Report an issue",
     "reportBugBlurb": "Tell us what went wrong. You choose what to send along with it.",
     "reportBugHeading": "Report a bug",

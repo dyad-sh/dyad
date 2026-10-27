@@ -276,8 +276,15 @@ export function ReportDisclosures({
             {t("home:report.sessionLoading")}
           </div>
         )}
-        {bundle &&
-          (bundle.crashDumps && bundle.crashDumps.dumps.length > 0 ? (
+        {bundle && !bundle.crashDumps && (
+          // Main leaves them out when it could not read them, which is not
+          // the same as there being none.
+          <p className="text-xs text-muted-foreground">
+            {t("home:report.crashDumpsUnreadable")}
+          </p>
+        )}
+        {bundle?.crashDumps &&
+          (bundle.crashDumps.dumps.length > 0 ? (
             <div className="space-y-1.5">
               {bundle.crashDumps.dumps.map((dump) => (
                 <Detail

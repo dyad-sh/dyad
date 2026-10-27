@@ -171,6 +171,7 @@
     "crashDumpsNeedSession": "随聊天会话一起发送。",
     "crashDumpsAlreadySent": "会话已按此选择上传。",
     "crashDumpsNone": "此计算机上没有崩溃转储。",
+    "crashDumpsUnreadable": "无法读取崩溃转储。",
     "reportAnIssue": "报告问题",
     "reportBugBlurb": "告诉我们出了什么问题。您可以选择一并发送哪些内容。",
     "reportBugHeading": "报告错误",

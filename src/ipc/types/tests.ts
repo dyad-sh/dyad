@@ -395,6 +395,14 @@ const QueuedTestRunSchema = z.object({
   grep: z.string().optional(),
 });
 export const TestRunQueueSchema = z.object({
+  /** Provider admission notice, retained for failed setup until a later success. */
+  neonBranchLimit: z
+    .object({
+      runId: z.number(),
+      projectId: z.string(),
+      status: z.enum(["waiting", "blocked"]),
+    })
+    .optional(),
   activeRuns: z
     .array(
       QueuedTestRunSchema.extend({

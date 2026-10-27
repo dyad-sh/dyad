@@ -442,5 +442,11 @@
     "sending": "Enviando...",
     "send": "Enviar {{count}}"
   },
-  "safetyReviewUnavailable": "Revisión de seguridad no disponible"
+  "safetyReviewUnavailable": "Revisión de seguridad no disponible",
+  "neonBranchLimit": {
+    "title": "Se alcanzó el límite de ramas de Neon",
+    "waiting": "Tu plan de Neon limita el número de ramas de base de datos. Las pruebas esperan a que termine otra ejecución y libere una rama; después continuarán automáticamente.",
+    "blocked": "Tu plan de Neon no permite crear otra rama de prueba. Elimina una rama que no uses en Neon o mejora tu plan y vuelve a ejecutar las pruebas.",
+    "manage": "Abrir Neon"
+  }
 }

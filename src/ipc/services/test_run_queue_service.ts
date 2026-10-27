@@ -8,6 +8,8 @@ import {
 } from "@/test_run_queue/controller";
 import type { TestRunStopReason } from "@/test_run_queue/state";
 import { DEFAULT_MAX_CONCURRENT_TEST_RUNS } from "@/shared/settings_defaults";
+import type { NeonBranchLimitStatus } from "@/shared/neon_branch_limit";
+import type { TestRunQueueSnapshot } from "../types/tests";
 import {
   systemClock,
   type Clock,
@@ -29,6 +31,7 @@ type RunRecord = {
   request: TestRunContextRequest;
   context?: TestRunContext | null;
   signal?: AbortSignal;
+  neonBranchLimit?: { status: NeonBranchLimitStatus; projectId: string };
 };
 
 /**
@@ -45,6 +48,10 @@ export function createTestRunQueueService({
   const deletingApps = new Set<number>();
   const senders = new Map<number, IpcMainInvokeEvent["sender"]>();
   const records = new Map<number, RunRecord>();
+  const blockedNeonRuns = new Map<
+    number,
+    { runId: number; projectId: string }
+  >();
   let nextTestRunId = clock.now() * 1000;
   let driving = false;
   let driveTimer: ClockHandle | undefined;
@@ -255,7 +262,9 @@ export function createTestRunQueueService({
       });
   }
 
-  function getAppTestRunQueue(appId: number) {
+  function getAppTestRunQueue(appId: number): TestRunQueueSnapshot & {
+    activeRuns: NonNullable<TestRunQueueSnapshot["activeRuns"]>;
+  } {
     const state = queue.getSnapshot();
     const activeRuns = (state.activeRuns ?? [])
       .filter((run) => run.appId === appId)
@@ -263,11 +272,50 @@ export function createTestRunQueueService({
         ...run,
         branch: records.get(run.runId)?.context?.branch ?? run.branch,
       }));
+    const waitingRun = activeRuns.find(
+      (run) =>
+        records.get(run.runId)?.neonBranchLimit?.status === "waiting" &&
+        !run.stopping,
+    );
+    const blockedRun = blockedNeonRuns.get(appId);
     return {
+      ...(waitingRun
+        ? {
+            neonBranchLimit: {
+              runId: waitingRun.runId,
+              projectId: records.get(waitingRun.runId)!.neonBranchLimit!
+                .projectId,
+              status: "waiting" as const,
+            },
+          }
+        : blockedRun
+          ? { neonBranchLimit: { ...blockedRun, status: "blocked" as const } }
+          : {}),
       activeRun: activeRuns[0] ?? null,
       activeRuns,
       queuedRuns: state.queuedRuns.filter((run) => run.appId === appId),
     };
+  }
+
+  // The queue service owns provider admission notices, so remounting the chat
+  // or opening another window can bootstrap the same current explanation.
+  function setNeonBranchLimit(
+    runId: number,
+    projectId: string,
+    status: NeonBranchLimitStatus | undefined,
+  ) {
+    const record = records.get(runId);
+    if (!record || record.signal?.aborted) return;
+    record.neonBranchLimit = status ? { status, projectId } : undefined;
+    const appId = record.request.appId;
+    if (status === "blocked") blockedNeonRuns.set(appId, { runId, projectId });
+    else if (status === undefined) blockedNeonRuns.delete(appId);
+    const sender = senders.get(appId);
+    if (sender)
+      broadcastToRegisteredWindows(sender, "tests:queue-state", {
+        appId,
+        ...getAppTestRunQueue(appId),
+      });
   }
 
   /** Called under the source snapshot claim before expensive setup begins. */
@@ -320,6 +368,7 @@ export function createTestRunQueueService({
     return getAppTestRunQueue(appId).activeRuns.length > 0;
   }
   function beginAppTestDeletion(appId: number) {
+    blockedNeonRuns.delete(appId);
     deletingApps.add(appId);
     stopAppTestsForApp(appId, { kind: "app-deleted" });
     return {
@@ -330,6 +379,7 @@ export function createTestRunQueueService({
     };
   }
   return {
+    setNeonBranchLimit,
     withAppTestRun,
     getAppTestRunQueue,
     validateTestRunInputs,
@@ -344,6 +394,7 @@ export function createTestRunQueueService({
 }
 
 export const {
+  setNeonBranchLimit,
   withAppTestRun,
   getAppTestRunQueue,
   validateTestRunInputs,

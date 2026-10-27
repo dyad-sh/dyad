@@ -441,5 +441,11 @@
     "sending": "正在发送...",
     "send": "发送 {{count}} 条"
   },
-  "safetyReviewUnavailable": "安全审查不可用"
+  "safetyReviewUnavailable": "安全审查不可用",
+  "neonBranchLimit": {
+    "title": "已达到 Neon 分支数量上限",
+    "waiting": "您的 Neon 套餐限制了数据库分支的数量。测试正在等待其他运行结束并释放分支，随后将自动继续。",
+    "blocked": "您的 Neon 套餐无法再创建测试分支。请在 Neon 中删除不再使用的分支或升级套餐，然后重新运行测试。",
+    "manage": "打开 Neon"
+  }
 }

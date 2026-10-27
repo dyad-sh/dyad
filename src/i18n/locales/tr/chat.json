@@ -444,5 +444,11 @@
   },
   "cancellationRemovingTestDatabase": "Geçici test veritabanı kaldırılıyor. Bu işlem biraz zaman alabilir.",
   "cancellationCleaningTestSandbox": "Bu çalıştırmanın test ortamı ve verileri temizleniyor.",
-  "safetyReviewUnavailable": "Güvenlik incelemesi kullanılamıyor"
+  "safetyReviewUnavailable": "Güvenlik incelemesi kullanılamıyor",
+  "neonBranchLimit": {
+    "title": "Neon dal sınırına ulaşıldı",
+    "waiting": "Neon planınız veritabanı dalı sayısını sınırlar. Testler, başka bir çalıştırmanın bitip bir dalı boşaltmasını bekliyor. Ardından otomatik olarak devam edecek.",
+    "blocked": "Neon planınız başka bir test dalı oluşturmaya izin vermiyor. Neon’da kullanılmayan bir dalı silin veya planınızı yükseltin, ardından testleri yeniden çalıştırın.",
+    "manage": "Neon’u aç"
+  }
 }

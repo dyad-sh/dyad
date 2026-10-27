@@ -5,7 +5,8 @@ import {
 } from "./test_run_timing";
 import fs from "node:fs";
 import { randomUUID } from "node:crypto";
-import { acquireSharedNeonTestBranch } from "./shared_neon_test_branch";
+import { acquireNeonTestBranch } from "./neon_test_branch_lease";
+import type { NeonBranchLimitStatus } from "@/shared/neon_branch_limit";
 import log from "electron-log";
 import { DyadError, DyadErrorKind } from "../../errors/dyad_error";
 import { testRunStoppedError, testRunStoppedInfraError } from "./test_run_stop";
@@ -16,6 +17,7 @@ import {
   createTempTestBranch,
   markAndDeleteTempTestBranch,
   trackedTestBranchId,
+  trackedRunTestBranchId,
 } from "../utils/neon_test_branch";
 import { createNeonTestAccount } from "../utils/neon_test_account";
 import { retryOnLocked } from "../utils/retryOnLocked";
@@ -195,6 +197,7 @@ export async function prepareIsolatedTestDatabase({
   perTestCase = false,
   appPathOverride,
   restartApp = true,
+  onNeonBranchLimit,
 }: {
   timing?: TestRunTiming;
   app: AppRow;
@@ -207,6 +210,7 @@ export async function prepareIsolatedTestDatabase({
   appPathOverride?: string;
   /** E2E sandboxes start their own runtime after isolation is prepared. */
   restartApp?: boolean;
+  onNeonBranchLimit?: (status: NeonBranchLimitStatus | undefined) => void;
 }): Promise<PreparedIsolation> {
   // Supabase: isolate via a throwaway, RLS-scoped test user.
   if (app.supabaseProjectId) {
@@ -245,9 +249,10 @@ export async function prepareIsolatedTestDatabase({
   let envSnapshot: string | null = null;
   let envModified = false;
   let branchId: string | undefined;
-  const shared = envIsDisposable && perTestCase;
-  let sharedLease:
-    | Awaited<ReturnType<typeof acquireSharedNeonTestBranch>>
+  const branchOwnerId =
+    envIsDisposable && perTestCase ? randomUUID() : undefined;
+  let branchLease:
+    | Awaited<ReturnType<typeof acquireNeonTestBranch>>
     | undefined;
   // What the row tracked before this run touched anything. The failure paths
   // below can only claim a marker that differs from this one — see the catch.
@@ -313,8 +318,8 @@ export async function prepareIsolatedTestDatabase({
         timing,
         "neon_branch_delete",
         () =>
-          sharedLease
-            ? sharedLease.release()
+          branchLease
+            ? branchLease.release()
             : markAndDeleteTempTestBranch(app, branchId!),
         (result) => (result ? "completed" : "failed"),
       );
@@ -349,25 +354,24 @@ export async function prepareIsolatedTestDatabase({
       timing,
       "neon_branch_create",
       async () => {
-        if (shared) {
-          sharedLease = await acquireSharedNeonTestBranch(
+        if (branchOwnerId) {
+          branchLease = await acquireNeonTestBranch(
             app,
             appPath,
-            async (created) => {
-              const clear = await createNeonTestDataCleaner({
-                databaseUrl: created.databaseUrl,
-                projectId: app.neonProjectId!,
-                branchId: created.branchId,
-                protectedBranchIds: [
-                  app.neonActiveBranchId,
-                  app.neonDevelopmentBranchId,
-                  app.neonPreviewBranchId,
-                ],
-              });
-              await clear(signal);
+            branchOwnerId,
+            {
+              signal,
+              onCapacity: (status) => {
+                onNeonBranchLimit?.(status);
+                if (status === "waiting")
+                  emit(
+                    "Your Neon plan's branch limit was reached. This run is queued until another test run finishes cleaning up its branch.\n",
+                    "setup",
+                  );
+              },
             },
           );
-          return sharedLease.branch;
+          return branchLease.branch;
         }
         return createTempTestBranch(app, {
           cleanupOnly: !restartApp,
@@ -415,18 +419,16 @@ export async function prepareIsolatedTestDatabase({
       timing,
       "neon_cleaner_setup",
       () =>
-        shared
-          ? Promise.resolve(async () => {})
-          : createNeonTestDataCleaner({
-              databaseUrl: branch.databaseUrl,
-              projectId: app.neonProjectId!,
-              branchId: branch.branchId,
-              protectedBranchIds: [
-                app.neonActiveBranchId,
-                app.neonDevelopmentBranchId,
-                app.neonPreviewBranchId,
-              ],
-            }),
+        createNeonTestDataCleaner({
+          databaseUrl: branch.databaseUrl,
+          projectId: app.neonProjectId!,
+          branchId: branch.branchId,
+          protectedBranchIds: [
+            app.neonActiveBranchId,
+            app.neonDevelopmentBranchId,
+            app.neonPreviewBranchId,
+          ],
+        }),
     );
     signal?.throwIfAborted();
     if (!perTestCase) {
@@ -520,9 +522,7 @@ export async function prepareIsolatedTestDatabase({
 
     if (perTestCase)
       emit(
-        shared
-          ? "Tests share this app's temporary Neon branch. Each case gets a unique account; scope all data to that account. Read credentials in the test or beforeEach. The branch is deleted after its last run finishes.\n"
-          : "Each test starts with an empty temporary Neon database, including the first test. Read test credentials inside the test or beforeEach. Your original branch is unchanged.\n",
+        "Each test starts with an empty temporary Neon database, including the first test. Seed required rows in each test or beforeEach, and read test credentials there rather than at module scope or in beforeAll. Your original branch is unchanged.\n",
         "running",
       );
 
@@ -538,9 +538,8 @@ export async function prepareIsolatedTestDatabase({
               caseTiming = timing,
             ): Promise<Record<string, string>> => {
               signal?.throwIfAborted();
-              // Exclusive legacy sessions clear each case. Shared sandbox
-              // sessions already cleared parent data once before the first lease;
-              // their cleaner is a no-op so sibling accounts keep their data.
+              // Clear copied parent data before the first case too. Repeating
+              // this before later cases recovers a worker killed before teardown.
               await measureTestRunStep(caseTiming, "neon_data_cleanup", () =>
                 clearTestData(caseSignal),
               );
@@ -581,11 +580,11 @@ export async function prepareIsolatedTestDatabase({
       teardown,
     };
   } catch (error) {
-    if (shared && !sharedLease) {
+    if (branchOwnerId && !branchLease) {
       // The branch manager owns failed creation compensation. Preserve a failed
       // cleanup verdict without adopting/deleting another owner's marker here.
       try {
-        trackedBranchUnknown = !!(await trackedTestBranchId(app.id));
+        trackedBranchUnknown = !!(await trackedRunTestBranchId(branchOwnerId));
       } catch {
         trackedBranchUnknown = true;
       }
@@ -605,7 +604,7 @@ export async function prepareIsolatedTestDatabase({
     // a crashed recorder left the user's real `.env.local` pointed at it, so
     // this would erase the record startup recovery needs, after the branch was
     // already gone.
-    if (!branchId && !shared) {
+    if (!branchId && !branchOwnerId) {
       try {
         const tracked = await trackedTestBranchId(app.id);
         if (tracked && tracked !== entryMarker) branchId = tracked;

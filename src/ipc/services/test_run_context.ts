@@ -171,9 +171,7 @@ export async function loadTestRunContext(
     revision: commit,
     databaseKey: app.supabaseProjectId
       ? `supabase:${app.supabaseProjectId}`
-      : app.neonProjectId
-        ? `neon:${app.neonProjectId}:${app.id}`
-        : undefined,
+      : undefined,
     exclusive: !usesSandboxedE2eTests(settings) || !!app.installCommand,
   };
 }

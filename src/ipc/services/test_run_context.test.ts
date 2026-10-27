@@ -68,7 +68,8 @@ afterEach(async () => {
 
 it("detects changed workspace inputs", async () => {
   const first = await loadTestRunContext(request);
-  expect(first.databaseKey).toBe("neon:neon:7");
+  // Neon runs own separate branches, so different revisions can overlap.
+  expect(first.databaseKey).toBeUndefined();
   expect(first.exclusive).toBe(false);
   await fs.writeFile(
     path.join(h.appPath, "e2e-tests", "fixtures.ts"),

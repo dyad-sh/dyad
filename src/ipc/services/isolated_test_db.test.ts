@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   // stale by this point — so that is what these tests pin.
   markAndDeleteTempTestBranch: vi.fn().mockResolvedValue(undefined),
   trackedTestBranchId: vi.fn().mockResolvedValue(null),
+  trackedRunTestBranchId: vi.fn().mockResolvedValue(null),
   createNeonTestAccount: vi.fn(),
   clearNeonTestData: vi.fn().mockResolvedValue(undefined),
   createNeonTestDataCleaner: vi.fn(),
@@ -59,18 +60,19 @@ vi.mock("../utils/neon_test_branch", () => ({
   createTempTestBranch: mocks.createTempTestBranch,
   markAndDeleteTempTestBranch: mocks.markAndDeleteTempTestBranch,
   trackedTestBranchId: mocks.trackedTestBranchId,
+  trackedRunTestBranchId: mocks.trackedRunTestBranchId,
 }));
-vi.mock("./shared_neon_test_branch", () => ({
-  acquireSharedNeonTestBranch: async (
+vi.mock("./neon_test_branch_lease", () => ({
+  acquireNeonTestBranch: async (
     app: unknown,
     appPathOverride: string,
-    initialize: (branch: unknown) => Promise<void>,
+    ownerId: string,
   ) => {
     const branch = await mocks.createTempTestBranch(app, {
       cleanupOnly: true,
       appPathOverride,
+      ownerId,
     });
-    await initialize(branch);
     return {
       branch,
       release: () => mocks.markAndDeleteTempTestBranch(app, branch.branchId),
@@ -222,7 +224,7 @@ describe("per-case database isolation", () => {
       });
       await prepared.testCaseLifecycle!.afterEach();
     }
-    expect(mocks.clearNeonTestData).toHaveBeenCalledTimes(1);
+    expect(mocks.clearNeonTestData).toHaveBeenCalledTimes(4);
     expect(mocks.updateNeonEnvVars).toHaveBeenCalledWith(
       expect.objectContaining({ appPath: "/sandboxes/run-1" }),
     );

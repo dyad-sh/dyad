@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { appOperationCoordinator } from "@/ipc/services/app_operation_coordinator";
 import {
   createGitOverlayWorkspace,
+  readGitOverlayWorkspaceMarker,
   removeGitOverlayWorkspace,
 } from "@/ipc/services/git_overlay_workspace";
 import {
@@ -22,6 +23,7 @@ vi.mock("@/ipc/services/git_overlay_workspace", () => ({
   createGitOverlayWorkspace: vi.fn(),
   removeGitOverlayWorkspace: vi.fn(),
   readGitOverlayWorkspaceMarker: vi.fn(),
+  isGitOverlayWorkspaceActive: vi.fn(),
 }));
 vi.mock("@/ipc/services/isolated_package_install", () => ({
   resolvePackageManager: vi.fn(),
@@ -431,5 +433,218 @@ describe("isolated production build execution", () => {
       install.resolve();
       await Promise.allSettled([execution]);
     }
+  });
+
+  it.each(["hangs", "fails"])(
+    "prepares without waiting for stale snapshot cleanup that %s",
+    async (outcome) => {
+      const stalePath = path.join(
+        root,
+        "build-snapshots",
+        ".dyad-build-OLD123",
+      );
+      await fs.mkdir(stalePath, { recursive: true });
+      const hourAndAHalfAgo = new Date(Date.now() - 90 * 60_000);
+      await fs.utimes(stalePath, hourAndAHalfAgo, hourAndAHalfAgo);
+      vi.mocked(readGitOverlayWorkspaceMarker).mockResolvedValue({
+        schema: "dyad-git-overlay-worktree-v1",
+        purpose: "build",
+        sourceRepoPath: appPath,
+        submoduleWorktrees: [],
+      });
+      const staleCleanup = deferred();
+      vi.mocked(removeGitOverlayWorkspace).mockImplementation(
+        async (target) => {
+          if (target !== stalePath) return;
+          if (outcome === "fails") throw new Error("EBUSY: resource busy");
+          // Like a recursive delete of an old dependency tree on Windows: it
+          // has no abort signal and can run for minutes.
+          await staleCleanup.promise;
+        },
+      );
+      const copyWorkspace = vi
+        .mocked(createGitOverlayWorkspace)
+        .getMockImplementation()!;
+      vi.mocked(createGitOverlayWorkspace).mockImplementation(
+        async (options) => {
+          // Capture starts only once the stale removal is underway, so the
+          // build below cannot pass by finishing before the sweep began.
+          await vi.waitFor(() =>
+            expect(removeGitOverlayWorkspace).toHaveBeenCalledWith(
+              stalePath,
+              appPath,
+            ),
+          );
+          return copyWorkspace(options);
+        },
+      );
+      try {
+        await expect(runBuildTool.execute({}, ctx)).resolves.toContain(
+          "passed for the captured snapshot",
+        );
+        await vi.waitFor(() =>
+          expect(appOperationCoordinator.isBusy(ctx.appId, ["app-path"])).toBe(
+            false,
+          ),
+        );
+      } finally {
+        staleCleanup.resolve();
+      }
+    },
+  );
+
+  it.each(["worktree creation", "package manager resolution"] as const)(
+    "settles cancellation during a stuck %s but keeps claims until it settles",
+    async (step) => {
+      const stuck = deferred();
+      const copyWorkspace = vi
+        .mocked(createGitOverlayWorkspace)
+        .getMockImplementation()!;
+      // Neither mock observes the abort signal, like a filesystem call or
+      // package-manager probe that cannot be interrupted.
+      if (step === "worktree creation") {
+        vi.mocked(createGitOverlayWorkspace).mockImplementation(
+          async (options) => {
+            await stuck.promise;
+            return copyWorkspace(options);
+          },
+        );
+      } else {
+        vi.mocked(resolvePackageManager).mockImplementation(async () => {
+          await stuck.promise;
+          return { packageManager: "npm", sourceInstallPath: appPath };
+        });
+      }
+      const controller = new AbortController();
+      ctx.abortSignal = controller.signal;
+      const execution = runBuildTool.execute({}, ctx);
+      let edit: Promise<void> | undefined;
+      try {
+        await vi.waitFor(() =>
+          expect(
+            step === "worktree creation"
+              ? createGitOverlayWorkspace
+              : resolvePackageManager,
+          ).toHaveBeenCalledOnce(),
+        );
+        controller.abort();
+        await expect(execution).rejects.toMatchObject({
+          kind: "user_cancelled",
+        });
+        expect(
+          ctx.buildAttemptState?.mutationCountAtLastSetupFailure,
+        ).toBeUndefined();
+
+        // The abandoned step may still be reading the live repository, so
+        // repository writers wait and another build is refused.
+        let edited = false;
+        edit = appOperationCoordinator.run(
+          { appId: ctx.appId, operation: "edit", resources: ["repository"] },
+          async () => {
+            edited = true;
+          },
+        );
+        expect(
+          appOperationCoordinator.isBusy(ctx.appId, ["repository-worktree"]),
+        ).toBe(true);
+        expect(edited).toBe(false);
+        await expect(
+          runBuildTool.execute({}, { ...ctx, abortSignal: undefined }),
+        ).resolves.toContain("still finishing its workspace setup");
+
+        stuck.resolve();
+        await edit;
+        expect(edited).toBe(true);
+        // A snapshot created after cancellation is still cleaned up, and
+        // nothing after the abandoned step runs.
+        await vi.waitFor(() =>
+          expect(removeGitOverlayWorkspace).toHaveBeenCalledWith(
+            workspacePath,
+            appPath,
+          ),
+        );
+        if (step === "worktree creation") {
+          expect(resolvePackageManager).not.toHaveBeenCalled();
+        }
+        expect(runCleanPackageInstall).not.toHaveBeenCalled();
+        await vi.waitFor(() =>
+          expect(appOperationCoordinator.isBusy(ctx.appId, ["app-path"])).toBe(
+            false,
+          ),
+        );
+      } finally {
+        stuck.resolve();
+        await Promise.allSettled([execution, ...(edit ? [edit] : [])]);
+      }
+
+      vi.mocked(resolvePackageManager).mockResolvedValue({
+        packageManager: "npm",
+        sourceInstallPath: appPath,
+      });
+      ctx.abortSignal = undefined;
+      await expect(runBuildTool.execute({}, ctx)).resolves.toContain(
+        "passed for the captured snapshot",
+      );
+    },
+  );
+
+  it("reports the deadline during a stuck preparation step and keeps claims until it settles", async () => {
+    const stuck = deferred();
+    const copyWorkspace = vi
+      .mocked(createGitOverlayWorkspace)
+      .getMockImplementation()!;
+    vi.mocked(createGitOverlayWorkspace).mockImplementation(async (options) => {
+      await stuck.promise;
+      return copyWorkspace(options);
+    });
+    vi.useFakeTimers();
+    const execution = runBuildTool.execute({}, ctx);
+    try {
+      await vi.waitFor(() =>
+        expect(createGitOverlayWorkspace).toHaveBeenCalledOnce(),
+      );
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
+      await expect(execution).resolves.toContain(
+        "timed out after 10 minutes during snapshot setup (worktree creation)",
+      );
+      // Unlike cancellation, a timed-out setup is not retried unchanged.
+      expect(ctx.buildAttemptState?.mutationCountAtLastSetupFailure).toBe(1);
+      expect(
+        appOperationCoordinator.isBusy(ctx.appId, ["repository-worktree"]),
+      ).toBe(true);
+      stuck.resolve();
+      await vi.waitFor(() =>
+        expect(removeGitOverlayWorkspace).toHaveBeenCalledWith(
+          workspacePath,
+          appPath,
+        ),
+      );
+      await vi.waitFor(() =>
+        expect(appOperationCoordinator.isBusy(ctx.appId, ["app-path"])).toBe(
+          false,
+        ),
+      );
+    } finally {
+      stuck.resolve();
+      vi.useRealTimers();
+      await Promise.allSettled([execution]);
+    }
+    expect(spawnStreaming).not.toHaveBeenCalled();
+  });
+
+  it("keeps later builds working when snapshot cleanup fails", async () => {
+    vi.mocked(removeGitOverlayWorkspace).mockRejectedValueOnce(
+      new Error("EBUSY: resource busy or locked"),
+    );
+    await expect(runBuildTool.execute({}, ctx)).resolves.toContain("passed");
+    await vi.waitFor(() =>
+      expect(appOperationCoordinator.isBusy(ctx.appId, ["app-path"])).toBe(
+        false,
+      ),
+    );
+    await expect(
+      runBuildTool.execute({}, { ...ctx, buildAttemptState: undefined }),
+    ).resolves.toContain("passed");
+    expect(removeGitOverlayWorkspace).toHaveBeenCalledTimes(2);
   });
 });

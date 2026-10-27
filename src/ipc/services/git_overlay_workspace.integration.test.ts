@@ -103,3 +103,78 @@ it.each(["e2e-test", "build"] as const)(
   },
   30_000,
 );
+
+it("deletes a workspace Git no longer recognizes without following links into the source", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "dyad-stale-worktree-"));
+  const sourcePath = path.join(root, "source");
+  const scratchRoot = path.join(root, "build-snapshots");
+  const git = async (...args: string[]) => {
+    const result = await execGit(args, sourcePath);
+    expect(result.exitCode, result.stderr).toBe(0);
+    return result.stdout;
+  };
+  try {
+    await fs.mkdir(path.join(sourcePath, "src"), { recursive: true });
+    await git("init", "-b", "main");
+    await git("config", "user.name", "Test User");
+    await git("config", "user.email", "test@example.com");
+    await fs.writeFile(path.join(sourcePath, "package.json"), "{}\n");
+    await fs.writeFile(path.join(sourcePath, "src", "index.ts"), "live\n");
+    await git("add", "--all");
+    await git("commit", "-m", "initial");
+    const workspace = await createGitOverlayWorkspace({
+      sourceTargetPath: sourcePath,
+      scratchRoot,
+      directoryPrefix: ".dyad-build-",
+      purpose: "build",
+      excludedTargetRootNames: new Set(),
+    });
+    // What an install leaves behind, including a link back into the live
+    // checkout that the recursive delete must remove rather than follow.
+    const installed = path.join(workspace.targetPath, "node_modules");
+    await fs.mkdir(path.join(installed, "pkg"), { recursive: true });
+    await fs.writeFile(path.join(installed, "pkg", "index.js"), "");
+    await fs.symlink(
+      sourcePath,
+      path.join(installed, "live-source"),
+      process.platform === "win32" ? "junction" : "dir",
+    );
+    // The state an earlier partial delete leaves: the worktree's `.git` file
+    // is gone and a prune has dropped its registration.
+    await fs.rm(path.join(workspace.worktreePath, ".git"), { force: true });
+    await git("worktree", "prune");
+    const refused = await execGit(
+      ["worktree", "remove", "--force", workspace.worktreePath],
+      sourcePath,
+    );
+    expect(refused.exitCode).not.toBe(0);
+    expect(refused.stderr).toMatch(/is not a working tree/);
+
+    // No source path, like the stale sweep: it comes from the marker. A
+    // second caller joins the removal already in flight.
+    const removal = removeGitOverlayWorkspace(workspace.worktreePath);
+    expect(removeGitOverlayWorkspace(workspace.worktreePath)).toBe(removal);
+    await removal;
+
+    await expect(fs.lstat(workspace.worktreePath)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    await expect(
+      fs.lstat(`${workspace.worktreePath}.owner.json`),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+    expect(
+      await fs.readFile(path.join(sourcePath, "src", "index.ts"), "utf8"),
+    ).toBe("live\n");
+    expect(
+      (await git("worktree", "list", "--porcelain")).match(/^worktree /gm),
+    ).toHaveLength(1);
+    expect(await git("status", "--porcelain")).toBe("");
+  } finally {
+    await fs.rm(root, {
+      recursive: true,
+      force: true,
+      maxRetries: 3,
+      retryDelay: 100,
+    });
+  }
+}, 30_000);

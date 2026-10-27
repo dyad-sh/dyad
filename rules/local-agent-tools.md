@@ -165,6 +165,17 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 - Keep completed build-snapshot teardown in the original coordinator operation
   under its app-path claim, but settle the tool result before slow cleanup.
   Release runtime protection after host execution; keep startup cleanup as fallback.
+- Never await stale-snapshot cleanup on a build's critical path. Deleting an old
+  dependency-heavy worktree has no abort signal and can take minutes on Windows,
+  where Git often refuses with "is not a working tree" and falls back to a
+  recursive delete. Sweep in the background (it needs no app claims) and join
+  in-flight removals of the same path.
+- Cancellation and the deadline must settle `run_build` during every
+  preparation step, including steps that ignore the abort signal. Settle the
+  tool result immediately, but keep every coordinator claim and the per-app
+  build slot until the abandoned step actually settles, then remove any
+  snapshot it produced. Never release locks while it may still read the live
+  repository.
 - `AgentContext.onXmlStream` replaces the previous preview with the full accumulated XML; callers receiving delta output chunks must append them to a bounded buffer before emitting each update.
 - Throttle full accumulated build-output previews rather than emitting once per
   stdout/stderr chunk, and synchronously flush the final buffered preview when

@@ -6,7 +6,6 @@ import {
   listDumpFiles,
   listDumpFilesRecursive,
   MAX_RETAINED_DUMPS,
-  sortNewestFirst,
 } from "./crash_dumps";
 import { parseMinidumpBuffer } from "./minidump_summary";
 
@@ -21,14 +20,15 @@ export async function collectCrashDumps(
   platform: NodeJS.Platform = process.platform,
   arch: NodeJS.Architecture = process.arch,
 ): Promise<CrashDump[]> {
-  const files = sortNewestFirst([
+  // Each dump's crash time is found before sorting, so one whose stat fails
+  // ranks by the time in its name rather than falling out of the newest.
+  // A file gone since the listing was pruned and is skipped. Any other
+  // failure keeps the dump as unreadable, so it is not taken for absent.
+  const timed: { file: string; crashedAt: string }[] = [];
+  for (const file of [
     ...listDumpFiles(retainedDir),
     ...listDumpFilesRecursive(crashpadDir),
-  ]).slice(0, MAX_RETAINED_DUMPS);
-  const dumps: CrashDump[] = [];
-  for (const file of files) {
-    // A file gone since the listing was pruned and is skipped. Any other
-    // failure keeps the dump as unreadable, so it is not taken for absent.
+  ]) {
     let crashedAt: string | undefined;
     try {
       crashedAt = (await fs.stat(file)).mtime.toISOString();
@@ -36,7 +36,13 @@ export async function collectCrashDumps(
       if (isMissing(error)) continue;
       crashedAt = timeFromRetainedName(path.basename(file));
     }
-    if (!crashedAt) continue;
+    if (crashedAt) timed.push({ file, crashedAt });
+  }
+  // ISO times in UTC sort as strings.
+  timed.sort((a, b) => (a.crashedAt < b.crashedAt ? 1 : -1));
+
+  const dumps: CrashDump[] = [];
+  for (const { file, crashedAt } of timed.slice(0, MAX_RETAINED_DUMPS)) {
     let buf: Buffer;
     try {
       buf = await fs.readFile(file);

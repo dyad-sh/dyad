@@ -151,6 +151,32 @@ describe("collectCrashDumps", () => {
     }
   });
 
+  it("ranks a dump it cannot stat by the time in its name", async () => {
+    for (let i = 1; i <= 5; i++) makeDump(`crash-${i}.dmp`, "kept", i * 60);
+    const newest = "crash-2026-07-15T20-30-00-000Z-9ac4d4e8.dmp";
+    // Older on disk than the rest, so only its name can put it first.
+    makeDump(newest, "garbage", 3600);
+    const realStat = fsp.stat;
+    const stat = vi
+      .spyOn(fsp, "stat")
+      .mockImplementation((p, ...rest) =>
+        String(p).endsWith(newest)
+          ? Promise.reject(
+              Object.assign(new Error("denied"), { code: "EACCES" }),
+            )
+          : realStat(p, ...rest),
+      );
+    try {
+      const files = (await collectCrashDumps(dir, crashpadDir)).map(
+        (dump) => dump.file,
+      );
+      expect(files[0]).toBe(newest);
+      expect(files).toHaveLength(5);
+    } finally {
+      stat.mockRestore();
+    }
+  });
+
   it("skips a dump removed after it was listed", async () => {
     makeDump("crash-gone.dmp", "browser", 0);
     const read = vi

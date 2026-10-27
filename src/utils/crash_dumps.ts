@@ -66,7 +66,7 @@ export function pruneDumps(dir: string, max: number): void {
 
 // Sort paths newest-first, reading each file's mtime once (not inside the
 // comparator, which would re-stat on every comparison).
-export function sortNewestFirst(paths: string[]): string[] {
+function sortNewestFirst(paths: string[]): string[] {
   return paths
     .map((p) => ({ p, mtime: mtimeMs(p) }))
     .sort((a, b) => b.mtime - a.mtime)

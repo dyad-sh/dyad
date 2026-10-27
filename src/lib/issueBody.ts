@@ -459,12 +459,12 @@ ${formatSettingsLines(settings, selectedModel)}
 ${formatLogsSection(debugInfo)}`;
 }
 
-// The dumps' contents stay in the private session; the public issue only says
-// how many went with it and when they were written, so a maintainer knows
-// whether the session is worth opening for a crash.
-function formatCrashDumpsLine(times: string[]): string {
-  if (times.length === 0) return "Crash dumps: none on the reporter's machine";
-  return `Crash dumps: ${times.length} (${times.join(", ")})`;
+// The dumps stay in the private session; the public issue only says how many
+// went with it, so a maintainer knows whether the session is worth opening for
+// a crash. When they were written stays private too.
+function formatCrashDumpsLine(count: number): string {
+  if (count === 0) return "Crash dumps: none on the reporter's machine";
+  return `Crash dumps: ${count}`;
 }
 
 export interface IssueBodyParams {
@@ -479,10 +479,10 @@ export interface IssueBodyParams {
   /** Set when a chat session was uploaded alongside the report. */
   sessionId: string | null;
   /**
-   * When each crash dump in that session was written. Null when the reporter
-   * left the dumps out, so the issue does not claim there were none.
+   * How many crash dumps went with that session. Null when none were sent,
+   * either left out or unreadable, so the issue does not claim there were none.
    */
-  crashDumpTimes?: string[] | null;
+  crashDumpCount?: number | null;
 }
 
 export function buildIssueBody({
@@ -490,7 +490,7 @@ export function buildIssueBody({
   screenshot,
   diagnostics,
   sessionId,
-  crashDumpTimes,
+  crashDumpCount,
 }: IssueBodyParams): string {
   const sections = [
     "<!-- Please fill in all fields in English -->",
@@ -526,8 +526,8 @@ export function buildIssueBody({
       `Session ID: ${field(sessionId)}`,
       "Session Schema: v2.0",
     );
-    if (crashDumpTimes) {
-      sections.push(formatCrashDumpsLine(crashDumpTimes));
+    if (crashDumpCount != null) {
+      sections.push(formatCrashDumpsLine(crashDumpCount));
     }
   }
 

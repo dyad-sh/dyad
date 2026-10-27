@@ -381,7 +381,7 @@ export function registerDebugHandlers() {
           electronApp.getPath("crashDumps"),
         ).catch((err) => {
           console.error("Failed to collect crash dumps:", err);
-          return [];
+          return null;
         }),
       ]);
 
@@ -535,12 +535,16 @@ export function registerDebugHandlers() {
         logs,
         updaterLogs: readUpdaterLogs(),
         memoryDiagnostics,
-        crashDumps: {
-          dumps: crashDumps,
-          ...(fromCrash && {
-            triggeringDump: getPreviousSessionCrashDump() ?? null,
-          }),
-        },
+        // Left out when the dumps could not be read, so nothing reports
+        // there being none.
+        ...(crashDumps && {
+          crashDumps: {
+            dumps: crashDumps,
+            ...(fromCrash && {
+              triggeringDump: getPreviousSessionCrashDump() ?? null,
+            }),
+          },
+        }),
       };
 
       return bundle;

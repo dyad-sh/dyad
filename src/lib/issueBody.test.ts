@@ -271,21 +271,17 @@ describe("buildIssueBody", () => {
   });
 
   it("lists the crash dumps that went with the session", () => {
-    const body = (crashDumpTimes: string[] | null) =>
+    const body = (crashDumpCount: number | null) =>
       buildIssueBody({
         description: "it crashed",
         screenshot: { status: "declined" },
         diagnostics: null,
         sessionId: "v2:abc",
-        crashDumpTimes,
+        crashDumpCount,
       });
-    expect(
-      body(["2026-07-15T20:39:37.039Z", "2026-07-10T05:31:19.682Z"]),
-    ).toContain(
-      "Session Schema: v2.0\nCrash dumps: 2 (2026-07-15T20:39:37.039Z, 2026-07-10T05:31:19.682Z)",
-    );
-    expect(body([])).toContain("Crash dumps: none on the reporter's machine");
-    // Left out by the reporter: the issue does not claim there were none.
+    expect(body(2)).toContain("Session Schema: v2.0\nCrash dumps: 2\n");
+    expect(body(0)).toContain("Crash dumps: none on the reporter's machine");
+    // Not sent: the issue does not claim there were none.
     expect(body(null)).not.toContain("Crash dumps");
   });
 

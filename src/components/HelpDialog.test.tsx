@@ -691,9 +691,16 @@ describe("HelpDialog disclosures", () => {
     expect(
       mocks.uploadToSignedUrl.mock.calls.at(-1)?.[0]?.data.crashDumps,
     ).toEqual({ dumps: [crashDump] });
-    expect(bodyOfOpenedIssue()).toContain(
-      "Crash dumps: 1 (2026-07-15T20:39:37.039Z)",
-    );
+    expect(bodyOfOpenedIssue()).toContain("Crash dumps: 1\n");
+  });
+
+  it("says nothing about crash dumps main could not read", async () => {
+    // The bundle carries no crashDumps when collection failed.
+    await openForm();
+    await fileIt();
+
+    expect(bodyOfOpenedIssue()).toContain("Session ID: v2:abc");
+    expect(bodyOfOpenedIssue()).not.toContain("Crash dumps");
   });
 
   it("leaves crash dumps out when they are unticked", async () => {
@@ -984,9 +991,7 @@ describe("HelpDialog disclosures", () => {
     await fileIt();
 
     expect(mocks.uploadToSignedUrl).toHaveBeenCalledTimes(1);
-    expect(bodyOfOpenedIssue()).toContain(
-      "Crash dumps: 1 (2026-07-15T20:39:37.039Z)",
-    );
+    expect(bodyOfOpenedIssue()).toContain("Crash dumps: 1\n");
   });
 
   it("does not cite a session whose upload was cut short", async () => {

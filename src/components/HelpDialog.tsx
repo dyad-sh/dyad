@@ -129,8 +129,8 @@ class ScreenshotUploadError extends Error {
 /** A session this report uploaded, and what the issue body says about it. */
 interface UploadedSession {
   id: string;
-  /** When each included crash dump was written. Null when they were left out. */
-  crashDumpTimes: string[] | null;
+  /** How many crash dumps went with it. Null when none were sent. */
+  crashDumpCount: number | null;
 }
 
 /** Everything needed to file, snapshotted when the reporter submits. */
@@ -575,9 +575,10 @@ export function HelpDialog() {
     // without them rather than with them emptied.
     const { crashDumps, ...rest } = read;
     const bundle: SessionDebugBundle = includeCrashDumps ? read : rest;
-    const crashDumpTimes = includeCrashDumps
-      ? (crashDumps?.dumps.map((dump) => dump.crashedAt) ?? [])
-      : null;
+    // Absent when main could not read the dumps, which is not the same as
+    // there being none.
+    const crashDumpCount =
+      includeCrashDumps && crashDumps ? crashDumps.dumps.length : null;
 
     const response = await fetch(UPLOAD_URL_ENDPOINT, {
       method: "POST",
@@ -611,7 +612,7 @@ export function HelpDialog() {
     if (!uploaded) return null;
     const session = {
       id: "v2:" + filename.replace(".json", ""),
-      crashDumpTimes,
+      crashDumpCount,
     };
     // Only the report that made this upload may remember it: a PUT can finish
     // after the reporter has pressed Back, and its continuation must not hand
@@ -1102,7 +1103,7 @@ export function HelpDialog() {
         screenshot: outgoingScreenshot,
         diagnostics,
         sessionId: session?.id ?? null,
-        crashDumpTimes: session?.crashDumpTimes ?? null,
+        crashDumpCount: session?.crashDumpCount ?? null,
       }),
       isDyadProUser,
     });

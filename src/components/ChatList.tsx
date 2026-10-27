@@ -18,7 +18,12 @@ import {
   Star,
 } from "lucide-react";
 import { motion } from "framer-motion";
-import { Virtuoso, type ItemProps, type ListProps } from "react-virtuoso";
+import {
+  Virtuoso,
+  type ItemProps,
+  type ListProps,
+  type VirtuosoHandle,
+} from "react-virtuoso";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import {
   selectedChatIdAtom,
@@ -91,12 +96,17 @@ function VirtualChatListRoot({ children, style, ref }: ListProps) {
 }
 
 function VirtualChatListItem({
-  item: _item,
+  item,
   children,
   ...props
 }: ItemProps<ChatListRowItem>) {
   return (
-    <div {...props} role="listitem" className="relative pb-1">
+    <div
+      {...props}
+      // Group headers are labels, not chats.
+      role={item?.kind === "group" ? "presentation" : "listitem"}
+      className="relative pb-1"
+    >
       {children}
     </div>
   );
@@ -200,20 +210,43 @@ export function ChatList({
   const favoriteButtonRefs = useRef(new Map<number, HTMLButtonElement>());
   const pendingFavoriteChatIdsRef = useRef(new Set<number>());
   const pendingFavoriteFocusChatId = useRef<number | null>(null);
+  // A chat scrolled to because its row was not rendered; its favorite button
+  // takes focus as soon as the row mounts.
+  const scrolledFavoriteFocusChatId = useRef<number | null>(null);
+  const virtuosoRef = useRef<VirtuosoHandle>(null);
+  const virtualRowsRef = useRef(virtualRows);
+  virtualRowsRef.current = virtualRows;
   const favoriteAnimationTimers = useRef(new Map<number, number>());
   const removeChatIdFromAllTracking = useSetAtom(
     removeChatIdFromAllTrackingAtom,
   );
   const ensureRecentViewedChatId = useSetAtom(ensureRecentViewedChatIdAtom);
 
+  const restoreFavoriteFocus = (chatId: number) => {
+    pendingFavoriteFocusChatId.current = null;
+    scrolledFavoriteFocusChatId.current = null;
+    const button = favoriteButtonRefs.current.get(chatId);
+    if (button) {
+      button.focus({ preventScroll: true });
+      return;
+    }
+    // In a virtualized list the chat may have moved outside the rendered rows.
+    const index = virtualRowsRef.current.findIndex(
+      (row) => row.kind === "chat" && row.chat.id === chatId,
+    );
+    if (index >= 0 && virtuosoRef.current) {
+      scrolledFavoriteFocusChatId.current = chatId;
+      virtuosoRef.current.scrollToIndex({ index, align: "center" });
+    }
+  };
+
   useEffect(() => {
     const chatId = pendingFavoriteFocusChatId.current;
     if (chatId === null) return;
 
-    const frame = window.requestAnimationFrame(() => {
-      favoriteButtonRefs.current.get(chatId)?.focus({ preventScroll: true });
-      pendingFavoriteFocusChatId.current = null;
-    });
+    const frame = window.requestAnimationFrame(() =>
+      restoreFavoriteFocus(chatId),
+    );
     return () => window.cancelAnimationFrame(frame);
   }, [chats]);
 
@@ -384,12 +417,7 @@ export function ChatList({
     } catch (error) {
       if (restoreFocus) {
         pendingFavoriteFocusChatId.current = chatId;
-        window.requestAnimationFrame(() => {
-          favoriteButtonRefs.current
-            .get(chatId)
-            ?.focus({ preventScroll: true });
-          pendingFavoriteFocusChatId.current = null;
-        });
+        window.requestAnimationFrame(() => restoreFavoriteFocus(chatId));
       }
       showError(
         t("failedUpdateChatFavorite", { error: (error as Error).message }),
@@ -429,6 +457,10 @@ export function ChatList({
       favoriteButtonRef={(element) => {
         if (element) {
           favoriteButtonRefs.current.set(chat.id, element);
+          if (scrolledFavoriteFocusChatId.current === chat.id) {
+            scrolledFavoriteFocusChatId.current = null;
+            element.focus({ preventScroll: true });
+          }
         } else {
           favoriteButtonRefs.current.delete(chat.id);
         }
@@ -508,6 +540,7 @@ export function ChatList({
             ) : shouldVirtualize ? (
               scrollParent && (
                 <Virtuoso
+                  ref={virtuosoRef}
                   customScrollParent={scrollParent}
                   initialItemCount={Math.min(
                     virtualRows.length,
@@ -627,7 +660,17 @@ function ChatRow({
   const [isHovered, setIsHovered] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const [isActionsOpen, setIsActionsOpen] = useState(false);
+  const isActionsOpenRef = useRef(false);
   const title = chat.title || t("newChat");
+
+  // A row scrolled out of a virtualized list unmounts without its menu
+  // closing, so release the shared open-menu flag here.
+  useEffect(
+    () => () => {
+      if (isActionsOpenRef.current) onActionsOpenChange(false);
+    },
+    [onActionsOpenChange],
+  );
 
   return (
     <div
@@ -719,6 +762,7 @@ function ChatRow({
           modal={false}
           onOpenChange={(open) => {
             onActionsOpenChange(open);
+            isActionsOpenRef.current = open;
             setIsActionsOpen(open);
           }}
         >

@@ -1191,6 +1191,20 @@ describe("stack scan", () => {
     expect(s!.stackTrace!.threads[0].frames).toEqual([]);
   });
 
+  it("scans nothing when the context ends before the IP", () => {
+    // 160 bytes hold the x64 stack pointer (152) but not the IP (248).
+    const dump = buildMinidump({
+      modules: [{ base: 0x100000n, size: 0x10000, name: "/opt/dyad/dyad" }],
+      exceptionCode: 11,
+      ip: 0x100500n,
+      ipOffset: 248,
+      stack: stack([0x100a10n]),
+      exceptionContextSize: 160,
+    });
+    const s = parseMinidumpBuffer(dump, "linux", "x64", { stackTrace: true });
+    expect(s!.stackTrace!.threads[0].frames).toEqual([]);
+  });
+
   it("keeps the IP when the crashing thread is not in the list", () => {
     const trace = scan({ stack: { ...stack([0x100a10n]), threadId: 99 } });
     // Without its record there is no stack to scan. Thread 99, listed

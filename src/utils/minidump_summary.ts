@@ -847,15 +847,15 @@ function scanThreads(input: {
 
     const ipOffset = IP_OFFSET_IN_CONTEXT[arch];
     const ip = readContextRegister(view, buf, context, ipOffset, addressMask);
-    // A zero ip is a real value when the context was read, as in a call
-    // through a null function pointer. Only the instruction pointer is
-    // reported when it misses every module; scanned values that miss are
-    // data, not frames.
-    if (hasContextRegister(buf, context, ipOffset)) {
-      if (findModule(modules, ip)) add(ip);
-      else frames.push("unknown");
-      seen.add(ip);
-    }
+    // Frame #0 is always the instruction pointer, so a thread whose IP
+    // cannot be read gets no frames rather than a scanned value in its
+    // place. A zero ip is a real value, as in a call through a null
+    // function pointer. Only the instruction pointer is reported when it
+    // misses every module; scanned values that miss are data, not frames.
+    if (!hasContextRegister(buf, context, ipOffset)) return frames;
+    if (findModule(modules, ip)) add(ip);
+    else frames.push("unknown");
+    seen.add(ip);
     if (arch === "arm64") {
       add(
         readContextRegister(

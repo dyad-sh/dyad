@@ -192,6 +192,14 @@ const bundle = {
   mcpServers: [],
 };
 
+const crashDump = {
+  file: "crash-2026-07-15T20-39-37-038Z-3a7781f0.dmp",
+  crashedAt: "2026-07-15T20:39:37.039Z",
+  readable: true,
+  ptype: "browser",
+  crashReason: "SIGSEGV",
+};
+
 function OpenHelpDialog() {
   const setHelpDialog = useSetAtom(helpDialogAtom);
   const setSelectedChatId = useSetAtom(selectedChatIdAtom);
@@ -672,6 +680,54 @@ describe("HelpDialog disclosures", () => {
     expect(bodyOfOpenedIssue()).not.toContain("Session ID");
   });
 
+  it("uploads crash dumps and lists them in the issue by default", async () => {
+    mocks.getSessionDebugBundle.mockResolvedValue({
+      ...bundle,
+      crashDumps: { dumps: [crashDump] },
+    });
+    await openForm();
+    await fileIt();
+
+    expect(
+      mocks.uploadToSignedUrl.mock.calls.at(-1)?.[0]?.data.crashDumps,
+    ).toEqual({ dumps: [crashDump] });
+    expect(bodyOfOpenedIssue()).toContain(
+      "Crash dumps: 1 (2026-07-15T20:39:37.039Z)",
+    );
+  });
+
+  it("leaves crash dumps out when they are unticked", async () => {
+    mocks.getSessionDebugBundle.mockResolvedValue({
+      ...bundle,
+      crashDumps: { dumps: [crashDump] },
+    });
+    await openForm();
+    fireEvent.click(
+      await screen.findByRole("checkbox", {
+        name: "Native crash stack traces",
+      }),
+    );
+    await fileIt();
+
+    const sent = mocks.uploadToSignedUrl.mock.calls.at(-1)?.[0]?.data;
+    expect(sent).not.toHaveProperty("crashDumps");
+    expect(sent.codebase).toBe("codebase");
+    expect(bodyOfOpenedIssue()).toContain("Session ID: v2:abc");
+    expect(bodyOfOpenedIssue()).not.toContain("Crash dumps");
+  });
+
+  it("offers crash dumps only with the session", async () => {
+    await openForm();
+    const dumps = await screen.findByRole("checkbox", {
+      name: "Native crash stack traces",
+    });
+    expect(dumps.hasAttribute("data-disabled")).toBe(false);
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Chat session" }));
+    expect(dumps.hasAttribute("data-disabled")).toBe(true);
+    expect(screen.getByText("Sent with the chat session.")).toBeTruthy();
+  });
+
   it("offers no session when there is no chat open", async () => {
     renderHelp();
     fireEvent.click(screen.getByText("clear-chat"));
@@ -695,7 +751,10 @@ describe("HelpDialog disclosures", () => {
     fireEvent.click(summaries[summaries.length - 1]);
 
     await waitFor(() =>
-      expect(mocks.getSessionDebugBundle).toHaveBeenCalledWith(1),
+      expect(mocks.getSessionDebugBundle).toHaveBeenCalledWith({
+        chatId: 1,
+        fromCrash: false,
+      }),
     );
   });
 
@@ -1617,12 +1676,13 @@ describe("HelpDialog disclosures", () => {
 
   it("discards a session read that lands after its report is gone", async () => {
     let release = (_: unknown) => {};
-    mocks.getSessionDebugBundle.mockImplementation((id: number) =>
-      id === 42
-        ? new Promise((resolve) => {
-            release = () => resolve({ ...bundle, codebase: "codebase-42" });
-          })
-        : Promise.resolve({ ...bundle, codebase: `codebase-${id}` }),
+    mocks.getSessionDebugBundle.mockImplementation(
+      ({ chatId: id }: { chatId: number }) =>
+        id === 42
+          ? new Promise((resolve) => {
+              release = () => resolve({ ...bundle, codebase: "codebase-42" });
+            })
+          : Promise.resolve({ ...bundle, codebase: `codebase-${id}` }),
     );
 
     renderHelp();
@@ -1634,7 +1694,10 @@ describe("HelpDialog disclosures", () => {
     const summaries = screen.getAllByText("Show what will be sent");
     fireEvent.click(summaries[summaries.length - 1]);
     await waitFor(() =>
-      expect(mocks.getSessionDebugBundle).toHaveBeenCalledWith(42),
+      expect(mocks.getSessionDebugBundle).toHaveBeenCalledWith({
+        chatId: 42,
+        fromCrash: true,
+      }),
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
@@ -1658,8 +1721,9 @@ describe("HelpDialog disclosures", () => {
   });
 
   it("uploads the session for the report's own chat", async () => {
-    mocks.getSessionDebugBundle.mockImplementation((id: number) =>
-      Promise.resolve({ ...bundle, codebase: `codebase-${id}` }),
+    mocks.getSessionDebugBundle.mockImplementation(
+      ({ chatId: id }: { chatId: number }) =>
+        Promise.resolve({ ...bundle, codebase: `codebase-${id}` }),
     );
 
     renderHelp();
@@ -1671,7 +1735,10 @@ describe("HelpDialog disclosures", () => {
     const summaries = screen.getAllByText("Show what will be sent");
     fireEvent.click(summaries[summaries.length - 1]);
     await waitFor(() =>
-      expect(mocks.getSessionDebugBundle).toHaveBeenCalledWith(42),
+      expect(mocks.getSessionDebugBundle).toHaveBeenCalledWith({
+        chatId: 42,
+        fromCrash: true,
+      }),
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
@@ -1702,8 +1769,13 @@ describe("HelpDialog disclosures", () => {
     submit();
     await waitFor(() => expect(mocks.openExternalUrl).toHaveBeenCalled());
 
-    expect(mocks.getSessionDebugBundle).toHaveBeenCalledWith(42);
-    expect(mocks.getSessionDebugBundle).not.toHaveBeenCalledWith(1);
+    expect(mocks.getSessionDebugBundle).toHaveBeenCalledWith({
+      chatId: 42,
+      fromCrash: true,
+    });
+    expect(mocks.getSessionDebugBundle).not.toHaveBeenCalledWith(
+      expect.objectContaining({ chatId: 1 }),
+    );
   });
 
   it("keeps the session offer after the dialog reopens with no chat selected", async () => {

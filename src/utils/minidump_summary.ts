@@ -22,7 +22,37 @@ export interface MinidumpSummary {
   // All Crashpad annotations: our crashReporter extra parameters and
   // Chromium's own crash keys. Counts and lengths are capped.
   annotations?: Record<string, string>;
+  // Scanned stacks of the crashing and main threads. Only parsed on request
+  // (see parseMinidumpBuffer's options): it goes in session uploads, never
+  // in telemetry.
+  stackTrace?: StackTrace;
 }
+
+// Candidate frames of the crashing thread and the main thread, found by
+// scanning each stack for values that point into loaded code. A frame is a
+// module-relative offset, or "unknown" when a thread's instruction pointer
+// fell outside every module (e.g. JIT code). No stack memory or absolute
+// address is kept. Scanned frames are only candidates: stale return
+// addresses and code pointers held in locals also match, and are filtered
+// offline against symbols by scripts/resolve-crash-frames.mjs.
+export interface StackTrace {
+  modules: StackModule[]; // modules the frames reference, by index
+  threads: StackThread[]; // crashing thread first
+}
+
+export interface StackModule {
+  name: string; // cleaned basename (see cleanModuleName)
+  debugFile: string; // keys the symbol file, with debugId
+  debugId?: string; // absent when the module has no CodeView record
+}
+
+export interface StackThread {
+  crashing: boolean; // the thread the exception was raised on
+  main: boolean; // the process's first thread: the UI thread, for the browser
+  frames: StackFrame[]; // instruction pointer first, then stack order
+}
+
+export type StackFrame = { module: number; offset: `0x${string}` } | "unknown";
 
 // These values are fixed by the minidump file format. The signature and stream
 // type ids come from Microsoft's MINIDUMP_HEADER / MINIDUMP_STREAM_TYPE; the
@@ -32,6 +62,7 @@ export interface MinidumpSummary {
 const MINIDUMP_SIGNATURE = 0x504d444d;
 
 // Stream type ids we read from the stream directory.
+const STREAM_THREAD_LIST = 3; // ThreadListStream
 const STREAM_MODULE_LIST = 4; // ModuleListStream
 const STREAM_EXCEPTION = 6; // ExceptionStream
 const STREAM_CRASHPAD_INFO = 0x43500001; // Crashpad's vendor extension
@@ -55,7 +86,7 @@ const DIR_ENTRY_SIZE_OFF = 4;
 const DIR_ENTRY_RVA_OFF = 8;
 
 // MINIDUMP_EXCEPTION_STREAM, from the stream's start:
-//   u32 threadId          @0
+//   u32 threadId          @0    -> the crashing thread, in the thread list
 //   u32 alignment         @4
 //   -- MINIDUMP_EXCEPTION --
 //   u32 exceptionCode     @8
@@ -68,6 +99,7 @@ const DIR_ENTRY_RVA_OFF = 8;
 //   -- thread context LOCATION_DESCRIPTOR --
 //   u32 dataSize          @160
 //   u32 rva               @164  -> file offset of the crashing thread's CPU context
+const EXC_THREAD_ID_OFF = 0;
 const EXC_CODE_OFF = 8;
 const EXC_FLAGS_OFF = 12;
 const EXC_ADDRESS_OFF = 24;
@@ -108,6 +140,25 @@ const MODULE_SIZE_OFF = 8;
 const MODULE_NAME_RVA_OFF = 20;
 const MODULE_CV_SIZE_OFF = 76;
 const MODULE_CV_RVA_OFF = 80;
+
+// MINIDUMP_THREAD record (48 bytes): u32 threadId @0 | u32 suspendCount @4 |
+// u32 priorityClass @8 | u32 priority @12 | u64 teb @16 | stack
+// MINIDUMP_MEMORY_DESCRIPTOR { u64 startOfMemoryRange @24, u32 dataSize @32,
+// u32 rva @36 } | context LOCATION_DESCRIPTOR { u32 dataSize @40, u32 rva @44 }.
+const THREAD_RECORD_SIZE = 48;
+const THREAD_ID_OFF = 0;
+const THREAD_STACK_START_OFF = 24;
+const THREAD_STACK_SIZE_OFF = 32;
+const THREAD_STACK_RVA_OFF = 36;
+const THREAD_CONTEXT_SIZE_OFF = 40;
+const THREAD_CONTEXT_RVA_OFF = 44;
+
+// Bounds on the stack scan. Real crashes rarely need more than a few dozen
+// frames to read, and each thread's scan stops at whichever cap it reaches
+// first.
+const MAX_STACK_FRAMES = 64;
+const MAX_STACK_SCAN_BYTES = 256 * 1024;
+const MAX_THREAD_SCAN = 4096; // corrupt thread counts cannot spin the loop
 
 // CodeView record signatures.
 const CV_SIG_PDB70 = 0x53445352; // "RSDS": GUID + age + debug file name
@@ -214,12 +265,30 @@ const IP_OFFSET_IN_CONTEXT: Partial<Record<NodeJS.Architecture, number>> = {
   arm64: 264,
 };
 
+// The stack pointer, from the same structs: x64 rsp is the fifth integer
+// register (rax, rcx, rdx, rbx, rsp), 120 + 4 * 8 = 152; arm64 sp is
+// iregs[31], 8 + 31 * 8 = 256.
+const SP_OFFSET_IN_CONTEXT: Partial<Record<NodeJS.Architecture, number>> = {
+  x64: 152,
+  arm64: 256,
+};
+
+// arm64 calls put the return address in the link register (x30, iregs[30],
+// 8 + 30 * 8 = 248), and leaf functions never spill it to the stack, so
+// the caller of the crashing function is only found here.
+const ARM64_LR_OFFSET_IN_CONTEXT = 248;
+
+export interface ParseOptions {
+  stackTrace?: boolean; // also scan the crashing and main threads' stacks
+}
+
 // Read a minidump file from disk and summarize it. Returns null if the file
 // can't be read or isn't a valid minidump.
 export function parseMinidumpSummary(
   filePath: string,
   platform: NodeJS.Platform = process.platform,
   arch: NodeJS.Architecture = process.arch,
+  options: ParseOptions = {},
 ): MinidumpSummary | null {
   let buf: Buffer;
   try {
@@ -227,7 +296,7 @@ export function parseMinidumpSummary(
   } catch {
     return null;
   }
-  return parseMinidumpBuffer(buf, platform, arch);
+  return parseMinidumpBuffer(buf, platform, arch, options);
 }
 
 // How a dump attributes to the main (browser) process, or null if it doesn't.
@@ -271,6 +340,7 @@ export function parseMinidumpBuffer(
   buf: Buffer,
   platform: NodeJS.Platform = process.platform,
   arch: NodeJS.Architecture = process.arch,
+  options: ParseOptions = {},
 ): MinidumpSummary | null {
   try {
     const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
@@ -285,6 +355,7 @@ export function parseMinidumpBuffer(
 
     // Walk the stream directory, recording the file offset (rva) of each stream
     // we care about.
+    let threadListRva = 0;
     let moduleListRva = 0;
     let exceptionRva = 0;
     let exceptionSize = 0;
@@ -296,7 +367,8 @@ export function parseMinidumpBuffer(
       const type = view.getUint32(entry + DIR_ENTRY_TYPE_OFF, true);
       const size = view.getUint32(entry + DIR_ENTRY_SIZE_OFF, true);
       const rva = view.getUint32(entry + DIR_ENTRY_RVA_OFF, true);
-      if (type === STREAM_MODULE_LIST) moduleListRva = rva;
+      if (type === STREAM_THREAD_LIST) threadListRva = rva;
+      else if (type === STREAM_MODULE_LIST) moduleListRva = rva;
       else if (type === STREAM_EXCEPTION) {
         exceptionRva = rva;
         exceptionSize = size;
@@ -340,31 +412,30 @@ export function parseMinidumpBuffer(
     // thread's CPU context — not ExceptionAddress, which on a null-deref/abort
     // is the (zero) data fault address. The exception stream points to that
     // context; the IP sits at an arch-specific offset within it.
-    let instructionPointer = 0n;
-    const ipOffset = IP_OFFSET_IN_CONTEXT[arch];
-    if (ipOffset !== undefined) {
-      const contextRva = view.getUint32(
-        exceptionRva + EXC_CONTEXT_RVA_OFF,
-        true,
-      );
-      if (contextRva + ipOffset + 8 <= buf.length) {
-        instructionPointer = view.getBigUint64(contextRva + ipOffset, true);
-      }
-    }
-
-    if (instructionPointer !== 0n) {
-      instructionPointer = applyAddressMask(instructionPointer, addressMask);
-    }
+    const contextRva = view.getUint32(exceptionRva + EXC_CONTEXT_RVA_OFF, true);
+    const instructionPointer = readContextRegister(
+      view,
+      buf,
+      contextRva,
+      IP_OFFSET_IN_CONTEXT[arch],
+      addressMask,
+    );
 
     let faultingModule: string | undefined;
     let faultingOffset: string | undefined;
     let faultingDebugFile: string | undefined;
     let faultingDebugId: string | undefined;
-    if (moduleListRva !== 0 && instructionPointer !== 0n) {
-      const module = findModule(
-        parseModules(view, buf, moduleListRva),
-        instructionPointer,
-      );
+    // Sorted by base address for findModule's binary search. The stack scan
+    // looks up every pointer-sized stack value, so a linear search would
+    // cost modules × stack words.
+    const modules =
+      moduleListRva !== 0
+        ? parseModules(view, buf, moduleListRva).sort((a, b) =>
+            a.base < b.base ? -1 : a.base > b.base ? 1 : 0,
+          )
+        : [];
+    if (instructionPointer !== 0n) {
+      const module = findModule(modules, instructionPointer);
       if (module) {
         faultingModule = basename(module.name);
         faultingOffset = "0x" + (instructionPointer - module.base).toString(16);
@@ -381,6 +452,27 @@ export function parseMinidumpBuffer(
       ? parseAnnotations(view, buf, crashpadInfoRva)
       : undefined;
 
+    let stackTrace: StackTrace | undefined;
+    if (options.stackTrace) {
+      try {
+        stackTrace = scanThreads({
+          view,
+          buf,
+          arch,
+          modules,
+          threadListRva,
+          crashingThreadId: view.getUint32(
+            exceptionRva + EXC_THREAD_ID_OFF,
+            true,
+          ),
+          crashingContextRva: contextRva,
+          addressMask,
+        });
+      } catch {
+        // best effort: the rest of the summary stands without a stack
+      }
+    }
+
     return {
       crashReason,
       exceptionCode,
@@ -391,6 +483,7 @@ export function parseMinidumpBuffer(
       faultingDebugId,
       ptype: annotations?.ptype,
       annotations,
+      stackTrace,
     };
   } catch {
     return null;
@@ -574,15 +667,235 @@ function parseModules(
   return modules;
 }
 
-// Find the loaded module whose address range contains the given address (the
-// crash IP), or undefined if it falls outside every module.
+// Find the loaded module whose address range contains the given address, or
+// undefined if it falls outside every module. Binary search, so `sorted`
+// must be ordered by base address; module ranges never overlap.
 function findModule(
-  modules: MinidumpModule[],
+  sorted: MinidumpModule[],
   address: bigint,
 ): MinidumpModule | undefined {
-  return modules.find(
-    (m) => address >= m.base && address < m.base + BigInt(m.size),
-  );
+  let lo = 0;
+  let hi = sorted.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >>> 1;
+    const m = sorted[mid];
+    if (address < m.base) hi = mid - 1;
+    else if (address >= m.base + BigInt(m.size)) lo = mid + 1;
+    else return m;
+  }
+  return undefined;
+}
+
+// A pointer-sized register from a CPU context, with tag bits stripped, or 0n
+// when the architecture or the context is unknown.
+function readContextRegister(
+  view: DataView,
+  buf: Buffer,
+  contextRva: number,
+  offset: number | undefined,
+  addressMask: bigint,
+): bigint {
+  if (
+    offset === undefined ||
+    contextRva === 0 ||
+    contextRva + offset + 8 > buf.length
+  ) {
+    return 0n;
+  }
+  const value = view.getBigUint64(contextRva + offset, true);
+  return value === 0n ? 0n : applyAddressMask(value, addressMask);
+}
+
+interface ThreadRecord {
+  id: number;
+  contextRva: number; // 0 when the record has no context
+  stack?: { start: bigint; size: number; rva: number }; // address, size, file offset
+}
+
+function readThreadList(
+  view: DataView,
+  buf: Buffer,
+  threadListRva: number,
+): ThreadRecord[] {
+  if (threadListRva === 0 || threadListRva + 4 > buf.length) return [];
+  const count = Math.min(view.getUint32(threadListRva, true), MAX_THREAD_SCAN);
+  const threads: ThreadRecord[] = [];
+  for (let i = 0; i < count; i++) {
+    const t = threadListRva + 4 + i * THREAD_RECORD_SIZE;
+    if (t + THREAD_RECORD_SIZE > buf.length) break;
+    const stackRva = view.getUint32(t + THREAD_STACK_RVA_OFF, true);
+    const stackSize = view.getUint32(t + THREAD_STACK_SIZE_OFF, true);
+    const contextRva = view.getUint32(t + THREAD_CONTEXT_RVA_OFF, true);
+    const contextSize = view.getUint32(t + THREAD_CONTEXT_SIZE_OFF, true);
+    threads.push({
+      id: view.getUint32(t + THREAD_ID_OFF, true),
+      contextRva:
+        contextSize > 0 && contextRva + contextSize <= buf.length
+          ? contextRva
+          : 0,
+      stack:
+        stackRva !== 0 && stackRva + stackSize <= buf.length
+          ? {
+              start: view.getBigUint64(t + THREAD_STACK_START_OFF, true),
+              size: stackSize,
+              rva: stackRva,
+            }
+          : undefined,
+    });
+  }
+  return threads;
+}
+
+// Scan the crashing thread's stack, and the main thread's when another
+// thread crashed: what the UI thread was doing often explains a crash on a
+// worker. Without unwind tables (they live in symbol files, not the dump)
+// a stack cannot be walked exactly, so every pointer-sized value from the
+// stack pointer upward that lands inside a loaded module is kept as a
+// candidate return address, as minidump-stackwalk does when its unwind info
+// runs out. Values are only compared against module ranges, so nothing read
+// from stack memory reaches the result except as a module-relative offset.
+function scanThreads(input: {
+  view: DataView;
+  buf: Buffer;
+  arch: NodeJS.Architecture;
+  modules: MinidumpModule[]; // sorted by base address
+  threadListRva: number;
+  crashingThreadId: number;
+  crashingContextRva: number; // the exception's context, taken at the crash
+  addressMask: bigint;
+}): StackTrace | undefined {
+  const { view, buf, arch, modules, addressMask } = input;
+  if (modules.length === 0) return undefined;
+
+  const traceModules: StackModule[] = [];
+  const moduleIndex = new Map<MinidumpModule, number>();
+  const toFrame = (module: MinidumpModule, address: bigint): StackFrame => {
+    let index = moduleIndex.get(module);
+    if (index === undefined) {
+      index = traceModules.length;
+      moduleIndex.set(module, index);
+      const identity = parseDebugIdentity(view, buf, module.recordRva);
+      const name = cleanModuleName(module.name);
+      traceModules.push({
+        name,
+        debugFile: identity.debugFile
+          ? cleanModuleName(identity.debugFile)
+          : name,
+        debugId: identity.debugId,
+      });
+    }
+    return { module: index, offset: toHex(address - module.base) };
+  };
+
+  const scanThread = (
+    contextRva: number,
+    stack: ThreadRecord["stack"],
+  ): StackFrame[] => {
+    const frames: StackFrame[] = [];
+    // A value seen twice is most often a data pointer (a vtable or global)
+    // copied into several locals, so repeats are skipped to save the cap
+    // for distinct frames. Recursion shows its frame once as a result.
+    const seen = new Set<bigint>();
+    const add = (address: bigint): void => {
+      if (seen.has(address)) return;
+      const module = findModule(modules, address);
+      if (!module) return;
+      seen.add(address);
+      frames.push(toFrame(module, address));
+    };
+
+    const ip = readContextRegister(
+      view,
+      buf,
+      contextRva,
+      IP_OFFSET_IN_CONTEXT[arch],
+      addressMask,
+    );
+    if (ip !== 0n) {
+      // Only the instruction pointer is reported when it misses every
+      // module; scanned values that miss are data, not frames.
+      if (findModule(modules, ip)) add(ip);
+      else frames.push("unknown");
+      seen.add(ip);
+    }
+    if (arch === "arm64") {
+      add(
+        readContextRegister(
+          view,
+          buf,
+          contextRva,
+          ARM64_LR_OFFSET_IN_CONTEXT,
+          addressMask,
+        ),
+      );
+    }
+
+    const sp = readContextRegister(
+      view,
+      buf,
+      contextRva,
+      SP_OFFSET_IN_CONTEXT[arch],
+      0n,
+    );
+    if (!stack || sp === 0n) return frames;
+    // Values below the stack pointer belong to calls that already
+    // returned. Crashpad captures a little below it (the red zone), so
+    // start at the stack pointer when it falls inside the capture.
+    let skip = 0;
+    if (sp >= stack.start && sp < stack.start + BigInt(stack.size)) {
+      skip = Number(sp - stack.start);
+    }
+    // Return addresses sit in 8-byte slots relative to the stack's start.
+    const start = stack.rva + Math.ceil(skip / 8) * 8;
+    const end = Math.min(
+      stack.rva + stack.size,
+      start + MAX_STACK_SCAN_BYTES,
+      buf.length,
+    );
+    for (
+      let at = start;
+      at + 8 <= end && frames.length < MAX_STACK_FRAMES;
+      at += 8
+    ) {
+      add(applyAddressMask(view.getBigUint64(at, true), addressMask));
+    }
+    return frames;
+  };
+
+  const threads = readThreadList(view, buf, input.threadListRva);
+  const crashing = threads.find((t) => t.id === input.crashingThreadId);
+  // Crashpad lists the main thread first on every platform.
+  const main = threads.at(0);
+  const crashingIsMain = main !== undefined && main === crashing;
+  const result: StackThread[] = [
+    {
+      crashing: true,
+      main: crashingIsMain,
+      frames: scanThread(input.crashingContextRva, crashing?.stack),
+    },
+  ];
+  if (main && !crashingIsMain && main.contextRva !== 0) {
+    result.push({
+      crashing: false,
+      main: true,
+      frames: scanThread(main.contextRva, main.stack),
+    });
+  }
+  return { modules: traceModules, threads: result };
+}
+
+// Module names are file names chosen by whoever installed the file, so they
+// are free text: usually a library name, but nothing stops one holding
+// anything. The basename drops the directories (which name the user, as in
+// /home/<user> or C:\Users\<user>); control characters are removed so a
+// name cannot break the lines it is printed on, and the length is capped.
+const MAX_MODULE_NAME_LENGTH = 128;
+
+export function cleanModuleName(path: string): string {
+  const name = Array.from(basename(path).replace(/\p{C}/gu, ""))
+    .slice(0, MAX_MODULE_NAME_LENGTH)
+    .join("");
+  return name || "unnamed";
 }
 
 // Debug identity from a module's CodeView record: the file name and the

@@ -6,7 +6,14 @@
 // Usage:
 //   node scripts/resolve-crash-frames.mjs <debugFile>/<debugId>/<hexOffset> [more ...]
 //   node scripts/resolve-crash-frames.mjs --csv frames.csv
+//   node scripts/resolve-crash-frames.mjs --bundle session.json [--all]
 //   node scripts/resolve-crash-frames.mjs --help
+//
+// --bundle takes an uploaded chat session (or just its crashDumps
+// object) and prints the scanned stacks of every crash dump in it. Those
+// frames come from scanning each stack for code addresses, so they
+// include false candidates; frames that do not resolve as return
+// addresses are dropped unless --all is given.
 //
 // Example:
 //   node scripts/resolve-crash-frames.mjs dyad/DF23C4907A7C231BEA2D1962BED725290/0x6ed35df
@@ -46,6 +53,11 @@ const USAGE = `Resolve crash telemetry frames to function names.
 Usage:
   node scripts/resolve-crash-frames.mjs <debugFile>/<debugId>/<hexOffset> [more ...]
   node scripts/resolve-crash-frames.mjs --csv frames.csv
+  node scripts/resolve-crash-frames.mjs --bundle session.json [--all]
+
+--bundle resolves the crash dump stacks in an uploaded chat session JSON
+file (or its crashDumps object). Scanned candidates that are not return
+addresses are dropped unless --all is given.
 
 Example:
   node scripts/resolve-crash-frames.mjs dyad/DF23C4907A7C231BEA2D1962BED725290/0x6ed35df
@@ -155,7 +167,29 @@ function parseCsv(file) {
   return frames;
 }
 
+// The crashDumps section of an uploaded session: { dumps, triggeringDump? }.
+// Accepts the whole session or the section alone.
+function readCrashDumps(file) {
+  let parsed;
+  try {
+    parsed = JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch (error) {
+    usageError(
+      `Cannot read session file ${file} (${error?.message ?? error}).`,
+    );
+  }
+  const section = Array.isArray(parsed?.dumps) ? parsed : parsed?.crashDumps;
+  if (!section || !Array.isArray(section.dumps)) {
+    usageError(
+      `${file} has no crash dumps (the reporter left them out, or Dyad predates them).`,
+    );
+  }
+  return section;
+}
+
 const frames = [];
+const bundles = [];
+const showAll = args.includes("--all");
 for (let i = 0; i < args.length; i++) {
   if (args[i] === "--csv") {
     const file = args[i + 1];
@@ -164,13 +198,22 @@ for (let i = 0; i < args.length; i++) {
     }
     frames.push(...parseCsv(file));
     i++;
+  } else if (args[i] === "--bundle") {
+    const file = args[i + 1];
+    if (!file) {
+      usageError("--bundle needs a file path.");
+    }
+    bundles.push(readCrashDumps(file));
+    i++;
+  } else if (args[i] === "--all") {
+    continue;
   } else if (args[i].startsWith("-")) {
     usageError(`Unknown flag "${args[i]}".`);
   } else {
     frames.push(parseFrameArg(args[i]));
   }
 }
-if (frames.length === 0) {
+if (frames.length === 0 && bundles.length === 0) {
   usageError("No frames given.");
 }
 
@@ -352,4 +395,104 @@ for (const { debugFile, debugId, offsetText } of frames) {
   const table = await tableFor(debugFile, debugId);
   const name = table ? resolveOffset(table, parseInt(offsetText, 16)) : null;
   console.log(`${debugFile}+${offsetText}  ${name ?? "<unresolved>"}`);
+}
+
+// Name for a scanned candidate, or null when it is not a plausible
+// return address. A return address points just past a call, so the
+// lookup uses offset - 1 to land on the call itself. Candidates that
+// fall outside every function (data such as vtables and globals) or
+// sit exactly on a function's first byte (a function pointer held in a
+// local, which no call returns to) are rejected. The PUBLIC fallback is
+// too loose to tell code from data, so it is used only when the module
+// has no FUNC records at all.
+function resolveReturnAddress(table, offset) {
+  if (table.funcs.length === 0) {
+    return resolveOffset(table, offset - 1);
+  }
+  const func = atOrBelow(table.funcs, offset - 1);
+  if (!func || offset - 1 >= func.addr + func.size || offset === func.addr) {
+    return null;
+  }
+  return func.name;
+}
+
+// Module names come from the reporter's machine, so only plain names are
+// looked up on the symbol server; the rest print unresolved.
+async function moduleTable(module) {
+  if (
+    !module?.debugId ||
+    !safePathSegment(module.debugFile) ||
+    !safePathSegment(module.debugId)
+  ) {
+    return null;
+  }
+  return tableFor(module.debugFile, module.debugId);
+}
+
+async function printThread(stack, thread) {
+  let shown = 0;
+  let dropped = 0;
+  for (const [i, frame] of thread.frames.entries()) {
+    if (frame === "unknown") {
+      console.log(
+        `  #${shown++}  <no module>  (outside every module, e.g. JIT code)`,
+      );
+      continue;
+    }
+    const module = stack.modules[frame.module];
+    const label = `${module?.name ?? "<bad module index>"}+${frame.offset}`;
+    const table = await moduleTable(module);
+    const offset = parseInt(frame.offset, 16);
+    // Frame 0 is the instruction pointer itself, not a return address.
+    let name = !table
+      ? "<unresolved>"
+      : i === 0
+        ? (resolveOffset(table, offset) ?? "<unresolved>")
+        : resolveReturnAddress(table, offset);
+    if (name === null) {
+      dropped++;
+      if (!showAll) continue;
+      name = "<dropped: not a return address>";
+    }
+    console.log(`  #${shown++}  ${label}  ${name}`);
+  }
+  if (dropped > 0 && !showAll) {
+    console.log(
+      `  (${dropped} scanned candidates were not return addresses; --all shows them)`,
+    );
+  }
+}
+
+for (const { dumps, triggeringDump } of bundles) {
+  if (triggeringDump === null) {
+    console.log(
+      "Report started from the crash dialog; that crash left no dump.\n",
+    );
+  }
+  for (const dump of dumps) {
+    const facts = [dump.crashedAt, dump.ptype, dump.crashReason].filter(
+      Boolean,
+    );
+    const marker =
+      dump.file === triggeringDump ? "  <- the crash this report is about" : "";
+    console.log(`${dump.file}  (${facts.join(", ")})${marker}`);
+    if (!dump.readable) {
+      console.log("  <not a readable minidump>\n");
+      continue;
+    }
+    if (!dump.stack) {
+      console.log("  <no stack>\n");
+      continue;
+    }
+    for (const thread of dump.stack.threads) {
+      const role = thread.crashing
+        ? thread.main
+          ? "Crashing thread (main)"
+          : "Crashing thread"
+        : "Main thread";
+      console.log(` ${role}:`);
+      await printThread(dump.stack, thread);
+    }
+    console.log("");
+  }
 }

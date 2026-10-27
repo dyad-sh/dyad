@@ -1,0 +1,86 @@
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import type { MinidumpSummary } from "@/utils/minidump_summary";
+
+const parsed = vi.hoisted(() => new Map<string, MinidumpSummary | null>());
+
+// Parsing has its own tests; here each file's content names the summary
+// it parses to.
+vi.mock("@/utils/minidump_summary", () => ({
+  parseMinidumpBuffer: (buf: Buffer) => parsed.get(buf.toString()) ?? null,
+}));
+
+const { collectCrashDumps } = await import("@/utils/crash_dump_report");
+
+describe("collectCrashDumps", () => {
+  let dir: string;
+
+  function makeDump(name: string, content: string, ageSeconds: number) {
+    const dump = path.join(dir, name);
+    fs.writeFileSync(dump, content);
+    const t = new Date("2026-07-15T20:00:00Z").getTime() / 1000 - ageSeconds;
+    fs.utimesSync(dump, t, t);
+  }
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "crash-dump-report-test-"));
+    parsed.clear();
+  });
+
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("reports each dump newest first, with its crash details and stack", async () => {
+    const stackTrace = {
+      modules: [{ name: "dyad", debugFile: "dyad", debugId: "ABC0" }],
+      threads: [
+        {
+          crashing: true,
+          main: true,
+          frames: [{ module: 0, offset: "0x10" as const }],
+        },
+      ],
+    };
+    parsed.set("browser", {
+      exceptionCode: 11,
+      crashReason: "SIGSEGV",
+      faultAddress: "0x0",
+      faultingModule: "dyad",
+      ptype: "browser",
+      annotations: {
+        ptype: "browser",
+        "switch-1": "--user-data-dir=/home/jo/.config/dyad",
+      },
+      stackTrace,
+    });
+    makeDump("crash-old.dmp", "garbage", 60);
+    makeDump("crash-new.dmp", "browser", 0);
+
+    expect(await collectCrashDumps(dir)).toEqual([
+      {
+        file: "crash-new.dmp",
+        crashedAt: "2026-07-15T20:00:00.000Z",
+        readable: true,
+        ptype: "browser",
+        crashReason: "SIGSEGV",
+        exceptionCode: 11,
+        faultAddress: "0x0",
+        // Only the keys crash telemetry keeps; switches carry paths.
+        annotations: { ptype: "browser" },
+        stack: stackTrace,
+      },
+      {
+        file: "crash-old.dmp",
+        crashedAt: "2026-07-15T19:59:00.000Z",
+        readable: false,
+      },
+    ]);
+  });
+
+  it("returns nothing for a missing directory", async () => {
+    expect(await collectCrashDumps(path.join(dir, "missing"))).toEqual([]);
+  });
+});

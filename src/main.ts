@@ -39,6 +39,7 @@ import {
   retryRecoveryWithKeychainUnlock,
 } from "./main/safe_storage_legacy";
 import { recordUpdaterError } from "./main/updater_state";
+import { recordPreviousSessionCrash } from "./main/previous_session_crash";
 import {
   sendTelemetryEvent,
   sendTelemetryEventToWindow,
@@ -83,6 +84,7 @@ import {
   listDumpFilesRecursive,
   moveDump,
   pruneDumps,
+  RETAINED_DUMPS_DIR,
 } from "./utils/crash_dumps";
 import {
   crashAnnotationEventFields,
@@ -297,6 +299,7 @@ let nativeCrashDumpsProcessed = false;
 let pendingNativeBrowserCrash: {
   summary: MinidumpSummary;
   attribution: "ptype" | "sentinel";
+  dumpFile: string; // its name in the retain dir
 } | null = null;
 
 // Summarize each new minidump (signal, faulting module + offset, process type —
@@ -314,7 +317,7 @@ function processNativeCrashDumps(): void {
   // Where we keep dumps we've already reported, for later examination. Under
   // userData (not inside crashDumpsDir) so it stays separate from Crashpad's
   // own dump dirs and isn't picked up by the scan above.
-  const retainDir = path.join(app.getPath("userData"), "dyad-crash-reports");
+  const retainDir = path.join(app.getPath("userData"), RETAINED_DUMPS_DIR);
   try {
     fs.mkdirSync(retainDir, { recursive: true });
   } catch (error) {
@@ -325,6 +328,7 @@ function processNativeCrashDumps(): void {
   }
 
   for (const file of listDumpFilesRecursive(crashDumpsDir)) {
+    const retainedName = crashReportName(file);
     const summary = parseMinidumpSummary(file);
     if (summary) {
       logger.info(
@@ -348,7 +352,11 @@ function processNativeCrashDumps(): void {
         attribution === "ptype" &&
         pendingNativeBrowserCrash?.attribution === "sentinel";
       if (attribution && (!pendingNativeBrowserCrash || outranks)) {
-        pendingNativeBrowserCrash = { summary, attribution };
+        pendingNativeBrowserCrash = {
+          summary,
+          attribution,
+          dumpFile: retainedName,
+        };
         // A browser-process dump is direct evidence of a main-process crash,
         // so report it even if the crash sentinel wasn't written (e.g. a
         // crash during early startup).
@@ -357,7 +365,7 @@ function processNativeCrashDumps(): void {
     }
     // Retain (timestamp-named) so it can be examined/exported and isn't
     // re-summarized next launch; this also drains Crashpad's dump dirs.
-    moveDump(file, path.join(retainDir, crashReportName(file)));
+    moveDump(file, path.join(retainDir, retainedName));
   }
   pruneDumps(retainDir, MAX_RETAINED_DUMPS);
 }
@@ -835,6 +843,8 @@ function deliverPendingCrashRecovery(target: BrowserWindow): void {
 
   const nativeCrash = pendingNativeBrowserCrash?.summary ?? null;
   const nativeCrashAttribution = pendingNativeBrowserCrash?.attribution ?? null;
+  // A report started from the crash dialog names this dump.
+  recordPreviousSessionCrash(pendingNativeBrowserCrash?.dumpFile ?? null);
   pendingNativeBrowserCrash = null;
 
   const oom = classifyOom({

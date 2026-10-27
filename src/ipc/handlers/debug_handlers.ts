@@ -1,4 +1,4 @@
-import { BrowserWindow, clipboard } from "electron";
+import { app as electronApp, BrowserWindow, clipboard } from "electron";
 import {
   discardCapture,
   getCapture,
@@ -37,6 +37,9 @@ import {
   PNPM_PM_ON_FAIL_IGNORE_ARG,
 } from "@/ipc/utils/socket_firewall";
 import { getLastUpdaterError } from "../../main/updater_state";
+import { getPreviousSessionCrashDump } from "../../main/previous_session_crash";
+import { RETAINED_DUMPS_DIR } from "../../utils/crash_dumps";
+import { collectCrashDumps } from "../../utils/crash_dump_report";
 import { collectProcessMemoryDiagnostics } from "../../utils/process_memory_diagnostics";
 import { resolveDefaultModelSelection } from "@/ipc/utils/model_effort";
 import type { ModelSelection } from "@/lib/schemas";
@@ -327,7 +330,8 @@ export function registerDebugHandlers() {
     });
   });
 
-  createTypedHandler(miscContracts.getSessionDebugBundle, async (_, chatId) => {
+  createTypedHandler(miscContracts.getSessionDebugBundle, async (_, req) => {
+    const { chatId, fromCrash } = req;
     console.log(`IPC: get-session-debug-bundle called for chat ${chatId}`);
 
     try {
@@ -351,23 +355,34 @@ export function registerDebugHandlers() {
       }
 
       // Get runtime info in parallel
-      const [nodeVersion, pnpmVersion, nodePathResult, memoryDiagnostics] =
-        await Promise.all([
-          runShellCommand("node --version").catch(() => null),
-          runShellCommand(`pnpm ${PNPM_PM_ON_FAIL_IGNORE_ARG} --version`, {
-            env: getPackageManagerCommandEnv(),
-          }).catch(() => null),
-          (platform() === "win32"
-            ? runShellCommand("where.exe node")
-            : runShellCommand("which node")
-          ).catch(() => null),
-          // Best-effort: never throws, but guard anyway — diagnostics must
-          // not be able to break the session export.
-          collectProcessMemoryDiagnostics().catch((err) => {
-            console.error("Failed to collect memory diagnostics:", err);
-            return null;
-          }),
-        ]);
+      const [
+        nodeVersion,
+        pnpmVersion,
+        nodePathResult,
+        memoryDiagnostics,
+        crashDumps,
+      ] = await Promise.all([
+        runShellCommand("node --version").catch(() => null),
+        runShellCommand(`pnpm ${PNPM_PM_ON_FAIL_IGNORE_ARG} --version`, {
+          env: getPackageManagerCommandEnv(),
+        }).catch(() => null),
+        (platform() === "win32"
+          ? runShellCommand("where.exe node")
+          : runShellCommand("which node")
+        ).catch(() => null),
+        // Best-effort: never throws, but guard anyway — diagnostics must
+        // not be able to break the session export.
+        collectProcessMemoryDiagnostics().catch((err) => {
+          console.error("Failed to collect memory diagnostics:", err);
+          return null;
+        }),
+        collectCrashDumps(
+          path.join(electronApp.getPath("userData"), RETAINED_DUMPS_DIR),
+        ).catch((err) => {
+          console.error("Failed to collect crash dumps:", err);
+          return [];
+        }),
+      ]);
 
       // Get chat with full messages from database
       const chatRecord = await db.query.chats.findFirst({
@@ -519,6 +534,12 @@ export function registerDebugHandlers() {
         logs,
         updaterLogs: readUpdaterLogs(),
         memoryDiagnostics,
+        crashDumps: {
+          dumps: crashDumps,
+          ...(fromCrash && {
+            triggeringDump: getPreviousSessionCrashDump() ?? null,
+          }),
+        },
       };
 
       return bundle;

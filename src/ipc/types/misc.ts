@@ -350,6 +350,87 @@ export type ProcessMemoryDiagnostics = z.infer<
   typeof ProcessMemoryDiagnosticsSchema
 >;
 
+// -- Native crash dumps --
+
+/**
+ * One candidate frame: an offset into `modules[module]`, or "unknown" when a
+ * thread's instruction pointer fell outside every module (e.g. JIT code).
+ * Frames after the first come from scanning the stack for values that point
+ * into code, so some are stale return addresses or function pointers held in
+ * locals rather than real calls. Resolve them against symbols with
+ * `node scripts/resolve-crash-frames.mjs --bundle <file.json>`, which also
+ * drops the values that are not return addresses.
+ */
+const CrashStackFrameSchema = z.union([
+  z.object({ module: z.number(), offset: z.string() }),
+  z.literal("unknown"),
+]);
+
+const CrashStackSchema = z.object({
+  /** Modules the frames reference, by index. */
+  modules: z.array(
+    z.object({
+      /** Basename with control characters removed, capped at 128 characters. */
+      name: z.string(),
+      /** With debugId, keys the module's symbol file (e.g. on symbols.electronjs.org). */
+      debugFile: z.string(),
+      /** Breakpad debug id. Absent when the module has no CodeView record. */
+      debugId: z.string().optional(),
+    }),
+  ),
+  /** The crashing thread first, then the main thread if another one crashed. */
+  threads: z.array(
+    z.object({
+      crashing: z.boolean(),
+      /** The process's first thread: the UI thread, for the browser process. */
+      main: z.boolean(),
+      /** Instruction pointer first, then stack order (callers last). */
+      frames: z.array(CrashStackFrameSchema),
+    }),
+  ),
+});
+
+/**
+ * A native crash dump kept on the reporter's machine, reduced to what a stack
+ * trace needs. No stack memory, absolute address, or file path is included.
+ */
+const CrashDumpSchema = z.object({
+  /** Retained file name, e.g. crash-2026-06-07T20-41-55-123Z-9ac4d4e8.dmp */
+  file: z.string(),
+  /** ISO 8601 time of the crash (the dump's modification time). */
+  crashedAt: z.string(),
+  /** False when the file could not be parsed as a minidump; nothing else is set then. */
+  readable: z.boolean(),
+  /** Crashing process type: "browser" (main), "renderer", "gpu-process", "utility", ... */
+  ptype: z.string().optional(),
+  /** Signal, Mach exception, or NTSTATUS name, e.g. "SIGSEGV". */
+  crashReason: z.string().optional(),
+  exceptionCode: z.number().optional(),
+  /** Exact only near null; "non-null" otherwise. */
+  faultAddress: z.string().optional(),
+  accessType: z.enum(["read", "write", "execute"]).optional(),
+  inPageErrorStatus: z.string().optional(),
+  oomAllocationSizeBytes: z.number().optional(),
+  fastFailCode: z.number().optional(),
+  /** Crashpad annotations, limited to the keys crash telemetry keeps (app version, V8 heap, ...). */
+  annotations: z.record(z.string(), z.string()).optional(),
+  stack: CrashStackSchema.optional(),
+});
+
+export const CrashDumpsSchema = z.object({
+  /** Every dump kept on the machine (up to 5), newest first. */
+  dumps: z.array(CrashDumpSchema),
+  /**
+   * Set only on a report started from the crash dialog: the `file` of the
+   * dump the crash left, or null when it left none (a force kill, the OOM
+   * killer, power loss). The named dump may have been pruned since.
+   */
+  triggeringDump: z.string().nullable().optional(),
+});
+
+export type CrashDump = z.infer<typeof CrashDumpSchema>;
+export type CrashDumps = z.infer<typeof CrashDumpsSchema>;
+
 // -- Top-level bundle --
 
 /**
@@ -394,6 +475,11 @@ export const SessionDebugBundleSchema = z.object({
    * can carry an error field so diagnostics failures never break the export.
    */
   memoryDiagnostics: ProcessMemoryDiagnosticsSchema.nullable(),
+  /**
+   * Stack traces from the native crash dumps kept on the machine. Absent when
+   * the reporter unticked them, and in bundles from older versions.
+   */
+  crashDumps: CrashDumpsSchema.optional(),
 });
 
 export type SessionDebugBundle = z.infer<typeof SessionDebugBundleSchema>;
@@ -482,7 +568,11 @@ export const miscContracts = {
   // Session debug bundle
   getSessionDebugBundle: defineContract({
     channel: "get-session-debug-bundle",
-    input: z.number(), // chatId
+    input: z.object({
+      chatId: z.number(),
+      /** The report was started from the crash dialog. */
+      fromCrash: z.boolean(),
+    }),
     output: SessionDebugBundleSchema,
   }),
 

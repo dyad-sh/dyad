@@ -126,12 +126,20 @@ class ScreenshotUploadError extends Error {
   }
 }
 
+/** A session this report uploaded, and what the issue body says about it. */
+interface UploadedSession {
+  id: string;
+  /** When each included crash dump was written. Null when they were left out. */
+  crashDumpTimes: string[] | null;
+}
+
 /** Everything needed to file, snapshotted when the reporter submits. */
 interface OutgoingReport {
   description: string;
   screenshot: ScreenshotOutcome;
   includeSystemInfo: boolean;
   includeSession: boolean;
+  includeCrashDumps: boolean;
   chatId: number | null;
   bundle: SessionDebugBundle | null;
   /** Names this report's own capture, so another report's cannot be pasted. */
@@ -229,6 +237,7 @@ export function HelpDialog() {
   const [atCap, setAtCap] = useState(false);
   const [includeSystemInfo, setIncludeSystemInfo] = useState(true);
   const [includeSession, setIncludeSession] = useState(true);
+  const [includeCrashDumps, setIncludeCrashDumps] = useState(true);
 
   // Shown in the disclosures, and sent as-is: the reporter agrees to what
   // they can see, so the body never carries anything else. A submit that
@@ -290,7 +299,7 @@ export function HelpDialog() {
   // The session this report already uploaded. A retry reuses it rather than
   // sending the reporter's chat and codebase a second time and leaving the
   // first copy on the service with no issue pointing at it.
-  const uploadedSession = useRef<string | null>(null);
+  const uploadedSession = useRef<UploadedSession | null>(null);
   // The screenshot this draft already uploaded. A resubmit reuses the URL:
   // main dropped the image once it was in the bucket, so it cannot be sent
   // again, and the copy already there would have no issue pointing at it.
@@ -354,6 +363,7 @@ export function HelpDialog() {
     setAtCap(false);
     setIncludeSystemInfo(true);
     setIncludeSession(true);
+    setIncludeCrashDumps(true);
     setSessionChatId(null);
     setFormDebugInfo(null);
     setFormDebugInfoFailed(false);
@@ -504,7 +514,11 @@ export function HelpDialog() {
   const readSession = (chatId: number): Promise<SessionDebugBundle> => {
     const inFlight = sessionRequest.current;
     if (inFlight) return inFlight;
-    const request = ipc.misc.getSessionDebugBundle(chatId);
+    const request = ipc.misc.getSessionDebugBundle({
+      chatId,
+      // Lets main name the dump of the crash this report is about.
+      fromCrash: reportSource.current === "force-close",
+    });
     sessionRequest.current = request;
     // A failure must not be remembered, or every later attempt re-awaits it.
     request.catch(() => {
@@ -546,13 +560,21 @@ export function HelpDialog() {
   const uploadSession = async (
     chatId: number,
     loaded: SessionDebugBundle | null,
+    includeCrashDumps: boolean,
     token: number,
-  ): Promise<string | null> => {
+  ): Promise<UploadedSession | null> => {
     const alreadyUploaded = uploadedSession.current;
     if (alreadyUploaded) return alreadyUploaded;
 
-    const bundle = loaded ?? (await readSession(chatId));
+    const read = loaded ?? (await readSession(chatId));
     if (captureToken.current !== token) return null;
+    // Unticked, the dumps never leave the machine: the bundle is sent
+    // without them rather than with them emptied.
+    const { crashDumps, ...rest } = read;
+    const bundle: SessionDebugBundle = includeCrashDumps ? read : rest;
+    const crashDumpTimes = includeCrashDumps
+      ? (crashDumps?.dumps.map((dump) => dump.crashedAt) ?? [])
+      : null;
 
     const response = await fetch(UPLOAD_URL_ENDPOINT, {
       method: "POST",
@@ -584,12 +606,15 @@ export function HelpDialog() {
     // Backing out aborts the PUT, and the handler says so rather than
     // resolving like a finished upload. Nothing to reference in that case.
     if (!uploaded) return null;
-    const sessionId = "v2:" + filename.replace(".json", "");
+    const session = {
+      id: "v2:" + filename.replace(".json", ""),
+      crashDumpTimes,
+    };
     // Only the report that made this upload may remember it: a PUT can finish
     // after the reporter has pressed Back, and its continuation must not hand
     // the next report a session that was never its own.
-    if (captureToken.current === token) uploadedSession.current = sessionId;
-    return sessionId;
+    if (captureToken.current === token) uploadedSession.current = session;
+    return session;
   };
 
   /**
@@ -876,6 +901,7 @@ export function HelpDialog() {
       screenshot: screenshot ?? { status: "declined" },
       includeSystemInfo,
       includeSession: includeSession && sessionChatId != null,
+      includeCrashDumps,
       chatId: sessionChatId ?? null,
       bundle: debugBundle,
       captureId,
@@ -900,10 +926,15 @@ export function HelpDialog() {
       if (captureToken.current === token) showError(message);
     };
 
-    let sessionId: string | null = null;
+    let session: UploadedSession | null = null;
     if (report.includeSession && report.chatId != null) {
       try {
-        sessionId = await uploadSession(report.chatId, report.bundle, token);
+        session = await uploadSession(
+          report.chatId,
+          report.bundle,
+          report.includeCrashDumps,
+          token,
+        );
       } catch (error) {
         // A failed upload must not cost the reporter their whole report.
         console.error("Failed to upload chat session:", error);
@@ -1063,7 +1094,8 @@ export function HelpDialog() {
         description: report.description,
         screenshot: outgoingScreenshot,
         diagnostics,
-        sessionId,
+        sessionId: session?.id ?? null,
+        crashDumpTimes: session?.crashDumpTimes ?? null,
       }),
       isDyadProUser,
     });
@@ -1202,6 +1234,8 @@ export function HelpDialog() {
               includeSession={includeSession && sessionChatId != null}
               onIncludeSessionChange={setIncludeSession}
               onSessionExpand={loadSessionBundle}
+              includeCrashDumps={includeCrashDumps}
+              onIncludeCrashDumpsChange={setIncludeCrashDumps}
               locked={isFiling}
               sessionUnavailableReason={
                 sessionChatId == null

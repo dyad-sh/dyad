@@ -459,6 +459,14 @@ ${formatSettingsLines(settings, selectedModel)}
 ${formatLogsSection(debugInfo)}`;
 }
 
+// The dumps' contents stay in the private session; the public issue only says
+// how many went with it and when they were written, so a maintainer knows
+// whether the session is worth opening for a crash.
+function formatCrashDumpsLine(times: string[]): string {
+  if (times.length === 0) return "Crash dumps: none on the reporter's machine";
+  return `Crash dumps: ${times.length} (${times.join(", ")})`;
+}
+
 export interface IssueBodyParams {
   description: string;
   screenshot: ScreenshotOutcome;
@@ -470,6 +478,11 @@ export interface IssueBodyParams {
   diagnostics: Diagnostics | "unavailable" | null;
   /** Set when a chat session was uploaded alongside the report. */
   sessionId: string | null;
+  /**
+   * When each crash dump in that session was written. Null when the reporter
+   * left the dumps out, so the issue does not claim there were none.
+   */
+  crashDumpTimes?: string[] | null;
 }
 
 export function buildIssueBody({
@@ -477,6 +490,7 @@ export function buildIssueBody({
   screenshot,
   diagnostics,
   sessionId,
+  crashDumpTimes,
 }: IssueBodyParams): string {
   const sections = [
     "<!-- Please fill in all fields in English -->",
@@ -512,6 +526,9 @@ export function buildIssueBody({
       `Session ID: ${field(sessionId)}`,
       "Session Schema: v2.0",
     );
+    if (crashDumpTimes) {
+      sections.push(formatCrashDumpsLine(crashDumpTimes));
+    }
   }
 
   if (diagnostics === "unavailable") {

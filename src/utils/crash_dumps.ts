@@ -1,6 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 
+// Where processNativeCrashDumps keeps dumps it has already reported, under
+// userData. Separate from Crashpad's own dump dirs so its scan skips them.
+export const RETAINED_DUMPS_DIR = "dyad-crash-reports";
+
 // Absolute paths of the minidump files in a directory, newest first.
 export function listDumpFiles(dir: string): string[] {
   let entries: string[];

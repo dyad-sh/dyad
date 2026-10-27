@@ -446,5 +446,11 @@
   "mcpResultTruncated": "显示前 {{shown}} 个字符（共 {{total}} 个）。智能体已收到全部 {{total}} 个字符。",
   "mcpResultBothTruncated": "显示智能体收到的 {{total}} 个字符中的前 {{shown}} 个。工具结果原本更长，在发送给智能体之前已被截断。",
   "mcpResultToolTruncated": "工具结果过大，智能体收到的是缩短后的版本。",
-  "mcpErrorTruncated": "显示错误信息的前 {{shown}} 个字符（共 {{total}} 个）。"
+  "mcpErrorTruncated": "显示错误信息的前 {{shown}} 个字符（共 {{total}} 个）。",
+  "neonBranchLimit": {
+    "title": "已达到 Neon 分支数量上限",
+    "waiting": "您的 Neon 套餐限制了数据库分支的数量。测试正在等待其他运行结束并释放分支，随后将自动继续。",
+    "blocked": "您的 Neon 套餐无法再创建测试分支。请在 Neon 中删除不再使用的分支或升级套餐，然后重新运行测试。",
+    "manage": "打开 Neon"
+  }
 }

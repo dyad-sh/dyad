@@ -157,6 +157,16 @@ export const testUserCleanup = sqliteTable("test_user_cleanup", {
   organizationSlug: text("organization_slug").notNull(),
 });
 
+// One record per sandboxed run, independent of the recorder's app-row marker.
+// Retain provider identity after app deletion/reassociation so failed cleanup
+// remains recoverable. Never store connection strings or auth credentials here.
+export const testBranchCleanup = sqliteTable("test_branch_cleanup", {
+  branchId: text("branch_id").primaryKey(),
+  appId: integer("app_id").notNull(),
+  ownerId: text("owner_id").notNull().unique(),
+  projectId: text("project_id").notNull(),
+});
+
 export const chats = sqliteTable("chats", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   appId: integer("app_id")

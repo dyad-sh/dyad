@@ -103,6 +103,44 @@ function enqueue(appId = 1) {
 async function tick(ms = 10) {
   await vi.advanceTimersByTimeAsync(ms);
 }
+
+it("publishes app-scoped Neon capacity waits and clears them on cancellation", async () => {
+  const run = enqueue(1);
+  await tick();
+  const runId = service.getAppTestRunQueue(1).activeRun!.runId;
+  service.setNeonBranchLimit(runId, "project", "waiting");
+  expect(service.getAppTestRunQueue(1).neonBranchLimit).toEqual({
+    runId,
+    projectId: "project",
+    status: "waiting",
+  });
+  expect(service.getAppTestRunQueue(2).neonBranchLimit).toBeUndefined();
+  service.cancelAppTestRun(1, runId, { kind: "tests-panel-stop" });
+  expect(service.getAppTestRunQueue(1).neonBranchLimit).toBeUndefined();
+  service.setNeonBranchLimit(runId, "project", "blocked");
+  expect(service.getAppTestRunQueue(1).neonBranchLimit).toBeUndefined();
+  run.finish();
+  await run.result;
+});
+
+it("retains blocked plan notices after setup fails, until a new run obtains capacity", async () => {
+  const failed = enqueue(1);
+  await tick();
+  const firstId = service.getAppTestRunQueue(1).activeRun!.runId;
+  service.setNeonBranchLimit(firstId, "project", "blocked");
+  failed.finish();
+  await failed.result;
+  expect(service.getAppTestRunQueue(1).neonBranchLimit?.status).toBe("blocked");
+  const succeeding = enqueue(1);
+  await tick();
+  const nextId = service.getAppTestRunQueue(1).activeRun!.runId;
+  service.setNeonBranchLimit(nextId, "project", undefined);
+  expect(service.getAppTestRunQueue(1).neonBranchLimit).toBeUndefined();
+  service.setNeonBranchLimit(firstId, "project", "blocked");
+  expect(service.getAppTestRunQueue(1).neonBranchLimit).toBeUndefined();
+  succeeding.finish();
+  await succeeding.result;
+});
 it("times queued cancellation separately and retains the active run through cleanup", async () => {
   let now = 0;
   const clock = vi.spyOn(performance, "now").mockImplementation(() => now);
@@ -271,7 +309,7 @@ it("stops active and queued runs across apps while retaining their cleanup", asy
   );
 });
 
-it.each([undefined, "neon:project:1", "supabase:project"])(
+it.each([undefined, "supabase:project"])(
   "overlaps compatible runs with database %s and cancels them independently",
   async (databaseKey) => {
     h.settings.enableParallelTestRuns = true;
@@ -295,7 +333,7 @@ it.each(["database", "exclusive"])(
   "preserves %s compatibility checks",
   async (kind) => {
     h.settings.enableParallelTestRuns = true;
-    h.databaseKey = "neon:project:1";
+    h.databaseKey = "supabase:project";
     const first = enqueue();
     await tick();
     if (kind === "database") h.branch = "other";

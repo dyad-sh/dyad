@@ -132,6 +132,7 @@ import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import type { TestRunExecution } from "@/test_run_queue/controller";
 import {
   getAppTestRunQueue,
+  setNeonBranchLimit,
   ownsAppTestRun,
   withAppTestRun,
   stopAppTestsForApp,
@@ -2965,6 +2966,8 @@ async function executeAppTestsWithIsolation(
                 timing,
                 app,
                 workspacePath: workspace!.workspacePath,
+                onNeonBranchLimit: (status) =>
+                  setNeonBranchLimit(runId, app.neonProjectId!, status),
                 emit,
                 runtimeMode,
                 signal,

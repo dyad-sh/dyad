@@ -449,5 +449,11 @@
   "mcpResultTruncated": "Mostrando os primeiros {{shown}} de {{total}} caracteres. O agente recebeu todos os {{total}} caracteres.",
   "mcpResultBothTruncated": "Mostrando os primeiros {{shown}} dos {{total}} caracteres que o agente recebeu. O resultado da ferramenta era maior e foi cortado antes de chegar ao agente.",
   "mcpResultToolTruncated": "O resultado da ferramenta era grande demais, então o agente recebeu uma versão reduzida.",
-  "mcpErrorTruncated": "Mostrando os primeiros {{shown}} de {{total}} caracteres do erro."
+  "mcpErrorTruncated": "Mostrando os primeiros {{shown}} de {{total}} caracteres do erro.",
+  "neonBranchLimit": {
+    "title": "Limite de branches do Neon atingido",
+    "waiting": "Seu plano do Neon limita o número de branches do banco de dados. Os testes estão aguardando outra execução terminar e liberar um branch. Depois, continuarão automaticamente.",
+    "blocked": "Seu plano do Neon não permite criar outro branch de teste. Exclua um branch não utilizado no Neon ou faça upgrade do plano e execute os testes novamente.",
+    "manage": "Abrir Neon"
+  }
 }

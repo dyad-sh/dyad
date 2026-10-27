@@ -73,5 +73,30 @@ server.registerTool(
   },
 );
 
+// Accepts an arbitrarily large payload and returns a result of the requested
+// size, so tests can exercise oversized MCP arguments and results separately.
+server.registerTool(
+  "ingest_payload",
+  {
+    title: "Ingest Payload",
+    description: "Accept a large payload and report its length",
+    inputSchema: {
+      payload: z.string(),
+      resultBytes: z.number().optional(),
+    },
+  },
+  async ({ payload, resultBytes }) => {
+    const text = `received ${payload.length} chars`;
+    return {
+      content: [
+        {
+          type: "text",
+          text: resultBytes ? text + "qrstuvwx".repeat(resultBytes / 8) : text,
+        },
+      ],
+    };
+  },
+);
+
 const transport = new StdioServerTransport();
 await server.connect(transport);

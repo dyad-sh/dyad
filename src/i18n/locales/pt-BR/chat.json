@@ -444,5 +444,7 @@
     "sending": "Enviando...",
     "send": "Enviar {{count}}"
   },
-  "safetyReviewUnavailable": "Revisão de segurança indisponível"
+  "safetyReviewUnavailable": "Revisão de segurança indisponível",
+  "mcpInputTruncated": "Mostrando os primeiros {{shown}} de {{total}} caracteres. A entrada completa foi enviada para a ferramenta.",
+  "mcpResultTruncated": "Mostrando os primeiros {{shown}} de {{total}} caracteres. O agente recebeu o resultado completo."
 }

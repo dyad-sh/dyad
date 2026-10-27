@@ -441,5 +441,7 @@
     "sending": "正在发送...",
     "send": "发送 {{count}} 条"
   },
-  "safetyReviewUnavailable": "安全审查不可用"
+  "safetyReviewUnavailable": "安全审查不可用",
+  "mcpInputTruncated": "显示前 {{shown}} 个字符（共 {{total}} 个）。完整输入已发送给工具。",
+  "mcpResultTruncated": "显示前 {{shown}} 个字符（共 {{total}} 个）。智能体已收到完整结果。"
 }

@@ -216,6 +216,14 @@ export function initialParserState(): ParserState {
 
 const NAME_CHAR = /[A-Za-z0-9-]/;
 
+// V8 may represent a slice as a view into its parent string. Closed blocks are
+// cached for the life of the message, so a view would keep that whole version
+// of the message alive. Slicing a concatenation makes V8 copy the text into a
+// new string first, so blocks retain only their own text.
+function detachedSlice(content: string, start: number, end: number): string {
+  return (" " + content.slice(start, end)).slice(1);
+}
+
 // Renders as nothing, so it must not swallow later tags if it is never
 // closed, for example when a reply is cut off. Another Dyad tag inside it
 // ends the block as incomplete and is parsed normally.
@@ -317,7 +325,7 @@ export function advanceParser(prev: ParserState, content: string): ParserState {
         // Fast-forward over a run of non-'<' chars; cheaper than per-char append.
         let j = i + 1;
         while (j < len && content[j] !== "<") j++;
-        appendToMarkdownOpen(state, content.slice(i, j));
+        appendToMarkdownOpen(state, detachedSlice(content, i, j));
         i = j;
       }
       continue;
@@ -381,7 +389,7 @@ export function advanceParser(prev: ParserState, content: string): ParserState {
       // Fast-forward attribute bytes.
       let j = i;
       while (j < len && content[j] !== ">") j++;
-      state.pendingAttrs += content.slice(i, j);
+      state.pendingAttrs += detachedSlice(content, i, j);
       i = j;
       continue;
     }
@@ -396,7 +404,7 @@ export function advanceParser(prev: ParserState, content: string): ParserState {
       // Fast-forward run of non-'<' content into rawContent.
       let j = i + 1;
       while (j < len && content[j] !== "<") j++;
-      const chunk = content.slice(i, j);
+      const chunk = detachedSlice(content, i, j);
       if (state.currentTag) {
         state.currentTag.rawContent += chunk;
         const open = state.openBlock;

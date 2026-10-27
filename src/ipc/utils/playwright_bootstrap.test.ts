@@ -2,6 +2,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
+import { execFile } from "node:child_process";
+import http from "node:http";
+import { promisify } from "node:util";
 import * as esbuild from "esbuild";
 import {
   TEST_CASE_ENDPOINT_ENV,
@@ -102,7 +105,7 @@ describe("buildPreviewShimSource", () => {
 
   it("stays inert unless Dyad hands it an endpoint", () => {
     expect(source).toContain(`process.env.${PREVIEW_CDP_ENDPOINT_ENV}`);
-    expect(source).toContain("!endpoint\n  ? isolatedTest");
+    expect(source).toContain("!endpoint\n  ? retryingTest");
     expect(source).toContain("!caseEndpoint ? pw.test");
   });
 
@@ -373,6 +376,10 @@ describe("preview shim fixtures", () => {
       pages: () => [page],
       _options: contextOptions,
       request: api,
+      on: vi.fn(),
+      off: vi.fn(),
+      route: vi.fn(),
+      unroute: vi.fn(),
     };
     const browser = { contexts: () => [context] };
 
@@ -508,6 +515,72 @@ describe("ensurePreviewShim", () => {
     path.join(appPath, E2E_TSCONFIG_RELATIVE_PATH);
   const shimTsconfigAt = (appPath: string) =>
     path.join(appPath, SHIM_TSCONFIG_RELATIVE_PATH);
+
+  it("retries sign-in through the generated request fixture in a real Playwright run", async () => {
+    const appPath = makeApp();
+    const bodies: string[] = [];
+    const server = http.createServer(async (req, res) => {
+      let body = "";
+      for await (const chunk of req) body += String(chunk);
+      bodies.push(body);
+      res.writeHead(bodies.length === 1 ? 429 : 200, { "x-retry-after": "0" });
+      res.end();
+    });
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolve);
+    });
+    const port = (server.address() as import("node:net").AddressInfo).port;
+    const baseUrl = `http://127.0.0.1:${port}`;
+    fs.symlinkSync(
+      path.resolve("node_modules"),
+      path.join(appPath, "node_modules"),
+      "junction",
+    );
+    ensurePreviewShim(appPath);
+    fs.writeFileSync(
+      path.join(appPath, "playwright.config.cjs"),
+      `module.exports = { testDir: './e2e-tests', workers: 1, use: { baseURL: ${JSON.stringify(baseUrl)} } };`,
+    );
+    fs.writeFileSync(
+      path.join(appPath, "e2e-tests/login.spec.ts"),
+      `
+import { test, expect } from '@playwright/test';
+test('sign in', async ({ request }) => {
+  const response = await request.post('/api/auth/sign-in/email', {
+    data: { email: 'test@dyad.test', password: 'test' },
+    failOnStatusCode: true,
+  });
+  expect(response.status()).toBe(200);
+});
+`,
+    );
+    try {
+      const result = await promisify(execFile)(
+        process.execPath,
+        [
+          path.resolve("node_modules/@playwright/test/cli.js"),
+          "test",
+          "--reporter=line",
+        ],
+        {
+          cwd: appPath,
+          timeout: 20_000,
+          env: {
+            ...process.env,
+            [TEST_BASE_URL_ENV]: baseUrl,
+            [PREVIEW_CDP_ENDPOINT_ENV]: "",
+            [TEST_CASE_ENDPOINT_ENV]: "",
+          },
+        },
+      );
+      expect(result.stdout).toContain("1 passed");
+      expect(bodies).toHaveLength(2);
+      expect(bodies[0]).toBe(bodies[1]);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  }, 25_000);
 
   it("writes the shim and the path mapping that reaches it", () => {
     const appPath = makeApp();

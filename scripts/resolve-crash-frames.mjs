@@ -481,8 +481,15 @@ for (const { dumps, triggeringDump } of bundles) {
     const facts = [dump.crashedAt, dump.ptype, dump.crashReason].filter(
       Boolean,
     );
+    // A dump with no process label was matched only because the app did not
+    // quit cleanly; a child that ran out of memory looks the same.
+    const labeled = dump.ptype || dump.annotations?.process_type;
     const marker =
-      dump.file === triggeringDump ? "  <- the crash this report is about" : "";
+      dump.file !== triggeringDump
+        ? ""
+        : labeled
+          ? "  <- the crash this report is about"
+          : "  <- probably the crash this report is about (the dump has no process label)";
     console.log(`${dump.file}  (${facts.join(", ")})${marker}`);
     if (!dump.readable) {
       console.log("  <not a readable minidump>\n");

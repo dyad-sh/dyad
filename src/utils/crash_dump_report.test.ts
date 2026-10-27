@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "node:fs";
+import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { MinidumpSummary } from "@/utils/minidump_summary";
@@ -115,6 +116,51 @@ describe("collectCrashDumps", () => {
       "crash-3.dmp",
       "crash-4.dmp",
     ]);
+  });
+
+  it("keeps a dump it cannot read rather than dropping it", async () => {
+    makeDump("crash-locked.dmp", "browser", 0);
+    const read = vi
+      .spyOn(fsp, "readFile")
+      .mockRejectedValue(Object.assign(new Error("locked"), { code: "EBUSY" }));
+    try {
+      expect(await collectCrashDumps(dir, crashpadDir)).toEqual([
+        {
+          file: "crash-locked.dmp",
+          crashedAt: "2026-07-15T20:00:00.000Z",
+          readable: false,
+        },
+      ]);
+    } finally {
+      read.mockRestore();
+    }
+  });
+
+  it("takes the crash time from a kept dump's name when it cannot stat it", async () => {
+    makeDump("crash-2026-06-07T20-41-55-123Z-9ac4d4e8.dmp", "garbage", 0);
+    const stat = vi
+      .spyOn(fsp, "stat")
+      .mockRejectedValue(
+        Object.assign(new Error("denied"), { code: "EACCES" }),
+      );
+    try {
+      const [dump] = await collectCrashDumps(dir, crashpadDir);
+      expect(dump.crashedAt).toBe("2026-06-07T20:41:55.123Z");
+    } finally {
+      stat.mockRestore();
+    }
+  });
+
+  it("skips a dump removed after it was listed", async () => {
+    makeDump("crash-gone.dmp", "browser", 0);
+    const read = vi
+      .spyOn(fsp, "readFile")
+      .mockRejectedValue(Object.assign(new Error("gone"), { code: "ENOENT" }));
+    try {
+      expect(await collectCrashDumps(dir, crashpadDir)).toEqual([]);
+    } finally {
+      read.mockRestore();
+    }
   });
 
   it("returns nothing for missing directories", async () => {

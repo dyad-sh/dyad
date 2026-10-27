@@ -175,6 +175,7 @@
     "crashDumpsAlreadySent": "Oturum bu seçimle zaten yüklendi.",
     "crashDumpsNone": "Bu bilgisayarda çökme dökümü yok.",
     "crashDumpsUnreadable": "Çökme dökümleri okunamadı.",
+    "crashDumpUnreadableTitle": "Okunamayan döküm",
     "reportAnIssue": "Sorun bildir",
     "reportBugBlurb": "Ne ters gittiğini bize anlatın. Yanında ne gönderileceğini siz seçersiniz.",
     "reportBugHeading": "Hata bildir",

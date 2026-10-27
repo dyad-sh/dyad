@@ -289,9 +289,15 @@ export function ReportDisclosures({
               {bundle.crashDumps.dumps.map((dump) => (
                 <Detail
                   key={dump.file}
-                  title={`${new Date(dump.crashedAt).toLocaleString()} · ${
-                    dump.ptype ?? "?"
-                  } · ${dump.crashReason ?? dump.exceptionCode ?? "?"}`}
+                  title={[
+                    new Date(dump.crashedAt).toLocaleString(),
+                    ...(dump.readable
+                      ? [
+                          dump.ptype ?? "?",
+                          dump.crashReason ?? dump.exceptionCode ?? "?",
+                        ]
+                      : [t("home:report.crashDumpUnreadableTitle")]),
+                  ].join(" · ")}
                   data={dump}
                 />
               ))}

@@ -171,6 +171,7 @@
     "crashDumpsAlreadySent": "세션이 이미 이 선택으로 업로드되었습니다.",
     "crashDumpsNone": "이 컴퓨터에 크래시 덤프가 없습니다.",
     "crashDumpsUnreadable": "크래시 덤프를 읽을 수 없습니다.",
+    "crashDumpUnreadableTitle": "읽을 수 없는 덤프",
     "reportAnIssue": "문제 신고",
     "reportBugBlurb": "무엇이 잘못되었는지 알려주세요. 함께 보낼 내용은 직접 선택할 수 있습니다.",
     "reportBugHeading": "버그 신고",

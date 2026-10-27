@@ -27,13 +27,22 @@ export async function collectCrashDumps(
   ]).slice(0, MAX_RETAINED_DUMPS);
   const dumps: CrashDump[] = [];
   for (const file of files) {
+    // A file gone since the listing was pruned and is skipped. Any other
+    // failure keeps the dump as unreadable, so it is not taken for absent.
+    let crashedAt: string | undefined;
+    try {
+      crashedAt = (await fs.stat(file)).mtime.toISOString();
+    } catch (error) {
+      if (isMissing(error)) continue;
+      crashedAt = timeFromRetainedName(path.basename(file));
+    }
+    if (!crashedAt) continue;
     let buf: Buffer;
-    let crashedAt: string;
     try {
       buf = await fs.readFile(file);
-      crashedAt = (await fs.stat(file)).mtime.toISOString();
-    } catch {
-      // Pruned or removed between the listing and the read.
+    } catch (error) {
+      if (isMissing(error)) continue;
+      dumps.push({ file: path.basename(file), crashedAt, readable: false });
       continue;
     }
     const summary = parseMinidumpBuffer(buf, platform, arch, {
@@ -61,6 +70,20 @@ export async function collectCrashDumps(
     dumps.push(entry);
   }
   return dumps;
+}
+
+function isMissing(error: unknown): boolean {
+  return (error as NodeJS.ErrnoException | null)?.code === "ENOENT";
+}
+
+// The crash time a kept dump's name carries, as crashReportName in main.ts
+// writes it: crash-2026-06-07T20-41-55-123Z-9ac4d4e8.dmp.
+function timeFromRetainedName(name: string): string | undefined {
+  const match =
+    /^crash-(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z-/.exec(name);
+  if (!match) return undefined;
+  const [, date, h, m, s, ms] = match;
+  return `${date}T${h}:${m}:${s}.${ms}Z`;
 }
 
 // Other annotations hold command-line switches and URL chunks, which can

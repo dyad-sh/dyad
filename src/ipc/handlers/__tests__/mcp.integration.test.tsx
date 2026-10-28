@@ -177,11 +177,9 @@ describe("MCP chat flows (integration)", () => {
 
     fireEvent.click(screen.getAllByText("ingest_payload")[0]);
     expect(
-      await screen.findByText(/The complete input was sent to the tool/),
+      await screen.findByText(/The input itself was not shortened/),
     ).toBeTruthy();
-    expect(
-      screen.getByText(/so the agent received a shortened version of/),
-    ).toBeTruthy();
+    expect(screen.getByText(/was cut before the agent got it/)).toBeTruthy();
   }, 90_000);
 
   it("renders MCP tool search cards in local-agent search mode", async () => {

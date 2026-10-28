@@ -20,6 +20,7 @@ import { promisify } from "node:util";
 import { registerIpcHandlers } from "./ipc/ipc_host";
 import dotenv from "dotenv";
 import { updateElectronApp, UpdateSourceType } from "update-electron-app";
+import { GITLAB_DIAGNOSTIC_VERSION } from "./shared/gitlab_connection_diagnostics";
 import log from "electron-log";
 import {
   getSettingsFilePath,
@@ -649,7 +650,11 @@ export async function onReady() {
   });
 
   logger.info("Auto-update enabled=", settings.enableAutoUpdate);
-  if (settings.enableAutoUpdate) {
+  if (app.getVersion() === GITLAB_DIAGNOSTIC_VERSION) {
+    logger.info(
+      "Auto-update skipped for the GitLab diagnostic build; reinstall a regular release after testing.",
+    );
+  } else if (settings.enableAutoUpdate) {
     // Technically we could just pass the releaseChannel directly to the host,
     // but this is more explicit and falls back to stable if there's an unknown
     // release channel.

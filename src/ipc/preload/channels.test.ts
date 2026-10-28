@@ -13,11 +13,20 @@ import {
   coolifySetupEvents,
 } from "../types/coolify_setup";
 import { cloudflareContracts } from "../types/cloudflare";
+import { gitlabContracts } from "../types/gitlab";
 import {
   VALID_INVOKE_CHANNELS,
   VALID_RECEIVE_CHANNELS,
   VALID_SEND_CHANNELS,
 } from "./channels";
+
+describe("GitLab preload channels", () => {
+  it("allows every GitLab invoke contract, including connection diagnostics", () => {
+    for (const contract of Object.values(gitlabContracts)) {
+      expect(VALID_INVOKE_CHANNELS).toContain(contract.channel);
+    }
+  });
+});
 
 describe("user-input preload channels", () => {
   it("allows every user-input invoke and receive contract", () => {

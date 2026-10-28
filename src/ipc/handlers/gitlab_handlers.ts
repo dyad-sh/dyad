@@ -27,6 +27,7 @@ import {
 } from "../utils/app_git_remote";
 import { findAppOrThrow } from "../utils/find_app";
 import { prepareLocalBranch } from "./github_handlers";
+import { testGitLabConnection } from "../utils/gitlab_connection_diagnostics";
 
 const logger = log.scope("gitlab_handlers");
 
@@ -205,6 +206,10 @@ export async function handleConnectToExistingGitLabProject({
 }
 
 export function registerGitLabHandlers() {
+  createTypedHandler(
+    gitlabContracts.testConnection,
+    async (_, { instanceUrl }) => testGitLabConnection(instanceUrl),
+  );
   createTypedHandler(gitlabContracts.getStatus, async () => readStatus());
 
   // DO NOT LOG this handler: it carries a personal access token.

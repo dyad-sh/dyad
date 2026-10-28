@@ -534,6 +534,14 @@
       "failedDisconnectRepo": "断开仓库连接失败。"
     },
     "gitlab": {
+      "diagnostics": {
+        "test": "测试连接",
+        "testing": "正在测试两种连接…",
+        "hint": "比较两种连接方式，不发送令牌或 Cookie。HTTP 401 是预期响应。除非您复制并分享，否则结果仅保留在此计算机上。",
+        "copy": "复制诊断信息",
+        "copied": "已复制",
+        "copyFailed": "无法复制诊断信息。"
+      },
       "title": "GitLab 集成",
       "notConnected": "使用个人访问令牌连接 gitlab.com 或你自建的 GitLab 实例。",
       "connectedAs": "已以 {{username}} 身份连接到 {{instance}}。",

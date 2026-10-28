@@ -557,6 +557,14 @@
       "failedDisconnectRepo": "Depo bağlantısı kesilemedi."
     },
     "gitlab": {
+      "diagnostics": {
+        "test": "Bağlantıyı test et",
+        "testing": "Her iki bağlantı test ediliyor…",
+        "hint": "Token veya çerez göndermeden iki bağlantı yöntemini karşılaştırın. HTTP 401 beklenen bir yanıttır. Sonuçları kopyalayıp paylaşmadığınız sürece bu bilgisayarda kalırlar.",
+        "copy": "Tanılamayı kopyala",
+        "copied": "Kopyalandı",
+        "copyFailed": "Tanılama kopyalanamadı."
+      },
       "title": "GitLab Entegrasyonu",
       "notConnected": "Kişisel erişim belirteciyle gitlab.com'u veya kendi GitLab örneğinizi bağlayın.",
       "connectedAs": "{{instance}} adresine {{username}} olarak bağlanıldı.",

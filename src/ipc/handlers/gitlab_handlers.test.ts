@@ -86,6 +86,10 @@ vi.mock("@/ipc/utils/gitlab_client", async (importOriginal) => {
 });
 
 const prepareLocalBranch = vi.hoisted(() => vi.fn());
+const testGitLabConnection = vi.hoisted(() => vi.fn());
+vi.mock("@/ipc/utils/gitlab_connection_diagnostics", () => ({
+  testGitLabConnection,
+}));
 vi.mock("@/ipc/handlers/github_handlers", () => ({
   prepareLocalBranch,
 }));
@@ -145,6 +149,24 @@ beforeEach(() => {
   dbState.updates.length = 0;
   gitlabApi.constructed.length = 0;
   registerGitLabHandlers();
+});
+
+describe("gitlab:test-connection", () => {
+  it("runs without a token and does not change saved settings or construct an authenticated client", async () => {
+    const report = { results: [] };
+    testGitLabConnection.mockResolvedValue(report);
+    settings.current = connected();
+    expect(
+      await handler("gitlab:test-connection")({
+        instanceUrl: "https://gitlab.internal",
+      }),
+    ).toBe(report);
+    expect(testGitLabConnection).toHaveBeenCalledExactlyOnceWith(
+      "https://gitlab.internal",
+    );
+    expect(settings.writes).toHaveLength(0);
+    expect(gitlabApi.constructed).toHaveLength(0);
+  });
 });
 
 describe("gitlab:save-token", () => {

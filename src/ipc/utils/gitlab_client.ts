@@ -122,7 +122,7 @@ function boundErrorDetail(detail: string): string {
  * errors, stacks, request headers or bodies. Internal hosts may remain useful
  * in these local diagnostics; they must not be sent to third-party telemetry.
  */
-function describeTransportError(error: unknown, token: string): string {
+export function describeTransportError(error: unknown, token: string): string {
   const pending: unknown[] = [error];
   const seen = new Set<unknown>();
   const details: string[] = [];

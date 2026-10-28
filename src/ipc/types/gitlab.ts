@@ -27,6 +27,27 @@ export const GitLabStatusSchema = z.object({
 });
 export type GitLabStatus = z.infer<typeof GitLabStatusSchema>;
 
+const GitLabConnectionProbeSchema = z.object({
+  transport: z.enum(["Node fetch", "Electron net.fetch"]),
+  durationMs: z.number().nonnegative(),
+  httpStatus: z.number().int().nullable(),
+  error: z.string().max(501).nullable(),
+});
+
+export const GitLabConnectionDiagnosticsSchema = z.object({
+  url: z.string(),
+  testedAt: z.string(),
+  appVersion: z.string(),
+  electronVersion: z.string(),
+  nodeVersion: z.string(),
+  platform: z.string(),
+  arch: z.string(),
+  results: z.array(GitLabConnectionProbeSchema).length(2),
+});
+export type GitLabConnectionDiagnostics = z.infer<
+  typeof GitLabConnectionDiagnosticsSchema
+>;
+
 export const SaveGitLabTokenParamsSchema = z.object({
   instanceUrl: GitLabInstanceUrlSchema,
   token: z.string().trim().min(1),
@@ -69,6 +90,15 @@ export const GitLabProjectAvailabilitySchema = z.object({
 // machine (see src/github_ops/state.ts), which serves both providers. These
 // contracts cover the connection itself and the lookups the link form needs.
 export const gitlabContracts = {
+  testConnection: defineContract({
+    channel: "gitlab:test-connection",
+    // No token: this tests transport, not authentication, and writes no settings.
+    input: z.object({
+      instanceUrl: GitLabInstanceUrlSchema.pipe(z.string().max(2048)),
+    }),
+    output: GitLabConnectionDiagnosticsSchema,
+  }),
+
   getStatus: defineContract({
     channel: "gitlab:get-status",
     input: z.void(),

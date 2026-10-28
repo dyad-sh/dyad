@@ -10,16 +10,41 @@ vi.mock("react-i18next", () => ({
 
 const h = vi.hoisted(() => ({
   saveToken: vi.fn(),
+  testConnection: vi.fn(),
   openExternalUrl: vi.fn(),
 }));
 vi.mock("@/ipc/types", () => ({
   ipc: {
-    gitlab: { saveToken: h.saveToken },
+    gitlab: { saveToken: h.saveToken, testConnection: h.testConnection },
     system: { openExternalUrl: h.openExternalUrl },
   },
 }));
 
 const { GitLabCredentialsForm: Form } = await import("./GitLabCredentialsForm");
+
+const report = {
+  url: "https://gitlab.com/api/v4/user",
+  testedAt: "2026-10-28T12:00:00.000Z",
+  appVersion: "1.22.0-alpha.1",
+  electronVersion: "40.0.0",
+  nodeVersion: "24.11.1",
+  platform: "win32",
+  arch: "x64",
+  results: [
+    {
+      transport: "Node fetch",
+      durationMs: 20,
+      httpStatus: null,
+      error: "fetch failed; caused by: UNABLE_TO_VERIFY_LEAF_SIGNATURE",
+    },
+    {
+      transport: "Electron net.fetch",
+      durationMs: 30,
+      httpStatus: 401,
+      error: null,
+    },
+  ],
+};
 
 function renderForm(props: { onConnected?: () => void } = {}) {
   const client = new QueryClient({
@@ -34,6 +59,7 @@ function renderForm(props: { onConnected?: () => void } = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  h.testConnection.mockReset().mockResolvedValue(report);
   h.saveToken.mockResolvedValue({
     connected: true,
     instanceUrl: "https://gitlab.com",
@@ -43,6 +69,81 @@ beforeEach(() => {
 });
 
 describe("GitLabCredentialsForm", () => {
+  it("tests both connections without a token and copies the displayed report", async () => {
+    const user = userEvent.setup();
+    const writeText = vi
+      .spyOn(navigator.clipboard, "writeText")
+      .mockResolvedValue();
+    renderForm();
+    await user.click(screen.getByTestId("gitlab-test-connection"));
+    expect(h.testConnection).toHaveBeenCalledExactlyOnceWith({
+      instanceUrl: "https://gitlab.com",
+    });
+    expect(h.saveToken).not.toHaveBeenCalled();
+    const results = await screen.findByTestId("gitlab-connection-diagnostics");
+    expect(results).toHaveTextContent("UNABLE_TO_VERIFY_LEAF_SIGNATURE");
+    expect(results).toHaveTextContent(
+      "Electron net.fetch: CONNECTED — HTTP 401",
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: "integrations.gitlab.diagnostics.copy",
+      }),
+    );
+    expect(writeText).toHaveBeenCalledExactlyOnceWith(results.textContent);
+    expect(
+      screen.getByRole("button", {
+        name: "integrations.gitlab.diagnostics.copied",
+      }),
+    ).toBeInTheDocument();
+
+    await user.clear(screen.getByTestId("gitlab-instance-url-input"));
+    expect(screen.queryByTestId("gitlab-connection-diagnostics")).toBeNull();
+    expect(screen.getByTestId("gitlab-test-connection")).toBeDisabled();
+  });
+
+  it("prevents overlapping tests and edits to the tested URL while pending", async () => {
+    let finish!: (value: typeof report) => void;
+    h.testConnection.mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    renderForm();
+    await userEvent.click(screen.getByTestId("gitlab-test-connection"));
+    expect(screen.getByTestId("gitlab-test-connection")).toBeDisabled();
+    expect(screen.getByTestId("gitlab-instance-url-input")).toBeDisabled();
+    finish(report);
+    await screen.findByTestId("gitlab-connection-diagnostics");
+    expect(screen.getByTestId("gitlab-test-connection")).toBeEnabled();
+  });
+
+  it("shows IPC failures and clipboard errors without losing the report", async () => {
+    const user = userEvent.setup();
+    h.testConnection.mockRejectedValueOnce(new Error("Diagnostic unavailable"));
+    renderForm();
+    await user.click(screen.getByTestId("gitlab-test-connection"));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Diagnostic unavailable",
+    );
+    await user.click(screen.getByTestId("gitlab-test-connection"));
+    await screen.findByTestId("gitlab-connection-diagnostics");
+    vi.spyOn(navigator.clipboard, "writeText").mockRejectedValue(
+      new Error("Clipboard unavailable"),
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: "integrations.gitlab.diagnostics.copy",
+      }),
+    );
+    expect(
+      await screen.findByTestId("gitlab-credentials-error"),
+    ).toHaveTextContent("Clipboard unavailable");
+    expect(
+      screen.getByTestId("gitlab-connection-diagnostics"),
+    ).toBeInTheDocument();
+  });
+
   it("defaults to gitlab.com and needs a token before it can connect", async () => {
     renderForm();
 

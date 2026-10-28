@@ -538,6 +538,14 @@
       "failedDisconnectRepo": "Error al desconectar el repositorio."
     },
     "gitlab": {
+      "diagnostics": {
+        "test": "Probar conexión",
+        "testing": "Probando ambas conexiones…",
+        "hint": "Compara ambos métodos de conexión sin enviar un token ni cookies. Se espera un HTTP 401. Los resultados permanecen en este equipo a menos que los copies y compartas.",
+        "copy": "Copiar diagnóstico",
+        "copied": "Copiado",
+        "copyFailed": "No se pudo copiar el diagnóstico."
+      },
       "title": "Integración con GitLab",
       "notConnected": "Conecta gitlab.com o tu propia instancia de GitLab con un token de acceso personal.",
       "connectedAs": "Conectado a {{instance}} como {{username}}.",

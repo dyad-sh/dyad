@@ -535,6 +535,14 @@
       "failedDisconnectRepo": "저장소 연결 해제에 실패했습니다."
     },
     "gitlab": {
+      "diagnostics": {
+        "test": "연결 테스트",
+        "testing": "두 연결을 테스트하는 중…",
+        "hint": "토큰이나 쿠키를 보내지 않고 두 연결 방식을 비교합니다. HTTP 401은 예상된 응답입니다. 결과를 복사하여 공유하지 않는 한 이 컴퓨터에만 남습니다.",
+        "copy": "진단 복사",
+        "copied": "복사됨",
+        "copyFailed": "진단을 복사하지 못했습니다."
+      },
       "title": "GitLab 연동",
       "notConnected": "개인 액세스 토큰으로 gitlab.com 또는 자체 GitLab 인스턴스를 연결하세요.",
       "connectedAs": "{{instance}}에 {{username}}(으)로 연결됨.",

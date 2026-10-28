@@ -9,6 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ipc } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
 import { isSecureInstanceUrl } from "@/ipc/types/coolify";
+import { formatGitLabConnectionDiagnostics } from "@/shared/gitlab_connection_diagnostics";
 import {
   GITLAB_COM_URL,
   gitLabInstanceLabel,
@@ -40,6 +41,29 @@ export function GitLabCredentialsForm({
   const [token, setToken] = useState("");
   const [acknowledgedInsecure, setAcknowledgedInsecure] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [diagnosticsCopied, setDiagnosticsCopied] = useState(false);
+  const diagnostic = useMutation({
+    mutationFn: (url: string) =>
+      ipc.gitlab.testConnection({ instanceUrl: url }),
+    networkMode: "always",
+    retry: false,
+  });
+
+  const copyDiagnostics = async () => {
+    if (!diagnostic.data) return;
+    try {
+      await navigator.clipboard.writeText(
+        formatGitLabConnectionDiagnostics(diagnostic.data),
+      );
+      setDiagnosticsCopied(true);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : t("integrations.gitlab.diagnostics.copyFailed"),
+      );
+    }
+  };
 
   const trimmedUrl = instanceUrl.trim();
   const validUrl = isGitLabInstanceUrl(instanceUrl);
@@ -101,9 +125,12 @@ export function GitLabCredentialsForm({
           data-testid="gitlab-instance-url-input"
           className="mt-1 w-full"
           value={instanceUrl}
+          disabled={diagnostic.isPending}
           onChange={(event) => {
             setInstanceUrl(event.target.value);
             setAcknowledgedInsecure(false);
+            diagnostic.reset();
+            setDiagnosticsCopied(false);
           }}
           placeholder={GITLAB_COM_URL}
           autoComplete="off"
@@ -134,6 +161,51 @@ export function GitLabCredentialsForm({
               </button>
             )}
           </p>
+        )}
+      </div>
+
+      <div className="space-y-2 rounded-md border p-3">
+        <p className="text-xs text-muted-foreground">
+          {t("integrations.gitlab.diagnostics.hint")}
+        </p>
+        <Button
+          type="button"
+          variant="outline"
+          data-testid="gitlab-test-connection"
+          disabled={!validUrl || diagnostic.isPending || connect.isPending}
+          onClick={() => {
+            setDiagnosticsCopied(false);
+            diagnostic.mutate(instanceUrl);
+          }}
+        >
+          {diagnostic.isPending
+            ? t("integrations.gitlab.diagnostics.testing")
+            : t("integrations.gitlab.diagnostics.test")}
+        </Button>
+        {diagnostic.error && (
+          <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+            {diagnostic.error.message}
+          </p>
+        )}
+        {diagnostic.data && (
+          <>
+            <pre
+              className="max-h-64 overflow-auto whitespace-pre-wrap break-all text-xs"
+              data-testid="gitlab-connection-diagnostics"
+              aria-live="polite"
+            >
+              {formatGitLabConnectionDiagnostics(diagnostic.data)}
+            </pre>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void copyDiagnostics()}
+            >
+              {diagnosticsCopied
+                ? t("integrations.gitlab.diagnostics.copied")
+                : t("integrations.gitlab.diagnostics.copy")}
+            </Button>
+          </>
         )}
       </div>
 

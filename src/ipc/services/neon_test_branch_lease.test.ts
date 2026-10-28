@@ -106,6 +106,52 @@ it("preserves FIFO and lets a queued run stop without waiting for the preceding 
   await fourth.release();
 });
 
+it("reports capacity waits for all FIFO followers, including later arrivals", async () => {
+  const first = await acquire("one");
+  const rejected = deferred<void>();
+  mocks.create.mockImplementationOnce(async () => {
+    await rejected.promise;
+    throw capacityError;
+  });
+  const secondNotice = vi.fn();
+  const thirdNotice = vi.fn();
+  const fourthNotice = vi.fn();
+  const controller = new AbortController();
+  const secondPending = acquire("two", undefined, secondNotice);
+  const thirdPending = acquire("three", controller.signal, thirdNotice);
+  await vi.waitFor(() => expect(mocks.create).toHaveBeenCalledTimes(2));
+  expect(secondNotice).not.toHaveBeenCalled();
+  expect(thirdNotice).not.toHaveBeenCalled();
+  rejected.resolve();
+  await vi.waitFor(() =>
+    expect(thirdNotice).toHaveBeenCalledExactlyOnceWith("waiting"),
+  );
+  expect(secondNotice).toHaveBeenCalledExactlyOnceWith("waiting");
+  const fourthPending = acquire("four", undefined, fourthNotice);
+  expect(fourthNotice).toHaveBeenCalledExactlyOnceWith("waiting");
+  expect(mocks.create).toHaveBeenCalledTimes(2);
+
+  const stopped = expect(thirdPending).rejects.toThrow("Stopped");
+  controller.abort(new Error("Stopped"));
+  await stopped;
+  await first.release();
+  const second = await secondPending;
+  const fourth = await fourthPending;
+  expect(secondNotice).toHaveBeenLastCalledWith(undefined);
+  expect(fourthNotice).toHaveBeenLastCalledWith(undefined);
+  expect(thirdNotice).toHaveBeenCalledExactlyOnceWith("waiting");
+  expect(mocks.create.mock.calls.map(([, options]) => options.ownerId)).toEqual(
+    ["one", "two", "two", "four"],
+  );
+  await second.release();
+  await fourth.release();
+
+  const nextNotice = vi.fn();
+  const next = await acquire("next", undefined, nextNotice);
+  expect(nextNotice).toHaveBeenCalledExactlyOnceWith(undefined);
+  await next.release();
+});
+
 it("cancels a capacity wait without deleting the running test's branch", async () => {
   const first = await acquire("one");
   mocks.create.mockRejectedValueOnce(capacityError);
@@ -183,13 +229,15 @@ it("does not serialize independent Neon projects behind a capacity wait", async 
   await vi.waitFor(() => expect(waiting).toHaveBeenCalledWith("waiting"));
   const otherApp = { ...app, id: 2, neonProjectId: "other-project" };
   mocks.row.mockResolvedValueOnce(otherApp);
+  const otherNotice = vi.fn();
   const other = await acquireNeonTestBranch(
     otherApp,
     "/sandbox/other",
     "other",
-    {},
+    { onCapacity: otherNotice },
   );
   expect(other.branch.branchId).toBe("other");
+  expect(otherNotice).toHaveBeenCalledExactlyOnceWith(undefined);
   await other.release();
   await first.release();
   await (await secondPromise).release();

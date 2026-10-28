@@ -41,6 +41,10 @@ export function isNeonBranchCapacityError(error: unknown): boolean {
  * asks Neon again. Durable records are owned by createTempTestBranch.
  */
 const active = new Map<string, Set<Promise<void>>>();
+// Observe every admission, including callers behind the FIFO lock. This does
+// not schedule work: it propagates a confirmed capacity wait to its followers.
+type PendingBranchAdmission = { waiting: boolean; notifyWaiting: () => void };
+const pendingAdmissions = new Map<string, Set<PendingBranchAdmission>>();
 
 export function acquireNeonTestBranch(
   app: AppRow,
@@ -55,8 +59,7 @@ export function acquireNeonTestBranch(
   },
 ) {
   const projectId = app.neonProjectId!;
-  return withBranchAdmission(projectId, signal, async () => {
-    let announcedWait = false;
+  return withBranchAdmission(projectId, signal, onCapacity, async () => {
     for (;;) {
       signal?.throwIfAborted();
       const fresh = await db.query.apps.findFirst({
@@ -118,10 +121,8 @@ export function acquireNeonTestBranch(
             { cause: error },
           );
         }
-        if (!announcedWait) {
-          announcedWait = true;
-          onCapacity?.("waiting");
-        }
+        for (const admission of pendingAdmissions.get(projectId) ?? [])
+          admission.notifyWaiting();
         // No timer/poll loop: wait until a live run finishes remote cleanup.
         // Failed deletion wakes us too, but never implies capacity is free.
         await abortable(Promise.race(owners), signal);
@@ -134,9 +135,24 @@ export function acquireNeonTestBranch(
 function withBranchAdmission<T>(
   projectId: string,
   signal: AbortSignal | undefined,
+  onCapacity: ((status: NeonBranchLimitStatus | undefined) => void) | undefined,
   work: () => Promise<T>,
 ): Promise<T> {
-  return new Promise((resolve, reject) => {
+  const admissions =
+    pendingAdmissions.get(projectId) ?? new Set<PendingBranchAdmission>();
+  const admission = {
+    waiting: false,
+    notifyWaiting: () => {
+      if (admission.waiting || signal?.aborted) return;
+      admission.waiting = true;
+      onCapacity?.("waiting");
+    },
+  };
+  const alreadyWaiting = [...admissions].some((entry) => entry.waiting);
+  admissions.add(admission);
+  pendingAdmissions.set(projectId, admissions);
+  if (alreadyWaiting) admission.notifyWaiting();
+  return new Promise<T>((resolve, reject) => {
     let entered = false;
     const onAbort = () => {
       if (!entered) reject(signal?.reason);
@@ -149,5 +165,8 @@ function withBranchAdmission<T>(
       signal?.throwIfAborted();
       return work();
     }).then(resolve, reject);
+  }).finally(() => {
+    admissions.delete(admission);
+    if (!admissions.size) pendingAdmissions.delete(projectId);
   });
 }

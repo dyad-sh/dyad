@@ -8,6 +8,7 @@
     "testsPanel": "Tests panel",
     "queued": "Queued",
     "running": "Running",
+    "waitingForNeonBranch": "Waiting for Neon branch",
     "stopping": "Stopping",
     "passed": "Passed",
     "failed": "Failed",

@@ -394,6 +394,12 @@ const QueuedTestRunSchema = z.object({
   testLine: z.number().optional(),
   grep: z.string().optional(),
 });
+const ActiveTestRunSchema = QueuedTestRunSchema.extend({
+  stopping: z.boolean(),
+  stopReason: TestRunStopReasonSchema.optional(),
+  /** Includes runs waiting behind another run's Neon capacity wait. */
+  waitingForNeonBranch: z.boolean().optional(),
+});
 export const TestRunQueueSchema = z.object({
   /** Provider admission notice, retained for failed setup until a later success. */
   neonBranchLimit: z
@@ -403,19 +409,8 @@ export const TestRunQueueSchema = z.object({
       status: z.enum(["waiting", "blocked"]),
     })
     .optional(),
-  activeRuns: z
-    .array(
-      QueuedTestRunSchema.extend({
-        stopping: z.boolean(),
-        stopReason: TestRunStopReasonSchema.optional(),
-      }),
-    )
-    .readonly()
-    .optional(),
-  activeRun: QueuedTestRunSchema.extend({
-    stopping: z.boolean(),
-    stopReason: TestRunStopReasonSchema.optional(),
-  }).nullable(),
+  activeRuns: z.array(ActiveTestRunSchema).readonly().optional(),
+  activeRun: ActiveTestRunSchema.nullable(),
   queuedRuns: z.array(QueuedTestRunSchema).readonly(),
 });
 // Keep the pure machine read model and its wire codec mutually assignable.

@@ -5,6 +5,7 @@ import { sendTelemetryEvent } from "../utils/telemetry";
 import { measureTestRunStep } from "./test_run_timing";
 import { loadTestRunContext } from "./test_run_context";
 import { createTestRunQueueService } from "./test_run_queue_service";
+import { TestRunQueueSchema } from "../types/tests";
 
 const h = vi.hoisted(() => ({
   settings: {
@@ -140,6 +141,47 @@ it("retains blocked plan notices after setup fails, until a new run obtains capa
   expect(service.getAppTestRunQueue(1).neonBranchLimit).toBeUndefined();
   succeeding.finish();
   await succeeding.result;
+});
+
+it("projects every waiting run and clears each wait independently", async () => {
+  h.settings.enableParallelTestRuns = true;
+  h.settings.maxConcurrentTestRuns = 4;
+  enqueue(1);
+  enqueue(1);
+  enqueue(1);
+  enqueue(2);
+  await tick();
+  const [running, firstWaiting, secondWaiting] =
+    service.getAppTestRunQueue(1).activeRuns;
+  service.setNeonBranchLimit(firstWaiting.runId, "project", "waiting");
+  service.setNeonBranchLimit(secondWaiting.runId, "project", "waiting");
+  const snapshot = TestRunQueueSchema.parse(service.getAppTestRunQueue(1));
+  expect(
+    snapshot.activeRuns?.map((run) => [run.runId, run.waitingForNeonBranch]),
+  ).toEqual([
+    [running.runId, false],
+    [firstWaiting.runId, true],
+    [secondWaiting.runId, true],
+  ]);
+  expect(service.getAppTestRunQueue(2).activeRun?.waitingForNeonBranch).toBe(
+    false,
+  );
+
+  service.setNeonBranchLimit(firstWaiting.runId, "project", undefined);
+  expect(
+    service
+      .getAppTestRunQueue(1)
+      .activeRuns.map((run) => run.waitingForNeonBranch),
+  ).toEqual([false, false, true]);
+  service.cancelAppTestRun(1, secondWaiting.runId, {
+    kind: "tests-panel-stop",
+  });
+  expect(
+    service
+      .getAppTestRunQueue(1)
+      .activeRuns.every((run) => !run.waitingForNeonBranch),
+  ).toBe(true);
+  expect(service.getAppTestRunQueue(1).neonBranchLimit).toBeUndefined();
 });
 it("times queued cancellation separately and retains the active run through cleanup", async () => {
   let now = 0;

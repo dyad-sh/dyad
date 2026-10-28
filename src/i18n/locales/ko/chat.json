@@ -8,6 +8,7 @@
     "testsPanel": "테스트 패널",
     "queued": "대기 중",
     "running": "실행 중",
+    "waitingForNeonBranch": "Neon 브랜치 대기 중",
     "stopping": "중지 중",
     "passed": "통과",
     "failed": "실패",

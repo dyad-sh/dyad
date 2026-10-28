@@ -1,6 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 
+// GitLab uses Chromium networking; share the route harness with the other APIs.
+vi.mock("electron", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("electron")>()),
+  net: { fetch: (url: string, init: RequestInit) => fetch(url, init) },
+}));
+
 // The pipeline reads settings through this module directly, so the harness's
 // in-memory settings would not reach it. writeSettings and DEFAULT_SETTINGS are
 // here because the handler harness and its context module import them too.

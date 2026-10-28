@@ -864,7 +864,7 @@
         },
         "neon": {
           "name": "Neon",
-          "description": "A lightweight Postgres database."
+          "description": "Serverless Postgres with a generous free tier and scale-to-zero."
         }
       }
     },

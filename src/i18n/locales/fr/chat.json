@@ -412,5 +412,37 @@
     "sending": "Envoi...",
     "send": "Envoyer {{count}}"
   },
-  "safetyReviewUnavailable": "Vérification de sécurité indisponible"
+  "safetyReviewUnavailable": "Vérification de sécurité indisponible",
+  "testRunQueue": {
+    "title": "File d'attente des tests",
+    "openTests": "Ouvrir les tests",
+    "allTests": "Tous les tests",
+    "currentChat": "Chat actuel",
+    "openChat": "Ouvrir le chat",
+    "testsPanel": "Panneau Tests",
+    "queued": "En attente",
+    "running": "En cours",
+    "stopping": "Arrêt en cours",
+    "passed": "Réussi",
+    "failed": "Échoué",
+    "inconclusive": "Non concluant",
+    "stopped": "Arrêté",
+    "stopReason": {
+      "tests-panel-stop": "Arrêté depuis le panneau Tests",
+      "chat-stop": "La réponse du chat a été arrêtée",
+      "chat-deleted": "Le chat a été supprimé",
+      "version-restored": "Une version antérieure a été restaurée",
+      "subagent-stopped": "Le sous-agent a été arrêté",
+      "pro-revoked": "Dyad Pro n'est plus actif",
+      "claude-code-call-abandoned": "Claude Code a cessé d'attendre l'appel d'outil",
+      "claude-code-session-ended": "La session Claude Code s'est terminée",
+      "agent-cancelled": "Le tour de l'agent a été annulé",
+      "app-deleted": "L'application est en cours de suppression",
+      "app-quit": "Dyad est en cours de fermeture"
+    }
+  },
+  "suggestedPrompts": {
+    "label": "Prochaines étapes suggérées",
+    "dismiss": "Masquer les suggestions"
+  }
 }

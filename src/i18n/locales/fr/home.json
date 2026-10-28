@@ -198,11 +198,24 @@
     "filedPasteBody": "Dyad ne peut pas la joindre à votre place. Elle vous attend dans le presse-papiers. Appuyez sur {{shortcut}} dans le ticket GitHub pour l'ajouter. Si vous avez déjà envoyé le ticket sans elle, modifiez-le et collez-la. Si elle y est déjà, tout est bon.",
     "filedDone": "Terminé",
     "screenshotAlt": "Capture d'écran de la fenêtre Dyad",
-    "screenshotPasteHint": "Copiée dans votre presse-papiers. Appuyez sur {{shortcut}} dans le ticket GitHub pour la joindre.",
     "screenshotFailed": "Impossible de faire une capture d'écran.",
     "screenshotStillFile": "Vous pouvez tout de même envoyer le rapport sans capture d'écran.",
     "retake": "Refaire",
-    "remove": "Retirer"
+    "remove": "Retirer",
+    "skipDescription": "Envoyer sans description",
+    "skipDescriptionHint": "Décrire le bug nous aide à vous aider plus rapidement",
+    "crashDumpsTitle": "Traces de pile des plantages natifs",
+    "crashDumpsSubtitle": "Traces de pile des rapports de plantage conservés par Dyad (jusqu'à 5), avec les noms des bibliothèques concernées. Aucun contenu mémoire ni chemin de fichier.",
+    "crashDumpsNeedSession": "Envoyées avec la session de chat.",
+    "crashDumpsAlreadySent": "La session a déjà été envoyée avec ce choix.",
+    "crashDumpsNone": "Aucun rapport de plantage sur cet ordinateur.",
+    "crashDumpsUnreadable": "Impossible de lire les rapports de plantage.",
+    "crashDumpUnreadableTitle": "Rapport illisible",
+    "crashDumpsTriggering": "Ce signalement désigne {{file}} comme rapport de plantage.",
+    "crashDumpsTriggeringNone": "Ce signalement ne désigne aucun rapport de plantage.",
+    "crashDumpTriggeringMark": "plantage de ce signalement",
+    "screenshotUploadFailed": "Impossible de joindre votre capture d'écran. Dyad la placera dans votre presse-papiers pour que vous puissiez la coller dans le ticket.",
+    "screenshotAttachHint": "Cette image sera jointe à votre ticket GitHub, où tout le monde pourra la voir. Vérifiez qu'elle ne contient rien que vous ne souhaitez pas rendre public."
   },
   "help": {
     "needHelp": "Besoin d'aide avec Dyad\u00a0?",
@@ -408,7 +421,13 @@
       "vercel": "Vercel",
       "vercelDescription": "Publiez votre application en la déployant sur Vercel.",
       "githubRequiredForVercel": "GitHub requis pour le déploiement sur Vercel",
-      "githubRequiredDescription": "Le déploiement sur Vercel nécessite d'abord une connexion à GitHub. Configurez votre dépôt GitHub ci-dessus."
+      "githubRequiredDescription": "Le déploiement sur Vercel nécessite d'abord une connexion à GitHub. Configurez votre dépôt GitHub ci-dessus.",
+      "gitlab": "GitLab",
+      "gitlabDescription": "Synchronisez votre code avec GitLab, sur gitlab.com ou sur votre propre instance.",
+      "repository": "Dépôt",
+      "repositoryDescription": "Synchronisez votre code avec GitHub ou GitLab.",
+      "chooseProvider": "Où souhaitez-vous héberger le code de cette application\u00a0?",
+      "loadingProviders": "Vérification des fournisseurs disponibles…"
     },
     "security_panel": {
       "justNow": "à l'instant",
@@ -482,8 +501,8 @@
       "proFeatureDescription": "Débloquez la possibilité d'annoter des captures d'écran et améliorez votre flux de travail avec Dyad Pro.",
       "getDyadPro": "Passer à Dyad Pro"
     },
-    "openDevServer": "Ouvrir l'adresse du serveur de développement",
-    "openDevServerDescription": "Pour les navigateurs qui ne peuvent pas ouvrir l'adresse d'aperçu. Partage le stockage du navigateur avec les autres applications localhost."
+    "retryRun": "Réessayer",
+    "runAgain": "Relancer"
   },
   "integrations": {
     "github": {
@@ -793,7 +812,10 @@
       "disconnectAccountConfirmation": "Voulez-vous vraiment déconnecter votre compte Neon\u00a0? Vous devrez vous authentifier de nouveau via OAuth pour vous reconnecter.",
       "removeVercelEnvVars": "Supprimer les variables d'environnement Neon de Vercel",
       "removeVercelEnvVarsHelp": "Supprime DATABASE_URL et les variables Neon Auth du projet Vercel lié, afin qu'elles ne pointent pas vers une base de données déconnectée.",
-      "failedRemoveVercelEnvVars": "Déconnexion effectuée, mais échec de la suppression des variables d'environnement Neon de Vercel."
+      "failedRemoveVercelEnvVars": "Déconnexion effectuée, mais échec de la suppression des variables d'environnement Neon de Vercel.",
+      "removeCloudflareEnvVars": "Supprimer les secrets Neon de Cloudflare",
+      "removeCloudflareEnvVarsHelp": "Supprime DATABASE_URL et NEON_AUTH_BASE_URL des Workers liés afin qu'ils ne pointent pas vers une base de données déconnectée.",
+      "failedRemoveCloudflareEnvVars": "Déconnexion réussie, mais la suppression des secrets Neon de Cloudflare a échoué."
     },
     "db": {
       "projectInfo": "Informations sur le projet {{provider}}",
@@ -862,7 +884,11 @@
       "syncSuccess": "Configuration de la base de données synchronisée avec Vercel, mais un redéploiement est nécessaire pour que votre application en production l'utilise.",
       "syncError": "Échec de la synchronisation avec Vercel.",
       "selectBranchError": "Échec de l'enregistrement de la sélection de votre branche de base de données.",
-      "clearBranchError": "Échec de l'effacement de la sélection de votre branche de base de données."
+      "clearBranchError": "Échec de l'effacement de la sélection de votre branche de base de données.",
+      "syncToCloudflare": "Synchroniser avec Cloudflare",
+      "syncToCloudflareHelp": "Définit les secrets de la base de données sur vos Workers Cloudflare et ajoute leurs adresses à la liste autorisée des redirections d'authentification de Neon.",
+      "syncToCloudflareSuccess": "Configuration de la base de données synchronisée avec Cloudflare. Votre application en ligne l'utilise immédiatement.",
+      "syncToCloudflareError": "Échec de la synchronisation avec Cloudflare."
     },
     "migration": {
       "title": "Migration de la base de données",
@@ -918,6 +944,31 @@
       "supabaseUnavailable": "Supabase est indisponible, car une base de données Neon est déjà connectée. Une seule intégration de base de données peut être active à la fois.",
       "neonUnavailable": "Neon est indisponible, car un projet Supabase est déjà connecté. Une seule intégration de base de données peut être active à la fois.",
       "chooseOne": "Choisissez une intégration de base de données. Connecter Supabase ou Neon bloquera l'autre pour cette application."
+    },
+    "gitlab": {
+      "title": "Intégration GitLab",
+      "notConnected": "Connectez gitlab.com ou votre propre instance GitLab avec un jeton d'accès personnel.",
+      "connectedAs": "Connecté à {{instance}} en tant que {{username}}.",
+      "tokenExpires": "Le jeton expire le {{date}}.",
+      "disconnect": "Se déconnecter de GitLab",
+      "disconnected": "Déconnexion de GitLab réussie",
+      "failedDisconnect": "Échec de la déconnexion de GitLab",
+      "instanceUrl": "URL de l'instance GitLab",
+      "instanceUrlHint": "gitlab.com ou l'adresse de votre propre instance",
+      "token": "Jeton d'accès personnel",
+      "tokenHint": "Créez un jeton avec la portée api.",
+      "createToken": "Créer un jeton",
+      "instanceUrlInvalid": "Incluez le protocole, par exemple https://gitlab.example.com.",
+      "instanceUrlUseSuggestion": "Utiliser {{url}}",
+      "connectTarget": "Dyad se connectera à {{instance}}.",
+      "connectFailed": "Impossible de se connecter à GitLab.",
+      "insecureTitle": "Cette adresse n'est pas chiffrée",
+      "insecureExplanation": "Tout intermédiaire réseau entre vous et le serveur peut lire le jeton d'accès envoyé par Dyad. Attribuer un domaine et un certificat à l'instance évite ce problème.",
+      "insecureConnectAnyway": "Se connecter quand même",
+      "connect": "Se connecter à GitLab",
+      "connecting": "Connexion...",
+      "experimentLabel": "Autoriser la publication sur GitLab",
+      "experimentDescription": "Ajoute GitLab (gitlab.com ou une instance auto-hébergée) comme fournisseur de dépôt aux côtés de GitHub. Cette fonctionnalité est préliminaire et peut évoluer."
     }
   },
   "previewAuth": {

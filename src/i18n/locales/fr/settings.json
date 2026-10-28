@@ -185,7 +185,13 @@
     "deny": "Refuser"
   },
   "experiments": {
-    "title": "Expériences"
+    "title": "Expériences",
+    "previewCookieIsolation": {
+      "label": "Isoler les cookies de connexion de l'aperçu",
+      "description": "Sépare les cookies de connexion HttpOnly de chaque application sur localhost. Activé par défaut. Redémarrez Dyad pour appliquer les changements à tous les aperçus.",
+      "loading": "Chargement du paramètre…",
+      "loadError": "Impossible de charger le paramètre"
+    }
   },
   "dangerZone": {
     "title": "Zone de danger",

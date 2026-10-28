@@ -23,7 +23,12 @@ import { cn } from "@/lib/utils";
 /** How long a batch's final outcomes stay readable/announced after it drains. */
 export const DRAINED_BATCH_LINGER_MS = 5_000;
 
-type RunStatus = CompletedTestRun["status"] | "queued" | "running" | "stopping";
+type RunStatus =
+  | CompletedTestRun["status"]
+  | "queued"
+  | "running"
+  | "stopping"
+  | "waitingForNeonBranch";
 type QueueRow = TestRunRequest & {
   status: RunStatus;
   stopReason?: TestRunStopReason;
@@ -31,6 +36,7 @@ type QueueRow = TestRunRequest & {
 
 const statusClasses: Record<RunStatus, string> = {
   queued: "text-yellow-700 dark:text-yellow-400",
+  waitingForNeonBranch: "text-yellow-700 dark:text-yellow-400",
   running: "text-gray-500 dark:text-gray-400",
   stopping: "text-gray-500 dark:text-gray-400",
   passed: "text-green-600 dark:text-green-400",
@@ -56,7 +62,8 @@ function RunIcon({ status }: { status: RunStatus }) {
       className={cn(
         "size-3.5 shrink-0",
         (status === "running" || status === "stopping") && "animate-spin",
-        status === "queued" && "size-2 fill-current mx-0.75",
+        (status === "queued" || status === "waitingForNeonBranch") &&
+          "size-2 fill-current mx-0.75",
       )}
     />
   );
@@ -137,7 +144,11 @@ export function TestRunQueueCard({
       .filter((run) => !completedIds.has(run.runId))
       .map((run) => ({
         ...run,
-        status: run.stopping ? ("stopping" as const) : ("running" as const),
+        status: run.stopping
+          ? ("stopping" as const)
+          : run.waitingForNeonBranch
+            ? ("waitingForNeonBranch" as const)
+            : ("running" as const),
       })),
     ...(queue?.queuedRuns ?? [])
       .filter((run) => !completedIds.has(run.runId))

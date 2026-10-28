@@ -8,6 +8,7 @@
     "testsPanel": "Panel de pruebas",
     "queued": "En cola",
     "running": "En ejecución",
+    "waitingForNeonBranch": "Esperando una rama de Neon",
     "stopping": "Deteniendo",
     "passed": "Aprobada",
     "failed": "Fallida",

@@ -271,12 +271,11 @@ export function createTestRunQueueService({
       .map((run) => ({
         ...run,
         branch: records.get(run.runId)?.context?.branch ?? run.branch,
+        waitingForNeonBranch:
+          !run.stopping &&
+          records.get(run.runId)?.neonBranchLimit?.status === "waiting",
       }));
-    const waitingRun = activeRuns.find(
-      (run) =>
-        records.get(run.runId)?.neonBranchLimit?.status === "waiting" &&
-        !run.stopping,
-    );
+    const waitingRun = activeRuns.find((run) => run.waitingForNeonBranch);
     const blockedRun = blockedNeonRuns.get(appId);
     return {
       ...(waitingRun

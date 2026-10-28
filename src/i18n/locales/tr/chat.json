@@ -8,6 +8,7 @@
     "testsPanel": "Test paneli",
     "queued": "Sırada",
     "running": "Çalışıyor",
+    "waitingForNeonBranch": "Neon dalı bekleniyor",
     "stopping": "Durduruluyor",
     "passed": "Başarılı",
     "failed": "Başarısız",

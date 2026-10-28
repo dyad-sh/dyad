@@ -8,6 +8,7 @@
     "testsPanel": "测试面板",
     "queued": "排队中",
     "running": "运行中",
+    "waitingForNeonBranch": "等待 Neon 分支",
     "stopping": "正在停止",
     "passed": "通过",
     "failed": "失败",

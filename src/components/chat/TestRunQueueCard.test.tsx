@@ -67,6 +67,7 @@ vi.mock("react-i18next", () => ({
         "testRunQueue.testsPanel": "Tests panel",
         "testRunQueue.queued": "Queued",
         "testRunQueue.running": "Running",
+        "testRunQueue.waitingForNeonBranch": "Waiting for Neon branch",
         "testRunQueue.stopping": "Stopping",
         "testRunQueue.passed": "Passed",
         "testRunQueue.failed": "Failed",
@@ -219,6 +220,70 @@ it("shows live queued and running requests without mounting the Tests panel", as
   expect(screen.queryByText("Running")).toBeNull();
   act(() => publishQueue(empty));
   await expectLingerThenDismiss(second.testFile, "Failed");
+});
+
+it("labels every Neon wait with the queued color and resumes each run independently", async () => {
+  const third = { ...second, runId: 3, testFile: "e2e-tests/profile.spec.ts" };
+  const queue: TestRunQueueSnapshot = {
+    activeRun: { ...first, stopping: false },
+    activeRuns: [
+      { ...first, stopping: false },
+      { ...second, stopping: false },
+      { ...third, stopping: false },
+    ],
+    queuedRuns: [{ runId: 4, source: "panel" }],
+  };
+  const notice = {
+    runId: second.runId,
+    projectId: "neon-project",
+    status: "waiting" as const,
+  };
+  mocks.getRunQueue.mockResolvedValue({
+    ...queue,
+    neonBranchLimit: notice,
+    activeRuns: queue.activeRuns!.map((run) => ({
+      ...run,
+      waitingForNeonBranch: run.runId !== first.runId,
+    })),
+  });
+  const { Harness } = setup();
+  render(<Harness />);
+  expect(await screen.findAllByText("Waiting for Neon branch")).toHaveLength(2);
+  for (const file of [second.testFile, third.testFile]) {
+    expect(within(row(file)).getByText("Waiting for Neon branch")).toBeTruthy();
+    expect(row(file).className).toBe(row("All tests").className);
+    expect(row(file).querySelector(".animate-spin")).toBeNull();
+  }
+  expect(within(row(first.testFile)).getByText("Running")).toBeTruthy();
+  expect(within(row("All tests")).getByText("Queued")).toBeTruthy();
+
+  act(() =>
+    publishQueue({
+      ...queue,
+      activeRuns: queue.activeRuns!.map((run) => ({
+        ...run,
+        waitingForNeonBranch: run.runId === third.runId,
+      })),
+    }),
+  );
+  await waitFor(() =>
+    expect(within(row(second.testFile)).getByText("Running")).toBeTruthy(),
+  );
+  expect(
+    within(row(third.testFile)).getByText("Waiting for Neon branch"),
+  ).toBeTruthy();
+  expect(row(second.testFile).className).toBe(row(first.testFile).className);
+
+  act(() =>
+    publishQueue({
+      ...queue,
+      neonBranchLimit: { ...notice, status: "blocked" },
+    }),
+  );
+  await waitFor(() =>
+    expect(screen.queryByText("Waiting for Neon branch")).toBeNull(),
+  );
+  expect(within(row(second.testFile)).getByText("Running")).toBeTruthy();
 });
 
 it("identifies each run's chat, opens other chats, and retains attribution after completion and chat switches", async () => {
@@ -610,9 +675,15 @@ it.each([
 
 it("says why a run stopped and why the active run is stopping", async () => {
   mocks.getRunQueue.mockResolvedValue({
+    neonBranchLimit: {
+      runId: first.runId,
+      projectId: "neon-project",
+      status: "waiting",
+    },
     activeRun: {
       ...first,
       stopping: true,
+      waitingForNeonBranch: true,
       stopReason: { kind: "chat-stop" },
     },
     queuedRuns: [],
@@ -620,6 +691,7 @@ it("says why a run stopped and why the active run is stopping", async () => {
   const { Harness } = setup();
   render(<Harness />);
   const stopping = await screen.findByText("Stopping");
+  expect(screen.queryByText("Waiting for Neon branch")).toBeNull();
   expect(stopping.getAttribute("title")).toBe("The chat response was stopped");
   expect(stopping.textContent).toContain("The chat response was stopped");
 

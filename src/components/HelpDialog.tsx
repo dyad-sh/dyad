@@ -1203,7 +1203,7 @@ export function HelpDialog() {
         </DialogTitle>
       </DialogHeader>
 
-      <div className="overflow-y-auto flex-grow mt-4 p-1.5">
+      <div className="mt-4 flex min-h-0 flex-grow flex-col">
         <IssueForm
           description={description}
           onDescriptionChange={setDescription}

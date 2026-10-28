@@ -371,6 +371,18 @@ describe("HelpDialog report flow", () => {
     });
   });
 
+  it("keeps the submit button out of the scrolling fields", async () => {
+    await openForm();
+    const fields = screen.getByTestId("issue-form-fields");
+
+    expect(fields.contains(screen.getByLabelText(/What happened/))).toBe(true);
+    expect(
+      fields.contains(
+        screen.getByRole("button", { name: /Create GitHub issue/ }),
+      ),
+    ).toBe(false);
+  });
+
   it("files the report with the description in the body", async () => {
     await openForm("the preview goes blank after a branch switch");
     await fileIt();

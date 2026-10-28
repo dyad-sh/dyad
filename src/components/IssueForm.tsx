@@ -94,94 +94,104 @@ export function IssueForm({
     setCaret(null);
   }, [caret]);
 
+  // The fields scroll; the button stays in view below them.
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="issue-description">
-          {t("home:report.whatHappened")}
-        </Label>
-        <Textarea
-          id="issue-description"
-          ref={descriptionRef}
-          required={!skipDescription}
-          disabled={isFiling}
-          aria-invalid={showBlocked}
-          aria-describedby={showBlocked ? "issue-description-error" : undefined}
-          value={description}
-          onChange={edit}
-          rows={3}
-          placeholder={t("home:report.descriptionPlaceholder")}
-        />
-        {showBlocked && (
-          <p
-            id="issue-description-error"
-            className="text-xs text-destructive"
-            role="alert"
-          >
-            {t("home:report.descriptionRequired")}
-          </p>
-        )}
-        {showDescriptionOverride && (
-          <div className="mt-1 flex items-start gap-2">
-            <Checkbox
-              id="skip-issue-description"
-              aria-label={t("home:report.skipDescription")}
-              checked={skipDescription}
-              onCheckedChange={setSkipDescription}
-              disabled={isFiling}
-              aria-describedby="skip-issue-description-hint"
-              className="mt-0.5"
-            />
-            <div className="flex flex-col gap-1">
-              <Label htmlFor="skip-issue-description">
-                {t("home:report.skipDescription")}
-              </Label>
-              <p
-                id="skip-issue-description-hint"
-                className="text-xs text-muted-foreground"
-              >
-                {t("home:report.skipDescriptionHint")}
-              </p>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div
+        data-testid="issue-form-fields"
+        className="flex min-h-0 flex-col gap-4 overflow-y-auto p-1.5"
+      >
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="issue-description">
+            {t("home:report.whatHappened")}
+          </Label>
+          <Textarea
+            id="issue-description"
+            ref={descriptionRef}
+            required={!skipDescription}
+            disabled={isFiling}
+            aria-invalid={showBlocked}
+            aria-describedby={
+              showBlocked ? "issue-description-error" : undefined
+            }
+            value={description}
+            onChange={edit}
+            rows={3}
+            placeholder={t("home:report.descriptionPlaceholder")}
+          />
+          {showBlocked && (
+            <p
+              id="issue-description-error"
+              className="text-xs text-destructive"
+              role="alert"
+            >
+              {t("home:report.descriptionRequired")}
+            </p>
+          )}
+          {showDescriptionOverride && (
+            <div className="mt-1 flex items-start gap-2">
+              <Checkbox
+                id="skip-issue-description"
+                aria-label={t("home:report.skipDescription")}
+                checked={skipDescription}
+                onCheckedChange={setSkipDescription}
+                disabled={isFiling}
+                aria-describedby="skip-issue-description-hint"
+                className="mt-0.5"
+              />
+              <div className="flex flex-col gap-1">
+                <Label htmlFor="skip-issue-description">
+                  {t("home:report.skipDescription")}
+                </Label>
+                <p
+                  id="skip-issue-description-hint"
+                  className="text-xs text-muted-foreground"
+                >
+                  {t("home:report.skipDescriptionHint")}
+                </p>
+              </div>
             </div>
-          </div>
-        )}
-        {atCap && (
-          <p
-            className="text-xs text-amber-600 dark:text-amber-400"
-            role="status"
-          >
-            {t("home:report.capReached")}
-          </p>
-        )}
+          )}
+          {atCap && (
+            <p
+              className="text-xs text-amber-600 dark:text-amber-400"
+              role="status"
+            >
+              {t("home:report.capReached")}
+            </p>
+          )}
+        </div>
+
+        {screenshot}
+        {disclosures}
       </div>
 
-      {screenshot}
-      {disclosures}
+      <div className="border-t px-1.5 pt-4 pb-1.5">
+        {/* The button's changing label is not reliably announced once focus
+            has moved, so the state is also spoken here. */}
+        <p className="sr-only" role="status" aria-live="polite">
+          {isFiling ? t("home:report.preparing") : ""}
+        </p>
 
-      {/* The button's changing label is not reliably announced once focus
-          has moved, so the state is also spoken here. */}
-      <p className="sr-only" role="status" aria-live="polite">
-        {isFiling ? t("home:report.preparing") : ""}
-      </p>
-
-      <Button
-        onClick={handleSubmit}
-        disabled={isFiling}
-        className="w-full py-5 text-base"
-        size="lg"
-      >
-        {isFiling ? (
-          <>
-            <Loader2Icon className="mr-2 h-5 w-5 animate-spin" />
-            {t("home:report.preparing")}
-          </>
-        ) : (
-          <>
-            <Github className="mr-2 h-5 w-5" />
-            {t("home:report.createIssue")}
-          </>
-        )}
-      </Button>
+        <Button
+          onClick={handleSubmit}
+          disabled={isFiling}
+          className="w-full py-5 text-base"
+          size="lg"
+        >
+          {isFiling ? (
+            <>
+              <Loader2Icon className="mr-2 h-5 w-5 animate-spin" />
+              {t("home:report.preparing")}
+            </>
+          ) : (
+            <>
+              <Github className="mr-2 h-5 w-5" />
+              {t("home:report.createIssue")}
+            </>
+          )}
+        </Button>
+      </div>
     </div>
   );
 }

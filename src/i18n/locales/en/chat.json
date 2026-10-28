@@ -228,6 +228,7 @@
   "autoApproved": "Auto-approved",
   "mcpInputTruncated": "Showing the first {{shown}} of {{total}} characters. The complete input was sent to the tool.",
   "mcpResultTruncated": "Showing the first {{shown}} of {{total}} characters. The agent received all {{total}} characters.",
+  "mcpResultBothTruncated": "Showing the first {{shown}} of {{total}} characters. The tool's result was too large, so the agent received a shortened version of {{total}} characters.",
   "mcpResultToolTruncated": "The tool's result was too large, so the agent received a shortened version.",
   "aiReviewingRequest": "AI is reviewing this request to decide if it's safe to auto-approve…",
   "approved": "Approved",

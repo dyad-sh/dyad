@@ -83,20 +83,26 @@ export const DyadMcpToolCall: React.FC<DyadMcpToolCallProps> = ({
     () => (expanded ? prettyJson(raw) : ""),
     [expanded, raw],
   );
-  const truncationNotice = (
-    key: "mcpInputTruncated" | "mcpResultTruncated",
-    shown: number,
-    total: number | undefined,
-    toolTruncated = false,
-  ) =>
-    total !== undefined && (
-      <div className="text-xs text-muted-foreground italic mt-1">
-        {t(key, {
-          shown: shown.toLocaleString(),
-          total: total.toLocaleString(),
-        })}
-        {toolTruncated && <> {t("mcpResultToolTruncated")}</>}
-      </div>
+  const counts = (shown: number, total: number) => ({
+    shown: shown.toLocaleString(),
+    total: total.toLocaleString(),
+  });
+  const inputNotice =
+    inputTruncatedFrom === undefined
+      ? null
+      : t("mcpInputTruncated", counts(payloadLength(raw), inputTruncatedFrom));
+  const resultNotice =
+    resultTruncatedFrom !== undefined
+      ? t(
+          resultToolTruncated ? "mcpResultBothTruncated" : "mcpResultTruncated",
+          counts(payloadLength(resultContent ?? ""), resultTruncatedFrom),
+        )
+      : resultToolTruncated
+        ? t("mcpResultToolTruncated")
+        : null;
+  const truncationNotice = (text: string | null) =>
+    text && (
+      <div className="text-xs text-muted-foreground italic mt-1">{text}</div>
     );
 
   const result = useMemo(
@@ -156,11 +162,7 @@ export const DyadMcpToolCall: React.FC<DyadMcpToolCallProps> = ({
             <CodeHighlight className="language-json">
               {prettyInput}
             </CodeHighlight>
-            {truncationNotice(
-              "mcpInputTruncated",
-              payloadLength(raw),
-              inputTruncatedFrom,
-            )}
+            {truncationNotice(inputNotice)}
             <div className="text-[11px] font-semibold text-muted-foreground mt-3 mb-1">
               Result
             </div>
@@ -169,12 +171,7 @@ export const DyadMcpToolCall: React.FC<DyadMcpToolCallProps> = ({
                 <CodeHighlight className={`language-${result.language}`}>
                   {result.text}
                 </CodeHighlight>
-                {truncationNotice(
-                  "mcpResultTruncated",
-                  payloadLength(resultContent ?? ""),
-                  resultTruncatedFrom,
-                  resultToolTruncated,
-                )}
+                {truncationNotice(resultNotice)}
               </>
             ) : resultContent !== undefined ? (
               <CodeHighlight className="language-json">{""}</CodeHighlight>
@@ -189,11 +186,7 @@ export const DyadMcpToolCall: React.FC<DyadMcpToolCallProps> = ({
             <CodeHighlight className="language-json">
               {prettyInput}
             </CodeHighlight>
-            {truncationNotice(
-              "mcpInputTruncated",
-              payloadLength(raw),
-              inputTruncatedFrom,
-            )}
+            {truncationNotice(inputNotice)}
           </>
         )}
       </DyadCardContent>

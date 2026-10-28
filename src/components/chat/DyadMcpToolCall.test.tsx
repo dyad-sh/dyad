@@ -118,7 +118,7 @@ describe("DyadMcpToolCall", () => {
     expect(screen.queryByText(/mcpResultToolTruncated/)).toBeNull();
   });
 
-  it("notes when the tool's result was cut before the agent received it", () => {
+  it("uses one notice when both the tool and the transcript cut the result", () => {
     render(
       <DyadMcpToolCall
         node={node()}
@@ -131,7 +131,23 @@ describe("DyadMcpToolCall", () => {
       </DyadMcpToolCall>,
     );
     fireEvent.click(screen.getByText("Tool"));
-    screen.getByText(/mcpResultToolTruncated/);
+    screen.getByText(`mcpResultBothTruncated: 7 of ${(9000).toLocaleString()}`);
+    expect(screen.queryByText(/mcpResultTruncated/)).toBeNull();
+  });
+
+  it("notes a tool cut even when the transcript holds the whole result", () => {
+    render(
+      <DyadMcpToolCall
+        node={node()}
+        resultContent="partial"
+        state="finished"
+        resultToolTruncated
+      >
+        {`{"a":1}`}
+      </DyadMcpToolCall>,
+    );
+    fireEvent.click(screen.getByText("Tool"));
+    screen.getByText("mcpResultToolTruncated");
   });
 
   it("shows no truncation note for complete payloads", () => {

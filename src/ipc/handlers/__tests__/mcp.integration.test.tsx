@@ -179,7 +179,9 @@ describe("MCP chat flows (integration)", () => {
     expect(
       await screen.findByText(/The complete input was sent to the tool/),
     ).toBeTruthy();
-    expect(screen.getByText(/The tool's result was too large/)).toBeTruthy();
+    expect(
+      screen.getByText(/so the agent received a shortened version of/),
+    ).toBeTruthy();
   }, 90_000);
 
   it("renders MCP tool search cards in local-agent search mode", async () => {

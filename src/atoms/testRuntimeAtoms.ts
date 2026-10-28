@@ -1,5 +1,11 @@
 import { atom } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import {
+  appendTestOutputTabAtom,
+  clearTestOutputTabsForAppAtom,
+  MAX_TEST_RUN_OUTPUT_LENGTH,
+  openTestOutputTabAtom,
+} from "./testOutputAtoms";
 import type { TestSpec, TestResult, TestIsolation } from "@/ipc/types";
 import type { RunAppTestsResult } from "@/ipc/types/tests";
 import type { TestRunStopReason } from "@/shared/test_run_stop";
@@ -133,13 +139,9 @@ export const EMPTY_TEST_RUN_STATE: TestRunState = Object.freeze({
   runningFiles: Object.freeze([]),
 }) as TestRunState;
 
-/** Cap on the accumulated run output kept in the renderer (keeps the tail). */
-const MAX_OUTPUT_LENGTH = 500_000;
-
-// Streamed raw run output (bootstrap + test runner) lives in its own per-app
-// atom, deliberately OUTSIDE TestRunState: output is by far the chattiest
-// field, and keeping it in the state object every panel row subscribes to
-// would re-render the whole Tests panel on every appended chunk.
+// Keep the current batch's output for Ask AI to Fix, independently of which
+// output tabs the user has selected or closed. Logs stay outside TestRunState
+// so appending chunks does not re-render every test row.
 export const testRunOutputByAppIdAtom = atom<Map<number, string>>(new Map());
 
 export const currentTestRunOutputAtom = atom((get) => {
@@ -149,12 +151,17 @@ export const currentTestRunOutputAtom = atom((get) => {
 
 export const appendTestRunOutputAtom = atom(
   null,
-  (_get, set, { appId, chunk }: { appId: number; chunk: string }) => {
+  (
+    _get,
+    set,
+    { appId, runId, chunk }: { appId: number; runId: number; chunk: string },
+  ) => {
+    set(appendTestOutputTabAtom, { appId, runId, chunk });
     set(testRunOutputByAppIdAtom, (prev) => {
       const next = new Map(prev);
       next.set(
         appId,
-        ((prev.get(appId) ?? "") + chunk).slice(-MAX_OUTPUT_LENGTH),
+        ((prev.get(appId) ?? "") + chunk).slice(-MAX_TEST_RUN_OUTPUT_LENGTH),
       );
       return next;
     });
@@ -250,7 +257,7 @@ export const setTestRunStateForAppAtom = atom(
  * Transition an app into the "running" state for a test run. Shared by
  * panel-initiated runs (TestsPanel.runTests) and agent-initiated runs (the
  * root-level tests:run-state subscriber in useTestRunEvents), so both show the
- * same spinners/cleared-output state. Global per-app writes only — UI side
+ * same spinners and per-run output tabs. Global per-app writes only — UI side
  * effects (e.g. popping the output drawer) stay in the panel, keyed off the
  * resulting phase transition.
  */
@@ -320,6 +327,20 @@ export const applyTestRunStartedAtom = atom(
     const specs = get(testSpecsByAppIdAtom).get(appId) ?? [];
     const targetFiles =
       testFiles ?? (testFile ? [testFile] : specs.map((s) => s.file));
+    if (runId !== undefined) {
+      const files = testFiles ?? (testFile ? [testFile] : []);
+      const target =
+        files.length === 1
+          ? `${files[0].split(/[\\/]/).pop()}${testLine != null ? `:${testLine}` : ""}`
+          : files.length > 1
+            ? `${files.length} files`
+            : "All tests";
+      set(openTestOutputTabAtom, {
+        appId,
+        runId,
+        label: `Run ${runId} · ${target}`,
+      });
+    }
     const grepMatchedTests =
       testLine == null && grep
         ? targetFiles.flatMap(
@@ -489,6 +510,7 @@ export const applyTestRunFinishedAtom = atom(
 export const clearTestRuntimeForAppAtom = atom(
   null,
   (_get, set, appId: number) => {
+    set(clearTestOutputTabsForAppAtom, appId);
     set(dismissedTestRunThroughIdByAppIdAtom, (prev) => {
       if (!prev.has(appId)) return prev;
       const next = new Map(prev);

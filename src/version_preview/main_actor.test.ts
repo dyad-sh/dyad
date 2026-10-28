@@ -10,6 +10,7 @@ import {
 } from "@/state_machines/testing";
 import { TwoWindowHarness } from "@/testing/two_window_harness";
 import { versionPreviewDefinition } from "@/ipc/services/version_preview_definition";
+import { chatExecutionHold } from "@/ipc/services/chat_execution_hold";
 import { versionPreviewClientDefinition } from "./client_definition";
 import { versionPreviewKey } from "./transport";
 import { isMutatingState, type RestoreRecovery } from "./state";
@@ -993,6 +994,49 @@ describe("version_preview main actor", () => {
     harness.clientB.dispose();
     harness.transport.dispose();
   });
+
+  it.each(["success", "failure"])(
+    "holds chat execution through undo and restart: %s",
+    async (outcome) => {
+      const restore = deferred<unknown>();
+      const restart = deferred<undefined>();
+      service.run.mockReturnValueOnce(restore.promise);
+      if (outcome === "success")
+        appRun.executeExternalLifecycle.mockReturnValueOnce(restart.promise);
+      const harness = createHarness();
+      await harness.actorA.resync();
+      await harness.actorA.dispatch({
+        type: "RESTORE",
+        versionId: "abc123",
+        operationId: "held-undo",
+      });
+      expect(chatExecutionHold.isHeld(7)).toBe(true);
+      expect(chatExecutionHold.isHeld(8)).toBe(false);
+      if (outcome === "success") {
+        restore.resolve({
+          repositoryOutcome: "target-applied",
+          notification: null,
+          runtimeAction: "restart",
+          affectedChatId: null,
+          createdChatId: null,
+        });
+        await vi.waitFor(() =>
+          expect(appRun.executeExternalLifecycle).toHaveBeenCalled(),
+        );
+        expect(chatExecutionHold.isHeld(7)).toBe(true);
+        restart.resolve(undefined);
+      } else {
+        restore.reject(new Error("restore failed"));
+      }
+      await vi.waitFor(() => expect(chatExecutionHold.isHeld(7)).toBe(false));
+      harness.releaseA();
+      harness.releaseB();
+      harness.clientA.dispose();
+      harness.clientB.dispose();
+      await harness.transport.dispose();
+      await harness.host.dispose();
+    },
+  );
 
   it("does not cross the hard-reset boundary when its progress checkpoint fails", async () => {
     const destructiveEffect = vi.fn();

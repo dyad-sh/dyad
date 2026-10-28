@@ -40,6 +40,7 @@ import { versionPreviewService } from "./version_preview_service";
 import { versionPreviewPersistence } from "./version_preview_persistence";
 import { versionPreviewWindowInterestService } from "./version_preview_window_interest";
 import { versionPreviewRemoteIntentContract } from "@/version_preview/remote_intent_contract";
+import { chatExecutionHold } from "./chat_execution_hold";
 
 interface VersionPreviewActorCommand {
   readonly command: PreviewCommand | { readonly type: "reconcile" };
@@ -405,6 +406,12 @@ function createCommandRunner(
           }
           return;
         }
+        // Undo owns the hold through Git/database restoration and runtime restart.
+        // The chat actor keeps accepting durable queued prompts in the meantime.
+        const releaseChatExecution =
+          command.type === "restore"
+            ? chatExecutionHold.acquire(appId)
+            : undefined;
         const operation =
           command.type === "restore" || command.type === "restore-to-message"
             ? versionPreviewService.run(
@@ -540,7 +547,10 @@ function createCommandRunner(
           },
         );
         void versionPreviewService
-          .trackLifecycle(appId, lifecycle)
+          .trackLifecycle(
+            appId,
+            lifecycle.finally(() => releaseChatExecution?.()),
+          )
           .catch((error) => {
             versionPreviewPresentationService.publishError(
               appId,

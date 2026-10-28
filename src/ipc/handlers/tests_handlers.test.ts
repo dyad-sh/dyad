@@ -468,12 +468,12 @@ describe("tests handlers", () => {
       {
         outcome: "timed out",
         message:
-          "The test run exceeded the 3-minute limit and was stopped before it could finish.",
+          "The test run exceeded the 3-minute limit and was stopped before it could finish.\nPer-test database isolation failed: cleanup failed",
       },
       {
         outcome: "missing server",
         message:
-          "Start the app before running tests — the dev server isn't running.",
+          "Start the app before running tests — the dev server isn't running.\nPer-test database isolation failed: cleanup failed",
       },
       {
         outcome: "completed",

@@ -8,6 +8,7 @@ import { sendTelemetryEvent } from "../utils/telemetry";
 vi.mock("../utils/telemetry", () => ({ sendTelemetryEvent: vi.fn() }));
 
 const mocks = vi.hoisted(() => ({
+  logError: vi.fn(),
   createTempTestBranch: vi.fn(),
   // The mark-then-delete tail lives in `neon_test_branch` and is tested there
   // (`markAndDeleteTempTestBranch`), including the ordering it depends on. What
@@ -115,13 +116,16 @@ vi.mock("electron-log", () => ({
       info: vi.fn(),
       warn: vi.fn(),
       debug: vi.fn(),
-      error: vi.fn(),
+      error: mocks.logError,
     }),
   },
 }));
 
 import { prepareIsolatedTestDatabase } from "./isolated_test_db";
-import { SupabaseTestUserCreationRejectedError } from "../utils/supabase_test_user_errors";
+import {
+  SupabaseTestUserCreationRejectedError,
+  SupabaseTestUserOperationError,
+} from "../utils/supabase_test_user_errors";
 
 const emit = vi.fn();
 
@@ -360,7 +364,14 @@ describe("per-case database isolation", () => {
   ])("propagates unclassified provisioning failures (%s)", async (error) => {
     const prepared = await prepareSupabase();
     mocks.createTempTestUser.mockRejectedValueOnce(error);
-    await expect(prepared.testCaseLifecycle!.beforeEach()).rejects.toBe(error);
+    await expect(
+      prepared.testCaseLifecycle!.beforeEach(),
+    ).rejects.toMatchObject({
+      cause: error,
+      message: expect.stringContaining(
+        "Supabase test database per-test setup failed",
+      ),
+    });
     expect(emit).not.toHaveBeenCalledWith(
       expect.stringContaining("Continuing without default sign-in credentials"),
       "running",
@@ -401,6 +412,77 @@ describe("per-case database isolation", () => {
       await prepared.teardown();
     },
   );
+
+  it.each(["beforeEach", "afterEach"] as const)(
+    "preserves sanitized operation context in deferred %s",
+    async (hook) => {
+      const prepared = await prepareSupabase();
+      const lifecycle = prepared.testCaseLifecycle!;
+      const cleanup = hook === "afterEach";
+      if (cleanup) await lifecycle.beforeEach();
+      const operationError = new SupabaseTestUserOperationError(
+        cleanup ? "delete" : "create",
+        new TypeError("sb_secret_private", { cause: { code: "ENOTFOUND" } }),
+      );
+      (cleanup
+        ? mocks.deleteTempTestUser
+        : mocks.createTempTestUser
+      ).mockRejectedValueOnce(operationError);
+      const error = await lifecycle[hook]().catch((error) => error);
+      expect(error.message).toContain(
+        cleanup ? "cleanup failed" : "per-test setup failed",
+      );
+      expect(error.message).toContain(
+        cleanup
+          ? "DELETE /auth/v1/admin/users/{userId}"
+          : "POST /auth/v1/admin/users",
+      );
+      expect(error.message).toContain("ENOTFOUND");
+      expect(error.message).not.toContain("sb_secret_private");
+      expect(error.cause).toBe(operationError);
+      if (cleanup)
+        expect(mocks.deleteTempTestUser).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({ throwOnError: true }),
+        );
+      await prepared.teardown();
+    },
+  );
+
+  it("shows friendly RLS and setup messages while logging the failure details", async () => {
+    const diagnostic = new SupabaseTestUserOperationError("rls", {
+      code: "ENOTFOUND",
+    }).message;
+    mocks.checkRls.mockResolvedValueOnce({
+      tablesWithoutRls: [],
+      unverified: true,
+      diagnostic,
+    });
+    mocks.getServiceRoleKey.mockRejectedValueOnce(
+      new SupabaseTestUserOperationError("adminKey", {
+        code: "CERT_HAS_EXPIRED",
+      }),
+    );
+    const prepared = await prepareSupabase();
+    expect(mocks.getServiceRoleKey).toHaveBeenCalled();
+    expect(emit).toHaveBeenCalledWith(
+      expect.stringContaining("Tests may be able to access existing data"),
+      "setup",
+    );
+    expect(JSON.stringify(emit.mock.calls)).not.toContain(diagnostic);
+    expect(prepared.infraError?.message).toContain(
+      "secure connection to Supabase",
+    );
+    expect(prepared.infraError?.message).toContain("VPN or security software");
+    expect(prepared.infraError?.message).not.toMatch(
+      /GET \/|CERT_HAS_EXPIRED|HTTP/,
+    );
+    expect(mocks.logError).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /setup failed.*GET \/v1\/projects\/\{ref\}\/api-keys.*CERT_HAS_EXPIRED/,
+      ),
+    );
+  });
 
   it("retains a failed Supabase deletion for retry and refuses to provision another user", async () => {
     const prepared = await prepareSupabase();
@@ -641,6 +723,7 @@ describe("prepareIsolatedTestDatabase — Supabase test-user path", () => {
     await prepared.teardown();
     expect(mocks.deleteTempTestUser).toHaveBeenCalledWith(
       expect.objectContaining({ supabaseTestUserId: "user-1" }),
+      { throwOnError: true },
     );
   });
 
@@ -689,7 +772,7 @@ describe("prepareIsolatedTestDatabase — Supabase test-user path", () => {
       });
       expect(prepared.infraError).toBeDefined();
       expect(prepared.infraError?.message).toMatch(
-        /real data was not touched/i,
+        /couldn't prepare test data in Supabase/i,
       );
       expect(prepared.isolation.mode).toBe("none");
       expect(prepared.testCredentials).toBeUndefined();

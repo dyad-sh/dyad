@@ -89,6 +89,7 @@ import { getPackageManagerCommandEnv } from "../utils/socket_firewall";
 import { withoutInheritedDatabaseEnv } from "../utils/sandbox_env";
 import { queueCloudSandboxSnapshotSync } from "../utils/cloud_sandbox_provider";
 import { sendTelemetryEvent } from "../utils/telemetry";
+import { getSupabaseTestUserMessage } from "../utils/supabase_test_user_errors";
 import {
   prepareIsolatedTestDatabase,
   type IsolationCleanupProvider,
@@ -1771,8 +1772,23 @@ async function runTestsWithPreviewAutomation({
   if (caseServer?.failure) {
     const message = `Per-test database isolation failed: ${caseServer.failure.message}`;
     logger.warn(message);
-    if (!signal.aborted && !result.infraError) {
-      result = { ...result, infraError: { message } };
+    if (!signal.aborted) {
+      const userMessage = getSupabaseTestUserMessage(caseServer.failure);
+      // Keep concurrent runner failures in the logs while presenting the
+      // actionable Supabase failure without endpoints or transport codes.
+      if (userMessage && result.infraError)
+        logger.warn(`Test runner also failed: ${result.infraError.message}`);
+      result = {
+        ...result,
+        infraError: {
+          ...result.infraError,
+          message:
+            userMessage ??
+            (result.infraError
+              ? `${result.infraError.message}\n${message}`
+              : message),
+        },
+      };
     }
   }
 

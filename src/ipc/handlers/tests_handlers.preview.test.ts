@@ -25,6 +25,7 @@ const h = vi.hoisted(() => ({
   retainArtifacts: vi.fn(),
   startRuntime: vi.fn(),
   broadcast: vi.fn(),
+  logWarning: vi.fn(),
   getDyadAppPath: vi.fn(),
   // `previewRouted` is what tells the run its specs actually reach the shim;
   // without it every case below would degrade to an ordinary browser run.
@@ -50,6 +51,20 @@ vi.mock("electron", () => ({
 }));
 
 vi.mock("node-pty", () => ({ spawn: vi.fn() }));
+
+vi.mock("electron-log", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("electron-log")>();
+  return {
+    ...actual,
+    default: {
+      ...actual.default,
+      scope: (name: string) => ({
+        ...actual.default.scope(name),
+        ...(name === "tests_handlers" ? { warn: h.logWarning } : {}),
+      }),
+    },
+  };
+});
 
 vi.mock("@/main/settings", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/main/settings")>()),
@@ -132,6 +147,10 @@ import {
 import { trackE2eTestProcess } from "../services/e2e_test_process_registry";
 import { TestRunTiming } from "../services/test_run_timing";
 import { sendTelemetryEvent } from "../utils/telemetry";
+import {
+  SupabaseTestUserOperationError,
+  withSupabaseTestUserStep,
+} from "../utils/supabase_test_user_errors";
 
 const PROXY_URL = "http://app-1.localhost:42101/";
 const CDP_ENDPOINT = "http://127.0.0.1:51234";
@@ -190,6 +209,7 @@ beforeEach(() => {
   h.getDyadAppPath.mockReturnValue(APP_PATH);
   h.prepareIsolation.mockReset();
   h.broadcast.mockReset();
+  h.logWarning.mockClear();
   h.spawnStreaming.mockReset().mockResolvedValue({
     code: 1,
     stdout: "",
@@ -778,6 +798,137 @@ test("prints a fixture secret", async ({}, testInfo) => {
         "after",
         "teardown",
       ]);
+    },
+  );
+
+  it.each(
+    [
+      { runnerFails: false, httpFailure: false },
+      { runnerFails: true, httpFailure: false },
+      { runnerFails: false, httpFailure: true },
+      { runnerFails: true, httpFailure: true },
+    ].flatMap((scenario) => [
+      { ...scenario, cleanup: false },
+      { ...scenario, cleanup: true },
+    ]),
+  )(
+    "shows friendly lifecycle errors and logs diagnostics (runner error: $runnerFails, HTTP failure: $httpFailure, cleanup: $cleanup)",
+    async ({ runnerFails, httpFailure, cleanup }) => {
+      mockReports();
+      const reportSpawn = h.spawnStreaming.getMockImplementation()!;
+      const fail = () =>
+        withSupabaseTestUserStep(
+          cleanup ? "cleanup" : "per-test setup",
+          async () => {
+            if (httpFailure) {
+              throw new SupabaseTestUserOperationError(
+                cleanup ? "delete" : "create",
+                undefined,
+                400,
+                {
+                  code: cleanup ? "23503" : "email_address_invalid",
+                  message: "private@example.com sb_secret_private",
+                },
+              );
+            }
+            throw new SupabaseTestUserOperationError(
+              cleanup ? "delete" : "create",
+              new TypeError("sb_secret_private", {
+                cause: { code: "ENOTFOUND" },
+              }),
+            );
+          },
+        );
+      h.prepareIsolation.mockResolvedValue({
+        isolation: { mode: "supabase-test-user" },
+        testCaseLifecycle: {
+          beforeEach: cleanup ? async () => ({}) : fail,
+          afterEach: cleanup ? fail : vi.fn().mockResolvedValue(undefined),
+        },
+        teardown: vi.fn().mockResolvedValue({
+          envRestored: true,
+          remoteCleanupCompleted: true,
+        }),
+      });
+      h.spawnStreaming.mockImplementation(async (options) => {
+        const requestOptions = {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${options.env[TEST_CASE_TOKEN_ENV]}`,
+          },
+        };
+        if (cleanup) {
+          const before = await fetch(
+            `${options.env[TEST_CASE_ENDPOINT_ENV]}/before/failed-case`,
+            requestOptions,
+          );
+          expect(before.status).toBe(200);
+        }
+        const response = await fetch(
+          `${options.env[TEST_CASE_ENDPOINT_ENV]}/${cleanup ? "after" : "before"}/failed-case`,
+          requestOptions,
+        );
+        expect(response.status).toBe(500);
+        expect(await response.text()).not.toContain("sb_secret_private");
+        if (runnerFails)
+          return {
+            code: 1,
+            stdout: "",
+            stderr: "runner unavailable",
+            aborted: false,
+            timedOut: false,
+          };
+        return reportSpawn(options);
+      });
+      const result = await runAppTestsWithIsolation({
+        appId: 1,
+        event: { sender: {} } as any,
+        source: "agent",
+        testFiles: selected,
+      });
+      const message = result.infraError?.message;
+      const logs = h.logWarning.mock.calls.flat().join("\n");
+      expect(message).toContain(
+        cleanup
+          ? "remove the temporary test account"
+          : "prepare a temporary test account",
+      );
+      expect(message).not.toMatch(
+        /HTTP|\/auth\/|ENOTFOUND|email_address_invalid|23503|isolation failed/,
+      );
+      expect(logs).toContain("Per-test database isolation failed");
+      expect(logs).toContain(
+        cleanup
+          ? "DELETE /auth/v1/admin/users/{userId}"
+          : "POST /auth/v1/admin/users",
+      );
+      if (httpFailure) {
+        expect(message).toContain(
+          cleanup
+            ? "database rules blocked this step"
+            : "rejected the test account's email address",
+        );
+        expect(logs).toContain("HTTP 400");
+        expect(logs).toContain(cleanup ? "23503" : "email_address_invalid");
+      } else {
+        expect(message).toContain("Check your internet connection or VPN");
+        expect(logs).toContain("ENOTFOUND");
+      }
+      expect(JSON.stringify(result)).not.toContain("sb_secret_private");
+      expect(JSON.stringify(result)).not.toContain("private@example.com");
+      expect(logs).not.toContain("sb_secret_private");
+      expect(logs).not.toContain("private@example.com");
+      if (runnerFails) {
+        expect(message).not.toContain("runner unavailable");
+        expect(logs).toContain("runner unavailable");
+      }
+      const finished = h.broadcast.mock.calls.find(
+        ([, channel, payload]) =>
+          channel === "tests:run-state" && payload.state === "finished",
+      );
+      expect(finished?.[2].infraError?.message).toBe(
+        result.infraError?.message,
+      );
     },
   );
 

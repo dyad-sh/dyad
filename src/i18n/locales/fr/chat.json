@@ -198,6 +198,7 @@
   "mcpResultTruncated": "Affichage des {{shown}} premiers caractères sur {{total}}. L'agent a reçu les {{total}} caractères.",
   "mcpResultBothTruncated": "Affichage des {{shown}} premiers caractères sur les {{total}} reçus par l'agent. Le résultat de l'outil était plus long et a été coupé avant d'être transmis à l'agent.",
   "mcpResultToolTruncated": "Le résultat de l'outil était trop volumineux, l'agent en a donc reçu une version raccourcie.",
+  "mcpErrorTruncated": "Affichage des {{shown}} premiers caractères sur {{total}} de l'erreur.",
   "aiReviewingRequest": "L'IA examine cette demande pour décider si elle peut être approuvée automatiquement en toute sécurité…",
   "approved": "Approuvé",
   "rejected": "Rejeté",

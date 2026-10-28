@@ -135,6 +135,23 @@ describe("DyadMcpToolCall", () => {
     expect(screen.queryByText(/mcpResultTruncated/)).toBeNull();
   });
 
+  it("uses error wording for a truncated failed result", () => {
+    render(
+      <DyadMcpToolCall
+        node={node()}
+        resultContent="partial"
+        state="aborted"
+        isError
+        resultTruncatedFrom={9000}
+      >
+        {`{"a":1}`}
+      </DyadMcpToolCall>,
+    );
+    fireEvent.click(screen.getByText("Tool"));
+    screen.getByText(`mcpErrorTruncated: 7 of ${(9000).toLocaleString()}`);
+    expect(screen.queryByText(/mcpResultTruncated/)).toBeNull();
+  });
+
   it("notes a tool cut even when the transcript holds the whole result", () => {
     render(
       <DyadMcpToolCall

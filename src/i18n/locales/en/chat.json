@@ -230,6 +230,7 @@
   "mcpResultTruncated": "Showing the first {{shown}} of {{total}} characters. The agent received all {{total}} characters.",
   "mcpResultBothTruncated": "Showing the first {{shown}} of the {{total}} characters the agent received. The tool's result was larger and was cut before the agent got it.",
   "mcpResultToolTruncated": "The tool's result was too large, so the agent received a shortened version.",
+  "mcpErrorTruncated": "Showing the first {{shown}} of {{total}} characters of the error.",
   "aiReviewingRequest": "AI is reviewing this request to decide if it's safe to auto-approve…",
   "approved": "Approved",
   "rejected": "Rejected",

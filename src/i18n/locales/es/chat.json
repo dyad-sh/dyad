@@ -446,5 +446,6 @@
   "mcpInputTruncated": "Se muestran los primeros {{shown}} de {{total}} caracteres. La entrada en sí no se acortó.",
   "mcpResultTruncated": "Se muestran los primeros {{shown}} de {{total}} caracteres. El agente recibió los {{total}} caracteres.",
   "mcpResultBothTruncated": "Se muestran los primeros {{shown}} de los {{total}} caracteres que recibió el agente. El resultado de la herramienta era más largo y se recortó antes de que el agente lo recibiera.",
-  "mcpResultToolTruncated": "El resultado de la herramienta era demasiado grande, así que el agente recibió una versión acortada."
+  "mcpResultToolTruncated": "El resultado de la herramienta era demasiado grande, así que el agente recibió una versión acortada.",
+  "mcpErrorTruncated": "Se muestran los primeros {{shown}} de {{total}} caracteres del error."
 }

@@ -94,7 +94,11 @@ export const DyadMcpToolCall: React.FC<DyadMcpToolCallProps> = ({
   const resultNotice =
     resultTruncatedFrom !== undefined
       ? t(
-          resultToolTruncated ? "mcpResultBothTruncated" : "mcpResultTruncated",
+          isError
+            ? "mcpErrorTruncated"
+            : resultToolTruncated
+              ? "mcpResultBothTruncated"
+              : "mcpResultTruncated",
           counts(payloadLength(resultContent ?? ""), resultTruncatedFrom),
         )
       : resultToolTruncated

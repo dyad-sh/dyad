@@ -228,6 +228,7 @@
   "mcpResultTruncated": "{{total}} karakterin ilk {{shown}} karakteri gösteriliyor. Ajan {{total}} karakterin tamamını aldı.",
   "mcpResultBothTruncated": "Ajanın aldığı {{total}} karakterin ilk {{shown}} karakteri gösteriliyor. Aracın sonucu daha uzundu ve ajana ulaşmadan önce kısaltıldı.",
   "mcpResultToolTruncated": "Aracın sonucu çok büyüktü, bu yüzden ajan kısaltılmış bir sürümünü aldı.",
+  "mcpErrorTruncated": "Hatanın {{total}} karakterinin ilk {{shown}} karakteri gösteriliyor.",
   "aiReviewingRequest": "AI, otomatik onaylanmasının güvenli olup olmadığına karar vermek için bu isteği inceliyor…",
   "approved": "Onaylandı",
   "rejected": "Reddedildi",

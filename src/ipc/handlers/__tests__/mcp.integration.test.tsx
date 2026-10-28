@@ -166,17 +166,20 @@ describe("MCP chat flows (integration)", () => {
     await streamEnd;
     expect(await screen.findByText(/LARGE_PAYLOADS_DONE/)).toBeTruthy();
 
-    // 30 calls send 3 MB of arguments and get 3.8 MB of capped results back.
+    // 30 calls send 3 MB of arguments. Each 200 KB result is cut to 128 KB
+    // before the agent receives it, so 3.8 MB of results come back.
     const chat = await ipc.chat.getChat(chatId);
     const content = chat.messages[chat.messages.length - 1].content;
     expect(content.length).toBeLessThan(2_500_000);
     expect(content.match(/<dyad-mcp-tool-call /g)).toHaveLength(30);
     expect(content.match(/received 100000 chars/g)).toHaveLength(30);
+    expect(content.match(/tool-truncated="true"/g)).toHaveLength(30);
 
     fireEvent.click(screen.getAllByText("ingest_payload")[0]);
     expect(
       await screen.findByText(/The complete input was sent to the tool/),
     ).toBeTruthy();
+    expect(screen.getByText(/The tool's result was too large/)).toBeTruthy();
   }, 90_000);
 
   it("renders MCP tool search cards in local-agent search mode", async () => {

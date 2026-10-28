@@ -104,17 +104,34 @@ describe("DyadMcpToolCall", () => {
     render(
       <DyadMcpToolCall
         node={node()}
-        resultContent="partial"
+        resultContent={"\npartial\n"}
         state="finished"
         inputTruncatedFrom={5000}
         resultTruncatedFrom={9000}
       >
-        {`{"a":1}`}
+        {`\n{"a":1}\n`}
       </DyadMcpToolCall>,
     );
     fireEvent.click(screen.getByText("Tool"));
     screen.getByText(`mcpInputTruncated: 7 of ${(5000).toLocaleString()}`);
     screen.getByText(`mcpResultTruncated: 7 of ${(9000).toLocaleString()}`);
+    expect(screen.queryByText(/mcpResultToolTruncated/)).toBeNull();
+  });
+
+  it("notes when the tool's result was cut before the agent received it", () => {
+    render(
+      <DyadMcpToolCall
+        node={node()}
+        resultContent="partial"
+        state="finished"
+        resultTruncatedFrom={9000}
+        resultToolTruncated
+      >
+        {`{"a":1}`}
+      </DyadMcpToolCall>,
+    );
+    fireEvent.click(screen.getByText("Tool"));
+    screen.getByText(/mcpResultToolTruncated/);
   });
 
   it("shows no truncation note for complete payloads", () => {

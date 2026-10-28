@@ -53,3 +53,11 @@ export function truncatedFromAttr(preview: McpTranscriptPreview): string {
     ? ""
     : ` truncated-from="${preview.truncatedFrom}"`;
 }
+
+/**
+ * XML attribute marking a result that `sanitizeMcpToolResult` cut before the
+ * agent received it, or "" when the agent got the whole result.
+ */
+export function toolTruncatedAttr(truncated: boolean): string {
+  return truncated ? ` tool-truncated="true"` : "";
+}

@@ -29,6 +29,14 @@ interface DyadMcpToolCallProps {
   inputTruncatedFrom?: number;
   /** Original result length when the transcript holds only a prefix. */
   resultTruncatedFrom?: number;
+  /** The result was cut before the agent received it. */
+  resultToolTruncated?: boolean;
+}
+
+// Transcript payloads sit between a newline after the opening tag and one
+// before the closing tag.
+function payloadLength(content: string): number {
+  return content.replace(/^\n/, "").replace(/\n$/, "").length;
 }
 
 function prettyJson(raw: string): string {
@@ -60,6 +68,7 @@ export const DyadMcpToolCall: React.FC<DyadMcpToolCallProps> = ({
   isError,
   inputTruncatedFrom,
   resultTruncatedFrom,
+  resultToolTruncated,
 }) => {
   const { t } = useTranslation("chat");
   const serverName: string = node?.properties?.serverName || "";
@@ -78,6 +87,7 @@ export const DyadMcpToolCall: React.FC<DyadMcpToolCallProps> = ({
     key: "mcpInputTruncated" | "mcpResultTruncated",
     shown: number,
     total: number | undefined,
+    toolTruncated = false,
   ) =>
     total !== undefined && (
       <div className="text-xs text-muted-foreground italic mt-1">
@@ -85,6 +95,7 @@ export const DyadMcpToolCall: React.FC<DyadMcpToolCallProps> = ({
           shown: shown.toLocaleString(),
           total: total.toLocaleString(),
         })}
+        {toolTruncated && <> {t("mcpResultToolTruncated")}</>}
       </div>
     );
 
@@ -147,7 +158,7 @@ export const DyadMcpToolCall: React.FC<DyadMcpToolCallProps> = ({
             </CodeHighlight>
             {truncationNotice(
               "mcpInputTruncated",
-              raw.length,
+              payloadLength(raw),
               inputTruncatedFrom,
             )}
             <div className="text-[11px] font-semibold text-muted-foreground mt-3 mb-1">
@@ -160,8 +171,9 @@ export const DyadMcpToolCall: React.FC<DyadMcpToolCallProps> = ({
                 </CodeHighlight>
                 {truncationNotice(
                   "mcpResultTruncated",
-                  resultContent?.length ?? 0,
+                  payloadLength(resultContent ?? ""),
                   resultTruncatedFrom,
+                  resultToolTruncated,
                 )}
               </>
             ) : resultContent !== undefined ? (
@@ -179,7 +191,7 @@ export const DyadMcpToolCall: React.FC<DyadMcpToolCallProps> = ({
             </CodeHighlight>
             {truncationNotice(
               "mcpInputTruncated",
-              raw.length,
+              payloadLength(raw),
               inputTruncatedFrom,
             )}
           </>

@@ -38,6 +38,7 @@ import { sanitizeMcpToolResult } from "@/ipc/utils/mcp_result_sanitizer";
 import {
   createMcpTranscriptBudget,
   previewMcpPayload,
+  toolTruncatedAttr,
   truncatedFromAttr,
 } from "@/ipc/utils/mcp_transcript_preview";
 
@@ -3067,7 +3068,7 @@ async function getMcpTools(
                 (ctx.mcpTranscriptBudget ??= createMcpTranscriptBudget()),
               );
               ctx.onXmlComplete(
-                `<dyad-mcp-tool-result server="${escapeXmlAttr(serverName)}" tool="${escapeXmlAttr(toolName)}" call-id="${escapeXmlAttr(callId)}"${truncatedFromAttr(resultPreview)}>\n${escapeXmlContent(resultPreview.text)}\n</dyad-mcp-tool-result>`,
+                `<dyad-mcp-tool-result server="${escapeXmlAttr(serverName)}" tool="${escapeXmlAttr(toolName)}" call-id="${escapeXmlAttr(callId)}"${truncatedFromAttr(resultPreview)}${toolTruncatedAttr(safeResult.truncated)}>\n${escapeXmlContent(resultPreview.text)}\n</dyad-mcp-tool-result>`,
               );
 
               return safeResult.serialized;
@@ -3096,8 +3097,16 @@ async function getMcpTools(
                   `<dyad-mcp-tool-result server="${escapeXmlAttr(serverName)}" tool="${escapeXmlAttr(toolName)}" call-id="${escapeXmlAttr(callId)}" is-error="true"${truncatedFromAttr(errorPreview)}>\n${escapeXmlContent(errorPreview.text)}\n</dyad-mcp-tool-result>`,
                 );
               }
+              const outputMessage = previewMcpPayload(
+                safeErrorMessage,
+                (ctx.mcpTranscriptBudget ??= createMcpTranscriptBudget()),
+              ).text;
+              const outputDetails = previewMcpPayload(
+                safeErrorDetails,
+                (ctx.mcpTranscriptBudget ??= createMcpTranscriptBudget()),
+              ).text;
               ctx.onXmlComplete(
-                `<dyad-output type="error" message="MCP tool '${key}' failed: ${escapeXmlAttr(safeErrorMessage)}">${escapeXmlContent(safeErrorDetails)}</dyad-output>`,
+                `<dyad-output type="error" message="MCP tool '${key}' failed: ${escapeXmlAttr(outputMessage)}">${escapeXmlContent(outputDetails)}</dyad-output>`,
               );
               throw error;
             }

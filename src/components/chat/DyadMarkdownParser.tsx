@@ -390,6 +390,9 @@ const MemoMcpToolPair = React.memo(
         resultTruncatedFrom={
           resultBlock ? parseTruncatedFrom(resultBlock) : undefined
         }
+        resultToolTruncated={
+          resultBlock?.attributes["tool-truncated"] === "true"
+        }
       >
         {callBlock.content}
       </DyadMcpToolCall>

@@ -1559,9 +1559,63 @@ describe("handleLocalAgentStream", () => {
         .map((operation) => operation.data.content as string)
         .join("\n");
       expect(persistedContent).toMatch(
-        /<dyad-mcp-tool-result [^>]*truncated-from="\d+">/,
+        /<dyad-mcp-tool-result [^>]*truncated-from="\d+" tool-truncated="true">/,
       );
       expect(persistedContent).not.toContain(hugeText);
+    });
+
+    it("bounds a large direct MCP error in the transcript", async () => {
+      const { event } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat();
+      mockMcpServers = [{ id: 42, name: "srv" }];
+      const message = "e".repeat(MCP_TRANSCRIPT_PAYLOAD_MAX_CHARS * 2);
+      mockMcpToolSet = {
+        fail: {
+          description: "Fail with a large error",
+          inputSchema: jsonSchema({ type: "object" }),
+          execute: vi.fn().mockRejectedValue(new Error(message)),
+        },
+      };
+      mockRequireMcpToolConsent.mockResolvedValue({ approved: true });
+      mockStreamTextImpl = (options) => ({
+        fullStream: (async function* () {
+          try {
+            await options.tools.srv__fail.execute(
+              {},
+              { toolCallId: "fail-call", messages: [] },
+            );
+          } catch {
+            /* Expected failure. */
+          }
+          yield { type: "text-delta", text: "Done" };
+        })(),
+        response: Promise.resolve({ messages: [] }),
+        steps: Promise.resolve([{ toolCalls: [] }]),
+      });
+
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "use the MCP tool" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      const persistedContent = dbOperations.updates
+        .map((operation) => operation.data.content)
+        .filter((content): content is string => typeof content === "string")
+        .at(-1)!;
+      const outputXml = persistedContent.match(
+        /<dyad-output type="error"[\s\S]*?<\/dyad-output>/,
+      )?.[0];
+      expect(outputXml).toContain("MCP tool 'srv__fail' failed");
+      expect(outputXml!.length).toBeLessThan(
+        MCP_TRANSCRIPT_PAYLOAD_MAX_CHARS * 2 + 1_000,
+      );
     });
 
     it("caps the transcript copy of direct MCP payloads but passes them through whole", async () => {

@@ -461,6 +461,32 @@ describe("processStreamChunks", () => {
     expect(result.fullResponse).not.toContain(bigInput.payload);
     expect(result.fullResponse).not.toContain(bigOutput);
   });
+
+  it("writes a non-string MCP output as text", async () => {
+    async function* mcpParts(): AsyncGenerator<TextStreamPart<ToolSet>> {
+      yield {
+        type: "tool-result",
+        toolCallId: "call-1",
+        toolName: "srv__count",
+        input: {},
+        output: 42,
+      } as unknown as TextStreamPart<ToolSet>;
+    }
+
+    const result = await processStreamChunks({
+      fullStream: mcpParts() as unknown as AsyncIterableStream<
+        TextStreamPart<ToolSet>
+      >,
+      fullResponse: "",
+      abortController: new AbortController(),
+      chatId: 1,
+      processResponseChunkUpdate: async ({ fullResponse }) => fullResponse,
+    });
+
+    expect(result.fullResponse).toContain(
+      `call-id="call-1">\n42\n</dyad-mcp-tool-result>`,
+    );
+  });
 });
 
 describe("getDyadAddDependencyTags", () => {

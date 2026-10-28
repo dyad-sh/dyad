@@ -494,7 +494,7 @@ describe("buildMcpCapabilityMap", () => {
       .mock.calls.map((call) => call[0])
       .find((xml) => xml.startsWith("<dyad-mcp-tool-result"));
     expect(resultXml).toMatch(
-      /^<dyad-mcp-tool-result [^>]*truncated-from="\d+">/,
+      /^<dyad-mcp-tool-result [^>]*truncated-from="\d+" tool-truncated="true">/,
     );
     expect(resultXml).not.toContain(hugeText);
     expect(resultXml).not.toContain(hugeImage);
@@ -663,6 +663,32 @@ describe("buildMcpCapabilityMap", () => {
           x.includes('is-error="true"'),
       ),
     ).toBe(true);
+  });
+
+  it("bounds a large MCP error in the transcript", async () => {
+    vi.mocked(requireMcpToolConsent).mockResolvedValue({ approved: true });
+    const message = "e".repeat(MCP_TRANSCRIPT_PAYLOAD_MAX_CHARS * 2);
+    const execute = vi.fn().mockRejectedValue(new Error(message));
+    vi.mocked(mcpManager.getClient).mockResolvedValue({
+      tools: async () => ({ hello: { execute } }),
+    } as any);
+
+    const ctx = createCtx();
+    const map = buildMcpCapabilityMap({
+      event: {} as any,
+      ctx,
+      defs: [makeDef()],
+    });
+
+    await expect(map.srv__hello({})).rejects.toThrow(message);
+    const outputXml = vi
+      .mocked(ctx.onXmlComplete)
+      .mock.calls.map((c) => c[0])
+      .find((x) => x.startsWith("<dyad-output"));
+    expect(outputXml).toContain("MCP tool 'srv__hello' failed");
+    expect(outputXml!.length).toBeLessThan(
+      MCP_TRANSCRIPT_PAYLOAD_MAX_CHARS * 2 + 1_000,
+    );
   });
 });
 

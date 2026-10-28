@@ -82,7 +82,7 @@ server.registerTool(
     description: "Accept a large payload and report its length",
     inputSchema: {
       payload: z.string(),
-      resultBytes: z.number().optional(),
+      resultBytes: z.number().int().nonnegative().optional(),
     },
   },
   async ({ payload, resultBytes }) => {
@@ -91,7 +91,10 @@ server.registerTool(
       content: [
         {
           type: "text",
-          text: resultBytes ? text + "qrstuvwx".repeat(resultBytes / 8) : text,
+          text:
+            resultBytes === undefined
+              ? text
+              : text.padEnd(resultBytes, "qrstuvwx").slice(0, resultBytes),
         },
       ],
     };

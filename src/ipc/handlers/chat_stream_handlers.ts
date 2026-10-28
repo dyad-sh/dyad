@@ -980,7 +980,10 @@ export async function processStreamChunks({
       chunk = `<dyad-mcp-tool-call server="${escapeXmlAttr(serverName)}" tool="${escapeXmlAttr(toolName)}" call-id="${escapeXmlAttr(part.toolCallId)}"${truncatedFromAttr(preview)}>\n${escapeDyadTags(preview.text)}\n</dyad-mcp-tool-call>\n`;
     } else if (part.type === "tool-result") {
       const { serverName, toolName } = parseMcpToolKey(part.toolName);
-      const preview = previewMcpPayload(part.output, mcpTranscriptBudget);
+      const preview = previewMcpPayload(
+        String(part.output ?? ""),
+        mcpTranscriptBudget,
+      );
       chunk = `<dyad-mcp-tool-result server="${escapeXmlAttr(serverName)}" tool="${escapeXmlAttr(toolName)}" call-id="${escapeXmlAttr(part.toolCallId)}"${truncatedFromAttr(preview)}>\n${escapeXmlContent(preview.text)}\n</dyad-mcp-tool-result>\n`;
     } else if (part.type === "tool-error") {
       // Emit an errored result so the merged card terminates in an error

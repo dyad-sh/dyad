@@ -444,5 +444,6 @@
   },
   "safetyReviewUnavailable": "Revisión de seguridad no disponible",
   "mcpInputTruncated": "Se muestran los primeros {{shown}} de {{total}} caracteres. La entrada completa se envió a la herramienta.",
-  "mcpResultTruncated": "Se muestran los primeros {{shown}} de {{total}} caracteres. El agente recibió el resultado completo."
+  "mcpResultTruncated": "Se muestran los primeros {{shown}} de {{total}} caracteres. El agente recibió los {{total}} caracteres.",
+  "mcpResultToolTruncated": "El resultado de la herramienta era demasiado grande, así que el agente recibió una versión acortada."
 }

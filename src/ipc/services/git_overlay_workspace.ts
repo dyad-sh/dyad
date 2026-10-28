@@ -7,6 +7,7 @@ import log from "electron-log/main";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { runBufferedProcess } from "@/ipc/utils/buffered_process";
 import { getGitProcessEnvironment } from "@/ipc/utils/git_utils";
+import { logGitOverlayWorkspaceFailure } from "./git_overlay_workspace_diagnostics";
 
 const WINDOWS_COPY_CONCURRENCY = 32;
 const MAX_GIT_OUTPUT_BYTES = 4 * 1024 * 1024;
@@ -412,45 +413,62 @@ async function overlayPath(
   const nativeRelativePath = toNativePath(relativePath);
   const sourcePath = path.join(sourceRoot, nativeRelativePath);
   const destinationPath = path.join(workspaceRoot, nativeRelativePath);
-  await fs.rm(destinationPath, { recursive: true, force: true });
-  const sourceStat = await fs.lstat(sourcePath).catch((error) => {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
-    throw error;
-  });
-  if (!sourceStat) return;
-  await fs.mkdir(path.dirname(destinationPath), { recursive: true });
-  if (process.platform === "win32") {
-    await copyGitOverlayEntriesOnWindows({
-      sourceRoot,
-      realSourceRoot,
-      workspaceRoot,
-      initialPaths: [sourcePath],
-      signal,
-      targetRelativePath,
-      excludedTargetRootNames,
-      excludedPackagePaths,
+  let operation = "rm";
+  try {
+    await fs.rm(destinationPath, { recursive: true, force: true });
+    operation = "lstat";
+    const sourceStat = await fs.lstat(sourcePath).catch((error) => {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw error;
     });
-    return;
-  }
-  await fs.cp(sourcePath, destinationPath, {
-    recursive: true,
-    verbatimSymlinks: true,
-    mode: fsConstants.COPYFILE_FICLONE,
-    filter: (candidatePath) => {
-      if (signal?.aborted) return false;
-      const candidateRelativePath = path
-        .relative(sourceRoot, candidatePath)
-        .split(path.sep)
-        .join("/");
-      return !isExcludedRelativePath(
-        candidateRelativePath,
+    if (!sourceStat) return;
+    operation = "mkdir";
+    await fs.mkdir(path.dirname(destinationPath), { recursive: true });
+    if (process.platform === "win32") {
+      operation = "copyWindowsEntries";
+      await copyGitOverlayEntriesOnWindows({
+        sourceRoot,
+        realSourceRoot,
+        workspaceRoot,
+        initialPaths: [sourcePath],
+        signal,
         targetRelativePath,
         excludedTargetRootNames,
         excludedPackagePaths,
-      );
-    },
-  });
-  throwIfCancelled(signal);
+      });
+      return;
+    }
+    operation = "cp";
+    await fs.cp(sourcePath, destinationPath, {
+      recursive: true,
+      verbatimSymlinks: true,
+      mode: fsConstants.COPYFILE_FICLONE,
+      filter: (candidatePath) => {
+        if (signal?.aborted) return false;
+        const candidateRelativePath = path
+          .relative(sourceRoot, candidatePath)
+          .split(path.sep)
+          .join("/");
+        return !isExcludedRelativePath(
+          candidateRelativePath,
+          targetRelativePath,
+          excludedTargetRootNames,
+          excludedPackagePaths,
+        );
+      },
+    });
+    throwIfCancelled(signal);
+  } catch (error) {
+    await logGitOverlayWorkspaceFailure(error, {
+      stage: "overlay-path",
+      operation,
+      sourceRoot,
+      workspaceRoot,
+      sourcePath,
+      destinationPath,
+    });
+    throw error;
+  }
 }
 
 async function overlayWorkspaceState(
@@ -606,59 +624,84 @@ async function copyWindowsEntry({
     workspaceRoot,
     path.relative(sourceRoot, sourcePath),
   );
-  const stat = await fs.lstat(sourcePath);
-  if (stat.isSymbolicLink()) {
-    let realTarget: string;
-    try {
-      realTarget = await fs.realpath(sourcePath);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-      // A dangling link. Dropping it here is what the POSIX path deliberately
-      // stopped doing: an app may keep a repository-local link whose target its
-      // install or build step creates, and omitting it made an isolated run
-      // fail on Windows only. Preserved under the same containment rule, with
-      // the text remapped so a target created later resolves inside the
-      // workspace instead of back into the live checkout.
-      const linkText = await fs.readlink(sourcePath);
-      const textualTarget = path.resolve(path.dirname(sourcePath), linkText);
-      if (!pathIsInside(realSourceRoot, textualTarget)) {
-        logger.warn(
-          `Dropping the dangling link ${path.relative(sourceRoot, sourcePath)} from the workspace: its target would land outside the repository.`,
-        );
+  // Each concurrent entry owns its operation label; a shared label would
+  // attribute a failure to whichever sibling happened to run last.
+  let operation = "lstat";
+  try {
+    const stat = await fs.lstat(sourcePath);
+    if (stat.isSymbolicLink()) {
+      let realTarget: string;
+      try {
+        operation = "realpath";
+        realTarget = await fs.realpath(sourcePath);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        // A dangling link. Dropping it here is what the POSIX path deliberately
+        // stopped doing: an app may keep a repository-local link whose target its
+        // install or build step creates, and omitting it made an isolated run
+        // fail on Windows only. Preserved under the same containment rule, with
+        // the text remapped so a target created later resolves inside the
+        // workspace instead of back into the live checkout.
+        operation = "readlink";
+        const linkText = await fs.readlink(sourcePath);
+        const textualTarget = path.resolve(path.dirname(sourcePath), linkText);
+        if (!pathIsInside(realSourceRoot, textualTarget)) {
+          logger.warn(
+            `Dropping the dangling link ${path.relative(sourceRoot, sourcePath)} from the workspace: its target would land outside the repository.`,
+          );
+          return [];
+        }
+        operation = "preserveDanglingWorkspaceLink";
+        await preserveDanglingWorkspaceLink({
+          targetPath: path.join(
+            workspaceRoot,
+            path.relative(realSourceRoot, textualTarget),
+          ),
+          linkPath: destinationPath,
+          relativePath: path.relative(sourceRoot, sourcePath),
+        });
         return [];
       }
-      await preserveDanglingWorkspaceLink({
-        targetPath: path.join(
-          workspaceRoot,
-          path.relative(realSourceRoot, textualTarget),
-        ),
-        linkPath: destinationPath,
-        relativePath: path.relative(sourceRoot, sourcePath),
-      });
+      operation = "validate-link-target";
+      if (!pathIsInside(realSourceRoot, realTarget)) {
+        throw externalLinkError(path.relative(sourceRoot, sourcePath));
+      }
+      operation = "stat";
+      const targetStat = await fs.stat(realTarget);
+      const mappedTarget = path.join(
+        workspaceRoot,
+        path.relative(realSourceRoot, realTarget),
+      );
+      if (!targetStat.isDirectory()) {
+        operation = "copyFile";
+        await fs.copyFile(realTarget, destinationPath);
+        return [];
+      }
+      operation = "symlink:junction";
+      await fs.symlink(mappedTarget, destinationPath, "junction");
       return [];
     }
-    if (!pathIsInside(realSourceRoot, realTarget)) {
-      throw externalLinkError(path.relative(sourceRoot, sourcePath));
+    if (stat.isDirectory()) {
+      operation = "mkdir";
+      await fs.mkdir(destinationPath, { recursive: true });
+      operation = "readdir";
+      const children = await fs.readdir(sourcePath);
+      return children.map((child) => path.join(sourcePath, child));
     }
-    const targetStat = await fs.stat(realTarget);
-    const mappedTarget = path.join(
-      workspaceRoot,
-      path.relative(realSourceRoot, realTarget),
-    );
-    if (!targetStat.isDirectory()) {
-      await fs.copyFile(realTarget, destinationPath);
-      return [];
-    }
-    await fs.symlink(mappedTarget, destinationPath, "junction");
+    operation = "copyFile";
+    await fs.copyFile(sourcePath, destinationPath);
     return [];
+  } catch (error) {
+    await logGitOverlayWorkspaceFailure(error, {
+      stage: "windows-copy-entry",
+      operation,
+      sourceRoot,
+      workspaceRoot,
+      sourcePath,
+      destinationPath,
+    });
+    throw error;
   }
-  if (stat.isDirectory()) {
-    await fs.mkdir(destinationPath, { recursive: true });
-    const children = await fs.readdir(sourcePath);
-    return children.map((child) => path.join(sourcePath, child));
-  }
-  await fs.copyFile(sourcePath, destinationPath);
-  return [];
 }
 
 function externalLinkError(relativePath: string): DyadError {
@@ -798,6 +841,15 @@ export async function secureGitOverlaySymlinks(
           await fs.unlink(entry.entryPath);
           continue;
         }
+        // The user-facing error below deliberately omits the OS exception.
+        // Record it while the offending link still exists in the workspace.
+        await logGitOverlayWorkspaceFailure(error, {
+          stage: "secure-symlinks",
+          operation: "realpath",
+          sourceRoot,
+          workspaceRoot,
+          destinationPath: entry.entryPath,
+        });
         throw new DyadError(
           `Cannot isolate the linked path ${path.relative(workspaceRoot, entry.entryPath)} because its target is unavailable.`,
           DyadErrorKind.Precondition,
@@ -1261,31 +1313,40 @@ export async function createGitOverlayWorkspace({
   const startedAt = Date.now();
   let worktreePath: string | undefined;
   let sourceRepoPath: string | undefined;
+  let stage = "create-scratch-root";
   try {
     await fs.mkdir(scratchRoot, { recursive: true });
+    stage = "find-repository";
     const repoResult = await runWorkspaceGit(
       sourceTargetPath,
       ["rev-parse", "--show-toplevel"],
       signal,
     );
+    stage = "resolve-repository-path";
     sourceRepoPath = await fs.realpath(repoResult.stdout.trim());
+    stage = "resolve-target-path";
     const realTargetPath = await fs.realpath(sourceTargetPath);
+    stage = "validate-target-path";
     if (!pathIsInside(sourceRepoPath, realTargetPath)) {
       throw new Error("The target path is outside its Git repository.");
     }
     const targetRelativePath = path.relative(sourceRepoPath, realTargetPath);
     const targetRelativePosix = targetRelativePath.split(path.sep).join("/");
 
+    stage = "create-worktree-directory";
     worktreePath = await fs.mkdtemp(path.join(scratchRoot, directoryPrefix));
     activeWorkspacePaths.add(worktreePath);
     const registeredWorktrees: SubmoduleWorktree[] = [];
+    stage = "write-owner-marker";
     await writeMarker(worktreePath, {
       purpose,
       sourceRepoPath,
       submoduleWorktrees: registeredWorktrees,
     });
     const emptyHooksPath = path.join(scratchRoot, ".empty-hooks");
+    stage = "create-hooks-directory";
     await fs.mkdir(emptyHooksPath, { recursive: true });
+    stage = "checkout-worktree";
     await runWorkspaceGit(
       sourceRepoPath,
       [
@@ -1303,6 +1364,7 @@ export async function createGitOverlayWorkspace({
     // Roots that survived removal because Git tracks them stay in the overlay:
     // excluding them there too would pin the sandbox to their `HEAD` contents
     // and silently drop every live edit beneath them.
+    stage = "remove-excluded-target-roots";
     const overlayExcludedRootNames = await removeExcludedTargetRoots(
       sourceRepoPath,
       targetPath,
@@ -1310,11 +1372,13 @@ export async function createGitOverlayWorkspace({
       excludedTargetRootNames,
       signal,
     );
+    stage = "remove-excluded-environments";
     const trackedPaths = await removeAlwaysExcludedRoots(
       sourceRepoPath,
       worktreePath,
       signal,
     );
+    stage = "overlay-working-tree";
     await overlayWorkspaceState(
       sourceRepoPath,
       worktreePath,
@@ -1323,6 +1387,7 @@ export async function createGitOverlayWorkspace({
       signal,
       trackedPaths,
     );
+    stage = "materialize-submodules";
     await materializeInitializedSubmodules({
       sourceRepoPath,
       workspaceRepoPath: worktreePath,
@@ -1335,6 +1400,7 @@ export async function createGitOverlayWorkspace({
       excludedTargetRootNames: overlayExcludedRootNames,
       signal,
     });
+    stage = "secure-symlinks";
     await secureGitOverlaySymlinks(sourceRepoPath, worktreePath, signal);
     return {
       targetPath,
@@ -1344,6 +1410,15 @@ export async function createGitOverlayWorkspace({
       sourceRepoPath,
     };
   } catch (error) {
+    await logGitOverlayWorkspaceFailure(error, {
+      stage,
+      purpose,
+      sourceRoot: sourceRepoPath ?? sourceTargetPath,
+      workspaceRoot: worktreePath,
+      scratchRoot,
+      sourcePath: sourceTargetPath,
+      destinationPath: worktreePath ?? scratchRoot,
+    });
     if (worktreePath) {
       const cleanup = removeGitOverlayWorkspace(worktreePath, sourceRepoPath);
       if (cleanupFailureMode === "background") void cleanup;

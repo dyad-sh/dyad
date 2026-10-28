@@ -169,6 +169,110 @@ function createFakeIpc() {
 }
 
 describe("user-input renderer read model", () => {
+  it.each(["approve", "discard"])(
+    "retries a saved assertion %s response after transport failure",
+    async (decision) => {
+      vi.useFakeTimers();
+      try {
+        const fake = createFakeIpc();
+        fake.respond.mockRejectedValueOnce(new Error("IPC unavailable"));
+        fake.respond.mockRejectedValueOnce(new Error("still unavailable"));
+        const showErrorToast = vi.fn();
+        const adapter = getUserInputReadModel({
+          store: createStore(),
+          ipcClient: fake.ipcClient,
+          showErrorToast,
+        });
+        const stop = adapter.start();
+        await vi.advanceTimersByTimeAsync(0);
+        fake.sendRequested({
+          kind: "test-assertions",
+          requestId: "assertions-1",
+          chatId: 7,
+          appId: 4,
+          proposalId: "proposal-1",
+          testTitle: "Add item",
+          classifier: "none",
+          deadlineAt: null,
+        });
+        const response = {
+          kind: "test-assertions" as const,
+          specPath: decision === "approve" ? "e2e-tests/item.spec.ts" : null,
+          appliedCount: decision === "approve" ? 2 : 0,
+        };
+        const delivery = adapter.respond("assertions-1", response);
+        await vi.advanceTimersByTimeAsync(2_000);
+        await expect(delivery).resolves.toBe(true);
+        expect(fake.respond).toHaveBeenCalledTimes(3);
+        for (const call of fake.respond.mock.calls) {
+          expect(call).toEqual([{ requestId: "assertions-1", response }]);
+        }
+        expect(showErrorToast).toHaveBeenCalledTimes(1);
+        expect(adapter.getSnapshot().respondingRequestIds.size).toBe(0);
+        stop();
+        expect(vi.getTimerCount()).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  it.each(["swept", "human", "stop", "not-found", "refused"])(
+    "stops assertion response retries on %s",
+    async (action) => {
+      vi.useFakeTimers();
+      try {
+        const fake = createFakeIpc();
+        fake.respond.mockRejectedValueOnce(new Error("IPC unavailable"));
+        const adapter = getUserInputReadModel({
+          store: createStore(),
+          ipcClient: fake.ipcClient,
+          showErrorToast: vi.fn(),
+        });
+        const stop = adapter.start();
+        await vi.advanceTimersByTimeAsync(0);
+        fake.sendRequested({
+          kind: "test-assertions",
+          requestId: "assertions-1",
+          chatId: 7,
+          appId: 4,
+          proposalId: "proposal-1",
+          testTitle: "Add item",
+          classifier: "none",
+          deadlineAt: null,
+        });
+        const delivery = adapter.respond("assertions-1", {
+          kind: "test-assertions",
+          specPath: "e2e-tests/item.spec.ts",
+          appliedCount: 2,
+        });
+        await vi.advanceTimersByTimeAsync(0);
+        if (action === "swept" || action === "human")
+          fake.sendSettled({ requestId: "assertions-1", outcome: action });
+        else if (action === "stop") stop();
+        else
+          fake.respond.mockRejectedValueOnce(
+            new DyadError(
+              "gone",
+              action === "not-found"
+                ? DyadErrorKind.NotFound
+                : DyadErrorKind.Validation,
+            ),
+          );
+        await vi.advanceTimersByTimeAsync(10_000);
+        await expect(delivery).resolves.toBe(action === "human");
+        expect(fake.respond).toHaveBeenCalledTimes(
+          action === "swept" || action === "human" || action === "stop" ? 1 : 2,
+        );
+        expect(adapter.getSnapshot().respondingRequestIds.size).toBe(0);
+        if (action !== "stop") stop();
+        expect(vi.getTimerCount()).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
   it("lets events received during hydration win by requestId", async () => {
     const store = createStore();
     const fake = createFakeIpc();

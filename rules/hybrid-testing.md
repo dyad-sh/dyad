@@ -271,8 +271,8 @@ database foreign-key constraint before the behavior under test can run.
   plain node/vitest with `posix_spawnp failed` — node-pty is built for Electron's
   ABI. Set `DYAD_DISABLE_PTY=1` to use the child_process fallback.
 - Local-agent consent-gated tools default to "ask"; headless there is no UI, so
-  each prompt hangs to the 300s consent deadline and then throws
-  `User denied permission for <tool>`. Pre-seed `settings.agentToolConsents`
+  each prompt waits indefinitely for a human response or cancellation.
+  Pre-seed `settings.agentToolConsents`
   using EXACT tool names (`restart_app`, `rebuild_app`, `execute_sql`,
   `add_dependency`, `web_search`, `web_crawl`) — not file names like
   `app_lifecycle`.

@@ -77,19 +77,15 @@ export const exitPlanTool: ToolDefinition<z.infer<typeof exitPlanSchema>> = {
       chatId: ctx.chatId,
     });
     const acceptedVersion = serializePlanDocument(plan);
-    const requestId = userInputRegistry.request(
-      {
-        kind: "agent-consent",
-        chatId: ctx.chatId,
-        toolName: "Implement plan",
-        toolDescription: plan.title,
-        inputPreview: plan.content,
-        allowAlways: false,
-        classifier: "none",
-      },
-      undefined,
-      { deadline: "review" },
-    );
+    const requestId = userInputRegistry.request({
+      kind: "agent-consent",
+      chatId: ctx.chatId,
+      toolName: "Implement plan",
+      toolDescription: plan.title,
+      inputPreview: plan.content,
+      allowAlways: false,
+      classifier: "none",
+    });
     const response = await userInputRegistry.park(requestId, ctx.abortSignal);
     if (
       response?.kind !== "agent-consent" ||

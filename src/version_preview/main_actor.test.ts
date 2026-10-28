@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ActorHost } from "@/distributed_machines/actor_host";
 import { RemoteMachineClient } from "@/distributed_machines/remote_client";
 import { createRemoteMachineManifest } from "@/distributed_machines/remote_manifest";
@@ -100,6 +100,8 @@ async function flush() {
   await new Promise<void>((resolve) => setTimeout(resolve, 0));
 }
 
+const harnessHosts = new Set<ActorHost>();
+
 function createHarness() {
   const clock = createFakeClock();
   const host = new ActorHost({
@@ -107,6 +109,7 @@ function createHarness() {
     clock,
     ids: createSequentialIdSource(),
   });
+  harnessHosts.add(host);
   const manifest = createRemoteMachineManifest([versionPreviewDefinition]);
   const windows = new TwoWindowHarness();
   const transportErrors: unknown[] = [];
@@ -159,6 +162,12 @@ function createHarness() {
 }
 
 describe("version_preview main actor", () => {
+  afterEach(async () => {
+    for (const host of harnessHosts) await host.dispose();
+    harnessHosts.clear();
+    expect(chatExecutionHold.isHeld(7)).toBe(false);
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     database.findFirst.mockResolvedValue({ id: 7 });
@@ -192,6 +201,7 @@ describe("version_preview main actor", () => {
     await harness.actorA.resync();
     await flush();
 
+    expect(chatExecutionHold.isHeld(7)).toBe(true);
     await harness.actorA.dispatch({
       type: "ACCEPT_CURRENT_REPOSITORY",
       operationId: "accept-dirty",
@@ -206,6 +216,20 @@ describe("version_preview main actor", () => {
       operationId: "accept-dirty",
       outcome: "failed",
     });
+    expect(chatExecutionHold.isHeld(7)).toBe(true);
+
+    service.checkpointCurrentRepository.mockRejectedValueOnce(
+      new Error("checkpoint failed"),
+    );
+    await harness.actorA.dispatch({
+      type: "CHECKPOINT_AND_ACCEPT_CURRENT_REPOSITORY",
+      operationId: "checkpoint-failed",
+    });
+    await flush();
+    expect(harness.actorA.getSnapshot().state.type).toBe(
+      "restore-recovery-required",
+    );
+    expect(chatExecutionHold.isHeld(7)).toBe(true);
 
     harness.releaseA();
     harness.releaseB();
@@ -265,6 +289,7 @@ describe("version_preview main actor", () => {
       operationId: "accept-presentation-failure",
       outcome: "succeeded",
     });
+    expect(chatExecutionHold.isHeld(7)).toBe(false);
     expect(presentation.publishResult).toHaveBeenCalledWith(
       7,
       "accept-presentation-failure",
@@ -756,16 +781,20 @@ describe("version_preview main actor", () => {
         },
         restoreRecovery,
       });
-      service.reconcile.mockResolvedValue({
-        branch,
-        headOid,
-        isClean,
-      });
+      const reconciliation = deferred<{
+        branch: string | null;
+        headOid: string;
+        isClean: boolean;
+      }>();
+      service.reconcile.mockReturnValueOnce(reconciliation.promise);
       const harness = createHarness();
       await harness.actorA.resync();
+      expect(chatExecutionHold.isHeld(7)).toBe(true);
+      reconciliation.resolve({ branch, headOid, isClean });
       await flush();
 
       expect(harness.actorA.getSnapshot().state.type).toBe(expectedType);
+      expect(chatExecutionHold.isHeld(7)).toBe(expectedType !== "closed");
 
       harness.releaseA();
       harness.releaseB();
@@ -1085,6 +1114,116 @@ describe("version_preview main actor", () => {
     await harness.transport.dispose();
     await harness.host.dispose();
   });
+
+  it.each([
+    { type: "RESTORE", disposeDuringCheckpoint: false },
+    { type: "RESTORE_TO_MESSAGE", disposeDuringCheckpoint: false },
+    { type: "RESTORE", disposeDuringCheckpoint: true },
+  ] as const)(
+    "keeps execution held after partial $type through recovery (dispose during checkpoint: $disposeDuringCheckpoint)",
+    async ({ type, disposeDuringCheckpoint }) => {
+      const restore = deferred<unknown>();
+      const validation = deferred<{ kind: "dirty" }>();
+      const checkpoint = deferred<{
+        kind: "healthy";
+        branch: string;
+        headOid: string;
+        savedVersionId: string;
+      }>();
+      service.run.mockImplementationOnce(
+        (
+          _command: unknown,
+          _operationId: string,
+          onRestoreProgress: (progress: RestoreRecovery) => void,
+        ) => {
+          onRestoreProgress({
+            preRestoreHead: "pre-restore-head",
+            preRestoreBranch: "main",
+            targetHead: "abc123",
+            nextStep: "soft-reset",
+          });
+          return restore.promise;
+        },
+      );
+      service.validateCurrentRepository.mockReturnValueOnce(validation.promise);
+      service.checkpointCurrentRepository.mockReturnValueOnce(
+        checkpoint.promise,
+      );
+      const heldChanges = vi.fn();
+      const unsubscribe = chatExecutionHold.subscribe(7, heldChanges);
+      const harness = createHarness();
+      try {
+        await harness.actorA.resync();
+        await harness.actorA.dispatch(
+          type === "RESTORE"
+            ? { type, versionId: "abc123", operationId: "partial-restore" }
+            : {
+                type,
+                chatId: 23,
+                messageId: 42,
+                restoreCodebase: true,
+                operationId: "partial-restore",
+              },
+        );
+        expect(chatExecutionHold.isHeld(7)).toBe(true);
+        restore.reject(new Error("soft reset failed"));
+        await flush();
+        expect(harness.actorA.getSnapshot().state.type).toBe(
+          "restore-recovery-required",
+        );
+        expect(chatExecutionHold.isHeld(7)).toBe(true);
+        expect(chatExecutionHold.isHeld(8)).toBe(false);
+        await harness.actorA.dispatch({
+          type: "CLOSE",
+          operationId: "close-recovery",
+        });
+        expect(chatExecutionHold.isHeld(7)).toBe(true);
+
+        await harness.actorA.dispatch({
+          type: "ACCEPT_CURRENT_REPOSITORY",
+          operationId: "accept-recovery",
+        });
+        expect(harness.actorA.getSnapshot().state.type).toBe(
+          "validating-current-repository",
+        );
+        expect(chatExecutionHold.isHeld(7)).toBe(true);
+        validation.resolve({ kind: "dirty" });
+        await flush();
+        expect(chatExecutionHold.isHeld(7)).toBe(true);
+        await harness.actorA.dispatch({
+          type: "CHECKPOINT_AND_ACCEPT_CURRENT_REPOSITORY",
+          operationId: "checkpoint-recovery",
+        });
+        expect(harness.actorA.getSnapshot().state.type).toBe(
+          "checkpointing-current-repository",
+        );
+        // No momentary release may let the chat actor dispatch queued work.
+        expect(heldChanges.mock.calls).toEqual([[true]]);
+        if (disposeDuringCheckpoint) {
+          await harness.host.dispose();
+          expect(heldChanges.mock.calls).toEqual([[true]]);
+        }
+        checkpoint.resolve({
+          kind: "healthy",
+          branch: "main",
+          headOid: "recovery-head",
+          savedVersionId: "recovery-head",
+        });
+        await flush();
+        if (!disposeDuringCheckpoint) {
+          expect(harness.actorA.getSnapshot().state.type).toBe("closed");
+        }
+        expect(heldChanges.mock.calls).toEqual([[true], [false]]);
+      } finally {
+        unsubscribe();
+        harness.releaseA();
+        harness.releaseB();
+        harness.clientA.dispose();
+        harness.clientB.dispose();
+        await harness.transport.dispose();
+      }
+    },
+  );
 
   it("does not cross the hard-reset boundary when its progress checkpoint fails", async () => {
     const destructiveEffect = vi.fn();

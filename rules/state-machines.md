@@ -370,6 +370,9 @@ Background and before/after examples of why this pattern exists:
 - Treat pending queue mutations as dispatch barriers before and after claiming a
   head; restore the claim if a mutation wins. Reconsider dispatch after rejected
   mutations too, so a hold released during the mutation cannot strand the queue.
+- Execution holds for destructive mutations must survive partial-failure recovery,
+  not just the operation promise. Rehydrate recovery holds before reconciliation
+  and release them only when recovery settles or the owning app is disposed.
 
 ## Deliberate degrees of freedom
 

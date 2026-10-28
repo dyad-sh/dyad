@@ -367,6 +367,9 @@ Background and before/after examples of why this pattern exists:
   or compute the authoritative hash only after main supplies it.
 - When a machine becomes the sole scheduler for a queue, every legacy enqueue
   path must poke the machine or enqueue through it.
+- Treat pending queue mutations as dispatch barriers before and after claiming a
+  head; restore the claim if a mutation wins. Reconsider dispatch after rejected
+  mutations too, so a hold released during the mutation cannot strand the queue.
 
 ## Deliberate degrees of freedom
 

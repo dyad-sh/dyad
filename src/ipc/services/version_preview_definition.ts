@@ -406,10 +406,11 @@ function createCommandRunner(
           }
           return;
         }
-        // Undo owns the hold through Git/database restoration and runtime restart.
+        // Codebase restores own the hold through Git/database restoration and restart.
         // The chat actor keeps accepting durable queued prompts in the meantime.
         const releaseChatExecution =
-          command.type === "restore"
+          command.type === "restore" ||
+          (command.type === "restore-to-message" && command.restoreCodebase)
             ? chatExecutionHold.acquire(appId)
             : undefined;
         const operation =

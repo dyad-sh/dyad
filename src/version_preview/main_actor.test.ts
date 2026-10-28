@@ -995,24 +995,36 @@ describe("version_preview main actor", () => {
     harness.transport.dispose();
   });
 
-  it.each(["success", "failure"])(
-    "holds chat execution through undo and restart: %s",
-    async (outcome) => {
+  it.each([
+    { type: "RESTORE", outcome: "success" },
+    { type: "RESTORE", outcome: "failure" },
+    { type: "RESTORE_TO_MESSAGE", outcome: "success" },
+    { type: "RESTORE_TO_MESSAGE", outcome: "failure" },
+    { type: "RESTORE_TO_MESSAGE", outcome: "restart-failure" },
+  ] as const)(
+    "holds chat execution through $type and restart: $outcome",
+    async ({ type, outcome }) => {
       const restore = deferred<unknown>();
       const restart = deferred<undefined>();
       service.run.mockReturnValueOnce(restore.promise);
-      if (outcome === "success")
+      if (outcome !== "failure")
         appRun.executeExternalLifecycle.mockReturnValueOnce(restart.promise);
       const harness = createHarness();
       await harness.actorA.resync();
-      await harness.actorA.dispatch({
-        type: "RESTORE",
-        versionId: "abc123",
-        operationId: "held-undo",
-      });
+      await harness.actorA.dispatch(
+        type === "RESTORE"
+          ? { type, versionId: "abc123", operationId: "held-undo" }
+          : {
+              type,
+              chatId: 23,
+              messageId: 42,
+              restoreCodebase: true,
+              operationId: "held-restore-to-message",
+            },
+      );
       expect(chatExecutionHold.isHeld(7)).toBe(true);
       expect(chatExecutionHold.isHeld(8)).toBe(false);
-      if (outcome === "success") {
+      if (outcome !== "failure") {
         restore.resolve({
           repositoryOutcome: "target-applied",
           notification: null,
@@ -1024,7 +1036,11 @@ describe("version_preview main actor", () => {
           expect(appRun.executeExternalLifecycle).toHaveBeenCalled(),
         );
         expect(chatExecutionHold.isHeld(7)).toBe(true);
-        restart.resolve(undefined);
+        if (outcome === "restart-failure") {
+          restart.reject(new Error("restart failed"));
+        } else {
+          restart.resolve(undefined);
+        }
       } else {
         restore.reject(new Error("restore failed"));
       }
@@ -1037,6 +1053,38 @@ describe("version_preview main actor", () => {
       await harness.host.dispose();
     },
   );
+
+  it("does not hold chat execution while forking without restoring code", async () => {
+    const fork = deferred<unknown>();
+    service.run.mockReturnValueOnce(fork.promise);
+    const harness = createHarness();
+    await harness.actorA.resync();
+    await harness.actorA.dispatch({
+      type: "RESTORE_TO_MESSAGE",
+      chatId: 23,
+      messageId: 42,
+      restoreCodebase: false,
+      operationId: "fork-without-restore",
+    });
+    expect(service.run).toHaveBeenCalled();
+    expect(chatExecutionHold.isHeld(7)).toBe(false);
+    fork.resolve({
+      repositoryOutcome: "unchanged",
+      notification: null,
+      runtimeAction: "none",
+      affectedChatId: null,
+      createdChatId: 24,
+    });
+    await flush();
+    expect(chatExecutionHold.isHeld(7)).toBe(false);
+    expect(appRun.executeExternalLifecycle).not.toHaveBeenCalled();
+    harness.releaseA();
+    harness.releaseB();
+    harness.clientA.dispose();
+    harness.clientB.dispose();
+    await harness.transport.dispose();
+    await harness.host.dispose();
+  });
 
   it("does not cross the hard-reset boundary when its progress checkpoint fails", async () => {
     const destructiveEffect = vi.fn();

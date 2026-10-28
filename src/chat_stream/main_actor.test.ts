@@ -39,6 +39,7 @@ const execution = vi.hoisted(() => ({
   claimFailures: 0,
   claimAttempts: 0,
   afterClaim: null as (() => Promise<void>) | null,
+  beforeQueueMutation: null as (() => Promise<void>) | null,
   claimedEntries: new Map<string, ChatQueueEntry>(),
   convertAttachments: vi.fn(async () => []),
 }));
@@ -231,6 +232,7 @@ vi.mock("./persistence", () => ({
       _chatId: number,
       command: { mutation: { type: string } },
     ) => {
+      await execution.beforeQueueMutation?.();
       persisted.paused = command.mutation.type === "pause";
       persisted.pauseReason = persisted.paused ? "manual" : null;
       persisted.revision += 1;
@@ -326,6 +328,7 @@ describe("main-hosted chat stream actor", () => {
     execution.claimFailures = 0;
     execution.claimAttempts = 0;
     execution.afterClaim = null;
+    execution.beforeQueueMutation = null;
     execution.claimedEntries.clear();
     execution.convertAttachments.mockReset();
     execution.convertAttachments.mockResolvedValue([]);
@@ -416,6 +419,100 @@ describe("main-hosted chat stream actor", () => {
       await host.dispose();
     }
   });
+
+  it.each([
+    { timing: "before-release", outcome: "applied" },
+    { timing: "after-claim", outcome: "applied" },
+    { timing: "before-release", outcome: "rejected" },
+    { timing: "after-claim", outcome: "rejected" },
+  ])(
+    "waits for an in-flight pause when an execution hold releases: $timing / $outcome",
+    async ({ timing, outcome }) => {
+      const host = new ActorHost({
+        placement: "main",
+        clock: createFakeClock(),
+        ids: createSequentialIdSource(),
+      });
+      host.register(chatStreamDefinition);
+      const actor = host.ensure(chatStreamDefinition, chatStreamKey(7));
+      const release = chatExecutionHold.acquire(3);
+      let finishPause!: () => void;
+      const pause = new Promise<void>((resolve) => {
+        finishPause = resolve;
+      });
+      execution.beforeQueueMutation = async () => {
+        await pause;
+        if (outcome === "rejected") throw new Error("queue mutation failed");
+      };
+      const requestPause = async () => {
+        execution.afterClaim = null;
+        actor.enqueue({
+          type: "PAUSE_QUEUE",
+          expectedQueueRevision: actor.getSnapshot().queueRevision,
+          mutationId: "pause-racing-release",
+        });
+        await vi.waitFor(() =>
+          expect(actor.getSnapshot().pendingQueueMutationId).toBe(
+            "pause-racing-release",
+          ),
+        );
+      };
+      try {
+        actor.enqueue({ type: "SUBMIT", intent: turn("queued") });
+        await vi.waitFor(() =>
+          expect(actor.getSnapshot().queue).toHaveLength(1),
+        );
+        if (timing === "before-release") {
+          await requestPause();
+        } else {
+          execution.afterClaim = requestPause;
+        }
+        release();
+        await vi.waitFor(() => {
+          expect(actor.getSnapshot().pendingQueueMutationId).toBe(
+            "pause-racing-release",
+          );
+          expect(execution.claimAttempts).toBe(
+            timing === "after-claim" ? 1 : 0,
+          );
+          expect(execution.claimedEntries.size).toBe(0);
+          expect(persisted.entries.map((entry) => entry.intentId)).toEqual([
+            "queued",
+          ]);
+        });
+        expect(execution.observers.size).toBe(0);
+        finishPause();
+        if (outcome === "applied") {
+          await vi.waitFor(() =>
+            expect(actor.getSnapshot().queuePaused).toBe(true),
+          );
+          expect(actor.getSnapshot().queue).toMatchObject([
+            { intentId: "queued" },
+          ]);
+          expect(execution.observers.size).toBe(0);
+          actor.enqueue({
+            type: "RESUME_QUEUE",
+            expectedQueueRevision: actor.getSnapshot().queueRevision,
+            mutationId: "resume-after-pause",
+          });
+        } else {
+          await vi.waitFor(() =>
+            expect(actor.getSnapshot().lastQueueMutation).toMatchObject({
+              mutationId: "pause-racing-release",
+              outcome: "rejected",
+            }),
+          );
+        }
+        await vi.waitFor(() =>
+          expect(execution.observers.has("queued")).toBe(true),
+        );
+      } finally {
+        finishPause();
+        release();
+        await host.dispose();
+      }
+    },
+  );
 
   it("returns an already-claimed prompt to the queue if undo starts before dispatch", async () => {
     const host = new ActorHost({

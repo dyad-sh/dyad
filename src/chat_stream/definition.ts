@@ -602,7 +602,11 @@ function createCommandRunner(
       }
       case "dispatch-next": {
         try {
-          if (chatExecutionHold.isHeld(appId)) return;
+          if (
+            chatExecutionHold.isHeld(appId) ||
+            context.getSnapshot().pendingQueueMutationId !== null
+          )
+            return;
           try {
             assertChatActorAdmissionOpen(context.key.chatId);
           } catch {
@@ -633,6 +637,7 @@ function createCommandRunner(
             const snapshotBeforeDispatch = context.getSnapshot();
             if (
               chatExecutionHold.isHeld(appId) ||
+              snapshotBeforeDispatch.pendingQueueMutationId !== null ||
               snapshotBeforeDispatch.queuePaused ||
               (snapshotBeforeDispatch.phase !== "idle" &&
                 snapshotBeforeDispatch.phase !== "errored")

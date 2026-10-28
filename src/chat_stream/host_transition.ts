@@ -938,7 +938,15 @@ function transitionHost(
               error: event.error,
             },
           },
-          commands: [],
+          // A pending mutation may have blocked dispatch when a hold released.
+          // Reconsider the authoritative queue once that mutation settles.
+          commands:
+            !stopOwnsQueue &&
+            !event.paused &&
+            event.entries.length > 0 &&
+            (state.phase === "idle" || state.phase === "errored")
+              ? [{ type: "dispatch-next" }]
+              : [],
         };
       }
     case "QUEUE_PARKED":

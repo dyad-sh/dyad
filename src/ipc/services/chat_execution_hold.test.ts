@@ -19,6 +19,12 @@ describe("ChatExecutionHold", () => {
     expect(holds.isHeld(1)).toBe(false);
     expect(listener.mock.calls).toEqual([[true], [false]]);
     expect(otherApp).not.toHaveBeenCalled();
+    const releaseOtherApp = holds.acquire(2);
+    expect(holds.isHeld(2)).toBe(true);
+    releaseOtherApp();
+    expect(holds.isHeld(2)).toBe(false);
+    expect(otherApp.mock.calls).toEqual([[true], [false]]);
+    expect(listener.mock.calls).toEqual([[true], [false]]);
     unsubscribe();
     holds.acquire(1)();
     expect(listener).toHaveBeenCalledTimes(2);

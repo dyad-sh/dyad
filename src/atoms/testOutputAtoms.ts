@@ -1,0 +1,134 @@
+import { atom } from "jotai";
+import { selectedAppIdAtom } from "./appAtoms";
+
+/** Keep the tail of each run's output, including verbose setup logs. */
+export const MAX_TEST_RUN_OUTPUT_LENGTH = 500_000;
+
+interface TestOutputTab {
+  runId: number;
+  label: string;
+  output: string;
+}
+
+interface TestOutputTabs {
+  tabs: TestOutputTab[];
+  selectedRunId: number | null;
+}
+
+const EMPTY_OUTPUT_TABS: TestOutputTabs = { tabs: [], selectedRunId: null };
+
+// Window-local presentation history survives leaving Tests and switching apps.
+// Closing a tab only dismisses its output; execution remains owned by main.
+const testOutputTabsByAppIdAtom = atom<Map<number, TestOutputTabs>>(new Map());
+
+export const currentTestOutputTabsAtom = atom((get) => {
+  const appId = get(selectedAppIdAtom);
+  return appId === null
+    ? EMPTY_OUTPUT_TABS
+    : (get(testOutputTabsByAppIdAtom).get(appId) ?? EMPTY_OUTPUT_TABS);
+});
+
+export const openTestOutputTabAtom = atom(
+  null,
+  (
+    _get,
+    set,
+    { appId, runId, label }: { appId: number; runId: number; label: string },
+  ) => {
+    set(testOutputTabsByAppIdAtom, (prev) => {
+      const current = prev.get(appId) ?? EMPTY_OUTPUT_TABS;
+      if (current.tabs.some((tab) => tab.runId === runId)) return prev;
+      const next = new Map(prev);
+      next.set(appId, {
+        tabs: [...current.tabs, { runId, label, output: "" }].sort(
+          (a, b) => a.runId - b.runId,
+        ),
+        // An older bootstrap snapshot must not steal a newer live run's tab.
+        selectedRunId: current.tabs.some((tab) => tab.runId > runId)
+          ? current.selectedRunId
+          : runId,
+      });
+      return next;
+    });
+  },
+);
+
+export const appendTestOutputTabAtom = atom(
+  null,
+  (
+    _get,
+    set,
+    { appId, runId, chunk }: { appId: number; runId: number; chunk: string },
+  ) => {
+    if (!chunk) return;
+    set(testOutputTabsByAppIdAtom, (prev) => {
+      const current = prev.get(appId);
+      // Buffered/late output must not reopen a tab the user closed.
+      if (!current?.tabs.some((tab) => tab.runId === runId)) return prev;
+      const next = new Map(prev);
+      next.set(appId, {
+        ...current,
+        tabs: current.tabs.map((tab) =>
+          tab.runId === runId
+            ? {
+                ...tab,
+                output: (tab.output + chunk).slice(-MAX_TEST_RUN_OUTPUT_LENGTH),
+              }
+            : tab,
+        ),
+      });
+      return next;
+    });
+  },
+);
+
+export const selectTestOutputTabAtom = atom(
+  null,
+  (_get, set, { appId, runId }: { appId: number; runId: number }) => {
+    set(testOutputTabsByAppIdAtom, (prev) => {
+      const current = prev.get(appId);
+      if (
+        !current?.tabs.some((tab) => tab.runId === runId) ||
+        current.selectedRunId === runId
+      )
+        return prev;
+      const next = new Map(prev);
+      next.set(appId, { ...current, selectedRunId: runId });
+      return next;
+    });
+  },
+);
+
+export const closeTestOutputTabAtom = atom(
+  null,
+  (_get, set, { appId, runId }: { appId: number; runId: number }) => {
+    set(testOutputTabsByAppIdAtom, (prev) => {
+      const current = prev.get(appId);
+      if (!current) return prev;
+      const index = current.tabs.findIndex((tab) => tab.runId === runId);
+      if (index < 0) return prev;
+      const tabs = current.tabs.filter((tab) => tab.runId !== runId);
+      const next = new Map(prev);
+      next.set(appId, {
+        tabs,
+        selectedRunId:
+          current.selectedRunId === runId
+            ? (tabs[Math.min(index, tabs.length - 1)]?.runId ?? null)
+            : current.selectedRunId,
+      });
+      return next;
+    });
+  },
+);
+
+export const clearTestOutputTabsForAppAtom = atom(
+  null,
+  (_get, set, appId: number) => {
+    set(testOutputTabsByAppIdAtom, (prev) => {
+      if (!prev.has(appId)) return prev;
+      const next = new Map(prev);
+      next.delete(appId);
+      return next;
+    });
+  },
+);

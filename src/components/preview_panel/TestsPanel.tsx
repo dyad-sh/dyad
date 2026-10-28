@@ -8,7 +8,6 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import {
-  memo,
   useCallback,
   useEffect,
   useMemo,
@@ -88,6 +87,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { AgentModeRequiredDialog } from "./AgentModeRequiredDialog";
 import { MigrateTestsBanner } from "./MigrateTestsBanner";
+import { TestOutputDrawer } from "./TestOutputDrawer";
 import { queryKeys } from "@/lib/queryKeys";
 import { cn } from "@/lib/utils";
 import { showError, showInfo, showSuccess } from "@/lib/toast";
@@ -2105,7 +2105,7 @@ export function TestsPanel() {
         )}
       </div>
 
-      <OutputDrawer open={outputOpen} onToggle={toggleOutput} />
+      <TestOutputDrawer open={outputOpen} onToggle={toggleOutput} />
 
       <DeleteTestFileDialog
         file={pendingDelete?.file ?? null}
@@ -2261,48 +2261,3 @@ function EnableTestingScreen({
     </div>
   );
 }
-
-// Collapsible raw output drawer. The only component that subscribes to the
-// streamed output atom, and memoized so per-flush appends re-render just this
-// drawer (and its auto-scroll) instead of the whole panel and every test row.
-const OutputDrawer = memo(function OutputDrawer({
-  open,
-  onToggle,
-}: {
-  open: boolean;
-  onToggle: () => void;
-}) {
-  const output = useAtomValue(currentTestRunOutputAtom);
-  const outputRef = useRef<HTMLPreElement>(null);
-
-  // Auto-scroll to the newest output.
-  useEffect(() => {
-    if (open && outputRef.current) {
-      outputRef.current.scrollTop = outputRef.current.scrollHeight;
-    }
-  }, [output, open]);
-
-  if (!output) return null;
-
-  return (
-    <div className="border-t border-border">
-      <button
-        onClick={onToggle}
-        aria-expanded={open}
-        aria-label="Toggle test output"
-        className="flex items-center gap-2 w-full px-4 py-1.5 text-xs font-medium text-muted-foreground hover:bg-(--background-darkest) cursor-pointer"
-      >
-        {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-        Output
-      </button>
-      {open && (
-        <pre
-          ref={outputRef}
-          className="text-[11px] whitespace-pre-wrap break-words bg-(--background-darkest) px-4 py-2 max-h-48 overflow-auto"
-        >
-          {output}
-        </pre>
-      )}
-    </div>
-  );
-});

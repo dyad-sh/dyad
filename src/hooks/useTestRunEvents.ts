@@ -64,7 +64,9 @@ export function useTestRunEvents() {
   const hydrateActiveRun = useRef<(snapshot: ActiveTestRunSnapshot) => void>(
     () => {},
   );
-  const pendingOutputRef = useRef(new Map<number, string>());
+  const pendingOutputRef = useRef(
+    new Map<number, { appId: number; chunk: string }>(),
+  );
   const outputFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
@@ -72,15 +74,10 @@ export function useTestRunEvents() {
   useEffect(() => {
     const flushPendingOutput = (appId?: number) => {
       const pending = pendingOutputRef.current;
-      const entries =
-        appId === undefined
-          ? Array.from(pending.entries())
-          : pending.has(appId)
-            ? [[appId, pending.get(appId)!] as const]
-            : [];
-      for (const [pendingAppId, chunk] of entries) {
-        appendOutput({ appId: pendingAppId, chunk });
-        pending.delete(pendingAppId);
+      for (const [runId, output] of pending) {
+        if (appId !== undefined && output.appId !== appId) continue;
+        appendOutput({ ...output, runId });
+        pending.delete(runId);
       }
       if (pending.size === 0 && outputFlushTimerRef.current) {
         clearTimeout(outputFlushTimerRef.current);
@@ -95,10 +92,10 @@ export function useTestRunEvents() {
         return;
       }
       const pending = pendingOutputRef.current;
-      pending.set(
-        payload.appId,
-        (pending.get(payload.appId) ?? "") + payload.chunk,
-      );
+      pending.set(payload.runId, {
+        appId: payload.appId,
+        chunk: (pending.get(payload.runId)?.chunk ?? "") + payload.chunk,
+      });
       outputFlushTimerRef.current ??= setTimeout(() => {
         outputFlushTimerRef.current = null;
         flushPendingOutput();

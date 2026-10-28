@@ -12,6 +12,10 @@ import {
   testSpecsByAppIdAtom,
 } from "@/atoms/testRuntimeAtoms";
 import { useTestRunEvents } from "@/hooks/useTestRunEvents";
+import {
+  closeTestOutputTabAtom,
+  currentTestOutputTabsAtom,
+} from "@/atoms/testOutputAtoms";
 import { queryKeys } from "@/lib/queryKeys";
 import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import { previewNativeViewAppIdAtom } from "@/atoms/previewAtoms";
@@ -289,6 +293,7 @@ describe("useTestRunEvents", () => {
     "handles concurrent lifecycle events when run %s finishes first",
     async (firstFinished) => {
       const { store, Wrapper } = makeWrapper();
+      store.set(selectedAppIdAtom, 1);
       const files = ["e2e-tests/a.spec.ts", "e2e-tests/b.spec.ts"];
       renderHook(() => useTestRunEvents(), { wrapper: Wrapper });
       act(() => {
@@ -337,6 +342,10 @@ describe("useTestRunEvents", () => {
       expect(completed.phase).toBe("idle");
       expect(Object.keys(completed.results)).toHaveLength(2);
       expect(store.get(testRunOutputByAppIdAtom).get(1)).toBe("run 1\nrun 2\n");
+      expect(store.get(currentTestOutputTabsAtom).tabs).toEqual([
+        { runId: 1, label: "Run 1 · a.spec.ts", output: "run 1\n" },
+        { runId: 2, label: "Run 2 · b.spec.ts", output: "run 2\n" },
+      ]);
     },
   );
 
@@ -393,6 +402,46 @@ describe("useTestRunEvents", () => {
       ]),
     );
     expect(store.get(testRunOutputByAppIdAtom).get(1)).toBe("first");
+    expect(store.get(currentTestOutputTabsAtom)).toEqual({
+      selectedRunId: 2,
+      tabs: [
+        { runId: 1, label: "Run 1 · a.spec.ts", output: "first" },
+        { runId: 2, label: "Run 2 · b.spec.ts", output: "" },
+      ],
+    });
+  });
+
+  it("retains earlier runs and keeps closed tabs dismissed when buffered output flushes", async () => {
+    const { store, Wrapper } = makeWrapper();
+    store.set(selectedAppIdAtom, 1);
+    renderHook(() => useTestRunEvents(), { wrapper: Wrapper });
+    for (const runId of [1, 2, 3]) {
+      await act(async () => {
+        emitRunState({ appId: 1, runId, source: "panel", state: "started" });
+        emitOutput({
+          appId: 1,
+          runId,
+          phase: "running",
+          chunk: `run ${runId}`,
+        });
+        if (runId === 2) store.set(closeTestOutputTabAtom, { appId: 1, runId });
+        emitRunState({
+          appId: 1,
+          runId,
+          source: "panel",
+          state: "finished",
+          results: [],
+        });
+      });
+    }
+    expect(store.get(currentTestOutputTabsAtom)).toEqual({
+      selectedRunId: 3,
+      tabs: [
+        { runId: 1, label: "Run 1 · All tests", output: "run 1" },
+        { runId: 3, label: "Run 3 · All tests", output: "run 3" },
+      ],
+    });
+    expect(store.get(testRunOutputByAppIdAtom).get(1)).toBe("run 3");
   });
 
   it.each(["agent", "panel"])(

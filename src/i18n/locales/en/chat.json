@@ -8,6 +8,7 @@
     "testsPanel": "Tests panel",
     "queued": "Queued",
     "running": "Running",
+    "waitingForNeonBranch": "Waiting for Neon branch",
     "stopping": "Stopping",
     "passed": "Passed",
     "failed": "Failed",
@@ -444,5 +445,11 @@
     "sending": "Sending...",
     "send": "Send {{count}}"
   },
-  "safetyReviewUnavailable": "Safety review unavailable"
+  "safetyReviewUnavailable": "Safety review unavailable",
+  "neonBranchLimit": {
+    "title": "Neon branch limit reached",
+    "waiting": "Your Neon plan limits the number of database branches. Tests are waiting for another run to finish and free a branch, then will continue automatically.",
+    "blocked": "Your Neon plan has no room for another test branch. Delete an unused branch in Neon or upgrade your plan, then run the tests again.",
+    "manage": "Open Neon"
+  }
 }

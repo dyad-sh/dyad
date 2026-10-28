@@ -8,6 +8,7 @@
     "testsPanel": "Painel de testes",
     "queued": "Na fila",
     "running": "Em execução",
+    "waitingForNeonBranch": "Aguardando uma branch do Neon",
     "stopping": "Parando",
     "passed": "Aprovado",
     "failed": "Falhou",
@@ -444,5 +445,11 @@
     "sending": "Enviando...",
     "send": "Enviar {{count}}"
   },
-  "safetyReviewUnavailable": "Revisão de segurança indisponível"
+  "safetyReviewUnavailable": "Revisão de segurança indisponível",
+  "neonBranchLimit": {
+    "title": "Limite de branches do Neon atingido",
+    "waiting": "Seu plano do Neon limita o número de branches do banco de dados. Os testes estão aguardando outra execução terminar e liberar um branch. Depois, continuarão automaticamente.",
+    "blocked": "Seu plano do Neon não permite criar outro branch de teste. Exclua um branch não utilizado no Neon ou faça upgrade do plano e execute os testes novamente.",
+    "manage": "Abrir Neon"
+  }
 }

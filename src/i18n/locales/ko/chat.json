@@ -8,6 +8,7 @@
     "testsPanel": "테스트 패널",
     "queued": "대기 중",
     "running": "실행 중",
+    "waitingForNeonBranch": "Neon 브랜치 대기 중",
     "stopping": "중지 중",
     "passed": "통과",
     "failed": "실패",
@@ -444,5 +445,11 @@
     "sending": "전송 중...",
     "send": "{{count}}개 전송"
   },
-  "safetyReviewUnavailable": "안전 검토를 사용할 수 없음"
+  "safetyReviewUnavailable": "안전 검토를 사용할 수 없음",
+  "neonBranchLimit": {
+    "title": "Neon 브랜치 한도에 도달했습니다",
+    "waiting": "Neon 요금제에는 데이터베이스 브랜치 수 제한이 있습니다. 다른 테스트 실행이 완료되어 브랜치가 확보되면 대기 중인 테스트가 자동으로 계속됩니다.",
+    "blocked": "Neon 요금제의 한도로 인해 테스트 브랜치를 추가할 수 없습니다. Neon에서 사용하지 않는 브랜치를 삭제하거나 요금제를 업그레이드한 후 테스트를 다시 실행하세요.",
+    "manage": "Neon 열기"
+  }
 }

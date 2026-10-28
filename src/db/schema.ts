@@ -146,6 +146,27 @@ export const apps = sqliteTable("apps", {
   }),
 });
 
+// Independent recovery records: concurrent cases must never overwrite another
+// run's user. Deliberately no cascading FK: a failed remote deletion must remain
+// recoverable even after the local app is deleted. No credentials are stored.
+export const testUserCleanup = sqliteTable("test_user_cleanup", {
+  userId: text("user_id").primaryKey(),
+  appId: integer("app_id").notNull(),
+  ownerId: text("owner_id").notNull(),
+  projectId: text("project_id").notNull(),
+  organizationSlug: text("organization_slug").notNull(),
+});
+
+// One record per sandboxed run, independent of the recorder's app-row marker.
+// Retain provider identity after app deletion/reassociation so failed cleanup
+// remains recoverable. Never store connection strings or auth credentials here.
+export const testBranchCleanup = sqliteTable("test_branch_cleanup", {
+  branchId: text("branch_id").primaryKey(),
+  appId: integer("app_id").notNull(),
+  ownerId: text("owner_id").notNull().unique(),
+  projectId: text("project_id").notNull(),
+});
+
 export const chats = sqliteTable("chats", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   appId: integer("app_id")

@@ -15,7 +15,10 @@ import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import { recordingStartRequestAtom } from "@/atoms/recorderAtoms";
 import { previewNativeViewAppIdAtom } from "@/atoms/previewAtoms";
 import {
+  applyTestRunStartedAtom,
+  applyTestRunFinishedAtom,
   EMPTY_TEST_RUN_STATE,
+  setTestRunStateForAppAtom,
   testRunStateByAppIdAtom,
   type TestRunState,
 } from "@/atoms/testRuntimeAtoms";
@@ -42,11 +45,16 @@ const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
   queuedRuns: [] as TestRunQueueSnapshot["queuedRuns"],
   activeRun: null as TestRunQueueSnapshot["activeRun"],
+  activeRuns: undefined as TestRunQueueSnapshot["activeRuns"],
 }));
 
 vi.mock("@/hooks/useTestRunQueue", () => ({
   useTestRunQueue: () => ({
-    data: { activeRun: mocks.activeRun, queuedRuns: mocks.queuedRuns },
+    data: {
+      activeRun: mocks.activeRun,
+      activeRuns: mocks.activeRuns,
+      queuedRuns: mocks.queuedRuns,
+    },
   }),
 }));
 
@@ -89,7 +97,12 @@ vi.mock("react-i18next", async () => {
     string,
     unknown
   >;
-  const t = (key: string, options?: Record<string, unknown>) => {
+  const chat = (await import("@/i18n/locales/en/chat.json")).default;
+  const t = (
+    key: string,
+    options?: Record<string, unknown>,
+    catalog = home,
+  ) => {
     const lookupKey =
       options?.count === undefined
         ? key
@@ -101,14 +114,19 @@ vi.mock("react-i18next", async () => {
           typeof node === "object" && node !== null
             ? (node as Record<string, unknown>)[segment]
             : undefined,
-        home,
+        catalog,
       );
     if (typeof value !== "string") return key;
     return value.replaceAll(/\{\{(\w+)\}\}/g, (match, name: string) =>
       String(options?.[name] ?? match),
     );
   };
-  return { useTranslation: () => ({ t }) };
+  return {
+    useTranslation: (namespace: string) => ({
+      t: (key: string, options?: Record<string, unknown>) =>
+        t(key, options, namespace === "chat" ? chat : home),
+    }),
+  };
 });
 
 vi.mock("@tanstack/react-router", () => ({
@@ -210,6 +228,7 @@ describe("TestsPanel", () => {
     mocks.app = { id: 1, testingEnabled: true };
     mocks.queuedRuns = [];
     mocks.activeRun = null;
+    mocks.activeRuns = undefined;
     mocks.runAppTests.mockResolvedValue({ appId: 1, results: [] });
   });
 
@@ -1053,6 +1072,339 @@ describe("TestsPanel", () => {
       expect(screen.queryByText("Queued")).toBeNull();
       expect(row.classList.contains("bg-amber-50")).toBe(false);
       expect(within(row).getByRole("img", { name: "Running" })).toBeTruthy();
+    });
+  });
+
+  describe("overlapping runs", () => {
+    const otherFile = "e2e-tests/login.spec.ts";
+    const fileRow = (file: string) =>
+      within(
+        screen.getByText(file.split("/").pop()!).closest("button")!
+          .parentElement!,
+      );
+
+    it.each([{ testLine: 4 }, { grep: "signs up" }])(
+      "shows all Neon waits in queued colors and preserves case selection: %j",
+      async (selection) => {
+        const waitingFile = "e2e-tests/profile.spec.ts";
+        mocks.listAppTests.mockResolvedValue({
+          specs: [
+            {
+              file: SPEC_FILE,
+              tests: [
+                { title: "signs up", line: 4 },
+                { title: "rejects a bad password", line: 12 },
+              ],
+            },
+            ...[otherFile, waitingFile].map((file) => ({
+              file,
+              tests: [{ title: "works", line: 4 }],
+            })),
+          ],
+        });
+        mocks.activeRuns = [
+          {
+            runId: 1,
+            source: "agent",
+            testFile: SPEC_FILE,
+            ...selection,
+            stopping: false,
+            waitingForNeonBranch: true,
+          },
+          { runId: 2, source: "panel", testFile: otherFile, stopping: false },
+          {
+            runId: 3,
+            source: "agent",
+            testFile: waitingFile,
+            stopping: false,
+            waitingForNeonBranch: true,
+          },
+        ];
+        mocks.activeRun = mocks.activeRuns[0];
+        const { store, rerender } = renderPanel();
+        fireEvent.click(
+          await screen.findByRole("button", {
+            name: "Toggle tests in signup.spec.ts",
+          }),
+        );
+        act(() => {
+          for (const run of mocks.activeRuns!)
+            store.set(applyTestRunStartedAtom, {
+              appId: 1,
+              ...run,
+              testFiles: run.testFiles ? [...run.testFiles] : undefined,
+            });
+        });
+
+        for (const file of [SPEC_FILE, waitingFile]) {
+          const label = fileRow(file).getByText("Waiting for Neon branch");
+          expect(label.className).toContain("bg-amber-100");
+          expect(label.className).toContain("text-amber-900");
+          expect(label.className).toContain("dark:text-amber-200");
+          expect(
+            fileRow(file).queryByRole("img", { name: "Running" }),
+          ).toBeNull();
+          expect(label.closest("button")!.parentElement!.className).toContain(
+            "bg-amber-50",
+          );
+        }
+        expect(
+          fileRow(otherFile).getByRole("img", { name: "Running" }),
+        ).toBeTruthy();
+        const caseRow = (title: string) =>
+          within(screen.getByText(title).closest("button")!.parentElement!);
+        expect(
+          caseRow("signs up").getByText("Waiting for Neon branch"),
+        ).toBeTruthy();
+        expect(
+          caseRow("rejects a bad password").getByText("Not run yet"),
+        ).toBeTruthy();
+        expect(screen.getByText("Waiting for Neon branch…")).toBeTruthy();
+
+        mocks.activeRuns = mocks.activeRuns!.map((run) => ({
+          ...run,
+          waitingForNeonBranch: run.runId === 3,
+        }));
+        mocks.activeRun = mocks.activeRuns[0];
+        rerender(<TestsPanel />);
+        expect(
+          fileRow(SPEC_FILE).getByRole("img", { name: "Running" }),
+        ).toBeTruthy();
+        expect(
+          caseRow("signs up").getByRole("img", { name: "Running" }),
+        ).toBeTruthy();
+        expect(
+          fileRow(waitingFile).getByText("Waiting for Neon branch"),
+        ).toBeTruthy();
+      },
+    );
+
+    it("keeps a running case distinct from a Neon wait in the same file", async () => {
+      mocks.activeRuns = [
+        {
+          runId: 1,
+          source: "agent",
+          testFile: SPEC_FILE,
+          testLine: 4,
+          stopping: false,
+          waitingForNeonBranch: true,
+        },
+        {
+          runId: 2,
+          source: "agent",
+          testFile: SPEC_FILE,
+          testLine: 12,
+          stopping: false,
+        },
+      ];
+      mocks.activeRun = mocks.activeRuns[0];
+      const { store } = renderPanel();
+      fireEvent.click(
+        await screen.findByRole("button", {
+          name: "Toggle tests in signup.spec.ts",
+        }),
+      );
+      act(() => {
+        for (const run of mocks.activeRuns!)
+          store.set(applyTestRunStartedAtom, {
+            appId: 1,
+            ...run,
+            testFiles: run.testFiles ? [...run.testFiles] : undefined,
+          });
+      });
+      expect(
+        fileRow(SPEC_FILE).getByRole("img", { name: "Running" }),
+      ).toBeTruthy();
+      const waitingCase = within(
+        screen.getByText("signs up").closest("button")!.parentElement!,
+      );
+      expect(waitingCase.getByText("Waiting for Neon branch")).toBeTruthy();
+      expect(waitingCase.queryByRole("img", { name: "Running" })).toBeNull();
+      expect(
+        within(
+          screen.getByText("rejects a bad password").closest("button")!
+            .parentElement!,
+        ).getByRole("img", { name: "Running" }),
+      ).toBeTruthy();
+    });
+
+    it.each([1, 2])(
+      "tracks concurrent cases in the same file when run %s finishes first",
+      async (firstFinished) => {
+        const { store } = renderPanel();
+        fireEvent.click(
+          await screen.findByRole("button", {
+            name: "Toggle tests in signup.spec.ts",
+          }),
+        );
+        const cases = [
+          { title: "signs up", line: 4 },
+          { title: "rejects a bad password", line: 12 },
+        ];
+        act(() => {
+          for (const runId of [1, 2])
+            store.set(applyTestRunStartedAtom, {
+              appId: 1,
+              runId,
+              source: "panel",
+              testFile: SPEC_FILE,
+              testLine: cases[runId - 1].line,
+            });
+        });
+        expect(screen.getAllByRole("img", { name: "Running" })).toHaveLength(3);
+        expect(screen.queryByText(/^Not run yet/)).toBeNull();
+        const finish = (runId: number) =>
+          act(() =>
+            store.set(applyTestRunFinishedAtom, {
+              appId: 1,
+              expectedRunId: runId,
+              isPartialRun: true,
+              res: {
+                appId: 1,
+                results: [
+                  {
+                    file: SPEC_FILE,
+                    status: "passed",
+                    tests: [{ ...cases[runId - 1], status: "passed" }],
+                  },
+                ],
+              },
+            }),
+          );
+        finish(firstFinished);
+        expect(screen.getAllByRole("img", { name: "Running" })).toHaveLength(2);
+        expect(screen.getByText("Passed")).toBeTruthy();
+        finish(3 - firstFinished);
+        expect(screen.queryByRole("img", { name: "Running" })).toBeNull();
+        expect(fileRow(SPEC_FILE).getByText(/^Passed/)).toBeTruthy();
+        expect(screen.getAllByText("Passed")).toHaveLength(2);
+      },
+    );
+
+    it.each([1, 2])(
+      "keeps both files running and retains results when run %s finishes first",
+      async (firstFinished) => {
+        mocks.listAppTests.mockResolvedValue({
+          specs: [SPEC_FILE, otherFile].map((file) => ({
+            file,
+            tests: [{ title: "works", line: 4 }],
+          })),
+        });
+        const { store } = renderPanel();
+        await screen.findByText("signup.spec.ts");
+        act(() =>
+          store.set(applyTestRunStartedAtom, {
+            appId: 1,
+            runId: 1,
+            source: "panel",
+            testFile: SPEC_FILE,
+          }),
+        );
+        expect(
+          fileRow(SPEC_FILE).getByRole("img", { name: "Running" }),
+        ).toBeTruthy();
+        act(() =>
+          store.set(applyTestRunStartedAtom, {
+            appId: 1,
+            runId: 2,
+            source: "agent",
+            testFile: otherFile,
+          }),
+        );
+        for (const file of [SPEC_FILE, otherFile]) {
+          expect(
+            fileRow(file).getByRole("img", { name: "Running" }),
+          ).toBeTruthy();
+          expect(fileRow(file).queryByText(/^Not run yet/)).toBeNull();
+        }
+        const files = [SPEC_FILE, otherFile];
+        const finish = (runId: number) =>
+          act(() =>
+            store.set(applyTestRunFinishedAtom, {
+              appId: 1,
+              expectedRunId: runId,
+              isPartialRun: false,
+              res: {
+                appId: 1,
+                results: [{ file: files[runId - 1], status: "passed" }],
+              },
+            }),
+          );
+        finish(firstFinished);
+        expect(
+          fileRow(files[firstFinished - 1]).getByText(/^Passed/),
+        ).toBeTruthy();
+        expect(
+          fileRow(files[2 - firstFinished]).getByRole("img", {
+            name: "Running",
+          }),
+        ).toBeTruthy();
+        finish(3 - firstFinished);
+        for (const file of files)
+          expect(fileRow(file).getByText(/^Passed/)).toBeTruthy();
+        expect(
+          screen.queryByRole("button", { name: "Stop running tests" }),
+        ).toBeNull();
+      },
+    );
+
+    it("keeps a whole-file selection separate from another run's single-case selection", async () => {
+      mocks.listAppTests.mockResolvedValue({
+        specs: [
+          {
+            file: SPEC_FILE,
+            tests: [
+              { title: "signs up", line: 4 },
+              { title: "rejects a bad password", line: 12 },
+            ],
+          },
+          {
+            file: otherFile,
+            tests: [
+              { title: "logs in", line: 4 },
+              { title: "logs out", line: 12 },
+            ],
+          },
+        ],
+      });
+      const { store } = renderPanel();
+      fireEvent.click(
+        await screen.findByRole("button", {
+          name: "Toggle tests in signup.spec.ts",
+        }),
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: "Toggle tests in login.spec.ts" }),
+      );
+      act(() => {
+        store.set(applyTestRunStartedAtom, {
+          appId: 1,
+          runId: 1,
+          source: "panel",
+          testFile: SPEC_FILE,
+        });
+        store.set(applyTestRunStartedAtom, {
+          appId: 1,
+          runId: 2,
+          source: "panel",
+          testFile: otherFile,
+          testLine: 4,
+        });
+      });
+      // Two file spinners, both signup cases, and only the selected login case.
+      expect(screen.getAllByRole("img", { name: "Running" })).toHaveLength(5);
+      expect(screen.getAllByText("Not run yet")).toHaveLength(1);
+      act(() =>
+        store.set(setTestRunStateForAppAtom, {
+          appId: 1,
+          runId: 2,
+          update: (prev) => ({ ...prev, phase: "stopping", wasStopped: true }),
+        }),
+      );
+      expect(screen.getAllByRole("img", { name: "Running" })).toHaveLength(3);
+      expect(
+        fileRow(SPEC_FILE).getByRole("img", { name: "Running" }),
+      ).toBeTruthy();
     });
   });
 

@@ -721,8 +721,7 @@ describe("tests handlers", () => {
       ).toMatchObject({
         resources: [
           { resource: "app-path", mode: "read" },
-          "provider",
-          "test-files",
+          { resource: "provider", mode: "read" },
         ],
         allowCompatibleQueueBypass: true,
       });
@@ -2876,7 +2875,7 @@ describe("tests handlers", () => {
       ]);
       expect(
         await harness.invokeHandler("tests:get-run-queue", { appId }),
-      ).toEqual({ activeRun: null, queuedRuns: [] });
+      ).toEqual({ activeRun: null, activeRuns: [], queuedRuns: [] });
     });
 
     it("cancels a queued request immediately without stopping the active run", async () => {

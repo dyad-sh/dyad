@@ -43,6 +43,7 @@ import type {
   TestResult,
   TestsRunStatePayload,
   ActiveTestRunSnapshot,
+  TestRunSnapshot,
 } from "../types/tests";
 import {
   detectLegacyPlaywrightSpecs,
@@ -130,9 +131,12 @@ import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import type { TestRunExecution } from "@/test_run_queue/controller";
 import {
   getAppTestRunQueue,
+  setNeonBranchLimit,
   ownsAppTestRun,
   withAppTestRun,
   stopAppTestsForApp,
+  cancelAppTestRun,
+  validateTestRunInputs,
   stopAllAppTestRuns,
   drainAppTestRuns,
 } from "../services/test_run_queue_service";
@@ -357,7 +361,9 @@ export function getRunningTestBaseUrl(appId: number): string | null {
 }
 
 // Read-only replay of the active lifecycle; queue ownership remains authoritative.
+// Run IDs are process-wide; app membership is checked at every read boundary.
 const activeRunSnapshots = new Map<number, ActiveTestRunSnapshot>();
+const finishedRunSnapshots = new Map<number, TestRunSnapshot>();
 
 function emitOutput(
   event: IpcMainInvokeEvent,
@@ -366,10 +372,17 @@ function emitOutput(
   chunk: string,
   phase: "setup" | "running",
 ): void {
-  const current = activeRunSnapshots.get(appId);
+  const current = activeRunSnapshots.get(runId);
   if (current?.run.runId === runId) {
-    activeRunSnapshots.set(appId, {
+    activeRunSnapshots.set(runId, {
       ...current,
+      run: {
+        ...current.run,
+        branch:
+          getAppTestRunQueue(appId).activeRuns.find(
+            (run) => run.runId === runId,
+          )?.branch ?? current.run.branch,
+      },
       phase: current.phase === "setup" ? phase : current.phase,
       output: (current.output + chunk).slice(-100_000),
     });
@@ -386,6 +399,13 @@ function emitRunState(
   event: IpcMainInvokeEvent,
   payload: TestsRunStatePayload,
 ): void {
+  payload = {
+    ...payload,
+    branch:
+      getAppTestRunQueue(payload.appId).activeRuns.find(
+        (run) => run.runId === payload.runId,
+      )?.branch ?? activeRunSnapshots.get(payload.runId)?.run.branch,
+  };
   // Stamped on any payload about a preview run, whatever its source: the
   // native view belongs to the invoking window, so every window has to be able
   // to tell whether a broadcast is about the view it is showing.
@@ -397,17 +417,29 @@ function emitRunState(
         ),
       }
     : payload;
-  const current = activeRunSnapshots.get(payload.appId);
+  const current = activeRunSnapshots.get(payload.runId);
   if (payload.state === "started") {
-    activeRunSnapshots.set(payload.appId, {
+    activeRunSnapshots.set(payload.runId, {
       run: emittedPayload,
       phase: "setup",
       output: "",
     });
   } else if (current?.run.runId === payload.runId) {
-    if (payload.state === "finished") activeRunSnapshots.delete(payload.appId);
-    else
-      activeRunSnapshots.set(payload.appId, {
+    if (payload.state === "finished") {
+      finishedRunSnapshots.set(payload.runId, {
+        run: emittedPayload,
+        phase: "finished",
+        output: current.output.slice(-30_000),
+      });
+      activeRunSnapshots.delete(payload.runId);
+      const appRuns = [...finishedRunSnapshots].filter(
+        ([, run]) => run.run.appId === payload.appId,
+      );
+      for (const [id] of appRuns.slice(0, -10)) finishedRunSnapshots.delete(id);
+      while (finishedRunSnapshots.size > 100)
+        finishedRunSnapshots.delete(finishedRunSnapshots.keys().next().value!);
+    } else
+      activeRunSnapshots.set(payload.runId, {
         ...current,
         run: {
           ...current.run,
@@ -1281,7 +1313,7 @@ async function runAppTestsCoreUnredacted({
   // Preview runs, which can only ever be sequential, returned above — so the
   // caller's choice is honored as-is here, including on the fallback path where
   // preview routing was refused and this became an ordinary browser run.
-  if (isolateTestCases) {
+  if (isolateTestCases || readSettings().enableParallelTestRuns) {
     args.push("--workers=1");
   } else if (parallel) {
     args.push("--fully-parallel", `--workers=${parallelWorkerCount()}`);
@@ -2115,6 +2147,9 @@ const PROCESS_SETTLEMENT_FAILED_MESSAGE =
  */
 interface CapturedConfiguration {
   neonProjectId: string | null;
+  neonActiveBranchId: string | null;
+  neonDevelopmentBranchId: string | null;
+  neonPreviewBranchId: string | null;
   supabaseProjectId: string | null;
   installCommand: string | null;
   startCommand: string | null;
@@ -2237,6 +2272,12 @@ async function executeAppTestsWithIsolation(
 ): Promise<RunAppTestsResult> {
   if (signal.aborted)
     return { appId, results: [], infraError: testRunStoppedInfraError(signal) };
+  // Concurrent runs use their own browsers. One native preview surface cannot
+  // be leased by two runs, and queueing behind it would invalidate reservations.
+  if (readSettings().enableParallelTestRuns) {
+    preview = false;
+    parallel = false;
+  }
   const selection = normalizeRunTestSelection({
     testFile,
     testFiles,
@@ -2652,6 +2693,7 @@ async function executeAppTestsWithIsolation(
         }
         const realAppPath = getDyadAppPath(claimedApp.path);
         try {
+          await validateTestRunInputs(runId);
           // Written into the REAL app, before the capture, so the snapshot
           // carries it: a sandboxed preview run executes from the workspace,
           // and the shim has to already be in what was copied.
@@ -2678,6 +2720,9 @@ async function executeAppTestsWithIsolation(
           // only agree when nothing moved.
           const captured: CapturedConfiguration = {
             neonProjectId: claimedApp.neonProjectId,
+            neonActiveBranchId: claimedApp.neonActiveBranchId,
+            neonDevelopmentBranchId: claimedApp.neonDevelopmentBranchId,
+            neonPreviewBranchId: claimedApp.neonPreviewBranchId,
             supabaseProjectId: claimedApp.supabaseProjectId,
             installCommand: claimedApp.installCommand,
             startCommand: claimedApp.startCommand,
@@ -2707,6 +2752,11 @@ async function executeAppTestsWithIsolation(
             const afterCapture = await getApp(appId);
             if (
               afterCapture.neonProjectId !== captured.neonProjectId ||
+              afterCapture.neonActiveBranchId !== captured.neonActiveBranchId ||
+              afterCapture.neonDevelopmentBranchId !==
+                captured.neonDevelopmentBranchId ||
+              afterCapture.neonPreviewBranchId !==
+                captured.neonPreviewBranchId ||
               afterCapture.supabaseProjectId !== captured.supabaseProjectId ||
               afterCapture.installCommand !== captured.installCommand ||
               afterCapture.startCommand !== captured.startCommand ||
@@ -2743,6 +2793,14 @@ async function executeAppTestsWithIsolation(
           // A Stop is not a setup failure — let it reach the outer catch, which
           // turns it into the same stopped result, with its cause, that the
           // in-run Stop path produces.
+          if (!(await settleRunProcesses())) {
+            onProcessSettlementFailed([
+              readAppResource("app-path"),
+              readAppResource("repository-ref"),
+              "repository-worktree",
+              "test-files",
+            ]);
+          }
           if (signal.aborted) throw error;
           // Everything else here — a Playwright install that can't reach the
           // registry, a browser download that fails, a missing `node_modules`,
@@ -2780,13 +2838,12 @@ async function executeAppTestsWithIsolation(
     // this run actually did.
     sandboxed = true;
 
-    // The live test only owns provider/test inputs. It deliberately does not
+    // The live test holds shared provider/path claims. It deliberately does not
     // claim the normal runtime or runtime-config: its process is run-scoped and
     // never registered in runningApps.
     const testRunResources = [
       readAppResource("app-path"),
-      "provider",
-      "test-files",
+      readAppResource("provider"),
     ] as const;
     if (appOperationCoordinator.isBusy(appId, testRunResources)) {
       logger.info(
@@ -2868,6 +2925,10 @@ async function executeAppTestsWithIsolation(
           // isolated. Dead-end instead; the retry captures a fresh snapshot.
           if (
             app.neonProjectId !== capturedProvider.neonProjectId ||
+            app.neonActiveBranchId !== capturedProvider.neonActiveBranchId ||
+            app.neonDevelopmentBranchId !==
+              capturedProvider.neonDevelopmentBranchId ||
+            app.neonPreviewBranchId !== capturedProvider.neonPreviewBranchId ||
             app.supabaseProjectId !== capturedProvider.supabaseProjectId ||
             app.installCommand !== capturedProvider.installCommand ||
             app.startCommand !== capturedProvider.startCommand
@@ -2890,6 +2951,8 @@ async function executeAppTestsWithIsolation(
                 timing,
                 app,
                 workspacePath: workspace!.workspacePath,
+                onNeonBranchLimit: (status) =>
+                  setNeonBranchLimit(runId, app.neonProjectId!, status),
                 emit,
                 runtimeMode,
                 signal,
@@ -3126,8 +3189,9 @@ async function executeAppTestsWithIsolation(
                   // their screenshots live in earlier runs' artifact directories —
                   // so the prune has to keep those rather than treat this run's
                   // output as a complete replacement.
-                  replacesEveryResult:
-                    !normalizedTestFiles && testLine === undefined && !grep,
+                  // Recent runs keep independent reports. Startup applies the
+                  // bounded artifact retention policy when no UI owns them.
+                  replacesEveryResult: false,
                 }),
               );
               retained = true;
@@ -3308,9 +3372,22 @@ async function moveFileWithFallback(src: string, dst: string): Promise<void> {
 }
 
 export function registerTestsHandlers() {
+  createTypedHandler(testsContracts.getRuns, async (_event, { appId }) =>
+    [...activeRunSnapshots.values(), ...finishedRunSnapshots.values()]
+      .filter((snapshot) => snapshot.run.appId === appId)
+      .sort((a, b) => b.run.runId - a.run.runId),
+  );
   createTypedHandler(
     testsContracts.getActiveRun,
-    async (_event, { appId }) => activeRunSnapshots.get(appId) ?? null,
+    async (_event, { appId }) =>
+      [...activeRunSnapshots.values()].find(
+        (snapshot) => snapshot.run.appId === appId,
+      ) ?? null,
+  );
+  createTypedHandler(testsContracts.getActiveRuns, async (_event, { appId }) =>
+    [...activeRunSnapshots.values()].filter(
+      (snapshot) => snapshot.run.appId === appId,
+    ),
   );
   createTypedHandler(testsContracts.getRunQueue, async (_event, { appId }) =>
     getAppTestRunQueue(appId),
@@ -3332,6 +3409,13 @@ export function registerTestsHandlers() {
     stopAppTestsForApp(params.appId, { kind: "tests-panel-stop" });
     return { ok: true as const };
   });
+  createTypedHandler(
+    testsContracts.cancelRun,
+    async (_event, { appId, runId }) => {
+      cancelAppTestRun(appId, runId, { kind: "tests-panel-stop" });
+      return { ok: true as const };
+    },
+  );
 
   createTypedHandler(
     testsContracts.getTestScreenshot,

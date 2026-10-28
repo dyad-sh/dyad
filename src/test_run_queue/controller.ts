@@ -57,20 +57,25 @@ export class TestRunQueue {
     private readonly deps: {
       onChange: (state: TestRunQueueState) => void;
       onError: (error: unknown) => void;
+      manualAdmission?: boolean;
       observer?: TransitionObserver<
         TestRunQueueState,
         TestRunQueueEvent,
         TestRunQueueCommand
       >;
     },
-  ) {}
+  ) {
+    if (deps.manualAdmission)
+      this.store.setState({ ...EMPTY_TEST_RUN_QUEUE, activeRuns: [] });
+  }
 
   getSnapshot = this.store.getSnapshot;
 
   ownsExecution(run: TestRunExecution): boolean {
     return (
-      this.getSnapshot().activeRun?.runId === run.runId &&
-      this.runs.get(run.runId)?.controller.signal === run.signal
+      (this.getSnapshot().activeRuns ?? [this.getSnapshot().activeRun]).some(
+        (active) => active?.runId === run.runId,
+      ) && this.runs.get(run.runId)?.controller.signal === run.signal
     );
   }
 
@@ -113,11 +118,26 @@ export class TestRunQueue {
     this.send({ type: "stop", reason });
   }
 
-  async drain(): Promise<void> {
-    if (!this.getSnapshot().activeRun) return;
+  admit(runId: number) {
+    this.send({ type: "admit", runId });
+  }
+  waiting(runId: number, reason: string, branch?: string) {
+    this.send({ type: "waiting", runId, reason, branch });
+  }
+  cancel(runId: number, reason: TestRunStopReason) {
+    this.send({ type: "cancel", runId, reason });
+  }
+
+  async drain(appId?: number): Promise<void> {
+    const busy = () =>
+      [
+        ...(this.getSnapshot().activeRuns ?? [this.getSnapshot().activeRun]),
+        ...this.getSnapshot().queuedRuns,
+      ].some((run) => run && (appId === undefined || run.appId === appId));
+    if (!busy()) return;
     await new Promise<void>((resolve) => {
       const unsubscribe = this.store.subscribe(() => {
-        if (this.getSnapshot().activeRun) return;
+        if (busy()) return;
         unsubscribe();
         resolve();
       });

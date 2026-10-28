@@ -8,6 +8,7 @@ import path from "node:path";
 import log from "electron-log/main";
 import { globSync } from "glob";
 import { spawnStreaming } from "./spawn_streaming";
+import { trackE2eTestProcess } from "../services/e2e_test_process_registry";
 import {
   measureTestRunStep,
   type TestRunTiming,
@@ -35,6 +36,7 @@ import {
   TEST_CASE_TOKEN_ENV,
 } from "../services/test_case_lifecycle_server";
 import { TEST_CASE_TIMING_ID_EXPRESSION } from "../services/test_case_timing_reporter";
+import { buildTestSignInRetrySource } from "./test_sign_in_retry";
 
 const logger = log.scope("playwright_bootstrap");
 
@@ -555,7 +557,8 @@ ${PREVIEW_RECORDER_CONFIG_LINES}
  * pnpm and Yarn keep it out of the app's top-level `node_modules` and the
  * import fails to resolve.
  *
- * Without either endpoint it re-exports Playwright's own `test` verbatim.
+ * Outside Dyad (without its endpoints/base URL), the fixtures delegate to
+ * Playwright unchanged. Dyad runs also retry rate-limited email sign-ins.
  */
 export function buildPreviewShimSource(): string {
   return `// ${DYAD_CONFIG_SENTINEL}. Do not edit — Dyad regenerates this file.
@@ -625,6 +628,31 @@ function requirePreviewContext(browser: pw.Browser) {
   return contexts[0];
 }
 
+${buildTestSignInRetrySource()}
+
+const retryingTest = isolatedTest.extend({
+  context: async ({ context }, use, testInfo) => {
+    const baseUrl = process.env.${TEST_BASE_URL_ENV};
+    if (!baseUrl) return use(context);
+    const restore = await installSignInContextRetry(context, baseUrl, testInfo);
+    try {
+      await use(context);
+    } finally {
+      await restore();
+    }
+  },
+  request: async ({ request }, use, testInfo) => {
+    const baseUrl = process.env.${TEST_BASE_URL_ENV};
+    if (!baseUrl) return use(request);
+    const restore = installSignInApiRetry(request, baseUrl, testInfo);
+    try {
+      await use(request);
+    } finally {
+      restore();
+    }
+  },
+});
+
 async function ensurePreviewBetterAuthSession({
   context,
   origin,
@@ -687,8 +715,8 @@ async function ensurePreviewBetterAuthSession({
 }
 
 export const test = !endpoint
-  ? isolatedTest
-  : isolatedTest.extend({
+  ? retryingTest
+  : retryingTest.extend({
       browser: [
         async ({}, use) => {
           if (!cdpToken) {
@@ -707,7 +735,7 @@ export const test = !endpoint
         },
         { scope: "worker" },
       ],
-      context: async ({ browser }, use) => {
+      context: async ({ browser }, use, testInfo) => {
         const baseUrl = requireBaseUrl();
         const origin = new URL(baseUrl).origin;
         // The broker is the security boundary: it must represent exactly the
@@ -781,13 +809,21 @@ export const test = !endpoint
             return response;
           };
         }
+        let restoreSignIn: (() => Promise<void>) | undefined;
         try {
+          // This context overrides Playwright's ordinary context fixture, so
+          // install the same retries on the existing Electron preview too.
+          restoreSignIn = await installSignInContextRetry(context, baseUrl, testInfo);
           // Pre-existing context: hand it over without closing it afterwards.
           await use(context);
         } finally {
           // It outlives this fixture, so the patches have to come back off.
-          for (const [name, original] of originalApiMethods) {
-            api[name] = original;
+          try {
+            await restoreSignIn?.();
+          } finally {
+            for (const [name, original] of originalApiMethods) {
+              api[name] = original;
+            }
           }
         }
       },
@@ -1799,6 +1835,7 @@ export async function ensurePlaywrightBootstrap({
           command,
           args,
           cwd: install.cwd,
+          onProcess: (child) => trackE2eTestProcess(child, signal),
           signal,
           onOutput,
           // Disable Corepack's project spec so a stale `packageManager` pin can't
@@ -1895,6 +1932,7 @@ export async function ensurePlaywrightBootstrap({
         spawnStreaming({
           command: "npx",
           args: ["playwright", "install", "chromium"],
+          onProcess: (child) => trackE2eTestProcess(child, signal),
           cwd: appPath,
           signal,
           onOutput,

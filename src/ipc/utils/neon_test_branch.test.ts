@@ -5,11 +5,23 @@ const mocks = vi.hoisted(() => {
   const set = vi.fn(() => ({ where }));
   const update = vi.fn(() => ({ set }));
   const selectWhere = vi.fn().mockResolvedValue([]);
-  const from = vi.fn(() => ({ where: selectWhere }));
+  const from = vi.fn<(table: unknown) => any>(() => ({ where: selectWhere }));
   const select = vi.fn(() => ({ from }));
   const findFirst = vi.fn();
+  const ownedBranches = vi.fn().mockResolvedValue([]);
+  const values = vi.fn().mockResolvedValue(undefined);
+  const deleteWhere = vi.fn().mockResolvedValue(undefined);
   return {
-    db: { update, select, query: { apps: { findFirst } } },
+    db: {
+      update,
+      select,
+      insert: vi.fn(() => ({ values })),
+      delete: vi.fn(() => ({ where: deleteWhere })),
+      query: { apps: { findFirst } },
+    },
+    ownedBranches,
+    values,
+    deleteWhere,
     update,
     set,
     where,
@@ -30,7 +42,14 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock("@/db", () => ({ db: mocks.db }));
-vi.mock("@/db/schema", () => ({ apps: { id: "id", neonTestBranchId: "ntb" } }));
+vi.mock("@/db/schema", () => ({
+  apps: { id: "id", neonTestBranchId: "ntb" },
+  testBranchCleanup: {
+    branchId: "branch",
+    projectId: "project",
+    ownerId: "owner",
+  },
+}));
 vi.mock("drizzle-orm", async (importOriginal) => {
   const actual = await importOriginal<typeof import("drizzle-orm")>();
   return { ...actual, eq: vi.fn((a, b) => ({ a, b })), isNotNull: vi.fn() };
@@ -99,6 +118,11 @@ function makeApp(overrides: Partial<AppRow> = {}): AppRow {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.where.mockResolvedValue(undefined);
+  mocks.values.mockResolvedValue(undefined);
+  mocks.ownedBranches.mockResolvedValue([]);
+  mocks.from.mockImplementation((table: any) =>
+    table.branchId ? mocks.ownedBranches() : { where: mocks.selectWhere },
+  );
   mocks.selectWhere.mockResolvedValue([]);
   mocks.freshApps.clear();
   mocks.findFirst.mockImplementation(({ where }) =>
@@ -351,6 +375,18 @@ describe("createTempTestBranch", () => {
       neonTestBranchId: "test-new-branch-id",
     });
   });
+});
+
+it("preserves a recorder's recovery marker if replacing its old branch fails", async () => {
+  mocks.createProjectBranch.mockRejectedValueOnce(new Error("create failed"));
+  await expect(
+    createTempTestBranch(makeApp({ neonTestBranchId: "old-recording" })),
+  ).rejects.toThrow("create failed");
+  expect(mocks.deleteProjectBranch).toHaveBeenCalledWith(
+    "proj-1",
+    "old-recording",
+  );
+  expect(mocks.set).not.toHaveBeenCalledWith({ neonTestBranchId: null });
 });
 
 describe("deleteTempTestBranch", () => {

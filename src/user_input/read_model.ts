@@ -34,7 +34,6 @@ type UserInputOutcome =
 
 const MAX_SETTLED_TOMBSTONES = 1_000;
 const QUESTIONNAIRE_CONFIRMATION_MS = 2_000;
-const ASSERTION_RESPONSE_RETRY_MS = 1_000;
 
 // Request kinds whose human response can arm a follow-up turn instead of
 // settling. Mirrors `followUpPromptFor` in the main transition.
@@ -370,7 +369,6 @@ export function getUserInputReadModel({
         [
           "settled",
           ipcClient.events.userInput.onSettled(({ requestId, outcome }) => {
-            activeTasks?.remove(`assertion-response:${requestId}`);
             markChanged(requestId);
             pendingClassifications.delete(requestId);
             pendingArmed.delete(requestId);
@@ -448,15 +446,6 @@ export function getUserInputReadModel({
     },
 
     async respond(requestId, response) {
-      const tasks = activeTasks;
-      const assertionWasAccepted = () => {
-        const entry = readModelStore.getSnapshot().requests.get(requestId);
-        return (
-          response.kind === "test-assertions" &&
-          entry?.status === "settled" &&
-          entry.outcome === "human"
-        );
-      };
       pendingResponses.set(requestId, response);
       const current = readModelStore.getSnapshot();
       if (!current.respondingRequestIds.has(requestId)) {
@@ -465,49 +454,8 @@ export function getUserInputReadModel({
         readModelStore.setState({ ...current, respondingRequestIds: next });
       }
       try {
-        let reportedRetry = false;
-        for (;;) {
-          try {
-            await ipcClient.userInput.respond({ requestId, response });
-            return true;
-          } catch (error) {
-            // Main's settlement event can arrive even when its invoke reply is
-            // lost. Do not turn that successful handoff into a second turn.
-            if (assertionWasAccepted()) return true;
-            // Approval/discard already changed the durable card. It may no
-            // longer offer a button, so retry delivery without applying again
-            // or starting a second turn. Typed refusals are not transport errors.
-            const isStillAwaiting = () =>
-              tasks !== undefined &&
-              activeTasks === tasks &&
-              pendingResponses.get(requestId) === response &&
-              readModelStore.getSnapshot().requests.get(requestId)?.status ===
-                "awaiting";
-            if (
-              response.kind !== "test-assertions" ||
-              !tasks ||
-              isDyadError(error) ||
-              !isStillAwaiting()
-            )
-              throw error;
-            if (!reportedRetry) {
-              showErrorToast(error);
-              reportedRetry = true;
-            }
-            const retry = await new Promise<boolean>((resolve) => {
-              const key = `assertion-response:${requestId}`;
-              const timer = setTimeout(() => {
-                resolve(true);
-                tasks.remove(key);
-              }, ASSERTION_RESPONSE_RETRY_MS);
-              tasks.replace(key, () => {
-                clearTimeout(timer);
-                resolve(false);
-              });
-            });
-            if (!retry || !isStillAwaiting()) return assertionWasAccepted();
-          }
-        }
+        await ipcClient.userInput.respond({ requestId, response });
+        return true;
       } catch (error) {
         pendingResponses.delete(requestId);
         if (isDyadError(error) && error.kind === DyadErrorKind.NotFound) {
@@ -531,14 +479,6 @@ export function getUserInputReadModel({
         removeResponding(requestId);
         showErrorToast(error);
         return false;
-      } finally {
-        if (
-          response.kind === "test-assertions" &&
-          pendingResponses.get(requestId) === response
-        ) {
-          pendingResponses.delete(requestId);
-          removeResponding(requestId);
-        }
       }
     },
   };

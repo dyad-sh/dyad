@@ -428,8 +428,8 @@ export function TestAssertionsPlanCard({
       // A hand-off that failed on a transient IPC error leaves the turn sitting
       // on this card. Starting a fresh turn there would queue a second
       // generation behind the parked one and hand the agent the same spec
-      // twice. The read model retries transport failures while the request is
-      // live. The spec is written either way, and the card says so.
+      // twice. The read model surfaces the error; the user can stop the
+      // waiting turn. The spec is written either way, and the card says so.
       if (!handedToParkedTurn && !isStillParked()) {
         // The stream manager answers "is this chat streaming?" — without that
         // guard the DB snapshot would overwrite the live messages of a stream
@@ -510,8 +510,8 @@ export function TestAssertionsPlanCard({
         // The card stays discarded rather than reverting: the latch above
         // already succeeded, so the stored plan *is* declined and showing it as
         // approvable again would only lead to "this plan was closed" on the
-        // next approve. The read model retries transport failures while the
-        // request is live and surfaces terminal errors itself.
+        // next approve. The read model surfaces the response error; the user
+        // can stop the waiting turn.
         console.warn(
           `Discarded assertion plan ${proposalId}, but couldn't notify the parked turn`,
         );

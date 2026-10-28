@@ -247,6 +247,8 @@ queryClient.invalidateQueries({ queryKey: queryKeys.apps.all });
 
 **Event-fed read models (`setQueryData` + `queryFn: skipToken`):** a key written only by a permanent event subscriber is garbage-collected after React Query's default 5-minute `gcTime` whenever no component observes it, so data collected while a panel is closed silently vanishes. Call `queryClient.setQueryDefaults(key, { gcTime: Infinity, staleTime: Infinity })` before `setQueryData` (it applies query defaults when it creates the query), keep the payload bounded, and cover it with a fake-timer test that advances past five minutes with no observer (see `recentRuns` in `useTestRunEvents`).
 
+A plain IPC `Error` is not proof of a transport failure: `deserializeIpcError` also reconstructs unclassified handler errors and validation failures as plain errors. Do not use `!isDyadError(error)` as an automatic retry predicate.
+
 ## Events and invoke replies are not ordered relative to each other
 
 An `invoke` reply and a `safeSend`/`webContents.send` event travel different Electron interfaces, so a renderer can observe them in either order even when main emits the event strictly before the handler returns. Never let an event handler reset state that an in-flight invoke's continuation is about to set — the reset can land last and wipe the result.

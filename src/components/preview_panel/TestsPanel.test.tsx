@@ -12,9 +12,11 @@ import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
+import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { recordingStartRequestAtom } from "@/atoms/recorderAtoms";
 import { previewNativeViewAppIdAtom } from "@/atoms/previewAtoms";
 import {
+  appendTestRunOutputAtom,
   applyTestRunStartedAtom,
   applyTestRunFinishedAtom,
   EMPTY_TEST_RUN_STATE,
@@ -28,6 +30,7 @@ import type { TestRunQueueSnapshot } from "@/ipc/types/tests";
 
 const mocks = vi.hoisted(() => ({
   listAppTests: vi.fn(),
+  streamMessage: vi.fn(),
   deleteAppTest: vi.fn(),
   runAppTests: vi.fn(),
   stopAppTests: vi.fn(),
@@ -167,7 +170,10 @@ vi.mock("@/hooks/useSetTestingEnabled", () => ({
 }));
 
 vi.mock("@/hooks/useStreamChat", () => ({
-  useStreamChat: () => ({ streamMessage: vi.fn(), isStreaming: false }),
+  useStreamChat: () => ({
+    streamMessage: mocks.streamMessage,
+    isStreaming: false,
+  }),
 }));
 
 vi.mock("@/chat_stream/ChatStreamProvider", () => ({
@@ -200,6 +206,60 @@ function renderPanel() {
 }
 
 describe("TestsPanel", () => {
+  it("asks AI to fix a failed case with only its producing run's output", async () => {
+    const { store } = renderPanel();
+    await screen.findByText("signup.spec.ts");
+    act(() => {
+      store.set(selectedChatIdAtom, 11);
+      for (const runId of [1, 2]) {
+        store.set(applyTestRunStartedAtom, {
+          appId: 1,
+          runId,
+          source: "panel",
+          testFile: SPEC_FILE,
+          testLine: runId === 1 ? 4 : 12,
+        });
+        store.set(appendTestRunOutputAtom, {
+          appId: 1,
+          runId,
+          chunk:
+            runId === 1 ? "signup failure output" : "unrelated password output",
+        });
+      }
+      store.set(applyTestRunFinishedAtom, {
+        appId: 1,
+        expectedRunId: 1,
+        isPartialRun: true,
+        res: {
+          appId: 1,
+          results: [
+            {
+              file: SPEC_FILE,
+              status: "failed",
+              tests: [
+                {
+                  title: "signs up",
+                  line: 4,
+                  status: "failed",
+                  error: "signup broke",
+                },
+              ],
+            },
+          ],
+        },
+      });
+    });
+    fireEvent.click(screen.getByText("signup.spec.ts"));
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Ask AI to fix test: signs up",
+      }),
+    );
+    expect(mocks.streamMessage).toHaveBeenCalledOnce();
+    const prompt = mocks.streamMessage.mock.calls[0][0].prompt;
+    expect(prompt).toContain("signup failure output");
+    expect(prompt).not.toContain("unrelated password output");
+  });
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.appUrl = "http://localhost:32100";

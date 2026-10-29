@@ -26,7 +26,8 @@
       "agent-cancelled": "Ajan turu iptal edildi",
       "app-deleted": "Uygulama siliniyor",
       "app-quit": "Dyad kapanıyor"
-    }
+    },
+    "stopRun": "{{target}} durdur"
   },
   "newChat": "Yeni Sohbet",
   "viewAllApps": "Tüm uygulamalar",
@@ -450,6 +451,13 @@
     "title": "Neon dal sınırına ulaşıldı",
     "waiting": "Neon planınız veritabanı dalı sayısını sınırlar. Testler, başka bir çalıştırmanın bitip bir dalı boşaltmasını bekliyor. Ardından otomatik olarak devam edecek.",
     "blocked": "Neon planınız başka bir test dalı oluşturmaya izin vermiyor. Neon’da kullanılmayan bir dalı silin veya planınızı yükseltin, ardından testleri yeniden çalıştırın.",
-    "manage": "Neon’u aç"
+    "manage": "Neon’u aç",
+    "dismiss": "Neon dal bildirimini kapat"
+  },
+  "testOutput": {
+    "runLabel": "Çalıştırma {{number}} · {{target}}",
+    "files": "{{count}} dosya",
+    "closeRun": "{{label}} çıktısını kapat",
+    "close": "Çıktı sekmesini kapat"
   }
 }

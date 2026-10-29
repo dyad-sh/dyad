@@ -101,6 +101,10 @@ green review check alone as proof that it posted no findings.
 
 ## Always paginate `reviewThreads` — page 1 hides unresolved threads
 
+The GitHub connector returns `is_resolved` and `database_id`; raw GraphQL uses
+`isResolved` and `databaseId`. Normalize the response before filtering or replying,
+or resolved threads can be mistaken for unresolved ones.
+
 `reviewThreads(first: 100)` silently truncates, and bot-reviewed PRs blow past
 100 fast (dyad-sh/dyad#4065 had 217). The first page reported **1** unresolved
 thread; paginating surfaced **11**. Nothing in the response says it was cut off

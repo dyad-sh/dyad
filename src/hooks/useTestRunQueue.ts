@@ -1,8 +1,35 @@
 import { useEffect, useRef } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ipc } from "@/ipc/types";
 import type { TestRunQueueSnapshot } from "@/ipc/types/tests";
 import { queryKeys } from "@/lib/queryKeys";
+import { showError } from "@/lib/toast";
+
+export function useCancelTestRun() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    networkMode: "always",
+    mutationFn: ipc.tests.cancelRun,
+    onSuccess: (_result, { appId }) =>
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.tests.queue({ appId }),
+      }),
+    onError: (error) => showError(error),
+  });
+}
+
+export function useDismissNeonBranchLimit() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    networkMode: "always",
+    mutationFn: ipc.tests.dismissNeonBranchLimit,
+    onSuccess: (_result, { appId }) =>
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.tests.queue({ appId }),
+      }),
+    onError: (error) => showError(error),
+  });
+}
 
 /** Read-only projection of the main-owned queue; the renderer never schedules it. */
 export function useTestRunQueue(appId: number | null) {

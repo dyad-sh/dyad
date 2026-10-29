@@ -26,7 +26,8 @@
       "agent-cancelled": "O turno do agente foi cancelado",
       "app-deleted": "O app está sendo excluído",
       "app-quit": "O Dyad está sendo encerrado"
-    }
+    },
+    "stopRun": "Parar {{target}}"
   },
   "newChat": "Novo Chat",
   "viewAllApps": "Todos os apps",
@@ -447,6 +448,13 @@
     "title": "Limite de branches do Neon atingido",
     "waiting": "Seu plano do Neon limita o número de branches do banco de dados. Os testes estão aguardando outra execução terminar e liberar um branch. Depois, continuarão automaticamente.",
     "blocked": "Seu plano do Neon não permite criar outro branch de teste. Exclua um branch não utilizado no Neon ou faça upgrade do plano e execute os testes novamente.",
-    "manage": "Abrir Neon"
+    "manage": "Abrir Neon",
+    "dismiss": "Dispensar aviso de branches Neon"
+  },
+  "testOutput": {
+    "runLabel": "Execução {{number}} · {{target}}",
+    "files": "{{count}} arquivos",
+    "closeRun": "Fechar saída de {{label}}",
+    "close": "Fechar aba de saída"
   }
 }

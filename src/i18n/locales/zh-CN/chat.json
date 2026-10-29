@@ -26,7 +26,8 @@
       "agent-cancelled": "代理轮次已取消",
       "app-deleted": "正在删除应用",
       "app-quit": "Dyad 正在退出"
-    }
+    },
+    "stopRun": "停止 {{target}}"
   },
   "newChat": "新建聊天",
   "viewAllApps": "所有应用",
@@ -447,6 +448,13 @@
     "title": "已达到 Neon 分支数量上限",
     "waiting": "您的 Neon 套餐限制了数据库分支的数量。测试正在等待其他运行结束并释放分支，随后将自动继续。",
     "blocked": "您的 Neon 套餐无法再创建测试分支。请在 Neon 中删除不再使用的分支或升级套餐，然后重新运行测试。",
-    "manage": "打开 Neon"
+    "manage": "打开 Neon",
+    "dismiss": "关闭 Neon 分支提示"
+  },
+  "testOutput": {
+    "runLabel": "运行 {{number}} · {{target}}",
+    "files": "{{count}} 个文件",
+    "closeRun": "关闭 {{label}} 的输出",
+    "close": "关闭输出标签页"
   }
 }

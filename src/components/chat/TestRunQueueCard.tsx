@@ -14,7 +14,7 @@ import { dismissedTestRunThroughIdByAppIdAtom } from "@/atoms/testRuntimeAtoms";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useSelectChat } from "@/hooks/useSelectChat";
-import { useTestRunQueue } from "@/hooks/useTestRunQueue";
+import { useTestRunQueue, useCancelTestRun } from "@/hooks/useTestRunQueue";
 import { queryKeys } from "@/lib/queryKeys";
 import type { CompletedTestRun } from "@/lib/testRunSummary";
 import type { TestRunRequest, TestRunStopReason } from "@/test_run_queue/state";
@@ -80,6 +80,7 @@ export function TestRunQueueCard({
 }) {
   const { t } = useTranslation("chat");
   const { selectChat } = useSelectChat();
+  const cancelRun = useCancelTestRun();
   const [dismissedRunIds, setDismissedRunIds] = useAtom(
     dismissedTestRunThroughIdByAppIdAtom,
   );
@@ -217,15 +218,37 @@ export function TestRunQueueCard({
               )}
             >
               <RunIcon status={run.status} />
-              <span className="min-w-0 flex-1 truncate" title={label}>
-                {label}
-              </span>
+              <div className="min-w-0 flex-1">
+                <div className="truncate" title={label}>
+                  {label}
+                </div>
+                {run.status === "queued" && run.queuedReason && (
+                  <p className="mt-0.5 whitespace-normal">{run.queuedReason}</p>
+                )}
+              </div>
               <span className="shrink-0" title={stopReason ?? run.queuedReason}>
                 {t(`testRunQueue.${run.status}`)}
                 {stopReason && (
                   <span className="sr-only">{`: ${stopReason}`}</span>
                 )}
               </span>
+              {(run.status === "queued" ||
+                run.status === "running" ||
+                run.status === "waitingForNeonBranch") && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-6"
+                  aria-label={t("testRunQueue.stopRun", { target: label })}
+                  disabled={
+                    cancelRun.isPending &&
+                    cancelRun.variables?.runId === run.runId
+                  }
+                  onClick={() => cancelRun.mutate({ appId, runId: run.runId })}
+                >
+                  <CircleStop className="size-3.5" aria-hidden="true" />
+                </Button>
+              )}
               {runChatId != null ? (
                 runChatId === chatId ? (
                   <Badge

@@ -1726,6 +1726,10 @@ describe("tests handlers", () => {
       expect(installE2eTestWorkspaceDependenciesMock).toHaveBeenCalledWith(
         expect.objectContaining({ isolationMode: "none" }),
       );
+      expect(retainE2eTestArtifactsMock).toHaveBeenCalledWith(
+        expect.anything(),
+        { replacesEveryResult: true },
+      );
     });
 
     it("leaves the database in place for a Neon app, whose env was swapped", async () => {

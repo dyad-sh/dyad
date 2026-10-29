@@ -5,8 +5,14 @@ import {
   clearTestOutputTabsForAppAtom,
   MAX_TEST_RUN_OUTPUT_LENGTH,
   openTestOutputTabAtom,
+  setTestOutputTabErrorAtom,
 } from "./testOutputAtoms";
-import type { TestSpec, TestResult, TestIsolation } from "@/ipc/types";
+import type {
+  TestSpec,
+  TestResult,
+  TestIsolation,
+  TestCaseResult,
+} from "@/ipc/types";
 import type { RunAppTestsResult } from "@/ipc/types/tests";
 import type { TestRunStopReason } from "@/shared/test_run_stop";
 import {
@@ -43,8 +49,10 @@ export type TestStatus =
   | "running"
   | "not-run";
 
-export type RuntimeTestResult = Omit<TestResult, "status"> & {
+export type RuntimeTestResult = Omit<TestResult, "status" | "tests"> & {
   status: TestResult["status"] | "partial";
+  runId?: number;
+  tests?: (TestCaseResult & { runId?: number })[];
 };
 
 /**
@@ -127,6 +135,8 @@ function projectActiveRuns(state: TestRunState): TestRunState {
   return {
     ...state,
     ...current,
+    runError: state.runError,
+    isolation: state.isolation,
     runningFiles: [...new Set(runs.flatMap((run) => run.runningFiles))],
   };
 }
@@ -142,11 +152,17 @@ export const EMPTY_TEST_RUN_STATE: TestRunState = Object.freeze({
 // Keep the current batch's output for Ask AI to Fix, independently of which
 // output tabs the user has selected or closed. Logs stay outside TestRunState
 // so appending chunks does not re-render every test row.
-export const testRunOutputByAppIdAtom = atom<Map<number, string>>(new Map());
+export const testRunOutputByAppIdAtom = atom<Map<number, Map<number, string>>>(
+  new Map(),
+);
 
 export const currentTestRunOutputAtom = atom((get) => {
   const appId = get(selectedAppIdAtom);
-  return appId === null ? "" : (get(testRunOutputByAppIdAtom).get(appId) ?? "");
+  const runId =
+    appId === null ? undefined : get(testRunStateByAppIdAtom).get(appId)?.runId;
+  return appId === null || runId === undefined
+    ? ""
+    : (get(testRunOutputByAppIdAtom).get(appId)?.get(runId) ?? "");
 });
 
 export const appendTestRunOutputAtom = atom(
@@ -159,14 +175,36 @@ export const appendTestRunOutputAtom = atom(
     set(appendTestOutputTabAtom, { appId, runId, chunk });
     set(testRunOutputByAppIdAtom, (prev) => {
       const next = new Map(prev);
-      next.set(
-        appId,
-        ((prev.get(appId) ?? "") + chunk).slice(-MAX_TEST_RUN_OUTPUT_LENGTH),
+      const runs = new Map(prev.get(appId));
+      runs.set(
+        runId,
+        ((runs.get(runId) ?? "") + chunk).slice(-MAX_TEST_RUN_OUTPUT_LENGTH),
       );
+      next.set(appId, runs);
       return next;
     });
   },
 );
+
+// Retain output only while a run is active or a displayed result refers to it.
+// Closing an output tab must not discard context for Ask AI to Fix.
+const pruneTestRunOutputAtom = atom(null, (get, set, appId: number) => {
+  const state = get(testRunStateByAppIdAtom).get(appId);
+  const ids = new Set(Object.keys(state?.activeRuns ?? {}).map(Number));
+  for (const result of Object.values(state?.results ?? {})) {
+    if (result.runId !== undefined) ids.add(result.runId);
+    for (const test of result.tests ?? [])
+      if (test.runId !== undefined) ids.add(test.runId);
+  }
+  set(testRunOutputByAppIdAtom, (prev) => {
+    const runs = prev.get(appId);
+    if (!runs) return prev;
+    return new Map(prev).set(
+      appId,
+      new Map([...runs].filter(([id]) => ids.has(id))),
+    );
+  });
+});
 
 export const clearTestRunOutputForAppAtom = atom(
   null,
@@ -332,13 +370,12 @@ export const applyTestRunStartedAtom = atom(
       const target =
         files.length === 1
           ? `${files[0].split(/[\\/]/).pop()}${testLine != null ? `:${testLine}` : ""}`
-          : files.length > 1
-            ? `${files.length} files`
-            : "All tests";
+          : undefined;
       set(openTestOutputTabAtom, {
         appId,
         runId,
-        label: `Run ${runId} · ${target}`,
+        target,
+        fileCount: files.length,
       });
     }
     const grepMatchedTests =
@@ -353,11 +390,6 @@ export const applyTestRunStartedAtom = atom(
               ),
           )
         : null;
-    if (
-      !Object.keys(get(testRunStateByAppIdAtom).get(appId)?.activeRuns ?? {})
-        .length
-    )
-      set(clearTestRunOutputForAppAtom, appId);
     set(setTestRunStateForAppAtom, {
       appId,
       update: (prev) => {
@@ -387,8 +419,12 @@ export const applyTestRunStartedAtom = atom(
                   ([f]) => !targetFiles.includes(f),
                 ),
               ),
-          runError: undefined,
-          isolation: undefined,
+          runError: Object.keys(prev.activeRuns ?? {}).length
+            ? prev.runError
+            : undefined,
+          isolation: Object.keys(prev.activeRuns ?? {}).length
+            ? prev.isolation
+            : undefined,
           // The starter's expectation; the main process confirms (or corrects)
           // it on the progress and finished events. `?? prev` rather than a bare
           // assignment: this atom is applied TWICE for one run — once optimistically
@@ -406,6 +442,7 @@ export const applyTestRunStartedAtom = atom(
             });
       },
     });
+    set(pruneTestRunOutputAtom, appId);
   },
 );
 
@@ -460,7 +497,12 @@ export const applyTestRunFinishedAtom = atom(
         // Main marks files whose selected cases did not all finish separately.
         for (const r of res.results) {
           const key = reconcileResultFile(r.file, specFiles);
-          const mapped = { ...r, file: key };
+          const mapped = {
+            ...r,
+            file: key,
+            runId: expectedRunId,
+            tests: r.tests?.map((test) => ({ ...test, runId: expectedRunId })),
+          };
           if (isPartialRun) {
             nextResults[key] = buildSingleTestFileResult({
               file: key,
@@ -498,12 +540,19 @@ export const applyTestRunFinishedAtom = atom(
               }
             : res.infraError
               ? { message: res.infraError.message, kind: "infra" }
-              : undefined,
+              : prev.runError,
           isolation: res.isolation,
           sandboxed: sandboxed ?? prev.sandboxed,
         });
       },
     });
+    if (expectedRunId !== undefined)
+      set(setTestOutputTabErrorAtom, {
+        appId,
+        runId: expectedRunId,
+        error: res.infraError?.message,
+      });
+    set(pruneTestRunOutputAtom, appId);
   },
 );
 

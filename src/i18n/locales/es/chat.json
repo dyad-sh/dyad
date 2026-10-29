@@ -26,7 +26,8 @@
       "agent-cancelled": "Se canceló el turno del agente",
       "app-deleted": "La app se está eliminando",
       "app-quit": "Dyad se está cerrando"
-    }
+    },
+    "stopRun": "Detener {{target}}"
   },
   "newChat": "Nuevo Chat",
   "viewAllApps": "Todos los apps",
@@ -448,6 +449,13 @@
     "title": "Se alcanzó el límite de ramas de Neon",
     "waiting": "Tu plan de Neon limita el número de ramas de base de datos. Las pruebas esperan a que termine otra ejecución y libere una rama; después continuarán automáticamente.",
     "blocked": "Tu plan de Neon no permite crear otra rama de prueba. Elimina una rama que no uses en Neon o mejora tu plan y vuelve a ejecutar las pruebas.",
-    "manage": "Abrir Neon"
+    "manage": "Abrir Neon",
+    "dismiss": "Descartar aviso de ramas de Neon"
+  },
+  "testOutput": {
+    "runLabel": "Ejecución {{number}} · {{target}}",
+    "files": "{{count}} archivos",
+    "closeRun": "Cerrar salida de {{label}}",
+    "close": "Cerrar pestaña de salida"
   }
 }

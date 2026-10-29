@@ -26,7 +26,8 @@
       "agent-cancelled": "The agent turn was cancelled",
       "app-deleted": "The app is being deleted",
       "app-quit": "Dyad is quitting"
-    }
+    },
+    "stopRun": "Stop {{target}}"
   },
   "newChat": "New Chat",
   "viewAllApps": "All apps",
@@ -450,6 +451,13 @@
     "title": "Neon branch limit reached",
     "waiting": "Your Neon plan limits the number of database branches. Tests are waiting for another run to finish and free a branch, then will continue automatically.",
     "blocked": "Your Neon plan has no room for another test branch. Delete an unused branch in Neon or upgrade your plan, then run the tests again.",
-    "manage": "Open Neon"
+    "manage": "Open Neon",
+    "dismiss": "Dismiss Neon branch notice"
+  },
+  "testOutput": {
+    "runLabel": "Run {{number}} · {{target}}",
+    "files": "{{count}} files",
+    "closeRun": "Close output for {{label}}",
+    "close": "Close output tab"
   }
 }

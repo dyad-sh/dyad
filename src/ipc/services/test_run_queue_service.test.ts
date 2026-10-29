@@ -14,7 +14,6 @@ const h = vi.hoisted(() => ({
   },
   databaseKey: undefined as string | undefined,
   branch: "main",
-  fingerprint: "inputs",
   exclusive: false,
   remainingProcesses: [] as unknown[],
   info: vi.fn(),
@@ -22,7 +21,6 @@ const h = vi.hoisted(() => ({
 vi.mock("@/main/settings", () => ({ readSettings: () => h.settings }));
 vi.mock("./test_run_context", () => ({
   loadTestRunContext: vi.fn(async () => ({
-    inputFingerprint: h.fingerprint,
     exclusive: h.exclusive,
     databaseKey: h.databaseKey,
     branch: h.branch,
@@ -62,7 +60,6 @@ beforeEach(() => {
   h.settings.maxConcurrentTestRuns = undefined;
   h.databaseKey = undefined;
   h.branch = "main";
-  h.fingerprint = "inputs";
   h.exclusive = false;
   h.remainingProcesses = [];
   service = createTestRunQueueService();
@@ -328,15 +325,18 @@ it("stops active and queued runs across apps while retaining their cleanup", asy
     );
     return { appId, active, queued, executeQueued };
   });
-  await vi.waitFor(() => expect(signals).toHaveLength(1));
+  await vi.waitFor(() => expect(signals).toHaveLength(2));
   service.stopAllAppTestRuns({ kind: "app-quit" });
-  expect(signals).toHaveLength(1);
+  expect(signals).toHaveLength(2);
   expect(signals.every((signal) => signal.aborted)).toBe(true);
-  expect(signals.map((signal) => signal.reason.kind)).toEqual(["app-quit"]);
+  expect(signals.map((signal) => signal.reason.kind)).toEqual([
+    "app-quit",
+    "app-quit",
+  ]);
   for (const run of pending) {
     expect(await run.queued).toBe("app-quit");
     expect(run.executeQueued).not.toHaveBeenCalled();
-    expect(service.isTestRunActive(run.appId)).toBe(run.appId === 601);
+    expect(service.isTestRunActive(run.appId)).toBe(true);
   }
   const drained = vi.fn();
   const drain = Promise.all(
@@ -393,16 +393,15 @@ it.each(["database", "exclusive"])(
   },
 );
 
-it("validates workspace inputs again before setup", async () => {
+it("refreshes changed inputs when no conflicting run is active", async () => {
   h.settings.enableParallelTestRuns = true;
   enqueue();
   await tick();
   const runId = service.getAppTestRunQueue(1).activeRuns[0].runId;
   await expect(service.validateTestRunInputs(runId)).resolves.toBeUndefined();
-  h.fingerprint = "changed";
-  await expect(service.validateTestRunInputs(runId)).rejects.toThrow(
-    "test inputs changed",
-  );
+  h.branch = "changed";
+  await expect(service.validateTestRunInputs(runId)).resolves.toBeUndefined();
+  expect(service.getAppTestRunQueue(1).activeRun?.branch).toBe("changed");
 });
 
 it("rechecks cancellation after loading admission metadata", async () => {
@@ -417,7 +416,7 @@ it("rechecks cancellation after loading admission metadata", async () => {
   const first = enqueue();
   await tick();
   service.stopAllAppTestRuns({ kind: "app-quit" });
-  loaded({ inputFingerprint: "inputs", exclusive: false });
+  loaded({ exclusive: false });
   await tick();
   expect(await first.result).toBe("cancelled");
   expect(first.execute).not.toHaveBeenCalled();
@@ -435,8 +434,70 @@ it("fences admission when a run fails to stop its processes", async () => {
   await tick();
   expect(second.execute).not.toHaveBeenCalled();
   expect(service.getAppTestRunQueue(1).queuedRuns[0].queuedReason).toContain(
-    "could not be stopped",
+    "Waiting for a test process to stop",
   );
+  const reads = vi.mocked(loadTestRunContext).mock.calls.length;
+  await tick(6000);
+  expect(loadTestRunContext).toHaveBeenCalledTimes(reads);
+  h.remainingProcesses = [];
+  await tick(2000);
+  expect(second.execute).toHaveBeenCalledOnce();
+});
+
+it("keeps serial apps independent and does not load unused admission metadata", async () => {
+  const first = enqueue(1);
+  const queued = enqueue(1);
+  const other = enqueue(2);
+  await tick(6000);
+  expect(first.execute).toHaveBeenCalledOnce();
+  expect(other.execute).toHaveBeenCalledOnce();
+  expect(queued.execute).not.toHaveBeenCalled();
+  expect(loadTestRunContext).not.toHaveBeenCalled();
+  await service.validateTestRunInputs(
+    service.getAppTestRunQueue(1).activeRun!.runId,
+  );
+  expect(loadTestRunContext).not.toHaveBeenCalled();
+  first.finish();
+  await first.result;
+  expect(queued.execute).toHaveBeenCalledOnce();
+});
+
+it("does not reload contexts while all parallel slots are occupied", async () => {
+  h.settings.enableParallelTestRuns = true;
+  enqueue();
+  enqueue();
+  enqueue();
+  await tick();
+  expect(loadTestRunContext).toHaveBeenCalledTimes(2);
+  await tick(10000);
+  expect(loadTestRunContext).toHaveBeenCalledTimes(2);
+});
+
+it("refuses a changed shared database revision while a sibling is active", async () => {
+  h.settings.enableParallelTestRuns = true;
+  h.databaseKey = "supabase:shared";
+  enqueue();
+  enqueue();
+  await tick();
+  const runId = service.getAppTestRunQueue(1).activeRuns[1].runId;
+  h.branch = "different";
+  await expect(service.validateTestRunInputs(runId)).rejects.toThrow(
+    "no longer compatible",
+  );
+});
+
+it("dismisses only the observed blocked notice and preserves live waits", async () => {
+  enqueue();
+  await tick();
+  const runId = service.getAppTestRunQueue(1).activeRun!.runId;
+  service.setNeonBranchLimit(runId, "project", "blocked");
+  service.dismissNeonBranchLimit(1, runId - 1);
+  expect(service.getAppTestRunQueue(1).neonBranchLimit?.status).toBe("blocked");
+  service.dismissNeonBranchLimit(1, runId);
+  expect(service.getAppTestRunQueue(1).neonBranchLimit).toBeUndefined();
+  service.setNeonBranchLimit(runId, "project", "waiting");
+  service.dismissNeonBranchLimit(1, runId);
+  expect(service.getAppTestRunQueue(1).neonBranchLimit?.status).toBe("waiting");
 });
 
 it("returns to serial admission when parallel runs are disabled", async () => {
@@ -547,7 +608,7 @@ it("rechecks the configured limit after loading admission metadata", async () =>
   const second = enqueue();
   await tick();
   h.settings.maxConcurrentTestRuns = 1;
-  loaded({ inputFingerprint: "inputs", exclusive: false });
+  loaded({ exclusive: false });
   await tick();
   expect(second.execute).not.toHaveBeenCalled();
   first.finish();

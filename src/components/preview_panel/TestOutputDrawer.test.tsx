@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import {
   appendTestRunOutputAtom,
+  applyTestRunFinishedAtom,
   applyTestRunStartedAtom,
   clearTestRuntimeForAppAtom,
   currentTestRunOutputAtom,
@@ -17,6 +18,23 @@ import {
 } from "@/atoms/testRuntimeAtoms";
 import { MAX_TEST_RUN_OUTPUT_LENGTH } from "@/atoms/testOutputAtoms";
 import { TestOutputDrawer } from "./TestOutputDrawer";
+
+vi.mock("react-i18next", async () => {
+  const { default: translations } = await import("@/i18n/locales/en/chat.json");
+  return {
+    useTranslation: () => ({
+      t: (key: string, values: Record<string, string | number> = {}) => {
+        const value =
+          key
+            .split(".")
+            .reduce((obj: any, part) => obj?.[part], translations) ?? key;
+        return value.replace(/\{\{(\w+)\}\}/g, (_: string, name: string) =>
+          String(values[name]),
+        );
+      },
+    }),
+  };
+});
 
 afterEach(cleanup);
 
@@ -53,6 +71,32 @@ function setup() {
 }
 
 describe("TestOutputDrawer", () => {
+  it("uses short run labels and retains each run's infrastructure error", () => {
+    const { store, mount, start, tab } = setup();
+    mount();
+    const id = 1793143963656001;
+    start(id);
+    start(id + 1);
+    act(() =>
+      store.set(applyTestRunFinishedAtom, {
+        appId: 1,
+        expectedRunId: id,
+        isPartialRun: false,
+        res: {
+          appId: 1,
+          results: [],
+          infraError: { message: "Branch capacity exhausted" },
+        },
+      }),
+    );
+    expect(screen.queryByText(String(id))).toBeNull();
+    fireEvent.click(tab(1));
+    expect(screen.getByRole("status").textContent).toBe(
+      "Branch capacity exhausted",
+    );
+    fireEvent.click(tab(2));
+    expect(screen.queryByRole("status")).toBeNull();
+  });
   it("selects new runs and shows only the selected run's output", () => {
     const { mount, start, append, tab } = setup();
     mount();

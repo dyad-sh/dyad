@@ -79,6 +79,8 @@ vi.mock("react-i18next", () => ({
           "Esperando a que se detenga un proceso de prueba",
         "testRunQueue.stopReason.tests-panel-stop":
           "Stopped from the Tests panel",
+        "testRunQueue.stopReason.test-queue-stop":
+          "Stopped from the test queue",
         "testRunQueue.stopReason.chat-stop": "The chat response was stopped",
       })[key] ?? key,
   }),
@@ -711,44 +713,52 @@ it.each([
   },
 );
 
-it("says why a run stopped and why the active run is stopping", async () => {
-  mocks.getRunQueue.mockResolvedValue({
-    neonBranchLimit: {
-      runId: first.runId,
-      projectId: "neon-project",
-      status: "waiting",
-    },
-    activeRun: {
-      ...first,
-      stopping: true,
-      waitingForNeonBranch: true,
-      stopReason: { kind: "chat-stop" },
-    },
-    queuedRuns: [],
-  });
-  const { Harness } = setup();
-  render(<Harness />);
-  const stopping = await screen.findByText("Stopping");
-  expect(screen.queryByText("Waiting for Neon branch")).toBeNull();
-  expect(stopping.getAttribute("title")).toBe("The chat response was stopped");
-  expect(stopping.textContent).toContain("The chat response was stopped");
-
-  act(() =>
-    publishRun({
-      appId: 1,
-      ...first,
-      state: "finished",
-      results: [],
-      infraError: {
-        message: "Test run stopped from the Tests panel.",
-        stopReason: { kind: "tests-panel-stop" },
+it.each([
+  { kind: "tests-panel-stop" as const, label: "Stopped from the Tests panel" },
+  { kind: "test-queue-stop" as const, label: "Stopped from the test queue" },
+])(
+  "says why a run stopped ($kind) and why the active run is stopping",
+  async ({ kind, label }) => {
+    mocks.getRunQueue.mockResolvedValue({
+      neonBranchLimit: {
+        runId: first.runId,
+        projectId: "neon-project",
+        status: "waiting",
       },
-    }),
-  );
-  const stopped = await screen.findByText("Stopped");
-  expect(stopped.getAttribute("title")).toBe("Stopped from the Tests panel");
-  expect(stopped.textContent).toContain("Stopped from the Tests panel");
-});
+      activeRun: {
+        ...first,
+        stopping: true,
+        waitingForNeonBranch: true,
+        stopReason: { kind: "chat-stop" },
+      },
+      queuedRuns: [],
+    });
+    const { Harness } = setup();
+    render(<Harness />);
+    const stopping = await screen.findByText("Stopping");
+    expect(screen.queryByText("Waiting for Neon branch")).toBeNull();
+    expect(stopping.getAttribute("title")).toBe(
+      "The chat response was stopped",
+    );
+    expect(stopping.textContent).toContain("The chat response was stopped");
+
+    act(() =>
+      publishRun({
+        appId: 1,
+        ...first,
+        state: "finished",
+        results: [],
+        infraError: {
+          message: "Test run stopped.",
+          stopReason: { kind },
+        },
+      }),
+    );
+    const stopped = await screen.findByText("Stopped");
+    expect(stopped.getAttribute("title")).toBe(label);
+    expect(stopped.textContent).toContain(label);
+  },
+);
 
 it("labels whole-suite, batch, single-case and grep selections", async () => {
   mocks.getRunQueue.mockResolvedValue({

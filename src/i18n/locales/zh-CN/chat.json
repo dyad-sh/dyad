@@ -24,6 +24,7 @@
     "stopped": "已停止",
     "stopReason": {
       "tests-panel-stop": "已从测试面板停止",
+      "test-queue-stop": "已从测试队列停止",
       "chat-stop": "聊天回复已停止",
       "chat-deleted": "聊天已删除",
       "version-restored": "已恢复到早期版本",

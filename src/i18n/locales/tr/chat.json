@@ -24,6 +24,7 @@
     "stopped": "Durduruldu",
     "stopReason": {
       "tests-panel-stop": "Test panelinden durduruldu",
+      "test-queue-stop": "Test kuyruğundan durduruldu",
       "chat-stop": "Sohbet yanıtı durduruldu",
       "chat-deleted": "Sohbet silindi",
       "version-restored": "Önceki bir sürüm geri yüklendi",

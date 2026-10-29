@@ -1251,7 +1251,8 @@ export function registerNeonHandlers() {
       );
       return {
         success: true,
-        backupPath: backupFilePath,
+        // An interrupted attempt may be finished without a new backup.
+        backupPath: result.backupSaved ? backupFilePath : undefined,
         warning:
           result.notCopied.length > 0
             ? `Migrated the development database, but these Neon Auth settings could not be copied to the new branch: ${result.notCopied.join(", ")}. Set them up again in the Neon console.`

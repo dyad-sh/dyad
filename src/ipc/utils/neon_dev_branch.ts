@@ -194,12 +194,17 @@ async function sweepLeftoverBranches(
   neonClient: Api<unknown>,
   projectId: string,
 ): Promise<void> {
+  // Names alone can't tell a leftover from a branch an app still uses: a
+  // migration interrupted after renaming the old development branch leaves
+  // the app on `*-replaced-*`.
+  const inUse = await branchesInUse(projectId);
   const failed = new Set<string>();
   for (;;) {
     const branches = await listBranches(neonClient, projectId);
     const leftovers = branches.filter(
       (b) =>
         !failed.has(b.id) &&
+        !inUse.has(b.id) &&
         childrenOf(branches, b.id).length === 0 &&
         (BACKUP_BRANCH_PATTERN.test(b.name) ||
           REPLACED_PATTERN.test(b.name) ||
@@ -220,6 +225,251 @@ async function sweepLeftoverBranches(
       }
     }
   }
+}
+
+/** Branches any Dyad app in the project uses; a sweep never deletes them. */
+async function branchesInUse(projectId: string): Promise<Set<string>> {
+  const rows = await db
+    .select({
+      development: apps.neonDevelopmentBranchId,
+      preview: apps.neonPreviewBranchId,
+      active: apps.neonActiveBranchId,
+    })
+    .from(apps)
+    .where(eq(apps.neonProjectId, projectId));
+  return new Set(
+    rows
+      .flatMap((r) => [r.development, r.preview, r.active])
+      .filter((id): id is string => !!id),
+  );
+}
+
+/** How a retry dealt with a migration that was interrupted (crash or quit). */
+export type MigrationRepair = "none" | "rolled-back" | "rolled-forward";
+
+/** The endpoint an app's .env.local database URL points at, if any. */
+async function envEndpointId(appPath: string): Promise<string | null> {
+  const env = (await readEnvFileIfExists({ appPath })) ?? "";
+  const url = env.match(/^(?:DATABASE_URL|POSTGRES_URL)=["']?([^"'\s]+)/m)?.[1];
+  if (!url) return null;
+  try {
+    return new URL(url).hostname.split(".")[0].replace(/-pooler$/, "");
+  } catch {
+    return null;
+  }
+}
+
+async function branchEndpointIds(
+  neonClient: Api<unknown>,
+  projectId: string,
+  branchId: string,
+): Promise<Set<string>> {
+  const { data } = await retryOnLocked(
+    () => neonClient.listProjectBranchEndpoints(projectId, branchId),
+    `List endpoints of branch ${branchId}`,
+  );
+  return new Set(data.endpoints.map((e) => e.id));
+}
+
+const CLOCK_SKEW_MS = 60 * 60_000;
+
+/**
+ * Whether `branch` is the new development branch of the migration that
+ * renamed the old one at `stamp`: a schema-only root branch no app uses,
+ * created during that migration. Anything else is left alone.
+ *
+ * `stamp` comes from the local clock and the creation time from Neon's, so
+ * the window allows for a computer clock that runs fast. It ends a day later
+ * because the branch is only created after the backup, which can take a
+ * while for a large database.
+ */
+function isUnfinishedMigrationBranch(
+  branch: Branch,
+  stamp: number,
+  inUse: Set<string>,
+): boolean {
+  const createdAt = Date.parse(branch.created_at);
+  return (
+    !branch.parent_id &&
+    branch.init_source === "parent-schema" &&
+    !inUse.has(branch.id) &&
+    createdAt >= stamp - CLOCK_SKEW_MS &&
+    createdAt <= stamp + 24 * 60 * 60_000
+  );
+}
+
+/**
+ * Finishes or undoes a migration interrupted (a crash or quit, so its
+ * rollback never ran) between renaming the old development branch to
+ * `*-replaced-<stamp>` and switching the apps. The apps' rows still point at
+ * the old branch; which way to go depends on where their .env.local points:
+ *
+ * - None at the new branch: nothing has written to it since the copy. Delete
+ *   it and give the old branch its name back; the migration then runs anew.
+ * - All at the new branch: the apps have been writing to it, and it holds the
+ *   complete copy (it only takes the development name once the copy is
+ *   verified). Finish the migration with it.
+ * - Some at each: data went to both. Refuse rather than lose either.
+ *
+ * Each step leaves a state a later attempt recognises, so a crash during the
+ * repair is handled too.
+ */
+async function repairInterruptedMigration({
+  neonClient,
+  projectId,
+  developmentBranchId,
+  previewBranchId,
+  appIds,
+}: {
+  neonClient: Api<unknown>;
+  projectId: string;
+  developmentBranchId: string;
+  previewBranchId: string | null;
+  appIds: number[];
+}): Promise<
+  | { kind: "none" | "rolled-back" }
+  | {
+      kind: "rolled-forward";
+      developmentBranchId: string;
+      previewBranchId: string | null;
+      branchesDeleted: number;
+      branchesNotDeleted: number;
+      cleanupFailed: boolean;
+    }
+> {
+  const branches = await listBranches(neonClient, projectId);
+  const development = branches.find((b) => b.id === developmentBranchId);
+  const match = development?.name.match(/^(.*)-replaced-(\d+)$/);
+  if (!development || !match) return { kind: "none" };
+  const [, originalName, stampText] = match;
+  const stamp = Number(stampText);
+  logger.warn(
+    `Found an interrupted migration of development branch ${developmentBranchId} in Neon project ${projectId}`,
+  );
+
+  const inUse = await branchesInUse(projectId);
+  // Before the rename the new branch is dyad-migrating-<stamp>; after it,
+  // it holds the development name.
+  const holder = branches.find(
+    (b) => b.name === originalName && b.id !== developmentBranchId,
+  );
+  if (holder && !isUnfinishedMigrationBranch(holder, stamp, inUse)) {
+    throw new MigrationRefusedError(
+      `Can't migrate the development database: the branch "${originalName}" isn't the one an interrupted migration created, so the old development branch can't get its name back. Rename or delete it in the Neon console, then try again.`,
+      "interrupted-migration",
+    );
+  }
+  const unfinished =
+    holder ??
+    branches.find(
+      (b) =>
+        b.name === `dyad-migrating-${stamp}` &&
+        isUnfinishedMigrationBranch(b, stamp, inUse),
+    );
+
+  const switching = await db
+    .select()
+    .from(apps)
+    .where(inArray(apps.id, appIds));
+  const developmentApps = switching.filter((app) =>
+    developmentIsActive(app, developmentBranchId, previewBranchId),
+  );
+  const unfinishedEndpoints = unfinished
+    ? await branchEndpointIds(neonClient, projectId, unfinished.id)
+    : new Set<string>();
+  const onUnfinished: typeof developmentApps = [];
+  for (const app of developmentApps) {
+    const endpoint = await envEndpointId(app.path);
+    if (endpoint && unfinishedEndpoints.has(endpoint)) onUnfinished.push(app);
+  }
+
+  if (onUnfinished.length === 0) {
+    if (unfinished) {
+      const deleted = await deleteBranch(
+        neonClient,
+        projectId,
+        unfinished.id,
+        "unfinished development branch",
+      );
+      if (!deleted) {
+        throw new DyadError(
+          `Could not delete the unfinished development branch left by an interrupted migration. Try again.`,
+          DyadErrorKind.External,
+        );
+      }
+    }
+    await retryOnLocked(
+      () =>
+        neonClient.updateProjectBranch(projectId, developmentBranchId, {
+          branch: { name: originalName },
+        }),
+      `Restore development branch name ${developmentBranchId}`,
+    );
+    logger.info(
+      `Rolled back the interrupted migration of development branch ${developmentBranchId}`,
+    );
+    return { kind: "rolled-back" };
+  }
+
+  if (onUnfinished.length < developmentApps.length || !holder) {
+    throw new MigrationRefusedError(
+      `Can't migrate the development database: an interrupted migration left ${onUnfinished.map((a) => a.name).join(", ")} on the new branch and other apps on the old one, so both may have new data. Contact support to merge them.`,
+      "interrupted-migration",
+    );
+  }
+
+  // Roll forward. Rewriting .env.local first is idempotent for these apps,
+  // and refreshes Neon Auth's URL in case the crash cut that write short.
+  for (const app of onUnfinished) {
+    const warning = await autoInjectNeonEnvVars({
+      appId: app.id,
+      appPath: app.path,
+      projectId,
+      branchId: holder.id,
+      branchType: "development",
+    });
+    if (warning) {
+      throw new DyadError(
+        `Could not point ${app.name} at the new development branch: ${warning}`,
+        DyadErrorKind.External,
+      );
+    }
+  }
+  switchAppsToBranch({
+    appIds,
+    oldDevelopmentId: developmentBranchId,
+    previewBranchId,
+    newDevelopmentId: holder.id,
+  });
+  const plan = planLegacyMigration({
+    branches,
+    developmentBranchId,
+    previewBranchId,
+  });
+  const removable = "blockedBy" in plan ? new Set<string>() : plan.removable;
+  const oldPreview = previewBranchId
+    ? branches.find((b) => b.id === previewBranchId)
+    : undefined;
+  const finished = await finishMigration({
+    neonClient,
+    projectId,
+    appIds,
+    label: `app${appIds.length > 1 ? "s" : ""} ${appIds.join(", ")}`,
+    newDevelopment: holder,
+    oldPreview,
+    replacePreview: !!oldPreview && removable.has(oldPreview.id),
+    previewBranchId,
+    removable,
+    stamp,
+  });
+  logger.info(
+    `Finished the interrupted migration of development branch ${developmentBranchId} on branch ${holder.id}`,
+  );
+  return {
+    kind: "rolled-forward",
+    developmentBranchId: holder.id,
+    ...finished,
+  };
 }
 
 /**
@@ -601,8 +851,6 @@ async function migrateToRootDevelopmentBranch({
   // from serving as the source below; they are deleted with the tree anyway.
   let previewHasChildren = false;
   let branchesDeleted = 0;
-  let branchesNotDeleted = 0;
-  let cleanupFailed = false;
   if (oldPreview && replacePreview) {
     const leftovers = new Set(
       childrenOf(branches, oldPreview.id).map((b) => b.id),
@@ -832,20 +1080,79 @@ async function migrateToRootDevelopmentBranch({
     throw error;
   }
 
-  // The apps now use the new branch. What follows is best-effort cleanup:
-  // failing it must not report the migration as failed. Whatever it leaves
-  // behind is swept after a later restore.
+  // The apps now use the new branch.
   if (temporarySourceId) plan.removable.add(temporarySourceId);
+  const finished = await finishMigration({
+    neonClient,
+    projectId,
+    appIds,
+    label,
+    newDevelopment,
+    oldPreview,
+    replacePreview,
+    previewBranchId,
+    removable: plan.removable,
+    stamp,
+  });
+  return {
+    developmentBranchId: newDevelopment.id,
+    previewBranchId: finished.previewBranchId,
+    notCopied,
+    tables: copiedTables,
+    rows: copiedRows,
+    branchesDeleted: branchesDeleted + finished.branchesDeleted,
+    branchesNotDeleted: finished.branchesNotDeleted,
+    cleanupFailed: finished.cleanupFailed,
+  };
+}
+
+/**
+ * After the apps are switched to the new development branch: deletes the old
+ * branch tree (`removable`) and recreates the preview branch under the new
+ * branch. Best-effort: failing it must not report the migration as failed;
+ * whatever it leaves behind is swept after a later restore.
+ */
+async function finishMigration({
+  neonClient,
+  projectId,
+  appIds,
+  label,
+  newDevelopment,
+  oldPreview,
+  replacePreview,
+  previewBranchId,
+  removable,
+  stamp,
+}: {
+  neonClient: Api<unknown>;
+  projectId: string;
+  appIds: number[];
+  label: string;
+  newDevelopment: Branch;
+  oldPreview: Branch | undefined;
+  replacePreview: boolean;
+  previewBranchId: string | null;
+  removable: Set<string>;
+  stamp: number;
+}): Promise<{
+  previewBranchId: string | null;
+  branchesDeleted: number;
+  branchesNotDeleted: number;
+  cleanupFailed: boolean;
+}> {
+  let branchesDeleted = 0;
+  let branchesNotDeleted = 0;
+  let cleanupFailed = false;
   try {
     const { deleted, left } = await deleteBranchTree(
       neonClient,
       projectId,
-      plan.removable,
+      removable,
     );
-    branchesDeleted += deleted;
+    branchesDeleted = deleted;
     branchesNotDeleted = left.length;
     logger.info(
-      `Deleted ${branchesDeleted} old branches after moving ${label} to root development branch ${newDevelopment.id}`,
+      `Deleted ${deleted} old branches after moving ${label} to root development branch ${newDevelopment.id}`,
     );
     if (left.length > 0) {
       logger.warn(
@@ -905,11 +1212,7 @@ async function migrateToRootDevelopmentBranch({
     }
   }
   return {
-    developmentBranchId: newDevelopment.id,
     previewBranchId: newPreviewId,
-    notCopied,
-    tables: copiedTables,
-    rows: copiedRows,
     branchesDeleted,
     branchesNotDeleted,
     cleanupFailed,
@@ -923,7 +1226,8 @@ export type MigrationRefusalReason =
   | "deploys-with-development"
   | "version-preview"
   | "apps-changed"
-  | "branch-limit";
+  | "branch-limit"
+  | "interrupted-migration";
 
 /**
  * A migration refused, before changing anything, because of the project or
@@ -964,6 +1268,8 @@ export interface MigrationStats {
   branchesNotDeleted: number;
   /** The cleanup stopped before it could tell; the counts are incomplete. */
   cleanupFailed: boolean;
+  /** How an earlier, interrupted attempt was dealt with. */
+  repair: MigrationRepair;
 }
 
 /**
@@ -1112,9 +1418,36 @@ export async function migrateDevelopmentBranch({
   previewBranchId: string | null;
   /** Neon Auth settings that could not be carried over. */
   notCopied: string[];
+  /** Whether this call saved a backup to `backupFilePath`. */
+  backupSaved: boolean;
   stats: MigrationStats;
 }> {
   const neonClient = await getNeonClient();
+  const repair = await repairInterruptedMigration({
+    neonClient,
+    projectId,
+    developmentBranchId,
+    previewBranchId,
+    appIds,
+  });
+  if (repair.kind === "rolled-forward") {
+    // The interrupted attempt already copied the data and took a backup.
+    return {
+      developmentBranchId: repair.developmentBranchId,
+      previewBranchId: repair.previewBranchId,
+      notCopied: [],
+      backupSaved: false,
+      stats: {
+        tables: 0,
+        rows: 0,
+        leakedBackups: 0,
+        branchesDeleted: repair.branchesDeleted,
+        branchesNotDeleted: repair.branchesNotDeleted,
+        cleanupFailed: repair.cleanupFailed,
+        repair: repair.kind,
+      },
+    };
+  }
   // Branches an earlier, interrupted attempt left behind take up room.
   await sweepLeftoverBranches(neonClient, projectId).catch((error) =>
     logger.warn(
@@ -1131,6 +1464,7 @@ export async function migrateDevelopmentBranch({
       developmentBranchId,
       previewBranchId,
       notCopied: [],
+      backupSaved: false,
       stats: {
         tables: 0,
         rows: 0,
@@ -1138,6 +1472,7 @@ export async function migrateDevelopmentBranch({
         branchesDeleted: 0,
         branchesNotDeleted: 0,
         cleanupFailed: false,
+        repair: repair.kind,
       },
     };
   }
@@ -1190,6 +1525,7 @@ export async function migrateDevelopmentBranch({
     });
     return {
       ...migrated,
+      backupSaved: true,
       stats: {
         tables,
         rows,
@@ -1197,6 +1533,7 @@ export async function migrateDevelopmentBranch({
         branchesDeleted,
         branchesNotDeleted,
         cleanupFailed,
+        repair: repair.kind,
       },
     };
   } catch (error) {

@@ -314,6 +314,15 @@ export class FakeNeonBranchApi {
         call("listProjectBranchDatabases", [projectId, branchId], () => ({
           data: { databases: [{ name: "neondb" }] },
         })),
+      // One endpoint per branch, named after it, as in `connectionUri`.
+      listProjectBranchEndpoints: async (projectId: string, branchId: string) =>
+        call("listProjectBranchEndpoints", [projectId, branchId], () => ({
+          data: {
+            endpoints: [
+              { id: this.get(branchId).id, host: `${branchId}.fake-neon.test` },
+            ],
+          },
+        })),
       getConnectionUri: async (params: { branch_id: string }) =>
         call("getConnectionUri", [params], () => ({
           data: { uri: this.connectionUri(this.get(params.branch_id).id) },

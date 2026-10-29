@@ -12,7 +12,9 @@ testSkipIfWindows(
     const toggle = po.page.getByRole("switch", {
       name: "Allow parallel E2E test runs",
     });
-    const runs = po.page.getByLabel("Concurrent tests");
+    const runs = po.page.getByRole("spinbutton", {
+      name: "Maximum concurrent test runs",
+    });
     await expect(toggle).not.toBeChecked();
     await expect(runs).toHaveValue("2");
     await expect(runs).toBeDisabled();

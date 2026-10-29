@@ -4,6 +4,7 @@ import path from "node:path";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { apps } from "@/db/schema";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { createInMemoryTestDb, type TestDb } from "@/testing/test_db";
 
 const h = vi.hoisted(() => ({
@@ -100,4 +101,33 @@ it("preserves provider compatibility and exclusive setup", async () => {
     .where(eq(apps.id, 7))
     .run();
   expect((await loadTestRunContext(request)).exclusive).toBe(true);
+});
+
+it("classifies a deleted app as missing", async () => {
+  h.db!.delete(apps).where(eq(apps.id, request.appId)).run();
+  await expect(loadTestRunContext(request)).rejects.toEqual(
+    new DyadError("App no longer exists", DyadErrorKind.NotFound),
+  );
+});
+
+it("explains how to recover a missing app folder", async () => {
+  await fs.rm(h.appPath, { recursive: true });
+  await expect(loadTestRunContext(request)).rejects.toMatchObject({
+    name: "DyadError",
+    kind: DyadErrorKind.NotFound,
+    message: expect.stringContaining(
+      "Restore the folder or import the app again",
+    ),
+    cause: expect.objectContaining({ code: "ENOENT" }),
+  });
+});
+
+it("preserves other filesystem failures", async () => {
+  const error = Object.assign(new Error("Access denied"), { code: "EACCES" });
+  const realpath = vi.spyOn(fs, "realpath").mockRejectedValueOnce(error);
+  try {
+    await expect(loadTestRunContext(request)).rejects.toBe(error);
+  } finally {
+    realpath.mockRestore();
+  }
 });

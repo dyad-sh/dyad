@@ -15,8 +15,12 @@ import {
   clearTestRuntimeForAppAtom,
   currentTestRunOutputAtom,
   currentTestRunStateAtom,
+  testRunOutputByAppIdAtom,
 } from "@/atoms/testRuntimeAtoms";
-import { MAX_TEST_RUN_OUTPUT_LENGTH } from "@/atoms/testOutputAtoms";
+import {
+  MAX_TEST_RUN_OUTPUT_LENGTH,
+  MAX_FINISHED_TEST_OUTPUT_TABS,
+} from "@/atoms/testOutputAtoms";
 import { TestOutputDrawer } from "./TestOutputDrawer";
 
 vi.mock("react-i18next", async () => {
@@ -48,13 +52,17 @@ function setup() {
         <TestOutputDrawer open={open} onToggle={onToggle} />
       </Provider>,
     );
-  const start = (runId: number, appId = 1) =>
+  const start = (
+    runId: number,
+    appId = 1,
+    testFile = "e2e-tests/signup.spec.ts",
+  ) =>
     act(() => {
       store.set(applyTestRunStartedAtom, {
         appId,
         runId,
         source: "panel",
-        testFile: "e2e-tests/signup.spec.ts",
+        testFile,
       });
     });
   const append = (runId: number, chunk: string, appId = 1) =>
@@ -231,6 +239,52 @@ describe("TestOutputDrawer", () => {
     expect(output.endsWith("tail")).toBe(true);
     fireEvent.click(tab(2));
     expect(screen.getByRole("tabpanel").textContent).toBe("small run");
+  });
+
+  it("evicts old finished tabs while preserving active output, selection, and AI context", () => {
+    const { store, mount, start, append, tab } = setup();
+    mount();
+    start(1);
+    append(1, "still running");
+    for (let runId = 2; runId <= MAX_FINISHED_TEST_OUTPUT_TABS + 2; runId++) {
+      start(runId, 1, runId > 3 ? "e2e-tests/other.spec.ts" : undefined);
+      append(runId, `output ${runId}`);
+      fireEvent.click(tab(2));
+      act(() =>
+        store.set(applyTestRunFinishedAtom, {
+          appId: 1,
+          expectedRunId: runId,
+          isPartialRun: false,
+          res: {
+            appId: 1,
+            results:
+              runId === 3
+                ? [{ file: "e2e-tests/signup.spec.ts", status: "failed" }]
+                : [],
+          },
+        }),
+      );
+    }
+    expect(screen.getAllByRole("tab")).toHaveLength(
+      MAX_FINISHED_TEST_OUTPUT_TABS + 1,
+    );
+    expect(tab(2).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("tabpanel").textContent).toBe("output 2");
+    expect(
+      screen.queryByRole("tab", { name: "Run 3 · signup.spec.ts" }),
+    ).toBeNull();
+    // Late output cannot resurrect an evicted tab, and its failed result still
+    // has the original AI fix context in the separate result-owned buffer.
+    append(3, " late");
+    expect(
+      screen.queryByRole("tab", { name: "Run 3 · signup.spec.ts" }),
+    ).toBeNull();
+    expect(store.get(testRunOutputByAppIdAtom).get(1)?.get(3)).toBe(
+      "output 3 late",
+    );
+    fireEvent.click(tab(1));
+    expect(screen.getByRole("tabpanel").textContent).toBe("still running");
+    expect(store.get(currentTestRunStateAtom).activeRuns?.[1]).toBeDefined();
   });
 
   it("keeps the drawer collapsible", () => {

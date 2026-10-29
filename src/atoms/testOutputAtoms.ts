@@ -3,6 +3,7 @@ import { selectedAppIdAtom } from "./appAtoms";
 
 /** Keep the tail of each run's output, including verbose setup logs. */
 export const MAX_TEST_RUN_OUTPUT_LENGTH = 500_000;
+export const MAX_FINISHED_TEST_OUTPUT_TABS = 10;
 
 interface TestOutputTab {
   runId: number;
@@ -11,6 +12,7 @@ interface TestOutputTab {
   fileCount: number;
   output: string;
   error?: string;
+  finished: boolean;
 }
 
 interface TestOutputTabs {
@@ -62,6 +64,7 @@ export const openTestOutputTabAtom = atom(
             target,
             fileCount,
             output: "",
+            finished: false,
           },
         ].sort((a, b) => a.runId - b.runId),
         // An older bootstrap snapshot must not steal a newer live run's tab.
@@ -74,7 +77,7 @@ export const openTestOutputTabAtom = atom(
   },
 );
 
-export const setTestOutputTabErrorAtom = atom(
+export const finishTestOutputTabAtom = atom(
   null,
   (
     _get,
@@ -84,11 +87,28 @@ export const setTestOutputTabErrorAtom = atom(
     set(testOutputTabsByAppIdAtom, (prev) => {
       const current = prev.get(appId);
       if (!current?.tabs.some((tab) => tab.runId === runId)) return prev;
+      const tabs = current.tabs.map((tab) =>
+        tab.runId === runId ? { ...tab, error, finished: true } : tab,
+      );
+      let excess =
+        tabs.filter((tab) => tab.finished).length -
+        MAX_FINISHED_TEST_OUTPUT_TABS;
       return new Map(prev).set(appId, {
         ...current,
-        tabs: current.tabs.map((tab) =>
-          tab.runId === runId ? { ...tab, error } : tab,
-        ),
+        // Tabs are ordered oldest first. Keep active output and the tab being
+        // read; only evict finished, unselected history. AI fix context is
+        // retained separately by the runtime result projection.
+        tabs: tabs.filter((tab) => {
+          if (
+            excess > 0 &&
+            tab.finished &&
+            tab.runId !== current.selectedRunId
+          ) {
+            excess--;
+            return false;
+          }
+          return true;
+        }),
       });
     });
   },

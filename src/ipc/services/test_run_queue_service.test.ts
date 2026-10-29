@@ -602,6 +602,27 @@ it("keeps serial apps independent and does not load unused admission metadata", 
   expect(queued.execute).toHaveBeenCalledOnce();
 });
 
+it("counts unsettled owners against the global run limit until their processes close", async () => {
+  h.settings.enableParallelTestRuns = true;
+  h.settings.maxConcurrentTestRuns = 2;
+  const first = enqueue(1);
+  await tick();
+  h.remainingProcesses = [{}];
+  first.finish();
+  await first.result;
+  const other = enqueue(2);
+  const queued = enqueue(3);
+  await tick();
+  expect(other.execute).toHaveBeenCalledOnce();
+  expect(queued.execute).not.toHaveBeenCalled();
+  expect(service.getAppTestRunQueue(3).queuedRuns[0].queuedReason).toBe(
+    "capacity",
+  );
+  h.remainingProcesses = [];
+  await tick(2000);
+  expect(queued.execute).toHaveBeenCalledOnce();
+});
+
 it.each(["independent", "workspace", "database"])(
   "scopes lingering-process admission blocks to shared resources (%s)",
   async (sharing) => {

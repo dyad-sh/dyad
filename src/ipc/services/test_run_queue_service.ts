@@ -189,7 +189,10 @@ export function createTestRunQueueService({
           queue.waiting(candidate.runId, "process-cleanup");
           continue;
         }
-        if (!before.enableParallelTestRuns || activeCount >= limitBefore) {
+        if (
+          !before.enableParallelTestRuns ||
+          activeCount + unsettledOwners.size >= limitBefore
+        ) {
           queue.waiting(candidate.runId, "capacity");
           return;
         }
@@ -247,7 +250,7 @@ export function createTestRunQueueService({
           ? "context-unavailable"
           : processCleanupBlocked
             ? "process-cleanup"
-            : active.length >= limit
+            : active.length + unsettledOwners.size >= limit
               ? "capacity"
               : conflictsWithEarlierRun
                 ? "earlier-run"
@@ -264,6 +267,7 @@ export function createTestRunQueueService({
               reason,
               previous_reason: candidate.queuedReason ?? null,
               active_run_count: active.length,
+              unsettled_run_count: unsettledOwners.size,
               active_run_ids: active.map((run) => run.runId),
               parallel_enabled: !!settings.enableParallelTestRuns,
               process_cleanup_blocked: processCleanupBlocked,

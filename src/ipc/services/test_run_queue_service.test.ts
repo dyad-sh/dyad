@@ -6,7 +6,10 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { sendTelemetryEvent } from "../utils/telemetry";
 import { measureTestRunStep } from "./test_run_timing";
 import { loadTestRunContext } from "./test_run_context";
-import { createTestRunQueueService } from "./test_run_queue_service";
+import {
+  createTestRunQueueService,
+  type AppTestRunExecution,
+} from "./test_run_queue_service";
 import { TestRunQueueSchema } from "../types/tests";
 
 const h = vi.hoisted(() => ({
@@ -86,7 +89,7 @@ function enqueue(appId = 1) {
     finish = resolve;
   });
   let signal: AbortSignal | undefined;
-  const execute = vi.fn(async (run: { signal: AbortSignal }) => {
+  const execute = vi.fn(async (run: AppTestRunExecution) => {
     signal = run.signal;
     await held;
     return "done";
@@ -771,6 +774,28 @@ it("returns to serial admission when parallel runs are disabled", async () => {
   await second.result;
   expect(third.execute).toHaveBeenCalledOnce();
 });
+
+it.each([false, true])(
+  "captures parallel mode at admission (%s) before execution",
+  async (parallel) => {
+    h.settings.enableParallelTestRuns = parallel;
+    // Parallel admission publishes its decision before the execution microtask.
+    h.info.mockImplementation((name, data) => {
+      if (
+        name === "e2e_test_admission_decision" &&
+        data.decision === "admitted"
+      )
+        h.settings.enableParallelTestRuns = !parallel;
+    });
+    const run = enqueue();
+    // Serial admission is synchronous; execution still runs on a microtask.
+    if (!parallel) h.settings.enableParallelTestRuns = true;
+    await tick();
+    expect(h.settings.enableParallelTestRuns).toBe(!parallel);
+    expect(run.execute).toHaveBeenCalledOnce();
+    expect(run.execute.mock.calls[0][0].parallelRunsEnabled).toBe(parallel);
+  },
+);
 
 it("diagnostic failures cannot prevent completion or the next admission", async () => {
   h.settings.enableParallelTestRuns = true;

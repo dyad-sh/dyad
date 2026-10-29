@@ -20,8 +20,10 @@ import {
 } from "@/ipc/utils/test_screenshot";
 import { usesSandboxedE2eTests } from "@/lib/e2eSandbox";
 import { reconcileResultFile } from "@/lib/testResultUtils";
-import { getAppTestRunQueue } from "@/ipc/services/test_run_queue_service";
-import type { TestRunExecution } from "@/test_run_queue/controller";
+import {
+  getAppTestRunQueue,
+  type AppTestRunExecution,
+} from "@/ipc/services/test_run_queue_service";
 import type { TestRunTiming } from "@/ipc/services/test_run_timing";
 import { readSettings } from "@/main/settings";
 import type { RunAppTestsResult, TestResult } from "@/ipc/types/tests";
@@ -329,7 +331,7 @@ function consumeFreeFlakeCheck(
 async function runSpecs(
   ctx: AgentContext,
   testFiles: string[],
-  queueRun: TestRunExecution,
+  queueRun: AppTestRunExecution,
   grep?: string,
   timing?: TestRunTiming,
 ): Promise<RunAppTestsResult> {

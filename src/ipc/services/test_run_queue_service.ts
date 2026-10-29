@@ -30,8 +30,13 @@ const logger = log.scope("test_run_queue");
 const ADMISSION_RETRY_INTERVAL_MS = 2000;
 const ADMISSION_CONTEXT_REFRESH_INTERVAL_MS = 30_000;
 const MAX_ADMISSION_CONTEXT_FAILURES = 3;
+export interface AppTestRunExecution extends TestRunExecution {
+  /** The mode that granted this run its queue slot, stable through cleanup. */
+  readonly parallelRunsEnabled: boolean;
+}
 type RunRecord = {
   request: TestRunContextRequest;
+  parallelRunsEnabled: boolean;
   context?: TestRunContext | null;
   contextCheckedAt?: number;
   contextStateKey?: string;
@@ -103,7 +108,10 @@ export function createTestRunQueueService({
       if (busyApps.has(run.appId)) continue;
       busyApps.add(run.appId);
       const record = records.get(run.runId);
-      if (record) record.context = undefined;
+      if (record) {
+        record.context = undefined;
+        record.parallelRunsEnabled = false;
+      }
       queue.admit(run.runId);
     }
   }
@@ -313,6 +321,7 @@ export function createTestRunQueueService({
           continue;
         }
         queue.waiting(candidate.runId, "starting", context?.branch);
+        record.parallelRunsEnabled = true;
         queue.admit(candidate.runId);
         queueAdvanced = true;
         return;
@@ -332,7 +341,10 @@ export function createTestRunQueueService({
       externalSignal?: AbortSignal;
       onQueued?: (position: number) => void;
     },
-    execute: (run: TestRunExecution, timing: TestRunTiming) => Promise<Result>,
+    execute: (
+      run: AppTestRunExecution,
+      timing: TestRunTiming,
+    ) => Promise<Result>,
     cancelled: (reason: TestRunStopReason) => Result,
   ): Promise<Result> {
     if (deletingApps.has(options.appId))
@@ -361,7 +373,7 @@ export function createTestRunQueueService({
       slowMo: options.slowMo,
       preview: options.preview,
     };
-    const record: RunRecord = { request };
+    const record: RunRecord = { request, parallelRunsEnabled: false };
     records.set(runId, record);
     senders.set(options.appId, options.event.sender);
     const timing = new TestRunTiming({
@@ -379,7 +391,10 @@ export function createTestRunQueueService({
           queueWait.end();
           record.signal = run.signal;
           try {
-            return await execute(run, timing);
+            return await execute(
+              { ...run, parallelRunsEnabled: record.parallelRunsEnabled },
+              timing,
+            );
           } finally {
             if (trackedE2eTestProcessesForOwner(run.signal).length)
               unsettledOwners.set(run.signal, record);

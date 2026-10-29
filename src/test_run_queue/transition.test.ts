@@ -27,6 +27,9 @@ const events: TestRunQueueEvent[] = [
   { type: "cancel", runId: 3, reason: chatStop },
   { type: "settled", runId: 1 },
   { type: "settled", runId: 2 },
+  { type: "reject", runId: 1 },
+  { type: "reject", runId: 2 },
+  { type: "reject", runId: 3 },
   { type: "stop", reason: panelStop },
 ];
 

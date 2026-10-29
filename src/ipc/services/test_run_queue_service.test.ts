@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { IpcMainInvokeEvent } from "electron";
 import { performance } from "node:perf_hooks";
 import { readSettings } from "@/main/settings";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { sendTelemetryEvent } from "../utils/telemetry";
 import { measureTestRunStep } from "./test_run_timing";
 import { loadTestRunContext } from "./test_run_context";
@@ -501,6 +502,41 @@ it("reports metadata failures and retries them on the slow refresh interval", as
   expect(loadTestRunContext).toHaveBeenCalledTimes(2);
   expect(run.execute).toHaveBeenCalledOnce();
 });
+
+it.each([
+  new Error("Cannot read Git repository"),
+  new DyadError("App no longer exists", DyadErrorKind.NotFound),
+])(
+  "rejects repeated metadata failures and releases the app queue: %s",
+  async (error) => {
+    h.settings.enableParallelTestRuns = true;
+    vi.mocked(loadTestRunContext)
+      .mockRejectedValueOnce(error)
+      .mockRejectedValueOnce(error)
+      .mockRejectedValueOnce(error);
+    const failed = enqueue(1);
+    const rejection = expect(failed.result).rejects.toMatchObject(
+      error instanceof DyadError
+        ? error
+        : {
+            name: "DyadError",
+            kind: DyadErrorKind.Precondition,
+            message: expect.stringContaining("after three attempts"),
+            cause: error,
+          },
+    );
+    const successor = enqueue(1);
+    await tick(30_010);
+    expect(loadTestRunContext).toHaveBeenCalledTimes(2);
+    expect(successor.execute).not.toHaveBeenCalled();
+    await tick(30_010);
+    await rejection;
+    expect(loadTestRunContext).toHaveBeenCalledTimes(4);
+    expect(failed.execute).not.toHaveBeenCalled();
+    expect(successor.execute).toHaveBeenCalledOnce();
+    expect(service.getAppTestRunQueue(1).queuedRuns).toEqual([]);
+  },
+);
 
 it("skips an incompatible app while preserving its FIFO order", async () => {
   h.settings.enableParallelTestRuns = true;

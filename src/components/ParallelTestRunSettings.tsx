@@ -26,7 +26,9 @@ export function ParallelTestRunSettings() {
         <Label htmlFor="parallel-test-runs">Allow parallel E2E test runs</Label>
       </div>
       <div className="flex flex-wrap items-center gap-3">
-        <Label htmlFor="max-concurrent-test-runs">Concurrent tests</Label>
+        <Label htmlFor="max-concurrent-test-runs">
+          Maximum concurrent test runs
+        </Label>
         <Input
           id="max-concurrent-test-runs"
           aria-describedby="concurrent-test-runs-description"

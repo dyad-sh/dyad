@@ -1,6 +1,6 @@
 import type { IpcMainInvokeEvent } from "electron";
 import log from "electron-log";
-import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import { readSettings } from "@/main/settings";
 import {
   TestRunQueue,
@@ -29,11 +29,13 @@ import {
 const logger = log.scope("test_run_queue");
 const ADMISSION_RETRY_INTERVAL_MS = 2000;
 const ADMISSION_CONTEXT_REFRESH_INTERVAL_MS = 30_000;
+const MAX_ADMISSION_CONTEXT_FAILURES = 3;
 type RunRecord = {
   request: TestRunContextRequest;
   context?: TestRunContext | null;
   contextCheckedAt?: number;
   contextStateKey?: string;
+  contextFailures?: number;
   signal?: AbortSignal;
   neonBranchLimit?: { status: NeonBranchLimitStatus; projectId: string };
 };
@@ -163,7 +165,7 @@ export function createTestRunQueueService({
   async function drive() {
     if (driving) return;
     driving = true;
-    let admitted = false;
+    let queueAdvanced = false;
     try {
       const settings = readSettings();
       let limit =
@@ -212,13 +214,30 @@ export function createTestRunQueueService({
         ) {
           try {
             record.context = await loadTestRunContext(record.request, settings);
+            record.contextFailures = 0;
           } catch (error) {
             record.context = null;
+            record.contextFailures = (record.contextFailures ?? 0) + 1;
             logger.warn("Failed to load test admission context", {
               appId: candidate.appId,
               runId: candidate.runId,
               error,
             });
+            if (record.contextFailures >= MAX_ADMISSION_CONTEXT_FAILURES) {
+              queue.failAdmission(
+                candidate.runId,
+                isDyadError(error)
+                  ? error
+                  : new DyadError(
+                      "Could not read the app's test setup after three attempts. Check that the app folder exists and its Git repository is readable, then run the tests again.",
+                      DyadErrorKind.Precondition,
+                      { cause: error },
+                    ),
+              );
+              earlierApps.delete(candidate.appId);
+              queueAdvanced = true;
+              continue;
+            }
           }
           record.contextStateKey = stateKey;
           record.contextCheckedAt = clock.now();
@@ -295,7 +314,7 @@ export function createTestRunQueueService({
         }
         queue.waiting(candidate.runId, "starting", context?.branch);
         queue.admit(candidate.runId);
-        admitted = true;
+        queueAdvanced = true;
         return;
       }
     } catch (error) {
@@ -303,7 +322,7 @@ export function createTestRunQueueService({
     } finally {
       driving = false;
       // Fill available slots without waiting for dependency setup.
-      scheduleDrive(admitted ? 0 : ADMISSION_RETRY_INTERVAL_MS);
+      scheduleDrive(queueAdvanced ? 0 : ADMISSION_RETRY_INTERVAL_MS);
     }
   }
 

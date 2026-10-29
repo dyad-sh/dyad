@@ -49,6 +49,7 @@ export type TestRunQueueEvent =
   | { type: "stop"; reason: TestRunStopReason }
   | { type: "settled"; runId: number }
   | { type: "admit"; runId: number }
+  | { type: "reject"; runId: number }
   | {
       type: "waiting";
       runId: number;
@@ -58,6 +59,7 @@ export type TestRunQueueEvent =
 
 export type TestRunQueueCommand =
   | { type: "execute"; runId: number }
+  | { type: "reject-queued"; runId: number }
   | { type: "abort"; runId: number; reason: TestRunStopReason }
   | { type: "cancel-queued"; runId: number; reason: TestRunStopReason };
 

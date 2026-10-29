@@ -1010,6 +1010,48 @@ describe("useTestRunEvents", () => {
     ]);
   });
 
+  it("reconciles an older run that finishes after its newer sibling", async () => {
+    const { store, Wrapper } = makeWrapper();
+    renderHook(() => useTestRunEvents(), { wrapper: Wrapper });
+    listAppTestsMock.mockResolvedValue({
+      specs: [
+        { file: "tests/older.spec.ts", tests: [] },
+        { file: "tests/newer.spec.ts", tests: [] },
+      ],
+    });
+    act(() => {
+      for (const runId of [1, 2])
+        emitRunState({
+          appId: 1,
+          runId,
+          source: "agent",
+          state: "started",
+          testFile: runId === 1 ? "tests/older.spec.ts" : "tests/newer.spec.ts",
+        });
+      for (const runId of [2, 1])
+        emitRunState({
+          appId: 1,
+          runId,
+          source: "agent",
+          state: "finished",
+          results: [
+            {
+              file: runId === 1 ? "older.spec.ts" : "newer.spec.ts",
+              status: "passed",
+            },
+          ],
+        });
+    });
+    await waitFor(() =>
+      expect(
+        store.get(testRunStateByAppIdAtom).get(1)?.results[
+          "tests/older.spec.ts"
+        ]?.status,
+      ).toBe("passed"),
+    );
+    expect(store.get(testRunStateByAppIdAtom).get(1)?.phase).toBe("idle");
+  });
+
   it("still finishes the run when the spec-list refresh fails", async () => {
     const { store, Wrapper } = makeWrapper();
     renderHook(() => useTestRunEvents(), { wrapper: Wrapper });

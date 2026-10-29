@@ -1,5 +1,12 @@
 {
   "testRunQueue": {
+    "waitReason": {
+      "process-cleanup": "正在等待测试进程停止",
+      "capacity": "正在等待运行中的测试完成",
+      "compatibility": "正在等待兼容的数据库和工作区",
+      "earlier-run": "正在等待此应用先前的测试运行",
+      "starting": "正在启动"
+    },
     "title": "测试队列",
     "openTests": "打开测试",
     "allTests": "所有测试",

@@ -1,5 +1,12 @@
 {
   "testRunQueue": {
+    "waitReason": {
+      "process-cleanup": "Esperando a que se detenga un proceso de prueba",
+      "capacity": "Esperando a que termine una ejecución activa",
+      "compatibility": "Esperando una base de datos y un espacio de trabajo compatibles",
+      "earlier-run": "Esperando una ejecución anterior de esta app",
+      "starting": "Iniciando"
+    },
     "title": "Cola de pruebas",
     "openTests": "Abrir Pruebas",
     "allTests": "Todas las pruebas",

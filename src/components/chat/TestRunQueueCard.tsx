@@ -203,6 +203,9 @@ export function TestRunQueueCard({
         {rows.map((run) => {
           const label = runLabel(run);
           const runChatId = run.chatId;
+          const queuedReason = run.queuedReason
+            ? t(`testRunQueue.waitReason.${run.queuedReason}`)
+            : undefined;
           // Say why a run stopped (or is stopping) instead of a bare status.
           const stopReason =
             (run.status === "stopped" || run.status === "stopping") &&
@@ -222,11 +225,11 @@ export function TestRunQueueCard({
                 <div className="truncate" title={label}>
                   {label}
                 </div>
-                {run.status === "queued" && run.queuedReason && (
-                  <p className="mt-0.5 whitespace-normal">{run.queuedReason}</p>
+                {run.status === "queued" && queuedReason && (
+                  <p className="mt-0.5 whitespace-normal">{queuedReason}</p>
                 )}
               </div>
-              <span className="shrink-0" title={stopReason ?? run.queuedReason}>
+              <span className="shrink-0" title={stopReason ?? queuedReason}>
                 {t(`testRunQueue.${run.status}`)}
                 {stopReason && (
                   <span className="sr-only">{`: ${stopReason}`}</span>

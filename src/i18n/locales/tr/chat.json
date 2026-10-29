@@ -1,5 +1,12 @@
 {
   "testRunQueue": {
+    "waitReason": {
+      "process-cleanup": "Bir test işleminin durması bekleniyor",
+      "capacity": "Etkin bir test çalıştırmasının bitmesi bekleniyor",
+      "compatibility": "Uyumlu veritabanı ve çalışma alanı bekleniyor",
+      "earlier-run": "Bu uygulamanın önceki çalıştırması bekleniyor",
+      "starting": "Başlatılıyor"
+    },
     "title": "Test kuyruğu",
     "openTests": "Testleri aç",
     "allTests": "Tüm testler",

@@ -115,103 +115,128 @@ export function createTestRunQueueService({
     driveTimer.unref?.();
   }
 
+  function compatibleWithRun(
+    request: TestRunContextRequest,
+    context: TestRunContext | null | undefined,
+    otherRunId: number,
+  ) {
+    const other = records.get(otherRunId);
+    if (!context || !other?.context) return false;
+    const sharedWorkspace =
+      request.appId === other.request.appId ||
+      context.workspaceKey === other.context.workspaceKey;
+    const sharedDatabase =
+      !!context.databaseKey &&
+      context.databaseKey === other.context.databaseKey;
+    if (
+      (sharedWorkspace || sharedDatabase) &&
+      (context.exclusive || other.context.exclusive)
+    )
+      return false;
+    return (
+      !sharedDatabase ||
+      (context.branch === other.context.branch &&
+        context.revision === other.context.revision)
+    );
+  }
+
   async function drive() {
     if (driving) return;
     driving = true;
     let admitted = false;
     try {
       startSerialRun();
-      const candidate = queue.getSnapshot().queuedRuns[0];
-      if (!candidate) return;
-      const record = records.get(candidate.runId);
-      if (!record) return;
-      refreshUnsettledOwners();
-      const before = readSettings();
-      const activeCount = queue.getSnapshot().activeRuns?.length ?? 0;
-      const limitBefore =
-        before.maxConcurrentTestRuns ?? DEFAULT_MAX_CONCURRENT_TEST_RUNS;
-      // Polling observes settings and late process settlement cheaply. No git
-      // or workspace reads are needed when admission is already impossible.
-      if (
-        unsettledOwners.size ||
-        !before.enableParallelTestRuns ||
-        activeCount >= limitBefore
-      ) {
-        queue.waiting(
-          candidate.runId,
-          unsettledOwners.size
-            ? "Waiting for a test process to stop"
-            : "Waiting for an active test run to finish",
-        );
-        return;
-      }
-      // Capture current branch/config inputs, not consumption predictions.
-      record.context = await loadTestRunContext(record.request).catch(
-        () => null,
-      );
-      if (queue.getSnapshot().queuedRuns[0]?.runId !== candidate.runId) return;
-      refreshUnsettledOwners();
-      const processCleanupBlocked = unsettledOwners.size > 0;
-      const active = queue.getSnapshot().activeRuns ?? [];
-      const settings = readSettings();
-      if (!settings.enableParallelTestRuns) {
-        startSerialRun();
-        return;
-      }
-      const limit = settings.enableParallelTestRuns
-        ? (settings.maxConcurrentTestRuns ?? DEFAULT_MAX_CONCURRENT_TEST_RUNS)
-        : 1;
-      const context = record.context;
-      const compatible =
-        !!context &&
-        !context.exclusive &&
-        active.every((run) => {
-          const other = records.get(run.runId)?.context;
-          return (
-            other &&
-            !other.exclusive &&
-            (!context.databaseKey ||
-              context.databaseKey !== other.databaseKey ||
-              (context.branch === other.branch &&
-                context.revision === other.revision))
-          );
-        });
-      const reason = processCleanupBlocked
-        ? "Waiting for a test process to stop"
-        : active.length >= limit
-          ? "Waiting for an active test run to finish"
-          : active.length && !compatible
-            ? "Waiting for a compatible database and workspace"
-            : null;
-      if (!reason || candidate.queuedReason !== reason) {
-        try {
-          logger.info("e2e_test_admission_decision", {
-            app_id: candidate.appId,
-            run_id: candidate.runId,
-            source: candidate.source,
-            decision: reason ? "queued" : "admitted",
-            reason,
-            previous_reason: candidate.queuedReason ?? null,
-            active_run_count: active.length,
-            active_run_ids: active.map((run) => run.runId),
-            parallel_enabled: !!settings.enableParallelTestRuns,
-            process_cleanup_blocked: processCleanupBlocked,
-            admission: {
-              limit,
-              compatible,
-            },
-          });
-        } catch {
-          // Diagnostics must never prevent queue updates or test execution.
+      const earlierApps = new Set<number | undefined>();
+      for (const candidate of queue.getSnapshot().queuedRuns) {
+        if (earlierApps.has(candidate.appId)) {
+          queue.waiting(candidate.runId, "earlier-run");
+          continue;
         }
-      }
-      if (reason) {
-        queue.waiting(candidate.runId, reason, context?.branch);
+        earlierApps.add(candidate.appId);
+        const record = records.get(candidate.runId);
+        if (!record) continue;
+        refreshUnsettledOwners();
+        const before = readSettings();
+        const activeCount = queue.getSnapshot().activeRuns?.length ?? 0;
+        const limitBefore =
+          before.maxConcurrentTestRuns ?? DEFAULT_MAX_CONCURRENT_TEST_RUNS;
+        // Polling observes settings and late process settlement cheaply. No git
+        // or workspace reads are needed when admission is already impossible.
+        if (
+          unsettledOwners.size ||
+          !before.enableParallelTestRuns ||
+          activeCount >= limitBefore
+        ) {
+          queue.waiting(
+            candidate.runId,
+            unsettledOwners.size ? "process-cleanup" : "capacity",
+          );
+          return;
+        }
+        // Capture current branch/config inputs, not consumption predictions.
+        record.context = await loadTestRunContext(record.request).catch(
+          () => null,
+        );
+        if (
+          !queue
+            .getSnapshot()
+            .queuedRuns.some((run) => run.runId === candidate.runId)
+        )
+          continue;
+        refreshUnsettledOwners();
+        const processCleanupBlocked = unsettledOwners.size > 0;
+        const active = queue.getSnapshot().activeRuns ?? [];
+        const settings = readSettings();
+        if (!settings.enableParallelTestRuns) {
+          startSerialRun();
+          return;
+        }
+        const limit = settings.enableParallelTestRuns
+          ? (settings.maxConcurrentTestRuns ?? DEFAULT_MAX_CONCURRENT_TEST_RUNS)
+          : 1;
+        const context = record.context;
+        const compatible = active.every((run) =>
+          compatibleWithRun(record.request, context, run.runId),
+        );
+        const reason = processCleanupBlocked
+          ? "process-cleanup"
+          : active.length >= limit
+            ? "capacity"
+            : active.length && !compatible
+              ? "compatibility"
+              : null;
+        if (!reason || candidate.queuedReason !== reason) {
+          try {
+            logger.info("e2e_test_admission_decision", {
+              app_id: candidate.appId,
+              run_id: candidate.runId,
+              source: candidate.source,
+              decision: reason ? "queued" : "admitted",
+              reason,
+              previous_reason: candidate.queuedReason ?? null,
+              active_run_count: active.length,
+              active_run_ids: active.map((run) => run.runId),
+              parallel_enabled: !!settings.enableParallelTestRuns,
+              process_cleanup_blocked: processCleanupBlocked,
+              admission: {
+                limit,
+                compatible,
+              },
+            });
+          } catch {
+            // Diagnostics must never prevent queue updates or test execution.
+          }
+        }
+        if (reason) {
+          queue.waiting(candidate.runId, reason, context?.branch);
+          if (reason !== "compatibility") return;
+          continue;
+        }
+        queue.waiting(candidate.runId, "starting", context?.branch);
+        queue.admit(candidate.runId);
+        admitted = true;
         return;
       }
-      queue.waiting(candidate.runId, "Starting", context?.branch);
-      queue.admit(candidate.runId);
-      admitted = true;
     } catch (error) {
       logger.error("Test admission failed", error);
     } finally {
@@ -367,18 +392,9 @@ export function createTestRunQueueService({
     );
     if (
       !current ||
-      others.some((run) => {
-        const other = records.get(run.runId)?.context;
-        return (
-          !other ||
-          current.exclusive ||
-          other.exclusive ||
-          (current.databaseKey &&
-            current.databaseKey === other.databaseKey &&
-            (current.branch !== other.branch ||
-              current.revision !== other.revision))
-        );
-      })
+      others.some(
+        (run) => !compatibleWithRun(record.request, current, run.runId),
+      )
     )
       throw new DyadError(
         "The test database or workspace changed and is no longer compatible with another active run. Run it again after that run finishes.",

@@ -1,5 +1,12 @@
 {
   "testRunQueue": {
+    "waitReason": {
+      "process-cleanup": "테스트 프로세스가 중지될 때까지 기다리는 중",
+      "capacity": "실행 중인 테스트가 끝날 때까지 기다리는 중",
+      "compatibility": "호환되는 데이터베이스와 작업 공간을 기다리는 중",
+      "earlier-run": "이 앱의 앞선 실행을 기다리는 중",
+      "starting": "시작 중"
+    },
     "title": "테스트 대기열",
     "openTests": "테스트 열기",
     "allTests": "모든 테스트",

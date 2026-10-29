@@ -1,5 +1,12 @@
 {
   "testRunQueue": {
+    "waitReason": {
+      "process-cleanup": "Aguardando um processo de teste parar",
+      "capacity": "Aguardando uma execução ativa terminar",
+      "compatibility": "Aguardando um banco de dados e espaço de trabalho compatíveis",
+      "earlier-run": "Aguardando uma execução anterior deste app",
+      "starting": "Iniciando"
+    },
     "title": "Fila de testes",
     "openTests": "Abrir Testes",
     "allTests": "Todos os testes",

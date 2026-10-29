@@ -1,5 +1,12 @@
 {
   "testRunQueue": {
+    "waitReason": {
+      "process-cleanup": "Waiting for a test process to stop",
+      "capacity": "Waiting for an active test run to finish",
+      "compatibility": "Waiting for a compatible database and workspace",
+      "earlier-run": "Waiting for an earlier run of this app",
+      "starting": "Starting"
+    },
     "title": "Test queue",
     "openTests": "Open Tests",
     "allTests": "All tests",

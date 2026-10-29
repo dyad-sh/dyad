@@ -3,6 +3,7 @@ import {
   getCancellationInfo,
 } from "@/shared/cancellation_reason";
 import { SnapshotStore } from "@/state_machines/snapshot_store";
+import type { TestRunWaitReason } from "@/shared/test_run_queue";
 import {
   observeTransition,
   type TransitionObserver,
@@ -121,7 +122,7 @@ export class TestRunQueue {
   admit(runId: number) {
     this.send({ type: "admit", runId });
   }
-  waiting(runId: number, reason: string, branch?: string) {
+  waiting(runId: number, reason: TestRunWaitReason, branch?: string) {
     this.send({ type: "waiting", runId, reason, branch });
   }
   cancel(runId: number, reason: TestRunStopReason) {

@@ -4,7 +4,8 @@
       "process-cleanup": "Bir test işleminin durması bekleniyor",
       "capacity": "Etkin bir test çalıştırmasının bitmesi bekleniyor",
       "compatibility": "Uyumlu veritabanı ve çalışma alanı bekleniyor",
-      "earlier-run": "Bu uygulamanın önceki çalıştırması bekleniyor",
+      "earlier-run": "Önceki bir test çalıştırması bekleniyor",
+      "context-unavailable": "Uygulamanın test ayarlarının okunması bekleniyor. Uygulama dosyalarını ve Git deposunu kontrol edin.",
       "starting": "Başlatılıyor"
     },
     "title": "Test kuyruğu",

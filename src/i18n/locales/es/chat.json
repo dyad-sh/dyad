@@ -4,7 +4,8 @@
       "process-cleanup": "Esperando a que se detenga un proceso de prueba",
       "capacity": "Esperando a que termine una ejecución activa",
       "compatibility": "Esperando una base de datos y un espacio de trabajo compatibles",
-      "earlier-run": "Esperando una ejecución anterior de esta app",
+      "earlier-run": "Esperando una ejecución de pruebas anterior",
+      "context-unavailable": "Esperando a leer la configuración de pruebas. Revisa los archivos de la app y el repositorio Git.",
       "starting": "Iniciando"
     },
     "title": "Cola de pruebas",

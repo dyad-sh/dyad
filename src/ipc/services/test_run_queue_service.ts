@@ -27,9 +27,12 @@ import {
 
 const logger = log.scope("test_run_queue");
 const ADMISSION_RETRY_INTERVAL_MS = 2000;
+const ADMISSION_CONTEXT_REFRESH_INTERVAL_MS = 30_000;
 type RunRecord = {
   request: TestRunContextRequest;
   context?: TestRunContext | null;
+  contextCheckedAt?: number;
+  contextStateKey?: string;
   signal?: AbortSignal;
   neonBranchLimit?: { status: NeonBranchLimitStatus; projectId: string };
 };
@@ -163,6 +166,7 @@ export function createTestRunQueueService({
     try {
       startSerialRun();
       const earlierApps = new Set<number | undefined>();
+      const waitingRunIds: number[] = [];
       for (const candidate of queue.getSnapshot().queuedRuns) {
         if (earlierApps.has(candidate.appId)) {
           queue.waiting(candidate.runId, "earlier-run");
@@ -189,10 +193,32 @@ export function createTestRunQueueService({
           queue.waiting(candidate.runId, "capacity");
           return;
         }
-        // Capture current branch/config inputs, not consumption predictions.
-        record.context = await loadTestRunContext(record.request).catch(
-          () => null,
-        );
+        // Reuse admission metadata while resource owners are unchanged. A slow
+        // refresh observes branch/config edits; snapshot capture still performs
+        // a fresh compatibility check immediately before execution.
+        const stateKey = JSON.stringify([
+          (queue.getSnapshot().activeRuns ?? []).map((run) => run.runId),
+          [...unsettledOwners.values()].map((owner) => owner.request.runId),
+        ]);
+        if (
+          record.contextStateKey !== stateKey ||
+          record.contextCheckedAt === undefined ||
+          clock.now() - record.contextCheckedAt >=
+            ADMISSION_CONTEXT_REFRESH_INTERVAL_MS
+        ) {
+          try {
+            record.context = await loadTestRunContext(record.request);
+          } catch (error) {
+            record.context = null;
+            logger.warn("Failed to load test admission context", {
+              appId: candidate.appId,
+              runId: candidate.runId,
+              error,
+            });
+          }
+          record.contextStateKey = stateKey;
+          record.contextCheckedAt = clock.now();
+        }
         if (
           !queue
             .getSnapshot()
@@ -214,13 +240,20 @@ export function createTestRunQueueService({
         const compatible = active.every((run) =>
           compatibleWithRun(record.request, context, run.runId),
         );
-        const reason = processCleanupBlocked
-          ? "process-cleanup"
-          : active.length >= limit
-            ? "capacity"
-            : active.length && !compatible
-              ? "compatibility"
-              : null;
+        const conflictsWithEarlierRun = waitingRunIds.some(
+          (runId) => !compatibleWithRun(record.request, context, runId),
+        );
+        const reason = !context
+          ? "context-unavailable"
+          : processCleanupBlocked
+            ? "process-cleanup"
+            : active.length >= limit
+              ? "capacity"
+              : conflictsWithEarlierRun
+                ? "earlier-run"
+                : active.length && !compatible
+                  ? "compatibility"
+                  : null;
         if (!reason || candidate.queuedReason !== reason) {
           try {
             logger.info("e2e_test_admission_decision", {
@@ -246,6 +279,7 @@ export function createTestRunQueueService({
         if (reason) {
           queue.waiting(candidate.runId, reason, context?.branch);
           if (reason === "capacity") return;
+          if (context) waitingRunIds.push(candidate.runId);
           continue;
         }
         queue.waiting(candidate.runId, "starting", context?.branch);

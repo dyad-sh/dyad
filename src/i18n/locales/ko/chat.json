@@ -24,6 +24,7 @@
     "stopped": "중지됨",
     "stopReason": {
       "tests-panel-stop": "테스트 패널에서 중지됨",
+      "test-queue-stop": "테스트 대기열에서 중지됨",
       "chat-stop": "채팅 응답이 중지됨",
       "chat-deleted": "채팅이 삭제됨",
       "version-restored": "이전 버전이 복원됨",

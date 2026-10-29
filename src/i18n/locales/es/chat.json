@@ -24,6 +24,7 @@
     "stopped": "Detenida",
     "stopReason": {
       "tests-panel-stop": "Detenida desde el panel de pruebas",
+      "test-queue-stop": "Detenida desde la cola de pruebas",
       "chat-stop": "Se detuvo la respuesta del chat",
       "chat-deleted": "Se eliminó el chat",
       "version-restored": "Se restauró una versión anterior",

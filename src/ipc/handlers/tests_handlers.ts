@@ -3422,7 +3422,7 @@ export function registerTestsHandlers() {
   createTypedHandler(
     testsContracts.cancelRun,
     async (_event, { appId, runId }) => {
-      cancelAppTestRun(appId, runId, { kind: "tests-panel-stop" });
+      cancelAppTestRun(appId, runId, { kind: "test-queue-stop" });
       return { ok: true as const };
     },
   );

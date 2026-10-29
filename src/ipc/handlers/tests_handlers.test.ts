@@ -2981,47 +2981,66 @@ describe("tests handlers", () => {
       ).toEqual({ activeRun: null, activeRuns: [], queuedRuns: [] });
     });
 
-    it("cancels a queued request immediately without stopping the active run", async () => {
-      const appId = seedTestableApp("app");
-      let finish!: (value: unknown) => void;
-      prepareIsolatedTestDatabaseMock.mockReturnValueOnce(
-        new Promise((resolve) => {
-          finish = resolve;
-        }),
-      );
-      const options = {
-        event: { sender: {} } as any,
-        appId,
-        source: "agent" as const,
-      };
-      const first = runAppTestsWithIsolation(options);
-      await vi.waitFor(() =>
-        expect(prepareIsolatedTestDatabaseMock).toHaveBeenCalledOnce(),
-      );
-      const controller = new AbortController();
-      const second = runAppTestsWithIsolation({
-        ...options,
-        externalSignal: controller.signal,
-      });
-      controller.abort();
-      expect((await second).infraError?.message).toContain(
-        "stopped before execution",
-      );
-      expect(
-        prepareIsolatedTestDatabaseMock.mock.calls[0][0].signal.aborted,
-      ).toBe(false);
-      expect(runStates()).toEqual(["started"]);
-      finish({
-        isolation: { mode: "none" },
-        infraError: { message: "done" },
-        teardown: async () => ({
-          envRestored: true,
-          remoteCleanupCompleted: true,
-        }),
-      });
-      await first;
-      expect(prepareIsolatedTestDatabaseMock).toHaveBeenCalledOnce();
-    });
+    it.each(["external", "queue"])(
+      "cancels a queued request via %s without stopping the active run",
+      async (stopSource) => {
+        const appId = seedTestableApp("app");
+        let finish!: (value: unknown) => void;
+        prepareIsolatedTestDatabaseMock.mockReturnValueOnce(
+          new Promise((resolve) => {
+            finish = resolve;
+          }),
+        );
+        const options = {
+          event: { sender: {} } as any,
+          appId,
+          source: "agent" as const,
+        };
+        const first = runAppTestsWithIsolation(options);
+        await vi.waitFor(() =>
+          expect(prepareIsolatedTestDatabaseMock).toHaveBeenCalledOnce(),
+        );
+        const controller = new AbortController();
+        const second = runAppTestsWithIsolation({
+          ...options,
+          externalSignal: controller.signal,
+        });
+        if (stopSource === "external") controller.abort();
+        else {
+          const queue = await harness.invokeHandler<any>(
+            "tests:get-run-queue",
+            { appId },
+          );
+          await harness.invokeHandler("tests:cancel-run", {
+            appId,
+            runId: queue.queuedRuns[0].runId,
+          });
+        }
+        const stopped = await second;
+        if (stopSource === "queue")
+          expect(stopped.infraError).toEqual({
+            message: "Test run stopped before execution from the test queue.",
+            stopReason: { kind: "test-queue-stop" },
+          });
+        expect(stopped.infraError?.message).toContain(
+          "stopped before execution",
+        );
+        expect(
+          prepareIsolatedTestDatabaseMock.mock.calls[0][0].signal.aborted,
+        ).toBe(false);
+        expect(runStates()).toEqual(["started"]);
+        finish({
+          isolation: { mode: "none" },
+          infraError: { message: "done" },
+          teardown: async () => ({
+            envRestored: true,
+            remoteCleanupCompleted: true,
+          }),
+        });
+        await first;
+        expect(prepareIsolatedTestDatabaseMock).toHaveBeenCalledOnce();
+      },
+    );
 
     it("panel Stop cancels pending requests and aborts active setup", async () => {
       const appId = seedTestableApp("app");

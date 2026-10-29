@@ -413,7 +413,8 @@ function reportStopped(
     `${describeTestRunStop(stopReason)} This is NOT a test failure or an infrastructure problem, and it did NOT count as a fix attempt.`,
     resultsSummary,
     "No file was granted verification.",
-    stopReason?.kind === "tests-panel-stop"
+    stopReason?.kind === "tests-panel-stop" ||
+    stopReason?.kind === "test-queue-stop"
       ? "The user stopped this run on purpose. Do not call run_tests again unless the user asks you to."
       : "",
   ]

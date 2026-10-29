@@ -24,6 +24,7 @@
     "stopped": "Interrompido",
     "stopReason": {
       "tests-panel-stop": "Interrompido pelo painel de testes",
+      "test-queue-stop": "Interrompido pela fila de testes",
       "chat-stop": "A resposta do chat foi interrompida",
       "chat-deleted": "O chat foi excluído",
       "version-restored": "Uma versão anterior foi restaurada",

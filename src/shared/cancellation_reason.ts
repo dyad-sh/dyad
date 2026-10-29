@@ -12,6 +12,7 @@
  */
 export const CANCELLATION_CAUSES = [
   "tests-panel-stop",
+  "test-queue-stop",
   "chat-stop",
   "chat-deleted",
   "version-restored",
@@ -35,6 +36,7 @@ export interface CancellationInfo {
 
 const DESCRIPTIONS: Record<CancellationCause, string> = {
   "tests-panel-stop": "Stopped from the Tests panel",
+  "test-queue-stop": "Stopped from the test queue",
   "chat-stop": "The chat response was stopped",
   "chat-deleted": "The chat was deleted",
   "version-restored": "An earlier version of the app was restored",

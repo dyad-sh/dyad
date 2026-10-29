@@ -4,6 +4,7 @@ export const TEST_RUN_WAIT_REASONS = [
   "capacity",
   "compatibility",
   "earlier-run",
+  "context-unavailable",
   "starting",
 ] as const;
 

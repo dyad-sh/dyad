@@ -4,7 +4,8 @@
       "process-cleanup": "Aguardando um processo de teste parar",
       "capacity": "Aguardando uma execução ativa terminar",
       "compatibility": "Aguardando um banco de dados e espaço de trabalho compatíveis",
-      "earlier-run": "Aguardando uma execução anterior deste app",
+      "earlier-run": "Aguardando uma execução de teste anterior",
+      "context-unavailable": "Aguardando a leitura da configuração de testes. Verifique os arquivos do app e o repositório Git.",
       "starting": "Iniciando"
     },
     "title": "Fila de testes",

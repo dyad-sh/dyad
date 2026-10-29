@@ -17,16 +17,11 @@ const h = vi.hoisted(() => ({
   exclusive: false,
   remainingProcesses: [] as unknown[],
   info: vi.fn(),
+  warn: vi.fn(),
 }));
 vi.mock("@/main/settings", () => ({ readSettings: () => h.settings }));
 vi.mock("./test_run_context", () => ({
-  loadTestRunContext: vi.fn(async (request: { appId: number }) => ({
-    workspaceKey: `/app-${request.appId}`,
-    exclusive: h.exclusive,
-    databaseKey: h.databaseKey,
-    branch: h.branch,
-    revision: "abcdef",
-  })),
+  loadTestRunContext: vi.fn(),
 }));
 vi.mock("./e2e_test_process_registry", () => ({
   trackedE2eTestProcessesForOwner: () => h.remainingProcesses,
@@ -41,7 +36,7 @@ vi.mock("electron-log", () => ({
       info: h.info,
       error: vi.fn(),
       debug: vi.fn(),
-      warn: vi.fn(),
+      warn: h.warn,
     }),
   },
 }));
@@ -63,6 +58,15 @@ beforeEach(() => {
   h.branch = "main";
   h.exclusive = false;
   h.remainingProcesses = [];
+  vi.mocked(loadTestRunContext)
+    .mockReset()
+    .mockImplementation(async (request) => ({
+      workspaceKey: `/app-${request.appId}`,
+      exclusive: h.exclusive,
+      databaseKey: h.databaseKey,
+      branch: h.branch,
+      revision: "abcdef",
+    }));
   service = createTestRunQueueService();
 });
 afterEach(async () => {
@@ -405,6 +409,79 @@ it("refreshes changed inputs when no conflicting run is active", async () => {
   expect(service.getAppTestRunQueue(1).activeRun?.branch).toBe("changed");
 });
 
+it("reserves conflicting resources for an earlier waiter while independent apps proceed", async () => {
+  h.settings.enableParallelTestRuns = true;
+  h.settings.maxConcurrentTestRuns = 3;
+  vi.mocked(loadTestRunContext).mockImplementation(async ({ appId }) => ({
+    workspaceKey: `/app-${appId}`,
+    databaseKey: appId === 3 ? undefined : "supabase:shared",
+    branch: appId === 2 ? "other" : "main",
+    revision: "abcdef",
+    exclusive: false,
+  }));
+  const active = enqueue(1);
+  await tick();
+  const older = enqueue(2);
+  const later = enqueue(1);
+  const independent = enqueue(3);
+  await tick();
+  expect(independent.execute).toHaveBeenCalledOnce();
+  expect(older.execute).not.toHaveBeenCalled();
+  expect(later.execute).not.toHaveBeenCalled();
+  expect(service.getAppTestRunQueue(1).queuedRuns[0].queuedReason).toBe(
+    "earlier-run",
+  );
+  active.finish();
+  await active.result;
+  await tick();
+  expect(older.execute).toHaveBeenCalledOnce();
+  expect(later.execute).not.toHaveBeenCalled();
+  older.finish();
+  await older.result;
+  await tick();
+  expect(later.execute).toHaveBeenCalledOnce();
+});
+
+it("caches blocked admission metadata and refreshes after ownership changes", async () => {
+  h.settings.enableParallelTestRuns = true;
+  h.databaseKey = "supabase:shared";
+  const active = enqueue(1);
+  await tick();
+  h.branch = "other";
+  const blocked = enqueue(2);
+  await tick();
+  const reads = vi.mocked(loadTestRunContext).mock.calls.length;
+  await tick(6000);
+  expect(loadTestRunContext).toHaveBeenCalledTimes(reads);
+  expect(blocked.execute).not.toHaveBeenCalled();
+  active.finish();
+  await active.result;
+  await tick();
+  expect(loadTestRunContext).toHaveBeenCalledTimes(reads + 1);
+  expect(blocked.execute).toHaveBeenCalledOnce();
+});
+
+it("reports metadata failures and retries them on the slow refresh interval", async () => {
+  h.settings.enableParallelTestRuns = true;
+  const error = new Error("Cannot read Git repository");
+  vi.mocked(loadTestRunContext).mockRejectedValueOnce(error);
+  const run = enqueue(1);
+  await tick();
+  expect(service.getAppTestRunQueue(1).queuedRuns[0].queuedReason).toBe(
+    "context-unavailable",
+  );
+  expect(h.warn).toHaveBeenCalledWith(
+    "Failed to load test admission context",
+    expect.objectContaining({ appId: 1, error }),
+  );
+  await tick(6000);
+  expect(loadTestRunContext).toHaveBeenCalledOnce();
+  expect(run.execute).not.toHaveBeenCalled();
+  await tick(30000);
+  expect(loadTestRunContext).toHaveBeenCalledTimes(2);
+  expect(run.execute).toHaveBeenCalledOnce();
+});
+
 it("skips an incompatible app while preserving its FIFO order", async () => {
   h.settings.enableParallelTestRuns = true;
   h.settings.maxConcurrentTestRuns = 3;
@@ -416,18 +493,13 @@ it("skips an incompatible app while preserving its FIFO order", async () => {
   const sibling = enqueue(1);
   await tick();
   // The independent app does not share the database that blocks app 1.
-  vi.mocked(loadTestRunContext)
-    .mockImplementationOnce(async (request) => ({
-      workspaceKey: `/app-${request.appId}`,
-      databaseKey: "supabase:shared",
-      branch: "other",
-      revision: "abcdef",
-      exclusive: false,
-    }))
-    .mockImplementationOnce(async () => ({
-      workspaceKey: "/app-2",
-      exclusive: false,
-    }));
+  vi.mocked(loadTestRunContext).mockImplementation(async ({ appId }) => ({
+    workspaceKey: `/app-${appId}`,
+    databaseKey: appId === 1 ? "supabase:shared" : undefined,
+    branch: "other",
+    revision: "abcdef",
+    exclusive: false,
+  }));
   const independent = enqueue(2);
   await tick();
   expect(independent.execute).toHaveBeenCalledOnce();

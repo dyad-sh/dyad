@@ -27,6 +27,8 @@ import {
   SupabaseTestUserActionError,
   supabaseTestUserStepError,
 } from "../utils/supabase_test_user_errors";
+import { withAppTestRun } from "../services/test_run_queue_service";
+import type { RunAppTestsResult } from "../types/tests";
 
 // Every app folder lives under one throwaway base so the delete handler runs
 // against real directories (its path guards resolve symlinks on disk).
@@ -768,9 +770,14 @@ describe("tests handlers", () => {
       expect(installE2eTestWorkspaceDependenciesMock).toHaveBeenCalledOnce();
     });
 
-    it.each([false, true])(
-      "preserves test-file mutation exclusion in serial mode (parallel: %s)",
-      async (parallel) => {
+    it.each([
+      { parallel: false, changeMode: false },
+      { parallel: true, changeMode: false },
+      { parallel: false, changeMode: true },
+      { parallel: true, changeMode: true },
+    ])(
+      "preserves admitted mode for resource claims and workers ($parallel, toggle: $changeMode)",
+      async ({ parallel, changeMode }) => {
         const appId = seedApp("app");
         harness.db
           .update(apps)
@@ -801,17 +808,39 @@ describe("tests handlers", () => {
             releaseRetention = resolve;
           }),
         );
-        const run = runAppTestsWithIsolation({
+        const options = {
           event: { sender: {} } as any,
           appId,
-          source: "panel",
-        });
+          source: "panel" as const,
+          parallel: true,
+          preview: parallel,
+        };
+        const run = withAppTestRun<RunAppTestsResult>(
+          options,
+          async (queueRun) => {
+            if (changeMode)
+              readSettingsMock.mockImplementation(() => ({
+                ...structuredClone(DEFAULT_SETTINGS),
+                enableParallelTestRuns: !parallel,
+              }));
+            return runAppTestsWithIsolation({ ...options, queueRun });
+          },
+          () => ({ appId, results: [] }),
+        );
         const mutate = vi.fn();
         let mutation: Promise<void> | undefined;
         try {
           await vi.waitFor(() =>
             expect(retainE2eTestArtifactsMock).toHaveBeenCalledOnce(),
           );
+          const args = spawnStreamingMock.mock.calls.at(-1)![0].args;
+          if (parallel) {
+            expect(browserWindowFromWebContentsMock).not.toHaveBeenCalled();
+            expect(args).toContain("--workers=1");
+            expect(args).not.toContain("--fully-parallel");
+          } else {
+            expect(args).toContain("--fully-parallel");
+          }
           mutation = appOperationCoordinator.run(
             {
               appId,

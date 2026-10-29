@@ -128,7 +128,6 @@ import {
   usesSandboxedE2eTests,
 } from "@/lib/e2eSandbox";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
-import type { TestRunExecution } from "@/test_run_queue/controller";
 import {
   getAppTestRunQueue,
   setNeonBranchLimit,
@@ -138,6 +137,7 @@ import {
   cancelAppTestRun,
   dismissNeonBranchLimit,
   validateTestRunInputs,
+  type AppTestRunExecution,
   stopAllAppTestRuns,
   drainAppTestRuns,
 } from "../services/test_run_queue_service";
@@ -473,6 +473,8 @@ function playwrightCliInvocationForApp(
 
 export interface RunAppTestsCoreOptions {
   timing?: TestRunTiming;
+  /** Captured at queue admission; concurrent runs always use one worker. */
+  parallelRunsEnabled?: boolean;
   /** Requires the auto fixture and serial execution for provider cleanup. */
   isolateTestCases?: boolean;
   appId: number;
@@ -1048,6 +1050,7 @@ export async function runAppTestsCore(
 
 async function runAppTestsCoreUnredacted({
   timing,
+  parallelRunsEnabled = false,
   isolateTestCases,
   appId,
   appPath: explicitAppPath,
@@ -1302,7 +1305,7 @@ async function runAppTestsCoreUnredacted({
   // Preview runs, which can only ever be sequential, returned above — so the
   // caller's choice is honored as-is here, including on the fallback path where
   // preview routing was refused and this became an ordinary browser run.
-  if (isolateTestCases || readSettings().enableParallelTestRuns) {
+  if (isolateTestCases || parallelRunsEnabled) {
     args.push("--workers=1");
   } else if (parallel) {
     args.push("--fully-parallel", `--workers=${parallelWorkerCount()}`);
@@ -1840,6 +1843,7 @@ async function runTestsWithPreviewAutomation({
  */
 async function runTestsAgainstNormalPreview({
   timing,
+  parallelRunsEnabled,
   appId,
   disclosure,
   neonRefusal,
@@ -1864,6 +1868,7 @@ async function runTestsAgainstNormalPreview({
   emitPreviewFallback,
 }: {
   timing?: TestRunTiming;
+  parallelRunsEnabled: boolean;
   appId: number;
   /** Why this run isn't sandboxed, shown on the result's isolation badge. */
   disclosure: string;
@@ -2007,6 +2012,7 @@ async function runTestsAgainstNormalPreview({
           emitPreviewFallback,
           coreOptions: {
             timing,
+            parallelRunsEnabled,
             appId,
             testFile,
             testFiles,
@@ -2216,14 +2222,14 @@ export interface RunTestsWithIsolationOptions {
    */
   preview?: boolean;
   /** Internal queue ownership, supplied by the agent to include result accounting. */
-  queueRun?: TestRunExecution;
+  queueRun?: AppTestRunExecution;
 }
 
 /** Shared admission for panel requests and agent-owned queue executions. */
 export function runAppTestsWithIsolation(
   options: RunTestsWithIsolationOptions,
 ): Promise<RunAppTestsResult> {
-  const execute = async (run: TestRunExecution, timing?: TestRunTiming) => {
+  const execute = async (run: AppTestRunExecution, timing?: TestRunTiming) => {
     try {
       const result = await executeAppTestsWithIsolation(
         { ...options, timing },
@@ -2271,13 +2277,12 @@ async function executeAppTestsWithIsolation(
     source,
     preview,
   }: RunTestsWithIsolationOptions,
-  { runId, signal }: TestRunExecution,
+  { runId, signal, parallelRunsEnabled }: AppTestRunExecution,
 ): Promise<RunAppTestsResult> {
   if (signal.aborted)
     return { appId, results: [], infraError: testRunStoppedInfraError(signal) };
   // Concurrent runs use their own browsers. One native preview surface cannot
   // be leased by two runs, and queueing behind it would invalidate reservations.
-  const parallelRunsEnabled = !!readSettings().enableParallelTestRuns;
   if (parallelRunsEnabled) {
     preview = false;
     parallel = false;
@@ -2593,6 +2598,7 @@ async function executeAppTestsWithIsolation(
       finalResult = withIsolationCleanupWarning(
         await runTestsAgainstNormalPreview({
           timing,
+          parallelRunsEnabled,
           appId,
           ...sandboxUnavailable,
           runtimeMode,
@@ -3155,6 +3161,7 @@ async function executeAppTestsWithIsolation(
               }),
             coreOptions: {
               timing,
+              parallelRunsEnabled,
               appId,
               appPath: workspace!.workspacePath,
               baseUrl: testRuntime.baseUrl,

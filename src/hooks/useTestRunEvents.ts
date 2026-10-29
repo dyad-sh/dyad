@@ -286,6 +286,8 @@ export function useTestRunEvents() {
       // The initial merge may use a stale spec list, but the forced refresh
       // below reconciles the same results again once newly-written specs exist.
       finish();
+      const latestStartedRunIdAtFinish =
+        latestStartedRunByAppId.current.get(appId);
       // The agent may have written the spec it just ran in this same turn, so
       // the cached spec list may not contain it yet. Read through IPC directly:
       // fetchQuery can reuse either the production client's fresh 60-second
@@ -295,8 +297,12 @@ export function useTestRunEvents() {
         .then((data) => {
           // A newer run may have started while the refresh was in flight. Its
           // running state and results must never be overwritten by this older
-          // run's delayed reconciliation.
-          if (latestStartedRunByAppId.current.get(appId) !== runId) {
+          // run's delayed reconciliation. An older run that finishes last still
+          // needs reconciliation; only starts after its completion invalidate it.
+          if (
+            latestStartedRunByAppId.current.get(appId) !==
+            latestStartedRunIdAtFinish
+          ) {
             return;
           }
           queryClient.setQueryData(queryKeys.tests.list({ appId }), data);

@@ -75,6 +75,8 @@ vi.mock("react-i18next", () => ({
         "testRunQueue.failed": "Failed",
         "testRunQueue.inconclusive": "Inconclusive",
         "testRunQueue.stopped": "Stopped",
+        "testRunQueue.waitReason.process-cleanup":
+          "Esperando a que se detenga un proceso de prueba",
         "testRunQueue.stopReason.tests-panel-stop":
           "Stopped from the Tests panel",
         "testRunQueue.stopReason.chat-stop": "The chat response was stopped",
@@ -107,14 +109,15 @@ beforeEach(() => {
 it("shows a queued reason inline and cancels only the chosen run", async () => {
   mocks.getRunQueue.mockResolvedValue({
     activeRun: { ...first, stopping: false },
-    queuedRuns: [
-      { ...second, queuedReason: "Waiting for a test process to stop" },
-    ],
+    queuedRuns: [{ ...second, queuedReason: "process-cleanup" }],
   });
   const { Harness } = setup();
   render(<Harness />);
-  const reason = await screen.findByText("Waiting for a test process to stop");
+  const reason = await screen.findByText(
+    "Esperando a que se detenga un proceso de prueba",
+  );
   expect(reason.tagName).toBe("P");
+  expect(screen.getByTitle(reason.textContent!)).toBeTruthy();
   fireEvent.click(
     within(row(second.testFile)).getByRole("button", {
       name: "testRunQueue.stopRun",

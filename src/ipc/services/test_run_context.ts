@@ -9,6 +9,7 @@ import { gitCurrentBranch, getCurrentCommitHash } from "../utils/git_utils";
 import type { TestRunRequest } from "@/test_run_queue/state";
 
 export interface TestRunContext {
+  workspaceKey: string;
   branch?: string;
   revision?: string;
   /** Apps connected to the same remote database also share a conflict domain. */
@@ -38,6 +39,7 @@ export async function loadTestRunContext(
     getCurrentCommitHash({ path: appPath }),
   ]);
   return {
+    workspaceKey: appPath,
     branch: branchName ?? commit.slice(0, 12),
     revision: commit,
     databaseKey: app.supabaseProjectId

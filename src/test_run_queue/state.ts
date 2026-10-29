@@ -1,4 +1,5 @@
 import type { TestRunStopReason } from "@/shared/test_run_stop";
+import type { TestRunWaitReason } from "@/shared/test_run_queue";
 
 export type { TestRunStopReason };
 
@@ -21,7 +22,7 @@ export interface TestRunRequest {
   readonly grep?: string;
   readonly appId?: number;
   readonly branch?: string;
-  readonly queuedReason?: string;
+  readonly queuedReason?: TestRunWaitReason;
 }
 
 export interface TestRunQueueState {
@@ -48,7 +49,12 @@ export type TestRunQueueEvent =
   | { type: "stop"; reason: TestRunStopReason }
   | { type: "settled"; runId: number }
   | { type: "admit"; runId: number }
-  | { type: "waiting"; runId: number; reason: string; branch?: string };
+  | {
+      type: "waiting";
+      runId: number;
+      reason: TestRunWaitReason;
+      branch?: string;
+    };
 
 export type TestRunQueueCommand =
   | { type: "execute"; runId: number }

@@ -20,7 +20,8 @@ const h = vi.hoisted(() => ({
 }));
 vi.mock("@/main/settings", () => ({ readSettings: () => h.settings }));
 vi.mock("./test_run_context", () => ({
-  loadTestRunContext: vi.fn(async () => ({
+  loadTestRunContext: vi.fn(async (request: { appId: number }) => ({
+    workspaceKey: `/app-${request.appId}`,
     exclusive: h.exclusive,
     databaseKey: h.databaseKey,
     branch: h.branch,
@@ -383,8 +384,8 @@ it.each(["database", "exclusive"])(
     const second = enqueue();
     await tick();
     expect(second.execute).not.toHaveBeenCalled();
-    expect(service.getAppTestRunQueue(1).queuedRuns[0].queuedReason).toContain(
-      "compatible database and workspace",
+    expect(service.getAppTestRunQueue(1).queuedRuns[0].queuedReason).toBe(
+      "compatibility",
     );
     first.finish();
     await first.result;
@@ -404,6 +405,73 @@ it("refreshes changed inputs when no conflicting run is active", async () => {
   expect(service.getAppTestRunQueue(1).activeRun?.branch).toBe("changed");
 });
 
+it("skips an incompatible app while preserving its FIFO order", async () => {
+  h.settings.enableParallelTestRuns = true;
+  h.settings.maxConcurrentTestRuns = 3;
+  h.databaseKey = "supabase:shared";
+  const active = enqueue(1);
+  await tick();
+  h.branch = "other";
+  const blocked = enqueue(1);
+  const sibling = enqueue(1);
+  await tick();
+  // The independent app does not share the database that blocks app 1.
+  vi.mocked(loadTestRunContext)
+    .mockImplementationOnce(async (request) => ({
+      workspaceKey: `/app-${request.appId}`,
+      databaseKey: "supabase:shared",
+      branch: "other",
+      revision: "abcdef",
+      exclusive: false,
+    }))
+    .mockImplementationOnce(async () => ({
+      workspaceKey: "/app-2",
+      exclusive: false,
+    }));
+  const independent = enqueue(2);
+  await tick();
+  expect(independent.execute).toHaveBeenCalledOnce();
+  expect(blocked.execute).not.toHaveBeenCalled();
+  expect(sibling.execute).not.toHaveBeenCalled();
+  expect(service.getAppTestRunQueue(1).queuedRuns[1].queuedReason).toBe(
+    "earlier-run",
+  );
+  active.finish();
+  await active.result;
+  await tick();
+  expect(blocked.execute).toHaveBeenCalledOnce();
+  expect(sibling.execute).toHaveBeenCalledOnce();
+  expect(blocked.execute.mock.invocationCallOrder[0]).toBeLessThan(
+    sibling.execute.mock.invocationCallOrder[0],
+  );
+});
+
+it.each(["independent", "workspace", "database"])(
+  "scopes exclusive setup to shared resources (%s)",
+  async (sharing) => {
+    h.settings.enableParallelTestRuns = true;
+    h.exclusive = true;
+    if (sharing === "database") h.databaseKey = "supabase:shared";
+    enqueue(1);
+    await tick();
+    if (sharing === "workspace")
+      vi.mocked(loadTestRunContext).mockImplementationOnce(async () => ({
+        workspaceKey: "/app-1",
+        exclusive: true,
+      }));
+    const other = enqueue(2);
+    await tick();
+    if (sharing === "independent") {
+      expect(other.execute).toHaveBeenCalledOnce();
+      await expect(
+        service.validateTestRunInputs(
+          service.getAppTestRunQueue(2).activeRun!.runId,
+        ),
+      ).resolves.toBeUndefined();
+    } else expect(other.execute).not.toHaveBeenCalled();
+  },
+);
+
 it("rechecks cancellation after loading admission metadata", async () => {
   h.settings.enableParallelTestRuns = true;
   let loaded!: (value: Awaited<ReturnType<typeof loadTestRunContext>>) => void;
@@ -416,7 +484,7 @@ it("rechecks cancellation after loading admission metadata", async () => {
   const first = enqueue();
   await tick();
   service.stopAllAppTestRuns({ kind: "app-quit" });
-  loaded({ exclusive: false });
+  loaded({ workspaceKey: "/app-1", exclusive: false });
   await tick();
   expect(await first.result).toBe("cancelled");
   expect(first.execute).not.toHaveBeenCalled();
@@ -433,8 +501,8 @@ it("fences admission when a run fails to stop its processes", async () => {
   await first.result;
   await tick();
   expect(second.execute).not.toHaveBeenCalled();
-  expect(service.getAppTestRunQueue(1).queuedRuns[0].queuedReason).toContain(
-    "Waiting for a test process to stop",
+  expect(service.getAppTestRunQueue(1).queuedRuns[0].queuedReason).toBe(
+    "process-cleanup",
   );
   const reads = vi.mocked(loadTestRunContext).mock.calls.length;
   await tick(6000);
@@ -608,7 +676,7 @@ it("rechecks the configured limit after loading admission metadata", async () =>
   const second = enqueue();
   await tick();
   h.settings.maxConcurrentTestRuns = 1;
-  loaded({ exclusive: false });
+  loaded({ workspaceKey: "/app-1", exclusive: false });
   await tick();
   expect(second.execute).not.toHaveBeenCalled();
   first.finish();

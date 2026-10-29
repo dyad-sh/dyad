@@ -13,6 +13,7 @@ import {
 } from "../../lib/test_recorder/assertion_proposal";
 import { WindowSessionIdSchema } from "../../window_infrastructure/types";
 import { CANCELLATION_CAUSES } from "../../shared/cancellation_reason";
+import { TEST_RUN_WAIT_REASONS } from "../../shared/test_run_queue";
 import type { TestRunStopReason } from "../../shared/test_run_stop";
 import type { TestRunQueueState } from "../../test_run_queue/state";
 
@@ -385,7 +386,7 @@ export type ApplyTestAssertionsResult = z.infer<
 const QueuedTestRunSchema = z.object({
   appId: z.number().int().optional(),
   branch: z.string().optional(),
-  queuedReason: z.string().optional(),
+  queuedReason: z.enum(TEST_RUN_WAIT_REASONS).optional(),
   runId: z.number().int().positive(),
   source: z.enum(["panel", "agent"]),
   chatId: z.number().int().positive().optional(),

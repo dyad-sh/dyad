@@ -7,7 +7,15 @@ import {
   type APIRequestContext,
   type APIResponse,
 } from "@playwright/test";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { buildTestSignInRetrySource } from "./test_sign_in_retry";
 
 type Retry = {
@@ -17,8 +25,9 @@ type Retry = {
   ) => Promise<APIResponse>;
   cancel: () => void;
 };
+type TestInfo = { timeout: number; annotations?: { type: string }[] };
 let runtime: {
-  createSignInRetry: (info: { timeout: number }) => Retry;
+  createSignInRetry: (info: TestInfo) => Retry;
   signInRetryDelay: (
     headers: Record<string, string>,
     attempt: number,
@@ -26,12 +35,12 @@ let runtime: {
   installSignInApiRetry: (
     api: APIRequestContext,
     base: string,
-    info: { timeout: number },
+    info: TestInfo,
   ) => () => void;
   installSignInContextRetry: (
     context: unknown,
     base: string,
-    info: { timeout: number },
+    info: TestInfo,
   ) => Promise<() => Promise<void>>;
 };
 
@@ -44,6 +53,10 @@ beforeAll(async () => {
     code +
       "; return { createSignInRetry, signInRetryDelay, installSignInApiRetry, installSignInContextRetry };",
   )();
+});
+
+beforeEach(() => {
+  vi.spyOn(console, "warn").mockImplementation(() => {});
 });
 
 afterEach(() => {
@@ -78,6 +91,9 @@ describe("generated sign-in retries", () => {
       expect(await pending).toBe(success);
       expect(limited.dispose).toHaveBeenCalledOnce();
       expect(send.mock.calls[1][0]).toBe(7700);
+      expect(console.warn).toHaveBeenCalledWith(
+        "[Dyad] Sign-in returned HTTP 429; retry 1/4 in 2300 ms. Add the dyad-no-sign-in-retry test annotation to inspect rate limits unchanged.",
+      );
     },
   );
 
@@ -155,6 +171,71 @@ describe("generated sign-in retries", () => {
       ]);
     } finally {
       restore();
+    }
+  });
+
+  it("lets a test opt out after fixture setup without altering API requests", async () => {
+    vi.useFakeTimers();
+    const limited = response(429);
+    const fetch = vi.fn().mockResolvedValue(limited);
+    const api = { fetch } as unknown as APIRequestContext;
+    const info: TestInfo = { timeout: 5000, annotations: [] };
+    const restore = runtime.installSignInApiRetry(
+      api,
+      "http://localhost:3000",
+      info,
+    );
+    info.annotations!.push({ type: "dyad-no-sign-in-retry" });
+    const options = {
+      method: "POST",
+      timeout: 123,
+      failOnStatusCode: false,
+      maxRetries: 2,
+    };
+    try {
+      expect(await api.fetch("/api/auth/sign-in/email", options)).toBe(limited);
+      expect(fetch).toHaveBeenCalledExactlyOnceWith(
+        "/api/auth/sign-in/email",
+        options,
+      );
+      expect(limited.dispose).not.toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(0);
+      expect(console.warn).not.toHaveBeenCalled();
+    } finally {
+      restore();
+    }
+  });
+
+  it("lets opted-out browser requests fall through to the app unchanged", async () => {
+    let handler!: (route: unknown) => Promise<void>;
+    const context = Object.assign(new EventEmitter(), {
+      request: { fetch: vi.fn() },
+      route: vi.fn(async (_matches, callback) => {
+        handler = callback;
+      }),
+      unroute: vi.fn(async () => {}),
+    });
+    const info: TestInfo = { timeout: 5000, annotations: [] };
+    const restore = await runtime.installSignInContextRetry(
+      context,
+      "http://localhost:3000",
+      info,
+    );
+    info.annotations!.push({ type: "dyad-no-sign-in-retry" });
+    const route = {
+      request: () => ({ method: () => "POST" }),
+      fallback: vi.fn(async () => {}),
+      fetch: vi.fn(),
+      fulfill: vi.fn(),
+    };
+    try {
+      await handler(route);
+      expect(route.fallback).toHaveBeenCalledOnce();
+      expect(route.fetch).not.toHaveBeenCalled();
+      expect(route.fulfill).not.toHaveBeenCalled();
+      expect(console.warn).not.toHaveBeenCalled();
+    } finally {
+      await restore();
     }
   });
 

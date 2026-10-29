@@ -3,6 +3,12 @@ export function buildTestSignInRetrySource(): string {
   return String.raw`
 // Retry only the app's email sign-in endpoint. Other failures and application
 // requests must remain visible to the test.
+// Rate-limit tests can opt out for both browser and API requests with:
+// test.info().annotations.push({ type: "dyad-no-sign-in-retry" });
+function isSignInRetryDisabled(testInfo: pw.TestInfo): boolean {
+  return !!testInfo.annotations?.some(({ type }) => type === "dyad-no-sign-in-retry");
+}
+
 function isDyadSignIn(url: string, method: string, baseUrl: string): boolean {
   const parsed = new URL(url, baseUrl);
   return method.toUpperCase() === "POST" &&
@@ -55,10 +61,12 @@ function createSignInRetry(testInfo: pw.TestInfo) {
         await response.dispose();
         signal.throwIfAborted();
       }
-      if (response.status() !== 429 || attempt >= 4) return response;
+      if (response.status() !== 429 || attempt >= 4 || isSignInRetryDisabled(testInfo)) return response;
       const delay = signInRetryDelay(response.headers(), attempt);
       // Return the real 429 if its cooldown cannot fit; never retry early.
       if (delay >= deadline - Date.now()) return response;
+      console.warn("[Dyad] Sign-in returned HTTP 429; retry " + (attempt + 1) +
+        "/4 in " + delay + " ms. Add the dyad-no-sign-in-retry test annotation to inspect rate limits unchanged.");
       await response.dispose();
       await new Promise<void>((resolve, reject) => {
         signal.throwIfAborted();
@@ -85,7 +93,7 @@ function installSignInApiRetry(api: pw.APIRequestContext, baseUrl: string, testI
   api.fetch = async (url, options = {}) => {
     const requestUrl = typeof url === "string" ? url : url.url();
     const method = options.method ?? (typeof url === "string" ? "GET" : url.method());
-    if (!isDyadSignIn(requestUrl, method, baseUrl)) {
+    if (isSignInRetryDisabled(testInfo) || !isDyadSignIn(requestUrl, method, baseUrl)) {
       return original.call(api, url, options);
     }
     const response = await retry.run(
@@ -112,7 +120,7 @@ async function installSignInContextRetry(context: pw.BrowserContext, baseUrl: st
   const matches = (url: URL) => isDyadSignIn(url.href, "POST", baseUrl);
   const activeRoutes = new Set<pw.Route>();
   const handler = async (route: pw.Route) => {
-    if (route.request().method() !== "POST") return route.fallback();
+    if (isSignInRetryDisabled(testInfo) || route.request().method() !== "POST") return route.fallback();
     activeRoutes.add(route);
     let response: pw.APIResponse | undefined;
     try {

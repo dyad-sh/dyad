@@ -22,6 +22,7 @@ import { DRAINED_BATCH_LINGER_MS, TestRunQueueCard } from "./TestRunQueueCard";
 type QueueEvent = TestRunQueueSnapshot & { appId: number };
 const mocks = vi.hoisted(() => ({
   getRunQueue: vi.fn(),
+  cancelRun: vi.fn().mockResolvedValue({ ok: true }),
   queueListeners: new Set<(event: QueueEvent) => void>(),
   runListeners: new Set<(event: TestsRunStatePayload) => void>(),
   openTests: vi.fn(),
@@ -36,6 +37,7 @@ vi.mock("@/ipc/types", () => ({
   ipc: {
     tests: {
       getRunQueue: mocks.getRunQueue,
+      cancelRun: mocks.cancelRun,
       getActiveRuns: async () => [],
       listAppTests: async () => ({ specs: [] }),
     },
@@ -94,11 +96,34 @@ const second = {
 };
 
 beforeEach(() => {
+  mocks.cancelRun.mockClear();
   mocks.queueListeners.clear();
   mocks.runListeners.clear();
   mocks.openTests.mockReset();
   mocks.navigate.mockReset();
   mocks.getRunQueue.mockReset().mockResolvedValue(empty);
+});
+
+it("shows a queued reason inline and cancels only the chosen run", async () => {
+  mocks.getRunQueue.mockResolvedValue({
+    activeRun: { ...first, stopping: false },
+    queuedRuns: [
+      { ...second, queuedReason: "Waiting for a test process to stop" },
+    ],
+  });
+  const { Harness } = setup();
+  render(<Harness />);
+  const reason = await screen.findByText("Waiting for a test process to stop");
+  expect(reason.tagName).toBe("P");
+  fireEvent.click(
+    within(row(second.testFile)).getByRole("button", {
+      name: "testRunQueue.stopRun",
+    }),
+  );
+  await waitFor(() =>
+    expect(mocks.cancelRun).toHaveBeenCalledWith({ appId: 1, runId: 2 }),
+  );
+  expect(mocks.cancelRun).toHaveBeenCalledOnce();
 });
 
 afterEach(() => {
@@ -302,9 +327,13 @@ it("identifies each run's chat, opens other chats, and retains attribution after
   await screen.findByText(first.testFile);
 
   expect(within(row(first.testFile)).getByText("Current chat")).toBeTruthy();
-  expect(within(row(first.testFile)).queryByRole("button")).toBeNull();
+  expect(
+    within(row(first.testFile)).queryByRole("button", { name: "Open chat" }),
+  ).toBeNull();
   expect(within(row(second.testFile)).getByText("Tests panel")).toBeTruthy();
-  expect(within(row(second.testFile)).queryByRole("button")).toBeNull();
+  expect(
+    within(row(second.testFile)).queryByRole("button", { name: "Open chat" }),
+  ).toBeNull();
   fireEvent.click(
     within(row(otherChatRun.testFile)).getByRole("button", {
       name: "Open chat",
@@ -338,7 +367,11 @@ it("identifies each run's chat, opens other chats, and retains attribution after
   expect(
     within(row(otherChatRun.testFile)).getByText("Current chat"),
   ).toBeTruthy();
-  expect(within(row(otherChatRun.testFile)).queryByRole("button")).toBeNull();
+  expect(
+    within(row(otherChatRun.testFile)).queryByRole("button", {
+      name: "Open chat",
+    }),
+  ).toBeNull();
   fireEvent.click(
     within(row(first.testFile)).getByRole("button", { name: "Open chat" }),
   );
@@ -358,7 +391,9 @@ it("does not invent a chat destination for runs without chat metadata", async ()
   const { Harness } = setup();
   render(<Harness />);
   await screen.findByText(first.testFile);
-  expect(within(row(first.testFile)).queryByRole("button")).toBeNull();
+  expect(
+    within(row(first.testFile)).queryByRole("button", { name: "Open chat" }),
+  ).toBeNull();
   expect(screen.queryByText("Current chat")).toBeNull();
   expect(screen.queryByText("Tests panel")).toBeNull();
 });

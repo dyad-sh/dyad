@@ -509,16 +509,11 @@ export const ActiveTestRunSnapshotSchema = z.object({
   output: z.string(),
 });
 export type ActiveTestRunSnapshot = z.infer<typeof ActiveTestRunSnapshotSchema>;
-export const TestRunSnapshotSchema = ActiveTestRunSnapshotSchema.extend({
-  phase: z.enum(["setup", "running", "stopping", "cleaning-up", "finished"]),
-});
-export type TestRunSnapshot = z.infer<typeof TestRunSnapshotSchema>;
-
 export const testsContracts = {
-  getRuns: defineContract({
-    channel: "tests:get-runs",
-    input: z.object({ appId: z.number() }),
-    output: z.array(TestRunSnapshotSchema),
+  dismissNeonBranchLimit: defineContract({
+    channel: "tests:dismiss-neon-branch-limit",
+    input: z.object({ appId: z.number(), runId: z.number().int().positive() }),
+    output: z.void(),
   }),
   getActiveRuns: defineContract({
     channel: "tests:get-active-runs",

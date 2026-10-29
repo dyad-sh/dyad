@@ -55,7 +55,14 @@ export function createTestRunQueueService({
   let nextTestRunId = clock.now() * 1000;
   let driving = false;
   let driveTimer: ClockHandle | undefined;
-  let processCleanupBlocked = false;
+  const unsettledOwners = new Map<AbortSignal, number>();
+
+  function refreshUnsettledOwners() {
+    for (const signal of unsettledOwners.keys()) {
+      if (!trackedE2eTestProcessesForOwner(signal).length)
+        unsettledOwners.delete(signal);
+    }
+  }
 
   const queue = new TestRunQueue({
     manualAdmission: true,
@@ -78,14 +85,21 @@ export function createTestRunQueueService({
   });
 
   function startSerialRun() {
-    const state = queue.getSnapshot();
     if (readSettings().enableParallelTestRuns) return;
-    if (
-      !processCleanupBlocked &&
-      !state.activeRuns?.length &&
-      state.queuedRuns[0]
-    )
-      queue.admit(state.queuedRuns[0].runId);
+    refreshUnsettledOwners();
+    const state = queue.getSnapshot();
+    const busyApps = new Set([
+      ...(state.activeRuns ?? []).map((run) => run.appId),
+      ...unsettledOwners.values(),
+    ]);
+    // Preserve the original per-app queue when parallel execution is off.
+    for (const run of state.queuedRuns) {
+      if (busyApps.has(run.appId)) continue;
+      busyApps.add(run.appId);
+      const record = records.get(run.runId);
+      if (record) record.context = undefined;
+      queue.admit(run.runId);
+    }
   }
 
   function scheduleDrive(delay = 0) {
@@ -93,7 +107,7 @@ export function createTestRunQueueService({
     if (driveTimer !== undefined) clock.cancel(driveTimer);
     driveTimer = undefined;
     const state = queue.getSnapshot();
-    if (!state.activeRuns?.length && !state.queuedRuns.length) return;
+    if (!state.queuedRuns.length) return;
     driveTimer = clock.schedule(() => {
       driveTimer = undefined;
       void drive();
@@ -111,13 +125,39 @@ export function createTestRunQueueService({
       if (!candidate) return;
       const record = records.get(candidate.runId);
       if (!record) return;
+      refreshUnsettledOwners();
+      const before = readSettings();
+      const activeCount = queue.getSnapshot().activeRuns?.length ?? 0;
+      const limitBefore =
+        before.maxConcurrentTestRuns ?? DEFAULT_MAX_CONCURRENT_TEST_RUNS;
+      // Polling observes settings and late process settlement cheaply. No git
+      // or workspace reads are needed when admission is already impossible.
+      if (
+        unsettledOwners.size ||
+        !before.enableParallelTestRuns ||
+        activeCount >= limitBefore
+      ) {
+        queue.waiting(
+          candidate.runId,
+          unsettledOwners.size
+            ? "Waiting for a test process to stop"
+            : "Waiting for an active test run to finish",
+        );
+        return;
+      }
       // Capture current branch/config inputs, not consumption predictions.
       record.context = await loadTestRunContext(record.request).catch(
         () => null,
       );
       if (queue.getSnapshot().queuedRuns[0]?.runId !== candidate.runId) return;
+      refreshUnsettledOwners();
+      const processCleanupBlocked = unsettledOwners.size > 0;
       const active = queue.getSnapshot().activeRuns ?? [];
       const settings = readSettings();
+      if (!settings.enableParallelTestRuns) {
+        startSerialRun();
+        return;
+      }
       const limit = settings.enableParallelTestRuns
         ? (settings.maxConcurrentTestRuns ?? DEFAULT_MAX_CONCURRENT_TEST_RUNS)
         : 1;
@@ -137,7 +177,7 @@ export function createTestRunQueueService({
           );
         });
       const reason = processCleanupBlocked
-        ? "A test process could not be stopped. Restart Dyad before starting another run."
+        ? "Waiting for a test process to stop"
         : active.length >= limit
           ? "Waiting for an active test run to finish"
           : active.length && !compatible
@@ -237,7 +277,7 @@ export function createTestRunQueueService({
             return await execute(run, timing);
           } finally {
             if (trackedE2eTestProcessesForOwner(run.signal).length)
-              processCleanupBlocked = true;
+              unsettledOwners.set(run.signal, options.appId);
           }
         },
         cancelled: (reason) => {
@@ -322,14 +362,36 @@ export function createTestRunQueueService({
     const record = records.get(runId);
     if (!record?.context) return;
     const current = await loadTestRunContext(record.request).catch(() => null);
+    const others = (queue.getSnapshot().activeRuns ?? []).filter(
+      (run) => run.runId !== runId,
+    );
     if (
       !current ||
-      current.inputFingerprint !== record.context.inputFingerprint
+      others.some((run) => {
+        const other = records.get(run.runId)?.context;
+        return (
+          !other ||
+          current.exclusive ||
+          other.exclusive ||
+          (current.databaseKey &&
+            current.databaseKey === other.databaseKey &&
+            (current.branch !== other.branch ||
+              current.revision !== other.revision))
+        );
+      })
     )
       throw new DyadError(
-        "The test inputs changed while waiting to capture its workspace. Run it again to use the updated files.",
+        "The test database or workspace changed and is no longer compatible with another active run. Run it again after that run finishes.",
         DyadErrorKind.Precondition,
       );
+    // Spec edits, lockfile updates and display preferences do not change safe
+    // admission. Capture their latest contents under the source snapshot claim.
+    record.context = current;
+  }
+
+  function dismissNeonBranchLimit(appId: number, runId: number) {
+    if (blockedNeonRuns.get(appId)?.runId === runId)
+      blockedNeonRuns.delete(appId);
   }
 
   function ownsAppTestRun(appId: number, run: TestRunExecution) {
@@ -378,6 +440,7 @@ export function createTestRunQueueService({
     };
   }
   return {
+    dismissNeonBranchLimit,
     setNeonBranchLimit,
     withAppTestRun,
     getAppTestRunQueue,
@@ -393,6 +456,7 @@ export function createTestRunQueueService({
 }
 
 export const {
+  dismissNeonBranchLimit,
   setNeonBranchLimit,
   withAppTestRun,
   getAppTestRunQueue,

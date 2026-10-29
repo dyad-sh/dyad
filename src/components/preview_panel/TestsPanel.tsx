@@ -45,7 +45,7 @@ import {
   recordingStartRequestAtom,
 } from "@/atoms/recorderAtoms";
 import {
-  currentTestRunOutputAtom,
+  testRunOutputByAppIdAtom,
   currentTestSpecsAtom,
   currentTestRunStateAtom,
   setTestSpecsForAppAtom,
@@ -391,6 +391,7 @@ interface AskAiToFix {
     error: string | undefined,
     testTitle?: string,
     screenshotPath?: string,
+    runIds?: number[],
   ): void;
 }
 
@@ -399,7 +400,7 @@ interface TestCaseRowProps {
   file: string;
   testCase: TestCase;
   status: DisplayTestStatus;
-  result: TestCaseResult | undefined;
+  result: (TestCaseResult & { runId?: number }) | undefined;
   disabled: boolean;
   /** Explains a disabled Run button; the default hint applies when unset. */
   runTitle?: string;
@@ -489,6 +490,7 @@ function TestCaseRow({
                 result?.error,
                 testCase.title,
                 result?.screenshotPath,
+                result?.runId === undefined ? [] : [result.runId],
               )
             }
             label={`Ask AI to fix test: ${testCase.title}`}
@@ -649,6 +651,16 @@ function FileRow({
                 result?.error,
                 undefined,
                 result?.screenshotPath,
+                [
+                  ...new Set(
+                    [
+                      ...(result?.tests ?? [])
+                        .filter((test) => test.status !== "passed")
+                        .map((test) => test.runId),
+                      result?.runId,
+                    ].filter((id): id is number => id !== undefined),
+                  ),
+                ],
               )
             }
             label={`Ask AI to fix tests in: ${fileName}`}
@@ -789,6 +801,7 @@ export function TestsPanel() {
           error: string | undefined;
           testTitle?: string;
           screenshotPath?: string;
+          runIds?: number[];
         };
       }
     | null
@@ -1153,6 +1166,7 @@ export function TestsPanel() {
       error: string | undefined,
       testTitle?: string,
       screenshotPath?: string,
+      runIds: number[] = [],
     ) => {
       if (chatId == null) {
         showInfo("Open a chat to ask the AI to fix this test.");
@@ -1170,7 +1184,14 @@ export function TestsPanel() {
       // Include the tail of the raw run output for extra context (capped). Read
       // lazily from the store so this callback doesn't subscribe to the
       // streamed output and get recreated (re-rendering every row) per flush.
-      const output = jotaiStore.get(currentTestRunOutputAtom).trim();
+      const outputs =
+        selectedAppId === null
+          ? undefined
+          : jotaiStore.get(testRunOutputByAppIdAtom).get(selectedAppId);
+      const output = runIds
+        .map((id) => outputs?.get(id)?.trim())
+        .filter(Boolean)
+        .join("\n\n---\n\n");
       if (output) {
         const MAX = 4000;
         const tail =
@@ -1226,13 +1247,13 @@ export function TestsPanel() {
   // Public entry point: confirm the switch to Agent mode first if we aren't
   // already in it, then run the fix.
   const askAiToFix = useCallback<AskAiToFix>(
-    (file, error, testTitle, screenshotPath) => {
+    (file, error, testTitle, screenshotPath, runIds) => {
       if (isAgentMode) {
-        doAskAiToFix(file, error, testTitle, screenshotPath);
+        doAskAiToFix(file, error, testTitle, screenshotPath, runIds);
       } else {
         setAgentModeDialog({
           action: "fix",
-          params: { file, error, testTitle, screenshotPath },
+          params: { file, error, testTitle, screenshotPath, runIds },
         });
       }
     },
@@ -2126,9 +2147,9 @@ export function TestsPanel() {
         action={agentModeDialog?.action ?? lastAgentModeActionRef.current}
         onContinue={() => {
           if (agentModeDialog?.action === "fix") {
-            const { file, error, testTitle, screenshotPath } =
+            const { file, error, testTitle, screenshotPath, runIds } =
               agentModeDialog.params;
-            doAskAiToFix(file, error, testTitle, screenshotPath);
+            doAskAiToFix(file, error, testTitle, screenshotPath, runIds);
           } else if (agentModeDialog) {
             doGenerateTest();
           }

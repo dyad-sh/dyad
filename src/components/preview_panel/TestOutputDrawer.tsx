@@ -1,6 +1,7 @@
 import { useAtomValue, useSetAtom, useStore } from "jotai";
 import { ChevronDown, ChevronRight, X } from "lucide-react";
 import { memo, useEffect, useId, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import {
   closeTestOutputTabAtom,
@@ -19,6 +20,7 @@ export const TestOutputDrawer = memo(function TestOutputDrawer({
   open: boolean;
   onToggle: () => void;
 }) {
+  const { t } = useTranslation("chat");
   const appId = useAtomValue(selectedAppIdAtom);
   const { tabs, selectedRunId } = useAtomValue(currentTestOutputTabsAtom);
   const selectTab = useSetAtom(selectTestOutputTabAtom);
@@ -92,47 +94,66 @@ export const TestOutputDrawer = memo(function TestOutputDrawer({
                 aria-label="Test run output"
                 className="h-auto w-full justify-start overflow-x-auto rounded-none border-b border-border bg-transparent p-0 scrollbar-on-hover"
               >
-                {tabs.map((tab) => (
-                  <div
-                    key={tab.runId}
-                    className={cn(
-                      "flex shrink-0 items-center border-b-2 pr-1",
-                      tab.runId === selectedRunId
-                        ? "border-primary bg-(--background-darkest) text-foreground"
-                        : "border-transparent text-muted-foreground",
-                    )}
-                  >
-                    <TabsTrigger
-                      ref={(element) => {
-                        if (element) tabRefs.current.set(tab.runId, element);
-                        else tabRefs.current.delete(tab.runId);
-                      }}
-                      value={tab.runId}
-                      title={tab.label}
-                      onKeyDown={(event) => {
-                        if (event.key === "Delete") {
-                          event.preventDefault();
-                          dismissTab(tab.runId);
-                        }
-                      }}
-                      className="max-w-64 rounded-none px-3 py-2 text-xs data-active:bg-transparent data-active:shadow-none"
+                {tabs.map((tab) => {
+                  const target =
+                    tab.target ??
+                    (tab.fileCount > 1
+                      ? t("testOutput.files", { count: tab.fileCount })
+                      : t("testRunQueue.allTests"));
+                  const label = t("testOutput.runLabel", {
+                    number: tab.ordinal,
+                    target,
+                  });
+                  return (
+                    <div
+                      key={tab.runId}
+                      className={cn(
+                        "flex shrink-0 items-center border-b-2 pr-1",
+                        tab.runId === selectedRunId
+                          ? "border-primary bg-(--background-darkest) text-foreground"
+                          : "border-transparent text-muted-foreground",
+                      )}
                     >
-                      <span className="truncate">{tab.label}</span>
-                    </TabsTrigger>
-                    <button
-                      type="button"
-                      aria-label={`Close output for ${tab.label}`}
-                      title="Close output tab"
-                      onClick={() => dismissTab(tab.runId)}
-                      className="shrink-0 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
-                    >
-                      <X size={12} aria-hidden="true" />
-                    </button>
-                  </div>
-                ))}
+                      <TabsTrigger
+                        ref={(element) => {
+                          if (element) tabRefs.current.set(tab.runId, element);
+                          else tabRefs.current.delete(tab.runId);
+                        }}
+                        value={tab.runId}
+                        title={label}
+                        onKeyDown={(event) => {
+                          if (event.key === "Delete") {
+                            event.preventDefault();
+                            dismissTab(tab.runId);
+                          }
+                        }}
+                        className="max-w-64 rounded-none px-3 py-2 text-xs data-active:bg-transparent data-active:shadow-none"
+                      >
+                        <span className="truncate">{label}</span>
+                      </TabsTrigger>
+                      <button
+                        type="button"
+                        aria-label={t("testOutput.closeRun", { label })}
+                        title={t("testOutput.close")}
+                        onClick={() => dismissTab(tab.runId)}
+                        className="shrink-0 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
+                      >
+                        <X size={12} aria-hidden="true" />
+                      </button>
+                    </div>
+                  );
+                })}
               </TabsList>
               {tabs.map((tab) => (
                 <TabsContent key={tab.runId} value={tab.runId} className="mt-0">
+                  {tab.error && (
+                    <p
+                      role="status"
+                      className="px-4 py-2 text-xs text-destructive"
+                    >
+                      {tab.error}
+                    </p>
+                  )}
                   <pre
                     ref={tab.runId === selectedRunId ? outputRef : undefined}
                     className="text-[11px] whitespace-pre-wrap break-words bg-(--background-darkest) px-4 py-2 max-h-48 overflow-auto"

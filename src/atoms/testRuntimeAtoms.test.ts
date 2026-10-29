@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createStore } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import {
+  appendTestRunOutputAtom,
   applyTestRunFinishedAtom,
   applyTestRunStartedAtom,
   clearTestRuntimeForAppAtom,
@@ -16,6 +17,98 @@ import {
 } from "@/atoms/testRuntimeAtoms";
 
 describe("test runtime atoms", () => {
+  it("keeps an infrastructure failure visible through sibling progress and completion", () => {
+    const store = createStore();
+    for (const runId of [1, 2])
+      store.set(applyTestRunStartedAtom, { appId: 1, runId, source: "panel" });
+    store.set(applyTestRunFinishedAtom, {
+      appId: 1,
+      expectedRunId: 1,
+      isPartialRun: false,
+      res: {
+        appId: 1,
+        results: [],
+        infraError: { message: "Neon branch limit reached" },
+        isolation: { mode: "neon-branch" },
+      },
+    });
+    store.set(setTestRunStateForAppAtom, {
+      appId: 1,
+      runId: 2,
+      update: (prev) => ({ ...prev, phase: "running" }),
+    });
+    expect(store.get(testRunStateByAppIdAtom).get(1)).toMatchObject({
+      phase: "running",
+      runError: { message: "Neon branch limit reached" },
+      isolation: { mode: "neon-branch" },
+    });
+    store.set(applyTestRunFinishedAtom, {
+      appId: 1,
+      expectedRunId: 2,
+      isPartialRun: false,
+      res: { appId: 1, results: [] },
+    });
+    expect(store.get(testRunStateByAppIdAtom).get(1)?.runError?.message).toBe(
+      "Neon branch limit reached",
+    );
+    store.set(applyTestRunStartedAtom, { appId: 1, runId: 3, source: "panel" });
+    expect(store.get(testRunStateByAppIdAtom).get(1)?.runError).toBeUndefined();
+  });
+
+  it("retains separate output owners when partial results from different runs are merged", () => {
+    const store = createStore();
+    const file = "e2e-tests/a.spec.ts";
+    for (const runId of [1, 2]) {
+      store.set(applyTestRunStartedAtom, {
+        appId: 1,
+        runId,
+        source: "panel",
+        testFile: file,
+        testLine: runId,
+      });
+      store.set(appendTestRunOutputAtom, {
+        appId: 1,
+        runId,
+        chunk: `output ${runId}`,
+      });
+      store.set(applyTestRunFinishedAtom, {
+        appId: 1,
+        expectedRunId: runId,
+        isPartialRun: true,
+        res: {
+          appId: 1,
+          results: [
+            {
+              file,
+              status: "failed",
+              tests: [
+                { title: `case ${runId}`, line: runId, status: "failed" },
+              ],
+            },
+          ],
+        },
+      });
+    }
+    expect(
+      store
+        .get(testRunStateByAppIdAtom)
+        .get(1)
+        ?.results[file].tests?.map((test) => test.runId),
+    ).toEqual([1, 2]);
+    expect(store.get(testRunOutputByAppIdAtom).get(1)).toEqual(
+      new Map([
+        [1, "output 1"],
+        [2, "output 2"],
+      ]),
+    );
+    store.set(applyTestRunStartedAtom, {
+      appId: 1,
+      runId: 3,
+      source: "panel",
+      testFile: file,
+    });
+    expect(store.get(testRunOutputByAppIdAtom).get(1)?.size).toBe(0);
+  });
   it("clears only selected files and merges mixed batch results", () => {
     const store = createStore();
     const files = [
@@ -195,7 +288,10 @@ describe("test runtime atoms", () => {
         { file: "tests/b.spec.ts", tests: [] },
       ],
     });
-    store.set(testRunOutputByAppIdAtom, new Map([[1, "stale output"]]));
+    store.set(
+      testRunOutputByAppIdAtom,
+      new Map([[1, new Map([[1, "stale output"]])]]),
+    );
 
     // Whole-suite run (no file): every spec is running.
     store.set(applyTestRunStartedAtom, { appId: 1, source: "panel" });
@@ -203,7 +299,7 @@ describe("test runtime atoms", () => {
     expect(state.phase).toBe("setup");
     expect(state.source).toBe("panel");
     expect(state.runningFiles).toEqual(["tests/a.spec.ts", "tests/b.spec.ts"]);
-    expect(store.get(testRunOutputByAppIdAtom).get(1)).toBeUndefined();
+    expect(store.get(testRunOutputByAppIdAtom).get(1)?.size ?? 0).toBe(0);
 
     // Single-test run: only that test spins; other files' results survive.
     store.set(setTestRunStateForAppAtom, {

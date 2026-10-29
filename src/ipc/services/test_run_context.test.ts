@@ -66,7 +66,7 @@ afterEach(async () => {
   await fs.rm(h.root, { recursive: true, force: true });
 });
 
-it("detects changed workspace inputs", async () => {
+it("ignores edits and display preferences that do not affect admission", async () => {
   const first = await loadTestRunContext(request);
   // Neon runs own separate branches, so different revisions can overlap.
   expect(first.databaseKey).toBeUndefined();
@@ -76,16 +76,16 @@ it("detects changed workspace inputs", async () => {
     "new fixture",
   );
   const fixture = await loadTestRunContext(request);
-  expect(fixture.inputFingerprint).not.toBe(first.inputFingerprint);
+  expect(fixture).toEqual(first);
   await fs.writeFile(path.join(h.root, "package-lock.json"), "changed lock");
   const lock = await loadTestRunContext(request);
-  expect(lock.inputFingerprint).not.toBe(fixture.inputFingerprint);
+  expect(lock).toEqual(fixture);
   h.branch = "feature";
   h.commit = "new-commit";
   const branch = await loadTestRunContext(request);
-  expect(branch.inputFingerprint).not.toBe(lock.inputFingerprint);
+  expect(branch).toMatchObject({ branch: "feature", revision: "new-commit" });
   const headed = await loadTestRunContext({ ...request, headed: true });
-  expect(headed.inputFingerprint).not.toBe(branch.inputFingerprint);
+  expect(headed).toEqual(branch);
 });
 
 it("preserves provider compatibility and exclusive setup", async () => {

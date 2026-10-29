@@ -6,16 +6,24 @@ export const MAX_TEST_RUN_OUTPUT_LENGTH = 500_000;
 
 interface TestOutputTab {
   runId: number;
-  label: string;
+  ordinal: number;
+  target?: string;
+  fileCount: number;
   output: string;
+  error?: string;
 }
 
 interface TestOutputTabs {
   tabs: TestOutputTab[];
   selectedRunId: number | null;
+  nextOrdinal: number;
 }
 
-const EMPTY_OUTPUT_TABS: TestOutputTabs = { tabs: [], selectedRunId: null };
+const EMPTY_OUTPUT_TABS: TestOutputTabs = {
+  tabs: [],
+  selectedRunId: null,
+  nextOrdinal: 1,
+};
 
 // Window-local presentation history survives leaving Tests and switching apps.
 // Closing a tab only dismisses its output; execution remains owned by main.
@@ -33,22 +41,55 @@ export const openTestOutputTabAtom = atom(
   (
     _get,
     set,
-    { appId, runId, label }: { appId: number; runId: number; label: string },
+    {
+      appId,
+      runId,
+      target,
+      fileCount,
+    }: { appId: number; runId: number; target?: string; fileCount: number },
   ) => {
     set(testOutputTabsByAppIdAtom, (prev) => {
       const current = prev.get(appId) ?? EMPTY_OUTPUT_TABS;
       if (current.tabs.some((tab) => tab.runId === runId)) return prev;
       const next = new Map(prev);
       next.set(appId, {
-        tabs: [...current.tabs, { runId, label, output: "" }].sort(
-          (a, b) => a.runId - b.runId,
-        ),
+        nextOrdinal: current.nextOrdinal + 1,
+        tabs: [
+          ...current.tabs,
+          {
+            runId,
+            ordinal: current.nextOrdinal,
+            target,
+            fileCount,
+            output: "",
+          },
+        ].sort((a, b) => a.runId - b.runId),
         // An older bootstrap snapshot must not steal a newer live run's tab.
         selectedRunId: current.tabs.some((tab) => tab.runId > runId)
           ? current.selectedRunId
           : runId,
       });
       return next;
+    });
+  },
+);
+
+export const setTestOutputTabErrorAtom = atom(
+  null,
+  (
+    _get,
+    set,
+    { appId, runId, error }: { appId: number; runId: number; error?: string },
+  ) => {
+    set(testOutputTabsByAppIdAtom, (prev) => {
+      const current = prev.get(appId);
+      if (!current?.tabs.some((tab) => tab.runId === runId)) return prev;
+      return new Map(prev).set(appId, {
+        ...current,
+        tabs: current.tabs.map((tab) =>
+          tab.runId === runId ? { ...tab, error } : tab,
+        ),
+      });
     });
   },
 );
@@ -110,6 +151,7 @@ export const closeTestOutputTabAtom = atom(
       const tabs = current.tabs.filter((tab) => tab.runId !== runId);
       const next = new Map(prev);
       next.set(appId, {
+        ...current,
         tabs,
         selectedRunId:
           current.selectedRunId === runId

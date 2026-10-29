@@ -341,10 +341,27 @@ describe("useTestRunEvents", () => {
       const completed = store.get(testRunStateByAppIdAtom).get(1)!;
       expect(completed.phase).toBe("idle");
       expect(Object.keys(completed.results)).toHaveLength(2);
-      expect(store.get(testRunOutputByAppIdAtom).get(1)).toBe("run 1\nrun 2\n");
+      expect(store.get(testRunOutputByAppIdAtom).get(1)).toEqual(
+        new Map([
+          [1, "run 1\n"],
+          [2, "run 2\n"],
+        ]),
+      );
       expect(store.get(currentTestOutputTabsAtom).tabs).toEqual([
-        { runId: 1, label: "Run 1 · a.spec.ts", output: "run 1\n" },
-        { runId: 2, label: "Run 2 · b.spec.ts", output: "run 2\n" },
+        {
+          runId: 1,
+          ordinal: 1,
+          target: "a.spec.ts",
+          fileCount: 1,
+          output: "run 1\n",
+        },
+        {
+          runId: 2,
+          ordinal: 2,
+          target: "b.spec.ts",
+          fileCount: 1,
+          output: "run 2\n",
+        },
       ]);
     },
   );
@@ -401,12 +418,19 @@ describe("useTestRunEvents", () => {
         "b.spec.ts",
       ]),
     );
-    expect(store.get(testRunOutputByAppIdAtom).get(1)).toBe("first");
+    expect(store.get(testRunOutputByAppIdAtom).get(1)?.get(1)).toBe("first");
     expect(store.get(currentTestOutputTabsAtom)).toEqual({
       selectedRunId: 2,
+      nextOrdinal: 3,
       tabs: [
-        { runId: 1, label: "Run 1 · a.spec.ts", output: "first" },
-        { runId: 2, label: "Run 2 · b.spec.ts", output: "" },
+        {
+          runId: 1,
+          ordinal: 2,
+          target: "a.spec.ts",
+          fileCount: 1,
+          output: "first",
+        },
+        { runId: 2, ordinal: 1, target: "b.spec.ts", fileCount: 1, output: "" },
       ],
     });
   });
@@ -436,12 +460,25 @@ describe("useTestRunEvents", () => {
     }
     expect(store.get(currentTestOutputTabsAtom)).toEqual({
       selectedRunId: 3,
+      nextOrdinal: 4,
       tabs: [
-        { runId: 1, label: "Run 1 · All tests", output: "run 1" },
-        { runId: 3, label: "Run 3 · All tests", output: "run 3" },
+        {
+          runId: 1,
+          ordinal: 1,
+          target: undefined,
+          fileCount: 0,
+          output: "run 1",
+        },
+        {
+          runId: 3,
+          ordinal: 3,
+          target: undefined,
+          fileCount: 0,
+          output: "run 3",
+        },
       ],
     });
-    expect(store.get(testRunOutputByAppIdAtom).get(1)).toBe("run 3");
+    expect(store.get(testRunOutputByAppIdAtom).get(1)?.size).toBe(0);
   });
 
   it.each(["agent", "panel"])(
@@ -497,7 +534,7 @@ describe("useTestRunEvents", () => {
       expect(store.get(testRunStateByAppIdAtom).get(1)?.runningFiles).toContain(
         "e2e-tests/a.spec.ts",
       );
-      expect(store.get(testRunOutputByAppIdAtom).get(1)).toContain(
+      expect(store.get(testRunOutputByAppIdAtom).get(1)?.get(42)).toContain(
         "Earlier setup output",
       );
       expect(store.get(previewNativeViewAppIdAtom)).toBeNull();
@@ -755,7 +792,7 @@ describe("useTestRunEvents", () => {
         vi.advanceTimersByTime(100);
       });
 
-      expect(store.get(testRunOutputByAppIdAtom).get(1)).toBe(
+      expect(store.get(testRunOutputByAppIdAtom).get(1)?.get(1)).toBe(
         "setup\nrunning\n",
       );
       expect(store.get(testRunStateByAppIdAtom).get(1)?.phase).toBe("running");
@@ -861,6 +898,7 @@ describe("useTestRunEvents", () => {
     vi.useFakeTimers();
     try {
       const { store, Wrapper } = makeWrapper();
+      store.set(selectedAppIdAtom, 1);
       renderHook(() => useTestRunEvents(), { wrapper: Wrapper });
 
       act(() => {
@@ -904,7 +942,11 @@ describe("useTestRunEvents", () => {
       expect(state.runId).toBe(2);
       expect(state.phase).toBe("setup");
       expect(state.runningFiles).toEqual(["tests/new.spec.ts"]);
-      expect(store.get(testRunOutputByAppIdAtom).get(1)).toBe("old teardown\n");
+      expect(store.get(testRunOutputByAppIdAtom).get(1)?.has(1)).toBe(false);
+      expect(
+        store.get(currentTestOutputTabsAtom).tabs.find((tab) => tab.runId === 1)
+          ?.output,
+      ).toBe("old teardown\n");
     } finally {
       vi.useRealTimers();
     }

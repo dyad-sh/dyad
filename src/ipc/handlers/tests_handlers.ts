@@ -43,7 +43,6 @@ import type {
   TestResult,
   TestsRunStatePayload,
   ActiveTestRunSnapshot,
-  TestRunSnapshot,
 } from "../types/tests";
 import {
   detectLegacyPlaywrightSpecs,
@@ -137,6 +136,7 @@ import {
   withAppTestRun,
   stopAppTestsForApp,
   cancelAppTestRun,
+  dismissNeonBranchLimit,
   validateTestRunInputs,
   stopAllAppTestRuns,
   drainAppTestRuns,
@@ -364,7 +364,6 @@ export function getRunningTestBaseUrl(appId: number): string | null {
 // Read-only replay of the active lifecycle; queue ownership remains authoritative.
 // Run IDs are process-wide; app membership is checked at every read boundary.
 const activeRunSnapshots = new Map<number, ActiveTestRunSnapshot>();
-const finishedRunSnapshots = new Map<number, TestRunSnapshot>();
 
 function emitOutput(
   event: IpcMainInvokeEvent,
@@ -427,18 +426,7 @@ function emitRunState(
     });
   } else if (current?.run.runId === payload.runId) {
     if (payload.state === "finished") {
-      finishedRunSnapshots.set(payload.runId, {
-        run: emittedPayload,
-        phase: "finished",
-        output: current.output.slice(-30_000),
-      });
       activeRunSnapshots.delete(payload.runId);
-      const appRuns = [...finishedRunSnapshots].filter(
-        ([, run]) => run.run.appId === payload.appId,
-      );
-      for (const [id] of appRuns.slice(0, -10)) finishedRunSnapshots.delete(id);
-      while (finishedRunSnapshots.size > 100)
-        finishedRunSnapshots.delete(finishedRunSnapshots.keys().next().value!);
     } else
       activeRunSnapshots.set(payload.runId, {
         ...current,
@@ -2289,7 +2277,8 @@ async function executeAppTestsWithIsolation(
     return { appId, results: [], infraError: testRunStoppedInfraError(signal) };
   // Concurrent runs use their own browsers. One native preview surface cannot
   // be leased by two runs, and queueing behind it would invalidate reservations.
-  if (readSettings().enableParallelTestRuns) {
+  const parallelRunsEnabled = !!readSettings().enableParallelTestRuns;
+  if (parallelRunsEnabled) {
     preview = false;
     parallel = false;
   }
@@ -3204,9 +3193,16 @@ async function executeAppTestsWithIsolation(
                   // their screenshots live in earlier runs' artifact directories —
                   // so the prune has to keep those rather than treat this run's
                   // output as a complete replacement.
-                  // Recent runs keep independent reports. Startup applies the
-                  // bounded artifact retention policy when no UI owns them.
-                  replacesEveryResult: false,
+                  // Only serial full-suite runs supersede all prior results.
+                  // The workspace owner also excludes active directories.
+                  replacesEveryResult:
+                    !parallelRunsEnabled &&
+                    !readSettings().enableParallelTestRuns &&
+                    getAppTestRunQueue(appId).activeRuns.length === 1 &&
+                    testFile === undefined &&
+                    testFiles === undefined &&
+                    testLine === undefined &&
+                    !grep,
                 }),
               );
               retained = true;
@@ -3387,10 +3383,15 @@ async function moveFileWithFallback(src: string, dst: string): Promise<void> {
 }
 
 export function registerTestsHandlers() {
-  createTypedHandler(testsContracts.getRuns, async (_event, { appId }) =>
-    [...activeRunSnapshots.values(), ...finishedRunSnapshots.values()]
-      .filter((snapshot) => snapshot.run.appId === appId)
-      .sort((a, b) => b.run.runId - a.run.runId),
+  createTypedHandler(
+    testsContracts.dismissNeonBranchLimit,
+    async (event, { appId, runId }) => {
+      dismissNeonBranchLimit(appId, runId);
+      broadcastToRegisteredWindows(event.sender, "tests:queue-state", {
+        appId,
+        ...getAppTestRunQueue(appId),
+      });
+    },
   );
   createTypedHandler(
     testsContracts.getActiveRun,

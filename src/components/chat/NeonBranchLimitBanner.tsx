@@ -1,6 +1,9 @@
-import { Database } from "lucide-react";
+import { Database, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { useTestRunQueue } from "@/hooks/useTestRunQueue";
+import {
+  useTestRunQueue,
+  useDismissNeonBranchLimit,
+} from "@/hooks/useTestRunQueue";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { ipc } from "@/ipc/types";
 import { Button } from "@/components/ui/button";
@@ -9,6 +12,7 @@ export function NeonBranchLimitBanner({ appId }: { appId: number | null }) {
   const { t } = useTranslation("chat");
   const { data } = useTestRunQueue(appId);
   const { app } = useLoadApp(appId);
+  const dismiss = useDismissNeonBranchLimit();
   const notice = data?.neonBranchLimit;
   if (appId === null || !notice || app?.neonProjectId !== notice.projectId)
     return null;
@@ -42,6 +46,18 @@ export function NeonBranchLimitBanner({ appId }: { appId: number | null }) {
         >
           {t("neonBranchLimit.manage")}
         </Button>
+        {notice.status === "blocked" && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7"
+            aria-label={t("neonBranchLimit.dismiss")}
+            disabled={dismiss.isPending}
+            onClick={() => dismiss.mutate({ appId, runId: notice.runId })}
+          >
+            <X className="size-4" aria-hidden="true" />
+          </Button>
+        )}
       </div>
     </div>
   );

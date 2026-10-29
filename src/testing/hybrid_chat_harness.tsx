@@ -1117,7 +1117,10 @@ export async function setupHybridChatHarness(
           message: "seeded",
           source: "preview-app",
         });
-        store.set(testRunOutputByAppIdAtom, new Map([[appId, "seeded"]]));
+        store.set(
+          testRunOutputByAppIdAtom,
+          new Map([[appId, new Map([[1, "seeded"]])]]),
+        );
       });
     };
 

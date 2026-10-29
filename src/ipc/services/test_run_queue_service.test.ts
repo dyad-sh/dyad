@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { IpcMainInvokeEvent } from "electron";
 import { performance } from "node:perf_hooks";
+import { readSettings } from "@/main/settings";
 import { sendTelemetryEvent } from "../utils/telemetry";
 import { measureTestRunStep } from "./test_run_timing";
 import { loadTestRunContext } from "./test_run_context";
@@ -19,7 +20,9 @@ const h = vi.hoisted(() => ({
   info: vi.fn(),
   warn: vi.fn(),
 }));
-vi.mock("@/main/settings", () => ({ readSettings: () => h.settings }));
+vi.mock("@/main/settings", () => ({
+  readSettings: vi.fn(() => ({ ...h.settings })),
+}));
 vi.mock("./test_run_context", () => ({
   loadTestRunContext: vi.fn(),
 }));
@@ -459,6 +462,23 @@ it("caches blocked admission metadata and refreshes after ownership changes", as
   await tick();
   expect(loadTestRunContext).toHaveBeenCalledTimes(reads + 1);
   expect(blocked.execute).toHaveBeenCalledOnce();
+});
+
+it("reads settings once per blocked admission pass even with a large backlog", async () => {
+  h.settings.enableParallelTestRuns = true;
+  h.databaseKey = "supabase:shared";
+  enqueue(1);
+  await tick();
+  h.branch = "other";
+  for (let appId = 2; appId <= 41; appId++) enqueue(appId);
+  vi.mocked(readSettings).mockClear();
+  await tick();
+  expect(readSettings).toHaveBeenCalledOnce();
+  expect(service.getAppTestRunQueue(41).queuedRuns[0].queuedReason).toBe(
+    "compatibility",
+  );
+  await tick(6000);
+  expect(readSettings).toHaveBeenCalledTimes(4);
 });
 
 it("reports metadata failures and retries them on the slow refresh interval", async () => {

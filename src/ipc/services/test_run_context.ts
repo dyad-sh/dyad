@@ -27,12 +27,12 @@ export type TestRunContextRequest = TestRunRequest & {
 /** Only inputs that determine whether runs can safely overlap belong here. */
 export async function loadTestRunContext(
   request: TestRunContextRequest,
+  settings = readSettings(),
 ): Promise<TestRunContext> {
   const app = await db.query.apps.findFirst({
     where: eq(apps.id, request.appId),
   });
   if (!app) throw new Error("App no longer exists");
-  const settings = readSettings();
   const appPath = await fs.realpath(getDyadAppPath(app.path));
   const [branchName, commit] = await Promise.all([
     gitCurrentBranch({ path: appPath }),

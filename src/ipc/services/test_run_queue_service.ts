@@ -8,6 +8,7 @@ import {
 } from "@/test_run_queue/controller";
 import type { TestRunStopReason } from "@/test_run_queue/state";
 import { DEFAULT_MAX_CONCURRENT_TEST_RUNS } from "@/shared/settings_defaults";
+import type { TestRunWaitReason } from "@/shared/test_run_queue";
 import type { NeonBranchLimitStatus } from "@/shared/neon_branch_limit";
 import type { TestRunQueueSnapshot } from "../types/tests";
 import {
@@ -80,15 +81,15 @@ export function createTestRunQueueService({
         if (!state.activeRuns.length && !state.queuedRuns.length)
           senders.delete(appId);
       }
-      startSerialRun();
+      if (!driving && queue.getSnapshot().queuedRuns.length) startSerialRun();
       scheduleDrive();
     },
     onError: (error) =>
       logger.error("Failed to publish test queue state", error),
   });
 
-  function startSerialRun() {
-    if (readSettings().enableParallelTestRuns) return;
+  function startSerialRun(settings = readSettings()) {
+    if (settings.enableParallelTestRuns) return;
     refreshUnsettledOwners();
     const state = queue.getSnapshot();
     const busyApps = new Set([
@@ -164,7 +165,10 @@ export function createTestRunQueueService({
     driving = true;
     let admitted = false;
     try {
-      startSerialRun();
+      const settings = readSettings();
+      let limit =
+        settings.maxConcurrentTestRuns ?? DEFAULT_MAX_CONCURRENT_TEST_RUNS;
+      startSerialRun(settings);
       const earlierApps = new Set<number | undefined>();
       const waitingRunIds: number[] = [];
       for (const candidate of queue.getSnapshot().queuedRuns) {
@@ -176,10 +180,7 @@ export function createTestRunQueueService({
         const record = records.get(candidate.runId);
         if (!record) continue;
         refreshUnsettledOwners();
-        const before = readSettings();
         const activeCount = queue.getSnapshot().activeRuns?.length ?? 0;
-        const limitBefore =
-          before.maxConcurrentTestRuns ?? DEFAULT_MAX_CONCURRENT_TEST_RUNS;
         // Polling observes settings and late process settlement cheaply. No git
         // or workspace reads are needed when admission is already impossible.
         const ownProcessCleanupBlocked = [...unsettledOwners.values()].some(
@@ -190,8 +191,8 @@ export function createTestRunQueueService({
           continue;
         }
         if (
-          !before.enableParallelTestRuns ||
-          activeCount + unsettledOwners.size >= limitBefore
+          !settings.enableParallelTestRuns ||
+          activeCount + unsettledOwners.size >= limit
         ) {
           queue.waiting(candidate.runId, "capacity");
           return;
@@ -210,7 +211,7 @@ export function createTestRunQueueService({
             ADMISSION_CONTEXT_REFRESH_INTERVAL_MS
         ) {
           try {
-            record.context = await loadTestRunContext(record.request);
+            record.context = await loadTestRunContext(record.request, settings);
           } catch (error) {
             record.context = null;
             logger.warn("Failed to load test admission context", {
@@ -231,14 +232,6 @@ export function createTestRunQueueService({
         refreshUnsettledOwners();
         const processCleanupBlocked = processCleanupBlocks(record);
         const active = queue.getSnapshot().activeRuns ?? [];
-        const settings = readSettings();
-        if (!settings.enableParallelTestRuns) {
-          startSerialRun();
-          return;
-        }
-        const limit = settings.enableParallelTestRuns
-          ? (settings.maxConcurrentTestRuns ?? DEFAULT_MAX_CONCURRENT_TEST_RUNS)
-          : 1;
         const context = record.context;
         const compatible = active.every((run) =>
           compatibleWithRun(record.request, context, run.runId),
@@ -246,7 +239,7 @@ export function createTestRunQueueService({
         const conflictsWithEarlierRun = waitingRunIds.some(
           (runId) => !compatibleWithRun(record.request, context, runId),
         );
-        const reason = !context
+        let reason: TestRunWaitReason | null = !context
           ? "context-unavailable"
           : processCleanupBlocked
             ? "process-cleanup"
@@ -257,6 +250,20 @@ export function createTestRunQueueService({
                 : active.length && !compatible
                   ? "compatibility"
                   : null;
+        if (!reason) {
+          // Metadata reads yield to settings changes. Refresh only for a run
+          // that can be admitted, not for every blocked candidate or event.
+          const latestSettings = readSettings();
+          if (!latestSettings.enableParallelTestRuns) {
+            startSerialRun(latestSettings);
+            return;
+          }
+          limit =
+            latestSettings.maxConcurrentTestRuns ??
+            DEFAULT_MAX_CONCURRENT_TEST_RUNS;
+          if (active.length + unsettledOwners.size >= limit)
+            reason = "capacity";
+        }
         if (!reason || candidate.queuedReason !== reason) {
           try {
             logger.info("e2e_test_admission_decision", {

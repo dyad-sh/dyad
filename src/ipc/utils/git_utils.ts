@@ -1904,8 +1904,10 @@ async function ensureOriginFetchRefspec(
   path: string,
 ): Promise<FetchRefspecState> {
   try {
+    // Read only this repository's config, so a global value cannot block the
+    // repair.
     const read = await execGit(
-      ["config", "--get-all", "remote.origin.fetch"],
+      ["config", "--local", "--get-all", "remote.origin.fetch"],
       path,
     );
     // Exit code 1 means the key is not set; anything else is a real failure.

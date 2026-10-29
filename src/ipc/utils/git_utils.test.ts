@@ -1167,6 +1167,7 @@ describe("gitSetRemoteUrl", () => {
   async function fetchRefspecs(dir: string): Promise<string[]> {
     const output = await runGitOutput(dir, [
       "config",
+      "--local",
       "--get-all",
       "remote.origin.fetch",
     ]);

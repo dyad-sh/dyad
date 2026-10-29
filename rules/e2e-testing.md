@@ -108,6 +108,8 @@ Changing an element's ARIA **role** is a breaking change for tests, even when th
 
 A fake server that does not enforce what the real one enforces makes the spec unable to fail for the property it exists to prove. The fake GitLab served private repositories over git-over-HTTP without checking credentials, so the publish specs passed whether or not the host-bound auth header was built at all. When a fake stands in for a service Dyad authenticates against, make it reject the unauthenticated request — and only record a side effect (a push event, a created row) after the underlying command actually succeeds, or a test can assert an operation that was rejected.
 
+Fakes for services Dyad reaches through a Speakeasy-generated SDK (`@vercel/sdk`) must also return every field the SDK's response schema requires. A Dependabot SDK bump can add a required field: `@vercel/sdk` 1.28.37 made `duration` mandatory on `createDeployment`, so the minimal fake body raised `ResponseValidationError` at HTTP 200 and the UI showed "Vercel deployment failed (HTTP 200). Dyad could not read Vercel's response." To find the missing field, `safeParse` the fake body against `<Op>ResponseBody$inboundSchema` from `@vercel/sdk/models/<op>.js` in a script under `.claude/tmp/`, and read `issues[0].unionErrors` for union schemas.
+
 Let the semantics decide the role, not the selectors. A group of mutually exclusive options is a `radiogroup` of `radio`s; `aria-pressed` on buttons is for independent toggles, and is only a defensible shortcut for a segmented control when the churn is not worth it — say so in the code when you take it.
 
 ## Lexical editor in Playwright E2E tests
@@ -360,6 +362,7 @@ If a targeted E2E fails before launch with `ENOENT: no such file or directory, s
   The final Playwright summary and inline snapshot diff usually preserve the
   failing specs and assertion evidence even when traces are gone.
 - In the merged `html-report` artifact's `results.json`, failure screenshots are embedded as base64 in `attachments[].body` (the `path` field is empty or CI-side); decode the body to view them. Trace zips live in the artifact's `data/` directory, keyed by the hash in the CI-side path.
+- Read the `data/*.markdown` error-context page snapshots first (`grep -l "<spec keyword>" data/*.markdown`). They capture alert and toast text inside dialogs, so an "element(s) not found" failure often turns out to be an app error the test never asserted.
 - If a trace attachment's CI-side hash is absent from the merged report's `data/` directory, scan `data/*.zip` by grepping each archive's `test.trace` for the spec filename; some report merges rename resource hashes.
 - Before root-causing a failure on a PR branch, download the `html-report` from a recent main-branch CI run and check whether the same spec fails there — pre-existing main failures are out of scope for the PR's deflake.
 - When a feature intentionally changes from restart-durable to process-lifetime state, replace restart/legacy-store E2E assertions with a renderer-reload contract. A test polling the removed persistence IPC can fail before it ever exercises relaunch and look like a recovery regression.

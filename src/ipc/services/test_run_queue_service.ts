@@ -55,7 +55,7 @@ export function createTestRunQueueService({
   let nextTestRunId = clock.now() * 1000;
   let driving = false;
   let driveTimer: ClockHandle | undefined;
-  const unsettledOwners = new Map<AbortSignal, number>();
+  const unsettledOwners = new Map<AbortSignal, RunRecord>();
 
   function refreshUnsettledOwners() {
     for (const signal of unsettledOwners.keys()) {
@@ -90,7 +90,7 @@ export function createTestRunQueueService({
     const state = queue.getSnapshot();
     const busyApps = new Set([
       ...(state.activeRuns ?? []).map((run) => run.appId),
-      ...unsettledOwners.values(),
+      ...[...unsettledOwners.values()].map((owner) => owner.request.appId),
     ]);
     // Preserve the original per-app queue when parallel execution is off.
     for (const run of state.queuedRuns) {
@@ -140,6 +140,22 @@ export function createTestRunQueueService({
     );
   }
 
+  function processCleanupBlocks(record: RunRecord) {
+    return [...unsettledOwners.values()].some((owner) => {
+      if (owner.request.appId === record.request.appId) return true;
+      // A surviving process may still touch its workspace or remote database.
+      // Retain that context after the queue removes its finished run record.
+      const context = record.context;
+      const other = owner.context;
+      return (
+        !context ||
+        !other ||
+        context.workspaceKey === other.workspaceKey ||
+        (!!context.databaseKey && context.databaseKey === other.databaseKey)
+      );
+    });
+  }
+
   async function drive() {
     if (driving) return;
     driving = true;
@@ -162,15 +178,15 @@ export function createTestRunQueueService({
           before.maxConcurrentTestRuns ?? DEFAULT_MAX_CONCURRENT_TEST_RUNS;
         // Polling observes settings and late process settlement cheaply. No git
         // or workspace reads are needed when admission is already impossible.
-        if (
-          unsettledOwners.size ||
-          !before.enableParallelTestRuns ||
-          activeCount >= limitBefore
-        ) {
-          queue.waiting(
-            candidate.runId,
-            unsettledOwners.size ? "process-cleanup" : "capacity",
-          );
+        const ownProcessCleanupBlocked = [...unsettledOwners.values()].some(
+          (owner) => owner.request.appId === candidate.appId,
+        );
+        if (ownProcessCleanupBlocked) {
+          queue.waiting(candidate.runId, "process-cleanup");
+          continue;
+        }
+        if (!before.enableParallelTestRuns || activeCount >= limitBefore) {
+          queue.waiting(candidate.runId, "capacity");
           return;
         }
         // Capture current branch/config inputs, not consumption predictions.
@@ -184,7 +200,7 @@ export function createTestRunQueueService({
         )
           continue;
         refreshUnsettledOwners();
-        const processCleanupBlocked = unsettledOwners.size > 0;
+        const processCleanupBlocked = processCleanupBlocks(record);
         const active = queue.getSnapshot().activeRuns ?? [];
         const settings = readSettings();
         if (!settings.enableParallelTestRuns) {
@@ -229,7 +245,7 @@ export function createTestRunQueueService({
         }
         if (reason) {
           queue.waiting(candidate.runId, reason, context?.branch);
-          if (reason !== "compatibility") return;
+          if (reason === "capacity") return;
           continue;
         }
         queue.waiting(candidate.runId, "starting", context?.branch);
@@ -302,7 +318,7 @@ export function createTestRunQueueService({
             return await execute(run, timing);
           } finally {
             if (trackedE2eTestProcessesForOwner(run.signal).length)
-              unsettledOwners.set(run.signal, options.appId);
+              unsettledOwners.set(run.signal, record);
           }
         },
         cancelled: (reason) => {

@@ -530,6 +530,44 @@ it("keeps serial apps independent and does not load unused admission metadata", 
   expect(queued.execute).toHaveBeenCalledOnce();
 });
 
+it.each(["independent", "workspace", "database"])(
+  "scopes lingering-process admission blocks to shared resources (%s)",
+  async (sharing) => {
+    h.settings.enableParallelTestRuns = true;
+    if (sharing === "database") h.databaseKey = "supabase:shared";
+    const first = enqueue(1);
+    await tick();
+    h.remainingProcesses = [{}];
+    first.finish();
+    await first.result;
+    const sameApp = enqueue(1);
+    if (sharing === "workspace") {
+      vi.mocked(loadTestRunContext).mockImplementationOnce(async () => ({
+        workspaceKey: "/app-1",
+        exclusive: false,
+      }));
+    }
+    const otherApp = enqueue(2);
+    await tick();
+    expect(sameApp.execute).not.toHaveBeenCalled();
+    expect(service.getAppTestRunQueue(1).queuedRuns[0].queuedReason).toBe(
+      "process-cleanup",
+    );
+    if (sharing === "independent")
+      expect(otherApp.execute).toHaveBeenCalledOnce();
+    else {
+      expect(otherApp.execute).not.toHaveBeenCalled();
+      expect(service.getAppTestRunQueue(2).queuedRuns[0].queuedReason).toBe(
+        "process-cleanup",
+      );
+    }
+    h.remainingProcesses = [];
+    await tick(2000);
+    expect(sameApp.execute).toHaveBeenCalledOnce();
+    expect(otherApp.execute).toHaveBeenCalledOnce();
+  },
+);
+
 it("does not reload contexts while all parallel slots are occupied", async () => {
   h.settings.enableParallelTestRuns = true;
   enqueue();

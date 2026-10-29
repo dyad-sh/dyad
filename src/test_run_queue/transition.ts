@@ -9,6 +9,17 @@ export function transition(
   state: TestRunQueueState,
   event: TestRunQueueEvent,
 ): TransitionResult<TestRunQueueState, TestRunQueueCommand> {
+  if (event.type === "reject") {
+    if (!state.queuedRuns.some((run) => run.runId === event.runId))
+      return ignore(state, "stale-operation");
+    return change(
+      {
+        ...state,
+        queuedRuns: state.queuedRuns.filter((run) => run.runId !== event.runId),
+      },
+      [{ type: "reject-queued", runId: event.runId }],
+    );
+  }
   if (state.activeRuns) return transitionAdmitted(state, event);
   switch (event.type) {
     case "waiting":
@@ -120,7 +131,7 @@ export function transition(
 /** Resource decisions are inputs. This transition reserves ownership before execution. */
 function transitionAdmitted(
   state: TestRunQueueState,
-  event: TestRunQueueEvent,
+  event: Exclude<TestRunQueueEvent, { type: "reject" }>,
 ): TransitionResult<TestRunQueueState, TestRunQueueCommand> {
   const active = state.activeRuns!;
   const commit = (

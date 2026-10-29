@@ -19,7 +19,7 @@ it("defaults parallel runs off and the concurrency limit to two", () => {
   });
   expect(toggle.getAttribute("aria-checked")).toBe("false");
   const input = screen.getByRole("spinbutton", {
-    name: "Concurrent tests",
+    name: "Maximum concurrent test runs",
   }) as HTMLInputElement;
   expect(input.value).toBe("2");
   expect(input.disabled).toBe(true);

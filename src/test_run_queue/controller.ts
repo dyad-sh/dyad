@@ -33,6 +33,7 @@ function stopReasonOf(signal: AbortSignal): TestRunStopReason {
 }
 
 interface PendingRun {
+  admissionError?: Error;
   controller: AbortController;
   execute: (run: TestRunExecution) => Promise<unknown>;
   cancelled: (reason: TestRunStopReason) => unknown;
@@ -129,6 +130,17 @@ export class TestRunQueue {
     this.send({ type: "cancel", runId, reason });
   }
 
+  failAdmission(runId: number, error: Error) {
+    const pending = this.runs.get(runId);
+    if (
+      !pending ||
+      !this.getSnapshot().queuedRuns.some((run) => run.runId === runId)
+    )
+      return;
+    pending.admissionError ??= error;
+    this.send({ type: "reject", runId });
+  }
+
   async drain(appId?: number): Promise<void> {
     const busy = () =>
       [
@@ -182,6 +194,11 @@ export class TestRunQueue {
     const pending = this.runs.get(command.runId);
     if (!pending) return;
     switch (command.type) {
+      case "reject-queued":
+        pending.detach();
+        this.runs.delete(command.runId);
+        pending.reject(pending.admissionError);
+        break;
       case "execute":
         // Defer execution so reentrant cancellation published during admission
         // is committed before a callback can acquire resources.

@@ -79,7 +79,8 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
   {
     id: SETTING_IDS.parallelTestRuns,
     label: "Parallel E2E test runs",
-    description: "Choose the number of E2E tests that can run at the same time",
+    description:
+      "Choose the maximum number of E2E test runs that can run at the same time",
     keywords: [
       "tests",
       "e2e",

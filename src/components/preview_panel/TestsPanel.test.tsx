@@ -354,6 +354,57 @@ describe("TestsPanel", () => {
       enableTestRunInPreview: true,
     };
 
+    it("explains concurrent-run overrides and restores saved options when disabled", async () => {
+      mocks.settings = {
+        ...experimentOn,
+        enableParallelTestRuns: true,
+        testHeaded: true,
+        testParallel: true,
+      };
+      renderPanel();
+      fireEvent.click(await screen.findByTestId("tests-options-button"));
+      const parallelToggle = screen.getByRole("switch", {
+        name: "Switch to parallel mode",
+      });
+      expect(parallelToggle.getAttribute("aria-checked")).toBe("false");
+      expect(parallelToggle.hasAttribute("data-disabled")).toBe(true);
+      expect(screen.getByText(/even when only one run is active/)).toBeTruthy();
+      expect(screen.getByText(/preview panel is unavailable/)).toBeTruthy();
+      const headedToggle = screen.getByRole("switch", {
+        name: "Switch to headless mode",
+      });
+      expect(headedToggle.getAttribute("aria-checked")).toBe("true");
+      expect(headedToggle.hasAttribute("data-disabled")).toBe(false);
+      fireEvent.click(parallelToggle);
+      expect(mocks.updateSettings).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole("button", { name: "Close" }));
+      await act(async () => fireEvent.click(screen.getByText("Run all")));
+      expect(mocks.runAppTests).toHaveBeenCalledWith(
+        expect.objectContaining({ headed: true, preview: false }),
+      );
+
+      // Saved preferences survive the override and are available again when
+      // concurrent runs is turned off. Opening options rerenders the panel.
+      mocks.settings = { ...mocks.settings, enableParallelTestRuns: false };
+      fireEvent.click(screen.getByTestId("tests-options-button"));
+      expect(
+        screen.getByText("Watch tests run in the preview panel."),
+      ).toBeTruthy();
+      expect(screen.queryByText(/even when only one run is active/)).toBeNull();
+      fireEvent.click(
+        screen.getByRole("switch", { name: "Switch to headless mode" }),
+      );
+      expect(mocks.updateSettings).toHaveBeenCalledWith({ testHeaded: false });
+      fireEvent.click(screen.getByRole("button", { name: "Close" }));
+      mocks.settings = { ...mocks.settings, testHeaded: false };
+      fireEvent.click(screen.getByTestId("tests-options-button"));
+      const restoredParallel = screen.getByRole("switch", {
+        name: "Switch to serial mode",
+      });
+      expect(restoredParallel.getAttribute("aria-checked")).toBe("true");
+      expect(restoredParallel.hasAttribute("data-disabled")).toBe(false);
+    });
+
     it("requests headed preview without activating it before main starts the run", async () => {
       mocks.settings = { ...experimentOn, testHeaded: true };
       mocks.runAppTests.mockResolvedValue({ appId: 1, results: [] });

@@ -5,7 +5,7 @@ import {
   clearTestOutputTabsForAppAtom,
   MAX_TEST_RUN_OUTPUT_LENGTH,
   openTestOutputTabAtom,
-  setTestOutputTabErrorAtom,
+  finishTestOutputTabAtom,
 } from "./testOutputAtoms";
 import type {
   TestSpec,
@@ -547,7 +547,7 @@ export const applyTestRunFinishedAtom = atom(
       },
     });
     if (expectedRunId !== undefined)
-      set(setTestOutputTabErrorAtom, {
+      set(finishTestOutputTabAtom, {
         appId,
         runId: expectedRunId,
         error: res.infraError?.message,

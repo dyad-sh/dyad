@@ -935,15 +935,19 @@ export function TestsPanel() {
   // With the experiment enabled, "headed" means visible in Dyad's preview
   // rather than in a separate Playwright browser window.
   const previewRunEnabled = !!settings?.enableTestRunInPreview;
+  const parallelRunsEnabled = !!settings?.enableParallelTestRuns;
   const runsInPreviewWebContentsView =
-    previewRunEnabled && headed && !settings?.enableParallelTestRuns;
+    previewRunEnabled && headed && !parallelRunsEnabled;
   // Display only. The value SENT to the runner is the user's raw choice: main
   // decides whether the preview actually gets the run, and a run that falls
   // back to an ordinary browser can parallelize when it has no per-case data.
   const isolatesTestCases =
     hasSupabaseIsolation || (!hasSupabase && hasNeonIsolation);
   const effectiveParallel =
-    parallel && !runsInPreviewWebContentsView && !isolatesTestCases;
+    parallel &&
+    !parallelRunsEnabled &&
+    !runsInPreviewWebContentsView &&
+    !isolatesTestCases;
 
   const specsQuery = useQuery({
     queryKey: queryKeys.tests.list({ appId: selectedAppId }),
@@ -1534,11 +1538,13 @@ export function TestsPanel() {
                       Run in parallel
                     </Label>
                     <p className="text-xs leading-relaxed text-muted-foreground">
-                      {isolatesTestCases
-                        ? "Unavailable while each test uses isolated database data."
-                        : runsInPreviewWebContentsView
-                          ? "Unavailable while tests run in the preview panel."
-                          : "Run independent tests in a file at the same time."}
+                      {parallelRunsEnabled
+                        ? "Parallel E2E runs is enabled in Settings. Tests run one at a time within each run, even when only one run is active."
+                        : isolatesTestCases
+                          ? "Unavailable while each test uses isolated database data."
+                          : runsInPreviewWebContentsView
+                            ? "Unavailable while tests run in the preview panel."
+                            : "Run independent tests in a file at the same time."}
                     </p>
                   </div>
                   <Switch
@@ -1546,6 +1552,7 @@ export function TestsPanel() {
                     checked={effectiveParallel}
                     disabled={
                       isRunning ||
+                      parallelRunsEnabled ||
                       runsInPreviewWebContentsView ||
                       isolatesTestCases
                     }
@@ -1564,9 +1571,11 @@ export function TestsPanel() {
                   <div className="space-y-0.5">
                     <Label htmlFor="test-option-headed">Show the browser</Label>
                     <p className="text-xs leading-relaxed text-muted-foreground">
-                      {previewRunEnabled
-                        ? "Watch tests run in the preview panel."
-                        : "Open a browser window while tests run."}
+                      {parallelRunsEnabled
+                        ? "Parallel E2E runs is enabled in Settings. Watch each run in a separate browser window; the preview panel is unavailable."
+                        : previewRunEnabled
+                          ? "Watch tests run in the preview panel."
+                          : "Open a browser window while tests run."}
                     </p>
                   </div>
                   <Switch

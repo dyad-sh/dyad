@@ -14,6 +14,7 @@ export function ParallelTestRunSettings() {
         <Switch
           id="parallel-test-runs"
           aria-label="Allow parallel E2E test runs"
+          aria-describedby="concurrent-test-runs-description"
           checked={!!settings?.enableParallelTestRuns}
           disabled={!settings}
           onCheckedChange={(checked) => {
@@ -57,8 +58,11 @@ export function ParallelTestRunSettings() {
         className="text-sm text-muted-foreground"
       >
         Maximum number of test runs at the same time across all apps. Each run
-        uses its own browser. Other runs wait for a slot or compatible database
-        and workspace. Lowering this limit lets running tests finish.
+        uses its own browser. While enabled, tests run one at a time within each
+        run, even when only one run is active. Show the browser opens a separate
+        window instead of using the preview panel. Other runs wait for a slot or
+        compatible database and workspace. Lowering this limit lets running
+        tests finish.
       </p>
     </div>
   );

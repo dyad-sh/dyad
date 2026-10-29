@@ -354,6 +354,7 @@ describe("useTestRunEvents", () => {
           target: "a.spec.ts",
           fileCount: 1,
           output: "run 1\n",
+          finished: true,
         },
         {
           runId: 2,
@@ -361,6 +362,7 @@ describe("useTestRunEvents", () => {
           target: "b.spec.ts",
           fileCount: 1,
           output: "run 2\n",
+          finished: true,
         },
       ]);
     },
@@ -429,8 +431,16 @@ describe("useTestRunEvents", () => {
           target: "a.spec.ts",
           fileCount: 1,
           output: "first",
+          finished: false,
         },
-        { runId: 2, ordinal: 1, target: "b.spec.ts", fileCount: 1, output: "" },
+        {
+          runId: 2,
+          ordinal: 1,
+          target: "b.spec.ts",
+          fileCount: 1,
+          output: "",
+          finished: false,
+        },
       ],
     });
   });
@@ -468,6 +478,7 @@ describe("useTestRunEvents", () => {
           target: undefined,
           fileCount: 0,
           output: "run 1",
+          finished: true,
         },
         {
           runId: 3,
@@ -475,6 +486,7 @@ describe("useTestRunEvents", () => {
           target: undefined,
           fileCount: 0,
           output: "run 3",
+          finished: true,
         },
       ],
     });

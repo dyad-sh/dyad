@@ -2827,12 +2827,14 @@ async function executeAppTestsWithIsolation(
     // this run actually did.
     sandboxed = true;
 
-    // The live test holds shared provider/path claims. It deliberately does not
-    // claim the normal runtime or runtime-config: its process is run-scoped and
-    // never registered in runningApps.
+    // Serial runs retain the legacy test-files exclusion through execution and
+    // artifact retention. Parallel runs use captured inputs and independent
+    // artifacts. Neither path claims the normal runtime or runtime-config:
+    // its process is run-scoped and never registered in runningApps.
     const testRunResources = [
       readAppResource("app-path"),
       readAppResource("provider"),
+      ...(!parallelRunsEnabled ? (["test-files"] as const) : []),
     ] as const;
     if (appOperationCoordinator.isBusy(appId, testRunResources)) {
       logger.info(
@@ -3454,8 +3456,9 @@ export function registerTestsHandlers() {
       );
     }
 
-    // Same per-app lock the runs take, so a delete can't remove a spec out
-    // from under an in-flight run (or interleave with its env swap).
+    // Serial and non-sandboxed runs hold test-files through cleanup, so deletes
+    // wait for them. Parallel sandboxed runs capture inputs under this claim,
+    // then execute from their independent copies while source edits proceed.
     //
     // A recording holds `repository`/`test-files` for its whole session, so
     // without the refusal the coordinator would queue the delete behind it — up

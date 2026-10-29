@@ -722,6 +722,7 @@ describe("tests handlers", () => {
         resources: [
           { resource: "app-path", mode: "read" },
           { resource: "provider", mode: "read" },
+          "test-files",
         ],
         allowCompatibleQueueBypass: true,
       });
@@ -743,6 +744,75 @@ describe("tests handlers", () => {
       });
       expect(installE2eTestWorkspaceDependenciesMock).toHaveBeenCalledOnce();
     });
+
+    it.each([false, true])(
+      "preserves test-file mutation exclusion in serial mode (parallel: %s)",
+      async (parallel) => {
+        const appId = seedApp("app");
+        harness.db
+          .update(apps)
+          .set({ testingEnabled: true })
+          .where(eq(apps.id, appId))
+          .run();
+        readSettingsMock.mockImplementation(() => ({
+          ...structuredClone(DEFAULT_SETTINGS),
+          enableParallelTestRuns: parallel,
+        }));
+        const contextModule = await import("../services/test_run_context");
+        const contextSpy = vi
+          .spyOn(contextModule, "loadTestRunContext")
+          .mockResolvedValue({
+            workspaceKey: path.join(TEMP_BASE, "app"),
+            exclusive: false,
+          });
+        prepareIsolatedTestDatabaseMock.mockResolvedValue({
+          isolation: { mode: "none" },
+          teardown: vi.fn().mockResolvedValue({
+            envRestored: true,
+            remoteCleanupCompleted: true,
+          }),
+        });
+        let releaseRetention!: () => void;
+        retainE2eTestArtifactsMock.mockReturnValue(
+          new Promise<void>((resolve) => {
+            releaseRetention = resolve;
+          }),
+        );
+        const run = runAppTestsWithIsolation({
+          event: { sender: {} } as any,
+          appId,
+          source: "panel",
+        });
+        const mutate = vi.fn();
+        let mutation: Promise<void> | undefined;
+        try {
+          await vi.waitFor(() =>
+            expect(retainE2eTestArtifactsMock).toHaveBeenCalledOnce(),
+          );
+          mutation = appOperationCoordinator.run(
+            {
+              appId,
+              operation: "edit-test-assertions",
+              resources: ["test-files"],
+            },
+            async () => {
+              mutate();
+            },
+          );
+          if (parallel) await mutation;
+          else {
+            await Promise.resolve();
+            expect(mutate).not.toHaveBeenCalled();
+          }
+        } finally {
+          releaseRetention();
+          await run;
+          await mutation;
+          contextSpy.mockRestore();
+        }
+        expect(mutate).toHaveBeenCalledOnce();
+      },
+    );
 
     it("marks refusals before lifecycle publication without marking cancellation", async () => {
       const appId = seedApp("app");

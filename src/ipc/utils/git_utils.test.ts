@@ -22,6 +22,7 @@ import {
   gitFetch,
   gitListFilesNative,
   gitLog,
+  gitSetRemoteUrl,
 } from "@/ipc/utils/git_utils";
 import {
   classifyGitOperationError,
@@ -1138,6 +1139,70 @@ describe("gitFetch", () => {
     expect(remaining).not.toContain("origin/feature/gone");
     expect(remaining).toContain("origin/main");
   }, 30_000);
+});
+
+describe("gitSetRemoteUrl", () => {
+  let workspaceDir: string | undefined;
+
+  afterEach(async () => {
+    if (workspaceDir) {
+      await fs.promises.rm(workspaceDir, {
+        recursive: true,
+        force: true,
+        maxRetries: 3,
+        retryDelay: 100,
+      });
+      workspaceDir = undefined;
+    }
+  });
+
+  async function createRepo(): Promise<string> {
+    workspaceDir = await fs.promises.mkdtemp(
+      path.join(os.tmpdir(), "git-set-remote-url-"),
+    );
+    await runGit(workspaceDir, ["init"]);
+    return workspaceDir;
+  }
+
+  async function fetchRefspecs(dir: string): Promise<string[]> {
+    const output = await runGitOutput(dir, [
+      "config",
+      "--get-all",
+      "remote.origin.fetch",
+    ]);
+    return output.split("\n").filter(Boolean);
+  }
+
+  const remoteUrl = "https://github.com/acme/demo.git";
+  const standard = "+refs/heads/*:refs/remotes/origin/*";
+
+  it("adds the fetch refspec to a remote linked with only a URL", async () => {
+    const dir = await createRepo();
+    // How versions before 0.33 linked a repository.
+    await runGit(dir, ["config", "remote.origin.url", remoteUrl]);
+
+    expect(await gitSetRemoteUrl({ path: dir, remoteUrl })).toBe("added");
+    expect(await fetchRefspecs(dir)).toEqual([standard]);
+    expect(await gitSetRemoteUrl({ path: dir, remoteUrl })).toBe("standard");
+    expect(await fetchRefspecs(dir)).toEqual([standard]);
+  });
+
+  it("reports the standard refspec for a newly added remote", async () => {
+    const dir = await createRepo();
+
+    expect(await gitSetRemoteUrl({ path: dir, remoteUrl })).toBe("standard");
+    expect(await fetchRefspecs(dir)).toEqual([standard]);
+  });
+
+  it("leaves a custom refspec alone", async () => {
+    const dir = await createRepo();
+    const custom = "+refs/heads/main:refs/remotes/origin/main";
+    await runGit(dir, ["remote", "add", "origin", remoteUrl]);
+    await runGit(dir, ["config", "remote.origin.fetch", custom]);
+
+    expect(await gitSetRemoteUrl({ path: dir, remoteUrl })).toBe("custom");
+    expect(await fetchRefspecs(dir)).toEqual([custom]);
+  });
 });
 
 describe("gitAuthHeaderConfig", () => {

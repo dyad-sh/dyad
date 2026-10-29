@@ -87,6 +87,12 @@ export interface GitListChangedFilesParams extends GitBaseParams {
 export interface GitSetRemoteUrlParams extends GitBaseParams {
   remoteUrl: string;
 }
+/**
+ * What `origin`'s fetch refspec looked like when the remote URL was set:
+ * the standard one, some other one left as the user configured it, none
+ * (so the standard one was added), or unreadable / not repairable.
+ */
+export type FetchRefspecState = "standard" | "custom" | "added" | "unknown";
 export interface GitInitParams extends GitBaseParams {
   ref?: string; // branch name, default = "main"
 }

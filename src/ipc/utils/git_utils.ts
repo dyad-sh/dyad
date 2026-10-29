@@ -481,6 +481,7 @@ import type {
   GitLogParams,
   GitFileAtCommitParams,
   GitSetRemoteUrlParams,
+  FetchRefspecState,
   GitStageToRevertParams,
   GitInitParams,
   GitPushParams,
@@ -1831,7 +1832,22 @@ export async function gitClone({
   }
 }
 
+/** The refspec `git remote add origin` writes. */
+const STANDARD_ORIGIN_FETCH_REFSPEC = "+refs/heads/*:refs/remotes/origin/*";
+
+/**
+ * Sets `origin` to `remoteUrl`, then makes sure it has a fetch refspec.
+ * Returns what that refspec looked like, for the sync log.
+ */
 export async function gitSetRemoteUrl({
+  path,
+  remoteUrl,
+}: GitSetRemoteUrlParams): Promise<FetchRefspecState> {
+  await setOriginUrl({ path, remoteUrl });
+  return ensureOriginFetchRefspec(path);
+}
+
+async function setOriginUrl({
   path,
   remoteUrl,
 }: GitSetRemoteUrlParams): Promise<void> {
@@ -1869,6 +1885,53 @@ export async function gitSetRemoteUrl({
   } catch (error: any) {
     logger.error("Error setting up remote:", error);
     throw error; // or handle as needed
+  }
+}
+
+/**
+ * Adds the standard fetch refspec to `origin` when it has none.
+ *
+ * Versions before 0.33 linked repositories by writing only
+ * `remote.origin.url`, and `git remote set-url` never adds a refspec. Without
+ * one, pulls and pushes still work but never update `refs/remotes/origin/*`,
+ * so the push summary compares against a tracking ref that stays frozen and
+ * reports a successful push as not having reached the remote.
+ *
+ * A refspec the user set up is left alone. Never throws: a sync must not fail
+ * over this.
+ */
+async function ensureOriginFetchRefspec(
+  path: string,
+): Promise<FetchRefspecState> {
+  try {
+    const read = await execGit(
+      ["config", "--get-all", "remote.origin.fetch"],
+      path,
+    );
+    // Exit code 1 means the key is not set; anything else is a real failure.
+    if (read.exitCode === 0) {
+      const refspecs = read.stdout.split("\n").map((line) => line.trim());
+      return refspecs.includes(STANDARD_ORIGIN_FETCH_REFSPEC)
+        ? "standard"
+        : "custom";
+    }
+    if (read.exitCode !== 1) {
+      logger.warn("Could not read origin's fetch refspec", read.stderr.trim());
+      return "unknown";
+    }
+    const add = await execGit(
+      ["config", "--add", "remote.origin.fetch", STANDARD_ORIGIN_FETCH_REFSPEC],
+      path,
+    );
+    if (add.exitCode !== 0) {
+      logger.warn("Could not add origin's fetch refspec", add.stderr.trim());
+      return "unknown";
+    }
+    logger.info("Added the missing fetch refspec to origin");
+    return "added";
+  } catch (error) {
+    logger.warn("Could not check origin's fetch refspec", error);
+    return "unknown";
   }
 }
 

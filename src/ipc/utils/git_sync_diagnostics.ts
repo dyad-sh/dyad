@@ -71,7 +71,11 @@ async function readRefTips(path: string): Promise<Map<string, string>> {
     ],
     path,
   );
-  if (result.exitCode !== 0) return tips;
+  if (result.exitCode !== 0) {
+    // Otherwise indistinguishable from a remote branch that does not exist.
+    logger.warn("Could not read branch tips", result.stderr.trim());
+    return tips;
+  }
   for (const line of result.stdout.split("\n")) {
     const [refname, objectname] = line.split("\0");
     if (refname && objectname) tips.set(refname, objectname);

@@ -750,6 +750,20 @@
       "previewRedirectNotice": "Dyad 会自动将本地预览 URL 添加到 {{project}} 的 Auth 重定向允许列表。由于团队成员可能使用相同的 URL，断开连接或删除应用后，这些条目仍会保留。请在 Supabase → Authentication → URL Configuration 中删除不再使用的条目。"
     },
     "neon": {
+      "branchSafety": {
+        "deploymentTitle": "在生产环境使用开发数据库 — 不推荐",
+        "deploymentWarning": "已部署的应用将与开发环境共享数据。开发、测试或重置应用可能修改或删除真实用户数据，测试数据也可能对用户可见。请使用独立的生产数据库。",
+        "deploymentRecommended": "使用生产数据库（推荐）",
+        "developmentTitle": "开发时使用生产数据库 — 真实数据存在风险",
+        "developmentWarning": "预览和 AI 生成的数据库更改将使用生产数据库。开发或测试可能修改或删除真实用户数据。请使用开发分支以隔离真实数据。",
+        "developmentRecommended": "切换到开发分支（推荐）",
+        "locked": "有风险的分支选项已隐藏。要解锁，请在 Settings → Experiments 中关闭“Protect Neon database branches”。",
+        "recommendProduction": "推荐使用生产数据库：将真实用户数据与开发环境分开。",
+        "notRecommended": "不推荐",
+        "keepCurrent": "保留当前分支",
+        "confirmProduction": "我已了解，使用生产分支",
+        "createDevelopment": "在 Neon 中创建名为 development 的分支，然后重新连接此项目以用于开发。"
+      },
       "title": "Neon 集成",
       "connected": "您的账号已连接到 Neon。",
       "database": "Neon 数据库",

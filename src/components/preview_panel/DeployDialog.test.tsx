@@ -19,6 +19,7 @@ import { projectGithubOps } from "@/github_ops/projection";
 const h = vi.hoisted(() => ({
   app: {} as App,
   settingsLoaded: true,
+  enableNeonBranchProtection: false as boolean | undefined,
   isTestMode: false,
   fakeConnect: vi.fn(),
   projection: {} as GithubOpsProjection,
@@ -92,7 +93,12 @@ vi.mock("@/contexts/ThemeContext", () => ({
 }));
 vi.mock("@/hooks/useSettings", () => ({
   useSettings: () => ({
-    settings: h.settingsLoaded ? { isTestMode: h.isTestMode } : null,
+    settings: h.settingsLoaded
+      ? {
+          isTestMode: h.isTestMode,
+          enableNeonBranchProtection: h.enableNeonBranchProtection,
+        }
+      : null,
   }),
 }));
 vi.mock("@/hooks/useNeon", () => ({
@@ -234,6 +240,7 @@ beforeEach(() => {
     },
   } as App;
   h.settingsLoaded = true;
+  h.enableNeonBranchProtection = false;
   h.isTestMode = false;
   h.fakeConnect.mockResolvedValue(undefined);
   h.neonFlow = { status: "disconnected", revision: 0 };
@@ -399,7 +406,9 @@ describe.each([false, true])("Neon sign-in (hosted: %s)", (hosted) => {
       ),
     );
     expect(screen.queryByRole("button", { name: connectLabel })).toBeNull();
-    if (!hosted) fireEvent.click(button("Development database"));
+    if (!hosted) {
+      fireEvent.click(button("Development database"));
+    }
     expect(next.disabled).toBe(false);
     expect(h.preview).not.toHaveBeenCalled();
     expect(h.dispatch).not.toHaveBeenCalled();
@@ -966,6 +975,43 @@ describe("first deployment", () => {
     expect(button("Continue to GitHub").disabled).toBe(true);
     expect(screen.queryByText("GitHub setup controls")).toBeNull();
   });
+
+  it.each([undefined, true])(
+    "hides development deployment by default with protection %s",
+    async (enabled) => {
+      h.enableNeonBranchProtection = enabled;
+      mount();
+      await screen.findByRole("button", { name: "Production database" });
+      expect(
+        screen.queryByRole("button", { name: "Development database" }),
+      ).toBeNull();
+      expect(button("Continue to GitHub").disabled).toBe(true);
+    },
+  );
+
+  it.each([true, false])(
+    "keeps both deployment choices for existing development users with protection %s",
+    async (enabled) => {
+      h.enableNeonBranchProtection = enabled;
+      h.app.selectedDatabaseBranchType = "development";
+      mount();
+      await screen.findByRole("button", { name: "Development database" });
+      expect(
+        screen.getByRole("button", { name: "Production database" }),
+      ).toBeTruthy();
+      expect(screen.getByRole("alert").textContent).toContain(
+        "integrations.neon.branchSafety.deploymentWarning",
+      );
+      fireEvent.click(button("Development database"));
+      expect(screen.queryByRole("checkbox")).toBeNull();
+      expect(button("Continue to GitHub").disabled).toBe(false);
+      await continueDatabase();
+      expect(h.setBranch).toHaveBeenCalledWith({
+        appId: 1,
+        branchType: "development",
+      });
+    },
+  );
 
   it("allows the development database without migration and persists that choice", async () => {
     mount();

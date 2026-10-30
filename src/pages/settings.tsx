@@ -42,6 +42,7 @@ import { ContextCompactionSwitch } from "@/components/ContextCompactionSwitch";
 import { BlockUnsafeNpmPackagesSwitch } from "@/components/BlockUnsafeNpmPackagesSwitch";
 import { CloudSandboxExperimentSwitch } from "@/components/CloudSandboxExperimentSwitch";
 import { MultiWindowExperimentSwitch } from "@/components/MultiWindowExperimentSwitch";
+import { NeonBranchProtectionSwitch } from "@/components/NeonBranchProtectionSwitch";
 import { ClaudeCodeSubscriptionExperimentSwitch } from "@/components/ClaudeCodeSubscriptionExperimentSwitch";
 import { AppPreviewDomainsSwitch } from "@/components/AppPreviewDomainsSwitch";
 import { PreviewCookieIsolationSwitch } from "@/components/PreviewCookieIsolationSwitch";
@@ -259,6 +260,9 @@ export default function SettingsPage() {
 
             <div id={SETTING_IDS.enableMultiWindow}>
               <MultiWindowExperimentSwitch />
+            </div>
+            <div id={SETTING_IDS.enableNeonBranchProtection}>
+              <NeonBranchProtectionSwitch />
             </div>
             <div id={SETTING_IDS.enableClaudeCodeSubscription}>
               <ClaudeCodeSubscriptionExperimentSwitch />

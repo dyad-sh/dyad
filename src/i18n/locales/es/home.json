@@ -754,6 +754,20 @@
       "previewRedirectNotice": "Dyad añade automáticamente las URL de vista previa locales a la lista de redirecciones de Auth de {{project}}. Estas entradas permanecen al desconectar o eliminar una app porque otros miembros del equipo pueden usar las mismas URL. Elimina las entradas que no se usen en Supabase → Authentication → URL Configuration."
     },
     "neon": {
+      "branchSafety": {
+        "deploymentTitle": "Base de desarrollo en producción — no recomendado",
+        "deploymentWarning": "Tu aplicación publicada compartirá datos con desarrollo. Crear, probar o restablecer la aplicación puede modificar o eliminar datos reales de usuarios, y los datos de prueba podrían ser visibles. Usa una base de producción separada.",
+        "deploymentRecommended": "Usar base de producción (recomendado)",
+        "developmentTitle": "Base de producción durante el desarrollo — datos reales en riesgo",
+        "developmentWarning": "La vista previa y los cambios de base generados por IA usarán la base de producción. El desarrollo o las pruebas pueden modificar o eliminar datos reales de usuarios. Usa la rama de desarrollo para separarlos.",
+        "developmentRecommended": "Cambiar a desarrollo (recomendado)",
+        "locked": "Las opciones de rama arriesgadas están ocultas. Para desbloquearlas, desactiva “Protect Neon database branches” en Settings → Experiments.",
+        "recommendProduction": "Se recomienda la base de producción: mantén los datos reales separados del desarrollo.",
+        "notRecommended": "No recomendado",
+        "keepCurrent": "Mantener rama actual",
+        "confirmProduction": "Entiendo, usar producción",
+        "createDevelopment": "Crea una rama llamada development en Neon y vuelve a conectar este proyecto para usarla en desarrollo."
+      },
       "title": "Integración con Neon",
       "connected": "Tu cuenta está conectada a Neon.",
       "database": "Base de Datos Neon",

@@ -19,6 +19,9 @@ import { MigrationPanelBody } from "@/components/MigrationPanel";
 import { DatabaseEnvVars } from "@/components/preview_panel/DatabaseEnvVars";
 import { getErrorMessage } from "@/lib/errors";
 import { queryKeys } from "@/lib/queryKeys";
+import { useSettings } from "@/hooks/useSettings";
+import { canUseUnsafeNeonBranch } from "@/shared/neon_branch_protection";
+import { NeonBranchWarning } from "@/components/NeonBranchWarning";
 
 type EnvKind = "prod" | "dev";
 
@@ -91,6 +94,13 @@ export const DatabaseSection = ({ appId }: DatabaseSectionProps) => {
   const queryClient = useQueryClient();
   const { app, refreshApp } = useLoadApp(appId);
   const { branches, isLoadingBranches } = useNeon(appId);
+  const { settings } = useSettings();
+  const canSelectDevelopment =
+    !!app?.neonDevelopmentBranchId &&
+    canUseUnsafeNeonBranch(
+      settings,
+      app?.selectedDatabaseBranchType === "development",
+    );
 
   const productionBranch = branches.find((b) => b.type === "production");
   const effectiveBranchId =
@@ -188,6 +198,7 @@ export const DatabaseSection = ({ appId }: DatabaseSectionProps) => {
 
   const confirmEnv = () => {
     if (pendingEnv === null) return;
+    if (pendingEnv === "dev" && !canSelectDevelopment) return;
     setOverride(pendingEnv);
     setBranchMutation.mutate(ENV_TO_BRANCH[pendingEnv]);
   };
@@ -195,7 +206,9 @@ export const DatabaseSection = ({ appId }: DatabaseSectionProps) => {
   const handleBack = () => {
     setOverride(null);
     setPendingEnv(null);
-    setBranchMutation.mutate(null);
+    // Keep an existing development choice until its replacement is confirmed,
+    // so Back does not erase this app's compatibility exception.
+    if (persistedEnv !== "dev") setBranchMutation.mutate(null);
   };
 
   // A branch is "selected" once the app is on production or an env was picked.
@@ -228,7 +241,17 @@ export const DatabaseSection = ({ appId }: DatabaseSectionProps) => {
           {t("integrations.database.title")}
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="@container space-y-4">
+        {!isProductionBranchActive && selectedEnv === "dev" && (
+          <NeonBranchWarning
+            usage="deployment"
+            disabled={syncPending}
+            onUseRecommended={() => {
+              setOverride("prod");
+              setBranchMutation.mutate("production");
+            }}
+          />
+        )}
         {showSync && (
           <SyncRow
             testId="sync-to-vercel"
@@ -271,47 +294,71 @@ export const DatabaseSection = ({ appId }: DatabaseSectionProps) => {
             <p className="text-sm text-gray-600 dark:text-gray-400">
               {t("integrations.database.pickDatabase")}
             </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {(Object.keys(ENV_META) as EnvKind[]).map((kind) => {
-                const meta = ENV_META[kind];
-                const Icon = meta.icon;
-                const isSelected = pendingEnv === kind;
-                const metaKey = kind === "prod" ? "production" : "development";
-                return (
-                  <button
-                    key={kind}
-                    type="button"
-                    onClick={() => setPendingEnv(kind)}
-                    aria-pressed={isSelected}
-                    className={`text-left rounded-lg border bg-background p-4 transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-                      isSelected
-                        ? "border-primary ring-2 ring-primary"
-                        : "border-border"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 mb-2">
-                      <Icon className="w-4 h-4 text-primary" />
-                      <span className="font-medium">
-                        {t(`integrations.database.${metaKey}.title`)}
-                      </span>
-                      {kind === "prod" && (
-                        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-                          {t("integrations.database.recommended")}
+            <div
+              className={
+                canSelectDevelopment
+                  ? "grid grid-cols-1 items-stretch gap-4 @sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]"
+                  : "grid grid-cols-1 gap-4"
+              }
+            >
+              {(Object.keys(ENV_META) as EnvKind[])
+                .filter((kind) => kind === "prod" || canSelectDevelopment)
+                .map((kind) => {
+                  const meta = ENV_META[kind];
+                  const Icon = meta.icon;
+                  const isSelected = pendingEnv === kind;
+                  const metaKey =
+                    kind === "prod" ? "production" : "development";
+                  return (
+                    <button
+                      key={kind}
+                      type="button"
+                      onClick={() => setPendingEnv(kind)}
+                      aria-pressed={isSelected}
+                      className={`min-h-44 min-w-0 text-left rounded-lg border bg-background p-4 transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                        isSelected
+                          ? "border-primary ring-2 ring-primary"
+                          : "border-border"
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-center gap-2 mb-2">
+                        <Icon className="w-4 h-4 shrink-0 text-primary" />
+                        <span className="font-medium">
+                          {t(`integrations.database.${metaKey}.title`)}
                         </span>
-                      )}
-                    </div>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                      {t(`integrations.database.${metaKey}.description`)}
-                    </p>
-                  </button>
-                );
-              })}
+                        {kind === "prod" && (
+                          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                            {t("integrations.database.recommended")}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                        {t(`integrations.database.${metaKey}.description`)}
+                      </p>
+                    </button>
+                  );
+                })}
             </div>
+            {!canSelectDevelopment && (
+              <p className="text-xs text-muted-foreground">
+                {t("integrations.neon.branchSafety.locked")}
+              </p>
+            )}
+            {pendingEnv === "dev" && canSelectDevelopment && (
+              <NeonBranchWarning
+                usage="deployment"
+                onUseRecommended={() => setPendingEnv("prod")}
+              />
+            )}
             <div className="flex justify-end">
               <Button
                 type="button"
                 onClick={confirmEnv}
-                disabled={pendingEnv === null || setBranchMutation.isPending}
+                disabled={
+                  pendingEnv === null ||
+                  setBranchMutation.isPending ||
+                  (pendingEnv === "dev" && !canSelectDevelopment)
+                }
               >
                 {t("integrations.database.continue")}
               </Button>

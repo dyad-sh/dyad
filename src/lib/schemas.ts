@@ -642,6 +642,7 @@ const BaseUserSettingsFields = {
   enableCodeExplorer: z.boolean().optional(),
   runTypeScriptForWholeProject: z.boolean().optional(),
   enableMultiWindow: z.boolean().optional(),
+  enableNeonBranchProtection: z.boolean().optional(),
   enableClaudeCodeSubscription: z.boolean().optional(),
   enableAppPreviewDomains: z.boolean().optional(),
   enablePreviewCookieIsolation: z.boolean().optional(),

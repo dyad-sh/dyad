@@ -25,6 +25,7 @@ import { cn } from "@/lib/utils";
 import { AppBlueprintSwitch } from "@/components/AppBlueprintSwitch";
 import { TestingForNewAppsSwitch } from "@/components/TestingForNewAppsSwitch";
 import { SandboxedE2eTestsSwitch } from "@/components/SandboxedE2eTestsSwitch";
+import { ReusableTestSandboxSettings } from "@/components/ReusableTestSandboxSettings";
 import { AutoExpandPreviewSwitch } from "@/components/AutoExpandPreviewSwitch";
 import { KeepPreviewsRunningSwitch } from "@/components/KeepPreviewsRunningSwitch";
 import { ChatEventNotificationSwitch } from "@/components/ChatEventNotificationSwitch";
@@ -543,11 +544,15 @@ export function WorkflowSettings() {
           Run each E2E batch in a throwaway copy of your app with its own
           server, so tests never touch your preview. Neon apps also get a
           temporary database; Supabase apps still use your real project,
-          isolated by a throwaway test user. Each run installs dependencies from
-          scratch, so turn this off if that makes runs too slow — tests then run
-          against your normal preview, and Neon-only apps won't run at all
-          rather than test against your real data.
+          isolated by a throwaway test user. Dependencies can be reused between
+          runs. Turn this off to run tests against your normal preview, and
+          Neon-only apps won't run at all rather than test against your real
+          data.
         </p>
+      </div>
+
+      <div id={SETTING_IDS.reusableTestSandboxes}>
+        <ReusableTestSandboxSettings />
       </div>
 
       <div id={SETTING_IDS.autoExpandPreview} className="space-y-1.5">

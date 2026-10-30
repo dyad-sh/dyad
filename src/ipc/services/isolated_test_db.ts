@@ -31,7 +31,12 @@ import {
   type AdminKey,
   type TempTestUser,
 } from "../utils/supabase_test_user";
-import { SupabaseTestUserCreationRejectedError } from "../utils/supabase_test_user_errors";
+import {
+  SupabaseTestUserActionError,
+  SupabaseTestUserCreationRejectedError,
+  supabaseTestUserStepError,
+  withSupabaseTestUserStep,
+} from "../utils/supabase_test_user_errors";
 import { detectLegacyAppKey } from "../../supabase_admin/supabase_app_key";
 import { getPublishableKey } from "../../supabase_admin/supabase_context";
 import {
@@ -671,33 +676,42 @@ async function prepareSupabaseTestUserIsolation({
   const afterEach = async (
     caseSignal?: AbortSignal,
     caseTiming: TestStepTiming | undefined = timing,
-  ) => {
-    if (!trackedUserId) return;
-    const userApp = { ...app, supabaseTestUserId: trackedUserId };
-    const deleted = perTestCase
-      ? await measureTestRunStep(
-          caseTiming,
-          "supabase_user_cleanup",
-          () =>
-            deleteTempTestUser(userApp, {
-              adminKey,
-              timing: caseTiming,
-              signal:
-                caseSignal ?? AbortSignal.timeout(TEST_CASE_HOOK_TIMEOUT_MS),
-            }),
-          (result) => (result ? "completed" : "failed"),
-        )
-      : await measureTestRunStep(
-          timing,
-          "supabase_user_cleanup",
-          () => deleteTempTestUser(userApp),
-          (result) => (result ? "completed" : "failed"),
-        );
-    if (!deleted)
-      throw new Error("Couldn't delete the previous Supabase test user.");
-    trackedUserId = null;
-    testUser = undefined;
-  };
+  ) =>
+    withSupabaseTestUserStep(
+      "cleanup",
+      async () => {
+        if (!trackedUserId) return;
+        const userApp = { ...app, supabaseTestUserId: trackedUserId };
+        const deleted = perTestCase
+          ? await measureTestRunStep(
+              caseTiming,
+              "supabase_user_cleanup",
+              () =>
+                deleteTempTestUser(userApp, {
+                  throwOnError: true,
+                  adminKey,
+                  timing: caseTiming,
+                  signal:
+                    caseSignal ??
+                    AbortSignal.timeout(TEST_CASE_HOOK_TIMEOUT_MS),
+                }),
+              (result) => (result ? "completed" : "failed"),
+            )
+          : await measureTestRunStep(
+              timing,
+              "supabase_user_cleanup",
+              () => deleteTempTestUser(userApp, { throwOnError: true }),
+              (result) => (result ? "completed" : "failed"),
+            );
+        if (!deleted)
+          throw new SupabaseTestUserActionError(
+            "Couldn't delete the previous Supabase test user.",
+          );
+        trackedUserId = null;
+        testUser = undefined;
+      },
+      caseSignal,
+    );
   // Nothing here touches `.env.local` — the Supabase path isolates by test user,
   // not by swapping the app's database — so the environment is never at risk.
   const teardown = async (): Promise<TeardownResult> => {
@@ -727,6 +741,8 @@ async function prepareSupabaseTestUserIsolation({
     const rls = await measureTestRunStep(timing, "supabase_rls_check", () =>
       checkRls({ projectId, organizationSlug }),
     );
+    const warning = buildRlsWarning(rls);
+    if (warning) emit(`Warning: ${warning}\n`, "setup");
 
     if (signal?.aborted) {
       throw testRunStoppedError(signal);
@@ -753,8 +769,6 @@ async function prepareSupabaseTestUserIsolation({
     // the user's own language (`reason` is main-process English), and can drop
     // it the moment the user takes the fix — a warning that outlives the
     // problem it describes reads as the fix not having worked.
-    const warning = buildRlsWarning(rls);
-
     if (signal?.aborted) {
       throw testRunStoppedError(signal);
     }
@@ -843,17 +857,19 @@ async function prepareSupabaseTestUserIsolation({
               signal?.throwIfAborted();
               caseSignal?.throwIfAborted();
               try {
-                testUser = await measureTestRunStep(
-                  caseTiming,
-                  "supabase_user_create",
+                testUser = await withSupabaseTestUserStep(
+                  "per-test setup",
                   () =>
-                    createTempTestUser(
-                      {
-                        ...app,
-                        supabaseTestUserId: null,
-                      },
-                      { adminKey, signal: caseSignal, timing: caseTiming },
+                    measureTestRunStep(caseTiming, "supabase_user_create", () =>
+                      createTempTestUser(
+                        {
+                          ...app,
+                          supabaseTestUserId: null,
+                        },
+                        { adminKey, signal: caseSignal, timing: caseTiming },
+                      ),
                     ),
+                  caseSignal,
                 );
               } catch (error) {
                 signal?.throwIfAborted();
@@ -902,9 +918,9 @@ async function prepareSupabaseTestUserIsolation({
         teardown: settledTeardown,
       };
     }
-    const message = error instanceof Error ? error.message : String(error);
+    const failure = supabaseTestUserStepError("setup", error);
     logger.error(
-      `Failed to set up isolated test user for app ${app.id}: ${message}`,
+      `Failed to set up isolated test user for app ${app.id}: ${failure.message}`,
     );
     return {
       isolation: {
@@ -913,7 +929,9 @@ async function prepareSupabaseTestUserIsolation({
       },
       cleanupProvider: "supabase-test-user",
       infraError: {
-        message: `Couldn't set up an isolated test user, so the run was stopped. Your real data was not touched. Reason: ${message}`,
+        // Setup can already have mutated the real project, so only promise
+        // that execution was blocked, not that existing data was untouched.
+        message: `The run was stopped before any tests or recording started. ${failure.userMessage}`,
       },
       teardown: settledTeardown,
     };
@@ -926,7 +944,7 @@ function buildRlsWarning(rls: {
   unverified?: boolean;
 }): string | undefined {
   if (rls.unverified) {
-    return "Tests ran as an isolated test user, but Dyad couldn't verify Row-Level Security — some real data may be reachable.";
+    return "Dyad couldn't check whether your Supabase data is protected. Tests may be able to access existing data. Check your Supabase connection and data access rules.";
   }
   if (rls.tablesWithoutRls.length === 0) {
     return undefined;

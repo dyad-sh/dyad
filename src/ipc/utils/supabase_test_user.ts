@@ -14,7 +14,13 @@ import { fetchWithRetry } from "@/ipc/utils/retryWithRateLimit";
 import { retryTestDatabaseCleanup } from "./test_database_cleanup_retry";
 import { appOperationCoordinator } from "@/ipc/services/app_operation_coordinator";
 import { executeSupabaseSql } from "../../supabase_admin/supabase_management_client";
-import { SupabaseTestUserCreationRejectedError } from "./supabase_test_user_errors";
+import {
+  SupabaseTestUserActionError,
+  SupabaseTestUserCreationRejectedError,
+  SupabaseTestUserOperationError,
+  parseSupabaseTestUserErrorResponse,
+  withSupabaseTestUserOperation,
+} from "./supabase_test_user_errors";
 
 import {
   getSupabaseAdminKey,
@@ -45,6 +51,8 @@ export interface RlsCheckResult {
   tablesWithoutRls: string[];
   /** Set when RLS couldn't be verified (query/parse failure) — treated as "unknown". */
   unverified?: boolean;
+  /** Sanitized operation/transport context when verification failed. */
+  diagnostic?: string;
 }
 
 const UUID_RE =
@@ -70,7 +78,10 @@ function projectUrlFor(ref: string): string {
  * runner receives the admin key for Node fixtures; sandbox installs and app
  * servers receive public keys and temporary user credentials only.
  */
-export const getServiceRoleKey = getSupabaseAdminKey;
+export const getServiceRoleKey = (
+  ...args: Parameters<typeof getSupabaseAdminKey>
+): Promise<AdminKey> =>
+  withSupabaseTestUserOperation("adminKey", () => getSupabaseAdminKey(...args));
 
 /**
  * Authorization headers for the project's Auth Admin REST API.
@@ -91,28 +102,26 @@ function adminHeaders(key: AdminKey): Record<string, string> {
   };
 }
 
-function isUserCreationDatabaseError(status: number, detail: string): boolean {
+function isUserCreationDatabaseError(
+  status: number,
+  error: Record<string, unknown> | undefined,
+): boolean {
   if (status !== 500) return false;
-  try {
-    const error = JSON.parse(detail);
-    const code = error?.error_code ?? error?.code;
-    if (typeof code !== "string") return false;
-    // Some responses surface PostgreSQL errors from signup triggers directly.
-    // Class 23 is integrity-constraint rejection; P0001 is RAISE EXCEPTION.
-    // Never infer rejection from arbitrary text or other SQLSTATE classes
-    // (e.g. connection failures, cancellation, or unknown commit outcomes).
-    // https://www.postgresql.org/docs/current/errcodes-appendix.html
-    if (/^23[0-9A-Z]{3}$/.test(code) || code === "P0001") return true;
-    // Auth's initial and 2024-01-01 API response formats. This is the admin
-    // create transaction's error, not the generic unexpected_failure code alone.
-    // https://github.com/supabase/auth/blob/master/internal/api/admin.go
-    return (
-      code === "unexpected_failure" &&
-      (error?.msg ?? error?.message) === "Database error creating new user"
-    );
-  } catch {
-    return false;
-  }
+  const code = error?.error_code ?? error?.code;
+  if (typeof code !== "string") return false;
+  // Some responses surface PostgreSQL errors from signup triggers directly.
+  // Class 23 is integrity-constraint rejection; P0001 is RAISE EXCEPTION.
+  // Never infer rejection from arbitrary text or other SQLSTATE classes
+  // (e.g. connection failures, cancellation, or unknown commit outcomes).
+  // https://www.postgresql.org/docs/current/errcodes-appendix.html
+  if (/^23[0-9A-Z]{3}$/.test(code) || code === "P0001") return true;
+  // Auth's initial and 2024-01-01 API response formats. This is the admin
+  // create transaction's error, not the generic unexpected_failure code alone.
+  // https://github.com/supabase/auth/blob/master/internal/api/admin.go
+  return (
+    code === "unexpected_failure" &&
+    (error?.msg ?? error?.message) === "Database error creating new user"
+  );
 }
 
 /**
@@ -176,13 +185,13 @@ export async function createTempTestUser(
           organizationSlug,
           userId: appData.supabaseTestUserId!,
           ...options,
+          throwOnError: true,
         }),
       (result) => (result ? "completed" : "failed"),
     );
     if (!priorCleanupOk) {
-      throw new DyadError(
+      throw new SupabaseTestUserActionError(
         `Couldn't clean up the previous Supabase test user for app ${appData.id}. Skipping this run to avoid leaking a test user; it will be retried on the next launch.`,
-        DyadErrorKind.External,
       );
     }
   }
@@ -193,29 +202,35 @@ export async function createTempTestUser(
   // fetchWithRetry (not a bare fetch in retryWithRateLimit): fetch resolves on
   // a 429 rather than throwing, so only the throwing wrapper actually retries
   // when back-to-back runs hit the Auth Admin rate limit.
-  const response = await fetchWithRetry(
-    `${projectUrl}/auth/v1/admin/users`,
-    {
-      method: "POST",
-      // Drain an accepted create until its ID is persisted. Aborting the HTTP
-      // response can leave a remotely-created user with no recovery marker.
-      // Cancellation still stops retries; the lifecycle reports a slow drain.
-      headers: adminHeaders(adminKey),
-      body: JSON.stringify({
-        email,
-        password,
-        // Confirm immediately so the user can sign in without an email round
-        // trip. Inserting into auth tables directly produces a user that
-        // can't log in — the Admin API avoids that.
-        email_confirm: true,
-        app_metadata: { dyad_test: true, dyad_app_id: appData.id },
-      }),
-    },
-    `Create test user for app ${appData.id}`,
-    { signal: options.signal },
+  const response = await withSupabaseTestUserOperation(
+    "create",
+    () =>
+      fetchWithRetry(
+        `${projectUrl}/auth/v1/admin/users`,
+        {
+          method: "POST",
+          // Drain an accepted create until its ID is persisted. Aborting the HTTP
+          // response can leave a remotely-created user with no recovery marker.
+          // Cancellation still stops retries; the lifecycle reports a slow drain.
+          headers: adminHeaders(adminKey),
+          body: JSON.stringify({
+            email,
+            password,
+            // Confirm immediately so the user can sign in without an email round
+            // trip. Inserting into auth tables directly produces a user that
+            // can't log in — the Admin API avoids that.
+            email_confirm: true,
+            app_metadata: { dyad_test: true, dyad_app_id: appData.id },
+          }),
+        },
+        `Create test user for app ${appData.id}`,
+        { signal: options.signal },
+      ),
+    options.signal,
   );
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
+    const errorBody = parseSupabaseTestUserErrorResponse(detail);
     // The project turned its legacy keys off and had no secret key for us to
     // use instead. That's fixable in the Supabase dashboard, so say how rather
     // than surfacing raw Supabase JSON as an unexplained External failure.
@@ -233,25 +248,30 @@ export async function createTempTestUser(
       (response.status === 401 || response.status === 403) &&
       /bad_jwt|invalid jwt/i.test(detail)
     ) {
-      throw new DyadError(
-        `Supabase rejected the ${adminKey.isLegacyJwt ? "legacy service_role" : "secret"} key Dyad used to create the test user (${response.status}). ${detail}`,
-        DyadErrorKind.External,
+      throw new SupabaseTestUserActionError(
+        `Supabase rejected the ${adminKey.isLegacyJwt ? "legacy service_role" : "secret"} key Dyad used to create the test user (${response.status}). Check the key and its permissions in Supabase under Settings → API Keys.`,
       );
     }
-    if (isUserCreationDatabaseError(response.status, detail)) {
+    if (isUserCreationDatabaseError(response.status, errorBody)) {
       // A trigger/constraint rejection or Auth's generic database-create error.
       // Confirm the generated email has no auth row
       // before permitting custom fixtures to take over. Unknown outcomes and
       // verification failures must still fail the run.
       options.signal?.throwIfAborted();
-      const raw = await executeSupabaseSql({
-        supabaseProjectId: projectId,
-        organizationSlug,
-        query: `SELECT EXISTS (SELECT 1 FROM auth.users WHERE email = '${email.replace(/'/g, "''")}') AS user_exists;`,
-        signal: options.signal,
-      });
+      const rows = await withSupabaseTestUserOperation(
+        "verify",
+        async () => {
+          const raw = await executeSupabaseSql({
+            supabaseProjectId: projectId,
+            organizationSlug,
+            query: `SELECT EXISTS (SELECT 1 FROM auth.users WHERE email = '${email.replace(/'/g, "''")}') AS user_exists;`,
+            signal: options.signal,
+          });
+          return JSON.parse(raw);
+        },
+        options.signal,
+      );
       options.signal?.throwIfAborted();
-      const rows = JSON.parse(raw);
       if (
         Array.isArray(rows) &&
         rows.length === 1 &&
@@ -260,16 +280,19 @@ export async function createTempTestUser(
         throw new SupabaseTestUserCreationRejectedError();
       }
     }
-    throw new DyadError(
-      `Supabase rejected the test-user creation (${response.status}). ${detail}`,
-      DyadErrorKind.External,
+    throw new SupabaseTestUserOperationError(
+      "create",
+      undefined,
+      response.status,
+      errorBody,
     );
   }
-  const created = (await response.json()) as { id?: string };
+  const created = (await withSupabaseTestUserOperation("create", () =>
+    response.json(),
+  )) as { id?: string };
   if (!created?.id) {
-    throw new DyadError(
+    throw new SupabaseTestUserActionError(
       "Supabase did not return an id for the test user.",
-      DyadErrorKind.External,
     );
   }
 
@@ -317,6 +340,8 @@ export async function deleteTempTestUser(
     adminKey?: AdminKey;
     signal?: AbortSignal;
     timing?: TestStepTiming;
+    /** Lifecycle callers need the failure cause; startup cleanup stays best-effort. */
+    throwOnError?: boolean;
   } = {},
 ): Promise<boolean> {
   options.signal?.throwIfAborted();
@@ -442,17 +467,16 @@ WHERE n.nspname = 'public' AND c.relkind = 'r';`;
     });
     const rows = JSON.parse(raw);
     if (!Array.isArray(rows)) {
-      return { tablesWithoutRls: [], unverified: true };
+      throw new SyntaxError("Expected a list of tables from Supabase.");
     }
     const tablesWithoutRls = rows
       .filter((row) => row && row.rls_enabled === false)
       .map((row) => String(row.table_name));
     return { tablesWithoutRls };
   } catch (error) {
-    logger.warn(
-      `Could not verify Row-Level Security for ${projectId}: ${error}`,
-    );
-    return { tablesWithoutRls: [], unverified: true };
+    const diagnostic = new SupabaseTestUserOperationError("rls", error).message;
+    logger.warn(diagnostic);
+    return { tablesWithoutRls: [], unverified: true, diagnostic };
   }
 }
 
@@ -632,6 +656,7 @@ async function deleteUserBestEffort({
   userId,
   adminKey: cachedAdminKey,
   signal,
+  throwOnError,
 }: {
   projectUrl: string;
   projectId: string;
@@ -639,6 +664,7 @@ async function deleteUserBestEffort({
   userId: string;
   adminKey?: AdminKey;
   signal?: AbortSignal;
+  throwOnError?: boolean;
 }): Promise<boolean> {
   if (!UUID_RE.test(userId)) {
     // The id comes from Supabase (or a possibly-corrupted DB column), but never
@@ -653,24 +679,34 @@ async function deleteUserBestEffort({
         projectId,
         organizationSlug,
       }));
-    const response = await retryTestDatabaseCleanup(
+    const response = await withSupabaseTestUserOperation(
+      "delete",
       () =>
-        fetchWithRetry(
-          `${projectUrl}/auth/v1/admin/users/${userId}`,
-          {
-            method: "DELETE",
-            signal,
-            headers: adminHeaders(adminKey),
-          },
+        retryTestDatabaseCleanup(
+          () =>
+            fetchWithRetry(
+              `${projectUrl}/auth/v1/admin/users/${userId}`,
+              {
+                method: "DELETE",
+                signal,
+                headers: adminHeaders(adminKey),
+              },
+              `Delete test user ${userId}`,
+            ),
           `Delete test user ${userId}`,
+          signal,
         ),
-      `Delete test user ${userId}`,
       signal,
     );
     // A 404 means it's already gone — treat as success so we clear the column.
     if (!response.ok && response.status !== 404) {
       const detail = await response.text().catch(() => "");
-      throw new Error(`HTTP ${response.status} ${detail}`);
+      throw new SupabaseTestUserOperationError(
+        "delete",
+        undefined,
+        response.status,
+        parseSupabaseTestUserErrorResponse(detail),
+      );
     }
     logger.info(`Deleted test user ${userId} for project ${projectId}`);
     return true;
@@ -679,6 +715,7 @@ async function deleteUserBestEffort({
     logger.warn(
       `Failed to delete test user ${userId} for project ${projectId} (will be retried on next launch if still tracked): ${error}`,
     );
+    if (throwOnError) throw error;
     return false;
   }
 }

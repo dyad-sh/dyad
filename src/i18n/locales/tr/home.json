@@ -789,8 +789,7 @@
         "recommendProduction": "Üretim veritabanı önerilir: gerçek kullanıcı verilerini geliştirmeden ayrı tutun.",
         "notRecommended": "Önerilmez",
         "keepCurrent": "Mevcut dalı koru",
-        "confirmProduction": "Anlıyorum, üretimi kullan",
-        "createDevelopment": "Neon’da development adlı bir dal oluşturun, ardından geliştirmede kullanmak için bu projeyi yeniden bağlayın."
+        "confirmProduction": "Anlıyorum, üretimi kullan"
       },
       "title": "Neon Entegrasyonu",
       "connected": "Hesabınız Neon'a bağlı.",

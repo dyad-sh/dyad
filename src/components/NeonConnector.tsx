@@ -557,11 +557,6 @@ export function NeonConnector({ appId }: { appId: number }) {
                   </p>
                 )
               )}
-              {activeBranch?.type === "production" && !developmentBranch && (
-                <p className="text-sm text-destructive">
-                  {t("integrations.neon.branchSafety.createDevelopment")}
-                </p>
-              )}
             </div>
 
             <AlertDialog

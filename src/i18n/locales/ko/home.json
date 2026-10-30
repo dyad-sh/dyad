@@ -767,8 +767,7 @@
         "recommendProduction": "프로덕션 데이터베이스를 권장합니다. 실제 사용자 데이터를 개발 환경과 분리하세요.",
         "notRecommended": "권장하지 않음",
         "keepCurrent": "현재 브랜치 유지",
-        "confirmProduction": "이해했습니다, 프로덕션 사용",
-        "createDevelopment": "Neon에서 development라는 브랜치를 만든 다음 프로젝트를 다시 연결하여 개발에 사용하세요."
+        "confirmProduction": "이해했습니다, 프로덕션 사용"
       },
       "title": "Neon 연동",
       "connected": "계정이 Neon에 연결되어 있습니다.",

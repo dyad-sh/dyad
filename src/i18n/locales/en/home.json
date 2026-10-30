@@ -789,8 +789,7 @@
         "recommendProduction": "Production database is recommended: keep live user data separate from development.",
         "notRecommended": "Not recommended",
         "keepCurrent": "Keep current branch",
-        "confirmProduction": "I understand, use production",
-        "createDevelopment": "Create a branch named development in Neon, then reconnect this project to use it for development."
+        "confirmProduction": "I understand, use production"
       },
       "title": "Neon Integration",
       "connected": "Your account is connected to Neon.",

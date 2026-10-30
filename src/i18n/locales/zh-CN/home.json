@@ -761,8 +761,7 @@
         "recommendProduction": "推荐使用生产数据库：将真实用户数据与开发环境分开。",
         "notRecommended": "不推荐",
         "keepCurrent": "保留当前分支",
-        "confirmProduction": "我已了解，使用生产分支",
-        "createDevelopment": "在 Neon 中创建名为 development 的分支，然后重新连接此项目以用于开发。"
+        "confirmProduction": "我已了解，使用生产分支"
       },
       "title": "Neon 集成",
       "connected": "您的账号已连接到 Neon。",

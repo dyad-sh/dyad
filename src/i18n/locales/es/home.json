@@ -765,8 +765,7 @@
         "recommendProduction": "Se recomienda la base de producción: mantén los datos reales separados del desarrollo.",
         "notRecommended": "No recomendado",
         "keepCurrent": "Mantener rama actual",
-        "confirmProduction": "Entiendo, usar producción",
-        "createDevelopment": "Crea una rama llamada development en Neon y vuelve a conectar este proyecto para usarla en desarrollo."
+        "confirmProduction": "Entiendo, usar producción"
       },
       "title": "Integración con Neon",
       "connected": "Tu cuenta está conectada a Neon.",

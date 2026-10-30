@@ -764,8 +764,7 @@
         "recommendProduction": "La base de production est recommandée\u00a0: séparez les données réelles des utilisateurs du développement.",
         "notRecommended": "Déconseillé",
         "keepCurrent": "Garder la branche actuelle",
-        "confirmProduction": "Je comprends, utiliser la production",
-        "createDevelopment": "Créez une branche nommée development dans Neon, puis reconnectez ce projet pour l’utiliser en développement."
+        "confirmProduction": "Je comprends, utiliser la production"
       },
       "title": "Intégration Neon",
       "connected": "Votre compte est connecté à Neon.",

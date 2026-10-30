@@ -684,7 +684,7 @@ describe("getInitialLoadTelemetryProperties", () => {
         platform: "darwin",
         isFirstSession: false,
       }),
-    ).toEqual({
+    ).toMatchObject({
       isPro: true,
       appVersion: "1.1.0",
       platform: "darwin",
@@ -711,7 +711,7 @@ describe("getInitialLoadTelemetryProperties", () => {
         platform: null,
         isFirstSession: true,
       }),
-    ).toEqual({
+    ).toMatchObject({
       isPro: false,
       appVersion: "1.1.0",
       platform: null,
@@ -725,6 +725,75 @@ describe("getInitialLoadTelemetryProperties", () => {
       defaultChatMode: null,
       runtimeMode2: "host",
     });
+  });
+
+  function getSettingsProperties(overrides: Partial<UserSettings>) {
+    return getInitialLoadTelemetryProperties({
+      settings: makeSettings(overrides),
+      codexSubscriptionEnabled: null,
+      appVersion: "1.1.0",
+      platform: null,
+      isFirstSession: false,
+    });
+  }
+
+  it("reports official template and built-in theme IDs as themselves", () => {
+    expect(
+      getSettingsProperties({
+        selectedTemplateId: "react",
+        selectedThemeId: "default",
+      }),
+    ).toMatchObject({
+      selectedTemplateId: "react",
+      selectedThemeId: "default",
+    });
+  });
+
+  it("hides community template and custom theme IDs", () => {
+    const properties = getSettingsProperties({
+      selectedTemplateId: "some-org/private-repo",
+      selectedThemeId: "custom:12",
+    });
+
+    expect(properties).toMatchObject({
+      selectedTemplateId: "community",
+      selectedThemeId: "custom",
+    });
+    expect(JSON.stringify(properties)).not.toContain("private-repo");
+  });
+
+  it("reports no theme as null rather than custom", () => {
+    expect(getSettingsProperties({ selectedThemeId: "" })).toMatchObject({
+      selectedThemeId: null,
+    });
+  });
+
+  it("reports agent tool consents as counts, not tool names", () => {
+    const properties = getSettingsProperties({
+      agentToolConsents: { run_shell: "never", read_guide: "always", a: "ask" },
+    });
+
+    expect(properties).toMatchObject({
+      agentToolsAlwaysCount: 1,
+      agentToolsNeverCount: 1,
+    });
+    expect(JSON.stringify(properties)).not.toContain("run_shell");
+  });
+
+  it("reports connections without sending credentials", () => {
+    const properties = getSettingsProperties({
+      vercelAccessToken: { value: "vercel-secret" },
+      customNodePath: "/home/person/node",
+      experiments: { enableCloudSandbox: true },
+    });
+
+    expect(properties).toMatchObject({
+      vercelConnected: true,
+      enableCloudSandbox: true,
+    });
+    const serialized = JSON.stringify(properties);
+    expect(serialized).not.toContain("vercel-secret");
+    expect(serialized).not.toContain("/home/person/node");
   });
 
   it("carries the previous session's app size as the crash-rate denominator", () => {

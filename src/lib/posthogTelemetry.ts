@@ -1,5 +1,8 @@
 import { hasDyadProKey, type UserSettings } from "@/lib/schemas";
+import { getSharedSettingsDiagnostics } from "@/lib/settingsDiagnostics";
 import { DEFAULT_ENABLE_TESTING_FOR_NEW_APPS } from "@/shared/settings_defaults";
+import { localTemplatesData } from "@/shared/templates";
+import { themesData } from "@/shared/themes";
 import {
   appSizeEventFields,
   type AppSizeTelemetry,
@@ -65,6 +68,30 @@ export function getSettingsPersonTelemetryProperties(settings: UserSettings) {
   };
 }
 
+// Community template IDs are "org/repo" and custom themes are user-created, so
+// only IDs that ship with Dyad are reported as themselves.
+function getTemplateTelemetryId(templateId: string): string {
+  return localTemplatesData.some((template) => template.id === templateId)
+    ? templateId
+    : "community";
+}
+
+function getThemeTelemetryId(themeId: string | undefined): string | null {
+  if (!themeId) {
+    return null;
+  }
+  return themesData.some((theme) => theme.id === themeId) ? themeId : "custom";
+}
+
+function countAgentToolConsents(
+  settings: UserSettings,
+  consent: "always" | "never",
+): number {
+  return Object.values(settings.agentToolConsents ?? {}).filter(
+    (value) => value === consent,
+  ).length;
+}
+
 export function getInitialLoadTelemetryProperties({
   settings,
   codexSubscriptionEnabled,
@@ -76,6 +103,21 @@ export function getInitialLoadTelemetryProperties({
 }: InitialLoadTelemetryInput) {
   return {
     ...getSettingsPersonTelemetryProperties(settings),
+    ...getSharedSettingsDiagnostics(settings),
+    autoApproveChanges: settings.autoApproveChanges ?? null,
+    enableSupabaseWriteSqlMigration:
+      settings.enableSupabaseWriteSqlMigration ?? null,
+    enableCloudSandbox: settings.experiments?.enableCloudSandbox ?? null,
+    enableProWebSearch: settings.enableProWebSearch ?? null,
+    proSmartContextOption: settings.proSmartContextOption ?? null,
+    proLazyEditsMode: settings.proLazyEditsMode ?? null,
+    selectedChatMode: settings.selectedChatMode ?? null,
+    enableAutoUpdate: settings.enableAutoUpdate,
+    maxChatTurnsInContext: settings.maxChatTurnsInContext ?? null,
+    selectedTemplateId: getTemplateTelemetryId(settings.selectedTemplateId),
+    selectedThemeId: getThemeTelemetryId(settings.selectedThemeId),
+    agentToolsAlwaysCount: countAgentToolConsents(settings, "always"),
+    agentToolsNeverCount: countAgentToolConsents(settings, "never"),
     codexSubscriptionEnabled,
     claudeSubscriptionEnabled: settings.enableClaudeCodeSubscription ?? false,
     appVersion,

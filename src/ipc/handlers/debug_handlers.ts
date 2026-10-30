@@ -12,7 +12,7 @@ import { SCREENSHOT_ERRORS, systemContracts } from "../types/system";
 import { miscContracts, SESSION_DEBUG_SCHEMA_VERSION } from "../types/misc";
 import type { SystemDebugInfo } from "../types/system";
 import type { SessionDebugBundle } from "../types/misc";
-import type { UserSettings } from "@/lib/schemas";
+import { getSessionDebugSettings } from "@/lib/settingsDiagnostics";
 import type { AiMessagesJsonV6 } from "../../db/schema";
 
 import log from "electron-log";
@@ -42,7 +42,6 @@ import { RETAINED_DUMPS_DIR } from "../../utils/crash_dumps";
 import { collectCrashDumps } from "../../utils/crash_dump_report";
 import { collectProcessMemoryDiagnostics } from "../../utils/process_memory_diagnostics";
 import { resolveDefaultModelSelection } from "@/ipc/utils/model_effort";
-import type { ModelSelection } from "@/lib/schemas";
 import { LAST_UPDATER_ERROR_HEADER } from "@/lib/debugLogFormatting";
 
 /**
@@ -189,63 +188,6 @@ function serializeModelForDebug(model: {
   customModelId?: number;
 }): string {
   return `${model.provider}:${model.name} | customId: ${model.customModelId}`;
-}
-
-/**
- * Extracts non-sensitive settings for the debug bundle.
- * All Secret fields (API keys, OAuth tokens) are excluded.
- * Provider setup status is derived as boolean flags only.
- */
-function sanitizeSettingsForDebug(
-  settings: UserSettings,
-  selectedModel: ModelSelection,
-) {
-  // Build provider setup status: { providerName: hasApiKey }
-  const providerSetupStatus: Record<string, boolean> = {};
-  if (settings.providerSettings) {
-    for (const [provider, providerSetting] of Object.entries(
-      settings.providerSettings,
-    )) {
-      providerSetupStatus[provider] = !!providerSetting?.apiKey?.value;
-    }
-  }
-
-  return {
-    selectedModel: {
-      name: selectedModel.name,
-      provider: selectedModel.provider,
-      customModelId: selectedModel.customModelId,
-    },
-    selectedChatMode: settings.selectedChatMode ?? null,
-    defaultChatMode: settings.defaultChatMode ?? null,
-    autoApproveChanges: settings.autoApproveChanges ?? null,
-    enableDyadPro: settings.enableDyadPro ?? null,
-    effortLevel: selectedModel.effortLevel,
-    maxChatTurnsInContext: settings.maxChatTurnsInContext ?? null,
-    enableAutoUpdate: settings.enableAutoUpdate,
-    releaseChannel: settings.releaseChannel,
-    runtimeMode2: settings.runtimeMode2 ?? null,
-    zoomLevel: settings.zoomLevel ?? null,
-    previewDeviceMode: settings.previewDeviceMode ?? null,
-    enableProLazyEditsMode: settings.enableProLazyEditsMode ?? null,
-    proLazyEditsMode: settings.proLazyEditsMode ?? null,
-    enableProSmartFilesContextMode:
-      settings.enableProSmartFilesContextMode ?? null,
-    enableProWebSearch: settings.enableProWebSearch ?? null,
-    proSmartContextOption: settings.proSmartContextOption ?? null,
-    enableSupabaseWriteSqlMigration:
-      settings.enableSupabaseWriteSqlMigration ?? null,
-    agentToolConsents: settings.agentToolConsents ?? null,
-    experiments: settings.experiments
-      ? Object.fromEntries(
-          Object.entries(settings.experiments).filter(
-            ([, v]) => typeof v === "boolean",
-          ),
-        )
-      : null,
-    customNodePath: settings.customNodePath ?? null,
-    providerSetupStatus,
-  };
 }
 
 /**
@@ -451,7 +393,7 @@ export function registerDebugHandlers() {
               : settings.telemetryUserId || "unknown",
         },
 
-        settings: sanitizeSettingsForDebug(
+        settings: getSessionDebugSettings(
           settings,
           chatRecord.modelSelection ??
             (await resolveDefaultModelSelection(settings)),

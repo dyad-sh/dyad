@@ -13,6 +13,8 @@ export const test = testWithConfig({
     await fs.writeFile(
       path.join(userDataDir, "user-settings.json"),
       JSON.stringify({
+        // These flows intentionally exercise both deployment branch choices.
+        enableNeonBranchProtection: false,
         neon: {
           accessToken: { value: "fake-neon-token" },
           refreshToken: { value: "fake-neon-refresh" },

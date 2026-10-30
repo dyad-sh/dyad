@@ -32,3 +32,6 @@ For schema-validated settings:
 - For default-on features that start background work, wait for settings to load
   before applying the field's default. Otherwise a saved `false` still starts
   work during startup; test loading settings followed by the disabled value.
+- When a new default hides or blocks existing choices, audit Playwright fixtures
+  as well as Vitest mocks. Explicitly opt out in scenarios that still require
+  those choices, and update assertions for any warning copy the feature replaces.

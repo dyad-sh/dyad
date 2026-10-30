@@ -12,7 +12,7 @@ import {
   removeGitOverlayWorkspace,
   secureGitOverlaySymlinks,
 } from "./git_overlay_workspace";
-import { logGitOverlayWorkspaceFailure } from "./git_overlay_workspace_diagnostics";
+import { createGitOverlayWorkspaceDiagnostics } from "./git_overlay_workspace_diagnostics";
 
 const logger = vi.hoisted(() => ({ error: vi.fn(), warn: vi.fn() }));
 vi.mock("electron-log/main", () => ({ default: { scope: () => logger } }));
@@ -150,13 +150,15 @@ describe("workspace preparation failure logs", () => {
           },
         },
       });
-      expect(logsAtCleanup).toContainEqual(
-        expect.objectContaining({
-          stage: "overlay-working-tree",
-          purpose,
-          workspace: failureRecord.workspace,
-        }),
-      );
+      expect(logsAtCleanup).toHaveLength(2);
+      expect(logsAtCleanup[1]).toEqual({
+        timestamp: expect.any(String),
+        stage: "overlay-working-tree",
+        purpose,
+        workspace: failureRecord.workspace,
+        detailedFailures: 1,
+        suppressedFailures: 0,
+      });
       const worktreePath = path.join(scratchRoot, failureRecord.workspace);
       await vi.waitFor(() =>
         expect(isGitOverlayWorkspaceActive(worktreePath)).toBe(false),
@@ -170,6 +172,132 @@ describe("workspace preparation failure logs", () => {
       expect(JSON.stringify(logsAtCleanup)).not.toContain(
         "do not log file contents",
       );
+    },
+  );
+
+  it("bounds concurrent directory failures separately for each workspace preparation", async () => {
+    const { sourceRoot, scratchRoot } = await fixture();
+    for (const directory of ["first", "second"]) {
+      const sourceDirectory = path.join(sourceRoot, directory);
+      await fs.mkdir(sourceDirectory);
+      await Promise.all(
+        Array.from({ length: 32 }, (_, index) =>
+          fs.writeFile(path.join(sourceDirectory, `${index}.txt`), "contents"),
+        ),
+      );
+    }
+    Object.defineProperty(process, "platform", { value: "win32" });
+    mockGit(sourceRoot, "?? first/\0?? second/\0");
+    const copyFile = vi.spyOn(fs, "copyFile").mockImplementation(async () => {
+      // Distinct errors bypass identity deduplication: the preparation's shared
+      // budget must bound records across both concurrent directory batches.
+      throw Object.assign(new Error("No space left on device"), {
+        code: "ENOSPC",
+      });
+    });
+
+    const outcomes = await Promise.allSettled(
+      (["build", "e2e-test"] as const).map((purpose) =>
+        createGitOverlayWorkspace({
+          sourceTargetPath: sourceRoot,
+          scratchRoot,
+          directoryPrefix: "run-",
+          purpose,
+          excludedTargetRootNames: new Set(),
+        }),
+      ),
+    );
+    for (const outcome of outcomes) {
+      expect(outcome).toMatchObject({
+        status: "rejected",
+        reason: { message: expect.stringContaining("No space left on device") },
+      });
+    }
+    expect(copyFile).toHaveBeenCalledTimes(128);
+    const allRecords = records();
+    expect(allRecords).toHaveLength(8);
+    const summaries = allRecords.filter(
+      (record) => record.stage === "overlay-working-tree",
+    );
+    expect(summaries.map((record) => record.purpose).sort()).toEqual([
+      "build",
+      "e2e-test",
+    ]);
+    for (const summary of summaries) {
+      expect(summary).toEqual({
+        timestamp: expect.any(String),
+        stage: "overlay-working-tree",
+        purpose: expect.any(String),
+        workspace: expect.any(String),
+        detailedFailures: 3,
+        suppressedFailures: 61,
+      });
+      const workspaceRecords = allRecords.filter(
+        (record) => record.workspace === summary.workspace,
+      );
+      expect(workspaceRecords).toHaveLength(4);
+      expect(workspaceRecords.at(-1)).toBe(summary);
+      for (const detail of workspaceRecords.slice(0, -1)) {
+        expect(detail).toMatchObject({
+          stage: "windows-copy-entry",
+          operation: "copyFile",
+          error: { code: "ENOSPC" },
+          paths: { source: { entry: { type: "file" } } },
+        });
+      }
+      const worktreePath = path.join(scratchRoot, summary.workspace);
+      expect(isGitOverlayWorkspaceActive(worktreePath)).toBe(false);
+      await expect(fs.lstat(worktreePath)).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+    }
+  });
+
+  it.each([new Error("copy failed"), "copy failed"])(
+    "skips probes for repeated and suppressed failures (%s)",
+    async (failure) => {
+      const { sourceRoot, scratchRoot } = await fixture();
+      const sourcePath = path.join(sourceRoot, "source.txt");
+      await fs.writeFile(sourcePath, "contents");
+      await fs.mkdir(scratchRoot);
+      const context = {
+        stage: "windows-copy-entry",
+        operation: "copyFile",
+        sourceRoot,
+        workspaceRoot: scratchRoot,
+        sourcePath,
+        destinationPath: path.join(scratchRoot, "source.txt"),
+      };
+      const lstat = vi.spyOn(fs, "lstat");
+      const diagnostics = createGitOverlayWorkspaceDiagnostics();
+      await Promise.all([
+        diagnostics.logFailure(failure, context),
+        diagnostics.logFailure(failure, context),
+      ]);
+      await diagnostics.logFailure(failure, {
+        ...context,
+        stage: "overlay-path",
+      });
+      expect(records()).toHaveLength(1);
+      expect(lstat).toHaveBeenCalledTimes(4);
+
+      await Promise.all(
+        Array.from({ length: 32 }, () =>
+          diagnostics.logFailure(new Error("another copy failed"), context),
+        ),
+      );
+      await diagnostics.logPreparationFailure(failure, {
+        ...context,
+        stage: "overlay-working-tree",
+        purpose: "build",
+      });
+      expect(records()).toHaveLength(4);
+      expect(records().at(-1)).toMatchObject({
+        detailedFailures: 3,
+        suppressedFailures: 30,
+      });
+      // Only three detailed records inspect the source, destination and parents.
+      expect(lstat).toHaveBeenCalledTimes(12);
     },
   );
 
@@ -277,7 +405,7 @@ describe("workspace preparation failure logs", () => {
     }) as typeof fs.lstat);
     // Call the logger directly here: the failed lstat is a diagnostic probe,
     // rather than the copy operation that already failed.
-    await logGitOverlayWorkspaceFailure(failure, {
+    await createGitOverlayWorkspaceDiagnostics().logFailure(failure, {
       stage: "windows-copy-entry",
       operation: "copyFile",
       sourceRoot,
@@ -316,14 +444,24 @@ describe("workspace preparation failure logs", () => {
     logger.error.mockImplementation(() => {
       throw new Error("log unavailable");
     });
+    const diagnostics = createGitOverlayWorkspaceDiagnostics();
     await expect(
       copyGitOverlayEntriesOnWindows({
         sourceRoot,
         realSourceRoot: sourceRoot,
         workspaceRoot: scratchRoot,
         initialPaths: [sourcePath],
+        diagnostics,
       }),
     ).rejects.toBe(failure);
+    await expect(
+      diagnostics.logPreparationFailure(failure, {
+        stage: "overlay-working-tree",
+        purpose: "build",
+        sourceRoot,
+        workspaceRoot: scratchRoot,
+      }),
+    ).resolves.toBeUndefined();
   });
 
   it("records a link's original resolution error before it is wrapped", async () => {
@@ -342,9 +480,28 @@ describe("workspace preparation failure logs", () => {
         );
       return realpath(entry);
     }) as typeof fs.realpath);
-    await expect(
-      secureGitOverlaySymlinks(sourceRoot, scratchRoot),
-    ).rejects.toThrow("target is unavailable");
+    const diagnostics = createGitOverlayWorkspaceDiagnostics();
+    const wrappedError = await secureGitOverlaySymlinks(
+      sourceRoot,
+      scratchRoot,
+      undefined,
+      diagnostics,
+    ).catch((error: unknown) => error);
+    expect(wrappedError).toMatchObject({
+      message: expect.stringContaining("target is unavailable"),
+    });
+    const lstat = vi.spyOn(fs, "lstat");
+    const readlink = vi.spyOn(fs, "readlink");
+    await diagnostics.logPreparationFailure(wrappedError, {
+      stage: "secure-symlinks",
+      purpose: "e2e-test",
+      sourceRoot,
+      workspaceRoot: scratchRoot,
+      destinationPath: scratchRoot,
+    });
+    expect(lstat).not.toHaveBeenCalled();
+    expect(readlink).not.toHaveBeenCalled();
+    expect(records()).toHaveLength(2);
     expect(records()[0]).toMatchObject({
       stage: "secure-symlinks",
       operation: "realpath",
@@ -354,6 +511,14 @@ describe("workspace preparation failure logs", () => {
           entry: { type: "symlink", linkTarget: "<workspace>/target" },
         },
       },
+    });
+    expect(records()[1]).toEqual({
+      timestamp: expect.any(String),
+      stage: "secure-symlinks",
+      purpose: "e2e-test",
+      workspace: path.basename(scratchRoot),
+      detailedFailures: 1,
+      suppressedFailures: 0,
     });
   });
 

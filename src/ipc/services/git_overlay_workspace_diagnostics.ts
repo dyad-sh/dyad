@@ -7,6 +7,7 @@ import log from "electron-log/main";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("git_overlay_workspace");
+const MAX_DETAILED_FAILURES = 3;
 
 interface WorkspaceFailureContext {
   stage: string;
@@ -19,17 +20,77 @@ interface WorkspaceFailureContext {
   destinationPath?: string;
 }
 
+function isUserCancellation(error: unknown): boolean {
+  return (
+    error instanceof DyadError && error.kind === DyadErrorKind.UserCancelled
+  );
+}
+
+/** One budget for a preparation, including concurrent copies and submodules. */
+export function createGitOverlayWorkspaceDiagnostics() {
+  // Scoped to this preparation so retries and other workspaces retain their
+  // diagnostics. A Set also handles non-Error values thrown by dependencies.
+  const seenErrors = new Set<unknown>();
+  let detailedFailures = 0;
+  let suppressedFailures = 0;
+
+  const logFailure = async (
+    error: unknown,
+    context: WorkspaceFailureContext,
+  ): Promise<void> => {
+    if (isUserCancellation(error) || seenErrors.has(error)) return;
+    seenErrors.add(error);
+    if (detailedFailures >= MAX_DETAILED_FAILURES) {
+      suppressedFailures++;
+      return;
+    }
+    // Reserve before any filesystem awaits, or concurrent failures can all
+    // observe the same remaining slot and exceed the limit.
+    detailedFailures++;
+    await logGitOverlayWorkspaceFailure(error, context);
+  };
+
+  return {
+    logFailure,
+    async logPreparationFailure(
+      error: unknown,
+      context: WorkspaceFailureContext,
+    ): Promise<void> {
+      if (isUserCancellation(error)) return;
+      if (detailedFailures === 0) {
+        await logFailure(error, context);
+        return;
+      }
+      // The all-settled barriers have drained every copy. Preserve the outer
+      // context without probing again or repeating a wrapped symlink error.
+      try {
+        logger.error(
+          `Workspace preparation failed: ${JSON.stringify({
+            timestamp: new Date().toISOString(),
+            stage: context.stage,
+            purpose: context.purpose,
+            workspace:
+              context.workspaceRoot && path.basename(context.workspaceRoot),
+            detailedFailures,
+            suppressedFailures,
+          })}`,
+        );
+      } catch {
+        // A failed summary must not replace the original error or stop cleanup.
+      }
+    },
+  };
+}
+
+export type GitOverlayWorkspaceDiagnostics = ReturnType<
+  typeof createGitOverlayWorkspaceDiagnostics
+>;
+
 /** Failure-only diagnostics, captured before the partial workspace is removed. */
-export async function logGitOverlayWorkspaceFailure(
+async function logGitOverlayWorkspaceFailure(
   error: unknown,
   context: WorkspaceFailureContext,
 ): Promise<void> {
-  if (
-    error instanceof DyadError &&
-    error.kind === DyadErrorKind.UserCancelled
-  ) {
-    return;
-  }
   // Neither a failed probe nor logging itself may replace the original error
   // or stop cleanup. Keep all filesystem inspection off the success path.
   try {

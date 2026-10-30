@@ -7,7 +7,10 @@ import log from "electron-log/main";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { runBufferedProcess } from "@/ipc/utils/buffered_process";
 import { getGitProcessEnvironment } from "@/ipc/utils/git_utils";
-import { logGitOverlayWorkspaceFailure } from "./git_overlay_workspace_diagnostics";
+import {
+  createGitOverlayWorkspaceDiagnostics,
+  type GitOverlayWorkspaceDiagnostics,
+} from "./git_overlay_workspace_diagnostics";
 
 const WINDOWS_COPY_CONCURRENCY = 32;
 const MAX_GIT_OUTPUT_BYTES = 4 * 1024 * 1024;
@@ -408,6 +411,7 @@ async function overlayPath(
   excludedTargetRootNames: ReadonlySet<string>,
   signal: AbortSignal | undefined,
   excludedPackagePaths: ReadonlySet<string>,
+  diagnostics: GitOverlayWorkspaceDiagnostics,
 ): Promise<void> {
   throwIfCancelled(signal);
   const nativeRelativePath = toNativePath(relativePath);
@@ -435,6 +439,7 @@ async function overlayPath(
         targetRelativePath,
         excludedTargetRootNames,
         excludedPackagePaths,
+        diagnostics,
       });
       return;
     }
@@ -459,7 +464,7 @@ async function overlayPath(
     });
     throwIfCancelled(signal);
   } catch (error) {
-    await logGitOverlayWorkspaceFailure(error, {
+    await diagnostics.logFailure(error, {
       stage: "overlay-path",
       operation,
       sourceRoot,
@@ -476,6 +481,7 @@ async function overlayWorkspaceState(
   workspaceRoot: string,
   targetRelativePath: string,
   excludedTargetRootNames: ReadonlySet<string>,
+  diagnostics: GitOverlayWorkspaceDiagnostics,
   signal: AbortSignal | undefined,
   trackedPaths: readonly string[] = [],
 ): Promise<void> {
@@ -531,6 +537,7 @@ async function overlayWorkspaceState(
             excludedTargetRootNames,
             signal,
             excludedPackagePaths,
+            diagnostics,
           ),
         ),
     );
@@ -546,6 +553,7 @@ export async function copyGitOverlayEntriesOnWindows({
   targetRelativePath = "",
   excludedTargetRootNames = new Set<string>(),
   excludedPackagePaths = NO_EXCLUDED_PACKAGE_PATHS,
+  diagnostics = createGitOverlayWorkspaceDiagnostics(),
 }: {
   sourceRoot: string;
   realSourceRoot: string;
@@ -555,6 +563,7 @@ export async function copyGitOverlayEntriesOnWindows({
   targetRelativePath?: string;
   excludedTargetRootNames?: ReadonlySet<string>;
   excludedPackagePaths?: ReadonlySet<string>;
+  diagnostics?: GitOverlayWorkspaceDiagnostics;
 }): Promise<void> {
   const pendingPaths = [...initialPaths];
   while (pendingPaths.length > 0) {
@@ -571,6 +580,7 @@ export async function copyGitOverlayEntriesOnWindows({
           targetRelativePath,
           excludedTargetRootNames,
           excludedPackagePaths,
+          diagnostics,
         }),
       ),
     );
@@ -595,6 +605,7 @@ async function copyWindowsEntry({
   targetRelativePath,
   excludedTargetRootNames,
   excludedPackagePaths,
+  diagnostics,
 }: {
   sourceRoot: string;
   realSourceRoot: string;
@@ -604,6 +615,7 @@ async function copyWindowsEntry({
   targetRelativePath: string;
   excludedTargetRootNames: ReadonlySet<string>;
   excludedPackagePaths: ReadonlySet<string>;
+  diagnostics: GitOverlayWorkspaceDiagnostics;
 }): Promise<string[]> {
   throwIfCancelled(signal);
   const sourceRelativePath = path
@@ -692,7 +704,7 @@ async function copyWindowsEntry({
     await fs.copyFile(sourcePath, destinationPath);
     return [];
   } catch (error) {
-    await logGitOverlayWorkspaceFailure(error, {
+    await diagnostics.logFailure(error, {
       stage: "windows-copy-entry",
       operation,
       sourceRoot,
@@ -757,6 +769,7 @@ export async function secureGitOverlaySymlinks(
   sourceRoot: string,
   workspaceRoot: string,
   signal?: AbortSignal,
+  diagnostics = createGitOverlayWorkspaceDiagnostics(),
 ): Promise<void> {
   const [realSourceRoot, realWorkspaceRoot] = await Promise.all([
     fs.realpath(sourceRoot),
@@ -843,7 +856,7 @@ export async function secureGitOverlaySymlinks(
         }
         // The user-facing error below deliberately omits the OS exception.
         // Record it while the offending link still exists in the workspace.
-        await logGitOverlayWorkspaceFailure(error, {
+        await diagnostics.logFailure(error, {
           stage: "secure-symlinks",
           operation: "realpath",
           sourceRoot,
@@ -1172,6 +1185,7 @@ async function materializeInitializedSubmodules({
   registeredWorktrees,
   targetRelativePath,
   excludedTargetRootNames,
+  diagnostics,
   signal,
 }: {
   sourceRepoPath: string;
@@ -1183,6 +1197,7 @@ async function materializeInitializedSubmodules({
   registeredWorktrees: SubmoduleWorktree[];
   targetRelativePath: string;
   excludedTargetRootNames: ReadonlySet<string>;
+  diagnostics: GitOverlayWorkspaceDiagnostics;
   signal?: AbortSignal;
 }): Promise<void> {
   const gitmodulesPath = path.join(sourceRepoPath, ".gitmodules");
@@ -1281,6 +1296,7 @@ async function materializeInitializedSubmodules({
       snapshotSubmodulePath,
       childTargetRelativePath,
       excludedTargetRootNames,
+      diagnostics,
       signal,
       // From the submodule's OWN index: its package roots are invisible to the
       // parent, which records only a gitlink.
@@ -1296,6 +1312,7 @@ async function materializeInitializedSubmodules({
       registeredWorktrees,
       targetRelativePath: childTargetRelativePath,
       excludedTargetRootNames,
+      diagnostics,
       signal,
     });
   }
@@ -1311,6 +1328,7 @@ export async function createGitOverlayWorkspace({
   signal,
 }: GitOverlayWorkspaceOptions): Promise<GitOverlayWorkspace> {
   const startedAt = Date.now();
+  const diagnostics = createGitOverlayWorkspaceDiagnostics();
   let worktreePath: string | undefined;
   let sourceRepoPath: string | undefined;
   let stage = "create-scratch-root";
@@ -1384,6 +1402,7 @@ export async function createGitOverlayWorkspace({
       worktreePath,
       targetRelativePosix,
       overlayExcludedRootNames,
+      diagnostics,
       signal,
       trackedPaths,
     );
@@ -1398,10 +1417,16 @@ export async function createGitOverlayWorkspace({
       registeredWorktrees,
       targetRelativePath: targetRelativePosix,
       excludedTargetRootNames: overlayExcludedRootNames,
+      diagnostics,
       signal,
     });
     stage = "secure-symlinks";
-    await secureGitOverlaySymlinks(sourceRepoPath, worktreePath, signal);
+    await secureGitOverlaySymlinks(
+      sourceRepoPath,
+      worktreePath,
+      signal,
+      diagnostics,
+    );
     return {
       targetPath,
       worktreePath,
@@ -1410,7 +1435,7 @@ export async function createGitOverlayWorkspace({
       sourceRepoPath,
     };
   } catch (error) {
-    await logGitOverlayWorkspaceFailure(error, {
+    await diagnostics.logPreparationFailure(error, {
       stage,
       purpose,
       sourceRoot: sourceRepoPath ?? sourceTargetPath,

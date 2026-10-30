@@ -6,7 +6,7 @@ import {
 } from "@/ipc/utils/screenshot_captures";
 import { platform, arch } from "os";
 import { randomUUID } from "node:crypto";
-import { readSettings } from "../../main/settings";
+import { readEffectiveSettings, readSettings } from "../../main/settings";
 import { createTypedHandler } from "./base";
 import { SCREENSHOT_ERRORS, systemContracts } from "../types/system";
 import { miscContracts, SESSION_DEBUG_SCHEMA_VERSION } from "../types/misc";
@@ -277,7 +277,7 @@ export function registerDebugHandlers() {
     console.log(`IPC: get-session-debug-bundle called for chat ${chatId}`);
 
     try {
-      const settings = readSettings();
+      const settings = await readEffectiveSettings();
 
       // Get Dyad version
       const packageJsonPath = path.resolve(

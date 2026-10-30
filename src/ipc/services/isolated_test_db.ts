@@ -929,7 +929,9 @@ async function prepareSupabaseTestUserIsolation({
       },
       cleanupProvider: "supabase-test-user",
       infraError: {
-        message: failure.userMessage,
+        // Setup can already have mutated the real project, so only promise
+        // that execution was blocked, not that existing data was untouched.
+        message: `The run was stopped before any tests or recording started. ${failure.userMessage}`,
       },
       teardown: settledTeardown,
     };

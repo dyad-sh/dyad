@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { DyadError, DyadErrorKind } from "../../errors/dyad_error";
 import { TestRunTiming } from "./test_run_timing";
 import { sendTelemetryEvent } from "../utils/telemetry";
 
@@ -475,8 +476,11 @@ describe("per-case database isolation", () => {
       "secure connection to Supabase",
     );
     expect(prepared.infraError?.message).toContain("VPN or security software");
+    expect(prepared.infraError?.message).toContain(
+      "The run was stopped before any tests or recording started.",
+    );
     expect(prepared.infraError?.message).not.toMatch(
-      /GET \/|CERT_HAS_EXPIRED|HTTP/,
+      /GET \/|CERT_HAS_EXPIRED|HTTP|real data was not touched/,
     );
     expect(mocks.logError).toHaveBeenCalledWith(
       expect.stringMatching(
@@ -515,15 +519,61 @@ describe("per-case database isolation", () => {
     expect(logs).not.toMatch(/private|network/);
   });
 
-  it("keeps known setup guidance in the returned infrastructure error", async () => {
-    const message =
-      "Check the key and its permissions in Supabase under Settings → API Keys.";
-    mocks.getServiceRoleKey.mockRejectedValueOnce(
-      new SupabaseTestUserActionError(message),
-    );
-    const prepared = await prepareSupabase();
-    expect(prepared.infraError?.message).toBe(message);
-  });
+  it.each([
+    {
+      name: "unclassified failure",
+      error: new Error("private provider details"),
+      guidance: "An unexpected error interrupted this step",
+    },
+    {
+      name: "actionable failure",
+      error: new SupabaseTestUserActionError(
+        "Check the key and its permissions in Supabase under Settings → API Keys.",
+      ),
+      guidance:
+        "Check the key and its permissions in Supabase under Settings → API Keys.",
+    },
+    {
+      name: "prerequisite failure",
+      error: new DyadError(
+        "Reconnect your Supabase organization before trying again.",
+        DyadErrorKind.Precondition,
+      ),
+      guidance: "Reconnect your Supabase organization before trying again.",
+    },
+  ])(
+    "explains that execution stopped while preserving guidance for a $name",
+    async ({ error, guidance }) => {
+      for (const perTestCase of [true, false]) {
+        if (perTestCase) mocks.getServiceRoleKey.mockRejectedValueOnce(error);
+        else mocks.createTempTestUser.mockRejectedValueOnce(error);
+
+        const prepared = await prepareIsolatedTestDatabase({
+          app: makeApp({
+            supabaseProjectId: "project",
+            supabaseOrganizationSlug: "org",
+          }),
+          emit,
+          runtimeMode: "host",
+          perTestCase,
+        });
+
+        expect(prepared.infraError?.message).toMatch(
+          /^The run was stopped before any tests or recording started\. /,
+        );
+        expect(prepared.infraError?.message).toContain(guidance);
+        expect(prepared.infraError?.message).not.toMatch(
+          /private provider details|real data was not touched/,
+        );
+        expect(prepared.testCaseLifecycle).toBeUndefined();
+        expect(prepared.authSetup).toBeUndefined();
+        await expect(prepared.teardown()).resolves.toMatchObject({
+          envRestored: true,
+          remoteCleanupCompleted: true,
+        });
+      }
+    },
+  );
 
   it("retains a failed Supabase deletion for retry and refuses to provision another user", async () => {
     const prepared = await prepareSupabase();

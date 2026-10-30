@@ -11,7 +11,7 @@ import type { DebugSettings } from "@/ipc/types/misc";
  * Only fixed values and numbers belong here. Settings are read one by one so
  * that a new setting, or an unknown key kept by the passthrough schema, is
  * never sent until someone adds it. A null value means the setting was never
- * stored, so the code's default applied.
+ * stored and nothing filled in a default.
  */
 export function getSharedSettingsDiagnostics(settings: UserSettings) {
   return {

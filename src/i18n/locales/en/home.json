@@ -779,6 +779,8 @@
     },
     "neon": {
       "branchSafety": {
+        "settingsLoading": "Loading settings…",
+        "settingsUnavailable": "Couldn't load your Neon branch protection setting. Please try again.",
         "deploymentTitle": "Development database in production — not recommended",
         "deploymentWarning": "Your deployed app will share data with development. Building, testing, or resetting your app can change or delete live user data, and test data may be visible to users. Use a separate production database.",
         "deploymentRecommended": "Use production database (recommended)",

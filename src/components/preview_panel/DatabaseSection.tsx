@@ -22,6 +22,7 @@ import { queryKeys } from "@/lib/queryKeys";
 import { useSettings } from "@/hooks/useSettings";
 import { canUseUnsafeNeonBranch } from "@/shared/neon_branch_protection";
 import { NeonBranchWarning } from "@/components/NeonBranchWarning";
+import { NeonSettingsStatus } from "@/components/NeonSettingsStatus";
 
 type EnvKind = "prod" | "dev";
 
@@ -94,8 +95,9 @@ export const DatabaseSection = ({ appId }: DatabaseSectionProps) => {
   const queryClient = useQueryClient();
   const { app, refreshApp } = useLoadApp(appId);
   const { branches, isLoadingBranches } = useNeon(appId);
-  const { settings } = useSettings();
+  const { settings, settingsLoading, refreshSettings } = useSettings();
   const canSelectDevelopment =
+    !!settings &&
     !!app?.neonDevelopmentBranchId &&
     canUseUnsafeNeonBranch(
       settings,
@@ -197,6 +199,7 @@ export const DatabaseSection = ({ appId }: DatabaseSectionProps) => {
   });
 
   const confirmEnv = () => {
+    if (!settings) return;
     if (pendingEnv === null) return;
     if (pendingEnv === "dev" && !canSelectDevelopment) return;
     setOverride(pendingEnv);
@@ -288,6 +291,11 @@ export const DatabaseSection = ({ appId }: DatabaseSectionProps) => {
             </p>
             <DatabaseEnvVars appId={appId} branchType="production" />
           </>
+        ) : selectedEnv === null && !settings ? (
+          <NeonSettingsStatus
+            loading={settingsLoading}
+            onRetry={refreshSettings}
+          />
         ) : selectedEnv === null ? (
           // Case 1: pick which database branch to deploy against.
           <>

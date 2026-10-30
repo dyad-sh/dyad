@@ -43,6 +43,7 @@ import { isNeonSupportedFramework } from "@/lib/framework_constants";
 import { getErrorMessage } from "@/lib/errors";
 import { canUseUnsafeNeonBranch } from "@/shared/neon_branch_protection";
 import { NeonBranchWarning } from "@/components/NeonBranchWarning";
+import { NeonSettingsStatus } from "@/components/NeonSettingsStatus";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -57,7 +58,8 @@ import {
 
 export function NeonConnector({ appId }: { appId: number }) {
   const { t } = useTranslation("home");
-  const { settings, updateSettings } = useSettings();
+  const { settings, settingsLoading, refreshSettings, updateSettings } =
+    useSettings();
   const { app, loading: isLoadingApp, refreshApp } = useLoadApp(appId);
   const queryClient = useQueryClient();
   const { isDarkMode } = useTheme();
@@ -109,10 +111,9 @@ export function NeonConnector({ appId }: { appId: number }) {
   const developmentBranch = branches.find(
     (branch) => branch.type === "development",
   );
-  const canSelectProduction = canUseUnsafeNeonBranch(
-    settings,
-    activeBranch?.type === "production",
-  );
+  const canSelectProduction =
+    !!settings &&
+    canUseUnsafeNeonBranch(settings, activeBranch?.type === "production");
   useEffect(() => {
     setPendingProductionBranch(null);
   }, [appId, app?.neonProjectId, activeBranchId, canSelectProduction]);
@@ -377,6 +378,22 @@ export function NeonConnector({ appId }: { appId: number }) {
             {t("integrations.neon.unsupportedFramework")}
           </CardDescription>
         </CardHeader>
+      </Card>
+    );
+  }
+
+  if (!settings) {
+    return (
+      <Card className="mt-1">
+        <CardHeader>
+          <CardTitle>{t("integrations.neon.database")}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <NeonSettingsStatus
+            loading={settingsLoading}
+            onRetry={refreshSettings}
+          />
+        </CardContent>
       </Card>
     );
   }

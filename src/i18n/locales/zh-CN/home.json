@@ -751,6 +751,8 @@
     },
     "neon": {
       "branchSafety": {
+        "settingsLoading": "正在加载设置…",
+        "settingsUnavailable": "无法加载 Neon 分支保护设置。请重试。",
         "deploymentTitle": "在生产环境使用开发数据库 — 不推荐",
         "deploymentWarning": "已部署的应用将与开发环境共享数据。开发、测试或重置应用可能修改或删除真实用户数据，测试数据也可能对用户可见。请使用独立的生产数据库。",
         "deploymentRecommended": "使用生产数据库（推荐）",

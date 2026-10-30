@@ -755,11 +755,13 @@
     },
     "neon": {
       "branchSafety": {
+        "settingsLoading": "Cargando ajustes…",
+        "settingsUnavailable": "No se pudo cargar el ajuste de protección de ramas de Neon. Vuelve a intentarlo.",
         "deploymentTitle": "Base de desarrollo en producción — no recomendado",
         "deploymentWarning": "Tu aplicación publicada compartirá datos con desarrollo. Crear, probar o restablecer la aplicación puede modificar o eliminar datos reales de usuarios, y los datos de prueba podrían ser visibles. Usa una base de producción separada.",
         "deploymentRecommended": "Usar base de producción (recomendado)",
         "developmentTitle": "Base de producción durante el desarrollo — datos reales en riesgo",
-        "developmentWarning": "La vista previa y los cambios de base generados por IA usarán la base de producción. El desarrollo o las pruebas pueden modificar o eliminar datos reales de usuarios. Usa la rama de desarrollo para separarlos.",
+        "developmentWarning": "La vista previa usará la base de datos de producción y los cambios en la base de datos generados por IA se aplicarán allí. El desarrollo o las pruebas pueden modificar o eliminar datos reales de usuarios. Usa la rama de desarrollo para mantener separados los datos reales.",
         "developmentRecommended": "Cambiar a desarrollo (recomendado)",
         "locked": "Las opciones de rama arriesgadas están ocultas. Para desbloquearlas, desactiva “Protect Neon database branches” en Settings → Experiments.",
         "recommendProduction": "Se recomienda la base de producción: mantén los datos reales separados del desarrollo.",

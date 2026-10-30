@@ -22,6 +22,7 @@ import { VercelConnector } from "@/components/VercelConnector";
 import { CloudflareConnector } from "@/components/CloudflareConnector";
 import { NeonSignInButton } from "@/components/NeonSignInButton";
 import { NeonBranchWarning } from "@/components/NeonBranchWarning";
+import { NeonSettingsStatus } from "@/components/NeonSettingsStatus";
 import { useSettings } from "@/hooks/useSettings";
 import { canUseUnsafeNeonBranch } from "@/shared/neon_branch_protection";
 import { useTranslation } from "react-i18next";
@@ -276,8 +277,10 @@ function DatabaseStep({
 }) {
   const { project, ready, isProduction } = useDatabaseContext(app);
   const { t } = useTranslation("home");
-  const { settings } = useSettings();
+  const { settings, settingsLoading, refreshSettings } = useSettings();
+  const needsSettings = !!app.neonProjectId && !isProduction && !settings;
   const canSelectDevelopment =
+    !!settings &&
     !!app.neonDevelopmentBranchId &&
     canUseUnsafeNeonBranch(
       settings,
@@ -291,7 +294,7 @@ function DatabaseStep({
   const selected = isProduction ? "production" : choice;
   const save = useMutation({
     mutationFn: async () => {
-      if (!ready || (app.neonProjectId && !selected))
+      if (!ready || needsSettings || (app.neonProjectId && !selected))
         throw new Error("Choose and verify a database first.");
       if (selected === "development" && !canSelectDevelopment)
         throw new Error(
@@ -350,6 +353,11 @@ function DatabaseStep({
           {app.neonProjectId ? "You are on the main database branch. " : ""}No
           database migration is required.
         </p>
+      ) : needsSettings ? (
+        <NeonSettingsStatus
+          loading={settingsLoading}
+          onRetry={refreshSettings}
+        />
       ) : (
         <>
           <p className="text-sm text-muted-foreground">
@@ -425,6 +433,7 @@ function DatabaseStep({
         <Button
           disabled={
             !ready ||
+            needsSettings ||
             migrating ||
             save.isPending ||
             (!!app.neonProjectId && !selected) ||

@@ -779,6 +779,8 @@
     },
     "neon": {
       "branchSafety": {
+        "settingsLoading": "Carregando configurações…",
+        "settingsUnavailable": "Não foi possível carregar a configuração de proteção de branches do Neon. Tente novamente.",
         "deploymentTitle": "Banco de desenvolvimento em produção — não recomendado",
         "deploymentWarning": "O aplicativo publicado compartilhará dados com o desenvolvimento. Criar, testar ou redefinir o aplicativo pode alterar ou excluir dados reais dos usuários, e dados de teste podem ficar visíveis. Use um banco de produção separado.",
         "deploymentRecommended": "Usar banco de produção (recomendado)",

@@ -757,6 +757,8 @@
     },
     "neon": {
       "branchSafety": {
+        "settingsLoading": "설정을 불러오는 중…",
+        "settingsUnavailable": "Neon 브랜치 보호 설정을 불러오지 못했습니다. 다시 시도하세요.",
         "deploymentTitle": "프로덕션에서 개발 데이터베이스 사용 — 권장하지 않음",
         "deploymentWarning": "배포된 앱이 개발 환경과 데이터를 공유합니다. 앱 개발, 테스트 또는 초기화로 실제 사용자 데이터가 변경되거나 삭제될 수 있으며 테스트 데이터가 사용자에게 노출될 수 있습니다. 별도의 프로덕션 데이터베이스를 사용하세요.",
         "deploymentRecommended": "프로덕션 데이터베이스 사용 (권장)",

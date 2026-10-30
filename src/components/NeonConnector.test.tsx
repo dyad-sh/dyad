@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -18,6 +19,7 @@ import { queryKeys } from "@/lib/queryKeys";
 
 const h = vi.hoisted(() => ({
   settings: {} as Partial<UserSettings>,
+  getSettings: vi.fn(),
   flowState: { status: "disconnected", revision: 0 } as ConnectionFlowState,
   start: vi.fn(),
   cancel: vi.fn(),
@@ -47,12 +49,16 @@ vi.mock("@/ipc/types", () => ({
 }));
 vi.mock("@/hooks/useSettings", () => ({
   useSettings: () => {
-    const { data } = useQuery({
+    const { data, isLoading, refetch } = useQuery({
       queryKey: queryKeys.settings.user,
-      queryFn: async () => h.settings,
+      queryFn: h.getSettings,
       staleTime: Infinity,
     });
-    return { settings: data };
+    return {
+      settings: data,
+      settingsLoading: isLoading,
+      refreshSettings: refetch,
+    };
   },
 }));
 vi.mock("@/hooks/useConnectionFlow", () => ({
@@ -99,6 +105,7 @@ beforeEach(() => {
     defaultOptions: { queries: { retry: false } },
   });
   h.settings = {};
+  h.getSettings.mockImplementation(async () => h.settings);
   h.flowState = { status: "disconnected", revision: 0 };
   h.getApp.mockResolvedValue({ id: 1, name: "Demo", frameworkType: "vite" });
   h.listProjects.mockResolvedValue({ projects: [] });
@@ -190,6 +197,41 @@ it("hides production and preview branches by default", async () => {
   expect(screen.queryByRole("option", { name: /main/ })).toBeNull();
   expect(screen.queryByRole("option", { name: /preview/ })).toBeNull();
 });
+
+it.each([true, false])(
+  "waits for settings before showing the active branch picker (loading: %s)",
+  async (loading) => {
+    connectedApp();
+    h.settings.enableNeonBranchProtection = false;
+    let finish!: (settings: Partial<UserSettings>) => void;
+    h.getSettings.mockImplementationOnce(() =>
+      loading
+        ? new Promise<Partial<UserSettings>>((resolve) => {
+            finish = resolve;
+          })
+        : Promise.reject(new Error("Settings unavailable")),
+    );
+    render(connector());
+    await screen.findByText(
+      `integrations.neon.branchSafety.${loading ? "settingsLoading" : "settingsUnavailable"}`,
+    );
+    expect(screen.queryByTestId("neon-branch-select")).toBeNull();
+    expect(
+      screen.queryByText("integrations.neon.branchSafety.locked"),
+    ).toBeNull();
+    expect(h.setActiveBranch).not.toHaveBeenCalled();
+    if (loading) {
+      await act(async () => finish(h.settings));
+    } else {
+      fireEvent.click(
+        screen.getByRole("button", { name: "integrations.neon.retry" }),
+      );
+    }
+    fireEvent.click(await screen.findByTestId("neon-branch-select"));
+    await screen.findByRole("option", { name: /main/ });
+    expect(h.getSettings).toHaveBeenCalledTimes(loading ? 1 : 2);
+  },
+);
 
 it("requires confirmation before switching to production when protection is disabled", async () => {
   connectedApp();

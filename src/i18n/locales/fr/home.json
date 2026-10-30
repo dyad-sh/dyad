@@ -754,7 +754,9 @@
     },
     "neon": {
       "branchSafety": {
-        "deploymentTitle": "Base de développement en production — déconseillé",
+        "settingsLoading": "Chargement des paramètres…",
+        "settingsUnavailable": "Impossible de charger le paramètre de protection des branches Neon. Veuillez réessayer.",
+        "deploymentTitle": "Base de développement en production — déconseillée",
         "deploymentWarning": "Votre application déployée partagera ses données avec le développement. La création, les tests ou la réinitialisation peuvent modifier ou supprimer les données réelles des utilisateurs, et les données de test peuvent être visibles. Utilisez une base de production distincte.",
         "deploymentRecommended": "Utiliser la base de production (recommandé)",
         "developmentTitle": "Base de production en développement — données réelles en danger",

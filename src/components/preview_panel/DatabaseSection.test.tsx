@@ -14,11 +14,13 @@ import { DatabaseSection } from "./DatabaseSection";
 const h = vi.hoisted(() => ({
   app: {} as App,
   settings: {} as Partial<UserSettings> | null,
+  settingsLoading: false,
+  refreshSettings: vi.fn(),
   save: vi.fn(),
   sync: vi.fn(),
 }));
 vi.mock("@/hooks/useSettings", () => ({
-  useSettings: () => ({ settings: h.settings }),
+  useSettings: () => h,
 }));
 vi.mock("@/hooks/useLoadApp", () => ({
   useLoadApp: () => ({ app: h.app, refreshApp: async () => {} }),
@@ -71,6 +73,8 @@ beforeEach(() => {
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   h.settings = {};
+  h.settingsLoading = false;
+  h.refreshSettings.mockResolvedValue(undefined);
   h.app = {
     id: 1,
     neonProjectId: "neon",
@@ -88,7 +92,7 @@ afterEach(() => {
   client.clear();
 });
 
-it.each([null, {}, { enableNeonBranchProtection: true }])(
+it.each([{}, { enableNeonBranchProtection: true }])(
   "hides development for a new selection with settings %j",
   (settings) => {
     h.settings = settings;
@@ -100,6 +104,49 @@ it.each([null, {}, { enableNeonBranchProtection: true }])(
     ).toBeNull();
     fireEvent.click(
       screen.getByRole("button", { name: new RegExp(key("production.title")) }),
+    );
+    expect(next().disabled).toBe(false);
+  },
+);
+
+it.each([true, false])(
+  "waits for settings before showing branch choices (loading: %s)",
+  (loading) => {
+    h.settings = null;
+    h.settingsLoading = loading;
+    const view = mount();
+    expect(screen.getByRole("status").textContent).toContain(
+      safety(loading ? "settingsLoading" : "settingsUnavailable"),
+    );
+    expect(screen.queryByText(safety("locked"))).toBeNull();
+    expect(
+      screen.queryByRole("button", {
+        name: new RegExp(key("production.title")),
+      }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", {
+        name: new RegExp(key("development.title")),
+      }),
+    ).toBeNull();
+    expect(h.save).not.toHaveBeenCalled();
+    if (!loading) {
+      fireEvent.click(
+        screen.getByRole("button", { name: "integrations.neon.retry" }),
+      );
+      expect(h.refreshSettings).toHaveBeenCalledOnce();
+    }
+    h.settings = { enableNeonBranchProtection: false };
+    h.settingsLoading = false;
+    view.rerender(
+      <QueryClientProvider client={client}>
+        <DatabaseSection appId={h.app.id} />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: new RegExp(key("development.title")),
+      }),
     );
     expect(next().disabled).toBe(false);
   },
@@ -167,6 +214,10 @@ it("offers a direct safe replacement without changing the active development bra
     screen.getByRole("button", { name: safety("deploymentRecommended") }),
   );
   await screen.findByText("production environment");
+  await waitFor(() =>
+    expect(h.save).toHaveBeenCalledWith({ appId: 1, branchType: "production" }),
+  );
+  expect(h.app.selectedDatabaseBranchType).toBe("production");
   expect(h.app.neonActiveBranchId).toBe("dev");
 });
 

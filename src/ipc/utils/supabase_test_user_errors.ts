@@ -134,7 +134,7 @@ function transportFailure(error: unknown) {
   return { codes: [...codes].slice(0, 4), timedOut, invalidResponse };
 }
 
-function transportDiagnostic(error: unknown): string {
+function transportDiagnostic(error: unknown, responseExpected = false): string {
   const { codes, timedOut, invalidResponse } = transportFailure(error);
   if (codes.length) {
     const guidance = [
@@ -142,10 +142,77 @@ function transportDiagnostic(error: unknown): string {
     ].slice(0, 2);
     return `Transport failure (${codes.join(", ")}). ${guidance.join(" ")}`;
   }
-  if (invalidResponse) {
-    return "Supabase returned an invalid response. Check your project's availability and the Supabase logs.";
+  if (invalidResponse && responseExpected) {
+    return `Supabase returned an invalid response. ${unexpectedFailureDiagnostic(error)}`;
   }
-  return `${timedOut ? "The request timed out." : "The request failed."} Check your Supabase project's availability and Dyad's network, proxy, and certificate settings.`;
+  if (timedOut)
+    return "The request timed out. Check your Supabase project's availability.";
+  return unexpectedFailureDiagnostic(error);
+}
+
+/** Keep error types and application call sites, without copying exception
+ * messages (which can contain SQL parameters) or machine-specific paths.
+ */
+function unexpectedFailureDiagnostic(error: unknown): string {
+  const details = new Set<string>();
+  const seen = new Set<unknown>();
+  let current = error;
+  for (
+    let depth = 0;
+    depth < 8 && current && typeof current === "object" && !seen.has(current);
+    depth++
+  ) {
+    seen.add(current);
+    const fields = current as {
+      name?: unknown;
+      code?: unknown;
+      stack?: unknown;
+      cause?: unknown;
+    };
+    if (
+      typeof fields.name === "string" &&
+      [
+        "Error",
+        "TypeError",
+        "ReferenceError",
+        "RangeError",
+        "SyntaxError",
+        "SqliteError",
+        "DrizzleQueryError",
+        "DyadError",
+      ].includes(fields.name)
+    )
+      details.add(fields.name);
+    if (
+      typeof fields.code === "string" &&
+      [
+        "SQLITE_ERROR",
+        "SQLITE_BUSY",
+        "SQLITE_LOCKED",
+        "SQLITE_READONLY",
+        "SQLITE_IOERR",
+        "SQLITE_CORRUPT",
+        "SQLITE_FULL",
+        "SQLITE_CANTOPEN",
+        "SQLITE_CONSTRAINT",
+        "SQLITE_NOTADB",
+      ].includes(fields.code)
+    )
+      details.add(fields.code);
+    if (typeof fields.stack === "string") {
+      // These are Dyad's owning modules and the packaged main-process bundle.
+      // Only fixed filenames and numeric source coordinates leave the stack.
+      for (const match of fields.stack
+        .slice(0, 16_384)
+        .matchAll(
+          /[\\/]((?:supabase_test_user(?:_errors)?|isolated_test_db|tests_handlers|main)\.(?:ts|js):\d{1,9}:\d{1,9})\)?\r?$/gm,
+        )) {
+        if (details.size < 12) details.add(match[1]);
+      }
+    }
+    current = fields.cause;
+  }
+  return `Unexpected failure${details.size ? ` (${[...details].slice(0, 12).join(", ")})` : ""}. Review the Dyad application call sites and logs.`;
 }
 
 const USER_OPERATIONS = {
@@ -170,6 +237,7 @@ function userGuidance(
   cause: unknown,
   status?: number,
   providerCode?: keyof typeof PROVIDER_ERROR_REASONS,
+  responseExpected = false,
 ): string {
   switch (providerCode) {
     case "email_address_invalid":
@@ -226,9 +294,16 @@ function userGuidance(
     return "Supabase didn't respond in time. Check your internet connection and try again in a moment.";
   if (codes.length)
     return "Dyad couldn't reach Supabase. Check your internet connection or VPN, then try again.";
-  if (invalidResponse)
+  if (invalidResponse && responseExpected)
     return "Dyad couldn't read Supabase's response. Try again in a moment.";
-  return "Check your internet connection and try again. If it keeps happening, check your project in Supabase.";
+  return "An unexpected error interrupted this step. Try again. If it keeps happening, share Dyad's logs with support.";
+}
+
+/** Fixed, application-authored guidance; never pass provider response text. */
+export class SupabaseTestUserActionError extends DyadError {
+  constructor(readonly userMessage: string) {
+    super(userMessage, DyadErrorKind.External);
+  }
 }
 
 function httpStatus(error: unknown): number | undefined {
@@ -256,7 +331,7 @@ export class SupabaseTestUserOperationError extends DyadError {
     const providerCode = recognizedProviderCode(responseBody);
     const detail =
       status === undefined
-        ? transportDiagnostic(cause)
+        ? transportDiagnostic(cause, true)
         : `HTTP ${status}. ${providerCode ? `${providerCode}: ${PROVIDER_ERROR_REASONS[providerCode]} ` : ""}${
             status === 401 || status === 403
               ? "Check the Supabase API key and its permissions."
@@ -271,7 +346,7 @@ export class SupabaseTestUserOperationError extends DyadError {
     );
     // Retain only an allowlisted code, never the parsed response or its text.
     this.providerCode = providerCode;
-    this.userMessage = `${USER_OPERATIONS[operation]} ${userGuidance(cause, status, providerCode)}`;
+    this.userMessage = `${USER_OPERATIONS[operation]} ${userGuidance(cause, status, providerCode, true)}`;
   }
 }
 
@@ -286,7 +361,10 @@ export async function withSupabaseTestUserOperation<T>(
     signal?.throwIfAborted();
     if (error instanceof Error && error.name === "AbortError") throw error;
     // Keep existing prerequisite guidance and classification (e.g. no key).
-    if (error instanceof DyadError && error.kind !== DyadErrorKind.External)
+    if (
+      getSupabaseTestUserMessage(error) ||
+      (error instanceof DyadError && error.kind !== DyadErrorKind.External)
+    )
       throw error;
     throw new SupabaseTestUserOperationError(operation, error);
   }
@@ -322,7 +400,11 @@ class SupabaseTestUserStepError extends DyadError {
 
   constructor(step: "setup" | "per-test setup" | "cleanup", error: unknown) {
     const detail =
-      error instanceof DyadError ? error.message : transportDiagnostic(error);
+      error instanceof DyadError &&
+      (getSupabaseTestUserMessage(error) !== undefined ||
+        error.kind !== DyadErrorKind.External)
+        ? error.message
+        : transportDiagnostic(error);
     super(
       `Supabase test database ${step} failed. ${detail}`,
       error instanceof DyadError ? error.kind : DyadErrorKind.External,
@@ -349,6 +431,7 @@ class SupabaseTestUserStepError extends DyadError {
 /** Project only our classified errors; other database providers keep their own copy. */
 export function getSupabaseTestUserMessage(error: unknown): string | undefined {
   return error instanceof SupabaseTestUserOperationError ||
+    error instanceof SupabaseTestUserActionError ||
     error instanceof SupabaseTestUserStepError
     ? error.userMessage
     : undefined;

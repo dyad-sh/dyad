@@ -197,6 +197,6 @@ the returned ID; cancel retries and surface a slow drain so recovery stays possi
 When shutdown aborts lifecycle hooks, ignore only the specific shutdown abort
 reason, not every error raised while closing. Final cleanup can still fail.
 Preserve explicit run cancellation and existing infrastructure errors, including
-timeouts, in the final result. Log genuine lifecycle failures separately and
-report them as the run's infrastructure error only when no earlier error or
-cancellation takes precedence.
+timeouts, in the final result. Log genuine lifecycle failures separately; when
+the run was not cancelled, append their user-facing explanation after any
+earlier infrastructure error rather than replacing the primary failure.

@@ -65,7 +65,10 @@ import {
   reconcileOrphanTestUsers,
 } from "./supabase_test_user";
 import { DyadErrorKind } from "@/errors/dyad_error";
-import { SupabaseTestUserCreationRejectedError } from "./supabase_test_user_errors";
+import {
+  SupabaseTestUserCreationRejectedError,
+  supabaseTestUserStepError,
+} from "./supabase_test_user_errors";
 
 type AppRow = any;
 
@@ -342,11 +345,36 @@ describe("createTempTestUser", () => {
 
   it("keeps a successful response without a user ID fatal", async () => {
     mockFetch(() => new Response("{}"));
-    await expect(createTempTestUser(makeApp())).rejects.toThrow(
-      "did not return an id",
+    const error = await createTempTestUser(makeApp()).catch((error) => error);
+    expect(supabaseTestUserStepError("per-test setup", error).userMessage).toBe(
+      "Supabase did not return an id for the test user.",
     );
     expect(mocks.executeSupabaseSql).not.toHaveBeenCalled();
   });
+
+  it.each([true, false])(
+    "keeps rejected-key advice through lifecycle projection (legacy: %s)",
+    async (isLegacyJwt) => {
+      mockFetch(
+        () =>
+          new Response(
+            JSON.stringify({ code: "bad_jwt", message: SECRET_KEY }),
+            { status: 403 },
+          ),
+      );
+      const error = await createTempTestUser(makeApp(), {
+        adminKey: { apiKey: SECRET_KEY, isLegacyJwt },
+      }).catch((error) => error);
+      for (const step of ["setup", "per-test setup"] as const) {
+        const failure = supabaseTestUserStepError(step, error);
+        expect(failure.userMessage).toContain(
+          isLegacyJwt ? "legacy service_role" : "secret key",
+        );
+        expect(failure.userMessage).toContain("Settings → API Keys");
+        expect(failure.userMessage).not.toMatch(/internet|sb_secret_/);
+      }
+    },
+  );
 
   it("reports the Auth endpoint and DNS cause without credentials or a project URL", async () => {
     const request = vi.fn().mockImplementation(async (_url, init) => {

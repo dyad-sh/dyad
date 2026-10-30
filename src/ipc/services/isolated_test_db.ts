@@ -32,6 +32,7 @@ import {
   type TempTestUser,
 } from "../utils/supabase_test_user";
 import {
+  SupabaseTestUserActionError,
   SupabaseTestUserCreationRejectedError,
   supabaseTestUserStepError,
   withSupabaseTestUserStep,
@@ -703,9 +704,8 @@ async function prepareSupabaseTestUserIsolation({
               (result) => (result ? "completed" : "failed"),
             );
         if (!deleted)
-          throw new DyadError(
+          throw new SupabaseTestUserActionError(
             "Couldn't delete the previous Supabase test user.",
-            DyadErrorKind.External,
           );
         trackedUserId = null;
         testUser = undefined;

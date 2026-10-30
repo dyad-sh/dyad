@@ -919,7 +919,10 @@ test("prints a fixture secret", async ({}, testInfo) => {
       expect(logs).not.toContain("sb_secret_private");
       expect(logs).not.toContain("private@example.com");
       if (runnerFails) {
-        expect(message).not.toContain("runner unavailable");
+        expect(message).toContain("runner unavailable");
+        expect(message!.indexOf("runner unavailable")).toBeLessThan(
+          message!.indexOf("Dyad couldn't"),
+        );
         expect(logs).toContain("runner unavailable");
       }
       const finished = h.broadcast.mock.calls.find(

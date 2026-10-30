@@ -23,6 +23,10 @@ import { WindowSessionIdSchema } from "@/window_infrastructure/types";
 import { runningApps } from "../utils/process_manager";
 import { TestRunTiming } from "../services/test_run_timing";
 import { CancellationReason } from "@/shared/cancellation_reason";
+import {
+  SupabaseTestUserActionError,
+  supabaseTestUserStepError,
+} from "../utils/supabase_test_user_errors";
 
 // Every app folder lives under one throwaway base so the delete handler runs
 // against real directories (its path guards resolve symlinks on disk).
@@ -459,29 +463,41 @@ describe("tests handlers", () => {
       },
     );
 
-    it.each([
-      {
-        outcome: "cancelled",
-        message:
-          "Test run stopped because the chat response that started it was stopped.",
-      },
-      {
-        outcome: "timed out",
-        message:
-          "The test run exceeded the 3-minute limit and was stopped before it could finish.\nPer-test database isolation failed: cleanup failed",
-      },
-      {
-        outcome: "missing server",
-        message:
-          "Start the app before running tests — the dev server isn't running.\nPer-test database isolation failed: cleanup failed",
-      },
-      {
-        outcome: "completed",
-        message: "Per-test database isolation failed: cleanup failed",
-      },
-    ])(
-      "handles lifecycle cleanup failure after a $outcome run",
-      async ({ outcome, message }) => {
+    it.each(
+      [
+        {
+          outcome: "cancelled",
+          message:
+            "Test run stopped because the chat response that started it was stopped.",
+        },
+        {
+          outcome: "timed out",
+          message:
+            "The test run exceeded the 3-minute limit and was stopped before it could finish.\nPer-test database isolation failed: cleanup failed",
+        },
+        {
+          outcome: "missing server",
+          message:
+            "Start the app before running tests — the dev server isn't running.\nPer-test database isolation failed: cleanup failed",
+        },
+        {
+          outcome: "completed",
+          message: "Per-test database isolation failed: cleanup failed",
+        },
+      ].flatMap((scenario) => [
+        { ...scenario, supabase: false },
+        {
+          ...scenario,
+          supabase: true,
+          message: scenario.message.replace(
+            "Per-test database isolation failed: cleanup failed",
+            "Test cleanup couldn't finish. Couldn't delete the previous Supabase test user.",
+          ),
+        },
+      ]),
+    )(
+      "handles lifecycle cleanup failure after a $outcome run (Supabase: $supabase)",
+      async ({ outcome, message, supabase }) => {
         readSettingsMock.mockReturnValue({
           ...DEFAULT_SETTINGS,
           disableSandboxedE2eTests: true,
@@ -495,7 +511,14 @@ describe("tests handlers", () => {
         const controller = new AbortController();
         let failure: Error | undefined;
         const close = vi.fn(async () => {
-          failure = new Error("cleanup failed");
+          failure = supabase
+            ? supabaseTestUserStepError(
+                "cleanup",
+                new SupabaseTestUserActionError(
+                  "Couldn't delete the previous Supabase test user.",
+                ),
+              )
+            : new Error("cleanup failed");
         });
         startTestCaseLifecycleServerMock.mockResolvedValue({
           env: {},
@@ -509,7 +532,7 @@ describe("tests handlers", () => {
           remoteCleanupCompleted: true,
         });
         prepareIsolatedTestDatabaseMock.mockResolvedValue({
-          isolation: { mode: "neon-branch" },
+          isolation: { mode: supabase ? "supabase-test-user" : "neon-branch" },
           testCaseLifecycle: { beforeEach: vi.fn(), afterEach: vi.fn() },
           teardown,
         });

@@ -123,6 +123,7 @@ vi.mock("electron-log", () => ({
 
 import { prepareIsolatedTestDatabase } from "./isolated_test_db";
 import {
+  SupabaseTestUserActionError,
   SupabaseTestUserCreationRejectedError,
   SupabaseTestUserOperationError,
 } from "../utils/supabase_test_user_errors";
@@ -482,6 +483,46 @@ describe("per-case database isolation", () => {
         /setup failed.*GET \/v1\/projects\/\{ref\}\/api-keys.*CERT_HAS_EXPIRED/,
       ),
     );
+  });
+
+  it("preserves actionable cleanup failures", async () => {
+    const prepared = await prepareSupabase();
+    await prepared.testCaseLifecycle!.beforeEach();
+    mocks.deleteTempTestUser.mockResolvedValueOnce(false);
+    const error = await prepared
+      .testCaseLifecycle!.afterEach()
+      .catch((error) => error);
+    expect(error.userMessage).toBe(
+      "Test cleanup couldn't finish. Couldn't delete the previous Supabase test user.",
+    );
+    expect(error.userMessage).not.toContain("internet");
+    await prepared.teardown();
+  });
+
+  it("keeps local setup error diagnostics in logs without suggesting a network failure", async () => {
+    const error = new ReferenceError("private internal details");
+    error.stack =
+      "ReferenceError: private internal details\n    at setup (/home/private/src/ipc/services/isolated_test_db.ts:800:10)";
+    mocks.getServiceRoleKey.mockRejectedValueOnce(error);
+    const prepared = await prepareSupabase();
+    expect(prepared.infraError?.message).toContain("unexpected error");
+    expect(prepared.infraError?.message).not.toMatch(
+      /private|internet|ReferenceError/,
+    );
+    const logs = mocks.logError.mock.calls.flat().join("\n");
+    expect(logs).toContain("ReferenceError");
+    expect(logs).toContain("isolated_test_db.ts:800:10");
+    expect(logs).not.toMatch(/private|network/);
+  });
+
+  it("keeps known setup guidance in the returned infrastructure error", async () => {
+    const message =
+      "Check the key and its permissions in Supabase under Settings → API Keys.";
+    mocks.getServiceRoleKey.mockRejectedValueOnce(
+      new SupabaseTestUserActionError(message),
+    );
+    const prepared = await prepareSupabase();
+    expect(prepared.infraError?.message).toBe(message);
   });
 
   it("retains a failed Supabase deletion for retry and refuses to provision another user", async () => {

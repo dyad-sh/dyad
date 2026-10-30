@@ -15,6 +15,7 @@ import { retryTestDatabaseCleanup } from "./test_database_cleanup_retry";
 import { appOperationCoordinator } from "@/ipc/services/app_operation_coordinator";
 import { executeSupabaseSql } from "../../supabase_admin/supabase_management_client";
 import {
+  SupabaseTestUserActionError,
   SupabaseTestUserCreationRejectedError,
   SupabaseTestUserOperationError,
   parseSupabaseTestUserErrorResponse,
@@ -189,9 +190,8 @@ export async function createTempTestUser(
       (result) => (result ? "completed" : "failed"),
     );
     if (!priorCleanupOk) {
-      throw new DyadError(
+      throw new SupabaseTestUserActionError(
         `Couldn't clean up the previous Supabase test user for app ${appData.id}. Skipping this run to avoid leaking a test user; it will be retried on the next launch.`,
-        DyadErrorKind.External,
       );
     }
   }
@@ -248,9 +248,8 @@ export async function createTempTestUser(
       (response.status === 401 || response.status === 403) &&
       /bad_jwt|invalid jwt/i.test(detail)
     ) {
-      throw new DyadError(
+      throw new SupabaseTestUserActionError(
         `Supabase rejected the ${adminKey.isLegacyJwt ? "legacy service_role" : "secret"} key Dyad used to create the test user (${response.status}). Check the key and its permissions in Supabase under Settings → API Keys.`,
-        DyadErrorKind.External,
       );
     }
     if (isUserCreationDatabaseError(response.status, errorBody)) {
@@ -292,9 +291,8 @@ export async function createTempTestUser(
     response.json(),
   )) as { id?: string };
   if (!created?.id) {
-    throw new DyadError(
+    throw new SupabaseTestUserActionError(
       "Supabase did not return an id for the test user.",
-      DyadErrorKind.External,
     );
   }
 

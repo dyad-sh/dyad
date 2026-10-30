@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
+  SupabaseTestUserActionError,
   SupabaseTestUserCreationRejectedError,
   SupabaseTestUserOperationError,
   getSupabaseTestUserMessage,
@@ -102,8 +103,10 @@ describe("Supabase test-user diagnostics", () => {
       "per-test setup",
       failure,
     ).userMessage;
-    expect(message).toContain("Check your internet connection and try again");
-    expect(message).not.toMatch(/private|fetch failed|unavailable|outage/);
+    expect(message).toContain("An unexpected error interrupted this step");
+    expect(message).not.toMatch(
+      /private|fetch failed|unavailable|outage|internet/,
+    );
     expect(
       supabaseTestUserStepError("cleanup", prerequisite).userMessage,
     ).toContain("Test cleanup couldn't finish");
@@ -111,6 +114,83 @@ describe("Supabase test-user diagnostics", () => {
     expect(cleanup).toContain("Test cleanup couldn't finish");
     expect(cleanup).not.toContain("prepare test data");
   });
+
+  it.each(["setup", "per-test setup", "cleanup"] as const)(
+    "preserves application-authored External guidance during %s",
+    async (step) => {
+      const original = new SupabaseTestUserActionError(
+        "Check the key and its permissions in Supabase under Settings → API Keys.",
+      );
+      const error = await withSupabaseTestUserStep(step, () =>
+        withSupabaseTestUserOperation("create", async () => {
+          throw original;
+        }),
+      ).catch((error) => error);
+      expect(error.userMessage).toContain(original.userMessage);
+      expect(error.userMessage).not.toContain("internet");
+      expect(error.kind).toBe(DyadErrorKind.External);
+      expect(error.cause).toBe(original);
+    },
+  );
+
+  it.each(["\n", "\r\n"])(
+    "keeps local failure diagnostics without private messages or paths (%j)",
+    (newline) => {
+      const cause = Object.assign(
+        new Error("database locked private SQL parameters"),
+        {
+          name: "SqliteError",
+          code: "SQLITE_BUSY",
+          stack: [
+            "SqliteError: private SQL parameters",
+            "    at persistTestUserId (/home/private/src/ipc/utils/supabase_test_user.ts:727:3)",
+            "    at create (C:\\private\\.vite\\build\\main.js:12:34)",
+          ].join(newline),
+        },
+      );
+      const original = new Error("private query", { cause });
+      const error = supabaseTestUserStepError("per-test setup", original);
+      expect(error.message).toContain("SqliteError");
+      expect(error.message).toContain("SQLITE_BUSY");
+      expect(error.message).toContain("supabase_test_user.ts:727:3");
+      expect(error.message).toContain("main.js:12:34");
+      expect(error.message).not.toMatch(
+        /private|network|proxy|certificate|SQL parameters/,
+      );
+      expect(error.userMessage).toContain("unexpected error");
+      expect(error.userMessage).not.toMatch(
+        /SQLITE|SqliteError|\.ts:|\.js:|internet/,
+      );
+      expect(error.cause).toBe(original);
+    },
+  );
+
+  it.each([
+    new ReferenceError("private variable is not defined"),
+    new SyntaxError("private local JSON"),
+    new DyadError("private provider details", DyadErrorKind.External),
+  ])(
+    "does not diagnose an unknown %s as a network failure",
+    async (original) => {
+      const stepError = supabaseTestUserStepError("setup", original);
+      expect(stepError.message).toContain(original.name);
+      expect(stepError.message).not.toMatch(
+        /private|network|Supabase returned an invalid response/,
+      );
+      expect(stepError.userMessage).not.toMatch(
+        /internet|VPN|Supabase's response/,
+      );
+      const operationError = await withSupabaseTestUserOperation(
+        "adminKey",
+        async () => {
+          throw original;
+        },
+      ).catch((error) => error);
+      expect(operationError.message).toContain(original.name);
+      expect(operationError.message).not.toMatch(/private|network/);
+      expect(operationError.userMessage).not.toMatch(/internet|VPN/);
+    },
+  );
 
   it.each<[Record<string, unknown>, string]>([
     [

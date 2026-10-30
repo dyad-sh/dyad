@@ -14,3 +14,5 @@ Applies to `src/ipc/services/isolated_test_db.ts`, `test_case_lifecycle_server.t
 
 - Playwright clears its configured output directory at startup. Keep generated timing reporters and their JSONL output outside the directory passed to `--output`; real-runner tests must use the same layout or a passing run can silently produce no case timing events.
 - Playwright's `TestResult.duration` excludes fixtures with their own timeout, including database provisioning. Use the top-level `Before Hooks` and `After Hooks` spans for setup/cleanup timing and the interval between them for execution; do not subtract those hook durations from `TestResult.duration`.
+
+- Keep application-authored Supabase remediation in `SupabaseTestUserActionError`; an `External` classification alone does not make arbitrary provider text safe to display. Only give network advice for recognized transport failures. For unexpected local failures, retain bounded error types, SQLite codes, and Dyad source locations without copying exception messages or SQL parameters.

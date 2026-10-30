@@ -1773,20 +1773,17 @@ async function runTestsWithPreviewAutomation({
     const message = `Per-test database isolation failed: ${caseServer.failure.message}`;
     logger.warn(message);
     if (!signal.aborted) {
-      const userMessage = getSupabaseTestUserMessage(caseServer.failure);
-      // Keep concurrent runner failures in the logs while presenting the
-      // actionable Supabase failure without endpoints or transport codes.
-      if (userMessage && result.infraError)
+      const userMessage =
+        getSupabaseTestUserMessage(caseServer.failure) ?? message;
+      if (result.infraError)
         logger.warn(`Test runner also failed: ${result.infraError.message}`);
       result = {
         ...result,
         infraError: {
           ...result.infraError,
-          message:
-            userMessage ??
-            (result.infraError
-              ? `${result.infraError.message}\n${message}`
-              : message),
+          message: result.infraError
+            ? `${result.infraError.message}\n${userMessage}`
+            : userMessage,
         },
       };
     }

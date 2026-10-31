@@ -6,7 +6,8 @@ const logger = log.scope("log_level_filter");
 
 // Example line:
 // [2025-06-09 13:55:05.209] [debug] (runShellCommand) Command "which node" succeeded with code 0: /usr/local/bin/node
-const LOG_LEVEL_PREFIX = /^\[[^\]]*\] \[(\w+)\]/;
+const LOG_LEVEL_PREFIX =
+  /^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}\] \[(\w+)\]/;
 
 /**
  * Selects lines from an electron-log file. `warn` keeps warnings and errors;

@@ -64,6 +64,16 @@ describe("filterLogLines", () => {
     expect(filterLogLines(content, "warn")).toEqual([]);
   });
 
+  it("keeps child output that looks like a log entry inside an error", () => {
+    const content = log(
+      "[2026-10-30 10:00:00.000] [error] (app) App stderr: Build failed",
+      "[12:00] [info] compiling",
+      "TypeError: the root cause",
+    );
+
+    expect(filterLogLines(content, "warn")).toEqual(content.split("\n"));
+  });
+
   it("returns every line at info level", () => {
     const content = log(
       "[2026-10-30 10:00:00.000] [debug] (catalog) Refreshed {",

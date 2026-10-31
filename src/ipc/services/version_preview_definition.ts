@@ -40,6 +40,9 @@ import { versionPreviewService } from "./version_preview_service";
 import { versionPreviewPersistence } from "./version_preview_persistence";
 import { versionPreviewWindowInterestService } from "./version_preview_window_interest";
 import { versionPreviewRemoteIntentContract } from "@/version_preview/remote_intent_contract";
+import { chatExecutionHold } from "./chat_execution_hold";
+
+const RESTORE_RECOVERY_EXECUTION_HOLD = "restore-recovery-execution-hold";
 
 interface VersionPreviewActorCommand {
   readonly command: PreviewCommand | { readonly type: "reconcile" };
@@ -405,6 +408,13 @@ function createCommandRunner(
           }
           return;
         }
+        // Codebase restores own the hold through Git/database restoration and restart.
+        // The chat actor keeps accepting durable queued prompts in the meantime.
+        const releaseChatExecution =
+          command.type === "restore" ||
+          (command.type === "restore-to-message" && command.restoreCodebase)
+            ? chatExecutionHold.acquire(appId)
+            : undefined;
         const operation =
           command.type === "restore" || command.type === "restore-to-message"
             ? versionPreviewService.run(
@@ -421,6 +431,19 @@ function createCommandRunner(
                     recovery,
                   );
                   restoreProgress = recovery;
+                  if (
+                    releaseChatExecution &&
+                    recovery.nextStep !== "preparing" &&
+                    recovery.nextStep !== "completed"
+                  ) {
+                    // Before crossing a restore boundary, give the actor its
+                    // own hold. It survives lifecycle failure until recovery
+                    // is accepted, without a release/reacquire dispatch gap.
+                    context.tasks.replace(
+                      RESTORE_RECOVERY_EXECUTION_HOLD,
+                      chatExecutionHold.acquire(appId),
+                    );
+                  }
                 },
               )
             : versionPreviewService.run(command, invocationRef.operationId);
@@ -540,7 +563,10 @@ function createCommandRunner(
           },
         );
         void versionPreviewService
-          .trackLifecycle(appId, lifecycle)
+          .trackLifecycle(
+            appId,
+            lifecycle.finally(() => releaseChatExecution?.()),
+          )
           .catch((error) => {
             versionPreviewPresentationService.publishError(
               appId,
@@ -553,6 +579,9 @@ function createCommandRunner(
       case "validate-current-repository":
       case "checkpoint-current-repository": {
         if (!invocationRef) return;
+        // Keep in-flight recovery work held even if actor disposal releases
+        // the longer-lived recovery hold before the service finishes.
+        const releaseChatExecution = chatExecutionHold.acquire(appId);
         const operation =
           command.type === "validate-current-repository"
             ? versionPreviewService.validateCurrentRepository(appId)
@@ -643,7 +672,7 @@ function createCommandRunner(
           },
         );
         void versionPreviewService
-          .trackLifecycle(appId, lifecycle)
+          .trackLifecycle(appId, lifecycle.finally(releaseChatExecution))
           .catch((error) => {
             versionPreviewPresentationService.publishError(
               appId,
@@ -729,6 +758,18 @@ export const versionPreviewDefinition: Definition = {
     },
   }),
   createCommandRunner: (context) => {
+    const initialState = context.getSnapshot().state;
+    if (
+      initialState.type === "restoring" ||
+      isRestoreRecoveryFlowState(initialState)
+    ) {
+      // Rehydration must block chat execution while reconciliation determines
+      // whether an interrupted restore still needs recovery.
+      context.tasks.replace(
+        RESTORE_RECOVERY_EXECUTION_HOLD,
+        chatExecutionHold.acquire(context.key.appId),
+      );
+    }
     const runner = createCommandRunner(context);
     if (context.getSnapshot().state.type !== "closed") {
       versionPreviewService.beginReconciliation(context.key.appId);
@@ -738,6 +779,12 @@ export const versionPreviewDefinition: Definition = {
   },
   createObserver: (context) => ({
     onTransitionApplied: ({ previous, state, event, commands }) => {
+      if (
+        state.state.type !== "restoring" &&
+        !isRestoreRecoveryFlowState(state.state)
+      ) {
+        context.tasks.remove(RESTORE_RECOVERY_EXECUTION_HOLD);
+      }
       versionPreviewPersistence.schedule(context.key.appId, state.state);
       if (state.state.type === "closed") {
         versionPreviewWindowInterestService.clearApp(context.key.appId);

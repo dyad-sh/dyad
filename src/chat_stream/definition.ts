@@ -16,6 +16,7 @@ import {
   publishChatInvalidations,
 } from "@/ipc/services/chat_actor_platform";
 import { assertChatActorAdmissionOpen } from "@/ipc/services/chat_actor_deletion_fence";
+import { chatExecutionHold } from "@/ipc/services/chat_execution_hold";
 import { computeChatTurnPayloadHash } from "@/ipc/utils/chat_turn_intent_hash";
 import { readSettings } from "@/main/settings";
 import {
@@ -58,7 +59,7 @@ import {
 } from "./transport";
 import { canCancelActiveChatStreamPhase } from "./transition";
 
-async function requireExistingChat(chatId: number): Promise<number> {
+function requireExistingChat(chatId: number): number {
   const chat = db
     .select({ id: chats.id, appId: chats.appId })
     .from(chats)
@@ -114,6 +115,16 @@ function createCommandRunner(
   >[0],
 ) {
   const emit = context.send;
+  const appId = requireExistingChat(context.key.chatId);
+  context.tasks.replace(
+    "execution-hold",
+    chatExecutionHold.subscribe(appId, (held) =>
+      emit({ type: "EXECUTION_HOLD_CHANGED", held }),
+    ),
+  );
+  if (chatExecutionHold.isHeld(appId)) {
+    emit({ type: "EXECUTION_HOLD_CHANGED", held: true });
+  }
   const loadAuthoritativeQueue = () => {
     try {
       return loadChatQueue(db, context.key.chatId);
@@ -591,6 +602,11 @@ function createCommandRunner(
       }
       case "dispatch-next": {
         try {
+          if (
+            chatExecutionHold.isHeld(appId) ||
+            context.getSnapshot().pendingQueueMutationId !== null
+          )
+            return;
           try {
             assertChatActorAdmissionOpen(context.key.chatId);
           } catch {
@@ -620,6 +636,8 @@ function createCommandRunner(
             }
             const snapshotBeforeDispatch = context.getSnapshot();
             if (
+              chatExecutionHold.isHeld(appId) ||
+              snapshotBeforeDispatch.pendingQueueMutationId !== null ||
               snapshotBeforeDispatch.queuePaused ||
               (snapshotBeforeDispatch.phase !== "idle" &&
                 snapshotBeforeDispatch.phase !== "errored")

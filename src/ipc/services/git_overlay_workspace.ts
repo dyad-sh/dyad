@@ -193,6 +193,12 @@ async function runWorkspaceGit(
     captureOutputOnSuccess: !onStdout,
   });
   if (result.aborted) {
+    // `AbortSignal.timeout` arrives through the same channel as a user's Stop.
+    // Reported as a cancellation it reads as something nobody did, and its kind
+    // drops it from exception telemetry, so a stalled Git would stay invisible.
+    if ((signal?.reason as Error | undefined)?.name === "TimeoutError") {
+      throw new Error(`Git command timed out: git ${args.join(" ")}`);
+    }
     throw new DyadError("Operation cancelled.", DyadErrorKind.UserCancelled);
   }
   if (result.timedOut) {
@@ -1370,6 +1376,70 @@ export function isGitOverlayWorkspaceActive(worktreePath: string): boolean {
   return activeWorkspacePaths.has(worktreePath);
 }
 
+/**
+ * Delete a worktree's directory. Removal must always go through here, never
+ * through `git worktree remove` on a populated tree.
+ *
+ * Git for Windows treats a junction as an ordinary directory, and installs are
+ * full of them. Reaching a live one, it deletes THROUGH it: an npm `file:` or
+ * pnpm `link:` dependency on an absolute path has its real files erased while
+ * Git exits 0. Reaching one whose target it already deleted, it counts the link
+ * as gone and then fails its parent's `rmdir` with "Directory not empty", which
+ * every pnpm install hits because `.pnpm` links packages to each other. The
+ * failure is not retryable either: Git has already dropped the registration, so
+ * a second attempt only reports "is not a working tree".
+ *
+ * `fs.rm` removes a link without following it and is also several times faster
+ * than Git here. Its retries restart from whatever is left, so they cover a
+ * handle that briefly outlives a killed process, or a scanner passing through,
+ * at the cost of the wait alone. The delays grow linearly, about 4s in total.
+ */
+async function removeWorkspaceDirectory(directoryPath: string): Promise<void> {
+  await fs.rm(directoryPath, {
+    recursive: true,
+    force: true,
+    maxRetries: 6,
+    retryDelay: 200,
+  });
+}
+
+/**
+ * Withdraw one worktree's registration after its directory has been deleted, at
+ * which point `git worktree remove` touches nothing but that entry's metadata.
+ *
+ * Not `git worktree prune`: it is repository-wide, and to it a worktree the user
+ * keeps on an unplugged drive looks just as stale as this one. It also exits 0
+ * when it could not delete the metadata, so it cannot report the failure anyway.
+ *
+ * Failing here is logged rather than retained for the startup sweep, which finds
+ * workspaces by their directory. A leftover entry is harmless: workspace paths
+ * are never reused, and `git gc` expires it once its directory has been missing
+ * long enough.
+ *
+ * `--force` twice because a single one refuses a locked entry, and `worktree add`
+ * holds that lock while it initializes, so a Stop during setup leaves one behind.
+ */
+async function withdrawWorktreeRegistration(
+  repoPath: string,
+  worktreePath: string,
+): Promise<void> {
+  try {
+    await runWorkspaceGit(
+      repoPath,
+      ["worktree", "remove", "--force", "--force", worktreePath],
+      AbortSignal.timeout(30_000),
+    );
+  } catch (error) {
+    // Never registered (setup failed before `worktree add`), or dropped by an
+    // earlier attempt. Matching Git's text only decides how loud this log is.
+    if (String(error).includes("is not a working tree")) return;
+    logger.warn(
+      `Failed to withdraw the worktree registration for ${worktreePath}:`,
+      error,
+    );
+  }
+}
+
 export async function removeGitOverlayWorkspace(
   worktreePath: string,
   sourceRepoPath?: string,
@@ -1382,106 +1452,53 @@ export async function removeGitOverlayWorkspace(
           submoduleWorktrees: storedMarker?.submoduleWorktrees ?? [],
         }
       : storedMarker;
-    // Tracks whether every submodule registration this marker records was
-    // actually withdrawn. The marker is the only thing that names them, so
-    // deleting it while one is still registered strands that registration in
-    // the submodule's Git metadata with nothing left to retry from.
-    let allSubmodulesUnregistered = true;
+    // Tracks whether every submodule worktree this marker records was actually
+    // deleted. The marker is the only thing that names them, so deleting it
+    // while one still stands strands its registration in the submodule's Git
+    // metadata with nothing left to retry from.
+    let allSubmodulesRemoved = true;
     for (const worktree of [...(marker?.submoduleWorktrees ?? [])].reverse()) {
       try {
-        await runWorkspaceGit(
-          worktree.sourceRepoPath,
-          ["worktree", "remove", "--force", worktree.snapshotPath],
-          AbortSignal.timeout(30_000),
-        );
+        await removeWorkspaceDirectory(worktree.snapshotPath);
       } catch (error) {
         logger.warn(
-          `Failed to unregister submodule worktree ${worktree.snapshotPath}:`,
+          `Failed to remove submodule worktree ${worktree.snapshotPath}:`,
           error,
         );
-        try {
-          await runWorkspaceGit(
-            worktree.sourceRepoPath,
-            ["worktree", "prune"],
-            AbortSignal.timeout(30_000),
-          );
-        } catch (pruneError) {
-          logger.warn(
-            `Failed to prune submodule worktree metadata for ${worktree.sourceRepoPath}:`,
-            pruneError,
-          );
-        }
-        // A zero exit from `prune` is not evidence this registration went: it
-        // expires worktrees whose directory is MISSING, and the directory still
-        // being there is why `remove` failed. Verify rather than assume — the
-        // whole point of keeping the marker is that something must still name
-        // this registration for a later attempt.
-        //
-        // Only a definite "it is gone" clears this. A stat that fails for any
-        // other reason — EACCES, EIO, ENOTDIR from a path shape we did not
-        // expect, anything Windows still has locked — says nothing, and reading
-        // it as absence would drop the marker while the registration stands,
-        // which is the exact failure this branch exists to prevent. Narrower
-        // than `isMissingPathError` on purpose: that helper folds ENOTDIR in
-        // for module resolution, where the cost of being wrong is one more
-        // candidate path, not a permanently stranded worktree registration.
-        const stillPresent = await fs
-          .stat(worktree.snapshotPath)
-          .then(() => true)
-          .catch(
-            (error) =>
-              (error as NodeJS.ErrnoException | null)?.code !== "ENOENT",
-          );
-        if (stillPresent) allSubmodulesUnregistered = false;
+        allSubmodulesRemoved = false;
+        continue;
       }
+      await withdrawWorktreeRegistration(
+        worktree.sourceRepoPath,
+        worktree.snapshotPath,
+      );
     }
-    // The whole workspace stays when a submodule registration outlived this
-    // pass — directory AND marker, not the marker alone. The startup sweep
-    // enumerates run *directories*, so a marker left beside a deleted directory
-    // is never discovered again and the registration is stranded for good.
-    // Keeping both means the next launch retries this exact function.
-    if (!allSubmodulesUnregistered) {
+    // The whole workspace stays when a submodule worktree outlived this pass —
+    // directory AND marker, not the marker alone. The startup sweep enumerates
+    // run *directories*, so a marker left beside a deleted directory is never
+    // discovered again and the registration is stranded for good. Keeping both
+    // means the next launch retries this exact function.
+    if (!allSubmodulesRemoved) {
       logger.warn(
-        `Keeping the workspace at ${worktreePath}: a submodule worktree registration could not be removed, and the startup sweep needs it to retry.`,
+        `Keeping the workspace at ${worktreePath}: a submodule worktree could not be removed, and the startup sweep needs it to retry.`,
       );
       return;
     }
-    let removedByGit = false;
+    try {
+      await removeWorkspaceDirectory(worktreePath);
+    } catch (error) {
+      // The same three things stay here, for the same reason: the marker names
+      // the repository, and the registration has to outlive the directory.
+      logger.warn(`Failed to remove workspace ${worktreePath}:`, error);
+      return;
+    }
     if (marker?.sourceRepoPath) {
-      try {
-        await runWorkspaceGit(
-          marker.sourceRepoPath,
-          ["worktree", "remove", "--force", worktreePath],
-          AbortSignal.timeout(30_000),
-        );
-        removedByGit = true;
-      } catch (error) {
-        logger.warn(`Failed to unregister worktree ${worktreePath}:`, error);
-      }
+      await withdrawWorktreeRegistration(marker.sourceRepoPath, worktreePath);
     }
     try {
-      if (!removedByGit) {
-        await fs.rm(worktreePath, {
-          recursive: true,
-          force: true,
-          maxRetries: 3,
-          retryDelay: 100,
-        });
-      }
       await fs.rm(markerPath(worktreePath), { force: true });
     } catch (error) {
-      logger.warn(`Failed to remove workspace ${worktreePath}:`, error);
-    }
-    if (!removedByGit && marker?.sourceRepoPath) {
-      try {
-        await runWorkspaceGit(
-          marker.sourceRepoPath,
-          ["worktree", "prune"],
-          AbortSignal.timeout(30_000),
-        );
-      } catch (error) {
-        logger.warn(`Failed to prune stale worktree metadata:`, error);
-      }
+      logger.warn(`Failed to remove workspace marker ${worktreePath}:`, error);
     }
   } finally {
     activeWorkspacePaths.delete(worktreePath);

@@ -4,6 +4,7 @@ import path from "node:path";
 import type { ChildProcess } from "node:child_process";
 import * as bufferedProcess from "@/ipc/utils/buffered_process";
 import * as gitUtils from "@/ipc/utils/git_utils";
+import { DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -103,6 +104,54 @@ it("streams complete tracked paths beyond the diagnostic output limit", async ()
   const paths = await listGitOverlayTrackedPaths(process.cwd());
   expect(paths).toHaveLength(count);
   expect(paths.every((value) => value === entry)).toBe(true);
+});
+
+describe("an aborted workspace Git command", () => {
+  function mockAbortedGit() {
+    vi.spyOn(bufferedProcess, "runBufferedProcess").mockResolvedValueOnce({
+      code: null,
+      signal: null,
+      stdout: "",
+      stderr: "",
+      stdoutTruncated: false,
+      stderrTruncated: false,
+      aborted: true,
+      timedOut: false,
+    });
+  }
+
+  it("reports a timeout signal as a timeout, not a user's cancellation", async () => {
+    // These surface identically from the process runner. As "Operation
+    // cancelled." a stalled cleanup command looked like a cancelled run, and
+    // its kind kept it out of exception telemetry.
+    mockAbortedGit();
+    const signal = AbortSignal.timeout(1);
+    await new Promise((resolve) =>
+      signal.addEventListener("abort", resolve, { once: true }),
+    );
+
+    const failure = await listGitOverlayTrackedPaths(
+      process.cwd(),
+      signal,
+    ).catch((error) => error);
+
+    expect(failure.message).toContain("Git command timed out: git ls-files");
+    expect(isDyadError(failure)).toBe(false);
+  });
+
+  it("still reports a Stop as a user's cancellation", async () => {
+    mockAbortedGit();
+    const controller = new AbortController();
+    controller.abort();
+
+    const failure = await listGitOverlayTrackedPaths(
+      process.cwd(),
+      controller.signal,
+    ).catch((error) => error);
+
+    expect(failure.message).toBe("Operation cancelled.");
+    expect(failure.kind).toBe(DyadErrorKind.UserCancelled);
+  });
 });
 
 describe("parseGitOverlayPaths exclusions", () => {

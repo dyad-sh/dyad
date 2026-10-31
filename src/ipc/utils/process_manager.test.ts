@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   destroyCloudSandboxMock,
@@ -378,21 +378,61 @@ describe("forceKillProcessTree", () => {
     await expect(settled).resolves.toBe(false);
   });
 
-  it("signals but does not confirm when the root shell has already exited", async () => {
-    // The E2E runtime spawns a shell, and `npm run dev` forks a server that
-    // routinely outlives it. The signal still goes out — reading the root's
-    // exit as "the tree is gone" would skip SIGKILL for exactly the survivor
-    // holding the sandbox — but a descendant that daemonized is unreachable
-    // from this pid and emits no `close`, so this cannot claim confirmation.
-    // Since `killProcess` runs first, an exited root is the COMMON case; a
-    // `true` here would make the caller's guard decorative.
-    const { child, listens } = fakeChild({ pid: 111, exitCode: 0 });
+  describe("when the root shell has already exited", () => {
+    const originalPlatform = process.platform;
 
-    await expect(forceKillProcessTree(child, 50)).resolves.toBe(false);
-    expect(treeKillMock).toHaveBeenCalledWith(111, "SIGKILL");
-    // No `close` is coming for a root that already exited, so it must not wait
-    // for one.
-    expect(listens("close")).toBe(false);
+    function setPlatform(platform: NodeJS.Platform) {
+      Object.defineProperty(process, "platform", {
+        configurable: true,
+        value: platform,
+      });
+    }
+
+    afterEach(() => {
+      setPlatform(originalPlatform);
+    });
+
+    it.each(["linux", "darwin"] as const)(
+      "signals but does not confirm on %s",
+      async (platform) => {
+        // The E2E runtime spawns a shell, and `npm run dev` forks a server that
+        // routinely outlives it. The signal still goes out — reading the root's
+        // exit as "the tree is gone" would skip SIGKILL for exactly the survivor
+        // holding the sandbox — but a descendant that daemonized is unreachable
+        // from this pid and emits no `close`, so this cannot claim confirmation.
+        // Since `killProcess` runs first, an exited root is the COMMON case; a
+        // `true` here would make the caller's guard decorative.
+        setPlatform(platform);
+        const { child, listens } = fakeChild({ pid: 111, exitCode: 0 });
+
+        await expect(forceKillProcessTree(child, 50)).resolves.toBe(false);
+        expect(treeKillMock).toHaveBeenCalledWith(111, "SIGKILL");
+        // No `close` is coming for a root that already exited, so it must not
+        // wait for one.
+        expect(listens("close")).toBe(false);
+      },
+    );
+
+    it("does not signal a dead pid on Windows, where it may have been reused", async () => {
+      // `taskkill /T` walks from the live root, so it cannot reach a descendant
+      // here anyway. All it can do is fail, or force-kill a stranger's tree.
+      setPlatform("win32");
+      const { child, listens } = fakeChild({ pid: 111, exitCode: 0 });
+
+      await expect(forceKillProcessTree(child, 50)).resolves.toBe(false);
+      expect(treeKillMock).not.toHaveBeenCalled();
+      expect(listens("close")).toBe(false);
+    });
+
+    it("still signals a live root on Windows", async () => {
+      setPlatform("win32");
+      const { child, emit } = fakeChild({ pid: 111 });
+      const settled = forceKillProcessTree(child, 50);
+      emit("close");
+
+      await expect(settled).resolves.toBe(true);
+      expect(treeKillMock).toHaveBeenCalledWith(111, "SIGKILL");
+    });
   });
 
   it("reports failure for a child that never started", async () => {

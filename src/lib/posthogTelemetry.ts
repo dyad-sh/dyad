@@ -1,5 +1,15 @@
 import { hasDyadProKey, type UserSettings } from "@/lib/schemas";
-import { DEFAULT_ENABLE_TESTING_FOR_NEW_APPS } from "@/shared/settings_defaults";
+import { getSharedSettingsDiagnostics } from "@/lib/settingsDiagnostics";
+import {
+  DEFAULT_MAX_TOOL_CALL_STEPS,
+  MAX_CHAT_TURNS_IN_CONTEXT,
+} from "@/constants/settings_constants";
+import {
+  DEFAULT_ENABLE_SUGGESTED_PROMPTS,
+  DEFAULT_ENABLE_TESTING_FOR_NEW_APPS,
+} from "@/shared/settings_defaults";
+import { localTemplatesData } from "@/shared/templates";
+import { themesData } from "@/shared/themes";
 import {
   appSizeEventFields,
   type AppSizeTelemetry,
@@ -62,7 +72,58 @@ export function getSettingsPersonTelemetryProperties(settings: UserSettings) {
     enableAppBlueprint: settings.enableAppBlueprint ?? true,
     enableTestingForNewApps:
       settings.enableTestingForNewApps ?? DEFAULT_ENABLE_TESTING_FOR_NEW_APPS,
+    ...getSharedSettingsDiagnostics(settings),
+    // Features that stay off until a user turns them on.
+    enableShellTool: settings.enableShellTool ?? false,
+    enableOwnServerDeployment: settings.enableOwnServerDeployment ?? false,
+    enableGitlabPublishing: settings.enableGitlabPublishing ?? false,
+    enableTestRunInPreview: settings.enableTestRunInPreview ?? false,
+    enableAppPreviewDomains: settings.enableAppPreviewDomains ?? false,
+    autoApproveChanges: settings.autoApproveChanges ?? false,
+    enableSupabaseWriteSqlMigration:
+      settings.enableSupabaseWriteSqlMigration ?? false,
+    enableCloudSandbox: settings.experiments?.enableCloudSandbox ?? false,
+    enableSuggestedPrompts:
+      settings.enableSuggestedPrompts ?? DEFAULT_ENABLE_SUGGESTED_PROMPTS,
+    blockUnsafeNpmPackages: settings.blockUnsafeNpmPackages ?? true,
+    maxToolCallSteps: settings.maxToolCallSteps ?? DEFAULT_MAX_TOOL_CALL_STEPS,
+    maxChatTurnsInContext:
+      settings.maxChatTurnsInContext || MAX_CHAT_TURNS_IN_CONTEXT,
+    // Null when unset, because no single value describes the unset behavior.
+    enableProWebSearch: settings.enableProWebSearch ?? null,
+    proSmartContextOption: settings.proSmartContextOption ?? null,
+    proLazyEditsMode: settings.proLazyEditsMode ?? null,
+    selectedChatMode: settings.selectedChatMode ?? null,
+    enableAutoUpdate: settings.enableAutoUpdate,
+    selectedTemplateId: getTemplateTelemetryId(settings.selectedTemplateId),
+    selectedThemeId: getThemeTelemetryId(settings.selectedThemeId),
+    agentToolsAlwaysCount: countAgentToolConsents(settings, "always"),
+    agentToolsNeverCount: countAgentToolConsents(settings, "never"),
   };
+}
+
+// Community template IDs are "org/repo" and custom themes are user-created, so
+// only IDs that ship with Dyad are reported as themselves.
+function getTemplateTelemetryId(templateId: string): string {
+  return localTemplatesData.some((template) => template.id === templateId)
+    ? templateId
+    : "community";
+}
+
+function getThemeTelemetryId(themeId: string | undefined): string | null {
+  if (!themeId) {
+    return null;
+  }
+  return themesData.some((theme) => theme.id === themeId) ? themeId : "custom";
+}
+
+function countAgentToolConsents(
+  settings: UserSettings,
+  consent: "always" | "never",
+): number {
+  return Object.values(settings.agentToolConsents ?? {}).filter(
+    (value) => value === consent,
+  ).length;
 }
 
 export function getInitialLoadTelemetryProperties({

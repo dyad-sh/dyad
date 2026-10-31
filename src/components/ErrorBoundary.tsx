@@ -50,7 +50,7 @@ ${error?.stack ? `\n\`\`\`\n${error.stack.slice(0, 1000)}\n\`\`\`` : ""}
 
 ## Logs
 \`\`\`
-${debugInfo.logs.slice(-3_500) || "No logs available"}
+${debugInfo.logs.slice(-3_500) || "No warnings or errors in recent logs"}
 \`\`\`
 `;
 

@@ -1,12 +1,16 @@
 import fs from "node:fs";
 import path from "node:path";
+import log from "electron-log";
+
+const logger = log.scope("log_level_filter");
 
 // Example line:
 // [2025-06-09 13:55:05.209] [debug] (runShellCommand) Command "which node" succeeded with code 0: /usr/local/bin/node
 const LOG_LEVEL_PREFIX = /^\[[^\]]*\] \[(\w+)\]/;
 
 /**
- * Selects the lines of an electron-log file at or above `level`.
+ * Selects lines from an electron-log file. `warn` keeps warnings and errors;
+ * `info` keeps every line, unfiltered.
  *
  * A multi-line entry has only one level prefix, so its untagged continuation
  * lines (stack traces, the rest of an inspected object) follow their entry:
@@ -44,9 +48,9 @@ function readIfExists(filePath: string): string {
 }
 
 /**
- * Reads the newest `limit` lines at or above `level`. Rotation can land at any
- * point in a session, so lines the current file can't supply come from the
- * archive electron-log renames it to (`main.log` -> `main.old.log`).
+ * Reads the newest `limit` lines selected by `filterLogLines`. Rotation can land
+ * at any point in a session, so lines the current file can't supply come from
+ * the archive electron-log renames it to (`main.log` -> `main.old.log`).
  */
 export function readRecentLogLines(
   logPath: string,
@@ -63,7 +67,8 @@ export function readRecentLogLines(
   let archive: string;
   try {
     archive = readIfExists(path.join(dir, `${name}.old${ext}`));
-  } catch {
+  } catch (err) {
+    logger.warn("Could not read the rotated log file:", err);
     return currentLines;
   }
   // Filtered as one text so an entry split by rotation keeps its continuation.

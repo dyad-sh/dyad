@@ -147,6 +147,13 @@ describe("readRecentLogLines", () => {
     expect(readRecentLogLines(logPath, 20, "warn")).toEqual([warning(1)]);
   });
 
+  it("keeps the current lines when the archive can't be read", () => {
+    fs.mkdirSync(archivePath);
+    fs.writeFileSync(logPath, `${warning(1)}\n`);
+
+    expect(readRecentLogLines(logPath, 20, "warn")).toEqual([warning(1)]);
+  });
+
   it("returns nothing when neither file has warnings or exists", () => {
     expect(readRecentLogLines(logPath, 20, "warn")).toEqual([]);
   });

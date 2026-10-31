@@ -18,6 +18,7 @@ import type { AiMessagesJsonV6 } from "../../db/schema";
 import log from "electron-log";
 import path from "path";
 import fs from "fs";
+import { readRecentLogLines } from "../utils/log_level_filter";
 import { runShellCommand } from "../utils/runShellCommand";
 import { extractCodebase } from "../../utils/codebase";
 import { db } from "../../db";
@@ -132,38 +133,7 @@ async function getSystemDebugInfo({
   const settings = readSettings();
   const telemetryId = settings.telemetryUserId || "unknown";
 
-  // Get logs from electron-log
-  let logs = "";
-  try {
-    const logPath = log.transports.file.getFile().path;
-    if (fs.existsSync(logPath)) {
-      const logContent = fs.readFileSync(logPath, "utf8");
-
-      const logLines = logContent.split("\n").filter((line) => {
-        if (level === "info") {
-          return true;
-        }
-        // Example line:
-        // [2025-06-09 13:55:05.209] [debug] (runShellCommand) Command "which node" succeeded with code 0: /usr/local/bin/node
-        const logLevelRegex = /\[.*?\] \[(\w+)\]/;
-        const match = line.match(logLevelRegex);
-        if (!match) {
-          // Include non-matching lines (like stack traces) when filtering for warnings
-          return true;
-        }
-        const logLevel = match[1];
-        if (level === "warn") {
-          return logLevel === "warn" || logLevel === "error";
-        }
-        return true;
-      });
-
-      logs = logLines.slice(-linesOfLogs).join("\n");
-    }
-  } catch (err) {
-    console.error("Failed to read log file:", err);
-    logs = `Error reading logs: ${err}`;
-  }
+  const logs = readAppLogs(linesOfLogs, level);
 
   return {
     nodeVersion,
@@ -233,27 +203,12 @@ function stripImagesFromAiMessagesJson(json: AiMessagesJsonV6 | null): unknown {
 }
 
 /**
- * Reads application logs from the electron-log file.
+ * Reads application logs from the electron-log file and its rotated archive.
  */
 function readAppLogs(linesOfLogs: number, level: "warn" | "info"): string {
   try {
     const logPath = log.transports.file.getFile().path;
-    if (!fs.existsSync(logPath)) return "";
-
-    const logContent = fs.readFileSync(logPath, "utf8");
-    const logLines = logContent.split("\n").filter((line) => {
-      if (level === "info") return true;
-      const logLevelRegex = /\[.*?\] \[(\w+)\]/;
-      const match = line.match(logLevelRegex);
-      if (!match) return true;
-      const logLevel = match[1];
-      if (level === "warn") {
-        return logLevel === "warn" || logLevel === "error";
-      }
-      return true;
-    });
-
-    return logLines.slice(-linesOfLogs).join("\n");
+    return readRecentLogLines(logPath, linesOfLogs, level).join("\n");
   } catch (err) {
     console.error("Failed to read log file:", err);
     return `Error reading logs: ${err}`;

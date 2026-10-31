@@ -427,7 +427,7 @@ ${clampUpdaterLogs(formatUpdaterLogsForIssueBody(debugInfo.updaterLogs))}
     : "";
   return `## Logs
 \`\`\`
-${clampTailToEncoded(debugInfo.logs, LOG_ISSUE_BODY_LIMIT) || "No logs available"}
+${clampTailToEncoded(debugInfo.logs, LOG_ISSUE_BODY_LIMIT) || "No warnings or errors in recent logs"}
 \`\`\`${updaterSection}`;
 }
 

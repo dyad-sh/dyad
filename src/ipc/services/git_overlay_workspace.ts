@@ -7,6 +7,7 @@ import log from "electron-log/main";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { runBufferedProcess } from "@/ipc/utils/buffered_process";
 import { getGitProcessEnvironment } from "@/ipc/utils/git_utils";
+import { startPhaseStallWatch } from "@/ipc/utils/phase_stall_watch";
 
 const WINDOWS_COPY_CONCURRENCY = 32;
 const MAX_GIT_OUTPUT_BYTES = 4 * 1024 * 1024;
@@ -94,6 +95,7 @@ async function settleAll(operations: readonly Promise<unknown>[]) {
 
 const logger = log.scope("git_overlay_workspace");
 const activeWorkspacePaths = new Set<string>();
+const inFlightRemovals = new Map<string, Promise<void>>();
 
 const WINDOWS_SYMLINK_PRIVILEGE_ERRORS = new Set(["EACCES", "EPERM"]);
 
@@ -1370,10 +1372,41 @@ export function isGitOverlayWorkspaceActive(worktreePath: string): boolean {
   return activeWorkspacePaths.has(worktreePath);
 }
 
-export async function removeGitOverlayWorkspace(
+/**
+ * Remove a workspace, joining a removal of the same path already in flight.
+ *
+ * The startup sweep, a build's stale sweep and an owner's own cleanup can all
+ * reach one abandoned directory. Two recursive deletes of a dependency-heavy
+ * tree racing each other double the I/O and turn each other's progress into
+ * ENOENT/ENOTEMPTY retries.
+ */
+export function removeGitOverlayWorkspace(
   worktreePath: string,
   sourceRepoPath?: string,
 ): Promise<void> {
+  const key = path.resolve(worktreePath);
+  const inFlight = inFlightRemovals.get(key);
+  if (inFlight) return inFlight;
+  const removal = removeGitOverlayWorkspaceOnce(
+    worktreePath,
+    sourceRepoPath,
+  ).finally(() => inFlightRemovals.delete(key));
+  inFlightRemovals.set(key, removal);
+  return removal;
+}
+
+async function removeGitOverlayWorkspaceOnce(
+  worktreePath: string,
+  sourceRepoPath?: string,
+): Promise<void> {
+  // Directory basename only: it is a random Dyad-owned name, while the full
+  // path carries the user's profile directory.
+  const watch = startPhaseStallWatch({
+    label: `Removing workspace ${path.basename(worktreePath)}`,
+    initialPhase: "reading marker",
+    warn: (message) => logger.warn(message),
+  });
+  let outcome = "removed";
   try {
     const storedMarker = await readGitOverlayWorkspaceMarker(worktreePath);
     const marker = sourceRepoPath
@@ -1387,6 +1420,9 @@ export async function removeGitOverlayWorkspace(
     // deleting it while one is still registered strands that registration in
     // the submodule's Git metadata with nothing left to retry from.
     let allSubmodulesUnregistered = true;
+    if (marker?.submoduleWorktrees.length) {
+      watch.setPhase("unregistering submodule worktrees");
+    }
     for (const worktree of [...(marker?.submoduleWorktrees ?? [])].reverse()) {
       try {
         await runWorkspaceGit(
@@ -1444,10 +1480,12 @@ export async function removeGitOverlayWorkspace(
       logger.warn(
         `Keeping the workspace at ${worktreePath}: a submodule worktree registration could not be removed, and the startup sweep needs it to retry.`,
       );
+      outcome = "kept for a submodule retry";
       return;
     }
     let removedByGit = false;
     if (marker?.sourceRepoPath) {
+      watch.setPhase("unregistering worktree");
       try {
         await runWorkspaceGit(
           marker.sourceRepoPath,
@@ -1456,11 +1494,16 @@ export async function removeGitOverlayWorkspace(
         );
         removedByGit = true;
       } catch (error) {
+        outcome = "removed without Git unregistration";
         logger.warn(`Failed to unregister worktree ${worktreePath}:`, error);
       }
     }
     try {
       if (!removedByGit) {
+        // The fallback after Git refuses (for example "is not a working tree"
+        // once an earlier partial delete took the worktree's `.git` file). On
+        // Windows a dependency-heavy tree can take minutes here.
+        watch.setPhase("deleting directory");
         await fs.rm(worktreePath, {
           recursive: true,
           force: true,
@@ -1470,9 +1513,11 @@ export async function removeGitOverlayWorkspace(
       }
       await fs.rm(markerPath(worktreePath), { force: true });
     } catch (error) {
+      outcome = "directory deletion failed";
       logger.warn(`Failed to remove workspace ${worktreePath}:`, error);
     }
     if (!removedByGit && marker?.sourceRepoPath) {
+      watch.setPhase("pruning worktree metadata");
       try {
         await runWorkspaceGit(
           marker.sourceRepoPath,
@@ -1483,7 +1528,13 @@ export async function removeGitOverlayWorkspace(
         logger.warn(`Failed to prune stale worktree metadata:`, error);
       }
     }
+  } catch (error) {
+    outcome = "failed";
+    throw error;
   } finally {
     activeWorkspacePaths.delete(worktreePath);
+    logger.info(
+      `Workspace ${path.basename(worktreePath)} cleanup ${outcome} (${watch.stop()})`,
+    );
   }
 }

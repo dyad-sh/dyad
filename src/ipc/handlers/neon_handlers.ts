@@ -35,6 +35,8 @@ import {
   prepareSchemaOnlyBranchForNeonAuth,
 } from "../utils/neon_branch_data";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
+import { canUseUnsafeNeonBranch } from "@/shared/neon_branch_protection";
+import { readSettings } from "@/main/settings";
 import {
   getEnvFilePath,
   readEnvFileIfExists,
@@ -665,11 +667,6 @@ export function registerNeonHandlers() {
         projectId,
       });
 
-      // Vite apps need a Nitro server layer to safely host server-only Neon
-      // code. Run this after Neon validation but before linking so a Nitro
-      // failure leaves the app unlinked.
-      nitroSetup = await ensureNitroIfVite(resolvedAppPath);
-
       if (!branchesResponse.data.branches) {
         throw new DyadError(
           "Failed to get branches for project",
@@ -682,6 +679,16 @@ export function registerNeonHandlers() {
       // Find development branch by name first, then fall back to non-default/non-preview
       const defaultBranch = branches.find((b) => b.default);
       const dedicatedDevBranch = branches.find((b) => b.name === "development");
+
+      if (
+        !dedicatedDevBranch &&
+        !canUseUnsafeNeonBranch(readSettings(), false)
+      ) {
+        throw new DyadError(
+          "Create a development branch named development in Neon before connecting this project. To use production while building, disable Protect Neon database branches in Settings > Experiments.",
+          DyadErrorKind.Precondition,
+        );
+      }
 
       const previewBranch = branches.find((b) => b.name === "preview");
 
@@ -698,6 +705,9 @@ export function registerNeonHandlers() {
           DyadErrorKind.Precondition,
         );
       }
+
+      // Validate the branch choice before changing the app's files.
+      nitroSetup = await ensureNitroIfVite(resolvedAppPath);
 
       await db
         .update(apps)
@@ -890,6 +900,21 @@ export function registerNeonHandlers() {
         );
       }
 
+      if (
+        branchResponse.data.branch.default &&
+        branchId !== appData.neonDevelopmentBranchId &&
+        !canUseUnsafeNeonBranch(
+          readSettings(),
+          branchId ===
+            (appData.neonActiveBranchId ?? appData.neonDevelopmentBranchId),
+        )
+      ) {
+        throw new DyadError(
+          "Using production while building can damage live data. Use the development branch, or disable Protect Neon database branches in Settings > Experiments.",
+          DyadErrorKind.Precondition,
+        );
+      }
+
       const branchType: NeonBranchType =
         branchId === appData.neonDevelopmentBranchId
           ? "development"
@@ -1074,7 +1099,10 @@ export function registerNeonHandlers() {
       // it would later cause env-var/deploy resolution to fail.
       if (branchType === "development") {
         const rows = await db
-          .select({ neonDevelopmentBranchId: apps.neonDevelopmentBranchId })
+          .select({
+            neonDevelopmentBranchId: apps.neonDevelopmentBranchId,
+            selectedDatabaseBranchType: apps.selectedDatabaseBranchType,
+          })
           .from(apps)
           .where(eq(apps.id, appId))
           .limit(1);
@@ -1087,6 +1115,17 @@ export function registerNeonHandlers() {
         if (!rows[0].neonDevelopmentBranchId) {
           throw new DyadError(
             "This app has no development branch, so it can't be selected for deployment. Create one in Neon first.",
+            DyadErrorKind.Precondition,
+          );
+        }
+        if (
+          !canUseUnsafeNeonBranch(
+            readSettings(),
+            rows[0].selectedDatabaseBranchType === "development",
+          )
+        ) {
+          throw new DyadError(
+            "Deploy with the production database to protect live data. To select development, disable Protect Neon database branches in Settings > Experiments.",
             DyadErrorKind.Precondition,
           );
         }

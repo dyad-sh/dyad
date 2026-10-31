@@ -753,6 +753,21 @@
       "previewRedirectNotice": "Dyad ajoute automatiquement les URL d'aperçu locales à la liste des redirections d'authentification autorisées pour {{project}}. Ces entrées sont conservées après la déconnexion ou la suppression d'une application, car d'autres membres de l'équipe peuvent utiliser les mêmes URL. Supprimez les entrées inutilisées dans Supabase → Authentication → URL Configuration."
     },
     "neon": {
+      "branchSafety": {
+        "settingsLoading": "Chargement des paramètres…",
+        "settingsUnavailable": "Impossible de charger le paramètre de protection des branches Neon. Veuillez réessayer.",
+        "deploymentTitle": "Base de développement en production — déconseillée",
+        "deploymentWarning": "Votre application déployée partagera ses données avec le développement. La création, les tests ou la réinitialisation peuvent modifier ou supprimer les données réelles des utilisateurs, et les données de test peuvent être visibles. Utilisez une base de production distincte.",
+        "deploymentRecommended": "Utiliser la base de production (recommandé)",
+        "developmentTitle": "Base de production en développement — données réelles en danger",
+        "developmentWarning": "L’aperçu et les modifications de base générées par l’IA utiliseront la base de production. Le développement ou les tests peuvent modifier ou supprimer les données réelles des utilisateurs. Utilisez la branche de développement pour les séparer.",
+        "developmentRecommended": "Passer au développement (recommandé)",
+        "locked": "Les choix de branches risqués sont masqués. Pour les débloquer, désactivez «\u00a0Protect Neon database branches\u00a0» dans Settings → Experiments.",
+        "recommendProduction": "La base de production est recommandée\u00a0: séparez les données réelles des utilisateurs du développement.",
+        "notRecommended": "Déconseillé",
+        "keepCurrent": "Garder la branche actuelle",
+        "confirmProduction": "Je comprends, utiliser la production"
+      },
       "title": "Intégration Neon",
       "connected": "Votre compte est connecté à Neon.",
       "database": "Base de données Neon",
@@ -871,7 +886,7 @@
       },
       "development": {
         "title": "Utiliser la base de données de développement",
-        "description": "Utilise une seule base de données pour le développement et la production. Configuration plus rapide, mais les changements de développement affectent les données en production."
+        "description": "Déconseillé. Partage les données réelles avec le développement ; les modifications et réinitialisations peuvent affecter les utilisateurs."
       },
       "envVars": {
         "title": "Variables d'environnement",

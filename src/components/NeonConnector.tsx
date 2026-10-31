@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { NeonSignInButton } from "@/components/NeonSignInButton";
 import { NeonLogo } from "@/components/NeonLogo";
 import { useTranslation } from "react-i18next";
@@ -41,6 +41,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
 import { isNeonSupportedFramework } from "@/lib/framework_constants";
 import { getErrorMessage } from "@/lib/errors";
+import { canUseUnsafeNeonBranch } from "@/shared/neon_branch_protection";
+import { NeonBranchWarning } from "@/components/NeonBranchWarning";
+import { NeonSettingsStatus } from "@/components/NeonSettingsStatus";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -55,7 +58,8 @@ import {
 
 export function NeonConnector({ appId }: { appId: number }) {
   const { t } = useTranslation("home");
-  const { updateSettings } = useSettings();
+  const { settings, settingsLoading, refreshSettings, updateSettings } =
+    useSettings();
   const { app, loading: isLoadingApp, refreshApp } = useLoadApp(appId);
   const queryClient = useQueryClient();
   const { isDarkMode } = useTheme();
@@ -68,6 +72,9 @@ export function NeonConnector({ appId }: { appId: number }) {
   );
   const [isConnecting, setIsConnecting] = useState(false);
   const [isSwitchingBranch, setIsSwitchingBranch] = useState(false);
+  const [pendingProductionBranch, setPendingProductionBranch] = useState<
+    string | null
+  >(null);
   const [isUpdatingEmailVerification, setIsUpdatingEmailVerification] =
     useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
@@ -96,6 +103,20 @@ export function NeonConnector({ appId }: { appId: number }) {
     branchesError,
     refetchProjects,
   } = useNeon(appId);
+  const activeBranchId =
+    app?.neonActiveBranchId ?? app?.neonDevelopmentBranchId;
+  const activeBranch = branches.find(
+    (branch) => branch.branchId === activeBranchId,
+  );
+  const developmentBranch = branches.find(
+    (branch) => branch.type === "development",
+  );
+  const canSelectProduction =
+    !!settings &&
+    canUseUnsafeNeonBranch(settings, activeBranch?.type === "production");
+  useEffect(() => {
+    setPendingProductionBranch(null);
+  }, [appId, app?.neonProjectId, activeBranchId, canSelectProduction]);
 
   const handleProjectSelect = async (projectId: string) => {
     setIsConnecting(true);
@@ -273,6 +294,12 @@ export function NeonConnector({ appId }: { appId: number }) {
   };
 
   const handleBranchSelect = async (branchId: string) => {
+    if (
+      branches.find((branch) => branch.branchId === branchId)?.type ===
+        "production" &&
+      !canSelectProduction
+    )
+      return;
     setIsSwitchingBranch(true);
     try {
       const result = await ipc.neon.setActiveBranch({ appId, branchId });
@@ -351,6 +378,22 @@ export function NeonConnector({ appId }: { appId: number }) {
             {t("integrations.neon.unsupportedFramework")}
           </CardDescription>
         </CardHeader>
+      </Card>
+    );
+  }
+
+  if (!settings) {
+    return (
+      <Card className="mt-1">
+        <CardHeader>
+          <CardTitle>{t("integrations.neon.database")}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <NeonSettingsStatus
+            loading={settingsLoading}
+            onRetry={refreshSettings}
+          />
+        </CardContent>
       </Card>
     );
   }
@@ -447,8 +490,19 @@ export function NeonConnector({ appId }: { appId: number }) {
                 </div>
               ) : (
                 <Select
-                  value={app.neonActiveBranchId ?? ""}
-                  onValueChange={(value) => value && handleBranchSelect(value)}
+                  value={activeBranchId ?? ""}
+                  onValueChange={(value) => {
+                    if (!value || value === activeBranchId) return;
+                    if (
+                      branches.find((branch) => branch.branchId === value)
+                        ?.type === "production"
+                    ) {
+                      if (canSelectProduction)
+                        setPendingProductionBranch(value);
+                    } else {
+                      void handleBranchSelect(value);
+                    }
+                  }}
                   disabled={isSwitchingBranch}
                 >
                   <SelectTrigger
@@ -458,16 +512,18 @@ export function NeonConnector({ appId }: { appId: number }) {
                     <SelectValue
                       placeholder={t("integrations.neon.selectBranch")}
                     >
-                      {app.neonActiveBranchId
-                        ? (branches.find(
-                            (b) => b.branchId === app.neonActiveBranchId,
-                          )?.branchName ?? app.neonActiveBranchId)
+                      {activeBranchId
+                        ? (activeBranch?.branchName ?? activeBranchId)
                         : undefined}
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {branches
-                      .filter((branch) => branch.type !== "preview")
+                      .filter(
+                        (branch) =>
+                          branch.type !== "preview" &&
+                          (branch.type !== "production" || canSelectProduction),
+                      )
                       .map((branch) => (
                         <SelectItem
                           key={branch.branchId}
@@ -481,13 +537,76 @@ export function NeonConnector({ appId }: { appId: number }) {
                             >
                               {t(`integrations.neon.${branch.type}`)}
                             </Badge>
+                            {branch.type === "development" && (
+                              <span className="text-xs">
+                                {t("integrations.database.recommended")}
+                              </span>
+                            )}
+                            {branch.type === "production" && (
+                              <span className="text-xs text-destructive">
+                                {t(
+                                  "integrations.neon.branchSafety.notRecommended",
+                                )}
+                              </span>
+                            )}
                           </span>
                         </SelectItem>
                       ))}
                   </SelectContent>
                 </Select>
               )}
+              {activeBranch?.type === "production" ? (
+                <NeonBranchWarning
+                  usage="development"
+                  disabled={isSwitchingBranch}
+                  onUseRecommended={
+                    developmentBranch
+                      ? () =>
+                          void handleBranchSelect(developmentBranch.branchId)
+                      : undefined
+                  }
+                />
+              ) : (
+                !canSelectProduction &&
+                !isLoadingBranches && (
+                  <p className="text-xs text-muted-foreground">
+                    {t("integrations.neon.branchSafety.locked")}
+                  </p>
+                )
+              )}
             </div>
+
+            <AlertDialog
+              open={!!pendingProductionBranch && canSelectProduction}
+              onOpenChange={(open) => {
+                if (!open) setPendingProductionBranch(null);
+              }}
+            >
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>
+                    {t("integrations.neon.branchSafety.developmentTitle")}
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {t("integrations.neon.branchSafety.developmentWarning")}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>
+                    {t("integrations.neon.branchSafety.keepCurrent")}
+                  </AlertDialogCancel>
+                  <AlertDialogAction
+                    className={buttonVariants({ variant: "destructive" })}
+                    onClick={() => {
+                      if (pendingProductionBranch)
+                        void handleBranchSelect(pendingProductionBranch);
+                    }}
+                  >
+                    {t("integrations.neon.branchSafety.confirmProduction")}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
 
             {!isLoadingEmailConfig && emailPasswordConfig && (
               <div className="space-y-1">

@@ -778,6 +778,21 @@
       "previewRedirectNotice": "O Dyad adiciona automaticamente as URLs de prévia locais à lista de redirecionamentos permitidos do Auth de {{project}}. Essas entradas permanecem após desconectar ou excluir um app, pois colegas podem usar as mesmas URLs. Remova entradas não utilizadas em Supabase → Authentication → URL Configuration."
     },
     "neon": {
+      "branchSafety": {
+        "settingsLoading": "Carregando configurações…",
+        "settingsUnavailable": "Não foi possível carregar a configuração de proteção de branches do Neon. Tente novamente.",
+        "deploymentTitle": "Banco de desenvolvimento em produção — não recomendado",
+        "deploymentWarning": "O aplicativo publicado compartilhará dados com o desenvolvimento. Criar, testar ou redefinir o aplicativo pode alterar ou excluir dados reais dos usuários, e dados de teste podem ficar visíveis. Use um banco de produção separado.",
+        "deploymentRecommended": "Usar banco de produção (recomendado)",
+        "developmentTitle": "Banco de produção durante o desenvolvimento — dados reais em risco",
+        "developmentWarning": "A prévia e as alterações de banco geradas por IA usarão o banco de produção. Desenvolver ou testar pode alterar ou excluir dados reais dos usuários. Use a branch de desenvolvimento para separá-los.",
+        "developmentRecommended": "Mudar para desenvolvimento (recomendado)",
+        "locked": "As opções de branch arriscadas estão ocultas. Para desbloqueá-las, desative “Protect Neon database branches” em Settings → Experiments.",
+        "recommendProduction": "O banco de produção é recomendado: mantenha os dados reais separados do desenvolvimento.",
+        "notRecommended": "Não recomendado",
+        "keepCurrent": "Manter branch atual",
+        "confirmProduction": "Entendo, usar produção"
+      },
       "title": "Integração com Neon",
       "connected": "Sua conta está conectada ao Neon.",
       "database": "Banco de Dados Neon",
@@ -896,7 +911,7 @@
       },
       "development": {
         "title": "Usar o banco de dados de desenvolvimento",
-        "description": "Usa um único banco de dados para desenvolvimento e produção. A configuração é mais rápida, mas as mudanças de desenvolvimento afetam os dados reais."
+        "description": "Não recomendado. Compartilha dados reais com o desenvolvimento; alterações e redefinições podem afetar os usuários."
       },
       "envVars": {
         "title": "Variáveis de ambiente",

@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -18,6 +19,7 @@ import { queryKeys } from "@/lib/queryKeys";
 
 const h = vi.hoisted(() => ({
   settings: {} as Partial<UserSettings>,
+  getSettings: vi.fn(),
   flowState: { status: "disconnected", revision: 0 } as ConnectionFlowState,
   start: vi.fn(),
   cancel: vi.fn(),
@@ -25,6 +27,9 @@ const h = vi.hoisted(() => ({
   getApp: vi.fn(),
   listProjects: vi.fn(),
   fakeConnect: vi.fn(),
+  getProject: vi.fn(),
+  getEmailPasswordConfig: vi.fn(),
+  setActiveBranch: vi.fn(),
   openExternalUrl: vi.fn(),
   success: vi.fn(),
 }));
@@ -32,18 +37,28 @@ const h = vi.hoisted(() => ({
 vi.mock("@/ipc/types", () => ({
   ipc: {
     app: { getApp: h.getApp },
-    neon: { listProjects: h.listProjects, fakeConnect: h.fakeConnect },
+    neon: {
+      listProjects: h.listProjects,
+      fakeConnect: h.fakeConnect,
+      getProject: h.getProject,
+      getEmailPasswordConfig: h.getEmailPasswordConfig,
+      setActiveBranch: h.setActiveBranch,
+    },
     system: { openExternalUrl: h.openExternalUrl },
   },
 }));
 vi.mock("@/hooks/useSettings", () => ({
   useSettings: () => {
-    const { data } = useQuery({
+    const { data, isLoading, refetch } = useQuery({
       queryKey: queryKeys.settings.user,
-      queryFn: async () => h.settings,
+      queryFn: h.getSettings,
       staleTime: Infinity,
     });
-    return { settings: data };
+    return {
+      settings: data,
+      settingsLoading: isLoading,
+      refreshSettings: refetch,
+    };
   },
 }));
 vi.mock("@/hooks/useConnectionFlow", () => ({
@@ -90,6 +105,7 @@ beforeEach(() => {
     defaultOptions: { queries: { retry: false } },
   });
   h.settings = {};
+  h.getSettings.mockImplementation(async () => h.settings);
   h.flowState = { status: "disconnected", revision: 0 };
   h.getApp.mockResolvedValue({ id: 1, name: "Demo", frameworkType: "vite" });
   h.listProjects.mockResolvedValue({ projects: [] });
@@ -97,6 +113,15 @@ beforeEach(() => {
   h.acknowledge.mockResolvedValue(undefined);
   h.openExternalUrl.mockResolvedValue(undefined);
   h.fakeConnect.mockResolvedValue(undefined);
+  h.getProject.mockResolvedValue({
+    branches: [
+      { branchId: "dev", branchName: "development", type: "development" },
+      { branchId: "prod", branchName: "main", type: "production" },
+      { branchId: "preview", branchName: "preview", type: "preview" },
+    ],
+  });
+  h.getEmailPasswordConfig.mockResolvedValue(null);
+  h.setActiveBranch.mockResolvedValue({});
 });
 
 afterEach(() => {
@@ -151,3 +176,121 @@ it("preserves the fake connection path in test mode", async () => {
   expect(h.start).toHaveBeenCalledExactlyOnceWith("neon");
   expect(h.openExternalUrl).not.toHaveBeenCalled();
 });
+
+function connectedApp(activeBranchId = "dev") {
+  h.settings = { neon: { accessToken: { value: "connected" } } };
+  h.getApp.mockResolvedValue({
+    id: 1,
+    frameworkType: "vite",
+    neonProjectId: "project",
+    neonDevelopmentBranchId: "dev",
+    neonActiveBranchId: activeBranchId,
+    deploymentProvidersInUse: {},
+  });
+}
+
+it("hides production and preview branches by default", async () => {
+  connectedApp();
+  render(connector());
+  fireEvent.click(await screen.findByTestId("neon-branch-select"));
+  await screen.findByRole("option", { name: /development/ });
+  expect(screen.queryByRole("option", { name: /main/ })).toBeNull();
+  expect(screen.queryByRole("option", { name: /preview/ })).toBeNull();
+});
+
+it.each([true, false])(
+  "waits for settings before showing the active branch picker (loading: %s)",
+  async (loading) => {
+    connectedApp();
+    h.settings.enableNeonBranchProtection = false;
+    let finish!: (settings: Partial<UserSettings>) => void;
+    h.getSettings.mockImplementationOnce(() =>
+      loading
+        ? new Promise<Partial<UserSettings>>((resolve) => {
+            finish = resolve;
+          })
+        : Promise.reject(new Error("Settings unavailable")),
+    );
+    render(connector());
+    await screen.findByText(
+      `integrations.neon.branchSafety.${loading ? "settingsLoading" : "settingsUnavailable"}`,
+    );
+    expect(screen.queryByTestId("neon-branch-select")).toBeNull();
+    expect(
+      screen.queryByText("integrations.neon.branchSafety.locked"),
+    ).toBeNull();
+    expect(h.setActiveBranch).not.toHaveBeenCalled();
+    if (loading) {
+      await act(async () => finish(h.settings));
+    } else {
+      fireEvent.click(
+        screen.getByRole("button", { name: "integrations.neon.retry" }),
+      );
+    }
+    fireEvent.click(await screen.findByTestId("neon-branch-select"));
+    await screen.findByRole("option", { name: /main/ });
+    expect(h.getSettings).toHaveBeenCalledTimes(loading ? 1 : 2);
+  },
+);
+
+it("requires confirmation before switching to production when protection is disabled", async () => {
+  connectedApp();
+  h.settings.enableNeonBranchProtection = false;
+  render(connector());
+  const selectProduction = async () => {
+    fireEvent.click(await screen.findByTestId("neon-branch-select"));
+    const option = await screen.findByRole("option", { name: /main/ });
+    fireEvent.pointerDown(option);
+    fireEvent.pointerUp(option);
+    fireEvent.click(option);
+    fireEvent.keyDown(option, { key: "Enter" });
+    await screen.findByRole("alertdialog");
+  };
+  await selectProduction();
+  expect(h.setActiveBranch).not.toHaveBeenCalled();
+  fireEvent.click(
+    screen.getByRole("button", {
+      name: "integrations.neon.branchSafety.keepCurrent",
+    }),
+  );
+  expect(h.setActiveBranch).not.toHaveBeenCalled();
+  await selectProduction();
+  fireEvent.click(
+    screen.getByRole("button", {
+      name: "integrations.neon.branchSafety.confirmProduction",
+    }),
+  );
+  await waitFor(() =>
+    expect(h.setActiveBranch).toHaveBeenCalledExactlyOnceWith({
+      appId: 1,
+      branchId: "prod",
+    }),
+  );
+});
+
+it.each([true, false])(
+  "warns existing production users with protection %s and offers development",
+  async (enabled) => {
+    connectedApp("prod");
+    h.settings.enableNeonBranchProtection = enabled;
+    render(connector());
+    await screen.findByText(
+      "integrations.neon.branchSafety.developmentWarning",
+    );
+    fireEvent.click(screen.getByTestId("neon-branch-select"));
+    await screen.findByRole("option", { name: /main/ });
+    await screen.findByRole("option", { name: /development/ });
+    fireEvent.keyDown(screen.getByRole("listbox"), { key: "Escape" });
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "integrations.neon.branchSafety.developmentRecommended",
+      }),
+    );
+    await waitFor(() =>
+      expect(h.setActiveBranch).toHaveBeenCalledWith({
+        appId: 1,
+        branchId: "dev",
+      }),
+    );
+  },
+);

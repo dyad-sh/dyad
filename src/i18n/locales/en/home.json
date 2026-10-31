@@ -778,6 +778,21 @@
       "previewRedirectNotice": "Dyad automatically adds local preview URLs to the Auth redirect allowlist for {{project}}. These entries remain after disconnecting or deleting an app because teammates may use the same URLs. Remove unused entries in Supabase → Authentication → URL Configuration."
     },
     "neon": {
+      "branchSafety": {
+        "settingsLoading": "Loading settings…",
+        "settingsUnavailable": "Couldn't load your Neon branch protection setting. Please try again.",
+        "deploymentTitle": "Development database in production — not recommended",
+        "deploymentWarning": "Your deployed app will share data with development. Building, testing, or resetting your app can change or delete live user data, and test data may be visible to users. Use a separate production database.",
+        "deploymentRecommended": "Use production database (recommended)",
+        "developmentTitle": "Production database while building — live data at risk",
+        "developmentWarning": "Your preview and AI-generated database changes will use the production database. Building or testing can modify or delete live user data. Use the development branch to keep live data separate.",
+        "developmentRecommended": "Switch to development (recommended)",
+        "locked": "Risky branch choices are hidden. To unlock them, disable “Protect Neon database branches” in Settings → Experiments.",
+        "recommendProduction": "Production database is recommended: keep live user data separate from development.",
+        "notRecommended": "Not recommended",
+        "keepCurrent": "Keep current branch",
+        "confirmProduction": "I understand, use production"
+      },
       "title": "Neon Integration",
       "connected": "Your account is connected to Neon.",
       "database": "Neon Database",
@@ -896,7 +911,7 @@
       },
       "development": {
         "title": "Use development database",
-        "description": "Uses one database for development and production. Faster setup, but dev changes affect live data."
+        "description": "Not recommended. Shares live data with development; changes and resets can affect real users."
       },
       "envVars": {
         "title": "Environment variables",

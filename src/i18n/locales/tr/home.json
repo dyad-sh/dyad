@@ -778,6 +778,21 @@
       "previewRedirectNotice": "Dyad, yerel önizleme URL'lerini {{project}} projesinin Auth yönlendirme izin listesine otomatik olarak ekler. Ekip arkadaşları aynı URL'leri kullanabileceğinden uygulamanın bağlantısı kesildikten veya uygulama silindikten sonra bu kayıtlar korunur. Kullanılmayan kayıtları Supabase → Authentication → URL Configuration bölümünden kaldırın."
     },
     "neon": {
+      "branchSafety": {
+        "settingsLoading": "Ayarlar yükleniyor…",
+        "settingsUnavailable": "Neon dal koruma ayarı yüklenemedi. Lütfen yeniden deneyin.",
+        "deploymentTitle": "Üretimde geliştirme veritabanı — önerilmez",
+        "deploymentWarning": "Yayınlanan uygulamanız geliştirme ortamıyla veri paylaşır. Geliştirme, test veya sıfırlama işlemleri gerçek kullanıcı verilerini değiştirebilir ya da silebilir; test verileri kullanıcılara görünebilir. Ayrı bir üretim veritabanı kullanın.",
+        "deploymentRecommended": "Üretim veritabanını kullan (önerilen)",
+        "developmentTitle": "Geliştirme sırasında üretim veritabanı — gerçek veriler risk altında",
+        "developmentWarning": "Önizlemeniz ve yapay zekanın oluşturduğu veritabanı değişiklikleri üretim veritabanını kullanır. Geliştirme veya test işlemleri gerçek kullanıcı verilerini değiştirebilir ya da silebilir. Verileri ayrı tutmak için geliştirme dalını kullanın.",
+        "developmentRecommended": "Geliştirmeye geç (önerilen)",
+        "locked": "Riskli dal seçenekleri gizlidir. Açmak için Ayarlar → Deneyler bölümünde “Protect Neon database branches” ayarını devre dışı bırakın.",
+        "recommendProduction": "Üretim veritabanı önerilir: gerçek kullanıcı verilerini geliştirmeden ayrı tutun.",
+        "notRecommended": "Önerilmez",
+        "keepCurrent": "Mevcut dalı koru",
+        "confirmProduction": "Anlıyorum, üretimi kullan"
+      },
       "title": "Neon Entegrasyonu",
       "connected": "Hesabınız Neon'a bağlı.",
       "database": "Neon Veritabanı",
@@ -896,7 +911,7 @@
       },
       "development": {
         "title": "Geliştirme veritabanını kullan",
-        "description": "Geliştirme ve üretim için tek veritabanı kullanır. Daha hızlı kurulum, ancak geliştirme değişiklikleri canlı verileri etkiler."
+        "description": "Önerilmez. Gerçek verileri geliştirmeyle paylaşır; değişiklikler ve sıfırlamalar gerçek kullanıcıları etkileyebilir."
       },
       "envVars": {
         "title": "Ortam değişkenleri",

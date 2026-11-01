@@ -18,6 +18,8 @@ import { h } from "@/testing/hybrid.setup";
 import { apps, chats, messages } from "@/db/schema";
 import { writeSettings } from "@/main/settings";
 import { ipc } from "@/ipc/types";
+import type { McpToolDef } from "@/pro/main/ipc/handlers/local_agent/tools/mcp_type_defs";
+import { CLAUDE_TOOL_DESCRIPTION_LIMIT } from "./tool_description_overflow";
 const calls = vi.hoisted(() => ({
   run: vi.fn(),
   operate: vi.fn(),
@@ -27,6 +29,7 @@ const calls = vi.hoisted(() => ({
   afterBridgeClose: vi.fn(),
   system: "",
   reportUsage: vi.fn(),
+  mcpToolDefs: undefined as McpToolDef[] | undefined,
 }));
 vi.mock("./runtime", async (original) => ({
   ...(await original<typeof import("./runtime")>()),
@@ -93,6 +96,21 @@ vi.mock("./tool_bridge", async (original) => {
     },
   };
 });
+vi.mock(
+  "@/pro/main/ipc/handlers/local_agent/tools/mcp_type_defs",
+  async (original) => {
+    const module =
+      await original<
+        typeof import("@/pro/main/ipc/handlers/local_agent/tools/mcp_type_defs")
+      >();
+    return {
+      ...module,
+      collectMcpToolDefs: async (
+        ...args: Parameters<typeof module.collectMcpToolDefs>
+      ) => calls.mcpToolDefs ?? module.collectMcpToolDefs(...args),
+    };
+  },
+);
 let harness: HybridChatHarness;
 beforeAll(async () => {
   harness = await setupHybridChatHarness({
@@ -338,6 +356,53 @@ async function connectTools(turn: { mcpConfigPath: string }) {
   );
   return client;
 }
+
+it("keeps third-party MCP tools visible when the sandbox description exceeds the CLI limit", async () => {
+  calls.mcpToolDefs = [
+    {
+      jsName: "stripe_create_customer",
+      toolKey: "Stripe__create_customer",
+      serverId: 1,
+      serverName: "Stripe",
+      toolName: "create_customer",
+      description: "Create a Stripe customer",
+      inputSchema: { type: "object", properties: {} },
+    },
+  ];
+  let descriptions: Array<string | undefined> = [];
+  let sandboxTool: { description?: string } | undefined;
+  calls.operate.mockImplementationOnce(async (turn) => {
+    const client = await connectTools(turn);
+    try {
+      const { tools } = await client.listTools();
+      descriptions = tools.map((tool) => tool.description);
+      sandboxTool = tools.find(
+        (tool) => tool.name === "execute_sandbox_script",
+      );
+    } finally {
+      await client.close();
+    }
+  });
+  try {
+    const chatId = await ipc.chat.createChat({
+      appId: harness.appId,
+      initialChatMode: "local-agent",
+    });
+    await harness.streamChat("Create a Stripe customer", { chatId });
+  } finally {
+    calls.mcpToolDefs = undefined;
+  }
+  expect(sandboxTool?.description).toContain("system prompt");
+  for (const description of descriptions) {
+    expect(description?.length ?? 0).toBeLessThanOrEqual(
+      CLAUDE_TOOL_DESCRIPTION_LIMIT,
+    );
+  }
+  expect(calls.system).toContain(
+    '<tool_documentation tool="execute_sandbox_script">',
+  );
+  expect(calls.system).toContain("stripe_create_customer");
+});
 
 it("executes real Dyad file tools through MCP and persists safe shared cards", async () => {
   calls.operate.mockImplementationOnce(async (turn) => {

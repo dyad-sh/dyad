@@ -31,10 +31,10 @@ export function moveOversizedToolDescriptions(tools: ToolSet): {
       ...tool,
       description: `Full documentation is in the system prompt, in the ${DOCUMENTATION_TAG} section for ${name}. Read it before calling this tool.`,
     };
-    // Third-party MCP text can appear here: it must not close its own section.
+    // Third-party MCP text can appear here: it must not open or close a section.
     const body = description.replace(
-      new RegExp(`</(${DOCUMENTATION_TAG})`, "gi"),
-      "<\\/$1",
+      new RegExp(`<(\\s*/?\\s*${DOCUMENTATION_TAG})`, "gi"),
+      "&lt;$1",
     );
     documentation.push(
       `<${DOCUMENTATION_TAG} tool="${name}">\n${body}\n</${DOCUMENTATION_TAG}>`,

@@ -29,37 +29,30 @@ function setup() {
 }
 
 describe("user-input registry", () => {
-  it.each([undefined, { deadline: "review" as const }])(
-    "keeps questionnaires answerable indefinitely (options: %j)",
-    async (options) => {
-      const { registry, clock } = setup();
-      const requestId = registry.request(
-        {
-          kind: "questionnaire",
-          chatId: 1,
-          questions: [{ id: "q", type: "text", question: "What style?" }],
-          classifier: "none",
-        },
-        undefined,
-        options,
-      );
-      const park = registry.park(requestId);
-      expect(clock.pendingTimerCount()).toBe(0);
-      clock.advanceBy(7 * 24 * 60 * 60 * 1_000);
-      expect(registry.getPending()).toHaveLength(1);
-      expect(registry.getPending()[0].deadlineAt).toBeNull();
-      expect(() =>
-        userInputContracts.getPending.output.parse(registry.getPending()),
-      ).not.toThrow();
-      const response = {
-        kind: "questionnaire" as const,
-        answers: { q: "Minimal" },
-      };
-      await registry.respond(requestId, response);
-      await expect(park).resolves.toEqual(response);
-      expect(registry.getPending()).toEqual([]);
-    },
-  );
+  it("keeps questionnaires answerable indefinitely", async () => {
+    const { registry, clock } = setup();
+    const requestId = registry.request({
+      kind: "questionnaire",
+      chatId: 1,
+      questions: [{ id: "q", type: "text", question: "What style?" }],
+      classifier: "none",
+    });
+    const park = registry.park(requestId);
+    expect(clock.pendingTimerCount()).toBe(0);
+    clock.advanceBy(7 * 24 * 60 * 60 * 1_000);
+    expect(registry.getPending()).toHaveLength(1);
+    expect(registry.getPending()[0].deadlineAt).toBeNull();
+    expect(() =>
+      userInputContracts.getPending.output.parse(registry.getPending()),
+    ).not.toThrow();
+    const response = {
+      kind: "questionnaire" as const,
+      answers: { q: "Minimal" },
+    };
+    await registry.respond(requestId, response);
+    await expect(park).resolves.toEqual(response);
+    expect(registry.getPending()).toEqual([]);
+  });
 
   it.each(["dismiss", "abort", "dispose"])(
     "still settles an untimed questionnaire on %s",
@@ -93,47 +86,138 @@ describe("user-input registry", () => {
     },
   );
 
-  it("uses its injected clock as the only deadline source", async () => {
+  it.each(
+    (["agent-consent", "mcp-consent"] as const).flatMap((kind) =>
+      (["accept-once", "decline", "abort", "sweep", "dispose"] as const).map(
+        (action) => ({ kind, action }),
+      ),
+    ),
+  )("keeps $kind pending until $action", async ({ kind, action }) => {
     const { registry, clock, broadcast } = setup();
     const requestId = registry.request({
-      kind: "agent-consent",
+      kind,
       chatId: 1,
       toolName: "write_file",
+      serverId: 2,
+      serverName: "test-server",
       classifier: "none",
     });
-    expect(requestId).toBe("agent-consent:1");
-    expect(registry.getPending()[0].deadlineAt).toBe(301_000);
-    expect(clock.pendingTimerCount()).toBe(1);
-    const park = registry.park(requestId);
-    clock.advanceBy(300_000);
-    await expect(park).resolves.toBeNull();
+    const controller = new AbortController();
+    const park = registry.park(requestId, controller.signal);
+    const settled = vi.fn();
+    void park.then(settled);
+
+    expect(clock.pendingTimerCount()).toBe(0);
+    clock.advanceBy(7 * 24 * 60 * 60 * 1_000);
+    await Promise.resolve();
+    expect(settled).not.toHaveBeenCalled();
+    expect(registry.getPending()).toHaveLength(1);
+    expect(registry.getPending()[0].deadlineAt).toBeNull();
+    expect(() =>
+      userInputContracts.getPending.output.parse(registry.getPending()),
+    ).not.toThrow();
+    expect(broadcast).not.toHaveBeenCalledWith(
+      "user-input:settled",
+      expect.anything(),
+    );
+
+    if (action === "accept-once" || action === "decline") {
+      const response = { kind, decision: action };
+      await registry.respond(requestId, response);
+      await expect(park).resolves.toEqual(response);
+    } else {
+      if (action === "abort") controller.abort();
+      else if (action === "sweep") registry.sweepChat(1);
+      else registry.dispose();
+      await expect(park).resolves.toBeNull();
+    }
     expect(registry.getPending()).toEqual([]);
-    expect(broadcast).toHaveBeenCalledWith("user-input:settled", {
-      requestId,
-      outcome: "timed-out",
-    });
+    expect(clock.pendingTimerCount()).toBe(0);
   });
 
-  it("gives an assertion review the long deadline, not the consent one", async () => {
-    const { registry, clock } = setup();
+  it.each(
+    (["integration", "plugin-suggestion", "test-assertions"] as const).flatMap(
+      (kind) =>
+        (["respond", "decline", "abort", "sweep", "dispose"] as const).map(
+          (action) => ({
+            kind,
+            action,
+          }),
+        ),
+    ),
+  )("keeps $kind pending until $action", async ({ kind, action }) => {
+    const { registry, clock, broadcast } = setup();
     const requestId = registry.request({
-      kind: "test-assertions",
+      kind,
       chatId: 1,
+      classifier: "none",
+      provider: "supabase",
+      followUpPrompt: "Continue after setup",
+      slug: "test-plugin",
+      serverName: "Test plugin",
+      serverDescription: null,
+      needsOAuth: true,
+      reason: "Connect for the task",
       appId: 4,
       proposalId: "proposal-1",
       testTitle: "add an item",
-      classifier: "none",
     });
+    const controller = new AbortController();
+    const park = registry.park(requestId, controller.signal);
+    const settled = vi.fn();
+    void park.then(settled);
+    clock.advanceBy(7 * 24 * 60 * 60 * 1_000);
+    await Promise.resolve();
+    expect(settled).not.toHaveBeenCalled();
+    expect(registry.getPending()[0].deadlineAt).toBeNull();
+    expect(clock.pendingTimerCount()).toBe(0);
+    expect(() =>
+      userInputContracts.getPending.output.parse(registry.getPending()),
+    ).not.toThrow();
+    expect(broadcast).not.toHaveBeenCalledWith(
+      "user-input:settled",
+      expect.anything(),
+    );
 
-    // Reviewing a plan is an editing session; a five-minute consent deadline
-    // would cut it off mid-edit.
-    expect(registry.getPending()[0].deadlineAt).toBe(1_801_000);
-    const park = registry.park(requestId);
-    clock.advanceBy(300_000);
-    expect(registry.getPending()).toHaveLength(1);
-
-    clock.advanceBy(1_500_000);
-    await expect(park).resolves.toBeNull();
+    if (action === "respond" || action === "decline") {
+      const response =
+        kind === "integration"
+          ? {
+              kind,
+              provider: action === "decline" ? null : ("supabase" as const),
+              completed: action !== "decline",
+            }
+          : kind === "plugin-suggestion"
+            ? {
+                kind,
+                outcome:
+                  action === "decline"
+                    ? ("declined" as const)
+                    : ("connected" as const),
+              }
+            : {
+                kind,
+                specPath:
+                  action === "decline" ? null : "e2e-tests/recorded.spec.ts",
+                appliedCount: action === "decline" ? 0 : 2,
+              };
+      await registry.respond(requestId, response);
+      await expect(park).resolves.toEqual(response);
+      if (
+        kind === "integration" ||
+        (kind === "plugin-suggestion" && action === "respond")
+      ) {
+        registry.streamFinished(1);
+        await registry.followUpDispatched(requestId);
+      }
+    } else {
+      if (action === "abort") controller.abort();
+      else if (action === "sweep") registry.sweepChat(1);
+      else registry.dispose();
+      await expect(park).resolves.toBeNull();
+    }
+    expect(registry.getPending()).toEqual([]);
+    expect(clock.pendingTimerCount()).toBe(0);
   });
 
   it("resumes a parked assertion review with the generated spec", async () => {
@@ -544,21 +628,23 @@ describe("user-input registry", () => {
   });
 });
 
-it("keeps explicit plan review consent pending past five minutes, then expires at thirty", async () => {
+it("keeps plan acceptance pending until the user responds", async () => {
   const { registry, clock } = setup();
-  const requestId = registry.request(
-    {
-      kind: "agent-consent",
-      chatId: 1,
-      toolName: "Implement plan",
-      classifier: "none",
-    },
-    undefined,
-    { deadline: "review" },
-  );
+  const requestId = registry.request({
+    kind: "agent-consent",
+    chatId: 1,
+    toolName: "Implement plan",
+    allowAlways: false,
+    classifier: "none",
+  });
   const park = registry.park(requestId);
-  clock.advanceBy(5 * 60 * 1000);
+  clock.advanceBy(7 * 24 * 60 * 60 * 1_000);
   expect(registry.getPending()).toHaveLength(1);
-  clock.advanceBy(25 * 60 * 1000);
-  await expect(park).resolves.toBeNull();
+  expect(clock.pendingTimerCount()).toBe(0);
+  const response = {
+    kind: "agent-consent" as const,
+    decision: "accept-once" as const,
+  };
+  await registry.respond(requestId, response);
+  await expect(park).resolves.toEqual(response);
 });

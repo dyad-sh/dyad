@@ -22,6 +22,12 @@ import { AgentContext, escapeXmlAttr, escapeXmlContent } from "./types";
 import { jsonSchemaToTs } from "./json_schema_to_ts";
 import { buildMcpAutoApprove } from "../mcp_auto_consent";
 import { sanitizeMcpToolResult } from "@/ipc/utils/mcp_result_sanitizer";
+import {
+  createMcpTranscriptBudget,
+  previewMcpPayload,
+  toolTruncatedAttr,
+  truncatedFromAttr,
+} from "@/ipc/utils/mcp_transcript_preview";
 import { withTrackedMutation } from "../subagents/mutation_activity_tracker";
 
 const logger = log.scope("mcp_tools");
@@ -263,12 +269,17 @@ export function buildMcpCapabilityMap(params: {
         );
       }
 
-      const contentPretty = JSON.stringify(args, null, 2);
+      const transcriptBudget = (params.ctx.mcpTranscriptBudget ??=
+        createMcpTranscriptBudget());
+      const argsPreview = previewMcpPayload(
+        JSON.stringify(args, null, 2),
+        transcriptBudget,
+      );
       const autoApprovedAttr = autoApprovedReason
         ? ` auto-approved-reason="${escapeXmlAttr(autoApprovedReason)}"`
         : "";
       params.ctx.onXmlComplete(
-        `<dyad-mcp-tool-call server="${escapeXmlAttr(def.serverName)}" tool="${escapeXmlAttr(def.toolName)}" call-id="${escapeXmlAttr(callId)}"${autoApprovedAttr}>\n${escapeXmlContent(contentPretty)}\n</dyad-mcp-tool-call>`,
+        `<dyad-mcp-tool-call server="${escapeXmlAttr(def.serverName)}" tool="${escapeXmlAttr(def.toolName)}" call-id="${escapeXmlAttr(callId)}"${autoApprovedAttr}${truncatedFromAttr(argsPreview)}>\n${escapeXmlContent(argsPreview.text)}\n</dyad-mcp-tool-call>`,
       );
 
       let executionStarted = false;
@@ -318,8 +329,12 @@ export function buildMcpCapabilityMap(params: {
         recordShellReviewOutcome(params.ctx, def.toolKey, args, {
           result: safeResult.value,
         });
+        const resultPreview = previewMcpPayload(
+          safeResult.serialized,
+          transcriptBudget,
+        );
         params.ctx.onXmlComplete(
-          `<dyad-mcp-tool-result server="${escapeXmlAttr(def.serverName)}" tool="${escapeXmlAttr(def.toolName)}" call-id="${escapeXmlAttr(callId)}">\n${escapeXmlContent(safeResult.serialized)}\n</dyad-mcp-tool-result>`,
+          `<dyad-mcp-tool-result server="${escapeXmlAttr(def.serverName)}" tool="${escapeXmlAttr(def.toolName)}" call-id="${escapeXmlAttr(callId)}"${truncatedFromAttr(resultPreview)}${toolTruncatedAttr(safeResult.truncated)}>\n${escapeXmlContent(resultPreview.text)}\n</dyad-mcp-tool-result>`,
         );
         return safeResult.value;
       } catch (error) {
@@ -337,11 +352,23 @@ export function buildMcpCapabilityMap(params: {
         ).serialized;
         // Terminate the merged card in an error state instead of leaving it
         // stuck on "Running".
-        params.ctx.onXmlComplete(
-          `<dyad-mcp-tool-result server="${escapeXmlAttr(def.serverName)}" tool="${escapeXmlAttr(def.toolName)}" call-id="${escapeXmlAttr(callId)}" is-error="true">\n${escapeXmlContent(safeErrorMessage)}\n</dyad-mcp-tool-result>`,
+        const errorPreview = previewMcpPayload(
+          safeErrorMessage,
+          transcriptBudget,
         );
         params.ctx.onXmlComplete(
-          `<dyad-output type="error" message="MCP tool '${escapeXmlAttr(def.toolKey)}' failed: ${escapeXmlAttr(safeErrorMessage)}">${escapeXmlContent(safeErrorDetails)}</dyad-output>`,
+          `<dyad-mcp-tool-result server="${escapeXmlAttr(def.serverName)}" tool="${escapeXmlAttr(def.toolName)}" call-id="${escapeXmlAttr(callId)}" is-error="true"${truncatedFromAttr(errorPreview)}>\n${escapeXmlContent(errorPreview.text)}\n</dyad-mcp-tool-result>`,
+        );
+        const outputMessage = previewMcpPayload(
+          safeErrorMessage,
+          transcriptBudget,
+        ).text;
+        const outputDetails = previewMcpPayload(
+          safeErrorDetails,
+          transcriptBudget,
+        ).text;
+        params.ctx.onXmlComplete(
+          `<dyad-output type="error" message="MCP tool '${escapeXmlAttr(def.toolKey)}' failed: ${escapeXmlAttr(outputMessage)}">${escapeXmlContent(outputDetails)}</dyad-output>`,
         );
         throw error;
       }

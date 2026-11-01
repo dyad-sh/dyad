@@ -136,6 +136,39 @@ export type GetNeonBranchEnvVarsResponse = z.infer<
   typeof GetNeonBranchEnvVarsResponseSchema
 >;
 
+export const NeonDevelopmentBranchParamsSchema = z.object({
+  appId: z.number(),
+});
+
+/**
+ * Whether the app's Neon development branch still uses the old child-branch
+ * layout, which leaves a backup branch behind on every database restore.
+ */
+export const NeonDevelopmentBranchStatusSchema = z.object({
+  /**
+   * The branch uses the old layout and can be migrated. False for an old
+   * layout whose branch tree holds branches Dyad did not create, since
+   * migrating would leave those behind.
+   */
+  needsMigration: z.boolean(),
+  /** Other apps on the same development branch; migrating moves them too. */
+  otherApps: z.array(z.object({ id: z.number(), name: z.string() })),
+  /**
+   * Apps that deploy with this development database. Migrating would cut
+   * their live app off from its database until it is redeployed.
+   */
+  appsDeployingWithDevelopment: z.array(
+    z.object({ id: z.number(), name: z.string() }),
+  ),
+  /** Backups older Dyad versions left in the project. */
+  leakedBackups: z.number(),
+  branchCount: z.number(),
+});
+
+export type NeonDevelopmentBranchStatus = z.infer<
+  typeof NeonDevelopmentBranchStatusSchema
+>;
+
 // =============================================================================
 // Neon Contracts
 // =============================================================================
@@ -164,6 +197,8 @@ export const neonContracts = {
     input: SetNeonAppProjectParamsSchema,
     output: z.object({
       success: z.boolean(),
+      /** The copy of the data saved before migrating. */
+      backupPath: z.string().optional(),
       warning: z.string().optional(),
     }),
     invalidates: (input) => [
@@ -187,6 +222,8 @@ export const neonContracts = {
     input: SetNeonActiveBranchParamsSchema,
     output: z.object({
       success: z.boolean(),
+      /** The copy of the data saved before migrating. */
+      backupPath: z.string().optional(),
       warning: z.string().optional(),
     }),
     invalidates: (input) => [
@@ -220,10 +257,32 @@ export const neonContracts = {
     output: GetNeonBranchEnvVarsResponseSchema,
   }),
 
+  getDevelopmentBranchStatus: defineContract({
+    channel: "neon:get-development-branch-status",
+    input: NeonDevelopmentBranchParamsSchema,
+    output: NeonDevelopmentBranchStatusSchema,
+  }),
+
+  migrateDevelopmentBranch: defineContract({
+    channel: "neon:migrate-development-branch",
+    input: NeonDevelopmentBranchParamsSchema,
+    output: z.object({
+      success: z.boolean(),
+      /** The copy of the data saved before migrating. */
+      backupPath: z.string().optional(),
+      warning: z.string().optional(),
+    }),
+    invalidates: (input) => [
+      { family: "apps" },
+      { family: "app", appId: input.appId },
+    ],
+  }),
+
   setSelectedDatabaseBranchType: defineContract({
     channel: "neon:set-selected-database-branch-type",
     input: SetSelectedDatabaseBranchTypeParamsSchema,
     output: z.object({ success: z.boolean() }),
+    invalidates: (input) => [{ family: "app", appId: input.appId }],
   }),
 } as const;
 

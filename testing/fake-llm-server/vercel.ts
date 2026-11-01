@@ -201,6 +201,8 @@ export function registerFakeVercel(app: Express): void {
       readyState: deployment.readyState,
       aliasAssigned: false,
       target: deployment.target,
+      // @vercel/sdk >= 1.28.37 requires `duration` on this response.
+      duration: { startTime: deployment.createdAt },
     });
   });
   app.get(`${base}/v7/deployments`, (req, res) => {

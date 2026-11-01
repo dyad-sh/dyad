@@ -856,7 +856,7 @@
         },
         "neon": {
           "name": "Neon",
-          "description": "넉넉한 무료 플랜과 제로 스케일링을 지원하는 서버리스 Postgres."
+          "description": "가벼운 Postgres 데이터베이스."
         }
       }
     },

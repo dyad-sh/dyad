@@ -847,7 +847,7 @@
         },
         "neon": {
           "name": "Neon",
-          "description": "无服务器 Postgres，提供充足的免费额度，支持缩容至零。"
+          "description": "轻量级 Postgres 数据库。"
         }
       }
     },

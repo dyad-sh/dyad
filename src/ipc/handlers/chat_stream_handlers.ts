@@ -118,6 +118,11 @@ import { getMaxTokens, getTemperature } from "../utils/token_utils";
 import { MAX_CHAT_TURNS_IN_CONTEXT } from "@/constants/settings_constants";
 import { getProviderOptions, getAiHeaders } from "../utils/provider_options";
 import { sanitizeMcpToolResult } from "../utils/mcp_result_sanitizer";
+import {
+  createMcpTranscriptBudget,
+  previewMcpPayload,
+  truncatedFromAttr,
+} from "../utils/mcp_transcript_preview";
 
 import {
   clearPendingLocalAgentInputsForChat,
@@ -936,6 +941,7 @@ export async function processStreamChunks({
   let incrementalResponse = "";
   let inThinkingBlock = false;
   let modelRefused = false;
+  const mcpTranscriptBudget = createMcpTranscriptBudget();
 
   for await (const part of fullStream) {
     let chunk = "";
@@ -967,22 +973,29 @@ export async function processStreamChunks({
       chunk += escapeDyadTags(part.text);
     } else if (part.type === "tool-call") {
       const { serverName, toolName } = parseMcpToolKey(part.toolName);
-      const content = escapeDyadTags(JSON.stringify(part.input));
-      chunk = `<dyad-mcp-tool-call server="${escapeXmlAttr(serverName)}" tool="${escapeXmlAttr(toolName)}" call-id="${escapeXmlAttr(part.toolCallId)}">\n${content}\n</dyad-mcp-tool-call>\n`;
+      const preview = previewMcpPayload(
+        JSON.stringify(part.input),
+        mcpTranscriptBudget,
+      );
+      chunk = `<dyad-mcp-tool-call server="${escapeXmlAttr(serverName)}" tool="${escapeXmlAttr(toolName)}" call-id="${escapeXmlAttr(part.toolCallId)}"${truncatedFromAttr(preview)}>\n${escapeDyadTags(preview.text)}\n</dyad-mcp-tool-call>\n`;
     } else if (part.type === "tool-result") {
       const { serverName, toolName } = parseMcpToolKey(part.toolName);
-      const content = escapeXmlContent(part.output);
-      chunk = `<dyad-mcp-tool-result server="${escapeXmlAttr(serverName)}" tool="${escapeXmlAttr(toolName)}" call-id="${escapeXmlAttr(part.toolCallId)}">\n${content}\n</dyad-mcp-tool-result>\n`;
+      const preview = previewMcpPayload(
+        String(part.output ?? ""),
+        mcpTranscriptBudget,
+      );
+      chunk = `<dyad-mcp-tool-result server="${escapeXmlAttr(serverName)}" tool="${escapeXmlAttr(toolName)}" call-id="${escapeXmlAttr(part.toolCallId)}"${truncatedFromAttr(preview)}>\n${escapeXmlContent(preview.text)}\n</dyad-mcp-tool-result>\n`;
     } else if (part.type === "tool-error") {
       // Emit an errored result so the merged card terminates in an error
       // state instead of staying on "Running".
       const { serverName, toolName } = parseMcpToolKey(part.toolName);
       const message =
         part.error instanceof Error ? part.error.message : String(part.error);
-      const content = escapeXmlContent(
+      const preview = previewMcpPayload(
         sanitizeMcpToolResult(message).serialized,
+        mcpTranscriptBudget,
       );
-      chunk = `<dyad-mcp-tool-result server="${escapeXmlAttr(serverName)}" tool="${escapeXmlAttr(toolName)}" call-id="${escapeXmlAttr(part.toolCallId)}" is-error="true">\n${content}\n</dyad-mcp-tool-result>\n`;
+      chunk = `<dyad-mcp-tool-result server="${escapeXmlAttr(serverName)}" tool="${escapeXmlAttr(toolName)}" call-id="${escapeXmlAttr(part.toolCallId)}" is-error="true"${truncatedFromAttr(preview)}>\n${escapeXmlContent(preview.text)}\n</dyad-mcp-tool-result>\n`;
     }
 
     if (!chunk) {

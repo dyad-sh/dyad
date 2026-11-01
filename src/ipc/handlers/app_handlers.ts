@@ -54,7 +54,7 @@ import {
 } from "../utils/process_manager";
 import { getEnvVar } from "../utils/read_env";
 import { readSettings } from "../../main/settings";
-import { addLog } from "../../lib/log_store";
+import { addLog, addLogs } from "../../lib/log_store";
 import { IS_TEST_BUILD } from "../utils/test_utils";
 import {
   DYAD_SCREENSHOT_DIR_NAME,
@@ -2236,6 +2236,10 @@ export function registerAppHandlers() {
   // Handler for adding logs to central store from renderer
   createTypedHandler(miscContracts.addLog, async (_, entry) => {
     addLog(entry);
+  });
+
+  createTypedHandler(miscContracts.addLogs, async (_, { entries }) => {
+    addLogs(entries);
   });
 
   // Handler for clearing logs for a specific app

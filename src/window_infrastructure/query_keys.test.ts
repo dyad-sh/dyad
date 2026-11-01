@@ -15,6 +15,14 @@ describe("the app-name scope", () => {
     ]);
   });
 
+  it("refreshes the Neon migration status with the app", () => {
+    // The banner caches the status; app changes such as a new deploy
+    // database must not leave it stale.
+    expect(
+      queryKeysForInvalidationScope({ family: "app", appId: 7 }),
+    ).toContainEqual(queryKeys.neon.developmentBranchStatus({ appId: 7 }));
+  });
+
   it("is not reached by the apps or app scopes", () => {
     // The roots are intentionally distinct from the apps family: ["apps"] is
     // not a prefix of ["checkAppName", ...] or ["appFolderPreview", ...], so

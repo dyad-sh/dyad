@@ -80,6 +80,7 @@ import {
   formatPreviewConsoleMessage,
   formatPreviewNetworkStatus,
 } from "@/lib/preview_console_buffer";
+import { appLogForwarder } from "@/lib/app_log_forwarder";
 import { queryKeys } from "@/lib/queryKeys";
 import { AnnotatorOnlyForPro } from "./AnnotatorOnlyForPro";
 import { useAttachments } from "@/hooks/useAttachments";
@@ -582,7 +583,7 @@ export const PreviewIframe = ({
         });
 
         // Send to central log store
-        ipc.misc.addLog(logEntry);
+        appLogForwarder.enqueue([logEntry]);
 
         // Also update UI state
         appRunManager.previewConsole.append(logEntry.appId, [logEntry]);
@@ -605,7 +606,7 @@ export const PreviewIframe = ({
         });
 
         // Send to central log store
-        ipc.misc.addLog(logEntry);
+        appLogForwarder.enqueue([logEntry]);
 
         // Also update UI state
         appRunManager.previewConsole.append(logEntry.appId, [logEntry]);
@@ -639,7 +640,7 @@ export const PreviewIframe = ({
         });
 
         // Send to central log store
-        ipc.misc.addLog(logEntry);
+        appLogForwarder.enqueue([logEntry]);
 
         // Also update UI state
         appRunManager.previewConsole.append(logEntry.appId, [logEntry]);
@@ -671,7 +672,7 @@ export const PreviewIframe = ({
         });
 
         // Send to central log store
-        ipc.misc.addLog(logEntry);
+        appLogForwarder.enqueue([logEntry]);
 
         // Also update UI state
         appRunManager.previewConsole.append(logEntry.appId, [logEntry]);
@@ -864,7 +865,7 @@ export const PreviewIframe = ({
         });
 
         // Send to central log store
-        ipc.misc.addLog(logEntry);
+        appLogForwarder.enqueue([logEntry]);
 
         // Also update UI state
         appRunManager.previewConsole.append(logEntry.appId, [logEntry]);
@@ -891,7 +892,7 @@ export const PreviewIframe = ({
         });
 
         // Send to central log store
-        ipc.misc.addLog(logEntry);
+        appLogForwarder.enqueue([logEntry]);
 
         // Also update UI state
         appRunManager.previewConsole.append(logEntry.appId, [logEntry]);

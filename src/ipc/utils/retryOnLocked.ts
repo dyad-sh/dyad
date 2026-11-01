@@ -43,10 +43,7 @@ const RETRY_CONFIG = {
 export async function retryOnLocked<T>(
   operation: () => Promise<T>,
   context: string,
-  {
-    retryBranchWithChildError = false,
-    signal,
-  }: { retryBranchWithChildError?: boolean; signal?: AbortSignal } = {},
+  { signal }: { signal?: AbortSignal } = {},
 ): Promise<T> {
   let lastError: any;
 
@@ -63,13 +60,7 @@ export async function retryOnLocked<T>(
 
       // Only retry on locked (423) or rate-limit (429) errors
       if (!isRetryableError(error)) {
-        if (retryBranchWithChildError && error.response?.status === 422) {
-          logger.info(
-            `${context}: Branch with child error (attempt ${attempt + 1}/${RETRY_CONFIG.maxRetries + 1})`,
-          );
-        } else {
-          throw error;
-        }
+        throw error;
       }
 
       // Don't retry if we've exhausted all attempts

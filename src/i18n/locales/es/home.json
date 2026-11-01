@@ -847,7 +847,7 @@
         },
         "neon": {
           "name": "Neon",
-          "description": "Postgres sin servidor con un generoso plan gratuito y escalado a cero."
+          "description": "Una base de datos Postgres ligera."
         }
       }
     },

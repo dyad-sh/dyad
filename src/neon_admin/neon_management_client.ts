@@ -164,7 +164,11 @@ export async function getNeonClient(): Promise<Api<unknown>> {
               id: branchId,
               name: params.branch?.name || "development",
               project_id: projectId,
-              parent_id: params.branch?.parent_id || "test-main-branch-id",
+              // Schema-only branches are root branches.
+              parent_id:
+                params.branch?.init_source === "schema-only"
+                  ? undefined
+                  : params.branch?.parent_id || "test-main-branch-id",
               default: false,
               created_at: new Date().toISOString(),
               updated_at: new Date().toISOString(),
@@ -200,10 +204,10 @@ export async function getNeonClient(): Promise<Api<unknown>> {
               default: true,
             },
             {
+              // A root branch, as Dyad creates it (see neon_dev_branch.ts).
               id: "test-development-branch-id",
               name: "development",
               project_id: projectId,
-              parent_id: "test-main-branch-id",
               created_at: MOCK_BRANCH_TIMESTAMP,
               updated_at: MOCK_BRANCH_TIMESTAMP,
               default: false,
@@ -442,6 +446,7 @@ export async function getNeonOrganizationId(): Promise<string> {
 // importers of neon_management_client keep working unchanged.
 export {
   getNeonErrorMessage,
+  isBranchLimitError,
   isRetentionWindowError,
   getRetentionWindowFromError,
 } from "./neon_errors";

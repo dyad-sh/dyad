@@ -4,6 +4,7 @@ import {
   classifyManagementApiError,
   createSupabaseProject,
   getProjectApiKeys,
+  getSupabaseClient,
   getSupabaseProjectLogs,
   listSupabaseOrganizations,
   refreshSupabaseToken,
@@ -13,6 +14,7 @@ import { hasSupabaseCredentialsForOrganization } from "../lib/schemas";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import { readSettings } from "@/main/settings";
 import { SUPABASE_PROJECT_CREATED_BUT_UNLINKED } from "@/ipc/types/supabase";
+import { SupabaseTokenRefreshError } from "./supabase_errors";
 
 vi.mock("@/main/settings", () => ({
   readSettings: vi.fn(() => ({})),
@@ -211,6 +213,46 @@ describe("listSupabaseOrganizations", () => {
 
 describe("refreshSupabaseToken", () => {
   afterEach(() => vi.unstubAllGlobals());
+
+  it.each([null, "org-1"])(
+    "preserves safe reconnect guidance when refreshing credentials for %s fails",
+    async (organizationSlug) => {
+      const credentials = {
+        accessToken: { value: "expired-access-token" },
+        refreshToken: { value: "private-refresh-token" },
+        expiresIn: 1,
+        tokenTimestamp: 0,
+      };
+      vi.mocked(readSettings).mockReturnValue({
+        supabase: organizationSlug
+          ? { organizations: { [organizationSlug]: credentials } }
+          : credentials,
+      } as ReturnType<typeof readSettings>);
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(
+          new Response("private response body", {
+            status: 403,
+            statusText: "private response status",
+          }),
+        ),
+      );
+
+      const error = await getSupabaseClient({ organizationSlug }).catch(
+        (error) => error,
+      );
+      expect(error).toBeInstanceOf(SupabaseTokenRefreshError);
+      expect(error.kind).toBe(DyadErrorKind.External);
+      expect(error.message).toContain("HTTP 403");
+      expect(error.userMessage).toContain(
+        "Go to Settings to disconnect Supabase and then reconnect",
+      );
+      expect(JSON.stringify(error)).not.toMatch(/private|expired-access-token/);
+      expect(error.message).not.toContain("private");
+      expect(error.userMessage).not.toContain("HTTP");
+      expect(fetch).toHaveBeenCalledOnce();
+    },
+  );
 
   it("shares one refresh request across concurrent callers", async () => {
     vi.mocked(readSettings).mockReturnValue({

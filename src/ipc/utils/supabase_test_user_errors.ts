@@ -1,4 +1,5 @@
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { SupabaseTokenRefreshError } from "@/supabase_admin/supabase_errors";
 
 const OPERATIONS = {
   create: "create a temporary Auth user (POST /auth/v1/admin/users)",
@@ -432,13 +433,18 @@ class SupabaseTestUserStepError extends DyadError {
 export function getSupabaseTestUserMessage(error: unknown): string | undefined {
   return error instanceof SupabaseTestUserOperationError ||
     error instanceof SupabaseTestUserActionError ||
-    error instanceof SupabaseTestUserStepError
+    error instanceof SupabaseTestUserStepError ||
+    error instanceof SupabaseTokenRefreshError ||
+    error instanceof SupabaseTestUserCreationRejectedError
     ? error.userMessage
     : undefined;
 }
 
 /** A database-create rejection for which we verified that no auth user exists. */
 export class SupabaseTestUserCreationRejectedError extends DyadError {
+  readonly userMessage =
+    "Supabase rejected creation of the temporary test account with a database error. Review your database constraints and signup triggers in Supabase before trying again. Dyad verified that no user was created.";
+
   constructor() {
     super(
       "Supabase rejected default test-user creation with a database error; verified that no user was created.",

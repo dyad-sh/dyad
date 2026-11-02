@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { SupabaseTokenRefreshError } from "@/supabase_admin/supabase_errors";
 import {
   SupabaseTestUserActionError,
   SupabaseTestUserCreationRejectedError,
@@ -114,6 +115,24 @@ describe("Supabase test-user diagnostics", () => {
     expect(cleanup).toContain("Test cleanup couldn't finish");
     expect(cleanup).not.toContain("prepare test data");
   });
+
+  it.each(["adminKey", "verify"] as const)(
+    "keeps reconnect guidance through the %s operation and lifecycle wrappers",
+    async (operation) => {
+      const original = new SupabaseTokenRefreshError(403);
+      const error = await withSupabaseTestUserStep("setup", () =>
+        withSupabaseTestUserOperation(operation, async () => {
+          throw original;
+        }),
+      ).catch((error) => error);
+
+      expect(getSupabaseTestUserMessage(error)).toBe(original.userMessage);
+      expect(error.message).toContain("HTTP 403");
+      expect(error.kind).toBe(DyadErrorKind.External);
+      expect(error.cause).toBe(original);
+      expect(error.userMessage).not.toMatch(/unexpected|HTTP|internet/);
+    },
+  );
 
   it.each(["setup", "per-test setup", "cleanup"] as const)(
     "preserves application-authored External guidance during %s",

@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { DyadError, DyadErrorKind } from "../../errors/dyad_error";
+import { SupabaseTokenRefreshError } from "../../supabase_admin/supabase_errors";
 import { TestRunTiming } from "./test_run_timing";
 import { sendTelemetryEvent } from "../utils/telemetry";
 
@@ -541,6 +542,11 @@ describe("per-case database isolation", () => {
       ),
       guidance: "Reconnect your Supabase organization before trying again.",
     },
+    {
+      name: "token refresh failure",
+      error: new SupabaseTokenRefreshError(403),
+      guidance: "Go to Settings to disconnect Supabase and then reconnect.",
+    },
   ])(
     "explains that execution stopped while preserving guidance for a $name",
     async ({ error, guidance }) => {
@@ -847,11 +853,18 @@ describe("prepareIsolatedTestDatabase — Supabase test-user path", () => {
   });
 
   it.each([
-    new Error("supabase down"),
-    new SupabaseTestUserCreationRejectedError(),
+    {
+      error: new Error("supabase down"),
+      guidance: "An unexpected error interrupted this step",
+    },
+    {
+      error: new SupabaseTestUserCreationRejectedError(),
+      guidance:
+        "Review your database constraints and signup triggers in Supabase before trying again. Dyad verified that no user was created.",
+    },
   ])(
-    "dead-ends recordings when test-user creation fails (%s)",
-    async (error) => {
+    "stops recordings with actionable guidance when test-user creation fails ($error)",
+    async ({ error, guidance }) => {
       mocks.createTempTestUser.mockRejectedValue(error);
       const prepared = await prepareIsolatedTestDatabase({
         app: makeApp({
@@ -860,13 +873,27 @@ describe("prepareIsolatedTestDatabase — Supabase test-user path", () => {
         }),
         emit,
         runtimeMode: "host",
+        perTestCase: false,
       });
       expect(prepared.infraError).toBeDefined();
-      expect(prepared.infraError?.message).toMatch(
-        /couldn't prepare test data in Supabase/i,
+      expect(prepared.infraError?.message).toContain(
+        "The run was stopped before any tests or recording started.",
       );
+      expect(prepared.infraError?.message).toContain(guidance);
       expect(prepared.isolation.mode).toBe("none");
       expect(prepared.testCredentials).toBeUndefined();
+      expect(prepared.authSetup).toBeUndefined();
+      expect(prepared.testCaseLifecycle).toBeUndefined();
+      expect(emit).not.toHaveBeenCalledWith(
+        expect.stringContaining(
+          "Continuing without default sign-in credentials",
+        ),
+        "running",
+      );
+      await expect(prepared.teardown()).resolves.toMatchObject({
+        envRestored: true,
+        remoteCleanupCompleted: true,
+      });
     },
   );
 });

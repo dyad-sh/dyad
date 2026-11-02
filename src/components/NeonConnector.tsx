@@ -304,9 +304,12 @@ export function NeonConnector({ appId }: { appId: number }) {
     try {
       const result = await ipc.neon.setActiveBranch({ appId, branchId });
       const branch = branches.find((b) => b.branchId === branchId);
+      // Leaving production also hides it when the destination is a legacy
+      // branch classified as a snapshot rather than the dedicated development branch.
       const showProtectionNotice =
         activeBranch?.type === "production" &&
-        branch?.type === "development" &&
+        !!branch &&
+        branch.type !== "production" &&
         !canUseUnsafeNeonBranch(settings, false);
       toast.success(
         `${t("integrations.neon.branchSwitched")}: ${branch?.branchName ?? branchId}. ${t("integrations.neon.envUpdated")}`,

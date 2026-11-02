@@ -389,3 +389,57 @@ it("only explains hidden production after a successful switch from the picker", 
     }),
   );
 });
+
+it("renders the protection explanation when leaving production for a legacy development snapshot", async () => {
+  const { Toaster, toast } =
+    await vi.importActual<typeof import("sonner")>("sonner");
+  connectedApp("prod");
+  h.getProject.mockResolvedValue({
+    branches: [
+      { branchId: "dev", branchName: "old-development", type: "development" },
+      { branchId: "prod", branchName: "main", type: "production" },
+      {
+        branchId: "legacy-dev",
+        branchName: "development",
+        type: "snapshot",
+      },
+    ],
+  });
+  h.success.mockImplementationOnce(toast.success);
+  const view = render(
+    <>
+      {connector()}
+      <Toaster />
+    </>,
+  );
+  try {
+    fireEvent.click(await screen.findByTestId("neon-branch-select"));
+    const option = await screen.findByRole("option", {
+      name: "development integrations.neon.snapshot",
+    });
+    fireEvent.pointerDown(option);
+    fireEvent.pointerUp(option);
+    fireEvent.click(option);
+    fireEvent.keyDown(option, { key: "Enter" });
+    await waitFor(() =>
+      expect(h.setActiveBranch).toHaveBeenCalledExactlyOnceWith({
+        appId: 1,
+        branchId: "legacy-dev",
+      }),
+    );
+    const explanation = await screen.findByText(
+      "integrations.neon.branchSafety.productionHiddenAfterSwitch",
+    );
+    expect(
+      explanation.closest("[data-sonner-toast]")?.getAttribute("data-visible"),
+    ).toBe("true");
+    fireEvent.click(screen.getByTestId("neon-branch-select"));
+    await screen.findByRole("option", {
+      name: "development integrations.neon.snapshot",
+    });
+    expect(screen.queryByRole("option", { name: /main/ })).toBeNull();
+  } finally {
+    view.unmount();
+    toast.dismiss();
+  }
+});

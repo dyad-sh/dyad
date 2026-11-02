@@ -1,3 +1,4 @@
+import { SupabaseManagementAPIError } from "@dyad-sh/supabase-management-js";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { SupabaseTokenRefreshError } from "@/supabase_admin/supabase_errors";
 
@@ -308,14 +309,18 @@ export class SupabaseTestUserActionError extends DyadError {
 }
 
 function httpStatus(error: unknown): number | undefined {
-  return error &&
-    typeof error === "object" &&
-    "status" in error &&
-    typeof error.status === "number" &&
-    Number.isInteger(error.status) &&
-    error.status >= 400 &&
-    error.status <= 599
-    ? error.status
+  if (!error || typeof error !== "object") return undefined;
+  const status =
+    error instanceof SupabaseManagementAPIError
+      ? error.response.status
+      : "status" in error
+        ? error.status
+        : undefined;
+  return typeof status === "number" &&
+    Number.isInteger(status) &&
+    status >= 400 &&
+    status <= 599
+    ? status
     : undefined;
 }
 

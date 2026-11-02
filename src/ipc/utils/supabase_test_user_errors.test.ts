@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { SupabaseManagementAPIError } from "@dyad-sh/supabase-management-js";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { SupabaseTokenRefreshError } from "@/supabase_admin/supabase_errors";
 import {
@@ -354,7 +355,7 @@ describe("Supabase test-user diagnostics", () => {
     expect(error.message).not.toContain("sb_secret_private");
   });
 
-  it.each([401, 403, 429, 503])(
+  it.each([400, 401, 403, 429, 503, 599])(
     "reports HTTP %s without copying a response body",
     async (status) => {
       const cause = Object.assign(new Error("sb_secret_private"), { status });
@@ -364,6 +365,24 @@ describe("Supabase test-user diagnostics", () => {
       expect(error.message).toContain(`HTTP ${status}`);
       expect(error.message).not.toContain("private");
       expect(error.cause).toBe(cause);
+    },
+  );
+
+  it.each([400, 599, 399, 600, 400.5, "400", NaN, undefined])(
+    "validates HTTP status %s from both error formats",
+    (status) => {
+      const response = new Response(null, { status: 400 });
+      Object.defineProperty(response, "status", { value: status });
+      for (const cause of [
+        { status },
+        new SupabaseManagementAPIError("private provider details", response),
+      ]) {
+        const error = new SupabaseTestUserOperationError("rls", cause);
+        expect(error.status).toBe(
+          status === 400 || status === 599 ? status : undefined,
+        );
+        expect(error.message).not.toContain("private provider details");
+      }
     },
   );
 

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { SupabaseManagementAPIError } from "@dyad-sh/supabase-management-js";
 
 const mocks = vi.hoisted(() => {
   const where = vi.fn().mockResolvedValue(undefined);
@@ -1132,6 +1133,32 @@ describe("reconcileOrphanTestUsers", () => {
 });
 
 describe("checkRls", () => {
+  it("preserves the Management API HTTP status without private provider details", async () => {
+    mocks.executeSupabaseSql.mockRejectedValueOnce(
+      new SupabaseManagementAPIError(
+        "private provider details",
+        new Response(null, { status: 400 }),
+      ),
+    );
+
+    const result = await checkRls({
+      projectId: "proj-1",
+      organizationSlug: "org-1",
+    });
+
+    expect(result.unverified).toBe(true);
+    expect(result.tablesWithoutRls).toEqual([]);
+    expect(result.diagnostic).toContain("HTTP 400");
+    expect(result.diagnostic).toContain("verify Row-Level Security");
+    expect(result.diagnostic).toContain(
+      "POST /v1/projects/{ref}/database/query",
+    );
+    expect(result.diagnostic).not.toMatch(
+      /private provider details|Transport failure|Unexpected failure/,
+    );
+    expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(result.diagnostic);
+  });
+
   it("keeps a sanitized diagnostic while leaving verification best-effort", async () => {
     mocks.executeSupabaseSql.mockRejectedValueOnce(
       new TypeError(SECRET_KEY, {

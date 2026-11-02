@@ -323,7 +323,7 @@ export async function getNeonClient(): Promise<Api<unknown>> {
             id: branchId,
             project_id: projectId,
             name: getMockBranchName(branchId),
-            default: false,
+            default: branchId === "test-main-branch-id",
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           },

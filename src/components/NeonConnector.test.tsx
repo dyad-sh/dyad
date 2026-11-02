@@ -32,6 +32,7 @@ const h = vi.hoisted(() => ({
   setActiveBranch: vi.fn(),
   openExternalUrl: vi.fn(),
   success: vi.fn(),
+  error: vi.fn(),
 }));
 
 vi.mock("@/ipc/types", () => ({
@@ -79,7 +80,7 @@ vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 vi.mock("sonner", () => ({
-  toast: { success: h.success, error: vi.fn(), warning: vi.fn() },
+  toast: { success: h.success, error: h.error, warning: vi.fn() },
 }));
 
 import { NeonConnector } from "./NeonConnector";
@@ -179,13 +180,18 @@ it("preserves the fake connection path in test mode", async () => {
 
 function connectedApp(activeBranchId = "dev") {
   h.settings = { neon: { accessToken: { value: "connected" } } };
-  h.getApp.mockResolvedValue({
+  const app = {
     id: 1,
     frameworkType: "vite",
     neonProjectId: "project",
     neonDevelopmentBranchId: "dev",
     neonActiveBranchId: activeBranchId,
     deploymentProvidersInUse: {},
+  };
+  h.getApp.mockResolvedValue(app);
+  h.setActiveBranch.mockImplementation(async ({ branchId }) => {
+    h.getApp.mockResolvedValue({ ...app, neonActiveBranchId: branchId });
+    return {};
   });
 }
 
@@ -196,6 +202,10 @@ it("hides production and preview branches by default", async () => {
   await screen.findByRole("option", { name: /development/ });
   expect(screen.queryByRole("option", { name: /main/ })).toBeNull();
   expect(screen.queryByRole("option", { name: /preview/ })).toBeNull();
+  expect(
+    screen.queryByText("integrations.neon.branchSafety.locked"),
+  ).toBeNull();
+  expect(h.success).not.toHaveBeenCalled();
 });
 
 it.each([true, false])(
@@ -266,17 +276,22 @@ it("requires confirmation before switching to production when protection is disa
       branchId: "prod",
     }),
   );
+  expect(h.success).toHaveBeenCalledExactlyOnceWith(
+    expect.any(String),
+    undefined,
+  );
 });
 
-it.each([true, false])(
+it.each([undefined, true, false])(
   "warns existing production users with protection %s and offers development",
   async (enabled) => {
     connectedApp("prod");
     h.settings.enableNeonBranchProtection = enabled;
-    render(connector());
+    const view = render(connector());
     await screen.findByText(
       "integrations.neon.branchSafety.developmentWarning",
     );
+    expect(h.success).not.toHaveBeenCalled();
     fireEvent.click(screen.getByTestId("neon-branch-select"));
     await screen.findByRole("option", { name: /main/ });
     await screen.findByRole("option", { name: /development/ });
@@ -292,5 +307,85 @@ it.each([true, false])(
         branchId: "dev",
       }),
     );
+    await waitFor(() =>
+      expect(screen.getByTestId("neon-branch-select").textContent).toContain(
+        "development",
+      ),
+    );
+    expect(h.success).toHaveBeenCalledExactlyOnceWith(
+      expect.any(String),
+      enabled === false
+        ? undefined
+        : {
+            description:
+              "integrations.neon.branchSafety.productionHiddenAfterSwitch",
+            duration: 10_000,
+          },
+    );
+
+    // Reopening the panel after switching must not repeat the notice.
+    view.unmount();
+    client.clear();
+    render(connector());
+    const select = await screen.findByTestId("neon-branch-select");
+    expect(select.textContent).toContain("development");
+    expect(
+      screen.queryByText("integrations.neon.branchSafety.locked"),
+    ).toBeNull();
+    fireEvent.click(select);
+    await screen.findByRole("option", { name: /development/ });
+    expect(!!screen.queryByRole("option", { name: /main/ })).toBe(
+      enabled === false,
+    );
+    expect(h.success).toHaveBeenCalledOnce();
   },
 );
+
+it("only explains hidden production after a successful switch from the picker", async () => {
+  connectedApp("prod");
+  let rejectSwitch!: (error: Error) => void;
+  h.setActiveBranch.mockImplementationOnce(
+    () =>
+      new Promise((_resolve, reject) => {
+        rejectSwitch = reject;
+      }),
+  );
+  render(connector());
+  fireEvent.click(await screen.findByTestId("neon-branch-select"));
+  const option = await screen.findByRole("option", { name: /development/ });
+  fireEvent.pointerDown(option);
+  fireEvent.pointerUp(option);
+  fireEvent.click(option);
+  fireEvent.keyDown(option, { key: "Enter" });
+  await waitFor(() =>
+    expect(h.setActiveBranch).toHaveBeenCalledExactlyOnceWith({
+      appId: 1,
+      branchId: "dev",
+    }),
+  );
+  expect(h.success).not.toHaveBeenCalled();
+
+  await act(async () => rejectSwitch(new Error("Switch failed")));
+  expect(h.error).toHaveBeenCalledExactlyOnceWith(
+    "integrations.neon.failedSetBranch",
+  );
+  expect(h.success).not.toHaveBeenCalled();
+  expect(screen.getByTestId("neon-branch-select").textContent).toContain(
+    "main",
+  );
+
+  fireEvent.click(screen.getByTestId("neon-branch-select"));
+  const retryOption = await screen.findByRole("option", {
+    name: /development/,
+  });
+  fireEvent.pointerDown(retryOption);
+  fireEvent.pointerUp(retryOption);
+  fireEvent.click(retryOption);
+  fireEvent.keyDown(retryOption, { key: "Enter" });
+  await waitFor(() =>
+    expect(h.success).toHaveBeenCalledExactlyOnceWith(expect.any(String), {
+      description: "integrations.neon.branchSafety.productionHiddenAfterSwitch",
+      duration: 10_000,
+    }),
+  );
+});

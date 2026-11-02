@@ -787,6 +787,7 @@
         "developmentTitle": "Geliştirme sırasında üretim veritabanı — gerçek veriler risk altında",
         "developmentWarning": "Önizlemeniz ve yapay zekanın oluşturduğu veritabanı değişiklikleri üretim veritabanını kullanır. Geliştirme veya test işlemleri gerçek kullanıcı verilerini değiştirebilir ya da silebilir. Verileri ayrı tutmak için geliştirme dalını kullanın.",
         "developmentRecommended": "Geliştirmeye geç (önerilen)",
+        "productionHiddenAfterSwitch": "Canlı verileri korumak için üretim dalı artık gizlidir. Geri dönmek için Ayarlar → Deneyler bölümünde “Protect Neon database branches” ayarını devre dışı bırakın.",
         "locked": "Riskli dal seçenekleri gizlidir. Açmak için Ayarlar → Deneyler bölümünde “Protect Neon database branches” ayarını devre dışı bırakın.",
         "recommendProduction": "Üretim veritabanı önerilir: gerçek kullanıcı verilerini geliştirmeden ayrı tutun.",
         "notRecommended": "Önerilmez",

@@ -762,6 +762,7 @@
         "developmentTitle": "Base de production en développement — données réelles en danger",
         "developmentWarning": "L’aperçu et les modifications de base générées par l’IA utiliseront la base de production. Le développement ou les tests peuvent modifier ou supprimer les données réelles des utilisateurs. Utilisez la branche de développement pour les séparer.",
         "developmentRecommended": "Passer au développement (recommandé)",
+        "productionHiddenAfterSwitch": "La branche de production est désormais masquée pour protéger les données en production. Pour y revenir, désactivez «\u00a0Protect Neon database branches\u00a0» dans Settings → Experiments.",
         "locked": "Les choix de branches risqués sont masqués. Pour les débloquer, désactivez «\u00a0Protect Neon database branches\u00a0» dans Settings → Experiments.",
         "recommendProduction": "La base de production est recommandée\u00a0: séparez les données réelles des utilisateurs du développement.",
         "notRecommended": "Déconseillé",

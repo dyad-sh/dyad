@@ -759,6 +759,7 @@
         "developmentTitle": "开发时使用生产数据库 — 真实数据存在风险",
         "developmentWarning": "预览和 AI 生成的数据库更改将使用生产数据库。开发或测试可能修改或删除真实用户数据。请使用开发分支以隔离真实数据。",
         "developmentRecommended": "切换到开发分支（推荐）",
+        "productionHiddenAfterSwitch": "生产分支现已隐藏，以保护线上数据。要切换回来，请在 Settings → Experiments 中关闭“Protect Neon database branches”。",
         "locked": "有风险的分支选项已隐藏。要解锁，请在 Settings → Experiments 中关闭“Protect Neon database branches”。",
         "recommendProduction": "推荐使用生产数据库：将真实用户数据与开发环境分开。",
         "notRecommended": "不推荐",

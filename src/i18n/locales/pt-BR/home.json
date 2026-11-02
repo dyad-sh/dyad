@@ -787,6 +787,7 @@
         "developmentTitle": "Banco de produção durante o desenvolvimento — dados reais em risco",
         "developmentWarning": "A prévia e as alterações de banco geradas por IA usarão o banco de produção. Desenvolver ou testar pode alterar ou excluir dados reais dos usuários. Use a branch de desenvolvimento para separá-los.",
         "developmentRecommended": "Mudar para desenvolvimento (recomendado)",
+        "productionHiddenAfterSwitch": "A branch de produção agora está oculta para proteger os dados em produção. Para voltar a ela, desative “Protect Neon database branches” em Settings → Experiments.",
         "locked": "As opções de branch arriscadas estão ocultas. Para desbloqueá-las, desative “Protect Neon database branches” em Settings → Experiments.",
         "recommendProduction": "O banco de produção é recomendado: mantenha os dados reais separados do desenvolvimento.",
         "notRecommended": "Não recomendado",

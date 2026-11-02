@@ -787,6 +787,7 @@
         "developmentTitle": "Production database while building — live data at risk",
         "developmentWarning": "Your preview and AI-generated database changes will use the production database. Building or testing can modify or delete live user data. Use the development branch to keep live data separate.",
         "developmentRecommended": "Switch to development (recommended)",
+        "productionHiddenAfterSwitch": "The production branch is now hidden to protect live data. To switch back, turn off “Protect Neon database branches” in Settings → Experiments.",
         "locked": "Risky branch choices are hidden. To unlock them, disable “Protect Neon database branches” in Settings → Experiments.",
         "recommendProduction": "Production database is recommended: keep live user data separate from development.",
         "notRecommended": "Not recommended",

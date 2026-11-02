@@ -304,8 +304,20 @@ export function NeonConnector({ appId }: { appId: number }) {
     try {
       const result = await ipc.neon.setActiveBranch({ appId, branchId });
       const branch = branches.find((b) => b.branchId === branchId);
+      const showProtectionNotice =
+        activeBranch?.type === "production" &&
+        branch?.type === "development" &&
+        !canUseUnsafeNeonBranch(settings, false);
       toast.success(
         `${t("integrations.neon.branchSwitched")}: ${branch?.branchName ?? branchId}. ${t("integrations.neon.envUpdated")}`,
+        showProtectionNotice
+          ? {
+              description: t(
+                "integrations.neon.branchSafety.productionHiddenAfterSwitch",
+              ),
+              duration: 10_000,
+            }
+          : undefined,
       );
       if (result.warning) {
         toast.warning(result.warning);
@@ -555,7 +567,7 @@ export function NeonConnector({ appId }: { appId: number }) {
                   </SelectContent>
                 </Select>
               )}
-              {activeBranch?.type === "production" ? (
+              {activeBranch?.type === "production" && (
                 <NeonBranchWarning
                   usage="development"
                   disabled={isSwitchingBranch}
@@ -566,13 +578,6 @@ export function NeonConnector({ appId }: { appId: number }) {
                       : undefined
                   }
                 />
-              ) : (
-                !canSelectProduction &&
-                !isLoadingBranches && (
-                  <p className="text-xs text-muted-foreground">
-                    {t("integrations.neon.branchSafety.locked")}
-                  </p>
-                )
               )}
             </div>
 

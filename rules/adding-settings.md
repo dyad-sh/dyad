@@ -13,9 +13,16 @@ If the setting adds a built-in default, update the inline snapshots in
 `src/main/settings.test.ts`; otherwise `npm test` will fail with
 default settings snapshot mismatches.
 
-For settings worth tracking in telemetry:
+When adding any setting, decide whether to report it. Telemetry and uploaded chat sessions use allow lists, so a new setting stays unsent until you add it:
 
-- Add the field to `getSettingsPersonTelemetryProperties` in `src/lib/posthogTelemetry.ts`, reading it as `settings.myFlag ?? DEFAULT_MY_FLAG`. Define that fallback in the side-effect-free `src/shared/settings_defaults.ts` module and reuse it in `DEFAULT_SETTINGS` so the reported value matches the real default without importing main-process code or evaluating unrelated defaults in the renderer. Several branches add properties to this one object at a time, so it conflicts often on rebase — the resolution is almost always to keep both properties, not to pick a side.
+- Report non-sensitive settings by default. A setting is non-sensitive if its value is a boolean, a number, or a fixed set of options.
+- Never report a setting's raw value if it can hold a credential, account details, a file path, a URL, free text, or a name the user chose. Report a derived boolean instead, such as `hasCustomAppsFolder`.
+- To send a setting through both telemetry and chat sessions, add it to `getSharedSettingsDiagnostics` in `src/lib/settingsDiagnostics.ts` and to `DebugSettingsSchema` in `src/ipc/types/misc.ts`. For chat sessions only, add it to `getSessionDebugSettings` and `DebugSettingsSchema`. Use chat sessions only for settings too niche for analytics, since reporters can read a session before sending it.
+- Update the pinned property names in `src/lib/posthogTelemetry.test.ts` and `src/lib/settingsDiagnostics.test.ts`. Those tests fail until the lists match, which makes each addition visible in review.
+
+For settings reported through telemetry:
+
+- A setting in `getSharedSettingsDiagnostics` already reaches `getSettingsPersonTelemetryProperties` in `src/lib/posthogTelemetry.ts`. If it has no value in `DEFAULT_SETTINGS`, or for a telemetry-only setting, add it to that function directly, reading it as `settings.myFlag ?? DEFAULT_MY_FLAG`. Define that fallback in the side-effect-free `src/shared/settings_defaults.ts` module. If the setting also has a `DEFAULT_SETTINGS` entry, reuse the constant there so the reported value matches the real default without importing main-process code or evaluating unrelated defaults in the renderer. A setting that stays off until enabled can read `settings.myFlag ?? false` instead. Several branches add properties to this one object at a time, so it conflicts often on rebase — the resolution is almost always to keep both properties, not to pick a side.
 - Person properties are delivered as PostHog `$set` events. Keep `$set` in `shouldBypassNonProTelemetrySampling`; otherwise successful settings updates can leave sampled users' person properties stale.
 
 For settings whose default can be overridden remotely:

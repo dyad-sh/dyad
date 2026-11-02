@@ -1,6 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PtyCommandExecutionError } from "@/ipc/utils/pty_command_runner";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 
@@ -408,6 +415,24 @@ describe("updatePnpmAllowBuildsConfigContent", () => {
         "",
       ].join("\n"),
     );
+  });
+
+  it("does not recreate a deleted app folder", async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "dyad-pnpm-config-"));
+    const deletedAppPath = path.join(tempDir, "deleted-app");
+    try {
+      await expect(
+        ensurePnpmAllowBuildsConfigured({
+          appPath: deletedAppPath,
+          allowBuildsText,
+        }),
+      ).resolves.toEqual({ changed: false, promotedPackages: [] });
+      await expect(stat(deletedAppPath)).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
   });
 
   it("writes project pnpm-workspace.yaml atomically", async () => {

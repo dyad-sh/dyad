@@ -28,6 +28,7 @@ import { runBufferedProcess } from "./buffered_process";
 import {
   collectGitLaunchDiagnostics,
   getGitLaunchTelemetryProperties,
+  type GitLaunchDiagnostics,
 } from "./git_launch_diagnostics";
 import { sendTelemetryEvent } from "./telemetry";
 
@@ -228,9 +229,10 @@ export async function execGit(
     });
   } catch (error) {
     if (error instanceof ExecError && error.code === "ENOENT") {
+      let diagnostics: GitLaunchDiagnostics | null = null;
       try {
         const { env: gitEnv, gitLocation } = setupEnvironment(env);
-        const diagnostics = await collectGitLaunchDiagnostics({
+        diagnostics = await collectGitLaunchDiagnostics({
           gitLocation,
           cwd: path,
           localGitDirectory: gitEnv.LOCAL_GIT_DIRECTORY,
@@ -249,6 +251,18 @@ export async function execGit(
         logger.warn(
           "Failed to collect Git launch diagnostics",
           diagnosticError,
+        );
+      }
+      // Node reports a missing cwd with the same ENOENT as a missing binary,
+      // and dugite's message blames the binary. Name the folder instead.
+      if (
+        diagnostics &&
+        !diagnostics.cwdPath.targetExists &&
+        diagnostics.gitBinary.targetExists
+      ) {
+        throw new DyadError(
+          `Folder not found: "${path}". It may have been moved or deleted, or be on a drive that isn't connected.`,
+          DyadErrorKind.NotFound,
         );
       }
     }

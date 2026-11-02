@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { readSettings } from "@/main/settings";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 import type { AppRunInvocationRef } from "@/app_run/state";
 import type { RuntimeMode2 } from "@/lib/schemas";
@@ -72,6 +73,7 @@ function createHarness() {
       startCommand: null,
     })),
     resolveAppPath: (relativePath) => `/apps/${relativePath}`,
+    assertAppFolderExists: vi.fn(async () => {}),
     getRunningApp: () => running,
     deleteRunningApp: () => {
       calls.push("delete");
@@ -332,6 +334,36 @@ describe("AppRuntimeService", () => {
       );
     },
   );
+
+  it("fails start and restart before touching a deleted app folder", async () => {
+    const harness = createHarness();
+    const { output } = createOutput();
+    const missing = new DyadError(
+      'App folder not found: "/apps/test-app". It may have been moved or deleted.',
+      DyadErrorKind.NotFound,
+    );
+    vi.mocked(harness.dependencies.assertAppFolderExists).mockRejectedValue(
+      missing,
+    );
+
+    await expect(
+      harness.service.start({ appId: APP_ID, output, invocationRef: REF }),
+    ).rejects.toBe(missing);
+    await expect(
+      harness.service.restart({ appId: APP_ID, output, invocationRef: REF }),
+    ).rejects.toBe(missing);
+
+    expect(harness.dependencies.assertAppFolderExists).toHaveBeenCalledWith(
+      "/apps/test-app",
+    );
+    expect(harness.calls).toEqual([
+      "lock:start",
+      "unlock:start",
+      "lock:restart",
+      "unlock:restart",
+    ]);
+    expect(harness.dependencies.startProcess).not.toHaveBeenCalled();
+  });
 
   it("keeps a spawned process tracked when readiness times out", async () => {
     const harness = createHarness();

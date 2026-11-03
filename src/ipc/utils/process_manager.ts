@@ -119,6 +119,11 @@ export function getRunningAppProcessPids(): { appId: number; pid: number }[] {
   return pairs;
 }
 
+/** Module-level because the functions below name their child `process`. */
+function isWindows(): boolean {
+  return process.platform === "win32";
+}
+
 /**
  * Kills a running process with its child processes
  * @param process The child process to kill
@@ -206,6 +211,16 @@ export function forceKillProcessTree(
   // already gone makes it a no-op that resolves on the timeout below.
   const rootAlreadyExited =
     process.exitCode !== null || process.signalCode !== null;
+  // The exception is Windows, where that walk cannot start from a dead root:
+  // `taskkill /T` finds descendants through the live process, so it can only
+  // fail with "not found". Or worse, the pid has been reused and it force-kills
+  // an unrelated tree. Same verdict as a failed signal, without the risk.
+  if (rootAlreadyExited && isWindows()) {
+    logger.info(
+      `Not signalling exited process tree root (PID: ${pid}): Windows cannot reach its descendants.`,
+    );
+    return Promise.resolve(false);
+  }
   return new Promise<boolean>((resolve) => {
     const timeout = setTimeout(() => {
       logger.warn(

@@ -392,6 +392,14 @@ vi.mock("@/hooks/useLanguageModelsByProviders", () => ({
               type: "cloud",
             },
           ],
+          "custom::local": [
+            {
+              id: 4,
+              apiName: "gemma2",
+              displayName: "Custom Gemma 2",
+              type: "custom",
+            },
+          ],
           custom: [
             {
               id: 1,
@@ -460,6 +468,11 @@ vi.mock("@/hooks/useLanguageModelProviders", () => ({
         name: "xAI",
         type: "cloud",
         secondary: true,
+      },
+      {
+        id: "custom::local",
+        name: "Local Server",
+        type: "custom",
       },
       {
         id: "custom",
@@ -1244,39 +1257,64 @@ describe("ModelPicker", () => {
     });
   });
 
-  it("offers and persists None effort for Ollama models", async () => {
-    mocks.ollamaModels = [
-      {
-        provider: "ollama",
-        modelName: "qwen3-coder:30b",
-        displayName: "Qwen3 Coder 30B",
-      },
-    ];
-    mocks.renderSubContent = true;
-
-    render(<ModelPicker />);
-
-    const qwenRow = screen.getByText("Qwen3 Coder 30B").closest("button")!;
-    expect(qwenRow.getAttribute("aria-label")).toContain("Effort: Medium");
-    fireEvent.click(screen.getByText("None"));
-
-    await waitFor(() => {
-      expect(mocks.updateSettings).toHaveBeenCalledWith({
-        selectedModel: {
-          name: "qwen3-coder:30b",
-          provider: "ollama",
+  it.each(["ollama", "lmstudio"] as const)(
+    "offers and persists None effort for %s models",
+    async (provider) => {
+      const models = [
+        {
+          provider,
+          modelName: "qwen3-coder:30b",
+          displayName: "Qwen3 Coder 30B",
         },
-        recentModels: [
-          {
+      ];
+      if (provider === "ollama")
+        mocks.ollamaModels = models as typeof mocks.ollamaModels;
+      else mocks.lmStudioModels = models as typeof mocks.lmStudioModels;
+      mocks.renderSubContent = true;
+
+      render(<ModelPicker />);
+
+      const qwenRow = screen.getByText("Qwen3 Coder 30B").closest("button")!;
+      expect(qwenRow.getAttribute("aria-label")).toContain("Effort: Medium");
+      fireEvent.click(within(qwenRow.parentElement!).getByText("None"));
+
+      await waitFor(() => {
+        expect(mocks.updateSettings).toHaveBeenCalledWith({
+          selectedModel: {
             name: "qwen3-coder:30b",
-            provider: "ollama",
+            provider,
           },
-        ],
-        modelEffortPreferences: {
-          '["ollama","qwen3-coder:30b",null]': "none",
-        },
+          recentModels: [
+            {
+              name: "qwen3-coder:30b",
+              provider,
+            },
+          ],
+          modelEffortPreferences: {
+            [JSON.stringify([provider, "qwen3-coder:30b", null])]: "none",
+          },
+        });
       });
-    });
+    },
+  );
+
+  it("offers and persists None effort for a custom provider model", async () => {
+    mocks.renderSubContent = true;
+    render(<ModelPicker />);
+    const row = screen.getByText("Custom Gemma 2").closest("button")!;
+    fireEvent.click(within(row.parentElement!).getByText("None"));
+    await waitFor(() =>
+      expect(mocks.updateSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          selectedModel: {
+            provider: "custom::local",
+            name: "gemma2",
+            customModelId: 4,
+          },
+          modelEffortPreferences: { '["custom::local","gemma2",4]': "none" },
+        }),
+      ),
+    );
   });
 
   it("only opens the effort submenu from its chevron", () => {

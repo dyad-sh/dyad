@@ -28,7 +28,7 @@ vi.mock("sonner", () => ({
   }),
 }));
 
-import { cleanup, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { eq } from "drizzle-orm";
 
 import { apps, chats } from "@/db/schema";
@@ -42,6 +42,8 @@ import { runningApps } from "@/ipc/utils/process_manager";
 import { neonPreviewDomainService } from "@/ipc/services/neon_preview_domain_service";
 import * as appEnvVars from "@/ipc/utils/app_env_var_utils";
 import { ipc } from "@/ipc/types";
+import * as neonManagement from "@/neon_admin/neon_management_client";
+import * as dependencies from "@/ipc/processors/executeAddDependency";
 
 type TestApp = {
   appId: number;
@@ -73,14 +75,17 @@ describe("Neon branch actions (integration)", () => {
 
   afterEach(() => {
     cleanup();
-    writeSettings({ neon: undefined });
+    writeSettings({ neon: undefined, enableNeonBranchProtection: true });
   });
 
   afterAll(async () => {
     await harness?.dispose();
   });
 
-  async function createNextApp(baseName: string): Promise<TestApp> {
+  async function createApp(
+    baseName: string,
+    framework: "next" | "vite" = "next",
+  ): Promise<TestApp> {
     appCounter += 1;
     const name = `${baseName}-${appCounter}`;
     const appDir = path.join(appsRoot, slug(name));
@@ -91,9 +96,11 @@ describe("Neon branch actions (integration)", () => {
         {
           name,
           private: true,
-          scripts: { dev: "next dev" },
+          scripts: { dev: framework === "next" ? "next dev" : "vite" },
           dependencies: {
-            next: "^15.0.0",
+            ...(framework === "next"
+              ? { next: "^15.0.0" }
+              : { vite: "^6.0.0" }),
             react: "^19.0.0",
             "react-dom": "^19.0.0",
           },
@@ -103,8 +110,13 @@ describe("Neon branch actions (integration)", () => {
       ) + "\n",
     );
     fs.writeFileSync(
-      path.join(appDir, "next.config.ts"),
-      "export default {};\n",
+      path.join(
+        appDir,
+        framework === "next" ? "next.config.ts" : "vite.config.ts",
+      ),
+      framework === "next"
+        ? "export default {};\n"
+        : 'import { defineConfig } from "vite";\nexport default defineConfig({ plugins: [] });\n',
     );
 
     const [appRow] = await harness.db
@@ -165,7 +177,8 @@ describe("Neon branch actions (integration)", () => {
   }
 
   it("reconciles the bound preview when connecting Neon Auth and switching its active branch", async () => {
-    const app = await createNextApp("preview-domains");
+    writeSettings({ enableNeonBranchProtection: false });
+    const app = await createApp("preview-domains");
     const origin = `http://app-${app.appId}.localhost:43999`;
     const registration = vi
       .spyOn(neonPreviewDomainService, "ensureTrustedDomain")
@@ -202,6 +215,11 @@ describe("Neon branch actions (integration)", () => {
         await screen.findByTestId("neon-branch-select"),
         /^main\b/i,
       );
+      fireEvent.click(
+        await screen.findByRole("button", {
+          name: "I understand, use production",
+        }),
+      );
       await waitFor(() =>
         expect(registration).toHaveBeenCalledWith(
           expect.objectContaining({
@@ -231,7 +249,7 @@ describe("Neon branch actions (integration)", () => {
   }, 90_000);
 
   it("clears the running Neon target even if unlink cannot clean the environment file", async () => {
-    const app = await createNextApp("unlink-preview");
+    const app = await createApp("unlink-preview");
     await harness.db
       .update(apps)
       .set({ neonProjectId: "project" })
@@ -277,9 +295,144 @@ describe("Neon branch actions (integration)", () => {
     }
   });
 
-  it("updates Neon env vars and preserves per-branch auth secrets when switching branches", async () => {
-    const app = await createNextApp("neon-branch");
+  it("does not silently connect a new app to production when a development branch is missing", async () => {
+    const app = await createApp("neon-no-development", "vite");
+    fs.writeFileSync(path.join(app.appDir, "AI_RULES.md"), "# App rules\n");
+    const snapshotFiles = () =>
+      Object.fromEntries(
+        fs
+          .readdirSync(app.appDir, { recursive: true, withFileTypes: true })
+          .filter((entry) => entry.isFile())
+          .map((entry) => {
+            const filePath = path.join(entry.parentPath, entry.name);
+            return [
+              path.relative(app.appDir, filePath),
+              fs.readFileSync(filePath, "utf8"),
+            ];
+          }),
+      );
+    const originalFiles = snapshotFiles();
+    const install = vi
+      .spyOn(dependencies, "installPackages")
+      .mockResolvedValue({
+        warningMessages: [],
+        installResults: "",
+      });
     connectNeonAccount();
+    const client = await neonManagement.getNeonClient();
+    const response = await client.listProjectBranches({
+      projectId: "test-project-id",
+    });
+    const mockClient = vi
+      .spyOn(neonManagement, "getNeonClient")
+      .mockResolvedValue(
+        Object.assign(client, {
+          listProjectBranches: vi.fn().mockResolvedValue({
+            ...response,
+            data: {
+              ...response.data,
+              branches: response.data.branches.filter(
+                (branch) => branch.default,
+              ),
+            },
+          }),
+        }),
+      );
+    try {
+      await expect(
+        ipc.neon.setAppProject({
+          appId: app.appId,
+          projectId: "test-project-id",
+        }),
+      ).rejects.toThrow("Create a development branch");
+      expect((await appRow(app.appId))?.neonProjectId).toBeNull();
+      expect(fs.existsSync(path.join(app.appDir, ".env.local"))).toBe(false);
+      expect(snapshotFiles()).toEqual(originalFiles);
+      expect(install).not.toHaveBeenCalled();
+      writeSettings({ enableNeonBranchProtection: false });
+      await ipc.neon.setAppProject({
+        appId: app.appId,
+        projectId: "test-project-id",
+      });
+      expect((await appRow(app.appId))?.neonActiveBranchId).toBe(
+        "test-main-branch-id",
+      );
+      expect(install).toHaveBeenCalledWith(
+        expect.objectContaining({
+          packages: ["nitro", "jiti"],
+          appPath: app.appDir,
+        }),
+      );
+      expect(fs.existsSync(path.join(app.appDir, "nitro.config.ts"))).toBe(
+        true,
+      );
+      expect(
+        fs.existsSync(path.join(app.appDir, "server/routes/api/.gitkeep")),
+      ).toBe(true);
+      expect(
+        fs.readFileSync(path.join(app.appDir, "vite.config.ts"), "utf8"),
+      ).not.toBe(originalFiles["vite.config.ts"]);
+      expect(
+        fs.readFileSync(path.join(app.appDir, "package.json"), "utf8"),
+      ).not.toBe(originalFiles["package.json"]);
+    } finally {
+      mockClient.mockRestore();
+      install.mockRestore();
+    }
+  });
+
+  it("blocks new unsafe selections in main, preserves existing ones, and permits an explicit opt-out", async () => {
+    const app = await createApp("neon-protection");
+    connectNeonAccount();
+    await ipc.neon.setAppProject({
+      appId: app.appId,
+      projectId: "test-project-id",
+    });
+    const originalEnv = fs.readFileSync(
+      path.join(app.appDir, ".env.local"),
+      "utf8",
+    );
+    const setActive = (branchId: string) =>
+      ipc.neon.setActiveBranch({ appId: app.appId, branchId });
+    const setDeploy = (branchType: "production" | "development") =>
+      ipc.neon.setSelectedDatabaseBranchType({ appId: app.appId, branchType });
+    await expect(setActive("test-main-branch-id")).rejects.toThrow(
+      "disable Protect Neon database branches",
+    );
+    await expect(setDeploy("development")).rejects.toThrow(
+      "disable Protect Neon database branches",
+    );
+    expect((await appRow(app.appId))?.neonActiveBranchId).toBe(
+      "test-development-branch-id",
+    );
+    expect((await appRow(app.appId))?.selectedDatabaseBranchType).toBeNull();
+    expect(fs.readFileSync(path.join(app.appDir, ".env.local"), "utf8")).toBe(
+      originalEnv,
+    );
+
+    writeSettings({ enableNeonBranchProtection: false });
+    await setActive("test-main-branch-id");
+    await setDeploy("development");
+    writeSettings({ enableNeonBranchProtection: true });
+    await setDeploy("development");
+    expect((await appRow(app.appId))?.selectedDatabaseBranchType).toBe(
+      "development",
+    );
+    await setActive("test-main-branch-id");
+    await setDeploy("production");
+    await setActive("test-development-branch-id");
+    await expect(setDeploy("development")).rejects.toThrow(
+      "disable Protect Neon database branches",
+    );
+    await expect(setActive("test-main-branch-id")).rejects.toThrow(
+      "disable Protect Neon database branches",
+    );
+  });
+
+  it("updates Neon env vars and preserves per-branch auth secrets when switching branches", async () => {
+    const app = await createApp("neon-branch");
+    connectNeonAccount();
+    writeSettings({ enableNeonBranchProtection: false });
     await mountNeonDetails(app);
 
     await connectNeonProject();
@@ -302,6 +455,11 @@ describe("Neon branch actions (integration)", () => {
     await harness.selectFromBaseUiSelect(
       await screen.findByTestId("neon-branch-select"),
       /^main\b/i,
+    );
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "I understand, use production",
+      }),
     );
 
     const envAfterSwitch = await waitForEnv(

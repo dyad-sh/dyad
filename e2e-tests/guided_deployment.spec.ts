@@ -97,7 +97,7 @@ test("publishes with the development database and skips migration when redeployi
   await deploy.selectDatabase("development");
   await expect(
     deploy.dialog.getByText(
-      /Your deployed app will share the development database/,
+      /Your deployed app will share data with development/,
     ),
   ).toBeVisible();
   await expect(deploy.button("Migrate to Production")).toBeHidden();

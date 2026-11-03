@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { MCP_TRANSCRIPT_PAYLOAD_MAX_CHARS } from "@/ipc/utils/mcp_transcript_preview";
 
 import {
   getDyadWriteTags,
@@ -420,6 +421,71 @@ describe("processStreamChunks", () => {
     expect(result.fullResponse).toBe("Existing response.");
     expect(result.incrementalResponse).toBe("");
     expect(result.modelRefused).toBe(false);
+  });
+
+  it("caps the transcript copy of large MCP inputs and outputs", async () => {
+    const bigInput = { payload: "i".repeat(MCP_TRANSCRIPT_PAYLOAD_MAX_CHARS) };
+    const bigOutput = "o".repeat(MCP_TRANSCRIPT_PAYLOAD_MAX_CHARS * 2);
+    async function* mcpParts(): AsyncGenerator<TextStreamPart<ToolSet>> {
+      yield {
+        type: "tool-call",
+        toolCallId: "call-1",
+        toolName: "srv__ingest",
+        input: bigInput,
+      } as unknown as TextStreamPart<ToolSet>;
+      yield {
+        type: "tool-result",
+        toolCallId: "call-1",
+        toolName: "srv__ingest",
+        input: bigInput,
+        output: bigOutput,
+      } as unknown as TextStreamPart<ToolSet>;
+    }
+
+    const result = await processStreamChunks({
+      fullStream: mcpParts() as unknown as AsyncIterableStream<
+        TextStreamPart<ToolSet>
+      >,
+      fullResponse: "",
+      abortController: new AbortController(),
+      chatId: 1,
+      processResponseChunkUpdate: async ({ fullResponse }) => fullResponse,
+    });
+
+    expect(result.fullResponse).toMatch(
+      /<dyad-mcp-tool-call [^>]*truncated-from="\d+">/,
+    );
+    expect(result.fullResponse).toMatch(
+      /<dyad-mcp-tool-result [^>]*truncated-from="\d+">/,
+    );
+    expect(result.fullResponse).not.toContain(bigInput.payload);
+    expect(result.fullResponse).not.toContain(bigOutput);
+  });
+
+  it("writes a non-string MCP output as text", async () => {
+    async function* mcpParts(): AsyncGenerator<TextStreamPart<ToolSet>> {
+      yield {
+        type: "tool-result",
+        toolCallId: "call-1",
+        toolName: "srv__count",
+        input: {},
+        output: 42,
+      } as unknown as TextStreamPart<ToolSet>;
+    }
+
+    const result = await processStreamChunks({
+      fullStream: mcpParts() as unknown as AsyncIterableStream<
+        TextStreamPart<ToolSet>
+      >,
+      fullResponse: "",
+      abortController: new AbortController(),
+      chatId: 1,
+      processResponseChunkUpdate: async ({ fullResponse }) => fullResponse,
+    });
+
+    expect(result.fullResponse).toContain(
+      `call-id="call-1">\n42\n</dyad-mcp-tool-result>`,
+    );
   });
 });
 

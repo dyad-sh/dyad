@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { warn } = vi.hoisted(() => ({ warn: vi.fn() }));
+const { warn, netFetch } = vi.hoisted(() => ({
+  warn: vi.fn(),
+  netFetch: vi.fn(),
+}));
+
+vi.mock("electron", () => ({ net: { fetch: netFetch } }));
 
 vi.mock("electron-log", () => ({
   default: {
@@ -15,6 +20,7 @@ vi.mock("electron-log", () => ({
 }));
 
 import { DyadErrorKind, isDyadError } from "@/errors/dyad_error";
+import { net } from "electron";
 import {
   GitLabClient,
   describeGitLabError,
@@ -56,10 +62,13 @@ beforeEach(() => {
   vi.clearAllMocks();
   calls.length = 0;
   routes = {};
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async (url: string, init: RequestInit) => respond(url, init)),
-  );
+  netFetch
+    .mockReset()
+    .mockImplementation(async (url: string, init: RequestInit) =>
+      respond(url, init),
+    );
+  // A separate spy proves GitLab does not fall back to Node's networking stack.
+  vi.stubGlobal("fetch", vi.fn());
 });
 
 afterEach(() => {
@@ -73,6 +82,60 @@ const client = () =>
   });
 
 describe("GitLabClient requests", () => {
+  it("passes caller cancellation to the in-flight Chromium request", async () => {
+    const controller = new AbortController();
+    netFetch.mockImplementation(
+      (_url: string, { signal }: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          signal!.addEventListener("abort", () => reject(signal!.reason), {
+            once: true,
+          });
+        }),
+    );
+    const request = new GitLabClient({
+      instanceUrl: "https://gitlab.example.com",
+      token: "secret",
+      signal: controller.signal,
+    }).getCurrentUser();
+    controller.abort();
+    await expect(request).rejects.toMatchObject({
+      kind: DyadErrorKind.UserCancelled,
+    });
+    expect(netFetch.mock.calls[0][1].signal.aborted).toBe(true);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("passes the 30-second timeout signal to Chromium even with a caller signal", async () => {
+    const timeout = new AbortController();
+    const timeoutSpy = vi
+      .spyOn(AbortSignal, "timeout")
+      .mockReturnValue(timeout.signal);
+    try {
+      netFetch.mockImplementation(
+        (_url: string, { signal }: RequestInit) =>
+          new Promise((_resolve, reject) => {
+            signal!.addEventListener("abort", () => reject(signal!.reason), {
+              once: true,
+            });
+          }),
+      );
+      const request = new GitLabClient({
+        instanceUrl: "https://gitlab.example.com",
+        token: "secret",
+        signal: new AbortController().signal,
+      }).getCurrentUser();
+      timeout.abort(new DOMException("timed out", "TimeoutError"));
+      await expect(request).rejects.toMatchObject({
+        kind: DyadErrorKind.External,
+        message: expect.stringContaining("no response within 30s"),
+      });
+      expect(timeoutSpy).toHaveBeenCalledExactlyOnceWith(30_000);
+      expect(netFetch.mock.calls[0][1].signal.aborted).toBe(true);
+    } finally {
+      timeoutSpy.mockRestore();
+    }
+  });
+
   it("logs and surfaces the nested TLS cause and code without request credentials", async () => {
     const cause = Object.assign(
       new Error("unable to verify the first certificate"),
@@ -80,7 +143,7 @@ describe("GitLabClient requests", () => {
         code: "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
       },
     );
-    vi.mocked(fetch).mockRejectedValue(
+    vi.mocked(net.fetch).mockRejectedValue(
       new TypeError("fetch failed", { cause }),
     );
 
@@ -101,7 +164,7 @@ describe("GitLabClient requests", () => {
     const attempts = ["ECONNREFUSED", "ENETUNREACH"].map((code) =>
       Object.assign(new Error("connect failed"), { code }),
     );
-    vi.mocked(fetch).mockRejectedValue(
+    vi.mocked(net.fetch).mockRejectedValue(
       new TypeError("fetch failed", {
         cause: new AggregateError(attempts),
       }),
@@ -115,7 +178,7 @@ describe("GitLabClient requests", () => {
   });
 
   it("handles plain-object and string causes, redacts tokens and flattens log lines", async () => {
-    vi.mocked(fetch).mockRejectedValue(
+    vi.mocked(net.fetch).mockRejectedValue(
       new TypeError("fetch failed", {
         cause: {
           code: "ENOTFOUND",
@@ -138,7 +201,7 @@ describe("GitLabClient requests", () => {
   it("bounds long diagnostics and stops cyclic causes", async () => {
     const cyclic = new Error("socket failure");
     cyclic.cause = cyclic;
-    vi.mocked(fetch).mockRejectedValueOnce(
+    vi.mocked(net.fetch).mockRejectedValueOnce(
       new TypeError("fetch failed", { cause: cyclic }),
     );
     await expect(client().getCurrentUser()).rejects.toMatchObject({
@@ -146,7 +209,7 @@ describe("GitLabClient requests", () => {
         "fetch failed; caused by: socket failure",
       ),
     });
-    vi.mocked(fetch).mockRejectedValueOnce(
+    vi.mocked(net.fetch).mockRejectedValueOnce(
       new TypeError("fetch failed", {
         cause: new Error("x".repeat(10_000) + "glpat-secret"),
       }),
@@ -159,7 +222,7 @@ describe("GitLabClient requests", () => {
   });
 
   it("logs response-body transport failures too", async () => {
-    vi.mocked(fetch).mockResolvedValue({
+    vi.mocked(net.fetch).mockResolvedValue({
       text: async () => {
         throw new TypeError("terminated", { cause: { code: "ECONNRESET" } });
       },
@@ -172,7 +235,7 @@ describe("GitLabClient requests", () => {
   });
 
   it("keeps timeout guidance and does not log user cancellation as a network failure", async () => {
-    vi.mocked(fetch).mockRejectedValue(
+    vi.mocked(net.fetch).mockRejectedValue(
       new DOMException("timed out", "TimeoutError"),
     );
     await expect(client().getCurrentUser()).rejects.toMatchObject({
@@ -210,6 +273,8 @@ describe("GitLabClient requests", () => {
     const headers = calls[0].init.headers as Record<string, string>;
     expect(headers["PRIVATE-TOKEN"]).toBe("glpat-secret");
     expect(calls[0].init.credentials).toBe("omit");
+    expect(net.fetch).toHaveBeenCalledOnce();
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it("keeps a relative URL root in the API path", async () => {

@@ -35,6 +35,12 @@ import { buildMcpAutoApprove } from "./mcp_auto_consent";
 import { scheduleChatSearchIndexing } from "./chat_search_indexer";
 import { parseMcpToolKey, sanitizeMcpName } from "@/ipc/utils/mcp_tool_utils";
 import { sanitizeMcpToolResult } from "@/ipc/utils/mcp_result_sanitizer";
+import {
+  createMcpTranscriptBudget,
+  previewMcpPayload,
+  toolTruncatedAttr,
+  truncatedFromAttr,
+} from "@/ipc/utils/mcp_transcript_preview";
 
 import {
   isDyadProEnabled,
@@ -3035,12 +3041,15 @@ async function getMcpTools(
                 );
 
               // Emit XML for UI (MCP tools don't stream, so use onXmlComplete directly)
-              const content = JSON.stringify(args, null, 2);
+              const argsPreview = previewMcpPayload(
+                JSON.stringify(args, null, 2),
+                (ctx.mcpTranscriptBudget ??= createMcpTranscriptBudget()),
+              );
               const autoApprovedAttr = autoApprovedReason
                 ? ` auto-approved-reason="${escapeXmlAttr(autoApprovedReason)}"`
                 : "";
               ctx.onXmlComplete(
-                `<dyad-mcp-tool-call server="${escapeXmlAttr(serverName)}" tool="${escapeXmlAttr(toolName)}" call-id="${escapeXmlAttr(callId)}"${autoApprovedAttr}>\n${escapeXmlContent(content)}\n</dyad-mcp-tool-call>`,
+                `<dyad-mcp-tool-call server="${escapeXmlAttr(serverName)}" tool="${escapeXmlAttr(toolName)}" call-id="${escapeXmlAttr(callId)}"${autoApprovedAttr}${truncatedFromAttr(argsPreview)}>\n${escapeXmlContent(argsPreview.text)}\n</dyad-mcp-tool-call>`,
               );
               callEmitted = true;
 
@@ -3054,8 +3063,12 @@ async function getMcpTools(
                 result: safeResult.value,
               });
 
+              const resultPreview = previewMcpPayload(
+                safeResult.serialized,
+                (ctx.mcpTranscriptBudget ??= createMcpTranscriptBudget()),
+              );
               ctx.onXmlComplete(
-                `<dyad-mcp-tool-result server="${escapeXmlAttr(serverName)}" tool="${escapeXmlAttr(toolName)}" call-id="${escapeXmlAttr(callId)}">\n${escapeXmlContent(safeResult.serialized)}\n</dyad-mcp-tool-result>`,
+                `<dyad-mcp-tool-result server="${escapeXmlAttr(serverName)}" tool="${escapeXmlAttr(toolName)}" call-id="${escapeXmlAttr(callId)}"${truncatedFromAttr(resultPreview)}${toolTruncatedAttr(safeResult.truncated)}>\n${escapeXmlContent(resultPreview.text)}\n</dyad-mcp-tool-result>`,
               );
 
               return safeResult.serialized;
@@ -3076,12 +3089,24 @@ async function getMcpTools(
               // Terminate the merged card in an error state instead of leaving
               // it stuck on "Running" (only when its call card was emitted).
               if (callEmitted) {
+                const errorPreview = previewMcpPayload(
+                  safeErrorMessage,
+                  (ctx.mcpTranscriptBudget ??= createMcpTranscriptBudget()),
+                );
                 ctx.onXmlComplete(
-                  `<dyad-mcp-tool-result server="${escapeXmlAttr(serverName)}" tool="${escapeXmlAttr(toolName)}" call-id="${escapeXmlAttr(callId)}" is-error="true">\n${escapeXmlContent(safeErrorMessage)}\n</dyad-mcp-tool-result>`,
+                  `<dyad-mcp-tool-result server="${escapeXmlAttr(serverName)}" tool="${escapeXmlAttr(toolName)}" call-id="${escapeXmlAttr(callId)}" is-error="true"${truncatedFromAttr(errorPreview)}>\n${escapeXmlContent(errorPreview.text)}\n</dyad-mcp-tool-result>`,
                 );
               }
+              const outputMessage = previewMcpPayload(
+                safeErrorMessage,
+                (ctx.mcpTranscriptBudget ??= createMcpTranscriptBudget()),
+              ).text;
+              const outputDetails = previewMcpPayload(
+                safeErrorDetails,
+                (ctx.mcpTranscriptBudget ??= createMcpTranscriptBudget()),
+              ).text;
               ctx.onXmlComplete(
-                `<dyad-output type="error" message="MCP tool '${key}' failed: ${escapeXmlAttr(safeErrorMessage)}">${escapeXmlContent(safeErrorDetails)}</dyad-output>`,
+                `<dyad-output type="error" message="MCP tool '${key}' failed: ${escapeXmlAttr(outputMessage)}">${escapeXmlContent(outputDetails)}</dyad-output>`,
               );
               throw error;
             }

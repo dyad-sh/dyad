@@ -25,6 +25,18 @@ interface DyadMcpToolCallProps {
   state?: CustomTagState;
   /** The result is a tool error; shows a failure label. */
   isError?: boolean;
+  /** Original input length when the transcript holds only a prefix. */
+  inputTruncatedFrom?: number;
+  /** Original result length when the transcript holds only a prefix. */
+  resultTruncatedFrom?: number;
+  /** The result was cut before the agent received it. */
+  resultToolTruncated?: boolean;
+}
+
+// Transcript payloads sit between a newline after the opening tag and one
+// before the closing tag.
+function payloadLength(content: string): number {
+  return content.replace(/^\n/, "").replace(/\n$/, "").length;
 }
 
 function prettyJson(raw: string): string {
@@ -54,6 +66,9 @@ export const DyadMcpToolCall: React.FC<DyadMcpToolCallProps> = ({
   resultContent,
   state,
   isError,
+  inputTruncatedFrom,
+  resultTruncatedFrom,
+  resultToolTruncated,
 }) => {
   const { t } = useTranslation("chat");
   const serverName: string = node?.properties?.serverName || "";
@@ -68,6 +83,32 @@ export const DyadMcpToolCall: React.FC<DyadMcpToolCallProps> = ({
     () => (expanded ? prettyJson(raw) : ""),
     [expanded, raw],
   );
+  const counts = (shown: number, total: number) => ({
+    shown: shown.toLocaleString(),
+    total: total.toLocaleString(),
+  });
+  const inputNotice =
+    inputTruncatedFrom === undefined
+      ? null
+      : t("mcpInputTruncated", counts(payloadLength(raw), inputTruncatedFrom));
+  const resultNotice =
+    resultTruncatedFrom !== undefined
+      ? t(
+          isError
+            ? "mcpErrorTruncated"
+            : resultToolTruncated
+              ? "mcpResultBothTruncated"
+              : "mcpResultTruncated",
+          counts(payloadLength(resultContent ?? ""), resultTruncatedFrom),
+        )
+      : resultToolTruncated
+        ? t("mcpResultToolTruncated")
+        : null;
+  const truncationNotice = (text: string | null) =>
+    text && (
+      <div className="text-xs text-muted-foreground italic mt-1">{text}</div>
+    );
+
   const result = useMemo(
     () =>
       expanded && resultContent !== undefined
@@ -125,13 +166,17 @@ export const DyadMcpToolCall: React.FC<DyadMcpToolCallProps> = ({
             <CodeHighlight className="language-json">
               {prettyInput}
             </CodeHighlight>
+            {truncationNotice(inputNotice)}
             <div className="text-[11px] font-semibold text-muted-foreground mt-3 mb-1">
               Result
             </div>
             {result ? (
-              <CodeHighlight className={`language-${result.language}`}>
-                {result.text}
-              </CodeHighlight>
+              <>
+                <CodeHighlight className={`language-${result.language}`}>
+                  {result.text}
+                </CodeHighlight>
+                {truncationNotice(resultNotice)}
+              </>
             ) : resultContent !== undefined ? (
               <CodeHighlight className="language-json">{""}</CodeHighlight>
             ) : (
@@ -141,7 +186,12 @@ export const DyadMcpToolCall: React.FC<DyadMcpToolCallProps> = ({
             )}
           </>
         ) : (
-          <CodeHighlight className="language-json">{prettyInput}</CodeHighlight>
+          <>
+            <CodeHighlight className="language-json">
+              {prettyInput}
+            </CodeHighlight>
+            {truncationNotice(inputNotice)}
+          </>
         )}
       </DyadCardContent>
     </DyadCard>

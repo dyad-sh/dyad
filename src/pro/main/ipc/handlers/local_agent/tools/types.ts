@@ -14,6 +14,7 @@ import type { SqlConsentMetadata } from "@/shared/sqlConsentMetadata";
 import type { McpToolDef } from "./mcp_type_defs";
 import type { SuggestablePlugin } from "./suggest_plugin";
 import type { MutationActivityOwner } from "../subagents/mutation_activity_tracker";
+import type { McpTranscriptBudget } from "@/ipc/utils/mcp_transcript_preview";
 
 // ============================================================================
 // XML Escape Helpers
@@ -125,6 +126,8 @@ export interface AgentContext {
   workspaceMutated?: boolean;
   /** True after any directly registered or sandbox-hosted MCP tool succeeds. */
   mcpToolRan?: boolean;
+  /** Turn-scoped allowance for MCP payloads copied into the transcript. */
+  mcpTranscriptBudget?: McpTranscriptBudget;
   /**
    * Featured catalog plugins the user has not added, resolved once per turn.
    * Drives `suggest_plugin`'s availability and description.

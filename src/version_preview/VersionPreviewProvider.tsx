@@ -152,6 +152,12 @@ export function VersionPreviewProvider({ children }: PropsWithChildren) {
           queryClient.invalidateQueries({
             queryKey: queryKeys.problems.byApp({ appId: result.appId }),
           }),
+          // A database undo on an old-layout app leaks one more backup.
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.neon.developmentBranchStatus({
+              appId: result.appId,
+            }),
+          }),
         ]);
         if (result.notification?.kind === "success") {
           toast.success(result.notification.message);

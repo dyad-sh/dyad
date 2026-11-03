@@ -417,7 +417,7 @@ export function TestAssertionsPlanCard({
       // from the hand-performed flow, so the agent gets the spec back either
       // way. The parked turn picks it up as its tool result and carries on
       // without a visible message; a card whose turn is gone — or whose request
-      // expired between render and click — needs a new turn instead.
+      // was cancelled between render and click — needs a new turn instead.
       const handedToParkedTurn =
         isAgentWaiting &&
         (await userInputReadModel.respond(requestId, {
@@ -428,8 +428,8 @@ export function TestAssertionsPlanCard({
       // A hand-off that failed on a transient IPC error leaves the turn sitting
       // on this card. Starting a fresh turn there would queue a second
       // generation behind the parked one and hand the agent the same spec
-      // twice; `respond` has already surfaced the error, and the turn converges
-      // on its deadline. The spec is written either way, and the card says so.
+      // twice. The read model surfaces the error; the user can stop the
+      // waiting turn. The spec is written either way, and the card says so.
       if (!handedToParkedTurn && !isStillParked()) {
         // The stream manager answers "is this chat streaming?" — without that
         // guard the DB snapshot would overwrite the live messages of a stream
@@ -458,7 +458,7 @@ export function TestAssertionsPlanCard({
    * Close the plan without writing anything.
    *
    * Offered for every unanswered plan, not just a parked one. While a turn is
-   * waiting this is its exit that isn't the 30-minute deadline; with no turn
+   * waiting this explicitly ends the review; with no turn
    * waiting it is the ONLY exit, since the card is pinned to the composer
    * rather than scrolling away up the transcript — without it, a plan left over
    * from a stopped turn or a restart could only be dismissed by approving a
@@ -510,9 +510,8 @@ export function TestAssertionsPlanCard({
         // The card stays discarded rather than reverting: the latch above
         // already succeeded, so the stored plan *is* declined and showing it as
         // approvable again would only lead to "this plan was closed" on the
-        // next approve. `respond` has surfaced its own error, and a turn left
-        // parked converges on the same outcome at its deadline — a park that
-        // resolves to nothing is read as a close.
+        // next approve. The read model surfaces the response error; the user
+        // can stop the waiting turn.
         console.warn(
           `Discarded assertion plan ${proposalId}, but couldn't notify the parked turn`,
         );
@@ -900,7 +899,7 @@ export function TestAssertionsPlanCard({
                 composer is too narrow to keep it on the hint's line. */}
             <div className="ml-auto flex items-center gap-2">
               {/* Every unanswered plan gets an exit. While a turn is parked
-                  this saves it from its deadline; with none parked it is the
+                  this ends the review; with none parked it is the
                   only way to put the card down, since it no longer scrolls
                   away up the transcript. */}
               <button

@@ -33,6 +33,8 @@ export function queryKeysForInvalidationScope(
       return [
         queryKeys.apps.detail({ appId: scope.appId }),
         queryKeys.appEnvVars.byApp({ appId: scope.appId }),
+        // Follows the app's Neon branches and deploy database.
+        queryKeys.neon.developmentBranchStatus({ appId: scope.appId }),
       ];
     case "coolify":
       return [

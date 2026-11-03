@@ -317,12 +317,12 @@ export async function createTempTestBranch(
   let cookieSecret: string | undefined;
   if (await appUsesNeonAuth(appData, appPathOverride)) {
     try {
-      // Wrap in retryOnLocked so getNeonAuth/createNeonAuth back off on a
-      // locked branch (423) or rate limit (429) instead of failing the run.
-      neonAuthBaseUrl = await retryOnLocked(
-        () => ensureNeonAuth({ projectId, branchId: branch.id }),
-        `Ensure Neon Auth for test branch ${branch.id}`,
-      );
+      // ensureNeonAuth backs off on a locked branch (423) or rate limit
+      // (429) itself, instead of failing the run.
+      neonAuthBaseUrl = await ensureNeonAuth({
+        projectId,
+        branchId: branch.id,
+      });
       if (neonAuthBaseUrl) {
         // The test branch mirrors the development branch's auth config.
         cookieSecret = await getOrCreateNeonAuthCookieSecret({
@@ -531,10 +531,7 @@ async function restoreRealBranchEnvVars(appData: AppRow): Promise<boolean> {
     let neonAuthBaseUrl: string | undefined;
     let cookieSecret: string | undefined;
     if (await appUsesNeonAuth(appData)) {
-      neonAuthBaseUrl = await retryOnLocked(
-        () => ensureNeonAuth({ projectId, branchId }),
-        `Restore Neon Auth env for app ${appData.id}`,
-      );
+      neonAuthBaseUrl = await ensureNeonAuth({ projectId, branchId });
       if (!neonAuthBaseUrl) {
         throw new Error(
           "Neon Auth could not be resolved for the app's real branch.",

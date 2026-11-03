@@ -339,6 +339,7 @@ export type {
   GetNeonProjectResponse,
   ListNeonProjectsResponse,
   NeonAuthEmailAndPasswordConfig,
+  NeonDevelopmentBranchStatus,
 } from "./neon";
 
 // Migration types

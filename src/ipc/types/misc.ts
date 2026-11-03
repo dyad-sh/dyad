@@ -6,6 +6,7 @@ import {
   createEventClient,
 } from "../contracts/core";
 import { ConsoleEntrySchema } from "./supabase";
+import { MAX_LOGS_PER_APP } from "../../shared/log_limits";
 import { ProblemReportSchema } from "./agent";
 import { ChatStreamInvocationRefSchema } from "./chat";
 import { AppRunInvocationRefSchema } from "./app";
@@ -76,12 +77,14 @@ const DebugSystemInfoSchema = z.object({
 
 // -- Non-sensitive settings snapshot --
 
-const DebugSettingsSchema = z.object({
+export const DebugSettingsSchema = z.object({
   /** Currently selected language model */
   selectedModel: z.object({
     name: z.string(),
     provider: z.string(),
     customModelId: z.number().optional(),
+    /** How the model is routed: "subscription" | "pro" | "api-key" */
+    connection: z.string().optional(),
   }),
   /** Active chat mode for the session */
   selectedChatMode: z.string().nullable(),
@@ -125,7 +128,70 @@ const DebugSettingsSchema = z.object({
   customNodePath: z.string().nullable(),
   /** Map of provider ID -> whether configured (has API key). No secrets. */
   providerSetupStatus: z.record(z.string(), z.boolean()),
+  // Also reported through telemetry
+  autoApproveNonSchemaSql: z.boolean().nullable(),
+  autoApproveSafeMcpTools: z.boolean().nullable(),
+  enableShellTool: z.boolean().nullable(),
+  blockUnsafeNpmPackages: z.boolean().nullable(),
+  enableCodeExplorer: z.boolean().nullable(),
+  enableExplorerSubagent: z.boolean().nullable(),
+  enableImplementerSubagent: z.boolean().nullable(),
+  enableAdvancedSubagents: z.boolean().nullable(),
+  enableAutoReview: z.boolean().nullable(),
+  enableReviewButton: z.boolean().nullable(),
+  autoFixReviewIssues: z.boolean().nullable(),
+  enableContextCompaction: z.boolean().nullable(),
+  enableMcpToolSearch: z.boolean().nullable(),
+  enableSandboxScriptExecution: z.boolean().nullable(),
+  enableSuggestedPrompts: z.boolean().nullable(),
+  enableMultiWindow: z.boolean().nullable(),
+  enableOwnServerDeployment: z.boolean().nullable(),
+  enableGitlabPublishing: z.boolean().nullable(),
+  enableTestRunInPreview: z.boolean().nullable(),
+  disableSandboxedE2eTests: z.boolean().nullable(),
+  enableAppPreviewDomains: z.boolean().nullable(),
+  enablePreviewCookieIsolation: z.boolean().nullable(),
+  proModelUsage: z.string().nullable(),
+  chatgptFastMode: z.boolean().nullable(),
+  language: z.string().nullable(),
+  nodeRuntimePreference: z.string().nullable(),
+  disablePreviewNodeAutoInstall: z.boolean().nullable(),
+  previewIdleTimeoutPolicy: z.string().nullable(),
+  maxToolCallSteps: z.number().nullable(),
+  /** Whether a credential is stored. No secrets or account details. */
+  githubConnected: z.boolean(),
+  gitlabConnected: z.boolean(),
+  vercelConnected: z.boolean(),
+  cloudflareConnected: z.boolean(),
+  coolifyConnected: z.boolean(),
+  supabaseConnected: z.boolean(),
+  neonConnected: z.boolean(),
+  enableAppBlueprint: z.boolean().nullable(),
+  enableTestingForNewApps: z.boolean().nullable(),
+  enableClaudeCodeSubscription: z.boolean().nullable(),
+  /** Raw ID; community templates are "org/repo" */
+  selectedTemplateId: z.string(),
+  /** Raw ID; custom themes are "custom:<id>" */
+  selectedThemeId: z.string().nullable(),
+  // Chat sessions only
+  runTypeScriptForWholeProject: z.boolean().nullable(),
+  autoExpandPreviewPanel: z.boolean().nullable(),
+  testHeaded: z.boolean().nullable(),
+  testParallel: z.boolean().nullable(),
+  testSlowMo: z.boolean().nullable(),
+  skipPruneEdgeFunctions: z.boolean().nullable(),
+  enablePnpmMinimumReleaseAgeWarning: z.boolean().nullable(),
+  hidePnpmMinimumReleaseAgeWarning: z.boolean().nullable(),
+  acceptedCommunityCode: z.boolean().nullable(),
+  enableChatEventNotifications: z.boolean().nullable(),
+  isTestMode: z.boolean().nullable(),
+  /** Whether a custom apps folder is set. The path itself is excluded. */
+  hasCustomAppsFolder: z.boolean(),
+  /** Plugin catalog slugs the user asked never to be suggested */
+  neverSuggestPluginSlugs: z.array(z.string()).nullable(),
 });
+
+export type DebugSettings = z.infer<typeof DebugSettingsSchema>;
 
 // -- App metadata --
 
@@ -584,6 +650,17 @@ export const miscContracts = {
   addLog: defineContract({
     channel: "add-log",
     input: ConsoleEntrySchema,
+    output: z.void(),
+  }),
+
+  // Batched form for high-volume sources such as the preview console. The
+  // main store keeps only MAX_LOGS_PER_APP entries per app, so a larger
+  // batch would be trimmed anyway.
+  addLogs: defineContract({
+    channel: "add-logs",
+    input: z.object({
+      entries: z.array(ConsoleEntrySchema).max(MAX_LOGS_PER_APP),
+    }),
     output: z.void(),
   }),
 

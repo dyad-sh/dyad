@@ -152,6 +152,36 @@ describe("MCP chat flows (integration)", () => {
     );
   }, 60_000);
 
+  it("bounds large MCP payloads in the transcript but passes them through whole", async () => {
+    await ipc.settings.setUserSettings({ autoApproveSafeMcpTools: true });
+    await harness.mcp.addStdioServer();
+    const chatId = await mountChat();
+
+    const streamEnd = harness.waitForNextStreamEnd(chatId, 60_000);
+    const { send } = await harness.typeInChat(
+      "tc=local-agent/mcp-large-payloads",
+      { chatId },
+    );
+    send();
+    await streamEnd;
+    expect(await screen.findByText(/LARGE_PAYLOADS_DONE/)).toBeTruthy();
+
+    // 30 calls send 3 MB of arguments. Each 200 KB result is cut to 128 KB
+    // before the agent receives it, so 3.8 MB of results come back.
+    const chat = await ipc.chat.getChat(chatId);
+    const content = chat.messages[chat.messages.length - 1].content;
+    expect(content.length).toBeLessThan(2_500_000);
+    expect(content.match(/<dyad-mcp-tool-call /g)).toHaveLength(30);
+    expect(content.match(/received 100000 chars/g)).toHaveLength(30);
+    expect(content.match(/tool-truncated="true"/g)).toHaveLength(30);
+
+    fireEvent.click(screen.getAllByText("ingest_payload")[0]);
+    expect(
+      await screen.findByText(/The input itself was not shortened/),
+    ).toBeTruthy();
+    expect(screen.getByText(/was cut before the agent got it/)).toBeTruthy();
+  }, 90_000);
+
   it("renders MCP tool search cards in local-agent search mode", async () => {
     const previousThreshold = process.env.DYAD_MCP_INLINE_TOKEN_THRESHOLD;
     process.env.DYAD_MCP_INLINE_TOKEN_THRESHOLD = "0";

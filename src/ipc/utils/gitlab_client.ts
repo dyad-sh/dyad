@@ -1,3 +1,4 @@
+import { net } from "electron";
 import log from "electron-log";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
@@ -205,10 +206,13 @@ export class GitLabClient {
       ? AbortSignal.any([this.options.signal, timeout])
       : timeout;
     try {
-      res = await fetch(`${this.base}/api/v4${path}`, {
+      // Use Chromium's certificate verification and system proxy support for
+      // self-hosted instances whose company CA is not in Node's trust store.
+      res = await net.fetch(`${this.base}/api/v4${path}`, {
         method,
         signal,
-        // The token header is the only credential wanted here.
+        // net.fetch uses the default Electron session; omit its cookies so
+        // the personal access token remains the only GitLab credential.
         credentials: "omit",
         headers: {
           // The header form every GitLab version accepts for a personal access

@@ -1,7 +1,17 @@
 import { expect } from "@playwright/test";
-import { testSkipIfWindows, Timeout } from "./helpers/test_helper";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { testWithConfigSkipIfWindows, Timeout } from "./helpers/test_helper";
 
-testSkipIfWindows(
+testWithConfigSkipIfWindows({
+  preLaunchHook: async ({ userDataDir }) => {
+    await fs.mkdir(userDataDir, { recursive: true });
+    await fs.writeFile(
+      path.join(userDataDir, "user-settings.json"),
+      JSON.stringify({ enableNeonBranchProtection: false }),
+    );
+  },
+})(
   "unified database section shows env vars for development and production",
   async ({ po }) => {
     await po.setUp({ autoApprove: true });

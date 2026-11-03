@@ -58,3 +58,11 @@ export const screenshotDataUrlAtom = atom<string | null>(null);
 export const pendingVisualChangesAtom = atom<Map<string, VisualEditingChange>>(
   new Map(),
 );
+
+/**
+ * Apps whose Neon migration banner was closed. Session-local on purpose: the
+ * banner returns on the next launch until the app is migrated.
+ */
+export const dismissedNeonMigrationBannerAppIdsAtom = atom<ReadonlySet<number>>(
+  new Set<number>(),
+);

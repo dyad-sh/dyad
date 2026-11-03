@@ -36,6 +36,7 @@ import {
 import {
   DEFAULT_SHOW_SYSTEM_RESOURCE_USAGE,
   DEFAULT_ENABLE_PREVIEW_COOKIE_ISOLATION,
+  DEFAULT_ENABLE_NEON_BRANCH_PROTECTION,
   DEFAULT_ENABLE_TESTING_FOR_NEW_APPS,
 } from "@/shared/settings_defaults";
 
@@ -76,6 +77,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   enableCodeExplorer: true,
   runTypeScriptForWholeProject: false,
   enableMultiWindow: false,
+  enableNeonBranchProtection: DEFAULT_ENABLE_NEON_BRANCH_PROTECTION,
   enableClaudeCodeSubscription: false,
   enableExplorerSubagent: true,
   enableAutoReview: false,

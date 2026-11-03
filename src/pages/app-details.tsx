@@ -67,6 +67,7 @@ import { useAppCollections } from "@/hooks/useAppCollections";
 import { AssignAppsToCollectionDialog } from "@/components/AssignAppsToCollectionDialog";
 import { useTranslation } from "react-i18next";
 import { queryKeys } from "@/lib/queryKeys";
+import { appLogForwarder } from "@/lib/app_log_forwarder";
 
 function UnavailableIntegrationCard({
   provider,
@@ -187,6 +188,9 @@ export default function AppDetailsPage() {
 
     try {
       setIsDeleting(true);
+      // Otherwise a pending batch would recreate this app's log buffer in
+      // main after deletion clears it.
+      appLogForwarder.discard(appId);
       await ipc.app.deleteApp({ appId });
       setIsDeleteDialogOpen(false);
       setSelectedAppId(null);

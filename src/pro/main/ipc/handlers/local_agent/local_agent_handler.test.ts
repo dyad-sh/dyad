@@ -448,6 +448,7 @@ import {
   deployAllFunctionsIfNeeded,
 } from "@/pro/main/ipc/handlers/local_agent/processors/file_operations";
 import { MCP_RESULT_MAX_BYTES } from "@/ipc/utils/mcp_result_sanitizer";
+import { MCP_TRANSCRIPT_PAYLOAD_MAX_CHARS } from "@/ipc/utils/mcp_transcript_preview";
 import type { AiMessagesJsonV6 } from "@/db/schema";
 import { getModelClient } from "@/ipc/utils/get_model_client";
 
@@ -1557,8 +1558,130 @@ describe("handleLocalAgentStream", () => {
         .filter((operation) => typeof operation.data.content === "string")
         .map((operation) => operation.data.content as string)
         .join("\n");
-      expect(persistedContent).toContain("_dyadMcpTruncation");
+      expect(persistedContent).toMatch(
+        /<dyad-mcp-tool-result [^>]*truncated-from="\d+" tool-truncated="true">/,
+      );
       expect(persistedContent).not.toContain(hugeText);
+    });
+
+    it("bounds a large direct MCP error in the transcript", async () => {
+      const { event } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat();
+      mockMcpServers = [{ id: 42, name: "srv" }];
+      const message = "e".repeat(MCP_TRANSCRIPT_PAYLOAD_MAX_CHARS * 2);
+      mockMcpToolSet = {
+        fail: {
+          description: "Fail with a large error",
+          inputSchema: jsonSchema({ type: "object" }),
+          execute: vi.fn().mockRejectedValue(new Error(message)),
+        },
+      };
+      mockRequireMcpToolConsent.mockResolvedValue({ approved: true });
+      mockStreamTextImpl = (options) => ({
+        fullStream: (async function* () {
+          try {
+            await options.tools.srv__fail.execute(
+              {},
+              { toolCallId: "fail-call", messages: [] },
+            );
+          } catch {
+            /* Expected failure. */
+          }
+          yield { type: "text-delta", text: "Done" };
+        })(),
+        response: Promise.resolve({ messages: [] }),
+        steps: Promise.resolve([{ toolCalls: [] }]),
+      });
+
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "use the MCP tool" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      const persistedContent = dbOperations.updates
+        .map((operation) => operation.data.content)
+        .filter((content): content is string => typeof content === "string")
+        .at(-1)!;
+      const outputXml = persistedContent.match(
+        /<dyad-output type="error"[\s\S]*?<\/dyad-output>/,
+      )?.[0];
+      expect(outputXml).toContain("MCP tool 'srv__fail' failed");
+      expect(outputXml!.length).toBeLessThan(
+        MCP_TRANSCRIPT_PAYLOAD_MAX_CHARS * 2 + 1_000,
+      );
+    });
+
+    it("caps the transcript copy of direct MCP payloads but passes them through whole", async () => {
+      const { event } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat();
+      mockMcpServers = [{ id: 42, name: "srv" }];
+      const bigPayload = "p".repeat(MCP_TRANSCRIPT_PAYLOAD_MAX_CHARS * 2);
+      const bigResult = "r".repeat(MCP_TRANSCRIPT_PAYLOAD_MAX_CHARS + 20_000);
+      const execute = vi.fn().mockResolvedValue({
+        content: [{ type: "text", text: bigResult }],
+      });
+      mockMcpToolSet = {
+        ingest: {
+          description: "Accept a large payload",
+          inputSchema: jsonSchema({
+            type: "object",
+            properties: { payload: { type: "string" } },
+          }),
+          execute,
+        },
+      };
+
+      let returnedOutput = "";
+      mockStreamTextImpl = (options) => ({
+        fullStream: (async function* () {
+          returnedOutput = await options.tools.srv__ingest.execute(
+            { payload: bigPayload },
+            { toolCallId: "call-1", messages: [] },
+          );
+          yield {
+            type: "tool-call",
+            toolCallId: "call-1",
+            toolName: "srv__ingest",
+            input: { payload: bigPayload },
+          };
+        })(),
+        response: Promise.resolve({ messages: [] }),
+        steps: Promise.resolve([{ toolCalls: [{ toolName: "srv__ingest" }] }]),
+      });
+
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "use the MCP tool" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      expect(execute.mock.calls[0][0]).toEqual({ payload: bigPayload });
+      expect(returnedOutput).toContain(bigResult);
+      const persisted = dbOperations.updates
+        .map((operation) => operation.data.content)
+        .filter((content): content is string => typeof content === "string")
+        .at(-1);
+      expect(persisted).toMatch(
+        /<dyad-mcp-tool-call [^>]*truncated-from="\d+">/,
+      );
+      expect(persisted).toMatch(
+        /<dyad-mcp-tool-result [^>]*truncated-from="\d+">/,
+      );
+      expect(persisted).not.toContain(bigPayload);
+      expect(persisted).not.toContain(bigResult);
     });
   });
 

@@ -150,7 +150,7 @@ export class PreviewPanel {
   }
 
   /**
-   * Press Record and accept the storage warning.
+   * Press Record, accept the storage warning, and wait for capture to be ready.
    *
    * Starting a recording clears the preview's cookies and local storage, so
    * every entry point (this one and the Tests panel's) asks first. Takes the
@@ -161,6 +161,11 @@ export class PreviewPanel {
     await this.page
       .getByTestId("recording-storage-warning-continue")
       .click({ timeout: Timeout.MEDIUM });
+    // The bar also renders during setup, while the preview is being reloaded.
+    // Stop only appears once the new document's recorder has been armed.
+    await expect(
+      this.page.getByTestId("preview-recording-stop-button"),
+    ).toBeVisible({ timeout: Timeout.EXTRA_LONG });
   }
 
   async clickRecheckProblems() {

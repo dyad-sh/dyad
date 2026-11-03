@@ -46,7 +46,10 @@ import {
   ensureRecentViewedChatIdAtom,
   initializeChatTabSessionStorageAtom,
 } from "./atoms/chatAtoms";
-import { startChatDraftPersistence } from "./atoms/chatDraftStorage";
+import {
+  startChatDraftPersistence,
+  pruneChatDrafts,
+} from "./atoms/chatDraftStorage";
 import {
   configureChatTabWindowSession,
   promoteMostRecentChatTabSession,
@@ -317,6 +320,25 @@ function RendererServices() {
   // before the router mounts so a reopened chat shows its prompt immediately,
   // then keep every edit in sync with localStorage.
   useEffect(() => startChatDraftPersistence(store), [store]);
+
+  // App deletion removes chats without the per-chat cleanup path, so drop any
+  // draft whose chat is gone. Runs once IPC is reachable.
+  useEffect(() => {
+    if (!windowReady) return;
+    let cancelled = false;
+    void ipc.chat
+      .getChats(undefined)
+      .then((chats) => {
+        if (cancelled) return;
+        pruneChatDrafts(store, new Set(chats.map((chat) => chat.id)));
+      })
+      .catch((error) => {
+        console.error("Failed to prune chat input drafts", error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [store, windowReady]);
 
   useEffect(() => {
     if (!windowReady) return;

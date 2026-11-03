@@ -3,7 +3,7 @@
  * Provides Electron app launching and PageObject initialization.
  */
 
-import { test as base } from "@playwright/test";
+import { test as base, type TestInfo } from "@playwright/test";
 import * as eph from "electron-playwright-helpers";
 import { ElectronApplication, _electron as electron } from "playwright";
 import os from "os";
@@ -67,6 +67,35 @@ export async function launchElectronApp({
   (electronApp as any).$dyadUserDataDir = userDataDir;
   (electronApp as any).$fakeLlmPort = fakeLlmPort;
   return electronApp;
+}
+
+export async function launchDyadWithProfile({
+  userDataDir,
+  fakeLlmPort,
+  testInfo,
+}: {
+  userDataDir: string;
+  fakeLlmPort: number;
+  testInfo: TestInfo;
+}): Promise<{ electronApp: ElectronApplication; po: PageObject }> {
+  const electronApp = await launchElectronApp({
+    userDataDir,
+    fakeLlmPort,
+    parallelIndex: testInfo.parallelIndex,
+  });
+  const page = await electronApp.firstWindow();
+  const po = new PageObject(electronApp, page, {
+    userDataDir,
+    fakeLlmPort,
+    testInfo,
+  });
+  await page.evaluate(async () => {
+    await (window as any).electron.ipcRenderer.invoke("set-user-settings", {
+      enablePnpmMinimumReleaseAgeWarning: false,
+      hidePnpmMinimumReleaseAgeWarning: true,
+    });
+  });
+  return { electronApp, po };
 }
 
 // Close through Playwright first so it tears down its Electron protocol

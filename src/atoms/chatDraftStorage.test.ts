@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createStore } from "jotai";
 import { chatInputValuesByIdAtom } from "./chatAtoms";
 import {
@@ -6,6 +6,7 @@ import {
   chatDraftStorageKey,
   loadChatDrafts,
   persistChatDraftChanges,
+  pruneChatDrafts,
   startChatDraftPersistence,
   writeChatDraft,
 } from "./chatDraftStorage";
@@ -34,17 +35,37 @@ describe("chat draft storage", () => {
     expect(loadChatDrafts(localStorage)).toEqual(new Map());
   });
 
-  it("persists only changed entries and deletes removed chats", () => {
-    writeChatDraft(localStorage, 2, "stored-two");
+  it("writes changed drafts and leaves unchanged ones alone", () => {
+    // A stale stored value for chat 1 stands in for "the writer did not touch
+    // this key": if the unchanged entry were rewritten, it would read "stale".
+    localStorage.setItem(chatDraftStorageKey(1), "untouched-by-writer");
     persistChatDraftChanges(
       localStorage,
       new Map([
-        [1, "unchanged"],
-        [2, "stored-two"],
+        [1, "same"],
+        [2, "old"],
       ]),
-      new Map([[1, "unchanged"]]),
+      new Map([
+        [1, "same"],
+        [2, "new"],
+      ]),
     );
-    expect(localStorage.getItem(chatDraftStorageKey(2))).toBeNull();
+    expect(localStorage.getItem(chatDraftStorageKey(1))).toBe(
+      "untouched-by-writer",
+    );
+    expect(localStorage.getItem(chatDraftStorageKey(2))).toBe("new");
+  });
+
+  it("keeps the stored key when a chat leaves the snapshot (tab hand-off)", () => {
+    // A cross-window transfer removes the chat from the source map, but the
+    // destination already wrote the handed-off draft under the same key.
+    writeChatDraft(localStorage, 3, "handed off");
+    persistChatDraftChanges(
+      localStorage,
+      new Map([[3, "handed off"]]),
+      new Map(),
+    );
+    expect(localStorage.getItem(chatDraftStorageKey(3))).toBe("handed off");
   });
 
   it("restores drafts into a fresh store and keeps writing changes", () => {
@@ -60,7 +81,7 @@ describe("chat draft storage", () => {
     expect(second.get(chatInputValuesByIdAtom).get(11)).toBe("draft-eleven");
 
     // Clearing the composer clears the stored draft too.
-    second.set(chatInputValuesByIdAtom, new Map());
+    second.set(chatInputValuesByIdAtom, new Map([[11, ""]]));
     expect(localStorage.getItem(chatDraftStorageKey(11))).toBeNull();
     stopSecond();
   });
@@ -72,5 +93,42 @@ describe("chat draft storage", () => {
     const stop = startChatDraftPersistence(store);
     expect(store.get(chatInputValuesByIdAtom).get(5)).toBe("typed");
     stop();
+  });
+
+  it("prunes drafts whose chat no longer exists, in memory and on disk", () => {
+    writeChatDraft(localStorage, 1, "keep");
+    writeChatDraft(localStorage, 2, "stale");
+    const store = createStore();
+    store.set(
+      chatInputValuesByIdAtom,
+      new Map([
+        [1, "keep"],
+        [2, "stale"],
+      ]),
+    );
+    pruneChatDrafts(store, new Set([1]));
+    expect(store.get(chatInputValuesByIdAtom)).toEqual(new Map([[1, "keep"]]));
+    expect(localStorage.getItem(chatDraftStorageKey(1))).toBe("keep");
+    expect(localStorage.getItem(chatDraftStorageKey(2))).toBeNull();
+  });
+
+  it("degrades to a no-op when storage access throws", () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    const spy = vi
+      .spyOn(window, "localStorage", "get")
+      .mockImplementation(() => {
+        throw new Error("storage blocked");
+      });
+    try {
+      const store = createStore();
+      const stop = startChatDraftPersistence(store);
+      expect(() => stop()).not.toThrow();
+      expect(() => pruneChatDrafts(store, new Set())).not.toThrow();
+    } finally {
+      spy.mockRestore();
+      consoleError.mockRestore();
+    }
   });
 });

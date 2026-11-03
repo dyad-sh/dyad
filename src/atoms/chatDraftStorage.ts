@@ -52,18 +52,20 @@ export function writeChatDraft(
 }
 
 /**
- * Persist only the chats whose draft changed between two snapshots. Removing a
- * chat from `next` deletes its stored key, so clearing or pruning a draft in
- * memory also clears it on disk.
+ * Persist the chats whose draft changed between two snapshots. An emptied draft
+ * clears its key.
+ *
+ * A chat dropping out of `next` is intentionally not treated as a deletion:
+ * that happens both when a chat is deleted and when its tab is handed to
+ * another window, and the destination writes the handed-off draft under the
+ * same shared key. Deleting it here would erase the destination's copy. Stale
+ * keys for deleted chats are cleaned up by `pruneChatDrafts` instead.
  */
 export function persistChatDraftChanges(
   storage: Storage,
   previous: ReadonlyMap<number, string>,
   next: ReadonlyMap<number, string>,
 ): void {
-  for (const chatId of previous.keys()) {
-    if (!next.has(chatId)) storage.removeItem(chatDraftStorageKey(chatId));
-  }
   for (const [chatId, draft] of next) {
     if (previous.get(chatId) === draft) continue;
     writeChatDraft(storage, chatId, draft);
@@ -71,7 +73,13 @@ export function persistChatDraftChanges(
 }
 
 function getRendererStorage(): Storage | undefined {
-  return typeof window === "undefined" ? undefined : window.localStorage;
+  try {
+    return typeof window === "undefined" ? undefined : window.localStorage;
+  } catch (error) {
+    // A blocked storage getter must not stop the app from rendering.
+    console.error("Failed to access chat input draft storage", error);
+    return undefined;
+  }
 }
 
 /**
@@ -112,4 +120,34 @@ export function startChatDraftPersistence(store: JotaiStore): () => void {
     }
     previous = new Map(next);
   });
+}
+
+/**
+ * Drop drafts whose chat no longer exists, in memory and on disk. App deletion
+ * removes chats without going through the per-chat cleanup path, so without
+ * this a stale draft would be reloaded on every launch.
+ */
+export function pruneChatDrafts(
+  store: JotaiStore,
+  validChatIds: ReadonlySet<number>,
+): void {
+  const storage = getRendererStorage();
+  if (!storage) return;
+  try {
+    for (const chatId of loadChatDrafts(storage).keys()) {
+      if (!validChatIds.has(chatId)) {
+        storage.removeItem(chatDraftStorageKey(chatId));
+      }
+    }
+    const current = store.get(chatInputValuesByIdAtom);
+    let next: Map<number, string> | undefined;
+    for (const chatId of current.keys()) {
+      if (validChatIds.has(chatId)) continue;
+      next ??= new Map(current);
+      next.delete(chatId);
+    }
+    if (next) store.set(chatInputValuesByIdAtom, next);
+  } catch (error) {
+    console.error("Failed to prune chat input drafts", error);
+  }
 }

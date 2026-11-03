@@ -1,40 +1,14 @@
-import { PageObject, test, Timeout } from "./helpers/test_helper";
-import { expect, test as baseTest, type TestInfo } from "@playwright/test";
+import { test, Timeout } from "./helpers/test_helper";
+import { expect, test as baseTest } from "@playwright/test";
 import fs from "fs";
 import os from "os";
 import path from "path";
 import type { ElectronApplication } from "playwright";
 import { FAKE_LLM_BASE_PORT } from "./helpers/test-ports";
-import { launchElectronApp, terminateElectronApp } from "./helpers/fixtures";
-
-async function launchDyadWithProfile({
-  userDataDir,
-  fakeLlmPort,
-  testInfo,
-}: {
-  userDataDir: string;
-  fakeLlmPort: number;
-  testInfo: TestInfo;
-}) {
-  const electronApp = await launchElectronApp({
-    userDataDir,
-    fakeLlmPort,
-    parallelIndex: testInfo.parallelIndex,
-  });
-  const page = await electronApp.firstWindow();
-  const po = new PageObject(electronApp, page, {
-    userDataDir,
-    fakeLlmPort,
-    testInfo,
-  });
-  await page.evaluate(async () => {
-    await (window as any).electron.ipcRenderer.invoke("set-user-settings", {
-      enablePnpmMinimumReleaseAgeWarning: false,
-      hidePnpmMinimumReleaseAgeWarning: true,
-    });
-  });
-  return { electronApp, po };
-}
+import {
+  launchDyadWithProfile,
+  terminateElectronApp,
+} from "./helpers/fixtures";
 
 test("chat input is preserved when switching between chats", async ({ po }) => {
   await po.setUp({ autoApprove: true });

@@ -13,6 +13,19 @@ exits. Keep Windows quit cleanup on direct `taskkill.exe` argv and avoid
 
 - PowerShell startup can exceed a short test timeout before the first command runs. For tool-level partial-edit tests, mock the process result and write the fixture during the mock; keep real deadline and shutdown checks in subprocess tests.
 
+## Never let Git delete a tree that may contain junctions
+
+Git for Windows treats a junction as an ordinary directory, and `npm`/`pnpm` create them on every install. `git worktree remove --force` on an installed tree therefore has two failure modes, neither involving a lock or a surviving process:
+
+- **A live junction is deleted through.** The target's real files are erased and Git exits 0. An npm `file:` or pnpm `link:` dependency on an absolute path makes that target the user's own package. Reproduced with real installs of both.
+- **A junction whose target Git already deleted is counted as gone**, so its parent's `rmdir` fails with `Directory not empty`. Every pnpm install hits this, because `.pnpm` links packages to each other. Whether it fails depends only on directory sort order, so a small fixture can pass by luck.
+
+Git drops the worktree's registration even when it fails to delete the tree, so a retry only reports `is not a working tree`.
+
+Delete with `fs.rm`, which removes a link without following it and was 2–5x faster than Git on real pnpm and npm trees, then run `git worktree remove --force` on the now-missing path to withdraw that one registration. Don't use `git worktree prune`: it is repository-wide, so it also forgets the user's worktrees on an unplugged drive, and it exits 0 when it could not delete the metadata. `removeGitOverlayWorkspace` is the one implementation. `git_overlay_workspace_teardown.integration.test.ts` guards it with real junctions, and `DYAD_LIVE_TEARDOWN_TEST=1` adds a real pnpm install and Vite server.
+
+This applies to your own tooling too. A temporary worktree whose `node_modules` is a junction to the main checkout's, as in the pre-existing-failure check in `AGENTS.md`, would have the real `node_modules` emptied by `git worktree remove`. Delete the junction first, and confirm it is gone before removing the worktree.
+
 ## A bare command name becomes a `.cmd` shim
 
 `resolveWindowsExecutableName` appends `.cmd` to any command without a `.` in it (`npm` → `npm.cmd`), because that's what the command really is on Windows. This means **`node`, `npx`, and `npm` all take the `cmd.exe` path**, not the direct-exec path — only a name with an extension (`node.exe`) passes through unchanged. Assuming otherwise is an easy way to write a test that asserts the wrong branch.

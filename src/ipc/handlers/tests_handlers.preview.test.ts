@@ -874,7 +874,7 @@ test("prints a fixture secret", async ({}, testInfo) => {
           return {
             code: 1,
             stdout: "",
-            stderr: "runner unavailable",
+            stderr: "runner unavailable at /home/private/project",
             aborted: false,
             timedOut: false,
           };
@@ -923,7 +923,9 @@ test("prints a fixture secret", async ({}, testInfo) => {
         expect(message!.indexOf("runner unavailable")).toBeLessThan(
           message!.indexOf("Dyad couldn't"),
         );
-        expect(logs).toContain("runner unavailable");
+        expect(logs).toContain("Test runner also failed");
+        expect(logs).not.toContain("runner unavailable");
+        expect(logs).not.toContain("/home/private/project");
       }
       const finished = h.broadcast.mock.calls.find(
         ([, channel, payload]) =>

@@ -324,6 +324,18 @@ function httpStatus(error: unknown): number | undefined {
     : undefined;
 }
 
+/** A Supabase lifecycle step can also fail in local application code. */
+function failureKind(
+  error: unknown,
+  status = httpStatus(error),
+): DyadErrorKind {
+  if (error instanceof DyadError) return error.kind;
+  const { codes, timedOut } = transportFailure(error);
+  return status !== undefined || codes.length > 0 || timedOut
+    ? DyadErrorKind.External
+    : DyadErrorKind.Internal;
+}
+
 export class SupabaseTestUserOperationError extends DyadError {
   readonly providerCode?: keyof typeof PROVIDER_ERROR_REASONS;
   readonly userMessage: string;
@@ -347,7 +359,7 @@ export class SupabaseTestUserOperationError extends DyadError {
           }`;
     super(
       `Supabase couldn't ${OPERATIONS[operation]}. ${detail}`,
-      DyadErrorKind.External,
+      failureKind(cause, status),
       { cause },
     );
     // Retain only an allowlisted code, never the parsed response or its text.
@@ -413,7 +425,7 @@ class SupabaseTestUserStepError extends DyadError {
         : transportDiagnostic(error);
     super(
       `Supabase test database ${step} failed. ${detail}`,
-      error instanceof DyadError ? error.kind : DyadErrorKind.External,
+      failureKind(error),
       { cause: error },
     );
     const message =

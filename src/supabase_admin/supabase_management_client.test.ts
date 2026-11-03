@@ -214,9 +214,16 @@ describe("listSupabaseOrganizations", () => {
 describe("refreshSupabaseToken", () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it.each([null, "org-1"])(
-    "preserves safe reconnect guidance when refreshing credentials for %s fails",
-    async (organizationSlug) => {
+  it.each(
+    [null, "org-1"].flatMap((organizationSlug) =>
+      [400, 401, 403, 404, 429, 500, 503].map((status) => ({
+        organizationSlug,
+        status,
+      })),
+    ),
+  )(
+    "classifies refresh HTTP $status for $organizationSlug with safe recovery guidance",
+    async ({ organizationSlug, status }) => {
       const credentials = {
         accessToken: { value: "expired-access-token" },
         refreshToken: { value: "private-refresh-token" },
@@ -232,7 +239,7 @@ describe("refreshSupabaseToken", () => {
         "fetch",
         vi.fn().mockResolvedValue(
           new Response("private response body", {
-            status: 403,
+            status,
             statusText: "private response status",
           }),
         ),
@@ -242,11 +249,19 @@ describe("refreshSupabaseToken", () => {
         (error) => error,
       );
       expect(error).toBeInstanceOf(SupabaseTokenRefreshError);
-      expect(error.kind).toBe(DyadErrorKind.External);
-      expect(error.message).toContain("HTTP 403");
-      expect(error.userMessage).toContain(
-        "Go to Settings to disconnect Supabase and then reconnect",
-      );
+      expect(error.message).toContain(`HTTP ${status}`);
+      if ([400, 401, 403].includes(status)) {
+        expect(error.kind).toBe(DyadErrorKind.Auth);
+        expect(error.userMessage).toContain(
+          "Go to Settings to disconnect Supabase and then reconnect",
+        );
+      } else {
+        expect(error.kind).toBe(
+          status === 429 ? DyadErrorKind.RateLimited : DyadErrorKind.External,
+        );
+        expect(error.userMessage).toMatch(/try again/i);
+        expect(error.userMessage).not.toMatch(/disconnect|reconnect/);
+      }
       expect(JSON.stringify(error)).not.toMatch(/private|expired-access-token/);
       expect(error.message).not.toContain("private");
       expect(error.userMessage).not.toContain("HTTP");

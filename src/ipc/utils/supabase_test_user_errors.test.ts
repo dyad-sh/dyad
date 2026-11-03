@@ -129,7 +129,7 @@ describe("Supabase test-user diagnostics", () => {
 
       expect(getSupabaseTestUserMessage(error)).toBe(original.userMessage);
       expect(error.message).toContain("HTTP 403");
-      expect(error.kind).toBe(DyadErrorKind.External);
+      expect(error.kind).toBe(DyadErrorKind.Auth);
       expect(error.cause).toBe(original);
       expect(error.userMessage).not.toMatch(/unexpected|HTTP|internet/);
     },
@@ -150,6 +150,63 @@ describe("Supabase test-user diagnostics", () => {
       expect(error.userMessage).not.toContain("internet");
       expect(error.kind).toBe(DyadErrorKind.External);
       expect(error.cause).toBe(original);
+    },
+  );
+
+  it.each([
+    [new ReferenceError("private variable"), DyadErrorKind.Internal],
+    [new TypeError("private local bug"), DyadErrorKind.Internal],
+    [
+      Object.assign(new Error("private SQL parameters"), {
+        name: "SqliteError",
+        code: "SQLITE_BUSY",
+      }),
+      DyadErrorKind.Internal,
+    ],
+    [
+      new Error("private query", {
+        cause: Object.assign(new Error("private SQL parameters"), {
+          code: "SQLITE_CONSTRAINT",
+        }),
+      }),
+      DyadErrorKind.Internal,
+    ],
+    [
+      new TypeError("private request", { cause: { code: "ECONNRESET" } }),
+      DyadErrorKind.External,
+    ],
+    [
+      Object.assign(new Error("private timeout"), { name: "TimeoutError" }),
+      DyadErrorKind.External,
+    ],
+    [
+      Object.assign(new Error("private provider response"), { status: 503 }),
+      DyadErrorKind.External,
+    ],
+    [
+      new DyadError("private provider response", DyadErrorKind.External),
+      DyadErrorKind.External,
+    ],
+  ])(
+    "preserves the telemetry classification of %s across operation and lifecycle wrappers",
+    async (cause, kind) => {
+      const operationError = await withSupabaseTestUserOperation(
+        "adminKey",
+        async () => {
+          throw cause;
+        },
+      ).catch((error) => error);
+      expect(operationError.kind).toBe(kind);
+      expect(operationError.cause).toBe(cause);
+      for (const step of ["setup", "per-test setup", "cleanup"] as const) {
+        for (const error of [cause, operationError]) {
+          const failure = supabaseTestUserStepError(step, error);
+          expect(failure.kind).toBe(kind);
+          expect(failure.cause).toBe(error);
+          expect(failure.message).not.toContain("private");
+          expect(failure.userMessage).not.toContain("private");
+        }
+      }
     },
   );
 

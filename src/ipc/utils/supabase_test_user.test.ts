@@ -118,6 +118,76 @@ beforeEach(() => {
 });
 
 describe("createTempTestUser", () => {
+  it.each(["create", "delete"] as const)(
+    "classifies failed %s response bodies without losing cancellation or clearing recovery state",
+    async (operation) => {
+      const connectionReset = new TypeError(SECRET_KEY, {
+        cause: { code: "ECONNRESET" },
+      });
+      const failures = [
+        new DOMException(SECRET_KEY, "TimeoutError"),
+        new DOMException(SECRET_KEY, "AbortError"),
+        new TypeError(SECRET_KEY, { cause: { code: "UND_ERR_BODY_TIMEOUT" } }),
+        connectionReset,
+      ];
+      for (const cause of failures) {
+        const response = new Response("", { status: 500 });
+        // Model Node fetch's rejected body read directly; Happy DOM rewrites
+        // stream TypeErrors to EncodingErrors without retaining their cause.
+        vi.spyOn(response, "text").mockRejectedValueOnce(cause);
+        mockFetch(() => response);
+        const error = await (
+          operation === "create"
+            ? createTempTestUser(makeApp())
+            : deleteTempTestUser(makeApp({ supabaseTestUserId: UUID }), {
+                throwOnError: true,
+              })
+        ).catch((error) => error);
+        if (cause.name === "AbortError") {
+          expect(error).toBe(cause);
+        } else {
+          expect(error.cause).toBe(cause);
+          expect(error.kind).toBe(DyadErrorKind.External);
+          expect(error.message).not.toMatch(/HTTP 500|sb_secret_/);
+          expect(error.userMessage).toContain(
+            cause === connectionReset
+              ? "couldn't reach Supabase"
+              : "didn't respond in time",
+          );
+        }
+        expect(mocks.set).not.toHaveBeenCalled();
+        expect(mocks.executeSupabaseSql).not.toHaveBeenCalledWith(
+          expect.objectContaining({
+            query: expect.stringContaining("user_exists"),
+          }),
+        );
+      }
+    },
+  );
+
+  it.each(["create", "delete"] as const)(
+    "preserves a caller's abort reason when the %s error body fails",
+    async (operation) => {
+      const controller = new AbortController();
+      const cancelled = new Error("Stopped by user");
+      const response = new Response("", { status: 500 });
+      vi.spyOn(response, "text").mockImplementationOnce(async () => {
+        controller.abort(cancelled);
+        throw new TypeError(SECRET_KEY);
+      });
+      mockFetch(() => response);
+      const result =
+        operation === "create"
+          ? createTempTestUser(makeApp(), { signal: controller.signal })
+          : deleteTempTestUser(makeApp({ supabaseTestUserId: UUID }), {
+              signal: controller.signal,
+              throwOnError: true,
+            });
+      await expect(result).rejects.toBe(cancelled);
+      expect(mocks.set).not.toHaveBeenCalled();
+    },
+  );
+
   it.each([
     { code: "email_address_invalid" },
     { code: 400, error_code: "email_address_invalid" },

@@ -229,7 +229,11 @@ export async function createTempTestUser(
     options.signal,
   );
   if (!response.ok) {
-    const detail = await response.text().catch(() => "");
+    const detail = await withSupabaseTestUserOperation(
+      "create",
+      () => response.text(),
+      options.signal,
+    );
     const errorBody = parseSupabaseTestUserErrorResponse(detail);
     // The project turned its legacy keys off and had no secret key for us to
     // use instead. That's fixable in the Supabase dashboard, so say how rather
@@ -700,7 +704,11 @@ async function deleteUserBestEffort({
     );
     // A 404 means it's already gone — treat as success so we clear the column.
     if (!response.ok && response.status !== 404) {
-      const detail = await response.text().catch(() => "");
+      const detail = await withSupabaseTestUserOperation(
+        "delete",
+        () => response.text(),
+        signal,
+      );
       throw new SupabaseTestUserOperationError(
         "delete",
         undefined,

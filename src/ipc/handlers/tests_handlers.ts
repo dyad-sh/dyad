@@ -1776,7 +1776,9 @@ async function runTestsWithPreviewAutomation({
       const userMessage =
         getSupabaseTestUserMessage(caseServer.failure) ?? message;
       if (result.infraError)
-        logger.warn(`Test runner also failed: ${result.infraError.message}`);
+        logger.warn(
+          "Test runner also failed while per-test database isolation was unsuccessful.",
+        );
       result = {
         ...result,
         infraError: {

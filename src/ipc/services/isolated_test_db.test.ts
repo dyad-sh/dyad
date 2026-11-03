@@ -504,6 +504,23 @@ describe("per-case database isolation", () => {
     await prepared.teardown();
   });
 
+  it("warns about missing RLS without claiming tests ran when setup fails", async () => {
+    mocks.checkRls.mockResolvedValueOnce({ tablesWithoutRls: ["posts"] });
+    mocks.getServiceRoleKey.mockRejectedValueOnce(
+      new SupabaseTokenRefreshError(403),
+    );
+    const prepared = await prepareSupabase();
+    expect(emit).toHaveBeenCalledWith(
+      "Warning: These tables don't have Row-Level Security, so tests could affect real data in them: posts. Enable RLS for full isolation.\n",
+      "setup",
+    );
+    expect(JSON.stringify(emit.mock.calls)).not.toContain("Tests ran");
+    expect(prepared.infraError?.message).toContain(
+      "stopped before any tests or recording started",
+    );
+    expect(mocks.createTempTestUser).not.toHaveBeenCalled();
+  });
+
   it("keeps local setup error diagnostics in logs without suggesting a network failure", async () => {
     const error = new ReferenceError("private internal details");
     error.stack =
@@ -836,6 +853,11 @@ describe("prepareIsolatedTestDatabase — Supabase test-user path", () => {
     });
     expect(prepared.isolation.mode).toBe("supabase-test-user");
     expect(prepared.isolation.reason).toMatch(/posts, todos/);
+    expect(prepared.isolation.reason).not.toContain("Tests ran");
+    expect(emit).toHaveBeenCalledWith(
+      `Warning: ${prepared.isolation.reason}\n`,
+      "setup",
+    );
     expect(prepared.testCredentials).toBeDefined();
     expect(prepared.infraError).toBeUndefined();
   });

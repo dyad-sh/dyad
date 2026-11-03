@@ -742,6 +742,8 @@ async function prepareSupabaseTestUserIsolation({
       checkRls({ projectId, organizationSlug }),
     );
     const warning = buildRlsWarning(rls);
+    // Disclose the risk before setup can fail; keep it in isolation.reason too
+    // so completed runs retain the warning outside the transient output log.
     if (warning) emit(`Warning: ${warning}\n`, "setup");
 
     if (signal?.aborted) {
@@ -954,7 +956,7 @@ function buildRlsWarning(rls: {
     rls.tablesWithoutRls.length > 5
       ? `, and ${rls.tablesWithoutRls.length - 5} more`
       : "";
-  return `Tests ran as an isolated test user, but these tables don't have Row-Level Security, so the test could affect real data in them: ${shown}${more}. Enable RLS for full isolation.`;
+  return `These tables don't have Row-Level Security, so tests could affect real data in them: ${shown}${more}. Enable RLS for full isolation.`;
 }
 
 /** Restore `.env.local` to a previous snapshot (or remove it if there was none). */

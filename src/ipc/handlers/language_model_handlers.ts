@@ -233,7 +233,9 @@ export function registerLanguageModelHandlers() {
           description: description || null,
           max_output_tokens: maxOutputTokens || null,
           context_window: contextWindow || null,
-          effort_settings: effortSettings ?? null,
+          ...(effortSettings !== undefined && {
+            effort_settings: effortSettings,
+          }),
           updatedAt: new Date(),
         })
         .where(

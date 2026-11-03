@@ -21,6 +21,30 @@ describe("custom model effort levels input", () => {
     expect(EffortSettingsSchema.safeParse(settings).success).toBe(true);
   });
 
+  it("de-duplicates levels case-insensitively, keeping the first spelling", () => {
+    expect(parseEffortLevelsInput("High, high, Medium")).toEqual({
+      defaultEffortLevel: "High",
+      possibleEffortLevels: ["High", "Medium"],
+    });
+  });
+
+  it("keeps the previous settings unchanged when the text was not edited", () => {
+    const previous = {
+      defaultEffortLevel: "medium",
+      possibleEffortLevels: ["low", "medium", "high"],
+    };
+    // Displayed as "medium, low, high"; saving untouched must not reorder or
+    // move the default.
+    expect(
+      parseEffortLevelsInput(formatEffortLevelsInput(previous), previous),
+    ).toBe(previous);
+    // Once edited, the text is authoritative again.
+    expect(parseEffortLevelsInput("low, medium", previous)).toEqual({
+      defaultEffortLevel: "low",
+      possibleEffortLevels: ["low", "medium"],
+    });
+  });
+
   it("treats empty input as unset so Dyad's defaults apply", () => {
     expect(parseEffortLevelsInput("")).toBeUndefined();
     expect(parseEffortLevelsInput(" , ,")).toBeUndefined();

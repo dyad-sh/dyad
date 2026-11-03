@@ -128,6 +128,8 @@ describe("EditCustomModelDialog", () => {
         description: undefined,
         maxOutputTokens: undefined,
         contextWindow: undefined,
+        // No custom effort levels set: the dialog sends an explicit null.
+        effortSettings: null,
       });
       expect(mocks.updateSettings).toHaveBeenCalledWith({
         selectedModel: {

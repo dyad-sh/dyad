@@ -89,7 +89,11 @@ export type CreateCustomLanguageModelParams = z.infer<
 >;
 
 export const UpdateCustomLanguageModelParamsSchema =
-  CreateCustomLanguageModelParamsSchema.extend({ id: z.number() });
+  CreateCustomLanguageModelParamsSchema.extend({
+    id: z.number(),
+    // Omitted = leave the stored effort levels alone; null = clear them.
+    effortSettings: EffortSettingsSchema.nullable().optional(),
+  });
 
 export type UpdateCustomLanguageModelParams = z.infer<
   typeof UpdateCustomLanguageModelParamsSchema

@@ -105,7 +105,8 @@ export function EditCustomModelDialog({
         description: newParams.description,
         maxOutputTokens: newParams.maxOutputTokens,
         contextWindow: newParams.contextWindow,
-        effortSettings: parseEffortLevelsInput(effortLevels),
+        effortSettings:
+          parseEffortLevelsInput(effortLevels, model.effortSettings) ?? null,
       });
     },
     onSuccess: async (customModelId) => {

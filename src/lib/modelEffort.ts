@@ -15,19 +15,30 @@ export const OLLAMA_EFFORT_SETTINGS = {
 /**
  * Parses the "Effort levels" form field (e.g. "xhigh, medium, low") into
  * effort settings. The first level is the default. Empty input means "use
- * Dyad's defaults", so it returns undefined.
+ * Dyad's defaults", so it returns undefined. Levels are de-duplicated
+ * case-insensitively (the first spelling wins).
+ *
+ * Pass `previous` when editing: if the text is unchanged from how `previous`
+ * is displayed, `previous` is returned as-is so saving doesn't reorder it or
+ * move its default.
  */
 export function parseEffortLevelsInput(
   text: string,
+  previous?: EffortSettings,
 ): EffortSettings | undefined {
-  const levels = [
-    ...new Set(
-      text
-        .split(",")
-        .map((level) => level.trim())
-        .filter(Boolean),
-    ),
-  ];
+  if (previous && text.trim() === formatEffortLevelsInput(previous)) {
+    return previous;
+  }
+  const seen = new Set<string>();
+  const levels = text
+    .split(",")
+    .map((level) => level.trim())
+    .filter((level) => {
+      const key = level.toLowerCase();
+      if (!level || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   return levels.length > 0
     ? { defaultEffortLevel: levels[0], possibleEffortLevels: levels }
     : undefined;

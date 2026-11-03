@@ -72,6 +72,20 @@ describe("assertAppGitRepository", () => {
     expect(error.kind).toBe(DyadErrorKind.NotFound);
   });
 
+  // Creating symlinks on Windows can require extra privileges.
+  it.skipIf(process.platform === "win32")(
+    "reports a broken .git symlink in an existing folder as not a git repository",
+    async () => {
+      const blocker = path.join(tmpDir, "blocker-file");
+      fs.writeFileSync(blocker, "");
+      // `stat` on this link fails with ENOTDIR while the app folder is fine.
+      fs.symlinkSync(path.join(blocker, "repo"), path.join(tmpDir, ".git"));
+      const error = await captureError(tmpDir);
+      expect(error.message).toBe("Not a git repository");
+      expect(error.kind).toBe(DyadErrorKind.External);
+    },
+  );
+
   it.each(["EACCES", "EPERM"])(
     "reports %s on the app folder as a permission problem",
     async (code) => {

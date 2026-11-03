@@ -53,24 +53,35 @@ async function throwIfAppFolderUnusable(
 }
 
 /**
+ * Returns null when `appPath` is a folder, "ENOTDIR" when something else is
+ * there, or the `stat` error code.
+ */
+async function appFolderErrorCode(appPath: string): Promise<string | null> {
+  try {
+    const stats = await fs.promises.stat(appPath);
+    // A file where the app folder should be means the folder is gone.
+    return stats.isDirectory() ? null : "ENOTDIR";
+  } catch (error) {
+    return errorCode(error) ?? "UNKNOWN";
+  }
+}
+
+/**
  * Asserts that the app folder at `appPath` (an already-resolved app path) is
  * present and accessible, with the same diagnosis as
  * {@link assertAppGitRepository}. Use it before work that would otherwise
  * create files in, or run processes from, a folder the user deleted.
  */
 export async function assertAppFolderExists(appPath: string): Promise<void> {
-  let appDirErrorCode: string;
-  try {
-    const stats = await fs.promises.stat(appPath);
-    if (stats.isDirectory()) {
+  let appDirErrorCode = await appFolderErrorCode(appPath);
+  if (appDirErrorCode === null) {
+    try {
       // `stat` succeeds even when the folder itself can't be opened.
       await fs.promises.access(appPath, fs.constants.R_OK | fs.constants.X_OK);
       return;
+    } catch (error) {
+      appDirErrorCode = errorCode(error) ?? "UNKNOWN";
     }
-    // A file where the app folder should be means the folder is gone.
-    appDirErrorCode = "ENOTDIR";
-  } catch (error) {
-    appDirErrorCode = errorCode(error) ?? "UNKNOWN";
   }
   await throwIfAppFolderUnusable(appPath, appDirErrorCode);
   throw new DyadError(
@@ -97,12 +108,8 @@ export async function assertAppGitRepository(appPath: string): Promise<void> {
   if (PERMISSION_ERROR_CODES.has(gitErrorCode)) {
     throw permissionError(appPath);
   }
-  // `.git` can only be "not a directory" when the app path isn't a folder.
-  if (gitErrorCode === "ENOTDIR") {
-    await throwIfAppFolderUnusable(appPath, gitErrorCode);
-  }
 
-  const appDirErrorCode = await statErrorCode(appPath);
+  const appDirErrorCode = await appFolderErrorCode(appPath);
   if (appDirErrorCode !== null) {
     await throwIfAppFolderUnusable(appPath, appDirErrorCode);
   }

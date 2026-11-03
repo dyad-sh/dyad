@@ -4,6 +4,7 @@ import * as fs from "fs";
 import * as os from "os";
 import { execFileSync, spawn } from "child_process";
 import { fakeLlmLog } from "./log";
+import { gzipSync } from "node:zlib";
 
 const gitHttpMiddlewareFactory = require("git-http-mock-server/middleware");
 
@@ -182,6 +183,33 @@ const repoCollaborators: Record<
 > = {};
 
 // Store device flow state
+let deviceFlowResponseMode: "plain" | "gzip-chunked" = "plain";
+let deviceFlowOutcome: "success" | "pending" | "access_denied" = "success";
+
+export function handleDeviceFlowConfig(req: Request, res: Response) {
+  deviceFlowResponseMode =
+    req.body.mode === "gzip-chunked" ? "gzip-chunked" : "plain";
+  deviceFlowOutcome =
+    req.body.outcome === "pending" || req.body.outcome === "access_denied"
+      ? req.body.outcome
+      : "success";
+  res.json({ mode: deviceFlowResponseMode, outcome: deviceFlowOutcome });
+}
+
+function sendDeviceFlowJson(res: Response, body: unknown) {
+  if (deviceFlowResponseMode === "plain") return res.json(body);
+  const compressed = gzipSync(JSON.stringify(body));
+  res.setHeader("Content-Type", "application/json");
+  res.setHeader("Content-Encoding", "gzip");
+  // write/end (rather than send) deliberately avoids Content-Length. Flush
+  // headers and send two chunks across event-loop turns, including the gzip
+  // trailer, so real clients must decompress and finish reading the stream.
+  res.setHeader("Transfer-Encoding", "chunked");
+  res.flushHeaders();
+  res.write(compressed.subarray(0, compressed.length - 8));
+  setImmediate(() => res.end(compressed.subarray(compressed.length - 8)));
+}
+
 let deviceFlowState = {
   deviceCode: mockDeviceCode,
   userCode: mockUserCode,
@@ -201,7 +229,7 @@ export function handleDeviceCode(req: Request, res: Response) {
     pollCount: 0,
   };
 
-  res.json({
+  sendDeviceFlowJson(res, {
     device_code: mockDeviceCode,
     user_code: mockUserCode,
     verification_uri: "https://github.com/login/device",
@@ -220,7 +248,7 @@ export function handleAccessToken(req: Request, res: Response) {
   const { device_code } = req.body;
 
   if (device_code !== mockDeviceCode) {
-    return res.status(400).json({
+    return sendDeviceFlowJson(res.status(400), {
       error: "invalid_request",
       error_description: "Invalid device code",
     });
@@ -228,10 +256,17 @@ export function handleAccessToken(req: Request, res: Response) {
 
   deviceFlowState.pollCount++;
 
+  if (deviceFlowOutcome === "access_denied") {
+    return sendDeviceFlowJson(res, {
+      error: "access_denied",
+      error_description: "The user denied authorization",
+    });
+  }
+
   // Simulate authorization after 3 polls (for testing)
-  if (deviceFlowState.pollCount >= 3) {
+  if (deviceFlowState.pollCount >= 3 && deviceFlowOutcome !== "pending") {
     deviceFlowState.authorized = true;
-    return res.json({
+    return sendDeviceFlowJson(res, {
       access_token: mockAccessToken,
       token_type: "bearer",
       scope: "repo,user,workflow",
@@ -239,7 +274,7 @@ export function handleAccessToken(req: Request, res: Response) {
   }
 
   // Return pending status
-  res.status(400).json({
+  sendDeviceFlowJson(res.status(400), {
     error: "authorization_pending",
     error_description: "The authorization request is still pending",
   });

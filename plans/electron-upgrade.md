@@ -4,7 +4,7 @@ Assessment date: October 28, 2026. Baseline: `0e37c59e6`, Electron **40.0.0**, b
 
 Prepare the networking fix and credential compatibility tests before changing the runtime. Then qualify **Electron 45.1.0** in beta if macOS 13 is an acceptable minimum and the packaging/preload checks pass. Use **latest 43.x as a short bridge** if those changes block a timely supported release, especially if macOS 12 users need a transition period. Latest 44.x is a useful middle option when 45-specific regressions appear. Do not publish every intervening major simply to make the version steps smaller.
 
-This is a planning change; the runtime and application code remain at the baseline. Candidate compatibility and rollback behavior require the builds and tests below.
+The GitHub transport preparation below is implemented on Electron 40; the runtime remains pinned to 40.0.0. Candidate compatibility and rollback behavior still require the builds and tests below.
 
 ## Supported targets
 
@@ -37,6 +37,46 @@ The proposed [regression coverage PR 3842](https://github.com/dyad-sh/dyad/pull/
 - Other main-process consumers also import node-fetch: subscription status, free quotas, uploads, and release-note requests. They need a targeted transport inventory because the same stream failure could affect other compressed responses.
 
 **Required fix:** remove node-fetch 2 from the affected GitHub transport and prove decompression/body consumption in real Electron. Do not assume a newer Electron patch has fixed this historical interaction without reproducing it.
+
+#### Implemented GitHub preparation (November 2, 2026)
+
+All requests in `github_handlers.ts`, including device code, token polling, user lookup, repository and collaborator operations, now use `github_fetch.ts`. It delegates to [Node global fetch](https://nodejs.org/api/globals.html#fetch) (Undici), retains the Node networking stack, explicitly omits cookies and disables caching. Existing request headers, JSON bodies, redirects, abort signals and HTTP-status handling remain at their call sites. No Chromium session or app-readiness dependency is introduced. Git-over-HTTP continues to use native Git and its per-request authentication environment.
+
+The fake GitHub service now has an opt-in `gzip-chunked` device-flow mode. It sends gzip bytes across separate writes with no Content-Length, including compressed pending/error and successful token bodies. A raw HTTP unit assertion checks encoding, chunked transfer and gunzip output, independently of fetch. The packaged-app regression exercises cancellation, denied authorization, retry, pending polling, credential persistence and authenticated repository listing. Existing publish/import journeys cover the broader GitHub behavior.
+
+Historical reproduction on macOS arm64 used actual Electron main processes, node-fetch **2.7.0**, and the production helper bundled with esbuild:
+
+| Runtime | node-fetch 2: local gzip/chunked and live GitHub device endpoint | Node global fetch: same responses          |
+| ------- | ---------------------------------------------------------------- | ------------------------------------------ |
+| 40.0.0  | Both HTTP 200 bodies consumed successfully                       | Both HTTP 200 bodies consumed successfully |
+| 43.0.0  | Both fail during body consumption with `Premature close`         | Both HTTP 200 bodies consumed successfully |
+
+The live checks sent only the public OAuth client ID and scopes; no user authorization/token exchange was performed. This reproduces the original runtime interaction rather than assuming a later patch resolved it. It establishes this transport on 43.0.0, not full application qualification on 43/44/45.
+
+Re-run the deterministic transport test on the installed Electron (40 by default), or supply an independently downloaded candidate executable without changing package dependencies:
+
+```sh
+npm run build
+npm run e2e -- e2e-tests/github_device_transport.spec.ts
+DYAD_E2E_GITHUB_ELECTRON_EXECUTABLE=/absolute/path/to/electron npm run e2e -- e2e-tests/github_device_transport.spec.ts --grep 'selectable Electron runtime'
+```
+
+The selectable-runtime test bundles the actual production helper and consumes device/pending/token responses in a real Electron main process without loading app native modules. The other test always uses the current packaged application and real renderer-to-main IPC. These fixtures intentionally use loopback HTTP; the live reproduction separately checked GitHub HTTPS. Signed builds, system proxies and corporate TLS still belong to runtime qualification.
+
+#### Remaining node-fetch transport inventory
+
+Production imports under `src/` after the GitHub migration:
+
+| Consumer                          | Request/body consumption                                                          | Follow-up                                                                                                                     |
+| --------------------------------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `pro_handlers.ts`                 | Subscription status GET with bearer auth; JSON body                               | Compressed body exposure; migrate and verify null/error behavior separately                                                   |
+| `free_model_quota_handlers.ts`    | Engine quota GET with bearer auth; JSON success and text error bodies             | Compressed body exposure on both paths; preserve validation and auth classification                                           |
+| `services/user_budget_service.ts` | Account usage GET with bearer auth; JSON body; 10s timeout and redirect rejection | Compressed body exposure; preserve cancellation and replace Node Readable destruction deliberately when migrating             |
+| `upload_handlers.ts`              | Signed PUT, string or Buffer payload, abort/timeout; response status only         | No response-body consumption at present; verify signed headers, cancellation, memory and upload-body compatibility separately |
+| `free_agent_quota_handlers.ts`    | HEAD health check; reads Date header                                              | No response-body consumption; preserve server-time fallback and timeout                                                       |
+| `release_note_handlers.ts`        | HEAD existence check; reads status only                                           | No response-body consumption; lower priority for this specific failure                                                        |
+
+No production node-fetch multipart/FormData or streaming upload body was found in this inventory. `user_budget_service.ts` does depend on Node Readable for response cleanup. Keep node-fetch installed transitively for these remaining consumers; do not remove or globally alias it as part of the GitHub fix. Separate migrations should carry their own compressed-response and transport-semantics tests.
 
 ### macOS Keychain identity and secret loss
 

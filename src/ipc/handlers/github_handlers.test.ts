@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import fetch from "node-fetch";
+import fetch from "@/ipc/utils/github_fetch";
 import { readSettings } from "@/main/settings";
 
-vi.mock("node-fetch", () => ({ default: vi.fn() }));
+vi.mock("@/ipc/utils/github_fetch", () => ({ default: vi.fn() }));
 vi.mock("@/main/settings", () => ({
   readSettings: vi.fn(),
   writeSettings: vi.fn(),

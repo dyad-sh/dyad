@@ -748,6 +748,7 @@ function walkSql(sql: string, callbacks: SqlWalkerCallbacks): boolean {
     | "dollar_quote" = "normal";
   let blockDepth = 0;
   let dollarTag = "";
+  let backslashEscapes = false;
   let doubleQuotedIdentifier = "";
   let doubleQuotedIdentifierStart = -1;
 
@@ -773,6 +774,10 @@ function walkSql(sql: string, callbacks: SqlWalkerCallbacks): boolean {
       continue;
     }
     if (state === "single_quote") {
+      if (backslashEscapes && char === "\\") {
+        i += 1;
+        continue;
+      }
       if (char === "'") {
         if (next === "'") {
           i += 1;
@@ -821,6 +826,10 @@ function walkSql(sql: string, callbacks: SqlWalkerCallbacks): boolean {
     }
     if (char === "'") {
       state = "single_quote";
+      // E'...' strings honor backslash escapes, so \' does not end them.
+      backslashEscapes =
+        /[Ee]/u.test(sql[i - 1] ?? "") &&
+        !/[A-Za-z0-9_$]/u.test(sql[i - 2] ?? "");
       continue;
     }
     if (char === '"') {

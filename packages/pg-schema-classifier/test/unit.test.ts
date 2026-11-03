@@ -170,6 +170,21 @@ describe("detectSqlSchemaMutation", () => {
     expect(result.statements).toHaveLength(3);
   });
 
+  it("ends escape strings at a quote that follows a backslash-escaped quote", () => {
+    const sql = "SELECT E'it\\'s'; DROP TABLE users; -- '";
+
+    const schemaResult = detectSqlSchemaMutation(sql);
+    expect(schemaResult.mutatesSchema).toBe(true);
+    expect(schemaResult.statements[1]?.command).toBe("DROP");
+
+    const deletionResult = detectSqlDataDeletion(sql);
+    expect(deletionResult.deletesData).toBe(true);
+    expect(deletionResult.statements[1]?.reason).toBe("drop_table");
+    expect(
+      detectSqlDataDeletion("SELECT e'C:\\\\'; SELECT 1").deletesData,
+    ).toBe(false);
+  });
+
   it("keeps dollar-quoted function bodies in one mutating statement", () => {
     const result = detectSqlSchemaMutation(`
       CREATE FUNCTION f() RETURNS void LANGUAGE plpgsql AS $$

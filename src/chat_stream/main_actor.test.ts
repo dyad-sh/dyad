@@ -19,6 +19,7 @@ import {
   assertChatActorAdmissionOpen,
 } from "@/ipc/services/chat_actor_deletion_fence";
 import { computeChatTurnPayloadHash } from "@/ipc/utils/chat_turn_intent_hash";
+import { chatExecutionHold } from "@/ipc/services/chat_execution_hold";
 import { chatStreamDefinition } from "./definition";
 import { initialChatStreamHostState } from "./host_transition";
 import { markIntentTerminal } from "./persistence";
@@ -38,6 +39,7 @@ const execution = vi.hoisted(() => ({
   claimFailures: 0,
   claimAttempts: 0,
   afterClaim: null as (() => Promise<void>) | null,
+  beforeQueueMutation: null as (() => Promise<void>) | null,
   claimedEntries: new Map<string, ChatQueueEntry>(),
   convertAttachments: vi.fn(async () => []),
 }));
@@ -230,6 +232,7 @@ vi.mock("./persistence", () => ({
       _chatId: number,
       command: { mutation: { type: string } },
     ) => {
+      await execution.beforeQueueMutation?.();
       persisted.paused = command.mutation.type === "pause";
       persisted.pauseReason = persisted.paused ? "manual" : null;
       persisted.revision += 1;
@@ -325,6 +328,7 @@ describe("main-hosted chat stream actor", () => {
     execution.claimFailures = 0;
     execution.claimAttempts = 0;
     execution.afterClaim = null;
+    execution.beforeQueueMutation = null;
     execution.claimedEntries.clear();
     execution.convertAttachments.mockReset();
     execution.convertAttachments.mockResolvedValue([]);
@@ -337,6 +341,222 @@ describe("main-hosted chat stream actor", () => {
     persisted.pauseReason = null;
     persisted.entries = [];
     persisted.intents.clear();
+  });
+
+  it.each([true, false])(
+    "queues during a hold installed before actor creation: %s",
+    async (holdBeforeCreation) => {
+      const host = new ActorHost({
+        placement: "main",
+        clock: createFakeClock(),
+        ids: createSequentialIdSource(),
+      });
+      host.register(chatStreamDefinition);
+      let release = holdBeforeCreation
+        ? chatExecutionHold.acquire(3)
+        : undefined;
+      const actor = host.ensure(chatStreamDefinition, chatStreamKey(7));
+      release ??= chatExecutionHold.acquire(3);
+      try {
+        actor.enqueue({ type: "SUBMIT", intent: turn("first") });
+        actor.enqueue({ type: "SUBMIT", intent: turn("second") });
+        await vi.waitFor(() =>
+          expect(actor.getSnapshot().queue).toHaveLength(2),
+        );
+        expect(actor.getSnapshot().phase).toBe("idle");
+        expect(execution.observers.size).toBe(0);
+        expect(execution.claimAttempts).toBe(0);
+
+        release();
+        await vi.waitFor(() =>
+          expect(execution.observers.has("first")).toBe(true),
+        );
+        expect(execution.observers.has("second")).toBe(false);
+        execution.observers.get("first")!.onEnd?.({
+          chatId: 7,
+          invocationRef: turn("first").invocationRef,
+          updatedFiles: false,
+        });
+        await vi.waitFor(() =>
+          expect(execution.observers.has("second")).toBe(true),
+        );
+      } finally {
+        release();
+        await host.dispose();
+      }
+    },
+  );
+
+  it("preserves a user pause when an execution hold releases", async () => {
+    const host = new ActorHost({
+      placement: "main",
+      clock: createFakeClock(),
+      ids: createSequentialIdSource(),
+    });
+    host.register(chatStreamDefinition);
+    const actor = host.ensure(chatStreamDefinition, chatStreamKey(7));
+    const release = chatExecutionHold.acquire(3);
+    try {
+      actor.enqueue({ type: "SUBMIT", intent: turn("queued") });
+      await vi.waitFor(() => expect(actor.getSnapshot().queue).toHaveLength(1));
+      actor.enqueue({
+        type: "PAUSE_QUEUE",
+        expectedQueueRevision: actor.getSnapshot().queueRevision,
+        mutationId: "pause-during-undo",
+      });
+      await vi.waitFor(() =>
+        expect(actor.getSnapshot().queuePaused).toBe(true),
+      );
+      release();
+      await flush();
+      expect(actor.getSnapshot()).toMatchObject({
+        phase: "idle",
+        queuePaused: true,
+      });
+      expect(execution.observers.size).toBe(0);
+    } finally {
+      release();
+      await host.dispose();
+    }
+  });
+
+  it.each([
+    { timing: "before-release", outcome: "applied" },
+    { timing: "after-claim", outcome: "applied" },
+    { timing: "before-release", outcome: "rejected" },
+    { timing: "after-claim", outcome: "rejected" },
+  ])(
+    "waits for an in-flight pause when an execution hold releases: $timing / $outcome",
+    async ({ timing, outcome }) => {
+      const host = new ActorHost({
+        placement: "main",
+        clock: createFakeClock(),
+        ids: createSequentialIdSource(),
+      });
+      host.register(chatStreamDefinition);
+      const actor = host.ensure(chatStreamDefinition, chatStreamKey(7));
+      const release = chatExecutionHold.acquire(3);
+      let finishPause!: () => void;
+      const pause = new Promise<void>((resolve) => {
+        finishPause = resolve;
+      });
+      execution.beforeQueueMutation = async () => {
+        await pause;
+        if (outcome === "rejected") throw new Error("queue mutation failed");
+      };
+      const requestPause = async () => {
+        execution.afterClaim = null;
+        actor.enqueue({
+          type: "PAUSE_QUEUE",
+          expectedQueueRevision: actor.getSnapshot().queueRevision,
+          mutationId: "pause-racing-release",
+        });
+        await vi.waitFor(() =>
+          expect(actor.getSnapshot().pendingQueueMutationId).toBe(
+            "pause-racing-release",
+          ),
+        );
+      };
+      try {
+        actor.enqueue({ type: "SUBMIT", intent: turn("queued") });
+        await vi.waitFor(() =>
+          expect(actor.getSnapshot().queue).toHaveLength(1),
+        );
+        if (timing === "before-release") {
+          await requestPause();
+        } else {
+          execution.afterClaim = requestPause;
+        }
+        release();
+        await vi.waitFor(() => {
+          expect(actor.getSnapshot().pendingQueueMutationId).toBe(
+            "pause-racing-release",
+          );
+          expect(execution.claimAttempts).toBe(
+            timing === "after-claim" ? 1 : 0,
+          );
+          expect(execution.claimedEntries.size).toBe(0);
+          expect(persisted.entries.map((entry) => entry.intentId)).toEqual([
+            "queued",
+          ]);
+        });
+        expect(execution.observers.size).toBe(0);
+        finishPause();
+        if (outcome === "applied") {
+          await vi.waitFor(() =>
+            expect(actor.getSnapshot().queuePaused).toBe(true),
+          );
+          expect(actor.getSnapshot().queue).toMatchObject([
+            { intentId: "queued" },
+          ]);
+          expect(execution.observers.size).toBe(0);
+          actor.enqueue({
+            type: "RESUME_QUEUE",
+            expectedQueueRevision: actor.getSnapshot().queueRevision,
+            mutationId: "resume-after-pause",
+          });
+        } else {
+          await vi.waitFor(() =>
+            expect(actor.getSnapshot().lastQueueMutation).toMatchObject({
+              mutationId: "pause-racing-release",
+              outcome: "rejected",
+            }),
+          );
+        }
+        await vi.waitFor(() =>
+          expect(execution.observers.has("queued")).toBe(true),
+        );
+      } finally {
+        finishPause();
+        release();
+        await host.dispose();
+      }
+    },
+  );
+
+  it("returns an already-claimed prompt to the queue if undo starts before dispatch", async () => {
+    const host = new ActorHost({
+      placement: "main",
+      clock: createFakeClock(),
+      ids: createSequentialIdSource(),
+    });
+    host.register(chatStreamDefinition);
+    const actor = host.ensure(chatStreamDefinition, chatStreamKey(7));
+    let release: (() => void) | undefined;
+    try {
+      actor.enqueue({ type: "SUBMIT", intent: turn("first") });
+      await vi.waitFor(() =>
+        expect(execution.observers.has("first")).toBe(true),
+      );
+      actor.enqueue({ type: "SUBMIT", intent: turn("second") });
+      await vi.waitFor(() => expect(actor.getSnapshot().queue).toHaveLength(1));
+      execution.afterClaim = async () => {
+        execution.afterClaim = null;
+        release = chatExecutionHold.acquire(3);
+        await flush();
+      };
+      execution.observers.get("first")!.onEnd?.({
+        chatId: 7,
+        invocationRef: turn("first").invocationRef,
+        updatedFiles: false,
+      });
+      await vi.waitFor(() => {
+        expect(release).toBeDefined();
+        expect(execution.claimedEntries.size).toBe(0);
+        expect(actor.getSnapshot()).toMatchObject({
+          phase: "idle",
+          queue: [{ intentId: "second" }],
+        });
+      });
+      expect(execution.observers.has("second")).toBe(false);
+      release!();
+      await vi.waitFor(() =>
+        expect(execution.observers.has("second")).toBe(true),
+      );
+    } finally {
+      release?.();
+      await host.dispose();
+    }
   });
 
   it("keeps a replayed durable intent in its recovered paused queue", async () => {

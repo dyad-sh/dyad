@@ -1,4 +1,10 @@
 {
+  "neonTestingBanner": {
+    "message": "Let the agent check its work and fix issues as it builds. Tests run in a temporary Neon database, keeping your data and preview unchanged.",
+    "enable": "Enable testing",
+    "enabling": "Enabling…",
+    "dismiss": "Dismiss testing suggestion"
+  },
   "testRunQueue": {
     "waitReason": {
       "process-cleanup": "Waiting for a test process to stop",

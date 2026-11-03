@@ -1,4 +1,10 @@
 {
+  "neonTestingBanner": {
+    "message": "Laissez l'agent vérifier son travail et corriger les problèmes au fil du développement. Les tests s'exécutent dans une base de données Neon temporaire, sans modifier vos données ni votre aperçu.",
+    "enable": "Activer les tests",
+    "enabling": "Activation…",
+    "dismiss": "Masquer la suggestion de tests"
+  },
   "newChat": "Nouveau chat",
   "viewAllApps": "Toutes les applications",
   "searchChats": "Rechercher des chats",

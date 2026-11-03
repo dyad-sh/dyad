@@ -1,4 +1,10 @@
 {
+  "neonTestingBanner": {
+    "message": "让智能体在构建应用的过程中检查自己的工作，及时修复问题。测试在临时 Neon 数据库中运行，不会更改你的数据和预览。",
+    "enable": "启用测试",
+    "enabling": "正在启用…",
+    "dismiss": "关闭测试建议"
+  },
   "testRunQueue": {
     "waitReason": {
       "process-cleanup": "正在等待测试进程停止",

@@ -56,6 +56,10 @@ For sample-triggered SMIL animations inside an existing SVG, use `begin="indefin
 
 Don't put an explicit `min-w-*` on a flex item whose children are `flex-shrink-0` (icon buttons, etc.) if that value is smaller than the children's combined width. An explicit `min-width` overrides flexbox's content-based minimum, so the item gets squeezed below its content and the overflow paints over sibling elements — visually broken and it intercepts their pointer events (this broke the preview Restart button at narrow widths). Use `min-w-fit` to let the item refuse to shrink below its content.
 
+For banners in resizable panels, use container queries to move the action below
+the message at narrow widths. Check long translations at 320px; a fixed icon and
+button can otherwise squeeze the message into a one-word-wide column.
+
 ## Tailwind v4 conventions
 
 The project uses **Tailwind v4** (see `tailwindcss: ^4.x` in `package.json`). A few v4-specific affordances that don't work in v3:

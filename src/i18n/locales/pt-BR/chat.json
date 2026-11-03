@@ -1,4 +1,10 @@
 {
+  "neonTestingBanner": {
+    "message": "Deixe o agente conferir seu trabalho e corrigir problemas enquanto cria seu app. Os testes rodam em um banco de dados temporário do Neon, mantendo seus dados e a prévia inalterados.",
+    "enable": "Ativar testes",
+    "enabling": "Ativando…",
+    "dismiss": "Dispensar sugestão de testes"
+  },
   "testRunQueue": {
     "waitReason": {
       "process-cleanup": "Aguardando um processo de teste parar",

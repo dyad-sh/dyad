@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createServer, get, type Server } from "node:http";
 import { gunzipSync } from "node:zlib";
 import fetchGitHub from "./github_fetch";
@@ -64,6 +64,7 @@ beforeEach(async () => {
   }).then((response) => response.json());
 });
 afterEach(async () => {
+  vi.restoreAllMocks();
   server.closeAllConnections();
   await new Promise<void>((resolve) => server.close(() => resolve()));
 });
@@ -122,7 +123,7 @@ it("preserves same-origin redirect authorization without storing response cookie
   expect(headers.cookie).toBeUndefined();
 });
 
-it("aborts while consuming a body and propagates network errors", async () => {
+it("aborts while consuming a body", async () => {
   const controller = new AbortController();
   const response = await fetchGitHub(`${base}/slow`, {
     signal: controller.signal,
@@ -130,5 +131,51 @@ it("aborts while consuming a body and propagates network errors", async () => {
   const body = response.json();
   controller.abort();
   await expect(body).rejects.toMatchObject({ name: "AbortError" });
-  await expect(fetchGitHub("http://invalid.invalid")).rejects.toThrow();
 });
+
+it("includes the DNS failure code and preserves the original fetch error", async () => {
+  const error = await fetchGitHub("http://invalid.invalid").catch(
+    (error: unknown) => error,
+  );
+  expect(error).toMatchObject({
+    message: "GitHub request failed: ENOTFOUND",
+    cause: {
+      name: "TypeError",
+      message: "fetch failed",
+      cause: { code: "ENOTFOUND" },
+    },
+  });
+});
+
+it.each([
+  [
+    Object.assign(new Error("certificate verification failed"), {
+      code: "CERT_HAS_EXPIRED",
+    }),
+    "CERT_HAS_EXPIRED",
+  ],
+  [
+    new Error("connection closed unexpectedly"),
+    "connection closed unexpectedly",
+  ],
+  [undefined, "fetch failed"],
+])("retains actionable network diagnostics for %s", async (cause, reason) => {
+  const original = new TypeError("fetch failed", { cause });
+  vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(original);
+  await expect(fetchGitHub(`${base}/device`)).rejects.toMatchObject({
+    message: `GitHub request failed: ${reason}`,
+    cause: original,
+  });
+});
+
+it.each(["AbortError", "TimeoutError"])(
+  "preserves %s without wrapping it",
+  async (name) => {
+    const reason = new DOMException("Request stopped", name);
+    await expect(
+      fetchGitHub(`${base}/device`, {
+        signal: AbortSignal.abort(reason),
+      }),
+    ).rejects.toBe(reason);
+  },
+);

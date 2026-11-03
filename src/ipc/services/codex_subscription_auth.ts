@@ -8,6 +8,7 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 import { getUserDataPath } from "@/paths/paths";
 import { readSettings, writeSettings } from "@/main/settings";
+import { decryptSafeStorageBuffer } from "@/main/safe_storage";
 import {
   getSubscriptionAccount,
   resetSubscriptionAccount,
@@ -38,7 +39,7 @@ const Tokens = z.object({
   expires_in: z.number().positive().optional(),
 });
 let generation = 0;
-let credentialCache: Credentials | DyadError | null | undefined;
+let credentialCache: Credentials | null | undefined;
 let celebrationPending = false;
 export function acknowledgeSubscriptionConnection() {
   celebrationPending = false;
@@ -67,26 +68,27 @@ function requireEncryption() {
   }
 }
 function load(): Credentials | undefined {
-  if (credentialCache instanceof DyadError) throw credentialCache;
   if (credentialCache !== undefined) return credentialCache ?? undefined;
   if (!fs.existsSync(credentialPath())) {
     credentialCache = null;
     return undefined;
   }
-  requireEncryption();
   try {
+    // Preserve the subscription store's stronger Linux requirement. The
+    // macOS legacy reader may recover while the session's encryptor is down.
+    if (process.platform === "linux") requireEncryption();
     credentialCache = Credentials.parse(
-      JSON.parse(safeStorage.decryptString(fs.readFileSync(credentialPath()))),
+      JSON.parse(decryptSafeStorageBuffer(fs.readFileSync(credentialPath()))),
     );
     return credentialCache;
   } catch {
-    // A failed read is not an absent connection. Keep reporting it until
-    // successful reconnection or explicit disconnect replaces the cache.
-    credentialCache = new DyadError(
+    // Keep the file intact and retry on the next read. Legacy Keychain lookup
+    // failures are throttled centrally; a temporary lock must not poison this
+    // service's cache until the user reconnects or restarts.
+    throw new DyadError(
       "Saved ChatGPT credentials could not be opened. Reconnect ChatGPT, or disconnect it to use your OpenAI API key.",
       DyadErrorKind.Auth,
     );
-    throw credentialCache;
   }
 }
 function save(credentials: Credentials) {

@@ -197,7 +197,7 @@ export class SecurityCliKeychainPasswordReader implements KeychainPasswordReader
   // per identity PER CIPHERTEXT; without this, a profile with several locked
   // secrets would shell out (and possibly show a Keychain permission prompt, or
   // stall startup for the CLI timeout) once per secret instead of once per
-  // identity. The Keychain won't change mid-session, so caching is safe.
+  // identity. Recovery replaces this reader when retrying cached failures.
   private readonly passwordCache = new Map<string, string | null>();
 
   constructor(keychainPath?: string) {
@@ -341,10 +341,12 @@ interface RecoveryStats {
 
 const stats: RecoveryStats = { attempted: 0, recovered: 0, failed: 0 };
 
-// Cache keyed by the ciphertext base64 string. Caches both successes and
-// failures: the Keychain will not change mid-session, so re-attempting the same
-// ciphertext (which may prompt the user via `security`) is pure overhead.
+// Cache keyed by the ciphertext base64 string. Retain successes for the
+// session and failures for a short retry interval. The
+// default reader suppresses UI, so access returning can be retried silently.
 const recoveryCache = new Map<string, string | null>();
+const FAILURE_RETRY_INTERVAL_MS = 5_000;
+let nextFailureRetryAt = 0;
 
 let defaultReader: KeychainPasswordReader | undefined;
 
@@ -354,6 +356,7 @@ function clearRecoveryFailureCache(): void {
       recoveryCache.delete(ciphertextBase64);
     }
   }
+  nextFailureRetryAt = 0;
 }
 
 export function getRecoveryStats(): RecoveryStats {
@@ -482,7 +485,17 @@ export function recoverLegacySafeStorageSecret(
   }
 
   if (recoveryCache.has(ciphertextBase64)) {
-    return recoveryCache.get(ciphertextBase64) ?? null;
+    const cached = recoveryCache.get(ciphertextBase64);
+    if (cached !== null) return cached ?? null;
+    // The diagnostic CLI reader can prompt. Only the silent native path gets
+    // automatic retries; CLI failures retain the existing session cache.
+    if (process.env.DYAD_SAFE_STORAGE_READER === "cli") return null;
+    if (Date.now() < nextFailureRetryAt) return null;
+    // Keychain access can return mid-session after unlock/ACL approval. Drop
+    // negative password lookups too, while retaining successful recoveries.
+    clearRecoveryFailureCache();
+    defaultReader = undefined;
+    nextFailureRetryAt = Date.now() + FAILURE_RETRY_INTERVAL_MS;
   }
 
   const activeReader =
@@ -528,6 +541,9 @@ export function recoverLegacySafeStorageSecret(
   }
 
   stats.failed++;
+  if (nextFailureRetryAt === 0) {
+    nextFailureRetryAt = Date.now() + FAILURE_RETRY_INTERVAL_MS;
+  }
   recoveryCache.set(ciphertextBase64, null);
   if (plausibleRecoveries.length > 1) {
     logger.warn(
@@ -543,6 +559,7 @@ export function recoverLegacySafeStorageSecret(
 /** Test-only: clears the per-process cache and resets recovery counters. */
 export function clearRecoveryCacheForTesting(): void {
   recoveryCache.clear();
+  nextFailureRetryAt = 0;
   stats.attempted = 0;
   stats.recovered = 0;
   stats.failed = 0;

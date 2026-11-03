@@ -6,6 +6,7 @@ import {
   describe,
   expect,
   it,
+  vi,
 } from "vitest";
 import crypto from "node:crypto";
 import { execFileSync } from "node:child_process";
@@ -128,6 +129,40 @@ describe("deriveLegacyOsCryptKey", () => {
       "sha1",
     );
     expect(deriveLegacyOsCryptKey("some-password")).toEqual(expected);
+  });
+});
+
+it("silently retries failed Keychain lookups after a bounded delay", async () => {
+  await withPlatform("darwin", () => {
+    clearRecoveryCacheForTesting();
+    let unlocked = false;
+    let now = 10_000;
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+    const read = vi.fn((service: string) => ({
+      status: unlocked && service === "dyad Safe Storage" ? 0 : -25308,
+      password: unlocked && service === "dyad Safe Storage" ? "password" : null,
+    }));
+    setInProcessKeychainBindingLoaderForTesting(() => ({
+      readGenericPassword: read,
+      isDefaultKeychainLocked: () => !unlocked,
+    }));
+    const ciphertext = encryptV10Base64(
+      "recovered",
+      deriveLegacyOsCryptKey("password"),
+    );
+    try {
+      expect(recoverLegacySafeStorageSecret(ciphertext)).toBeNull();
+      expect(read).toHaveBeenCalledTimes(2);
+      unlocked = true;
+      expect(recoverLegacySafeStorageSecret(ciphertext)).toBeNull();
+      expect(read).toHaveBeenCalledTimes(2);
+      now += 5_001;
+      expect(recoverLegacySafeStorageSecret(ciphertext)).toBe("recovered");
+      expect(read).toHaveBeenCalledTimes(4);
+    } finally {
+      clock.mockRestore();
+      clearRecoveryCacheForTesting();
+    }
   });
 });
 

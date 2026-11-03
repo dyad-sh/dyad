@@ -111,6 +111,7 @@ import { recoverInterruptedSubagents } from "./pro/main/ipc/handlers/local_agent
 import { cleanupOldMediaFiles } from "./ipc/utils/media_cleanup";
 import { scrubTokensFromRemotes } from "./ipc/utils/git_remote_token_scrub";
 import { encryptStoredMcpSecrets } from "./ipc/utils/mcp_secret_encryption";
+import { reconcileCloudSandboxes } from "./ipc/utils/cloud_sandbox_provider";
 import fs from "fs";
 import { gitAddSafeDirectory } from "./ipc/utils/git_utils";
 import {
@@ -521,6 +522,12 @@ export async function onReady() {
   await encryptStoredMcpSecrets();
 
   const settings = await readEffectiveSettings();
+
+  // Handler registration happens before ready. Reconciliation can decrypt
+  // settings, so start it here after the runtime and database are ready.
+  void reconcileCloudSandboxes().catch((error) => {
+    logger.warn("Failed to reconcile cloud sandboxes on startup:", error);
+  });
 
   // Add dyad-apps directory to git safe.directory (required for Windows).
   // The trailing /* allows access to all repositories under the named directory.

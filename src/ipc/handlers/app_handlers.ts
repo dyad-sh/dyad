@@ -126,7 +126,6 @@ import {
   createCloudSandboxShareLink,
   getCloudSandboxStatus,
   queueCloudSandboxSnapshotSync,
-  reconcileCloudSandboxes,
 } from "../utils/cloud_sandbox_provider";
 import { createFromTemplate } from "./createFromTemplate";
 import { getInitialChatModeForNewChat } from "./chat_mode_resolution";
@@ -2611,10 +2610,6 @@ export function registerAppHandlers() {
     );
 
     return { thumbnails };
-  });
-
-  void reconcileCloudSandboxes().catch((error) => {
-    logger.warn("Failed to reconcile cloud sandboxes on startup:", error);
   });
 
   // Test-only: flip needs_app_blueprint for an imported app so E2E tests can

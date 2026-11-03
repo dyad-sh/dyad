@@ -500,7 +500,7 @@ export async function disconnectOAuth(
         serverId,
         allowInteractive: true,
       });
-      await provider.invalidateCredentials("all");
+      await provider.disconnect();
       void mcpManager.dispose(serverId).catch(() => {});
       return { success: true };
     },

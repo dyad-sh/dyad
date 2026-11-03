@@ -11,15 +11,23 @@ const logger = log.scope("fetch_openai_compatible_models");
 const FETCH_TIMEOUT_MS = 10_000;
 
 class CustomProviderModelsRequestError extends DyadError {
-  constructor(message: string, kind: DyadErrorKind, options?: { cause?: unknown }) {
+  constructor(
+    message: string,
+    kind: DyadErrorKind,
+    options?: { cause?: unknown },
+  ) {
     super(message, kind, options);
     this.name = CUSTOM_PROVIDER_MODELS_REQUEST_ERROR_NAME;
   }
 }
 
 class CustomProviderModelsTransportError extends DyadError {
-  constructor(message: string, options?: { cause?: unknown }) {
-    super(message, DyadErrorKind.External, options);
+  constructor(
+    message: string,
+    kind: DyadErrorKind,
+    options?: { cause?: unknown },
+  ) {
+    super(message, kind, options);
     this.name = CUSTOM_PROVIDER_MODELS_TRANSPORT_ERROR_NAME;
   }
 }

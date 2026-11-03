@@ -14,6 +14,8 @@ Dyad chat admission → handleLocalAgentStream → ClaudeCodeModel → Claude Co
 
 The CLI starts with an empty native tool set (`--tools ""`) and restricted settings, hooks, and plugins. Startup validates the exact Dyad MCP inventory and server; optional `EndConversation` is only a protocol control. Typed media results retain Dyad’s safety bounds; remote media remains links rather than being fetched implicitly.
 
+The CLI truncates long MCP tool descriptions, which would hide the third-party MCP inventory at the end of `execute_sandbox_script`'s description. `moveOversizedToolDescriptions` keeps descriptions under the limit by moving oversized text to delimited system prompt sections and leaving a pointer on the tool.
+
 ## Turn ownership
 
 Root MCP calls execute FIFO, so consent and questionnaires form a decision barrier without holding a workspace lock. Individual tools acquire their normal operation claims. The regular Dyad runtime owns child agents, cancellation, mutation draining, provider bookkeeping, deferred operations, Git checkpoints, and preview updates. Workflow stops use a CLI protocol interrupt to flush usage; CLI failure aborts pending tool work before cleanup and finalization. Historical native-tool cards remain readable, but only shared Dyad cards are produced now.

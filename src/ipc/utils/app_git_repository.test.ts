@@ -64,11 +64,12 @@ describe("assertAppGitRepository", () => {
     expect(error.kind).toBe(DyadErrorKind.NotFound);
   });
 
-  it("reports a file at the app path as not a git repository", async () => {
+  it("reports a file at the app path as a missing folder", async () => {
     const filePath = path.join(tmpDir, "not-a-dir");
     fs.writeFileSync(filePath, "");
     const error = await captureError(filePath);
-    expect(error.kind).toBe(DyadErrorKind.External);
+    expect(error.message).toContain(`App folder not found: "${filePath}"`);
+    expect(error.kind).toBe(DyadErrorKind.NotFound);
   });
 
   it.each(["EACCES", "EPERM"])(
@@ -174,6 +175,22 @@ describe("assertAppFolderExists", () => {
     expect(error.message).toContain(`location "${parentDir}" is unavailable`);
     expect(error.kind).toBe(DyadErrorKind.NotFound);
   });
+
+  it.each(["EACCES", "EPERM"])(
+    "reports a folder that can't be opened (%s) as a permission problem",
+    async (code) => {
+      const accessSpy = vi
+        .spyOn(fs.promises, "access")
+        .mockRejectedValue(errnoError(code));
+      const error = await folderError(tmpDir);
+      expect(accessSpy).toHaveBeenCalledWith(
+        tmpDir,
+        fs.constants.R_OK | fs.constants.X_OK,
+      );
+      expect(error.message).toContain("doesn't have permission");
+      expect(error.kind).toBe(DyadErrorKind.Precondition);
+    },
+  );
 
   it("reports a permission error as a precondition", async () => {
     vi.spyOn(fs.promises, "stat").mockRejectedValue(errnoError("EPERM"));

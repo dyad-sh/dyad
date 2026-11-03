@@ -63,6 +63,8 @@ export async function assertAppFolderExists(appPath: string): Promise<void> {
   try {
     const stats = await fs.promises.stat(appPath);
     if (stats.isDirectory()) {
+      // `stat` succeeds even when the folder itself can't be opened.
+      await fs.promises.access(appPath, fs.constants.R_OK | fs.constants.X_OK);
       return;
     }
     // A file where the app folder should be means the folder is gone.
@@ -94,6 +96,10 @@ export async function assertAppGitRepository(appPath: string): Promise<void> {
   }
   if (PERMISSION_ERROR_CODES.has(gitErrorCode)) {
     throw permissionError(appPath);
+  }
+  // `.git` can only be "not a directory" when the app path isn't a folder.
+  if (gitErrorCode === "ENOTDIR") {
+    await throwIfAppFolderUnusable(appPath, gitErrorCode);
   }
 
   const appDirErrorCode = await statErrorCode(appPath);

@@ -43,6 +43,7 @@ export function FetchModelsDialog({
     queryKey: queryKeys.languageModels.fetchCustomProviderModels({ providerId }),
     queryFn: () => ipc.languageModel.fetchCustomProviderModels({ providerId }),
     enabled: isOpen,
+    networkMode: "always",
     staleTime: 0,
     gcTime: 0, // always ask the server again when the dialog reopens
     retry: false,

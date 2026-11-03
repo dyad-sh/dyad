@@ -59,9 +59,16 @@ async function throwIfAppFolderUnusable(
  * create files in, or run processes from, a folder the user deleted.
  */
 export async function assertAppFolderExists(appPath: string): Promise<void> {
-  const appDirErrorCode = await statErrorCode(appPath);
-  if (appDirErrorCode === null) {
-    return;
+  let appDirErrorCode: string;
+  try {
+    const stats = await fs.promises.stat(appPath);
+    if (stats.isDirectory()) {
+      return;
+    }
+    // A file where the app folder should be means the folder is gone.
+    appDirErrorCode = "ENOTDIR";
+  } catch (error) {
+    appDirErrorCode = errorCode(error) ?? "UNKNOWN";
   }
   await throwIfAppFolderUnusable(appPath, appDirErrorCode);
   throw new DyadError(

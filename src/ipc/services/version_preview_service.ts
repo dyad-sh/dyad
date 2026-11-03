@@ -4,7 +4,10 @@ import path from "node:path";
 import { db } from "@/db";
 import { apps } from "@/db/schema";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { assertAppGitRepository } from "@/ipc/utils/app_git_repository";
+import {
+  assertAppFolderExists,
+  assertAppGitRepository,
+} from "@/ipc/utils/app_git_repository";
 import type { VersionCommandResult } from "@/ipc/types";
 import { getDyadAppPath } from "@/paths/paths";
 import type { PreviewCommand, RestoreRecovery } from "@/version_preview/state";
@@ -398,6 +401,14 @@ export class VersionPreviewService {
     if (!app) return this.missingRepository("App not found");
     const appPath = getDyadAppPath(app.path);
     if (!fs.existsSync(path.join(appPath, ".git"))) {
+      try {
+        await assertAppFolderExists(appPath);
+      } catch (error) {
+        // Explain a missing or inaccessible app folder instead.
+        if (error instanceof Error) {
+          return this.missingRepository(error.message);
+        }
+      }
       return this.missingRepository(
         "The project repository could not be found.",
       );

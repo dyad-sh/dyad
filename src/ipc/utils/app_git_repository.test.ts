@@ -75,8 +75,14 @@ describe("assertAppGitRepository", () => {
     "reports %s on the app folder as a permission problem",
     async (code) => {
       const appPath = path.join(tmpDir, "locked-app");
-      vi.spyOn(fs.promises, "stat").mockRejectedValue(errnoError(code));
+      const statSpy = vi
+        .spyOn(fs.promises, "stat")
+        .mockImplementation(((target: fs.PathLike) =>
+          Promise.reject(
+            errnoError(String(target) === appPath ? code : "ENOENT"),
+          )) as typeof fs.promises.stat);
       const error = await captureError(appPath);
+      expect(statSpy).toHaveBeenCalledWith(appPath);
       expect(error.message).toContain("doesn't have permission");
       expect(error.message).toContain(appPath);
       expect(error.kind).toBe(DyadErrorKind.Precondition);
@@ -145,6 +151,14 @@ describe("assertAppFolderExists", () => {
 
   it("resolves for an existing folder, even without .git", async () => {
     await expect(assertAppFolderExists(tmpDir)).resolves.toBeUndefined();
+  });
+
+  it("reports a file at the app path as a missing folder", async () => {
+    const appPath = path.join(tmpDir, "replaced-by-file");
+    fs.writeFileSync(appPath, "");
+    const error = await folderError(appPath);
+    expect(error.message).toContain(`App folder not found: "${appPath}"`);
+    expect(error.kind).toBe(DyadErrorKind.NotFound);
   });
 
   it("reports a missing app folder as not found", async () => {

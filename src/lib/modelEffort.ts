@@ -7,7 +7,7 @@ export const FALLBACK_EFFORT_SETTINGS = {
   possibleEffortLevels: ["low", "medium", "high"],
 } as const;
 
-export const OLLAMA_EFFORT_SETTINGS = {
+export const LOCAL_PROVIDER_EFFORT_SETTINGS = {
   defaultEffortLevel: "medium",
   possibleEffortLevels: ["none", "low", "medium", "high"],
 } as const;
@@ -28,8 +28,12 @@ export function getEffortSettings(
   defaultEffortLevel: string;
   possibleEffortLevels: readonly string[];
 } {
-  if (providerId === "ollama") {
-    return OLLAMA_EFFORT_SETTINGS;
+  if (
+    providerId === "ollama" ||
+    providerId === "lmstudio" ||
+    providerId?.startsWith("custom::")
+  ) {
+    return model?.effortSettings ?? LOCAL_PROVIDER_EFFORT_SETTINGS;
   }
   return model?.effortSettings ?? FALLBACK_EFFORT_SETTINGS;
 }
@@ -37,7 +41,9 @@ export function getEffortSettings(
 export function resolveEffortLevel({
   catalogModel,
   preferredEffortLevel,
+  providerId,
 }: {
+  providerId?: string;
   catalogModel?: LanguageModel | null;
   preferredEffortLevel?: string | null;
 }): string {
@@ -47,7 +53,7 @@ export function resolveEffortLevel({
   if (!catalogModel) {
     return preferredEffortLevel ?? FALLBACK_EFFORT_SETTINGS.defaultEffortLevel;
   }
-  const settings = getEffortSettings(catalogModel);
+  const settings = getEffortSettings(catalogModel, providerId);
   return preferredEffortLevel &&
     settings.possibleEffortLevels.includes(preferredEffortLevel)
     ? preferredEffortLevel
@@ -65,7 +71,11 @@ export function createModelSelection({
 }): ModelSelection {
   return {
     ...model,
-    effortLevel: resolveEffortLevel({ catalogModel, preferredEffortLevel }),
+    effortLevel: resolveEffortLevel({
+      catalogModel,
+      preferredEffortLevel,
+      providerId: model.provider,
+    }),
   };
 }
 

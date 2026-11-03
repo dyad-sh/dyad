@@ -18,6 +18,8 @@ export interface ChatStreamHostState {
     readonly queueResumedAfterCancel?: boolean;
   } | null;
   readonly error: string | null;
+  /** A main-owned app mutation is holding execution; submissions still queue. */
+  readonly executionHeld: boolean;
   readonly queueRevision: number;
   readonly queuePaused: boolean;
   readonly queuePauseReason: "stop" | "manual" | "step-limit" | null;

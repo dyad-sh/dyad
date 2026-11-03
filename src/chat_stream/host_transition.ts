@@ -20,6 +20,7 @@ export function initialChatStreamHostState(input?: {
     phase: "idle",
     active: null,
     error: null,
+    executionHeld: false,
     queueRevision: input?.queueRevision ?? 0,
     queuePaused: input?.queuePaused ?? false,
     queuePauseReason: input?.queuePaused
@@ -155,7 +156,40 @@ export function transitionChatStreamHost(
   ChatStreamHostCommand,
   ChatStreamHostIgnoreReason
 > {
+  const result = transitionHost(state, event);
+  if (result.kind !== "applied" || !result.state.executionHeld) return result;
+  return {
+    ...result,
+    commands: result.commands.filter(
+      (command) => command.type !== "dispatch-next",
+    ),
+  };
+}
+
+function transitionHost(
+  state: ChatStreamHostState,
+  event: ChatStreamWireEvent,
+): TransitionResult<
+  ChatStreamHostState,
+  ChatStreamHostCommand,
+  ChatStreamHostIgnoreReason
+> {
   switch (event.type) {
+    case "EXECUTION_HOLD_CHANGED":
+      if (state.executionHeld === event.held)
+        return ignore(state, "invalid-host-event");
+      return {
+        kind: "applied",
+        state: { ...state, executionHeld: event.held },
+        commands:
+          !event.held &&
+          !state.queuePaused &&
+          state.pendingQueueMutationId === null &&
+          state.queue.length > 0 &&
+          (state.phase === "idle" || state.phase === "errored")
+            ? [{ type: "dispatch-next" }]
+            : [],
+      };
     case "SUBMIT": {
       const predatesLatestStop =
         event.observedStopPolicyVersion !== undefined &&
@@ -167,6 +201,7 @@ export function transitionChatStreamHost(
         (entry) => entry.intentId === event.intent.intentId,
       );
       if (
+        !state.executionHeld &&
         (state.phase === "idle" || state.phase === "errored") &&
         (!state.queuePaused ||
           (state.queuePauseReason !== "stop" && !replaysQueuedIntent)) &&
@@ -903,7 +938,15 @@ export function transitionChatStreamHost(
               error: event.error,
             },
           },
-          commands: [],
+          // A pending mutation may have blocked dispatch when a hold released.
+          // Reconsider the authoritative queue once that mutation settles.
+          commands:
+            !stopOwnsQueue &&
+            !event.paused &&
+            event.entries.length > 0 &&
+            (state.phase === "idle" || state.phase === "errored")
+              ? [{ type: "dispatch-next" }]
+              : [],
         };
       }
     case "QUEUE_PARKED":

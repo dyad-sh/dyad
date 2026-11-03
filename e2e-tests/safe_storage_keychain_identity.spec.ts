@@ -29,8 +29,8 @@
  *   settings writes, so it stays recoverable.
  * - Layer 1 (legacy keychain recovery): when safeStorage decrypt fails on
  *   darwin, the app reads the Keychain passwords of BOTH legacy identities via
- *   the `security` CLI ("dyad Safe Storage"/"dyad" and
- *   "Chromium Safe Storage"/"Chromium"), derives the Chromium os_crypt key
+ *   the `security` CLI ("dyad Safe Storage"/"dyad Key" and
+ *   "Chromium Safe Storage"/"Chromium Key"), derives the Chromium os_crypt key
  *   (PBKDF2-HMAC-SHA1, salt "saltysalt", 1003 iterations, 16 bytes ->
  *   AES-128-CBC, IV = 16 spaces, "v10" prefix) and decrypts. A secret encrypted
  *   under one identity is then transparently recovered in a session that
@@ -51,20 +51,21 @@
  *   DYAD_E2E_SAFE_STORAGE=1 npx playwright test \
  *     e2e-tests/safe_storage_keychain_identity.spec.ts --workers=1
  *
- * The two-build upgrade test additionally needs a build of the app at the
- * Electron 43 commit (the parent of the revert
- * d24360e89ba54cd8386d5148a74437df10ced414, e.g. in a worktree:
- * `git checkout d24360e8~1 && npm ci && npm run pre:e2e`). Note that commit
- * PREDATES this fix, so it still exhibits the old dropping behavior (see the
- * test's own comments). Point at its packaged output:
+ * CI builds a pinned Electron 40 baseline in a second checkout and reuses the
+ * current PR artifact as the candidate. To run locally ON A DISPOSABLE MAC:
  *
- *   DYAD_E2E_SAFE_STORAGE=1 \
- *   DYAD_E2E_SAFE_STORAGE_UPGRADE_BUILD=/path/to/e43/out/dyad-darwin-arm64 \
- *   npx playwright test e2e-tests/safe_storage_keychain_identity.spec.ts --workers=1
+ * DYAD_E2E_SAFE_STORAGE=1 \
+ * DYAD_E2E_SAFE_STORAGE_BASELINE_BUILD=/path/to/baseline/out \
+ * DYAD_E2E_SAFE_STORAGE_CANDIDATE_BUILD=/path/to/candidate/out \
+ * npx playwright test e2e-tests/safe_storage_keychain_identity.spec.ts --workers=1
+ *
+ * Prepare the baseline with scripts/prepare-safe-storage-baseline.mjs before
+ * building it. Both build paths point to out/, not its architecture child.
  */
 
 import { expect, test } from "@playwright/test";
 import { execFileSync } from "child_process";
+import { createCipheriv, pbkdf2Sync } from "node:crypto";
 import * as eph from "electron-playwright-helpers";
 import fs from "fs";
 import os from "os";
@@ -74,7 +75,8 @@ import { ElectronApplication, _electron as electron } from "playwright";
 const ENABLED =
   process.platform === "darwin" && process.env.DYAD_E2E_SAFE_STORAGE === "1";
 
-const UPGRADE_BUILD_DIR = process.env.DYAD_E2E_SAFE_STORAGE_UPGRADE_BUILD;
+const BASELINE_BUILD_DIR = process.env.DYAD_E2E_SAFE_STORAGE_BASELINE_BUILD;
+const CANDIDATE_BUILD_DIR = process.env.DYAD_E2E_SAFE_STORAGE_CANDIDATE_BUILD;
 
 // Keychain service names created by Chromium's os_crypt on macOS. The service
 // is "<product name> Safe Storage"; pre-ready initialization on Electron 40
@@ -170,17 +172,23 @@ function restoreOriginalKeychains(): void {
 async function launchDyad({
   userDataDir,
   buildDir,
+  realEncryption = false,
 }: {
   userDataDir: string;
   buildDir?: string;
+  realEncryption?: boolean;
 }): Promise<ElectronApplication> {
-  const appInfo = eph.parseElectronApp(buildDir ?? eph.findLatestBuild());
+  const outputDir = buildDir ?? CANDIDATE_BUILD_DIR;
+  // findLatestBuild accepts the out/ directory; parseElectronApp expects its
+  // platform/architecture child. Never let the nested baseline win discovery.
+  const appInfo = eph.parseElectronApp(eph.findLatestBuild(outputDir));
   const electronApp = await electron.launch({
     args: [appInfo.main, "--enable-logging", `--user-data-dir=${userDataDir}`],
     executablePath: appInfo.executable,
     env: {
       ...process.env,
       E2E_TEST_BUILD: "true",
+      DYAD_E2E_REAL_ENCRYPTION: realEncryption ? "true" : "false",
       // Skips the AI setup screen (same hack as the shared fixture).
       OPENAI_API_KEY: "sk-test",
     },
@@ -330,7 +338,7 @@ test.describe("safeStorage keychain identity (issue #3837)", () => {
     freshTempKeychain();
   });
 
-  test("stored secret survives the pre-ready identity flip across restarts (Layer 1 recovery)", async () => {
+  test("stored secret survives restarts with or without the pre-ready identity race", async () => {
     test.setTimeout(240_000);
     const userDataDir = makeUserDataDir("restart");
     const token = "gh_e2e_restart_secret";
@@ -347,33 +355,10 @@ test.describe("safeStorage keychain identity (issue #3837)", () => {
     // (non-test-build) session.
     writeGithubTokenCiphertext(userDataDir, ciphertext);
 
-    // Session 2: the settings file now contains an encrypted secret, so the
-    // module-scope reconcileCloudSandboxes() -> readSettings() call decrypts
-    // BEFORE app.ready. That pre-ready race silently resolves the "Chromium
-    // Safe Storage" identity, which cannot decrypt the dyad-identity ciphertext
-    // from session 1. This race is deliberately left unfixed; the fix instead
-    // makes the secret survive it.
+    // Electron 40 can resolve Chromium on restart; newer runtimes or a fixed
+    // startup order may retain dyad. Either way the stored token must survive.
     freshTempKeychain();
     const session2 = await launchDyad({ userDataDir });
-
-    // The identity flip still happens: os_crypt on macOS is deterministic
-    // (fixed IV), so the same plaintext encrypted by the same build must yield
-    // the same ciphertext — unless the session derived its key from a different
-    // Keychain identity. A mismatch proves session 2 resolved a different
-    // identity than session 1.
-    expect(await encryptViaApp(session2, token)).not.toBe(ciphertext);
-
-    // ...and raw safeStorage STILL cannot read the session-1 ciphertext,
-    // confirming the flip is real and that the recovery below (not safeStorage)
-    // is what makes the token readable again.
-    expect(await decryptViaApp(session2, ciphertext)).toMatch(/^ERROR: /);
-
-    // REGRESSION: despite the flip, the stored GitHub token is recovered via
-    // the Layer 1 legacy-keychain fallback and IS returned to the app.
-    //
-    // No assertion on the settings file here: e2e builds write secrets as
-    // plaintext (IS_TEST_BUILD), so a mid-session settings write may legitimately
-    // convert the recovered secret to plaintext on disk. IPC-level only.
     const settings = await readSettingsViaIpc(session2);
     expect(settings.githubAccessToken?.value).toBe(token);
 
@@ -443,74 +428,99 @@ test.describe("safeStorage keychain identity (issue #3837)", () => {
     );
   });
 
-  test("Electron 40 -> 43 upgrade: pre-fix build still drops steady-state secrets (#3837)", async () => {
-    test.skip(
-      !UPGRADE_BUILD_DIR,
-      "Set DYAD_E2E_SAFE_STORAGE_UPGRADE_BUILD to a packaged build dir (e.g. out/dyad-darwin-arm64) built at the Electron 43 commit (parent of revert d24360e8)",
-    );
-    test.setTimeout(240_000);
-    const userDataDir = makeUserDataDir("upgrade");
-    const token = "gh_e2e_upgrade_secret";
+  for (const identity of ["Chromium", "dyad"] as const) {
+    test(`Electron 40 -> candidate: preserves encrypted ${identity} credentials through writes and restarts`, async () => {
+      if (process.env.CI) {
+        expect(
+          BASELINE_BUILD_DIR,
+          "CI must supply the baseline artifact",
+        ).toBeTruthy();
+        expect(
+          CANDIDATE_BUILD_DIR,
+          "CI must supply the candidate artifact",
+        ).toBeTruthy();
+      }
+      test.skip(
+        !BASELINE_BUILD_DIR,
+        "Requires the pinned Electron 40 baseline out/ directory",
+      );
+      test.setTimeout(360_000);
+      const userDataDir = makeUserDataDir(`upgrade-${identity}`);
+      const token = `gh_e2e_upgrade_${identity}`;
 
-    // NOTE: the upgrade build (DYAD_E2E_SAFE_STORAGE_UPGRADE_BUILD) is built at
-    // the Electron 43 commit that PREDATES this fix, so it still exhibits the
-    // old dropping behavior — hence session 3 below asserts the secret is lost.
-    // Once the Electron 43 re-land (which will carry this fix) provides the
-    // artifact, flip session 3's assertions to expect Layer 1 recovery instead
-    // (token decryptable via IPC, githubAccessToken present), mirroring the
-    // "survives the pre-ready identity flip" test above.
+      // A fresh old profile uses dyad. An encrypted entry at launch triggers
+      // the historical pre-ready Chromium identity. The baseline retains that
+      // behavior; the candidate is free to remove the race.
+      if (identity === "Chromium") {
+        writeGithubTokenCiphertext(userDataDir, UNDECRYPTABLE_CIPHERTEXT);
+      }
+      const baseline = await launchDyad({
+        userDataDir,
+        buildDir: BASELINE_BUILD_DIR,
+        realEncryption: true,
+      });
+      expect(await baseline.evaluate(() => process.versions.electron)).toMatch(
+        /^40\./,
+      );
+      await writeSettingsViaIpc(baseline, {
+        githubAccessToken: { value: token, encryptionType: "plaintext" },
+      });
+      expect(
+        (await readSettingsViaIpc(baseline)).githubAccessToken?.value,
+      ).toBe(token);
+      await closeDyad(baseline);
 
-    // Steady state for a long-time Electron 40 user: the settings file already
-    // holds an electron-safe-storage secret at launch, so every session
-    // initializes safeStorage pre-ready under the Chromium identity. The seeded
-    // value only needs to trigger that decrypt attempt.
-    writeGithubTokenCiphertext(userDataDir, UNDECRYPTABLE_CIPHERTEXT);
+      // Prove the old app wrote real ciphertext under the intended identity,
+      // rather than hand-installing encrypted bytes or accepting plaintext.
+      const cipher = createCipheriv(
+        "aes-128-cbc",
+        pbkdf2Sync(
+          `e2e-${identity.toLowerCase()}-identity-key`,
+          "saltysalt",
+          1003,
+          16,
+          "sha1",
+        ),
+        Buffer.alloc(16, 0x20),
+      );
+      const expectedCiphertext = Buffer.concat([
+        Buffer.from("v10"),
+        cipher.update(token, "utf8"),
+        cipher.final(),
+      ]).toString("base64");
+      expect(readSettingsFileRaw(userDataDir).githubAccessToken).toEqual({
+        value: expectedCiphertext,
+        encryptionType: "electron-safe-storage",
+      });
 
-    // Session 1 (Electron 40): encrypt the real token. Because this session was
-    // poisoned pre-ready, the ciphertext is bound to the Chromium identity.
-    const session1 = await launchDyad({ userDataDir });
-    const ciphertext = await encryptViaApp(session1, token);
-    await closeDyad(session1);
-    writeGithubTokenCiphertext(userDataDir, ciphertext);
-
-    // Session 2 (Electron 40 control): restarts on the same Electron major keep
-    // working — same pre-ready race, same wrong-but-stable Chromium identity, so
-    // raw safeStorage still decrypts the ciphertext. This is why the bug stays
-    // invisible until the Electron upgrade.
-    freshTempKeychain();
-    const session2 = await launchDyad({ userDataDir });
-    expect(await decryptViaApp(session2, ciphertext)).toBe(token);
-    const settingsOn40 = await readSettingsViaIpc(session2);
-    expect(settingsOn40.githubAccessToken?.value).toBe(token);
-    await closeDyad(session2);
-
-    // Session 2 may have rewritten the settings file, and test builds store
-    // secrets as plaintext on write (encrypt() checks IS_TEST_BUILD). A real
-    // build re-encrypts with safeStorage, so put the ciphertext back to match
-    // the on-disk state a production Electron 40 install carries into the
-    // upgrade.
-    writeGithubTokenCiphertext(userDataDir, ciphertext);
-
-    // Session 3 (Electron 43, pre-fix build): safeStorage now refuses pre-ready
-    // use and post-ready always uses the proper "dyad Safe Storage" identity, so
-    // the Chromium-identity ciphertext is permanently unreadable — and because
-    // this build predates the fix, it has neither Layer 0 preservation nor
-    // Layer 1 recovery.
-    freshTempKeychain();
-    const session3 = await launchDyad({
-      userDataDir,
-      buildDir: UPGRADE_BUILD_DIR,
+      for (let restart = 0; restart < 3; restart++) {
+        freshTempKeychain();
+        const candidate = await launchDyad({
+          userDataDir,
+          realEncryption: true,
+        });
+        expect(
+          (await readSettingsViaIpc(candidate)).githubAccessToken?.value,
+        ).toBe(token);
+        await writeSettingsViaIpc(candidate, {
+          hidePnpmMinimumReleaseAgeWarning: restart % 2 === 0,
+        });
+        expect(
+          (await readSettingsViaIpc(candidate)).githubAccessToken?.value,
+        ).toBe(token);
+        await closeDyad(candidate);
+        const stored = readSettingsFileRaw(userDataDir);
+        expect(stored.hidePnpmMinimumReleaseAgeWarning).toBe(restart % 2 === 0);
+        expect(stored.githubAccessToken?.encryptionType).toBe(
+          "electron-safe-storage",
+        );
+        expect(stored.githubAccessToken?.value).not.toBe(token);
+        expect(
+          Buffer.from(stored.githubAccessToken.value, "base64")
+            .subarray(0, 3)
+            .toString(),
+        ).toBe("v10");
+      }
     });
-
-    // BUG (#3837), reproduced against the pre-fix build: the stored secret
-    // cannot be decrypted after the upgrade...
-    expect(await decryptViaApp(session3, ciphertext)).toMatch(/^ERROR: /);
-
-    // ...and the pre-fix app silently drops it (user-visible: GitHub
-    // disconnected, provider API keys gone).
-    const settingsOn43 = await readSettingsViaIpc(session3);
-    expect(settingsOn43.githubAccessToken).toBeFalsy();
-
-    await closeDyad(session3);
-  });
+  }
 });

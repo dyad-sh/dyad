@@ -31,6 +31,12 @@ import {
 import { ZodError } from "zod";
 
 const mockSend = vi.fn();
+const testBuildState = vi.hoisted(() => ({ value: false }));
+vi.mock("@/ipc/utils/test_utils", () => ({
+  get IS_TEST_BUILD() {
+    return testBuildState.value;
+  },
+}));
 const mockWebContents = {
   send: mockSend,
 } as unknown as Parameters<typeof notifyRendererErrorToastListenerReady>[0];
@@ -54,6 +60,7 @@ vi.mock("electron", () => ({
   },
   safeStorage: {
     isEncryptionAvailable: vi.fn(),
+    encryptString: vi.fn(),
     decryptString: vi.fn(),
   },
 }));
@@ -981,6 +988,47 @@ describe("writeSettings", () => {
 });
 
 describe("encrypt", () => {
+  afterEach(() => {
+    testBuildState.value = false;
+    vi.unstubAllEnvs();
+  });
+
+  it("uses real encrypted writes when the Keychain suite opts in", () => {
+    testBuildState.value = true;
+    vi.stubEnv("DYAD_E2E_REAL_ENCRYPTION", "true");
+    mockSafeStorage.isEncryptionAvailable.mockReturnValue(true);
+    mockSafeStorage.encryptString.mockReturnValue(Buffer.from("ciphertext"));
+
+    expect(encrypt("  synthetic-token\n")).toEqual({
+      value: Buffer.from("ciphertext").toString("base64"),
+      encryptionType: "electron-safe-storage",
+    });
+    expect(mockSafeStorage.encryptString).toHaveBeenCalledWith(
+      "synthetic-token",
+    );
+  });
+
+  it("retains the unavailable-keyring fallback even when opted in", () => {
+    testBuildState.value = true;
+    vi.stubEnv("DYAD_E2E_REAL_ENCRYPTION", "true");
+    mockSafeStorage.isEncryptionAvailable.mockReturnValue(false);
+    expect(encrypt("synthetic-token")).toEqual({
+      value: "synthetic-token",
+      encryptionType: "plaintext",
+    });
+  });
+
+  it("keeps ordinary E2E writes plaintext unless explicitly opted in", () => {
+    testBuildState.value = true;
+    vi.stubEnv("DYAD_E2E_REAL_ENCRYPTION", "false");
+    mockSafeStorage.isEncryptionAvailable.mockReturnValue(true);
+    expect(encrypt("synthetic-token")).toEqual({
+      value: "synthetic-token",
+      encryptionType: "plaintext",
+    });
+    mockSafeStorage.isEncryptionAvailable.mockReturnValue(false);
+  });
+
   it("should trim whitespace before encrypting", () => {
     const result = encrypt("  my-api-key\n");
     // In test builds, encryption falls back to plaintext

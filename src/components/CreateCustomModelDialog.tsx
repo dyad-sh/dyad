@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ipc } from "@/ipc/types";
+import { parseEffortLevelsInput } from "@/lib/modelEffort";
 import { useMutation } from "@tanstack/react-query";
 import { showError, showSuccess } from "@/lib/toast";
 
@@ -32,6 +33,7 @@ export function CreateCustomModelDialog({
   const [description, setDescription] = useState("");
   const [maxOutputTokens, setMaxOutputTokens] = useState<string>("");
   const [contextWindow, setContextWindow] = useState<string>("");
+  const [effortLevels, setEffortLevels] = useState("");
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -61,6 +63,7 @@ export function CreateCustomModelDialog({
         description: params.description,
         maxOutputTokens: params.maxOutputTokens,
         contextWindow: params.contextWindow,
+        effortSettings: parseEffortLevelsInput(effortLevels),
       });
     },
     onSuccess: () => {
@@ -80,6 +83,7 @@ export function CreateCustomModelDialog({
     setDescription("");
     setMaxOutputTokens("");
     setContextWindow("");
+    setEffortLevels("");
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -183,6 +187,26 @@ export function CreateCustomModelDialog({
                 placeholder="Optional: e.g., 8192"
                 disabled={mutation.isPending}
               />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="effort-levels" className="text-right">
+                Effort Levels
+              </Label>
+              <div className="col-span-3 space-y-1">
+                <Input
+                  id="effort-levels"
+                  value={effortLevels}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                    setEffortLevels(e.target.value)
+                  }
+                  placeholder="Optional: e.g., xhigh, medium, low"
+                  disabled={mutation.isPending}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Comma-separated; the first is the default. Leave empty to use
+                  Dyad's defaults (low, medium, high).
+                </p>
+              </div>
             </div>
           </div>
           <DialogFooter>

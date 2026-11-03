@@ -81,6 +81,7 @@ export const CreateCustomLanguageModelParamsSchema = z.object({
   description: z.string().optional(),
   maxOutputTokens: z.number().optional(),
   contextWindow: z.number().optional(),
+  effortSettings: EffortSettingsSchema.optional(),
 });
 
 export type CreateCustomLanguageModelParams = z.infer<

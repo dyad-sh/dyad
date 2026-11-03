@@ -1,4 +1,4 @@
-import type { LanguageModel } from "@/ipc/types/language-model";
+import type { EffortSettings, LanguageModel } from "@/ipc/types/language-model";
 import type { LargeLanguageModel, ModelSelection } from "@/lib/schemas";
 import { getAutoSidekickRuntimeModel } from "@/lib/autoSidekick";
 
@@ -11,6 +11,37 @@ export const OLLAMA_EFFORT_SETTINGS = {
   defaultEffortLevel: "medium",
   possibleEffortLevels: ["none", "low", "medium", "high"],
 } as const;
+
+/**
+ * Parses the "Effort levels" form field (e.g. "xhigh, medium, low") into
+ * effort settings. The first level is the default. Empty input means "use
+ * Dyad's defaults", so it returns undefined.
+ */
+export function parseEffortLevelsInput(
+  text: string,
+): EffortSettings | undefined {
+  const levels = [
+    ...new Set(
+      text
+        .split(",")
+        .map((level) => level.trim())
+        .filter(Boolean),
+    ),
+  ];
+  return levels.length > 0
+    ? { defaultEffortLevel: levels[0], possibleEffortLevels: levels }
+    : undefined;
+}
+
+/** Inverse of parseEffortLevelsInput: default level first. */
+export function formatEffortLevelsInput(settings?: EffortSettings): string {
+  if (!settings) return "";
+  const { defaultEffortLevel, possibleEffortLevels } = settings;
+  return [
+    defaultEffortLevel,
+    ...possibleEffortLevels.filter((level) => level !== defaultEffortLevel),
+  ].join(", ");
+}
 
 export function getModelPreferenceKey(model: LargeLanguageModel): string {
   const preferenceModel = getAutoSidekickRuntimeModel(model);

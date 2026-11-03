@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ipc } from "@/ipc/types";
+import { queryKeys } from "@/lib/queryKeys";
 import { showError, showSuccess } from "@/lib/toast";
 
 interface FetchModelsDialogProps {
@@ -39,9 +40,10 @@ export function FetchModelsDialog({
     error,
     refetch,
   } = useQuery({
-    queryKey: ["fetch-custom-provider-models", providerId],
+    queryKey: queryKeys.languageModels.fetchCustomProviderModels({ providerId }),
     queryFn: () => ipc.languageModel.fetchCustomProviderModels({ providerId }),
     enabled: isOpen,
+    staleTime: 0,
     gcTime: 0, // always ask the server again when the dialog reopens
     retry: false,
   });

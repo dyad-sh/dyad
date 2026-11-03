@@ -1246,10 +1246,10 @@ describe("execGit launch failures", () => {
       expect(error).toBeInstanceOf(DyadError);
       expect((error as DyadError).kind).toBe(DyadErrorKind.NotFound);
       expect((error as DyadError).message).toContain(
-        `Folder not found: "${missingPath}"`,
+        `Folder not found: '${missingPath}'`,
       );
       expect(safeGithubOpsErrorMessage(error, "")).toBe(
-        'Folder not found: "[redacted path]". It may have been moved or deleted, or be on a drive that isn\'t connected.',
+        "Folder not found: '[redacted path]'. It may have been moved or deleted, or be on a drive that isn't connected.",
       );
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });

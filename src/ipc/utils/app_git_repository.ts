@@ -20,7 +20,7 @@ async function statErrorCode(target: string): Promise<string | null> {
 
 function permissionError(appPath: string): DyadError {
   return new DyadError(
-    `Dyad doesn't have permission to access the app folder "${appPath}". Check the folder's permissions (on macOS, also check Privacy & Security settings).`,
+    `Dyad doesn't have permission to access the app folder '${appPath}'. Check the folder's permissions (on macOS, also check Privacy & Security settings).`,
     DyadErrorKind.Precondition,
   );
 }
@@ -41,12 +41,12 @@ async function throwIfAppFolderUnusable(
     const parentDir = path.dirname(appPath);
     if ((await statErrorCode(parentDir)) !== null) {
       throw new DyadError(
-        `The app's location "${parentDir}" is unavailable. If it's on an external, network, or cloud-synced drive, make sure that drive is connected.`,
+        `The app's location '${parentDir}' is unavailable. If it's on an external, network, or cloud-synced drive, make sure that drive is connected.`,
         DyadErrorKind.NotFound,
       );
     }
     throw new DyadError(
-      `App folder not found: "${appPath}". It may have been moved or deleted.`,
+      `App folder not found: '${appPath}'. It may have been moved or deleted.`,
       DyadErrorKind.NotFound,
     );
   }
@@ -85,7 +85,7 @@ export async function assertAppFolderExists(appPath: string): Promise<void> {
   }
   await throwIfAppFolderUnusable(appPath, appDirErrorCode);
   throw new DyadError(
-    `Dyad couldn't access the app folder "${appPath}" (${appDirErrorCode}).`,
+    `Dyad couldn't access the app folder '${appPath}' (${appDirErrorCode}).`,
     DyadErrorKind.External,
   );
 }

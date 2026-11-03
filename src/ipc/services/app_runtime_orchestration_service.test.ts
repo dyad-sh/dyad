@@ -339,7 +339,7 @@ describe("AppRuntimeService", () => {
     const harness = createHarness();
     const { output } = createOutput();
     const missing = new DyadError(
-      'App folder not found: "/apps/test-app". It may have been moved or deleted.',
+      "App folder not found: '/apps/test-app'. It may have been moved or deleted.",
       DyadErrorKind.NotFound,
     );
     vi.mocked(harness.dependencies.assertAppFolderExists).mockRejectedValue(
@@ -362,6 +362,32 @@ describe("AppRuntimeService", () => {
       "lock:restart",
       "unlock:restart",
     ]);
+    expect(harness.dependencies.startProcess).not.toHaveBeenCalled();
+  });
+
+  it("stops a running app before restart fails on a deleted app folder", async () => {
+    const harness = createHarness();
+    const { output } = createOutput();
+    harness.setRunning({
+      process: null,
+      processId: 1,
+      mode: "host",
+      output,
+      lastViewedAt: 0,
+    });
+    const missing = new DyadError(
+      "App folder not found: '/apps/test-app'. It may have been moved or deleted.",
+      DyadErrorKind.NotFound,
+    );
+    vi.mocked(harness.dependencies.assertAppFolderExists).mockRejectedValue(
+      missing,
+    );
+
+    await expect(
+      harness.service.restart({ appId: APP_ID, output, invocationRef: REF }),
+    ).rejects.toBe(missing);
+
+    expect(harness.calls).toEqual(["lock:restart", "stop", "unlock:restart"]);
     expect(harness.dependencies.startProcess).not.toHaveBeenCalled();
   });
 

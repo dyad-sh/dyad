@@ -2078,7 +2078,6 @@ export class AppRuntimeService {
     return this.dependencies.runSerialized(appId, "restart", async () => {
       const app = await this.requireApp(appId);
       const appPath = this.dependencies.resolveAppPath(app.path);
-      await this.dependencies.assertAppFolderExists(appPath);
       const appInfo = this.dependencies.getRunningApp(appId);
 
       if (
@@ -2086,6 +2085,7 @@ export class AppRuntimeService {
         appInfo.cloudSandboxId &&
         !recreateSandbox
       ) {
+        await this.dependencies.assertAppFolderExists(appPath);
         await this.restartCloudSandboxInPlace({
           isNeon: !!app.neonProjectId,
           appId,
@@ -2107,6 +2107,9 @@ export class AppRuntimeService {
         logger.log(`App ${appId} not running. Proceeding to start.`);
       }
 
+      // Checked after stopping, so a missing folder doesn't leave the old
+      // process running.
+      await this.dependencies.assertAppFolderExists(appPath);
       await this.dependencies.cleanPort(getAppPort(appId));
       if (removeNodeModules) {
         const runtimeMode = this.dependencies.readRuntimeMode();

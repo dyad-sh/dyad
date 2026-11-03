@@ -53,14 +53,14 @@ describe("assertAppGitRepository", () => {
   it("reports a missing app folder as not found", async () => {
     const appPath = path.join(tmpDir, "deleted-app");
     const error = await captureError(appPath);
-    expect(error.message).toContain(`App folder not found: "${appPath}"`);
+    expect(error.message).toContain(`App folder not found: '${appPath}'`);
     expect(error.kind).toBe(DyadErrorKind.NotFound);
   });
 
   it("reports an unavailable parent location (e.g. unmounted drive)", async () => {
     const parentDir = path.join(tmpDir, "unmounted-drive");
     const error = await captureError(path.join(parentDir, "my-app"));
-    expect(error.message).toContain(`location "${parentDir}" is unavailable`);
+    expect(error.message).toContain(`location '${parentDir}' is unavailable`);
     expect(error.kind).toBe(DyadErrorKind.NotFound);
   });
 
@@ -68,7 +68,7 @@ describe("assertAppGitRepository", () => {
     const filePath = path.join(tmpDir, "not-a-dir");
     fs.writeFileSync(filePath, "");
     const error = await captureError(filePath);
-    expect(error.message).toContain(`App folder not found: "${filePath}"`);
+    expect(error.message).toContain(`App folder not found: '${filePath}'`);
     expect(error.kind).toBe(DyadErrorKind.NotFound);
   });
 
@@ -130,17 +130,34 @@ describe("assertAppGitRepository", () => {
     const denied = await captureError(path.join(tmpDir, "locked-app"));
 
     expect(safeGithubOpsErrorMessage(missing, "")).toBe(
-      'App folder not found: "[redacted path]". It may have been moved or deleted.',
+      "App folder not found: '[redacted path]'. It may have been moved or deleted.",
     );
     for (const error of [unavailable, denied]) {
       const redacted = safeGithubOpsErrorMessage(error, "");
-      expect(redacted).toContain('"[redacted path]"');
+      expect(redacted).toContain("'[redacted path]'");
       expect(redacted).not.toContain("path remainder redacted");
       expect(redacted).toMatch(
         /drive is connected\.$|Privacy & Security settings\)\.$/,
       );
     }
   });
+
+  it.each([
+    // Windows doesn't allow double quotes in folder names.
+    ...(process.platform === "win32" ? [] : ['My "private-project"']),
+    "John's Projects",
+    "it's a 'secret' dir",
+  ])(
+    "redacts the whole path when a folder name contains quotes (%s)",
+    async (folderName) => {
+      const appPath = path.join(tmpDir, folderName, "deleted-app");
+      fs.mkdirSync(path.dirname(appPath));
+      const error = await captureError(appPath);
+      expect(safeGithubOpsErrorMessage(error, "")).toBe(
+        "App folder not found: '[redacted path]'. It may have been moved or deleted.",
+      );
+    },
+  );
 });
 
 describe("assertAppFolderExists", () => {
@@ -172,21 +189,21 @@ describe("assertAppFolderExists", () => {
     const appPath = path.join(tmpDir, "replaced-by-file");
     fs.writeFileSync(appPath, "");
     const error = await folderError(appPath);
-    expect(error.message).toContain(`App folder not found: "${appPath}"`);
+    expect(error.message).toContain(`App folder not found: '${appPath}'`);
     expect(error.kind).toBe(DyadErrorKind.NotFound);
   });
 
   it("reports a missing app folder as not found", async () => {
     const appPath = path.join(tmpDir, "deleted-app");
     const error = await folderError(appPath);
-    expect(error.message).toContain(`App folder not found: "${appPath}"`);
+    expect(error.message).toContain(`App folder not found: '${appPath}'`);
     expect(error.kind).toBe(DyadErrorKind.NotFound);
   });
 
   it("reports an unavailable parent location", async () => {
     const parentDir = path.join(tmpDir, "unmounted-drive");
     const error = await folderError(path.join(parentDir, "my-app"));
-    expect(error.message).toContain(`location "${parentDir}" is unavailable`);
+    expect(error.message).toContain(`location '${parentDir}' is unavailable`);
     expect(error.kind).toBe(DyadErrorKind.NotFound);
   });
 

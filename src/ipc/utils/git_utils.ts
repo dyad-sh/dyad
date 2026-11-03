@@ -261,7 +261,7 @@ export async function execGit(
         diagnostics.gitBinary.targetExists
       ) {
         throw new DyadError(
-          `Folder not found: "${path}". It may have been moved or deleted, or be on a drive that isn't connected.`,
+          `Folder not found: '${path}'. It may have been moved or deleted, or be on a drive that isn't connected.`,
           DyadErrorKind.NotFound,
         );
       }

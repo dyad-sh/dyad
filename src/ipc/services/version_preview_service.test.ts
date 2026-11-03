@@ -199,7 +199,7 @@ describe("VersionPreviewService reconciliation admission", () => {
     vi.mocked(fs.existsSync).mockReturnValue(false);
     appFolder.assertAppFolderExists.mockRejectedValueOnce(
       new Error(
-        'App folder not found: "/test/app". It may have been moved or deleted.',
+        "App folder not found: '/test/app'. It may have been moved or deleted.",
       ),
     );
 
@@ -209,7 +209,7 @@ describe("VersionPreviewService reconciliation admission", () => {
           kind: "blocked",
           assessment: { type: "blocked", blocker: "missing-repository" },
           message:
-            'App folder not found: "/test/app". It may have been moved or deleted.',
+            "App folder not found: '/test/app'. It may have been moved or deleted.",
         },
       );
       expect(appFolder.assertAppFolderExists).toHaveBeenCalledWith("/test/app");

@@ -46,6 +46,7 @@ import {
   ensureRecentViewedChatIdAtom,
   initializeChatTabSessionStorageAtom,
 } from "./atoms/chatAtoms";
+import { startChatDraftPersistence } from "./atoms/chatDraftStorage";
 import {
   configureChatTabWindowSession,
   promoteMostRecentChatTabSession,
@@ -311,6 +312,11 @@ function RendererServices() {
       if (retryTimer) clearTimeout(retryTimer);
     };
   }, []);
+
+  // Unsent composer drafts are renderer-local presentation state. Restore them
+  // before the router mounts so a reopened chat shows its prompt immediately,
+  // then keep every edit in sync with localStorage.
+  useEffect(() => startChatDraftPersistence(store), [store]);
 
   useEffect(() => {
     if (!windowReady) return;

@@ -1,5 +1,40 @@
-import { test, Timeout } from "./helpers/test_helper";
-import { expect } from "@playwright/test";
+import { PageObject, test, Timeout } from "./helpers/test_helper";
+import { expect, test as baseTest, type TestInfo } from "@playwright/test";
+import fs from "fs";
+import os from "os";
+import path from "path";
+import type { ElectronApplication } from "playwright";
+import { FAKE_LLM_BASE_PORT } from "./helpers/test-ports";
+import { launchElectronApp, terminateElectronApp } from "./helpers/fixtures";
+
+async function launchDyadWithProfile({
+  userDataDir,
+  fakeLlmPort,
+  testInfo,
+}: {
+  userDataDir: string;
+  fakeLlmPort: number;
+  testInfo: TestInfo;
+}) {
+  const electronApp = await launchElectronApp({
+    userDataDir,
+    fakeLlmPort,
+    parallelIndex: testInfo.parallelIndex,
+  });
+  const page = await electronApp.firstWindow();
+  const po = new PageObject(electronApp, page, {
+    userDataDir,
+    fakeLlmPort,
+    testInfo,
+  });
+  await page.evaluate(async () => {
+    await (window as any).electron.ipcRenderer.invoke("set-user-settings", {
+      enablePnpmMinimumReleaseAgeWarning: false,
+      hidePnpmMinimumReleaseAgeWarning: true,
+    });
+  });
+  return { electronApp, po };
+}
 
 test("chat input is preserved when switching between chats", async ({ po }) => {
   await po.setUp({ autoApprove: true });
@@ -147,4 +182,58 @@ test("input preserved when switching back and forth multiple times", async ({
   await expect(chatInput).toContainText("draft-alpha", {
     timeout: Timeout.MEDIUM,
   });
+});
+
+// The composer map is renderer-local, so only persistence can carry an unsent
+// draft across a full app restart. This launches the real Electron app twice on
+// the same user data directory, mirroring the queued-message restart test.
+baseTest("unsent draft survives an app restart", async ({}, testInfo) => {
+  baseTest.skip(
+    process.platform === "win32",
+    "Manual Electron restarts can hang on Windows in this E2E environment.",
+  );
+  baseTest.setTimeout(120_000);
+
+  const fakeLlmPort = FAKE_LLM_BASE_PORT + testInfo.parallelIndex;
+  const userDataDir = path.join(
+    os.tmpdir(),
+    `dyad-e2e-chat-draft-${testInfo.parallelIndex}-${Date.now()}`,
+  );
+  const draft = "unsent draft that must survive a restart";
+  let activeApp: ElectronApplication | undefined;
+
+  try {
+    const firstSession = await launchDyadWithProfile({
+      userDataDir,
+      fakeLlmPort,
+      testInfo,
+    });
+    activeApp = firstSession.electronApp;
+    await firstSession.po.setUp({ autoApprove: true });
+    await firstSession.po.sendPrompt("[dump] draft restart setup");
+    await firstSession.po.chatActions.waitForChatCompletion();
+
+    const firstInput = firstSession.po.chatActions.getChatInput();
+    await expect(firstInput).toBeVisible();
+    await firstInput.fill(draft);
+    await expect(firstInput).toContainText(draft);
+
+    await terminateElectronApp(firstSession.electronApp);
+    activeApp = undefined;
+
+    const secondSession = await launchDyadWithProfile({
+      userDataDir,
+      fakeLlmPort,
+      testInfo,
+    });
+    activeApp = secondSession.electronApp;
+    await secondSession.po.navigation.goToChatTab();
+    await expect(secondSession.po.chatActions.getChatInput()).toContainText(
+      draft,
+      { timeout: Timeout.LONG },
+    );
+  } finally {
+    if (activeApp) await terminateElectronApp(activeApp);
+    await fs.promises.rm(userDataDir, { recursive: true, force: true });
+  }
 });

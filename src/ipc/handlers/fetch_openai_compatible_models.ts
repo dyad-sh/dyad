@@ -35,19 +35,33 @@ export async function fetchOpenAICompatibleModels(
       response.status === 401 || response.status === 403
         ? " Check the API key on this provider's settings page."
         : "";
+    const errorKind =
+      response.status === 401 || response.status === 403
+        ? DyadErrorKind.Auth
+        : response.status === 429
+          ? DyadErrorKind.RateLimited
+          : DyadErrorKind.External;
     throw new DyadError(
       `Server returned ${response.status} for ${url}.${authHint}`,
-      DyadErrorKind.External,
+      errorKind,
     );
   }
 
   let body: any;
   try {
     body = await response.json();
-  } catch {
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw new DyadError(
+        `${url} did not return valid JSON`,
+        DyadErrorKind.External,
+        { cause: error },
+      );
+    }
     throw new DyadError(
-      `${url} did not return valid JSON`,
+      `Could not read response body from ${url}: ${error instanceof Error ? error.message : String(error)}`,
       DyadErrorKind.External,
+      { cause: error },
     );
   }
   if (!Array.isArray(body?.data)) {

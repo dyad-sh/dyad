@@ -49,6 +49,7 @@ import {
 import {
   startChatDraftPersistence,
   pruneChatDrafts,
+  chatDraftCandidateChatIds,
 } from "./atoms/chatDraftStorage";
 import {
   configureChatTabWindowSession,
@@ -261,7 +262,7 @@ function RendererServices() {
     const bootstrapWindow = () => {
       void ipc.windowInfrastructure
         .bootstrap({})
-        .then(async (bootstrap) => {
+        .then((bootstrap) => {
           if (disposed) return;
           configureChatTabWindowSession(bootstrap.windowSessionId, {
             mayMigrateLegacySession: bootstrap.mayMigrateLegacyChatTabSession,
@@ -286,17 +287,6 @@ function RendererServices() {
               "Failed to initialize chat tab session storage",
               error,
             );
-          }
-          // App deletion removes chats without the per-chat cleanup path, so
-          // drop drafts whose chat is gone. Done before the router mounts:
-          // otherwise a chat created while this query is in flight could pick
-          // up a draft and then be missing from the snapshot.
-          try {
-            const chats = await ipc.chat.getChats(undefined);
-            if (disposed) return;
-            pruneChatDrafts(store, new Set(chats.map((chat) => chat.id)));
-          } catch (error) {
-            console.error("Failed to prune chat input drafts", error);
           }
           const entity: VisibleEntity | undefined = bootstrap.initialEntity;
           if (entity?.kind === "chat") {
@@ -331,6 +321,32 @@ function RendererServices() {
   // before the router mounts so a reopened chat shows its prompt immediately,
   // then keep every edit in sync with localStorage.
   useEffect(() => startChatDraftPersistence(store), [store]);
+
+  // App deletion removes chats without the per-chat cleanup path, so drop
+  // drafts whose chat is gone. Runs after the router mounts (windowReady) so it
+  // never delays the entity-disposal subscription; the candidate snapshot taken
+  // below means a chat created while the query is in flight keeps its draft.
+  useEffect(() => {
+    if (!windowReady) return;
+    let cancelled = false;
+    const candidateChatIds = chatDraftCandidateChatIds(store);
+    void ipc.chat
+      .getChats(undefined)
+      .then((chats) => {
+        if (cancelled) return;
+        pruneChatDrafts(
+          store,
+          new Set(chats.map((chat) => chat.id)),
+          candidateChatIds,
+        );
+      })
+      .catch((error) => {
+        console.error("Failed to prune chat input drafts", error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [store, windowReady]);
 
   useEffect(() => {
     if (!windowReady) return;

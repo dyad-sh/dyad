@@ -107,10 +107,29 @@ describe("chat draft storage", () => {
         [2, "stale"],
       ]),
     );
-    pruneChatDrafts(store, new Set([1]));
+    pruneChatDrafts(store, new Set([1]), new Set([1, 2]));
     expect(store.get(chatInputValuesByIdAtom)).toEqual(new Map([[1, "keep"]]));
     expect(localStorage.getItem(chatDraftStorageKey(1))).toBe("keep");
     expect(localStorage.getItem(chatDraftStorageKey(2))).toBeNull();
+  });
+
+  it("leaves drafts created after the candidate snapshot alone", () => {
+    // Chat 3 was created while the chat query was in flight, so it is not a
+    // prune candidate and its fresh draft must survive the stale snapshot.
+    writeChatDraft(localStorage, 1, "stale");
+    writeChatDraft(localStorage, 3, "fresh");
+    const store = createStore();
+    store.set(
+      chatInputValuesByIdAtom,
+      new Map([
+        [1, "stale"],
+        [3, "fresh"],
+      ]),
+    );
+    pruneChatDrafts(store, new Set(), new Set([1]));
+    expect(store.get(chatInputValuesByIdAtom)).toEqual(new Map([[3, "fresh"]]));
+    expect(localStorage.getItem(chatDraftStorageKey(1))).toBeNull();
+    expect(localStorage.getItem(chatDraftStorageKey(3))).toBe("fresh");
   });
 
   it("degrades to a no-op when storage access throws", () => {
@@ -126,7 +145,7 @@ describe("chat draft storage", () => {
       const store = createStore();
       const stop = startChatDraftPersistence(store);
       expect(() => stop()).not.toThrow();
-      expect(() => pruneChatDrafts(store, new Set())).not.toThrow();
+      expect(() => pruneChatDrafts(store, new Set(), new Set())).not.toThrow();
     } finally {
       spy.mockRestore();
       consoleError.mockRestore();

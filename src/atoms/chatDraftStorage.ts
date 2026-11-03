@@ -123,26 +123,39 @@ export function startChatDraftPersistence(store: JotaiStore): () => void {
 }
 
 /**
+ * The chat ids that currently hold a draft. Callers snapshot this before
+ * starting the chat query and pass it to `pruneChatDrafts`, so ids that appear
+ * later (a chat created mid-query) are never prune candidates.
+ */
+export function chatDraftCandidateChatIds(store: JotaiStore): Set<number> {
+  return new Set(store.get(chatInputValuesByIdAtom).keys());
+}
+
+/**
  * Drop drafts whose chat no longer exists, in memory and on disk. App deletion
  * removes chats without going through the per-chat cleanup path, so without
  * this a stale draft would be reloaded on every launch.
+ *
+ * Only ids in `candidateChatIds` are considered. Callers capture that set before
+ * starting the chat query, so a chat created while the query is in flight, and
+ * any draft it just acquired, can never be pruned by a stale snapshot.
  */
 export function pruneChatDrafts(
   store: JotaiStore,
   validChatIds: ReadonlySet<number>,
+  candidateChatIds: ReadonlySet<number>,
 ): void {
   const storage = getRendererStorage();
   if (!storage) return;
   try {
-    for (const chatId of loadChatDrafts(storage).keys()) {
-      if (!validChatIds.has(chatId)) {
-        storage.removeItem(chatDraftStorageKey(chatId));
-      }
+    for (const chatId of candidateChatIds) {
+      if (validChatIds.has(chatId)) continue;
+      storage.removeItem(chatDraftStorageKey(chatId));
     }
     const current = store.get(chatInputValuesByIdAtom);
     let next: Map<number, string> | undefined;
-    for (const chatId of current.keys()) {
-      if (validChatIds.has(chatId)) continue;
+    for (const chatId of candidateChatIds) {
+      if (validChatIds.has(chatId) || !current.has(chatId)) continue;
       next ??= new Map(current);
       next.delete(chatId);
     }

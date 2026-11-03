@@ -133,7 +133,10 @@ describe("shouldFilterTelemetryException", () => {
       CUSTOM_PROVIDER_MODELS_REQUEST_ERROR_NAME,
       CUSTOM_PROVIDER_MODELS_TRANSPORT_ERROR_NAME,
     ]) {
-      const error = new DyadError("private endpoint details", DyadErrorKind.External);
+      const error = new DyadError(
+        "private endpoint details",
+        DyadErrorKind.External,
+      );
       error.name = name;
       expect(shouldFilterTelemetryException(error)).toBe(true);
     }

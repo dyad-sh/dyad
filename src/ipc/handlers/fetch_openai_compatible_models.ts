@@ -10,6 +10,46 @@ const logger = log.scope("fetch_openai_compatible_models");
 
 const FETCH_TIMEOUT_MS = 10_000;
 
+function describeTransportFailure(error: unknown): string {
+  const pending: unknown[] = [error];
+  const seen = new Set<unknown>();
+  const details: string[] = [];
+
+  for (let index = 0; index < pending.length && index < 6; index++) {
+    const current = pending[index];
+    if (current == null || seen.has(current)) continue;
+    seen.add(current);
+
+    const fields =
+      typeof current === "object"
+        ? (current as { message?: unknown; code?: unknown; cause?: unknown })
+        : undefined;
+    const message =
+      typeof fields?.message === "string"
+        ? fields.message
+        : typeof current === "string"
+          ? current
+          : "";
+    const code = typeof fields?.code === "string" ? fields.code : "";
+    const detail = [code, message]
+      .filter(Boolean)
+      .join(": ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 500);
+    if (detail) details.push(detail);
+
+    if (fields?.cause != null) pending.push(fields.cause);
+    if (current instanceof AggregateError) {
+      pending.push(...current.errors.slice(0, 6));
+    }
+  }
+
+  return (
+    details.join("; caused by: ").slice(0, 2_000) || "Unknown network error"
+  );
+}
+
 class CustomProviderModelsRequestError extends DyadError {
   constructor(
     message: string,
@@ -50,9 +90,11 @@ export async function fetchOpenAICompatibleModels(
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
   } catch (error) {
+    const detail = describeTransportFailure(error);
     throw new CustomProviderModelsTransportError(
-      `Could not reach ${url}: ${error instanceof Error ? error.message : String(error)}`,
+      `Could not reach ${url}: ${detail}`,
       DyadErrorKind.External,
+      { cause: error },
     );
   }
 
@@ -85,7 +127,9 @@ export async function fetchOpenAICompatibleModels(
       );
     }
     throw new CustomProviderModelsTransportError(
-      `Could not read response body from ${url}: ${error instanceof Error ? error.message : String(error)}`,
+      `Could not read response body from ${url}: ${describeTransportFailure(
+        error,
+      )}`,
       DyadErrorKind.External,
       { cause: error },
     );

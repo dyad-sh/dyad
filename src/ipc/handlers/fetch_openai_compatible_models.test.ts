@@ -67,6 +67,27 @@ describe("fetchOpenAICompatibleModels", () => {
     ).rejects.toThrow(/API key/);
   });
 
+  it("includes nested transport diagnostics", async () => {
+    const refused = Object.assign(new Error("connect ECONNREFUSED"), {
+      code: "ECONNREFUSED",
+    });
+    const notFound = Object.assign(new Error("getaddrinfo ENOTFOUND"), {
+      code: "ENOTFOUND",
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockRejectedValue(
+        new TypeError("fetch failed", {
+          cause: new AggregateError([refused, notFound]),
+        }),
+      ),
+    );
+
+    await expect(
+      fetchOpenAICompatibleModels("http://host:8000/v1"),
+    ).rejects.toThrow(/ECONNREFUSED.*ENOTFOUND/);
+  });
+
   it("throws a DyadError when the server is unreachable or the body is malformed", async () => {
     vi.stubGlobal(
       "fetch",

@@ -21,6 +21,11 @@ import { GitHubConnector } from "@/components/GitHubConnector";
 import { VercelConnector } from "@/components/VercelConnector";
 import { CloudflareConnector } from "@/components/CloudflareConnector";
 import { NeonSignInButton } from "@/components/NeonSignInButton";
+import { NeonBranchWarning } from "@/components/NeonBranchWarning";
+import { NeonSettingsStatus } from "@/components/NeonSettingsStatus";
+import { useSettings } from "@/hooks/useSettings";
+import { canUseUnsafeNeonBranch } from "@/shared/neon_branch_protection";
+import { useTranslation } from "react-i18next";
 import {
   MigrationPanelBody,
   type MigrationOutcome,
@@ -271,6 +276,16 @@ function DatabaseStep({
   onBusyChange: (busy: boolean) => void;
 }) {
   const { project, ready, isProduction } = useDatabaseContext(app);
+  const { t } = useTranslation("home");
+  const { settings, settingsLoading, refreshSettings } = useSettings();
+  const needsSettings = !!app.neonProjectId && !isProduction && !settings;
+  const canSelectDevelopment =
+    !!settings &&
+    !!app.neonDevelopmentBranchId &&
+    canUseUnsafeNeonBranch(
+      settings,
+      app.selectedDatabaseBranchType === "development",
+    );
   const queryClient = useQueryClient();
   const [choice, setChoice] = useState<DatabaseBranch | null>(null);
   const [migrationOutcome, setMigrationOutcome] =
@@ -279,8 +294,12 @@ function DatabaseStep({
   const selected = isProduction ? "production" : choice;
   const save = useMutation({
     mutationFn: async () => {
-      if (!ready || (app.neonProjectId && !selected))
+      if (!ready || needsSettings || (app.neonProjectId && !selected))
         throw new Error("Choose and verify a database first.");
+      if (selected === "development" && !canSelectDevelopment)
+        throw new Error(
+          "Development database deployment is disabled by Neon branch protection.",
+        );
       if (app.neonProjectId) {
         await ipc.neon.setSelectedDatabaseBranchType({
           appId: app.id,
@@ -311,7 +330,7 @@ function DatabaseStep({
   const needsMigration =
     !!app.neonProjectId && !isProduction && choice === "production";
   return (
-    <div className="space-y-4">
+    <div className="@container space-y-4">
       {!ready ? (
         <>
           {project.isFetching ? (
@@ -334,35 +353,63 @@ function DatabaseStep({
           {app.neonProjectId ? "You are on the main database branch. " : ""}No
           database migration is required.
         </p>
+      ) : needsSettings ? (
+        <NeonSettingsStatus
+          loading={settingsLoading}
+          onRetry={refreshSettings}
+        />
       ) : (
         <>
           <p className="text-sm text-muted-foreground">
             Choose the database your deployed app will use.
           </p>
-          <div className="grid grid-cols-2 gap-3">
-            {(["production", "development"] as const).map((value) => (
-              <Button
-                key={value}
-                variant={choice === value ? "default" : "outline"}
-                disabled={migrating || save.isPending}
-                aria-pressed={choice === value}
-                onClick={() => {
-                  setChoice(value);
-                  setMigrationOutcome(null);
-                }}
-              >
-                <Database className="size-4" />
-                {value === "production"
-                  ? "Production database"
-                  : "Development database"}
-              </Button>
-            ))}
+          <div
+            className={
+              canSelectDevelopment
+                ? "grid grid-cols-1 items-stretch gap-3 @sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]"
+                : "grid grid-cols-1 gap-3"
+            }
+          >
+            {(["production", "development"] as const)
+              .filter((value) => value === "production" || canSelectDevelopment)
+              .map((value) => (
+                <Button
+                  key={value}
+                  variant={choice === value ? "default" : "outline"}
+                  className={`h-auto min-h-9 min-w-0 whitespace-normal ${choice === value ? "border border-transparent" : ""}`}
+                  disabled={migrating || save.isPending}
+                  aria-pressed={choice === value}
+                  onClick={() => {
+                    setChoice(value);
+                    setMigrationOutcome(null);
+                  }}
+                >
+                  <Database className="size-4" />
+                  {value === "production"
+                    ? "Production database"
+                    : "Development database"}
+                </Button>
+              ))}
           </div>
-          {choice === "development" && (
-            <p className="text-sm text-muted-foreground">
-              No migration is required. Your deployed app will share the
-              development database.
+          <p className="text-sm text-muted-foreground">
+            {t("integrations.neon.branchSafety.recommendProduction")}
+          </p>
+          {!canSelectDevelopment && (
+            <p className="text-xs text-muted-foreground">
+              {t("integrations.neon.branchSafety.locked")}
             </p>
+          )}
+          {(choice === "development" ||
+            (choice === null &&
+              app.selectedDatabaseBranchType === "development")) && (
+            <NeonBranchWarning
+              usage="deployment"
+              disabled={save.isPending}
+              onUseRecommended={() => {
+                setChoice("production");
+                setMigrationOutcome(null);
+              }}
+            />
           )}
           {needsMigration && !migrationOutcome && (
             <MigrationPanelBody
@@ -386,9 +433,11 @@ function DatabaseStep({
         <Button
           disabled={
             !ready ||
+            needsSettings ||
             migrating ||
             save.isPending ||
             (!!app.neonProjectId && !selected) ||
+            (selected === "development" && !canSelectDevelopment) ||
             (needsMigration && !migrationOutcome)
           }
           onClick={() => save.mutate()}

@@ -19,6 +19,7 @@ import {
 } from "../ipc/utils/retryWithRateLimit";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import { enqueueSupabaseDeploy } from "./supabase_deploy_queue";
+import { SupabaseTokenRefreshError } from "./supabase_errors";
 import { abortable } from "../ipc/utils/abortable";
 import {
   appOperationCoordinator,
@@ -288,10 +289,7 @@ async function refreshSupabaseTokenOnce(): Promise<void> {
     );
 
     if (!response.ok) {
-      throw new DyadError(
-        `Supabase token refresh failed. Try going to Settings to disconnect Supabase and then reconnect to Supabase. Error status: ${response.statusText}`,
-        DyadErrorKind.External,
-      );
+      throw new SupabaseTokenRefreshError(response.status);
     }
 
     const {
@@ -436,10 +434,7 @@ async function refreshSupabaseTokenForOrganization(
     );
 
     if (!response.ok) {
-      throw new DyadError(
-        `Supabase token refresh failed. Try going to Settings to disconnect Supabase and then reconnect. Error status: ${response.statusText}`,
-        DyadErrorKind.External,
-      );
+      throw new SupabaseTokenRefreshError(response.status);
     }
 
     const {

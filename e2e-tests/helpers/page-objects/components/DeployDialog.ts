@@ -37,8 +37,17 @@ export class DeployDialog {
   }
 
   async open() {
-    await this.page.getByTestId("deploy-button").click();
-    await expect(this.dialog).toBeVisible();
+    // Right after a window reload, startup chat restoration briefly reselects
+    // the app, which resets DeployButton and closes a dialog opened during
+    // that window. Reopen until the dialog has rendered its first step.
+    await expect(async () => {
+      if (!(await this.dialog.isVisible())) {
+        await this.page.getByTestId("deploy-button").click();
+      }
+      await expect(
+        this.dialog.getByRole("heading", { name: /^Step \d — / }),
+      ).toBeVisible({ timeout: 2_000 });
+    }).toPass({ timeout: Timeout.MEDIUM });
   }
 
   async expectStep(number: number, name: string) {

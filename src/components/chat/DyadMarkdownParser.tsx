@@ -346,6 +346,12 @@ function renderClosedBlock(
   return renderBlock(block, false);
 }
 
+// Original payload length recorded on a truncated MCP tag.
+function parseTruncatedFrom(block: CustomTagBlock): number | undefined {
+  const value = Number(block.attributes["truncated-from"]);
+  return Number.isFinite(value) ? value : undefined;
+}
+
 // One card for an MCP tool call + its result. Memoizes on both block refs;
 // once the result is present the card is "finished" regardless of streaming,
 // so isStreaming is only compared while still waiting for a result.
@@ -380,6 +386,13 @@ const MemoMcpToolPair = React.memo(
         resultContent={resultBlock?.content}
         state={state}
         isError={isError}
+        inputTruncatedFrom={parseTruncatedFrom(callBlock)}
+        resultTruncatedFrom={
+          resultBlock ? parseTruncatedFrom(resultBlock) : undefined
+        }
+        resultToolTruncated={
+          resultBlock?.attributes["tool-truncated"] === "true"
+        }
       >
         {callBlock.content}
       </DyadMcpToolCall>
@@ -991,6 +1004,7 @@ function renderCustomTag(
               autoApprovedReason: attributes["auto-approved-reason"] || "",
             },
           }}
+          inputTruncatedFrom={parseTruncatedFrom(block)}
         >
           {content}
         </DyadMcpToolCall>

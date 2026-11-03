@@ -105,12 +105,15 @@ describe("RendererQueryInvalidationConsumer", () => {
       recoveryScopes: [],
     });
 
-    expect(invalidateQueries).toHaveBeenCalledTimes(2);
+    expect(invalidateQueries).toHaveBeenCalledTimes(3);
     expect(invalidateQueries).toHaveBeenCalledWith({
       queryKey: queryKeys.apps.detail({ appId: 7 }),
     });
     expect(invalidateQueries).toHaveBeenCalledWith({
       queryKey: queryKeys.appEnvVars.byApp({ appId: 7 }),
+    });
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: queryKeys.neon.developmentBranchStatus({ appId: 7 }),
     });
   });
 

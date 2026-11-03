@@ -51,6 +51,7 @@ import {
 } from "@/state_machines/invocation_ref";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { addLog, clearLogs } from "@/lib/log_store";
+import { ProcessOutputLogLimiter } from "@/ipc/utils/process_output_log_limiter";
 import { getDyadAppPath } from "@/paths/paths";
 import { startProxy } from "@/ipc/utils/start_proxy_server";
 import {
@@ -1141,12 +1142,28 @@ function listenToProcess({
       -MAX_PROCESS_OUTPUT_TAIL_LENGTH,
     );
   };
+  // Every chunk still reaches the log store and the renderer; only the copy
+  // in main.log is capped, because those file writes are synchronous.
+  const outputLogLimiter = new ProcessOutputLogLimiter();
+  const logPrefix = `App ${appId} (PID: ${spawnedProcess.pid})`;
+  const logOutput = (stream: "stdout" | "stderr", message: string) => {
+    const admitted = outputLogLimiter.admit(message);
+    if (!admitted) {
+      return;
+    }
+    if (admitted.suppressedNote) {
+      logger.warn(`${logPrefix} ${admitted.suppressedNote}`);
+    }
+    if (stream === "stdout") {
+      logger.debug(`${logPrefix} stdout: ${admitted.message}`);
+    } else {
+      logger.error(`${logPrefix} stderr: ${admitted.message}`);
+    }
+  };
   spawnedProcess.stdout?.on("data", async (data) => {
     const message = util.stripVTControlCharacters(data.toString());
     appendProcessOutput(message);
-    logger.debug(
-      `App ${appId} (PID: ${spawnedProcess.pid}) stdout: ${message}`,
-    );
+    logOutput("stdout", message);
 
     addLog({
       level: "info",
@@ -1203,9 +1220,7 @@ function listenToProcess({
   spawnedProcess.stderr?.on("data", async (data) => {
     const message = util.stripVTControlCharacters(data.toString());
     appendProcessOutput(message);
-    logger.error(
-      `App ${appId} (PID: ${spawnedProcess.pid}) stderr: ${message}`,
-    );
+    logOutput("stderr", message);
 
     addLog({
       level: "error",
@@ -1225,6 +1240,10 @@ function listenToProcess({
   spawnedProcess.on("close", (code, signal) => {
     void (async () => {
       try {
+        const suppressedNote = outputLogLimiter.takeSuppressedNote();
+        if (suppressedNote) {
+          logger.warn(`${logPrefix} ${suppressedNote}`);
+        }
         logger.log(
           `App ${appId} (PID: ${spawnedProcess.pid}) process closed with code ${code}, signal ${signal}.`,
         );

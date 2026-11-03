@@ -94,7 +94,7 @@ describe("guided deployment (renderer and real IPC)", () => {
       electronMock: h,
       testBuild: true,
       engine: true,
-      settings: { isTestMode: true },
+      settings: { isTestMode: true, enableNeonBranchProtection: false },
     });
   }, 60_000);
 
@@ -124,6 +124,7 @@ describe("guided deployment (renderer and real IPC)", () => {
     vercel.deployments.getDeployments.mockResolvedValue({ deployments: [] });
     writeSettings({
       isTestMode: true,
+      enableNeonBranchProtection: false,
       githubAccessToken: { value: "fake_access_token_12345" },
       githubUser: { email: "test@example.com" },
       vercelAccessToken: { value: "fake-vercel-token" },
@@ -230,6 +231,8 @@ describe("guided deployment (renderer and real IPC)", () => {
       .mockReturnValueOnce(pending.promise);
     try {
       await open();
+      // Unsafe choices stay hidden until the saved opt-out has loaded.
+      await screen.findByRole("button", { name: "Development database" });
       await click("Production database");
       expect(button("Development database").disabled).toBe(false);
       await click("Migrate to Production");

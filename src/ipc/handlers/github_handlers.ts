@@ -45,7 +45,7 @@ import { eq } from "drizzle-orm";
 import { GithubUser } from "../../lib/schemas";
 import log from "electron-log";
 import path from "node:path";
-import type { GitRemoteAuth } from "../git_types";
+import type { FetchRefspecState, GitRemoteAuth } from "../git_types";
 import {
   getGitHubAccessTokenUrl,
   getGitHubApiBase,
@@ -870,12 +870,16 @@ export async function handlePushToGithub(
     head: before.head,
     remoteTip: before.remoteTip,
   };
+  // Logged with the outcome: "added" means this sync repaired a remote whose
+  // tracking refs had never been updating, so earlier summaries were stale.
+  let fetchRefspec: FetchRefspecState | null = null;
 
   try {
     // Set up remote URL (credentials are never stored in the URL; auth is
     // injected per-invocation in git_utils). Re-setting it on every push also
-    // scrubs tokens that older versions embedded in .git/config.
-    await gitSetRemoteUrl({
+    // scrubs tokens that older versions embedded in .git/config, and adds the
+    // fetch refspec older versions left out.
+    fetchRefspec = await gitSetRemoteUrl({
       path: appPath,
       remoteUrl: remote.httpsUrl,
     });
@@ -940,6 +944,7 @@ export async function handlePushToGithub(
   } catch (error) {
     logger.error("[GitHub Handler] sync failed", {
       ...syncContext,
+      fetchRefspec,
       head: abbreviateCommit(before.head),
       headAfterPull: abbreviateCommit(baseline.head),
       remoteTip: abbreviateCommit(before.remoteTip),
@@ -958,6 +963,7 @@ export async function handlePushToGithub(
   const summary = summarizePush(measured);
   logger.debug("[GitHub Handler] sync summary", {
     ...syncContext,
+    fetchRefspec,
     currentBranch: describeBranch(measured),
     head: {
       before: abbreviateCommit(before.head),

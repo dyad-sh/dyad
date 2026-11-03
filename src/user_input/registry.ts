@@ -30,15 +30,6 @@ import {
 } from "./state";
 import { transition, type UserInputIgnoreReason } from "./transition";
 
-const CONSENT_DEADLINE_MS = 5 * 60 * 1_000;
-const INTEGRATION_DEADLINE_MS = 30 * 60 * 1_000;
-/**
- * Reviewing an assertion plan is an editing session — rewording checks, adding
- * and reordering them — not a yes/no click, so it gets the long deadline. Timing
- * out only releases the agent: the card stays approvable and falls back to
- * handing the spec back as a normal chat turn.
- */
-const REVIEW_DEADLINE_MS = 30 * 60 * 1_000;
 const MAX_SETTLED_TOMBSTONES = 1_000;
 
 export interface PendingUserInputSnapshot {
@@ -60,11 +51,7 @@ interface ParkEntry {
 }
 
 export interface UserInputRegistry {
-  request(
-    descriptor: NewUserInputDescriptor,
-    requestId?: string,
-    options?: { deadline: "review" },
-  ): string;
+  request(descriptor: NewUserInputDescriptor, requestId?: string): string;
   park(
     requestId: string,
     abortSignal?: AbortSignal,
@@ -117,15 +104,6 @@ export function createUserInputRegistry(deps: {
     broadcast: deps.broadcast,
     persistAlways: deps.persistAlways ?? (() => undefined),
   });
-
-  function deadlineMs(kind: UserInputDescriptor["kind"]): number | null {
-    if (kind === "questionnaire") return null;
-    if (kind === "integration") return INTEGRATION_DEADLINE_MS;
-    // Connecting a plugin can include a browser OAuth step.
-    if (kind === "plugin-suggestion") return INTEGRATION_DEADLINE_MS;
-    if (kind === "test-assertions") return REVIEW_DEADLINE_MS;
-    return CONSENT_DEADLINE_MS;
-  }
 
   function addToChat(descriptor: UserInputDescriptor): void {
     let requests = chatIndex.get(descriptor.chatId);
@@ -313,21 +291,18 @@ export function createUserInputRegistry(deps: {
   }
 
   return {
-    request(input, explicitRequestId, options) {
+    request(input, explicitRequestId) {
       const requestId = explicitRequestId ?? deps.idSource.next(input.kind);
       if (pendingOutcomes.has(requestId))
         throw new DyadError(
           "User input is being saved",
           DyadErrorKind.Conflict,
         );
-      const ms =
-        input.kind !== "questionnaire" && options?.deadline === "review"
-          ? REVIEW_DEADLINE_MS
-          : deadlineMs(input.kind);
+      // Human input waits for an explicit response or lifecycle cancellation.
       const descriptor = {
         ...input,
         requestId,
-        deadlineAt: ms === null ? null : deps.clock.now() + ms,
+        deadlineAt: null,
       } as UserInputDescriptor;
 
       const previous = states.get(requestId);
@@ -347,7 +322,7 @@ export function createUserInputRegistry(deps: {
       dispatchWithoutWaiting(requestId, {
         type: "requested",
         descriptor,
-        deadlineMs: ms,
+        deadlineMs: null,
       });
       if (superseding) {
         let resolve!: (value: UserInputParkValue | null) => void;

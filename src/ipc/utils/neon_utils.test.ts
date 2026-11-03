@@ -57,6 +57,7 @@ vi.mock("electron-log", () => ({
 }));
 
 import {
+  ensureNeonAuth,
   ensureNeonAuthTrustedOrigin,
   getOrCreateNeonAuthCookieSecret,
   syncActiveNeonAuthCookieSecretFromEnv,
@@ -323,6 +324,46 @@ describe("syncActiveNeonAuthCookieSecretFromEnv", () => {
 
     expect(result).toBeUndefined();
     expect(mocks.set).not.toHaveBeenCalled();
+  });
+});
+
+describe("ensureNeonAuth", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const neonError = (status: number) =>
+    Object.assign(new Error(`HTTP ${status}`), { response: { status } });
+
+  it("retries both Neon calls while the new branch is still busy", async () => {
+    // A branch created moments ago can still have operations running.
+    // Callers rely on this retry and must not add their own on top.
+    const getNeonAuth = vi
+      .fn()
+      .mockRejectedValueOnce(neonError(423))
+      .mockRejectedValueOnce(neonError(404));
+    const createNeonAuth = vi
+      .fn()
+      .mockRejectedValueOnce(neonError(423))
+      .mockResolvedValue({ data: { base_url: "https://auth.example" } });
+    mocks.getNeonClient.mockResolvedValue({ getNeonAuth, createNeonAuth });
+
+    await expect(
+      ensureNeonAuth({ projectId: "proj-1", branchId: "br-dev" }),
+    ).resolves.toBe("https://auth.example");
+    expect(getNeonAuth).toHaveBeenCalledTimes(2);
+    expect(createNeonAuth).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry a failure that is not transient", async () => {
+    const getNeonAuth = vi.fn().mockRejectedValue(neonError(404));
+    const createNeonAuth = vi.fn().mockRejectedValue(neonError(412));
+    mocks.getNeonClient.mockResolvedValue({ getNeonAuth, createNeonAuth });
+
+    await expect(
+      ensureNeonAuth({ projectId: "proj-1", branchId: "br-dev" }),
+    ).rejects.toThrow("HTTP 412");
+    expect(createNeonAuth).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -8,6 +8,7 @@ import { ConsoleEntryComponent } from "./ConsoleEntry";
 import { ConsoleFilters } from "./ConsoleFilters";
 import { useSettings } from "@/hooks/useSettings";
 import { showError } from "@/lib/toast";
+import { appLogForwarder } from "@/lib/app_log_forwarder";
 import { useConsoleEntries } from "@/preview_console/hooks";
 import { useAppRunRemoteManager } from "@/app_run/AppRunRemoteProvider";
 import { matchesConsoleEntryFilters } from "./console_entry_filters";
@@ -106,7 +107,8 @@ export const Console = () => {
   const handleClearLogs = useCallback(async () => {
     if (selectedAppId) {
       try {
-        // Clear logs from backend store
+        // Clear logs from backend store, including any not yet forwarded
+        appLogForwarder.discard(selectedAppId);
         await ipc.misc.clearLogs({ appId: selectedAppId });
         // Clear logs from UI
         appRunManager.previewConsole.clear(selectedAppId);

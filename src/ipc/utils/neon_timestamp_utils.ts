@@ -37,6 +37,22 @@ async function getLastUpdatedTimestampFromNeon({
 }
 
 /**
+ * The database clock with microsecond precision. A copy taken at a
+ * second-truncated timestamp would miss writes made earlier in that second.
+ */
+export async function getPreciseNeonTimestamp({
+  neonConnectionUri,
+}: {
+  neonConnectionUri: string;
+}): Promise<string> {
+  const sql = neon(neonConnectionUri);
+  const [{ now }] = await sql`
+    SELECT TO_CHAR(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS now
+  `;
+  return now;
+}
+
+/**
  * Stores a Neon database timestamp for the current git commit hash
  * and stores it in the versions table
  * @param appId - The app ID

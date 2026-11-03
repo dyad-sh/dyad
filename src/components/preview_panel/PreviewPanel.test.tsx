@@ -237,6 +237,10 @@ vi.mock("./PackageManagerWarningBanner", () => ({
   PackageManagerWarningBanner: () => null,
 }));
 
+vi.mock("./NeonMigrationBanner", () => ({
+  NeonMigrationBanner: () => null,
+}));
+
 vi.mock("./CodeView", () => ({
   CodeView: () => <div>Code view</div>,
 }));

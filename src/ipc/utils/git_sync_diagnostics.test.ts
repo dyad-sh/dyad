@@ -22,7 +22,7 @@ import {
   collectSyncSnapshot,
   measurePush,
 } from "./git_sync_diagnostics";
-import { getGitUncommittedFiles } from "./git_utils";
+import { getGitUncommittedFiles, gitSetRemoteUrl } from "./git_utils";
 import { classifyPushOutcome } from "@/github_ops/push_summary";
 
 const execFileAsync = promisify(execFile);
@@ -415,5 +415,132 @@ describe("push baseline", () => {
       deleted: 0,
       renamed: 1,
     });
+  });
+});
+
+/**
+ * Repositories linked before 0.33 have `remote.origin.url` but no fetch
+ * refspec, so git never updates `refs/remotes/origin/*` and the summary used
+ * to compare every push against a frozen tracking ref.
+ */
+describe("remote linked without a fetch refspec", () => {
+  let root: string | undefined;
+
+  afterEach(async () => {
+    if (root) {
+      await fs.promises.rm(root, {
+        recursive: true,
+        force: true,
+        maxRetries: 3,
+        retryDelay: 100,
+      });
+      root = undefined;
+    }
+  });
+
+  /**
+   * One commit pushed to the remote, `origin/main` written directly the way
+   * the old git library did, then two more commits the remote lacks.
+   */
+  async function createLegacyLinkedRepo(): Promise<{
+    root: string;
+    work: string;
+    remote: string;
+  }> {
+    const root = await fs.promises.mkdtemp(
+      path.join(os.tmpdir(), "git-sync-legacy-remote-"),
+    );
+    const remote = path.join(root, "remote.git");
+    const work = path.join(root, "work");
+    await git(root, "init", "-q", "--bare", remote);
+    await git(root, "init", "-q", "-b", "main", work);
+    await git(work, "config", "remote.origin.url", remote);
+    await commitFile(work, "a.txt", "one");
+    await git(work, "push", "-q", "origin", "main:main");
+    await git(work, "update-ref", "refs/remotes/origin/main", "HEAD");
+    await commitFile(work, "b.txt", "two");
+    await commitFile(work, "c.txt", "three");
+    return { root, work, remote };
+  }
+
+  /** The sync handler's sequence: snapshot, remote setup, pull, push. */
+  async function sync(
+    work: string,
+    remote: string,
+    branch: string,
+    { setRemote }: { setRemote: boolean },
+  ) {
+    const before = await collectSyncSnapshot({ path: work, branch });
+    if (setRemote) {
+      await gitSetRemoteUrl({ path: work, remoteUrl: remote });
+    }
+    let remoteBranchMissing = false;
+    try {
+      await git(work, "pull", "-q", "--rebase=false", "origin", branch);
+    } catch {
+      remoteBranchMissing = true;
+    }
+    const baseline = await collectPushBaseline({
+      path: work,
+      branch,
+      before,
+      remoteBranchMissing,
+    });
+    await git(work, "push", "-q", "origin", `${branch}:${branch}`);
+    return measurePush({ path: work, branch, before, baseline });
+  }
+
+  it("reports a successful push as unverified while the refspec is missing", async () => {
+    const repo = await createLegacyLinkedRepo();
+    root = repo.root;
+    const stale = await git(repo.work, "rev-parse", "refs/remotes/origin/main");
+
+    const measured = await sync(repo.work, repo.remote, "main", {
+      setRemote: false,
+    });
+
+    // The remote has every commit, but the tracking ref never moved.
+    expect(
+      await git(repo.root, "--git-dir", repo.remote, "rev-parse", "main"),
+    ).toBe(measured.head);
+    expect(measured.remoteTip).toBe(stale);
+    expect(measured.commitsNotOnRemote).toBe(2);
+    expect(classifyPushOutcome(measured)).toBe("unverified");
+  });
+
+  it("measures the push once setting the remote adds the refspec", async () => {
+    const repo = await createLegacyLinkedRepo();
+    root = repo.root;
+
+    const measured = await sync(repo.work, repo.remote, "main", {
+      setRemote: true,
+    });
+
+    expect(measured).toMatchObject({
+      remoteTip: measured.head,
+      remoteMoved: true,
+      commitsPushed: 2,
+      commitsNotOnRemote: 0,
+    });
+    expect(classifyPushOutcome(measured)).toBe("pushed");
+  });
+
+  it("tracks a new branch once setting the remote adds the refspec", async () => {
+    const repo = await createLegacyLinkedRepo();
+    root = repo.root;
+    await git(repo.work, "checkout", "-q", "-b", "feature");
+
+    const unrepaired = await sync(repo.work, repo.remote, "feature", {
+      setRemote: false,
+    });
+    expect(unrepaired.remoteTip).toBeNull();
+    expect(classifyPushOutcome(unrepaired)).toBe("unverified");
+
+    await commitFile(repo.work, "d.txt", "four");
+    const repaired = await sync(repo.work, repo.remote, "feature", {
+      setRemote: true,
+    });
+    expect(repaired.remoteTip).toBe(repaired.head);
+    expect(classifyPushOutcome(repaired)).toBe("pushed");
   });
 });

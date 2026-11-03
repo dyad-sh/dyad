@@ -444,5 +444,10 @@
     "sending": "Enviando...",
     "send": "Enviar {{count}}"
   },
-  "safetyReviewUnavailable": "Revisão de segurança indisponível"
+  "safetyReviewUnavailable": "Revisão de segurança indisponível",
+  "mcpInputTruncated": "Mostrando os primeiros {{shown}} de {{total}} caracteres. A entrada em si não foi encurtada.",
+  "mcpResultTruncated": "Mostrando os primeiros {{shown}} de {{total}} caracteres. O agente recebeu todos os {{total}} caracteres.",
+  "mcpResultBothTruncated": "Mostrando os primeiros {{shown}} dos {{total}} caracteres que o agente recebeu. O resultado da ferramenta era maior e foi cortado antes de chegar ao agente.",
+  "mcpResultToolTruncated": "O resultado da ferramenta era grande demais, então o agente recebeu uma versão reduzida.",
+  "mcpErrorTruncated": "Mostrando os primeiros {{shown}} de {{total}} caracteres do erro."
 }

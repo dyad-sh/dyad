@@ -507,6 +507,8 @@ export const queryKeys = {
       appId: number | null;
       branchType: "production" | "development";
     }) => ["neon", "branch-env-vars", appId, branchType] as const,
+    developmentBranchStatus: ({ appId }: { appId: number | null }) =>
+      ["neon", "development-branch-status", appId] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────

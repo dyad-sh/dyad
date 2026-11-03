@@ -32,6 +32,7 @@ import { SecurityPanel } from "./SecurityPanel";
 import { TestsPanel } from "./TestsPanel";
 import { PlanPanel } from "./PlanPanel";
 import { PackageManagerWarningBanner } from "./PackageManagerWarningBanner";
+import { NeonMigrationBanner } from "./NeonMigrationBanner";
 import { useSupabase } from "@/hooks/useSupabase";
 import { useTranslation } from "react-i18next";
 import { ipc } from "@/ipc/types";
@@ -252,6 +253,7 @@ export function PreviewPanel() {
             <div className="flex h-full flex-col">
               <PreviewToolbar />
               <PackageManagerWarningBanner />
+              <NeonMigrationBanner />
               {/* A session holds the app's lock and its isolated database no
                   matter which tab is showing, and this bar is the only thing
                   that says so and the only place it can be stopped — so it is

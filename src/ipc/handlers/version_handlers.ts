@@ -49,6 +49,7 @@ import {
   getNeonClient,
   getNeonErrorMessage,
   getRetentionWindowFromError,
+  isBranchLimitError,
   isRetentionWindowError,
 } from "../../neon_admin/neon_management_client";
 import { getConnectionUri } from "../../neon_admin/neon_context";
@@ -58,6 +59,15 @@ import {
 } from "../utils/app_env_var_utils";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
 import { retryOnLocked } from "../utils/retryOnLocked";
+import { sendTelemetryEvent } from "../utils/telemetry";
+import {
+  backupBranchName,
+  deleteRestoreBackup,
+  LeakedBackupsAtBranchLimitError,
+  restoreDevelopmentBranch,
+  type RestoreBackupCleanup,
+  waitForRestoreDetach,
+} from "../utils/neon_dev_branch";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { syncCloudSandboxSnapshot } from "../utils/cloud_sandbox_provider";
 import {
@@ -169,6 +179,9 @@ function sanitizeDiffContent(content: string): string {
  * dedicated explanation since it isn't an unexpected failure.
  */
 function getDatabaseRestoreWarning(error: unknown): string {
+  if (error instanceof LeakedBackupsAtBranchLimitError) {
+    return error.message;
+  }
   if (isRetentionWindowError(error)) {
     const window = getRetentionWindowFromError(error);
     return (
@@ -178,6 +191,14 @@ function getDatabaseRestoreWarning(error: unknown): string {
       }. ` +
       "Neon's free plan only keeps a limited window of database history, so this " +
       "snapshot has expired. Your current database was left unchanged."
+    );
+  }
+  if (isBranchLimitError(error)) {
+    return (
+      "Restored your code to this version, but the database could not be restored: " +
+      "your Neon project has reached its plan's branch limit. Delete a branch you no " +
+      "longer need in the Neon console, or upgrade your Neon plan, then try again. " +
+      "Your current database was left unchanged."
     );
   }
   return `Could not restore the database because of an error: ${getNeonErrorMessage(
@@ -234,6 +255,55 @@ async function redeploySupabaseFunctionsAfterRevert(
     logger.warn(warning);
     return warning;
   }
+}
+
+const pendingNeonBackupCleanups = new Set<Promise<void>>();
+
+/**
+ * Deletes a restore's Neon backup in the background, once the revert has
+ * released its claims. Neon must first detach the restored branch from the
+ * backup, which can take up to two minutes; that wait holds no claim, so
+ * another undo, a version checkout or any other work on the app goes ahead
+ * meanwhile. Only the delete and sweep that follow take the provider claim,
+ * briefly, as they change the app's Neon project.
+ */
+function scheduleNeonBackupCleanup(
+  appId: number,
+  cleanup: RestoreBackupCleanup | null,
+): void {
+  if (!cleanup) return;
+  const startedAt = Date.now();
+  const report = (outcome: string) =>
+    sendTelemetryEvent("neon:backup-cleanup", {
+      outcome,
+      durationMs: Date.now() - startedAt,
+    });
+  const task: Promise<void> = (async () => {
+    const detach = await waitForRestoreDetach(cleanup);
+    if (detach !== "detached") {
+      report(detach === "timed-out" ? "detach-timed-out" : "detach-error");
+      return;
+    }
+    const { backupDeleted } = await appOperationCoordinator.run(
+      { appId, operation: "neon-backup-cleanup", resources: ["provider"] },
+      () => deleteRestoreBackup(cleanup),
+    );
+    report(backupDeleted ? "deleted" : "delete-failed");
+  })()
+    .catch((error) => {
+      // E.g. the app was deleted before the claim was granted.
+      report("skipped");
+      logger.warn(
+        `Skipped cleaning up the Neon backup for app ${appId}: ${getNeonErrorMessage(error)}`,
+      );
+    })
+    .finally(() => pendingNeonBackupCleanups.delete(task));
+  pendingNeonBackupCleanups.add(task);
+}
+
+/** Waits for background Neon backup cleanups; for tests. */
+export async function settleNeonBackupCleanups(): Promise<void> {
+  await Promise.all(pendingNeonBackupCleanups);
 }
 
 function withRedeployWarning<
@@ -565,6 +635,7 @@ async function revertCodebaseToVersion({
   preserveDirtyTree = false,
   onRestoreProgress,
   onSupabaseRedeployNeeded,
+  onNeonBackupCleanupNeeded,
 }: {
   appId: number;
   app: typeof apps.$inferSelect;
@@ -578,6 +649,8 @@ async function revertCodebaseToVersion({
    * their claims, including when a later step of the operation fails.
    */
   onSupabaseRedeployNeeded?: (target: SupabaseRedeployTarget) => void;
+  /** Called after a restore whose Neon backup can be deleted later. */
+  onNeonBackupCleanupNeeded?: (cleanup: RestoreBackupCleanup) => void;
 }): Promise<{
   successMessage: string;
   warningMessage: string;
@@ -781,21 +854,14 @@ async function revertCodebaseToVersion({
     });
     if (version && version.neonDbTimestamp) {
       try {
-        const preserveBranchName = `preserve_${currentCommitHash}-${Date.now()}`;
-        const neonClient = await getNeonClient();
-        const response = await retryOnLocked(
-          () =>
-            neonClient.restoreProjectBranch(
-              app.neonProjectId!,
-              app.neonDevelopmentBranchId!,
-              {
-                source_branch_id: app.neonDevelopmentBranchId!,
-                source_timestamp: version.neonDbTimestamp!,
-                preserve_under_name: preserveBranchName,
-              },
-            ),
-          `Restore development branch ${app.neonDevelopmentBranchId} for app ${appId}`,
-        );
+        const { cleanup } = await restoreDevelopmentBranch({
+          appId,
+          projectId: app.neonProjectId,
+          developmentBranchId: app.neonDevelopmentBranchId,
+          timestamp: version.neonDbTimestamp,
+          backupName: backupBranchName(currentCommitHash),
+        });
+        if (cleanup) onNeonBackupCleanupNeeded?.(cleanup);
         // Update all versions which have a newer DB timestamp than the version we're restoring to
         // and remove their DB timestamp.
         await db
@@ -807,35 +873,6 @@ async function revertCodebaseToVersion({
               gt(versions.neonDbTimestamp, version.neonDbTimestamp),
             ),
           );
-
-        const preserveBranchId = response.data.branch.parent_id;
-        if (!preserveBranchId) {
-          throw new DyadError(
-            "Preserve branch ID not found",
-            DyadErrorKind.NotFound,
-          );
-        }
-        logger.info(
-          `Deleting preserve branch ${preserveBranchId} for app ${appId}`,
-        );
-        // Intentionally do not await this because it's not
-        // critical for the restore operation, it's to clean up branches
-        // so the user doesn't hit the branch limit later. The error is
-        // handled via `.catch()` rather than a surrounding try/catch
-        // because, without an `await`, a try/catch would not catch the
-        // promise rejection and it would surface as an unhandled rejection.
-        retryOnLocked(
-          () =>
-            neonClient.deleteProjectBranch(
-              app.neonProjectId!,
-              preserveBranchId,
-            ),
-          `Delete preserve branch ${preserveBranchId} for app ${appId}`,
-          { retryBranchWithChildError: true },
-        ).catch((error) => {
-          const errorMessage = getNeonErrorMessage(error);
-          logger.error("Error in deleteProjectBranch:", errorMessage);
-        });
         // Only claim the database was included when the restore actually
         // succeeded. Setting this after the catch would wrongly report
         // "(including database)" even when the Neon restore failed and
@@ -1105,6 +1142,7 @@ export function registerVersionHandlers() {
       targetBranchName,
     } = params;
     let supabaseRedeploy = null as SupabaseRedeployTarget | null;
+    let neonBackupCleanup = null as RestoreBackupCleanup | null;
     // A recording holds repository, provider and runtime-config for its whole
     // session, so this would queue invisibly behind it for up to the 30-minute
     // cap. It is also rewriting the tree the recording is capturing against.
@@ -1170,6 +1208,9 @@ export function registerVersionHandlers() {
             targetBranchName,
             preserveDirtyTree,
             onRestoreProgress,
+            onNeonBackupCleanupNeeded: (cleanup) => {
+              neonBackupCleanup = cleanup;
+            },
             onSupabaseRedeployNeeded: (target) => {
               supabaseRedeploy = target;
             },
@@ -1287,6 +1328,8 @@ export function registerVersionHandlers() {
       // The tree may already be restored; keep functions in sync with it.
       await redeploySupabaseFunctionsAfterRevert(appId, supabaseRedeploy);
       throw error;
+    } finally {
+      scheduleNeonBackupCleanup(appId, neonBackupCleanup);
     }
     return withRedeployWarning(
       result,
@@ -1463,6 +1506,7 @@ export function registerVersionHandlers() {
     let releaseStreamAdmissionBlock: (() => void) | undefined;
     let releaseRecordingBlock: (() => void) | undefined;
     let supabaseRedeploy = null as SupabaseRedeployTarget | null;
+    let neonBackupCleanup = null as RestoreBackupCleanup | null;
     let restoreResult: ReturnType<typeof versionCommandResult> | undefined;
     let restoreFailure: { error: unknown } | undefined;
 
@@ -1678,6 +1722,9 @@ export function registerVersionHandlers() {
               targetBranchName,
               preserveDirtyTree,
               onRestoreProgress,
+              onNeonBackupCleanupNeeded: (cleanup) => {
+                neonBackupCleanup = cleanup;
+              },
               onSupabaseRedeployNeeded: (target) => {
                 supabaseRedeploy = target;
               },
@@ -1890,6 +1937,7 @@ export function registerVersionHandlers() {
       releaseStreamAdmissionBlock?.();
       releaseActorAdmissionBlock?.();
       releaseRecordingBlock?.();
+      scheduleNeonBackupCleanup(appId, neonBackupCleanup);
     }
     // After the admission blocks are released: new turns need not wait for
     // the upload. A failure after the tree was restored still redeploys.

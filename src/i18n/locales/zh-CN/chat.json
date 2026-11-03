@@ -441,5 +441,10 @@
     "sending": "正在发送...",
     "send": "发送 {{count}} 条"
   },
-  "safetyReviewUnavailable": "安全审查不可用"
+  "safetyReviewUnavailable": "安全审查不可用",
+  "mcpInputTruncated": "显示前 {{shown}} 个字符（共 {{total}} 个）。输入本身并未被缩短。",
+  "mcpResultTruncated": "显示前 {{shown}} 个字符（共 {{total}} 个）。智能体已收到全部 {{total}} 个字符。",
+  "mcpResultBothTruncated": "显示智能体收到的 {{total}} 个字符中的前 {{shown}} 个。工具结果原本更长，在发送给智能体之前已被截断。",
+  "mcpResultToolTruncated": "工具结果过大，智能体收到的是缩短后的版本。",
+  "mcpErrorTruncated": "显示错误信息的前 {{shown}} 个字符（共 {{total}} 个）。"
 }

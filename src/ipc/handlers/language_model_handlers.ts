@@ -23,6 +23,10 @@ import {
 import { and, eq } from "drizzle-orm";
 import { IpcMainInvokeEvent } from "electron";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { readEffectiveSettings } from "../../main/settings";
+import { getEnvVar } from "../utils/read_env";
+import { getProviderApiKeyForRequest } from "../utils/get_model_client";
+import { fetchOpenAICompatibleModels } from "./fetch_openai_compatible_models";
 
 const logger = log.scope("language_model_handlers");
 const handle = createLoggedHandler(logger);
@@ -159,6 +163,36 @@ export function registerLanguageModelHandlers() {
         })
         .run();
       return Number(result.lastInsertRowid);
+    },
+  );
+
+  handleTyped(
+    languageModelContracts.fetchCustomProviderModels,
+    async (_event, { providerId }) => {
+      const providers = await getLanguageModelProviders();
+      const provider = providers.find((p) => p.id === providerId);
+      if (!provider) {
+        throw new DyadError(
+          `Provider with ID "${providerId}" not found`,
+          DyadErrorKind.NotFound,
+        );
+      }
+      if (provider.type !== "custom" || !provider.apiBaseUrl) {
+        throw new DyadError(
+          "Only custom providers with an API base URL can fetch models",
+          DyadErrorKind.Validation,
+        );
+      }
+
+      // Same lookup as chat requests in get_model_client.
+      const apiKey = getProviderApiKeyForRequest(
+        (await readEffectiveSettings()).providerSettings?.[providerId]?.apiKey
+          ?.value ||
+          (provider.envVarName ? getEnvVar(provider.envVarName) : undefined),
+        provider.name,
+      );
+
+      return fetchOpenAICompatibleModels(provider.apiBaseUrl, apiKey);
     },
   );
 

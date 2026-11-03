@@ -36,8 +36,9 @@ describe("chat draft storage", () => {
   });
 
   it("writes changed drafts and leaves unchanged ones alone", () => {
-    // A stale stored value for chat 1 stands in for "the writer did not touch
-    // this key": if the unchanged entry were rewritten, it would read "stale".
+    // A stored value that no writer would produce for this key stands in for
+    // "the writer did not touch it": if the unchanged entry were rewritten, the
+    // stored value would become "same".
     localStorage.setItem(chatDraftStorageKey(1), "untouched-by-writer");
     persistChatDraftChanges(
       localStorage,

@@ -1171,7 +1171,12 @@ function writeSettingsFileAtomically(
 
 export function encrypt(data: string): Secret {
   const trimmed = data.trim();
-  if (safeStorage.isEncryptionAvailable() && !IS_TEST_BUILD) {
+  // The hosted Keychain suite opts into the production write path. This flag
+  // only enables encryption; ordinary production writes already encrypt.
+  if (
+    safeStorage.isEncryptionAvailable() &&
+    (!IS_TEST_BUILD || process.env.DYAD_E2E_REAL_ENCRYPTION === "true")
+  ) {
     return {
       value: safeStorage.encryptString(trimmed).toString("base64"),
       encryptionType: "electron-safe-storage",

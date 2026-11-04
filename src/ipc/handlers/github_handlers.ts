@@ -65,7 +65,11 @@ import { findAppOrThrow } from "../utils/find_app";
 import { withPushHint } from "../utils/git_push_hints";
 import { createTypedHandler } from "./base";
 import { githubContracts } from "../types/github";
-import type { CloneRepoParams, CloneRepoResult } from "../types/github";
+import type {
+  CloneRepoParams,
+  CloneRepoResult,
+  ListCollaboratorsResult,
+} from "../types/github";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
   sanitizeAppDisplayName,
@@ -1096,10 +1100,50 @@ export async function handleGetGitState(
   };
 }
 
-async function handleListCollaborators(
+async function readGitHubErrorMessage(
+  response: Awaited<ReturnType<typeof fetch>>,
+): Promise<string | undefined> {
+  try {
+    const data = (await response.json()) as { message?: unknown };
+    return typeof data.message === "string" ? data.message : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+// GitHub returns 403 from the collaborators endpoint for several reasons:
+// missing push access, org OAuth app restrictions, or SAML SSO enforcement.
+// Only the first is a normal state, so confirm it from the repo's own
+// permissions instead of matching GitHub's error text.
+async function userLacksPushAccess(
+  repoUrl: string,
+  accessToken: string,
+): Promise<boolean> {
+  try {
+    const response = await fetch(repoUrl, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/vnd.github+json",
+      },
+    });
+    if (!response.ok) return false;
+    const repo = (await response.json()) as {
+      permissions?: { push?: boolean; admin?: boolean };
+    };
+    return (
+      repo.permissions !== undefined &&
+      !repo.permissions.push &&
+      !repo.permissions.admin
+    );
+  } catch {
+    return false;
+  }
+}
+
+export async function handleListCollaborators(
   event: IpcMainInvokeEvent,
   { appId }: { appId: number },
-): Promise<{ login: string; avatar_url: string; permissions: any }[]> {
+): Promise<ListCollaboratorsResult> {
   try {
     const settings = readSettings();
     const accessToken = settings.githubAccessToken?.value;
@@ -1115,28 +1159,41 @@ async function handleListCollaborators(
       );
     }
 
-    const response = await fetch(
-      `${getGitHubApiBase()}/repos/${app.githubOrg}/${app.githubRepo}/collaborators`,
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          Accept: "application/vnd.github+json",
-        },
+    const repoUrl = `${getGitHubApiBase()}/repos/${app.githubOrg}/${app.githubRepo}`;
+    const response = await fetch(`${repoUrl}/collaborators`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/vnd.github+json",
       },
-    );
+    });
 
     if (!response.ok) {
-      throw new Error(
-        `Failed to list collaborators: ${response.status} ${response.statusText}`,
-      );
+      const githubMessage = await readGitHubErrorMessage(response);
+      if (
+        response.status === 403 &&
+        (await userLacksPushAccess(repoUrl, accessToken))
+      ) {
+        return { canManage: false, collaborators: [] };
+      }
+      const message = `Failed to list collaborators: ${response.status} ${response.statusText}${
+        githubMessage ? ` (${githubMessage})` : ""
+      }`;
+      if (response.status === 401 || response.status === 403) {
+        logger.warn(`[GitHub Handler] ${message}`);
+        throw new DyadError(message, DyadErrorKind.Auth);
+      }
+      throw new Error(message);
     }
 
     const collaborators = (await response.json()) as any[];
-    return collaborators.map((c: any) => ({
-      login: c.login,
-      avatar_url: c.avatar_url,
-      permissions: c.permissions,
-    }));
+    return {
+      canManage: true,
+      collaborators: collaborators.map((c: any) => ({
+        login: c.login,
+        avatar_url: c.avatar_url,
+        permissions: c.permissions,
+      })),
+    };
   } catch (err: any) {
     if (err instanceof DyadError) throw err;
     logger.error("[GitHub Handler] Failed to list collaborators:", err);

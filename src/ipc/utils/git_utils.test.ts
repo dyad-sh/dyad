@@ -17,8 +17,11 @@ vi.mock("electron-log", () => ({
   },
 }));
 
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { safeGithubOpsErrorMessage } from "@/ipc/services/github_ops_safe_error";
 import {
   gitAuthHeaderConfig,
+  execGit,
   gitFetch,
   gitListFilesNative,
   gitLog,
@@ -1228,5 +1231,39 @@ describe("gitAuthHeaderConfig", () => {
     });
 
     expect(key).toBe("http.http://localhost:3500/github/git/.extraheader");
+  });
+});
+
+describe("execGit launch failures", () => {
+  it("reports a missing working directory as a not-found folder", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "exec-git-cwd-"));
+    const missingPath = path.join(tmpDir, "deleted-app");
+    try {
+      const error = await execGit(["status"], missingPath).then(
+        () => null,
+        (caught: unknown) => caught,
+      );
+      expect(error).toBeInstanceOf(DyadError);
+      expect((error as DyadError).kind).toBe(DyadErrorKind.NotFound);
+      expect((error as DyadError).message).toContain(
+        `Folder not found: '${missingPath}'`,
+      );
+      expect(safeGithubOpsErrorMessage(error, "")).toBe(
+        "Folder not found: '[redacted path]'. It may have been moved or deleted, or be on a drive that isn't connected.",
+      );
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("still runs git normally when the working directory exists", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "exec-git-cwd-"));
+    try {
+      const result = await execGit(["--version"], tmpDir);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("git version");
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 });

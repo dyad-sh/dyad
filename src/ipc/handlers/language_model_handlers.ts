@@ -23,7 +23,7 @@ import {
 import { and, eq } from "drizzle-orm";
 import { IpcMainInvokeEvent } from "electron";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { readEffectiveSettings } from "../../main/settings";
+import { readSettings } from "../../main/settings";
 import { getEnvVar } from "../utils/read_env";
 import { getProviderApiKeyForRequest } from "../utils/get_model_client";
 import {
@@ -35,23 +35,29 @@ const logger = log.scope("language_model_handlers");
 const handle = createLoggedHandler(logger);
 const handleTyped = createLoggedTypedHandler(logger);
 
-async function getCustomProviderWithBaseUrl(providerId: string) {
-  const provider = (await getLanguageModelProviders()).find(
-    (p) => p.id === providerId,
-  );
+/**
+ * Looks the provider up in the database only. Going through
+ * getLanguageModelProviders() would also load the remote built-in model
+ * catalog, which can stall custom-endpoint discovery when the cloud is
+ * unreachable.
+ */
+function getCustomProvider(providerId: string) {
+  const provider = db
+    .select()
+    .from(languageModelProvidersSchema)
+    .where(eq(languageModelProvidersSchema.id, providerId))
+    .get();
   if (!provider) {
     throw new DyadError(
-      `Provider with ID "${providerId}" not found`,
+      `Custom provider "${providerId}" not found`,
       DyadErrorKind.NotFound,
     );
   }
-  if (provider.type !== "custom" || !provider.apiBaseUrl) {
-    throw new DyadError(
-      "Only custom providers with an API base URL support fetching models",
-      DyadErrorKind.Validation,
-    );
-  }
-  return { ...provider, apiBaseUrl: provider.apiBaseUrl };
+  return {
+    name: provider.name,
+    apiBaseUrl: provider.api_base_url,
+    envVarName: provider.env_var_name ?? undefined,
+  };
 }
 
 export function registerLanguageModelHandlers() {
@@ -191,12 +197,14 @@ export function registerLanguageModelHandlers() {
   handleTyped(
     languageModelContracts.fetchCustomProviderModels,
     async (_event, { providerId }) => {
-      const provider = await getCustomProviderWithBaseUrl(providerId);
+      const provider = getCustomProvider(providerId);
 
-      // Same lookup as chat requests in get_model_client.
+      // Same lookup as chat requests in get_model_client. Read the persisted
+      // settings only: readEffectiveSettings() also fetches remote desktop
+      // config, which would stall local/LAN discovery when api.dyad.sh is
+      // unreachable.
       const apiKey = getProviderApiKeyForRequest(
-        (await readEffectiveSettings()).providerSettings?.[providerId]?.apiKey
-          ?.value ||
+        readSettings().providerSettings?.[providerId]?.apiKey?.value ||
           (provider.envVarName ? getEnvVar(provider.envVarName) : undefined),
         provider.name,
       );
@@ -208,7 +216,7 @@ export function registerLanguageModelHandlers() {
   handleTyped(
     languageModelContracts.importCustomProviderModels,
     async (_event, { providerId, models }) => {
-      await getCustomProviderWithBaseUrl(providerId);
+      getCustomProvider(providerId);
 
       // Everything below is synchronous, so no other IPC handler (i.e. another
       // window's import) can run between the duplicate check and the inserts.

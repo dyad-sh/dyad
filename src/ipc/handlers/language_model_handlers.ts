@@ -26,11 +26,33 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { readEffectiveSettings } from "../../main/settings";
 import { getEnvVar } from "../utils/read_env";
 import { getProviderApiKeyForRequest } from "../utils/get_model_client";
-import { fetchOpenAICompatibleModels } from "./fetch_openai_compatible_models";
+import {
+  fetchOpenAICompatibleModels,
+  selectModelsToImport,
+} from "./fetch_openai_compatible_models";
 
 const logger = log.scope("language_model_handlers");
 const handle = createLoggedHandler(logger);
 const handleTyped = createLoggedTypedHandler(logger);
+
+async function getCustomProviderWithBaseUrl(providerId: string) {
+  const provider = (await getLanguageModelProviders()).find(
+    (p) => p.id === providerId,
+  );
+  if (!provider) {
+    throw new DyadError(
+      `Provider with ID "${providerId}" not found`,
+      DyadErrorKind.NotFound,
+    );
+  }
+  if (provider.type !== "custom" || !provider.apiBaseUrl) {
+    throw new DyadError(
+      "Only custom providers with an API base URL support fetching models",
+      DyadErrorKind.Validation,
+    );
+  }
+  return { ...provider, apiBaseUrl: provider.apiBaseUrl };
+}
 
 export function registerLanguageModelHandlers() {
   handle(
@@ -169,20 +191,7 @@ export function registerLanguageModelHandlers() {
   handleTyped(
     languageModelContracts.fetchCustomProviderModels,
     async (_event, { providerId }) => {
-      const providers = await getLanguageModelProviders();
-      const provider = providers.find((p) => p.id === providerId);
-      if (!provider) {
-        throw new DyadError(
-          `Provider with ID "${providerId}" not found`,
-          DyadErrorKind.NotFound,
-        );
-      }
-      if (provider.type !== "custom" || !provider.apiBaseUrl) {
-        throw new DyadError(
-          "Only custom providers with an API base URL can fetch models",
-          DyadErrorKind.Validation,
-        );
-      }
+      const provider = await getCustomProviderWithBaseUrl(providerId);
 
       // Same lookup as chat requests in get_model_client.
       const apiKey = getProviderApiKeyForRequest(
@@ -193,6 +202,41 @@ export function registerLanguageModelHandlers() {
       );
 
       return fetchOpenAICompatibleModels(provider.apiBaseUrl, apiKey);
+    },
+  );
+
+  handleTyped(
+    languageModelContracts.importCustomProviderModels,
+    async (_event, { providerId, models }) => {
+      await getCustomProviderWithBaseUrl(providerId);
+
+      // Everything below is synchronous, so no other IPC handler (i.e. another
+      // window's import) can run between the duplicate check and the inserts.
+      const toInsert = selectModelsToImport(
+        models,
+        db
+          .select({ apiName: languageModelsSchema.apiName })
+          .from(languageModelsSchema)
+          .where(eq(languageModelsSchema.customProviderId, providerId))
+          .all()
+          .map((row) => row.apiName),
+      );
+      db.transaction((tx) => {
+        for (const model of toInsert) {
+          tx.insert(languageModelsSchema)
+            .values({
+              displayName: model.displayName,
+              apiName: model.apiName,
+              customProviderId: providerId,
+              context_window: model.contextWindow || null,
+            })
+            .run();
+        }
+      });
+      return {
+        added: toInsert.length,
+        skipped: models.length - toInsert.length,
+      };
     },
   );
 

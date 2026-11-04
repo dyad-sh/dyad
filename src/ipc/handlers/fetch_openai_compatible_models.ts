@@ -158,3 +158,21 @@ export async function fetchOpenAICompatibleModels(
   logger.info(`Fetched ${models.length} models from ${url}`);
   return models;
 }
+
+/**
+ * Picks the models that aren't already saved for a provider, de-duplicating
+ * the input too. Runs in the main process against the database's current
+ * contents, so a renderer's stale "already added" snapshot can't cause
+ * duplicate rows.
+ */
+export function selectModelsToImport<T extends { apiName: string }>(
+  models: T[],
+  existingApiNames: Iterable<string>,
+): T[] {
+  const seen = new Set(existingApiNames);
+  return models.filter((m) => {
+    if (seen.has(m.apiName)) return false;
+    seen.add(m.apiName);
+    return true;
+  });
+}

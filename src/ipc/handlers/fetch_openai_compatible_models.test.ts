@@ -1,5 +1,9 @@
+import { languageModelContracts } from "@/ipc/types/language-model";
 import { DyadError } from "@/errors/dyad_error";
-import { fetchOpenAICompatibleModels } from "@/ipc/handlers/fetch_openai_compatible_models";
+import {
+  fetchOpenAICompatibleModels,
+  selectModelsToImport,
+} from "@/ipc/handlers/fetch_openai_compatible_models";
 import { afterEach, describe, it, expect, vi } from "vitest";
 
 afterEach(() => {
@@ -101,5 +105,33 @@ describe("fetchOpenAICompatibleModels", () => {
     await expect(
       fetchOpenAICompatibleModels("http://host:8000/v1"),
     ).rejects.toBeInstanceOf(DyadError);
+  });
+});
+
+describe("selectModelsToImport", () => {
+  it("skips models already saved for the provider, even if a stale UI offered them", () => {
+    const models = [{ apiName: "a" }, { apiName: "b" }, { apiName: "c" }];
+    expect(selectModelsToImport(models, ["b"])).toEqual([
+      { apiName: "a" },
+      { apiName: "c" },
+    ]);
+  });
+
+  it("drops duplicates within the same import", () => {
+    expect(
+      selectModelsToImport([{ apiName: "a" }, { apiName: "a" }], []),
+    ).toEqual([{ apiName: "a" }]);
+  });
+});
+
+describe("importCustomProviderModels contract", () => {
+  it("invalidates model lists in every window", () => {
+    const { invalidates } = languageModelContracts.importCustomProviderModels;
+    expect(
+      invalidates?.(
+        { providerId: "custom::x", models: [] },
+        { added: 0, skipped: 0 },
+      ),
+    ).toEqual([{ family: "language-models" }]);
   });
 });

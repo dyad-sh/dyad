@@ -299,6 +299,8 @@ export const queryKeys = {
   // Language Models / Providers
   // ─────────────────────────────────────────────────────────────────────────────
   languageModels: {
+    // Prefix of every per-provider model list (`forProvider`).
+    all: ["language-models"] as const,
     providers: ["languageModelProviders"] as const,
     byProviders: ["language-models-by-providers"] as const,
     forProvider: ({ providerId }: { providerId: string }) =>

@@ -104,6 +104,22 @@ export type FetchedCustomProviderModel = z.infer<
   typeof FetchedCustomProviderModelSchema
 >;
 
+export const ImportCustomProviderModelsParamsSchema = z.object({
+  providerId: z.string(),
+  models: z.array(
+    FetchedCustomProviderModelSchema.extend({
+      apiName: z.string().min(1),
+      displayName: z.string().min(1),
+    }),
+  ),
+});
+
+export const ImportCustomProviderModelsResultSchema = z.object({
+  added: z.number(),
+  // Already present for this provider (e.g. imported from another window).
+  skipped: z.number(),
+});
+
 export const DeleteCustomModelParamsSchema = z.object({
   providerId: z.string(),
   modelApiName: z.string(),
@@ -178,6 +194,13 @@ export const languageModelContracts = {
     channel: "fetch-custom-provider-models",
     input: z.object({ providerId: z.string() }),
     output: z.array(FetchedCustomProviderModelSchema),
+  }),
+
+  importCustomProviderModels: defineContract({
+    channel: "import-custom-provider-models",
+    input: ImportCustomProviderModelsParamsSchema,
+    output: ImportCustomProviderModelsResultSchema,
+    invalidates: () => [{ family: "language-models" }],
   }),
 
   listOllamaModels: defineContract({

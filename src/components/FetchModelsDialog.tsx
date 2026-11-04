@@ -40,7 +40,9 @@ export function FetchModelsDialog({
     error,
     refetch,
   } = useQuery({
-    queryKey: queryKeys.languageModels.fetchCustomProviderModels({ providerId }),
+    queryKey: queryKeys.languageModels.fetchCustomProviderModels({
+      providerId,
+    }),
     queryFn: () => ipc.languageModel.fetchCustomProviderModels({ providerId }),
     enabled: isOpen,
     networkMode: "always",
@@ -68,32 +70,29 @@ export function FetchModelsDialog({
 
   const handleAdd = async () => {
     setIsAdding(true);
-    const results = await Promise.allSettled(
-      chosen.map((m) =>
-        ipc.languageModel.createCustomModel({ ...m, providerId }),
-      ),
-    );
-    setIsAdding(false);
-
-    const failed = results.flatMap((r, i) =>
-      r.status === "rejected"
-        ? [{ apiName: chosen[i].apiName, reason: r.reason }]
-        : [],
-    );
-    const added = results.length - failed.length;
-    setSelected(new Set(failed.map((f) => f.apiName)));
-    if (added > 0) showSuccess(`Added ${added} model${added === 1 ? "" : "s"}`);
-    if (failed.length > 0) {
-      showError(
-        `Failed to add ${failed.length} model${failed.length === 1 ? "" : "s"}: ${
-          failed[0].reason instanceof Error
-            ? failed[0].reason.message
-            : String(failed[0].reason)
-        }`,
-      );
+    try {
+      // The main process re-checks for duplicates against the database, so
+      // this stays correct even if another window imported in the meantime.
+      const { added, skipped } =
+        await ipc.languageModel.importCustomProviderModels({
+          providerId,
+          models: chosen,
+        });
+      if (added > 0) {
+        showSuccess(`Added ${added} model${added === 1 ? "" : "s"}`);
+      }
+      if (skipped > 0) {
+        showSuccess(
+          `${skipped} model${skipped === 1 ? " was" : "s were"} already added`,
+        );
+      }
+      onSuccess();
+      onClose();
+    } catch (error) {
+      showError(error);
+    } finally {
+      setIsAdding(false);
     }
-    if (added > 0) onSuccess();
-    if (failed.length === 0) onClose();
   };
 
   return (

@@ -36,6 +36,7 @@ For experiments that may later become enabled by default:
 For schema-validated settings:
 
 - Assume `UserSettings` and other parsed schema types have already normalized field types. Prefer idiomatic boolean checks like `settings?.flag && !settings.hidden` over defensive literal comparisons like `settings?.flag === true && settings.hidden !== true`, unless you are intentionally handling raw unvalidated persisted data before schema parsing.
+- Do not put strict constraints (`.int().min(1).max(128)`) on a stored field without a fallback. One out-of-range or hand-edited value fails the whole `StoredUserSettingsSchema` parse, and `readSettings` then returns `DEFAULT_SETTINGS` for every setting. Append `.catch(undefined)` (Zod 4) so only the invalid field falls back to its default.
 - For default-on features that start background work, wait for settings to load
   before applying the field's default. Otherwise a saved `false` still starts
   work during startup; test loading settings followed by the disabled value.

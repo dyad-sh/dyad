@@ -56,6 +56,17 @@ it.each(["", "0", "-1", "1.5", "129"])(
   },
 );
 
+it.each(["1", "128"])("accepts boundary concurrency %s", (value) => {
+  h.settings = { enableParallelTestRuns: true, maxConcurrentTestRuns: 3 };
+  render(<ParallelTestRunSettings />);
+  const input = screen.getByRole("spinbutton") as HTMLInputElement;
+  fireEvent.change(input, { target: { value } });
+  fireEvent.blur(input);
+  expect(h.updateSettings).toHaveBeenCalledWith({
+    maxConcurrentTestRuns: Number(value),
+  });
+});
+
 it("restores the saved limit when persistence fails", async () => {
   h.settings = { enableParallelTestRuns: true };
   h.updateSettings.mockRejectedValue(new Error("Could not save settings"));

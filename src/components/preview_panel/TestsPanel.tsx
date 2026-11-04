@@ -1081,11 +1081,20 @@ export function TestsPanel() {
       if (selectedAppId == null) return;
       // Read the mutation cache synchronously so a second click in the same
       // render cannot enqueue another expensive run before main acknowledges it.
+      // Parallel mode still admits deliberately different selections.
+      const pendingRuns = queryClient.getMutationCache().findAll({
+        mutationKey: queryKeys.tests.run({ appId: selectedAppId }),
+        status: "pending",
+      });
       if (
-        !settings?.enableParallelTestRuns &&
-        queryClient.isMutating({
-          mutationKey: queryKeys.tests.run({ appId: selectedAppId }),
-        })
+        settings?.enableParallelTestRuns
+          ? pendingRuns.some((mutation) => {
+              const pending = mutation.state.variables as
+                | Parameters<typeof ipc.tests.runAppTests>[0]
+                | undefined;
+              return pending?.testFile === file && pending?.testLine === line;
+            })
+          : pendingRuns.length > 0
       )
         return;
       submitRun({
@@ -2135,7 +2144,9 @@ export function TestsPanel() {
         )}
       </div>
 
-      <TestOutputDrawer open={outputOpen} onToggle={toggleOutput} />
+      {testingEnabled && (
+        <TestOutputDrawer open={outputOpen} onToggle={toggleOutput} />
+      )}
 
       <DeleteTestFileDialog
         file={pendingDelete?.file ?? null}

@@ -200,10 +200,13 @@ export function createTestRunQueueService({
           queue.waiting(candidate.runId, "process-cleanup");
           continue;
         }
-        if (
-          !settings.enableParallelTestRuns ||
-          activeCount + unsettledOwners.size >= limit
-        ) {
+        // Serial mode has already admitted every app without an active run, so
+        // what remains waits behind its own app's earlier run.
+        if (!settings.enableParallelTestRuns) {
+          queue.waiting(candidate.runId, "earlier-run");
+          continue;
+        }
+        if (activeCount + unsettledOwners.size >= limit) {
           queue.waiting(candidate.runId, "capacity");
           return;
         }
@@ -375,7 +378,8 @@ export function createTestRunQueueService({
     };
     const record: RunRecord = { request, parallelRunsEnabled: false };
     records.set(runId, record);
-    senders.set(options.appId, options.event.sender);
+    const sender = options.event.sender;
+    senders.set(options.appId, sender);
     const timing = new TestRunTiming({
       appId: options.appId,
       runId,
@@ -419,7 +423,19 @@ export function createTestRunQueueService({
       )
       .finally(() => {
         records.delete(runId);
+        // An already-aborted request never enters the queue, so no queue change
+        // retires its sender. Leave a newer request's sender in place.
+        if (
+          senders.get(options.appId) === sender &&
+          !isAppQueued(options.appId)
+        )
+          senders.delete(options.appId);
       });
+  }
+
+  function isAppQueued(appId: number) {
+    const state = getAppTestRunQueue(appId);
+    return state.activeRuns.length > 0 || state.queuedRuns.length > 0;
   }
 
   function getAppTestRunQueue(appId: number): TestRunQueueSnapshot & {
@@ -482,8 +498,11 @@ export function createTestRunQueueService({
     const record = records.get(runId);
     if (!record?.context) return;
     const current = await loadTestRunContext(record.request).catch(() => null);
+    // Serially admitted runs carry no context: serial mode never checked them
+    // against other apps, so turning parallel runs off mid-setup must not fail
+    // a parallel run that was already admitted alongside them.
     const others = (queue.getSnapshot().activeRuns ?? []).filter(
-      (run) => run.runId !== runId,
+      (run) => run.runId !== runId && records.get(run.runId)?.context,
     );
     if (
       !current ||
@@ -533,8 +552,24 @@ export function createTestRunQueueService({
   function stopAllAppTestRuns(reason: TestRunStopReason) {
     queue.stop(reason);
   }
-  function drainAppTestRuns(appId: number) {
-    return queue.drain(appId);
+  /**
+   * Wait until the app has no queued or active runs and no surviving process
+   * trees from finished ones, which can still use its workspace or database.
+   * `signal` stops polling once the caller gives up waiting.
+   */
+  async function drainAppTestRuns(appId: number, signal?: AbortSignal) {
+    await queue.drain(appId);
+    const hasUnsettledOwner = () => {
+      refreshUnsettledOwners();
+      return [...unsettledOwners.values()].some(
+        (owner) => owner.request.appId === appId,
+      );
+    };
+    while (!signal?.aborted && hasUnsettledOwner()) {
+      await new Promise<void>((resolve) => {
+        clock.schedule(resolve, ADMISSION_RETRY_INTERVAL_MS);
+      });
+    }
   }
   function isTestRunActive(appId: number) {
     return getAppTestRunQueue(appId).activeRuns.length > 0;
@@ -544,7 +579,7 @@ export function createTestRunQueueService({
     deletingApps.add(appId);
     stopAppTestsForApp(appId, { kind: "app-deleted" });
     return {
-      drain: () => queue.drain(appId),
+      drain: (signal?: AbortSignal) => drainAppTestRuns(appId, signal),
       release: () => {
         deletingApps.delete(appId);
       },

@@ -61,10 +61,10 @@ export function ParallelTestRunSettings() {
       >
         Maximum number of test runs at the same time across all apps. Each run
         uses its own browser. While enabled, tests run one at a time within each
-        run, even when only one run is active. Show the browser opens a separate
-        window instead of using the preview panel. Other runs wait for a slot or
-        compatible database and workspace. Lowering this limit lets running
-        tests finish.
+        run, even when only one run is active. “Show the browser” opens a
+        separate window instead of using the preview panel. Other runs wait for
+        a slot or compatible database and workspace. Lowering this limit lets
+        running tests finish.
       </p>
     </div>
   );

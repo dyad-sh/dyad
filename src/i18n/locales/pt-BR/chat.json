@@ -472,6 +472,11 @@
     "runLabel": "Execução {{number}} · {{target}}",
     "files": "{{count}} arquivos",
     "closeRun": "Fechar saída de {{label}}",
-    "close": "Fechar aba de saída"
+    "close": "Fechar aba de saída",
+    "title": "Saída",
+    "toggle": "Mostrar ou ocultar a saída dos testes",
+    "tabList": "Saída das execuções de teste",
+    "noTabs": "Nenhuma aba de saída de testes. Execute os testes para ver a saída.",
+    "noOutput": "Ainda não há saída."
   }
 }

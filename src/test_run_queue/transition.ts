@@ -154,10 +154,8 @@ function transitionAdmitted(
       return commit(active, [...state.queuedRuns, event.request]);
     case "waiting": {
       const run = state.queuedRuns.find((run) => run.runId === event.runId);
-      if (
-        !run ||
-        (run.queuedReason === event.reason && run.branch === event.branch)
-      )
+      if (!run) return ignore(state, "stale-operation");
+      if (run.queuedReason === event.reason && run.branch === event.branch)
         return ignore(state, "unchanged-wait");
       return commit(
         active,

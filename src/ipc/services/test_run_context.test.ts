@@ -96,11 +96,19 @@ it("preserves provider compatibility and exclusive setup", async () => {
     .run();
   const context = await loadTestRunContext(request);
   expect(context.databaseKey).toBe("supabase:supabase");
-  h.db!.update(apps)
-    .set({ installCommand: "custom-install" })
-    .where(eq(apps.id, 7))
-    .run();
-  expect((await loadTestRunContext(request)).exclusive).toBe(true);
+  // Like the E2E runtime, only an install AND start command make setup custom.
+  for (const [installCommand, startCommand, exclusive] of [
+    ["custom-install", null, false],
+    ["custom-install", "   ", false],
+    ["  ", "custom-start", false],
+    ["custom-install", "custom-start", true],
+  ] as const) {
+    h.db!.update(apps)
+      .set({ installCommand, startCommand })
+      .where(eq(apps.id, 7))
+      .run();
+    expect((await loadTestRunContext(request)).exclusive).toBe(exclusive);
+  }
 });
 
 it("classifies a deleted app as missing", async () => {

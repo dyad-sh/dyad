@@ -74,7 +74,8 @@ it("queues on the plan limit, and retries only after remote deletion settles", a
   const deletion = deferred<boolean>();
   mocks.remove.mockReturnValueOnce(deletion.promise);
   const releasing = first.release();
-  await Promise.resolve();
+  // A full macrotask lets any retry not gated on remote deletion run first.
+  await new Promise((resolve) => setTimeout(resolve, 0));
   expect(mocks.create).toHaveBeenCalledTimes(2);
   deletion.resolve(true);
   await releasing;
@@ -260,6 +261,21 @@ it.each([
   { response: { status: 401 } },
   { response: { status: 429 } },
   { response: { status: 422, data: { message: "storage limit exceeded" } } },
+  {
+    response: {
+      status: 500,
+      data: { code: "BRANCHES_LIMIT_EXCEEDED", message: "branches limit" },
+    },
+  },
 ])("does not confuse unrelated errors with branch capacity: %j", (error) => {
   expect(isNeonBranchCapacityError(error)).toBe(false);
+});
+
+it.each([
+  capacityError,
+  { response: { status: 409, data: { code: "BRANCHES_LIMIT_EXCEEDED" } } },
+  { response: { status: 422, data: { message: "Maximum branches reached" } } },
+  { response: { status: 400, data: { message: "Branches limit exceeded" } } },
+])("recognizes branch capacity errors: %j", (error) => {
+  expect(isNeonBranchCapacityError(error)).toBe(true);
 });

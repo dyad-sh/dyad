@@ -36,7 +36,7 @@
       "app-deleted": "Uygulama siliniyor",
       "app-quit": "Dyad kapanıyor"
     },
-    "stopRun": "{{target}} durdur"
+    "stopRun": "Durdur: {{target}}"
   },
   "newChat": "Yeni Sohbet",
   "viewAllApps": "Tüm uygulamalar",
@@ -472,6 +472,11 @@
     "runLabel": "Çalıştırma {{number}} · {{target}}",
     "files": "{{count}} dosya",
     "closeRun": "{{label}} çıktısını kapat",
-    "close": "Çıktı sekmesini kapat"
+    "close": "Çıktı sekmesini kapat",
+    "title": "Çıktı",
+    "toggle": "Test çıktısını göster veya gizle",
+    "tabList": "Test çalıştırma çıktısı",
+    "noTabs": "Test çıktısı sekmesi yok. Çıktıyı görmek için testleri çalıştırın.",
+    "noOutput": "Henüz çıktı yok."
   }
 }

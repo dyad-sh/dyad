@@ -4,6 +4,7 @@ import { performance } from "node:perf_hooks";
 import { readSettings } from "@/main/settings";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { sendTelemetryEvent } from "../utils/telemetry";
+import { broadcastToRegisteredWindows } from "../utils/window_broadcast";
 import { measureTestRunStep } from "./test_run_timing";
 import { loadTestRunContext } from "./test_run_context";
 import {
@@ -773,6 +774,81 @@ it("returns to serial admission when parallel runs are disabled", async () => {
   second.finish();
   await second.result;
   expect(third.execute).toHaveBeenCalledOnce();
+});
+
+it("keeps validating a parallel run after serial admission starts another app", async () => {
+  h.settings.enableParallelTestRuns = true;
+  enqueue(1);
+  await tick();
+  const runId = service.getAppTestRunQueue(1).activeRun!.runId;
+  h.settings.enableParallelTestRuns = false;
+  const serial = enqueue(2);
+  await tick();
+  expect(serial.execute).toHaveBeenCalledOnce();
+  await expect(service.validateTestRunInputs(runId)).resolves.toBeUndefined();
+});
+
+it("labels serial runs as waiting behind their own app's earlier run", async () => {
+  enqueue(1);
+  enqueue(2);
+  enqueue(1);
+  enqueue(2);
+  await tick();
+  for (const appId of [1, 2])
+    expect(service.getAppTestRunQueue(appId).queuedRuns[0].queuedReason).toBe(
+      "earlier-run",
+    );
+});
+
+it("drains an app only after its surviving test processes settle", async () => {
+  const run = enqueue(1);
+  await tick();
+  h.remainingProcesses = [{}];
+  run.finish();
+  await run.result;
+  await expect(service.drainAppTestRuns(2)).resolves.toBeUndefined();
+  let drained = false;
+  void service.drainAppTestRuns(1).then(() => {
+    drained = true;
+  });
+  const abandoned = new AbortController();
+  const abandonedDrain = service.drainAppTestRuns(1, abandoned.signal);
+  await tick(5000);
+  expect(drained).toBe(false);
+  abandoned.abort();
+  await tick(2000);
+  await expect(abandonedDrain).resolves.toBeUndefined();
+  expect(drained).toBe(false);
+  h.remainingProcesses = [];
+  await tick(2000);
+  expect(drained).toBe(true);
+});
+
+it("does not keep publishing to the sender of an already-aborted request", async () => {
+  const sender = {};
+  const aborted = new AbortController();
+  aborted.abort();
+  await expect(
+    service.withAppTestRun(
+      {
+        appId: 5,
+        event: { sender } as IpcMainInvokeEvent,
+        source: "panel",
+        externalSignal: aborted.signal,
+      },
+      vi.fn(),
+      () => "cancelled",
+    ),
+  ).resolves.toBe("cancelled");
+  vi.mocked(broadcastToRegisteredWindows).mockClear();
+  enqueue(1);
+  await tick();
+  expect(broadcastToRegisteredWindows).toHaveBeenCalled();
+  expect(
+    vi
+      .mocked(broadcastToRegisteredWindows)
+      .mock.calls.some(([target]) => target === sender),
+  ).toBe(false);
 });
 
 it.each([false, true])(

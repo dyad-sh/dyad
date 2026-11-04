@@ -322,9 +322,10 @@ export function stopAllAppTestsSync(): void {
 export async function endTestsForApp(appId: number): Promise<void> {
   stopAppTestsForApp(appId, { kind: "app-deleted" });
   let timer: ReturnType<typeof setTimeout> | undefined;
+  const drain = new AbortController();
   try {
     await Promise.race([
-      drainAppTestRuns(appId),
+      drainAppTestRuns(appId, drain.signal),
       new Promise<never>((_resolve, reject) => {
         timer = setTimeout(
           () =>
@@ -340,6 +341,7 @@ export async function endTestsForApp(appId: number): Promise<void> {
     ]);
   } finally {
     clearTimeout(timer);
+    drain.abort();
   }
 }
 

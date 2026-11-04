@@ -1052,6 +1052,90 @@ describe("useTestRunEvents", () => {
     expect(store.get(testRunStateByAppIdAtom).get(1)?.phase).toBe("idle");
   });
 
+  it("reconciles a finished run's new spec while a sibling run is still active", async () => {
+    const { store, Wrapper } = makeWrapper();
+    renderHook(() => useTestRunEvents(), { wrapper: Wrapper });
+    listAppTestsMock.mockResolvedValue({
+      specs: [
+        { file: "tests/new.spec.ts", tests: [] },
+        { file: "tests/other.spec.ts", tests: [] },
+      ],
+    });
+    act(() => {
+      for (const runId of [1, 2])
+        emitRunState({
+          appId: 1,
+          runId,
+          source: "agent",
+          state: "started",
+          testFile: runId === 1 ? "tests/new.spec.ts" : "tests/other.spec.ts",
+        });
+      emitRunState({
+        appId: 1,
+        runId: 1,
+        source: "agent",
+        state: "finished",
+        results: [{ file: "new.spec.ts", status: "passed" }],
+      });
+    });
+    await waitFor(() =>
+      expect(
+        store.get(testRunStateByAppIdAtom).get(1)?.results["tests/new.spec.ts"]
+          ?.status,
+      ).toBe("passed"),
+    );
+    const state = store.get(testRunStateByAppIdAtom).get(1)!;
+    expect(state.runId).toBe(2);
+    expect(state.runningFiles).toEqual(["tests/other.spec.ts"]);
+  });
+
+  it("keeps a newer run's specs and results when an older refresh resolves last", async () => {
+    const { store, Wrapper } = makeWrapper();
+    renderHook(() => useTestRunEvents(), { wrapper: Wrapper });
+    const refreshes: ((value: unknown) => void)[] = [];
+    listAppTestsMock.mockImplementation(
+      () => new Promise((resolve) => refreshes.push(resolve)),
+    );
+    act(() => {
+      for (const runId of [1, 2])
+        emitRunState({
+          appId: 1,
+          runId,
+          source: "agent",
+          state: "started",
+          testFile: "tests/shared.spec.ts",
+        });
+      for (const runId of [1, 2])
+        emitRunState({
+          appId: 1,
+          runId,
+          source: "agent",
+          state: "finished",
+          results: [
+            {
+              file: "shared.spec.ts",
+              status: runId === 1 ? "failed" : "passed",
+            },
+          ],
+        });
+    });
+    const specs = [{ file: "tests/shared.spec.ts", tests: [] }];
+    await act(async () => {
+      refreshes[1]({ specs });
+      await Promise.resolve();
+    });
+    await act(async () => {
+      refreshes[0]({ specs: [] });
+      await Promise.resolve();
+    });
+    expect(store.get(testSpecsByAppIdAtom).get(1)).toEqual(specs);
+    expect(
+      store.get(testRunStateByAppIdAtom).get(1)?.results[
+        "tests/shared.spec.ts"
+      ],
+    ).toMatchObject({ status: "passed", runId: 2 });
+  });
+
   it("still finishes the run when the spec-list refresh fails", async () => {
     const { store, Wrapper } = makeWrapper();
     renderHook(() => useTestRunEvents(), { wrapper: Wrapper });

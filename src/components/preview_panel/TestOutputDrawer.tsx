@@ -11,6 +11,9 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 
+/** Distance from the bottom that still counts as reading the live tail. */
+const FOLLOW_TAIL_THRESHOLD_PX = 16;
+
 // Only the drawer subscribes to streamed output, keeping each append from
 // re-rendering the whole Tests panel and every test row.
 export const TestOutputDrawer = memo(function TestOutputDrawer({
@@ -31,9 +34,16 @@ export const TestOutputDrawer = memo(function TestOutputDrawer({
   const toggleRef = useRef<HTMLButtonElement>(null);
   const tabRefs = useRef(new Map<number, HTMLButtonElement>());
   const selectedTab = tabs.find((tab) => tab.runId === selectedRunId);
+  // Follow the newest output only while the reader is at the bottom, so
+  // scrolling up to read earlier output is not undone by the next chunk.
+  const followTailRef = useRef(true);
 
   useEffect(() => {
-    if (open && outputRef.current) {
+    followTailRef.current = true;
+  }, [selectedRunId, appId, open]);
+
+  useEffect(() => {
+    if (open && outputRef.current && followTailRef.current) {
       outputRef.current.scrollTop = outputRef.current.scrollHeight;
     }
   }, [selectedTab?.output, selectedRunId, appId, open]);
@@ -64,11 +74,11 @@ export const TestOutputDrawer = memo(function TestOutputDrawer({
         onClick={onToggle}
         aria-expanded={open}
         aria-controls={contentId}
-        aria-label="Toggle test output"
+        aria-label={t("testOutput.toggle")}
         className="flex items-center gap-2 w-full px-4 py-1.5 text-xs font-medium text-muted-foreground hover:bg-(--background-darkest) cursor-pointer"
       >
         {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-        Output
+        {t("testOutput.title")}
         {tabs.length > 0 && (
           <span className="text-muted-foreground/70">({tabs.length})</span>
         )}
@@ -77,7 +87,7 @@ export const TestOutputDrawer = memo(function TestOutputDrawer({
         <div id={contentId}>
           {tabs.length === 0 ? (
             <p className="px-4 py-3 text-xs text-muted-foreground">
-              No test output tabs. Run tests to see output.
+              {t("testOutput.noTabs")}
             </p>
           ) : (
             <Tabs
@@ -91,7 +101,7 @@ export const TestOutputDrawer = memo(function TestOutputDrawer({
             >
               <TabsList
                 activateOnFocus
-                aria-label="Test run output"
+                aria-label={t("testOutput.tabList")}
                 className="h-auto w-full justify-start overflow-x-auto rounded-none border-b border-border bg-transparent p-0 scrollbar-on-hover"
               >
                 {tabs.map((tab) => {
@@ -156,9 +166,18 @@ export const TestOutputDrawer = memo(function TestOutputDrawer({
                   )}
                   <pre
                     ref={tab.runId === selectedRunId ? outputRef : undefined}
+                    onScroll={(event) => {
+                      if (tab.runId !== selectedRunId) return;
+                      const element = event.currentTarget;
+                      followTailRef.current =
+                        element.scrollHeight -
+                          element.scrollTop -
+                          element.clientHeight <=
+                        FOLLOW_TAIL_THRESHOLD_PX;
+                    }}
                     className="text-[11px] whitespace-pre-wrap break-words bg-(--background-darkest) px-4 py-2 max-h-48 overflow-auto"
                   >
-                    {tab.output || "No output yet."}
+                    {tab.output || t("testOutput.noOutput")}
                   </pre>
                 </TabsContent>
               ))}

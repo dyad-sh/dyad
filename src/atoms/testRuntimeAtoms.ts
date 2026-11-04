@@ -449,6 +449,10 @@ export const applyTestRunStartedAtom = atom(
 /**
  * Merge a finished run's results back onto an app's run state. Shared by
  * panel- and agent-initiated runs (see applyTestRunStartedAtom).
+ *
+ * `reconcileOnly` re-keys an already-finished run's results against a
+ * refreshed spec list. The run is no longer active, so it touches only results
+ * and never replaces a result from a newer run.
  */
 export const applyTestRunFinishedAtom = atom(
   null,
@@ -462,6 +466,7 @@ export const applyTestRunFinishedAtom = atom(
       expectedStartedAt,
       expectedRunId,
       sandboxed,
+      reconcileOnly = false,
     }: {
       appId: number;
       res: RunAppTestsResult;
@@ -469,6 +474,7 @@ export const applyTestRunFinishedAtom = atom(
       expectedStartedAt?: number;
       expectedRunId?: number;
       sandboxed?: boolean;
+      reconcileOnly?: boolean;
     },
   ) => {
     // Playwright reports a spec's `file` relative to its own rootDir, which
@@ -486,9 +492,10 @@ export const applyTestRunFinishedAtom = atom(
             ? prev
             : (prev.activeRuns?.[expectedRunId] ?? prev);
         if (
-          (expectedRunId !== undefined && progress.runId !== expectedRunId) ||
-          (expectedStartedAt !== undefined &&
-            progress.startedAt !== expectedStartedAt)
+          !reconcileOnly &&
+          ((expectedRunId !== undefined && progress.runId !== expectedRunId) ||
+            (expectedStartedAt !== undefined &&
+              progress.startedAt !== expectedStartedAt))
         ) {
           return prev;
         }
@@ -497,6 +504,12 @@ export const applyTestRunFinishedAtom = atom(
         // Main marks files whose selected cases did not all finish separately.
         for (const r of res.results) {
           const key = reconcileResultFile(r.file, specFiles);
+          if (
+            reconcileOnly &&
+            expectedRunId !== undefined &&
+            (prev.results[key]?.runId ?? 0) > expectedRunId
+          )
+            continue;
           const mapped = {
             ...r,
             file: key,
@@ -522,6 +535,7 @@ export const applyTestRunFinishedAtom = atom(
             };
           }
         }
+        if (reconcileOnly) return { ...prev, results: nextResults };
         const activeRuns = { ...prev.activeRuns };
         if (expectedRunId !== undefined) delete activeRuns[expectedRunId];
         return projectActiveRuns({
@@ -546,6 +560,7 @@ export const applyTestRunFinishedAtom = atom(
         });
       },
     });
+    if (reconcileOnly) return;
     if (expectedRunId !== undefined)
       set(finishTestOutputTabAtom, {
         appId,

@@ -7,6 +7,7 @@ import { readSettings } from "@/main/settings";
 import { usesSandboxedE2eTests } from "@/lib/e2eSandbox";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { gitCurrentBranch, getCurrentCommitHash } from "../utils/git_utils";
+import { hasCustomE2eStartCommand } from "./e2e_test_runtime";
 import type { TestRunRequest } from "@/test_run_queue/state";
 
 export interface TestRunContext {
@@ -56,6 +57,7 @@ export async function loadTestRunContext(
     databaseKey: app.supabaseProjectId
       ? `supabase:${app.supabaseProjectId}`
       : undefined,
-    exclusive: !usesSandboxedE2eTests(settings) || !!app.installCommand,
+    exclusive:
+      !usesSandboxedE2eTests(settings) || hasCustomE2eStartCommand(app),
   };
 }

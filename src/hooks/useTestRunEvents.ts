@@ -57,6 +57,8 @@ export function useTestRunEvents() {
   selectedAppIdRef.current = selectedAppId;
   const queryClient = useQueryClient();
   const latestStartedRunByAppId = useRef(new Map<number, number>());
+  const specRefreshesByAppId = useRef(new Map<number, number>());
+  const appliedSpecRefreshByAppId = useRef(new Map<number, number>());
   const activeRunsById = useRef(
     new Map<number, { appId: number; startedAt: number }>(),
   );
@@ -268,7 +270,7 @@ export function useTestRunEvents() {
       const runStartedAt = activeRun.startedAt;
       activeRunsById.current.delete(runId);
       flushPendingOutput(appId);
-      const finish = () =>
+      const finish = (reconcileOnly = false) =>
         applyFinished({
           appId,
           res: {
@@ -281,6 +283,7 @@ export function useTestRunEvents() {
           sandboxed: payload.sandboxed,
           expectedStartedAt: runStartedAt,
           expectedRunId: runId,
+          reconcileOnly,
         });
       // Do not leave the finished run's spinner/Stop state waiting on disk I/O.
       // The initial merge may use a stale spec list, but the forced refresh
@@ -288,6 +291,8 @@ export function useTestRunEvents() {
       finish();
       const latestStartedRunIdAtFinish =
         latestStartedRunByAppId.current.get(appId);
+      const specRefresh = (specRefreshesByAppId.current.get(appId) ?? 0) + 1;
+      specRefreshesByAppId.current.set(appId, specRefresh);
       // The agent may have written the spec it just ran in this same turn, so
       // the cached spec list may not contain it yet. Read through IPC directly:
       // fetchQuery can reuse either the production client's fresh 60-second
@@ -305,9 +310,17 @@ export function useTestRunEvents() {
           ) {
             return;
           }
-          queryClient.setQueryData(queryKeys.tests.list({ appId }), data);
-          setSpecs({ appId, specs: data.specs });
-          finish();
+          // Overlapping runs refresh concurrently. An older response must not
+          // replace a newer spec list, but its run still needs re-keying.
+          if (
+            specRefresh > (appliedSpecRefreshByAppId.current.get(appId) ?? 0)
+          ) {
+            appliedSpecRefreshByAppId.current.set(appId, specRefresh);
+            queryClient.setQueryData(queryKeys.tests.list({ appId }), data);
+            setSpecs({ appId, specs: data.specs });
+          }
+          // The run may have left `activeRuns` while a sibling keeps running.
+          finish(true);
         })
         // The run already finished against the cached list above. A failed
         // refresh only means its result may remain unreconciled until later.

@@ -6,20 +6,25 @@ const mocks = vi.hoisted(() => {
   const set = vi.fn(() => ({ where }));
   const update = vi.fn(() => ({ set }));
   const selectWhere = vi.fn().mockResolvedValue([]);
+  const cleanupRows = vi.fn().mockResolvedValue([]);
   const from = vi.fn((table: unknown) =>
-    table === "test-user-cleanup"
-      ? Promise.resolve([])
-      : { where: selectWhere },
+    table === "test-user-cleanup" ? cleanupRows() : { where: selectWhere },
   );
   const select = vi.fn(() => ({ from }));
   const insertValues = vi.fn().mockResolvedValue(undefined);
+  const deleteWhere = vi.fn().mockResolvedValue(undefined);
+  const findFirst = vi.fn();
   return {
     db: {
       update,
       select,
-      delete: vi.fn(() => ({ where: vi.fn().mockResolvedValue(undefined) })),
+      delete: vi.fn(() => ({ where: deleteWhere })),
       insert: vi.fn(() => ({ values: insertValues })),
+      query: { apps: { findFirst } },
     },
+    cleanupRows,
+    deleteWhere,
+    findFirst,
     insertValues,
     update,
     set,
@@ -126,6 +131,9 @@ beforeEach(() => {
   vi.unstubAllGlobals();
   mocks.where.mockResolvedValue(undefined);
   mocks.selectWhere.mockResolvedValue([]);
+  mocks.cleanupRows.mockResolvedValue([]);
+  mocks.insertValues.mockResolvedValue(undefined);
+  mocks.deleteWhere.mockResolvedValue(undefined);
   mocks.getProjectApiKeys.mockResolvedValue(PROJECT_API_KEYS);
   mocks.executeSupabaseSql.mockResolvedValue("[]");
 });
@@ -637,6 +645,53 @@ describe("createTempTestUser", () => {
       `https://proj-1.supabase.co/auth/v1/admin/users/${UUID}`,
       expect.objectContaining({ method: "DELETE" }),
     );
+  });
+
+  it.each([
+    ["a run owner", "run:case"],
+    ["the legacy column", undefined],
+  ])(
+    "records the user again for %s when the compensating delete also fails",
+    async (_label, ownerId) => {
+      const error = new Error("sqlite locked");
+      const persist = ownerId ? mocks.insertValues : mocks.where;
+      persist.mockRejectedValueOnce(error);
+      mockFetch((_url, init) =>
+        init?.method === "DELETE"
+          ? new Response("nope", { status: 500 })
+          : new Response(JSON.stringify({ id: UUID })),
+      );
+
+      await expect(createTempTestUser(makeApp(), { ownerId })).rejects.toBe(
+        error,
+      );
+
+      expect(persist).toHaveBeenCalledTimes(2);
+      if (ownerId)
+        expect(mocks.insertValues).toHaveBeenLastCalledWith(
+          expect.objectContaining({ userId: UUID, ownerId }),
+        );
+      else
+        expect(mocks.set).toHaveBeenLastCalledWith({
+          supabaseTestUserId: UUID,
+        });
+    },
+  );
+
+  it("does not record the user again once the compensating delete succeeds", async () => {
+    const error = new Error("sqlite locked");
+    mocks.insertValues.mockRejectedValueOnce(error);
+    mockFetch((_url, init) =>
+      init?.method === "DELETE"
+        ? new Response(null, { status: 200 })
+        : new Response(JSON.stringify({ id: UUID })),
+    );
+
+    await expect(
+      createTempTestUser(makeApp(), { ownerId: "run:case" }),
+    ).rejects.toBe(error);
+
+    expect(mocks.insertValues).toHaveBeenCalledOnce();
   });
 
   it("throws when the app has no Supabase project", async () => {
@@ -1241,6 +1296,29 @@ describe("reconcileOrphanTestUsers", () => {
       `https://proj-1.supabase.co/auth/v1/admin/users/${secondId}`,
       expect.objectContaining({ method: "DELETE" }),
     );
+  });
+
+  it("deletes run-owned users from their recovery records and forgets them", async () => {
+    mocks.cleanupRows.mockResolvedValue([
+      {
+        userId: UUID,
+        appId: 7,
+        ownerId: "run:case",
+        projectId: "proj-1",
+        organizationSlug: "org-1",
+      },
+    ]);
+    mocks.findFirst.mockResolvedValue(makeApp());
+    const fetchSpy = mockFetch(() => new Response(null, { status: 200 }));
+
+    await reconcileOrphanTestUsers();
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      `https://proj-1.supabase.co/auth/v1/admin/users/${UUID}`,
+      expect.objectContaining({ method: "DELETE" }),
+    );
+    expect(mocks.db.delete).toHaveBeenCalledWith("test-user-cleanup");
+    expect(mocks.deleteWhere).toHaveBeenCalled();
   });
 
   it("never throws when the query fails", async () => {

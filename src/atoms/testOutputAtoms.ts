@@ -95,13 +95,15 @@ export const finishTestOutputTabAtom = atom(
         MAX_FINISHED_TEST_OUTPUT_TABS;
       return new Map(prev).set(appId, {
         ...current,
-        // Tabs are ordered oldest first. Keep active output and the tab being
-        // read; only evict finished, unselected history. AI fix context is
-        // retained separately by the runtime result projection.
+        // Tabs are ordered oldest first. Keep active output, the tab being
+        // read, and the run that just finished; only evict older finished,
+        // unselected history. AI fix context is retained separately by the
+        // runtime result projection.
         tabs: tabs.filter((tab) => {
           if (
             excess > 0 &&
             tab.finished &&
+            tab.runId !== runId &&
             tab.runId !== current.selectedRunId
           ) {
             excess--;

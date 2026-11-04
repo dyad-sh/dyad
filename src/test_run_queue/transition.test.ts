@@ -150,6 +150,19 @@ describe("test run queue transitions", () => {
       commands: [{ type: "cancel-queued", runId: 2, reason: panelStop }],
     });
   });
+  it("distinguishes stale wait reports from unchanged waits", () => {
+    const admitted: TestRunQueueState = {
+      activeRun: null,
+      activeRuns: [],
+      queuedRuns: [{ ...second, queuedReason: "capacity" }],
+    };
+    expect(
+      transition(admitted, { type: "waiting", runId: 3, reason: "capacity" }),
+    ).toMatchObject({ kind: "ignored", reason: "stale-operation" });
+    expect(
+      transition(admitted, { type: "waiting", runId: 2, reason: "capacity" }),
+    ).toMatchObject({ kind: "ignored", reason: "unchanged-wait" });
+  });
   it("offers Stop exactly while requests are admitted", () => {
     for (const state of states) {
       // A queued-only state is unreachable: admission starts an idle queue,

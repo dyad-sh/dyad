@@ -298,15 +298,26 @@ export async function createTempTestBranch(
   // In particular, a missing URI must not make a failed compensating delete
   // lose the only reference to a successfully created branch.
   if (branch && ownerId) {
-    try {
-      await db.insert(testBranchCleanup).values({
+    const recordOwnedBranch = () =>
+      db.insert(testBranchCleanup).values({
         branchId: branch.id,
         appId: appData.id,
         ownerId,
         projectId,
       });
+    try {
+      await recordOwnedBranch();
     } catch (error) {
-      await deleteBranchBestEffort(projectId, branch.id);
+      // The record is the only durable reference to this branch. If the
+      // compensating delete fails too, its retries gave a transient SQLite lock
+      // time to clear, so record it once more for startup reconciliation.
+      if (!(await deleteBranchBestEffort(projectId, branch.id))) {
+        await recordOwnedBranch().catch((retryError) =>
+          logger.error(
+            `Leaked test branch ${branch.id} in Neon project ${projectId}: couldn't delete it or record it for cleanup: ${retryError}`,
+          ),
+        );
+      }
       throw error;
     }
   }

@@ -6,11 +6,17 @@ import { NeonBranchLimitBanner } from "./NeonBranchLimitBanner";
 const mocks = vi.hoisted(() => ({
   notices: new Map<number, TestRunQueueSnapshot["neonBranchLimit"]>(),
   project: "project",
+  supabaseProjectId: undefined as string | undefined,
   open: vi.fn(),
   dismiss: vi.fn(),
 }));
 vi.mock("@/hooks/useLoadApp", () => ({
-  useLoadApp: () => ({ app: { neonProjectId: mocks.project } }),
+  useLoadApp: () => ({
+    app: {
+      neonProjectId: mocks.project,
+      supabaseProjectId: mocks.supabaseProjectId,
+    },
+  }),
 }));
 vi.mock("@/hooks/useTestRunQueue", () => ({
   useDismissNeonBranchLimit: () => ({
@@ -38,6 +44,7 @@ vi.mock("react-i18next", async () => {
 beforeEach(() => {
   mocks.notices.clear();
   mocks.project = "project";
+  mocks.supabaseProjectId = undefined;
   mocks.open.mockClear();
   mocks.dismiss.mockClear();
 });
@@ -84,5 +91,12 @@ it("does not carry another app's or a disconnected project's notice into the cha
   view.rerender(<NeonBranchLimitBanner appId={1} />);
   expect(screen.queryByRole("status")).toBeNull();
   view.rerender(<NeonBranchLimitBanner appId={null} />);
+  expect(screen.queryByRole("status")).toBeNull();
+});
+
+it("hides a stale Neon notice once the app's test runs use Supabase", () => {
+  mocks.notices.set(1, { runId: 1, projectId: "project", status: "blocked" });
+  mocks.supabaseProjectId = "supabase";
+  render(<NeonBranchLimitBanner appId={1} />);
   expect(screen.queryByRole("status")).toBeNull();
 });

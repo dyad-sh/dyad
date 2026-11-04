@@ -37,7 +37,7 @@ type AppRow = typeof apps.$inferSelect;
 export interface TempTestUser {
   /** The auth user's id (also persisted on the app row while live). */
   userId: string;
-  /** Login email, of the form `dyad-test+<appId>-<ts>@dyad.test`. */
+  /** Login email, of the form `dyad-test+<appId>-<uuid>@dyad.test`. */
   email: string;
   /** Generated login password (handed to the test runner, never persisted). */
   password: string;
@@ -314,7 +314,7 @@ export async function createTempTestUser(
     try {
       await persistTestUserId(appData, created.id, options.ownerId);
     } catch (error) {
-      await measureTestRunStep(
+      const deleted = await measureTestRunStep(
         options.timing,
         "supabase_user_delete",
         () =>
@@ -327,6 +327,17 @@ export async function createTempTestUser(
           }),
         (result) => (result ? "completed" : "failed"),
       );
+      // The record is the only durable reference to this user. If the
+      // compensating delete fails too, its retries gave a transient SQLite lock
+      // time to clear, so record it once more for startup reconciliation.
+      if (!deleted) {
+        await persistTestUserId(appData, created.id, options.ownerId).catch(
+          (retryError) =>
+            logger.error(
+              `Leaked test user ${created.id} in Supabase project ${projectId}: couldn't delete it or record it for cleanup: ${retryError}`,
+            ),
+        );
+      }
       throw error;
     }
   }

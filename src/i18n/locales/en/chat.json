@@ -472,6 +472,11 @@
     "runLabel": "Run {{number}} · {{target}}",
     "files": "{{count}} files",
     "closeRun": "Close output for {{label}}",
-    "close": "Close output tab"
+    "close": "Close output tab",
+    "title": "Output",
+    "toggle": "Toggle test output",
+    "tabList": "Test run output",
+    "noTabs": "No test output tabs. Run tests to see output.",
+    "noOutput": "No output yet."
   }
 }

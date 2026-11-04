@@ -539,6 +539,43 @@ describe("TestsPanel", () => {
     });
   });
 
+  it.each([false, true])(
+    "shows the output drawer only once testing is enabled (enabled: %s)",
+    async (testingEnabled) => {
+      mocks.app = { id: 1, testingEnabled };
+      renderPanel();
+      await screen.findByRole("button", {
+        name: testingEnabled ? "Run all tests" : "Enable testing for this app",
+      });
+      expect(
+        screen.queryByRole("button", { name: "Toggle test output" }) !== null,
+      ).toBe(testingEnabled);
+    },
+  );
+
+  it("skips duplicate parallel submissions but starts different selections", async () => {
+    mocks.settings = { enableParallelTestRuns: true };
+    mocks.runAppTests.mockReturnValue(new Promise(() => {}));
+    renderPanel();
+    const runAll = await screen.findByRole("button", { name: "Run all tests" });
+    await act(async () => {
+      fireEvent.click(runAll);
+      fireEvent.click(runAll);
+    });
+    expect(mocks.runAppTests).toHaveBeenCalledTimes(1);
+    await act(async () =>
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: "Run all tests in: signup.spec.ts",
+        }),
+      ),
+    );
+    expect(mocks.runAppTests).toHaveBeenCalledTimes(2);
+    expect(mocks.runAppTests).toHaveBeenLastCalledWith(
+      expect.objectContaining({ testFile: SPEC_FILE }),
+    );
+  });
+
   it("keeps only the primary actions in the header", async () => {
     renderPanel();
 

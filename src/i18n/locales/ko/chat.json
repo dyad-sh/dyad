@@ -472,6 +472,11 @@
     "runLabel": "실행 {{number}} · {{target}}",
     "files": "파일 {{count}}개",
     "closeRun": "{{label}} 출력 닫기",
-    "close": "출력 탭 닫기"
+    "close": "출력 탭 닫기",
+    "title": "출력",
+    "toggle": "테스트 출력 표시/숨기기",
+    "tabList": "테스트 실행 출력",
+    "noTabs": "테스트 출력 탭이 없습니다. 테스트를 실행하면 출력이 표시됩니다.",
+    "noOutput": "아직 출력이 없습니다."
   }
 }

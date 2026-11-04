@@ -307,13 +307,17 @@ it("labels every Neon wait with the queued color and resumes each run independen
   act(() =>
     publishQueue({
       ...queue,
-      neonBranchLimit: { ...notice, status: "blocked" },
+      activeRuns: queue.activeRuns!.map((run) => ({
+        ...run,
+        waitingForNeonBranch: false,
+      })),
     }),
   );
   await waitFor(() =>
     expect(screen.queryByText("Waiting for Neon branch")).toBeNull(),
   );
-  expect(within(row(second.testFile)).getByText("Running")).toBeTruthy();
+  for (const file of [second.testFile, third.testFile])
+    expect(within(row(file)).getByText("Running")).toBeTruthy();
 });
 
 it("identifies each run's chat, opens other chats, and retains attribution after completion and chat switches", async () => {

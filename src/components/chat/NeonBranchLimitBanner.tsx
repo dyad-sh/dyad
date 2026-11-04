@@ -5,6 +5,7 @@ import {
   useDismissNeonBranchLimit,
 } from "@/hooks/useTestRunQueue";
 import { useLoadApp } from "@/hooks/useLoadApp";
+import { isNeonOnlyApp } from "@/lib/e2eSandbox";
 import { ipc } from "@/ipc/types";
 import { Button } from "@/components/ui/button";
 
@@ -14,7 +15,13 @@ export function NeonBranchLimitBanner({ appId }: { appId: number | null }) {
   const { app } = useLoadApp(appId);
   const dismiss = useDismissNeonBranchLimit();
   const notice = data?.neonBranchLimit;
-  if (appId === null || !notice || app?.neonProjectId !== notice.projectId)
+  // Supabase takes precedence for test runs, so a Neon notice is stale there.
+  if (
+    appId === null ||
+    !notice ||
+    !isNeonOnlyApp(app) ||
+    app?.neonProjectId !== notice.projectId
+  )
     return null;
 
   return (

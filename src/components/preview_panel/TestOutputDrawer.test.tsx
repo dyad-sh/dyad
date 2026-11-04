@@ -287,6 +287,67 @@ describe("TestOutputDrawer", () => {
     expect(store.get(currentTestRunStateAtom).activeRuns?.[1]).toBeDefined();
   });
 
+  it("keeps a just-finished older run's tab and evicts older history instead", () => {
+    const { store, mount, start, tab } = setup();
+    mount();
+    const finish = (runId: number, infraError?: { message: string }) =>
+      act(() =>
+        store.set(applyTestRunFinishedAtom, {
+          appId: 1,
+          expectedRunId: runId,
+          isPartialRun: false,
+          res: { appId: 1, results: [], infraError },
+        }),
+      );
+    start(1);
+    for (let runId = 2; runId <= MAX_FINISHED_TEST_OUTPUT_TABS + 1; runId++) {
+      start(runId);
+      finish(runId);
+    }
+    start(MAX_FINISHED_TEST_OUTPUT_TABS + 2);
+    finish(1, { message: "Branch capacity exhausted" });
+    expect(screen.queryByRole("tab", { name: "Run 2 · signup.spec.ts" })).toBe(
+      null,
+    );
+    fireEvent.click(tab(1));
+    expect(screen.getByRole("status").textContent).toBe(
+      "Branch capacity exhausted",
+    );
+  });
+
+  it("follows streamed output only while the reader is at the bottom", () => {
+    const { mount, start, append } = setup();
+    mount();
+    start(1);
+    append(1, "first\n");
+    // jsdom has no layout, so give the output a scrollable geometry.
+    const output = screen.getByRole("tabpanel").querySelector("pre")!;
+    let scrollTop = 0;
+    Object.defineProperties(output, {
+      scrollHeight: { configurable: true, get: () => 1000 },
+      clientHeight: { configurable: true, get: () => 200 },
+      scrollTop: {
+        configurable: true,
+        get: () => scrollTop,
+        set: (value: number) => {
+          scrollTop = value;
+        },
+      },
+    });
+    append(1, "second\n");
+    expect(scrollTop).toBe(1000);
+
+    scrollTop = 300;
+    fireEvent.scroll(output);
+    append(1, "third\n");
+    expect(scrollTop).toBe(300);
+
+    scrollTop = 800;
+    fireEvent.scroll(output);
+    append(1, "fourth\n");
+    expect(scrollTop).toBe(1000);
+  });
+
   it("keeps the drawer collapsible", () => {
     const { mount, start, onToggle } = setup();
     start(1);

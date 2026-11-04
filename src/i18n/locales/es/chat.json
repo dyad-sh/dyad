@@ -470,6 +470,11 @@
     "runLabel": "Ejecución {{number}} · {{target}}",
     "files": "{{count}} archivos",
     "closeRun": "Cerrar salida de {{label}}",
-    "close": "Cerrar pestaña de salida"
+    "close": "Cerrar pestaña de salida",
+    "title": "Salida",
+    "toggle": "Mostrar u ocultar la salida de las pruebas",
+    "tabList": "Salida de las ejecuciones de pruebas",
+    "noTabs": "No hay pestañas de salida de pruebas. Ejecuta las pruebas para ver la salida.",
+    "noOutput": "Todavía no hay salida."
   }
 }

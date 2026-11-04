@@ -469,6 +469,11 @@
     "runLabel": "运行 {{number}} · {{target}}",
     "files": "{{count}} 个文件",
     "closeRun": "关闭 {{label}} 的输出",
-    "close": "关闭输出标签页"
+    "close": "关闭输出标签页",
+    "title": "输出",
+    "toggle": "显示或隐藏测试输出",
+    "tabList": "测试运行输出",
+    "noTabs": "没有测试输出标签页。运行测试即可查看输出。",
+    "noOutput": "暂无输出。"
   }
 }

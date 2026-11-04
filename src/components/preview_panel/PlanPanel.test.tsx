@@ -8,6 +8,7 @@ import {
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  chatId: 7 as number | null,
   showError: vi.fn(),
   document: {
     title: "Plan",
@@ -41,7 +42,7 @@ vi.mock("jotai", () => ({
   useAtomValue: vi.fn((atom: symbol) => {
     switch (atom.description) {
       case "chat-id":
-        return 7;
+        return mocks.chatId;
       case "app-id":
         return 3;
       case "preview-mode":
@@ -97,12 +98,23 @@ import { PlanPanel } from "./PlanPanel";
 
 describe("PlanPanel", () => {
   beforeEach(() => {
+    mocks.chatId = 7;
     mocks.acceptPlan.mockReset();
     mocks.showError.mockReset();
     mocks.handoffState.phase = "idle";
     mocks.handoffState.failure = null;
     mocks.streamMessage.mockReset();
     mocks.setAcceptInNewChat.mockReset();
+  });
+
+  it("identifies the displayed plan by its file number when switching chats", () => {
+    const { rerender } = render(<PlanPanel />);
+    expect(screen.getByText("Plan #7").title).toBe("chat-7-plan.md");
+
+    mocks.chatId = 12;
+    rerender(<PlanPanel />);
+    expect(screen.getByText("Plan #12").title).toBe("chat-12-plan.md");
+    expect(screen.queryByText("Plan #7")).toBeNull();
   });
 
   it("accepts once without asking a model to approve the plan", async () => {

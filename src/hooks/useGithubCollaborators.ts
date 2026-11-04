@@ -12,8 +12,11 @@ export function useGithubCollaborators(params: {
   return useQuery({
     queryKey: queryKeys.github.collaborators(params),
     queryFn: () => ipc.github.listCollaborators({ appId: params.appId }),
-    // Refetch on every mount so access changes on GitHub show up promptly.
+    // Refetch on every mount so access changes on GitHub show up promptly,
+    // but not on window focus, which would repeat the error toast for a
+    // failure that persists.
     staleTime: 0,
+    refetchOnWindowFocus: false,
     meta: { showErrorToast: true },
   });
 }

@@ -1,4 +1,5 @@
 import {
+  focusManager,
   QueryCache,
   QueryClient,
   QueryClientProvider,
@@ -52,6 +53,7 @@ describe("GithubCollaboratorManager", () => {
 
   afterEach(() => {
     cleanup();
+    focusManager.setFocused(undefined);
   });
 
   it("lists collaborators when the user can manage the repo", async () => {
@@ -295,5 +297,24 @@ describe("GithubCollaboratorManager", () => {
     await waitFor(() =>
       expect(github.listCollaborators).toHaveBeenCalledTimes(2),
     );
+  });
+
+  it("does not refetch or repeat the error toast when the window regains focus", async () => {
+    github.listCollaborators.mockRejectedValue(
+      new Error("Failed to list collaborators: 403 Forbidden (SSO required)"),
+    );
+
+    render(<GithubCollaboratorManager appId={1} {...repo} />, {
+      wrapper: createWrapper(),
+    });
+    await waitFor(() => expect(showError).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      focusManager.setFocused(false);
+      focusManager.setFocused(true);
+    });
+
+    expect(github.listCollaborators).toHaveBeenCalledTimes(1);
+    expect(showError).toHaveBeenCalledTimes(1);
   });
 });

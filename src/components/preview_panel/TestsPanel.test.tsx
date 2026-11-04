@@ -585,6 +585,45 @@ describe("TestsPanel", () => {
     );
   });
 
+  it("does not carry another app's pending submission across an app switch", async () => {
+    mocks.settings = { enableParallelTestRuns: true };
+    mocks.runAppTests.mockReturnValue(new Promise(() => {}));
+    const { store } = renderPanel();
+    const runAll = await screen.findByRole("button", { name: "Run all tests" });
+    await act(async () => fireEvent.click(runAll));
+    await waitFor(() =>
+      expect((runAll as HTMLButtonElement).disabled).toBe(true),
+    );
+
+    // The panel stays mounted across app switches; app 2 has nothing in
+    // flight, and switching back restores app 1's pending selection.
+    act(() => {
+      store.set(selectedAppIdAtom, 2);
+    });
+    await waitFor(() =>
+      expect(
+        (
+          screen.getByRole("button", {
+            name: "Run all tests",
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false),
+    );
+
+    act(() => {
+      store.set(selectedAppIdAtom, 1);
+    });
+    await waitFor(() =>
+      expect(
+        (
+          screen.getByRole("button", {
+            name: "Run all tests",
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(true),
+    );
+  });
+
   it("keeps only the primary actions in the header", async () => {
     renderPanel();
 

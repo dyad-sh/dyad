@@ -2,7 +2,6 @@ import { useAtomValue, useSetAtom, useStore } from "jotai";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "@tanstack/react-router";
 import {
-  useIsMutating,
   useMutation,
   useMutationState,
   useQuery,
@@ -744,11 +743,8 @@ export function TestsPanel() {
   const waitingForNeonBranch =
     runState.runId !== undefined &&
     waitingForNeonBranchRunIds.has(runState.runId);
-  const runMutationKey = queryKeys.tests.run({ appId: selectedAppId });
-  // Keep one outstanding panel submission per app, including across tab remounts.
-  const pendingSubmissions = useIsMutating({ mutationKey: runMutationKey });
   const { mutate: submitRun } = useMutation({
-    mutationKey: runMutationKey,
+    mutationKey: queryKeys.tests.run({ appId: selectedAppId }),
     mutationFn: ipc.tests.runAppTests,
     onSuccess: (res) => {
       // Lifecycle failures are rendered inline; cancellation is an ordinary outcome.
@@ -791,17 +787,32 @@ export function TestsPanel() {
     loading: settingsLoading,
     refreshSettings,
   } = useSettings();
-  const isSubmitting =
-    !settings?.enableParallelTestRuns && pendingSubmissions > 0;
-  // Parallel mode admits different selections side by side, but the one
-  // already in flight stays disabled and says why until its run settles.
-  const pendingRunSelections = useMutationState({
-    filters: { mutationKey: runMutationKey, status: "pending" },
+  // Match every app's runs and narrow to the selected app afterwards:
+  // useMutationState only recomputes on mutation-cache events, so a filter
+  // keyed on selectedAppId would keep the previous app's pending runs after
+  // the panel switches apps.
+  const pendingRuns = useMutationState({
+    filters: { mutationKey: queryKeys.tests.runs, status: "pending" },
     select: (mutation) => {
       const pending = mutation.state.variables as RunAppTestsParams | undefined;
-      return runSelectionKey(pending?.testFile, pending?.testLine);
+      return {
+        appId: pending?.appId,
+        selection: runSelectionKey(pending?.testFile, pending?.testLine),
+      };
     },
   });
+  // Parallel mode admits different selections side by side, but the one
+  // already in flight stays disabled and says why until its run settles.
+  const pendingRunSelections = useMemo(
+    () =>
+      pendingRuns
+        .filter((run) => run.appId === selectedAppId)
+        .map((run) => run.selection),
+    [pendingRuns, selectedAppId],
+  );
+  // Keep one outstanding panel submission per app, including across tab remounts.
+  const isSubmitting =
+    !settings?.enableParallelTestRuns && pendingRunSelections.length > 0;
   const isRunPending = useCallback(
     (file?: string, line?: number) =>
       pendingRunSelections.includes(runSelectionKey(file, line)),

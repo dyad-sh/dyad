@@ -7,6 +7,7 @@ import { sendTelemetryEvent } from "../utils/telemetry";
 import { broadcastToRegisteredWindows } from "../utils/window_broadcast";
 import { measureTestRunStep } from "./test_run_timing";
 import { loadTestRunContext } from "./test_run_context";
+import { retainUnsettledE2eTestOwner } from "./e2e_test_process_registry";
 import {
   createTestRunQueueService,
   type AppTestRunExecution,
@@ -31,9 +32,17 @@ vi.mock("@/main/settings", () => ({
 vi.mock("./test_run_context", () => ({
   loadTestRunContext: vi.fn(),
 }));
-vi.mock("./e2e_test_process_registry", () => ({
-  trackedE2eTestProcessesForOwner: () => h.remainingProcesses,
-}));
+vi.mock("./e2e_test_process_registry", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("./e2e_test_process_registry")>();
+  return {
+    ...actual,
+    // Stubbed children, plus the real record of explicit failed verdicts.
+    hasUnsettledE2eTestProcesses: (owner: AbortSignal) =>
+      h.remainingProcesses.length > 0 ||
+      actual.hasUnsettledE2eTestProcesses(owner),
+  };
+});
 vi.mock("../utils/window_broadcast", () => ({
   broadcastToRegisteredWindows: vi.fn(),
 }));
@@ -486,7 +495,7 @@ it("reads settings once per blocked admission pass even with a large backlog", a
   expect(readSettings).toHaveBeenCalledTimes(4);
 });
 
-it("reports metadata failures and retries them on the slow refresh interval", async () => {
+it("reports metadata failures and retries them on the admission interval", async () => {
   h.settings.enableParallelTestRuns = true;
   const error = new Error("Cannot read Git repository");
   vi.mocked(loadTestRunContext).mockRejectedValueOnce(error);
@@ -499,46 +508,54 @@ it("reports metadata failures and retries them on the slow refresh interval", as
     "Failed to load test admission context",
     expect.objectContaining({ appId: 1, error }),
   );
-  await tick(6000);
+  await tick(1000);
   expect(loadTestRunContext).toHaveBeenCalledOnce();
   expect(run.execute).not.toHaveBeenCalled();
-  await tick(30000);
+  await tick(1000);
   expect(loadTestRunContext).toHaveBeenCalledTimes(2);
   expect(run.execute).toHaveBeenCalledOnce();
 });
 
-it.each([
-  new Error("Cannot read Git repository"),
-  new DyadError("App no longer exists", DyadErrorKind.NotFound),
-])(
-  "rejects repeated metadata failures and releases the app queue: %s",
-  async (error) => {
+it("rejects repeated metadata failures within seconds and releases the app queue", async () => {
+  h.settings.enableParallelTestRuns = true;
+  const error = new Error("Cannot read Git repository");
+  vi.mocked(loadTestRunContext)
+    .mockRejectedValueOnce(error)
+    .mockRejectedValueOnce(error)
+    .mockRejectedValueOnce(error);
+  const failed = enqueue(1);
+  const rejection = expect(failed.result).rejects.toMatchObject({
+    name: "DyadError",
+    kind: DyadErrorKind.Precondition,
+    message: expect.stringContaining("after three attempts"),
+    cause: error,
+  });
+  const successor = enqueue(1);
+  await tick(2010);
+  expect(loadTestRunContext).toHaveBeenCalledTimes(2);
+  expect(successor.execute).not.toHaveBeenCalled();
+  await tick(2010);
+  await rejection;
+  expect(loadTestRunContext).toHaveBeenCalledTimes(4);
+  expect(failed.execute).not.toHaveBeenCalled();
+  expect(successor.execute).toHaveBeenCalledOnce();
+  expect(service.getAppTestRunQueue(1).queuedRuns).toEqual([]);
+});
+
+it.each([DyadErrorKind.NotFound, DyadErrorKind.Precondition])(
+  "rejects a %s metadata failure without retrying",
+  async (kind) => {
     h.settings.enableParallelTestRuns = true;
-    vi.mocked(loadTestRunContext)
-      .mockRejectedValueOnce(error)
-      .mockRejectedValueOnce(error)
-      .mockRejectedValueOnce(error);
+    const error = new DyadError("App no longer exists", kind);
+    vi.mocked(loadTestRunContext).mockRejectedValueOnce(error);
     const failed = enqueue(1);
-    const rejection = expect(failed.result).rejects.toMatchObject(
-      error instanceof DyadError
-        ? error
-        : {
-            name: "DyadError",
-            kind: DyadErrorKind.Precondition,
-            message: expect.stringContaining("after three attempts"),
-            cause: error,
-          },
-    );
+    const rejection = expect(failed.result).rejects.toBe(error);
     const successor = enqueue(1);
-    await tick(30_010);
-    expect(loadTestRunContext).toHaveBeenCalledTimes(2);
-    expect(successor.execute).not.toHaveBeenCalled();
-    await tick(30_010);
+    await tick();
     await rejection;
-    expect(loadTestRunContext).toHaveBeenCalledTimes(4);
+    expect(loadTestRunContext).toHaveBeenCalledTimes(2);
     expect(failed.execute).not.toHaveBeenCalled();
     expect(successor.execute).toHaveBeenCalledOnce();
-    expect(service.getAppTestRunQueue(1).queuedRuns).toEqual([]);
   },
 );
 
@@ -681,6 +698,24 @@ it("counts unsettled owners against the global run limit until their processes c
   h.remainingProcesses = [];
   await tick(2000);
   expect(queued.execute).toHaveBeenCalledOnce();
+});
+
+it("keeps the global slot for an explicitly failed settlement with no tracked process", async () => {
+  // A daemonized server's wrapper closes, emptying the child registry, while
+  // the server still listens. The failed stop verdict alone must hold the slot.
+  h.settings.enableParallelTestRuns = true;
+  h.settings.maxConcurrentTestRuns = 1;
+  const first = enqueue(1);
+  await tick();
+  retainUnsettledE2eTestOwner(first.signal!);
+  first.finish();
+  await first.result;
+  const other = enqueue(2);
+  await tick(6000);
+  expect(other.execute).not.toHaveBeenCalled();
+  expect(service.getAppTestRunQueue(2).queuedRuns[0].queuedReason).toBe(
+    "capacity",
+  );
 });
 
 it.each(["independent", "workspace", "database"])(

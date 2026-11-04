@@ -102,6 +102,7 @@ import {
   restoreAppFromTestBranch,
 } from "../utils/neon_test_branch";
 import {
+  retainUnsettledE2eTestOwner,
   settleE2eTestProcesses,
   stopE2eTestProcessesSync,
   trackE2eTestProcess,
@@ -2489,6 +2490,9 @@ async function executeAppTestsWithIsolation(
       { appId, operation: "unsettled-app-tests", resources },
       PROCESS_SETTLEMENT_FAILED_MESSAGE,
     );
+    // The scheduler keeps this run's global slot while its owner is unsettled.
+    // A daemonized server's wrapper may already have left the child registry.
+    retainUnsettledE2eTestOwner(signal);
   };
   // The real env is never changed. This only reports a sandbox/provider cleanup
   // failure (for example, a temporary Neon branch left for startup recovery).

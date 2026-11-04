@@ -19,7 +19,7 @@ import {
 import { createTraceObserver } from "@/state_machines/trace";
 import { broadcastToRegisteredWindows } from "../utils/window_broadcast";
 import { TestRunTiming } from "./test_run_timing";
-import { trackedE2eTestProcessesForOwner } from "./e2e_test_process_registry";
+import { hasUnsettledE2eTestProcesses } from "./e2e_test_process_registry";
 import {
   loadTestRunContext,
   type TestRunContext,
@@ -70,8 +70,7 @@ export function createTestRunQueueService({
 
   function refreshUnsettledOwners() {
     for (const signal of unsettledOwners.keys()) {
-      if (!trackedE2eTestProcessesForOwner(signal).length)
-        unsettledOwners.delete(signal);
+      if (!hasUnsettledE2eTestProcesses(signal)) unsettledOwners.delete(signal);
     }
   }
 
@@ -212,7 +211,9 @@ export function createTestRunQueueService({
         }
         // Reuse admission metadata while resource owners are unchanged. A slow
         // refresh observes branch/config edits; snapshot capture still performs
-        // a fresh compatibility check immediately before execution.
+        // a fresh compatibility check immediately before execution. A failed
+        // read retries on the admission interval, so a persistent failure
+        // surfaces within seconds instead of holding its app's queue.
         const stateKey = JSON.stringify([
           (queue.getSnapshot().activeRuns ?? []).map((run) => run.runId),
           [...unsettledOwners.values()].map((owner) => owner.request.runId),
@@ -221,7 +222,9 @@ export function createTestRunQueueService({
           record.contextStateKey !== stateKey ||
           record.contextCheckedAt === undefined ||
           clock.now() - record.contextCheckedAt >=
-            ADMISSION_CONTEXT_REFRESH_INTERVAL_MS
+            (record.contextFailures
+              ? ADMISSION_RETRY_INTERVAL_MS
+              : ADMISSION_CONTEXT_REFRESH_INTERVAL_MS)
         ) {
           try {
             record.context = await loadTestRunContext(record.request, settings);
@@ -234,7 +237,15 @@ export function createTestRunQueueService({
               runId: candidate.runId,
               error,
             });
-            if (record.contextFailures >= MAX_ADMISSION_CONTEXT_FAILURES) {
+            // A deleted app or missing folder will not come back on retry.
+            const deterministic =
+              isDyadError(error) &&
+              (error.kind === DyadErrorKind.NotFound ||
+                error.kind === DyadErrorKind.Precondition);
+            if (
+              deterministic ||
+              record.contextFailures >= MAX_ADMISSION_CONTEXT_FAILURES
+            ) {
               queue.failAdmission(
                 candidate.runId,
                 isDyadError(error)
@@ -400,7 +411,7 @@ export function createTestRunQueueService({
               timing,
             );
           } finally {
-            if (trackedE2eTestProcessesForOwner(run.signal).length)
+            if (hasUnsettledE2eTestProcesses(run.signal))
               unsettledOwners.set(run.signal, record);
           }
         },

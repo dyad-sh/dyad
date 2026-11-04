@@ -7,6 +7,7 @@ import {
 import {
   DEFAULT_ENABLE_SUGGESTED_PROMPTS,
   DEFAULT_ENABLE_TESTING_FOR_NEW_APPS,
+  DEFAULT_MAX_CONCURRENT_TEST_RUNS,
 } from "@/shared/settings_defaults";
 import { localTemplatesData } from "@/shared/templates";
 import { themesData } from "@/shared/themes";
@@ -78,6 +79,7 @@ export function getSettingsPersonTelemetryProperties(settings: UserSettings) {
     enableOwnServerDeployment: settings.enableOwnServerDeployment ?? false,
     enableGitlabPublishing: settings.enableGitlabPublishing ?? false,
     enableTestRunInPreview: settings.enableTestRunInPreview ?? false,
+    enableParallelTestRuns: settings.enableParallelTestRuns ?? false,
     enableAppPreviewDomains: settings.enableAppPreviewDomains ?? false,
     autoApproveChanges: settings.autoApproveChanges ?? false,
     enableSupabaseWriteSqlMigration:
@@ -87,6 +89,8 @@ export function getSettingsPersonTelemetryProperties(settings: UserSettings) {
       settings.enableSuggestedPrompts ?? DEFAULT_ENABLE_SUGGESTED_PROMPTS,
     blockUnsafeNpmPackages: settings.blockUnsafeNpmPackages ?? true,
     maxToolCallSteps: settings.maxToolCallSteps ?? DEFAULT_MAX_TOOL_CALL_STEPS,
+    maxConcurrentTestRuns:
+      settings.maxConcurrentTestRuns ?? DEFAULT_MAX_CONCURRENT_TEST_RUNS,
     maxChatTurnsInContext:
       settings.maxChatTurnsInContext || MAX_CHAT_TURNS_IN_CONTEXT,
     // Null when unset, because no single value describes the unset behavior.

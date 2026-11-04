@@ -35,6 +35,8 @@ export function getSharedSettingsDiagnostics(settings: UserSettings) {
     enableGitlabPublishing: settings.enableGitlabPublishing ?? null,
     enableTestRunInPreview: settings.enableTestRunInPreview ?? null,
     disableSandboxedE2eTests: settings.disableSandboxedE2eTests ?? null,
+    enableParallelTestRuns: settings.enableParallelTestRuns ?? null,
+    maxConcurrentTestRuns: settings.maxConcurrentTestRuns ?? null,
     enableAppPreviewDomains: settings.enableAppPreviewDomains ?? null,
     enablePreviewCookieIsolation: settings.enablePreviewCookieIsolation ?? null,
     proModelUsage: settings.proModelUsage ?? null,

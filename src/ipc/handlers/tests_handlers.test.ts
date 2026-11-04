@@ -150,6 +150,9 @@ const retainE2eTestArtifactsMock = vi.hoisted(() => vi.fn());
 const startE2eTestRuntimeMock = vi.hoisted(() => vi.fn());
 const spawnStreamingMock = vi.hoisted(() => vi.fn());
 const settleE2eTestProcessesMock = vi.hoisted(() => vi.fn());
+// A spy, because the real record lasts until quit and would hold a slot in the
+// shared queue service for every later test.
+const retainUnsettledE2eTestOwnerMock = vi.hoisted(() => vi.fn());
 const broadcastToRegisteredWindowsMock = vi.hoisted(() => vi.fn());
 // Partially mocked: this module is pulled in transitively by the runtime
 // service, so replacing it wholesale breaks whenever an unrelated export is
@@ -226,6 +229,7 @@ vi.mock("../services/e2e_test_process_registry", async (importOriginal) => ({
     typeof import("../services/e2e_test_process_registry")
   >()),
   settleE2eTestProcesses: settleE2eTestProcessesMock,
+  retainUnsettledE2eTestOwner: retainUnsettledE2eTestOwnerMock,
 }));
 vi.mock("@/ipc/utils/window_broadcast", async (importOriginal) => {
   const actual =
@@ -301,6 +305,7 @@ describe("tests handlers", () => {
     });
     spawnStreamingMock.mockReset();
     settleE2eTestProcessesMock.mockReset().mockResolvedValue(true);
+    retainUnsettledE2eTestOwnerMock.mockReset();
     spawnStreamingMock.mockResolvedValue({
       code: 1,
       stdout: "",
@@ -2061,6 +2066,12 @@ describe("tests handlers", () => {
         await prepareIsolatedTestDatabaseMock.mock.results[0].value;
       expect(prepared.teardown).not.toHaveBeenCalled();
       expect(appOperationCoordinator.isBusy(appId, ["provider"])).toBe(true);
+      // The registry holds no child for a daemonized survivor, so the stop
+      // verdict itself must keep the run's global scheduler slot.
+      const [owner] = settleE2eTestProcessesMock.mock.calls[0];
+      expect(retainUnsettledE2eTestOwnerMock).toHaveBeenCalledExactlyOnceWith(
+        owner,
+      );
     });
 
     it("refuses a sandbox with no Playwright instead of failing in the CLI", async () => {

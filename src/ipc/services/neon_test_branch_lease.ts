@@ -103,8 +103,9 @@ export function acquireNeonTestBranch(
           /**
            * For a run whose teardown is deferred because its processes could
            * not be stopped. The tracked branch stays for startup recovery, but
-           * this run will no longer free it, so capacity waiters stop counting
-           * on it and can reach the actionable blocked state.
+           * this run no longer counts toward capacity, so waiters stop counting
+           * on it and can reach the actionable blocked state. A later
+           * `release()` still deletes the branch.
            */
           retire,
         };

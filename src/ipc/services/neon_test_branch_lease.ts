@@ -84,6 +84,11 @@ export function acquireNeonTestBranch(
         const owners = active.get(projectId) ?? new Set<Promise<void>>();
         owners.add(done);
         active.set(projectId, owners);
+        const retire = () => {
+          if (!owners.delete(done)) return;
+          if (!owners.size) active.delete(projectId);
+          settled();
+        };
         let released: Promise<boolean> | undefined;
         return {
           branch,
@@ -92,11 +97,16 @@ export function acquireNeonTestBranch(
               try {
                 return await markAndDeleteTempTestBranch(app, branch.branchId);
               } finally {
-                owners.delete(done);
-                if (!owners.size) active.delete(projectId);
-                settled();
+                retire();
               }
             })()),
+          /**
+           * For a run whose teardown is deferred because its processes could
+           * not be stopped. The tracked branch stays for startup recovery, but
+           * this run will no longer free it, so capacity waiters stop counting
+           * on it and can reach the actionable blocked state.
+           */
+          retire,
         };
       } catch (error) {
         // Creation can fail after persisting the branch (e.g. Auth setup).

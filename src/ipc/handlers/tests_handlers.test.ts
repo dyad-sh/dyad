@@ -1966,6 +1966,7 @@ describe("tests handlers", () => {
     it.each(["survivor", "settlement-error"])(
       "defers all cleanup and fences the provider after %s",
       async (outcome) => {
+        const retainForRecovery = vi.fn();
         const appId = seedApp("app");
         harness.db
           .update(apps)
@@ -1979,6 +1980,7 @@ describe("tests handlers", () => {
         prepareIsolatedTestDatabaseMock.mockResolvedValue({
           isolation: { mode: "neon-branch" },
           teardown,
+          retainForRecovery,
         });
         if (outcome === "survivor") {
           settleE2eTestProcessesMock.mockResolvedValue(false);
@@ -2000,6 +2002,7 @@ describe("tests handlers", () => {
         expect(workspace.dispose).not.toHaveBeenCalled();
         expect(teardown).not.toHaveBeenCalled();
         expect(settleE2eTestProcessesMock).toHaveBeenCalledOnce();
+        expect(retainForRecovery).toHaveBeenCalledOnce();
         expect(result.infraError?.message).toMatch(
           /couldn't confirm.*test processes stopped/i,
         );

@@ -206,6 +206,25 @@ describe("generated sign-in retries", () => {
     }
   });
 
+  it("installs no browser route when the test declares the opt-out up front", async () => {
+    const context = Object.assign(new EventEmitter(), {
+      request: { fetch: vi.fn() },
+      route: vi.fn(async () => {}),
+      unroute: vi.fn(async () => {}),
+    });
+    const originalFetch = context.request.fetch;
+    const restore = await runtime.installSignInContextRetry(
+      context,
+      "http://localhost:3000",
+      { timeout: 5000, annotations: [{ type: "dyad-no-sign-in-retry" }] },
+    );
+    expect(context.route).not.toHaveBeenCalled();
+    expect(context.request.fetch).toBe(originalFetch);
+    expect(context.listenerCount("close")).toBe(0);
+    await restore();
+    expect(context.unroute).not.toHaveBeenCalled();
+  });
+
   it("lets opted-out browser requests fall through to the app unchanged", async () => {
     let handler!: (route: unknown) => Promise<void>;
     const context = Object.assign(new EventEmitter(), {

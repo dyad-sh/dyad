@@ -348,6 +348,42 @@ describe("TestOutputDrawer", () => {
     expect(scrollTop).toBe(1000);
   });
 
+  it("keeps following when output lands before its own scroll event fires", () => {
+    const { mount, start, append } = setup();
+    mount();
+    start(1);
+    append(1, "first\n");
+    const output = screen.getByRole("tabpanel").querySelector("pre")!;
+    let scrollHeight = 1000;
+    let scrollTop = 0;
+    Object.defineProperties(output, {
+      scrollHeight: { configurable: true, get: () => scrollHeight },
+      clientHeight: { configurable: true, get: () => 200 },
+      scrollTop: {
+        configurable: true,
+        get: () => scrollTop,
+        set: (value: number) => {
+          scrollTop = Math.min(value, scrollHeight - 200);
+        },
+      },
+    });
+    append(1, "second\n");
+    expect(scrollTop).toBe(800);
+
+    // The next batch grows the output, then the echo of our write arrives.
+    scrollHeight = 1300;
+    fireEvent.scroll(output);
+    append(1, "third\n");
+    expect(scrollTop).toBe(1100);
+
+    // A real move upward still stops following.
+    scrollTop = 600;
+    fireEvent.scroll(output);
+    scrollHeight = 1500;
+    append(1, "fourth\n");
+    expect(scrollTop).toBe(600);
+  });
+
   it("keeps the drawer collapsible", () => {
     const { mount, start, onToggle } = setup();
     start(1);

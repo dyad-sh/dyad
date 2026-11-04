@@ -629,15 +629,7 @@ const BaseUserSettingsFields = {
   // than run against the real database either way.
   disableSandboxedE2eTests: z.boolean().optional(),
   enableParallelTestRuns: z.boolean().optional(),
-  // An out-of-range value (hand-edited or from another version) falls back to
-  // the default instead of failing the whole settings parse.
-  maxConcurrentTestRuns: z
-    .number()
-    .int()
-    .min(1)
-    .max(128)
-    .optional()
-    .catch(undefined),
+  maxConcurrentTestRuns: z.number().int().min(1).max(128).optional(),
   autoExpandPreviewPanel: z.boolean().optional(),
   // Follow-up prompt chips above the chat input after Build and Agent turns.
   enableSuggestedPrompts: z.boolean().optional(),
@@ -692,6 +684,11 @@ const BaseUserSettingsFields = {
 export const StoredUserSettingsSchema = z
   .object({
     ...BaseUserSettingsFields,
+    // An out-of-range stored value (hand-edited or from another version) is
+    // dropped instead of failing the whole settings parse. IPC input stays
+    // strict, so an invalid update is still rejected.
+    maxConcurrentTestRuns:
+      BaseUserSettingsFields.maxConcurrentTestRuns.catch(undefined),
     // Deprecated: effort is now selected per model.
     thinkingBudget: z.enum(["low", "medium", "high"]).optional(),
     // Use StoredChatModeSchema to allow deprecated "agent" value

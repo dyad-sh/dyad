@@ -444,6 +444,70 @@ describe("test runtime atoms", () => {
     },
   );
 
+  it.each([true, false])(
+    "keeps a newer run's case when an older run reconciles last (older run partial: %s)",
+    (olderRunPartial) => {
+      const store = createStore();
+      const file = "tests/a.spec.ts";
+      store.set(setTestSpecsForAppAtom, {
+        appId: 1,
+        specs: [
+          {
+            file,
+            tests: [
+              { title: "shared", line: 3 },
+              { title: "other", line: 8 },
+            ],
+          },
+        ],
+      });
+      const finish = (
+        runId: number,
+        tests: { title: string; line: number; status: "passed" | "failed" }[],
+        isPartialRun: boolean,
+        reconcileOnly = false,
+      ) =>
+        store.set(applyTestRunFinishedAtom, {
+          appId: 1,
+          expectedRunId: runId,
+          isPartialRun,
+          reconcileOnly,
+          res: {
+            appId: 1,
+            results: [{ file, status: "failed", tests }],
+          },
+        });
+      const olderTests = [
+        { title: "shared", line: 3, status: "failed" as const },
+        ...(olderRunPartial
+          ? []
+          : [{ title: "other", line: 8, status: "passed" as const }]),
+      ];
+      for (const runId of [1, 2])
+        store.set(applyTestRunStartedAtom, {
+          appId: 1,
+          runId,
+          source: "agent",
+          testFile: file,
+          testLine: runId === 2 || olderRunPartial ? 3 : undefined,
+        });
+      finish(1, olderTests, olderRunPartial);
+      finish(2, [{ title: "shared", line: 3, status: "passed" }], true);
+      finish(1, olderTests, olderRunPartial, true);
+
+      const result = store.get(testRunStateByAppIdAtom).get(1)?.results[file];
+      expect(result?.tests?.find((test) => test.line === 3)).toMatchObject({
+        status: "passed",
+        runId: 2,
+      });
+      if (!olderRunPartial)
+        expect(result?.tests?.find((test) => test.line === 8)).toMatchObject({
+          status: "passed",
+          runId: 1,
+        });
+    },
+  );
+
   it("merges grep-targeted run results instead of replacing the whole file", () => {
     const store = createStore();
     store.set(setTestSpecsForAppAtom, {

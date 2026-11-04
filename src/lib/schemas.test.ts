@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { migrateStoredSettings, StoredUserSettingsSchema } from "@/lib/schemas";
+import {
+  migrateStoredSettings,
+  StoredUserSettingsSchema,
+  UserSettingsSchema,
+} from "@/lib/schemas";
 
 const baseSettings = {
   selectedModel: { name: "auto", provider: "auto" },
@@ -30,6 +34,17 @@ describe("StoredUserSettingsSchema maxConcurrentTestRuns", () => {
       expect(parsed.selectedTemplateId).toBe("react");
     },
   );
+
+  it("still rejects an invalid limit sent as a settings update", () => {
+    expect(
+      UserSettingsSchema.partial().safeParse({ maxConcurrentTestRuns: 0 })
+        .success,
+    ).toBe(false);
+    expect(
+      UserSettingsSchema.partial().parse({ maxConcurrentTestRuns: 4 })
+        .maxConcurrentTestRuns,
+    ).toBe(4);
+  });
 });
 
 // Pins that the lastKnownPerformance shape written by the performance

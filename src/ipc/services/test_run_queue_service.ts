@@ -497,7 +497,24 @@ export function createTestRunQueueService({
   async function validateTestRunInputs(runId: number) {
     const record = records.get(runId);
     if (!record?.context) return;
-    const current = await loadTestRunContext(record.request).catch(() => null);
+    let current: TestRunContext;
+    try {
+      current = await loadTestRunContext(record.request);
+    } catch (error) {
+      // A missing app folder or unreadable repository is not a conflict with
+      // another run, which may not even exist. Report the actual cause.
+      logger.warn("Failed to reload test run context before setup", {
+        appId: record.request.appId,
+        runId,
+        error,
+      });
+      if (isDyadError(error)) throw error;
+      throw new DyadError(
+        "Could not read the app's test setup. Check that the app folder exists and its Git repository is readable, then run the tests again.",
+        DyadErrorKind.Precondition,
+        { cause: error },
+      );
+    }
     // Serially admitted runs carry no context: serial mode never checked them
     // against other apps, so turning parallel runs off mid-setup must not fail
     // a parallel run that was already admitted alongside them.
@@ -505,7 +522,6 @@ export function createTestRunQueueService({
       (run) => run.runId !== runId && records.get(run.runId)?.context,
     );
     if (
-      !current ||
       others.some(
         (run) => !compatibleWithRun(record.request, current, run.runId),
       )

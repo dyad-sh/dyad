@@ -563,16 +563,25 @@ describe("TestsPanel", () => {
       fireEvent.click(runAll);
     });
     expect(mocks.runAppTests).toHaveBeenCalledTimes(1);
-    await act(async () =>
-      fireEvent.click(
-        screen.getByRole("button", {
-          name: "Run all tests in: signup.spec.ts",
-        }),
-      ),
+    // The in-flight selection explains itself instead of ignoring clicks.
+    await waitFor(() =>
+      expect((runAll as HTMLButtonElement).disabled).toBe(true),
     );
+    expect(runAll.getAttribute("title")).toBe(
+      "Already running. Run it again after this run finishes.",
+    );
+    const runFile = screen.getByRole("button", {
+      name: "Run all tests in: signup.spec.ts",
+    }) as HTMLButtonElement;
+    expect(runFile.disabled).toBe(false);
+    await act(async () => fireEvent.click(runFile));
     expect(mocks.runAppTests).toHaveBeenCalledTimes(2);
     expect(mocks.runAppTests).toHaveBeenLastCalledWith(
       expect.objectContaining({ testFile: SPEC_FILE }),
+    );
+    await waitFor(() => expect(runFile.disabled).toBe(true));
+    expect(runFile.getAttribute("title")).toBe(
+      "Already running. Run it again after this run finishes.",
     );
   });
 

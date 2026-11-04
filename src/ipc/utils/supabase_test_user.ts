@@ -327,9 +327,8 @@ export async function createTempTestUser(
           }),
         (result) => (result ? "completed" : "failed"),
       );
-      // The record is the only durable reference to this user. If the
-      // compensating delete fails too, its retries gave a transient SQLite lock
-      // time to clear, so record it once more for startup reconciliation.
+      // The record is the only durable reference to this user, so record it
+      // once more for startup reconciliation if the compensating delete failed.
       if (!deleted) {
         await persistTestUserId(appData, created.id, options.ownerId).catch(
           (retryError) =>

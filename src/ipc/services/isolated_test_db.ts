@@ -159,6 +159,12 @@ export interface PreparedIsolation {
    */
   authorizeRuntimeOrigin?: (origin: string) => Promise<void>;
   teardown: (options?: TeardownOptions) => Promise<TeardownResult>;
+  /**
+   * Called instead of `teardown` when the run's processes could not be
+   * stopped. Provider state stays tracked for startup recovery, but the run no
+   * longer claims shared capacity that only its teardown would free.
+   */
+  retainForRecovery?: () => void;
 }
 
 export interface TestCaseLifecycle {
@@ -583,6 +589,7 @@ export async function prepareIsolatedTestDatabase({
             }
           : undefined,
       teardown,
+      retainForRecovery: () => branchLease?.retire(),
     };
   } catch (error) {
     if (branchOwnerId && !branchLease) {

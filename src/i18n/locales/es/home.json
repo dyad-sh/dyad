@@ -288,6 +288,7 @@
     "queueAllTests": "Poner todas las pruebas en cola",
     "retryRun": "Reintentar",
     "runAgain": "Ejecutar de nuevo",
+    "selectionAlreadyRunning": "Ya se está ejecutando. Vuelve a ejecutarlo cuando termine esta ejecución.",
     "testGate": {
       "settingsLoading": "Cargando configuración…",
       "settingsUnavailable": "Dyad no pudo cargar tu configuración, así que no puede saber cómo se ejecutarían las pruebas.",

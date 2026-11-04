@@ -2,13 +2,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SupabaseManagementAPIError } from "@dyad-sh/supabase-management-js";
 
 const mocks = vi.hoisted(() => {
+  const testUserCleanup = {
+    userId: "cleanup.userId",
+    projectId: "cleanup.projectId",
+  };
   const where = vi.fn().mockResolvedValue(undefined);
   const set = vi.fn(() => ({ where }));
   const update = vi.fn(() => ({ set }));
   const selectWhere = vi.fn().mockResolvedValue([]);
   const cleanupRows = vi.fn().mockResolvedValue([]);
   const from = vi.fn((table: unknown) =>
-    table === "test-user-cleanup" ? cleanupRows() : { where: selectWhere },
+    table === testUserCleanup ? cleanupRows() : { where: selectWhere },
   );
   const select = vi.fn(() => ({ from }));
   const insertValues = vi.fn().mockResolvedValue(undefined);
@@ -22,6 +26,7 @@ const mocks = vi.hoisted(() => {
       insert: vi.fn(() => ({ values: insertValues })),
       query: { apps: { findFirst } },
     },
+    testUserCleanup,
     cleanupRows,
     deleteWhere,
     findFirst,
@@ -42,15 +47,20 @@ vi.mock("@/db", () => ({ db: mocks.db }));
 vi.mock("../../db", () => ({ db: mocks.db }));
 vi.mock("@/db/schema", () => ({
   apps: { id: "id", supabaseTestUserId: "stu" },
-  testUserCleanup: "test-user-cleanup",
+  testUserCleanup: mocks.testUserCleanup,
 }));
 vi.mock("../../db/schema", () => ({
   apps: { id: "id", supabaseTestUserId: "stu" },
-  testUserCleanup: "test-user-cleanup",
+  testUserCleanup: mocks.testUserCleanup,
 }));
 vi.mock("drizzle-orm", async (importOriginal) => {
   const actual = await importOriginal<typeof import("drizzle-orm")>();
-  return { ...actual, eq: vi.fn((a, b) => ({ a, b })), isNotNull: vi.fn() };
+  return {
+    ...actual,
+    and: vi.fn((...conditions) => ({ and: conditions })),
+    eq: vi.fn((a, b) => ({ a, b })),
+    isNotNull: vi.fn(),
+  };
 });
 vi.mock("@/ipc/utils/test_utils", () => ({ IS_TEST_BUILD: false }));
 vi.mock("@/ipc/utils/retryWithRateLimit", () => ({
@@ -1317,8 +1327,13 @@ describe("reconcileOrphanTestUsers", () => {
       `https://proj-1.supabase.co/auth/v1/admin/users/${UUID}`,
       expect.objectContaining({ method: "DELETE" }),
     );
-    expect(mocks.db.delete).toHaveBeenCalledWith("test-user-cleanup");
-    expect(mocks.deleteWhere).toHaveBeenCalled();
+    expect(mocks.db.delete).toHaveBeenCalledWith(mocks.testUserCleanup);
+    expect(mocks.deleteWhere).toHaveBeenCalledWith({
+      and: [
+        { a: mocks.testUserCleanup.userId, b: UUID },
+        { a: mocks.testUserCleanup.projectId, b: "proj-1" },
+      ],
+    });
   });
 
   it("never throws when the query fails", async () => {

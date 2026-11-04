@@ -4,6 +4,7 @@ import { useNavigate } from "@tanstack/react-router";
 import {
   useIsMutating,
   useMutation,
+  useMutationState,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
@@ -247,6 +248,13 @@ function FailureDetails({
       )}
     </div>
   );
+}
+
+type RunAppTestsParams = Parameters<typeof ipc.tests.runAppTests>[0];
+
+/** Identifies a Run target: every test, one file, or one case. */
+function runSelectionKey(file?: string, line?: number) {
+  return JSON.stringify([file ?? null, line ?? null]);
 }
 
 function RunButton({
@@ -545,6 +553,8 @@ interface FileRowProps {
    * (a state that only stops runs).
    */
   deleteDisabled: boolean;
+  /** Whether this file (no line) or one of its cases is already running. */
+  isRunPending: (line?: number) => boolean;
   onRunFile: () => void;
   onRunCase: (line: number) => void;
   onOpenInEditor: (line?: number) => void;
@@ -564,6 +574,7 @@ function FileRow({
   disabled,
   runTitle,
   deleteDisabled,
+  isRunPending,
   onRunFile,
   onRunCase,
   onOpenInEditor,
@@ -576,6 +587,8 @@ function FileRow({
   const fileName = file.split("/").pop() ?? file;
   const hasTests = tests.length > 0;
   const isFailing = status === "failed" || status === "inconclusive";
+  const fileRunPending = isRunPending();
+  const alreadyRunningTitle = t("preview.selectionAlreadyRunning");
 
   const [expanded, setExpanded] = useState(false);
   // Auto-expand a file the moment it transitions into a failing state, so the
@@ -668,8 +681,8 @@ function FileRow({
         )}
         <RunButton
           onRun={onRunFile}
-          disabled={disabled}
-          title={runTitle}
+          disabled={disabled || fileRunPending}
+          title={fileRunPending ? alreadyRunningTitle : runTitle}
           label={`Run all tests in: ${fileName}`}
         />
         <OpenInEditorButton
@@ -692,8 +705,10 @@ function FileRow({
               testCase={testCase}
               status={caseStatus(testCase)}
               result={caseResult(testCase)}
-              disabled={disabled}
-              runTitle={runTitle}
+              disabled={disabled || isRunPending(testCase.line)}
+              runTitle={
+                isRunPending(testCase.line) ? alreadyRunningTitle : runTitle
+              }
               isLast={index === tests.length - 1}
               onRun={() => onRunCase(testCase.line)}
               onOpenInEditor={() => onOpenInEditor(testCase.line)}
@@ -778,6 +793,21 @@ export function TestsPanel() {
   } = useSettings();
   const isSubmitting =
     !settings?.enableParallelTestRuns && pendingSubmissions > 0;
+  // Parallel mode admits different selections side by side, but the one
+  // already in flight stays disabled and says why until its run settles.
+  const pendingRunSelections = useMutationState({
+    filters: { mutationKey: runMutationKey, status: "pending" },
+    select: (mutation) => {
+      const pending = mutation.state.variables as RunAppTestsParams | undefined;
+      return runSelectionKey(pending?.testFile, pending?.testLine);
+    },
+  });
+  const isRunPending = useCallback(
+    (file?: string, line?: number) =>
+      pendingRunSelections.includes(runSelectionKey(file, line)),
+    [pendingRunSelections],
+  );
+  const runAllPending = isRunPending();
   const { runApp } = useRunApp();
   const { setTestingEnabled, isLoading: isTogglingTesting } =
     useSetTestingEnabled();
@@ -1090,7 +1120,7 @@ export function TestsPanel() {
         settings?.enableParallelTestRuns
           ? pendingRuns.some((mutation) => {
               const pending = mutation.state.variables as
-                | Parameters<typeof ipc.tests.runAppTests>[0]
+                | RunAppTestsParams
                 | undefined;
               return pending?.testFile === file && pending?.testLine === line;
             })
@@ -1733,15 +1763,19 @@ export function TestsPanel() {
         {testingEnabled && specs.length > 0 && (
           <button
             onClick={() => runTests()}
-            disabled={testRunBlocked || isSubmitting}
-            title="During database-isolated runs, other app operations may wait until the run finishes."
+            disabled={testRunBlocked || isSubmitting || runAllPending}
+            title={
+              runAllPending
+                ? t("preview.selectionAlreadyRunning")
+                : "During database-isolated runs, other app operations may wait until the run finishes."
+            }
             aria-label={
               isRunning ? t("preview.queueAllTests") : "Run all tests"
             }
             className={cn(
               "flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md cursor-pointer",
               "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-900/60",
-              (testRunBlocked || isSubmitting) &&
+              (testRunBlocked || isSubmitting || runAllPending) &&
                 "opacity-40 cursor-not-allowed",
             )}
           >
@@ -2008,13 +2042,18 @@ export function TestsPanel() {
               </span>
               <button
                 onClick={() => runTests()}
-                disabled={isSubmitting || testRunBlocked}
+                disabled={isSubmitting || testRunBlocked || runAllPending}
+                title={
+                  runAllPending
+                    ? t("preview.selectionAlreadyRunning")
+                    : undefined
+                }
                 className={cn(
                   "shrink-0 px-2 py-1 rounded-md cursor-pointer text-xs font-medium",
                   runState.runError.kind === "stopped"
                     ? "bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600"
                     : "bg-amber-200 dark:bg-amber-800 hover:bg-amber-300 dark:hover:bg-amber-700",
-                  (isSubmitting || testRunBlocked) &&
+                  (isSubmitting || testRunBlocked || runAllPending) &&
                     "opacity-40 cursor-not-allowed",
                 )}
               >
@@ -2129,6 +2168,7 @@ export function TestsPanel() {
                 result={runState.results[spec.file]}
                 disabled={isSubmitting || testRunBlocked}
                 deleteDisabled={isRunning || isSubmitting || isDeleting}
+                isRunPending={(line) => isRunPending(spec.file, line)}
                 onRunFile={() => runTests(spec.file)}
                 onRunCase={(line) => runTests(spec.file, line)}
                 onOpenInEditor={(line) => openInEditor(spec.file, line)}

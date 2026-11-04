@@ -37,6 +37,9 @@ export const TestOutputDrawer = memo(function TestOutputDrawer({
   // Follow the newest output only while the reader is at the bottom, so
   // scrolling up to read earlier output is not undone by the next chunk.
   const followTailRef = useRef(true);
+  // The position this drawer last scrolled to. Our own write queues a scroll
+  // event, and output that lands before it fires is not the reader leaving.
+  const autoScrollTopRef = useRef<number | null>(null);
 
   useEffect(() => {
     followTailRef.current = true;
@@ -45,6 +48,7 @@ export const TestOutputDrawer = memo(function TestOutputDrawer({
   useEffect(() => {
     if (open && outputRef.current && followTailRef.current) {
       outputRef.current.scrollTop = outputRef.current.scrollHeight;
+      autoScrollTopRef.current = outputRef.current.scrollTop;
     }
   }, [selectedTab?.output, selectedRunId, appId, open]);
 
@@ -169,11 +173,19 @@ export const TestOutputDrawer = memo(function TestOutputDrawer({
                     onScroll={(event) => {
                       if (tab.runId !== selectedRunId) return;
                       const element = event.currentTarget;
-                      followTailRef.current =
+                      if (
                         element.scrollHeight -
                           element.scrollTop -
                           element.clientHeight <=
-                        FOLLOW_TAIL_THRESHOLD_PX;
+                        FOLLOW_TAIL_THRESHOLD_PX
+                      )
+                        followTailRef.current = true;
+                      // Only moving above our last write disengages following.
+                      else if (
+                        element.scrollTop <
+                        (autoScrollTopRef.current ?? Infinity)
+                      )
+                        followTailRef.current = false;
                     }}
                     className="text-[11px] whitespace-pre-wrap break-words bg-(--background-darkest) px-4 py-2 max-h-48 overflow-auto"
                   >

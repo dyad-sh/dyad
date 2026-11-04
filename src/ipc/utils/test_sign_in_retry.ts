@@ -5,6 +5,10 @@ export function buildTestSignInRetrySource(): string {
 // requests must remain visible to the test.
 // Rate-limit tests can opt out for both browser and API requests with:
 // test.info().annotations.push({ type: "dyad-no-sign-in-retry" });
+// Declaring it in the test details instead installs no browser route at all,
+// which tests of HTTP caching need (Playwright disables the cache while a
+// context has any route):
+// test("...", { annotation: { type: "dyad-no-sign-in-retry" } }, ...);
 function isSignInRetryDisabled(testInfo: pw.TestInfo): boolean {
   return !!testInfo.annotations?.some(({ type }) => type === "dyad-no-sign-in-retry");
 }
@@ -115,6 +119,9 @@ function installSignInApiRetry(api: pw.APIRequestContext, baseUrl: string, testI
 }
 
 async function installSignInContextRetry(context: pw.BrowserContext, baseUrl: string, testInfo: pw.TestInfo) {
+  // Static annotations are known before fixtures run. Skip routing entirely so
+  // an opted-out test keeps the browser's normal HTTP cache behavior.
+  if (isSignInRetryDisabled(testInfo)) return async () => {};
   const retry = createSignInRetry(testInfo);
   const restoreApi = installSignInApiRetry(context.request, baseUrl, testInfo);
   const matches = (url: URL) => isDyadSignIn(url.href, "POST", baseUrl);

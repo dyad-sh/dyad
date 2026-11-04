@@ -181,6 +181,25 @@ it("drains an in-flight create before cancelling and compensates the returned br
   expect(mocks.remove).toHaveBeenCalledExactlyOnceWith(app, "one");
 });
 
+it("wakes capacity waiters when an owner defers cleanup, keeping its branch", async () => {
+  const first = await acquire("one");
+  mocks.create.mockRejectedValue(capacityError);
+  const onCapacity = vi.fn();
+  const second = acquire("two", undefined, onCapacity);
+  await vi.waitFor(() => expect(onCapacity).toHaveBeenCalledWith("waiting"));
+  const blocked = expect(second).rejects.toThrow(
+    "no active test run can free a branch",
+  );
+  first.retire();
+  await blocked;
+  expect(onCapacity).toHaveBeenLastCalledWith("blocked");
+  expect(mocks.remove).not.toHaveBeenCalled();
+  // Retiring is idempotent and a later release still deletes the branch.
+  first.retire();
+  await first.release();
+  expect(mocks.remove).toHaveBeenCalledExactlyOnceWith(app, "one");
+});
+
 it("reports a blocked plan limit when no local run can free a branch", async () => {
   mocks.create.mockRejectedValueOnce(capacityError);
   const onCapacity = vi.fn();

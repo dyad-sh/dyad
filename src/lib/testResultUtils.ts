@@ -38,7 +38,7 @@ export function testKey(file: string, line: number | undefined): string {
   return line != null ? `${file}:${line}` : file;
 }
 
-function sameTestCaseByLineOrTitleFallback(
+export function sameTestCaseByLineOrTitleFallback(
   result: { line?: number; title: string },
   testCase: { line?: number; title: string },
 ): boolean {

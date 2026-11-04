@@ -745,6 +745,34 @@ it("refuses a changed shared database revision while a sibling is active", async
   );
 });
 
+it("reports why a solo run's inputs could not be reloaded", async () => {
+  h.settings.enableParallelTestRuns = true;
+  enqueue();
+  await tick();
+  const runId = service.getAppTestRunQueue(1).activeRun!.runId;
+  const missing = new DyadError(
+    "The app folder no longer exists.",
+    DyadErrorKind.NotFound,
+  );
+  vi.mocked(loadTestRunContext).mockRejectedValueOnce(missing);
+  await expect(service.validateTestRunInputs(runId)).rejects.toBe(missing);
+  const gitFailure = new Error("git read failed");
+  vi.mocked(loadTestRunContext).mockRejectedValueOnce(gitFailure);
+  const unreadable = await service
+    .validateTestRunInputs(runId)
+    .catch((error: unknown) => error);
+  expect(unreadable).toBeInstanceOf(DyadError);
+  expect(unreadable).toMatchObject({
+    kind: DyadErrorKind.Precondition,
+    message: expect.stringContaining("Could not read the app's test setup"),
+    cause: gitFailure,
+  });
+  expect(h.warn).toHaveBeenCalledWith(
+    "Failed to reload test run context before setup",
+    expect.objectContaining({ runId, error: gitFailure }),
+  );
+});
+
 it("dismisses only the observed blocked notice and preserves live waits", async () => {
   enqueue();
   await tick();

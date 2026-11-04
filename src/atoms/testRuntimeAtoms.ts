@@ -18,6 +18,7 @@ import type { TestRunStopReason } from "@/shared/test_run_stop";
 import {
   buildSingleTestFileResult,
   reconcileResultFile,
+  sameTestCaseByLineOrTitleFallback,
   testKey,
 } from "@/lib/testResultUtils";
 
@@ -500,27 +501,36 @@ export const applyTestRunFinishedAtom = atom(
           return prev;
         }
         const nextResults = { ...prev.results };
+        const ownedByNewerRun = (runId: number | undefined) =>
+          reconcileOnly &&
+          expectedRunId !== undefined &&
+          (runId ?? 0) > expectedRunId;
         // Infrastructure/cleanup warnings do not invalidate completed results.
         // Main marks files whose selected cases did not all finish separately.
         for (const r of res.results) {
           const key = reconcileResultFile(r.file, specFiles);
-          if (
-            reconcileOnly &&
-            expectedRunId !== undefined &&
-            (prev.results[key]?.runId ?? 0) > expectedRunId
-          )
-            continue;
-          const mapped = {
-            ...r,
-            file: key,
-            runId: expectedRunId,
-            tests: r.tests?.map((test) => ({ ...test, runId: expectedRunId })),
-          };
-          if (isPartialRun) {
+          const previous = prev.results[key];
+          if (ownedByNewerRun(previous?.runId)) continue;
+          // Merged partial results carry no file-level owner, so a delayed
+          // refresh also keeps every case a newer run already reported.
+          const newerCases =
+            previous?.tests?.filter((test) => ownedByNewerRun(test.runId)) ??
+            [];
+          const tests = r.tests
+            ?.filter(
+              (test) =>
+                !newerCases.some((newer) =>
+                  sameTestCaseByLineOrTitleFallback(newer, test),
+                ),
+            )
+            .map((test) => ({ ...test, runId: expectedRunId }));
+          if (newerCases.length && !tests?.length) continue;
+          const mapped = { ...r, file: key, runId: expectedRunId, tests };
+          if (isPartialRun || newerCases.length) {
             nextResults[key] = buildSingleTestFileResult({
               file: key,
               knownTests: specsByFile.get(key)?.tests ?? [],
-              previous: prev.results[key],
+              previous,
               incoming: mapped,
             });
           } else {

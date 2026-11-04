@@ -2040,6 +2040,7 @@ async function runTestsAgainstNormalPreview({
         const settled = await settleRunProcesses();
         if (!settled) {
           onProcessSettlementFailed(testRunResources, prepared?.isolation);
+          prepared?.retainForRecovery?.();
         } else if (prepared) {
           try {
             if (prepared.isolation.mode !== "none") {
@@ -3236,6 +3237,7 @@ async function executeAppTestsWithIsolation(
           // and fence conflicting operations before releasing this callback.
           if (!stopped) {
             onProcessSettlementFailed(testRunResources, prepared?.isolation);
+            prepared?.retainForRecovery?.();
           } else if (prepared) {
             try {
               // Announce the teardown before it starts. It removes the

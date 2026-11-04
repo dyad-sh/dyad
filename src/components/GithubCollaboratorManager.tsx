@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -10,6 +11,8 @@ import {
 } from "@/components/ui/card";
 import { SimpleAvatar } from "@/components/ui/SimpleAvatar";
 import { ipc } from "@/ipc/types";
+import { queryKeys } from "@/lib/queryKeys";
+import { useGithubCollaborators } from "@/hooks/useGithubCollaborators";
 import {
   Trash2,
   UserPlus,
@@ -44,11 +47,11 @@ interface CollaboratorManagerProps {
 }
 
 export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
-  const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  // null until the current app's first load finishes.
-  const [canManage, setCanManage] = useState<boolean | null>(null);
-  const currentAppId = useRef(appId);
+  const queryClient = useQueryClient();
+  const { data, isError, isFetching } = useGithubCollaborators(appId);
+  const collaborators: Collaborator[] = data?.collaborators ?? [];
+  // null until this app's access is known. A failed load keeps the form usable.
+  const canManage = data ? data.canManage : isError ? true : null;
   const [inviteUsername, setInviteUsername] = useState("");
   const [isInviting, setIsInviting] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -56,32 +59,10 @@ export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
     string | null
   >(null);
 
-  const loadCollaborators = useCallback(async () => {
-    setIsLoading(true);
-    // Results for an app the user has since switched away from are dropped.
-    const isCurrent = () => currentAppId.current === appId;
-    try {
-      const result = await ipc.github.listCollaborators({ appId });
-      if (!isCurrent()) return;
-      setCanManage(result.canManage);
-      setCollaborators(result.collaborators);
-    } catch (error: any) {
-      if (!isCurrent()) return;
-      console.error("Failed to load collaborators:", error);
-      showError("Failed to load collaborators: " + error.message);
-      setCanManage(true);
-    } finally {
-      if (isCurrent()) setIsLoading(false);
-    }
-  }, [appId]);
-
-  // Now the effect depends on loadCollaborators, which only changes when appId changes
-  useEffect(() => {
-    currentAppId.current = appId;
-    setCanManage(null);
-    setCollaborators([]);
-    loadCollaborators();
-  }, [appId, loadCollaborators]);
+  const refreshCollaborators = (forAppId: number) =>
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.github.collaborators({ appId: forAppId }),
+    });
 
   const handleInvite = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -94,7 +75,7 @@ export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
       showSuccess(`Invited ${trimmedUsername} to the project.`);
       setInviteUsername("");
       // Reload list (though they might be pending)
-      loadCollaborators();
+      refreshCollaborators(appId);
     } catch (error: any) {
       showError(error.message);
     } finally {
@@ -111,7 +92,7 @@ export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
         username: collaboratorToDelete,
       });
       showSuccess(`Removed ${collaboratorToDelete} from the project.`);
-      loadCollaborators();
+      refreshCollaborators(appId);
     } catch (error: any) {
       showError(error.message);
     } finally {
@@ -194,7 +175,7 @@ export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
                 <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">
                   Current Team
                 </h3>
-                {isLoading ? (
+                {isFetching ? (
                   <div className="text-sm text-center py-4 text-gray-500">
                     Loading collaborators...
                   </div>

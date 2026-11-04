@@ -464,6 +464,8 @@ export const queryKeys = {
   github: {
     all: ["github"] as const,
     repos: ["github", "repos"] as const,
+    collaborators: ({ appId }: { appId: number }) =>
+      ["github", "collaborators", appId] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────

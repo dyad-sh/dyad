@@ -1,4 +1,17 @@
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  QueryCache,
+  QueryClient,
+  QueryClientProvider,
+} from "@tanstack/react-query";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const github = vi.hoisted(() => ({
@@ -13,6 +26,22 @@ const showSuccess = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/toast", () => ({ showError, showSuccess }));
 
 import { GithubCollaboratorManager } from "./GithubCollaboratorManager";
+
+// Mirrors the app's QueryClient: no retries, and queries with
+// meta.showErrorToast report failures through showError.
+function createWrapper() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+    queryCache: new QueryCache({
+      onError: (error, query) => {
+        if (query.meta?.showErrorToast) showError(error);
+      },
+    }),
+  });
+  return ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
+}
 
 describe("GithubCollaboratorManager", () => {
   beforeEach(() => {
@@ -35,7 +64,9 @@ describe("GithubCollaboratorManager", () => {
       ],
     });
 
-    render(<GithubCollaboratorManager appId={1} />);
+    render(<GithubCollaboratorManager appId={1} />, {
+      wrapper: createWrapper(),
+    });
 
     expect(await screen.findByTestId("collaborator-item-octo")).toBeTruthy();
     expect(screen.getByTestId("collaborator-invite-input")).toBeTruthy();
@@ -49,7 +80,9 @@ describe("GithubCollaboratorManager", () => {
       collaborators: [],
     });
 
-    render(<GithubCollaboratorManager appId={1} />);
+    render(<GithubCollaboratorManager appId={1} />, {
+      wrapper: createWrapper(),
+    });
 
     expect(await screen.findByTestId("collaborators-no-access")).toBeTruthy();
     expect(screen.queryByTestId("collaborator-invite-input")).toBeNull();
@@ -64,7 +97,9 @@ describe("GithubCollaboratorManager", () => {
       }),
     );
 
-    render(<GithubCollaboratorManager appId={1} />);
+    render(<GithubCollaboratorManager appId={1} />, {
+      wrapper: createWrapper(),
+    });
 
     expect(screen.getByText("Loading collaborators...")).toBeTruthy();
     expect(screen.queryByTestId("collaborator-invite-input")).toBeNull();
@@ -87,7 +122,9 @@ describe("GithubCollaboratorManager", () => {
           }),
     );
 
-    const { rerender } = render(<GithubCollaboratorManager appId={1} />);
+    const { rerender } = render(<GithubCollaboratorManager appId={1} />, {
+      wrapper: createWrapper(),
+    });
     rerender(<GithubCollaboratorManager appId={2} />);
     expect(await screen.findByTestId("collaborator-item-octo")).toBeTruthy();
 
@@ -106,7 +143,9 @@ describe("GithubCollaboratorManager", () => {
         : new Promise(() => {}),
     );
 
-    const { rerender } = render(<GithubCollaboratorManager appId={1} />);
+    const { rerender } = render(<GithubCollaboratorManager appId={1} />, {
+      wrapper: createWrapper(),
+    });
     expect(await screen.findByTestId("collaborators-no-access")).toBeTruthy();
 
     rerender(<GithubCollaboratorManager appId={2} />);
@@ -120,12 +159,58 @@ describe("GithubCollaboratorManager", () => {
       new Error("Failed to list collaborators: 403 Forbidden (SSO required)"),
     );
 
-    render(<GithubCollaboratorManager appId={1} />);
+    render(<GithubCollaboratorManager appId={1} />, {
+      wrapper: createWrapper(),
+    });
 
     await waitFor(() =>
       expect(showError).toHaveBeenCalledWith(
-        "Failed to load collaborators: Failed to list collaborators: 403 Forbidden (SSO required)",
+        expect.objectContaining({
+          message: "Failed to list collaborators: 403 Forbidden (SSO required)",
+        }),
       ),
     );
+  });
+
+  it("does not leave the next app loading when an earlier app's invite finishes", async () => {
+    let resolveInvite!: () => void;
+    github.inviteCollaborator.mockReturnValue(
+      new Promise<void>((resolve) => {
+        resolveInvite = resolve;
+      }),
+    );
+    github.listCollaborators.mockImplementation(({ appId }) =>
+      Promise.resolve({
+        canManage: true,
+        collaborators: [
+          { login: appId === 1 ? "first" : "second", avatar_url: "" },
+        ],
+      }),
+    );
+
+    const { rerender } = render(<GithubCollaboratorManager appId={1} />, {
+      wrapper: createWrapper(),
+    });
+    await screen.findByTestId("collaborator-item-first");
+    fireEvent.change(screen.getByTestId("collaborator-invite-input"), {
+      target: { value: "newcomer" },
+    });
+    fireEvent.click(screen.getByTestId("collaborator-invite-button"));
+    expect(github.inviteCollaborator).toHaveBeenCalledWith({
+      appId: 1,
+      username: "newcomer",
+    });
+
+    rerender(<GithubCollaboratorManager appId={2} />);
+    await screen.findByTestId("collaborator-item-second");
+
+    await act(async () => {
+      resolveInvite();
+    });
+
+    await waitFor(() =>
+      expect(screen.queryByText("Loading collaborators...")).toBeNull(),
+    );
+    expect(screen.getByTestId("collaborator-item-second")).toBeTruthy();
   });
 });

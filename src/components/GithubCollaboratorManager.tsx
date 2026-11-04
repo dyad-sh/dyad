@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -46,7 +46,9 @@ interface CollaboratorManagerProps {
 export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
   const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [canManage, setCanManage] = useState(true);
+  // null until the current app's first load finishes.
+  const [canManage, setCanManage] = useState<boolean | null>(null);
+  const currentAppId = useRef(appId);
   const [inviteUsername, setInviteUsername] = useState("");
   const [isInviting, setIsInviting] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -56,22 +58,30 @@ export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
 
   const loadCollaborators = useCallback(async () => {
     setIsLoading(true);
+    // Results for an app the user has since switched away from are dropped.
+    const isCurrent = () => currentAppId.current === appId;
     try {
       const result = await ipc.github.listCollaborators({ appId });
+      if (!isCurrent()) return;
       setCanManage(result.canManage);
       setCollaborators(result.collaborators);
     } catch (error: any) {
+      if (!isCurrent()) return;
       console.error("Failed to load collaborators:", error);
       showError("Failed to load collaborators: " + error.message);
+      setCanManage(true);
     } finally {
-      setIsLoading(false);
+      if (isCurrent()) setIsLoading(false);
     }
   }, [appId]);
 
   // Now the effect depends on loadCollaborators, which only changes when appId changes
   useEffect(() => {
+    currentAppId.current = appId;
+    setCanManage(null);
+    setCollaborators([]);
     loadCollaborators();
-  }, [loadCollaborators]);
+  }, [appId, loadCollaborators]);
 
   const handleInvite = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -140,7 +150,11 @@ export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
         }`}
       >
         <CardContent className="space-y-4">
-          {!canManage ? (
+          {canManage === null ? (
+            <div className="text-sm text-center py-4 text-gray-500">
+              Loading collaborators...
+            </div>
+          ) : !canManage ? (
             <div
               className="text-sm text-center py-4 text-gray-500 bg-gray-50 dark:bg-gray-800/50 rounded-md"
               data-testid="collaborators-no-access"

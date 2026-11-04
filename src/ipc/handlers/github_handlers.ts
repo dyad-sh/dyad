@@ -1175,14 +1175,17 @@ export async function handleListCollaborators(
       ) {
         return { canManage: false, collaborators: [] };
       }
-      const message = `Failed to list collaborators: ${response.status} ${response.statusText}${
-        githubMessage ? ` (${githubMessage})` : ""
-      }`;
+      const statusMessage = `Failed to list collaborators: ${response.status} ${response.statusText}`;
+      const detailedMessage = githubMessage
+        ? `${statusMessage} (${githubMessage})`
+        : statusMessage;
+      logger.warn(`[GitHub Handler] ${detailedMessage}`);
       if (response.status === 401 || response.status === 403) {
-        logger.warn(`[GitHub Handler] ${message}`);
-        throw new DyadError(message, DyadErrorKind.Auth);
+        throw new DyadError(detailedMessage, DyadErrorKind.Auth);
       }
-      throw new Error(message);
+      // Plain errors are sent to telemetry, and GitHub's message can include
+      // user or request identifiers, so keep it out of this one.
+      throw new Error(statusMessage);
     }
 
     const collaborators = (await response.json()) as any[];

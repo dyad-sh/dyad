@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const github = vi.hoisted(() => ({
@@ -54,6 +54,65 @@ describe("GithubCollaboratorManager", () => {
     expect(await screen.findByTestId("collaborators-no-access")).toBeTruthy();
     expect(screen.queryByTestId("collaborator-invite-input")).toBeNull();
     expect(showError).not.toHaveBeenCalled();
+  });
+
+  it("hides the invite form until the access check finishes", async () => {
+    let resolveLoad!: (value: unknown) => void;
+    github.listCollaborators.mockReturnValue(
+      new Promise((resolve) => {
+        resolveLoad = resolve;
+      }),
+    );
+
+    render(<GithubCollaboratorManager appId={1} />);
+
+    expect(screen.getByText("Loading collaborators...")).toBeTruthy();
+    expect(screen.queryByTestId("collaborator-invite-input")).toBeNull();
+
+    resolveLoad({ canManage: false, collaborators: [] });
+    expect(await screen.findByTestId("collaborators-no-access")).toBeTruthy();
+    expect(screen.queryByTestId("collaborator-invite-input")).toBeNull();
+  });
+
+  it("ignores a late result for an app the user switched away from", async () => {
+    let resolveFirst!: (value: unknown) => void;
+    github.listCollaborators.mockImplementation(({ appId }) =>
+      appId === 1
+        ? new Promise((resolve) => {
+            resolveFirst = resolve;
+          })
+        : Promise.resolve({
+            canManage: true,
+            collaborators: [{ login: "octo", avatar_url: "https://avatar" }],
+          }),
+    );
+
+    const { rerender } = render(<GithubCollaboratorManager appId={1} />);
+    rerender(<GithubCollaboratorManager appId={2} />);
+    expect(await screen.findByTestId("collaborator-item-octo")).toBeTruthy();
+
+    await act(async () => {
+      resolveFirst({ canManage: false, collaborators: [] });
+    });
+
+    expect(screen.queryByTestId("collaborators-no-access")).toBeNull();
+    expect(screen.getByTestId("collaborator-item-octo")).toBeTruthy();
+  });
+
+  it("clears the previous app's no-access message while the next app loads", async () => {
+    github.listCollaborators.mockImplementation(({ appId }) =>
+      appId === 1
+        ? Promise.resolve({ canManage: false, collaborators: [] })
+        : new Promise(() => {}),
+    );
+
+    const { rerender } = render(<GithubCollaboratorManager appId={1} />);
+    expect(await screen.findByTestId("collaborators-no-access")).toBeTruthy();
+
+    rerender(<GithubCollaboratorManager appId={2} />);
+
+    expect(screen.queryByTestId("collaborators-no-access")).toBeNull();
+    expect(screen.getByText("Loading collaborators...")).toBeTruthy();
   });
 
   it("still shows an error toast for other failures", async () => {

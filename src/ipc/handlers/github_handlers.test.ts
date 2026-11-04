@@ -536,13 +536,22 @@ describe("handleListCollaborators", () => {
     return {
       ok: status >= 200 && status < 300,
       status,
-      statusText: status === 403 ? "Forbidden" : "Error",
+      statusText:
+        status === 401
+          ? "Unauthorized"
+          : status === 403
+            ? "Forbidden"
+            : "Error",
       json: async () => body,
     };
   }
 
   function mockGitHub(routes: Record<string, ReturnType<typeof jsonResponse>>) {
-    vi.mocked(fetch).mockImplementation((async (url: string) => {
+    vi.mocked(fetch).mockImplementation((async (
+      url: string,
+      init?: { headers?: Record<string, string> },
+    ) => {
+      expect(init?.headers?.Authorization).toBe("Bearer test-token");
       const response = routes[url];
       if (!response) throw new Error(`Unexpected fetch: ${url}`);
       return response;
@@ -592,6 +601,25 @@ describe("handleListCollaborators", () => {
     await expect(
       handleListCollaborators({} as never, { appId: 1 }),
     ).resolves.toEqual({ canManage: false, collaborators: [] });
+    expect(vi.mocked(fetch).mock.calls.map(([url]) => url)).toEqual([
+      collaboratorsUrl,
+      repoUrl,
+    ]);
+  });
+
+  it("classifies a 401 as an auth error with GitHub's message", async () => {
+    mockGitHub({
+      [collaboratorsUrl]: jsonResponse(401, { message: "Bad credentials" }),
+    });
+
+    await expect(
+      handleListCollaborators({} as never, { appId: 1 }),
+    ).rejects.toMatchObject({
+      kind: DyadErrorKind.Auth,
+      message:
+        "Failed to list collaborators: 401 Unauthorized (Bad credentials)",
+    });
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it("surfaces GitHub's message for a 403 the user's permissions do not explain", async () => {
@@ -626,17 +654,17 @@ describe("handleListCollaborators", () => {
     });
   });
 
-  it("includes GitHub's message for other failures", async () => {
+  it("keeps GitHub's message out of errors that reach telemetry", async () => {
     mockGitHub({
-      [collaboratorsUrl]: jsonResponse(500, { message: "Server Error" }),
+      [collaboratorsUrl]: jsonResponse(429, {
+        message: "API rate limit exceeded for user ID 12345.",
+      }),
     });
 
     const error = await handleListCollaborators({} as never, {
       appId: 1,
     }).catch((e) => e);
-    expect(error.message).toBe(
-      "Failed to list collaborators: 500 Error (Server Error)",
-    );
+    expect(error.message).toBe("Failed to list collaborators: 429 Error");
     expect(error.kind).toBeUndefined();
   });
 });

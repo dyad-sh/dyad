@@ -44,11 +44,18 @@ interface Collaborator {
 
 interface CollaboratorManagerProps {
   appId: number;
+  githubOrg: string;
+  githubRepo: string;
 }
 
-export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
+export function GithubCollaboratorManager({
+  appId,
+  githubOrg,
+  githubRepo,
+}: CollaboratorManagerProps) {
   const queryClient = useQueryClient();
-  const { data, isError, isFetching } = useGithubCollaborators(appId);
+  const queryParams = { appId, owner: githubOrg, repo: githubRepo };
+  const { data, isError } = useGithubCollaborators(queryParams);
   const collaborators: Collaborator[] = data?.collaborators ?? [];
   // null until this app's access is known. A failed load keeps the form usable.
   const canManage = data ? data.canManage : isError ? true : null;
@@ -59,9 +66,9 @@ export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
     string | null
   >(null);
 
-  const refreshCollaborators = (forAppId: number) =>
+  const refreshCollaborators = () =>
     queryClient.invalidateQueries({
-      queryKey: queryKeys.github.collaborators({ appId: forAppId }),
+      queryKey: queryKeys.github.collaborators(queryParams),
     });
 
   const handleInvite = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -75,7 +82,7 @@ export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
       showSuccess(`Invited ${trimmedUsername} to the project.`);
       setInviteUsername("");
       // Reload list (though they might be pending)
-      refreshCollaborators(appId);
+      refreshCollaborators();
     } catch (error: any) {
       showError(error.message);
     } finally {
@@ -92,7 +99,7 @@ export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
         username: collaboratorToDelete,
       });
       showSuccess(`Removed ${collaboratorToDelete} from the project.`);
-      refreshCollaborators(appId);
+      refreshCollaborators();
     } catch (error: any) {
       showError(error.message);
     } finally {
@@ -175,11 +182,7 @@ export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
                 <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">
                   Current Team
                 </h3>
-                {isFetching ? (
-                  <div className="text-sm text-center py-4 text-gray-500">
-                    Loading collaborators...
-                  </div>
-                ) : collaborators.length === 0 ? (
+                {collaborators.length === 0 ? (
                   <div className="text-sm text-center py-4 text-gray-500 bg-gray-50 dark:bg-gray-800/50 rounded-md">
                     No collaborators found.
                   </div>

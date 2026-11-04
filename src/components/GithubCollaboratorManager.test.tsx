@@ -27,11 +27,13 @@ vi.mock("@/lib/toast", () => ({ showError, showSuccess }));
 
 import { GithubCollaboratorManager } from "./GithubCollaboratorManager";
 
-// Mirrors the app's QueryClient: no retries, and queries with
+const repo = { githubOrg: "acme", githubRepo: "demo" };
+
+// Mirrors the app's QueryClient: 60s staleTime, no retries, and queries with
 // meta.showErrorToast report failures through showError.
 function createWrapper() {
   const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
+    defaultOptions: { queries: { staleTime: 60_000, retry: false } },
     queryCache: new QueryCache({
       onError: (error, query) => {
         if (query.meta?.showErrorToast) showError(error);
@@ -64,7 +66,7 @@ describe("GithubCollaboratorManager", () => {
       ],
     });
 
-    render(<GithubCollaboratorManager appId={1} />, {
+    render(<GithubCollaboratorManager appId={1} {...repo} />, {
       wrapper: createWrapper(),
     });
 
@@ -80,7 +82,7 @@ describe("GithubCollaboratorManager", () => {
       collaborators: [],
     });
 
-    render(<GithubCollaboratorManager appId={1} />, {
+    render(<GithubCollaboratorManager appId={1} {...repo} />, {
       wrapper: createWrapper(),
     });
 
@@ -97,7 +99,7 @@ describe("GithubCollaboratorManager", () => {
       }),
     );
 
-    render(<GithubCollaboratorManager appId={1} />, {
+    render(<GithubCollaboratorManager appId={1} {...repo} />, {
       wrapper: createWrapper(),
     });
 
@@ -122,10 +124,13 @@ describe("GithubCollaboratorManager", () => {
           }),
     );
 
-    const { rerender } = render(<GithubCollaboratorManager appId={1} />, {
-      wrapper: createWrapper(),
-    });
-    rerender(<GithubCollaboratorManager appId={2} />);
+    const { rerender } = render(
+      <GithubCollaboratorManager appId={1} {...repo} />,
+      {
+        wrapper: createWrapper(),
+      },
+    );
+    rerender(<GithubCollaboratorManager appId={2} {...repo} />);
     expect(await screen.findByTestId("collaborator-item-octo")).toBeTruthy();
 
     await act(async () => {
@@ -143,12 +148,15 @@ describe("GithubCollaboratorManager", () => {
         : new Promise(() => {}),
     );
 
-    const { rerender } = render(<GithubCollaboratorManager appId={1} />, {
-      wrapper: createWrapper(),
-    });
+    const { rerender } = render(
+      <GithubCollaboratorManager appId={1} {...repo} />,
+      {
+        wrapper: createWrapper(),
+      },
+    );
     expect(await screen.findByTestId("collaborators-no-access")).toBeTruthy();
 
-    rerender(<GithubCollaboratorManager appId={2} />);
+    rerender(<GithubCollaboratorManager appId={2} {...repo} />);
 
     expect(screen.queryByTestId("collaborators-no-access")).toBeNull();
     expect(screen.getByText("Loading collaborators...")).toBeTruthy();
@@ -159,7 +167,7 @@ describe("GithubCollaboratorManager", () => {
       new Error("Failed to list collaborators: 403 Forbidden (SSO required)"),
     );
 
-    render(<GithubCollaboratorManager appId={1} />, {
+    render(<GithubCollaboratorManager appId={1} {...repo} />, {
       wrapper: createWrapper(),
     });
 
@@ -188,9 +196,12 @@ describe("GithubCollaboratorManager", () => {
       }),
     );
 
-    const { rerender } = render(<GithubCollaboratorManager appId={1} />, {
-      wrapper: createWrapper(),
-    });
+    const { rerender } = render(
+      <GithubCollaboratorManager appId={1} {...repo} />,
+      {
+        wrapper: createWrapper(),
+      },
+    );
     await screen.findByTestId("collaborator-item-first");
     fireEvent.change(screen.getByTestId("collaborator-invite-input"), {
       target: { value: "newcomer" },
@@ -201,7 +212,7 @@ describe("GithubCollaboratorManager", () => {
       username: "newcomer",
     });
 
-    rerender(<GithubCollaboratorManager appId={2} />);
+    rerender(<GithubCollaboratorManager appId={2} {...repo} />);
     await screen.findByTestId("collaborator-item-second");
 
     await act(async () => {
@@ -212,5 +223,77 @@ describe("GithubCollaboratorManager", () => {
       expect(screen.queryByText("Loading collaborators...")).toBeNull(),
     );
     expect(screen.getByTestId("collaborator-item-second")).toBeTruthy();
+  });
+
+  it("keeps the list visible while it refreshes after an invite", async () => {
+    github.inviteCollaborator.mockResolvedValue(undefined);
+    github.listCollaborators.mockResolvedValueOnce({
+      canManage: true,
+      collaborators: [{ login: "octo", avatar_url: "" }],
+    });
+    github.listCollaborators.mockReturnValue(new Promise(() => {}));
+
+    render(<GithubCollaboratorManager appId={1} {...repo} />, {
+      wrapper: createWrapper(),
+    });
+    await screen.findByTestId("collaborator-item-octo");
+    fireEvent.change(screen.getByTestId("collaborator-invite-input"), {
+      target: { value: "newcomer" },
+    });
+    fireEvent.click(screen.getByTestId("collaborator-invite-button"));
+
+    await waitFor(() =>
+      expect(github.listCollaborators).toHaveBeenCalledTimes(2),
+    );
+    expect(screen.getByTestId("collaborator-item-octo")).toBeTruthy();
+    expect(screen.queryByText("Loading collaborators...")).toBeNull();
+  });
+
+  it("does not show the previous repo's collaborators after the app is re-linked", async () => {
+    github.listCollaborators.mockResolvedValueOnce({
+      canManage: true,
+      collaborators: [{ login: "old-repo-user", avatar_url: "" }],
+    });
+    github.listCollaborators.mockReturnValue(new Promise(() => {}));
+    const wrapper = createWrapper();
+
+    const { unmount } = render(
+      <GithubCollaboratorManager appId={1} {...repo} />,
+      { wrapper },
+    );
+    await screen.findByTestId("collaborator-item-old-repo-user");
+    unmount();
+
+    render(
+      <GithubCollaboratorManager
+        appId={1}
+        githubOrg="acme"
+        githubRepo="other"
+      />,
+      { wrapper },
+    );
+
+    expect(screen.queryByTestId("collaborator-item-old-repo-user")).toBeNull();
+    expect(screen.getByText("Loading collaborators...")).toBeTruthy();
+  });
+
+  it("refetches when the panel mounts again within the app's stale window", async () => {
+    github.listCollaborators.mockResolvedValue({
+      canManage: true,
+      collaborators: [{ login: "octo", avatar_url: "" }],
+    });
+    const wrapper = createWrapper();
+
+    const { unmount } = render(
+      <GithubCollaboratorManager appId={1} {...repo} />,
+      { wrapper },
+    );
+    await screen.findByTestId("collaborator-item-octo");
+    unmount();
+    render(<GithubCollaboratorManager appId={1} {...repo} />, { wrapper });
+
+    await waitFor(() =>
+      expect(github.listCollaborators).toHaveBeenCalledTimes(2),
+    );
   });
 });

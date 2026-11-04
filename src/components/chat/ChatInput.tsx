@@ -35,7 +35,8 @@ import {
   agentTodosByChatIdAtom,
 } from "@/atoms/chatAtoms";
 import { chatAnnotationsAtom } from "@/atoms/chatAnnotationAtoms";
-import { atom, useAtom, useSetAtom, useAtomValue, useStore } from "jotai";
+import { useAtom, useSetAtom, useAtomValue, useStore } from "jotai";
+import { showTokenBarAtom } from "@/atoms/chatDisplayAtoms";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { Button } from "@/components/ui/button";
@@ -133,8 +134,6 @@ import {
   composeChatPrompt,
   hasChatComposerPayload,
 } from "@/lib/serializeChatAnnotations";
-
-const showTokenBarAtom = atom(false);
 
 export function ChatInput({ chatId }: { chatId?: number }) {
   const { t } = useTranslation("chat");

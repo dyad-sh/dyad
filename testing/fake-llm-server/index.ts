@@ -648,6 +648,28 @@ export function createFakeLlmApp(getPort: () => number) {
     res.json(lmStudioModels);
   });
 
+  // Google API-key validation lists models instead of generating text.
+  app.get("/google/v1beta/models", (req, res) => {
+    const apiKey = String(req.headers["x-goog-api-key"] ?? "");
+    if (/invalid/i.test(apiKey)) {
+      return res.status(400).json({
+        error: {
+          code: 400,
+          message: "API key not valid. Please pass a valid API key.",
+          status: "INVALID_ARGUMENT",
+        },
+      });
+    }
+    res.json({
+      models: [
+        {
+          name: "models/gemini-flash-latest",
+          displayName: "Gemini Flash Latest",
+        },
+      ],
+    });
+  });
+
   app.post(
     /^\/google\/v1beta\/models\/.+:(streamGenerateContent|generateContent)/,
     (req, res) => {

@@ -237,8 +237,12 @@ describe("ProviderSettingsPage", () => {
   it.each([
     [DyadErrorKind.RateLimited, "Google rate limited the API key check."],
     [
+      DyadErrorKind.Precondition,
+      "Couldn't reach Google to check this API key.",
+    ],
+    [
       DyadErrorKind.External,
-      "Google did not respond while checking this API key.",
+      "Dyad could not verify this Google API key: Internal error.",
     ],
   ])(
     "titles %s validation errors as unverified API keys",

@@ -83,7 +83,7 @@ interface BuildSlot {
   id: string;
   cancelledAt?: number;
   /** Cancelled or timed out, but abandoned preparation has not settled. */
-  stopping: boolean;
+  abandoned: boolean;
 }
 
 const activeBuilds = new Map<number, BuildSlot>();
@@ -243,7 +243,7 @@ async function prepareIsolatedBuild(
  *
  * Abandoning does not stop `work`: a filesystem call or package-manager probe
  * may keep reading the live repository and writing the snapshot. `onAbandon`
- * must keep the build slot until it settles and clean any snapshot it produces.
+ * must arrange background cleanup of any snapshot it produces.
  * Coordinator ownership ends immediately; an abandoned snapshot may race later
  * edits or path changes, but must never proceed to install or build.
  */
@@ -437,8 +437,8 @@ function streamBuildOutput(ctx: AgentContext, accumulatedOutput: string): void {
 interface BuildOperationScope {
   releaseResources: AppOperationContext["releaseResources"];
   registerSnapshot: (snapshot: Snapshot) => void;
-  /** Keep only the build slot until abandoned `work` settles. */
-  retainBuildSlotUntilSettled: (work: Promise<unknown>) => void;
+  /** Release the build slot and arrange eventual cleanup of abandoned work. */
+  abandonPreparation: (work: Promise<unknown>) => void;
 }
 
 // Settle the tool result as soon as host execution ends, while the original
@@ -448,8 +448,8 @@ interface BuildOperationScope {
 // Cancellation and the deadline may also abandon a preparation step that does
 // not stop when aborted. The tool result still settles, so the turn can finish
 // cancelling. End coordinator ownership immediately so edits, rename and deletion
-// can proceed. A detached owner keeps only the per-app build slot until the step
-// settles, then removes any snapshot it produced. The discarded preparation may
+// can proceed, including a new build. A detached owner waits for the step to
+// settle, then removes any snapshot it produced. The discarded preparation may
 // fail as its source changes; that must not block later app operations.
 function runBuildOperation(
   ctx: AgentContext,
@@ -498,16 +498,18 @@ function runBuildOperation(
                 registerSnapshot: (captured) => {
                   snapshot = captured;
                 },
-                retainBuildSlotUntilSettled: (work) => {
-                  slot.stopping = true;
+                abandonPreparation: (work) => {
+                  slot.abandoned = true;
                   retained.push(work);
+                  releaseBuildSlot();
+                  logger.info(`${label} build slot released`);
                 },
               }),
             );
           } catch (error) {
             reject(error);
           } finally {
-            if (slot.stopping) {
+            if (slot.abandoned) {
               logger.info(
                 `${label} tool result settled; underlying preparation still outstanding; ending coordinator ownership and releasing all claims`,
               );
@@ -518,12 +520,9 @@ function runBuildOperation(
                 logger.info(
                   `${label} outstanding preparation settled after ${Date.now() - slot.cancelledAt!} ms since cancellation/deadline`,
                 );
-                releaseBuildSlot();
-                logger.info(`${label} build slot released`);
                 await cleanupSnapshot();
                 logger.info(`${label} abandoned snapshot cleanup settled`);
               })().catch((error) => {
-                releaseBuildSlot();
                 logger.warn(
                   `${label} abandoned preparation cleanup failed:`,
                   error,
@@ -572,28 +571,22 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
       : '<dyad-status title="Running production build"></dyad-status>',
 
   execute: async (_args, ctx) => {
-    const running = activeBuilds.get(ctx.appId);
-    if (running) {
-      const body = running.stopping
-        ? "The previous production build for this app was stopped but is still finishing its workspace setup. Wait for it to finish instead of starting another one."
-        : "A production build is already running for this app. Wait for it to finish instead of starting another one.";
+    if (activeBuilds.has(ctx.appId)) {
+      const body =
+        "A production build is already running for this app. Wait for it to finish instead of starting another one.";
       completeStatus(ctx, "Build already running", body, "warning");
       return body;
     }
 
     const slot: BuildSlot = {
       id: randomUUID(),
-      stopping: false,
+      abandoned: false,
     };
     activeBuilds.set(ctx.appId, slot);
     return runBuildOperation(
       ctx,
       slot,
-      async ({
-        releaseResources,
-        registerSnapshot,
-        retainBuildSlotUntilSettled,
-      }) => {
+      async ({ releaseResources, registerSnapshot, abandonPreparation }) => {
         const state = (ctx.buildAttemptState ??= {
           count: 0,
         } satisfies BuildAttemptState);
@@ -668,9 +661,9 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
             () => {
               slot.cancelledAt = Date.now();
               logger.warn(
-                `Isolated build preparation ${slot.id} for app ${ctx.appId} ${abortScope.timedOut() ? "reached its deadline" : "was cancelled"} during "${preparationWatch.currentPhase()}"; releasing coordinator ownership, keeping only the build slot until that step settles.`,
+                `Isolated build preparation ${slot.id} for app ${ctx.appId} ${abortScope.timedOut() ? "reached its deadline" : "was cancelled"} during "${preparationWatch.currentPhase()}"; releasing coordinator ownership and the build slot; preparation cleanup will continue in the background.`,
               );
-              retainBuildSlotUntilSettled(preparation);
+              abandonPreparation(preparation);
             },
           );
           // Abort may arrive after preparation resolves but before this await

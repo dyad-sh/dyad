@@ -497,7 +497,7 @@ describe("isolated production build execution", () => {
   );
 
   it.each(["worktree creation", "package manager resolution"] as const)(
-    "releases coordinator ownership during a stuck %s but keeps the build slot until it settles",
+    "releases coordinator ownership and the build slot during a stuck %s",
     async (step) => {
       const stuck = deferred();
       const cleanup = deferred();
@@ -551,7 +551,7 @@ describe("isolated production build execution", () => {
         ).toBeUndefined();
 
         // Later edits, runtime changes, rename and deletion must proceed even
-        // while preparation is still stuck. Only another build is refused.
+        // while preparation is still stuck.
         await edit;
         expect(edited).toBe(true);
         await appOperationCoordinator.run(
@@ -579,9 +579,9 @@ describe("isolated production build execution", () => {
         expect(buildLogs.info).not.toHaveBeenCalledWith(
           expect.stringContaining("outstanding preparation settled after"),
         );
-        await expect(
-          runBuildTool.execute({}, { ...ctx, abortSignal: undefined }),
-        ).resolves.toContain("still finishing its workspace setup");
+        expect(buildLogs.info).toHaveBeenCalledWith(
+          expect.stringContaining("build slot released"),
+        );
 
         stuck.resolve();
         // A snapshot created after cancellation is still cleaned up, and
@@ -613,11 +613,11 @@ describe("isolated production build execution", () => {
           .map(([message]) => message)
           .filter((message: string) => message.startsWith("Production build "));
         expect(lifecycle).toEqual([
+          expect.stringContaining("build slot released"),
           expect.stringContaining(
             "tool result settled; underlying preparation still outstanding",
           ),
           expect.stringContaining("outstanding preparation settled after"),
-          expect.stringContaining("build slot released"),
           expect.stringContaining("abandoned snapshot cleanup settled"),
         ]);
       } finally {
@@ -637,7 +637,107 @@ describe("isolated production build execution", () => {
     },
   );
 
-  it("reports the deadline and releases coordinator ownership while keeping the build slot until preparation settles", async () => {
+  it.each(["worktree creation", "package manager resolution"] as const)(
+    "allows a new build while abandoned %s is stuck and preserves the new build's slot when old work settles",
+    async (step) => {
+      const stuck = deferred();
+      const nextInstallStarted = deferred();
+      const finishNextInstall = deferred();
+      if (step === "worktree creation") {
+        const copyWorkspace = vi
+          .mocked(createGitOverlayWorkspace)
+          .getMockImplementation()!;
+        vi.mocked(createGitOverlayWorkspace).mockImplementationOnce(
+          async (options) => {
+            await stuck.promise;
+            return copyWorkspace(options);
+          },
+        );
+      } else {
+        vi.mocked(resolvePackageManager).mockImplementationOnce(async () => {
+          await stuck.promise;
+          return { packageManager: "npm", sourceInstallPath: appPath };
+        });
+      }
+      const controller = new AbortController();
+      ctx.abortSignal = controller.signal;
+      const execution = runBuildTool.execute({}, ctx);
+      let nextBuild: Promise<string> | undefined;
+      try {
+        await vi.waitFor(() =>
+          expect(
+            step === "worktree creation"
+              ? createGitOverlayWorkspace
+              : resolvePackageManager,
+          ).toHaveBeenCalledOnce(),
+        );
+        controller.abort();
+        await expect(execution).rejects.toMatchObject({
+          kind: "user_cancelled",
+        });
+        const nextWorkspacePath = path.join(root, "next-workspace");
+        vi.mocked(createGitOverlayWorkspace).mockResolvedValueOnce({
+          targetPath: nextWorkspacePath,
+          worktreePath: nextWorkspacePath,
+          sourceTargetPath: appPath,
+          sourceRepoPath: appPath,
+          setupMs: 1,
+        });
+        vi.mocked(runCleanPackageInstall).mockImplementationOnce(async () => {
+          nextInstallStarted.resolve();
+          await finishNextInstall.promise;
+          return success;
+        });
+        const nextCtx = {
+          ...ctx,
+          abortSignal: undefined,
+          buildAttemptState: undefined,
+        };
+        nextBuild = runBuildTool.execute({}, nextCtx);
+        await nextInstallStarted.promise;
+        expect(buildLogs.info).not.toHaveBeenCalledWith(
+          expect.stringContaining("outstanding preparation settled after"),
+        );
+
+        stuck.resolve();
+        await vi.waitFor(() =>
+          expect(buildLogs.info).toHaveBeenCalledWith(
+            expect.stringContaining("abandoned snapshot cleanup settled"),
+          ),
+        );
+        expect(removeGitOverlayWorkspace).toHaveBeenCalledWith(
+          workspacePath,
+          appPath,
+        );
+        expect(removeGitOverlayWorkspace).not.toHaveBeenCalledWith(
+          nextWorkspacePath,
+          appPath,
+        );
+        expect(runCleanPackageInstall).toHaveBeenCalledOnce();
+        await expect(runBuildTool.execute({}, nextCtx)).resolves.toContain(
+          "A production build is already running",
+        );
+
+        finishNextInstall.resolve();
+        await expect(nextBuild).resolves.toContain(
+          "passed for the captured snapshot",
+        );
+        expect(removeGitOverlayWorkspace).toHaveBeenCalledWith(
+          nextWorkspacePath,
+          appPath,
+        );
+      } finally {
+        stuck.resolve();
+        finishNextInstall.resolve();
+        await Promise.allSettled([
+          execution,
+          ...(nextBuild ? [nextBuild] : []),
+        ]);
+      }
+    },
+  );
+
+  it("reports the deadline and releases coordinator ownership and the build slot before preparation settles", async () => {
     const stuck = deferred();
     const copyWorkspace = vi
       .mocked(createGitOverlayWorkspace)
@@ -675,7 +775,7 @@ describe("isolated production build execution", () => {
       }
       await expect(
         runBuildTool.execute({}, { ...ctx, abortSignal: undefined }),
-      ).resolves.toContain("still finishing its workspace setup");
+      ).resolves.toContain("Isolated build setup already failed");
       stuck.resolve();
       await vi.waitFor(() =>
         expect(removeGitOverlayWorkspace).toHaveBeenCalledWith(
@@ -697,7 +797,7 @@ describe("isolated production build execution", () => {
   });
 
   it.each(["worktree creation", "package manager resolution"] as const)(
-    "handles abandoned %s rejecting after the app is deleted and frees the build slot",
+    "handles abandoned %s rejecting after the app is deleted",
     async (step) => {
       const stuck = deferred();
       const rejectAfterDeletion = async () => {

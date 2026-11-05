@@ -173,8 +173,8 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 - Cancellation and the deadline must settle `run_build` during every
   preparation step, including steps that ignore the abort signal. Settle the
   tool result and end coordinator ownership immediately so edits, rename and
-  deletion can proceed. Keep only the per-app build slot until the abandoned
-  step settles, then clean any snapshot it produced in the background. Releasing
+  deletion and later builds can proceed. Release the per-app build slot too,
+  then clean any snapshot the abandoned step produces in the background. Releasing
   resources alone does not unblock deletion: its drain also waits for active
   callbacks. Never install or build from an abandoned preparation.
 - `AgentContext.onXmlStream` replaces the previous preview with the full accumulated XML; callers receiving delta output chunks must append them to a bounded buffer before emitting each update.

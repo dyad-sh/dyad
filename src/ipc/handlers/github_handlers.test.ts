@@ -39,6 +39,7 @@ import {
   handleCreateRepo,
   handleGetGitState,
   handleGetMergeConflicts,
+  handleListCollaborators,
   normalizeGitHubRepoName,
   prepareLocalBranch,
   verifyGithubConnection,
@@ -524,5 +525,146 @@ describe("probing git for the sync state machine", () => {
     await expect(
       handleGetMergeConflicts({} as never, { appId: 1 }),
     ).resolves.toEqual({ files: ["src/conflicted.ts"], provider: null });
+  });
+});
+
+describe("handleListCollaborators", () => {
+  const collaboratorsUrl = `${getGitHubApiBase()}/repos/acme/demo/collaborators`;
+  const repoUrl = `${getGitHubApiBase()}/repos/acme/demo`;
+
+  function jsonResponse(status: number, body: unknown) {
+    return {
+      ok: status >= 200 && status < 300,
+      status,
+      statusText:
+        status === 401
+          ? "Unauthorized"
+          : status === 403
+            ? "Forbidden"
+            : "Error",
+      json: async () => body,
+    };
+  }
+
+  function mockGitHub(routes: Record<string, ReturnType<typeof jsonResponse>>) {
+    vi.mocked(fetch).mockImplementation((async (
+      url: string,
+      init?: { headers?: Record<string, string> },
+    ) => {
+      expect(init?.headers?.Authorization).toBe("Bearer test-token");
+      const response = routes[url];
+      if (!response) throw new Error(`Unexpected fetch: ${url}`);
+      return response;
+    }) as never);
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(readSettings).mockReturnValue({
+      githubAccessToken: { value: "test-token" },
+    } as never);
+    vi.mocked(db.query.apps.findFirst).mockResolvedValue({
+      id: 1,
+      path: "demo",
+      githubOrg: "acme",
+      githubRepo: "demo",
+    } as never);
+  });
+
+  it("returns collaborators when the user can manage the repo", async () => {
+    mockGitHub({
+      [collaboratorsUrl]: jsonResponse(200, [
+        { login: "octo", avatar_url: "https://avatar", permissions: {} },
+      ]),
+    });
+
+    await expect(
+      handleListCollaborators({} as never, { appId: 1 }),
+    ).resolves.toEqual({
+      canManage: true,
+      collaborators: [
+        { login: "octo", avatar_url: "https://avatar", permissions: {} },
+      ],
+    });
+  });
+
+  it("reports no access instead of failing when the user lacks push access", async () => {
+    mockGitHub({
+      [collaboratorsUrl]: jsonResponse(403, {
+        message: "Must have push access to view repository collaborators.",
+      }),
+      [repoUrl]: jsonResponse(200, {
+        permissions: { admin: false, push: false, pull: true },
+      }),
+    });
+
+    await expect(
+      handleListCollaborators({} as never, { appId: 1 }),
+    ).resolves.toEqual({ canManage: false, collaborators: [] });
+    expect(vi.mocked(fetch).mock.calls.map(([url]) => url)).toEqual([
+      collaboratorsUrl,
+      repoUrl,
+    ]);
+  });
+
+  it("classifies a 401 as an auth error with GitHub's message", async () => {
+    mockGitHub({
+      [collaboratorsUrl]: jsonResponse(401, { message: "Bad credentials" }),
+    });
+
+    await expect(
+      handleListCollaborators({} as never, { appId: 1 }),
+    ).rejects.toMatchObject({
+      kind: DyadErrorKind.Auth,
+      message:
+        "Failed to list collaborators: 401 Unauthorized (Bad credentials)",
+    });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("surfaces GitHub's message for a 403 the user's permissions do not explain", async () => {
+    const restriction =
+      "Although you appear to have the correct authorization credentials, the `acme` organization has enabled OAuth App access restrictions.";
+    mockGitHub({
+      [collaboratorsUrl]: jsonResponse(403, { message: restriction }),
+      [repoUrl]: jsonResponse(403, { message: restriction }),
+    });
+
+    await expect(
+      handleListCollaborators({} as never, { appId: 1 }),
+    ).rejects.toMatchObject({
+      kind: DyadErrorKind.Auth,
+      message: `Failed to list collaborators: 403 Forbidden (${restriction})`,
+    });
+  });
+
+  it("does not report no access when the repo shows push access", async () => {
+    mockGitHub({
+      [collaboratorsUrl]: jsonResponse(403, { message: "SSO required" }),
+      [repoUrl]: jsonResponse(200, {
+        permissions: { admin: false, push: true, pull: true },
+      }),
+    });
+
+    await expect(
+      handleListCollaborators({} as never, { appId: 1 }),
+    ).rejects.toMatchObject({
+      kind: DyadErrorKind.Auth,
+      message: expect.stringContaining("(SSO required)"),
+    });
+  });
+
+  it("keeps GitHub's message out of errors that reach telemetry", async () => {
+    mockGitHub({
+      [collaboratorsUrl]: jsonResponse(429, {
+        message: "API rate limit exceeded for user ID 12345.",
+      }),
+    });
+
+    const error = await handleListCollaborators({} as never, {
+      appId: 1,
+    }).catch((e) => e);
+    expect(error.message).toBe("Failed to list collaborators: 429 Error");
+    expect(error.kind).toBeUndefined();
   });
 });

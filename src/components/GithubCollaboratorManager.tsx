@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -10,6 +11,8 @@ import {
 } from "@/components/ui/card";
 import { SimpleAvatar } from "@/components/ui/SimpleAvatar";
 import { ipc } from "@/ipc/types";
+import { queryKeys } from "@/lib/queryKeys";
+import { useGithubCollaborators } from "@/hooks/useGithubCollaborators";
 import {
   Trash2,
   UserPlus,
@@ -41,11 +44,21 @@ interface Collaborator {
 
 interface CollaboratorManagerProps {
   appId: number;
+  githubOrg: string;
+  githubRepo: string;
 }
 
-export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
-  const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+export function GithubCollaboratorManager({
+  appId,
+  githubOrg,
+  githubRepo,
+}: CollaboratorManagerProps) {
+  const queryClient = useQueryClient();
+  const queryParams = { appId, owner: githubOrg, repo: githubRepo };
+  const { data, isError } = useGithubCollaborators(queryParams);
+  const collaborators: Collaborator[] = data?.collaborators ?? [];
+  // null until this app's access is known. A failed load keeps the form usable.
+  const canManage = data ? data.canManage : isError ? true : null;
   const [inviteUsername, setInviteUsername] = useState("");
   const [isInviting, setIsInviting] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -53,23 +66,10 @@ export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
     string | null
   >(null);
 
-  const loadCollaborators = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const collabs = await ipc.github.listCollaborators({ appId });
-      setCollaborators(collabs);
-    } catch (error: any) {
-      console.error("Failed to load collaborators:", error);
-      showError("Failed to load collaborators: " + error.message);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [appId]);
-
-  // Now the effect depends on loadCollaborators, which only changes when appId changes
-  useEffect(() => {
-    loadCollaborators();
-  }, [loadCollaborators]);
+  const refreshCollaborators = () =>
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.github.collaborators(queryParams),
+    });
 
   const handleInvite = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -82,7 +82,7 @@ export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
       showSuccess(`Invited ${trimmedUsername} to the project.`);
       setInviteUsername("");
       // Reload list (though they might be pending)
-      loadCollaborators();
+      refreshCollaborators();
     } catch (error: any) {
       showError(error.message);
     } finally {
@@ -99,7 +99,7 @@ export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
         username: collaboratorToDelete,
       });
       showSuccess(`Removed ${collaboratorToDelete} from the project.`);
-      loadCollaborators();
+      refreshCollaborators();
     } catch (error: any) {
       showError(error.message);
     } finally {
@@ -138,83 +138,99 @@ export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
         }`}
       >
         <CardContent className="space-y-4">
-          {/* Invite Form */}
-          <form onSubmit={handleInvite} className="flex gap-2">
-            <Input
-              placeholder="GitHub username"
-              value={inviteUsername}
-              onChange={(e) => setInviteUsername(e.target.value)}
-              disabled={isInviting}
-              data-testid="collaborator-invite-input"
-            />
-            <Button
-              type="submit"
-              data-testid="collaborator-invite-button"
-              disabled={isInviting || !inviteUsername.trim()}
+          {canManage === null ? (
+            <div className="text-sm text-center py-4 text-gray-500">
+              Loading collaborators...
+            </div>
+          ) : !canManage ? (
+            <div
+              className="text-sm text-center py-4 text-gray-500 bg-gray-50 dark:bg-gray-800/50 rounded-md"
+              data-testid="collaborators-no-access"
             >
-              {isInviting ? (
-                "Inviting..."
-              ) : (
-                <>
-                  <UserPlus className="w-4 h-4 mr-2" />
-                  Invite
-                </>
-              )}
-            </Button>
-          </form>
+              You need write access to this GitHub repository to view or manage
+              its collaborators.
+            </div>
+          ) : (
+            <>
+              {/* Invite Form */}
+              <form onSubmit={handleInvite} className="flex gap-2">
+                <Input
+                  placeholder="GitHub username"
+                  value={inviteUsername}
+                  onChange={(e) => setInviteUsername(e.target.value)}
+                  disabled={isInviting}
+                  data-testid="collaborator-invite-input"
+                />
+                <Button
+                  type="submit"
+                  data-testid="collaborator-invite-button"
+                  disabled={isInviting || !inviteUsername.trim()}
+                >
+                  {isInviting ? (
+                    "Inviting..."
+                  ) : (
+                    <>
+                      <UserPlus className="w-4 h-4 mr-2" />
+                      Invite
+                    </>
+                  )}
+                </Button>
+              </form>
 
-          {/* Collaborators List */}
-          <div className="space-y-2 mt-4">
-            <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">
-              Current Team
-            </h3>
-            {isLoading ? (
-              <div className="text-sm text-center py-4 text-gray-500">
-                Loading collaborators...
-              </div>
-            ) : collaborators.length === 0 ? (
-              <div className="text-sm text-center py-4 text-gray-500 bg-gray-50 dark:bg-gray-800/50 rounded-md">
-                No collaborators found.
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {collaborators.map((collab) => (
-                  <div
-                    key={collab.login}
-                    data-testid={`collaborator-item-${collab.login}`}
-                    className="flex items-center justify-between p-2 rounded-md border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900"
-                  >
-                    <div className="flex items-center gap-3">
-                      <SimpleAvatar
-                        src={collab.avatar_url}
-                        alt={collab.login}
-                        fallbackText={collab.login.slice(0, 2).toUpperCase()}
-                      />
-                      <div>
-                        <p className="text-sm font-medium">{collab.login}</p>
-                        <p className="text-xs text-gray-500">
-                          {collab.permissions?.admin
-                            ? "Admin"
-                            : collab.permissions?.push
-                              ? "Editor"
-                              : "Viewer"}
-                        </p>
-                      </div>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
-                      data-testid={`collaborator-remove-button-${collab.login}`}
-                      onClick={() => setCollaboratorToDelete(collab.login)}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
+              {/* Collaborators List */}
+              <div className="space-y-2 mt-4">
+                <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">
+                  Current Team
+                </h3>
+                {collaborators.length === 0 ? (
+                  <div className="text-sm text-center py-4 text-gray-500 bg-gray-50 dark:bg-gray-800/50 rounded-md">
+                    No collaborators found.
                   </div>
-                ))}
+                ) : (
+                  <div className="space-y-2">
+                    {collaborators.map((collab) => (
+                      <div
+                        key={collab.login}
+                        data-testid={`collaborator-item-${collab.login}`}
+                        className="flex items-center justify-between p-2 rounded-md border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900"
+                      >
+                        <div className="flex items-center gap-3">
+                          <SimpleAvatar
+                            src={collab.avatar_url}
+                            alt={collab.login}
+                            fallbackText={collab.login
+                              .slice(0, 2)
+                              .toUpperCase()}
+                          />
+                          <div>
+                            <p className="text-sm font-medium">
+                              {collab.login}
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              {collab.permissions?.admin
+                                ? "Admin"
+                                : collab.permissions?.push
+                                  ? "Editor"
+                                  : "Viewer"}
+                            </p>
+                          </div>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+                          data-testid={`collaborator-remove-button-${collab.login}`}
+                          onClick={() => setCollaboratorToDelete(collab.login)}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </>
+          )}
         </CardContent>
       </div>
 

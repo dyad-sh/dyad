@@ -290,6 +290,7 @@
     "queueAllTests": "Queue all tests",
     "retryRun": "Retry",
     "runAgain": "Run again",
+    "selectionAlreadyRunning": "Already running. Run it again after this run finishes.",
     "testGate": {
       "settingsLoading": "Loading settings…",
       "settingsUnavailable": "Dyad couldn't load your settings, so it can't tell how tests would run.",

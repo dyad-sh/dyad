@@ -173,7 +173,7 @@ Use Vitest integration tests (`*.integration.test.ts` / `*.integration.test.tsx`
 
 Use Playwright E2E instead when the test needs the packaged Electron runtime, real browser/Electron behavior, native dialogs, screenshots, Monaco/Lexical browser interactions, full navigation flows, or confidence that only the real app shell provides. See [rules/hybrid-testing.md](rules/hybrid-testing.md) for integration-test guidance and [rules/e2e-testing.md](rules/e2e-testing.md) for Playwright guidance.
 
-If `npm test` fails in files unrelated to your change, verify the failure is pre-existing before debugging: `git worktree add /tmp/main-check main`, symlink the repo's `node_modules` into it, and run the failing test file there. If it also fails on clean main, note it in the PR summary and move on. (Known example: `src/ipc/handlers/app_collection_handlers.test.ts` failed on main as of 2026-07-01.)
+If `npm test` fails in files unrelated to your change, verify the failure is pre-existing before debugging: `git worktree add /tmp/main-check main`, symlink the repo's `node_modules` into it, and run the failing test file there. If it also fails on clean main, note it in the PR summary and move on. (Known examples: `src/ipc/handlers/app_collection_handlers.test.ts` failed on main as of 2026-07-01; `src/ipc/services/git_overlay_workspace_diagnostics.test.ts` "logs an overlay removal failure…" failed on main as of 2026-11-04 because it still expects the pre-#4957 `Failed to unregister worktree` log text.)
 
 ### E2E testing
 

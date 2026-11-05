@@ -168,8 +168,12 @@ export const queryKeys = {
     all: ["tests"] as const,
     activeRun: ({ appId }: { appId: number | null }) =>
       ["tests", appId, "active-run"] as const,
+    activeRuns: ({ appId }: { appId: number | null }) =>
+      ["tests", appId, "active-runs"] as const,
+    /** Prefix of every app's `run` mutation key. */
+    runs: ["tests", "run"] as const,
     run: ({ appId }: { appId: number | null }) =>
-      ["tests", appId, "run"] as const,
+      ["tests", "run", appId] as const,
     queue: ({ appId }: { appId: number | null }) =>
       ["tests", appId, "queue"] as const,
     recentRuns: ({ appId }: { appId: number | null }) =>

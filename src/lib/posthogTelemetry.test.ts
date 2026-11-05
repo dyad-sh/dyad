@@ -16,7 +16,10 @@ import {
   DEFAULT_MAX_TOOL_CALL_STEPS,
   MAX_CHAT_TURNS_IN_CONTEXT,
 } from "@/constants/settings_constants";
-import { DEFAULT_ENABLE_SUGGESTED_PROMPTS } from "@/shared/settings_defaults";
+import {
+  DEFAULT_ENABLE_SUGGESTED_PROMPTS,
+  DEFAULT_MAX_CONCURRENT_TEST_RUNS,
+} from "@/shared/settings_defaults";
 
 function makeSettings(overrides: Partial<UserSettings> = {}): UserSettings {
   return {
@@ -697,6 +700,7 @@ const PERSON_PROPERTY_NAMES = [
   "enableMcpToolSearch",
   "enableMultiWindow",
   "enableOwnServerDeployment",
+  "enableParallelTestRuns",
   "enablePreviewCookieIsolation",
   "enableProWebSearch",
   "enableReviewButton",
@@ -711,6 +715,7 @@ const PERSON_PROPERTY_NAMES = [
   "isPro",
   "language",
   "maxChatTurnsInContext",
+  "maxConcurrentTestRuns",
   "maxToolCallSteps",
   "neonConnected",
   "nodeRuntimePreference",
@@ -943,8 +948,10 @@ describe("getSettingsPersonTelemetryProperties", () => {
       enableShellTool: false,
       enableCloudSandbox: false,
       enableSuggestedPrompts: DEFAULT_ENABLE_SUGGESTED_PROMPTS,
+      enableParallelTestRuns: false,
       blockUnsafeNpmPackages: true,
       maxToolCallSteps: DEFAULT_MAX_TOOL_CALL_STEPS,
+      maxConcurrentTestRuns: DEFAULT_MAX_CONCURRENT_TEST_RUNS,
       maxChatTurnsInContext: MAX_CHAT_TURNS_IN_CONTEXT,
       proSmartContextOption: null,
     });
@@ -956,15 +963,19 @@ describe("getSettingsPersonTelemetryProperties", () => {
         makeSettings({
           enableShellTool: true,
           blockUnsafeNpmPackages: false,
+          enableParallelTestRuns: true,
           maxToolCallSteps: 7,
           maxChatTurnsInContext: 9,
+          maxConcurrentTestRuns: 4,
         }),
       ),
     ).toMatchObject({
       enableShellTool: true,
       blockUnsafeNpmPackages: false,
+      enableParallelTestRuns: true,
       maxToolCallSteps: 7,
       maxChatTurnsInContext: 9,
+      maxConcurrentTestRuns: 4,
     });
   });
 });

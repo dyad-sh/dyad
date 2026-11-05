@@ -27,6 +27,8 @@ import {
   SupabaseTestUserActionError,
   supabaseTestUserStepError,
 } from "../utils/supabase_test_user_errors";
+import { withAppTestRun } from "../services/test_run_queue_service";
+import type { RunAppTestsResult } from "../types/tests";
 
 // Every app folder lives under one throwaway base so the delete handler runs
 // against real directories (its path guards resolve symlinks on disk).
@@ -148,6 +150,9 @@ const retainE2eTestArtifactsMock = vi.hoisted(() => vi.fn());
 const startE2eTestRuntimeMock = vi.hoisted(() => vi.fn());
 const spawnStreamingMock = vi.hoisted(() => vi.fn());
 const settleE2eTestProcessesMock = vi.hoisted(() => vi.fn());
+// A spy, because the real record lasts until quit and would hold a slot in the
+// shared queue service for every later test.
+const retainUnsettledE2eTestOwnerMock = vi.hoisted(() => vi.fn());
 const broadcastToRegisteredWindowsMock = vi.hoisted(() => vi.fn());
 // Partially mocked: this module is pulled in transitively by the runtime
 // service, so replacing it wholesale breaks whenever an unrelated export is
@@ -224,6 +229,7 @@ vi.mock("../services/e2e_test_process_registry", async (importOriginal) => ({
     typeof import("../services/e2e_test_process_registry")
   >()),
   settleE2eTestProcesses: settleE2eTestProcessesMock,
+  retainUnsettledE2eTestOwner: retainUnsettledE2eTestOwnerMock,
 }));
 vi.mock("@/ipc/utils/window_broadcast", async (importOriginal) => {
   const actual =
@@ -299,6 +305,7 @@ describe("tests handlers", () => {
     });
     spawnStreamingMock.mockReset();
     settleE2eTestProcessesMock.mockReset().mockResolvedValue(true);
+    retainUnsettledE2eTestOwnerMock.mockReset();
     spawnStreamingMock.mockResolvedValue({
       code: 1,
       stdout: "",
@@ -744,7 +751,7 @@ describe("tests handlers", () => {
       ).toMatchObject({
         resources: [
           { resource: "app-path", mode: "read" },
-          "provider",
+          { resource: "provider", mode: "read" },
           "test-files",
         ],
         allowCompatibleQueueBypass: true,
@@ -767,6 +774,102 @@ describe("tests handlers", () => {
       });
       expect(installE2eTestWorkspaceDependenciesMock).toHaveBeenCalledOnce();
     });
+
+    it.each([
+      { parallel: false, changeMode: false },
+      { parallel: true, changeMode: false },
+      { parallel: false, changeMode: true },
+      { parallel: true, changeMode: true },
+    ])(
+      "preserves admitted mode for resource claims and workers ($parallel, toggle: $changeMode)",
+      async ({ parallel, changeMode }) => {
+        const appId = seedApp("app");
+        harness.db
+          .update(apps)
+          .set({ testingEnabled: true })
+          .where(eq(apps.id, appId))
+          .run();
+        readSettingsMock.mockImplementation(() => ({
+          ...structuredClone(DEFAULT_SETTINGS),
+          enableParallelTestRuns: parallel,
+        }));
+        const contextModule = await import("../services/test_run_context");
+        const contextSpy = vi
+          .spyOn(contextModule, "loadTestRunContext")
+          .mockResolvedValue({
+            workspaceKey: path.join(TEMP_BASE, "app"),
+            exclusive: false,
+          });
+        prepareIsolatedTestDatabaseMock.mockResolvedValue({
+          isolation: { mode: "none" },
+          teardown: vi.fn().mockResolvedValue({
+            envRestored: true,
+            remoteCleanupCompleted: true,
+          }),
+        });
+        let releaseRetention!: () => void;
+        retainE2eTestArtifactsMock.mockReturnValue(
+          new Promise<void>((resolve) => {
+            releaseRetention = resolve;
+          }),
+        );
+        const options = {
+          event: { sender: {} } as any,
+          appId,
+          source: "panel" as const,
+          parallel: true,
+          preview: parallel,
+        };
+        const run = withAppTestRun<RunAppTestsResult>(
+          options,
+          async (queueRun) => {
+            if (changeMode)
+              readSettingsMock.mockImplementation(() => ({
+                ...structuredClone(DEFAULT_SETTINGS),
+                enableParallelTestRuns: !parallel,
+              }));
+            return runAppTestsWithIsolation({ ...options, queueRun });
+          },
+          () => ({ appId, results: [] }),
+        );
+        const mutate = vi.fn();
+        let mutation: Promise<void> | undefined;
+        try {
+          await vi.waitFor(() =>
+            expect(retainE2eTestArtifactsMock).toHaveBeenCalledOnce(),
+          );
+          const args = spawnStreamingMock.mock.calls.at(-1)![0].args;
+          if (parallel) {
+            expect(browserWindowFromWebContentsMock).not.toHaveBeenCalled();
+            expect(args).toContain("--workers=1");
+            expect(args).not.toContain("--fully-parallel");
+          } else {
+            expect(args).toContain("--fully-parallel");
+          }
+          mutation = appOperationCoordinator.run(
+            {
+              appId,
+              operation: "edit-test-assertions",
+              resources: ["test-files"],
+            },
+            async () => {
+              mutate();
+            },
+          );
+          if (parallel) await mutation;
+          else {
+            await Promise.resolve();
+            expect(mutate).not.toHaveBeenCalled();
+          }
+        } finally {
+          releaseRetention();
+          await run;
+          await mutation;
+          contextSpy.mockRestore();
+        }
+        expect(mutate).toHaveBeenCalledOnce();
+      },
+    );
 
     it("marks refusals before lifecycle publication without marking cancellation", async () => {
       const appId = seedApp("app");
@@ -1750,6 +1853,10 @@ describe("tests handlers", () => {
       expect(installE2eTestWorkspaceDependenciesMock).toHaveBeenCalledWith(
         expect.objectContaining({ isolationMode: "none" }),
       );
+      expect(retainE2eTestArtifactsMock).toHaveBeenCalledWith(
+        expect.anything(),
+        { replacesEveryResult: true },
+      );
     });
 
     it("leaves the database in place for a Neon app, whose env was swapped", async () => {
@@ -1864,6 +1971,7 @@ describe("tests handlers", () => {
     it.each(["survivor", "settlement-error"])(
       "defers all cleanup and fences the provider after %s",
       async (outcome) => {
+        const retainForRecovery = vi.fn();
         const appId = seedApp("app");
         harness.db
           .update(apps)
@@ -1877,6 +1985,7 @@ describe("tests handlers", () => {
         prepareIsolatedTestDatabaseMock.mockResolvedValue({
           isolation: { mode: "neon-branch" },
           teardown,
+          retainForRecovery,
         });
         if (outcome === "survivor") {
           settleE2eTestProcessesMock.mockResolvedValue(false);
@@ -1898,6 +2007,7 @@ describe("tests handlers", () => {
         expect(workspace.dispose).not.toHaveBeenCalled();
         expect(teardown).not.toHaveBeenCalled();
         expect(settleE2eTestProcessesMock).toHaveBeenCalledOnce();
+        expect(retainForRecovery).toHaveBeenCalledOnce();
         expect(result.infraError?.message).toMatch(
           /couldn't confirm.*test processes stopped/i,
         );
@@ -1956,6 +2066,12 @@ describe("tests handlers", () => {
         await prepareIsolatedTestDatabaseMock.mock.results[0].value;
       expect(prepared.teardown).not.toHaveBeenCalled();
       expect(appOperationCoordinator.isBusy(appId, ["provider"])).toBe(true);
+      // The registry holds no child for a daemonized survivor, so the stop
+      // verdict itself must keep the run's global scheduler slot.
+      const [owner] = settleE2eTestProcessesMock.mock.calls[0];
+      expect(retainUnsettledE2eTestOwnerMock).toHaveBeenCalledExactlyOnceWith(
+        owner,
+      );
     });
 
     it("refuses a sandbox with no Playwright instead of failing in the CLI", async () => {
@@ -2899,50 +3015,69 @@ describe("tests handlers", () => {
       ]);
       expect(
         await harness.invokeHandler("tests:get-run-queue", { appId }),
-      ).toEqual({ activeRun: null, queuedRuns: [] });
+      ).toEqual({ activeRun: null, activeRuns: [], queuedRuns: [] });
     });
 
-    it("cancels a queued request immediately without stopping the active run", async () => {
-      const appId = seedTestableApp("app");
-      let finish!: (value: unknown) => void;
-      prepareIsolatedTestDatabaseMock.mockReturnValueOnce(
-        new Promise((resolve) => {
-          finish = resolve;
-        }),
-      );
-      const options = {
-        event: { sender: {} } as any,
-        appId,
-        source: "agent" as const,
-      };
-      const first = runAppTestsWithIsolation(options);
-      await vi.waitFor(() =>
-        expect(prepareIsolatedTestDatabaseMock).toHaveBeenCalledOnce(),
-      );
-      const controller = new AbortController();
-      const second = runAppTestsWithIsolation({
-        ...options,
-        externalSignal: controller.signal,
-      });
-      controller.abort();
-      expect((await second).infraError?.message).toContain(
-        "stopped before execution",
-      );
-      expect(
-        prepareIsolatedTestDatabaseMock.mock.calls[0][0].signal.aborted,
-      ).toBe(false);
-      expect(runStates()).toEqual(["started"]);
-      finish({
-        isolation: { mode: "none" },
-        infraError: { message: "done" },
-        teardown: async () => ({
-          envRestored: true,
-          remoteCleanupCompleted: true,
-        }),
-      });
-      await first;
-      expect(prepareIsolatedTestDatabaseMock).toHaveBeenCalledOnce();
-    });
+    it.each(["external", "queue"])(
+      "cancels a queued request via %s without stopping the active run",
+      async (stopSource) => {
+        const appId = seedTestableApp("app");
+        let finish!: (value: unknown) => void;
+        prepareIsolatedTestDatabaseMock.mockReturnValueOnce(
+          new Promise((resolve) => {
+            finish = resolve;
+          }),
+        );
+        const options = {
+          event: { sender: {} } as any,
+          appId,
+          source: "agent" as const,
+        };
+        const first = runAppTestsWithIsolation(options);
+        await vi.waitFor(() =>
+          expect(prepareIsolatedTestDatabaseMock).toHaveBeenCalledOnce(),
+        );
+        const controller = new AbortController();
+        const second = runAppTestsWithIsolation({
+          ...options,
+          externalSignal: controller.signal,
+        });
+        if (stopSource === "external") controller.abort();
+        else {
+          const queue = await harness.invokeHandler<any>(
+            "tests:get-run-queue",
+            { appId },
+          );
+          await harness.invokeHandler("tests:cancel-run", {
+            appId,
+            runId: queue.queuedRuns[0].runId,
+          });
+        }
+        const stopped = await second;
+        if (stopSource === "queue")
+          expect(stopped.infraError).toEqual({
+            message: "Test run stopped before execution from the test queue.",
+            stopReason: { kind: "test-queue-stop" },
+          });
+        expect(stopped.infraError?.message).toContain(
+          "stopped before execution",
+        );
+        expect(
+          prepareIsolatedTestDatabaseMock.mock.calls[0][0].signal.aborted,
+        ).toBe(false);
+        expect(runStates()).toEqual(["started"]);
+        finish({
+          isolation: { mode: "none" },
+          infraError: { message: "done" },
+          teardown: async () => ({
+            envRestored: true,
+            remoteCleanupCompleted: true,
+          }),
+        });
+        await first;
+        expect(prepareIsolatedTestDatabaseMock).toHaveBeenCalledOnce();
+      },
+    );
 
     it("panel Stop cancels pending requests and aborts active setup", async () => {
       const appId = seedTestableApp("app");

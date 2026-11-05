@@ -376,6 +376,40 @@ describe("allocateE2eTestPort", () => {
       for (const port of ports) releaseE2eTestPort(port);
     }
   });
+
+  for (const host of ["::", "0.0.0.0"]) {
+    it(`skips a port held by a wildcard listener on ${host}`, async (ctx) => {
+      // Vite's `host: "::"`. On macOS a bind to `127.0.0.1` and to `::1` both
+      // succeed next to a wildcard listener, so a bind-only probe called the
+      // port free and parallel runs of one app were handed the first run's.
+      const port = await allocateE2eTestPort();
+      releaseE2eTestPort(port);
+      const holder = net.createServer();
+      const listening = await new Promise<boolean>((resolve, reject) => {
+        holder.once("error", (error: NodeJS.ErrnoException) => {
+          if (
+            ["EAFNOSUPPORT", "EADDRNOTAVAIL", "EPROTONOSUPPORT"].includes(
+              error.code ?? "",
+            )
+          )
+            resolve(false);
+          else reject(error);
+        });
+        holder.listen(port, host, () => resolve(true));
+      });
+      if (!listening) {
+        ctx.skip();
+        return;
+      }
+      try {
+        const next = await allocateE2eTestPort();
+        releaseE2eTestPort(next);
+        expect(next).not.toBe(port);
+      } finally {
+        await new Promise<void>((resolve) => holder.close(() => resolve()));
+      }
+    });
+  }
 });
 
 describe("startE2eTestRuntime port recovery", () => {
@@ -500,6 +534,61 @@ describe("startE2eTestRuntime port accounting", () => {
     }
   }, 30_000);
 
+  it("keeps a running server's port reserved until the run stops it", async () => {
+    // A server that has answered owns the port for the rest of the run, even
+    // while no probe can see it: Vite drops its listener on every config
+    // restart, and on macOS a wildcard listener never shows to a bind. Handing
+    // the port back on readiness pointed parallel runs at each other's servers.
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "dyad-e2e-reserved-"));
+    fs.writeFileSync(
+      path.join(root, "server.mjs"),
+      `import fs from "node:fs";
+import http from "node:http";
+const port = Number(process.argv[2]);
+const server = http
+  .createServer((_request, response) => response.end("sandbox"))
+  .listen(port, "127.0.0.1");
+// Drop the listener on request but stay alive, like a restarting dev server.
+const poll = setInterval(() => {
+  if (!fs.existsSync("close-listener")) return;
+  clearInterval(poll);
+  server.close(() => fs.writeFileSync("listener-closed", ""));
+  server.closeAllConnections();
+  setInterval(() => {}, 1000);
+}, 50);
+`,
+    );
+    let runtime: Awaited<ReturnType<typeof startE2eTestRuntime>> | undefined;
+    try {
+      runtime = await startE2eTestRuntime({
+        workspacePath: root,
+        installCommand: NO_OP_INSTALL_COMMAND,
+        startCommand: `"${process.execPath}" server.mjs {port}`,
+      });
+      const port = Number(new URL(runtime.baseUrl).port);
+      fs.writeFileSync(path.join(root, "close-listener"), "");
+      await vi.waitFor(
+        () =>
+          expect(fs.existsSync(path.join(root, "listener-closed"))).toBe(true),
+        { timeout: 10_000 },
+      );
+
+      const whileRunning = await allocateE2eTestPort();
+      releaseE2eTestPort(whileRunning);
+      expect(whileRunning).not.toBe(port);
+
+      await expect(runtime.stop()).resolves.toBe(true);
+      const afterStop = await allocateE2eTestPort();
+      releaseE2eTestPort(afterStop);
+      // Back in the pool once the stop is confirmed: the band scan reaches it
+      // first again. An OS-assigned fallback port carries no such order.
+      if (!bandIsReserved()) expect(afterStop).toBe(port);
+    } finally {
+      await runtime?.stop();
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  }, 60_000);
+
   it("does not retry when a sidecar reports a clash on its own port", async () => {
     // The "exited before becoming ready" error embeds 8KB of server output, so
     // matching a substring of the whole message turned any sidecar's
@@ -567,12 +656,12 @@ describe("startE2eTestRuntime port accounting", () => {
   }, 30_000);
 
   it("never re-picks a port the server already failed to bind", async () => {
-    // `startE2eTestRuntimeOnce` hands its port back in a `finally`, so without
-    // carrying the failures across attempts the rescan starts from the same
-    // offset and hands back the same port. `probePort` only binds 127.0.0.1, so
-    // the case the retry exists for — a port that probes free but the server
-    // cannot take (an `::1`-only listener) — would otherwise burn all three
-    // attempts on one port and report "couldn't get a free port".
+    // A failed attempt hands its port back once its server is confirmed
+    // stopped, so without carrying the failures across attempts the rescan
+    // starts from the same offset and hands back the same port. The case the
+    // retry exists for — a port that probes free but the server cannot take —
+    // would otherwise burn all three attempts on one port and report "couldn't
+    // get a free port".
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "dyad-e2e-ports-"));
     const attempts = path.join(root, "attempts");
     fs.writeFileSync(

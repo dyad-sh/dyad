@@ -15,6 +15,8 @@ vi.mock("@/ipc/utils/process_manager", () => ({
 }));
 
 import {
+  hasUnsettledE2eTestProcesses,
+  retainUnsettledE2eTestOwner,
   settleE2eTestProcesses,
   stopE2eTestProcessesSync,
   trackE2eTestProcess,
@@ -121,6 +123,33 @@ describe("e2e test process registry", () => {
 
       await expect(settleE2eTestProcesses(owner)).resolves.toBe(false);
       expect(trackedE2eTestProcessesForOwner(owner)).toEqual([child]);
+    });
+  });
+
+  describe("hasUnsettledE2eTestProcesses", () => {
+    it("follows the tracked children", () => {
+      const owner = new AbortController().signal;
+      const child = fakeChild(11);
+      trackE2eTestProcess(child, owner);
+      expect(hasUnsettledE2eTestProcesses(owner)).toBe(true);
+
+      child.emit("close", 0, null);
+      expect(hasUnsettledE2eTestProcesses(owner)).toBe(false);
+    });
+
+    it("keeps an explicitly failed settlement after its wrapper closes", () => {
+      // A daemonized server outlives its wrapper: `close` drops the only
+      // tracked child while the server still listens on its port.
+      const owner = new AbortController().signal;
+      const other = new AbortController().signal;
+      const wrapper = fakeChild(11);
+      trackE2eTestProcess(wrapper, owner);
+      wrapper.emit("close", 0, null);
+      retainUnsettledE2eTestOwner(owner);
+
+      expect(trackedE2eTestProcessesForOwner(owner)).toEqual([]);
+      expect(hasUnsettledE2eTestProcesses(owner)).toBe(true);
+      expect(hasUnsettledE2eTestProcesses(other)).toBe(false);
     });
   });
 

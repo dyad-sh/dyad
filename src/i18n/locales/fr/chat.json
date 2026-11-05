@@ -419,6 +419,14 @@
   },
   "safetyReviewUnavailable": "Vérification de sécurité indisponible",
   "testRunQueue": {
+    "waitReason": {
+      "process-cleanup": "En attente de l'arrêt d'un processus de test",
+      "capacity": "En attente de la fin d'une exécution de tests en cours",
+      "compatibility": "En attente d'une base de données et d'un espace de travail compatibles",
+      "earlier-run": "En attente d'une exécution de tests antérieure",
+      "context-unavailable": "En attente de la lecture de la configuration de test de l'application. Vérifiez les fichiers de l'application et le dépôt Git.",
+      "starting": "Démarrage"
+    },
     "title": "File d'attente des tests",
     "openTests": "Ouvrir les tests",
     "allTests": "Tous les tests",
@@ -427,6 +435,7 @@
     "testsPanel": "Panneau Tests",
     "queued": "En attente",
     "running": "En cours",
+    "waitingForNeonBranch": "En attente d'une branche Neon",
     "stopping": "Arrêt en cours",
     "passed": "Réussi",
     "failed": "Échoué",
@@ -434,6 +443,7 @@
     "stopped": "Arrêté",
     "stopReason": {
       "tests-panel-stop": "Arrêté depuis le panneau Tests",
+      "test-queue-stop": "Arrêté depuis la file d'attente des tests",
       "chat-stop": "La réponse du chat a été arrêtée",
       "chat-deleted": "Le chat a été supprimé",
       "version-restored": "Une version antérieure a été restaurée",
@@ -444,7 +454,26 @@
       "agent-cancelled": "Le tour de l'agent a été annulé",
       "app-deleted": "L'application est en cours de suppression",
       "app-quit": "Dyad est en cours de fermeture"
-    }
+    },
+    "stopRun": "Arrêter {{target}}"
+  },
+  "neonBranchLimit": {
+    "title": "Limite de branches Neon atteinte",
+    "waiting": "Votre forfait Neon limite le nombre de branches de base de données. Les tests attendent qu'une autre exécution se termine et libère une branche, puis reprendront automatiquement.",
+    "blocked": "Votre forfait Neon n'a plus de place pour une autre branche de test. Supprimez une branche inutilisée dans Neon ou passez à un forfait supérieur, puis relancez les tests.",
+    "manage": "Ouvrir Neon",
+    "dismiss": "Ignorer l'avis sur les branches Neon"
+  },
+  "testOutput": {
+    "runLabel": "Exécution {{number}} · {{target}}",
+    "files": "{{count}} fichiers",
+    "closeRun": "Fermer la sortie de {{label}}",
+    "close": "Fermer l'onglet de sortie",
+    "title": "Sortie",
+    "toggle": "Afficher ou masquer la sortie des tests",
+    "tabList": "Sortie des exécutions de tests",
+    "noTabs": "Aucun onglet de sortie de test. Lancez les tests pour voir la sortie.",
+    "noOutput": "Aucune sortie pour l'instant."
   },
   "suggestedPrompts": {
     "label": "Prochaines étapes suggérées",

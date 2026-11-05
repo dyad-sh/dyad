@@ -869,22 +869,28 @@ describe("runTestsTool", () => {
       },
     );
 
-    it("tells the agent the user stopped its run from the Tests panel", async () => {
-      const ctx = makeCtx();
-      runner.mockImplementation(async () => {
-        stopAppTestsForApp(1, { kind: "tests-panel-stop" });
-        return { appId: 1, results: [{ file: a, status: "passed" }] };
-      });
-      const out = await runTestsTool.execute({ testFiles: [a] }, ctx);
-      expect(out).toContain("Test run stopped from the Tests panel.");
-      expect(out).toContain(
-        "Do not call run_tests again unless the user asks you to.",
-      );
-      expect(out).not.toContain("infrastructure problem, NOT");
-      expect(ctx.testRunAttempts.get(a)).toEqual({ attempts: 0 });
-      const xml = vi.mocked(ctx.onXmlComplete).mock.calls[0][0];
-      expect(xml).toContain('message="Test run stopped"');
-    });
+    it.each([
+      { kind: "tests-panel-stop" as const, source: "Tests panel" },
+      { kind: "test-queue-stop" as const, source: "test queue" },
+    ])(
+      "tells the agent the user stopped its run from the $source",
+      async ({ kind, source }) => {
+        const ctx = makeCtx();
+        runner.mockImplementation(async () => {
+          stopAppTestsForApp(1, { kind });
+          return { appId: 1, results: [{ file: a, status: "passed" }] };
+        });
+        const out = await runTestsTool.execute({ testFiles: [a] }, ctx);
+        expect(out).toContain(`Test run stopped from the ${source}.`);
+        expect(out).toContain(
+          "Do not call run_tests again unless the user asks you to.",
+        );
+        expect(out).not.toContain("infrastructure problem, NOT");
+        expect(ctx.testRunAttempts.get(a)).toEqual({ attempts: 0 });
+        const xml = vi.mocked(ctx.onXmlComplete).mock.calls[0][0];
+        expect(xml).toContain('message="Test run stopped"');
+      },
+    );
 
     it.each(["infra", "throw", "cancel"])(
       "refunds all flake allowances and never verifies partial results after %s",

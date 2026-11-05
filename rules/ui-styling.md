@@ -46,6 +46,8 @@ region and screen readers announce the same update repeatedly. Use a labeled
 
 For polled queries, keep verified success messages and completion buttons visible during background refetches; gating them on `!isFetching` makes them flicker on every poll. Gate initial verification separately (for example, with `isFetchedAfterMount`) and derive completion from the latest confirmed data.
 
+For streamed logs that follow the tail, a programmatic `scrollTop` write queues an async `scroll` event. If more output lands before it fires, a distance-from-bottom check turns following off with no user input. Record the position you wrote and disengage only when `scrollTop` drops below it, as `TestOutputDrawer` does.
+
 ## SVG chart animation
 
 For sample-triggered SMIL animations inside an existing SVG, use `begin="indefinite"` and call `beginElement()` when the sample arrives; `begin="0s"` uses the SVG's original timeline and may already have elapsed. To inspect animated transforms in browser tests, read `animVal.getItem(0).matrix`; `animVal.consolidate()` throws `NoModificationAllowedError` because the animated list is read-only.

@@ -41,6 +41,11 @@ The `ContextMenu` in `src/components/ui/context-menu.tsx` uses Base UI's native 
 Guard `null` before parsing or casting values, especially when writing settings
 selectors.
 
+### Tabs keyboard behavior
+
+`TabsList` defaults to manual activation; set `activateOnFocus` when arrow keys should also select the focused tab.
+Base UI moves arrow-key focus in a microtask, so wrap keyboard events in `await act(async () => { ... })` before asserting selection in renderer tests.
+
 ## Focus restoration while an action is pending
 
 Native `disabled` controls reject programmatic focus. When optimistic UI moves

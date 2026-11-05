@@ -8,6 +8,7 @@ export type TestRunStopReason = CancellationInfo;
 
 const STOP_CAUSES: Record<CancellationCause, string> = {
   "tests-panel-stop": "from the Tests panel",
+  "test-queue-stop": "from the test queue",
   "chat-stop": "because the chat response that started it was stopped",
   "chat-deleted": "because the chat that started it was deleted",
   "version-restored": "because an earlier version of the app was restored",

@@ -56,17 +56,19 @@ export function useTestRunEvents() {
   const selectedAppIdRef = useRef(selectedAppId);
   selectedAppIdRef.current = selectedAppId;
   const queryClient = useQueryClient();
-  const activeRunByAppId = useRef(
-    new Map<
-      number,
-      { runId: number; source: "panel" | "agent"; startedAt: number }
-    >(),
+  const latestStartedRunByAppId = useRef(new Map<number, number>());
+  const specRefreshesByAppId = useRef(new Map<number, number>());
+  const appliedSpecRefreshByAppId = useRef(new Map<number, number>());
+  const activeRunsById = useRef(
+    new Map<number, { appId: number; startedAt: number }>(),
   );
-  const lastLifecycleByAppId = useRef(new Map<number, number>());
+  const observedRunIds = useRef(new Set<number>());
   const hydrateActiveRun = useRef<(snapshot: ActiveTestRunSnapshot) => void>(
     () => {},
   );
-  const pendingOutputRef = useRef(new Map<number, string>());
+  const pendingOutputRef = useRef(
+    new Map<number, { appId: number; chunk: string }>(),
+  );
   const outputFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
@@ -74,25 +76,12 @@ export function useTestRunEvents() {
   useEffect(() => {
     const flushPendingOutput = (appId?: number) => {
       const pending = pendingOutputRef.current;
-      const entries =
-        appId === undefined
-          ? Array.from(pending.entries())
-          : pending.has(appId)
-            ? [[appId, pending.get(appId)!] as const]
-            : [];
-      for (const [pendingAppId, chunk] of entries) {
-        appendOutput({ appId: pendingAppId, chunk });
-        pending.delete(pendingAppId);
+      for (const [runId, output] of pending) {
+        if (appId !== undefined && output.appId !== appId) continue;
+        appendOutput({ ...output, runId });
+        pending.delete(runId);
       }
       if (pending.size === 0 && outputFlushTimerRef.current) {
-        clearTimeout(outputFlushTimerRef.current);
-        outputFlushTimerRef.current = null;
-      }
-    };
-
-    const discardPendingOutput = (appId: number) => {
-      pendingOutputRef.current.delete(appId);
-      if (pendingOutputRef.current.size === 0 && outputFlushTimerRef.current) {
         clearTimeout(outputFlushTimerRef.current);
         outputFlushTimerRef.current = null;
       }
@@ -101,16 +90,14 @@ export function useTestRunEvents() {
     const onOutput = (payload: TestOutputPayload) => {
       // Correlate late output with the run that produced it, even after the
       // queue has advanced to a new request.
-      if (
-        activeRunByAppId.current.get(payload.appId)?.runId !== payload.runId
-      ) {
+      if (activeRunsById.current.get(payload.runId)?.appId !== payload.appId) {
         return;
       }
       const pending = pendingOutputRef.current;
-      pending.set(
-        payload.appId,
-        (pending.get(payload.appId) ?? "") + payload.chunk,
-      );
+      pending.set(payload.runId, {
+        appId: payload.appId,
+        chunk: (pending.get(payload.runId)?.chunk ?? "") + payload.chunk,
+      });
       outputFlushTimerRef.current ??= setTimeout(() => {
         outputFlushTimerRef.current = null;
         flushPendingOutput();
@@ -119,6 +106,7 @@ export function useTestRunEvents() {
       // state on no-change makes this write a no-op for subscribers.
       setRunState({
         appId: payload.appId,
+        runId: payload.runId,
         update: (prev) =>
           // A run only ever moves forward through the phases. Teardown emits
           // setup-phase output after the tests have run, which would otherwise
@@ -155,16 +143,16 @@ export function useTestRunEvents() {
               .slice(-10),
         );
       }
-      lastLifecycleByAppId.current.set(
-        payload.appId,
-        Math.max(
-          lastLifecycleByAppId.current.get(payload.appId) ?? 0,
-          payload.runId,
-        ),
-      );
+      const observed = observedRunIds.current.has(payload.runId);
+      observedRunIds.current.add(payload.runId);
+      // Only used to fence in-flight bootstrap replies, not as run history.
+      if (observedRunIds.current.size > 1024)
+        observedRunIds.current.delete(
+          observedRunIds.current.values().next().value!,
+        );
       const { appId, testFile, testFiles, testLine } = payload;
       if (payload.state === "preview-fallback") {
-        if (activeRunByAppId.current.get(appId)?.runId !== payload.runId) {
+        if (activeRunsById.current.get(payload.runId)?.appId !== appId) {
           return;
         }
         // The run asked for the native preview and couldn't have it, so it is
@@ -182,17 +170,16 @@ export function useTestRunEvents() {
         return;
       }
       if (payload.state === "started") {
-        const activeRun = activeRunByAppId.current.get(appId);
-        if (activeRun && payload.runId < activeRun.runId) {
-          return;
-        }
+        if (observed) return;
         const startedAt = Date.now();
-        activeRunByAppId.current.set(appId, {
-          runId: payload.runId,
-          source: payload.source,
-          startedAt,
-        });
-        discardPendingOutput(appId);
+        activeRunsById.current.set(payload.runId, { appId, startedAt });
+        latestStartedRunByAppId.current.set(
+          appId,
+          Math.max(
+            latestStartedRunByAppId.current.get(appId) ?? 0,
+            payload.runId,
+          ),
+        );
         // Run state is broadcast to every window, but preview automation is
         // attached to the invoking window's native view. App selection alone
         // cannot identify that owner when two windows show the same app.
@@ -226,21 +213,19 @@ export function useTestRunEvents() {
       // run already finished, so a late event must not restore a spinner.
       if (payload.state === "stopping" || payload.state === "cleaning-up") {
         const nextPhase = payload.state;
-        let activeRun = activeRunByAppId.current.get(appId);
-        if (activeRun && payload.runId < activeRun.runId) {
-          return;
-        }
-        if (!activeRun || payload.runId > activeRun.runId) {
+        if (!activeRunsById.current.has(payload.runId)) {
+          if (observed) return;
           // A renderer can mount after `started`. Bootstrap the active run
           // from its correlated progress payload.
           const startedAt = Date.now();
-          activeRun = {
-            runId: payload.runId,
-            source: payload.source,
-            startedAt,
-          };
-          activeRunByAppId.current.set(appId, activeRun);
-          discardPendingOutput(appId);
+          activeRunsById.current.set(payload.runId, { appId, startedAt });
+          latestStartedRunByAppId.current.set(
+            appId,
+            Math.max(
+              latestStartedRunByAppId.current.get(appId) ?? 0,
+              payload.runId,
+            ),
+          );
           applyStarted({
             appId,
             testFile,
@@ -255,6 +240,7 @@ export function useTestRunEvents() {
         }
         setRunState({
           appId,
+          runId: payload.runId,
           update: (prev) =>
             prev.runId !== payload.runId ||
             prev.phase === "idle" ||
@@ -276,13 +262,15 @@ export function useTestRunEvents() {
         });
         return;
       }
-      const activeRun = activeRunByAppId.current.get(appId);
-      if (!activeRun || activeRun.runId !== payload.runId) {
+      const activeRun = activeRunsById.current.get(payload.runId);
+      if (!activeRun || activeRun.appId !== appId) {
         return;
       }
-      const runId = activeRun.runId;
+      const runId = payload.runId;
       const runStartedAt = activeRun.startedAt;
-      const finish = () =>
+      activeRunsById.current.delete(runId);
+      flushPendingOutput(appId);
+      const finish = (reconcileOnly = false) =>
         applyFinished({
           appId,
           res: {
@@ -295,11 +283,16 @@ export function useTestRunEvents() {
           sandboxed: payload.sandboxed,
           expectedStartedAt: runStartedAt,
           expectedRunId: runId,
+          reconcileOnly,
         });
       // Do not leave the finished run's spinner/Stop state waiting on disk I/O.
       // The initial merge may use a stale spec list, but the forced refresh
       // below reconciles the same results again once newly-written specs exist.
       finish();
+      const latestStartedRunIdAtFinish =
+        latestStartedRunByAppId.current.get(appId);
+      const specRefresh = (specRefreshesByAppId.current.get(appId) ?? 0) + 1;
+      specRefreshesByAppId.current.set(appId, specRefresh);
       // The agent may have written the spec it just ran in this same turn, so
       // the cached spec list may not contain it yet. Read through IPC directly:
       // fetchQuery can reuse either the production client's fresh 60-second
@@ -309,13 +302,25 @@ export function useTestRunEvents() {
         .then((data) => {
           // A newer run may have started while the refresh was in flight. Its
           // running state and results must never be overwritten by this older
-          // run's delayed reconciliation.
-          if (activeRunByAppId.current.get(appId)?.runId !== runId) {
+          // run's delayed reconciliation. An older run that finishes last still
+          // needs reconciliation; only starts after its completion invalidate it.
+          if (
+            latestStartedRunByAppId.current.get(appId) !==
+            latestStartedRunIdAtFinish
+          ) {
             return;
           }
-          queryClient.setQueryData(queryKeys.tests.list({ appId }), data);
-          setSpecs({ appId, specs: data.specs });
-          finish();
+          // Overlapping runs refresh concurrently. An older response must not
+          // replace a newer spec list, but its run still needs re-keying.
+          if (
+            specRefresh > (appliedSpecRefreshByAppId.current.get(appId) ?? 0)
+          ) {
+            appliedSpecRefreshByAppId.current.set(appId, specRefresh);
+            queryClient.setQueryData(queryKeys.tests.list({ appId }), data);
+            setSpecs({ appId, specs: data.specs });
+          }
+          // The run may have left `activeRuns` while a sibling keeps running.
+          finish(true);
         })
         // The run already finished against the cached list above. A failed
         // refresh only means its result may remain unreconciled until later.
@@ -327,8 +332,7 @@ export function useTestRunEvents() {
       const { run, phase, output } = snapshot;
       // A live start/progress/finish wins over an older bootstrap, including
       // a terminal event received before this window knew the run existed.
-      if ((lastLifecycleByAppId.current.get(run.appId) ?? 0) >= run.runId)
-        return;
+      if (observedRunIds.current.has(run.runId)) return;
       onRunState({ ...run, state: "started", preview: false });
       onOutput({
         appId: run.appId,
@@ -360,14 +364,16 @@ export function useTestRunEvents() {
   ]);
   // Subscribe above before reading the current lifecycle. The snapshot is only
   // a bootstrap; subsequent progress continues through the permanent subscriber.
-  const { data: activeSnapshot, isFetchedAfterMount } = useQuery({
-    queryKey: queryKeys.tests.activeRun({ appId: selectedAppId }),
+  const { data: activeSnapshots, isFetchedAfterMount } = useQuery({
+    queryKey: queryKeys.tests.activeRuns({ appId: selectedAppId }),
+    networkMode: "always",
     enabled: selectedAppId !== null,
     staleTime: 0,
-    queryFn: () => ipc.tests.getActiveRun({ appId: selectedAppId! }),
+    queryFn: () => ipc.tests.getActiveRuns({ appId: selectedAppId! }),
   });
   useEffect(() => {
-    if (isFetchedAfterMount && activeSnapshot)
-      hydrateActiveRun.current(activeSnapshot);
-  }, [activeSnapshot, isFetchedAfterMount]);
+    if (isFetchedAfterMount)
+      for (const snapshot of activeSnapshots ?? [])
+        hydrateActiveRun.current(snapshot);
+  }, [activeSnapshots, isFetchedAfterMount]);
 }

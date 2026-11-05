@@ -1,5 +1,13 @@
 {
   "testRunQueue": {
+    "waitReason": {
+      "process-cleanup": "Aguardando um processo de teste parar",
+      "capacity": "Aguardando uma execução ativa terminar",
+      "compatibility": "Aguardando um banco de dados e espaço de trabalho compatíveis",
+      "earlier-run": "Aguardando uma execução de teste anterior",
+      "context-unavailable": "Aguardando a leitura da configuração de testes. Verifique os arquivos do app e o repositório Git.",
+      "starting": "Iniciando"
+    },
     "title": "Fila de testes",
     "openTests": "Abrir Testes",
     "allTests": "Todos os testes",
@@ -8,6 +16,7 @@
     "testsPanel": "Painel de testes",
     "queued": "Na fila",
     "running": "Em execução",
+    "waitingForNeonBranch": "Aguardando uma branch do Neon",
     "stopping": "Parando",
     "passed": "Aprovado",
     "failed": "Falhou",
@@ -15,6 +24,7 @@
     "stopped": "Interrompido",
     "stopReason": {
       "tests-panel-stop": "Interrompido pelo painel de testes",
+      "test-queue-stop": "Interrompido pela fila de testes",
       "chat-stop": "A resposta do chat foi interrompida",
       "chat-deleted": "O chat foi excluído",
       "version-restored": "Uma versão anterior foi restaurada",
@@ -25,7 +35,8 @@
       "agent-cancelled": "O turno do agente foi cancelado",
       "app-deleted": "O app está sendo excluído",
       "app-quit": "O Dyad está sendo encerrado"
-    }
+    },
+    "stopRun": "Parar {{target}}"
   },
   "newChat": "Novo Chat",
   "viewAllApps": "Todos os apps",
@@ -449,5 +460,23 @@
   "mcpResultTruncated": "Mostrando os primeiros {{shown}} de {{total}} caracteres. O agente recebeu todos os {{total}} caracteres.",
   "mcpResultBothTruncated": "Mostrando os primeiros {{shown}} dos {{total}} caracteres que o agente recebeu. O resultado da ferramenta era maior e foi cortado antes de chegar ao agente.",
   "mcpResultToolTruncated": "O resultado da ferramenta era grande demais, então o agente recebeu uma versão reduzida.",
-  "mcpErrorTruncated": "Mostrando os primeiros {{shown}} de {{total}} caracteres do erro."
+  "mcpErrorTruncated": "Mostrando os primeiros {{shown}} de {{total}} caracteres do erro.",
+  "neonBranchLimit": {
+    "title": "Limite de branches do Neon atingido",
+    "waiting": "Seu plano do Neon limita o número de branches do banco de dados. Os testes estão aguardando outra execução terminar e liberar um branch. Depois, continuarão automaticamente.",
+    "blocked": "Seu plano do Neon não permite criar outro branch de teste. Exclua um branch não utilizado no Neon ou faça upgrade do plano e execute os testes novamente.",
+    "manage": "Abrir Neon",
+    "dismiss": "Dispensar aviso de branches Neon"
+  },
+  "testOutput": {
+    "runLabel": "Execução {{number}} · {{target}}",
+    "files": "{{count}} arquivos",
+    "closeRun": "Fechar saída de {{label}}",
+    "close": "Fechar aba de saída",
+    "title": "Saída",
+    "toggle": "Mostrar ou ocultar a saída dos testes",
+    "tabList": "Saída das execuções de teste",
+    "noTabs": "Nenhuma aba de saída de testes. Execute os testes para ver a saída.",
+    "noOutput": "Ainda não há saída."
+  }
 }

@@ -5,11 +5,23 @@ const mocks = vi.hoisted(() => {
   const set = vi.fn(() => ({ where }));
   const update = vi.fn(() => ({ set }));
   const selectWhere = vi.fn().mockResolvedValue([]);
-  const from = vi.fn(() => ({ where: selectWhere }));
+  const from = vi.fn<(table: unknown) => any>(() => ({ where: selectWhere }));
   const select = vi.fn(() => ({ from }));
   const findFirst = vi.fn();
+  const ownedBranches = vi.fn().mockResolvedValue([]);
+  const values = vi.fn().mockResolvedValue(undefined);
+  const deleteWhere = vi.fn().mockResolvedValue(undefined);
   return {
-    db: { update, select, query: { apps: { findFirst } } },
+    db: {
+      update,
+      select,
+      insert: vi.fn(() => ({ values })),
+      delete: vi.fn(() => ({ where: deleteWhere })),
+      query: { apps: { findFirst } },
+    },
+    ownedBranches,
+    values,
+    deleteWhere,
     update,
     set,
     where,
@@ -30,7 +42,14 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock("@/db", () => ({ db: mocks.db }));
-vi.mock("@/db/schema", () => ({ apps: { id: "id", neonTestBranchId: "ntb" } }));
+vi.mock("@/db/schema", () => ({
+  apps: { id: "id", neonTestBranchId: "ntb" },
+  testBranchCleanup: {
+    branchId: "branch",
+    projectId: "project",
+    ownerId: "owner",
+  },
+}));
 vi.mock("drizzle-orm", async (importOriginal) => {
   const actual = await importOriginal<typeof import("drizzle-orm")>();
   return { ...actual, eq: vi.fn((a, b) => ({ a, b })), isNotNull: vi.fn() };
@@ -99,6 +118,11 @@ function makeApp(overrides: Partial<AppRow> = {}): AppRow {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.where.mockResolvedValue(undefined);
+  mocks.values.mockResolvedValue(undefined);
+  mocks.ownedBranches.mockResolvedValue([]);
+  mocks.from.mockImplementation((table: any) =>
+    table.branchId ? mocks.ownedBranches() : { where: mocks.selectWhere },
+  );
   mocks.selectWhere.mockResolvedValue([]);
   mocks.freshApps.clear();
   mocks.findFirst.mockImplementation(({ where }) =>
@@ -351,6 +375,76 @@ describe("createTempTestBranch", () => {
       neonTestBranchId: "test-new-branch-id",
     });
   });
+
+  describe("run-owned branches", () => {
+    const owned = { cleanupOnly: true, ownerId: "run:1" };
+
+    it("records the branch before provisioning and never writes the app column", async () => {
+      mocks.ensureNeonAuth.mockResolvedValueOnce("https://auth.example");
+
+      await createTempTestBranch(
+        makeApp({ neonDevelopmentAuthCookieSecret: "dev-secret" }),
+        owned,
+      );
+
+      expect(mocks.values).toHaveBeenCalledExactlyOnceWith({
+        branchId: "test-new-branch-id",
+        appId: 7,
+        ownerId: "run:1",
+        projectId: "proj-1",
+      });
+      expect(mocks.values.mock.invocationCallOrder[0]).toBeLessThan(
+        mocks.ensureNeonAuth.mock.invocationCallOrder[0],
+      );
+      expect(mocks.set).not.toHaveBeenCalled();
+    });
+
+    it("deletes the new branch when its cleanup record cannot be written", async () => {
+      const error = new Error("sqlite locked");
+      mocks.values.mockRejectedValueOnce(error);
+
+      await expect(createTempTestBranch(makeApp(), owned)).rejects.toBe(error);
+
+      expect(mocks.deleteProjectBranch).toHaveBeenCalledWith(
+        "proj-1",
+        "test-new-branch-id",
+      );
+      expect(mocks.values).toHaveBeenCalledOnce();
+      expect(mocks.set).not.toHaveBeenCalled();
+    });
+
+    it("records the branch again when the compensating delete also fails", async () => {
+      const error = new Error("sqlite locked");
+      mocks.values.mockRejectedValueOnce(error);
+      mocks.deleteProjectBranch.mockRejectedValueOnce(new Error("neon down"));
+
+      await expect(createTempTestBranch(makeApp(), owned)).rejects.toBe(error);
+
+      expect(mocks.values).toHaveBeenCalledTimes(2);
+      expect(mocks.values).toHaveBeenLastCalledWith({
+        branchId: "test-new-branch-id",
+        appId: 7,
+        ownerId: "run:1",
+        projectId: "proj-1",
+      });
+      expect(
+        mocks.deleteProjectBranch.mock.invocationCallOrder[0],
+      ).toBeLessThan(mocks.values.mock.invocationCallOrder[1]);
+    });
+  });
+});
+
+it("preserves a recorder's recovery marker if replacing its old branch fails", async () => {
+  mocks.createProjectBranch.mockRejectedValueOnce(new Error("create failed"));
+  await expect(
+    createTempTestBranch(makeApp({ neonTestBranchId: "old-recording" })),
+  ).rejects.toThrow("create failed");
+  expect(mocks.deleteProjectBranch).toHaveBeenCalledWith(
+    "proj-1",
+    "old-recording",
+  );
+  // The raw marker is what startup recovery uses to restore `.env.local`.
+  expect(mocks.set).not.toHaveBeenCalled();
 });
 
 describe("deleteTempTestBranch", () => {

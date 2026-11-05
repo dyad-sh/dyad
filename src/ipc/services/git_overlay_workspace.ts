@@ -1563,8 +1563,10 @@ export function removeGitOverlayWorkspace(
 ): Promise<void> {
   const existing = workspaceRemovals.get(worktreePath);
   if (existing) return existing;
-  const removal = removeGitOverlayWorkspaceOnce(worktreePath, sourceRepoPath)
-    .finally(() => workspaceRemovals.delete(worktreePath));
+  const removal = removeGitOverlayWorkspaceOnce(
+    worktreePath,
+    sourceRepoPath,
+  ).finally(() => workspaceRemovals.delete(worktreePath));
   workspaceRemovals.set(worktreePath, removal);
   return removal;
 }
@@ -1648,6 +1650,8 @@ async function removeGitOverlayWorkspaceOnce(
     throw error;
   } finally {
     activeWorkspacePaths.delete(worktreePath);
-    logger.info(`Workspace ${path.basename(worktreePath)} cleanup ${outcome} (${watch.stop()})`);
+    logger.info(
+      `Workspace ${path.basename(worktreePath)} cleanup ${outcome} (${watch.stop()})`,
+    );
   }
 }

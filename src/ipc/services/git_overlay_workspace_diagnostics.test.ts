@@ -369,7 +369,7 @@ describe("workspace preparation failure logs", () => {
       }),
     );
     expect(logger.warn).toHaveBeenCalledWith(
-      expect.stringContaining("Failed to unregister worktree"),
+      expect.stringContaining("Failed to withdraw the worktree registration"),
       cleanupFailure,
     );
     const worktreePath = path.join(scratchRoot, logsAtCleanup[0].workspace);

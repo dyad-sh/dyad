@@ -497,7 +497,7 @@ describe("isolated production build execution", () => {
   );
 
   it.each(["worktree creation", "package manager resolution"] as const)(
-    "settles cancellation during a stuck %s but keeps claims until it settles",
+    "releases coordinator ownership during a stuck %s but keeps the build slot until it settles",
     async (step) => {
       const stuck = deferred();
       const cleanup = deferred();
@@ -534,6 +534,14 @@ describe("isolated production build execution", () => {
               : resolvePackageManager,
           ).toHaveBeenCalledOnce(),
         );
+        let edited = false;
+        edit = appOperationCoordinator.run(
+          { appId: ctx.appId, operation: "edit", resources: ["repository"] },
+          async () => {
+            edited = true;
+          },
+        );
+        expect(edited).toBe(false);
         controller.abort();
         await expect(execution).rejects.toMatchObject({
           kind: "user_cancelled",
@@ -542,24 +550,27 @@ describe("isolated production build execution", () => {
           ctx.buildAttemptState?.mutationCountAtLastSetupFailure,
         ).toBeUndefined();
 
-        // The abandoned step may still be reading the live repository, so
-        // repository writers wait and another build is refused.
-        let edited = false;
-        edit = appOperationCoordinator.run(
-          { appId: ctx.appId, operation: "edit", resources: ["repository"] },
-          async () => {
-            edited = true;
+        // Later edits, runtime changes, rename and deletion must proceed even
+        // while preparation is still stuck. Only another build is refused.
+        await edit;
+        expect(edited).toBe(true);
+        await appOperationCoordinator.run(
+          {
+            appId: ctx.appId,
+            operation: "rename and restart",
+            resources: ["app-path", "runtime"],
           },
+          async () => {},
         );
-        expect(
-          appOperationCoordinator.isBusy(ctx.appId, ["repository-worktree"]),
-        ).toBe(true);
-        expect(edited).toBe(false);
-        expect(buildLogs.warn).toHaveBeenCalledWith(
-          expect.stringMatching(
-            /Production build [\w-]+ for app 8123 blocks operation "edit" on repository-ref, repository-worktree; phase ".*"; \d+ ms since cancellation\/deadline/,
-          ),
-        );
+        const deletion = appOperationCoordinator.beginAppDeletion(ctx.appId);
+        try {
+          await deletion.drain();
+          const deleted = vi.fn();
+          await deletion.runExclusive(deleted);
+          expect(deleted).toHaveBeenCalledOnce();
+        } finally {
+          deletion.release();
+        }
         expect(buildLogs.info).toHaveBeenCalledWith(
           expect.stringContaining(
             "tool result settled; underlying preparation still outstanding",
@@ -573,8 +584,6 @@ describe("isolated production build execution", () => {
         ).resolves.toContain("still finishing its workspace setup");
 
         stuck.resolve();
-        await edit;
-        expect(edited).toBe(true);
         // A snapshot created after cancellation is still cleaned up, and
         // nothing after the abandoned step runs.
         await vi.waitFor(() =>
@@ -587,25 +596,17 @@ describe("isolated production build execution", () => {
           expect(resolvePackageManager).not.toHaveBeenCalled();
         }
         expect(runCleanPackageInstall).not.toHaveBeenCalled();
-        const rename = appOperationCoordinator.run(
+        await appOperationCoordinator.run(
           { appId: ctx.appId, operation: "rename", resources: ["app-path"] },
           async () => {},
         );
-        expect(buildLogs.warn).toHaveBeenCalledWith(
-          expect.stringMatching(
-            /blocks operation "rename" on app-path; phase "snapshot cleanup"; \d+ ms since cancellation\/deadline/,
-          ),
-        );
         expect(buildLogs.info).not.toHaveBeenCalledWith(
-          expect.stringContaining(
-            "snapshot cleanup settled; app-path claim released",
-          ),
+          expect.stringContaining("abandoned snapshot cleanup settled"),
         );
         cleanup.resolve();
-        await rename;
         await vi.waitFor(() =>
-          expect(appOperationCoordinator.isBusy(ctx.appId, ["app-path"])).toBe(
-            false,
+          expect(buildLogs.info).toHaveBeenCalledWith(
+            expect.stringContaining("abandoned snapshot cleanup settled"),
           ),
         );
         const lifecycle = buildLogs.info.mock.calls
@@ -617,12 +618,7 @@ describe("isolated production build execution", () => {
           ),
           expect.stringContaining("outstanding preparation settled after"),
           expect.stringContaining("build slot released"),
-          expect.stringContaining(
-            "repository and runtime claims released; app-path retained",
-          ),
-          expect.stringContaining(
-            "snapshot cleanup settled; app-path claim released",
-          ),
+          expect.stringContaining("abandoned snapshot cleanup settled"),
         ]);
       } finally {
         stuck.resolve();
@@ -641,7 +637,7 @@ describe("isolated production build execution", () => {
     },
   );
 
-  it("reports the deadline during a stuck preparation step and keeps claims until it settles", async () => {
+  it("reports the deadline and releases coordinator ownership while keeping the build slot until preparation settles", async () => {
     const stuck = deferred();
     const copyWorkspace = vi
       .mocked(createGitOverlayWorkspace)
@@ -662,9 +658,24 @@ describe("isolated production build execution", () => {
       );
       // Unlike cancellation, a timed-out setup is not retried unchanged.
       expect(ctx.buildAttemptState?.mutationCountAtLastSetupFailure).toBe(1);
-      expect(
-        appOperationCoordinator.isBusy(ctx.appId, ["repository-worktree"]),
-      ).toBe(true);
+      await appOperationCoordinator.run(
+        {
+          appId: ctx.appId,
+          operation: "edit after deadline",
+          resources: ["repository", "app-path", "runtime"],
+        },
+        async () => {},
+      );
+      const deletion = appOperationCoordinator.beginAppDeletion(ctx.appId);
+      try {
+        await deletion.drain();
+        await deletion.runExclusive(async () => {});
+      } finally {
+        deletion.release();
+      }
+      await expect(
+        runBuildTool.execute({}, { ...ctx, abortSignal: undefined }),
+      ).resolves.toContain("still finishing its workspace setup");
       stuck.resolve();
       await vi.waitFor(() =>
         expect(removeGitOverlayWorkspace).toHaveBeenCalledWith(
@@ -684,6 +695,78 @@ describe("isolated production build execution", () => {
     }
     expect(spawnStreaming).not.toHaveBeenCalled();
   });
+
+  it.each(["worktree creation", "package manager resolution"] as const)(
+    "handles abandoned %s rejecting after the app is deleted and frees the build slot",
+    async (step) => {
+      const stuck = deferred();
+      const rejectAfterDeletion = async () => {
+        await stuck.promise;
+        throw Object.assign(new Error("Source app was deleted"), {
+          code: "ENOENT",
+        });
+      };
+      if (step === "worktree creation") {
+        vi.mocked(createGitOverlayWorkspace).mockImplementationOnce(
+          rejectAfterDeletion,
+        );
+      } else {
+        vi.mocked(resolvePackageManager).mockImplementationOnce(
+          rejectAfterDeletion,
+        );
+      }
+      const controller = new AbortController();
+      ctx.abortSignal = controller.signal;
+      const execution = runBuildTool.execute({}, ctx);
+      try {
+        await vi.waitFor(() =>
+          expect(
+            step === "worktree creation"
+              ? createGitOverlayWorkspace
+              : resolvePackageManager,
+          ).toHaveBeenCalledOnce(),
+        );
+        controller.abort();
+        await expect(execution).rejects.toMatchObject({
+          kind: "user_cancelled",
+        });
+        const deletion = appOperationCoordinator.beginAppDeletion(ctx.appId);
+        try {
+          await deletion.drain();
+          await deletion.runExclusive(() =>
+            fs.rm(appPath, { recursive: true, force: true }),
+          );
+        } finally {
+          deletion.release();
+        }
+        stuck.resolve();
+        await vi.waitFor(() =>
+          expect(buildLogs.info).toHaveBeenCalledWith(
+            expect.stringContaining("abandoned snapshot cleanup settled"),
+          ),
+        );
+        expect(runCleanPackageInstall).not.toHaveBeenCalled();
+        expect(spawnStreaming).not.toHaveBeenCalled();
+        expect(removeGitOverlayWorkspace).toHaveBeenCalledTimes(
+          step === "worktree creation" ? 0 : 1,
+        );
+
+        // The abandoned rejection must not leave this app's build slot occupied.
+        await fs.mkdir(appPath);
+        await fs.writeFile(
+          path.join(appPath, "package.json"),
+          JSON.stringify({ scripts: { build: "vite build" } }),
+        );
+        ctx.abortSignal = undefined;
+        await expect(runBuildTool.execute({}, ctx)).resolves.toContain(
+          "passed",
+        );
+      } finally {
+        stuck.resolve();
+        await Promise.allSettled([execution]);
+      }
+    },
+  );
 
   it("keeps later builds working when snapshot cleanup fails", async () => {
     vi.mocked(removeGitOverlayWorkspace).mockRejectedValueOnce(

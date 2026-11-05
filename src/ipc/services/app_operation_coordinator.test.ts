@@ -4,7 +4,6 @@ import {
   AppDeletionInProgressError,
   AppOperationCoordinator,
   readAppResource,
-  type AppOperationContext,
 } from "./app_operation_coordinator";
 
 function deferred<T = void>() {
@@ -18,51 +17,6 @@ function deferred<T = void>() {
 }
 
 describe("AppOperationCoordinator", () => {
-  it("reports existing and new direct conflicts once per waiter, excluding compatible work and released claims", async () => {
-    const coordinator = new AppOperationCoordinator();
-    const hold = deferred();
-    const started = deferred<AppOperationContext>();
-    const owner = coordinator.run(
-      {
-        appId: 1,
-        operation: "build",
-        resources: [readAppResource("app-path"), "repository"],
-      },
-      async (scope) => {
-        started.resolve(scope);
-        await hold.promise;
-      },
-    );
-    const scope = await started.promise;
-    const run = (
-      operation: string,
-      resources: "repository" | "metadata" | "app-path",
-    ) =>
-      coordinator.run(
-        { appId: 1, operation, resources: [resources] },
-        async () => {},
-      );
-    const first = run("edit", "repository");
-    const report = vi.fn();
-    scope.onBlockedOperation(report);
-    expect(report).toHaveBeenCalledExactlyOnceWith("edit", [
-      "repository-ref",
-      "repository-worktree",
-    ]);
-    await run("compatible", "metadata");
-    scope.releaseResources([]); // Pump repeatedly without duplicating a warning.
-    expect(report).toHaveBeenCalledTimes(1);
-    const second = run("rename", "app-path");
-    expect(report).toHaveBeenLastCalledWith("rename", ["app-path"]);
-    scope.releaseResources(["repository"]);
-    await first;
-    const third = run("later edit", "repository");
-    expect(report).toHaveBeenCalledTimes(2);
-    hold.resolve();
-    await Promise.all([owner, second, third]);
-    await run("after release", "app-path");
-    expect(report).toHaveBeenCalledTimes(2);
-  });
   it("releases preparation claims without releasing deployment or deletion ownership", async () => {
     const coordinator = new AppOperationCoordinator();
     const captured = deferred();

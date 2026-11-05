@@ -81,7 +81,6 @@ export interface Snapshot {
 
 interface BuildSlot {
   id: string;
-  phase: string;
   cancelledAt?: number;
   /** Cancelled or timed out, but abandoned preparation has not settled. */
   stopping: boolean;
@@ -244,7 +243,9 @@ async function prepareIsolatedBuild(
  *
  * Abandoning does not stop `work`: a filesystem call or package-manager probe
  * may keep reading the live repository and writing the snapshot. `onAbandon`
- * must hand it to an owner that keeps the build's claims until it settles.
+ * must keep the build slot until it settles and clean any snapshot it produces.
+ * Coordinator ownership ends immediately; an abandoned snapshot may race later
+ * edits or path changes, but must never proceed to install or build.
  */
 function settleUnlessAborted<T>(
   work: Promise<T>,
@@ -436,8 +437,8 @@ function streamBuildOutput(ctx: AgentContext, accumulatedOutput: string): void {
 interface BuildOperationScope {
   releaseResources: AppOperationContext["releaseResources"];
   registerSnapshot: (snapshot: Snapshot) => void;
-  /** Keep every claim and the build slot until abandoned `work` settles. */
-  retainUntilSettled: (work: Promise<unknown>) => void;
+  /** Keep only the build slot until abandoned `work` settles. */
+  retainBuildSlotUntilSettled: (work: Promise<unknown>) => void;
 }
 
 // Settle the tool result as soon as host execution ends, while the original
@@ -446,8 +447,10 @@ interface BuildOperationScope {
 //
 // Cancellation and the deadline may also abandon a preparation step that does
 // not stop when aborted. The tool result still settles, so the turn can finish
-// cancelling, but this operation keeps all of its claims and the per-app build
-// slot until that step settles, then removes any snapshot it produced.
+// cancelling. End coordinator ownership immediately so edits, rename and deletion
+// can proceed. A detached owner keeps only the per-app build slot until the step
+// settles, then removes any snapshot it produced. The discarded preparation may
+// fail as its source changes; that must not block later app operations.
 function runBuildOperation(
   ctx: AgentContext,
   slot: BuildSlot,
@@ -472,53 +475,10 @@ function runBuildOperation(
           refuseWhenRecording: "run a production build",
           signal: ctx.abortSignal,
         },
-        async ({ releaseResources, onBlockedOperation }) => {
+        async ({ releaseResources }) => {
           let snapshot: Snapshot | undefined;
           const retained: Promise<unknown>[] = [];
-          try {
-            resolve(
-              await operation({
-                releaseResources,
-                registerSnapshot: (captured) => {
-                  snapshot = captured;
-                },
-                retainUntilSettled: (work) => {
-                  slot.stopping = true;
-                  retained.push(work);
-                  onBlockedOperation((operation, resources) => {
-                    logger.warn(
-                      `${label} blocks operation "${operation}" on ${resources.join(", ")}; phase "${slot.phase}"; ${Date.now() - slot.cancelledAt!} ms since cancellation/deadline`,
-                    );
-                  });
-                },
-              }),
-            );
-          } catch (error) {
-            reject(error);
-          } finally {
-            if (slot.stopping)
-              logger.info(
-                `${label} tool result settled; underlying preparation still outstanding`,
-              );
-            // Awaited only when something was abandoned, so an ordinary
-            // result frees the build slot in the same turn it settles.
-            if (retained.length > 0) await Promise.allSettled(retained);
-            if (slot.stopping)
-              logger.info(
-                `${label} outstanding preparation settled after ${Date.now() - slot.cancelledAt!} ms since cancellation/deadline`,
-              );
-            releaseBuildSlot();
-            if (slot.stopping) logger.info(`${label} build slot released`);
-            slot.phase = "snapshot cleanup";
-            releaseResources([
-              "repository-ref",
-              "repository-worktree",
-              "runtime",
-            ]);
-            if (slot.stopping)
-              logger.info(
-                `${label} repository and runtime claims released; app-path retained for snapshot cleanup`,
-              );
+          const cleanupSnapshot = async () => {
             if (snapshot) {
               await removeSnapshot(
                 snapshot.worktreePath,
@@ -530,11 +490,57 @@ function runBuildOperation(
                 );
               });
             }
-            releaseResources(["app-path"]);
-            if (slot.stopping)
+          };
+          try {
+            resolve(
+              await operation({
+                releaseResources,
+                registerSnapshot: (captured) => {
+                  snapshot = captured;
+                },
+                retainBuildSlotUntilSettled: (work) => {
+                  slot.stopping = true;
+                  retained.push(work);
+                },
+              }),
+            );
+          } catch (error) {
+            reject(error);
+          } finally {
+            if (slot.stopping) {
               logger.info(
-                `${label} snapshot cleanup settled; app-path claim released`,
+                `${label} tool result settled; underlying preparation still outstanding; ending coordinator ownership and releasing all claims`,
               );
+              // Do not await this owner in the coordinator callback: even an
+              // empty resource list still participates in app deletion's drain.
+              void (async () => {
+                await Promise.allSettled(retained);
+                logger.info(
+                  `${label} outstanding preparation settled after ${Date.now() - slot.cancelledAt!} ms since cancellation/deadline`,
+                );
+                releaseBuildSlot();
+                logger.info(`${label} build slot released`);
+                await cleanupSnapshot();
+                logger.info(`${label} abandoned snapshot cleanup settled`);
+              })().catch((error) => {
+                releaseBuildSlot();
+                logger.warn(
+                  `${label} abandoned preparation cleanup failed:`,
+                  error,
+                );
+              });
+              // Returning ends the active operation as well as its claims.
+              // Snapshot registration remains captured by the detached owner.
+            } else {
+              releaseBuildSlot();
+              releaseResources([
+                "repository-ref",
+                "repository-worktree",
+                "runtime",
+              ]);
+              await cleanupSnapshot();
+              releaseResources(["app-path"]);
+            }
           }
         },
       )
@@ -577,14 +583,17 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
 
     const slot: BuildSlot = {
       id: randomUUID(),
-      phase: "admission",
       stopping: false,
     };
     activeBuilds.set(ctx.appId, slot);
     return runBuildOperation(
       ctx,
       slot,
-      async ({ releaseResources, registerSnapshot, retainUntilSettled }) => {
+      async ({
+        releaseResources,
+        registerSnapshot,
+        retainBuildSlotUntilSettled,
+      }) => {
         const state = (ctx.buildAttemptState ??= {
           count: 0,
         } satisfies BuildAttemptState);
@@ -639,19 +648,11 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
           warn: (message) => logger.warn(message),
           info: (message) => logger.info(message),
         });
-        const trackedWatch: PhaseStallWatch = {
-          ...preparationWatch,
-          setPhase: (next) => {
-            slot.phase = next;
-            preparationWatch.setPhase(next);
-          },
-        };
-        slot.phase = preparationWatch.currentPhase();
         try {
           const preparation = prepareIsolatedBuild(
             ctx.appPath,
             abortScope.signal,
-            trackedWatch,
+            preparationWatch,
             registerSnapshot,
           );
           void preparation
@@ -667,11 +668,19 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
             () => {
               slot.cancelledAt = Date.now();
               logger.warn(
-                `Isolated build preparation ${slot.id} for app ${ctx.appId} ${abortScope.timedOut() ? "reached its deadline" : "was cancelled"} during "${preparationWatch.currentPhase()}"; keeping its claims until that step settles.`,
+                `Isolated build preparation ${slot.id} for app ${ctx.appId} ${abortScope.timedOut() ? "reached its deadline" : "was cancelled"} during "${preparationWatch.currentPhase()}"; releasing coordinator ownership, keeping only the build slot until that step settles.`,
               );
-              retainUntilSettled(preparation);
+              retainBuildSlotUntilSettled(preparation);
             },
           );
+          // Abort may arrive after preparation resolves but before this await
+          // resumes. Never start an install for an already cancelled build.
+          if (abortScope.signal.aborted) {
+            throw new DyadError(
+              "Build cancelled.",
+              DyadErrorKind.UserCancelled,
+            );
+          }
           snapshot = prepared.snapshot;
           const { packageManager, snapshotInstallPath } = prepared;
           // Capture package-manager selection while live workspace inputs

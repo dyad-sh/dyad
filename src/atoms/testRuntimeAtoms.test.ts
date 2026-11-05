@@ -8,6 +8,7 @@ import {
   clearTestRuntimeForAppAtom,
   currentTestRunStateAtom,
   currentTestSpecsAtom,
+  dismissedNeonTestingBannerAppIdsAtom,
   dismissedTestRunThroughIdByAppIdAtom,
   setTestRunStateForAppAtom,
   setTestSpecsForAppAtom,
@@ -244,6 +245,7 @@ describe("test runtime atoms", () => {
 
   it("clears specs and run state for one app", () => {
     const store = createStore();
+    store.set(dismissedNeonTestingBannerAppIdsAtom, [1, 2]);
     store.set(
       dismissedTestRunThroughIdByAppIdAtom,
       new Map([
@@ -270,6 +272,7 @@ describe("test runtime atoms", () => {
 
     store.set(clearTestRuntimeForAppAtom, 1);
 
+    expect(store.get(dismissedNeonTestingBannerAppIdsAtom)).toEqual([2]);
     expect(store.get(dismissedTestRunThroughIdByAppIdAtom)).toEqual(
       new Map([[2, 5]]),
     );

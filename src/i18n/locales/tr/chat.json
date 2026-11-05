@@ -1,4 +1,10 @@
 {
+  "neonTestingBanner": {
+    "message": "Ajan, uygulamanızı geliştirirken çalışmasını kontrol edip sorunları düzeltsin. Testler geçici bir Neon veritabanında çalışır; verileriniz ve önizlemeniz değişmez.",
+    "enable": "Testleri etkinleştir",
+    "enabling": "Etkinleştiriliyor…",
+    "dismiss": "Test önerisini kapat"
+  },
   "testRunQueue": {
     "waitReason": {
       "process-cleanup": "Bir test işleminin durması bekleniyor",

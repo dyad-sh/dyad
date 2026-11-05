@@ -26,6 +26,7 @@ import { FreeAgentQuotaBanner } from "./chat/FreeAgentQuotaBanner";
 import { NotificationBanner } from "./chat/NotificationBanner";
 import { SupabaseLegacyKeyBanner } from "./chat/SupabaseLegacyKeyBanner";
 import { NeonBranchLimitBanner } from "./chat/NeonBranchLimitBanner";
+import { NeonTestingBanner } from "./chat/NeonTestingBanner";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -322,6 +323,13 @@ export function ChatPanel({
                     />
                   )}
                   <SupabaseLegacyKeyBanner appId={selectedAppId} />
+                  <NeonTestingBanner
+                    appId={selectedAppId}
+                    onEnabled={() => {
+                      setPreviewMode("tests");
+                      if (!isPreviewOpen) onTogglePreview();
+                    }}
+                  />
                   <NotificationBanner />
                   <TestRunQueueCard
                     key={selectedAppId}

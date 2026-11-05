@@ -1,4 +1,5 @@
 import { atom } from "jotai";
+import { atomWithStorage } from "jotai/utils";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import {
   appendTestOutputTabAtom,
@@ -30,6 +31,14 @@ import {
  */
 export const dismissedLegacyTestMigrationAppIdsAtom = atom<Set<number>>(
   new Set<number>(),
+);
+
+/** Remember declined testing offers per app, including across launches. */
+export const dismissedNeonTestingBannerAppIdsAtom = atomWithStorage<number[]>(
+  "dyad:dismissed-neon-testing-banner-app-ids",
+  [],
+  undefined,
+  { getOnInit: true },
 );
 
 /** Last completed batch hidden from each app's chat card in this window/session. */
@@ -585,6 +594,9 @@ export const clearTestRuntimeForAppAtom = atom(
   null,
   (_get, set, appId: number) => {
     set(clearTestOutputTabsForAppAtom, appId);
+    set(dismissedNeonTestingBannerAppIdsAtom, (prev) =>
+      prev.includes(appId) ? prev.filter((id) => id !== appId) : prev,
+    );
     set(dismissedTestRunThroughIdByAppIdAtom, (prev) => {
       if (!prev.has(appId)) return prev;
       const next = new Map(prev);

@@ -1,4 +1,10 @@
 {
+  "neonTestingBanner": {
+    "message": "에이전트가 앱을 만들면서 작업을 확인하고 문제를 해결하도록 하세요. 테스트는 임시 Neon 데이터베이스에서 실행되어 데이터와 미리보기에 영향을 주지 않습니다.",
+    "enable": "테스트 활성화",
+    "enabling": "활성화 중…",
+    "dismiss": "테스트 제안 닫기"
+  },
   "testRunQueue": {
     "waitReason": {
       "process-cleanup": "테스트 프로세스가 중지될 때까지 기다리는 중",

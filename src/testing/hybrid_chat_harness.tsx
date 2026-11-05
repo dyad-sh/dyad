@@ -623,6 +623,11 @@ export async function setupHybridChatHarness(
   activeHybridChatHarness = true;
 
   const envSnapshot = snapshotHybridEnv();
+  // IPC handlers share this process with the renderer. They need Node fetch:
+  // happy-dom strips Authorization on cross-origin requests even with its
+  // same-origin policy disabled, making authenticated fake-provider calls fail.
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = undiciFetch as unknown as typeof globalThis.fetch;
   process.env.DYAD_SKIP_MANAGED_PNPM_INSTALL = "true";
   // The mounted UI queries Node status. Use the existing development override
   // so host Node/pnpm subprocesses cannot delay bridge settling on busy CI.
@@ -1674,6 +1679,7 @@ export async function setupHybridChatHarness(
         }
         activeHybridChatHarness = false;
         setModelClientFetchForTesting(undefined);
+        globalThis.fetch = previousFetch;
         restoreHybridEnv(envSnapshot);
       }
 
@@ -1743,6 +1749,7 @@ export async function setupHybridChatHarness(
   } catch (error) {
     activeHybridChatHarness = false;
     setModelClientFetchForTesting(undefined);
+    globalThis.fetch = previousFetch;
     restoreHybridEnv(envSnapshot);
     if (node) {
       await node.dispose();

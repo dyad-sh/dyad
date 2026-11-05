@@ -701,6 +701,58 @@ describe("run_build", () => {
     await expect(fs.lstat(unowned)).resolves.toMatchObject({});
   });
 
+  it("never sweeps an active snapshot or follows a snapshot-named link", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "dyad-build-test-"));
+    temporaryDirectories.push(root);
+    const repoPath = path.join(root, "repo");
+    const snapshotRoot = path.join(root, "snapshots");
+    await Promise.all([fs.mkdir(repoPath), fs.mkdir(snapshotRoot)]);
+    await fs.writeFile(path.join(repoPath, "package.json"), "{}");
+    await runGit(repoPath, "init");
+    await runGit(repoPath, "config", "user.email", "test@example.com");
+    await runGit(repoPath, "config", "user.name", "Test User");
+    await runGit(repoPath, "add", ".");
+    await runGit(
+      repoPath,
+      "-c",
+      "commit.gpgSign=false",
+      "commit",
+      "-m",
+      "initial",
+    );
+    const active = await createBuildWorktree(repoPath, snapshotRoot);
+    // A marked entry that is really a link to the source repository.
+    const link = path.join(snapshotRoot, ".dyad-build-LINK01");
+    await fs.symlink(
+      repoPath,
+      link,
+      process.platform === "win32" ? "junction" : "dir",
+    );
+    await fs.writeFile(
+      `${link}.owner.json`,
+      JSON.stringify({
+        schema: "dyad-git-overlay-worktree-v1",
+        purpose: "build",
+        sourceRepoPath: repoPath,
+        submoduleWorktrees: [],
+      }),
+    );
+
+    await removeStaleSnapshots(snapshotRoot, { removeAll: true });
+
+    expect(
+      await fs.readFile(path.join(active.path, "package.json"), "utf8"),
+    ).toBe("{}");
+    expect((await fs.lstat(link)).isSymbolicLink()).toBe(true);
+    expect(await fs.readFile(path.join(repoPath, "package.json"), "utf8")).toBe(
+      "{}",
+    );
+    await removeSnapshot(active.worktreePath, active.sourceRepoPath);
+    await expect(fs.lstat(active.worktreePath)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+
   it("completes the status when the per-turn limit refuses a build", async () => {
     const onXmlComplete = vi.fn();
     const ctx = {

@@ -14,7 +14,11 @@ import {
 } from "./git_overlay_workspace";
 import { createGitOverlayWorkspaceDiagnostics } from "./git_overlay_workspace_diagnostics";
 
-const logger = vi.hoisted(() => ({ error: vi.fn(), warn: vi.fn() }));
+const logger = vi.hoisted(() => ({
+  error: vi.fn(),
+  warn: vi.fn(),
+  info: vi.fn(),
+}));
 vi.mock("electron-log/main", () => ({ default: { scope: () => logger } }));
 vi.mock("@/ipc/utils/git_utils", () => ({
   getGitProcessEnvironment: () => ({ gitLocation: "git", env: {} }),

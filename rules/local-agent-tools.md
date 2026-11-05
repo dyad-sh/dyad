@@ -162,16 +162,29 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
   `disableSandboxedE2eTests: true` in its settings; otherwise the tool performs a
   real sandboxed run and fails differently on every machine (`spawn pnpm ENOENT`
   without pnpm, a download failure without network, a timeout locally).
-- Keep completed build-snapshot teardown in the original coordinator operation
+- Keep normally completed build-snapshot teardown in the original coordinator operation
   under its app-path claim, but settle the tool result before slow cleanup.
   Release runtime protection after host execution; keep startup cleanup as fallback.
+- Never await stale-snapshot cleanup on a build's critical path. Recursive
+  deletion of an old dependency-heavy worktree has no abort signal and can take
+  minutes on Windows. Sweep in the background (it needs no app claims) and join
+  in-flight removals of the same path. Preserve directory-before-registration
+  removal so Git never deletes through a populated worktree's junctions.
+- Cancellation and the deadline must settle `run_build` during every
+  preparation step, including steps that ignore the abort signal. Settle the
+  tool result and end coordinator ownership immediately so edits, rename and
+  deletion and later builds can proceed. Release the per-app build slot too,
+  then clean any snapshot the abandoned step produces in the background. Releasing
+  resources alone does not unblock deletion: its drain also waits for active
+  callbacks. Never install or build from an abandoned preparation.
 - `AgentContext.onXmlStream` replaces the previous preview with the full accumulated XML; callers receiving delta output chunks must append them to a bounded buffer before emitting each update.
 - Throttle full accumulated build-output previews rather than emitting once per
   stdout/stderr chunk, and synchronously flush the final buffered preview when
   the child process settles so batching never hides terminal output.
 - Hold repository-ref read and repository-worktree write claims through build
   validation, snapshot capture, and package-manager resolution; release them
-  before dependency installation and building. Retain app-path protection through cleanup.
+  before dependency installation and building. Normally retain app-path protection
+  through cleanup; abandoned preparation relinquishes all coordinator ownership.
 - Capture all live-workspace inputs before releasing preparation claims; later
   edits must not change this build's inputs. Keep queued admission cancellable
   and describe results as verification of the captured snapshot.

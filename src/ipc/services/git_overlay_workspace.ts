@@ -7,6 +7,7 @@ import log from "electron-log/main";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { runBufferedProcess } from "@/ipc/utils/buffered_process";
 import { getGitProcessEnvironment } from "@/ipc/utils/git_utils";
+import { startPhaseStallWatch } from "@/ipc/utils/phase_stall_watch";
 import {
   createGitOverlayWorkspaceDiagnostics,
   type GitOverlayWorkspaceDiagnostics,
@@ -169,6 +170,8 @@ export interface GitOverlayWorkspaceOptions {
   purpose: GitOverlayWorkspacePurpose;
   excludedTargetRootNames: ReadonlySet<string>;
   cleanupFailureMode?: "await" | "background";
+  /** Fixed diagnostic phase names only; never paths or user content. */
+  onPhase?: (phase: string) => void;
   signal?: AbortSignal;
 }
 
@@ -490,7 +493,9 @@ async function overlayWorkspaceState(
   diagnostics: GitOverlayWorkspaceDiagnostics,
   signal: AbortSignal | undefined,
   trackedPaths: readonly string[] = [],
+  onPhase?: (phase: string) => void,
 ): Promise<void> {
+  onPhase?.("collecting overlay paths");
   const status = await runWorkspaceGit(
     sourceRoot,
     [
@@ -525,6 +530,7 @@ async function overlayWorkspaceState(
     excludedPackagePaths,
   );
   const realSourceRoot = await fs.realpath(sourceRoot);
+  onPhase?.("copying overlay files");
   for (
     let index = 0;
     index < overlayPaths.length;
@@ -1331,6 +1337,7 @@ export async function createGitOverlayWorkspace({
   purpose,
   excludedTargetRootNames,
   cleanupFailureMode = "await",
+  onPhase,
   signal,
 }: GitOverlayWorkspaceOptions): Promise<GitOverlayWorkspace> {
   const startedAt = Date.now();
@@ -1339,6 +1346,7 @@ export async function createGitOverlayWorkspace({
   let sourceRepoPath: string | undefined;
   let stage = "create-scratch-root";
   try {
+    onPhase?.("workspace path resolution");
     await fs.mkdir(scratchRoot, { recursive: true });
     stage = "find-repository";
     const repoResult = await runWorkspaceGit(
@@ -1371,6 +1379,7 @@ export async function createGitOverlayWorkspace({
     stage = "create-hooks-directory";
     await fs.mkdir(emptyHooksPath, { recursive: true });
     stage = "checkout-worktree";
+    onPhase?.("git worktree creation");
     await runWorkspaceGit(
       sourceRepoPath,
       [
@@ -1385,6 +1394,7 @@ export async function createGitOverlayWorkspace({
       signal,
     );
     const targetPath = path.join(worktreePath, targetRelativePath);
+    onPhase?.("removing excluded roots");
     // Roots that survived removal because Git tracks them stay in the overlay:
     // excluding them there too would pin the sandbox to their `HEAD` contents
     // and silently drop every live edit beneath them.
@@ -1411,8 +1421,10 @@ export async function createGitOverlayWorkspace({
       diagnostics,
       signal,
       trackedPaths,
+      onPhase,
     );
     stage = "materialize-submodules";
+    onPhase?.("submodule materialization");
     await materializeInitializedSubmodules({
       sourceRepoPath,
       workspaceRepoPath: worktreePath,
@@ -1427,6 +1439,7 @@ export async function createGitOverlayWorkspace({
       signal,
     });
     stage = "secure-symlinks";
+    onPhase?.("symlink validation");
     await secureGitOverlaySymlinks(
       sourceRepoPath,
       worktreePath,
@@ -1540,10 +1553,34 @@ async function withdrawWorktreeRegistration(
   }
 }
 
-export async function removeGitOverlayWorkspace(
+// Startup, stale-snapshot sweeps and owners join the same deletion rather than
+// recursively deleting a dependency-heavy directory concurrently.
+const workspaceRemovals = new Map<string, Promise<void>>();
+
+export function removeGitOverlayWorkspace(
   worktreePath: string,
   sourceRepoPath?: string,
 ): Promise<void> {
+  const existing = workspaceRemovals.get(worktreePath);
+  if (existing) return existing;
+  const removal = removeGitOverlayWorkspaceOnce(
+    worktreePath,
+    sourceRepoPath,
+  ).finally(() => workspaceRemovals.delete(worktreePath));
+  workspaceRemovals.set(worktreePath, removal);
+  return removal;
+}
+
+async function removeGitOverlayWorkspaceOnce(
+  worktreePath: string,
+  sourceRepoPath?: string,
+): Promise<void> {
+  const watch = startPhaseStallWatch({
+    label: `Workspace ${path.basename(worktreePath)} cleanup`,
+    initialPhase: "reading marker",
+    warn: (message) => logger.warn(message),
+  });
+  let outcome = "removed";
   try {
     const storedMarker = await readGitOverlayWorkspaceMarker(worktreePath);
     const marker = sourceRepoPath
@@ -1558,6 +1595,7 @@ export async function removeGitOverlayWorkspace(
     // metadata with nothing left to retry from.
     let allSubmodulesRemoved = true;
     for (const worktree of [...(marker?.submoduleWorktrees ?? [])].reverse()) {
+      watch.setPhase("deleting submodule directory");
       try {
         await removeWorkspaceDirectory(worktree.snapshotPath);
       } catch (error) {
@@ -1568,6 +1606,7 @@ export async function removeGitOverlayWorkspace(
         allSubmodulesRemoved = false;
         continue;
       }
+      watch.setPhase("unregistering submodule worktree");
       await withdrawWorktreeRegistration(
         worktree.sourceRepoPath,
         worktree.snapshotPath,
@@ -1579,28 +1618,40 @@ export async function removeGitOverlayWorkspace(
     // discovered again and the registration is stranded for good. Keeping both
     // means the next launch retries this exact function.
     if (!allSubmodulesRemoved) {
+      outcome = "kept for a submodule retry";
       logger.warn(
         `Keeping the workspace at ${worktreePath}: a submodule worktree could not be removed, and the startup sweep needs it to retry.`,
       );
       return;
     }
+    watch.setPhase("deleting directory");
     try {
       await removeWorkspaceDirectory(worktreePath);
     } catch (error) {
       // The same three things stay here, for the same reason: the marker names
       // the repository, and the registration has to outlive the directory.
       logger.warn(`Failed to remove workspace ${worktreePath}:`, error);
+      outcome = "directory deletion failed";
       return;
     }
     if (marker?.sourceRepoPath) {
+      watch.setPhase("unregistering worktree");
       await withdrawWorktreeRegistration(marker.sourceRepoPath, worktreePath);
     }
+    watch.setPhase("deleting marker");
     try {
       await fs.rm(markerPath(worktreePath), { force: true });
     } catch (error) {
+      outcome = "marker deletion failed";
       logger.warn(`Failed to remove workspace marker ${worktreePath}:`, error);
     }
+  } catch (error) {
+    outcome = "failed";
+    throw error;
   } finally {
     activeWorkspacePaths.delete(worktreePath);
+    logger.info(
+      `Workspace ${path.basename(worktreePath)} cleanup ${outcome} (${watch.stop()})`,
+    );
   }
 }

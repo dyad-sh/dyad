@@ -13,6 +13,7 @@ import { createAnthropicMessagesHandler } from "./anthropicMessagesHandler";
 import { fakeLlmLog } from "./log";
 import {
   handleDeviceCode,
+  handleDeviceFlowConfig,
   handleAccessToken,
   handleUser,
   handleUserEmails,
@@ -763,6 +764,7 @@ export function createFakeLlmApp(getPort: () => number) {
 
   // GitHub OAuth Device Flow
   app.post("/github/login/device/code", handleDeviceCode);
+  app.post("/github/api/test/device-flow-config", handleDeviceFlowConfig);
   app.post("/github/login/oauth/access_token", handleAccessToken);
 
   // GitHub API endpoints

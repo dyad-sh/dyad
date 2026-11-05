@@ -1,5 +1,5 @@
 import { IpcMainInvokeEvent } from "electron";
-import fetch from "node-fetch"; // Use node-fetch for making HTTP requests in main process
+import fetch from "../utils/github_fetch";
 import { writeSettings, readSettings } from "../../main/settings";
 import {
   gitSetRemoteUrl,

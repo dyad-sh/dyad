@@ -57,6 +57,11 @@ To get additional debug logs when a test is failing, use:
 DEBUG=pw:browser PLAYWRIGHT_HTML_OPEN=never npm run e2e
 ```
 
+## Testing transport in another Electron runtime
+
+- For the GitHub gzip/chunked regression, run `github_device_transport.spec.ts`. Set `DYAD_E2E_GITHUB_ELECTRON_EXECUTABLE` and filter `selectable Electron runtime` to test the production transport on a candidate binary without rebuilding app native modules. node-fetch 2.7.0 reproduces `Premature close` on 43.0.0; Node global fetch consumes the same complete body.
+- Playwright's `ElectronApplication.evaluate()` has no CommonJS `require` global. In standalone runtime probes, load modules in the test entry script and expose a test-owned global for evaluation.
+
 ## PageObject sub-component pattern
 
 Test builds skip `shell.openExternal` in the `open-external-url` handler. To assert the browser-opening URL, capture that IPC handler with `ipcMain.removeHandler`/`ipcMain.handle`; stubbing `shell.openExternal` never sees the preview toolbar action.

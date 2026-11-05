@@ -20,9 +20,11 @@ describe("Windows PR reviewer", () => {
     const original = parse(
       fs.readFileSync(".github/workflows/claude-pr-review.yml", "utf8"),
     );
-    expect(review.if).toBe(
-      "github.event.action != 'closed' && " + original.jobs["claude-review"].if,
+    const allowlist = /fromJSON\('([^']+)'\)/;
+    expect(review.if.match(allowlist)?.[1]).toBe(
+      original.jobs["review-request"].if.match(allowlist)?.[1],
     );
+    expect(review.if).toContain("github.event.action != 'closed'");
     expect(workflow.on.pull_request_target.types).toContain("closed");
     expect(workflow.concurrency["cancel-in-progress"]).toBe(true);
     expect(review["runs-on"]).toBe("windows-2022");

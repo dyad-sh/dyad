@@ -14,6 +14,8 @@ If a workflow's behavior depends on a deterministic check (identity comparisons,
 - When one branch doesn't need judgment (e.g., posting a fixed reply), drop the LLM entirely and use `gh` directly.
 - Add `github.event.*.user.type != 'Bot'` to prevent bot-comment loops when the same workflow can be triggered by its own output.
 
+For maintainer comment commands on external PRs, verify the commenter’s current repository write permission in a job without secrets before starting Claude. Do not authorize from `author_association` or the PR author. Use a comment-specific workflow concurrency key so an unauthorized comment cannot cancel a running review before authorization.
+
 ## Split LLM decisions from credentialed mutations
 
 When a Claude workflow needs write credentials, prefer a two-job shape: the Claude job runs with read-only permissions and uploads a constrained JSON/Markdown artifact, then a separate `needs:` job downloads the artifact, checks out trusted helper scripts from `github.sha`, validates the artifact, creates the GitHub App token, and performs deterministic GitHub mutations.

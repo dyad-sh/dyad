@@ -598,6 +598,7 @@ describe("mcp listTools handler", () => {
     getClientMock.mockRejectedValueOnce(
       new Error(
         "Connection failed. Authorization: Bearer very-secret-token-value\n" +
+          "Failed to fetch https://private-mcp.example.com/tools?token=secret\n" +
           "Could not read '/Users/example/Private Files/config.json'\n" +
           "Details ".repeat(1_000),
       ),
@@ -605,6 +606,8 @@ describe("mcp listTools handler", () => {
     const result = await invoke<{ errorMessage: string }>("mcp:list-tools", 1);
     expect(result.errorMessage).toContain("Connection failed");
     expect(result.errorMessage).not.toContain("very-secret-token-value");
+    expect(result.errorMessage).toContain("[redacted URL]");
+    expect(result.errorMessage).not.toContain("private-mcp.example.com");
     expect(result.errorMessage).not.toContain("/Users/example");
     expect(result.errorMessage.length).toBeLessThanOrEqual(2_000);
   });

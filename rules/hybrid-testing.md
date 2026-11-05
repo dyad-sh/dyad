@@ -11,6 +11,10 @@ own `vi.mock("electron")`, e.g. `src/testing/chat_flow_harness.smoke.test.ts`)
 keep a plain `.test.ts` suffix and run in the unit project, because the
 integration project's setup mocks would conflict with theirs.
 
+Hybrid IPC handlers need Node fetch even when happy-dom's same-origin policy
+is disabled: browser fetch still strips cross-origin Authorization headers.
+The harness installs undici fetch for its lifetime and restores it on disposal.
+
 Prefer a Vitest integration test over Playwright E2E when the test can prove the
 behavior through real IPC handlers, sqlite, git, fake LLM/Engine/Gateway routes,
 or the renderer+IPC chat harness without needing the packaged Electron app.

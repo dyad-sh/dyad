@@ -170,6 +170,8 @@ export interface GitOverlayWorkspaceOptions {
   purpose: GitOverlayWorkspacePurpose;
   excludedTargetRootNames: ReadonlySet<string>;
   cleanupFailureMode?: "await" | "background";
+  /** Fixed diagnostic phase names only; never paths or user content. */
+  onPhase?: (phase: string) => void;
   signal?: AbortSignal;
 }
 
@@ -491,7 +493,9 @@ async function overlayWorkspaceState(
   diagnostics: GitOverlayWorkspaceDiagnostics,
   signal: AbortSignal | undefined,
   trackedPaths: readonly string[] = [],
+  onPhase?: (phase: string) => void,
 ): Promise<void> {
+  onPhase?.("collecting overlay paths");
   const status = await runWorkspaceGit(
     sourceRoot,
     [
@@ -526,6 +530,7 @@ async function overlayWorkspaceState(
     excludedPackagePaths,
   );
   const realSourceRoot = await fs.realpath(sourceRoot);
+  onPhase?.("copying overlay files");
   for (
     let index = 0;
     index < overlayPaths.length;
@@ -1332,6 +1337,7 @@ export async function createGitOverlayWorkspace({
   purpose,
   excludedTargetRootNames,
   cleanupFailureMode = "await",
+  onPhase,
   signal,
 }: GitOverlayWorkspaceOptions): Promise<GitOverlayWorkspace> {
   const startedAt = Date.now();
@@ -1340,6 +1346,7 @@ export async function createGitOverlayWorkspace({
   let sourceRepoPath: string | undefined;
   let stage = "create-scratch-root";
   try {
+    onPhase?.("workspace path resolution");
     await fs.mkdir(scratchRoot, { recursive: true });
     stage = "find-repository";
     const repoResult = await runWorkspaceGit(
@@ -1372,6 +1379,7 @@ export async function createGitOverlayWorkspace({
     stage = "create-hooks-directory";
     await fs.mkdir(emptyHooksPath, { recursive: true });
     stage = "checkout-worktree";
+    onPhase?.("git worktree creation");
     await runWorkspaceGit(
       sourceRepoPath,
       [
@@ -1386,6 +1394,7 @@ export async function createGitOverlayWorkspace({
       signal,
     );
     const targetPath = path.join(worktreePath, targetRelativePath);
+    onPhase?.("removing excluded roots");
     // Roots that survived removal because Git tracks them stay in the overlay:
     // excluding them there too would pin the sandbox to their `HEAD` contents
     // and silently drop every live edit beneath them.
@@ -1412,8 +1421,10 @@ export async function createGitOverlayWorkspace({
       diagnostics,
       signal,
       trackedPaths,
+      onPhase,
     );
     stage = "materialize-submodules";
+    onPhase?.("submodule materialization");
     await materializeInitializedSubmodules({
       sourceRepoPath,
       workspaceRepoPath: worktreePath,
@@ -1428,6 +1439,7 @@ export async function createGitOverlayWorkspace({
       signal,
     });
     stage = "secure-symlinks";
+    onPhase?.("symlink validation");
     await secureGitOverlaySymlinks(
       sourceRepoPath,
       worktreePath,

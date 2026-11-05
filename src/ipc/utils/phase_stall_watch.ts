@@ -20,11 +20,13 @@ export function startPhaseStallWatch({
   label,
   initialPhase,
   warn,
+  info,
   firstWarningMs = FIRST_WARNING_MS,
 }: {
   label: string;
   initialPhase: string;
   warn: (message: string) => void;
+  info?: (message: string) => void;
   firstWarningMs?: number;
 }): PhaseStallWatch {
   const startedAt = Date.now();
@@ -36,6 +38,9 @@ export function startPhaseStallWatch({
   const seconds = (since: number) => Math.round((Date.now() - since) / 1000);
   const endPhase = () => {
     durations.push([phase, Date.now() - phaseStartedAt]);
+    info?.(
+      `${label} finished phase "${phase}" after ${Date.now() - phaseStartedAt} ms`,
+    );
   };
 
   const schedule = () => {
@@ -49,6 +54,7 @@ export function startPhaseStallWatch({
     timer.unref?.();
   };
   schedule();
+  info?.(`${label} started phase "${phase}"`);
 
   return {
     setPhase(next) {
@@ -56,6 +62,7 @@ export function startPhaseStallWatch({
       endPhase();
       phase = next;
       phaseStartedAt = Date.now();
+      info?.(`${label} started phase "${phase}"`);
     },
     currentPhase: () => phase,
     stop() {

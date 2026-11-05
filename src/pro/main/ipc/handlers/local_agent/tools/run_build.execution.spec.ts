@@ -19,6 +19,9 @@ import { getUserDataPath } from "@/paths/paths";
 import { runBuildTool } from "./run_build";
 import type { AgentContext } from "./types";
 
+const buildLogs = vi.hoisted(() => ({ info: vi.fn(), warn: vi.fn() }));
+vi.mock("electron-log/main", () => ({ default: { scope: () => buildLogs } }));
+
 vi.mock("@/ipc/services/git_overlay_workspace", () => ({
   createGitOverlayWorkspace: vi.fn(),
   removeGitOverlayWorkspace: vi.fn(),
@@ -497,6 +500,10 @@ describe("isolated production build execution", () => {
     "settles cancellation during a stuck %s but keeps claims until it settles",
     async (step) => {
       const stuck = deferred();
+      const cleanup = deferred();
+      vi.mocked(removeGitOverlayWorkspace).mockImplementation(
+        () => cleanup.promise,
+      );
       const copyWorkspace = vi
         .mocked(createGitOverlayWorkspace)
         .getMockImplementation()!;
@@ -548,6 +555,19 @@ describe("isolated production build execution", () => {
           appOperationCoordinator.isBusy(ctx.appId, ["repository-worktree"]),
         ).toBe(true);
         expect(edited).toBe(false);
+        expect(buildLogs.warn).toHaveBeenCalledWith(
+          expect.stringMatching(
+            /Production build [\w-]+ for app 8123 blocks operation "edit" on repository-ref, repository-worktree; phase ".*"; \d+ ms since cancellation\/deadline/,
+          ),
+        );
+        expect(buildLogs.info).toHaveBeenCalledWith(
+          expect.stringContaining(
+            "tool result settled; underlying preparation still outstanding",
+          ),
+        );
+        expect(buildLogs.info).not.toHaveBeenCalledWith(
+          expect.stringContaining("outstanding preparation settled after"),
+        );
         await expect(
           runBuildTool.execute({}, { ...ctx, abortSignal: undefined }),
         ).resolves.toContain("still finishing its workspace setup");
@@ -567,13 +587,46 @@ describe("isolated production build execution", () => {
           expect(resolvePackageManager).not.toHaveBeenCalled();
         }
         expect(runCleanPackageInstall).not.toHaveBeenCalled();
+        const rename = appOperationCoordinator.run(
+          { appId: ctx.appId, operation: "rename", resources: ["app-path"] },
+          async () => {},
+        );
+        expect(buildLogs.warn).toHaveBeenCalledWith(
+          expect.stringMatching(
+            /blocks operation "rename" on app-path; phase "snapshot cleanup"; \d+ ms since cancellation\/deadline/,
+          ),
+        );
+        expect(buildLogs.info).not.toHaveBeenCalledWith(
+          expect.stringContaining(
+            "snapshot cleanup settled; app-path claim released",
+          ),
+        );
+        cleanup.resolve();
+        await rename;
         await vi.waitFor(() =>
           expect(appOperationCoordinator.isBusy(ctx.appId, ["app-path"])).toBe(
             false,
           ),
         );
+        const lifecycle = buildLogs.info.mock.calls
+          .map(([message]) => message)
+          .filter((message: string) => message.startsWith("Production build "));
+        expect(lifecycle).toEqual([
+          expect.stringContaining(
+            "tool result settled; underlying preparation still outstanding",
+          ),
+          expect.stringContaining("outstanding preparation settled after"),
+          expect.stringContaining("build slot released"),
+          expect.stringContaining(
+            "repository and runtime claims released; app-path retained",
+          ),
+          expect.stringContaining(
+            "snapshot cleanup settled; app-path claim released",
+          ),
+        ]);
       } finally {
         stuck.resolve();
+        cleanup.resolve();
         await Promise.allSettled([execution, ...(edit ? [edit] : [])]);
       }
 

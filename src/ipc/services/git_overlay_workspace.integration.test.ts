@@ -27,6 +27,7 @@ it.each(["e2e-test", "build"] as const)(
       return result.stdout;
     };
     let workspace: GitOverlayWorkspace | undefined;
+    const phases: string[] = [];
     try {
       await fs.mkdir(path.join(sourcePath, "supabase", "migrations"), {
         recursive: true,
@@ -57,7 +58,17 @@ it.each(["e2e-test", "build"] as const)(
         directoryPrefix: "1-",
         purpose,
         excludedTargetRootNames: new Set(),
+        onPhase: (phase) => phases.push(phase),
       });
+      expect(phases).toEqual([
+        "workspace path resolution",
+        "git worktree creation",
+        "removing excluded roots",
+        "collecting overlay paths",
+        "copying overlay files",
+        "submodule materialization",
+        "symlink validation",
+      ]);
       for (const [index, migrationPath] of migrationPaths.entries()) {
         const snapshotPath = path.join(workspace.targetPath, migrationPath);
         expect(path.basename(snapshotPath)).toHaveLength(180);

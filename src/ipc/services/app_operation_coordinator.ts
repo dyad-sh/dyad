@@ -43,6 +43,13 @@ export interface AppOperationAccess {
 export interface AppOperationContext {
   /** Drop preparation claims while retaining ownership of the remaining work. */
   releaseResources(resources: readonly AppOperationResource[]): void;
+  /** Observe direct conflicts, once per waiting operation for this owner. */
+  onBlockedOperation(
+    callback: (
+      operation: string,
+      resources: readonly AppOperationResource[],
+    ) => void,
+  ): void;
 }
 
 export interface AppOperationRequest {
@@ -93,6 +100,11 @@ interface NormalizedAppOperationRequest {
 }
 
 interface PendingOperation {
+  onBlocked?: (
+    operation: string,
+    resources: readonly AppOperationResource[],
+  ) => void;
+  reportedWaiters?: WeakSet<PendingOperation>;
   request: NormalizedAppOperationRequest;
   execute: () => Promise<unknown>;
   resolve: (result: unknown) => void;
@@ -278,6 +290,11 @@ export class AppOperationCoordinator {
           let active = true;
           try {
             return await operation({
+              onBlockedOperation: (callback) => {
+                if (!active) throw new Error("App operation already settled");
+                pending.onBlocked = callback;
+                this.pump(request.appId, state);
+              },
               releaseResources: (resources) => {
                 if (!active) throw new Error("App operation already settled");
                 const released = new Set(
@@ -444,6 +461,13 @@ export class AppOperationCoordinator {
 
     for (const pending of state.queue) {
       const activeAndReady = [...state.active, ...ready];
+      for (const owner of state.active) {
+        if (!owner.onBlocked || owner.reportedWaiters?.has(pending)) continue;
+        const resources = conflictingResources(owner.request, pending.request);
+        if (resources.length === 0) continue;
+        (owner.reportedWaiters ??= new WeakSet()).add(pending);
+        owner.onBlocked(pending.request.operation, resources);
+      }
       const conflictsWithActive = activeAndReady.some((active) =>
         requestsConflict(active.request, pending.request),
       );

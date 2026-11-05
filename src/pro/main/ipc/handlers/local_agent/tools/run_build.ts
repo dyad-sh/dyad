@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 
 import log from "electron-log/main";
@@ -79,6 +80,9 @@ export interface Snapshot {
 }
 
 interface BuildSlot {
+  id: string;
+  phase: string;
+  cancelledAt?: number;
   /** Cancelled or timed out, but abandoned preparation has not settled. */
   stopping: boolean;
 }
@@ -167,6 +171,7 @@ export async function createBuildWorktree(
   appPath: string,
   snapshotRoot: string,
   signal?: AbortSignal,
+  onPhase?: (phase: string) => void,
 ): Promise<Snapshot> {
   const workspace = await createGitOverlayWorkspace({
     sourceTargetPath: appPath,
@@ -175,6 +180,7 @@ export async function createBuildWorktree(
     purpose: "build",
     excludedTargetRootNames: SNAPSHOT_EXCLUDED_NAMES,
     cleanupFailureMode: "background",
+    onPhase,
     signal,
   });
   return {
@@ -207,7 +213,12 @@ async function prepareIsolatedBuild(
   // active snapshots and joins any removal already in flight.
   void removeStaleSnapshots(snapshotRoot);
   watch.setPhase("worktree creation");
-  const snapshot = await createBuildWorktree(appPath, snapshotRoot, signal);
+  const snapshot = await createBuildWorktree(
+    appPath,
+    snapshotRoot,
+    signal,
+    watch.setPhase,
+  );
   registerSnapshot(snapshot);
   // A worktree step that finishes after abandonment must not start the next.
   if (signal.aborted) {
@@ -442,6 +453,7 @@ function runBuildOperation(
   slot: BuildSlot,
   operation: (scope: BuildOperationScope) => Promise<string>,
 ): Promise<string> {
+  const label = `Production build ${slot.id} for app ${ctx.appId}`;
   const releaseBuildSlot = () => {
     if (activeBuilds.get(ctx.appId) === slot) activeBuilds.delete(ctx.appId);
   };
@@ -460,7 +472,7 @@ function runBuildOperation(
           refuseWhenRecording: "run a production build",
           signal: ctx.abortSignal,
         },
-        async ({ releaseResources }) => {
+        async ({ releaseResources, onBlockedOperation }) => {
           let snapshot: Snapshot | undefined;
           const retained: Promise<unknown>[] = [];
           try {
@@ -473,21 +485,40 @@ function runBuildOperation(
                 retainUntilSettled: (work) => {
                   slot.stopping = true;
                   retained.push(work);
+                  onBlockedOperation((operation, resources) => {
+                    logger.warn(
+                      `${label} blocks operation "${operation}" on ${resources.join(", ")}; phase "${slot.phase}"; ${Date.now() - slot.cancelledAt!} ms since cancellation/deadline`,
+                    );
+                  });
                 },
               }),
             );
           } catch (error) {
             reject(error);
           } finally {
+            if (slot.stopping)
+              logger.info(
+                `${label} tool result settled; underlying preparation still outstanding`,
+              );
             // Awaited only when something was abandoned, so an ordinary
             // result frees the build slot in the same turn it settles.
             if (retained.length > 0) await Promise.allSettled(retained);
+            if (slot.stopping)
+              logger.info(
+                `${label} outstanding preparation settled after ${Date.now() - slot.cancelledAt!} ms since cancellation/deadline`,
+              );
             releaseBuildSlot();
+            if (slot.stopping) logger.info(`${label} build slot released`);
+            slot.phase = "snapshot cleanup";
             releaseResources([
               "repository-ref",
               "repository-worktree",
               "runtime",
             ]);
+            if (slot.stopping)
+              logger.info(
+                `${label} repository and runtime claims released; app-path retained for snapshot cleanup`,
+              );
             if (snapshot) {
               await removeSnapshot(
                 snapshot.worktreePath,
@@ -499,6 +530,11 @@ function runBuildOperation(
                 );
               });
             }
+            releaseResources(["app-path"]);
+            if (slot.stopping)
+              logger.info(
+                `${label} snapshot cleanup settled; app-path claim released`,
+              );
           }
         },
       )
@@ -539,7 +575,11 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
       return body;
     }
 
-    const slot: BuildSlot = { stopping: false };
+    const slot: BuildSlot = {
+      id: randomUUID(),
+      phase: "admission",
+      stopping: false,
+    };
     activeBuilds.set(ctx.appId, slot);
     return runBuildOperation(
       ctx,
@@ -594,21 +634,30 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
         let phase: "snapshot setup" | "dependency installation" | "build" =
           "snapshot setup";
         const preparationWatch = startPhaseStallWatch({
-          label: `Isolated build preparation for app ${ctx.appId}`,
+          label: `Isolated build preparation ${slot.id} for app ${ctx.appId}`,
           initialPhase: "snapshot root setup",
           warn: (message) => logger.warn(message),
+          info: (message) => logger.info(message),
         });
+        const trackedWatch: PhaseStallWatch = {
+          ...preparationWatch,
+          setPhase: (next) => {
+            slot.phase = next;
+            preparationWatch.setPhase(next);
+          },
+        };
+        slot.phase = preparationWatch.currentPhase();
         try {
           const preparation = prepareIsolatedBuild(
             ctx.appPath,
             abortScope.signal,
-            preparationWatch,
+            trackedWatch,
             registerSnapshot,
           );
           void preparation
             .finally(() => {
               logger.info(
-                `Isolated build preparation for app ${ctx.appId} settled (${preparationWatch.stop()})`,
+                `Isolated build preparation ${slot.id} for app ${ctx.appId} settled (${preparationWatch.stop()})`,
               );
             })
             .catch(() => {});
@@ -616,8 +665,9 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
             preparation,
             abortScope.signal,
             () => {
+              slot.cancelledAt = Date.now();
               logger.warn(
-                `Isolated build preparation for app ${ctx.appId} ${abortScope.timedOut() ? "reached its deadline" : "was cancelled"} during "${preparationWatch.currentPhase()}"; keeping its claims until that step settles.`,
+                `Isolated build preparation ${slot.id} for app ${ctx.appId} ${abortScope.timedOut() ? "reached its deadline" : "was cancelled"} during "${preparationWatch.currentPhase()}"; keeping its claims until that step settles.`,
               );
               retainUntilSettled(preparation);
             },

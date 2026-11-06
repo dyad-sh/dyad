@@ -46,11 +46,8 @@ vi.mock("@/supabase_admin/supabase_management_client", () => ({
   deleteSupabaseFunction: mocks.deleteSupabaseFunction,
 }));
 
-import {
-  isPreCommitHookAvailable,
-  MAX_PRE_COMMIT_RUNS_PER_TURN,
-  runPreCommitTool,
-} from "./run_pre_commit";
+import { isPreCommitHookAvailable, runPreCommitTool } from "./run_pre_commit";
+import { MAX_PRE_COMMIT_RUNS_PER_TURN } from "./turn_tool_budgets";
 
 const tempDirs: string[] = [];
 

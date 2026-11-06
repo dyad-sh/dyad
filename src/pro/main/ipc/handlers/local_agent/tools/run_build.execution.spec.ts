@@ -18,6 +18,7 @@ import { runningApps } from "@/ipc/utils/process_manager";
 import { getUserDataPath } from "@/paths/paths";
 import { runBuildTool } from "./run_build";
 import type { AgentContext } from "./types";
+import { MAX_BUILD_RUNS_PER_TURN } from "./turn_tool_budgets";
 
 const buildLogs = vi.hoisted(() => ({ info: vi.fn(), warn: vi.fn() }));
 vi.mock("electron-log/main", () => ({ default: { scope: () => buildLogs } }));
@@ -373,9 +374,12 @@ describe("isolated production build execution", () => {
     });
     try {
       await expect(runBuildTool.execute({}, ctx)).resolves.toContain("passed");
-      const nextCtx = { ...ctx, buildAttemptState: { count: 3 } };
+      const nextCtx = {
+        ...ctx,
+        buildAttemptState: { count: MAX_BUILD_RUNS_PER_TURN },
+      };
       await expect(runBuildTool.execute({}, nextCtx)).resolves.toContain(
-        "3-build limit",
+        `${MAX_BUILD_RUNS_PER_TURN}-build limit`,
       );
     } finally {
       cleanup.resolve();

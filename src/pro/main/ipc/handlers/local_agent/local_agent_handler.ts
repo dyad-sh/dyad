@@ -141,6 +141,7 @@ import {
   type InjectedMessage,
 } from "./prepare_step_utils";
 import { deleteTodos, loadTodos, saveTodos } from "./todo_persistence";
+import { hasExhaustedTurnToolBudget } from "./tools/turn_tool_budgets";
 import { ensureDyadGitignored } from "@/ipc/handlers/gitignoreUtils";
 import { TOOL_DEFINITIONS } from "./tool_definitions";
 import {
@@ -2249,6 +2250,7 @@ export async function handleLocalAgentStream(
           planModeOnly,
           passEndedWithText,
           todos: ctx.todos,
+          turnToolBudgetExhausted: hasExhaustedTurnToolBudget(ctx),
           todoFollowUpLoops,
           maxTodoFollowUpLoops,
         })
@@ -2937,6 +2939,7 @@ function shouldRunTodoFollowUpPass(params: {
   planModeOnly: boolean;
   passEndedWithText: boolean;
   todos: AgentContext["todos"];
+  turnToolBudgetExhausted: boolean;
   todoFollowUpLoops: number;
   maxTodoFollowUpLoops: number;
 }): boolean {
@@ -2945,14 +2948,19 @@ function shouldRunTodoFollowUpPass(params: {
     planModeOnly,
     passEndedWithText,
     todos,
+    turnToolBudgetExhausted,
     todoFollowUpLoops,
     maxTodoFollowUpLoops,
   } = params;
+  // A follow-up pass is part of the same turn and keeps its tool budgets. Once
+  // a per-turn limit is used up, retrying would only hit it again; the
+  // incomplete todos stay persisted for the user's next message instead.
   return (
     !readOnly &&
     !planModeOnly &&
     passEndedWithText &&
     hasIncompleteTodos(todos) &&
+    !turnToolBudgetExhausted &&
     todoFollowUpLoops < maxTodoFollowUpLoops
   );
 }

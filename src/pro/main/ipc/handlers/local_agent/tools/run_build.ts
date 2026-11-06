@@ -36,10 +36,10 @@ import { getPackageManagerCommandEnv } from "@/ipc/utils/socket_firewall";
 import { getUserDataPath } from "@/paths/paths";
 import type { AgentContext, ToolDefinition } from "./types";
 import { escapeXmlAttr, escapeXmlContent } from "./types";
+import { MAX_BUILD_RUNS_PER_TURN } from "./turn_tool_budgets";
 
 const runBuildSchema = z.object({});
 
-const MAX_BUILD_RUNS_PER_TURN = 3;
 const BUILD_TIMEOUT_MS = 10 * 60_000;
 const MAX_RESULT_OUTPUT_CHARS = 16_000;
 const BUILD_OUTPUT_PREVIEW_INTERVAL_MS = 250;

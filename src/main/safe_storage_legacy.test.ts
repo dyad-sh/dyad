@@ -28,6 +28,7 @@ import {
   retryRecoveryWithKeychainUnlock,
   SecurityCliKeychainPasswordReader,
   setInProcessKeychainBindingLoaderForTesting,
+  setSafeStorageRecoveryFailureListener,
 } from "./safe_storage_legacy";
 
 // --- Test crypto helpers: mirror Chromium's frozen os_crypt v10 scheme. ---
@@ -450,6 +451,43 @@ describe("Keychain unlock recovery retry", () => {
     await withPlatform("darwin", () => {
       expect(recoverLegacySafeStorageSecret(ciphertext)).toBeNull();
       expect(recoveryNeedsKeychainUnlock()).toBe(true);
+    });
+  });
+
+  it("notifies the renderer-ready scheduler after a late locked read, with only one unlock attempt", async () => {
+    const ciphertext = encryptV10Base64(
+      "late-secret",
+      deriveLegacyOsCryptKey("password"),
+    );
+    const schedule = vi.fn();
+    const unlock = vi.fn(() => -128);
+    setInProcessKeychainBindingLoaderForTesting(() => ({
+      readGenericPassword: () => ({ status: -25308, password: null }),
+      isDefaultKeychainLocked: () => true,
+      unlockDefaultKeychain: unlock,
+    }));
+    await withPlatform("darwin", () => {
+      setSafeStorageRecoveryFailureListener(schedule);
+      // Startup has no settings failures; only a later MCP/subscription read fails.
+      expect(retryRecoveryWithKeychainUnlock()).toBe(false);
+      expect(schedule).not.toHaveBeenCalled();
+      expect(recoverLegacySafeStorageSecret(ciphertext)).toBeNull();
+      expect(schedule).toHaveBeenCalledTimes(1);
+      expect(recoveryNeedsKeychainUnlock()).toBe(true);
+      expect(retryRecoveryWithKeychainUnlock()).toBe(false);
+      expect(unlock).toHaveBeenCalledTimes(1);
+      // Another ciphertext after cancellation cannot request a second prompt.
+      expect(
+        recoverLegacySafeStorageSecret(
+          encryptV10Base64(
+            "another-secret",
+            deriveLegacyOsCryptKey("password"),
+          ),
+        ),
+      ).toBeNull();
+      expect(schedule).toHaveBeenCalledTimes(1);
+      expect(retryRecoveryWithKeychainUnlock()).toBe(false);
+      expect(unlock).toHaveBeenCalledTimes(1);
     });
   });
 

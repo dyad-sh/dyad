@@ -263,6 +263,17 @@ describe("mcp updateServer handler", () => {
       headersEncrypted: raw,
       oauthState: raw,
     });
+    const listed = await invoke<Array<Record<string, unknown>>>(
+      "mcp:list-servers",
+      undefined,
+    );
+    expect(listed.find((server) => server.id === 75)).toMatchObject({
+      oauthConnected: false,
+      oauthUnreadable: true,
+    });
+    expect(listed.find((server) => server.id === 75)).not.toHaveProperty(
+      "oauthState",
+    );
     await invoke("mcp:update-server", { id: 75, name: "renamed" });
     expect(dbStore.get(75)).toMatchObject({
       envEncrypted: raw,

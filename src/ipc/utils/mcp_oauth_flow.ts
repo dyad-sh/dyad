@@ -431,9 +431,17 @@ async function prepareAndRunOAuthFlow(
     server.oauthCallbackPort ??
     DEFAULT_OAUTH_CALLBACK_PORT;
   const scope = server.oauthScope ?? undefined;
-  const decryptedClientSecret = server.oauthClientSecret
-    ? decryptFromString(server.oauthClientSecret) || undefined
-    : undefined;
+  let decryptedClientSecret: string | undefined;
+  try {
+    decryptedClientSecret = server.oauthClientSecret
+      ? decryptFromString(server.oauthClientSecret) || undefined
+      : undefined;
+  } catch {
+    throw new DyadError(
+      "Saved MCP OAuth client secret could not be opened. Unlock or restore your OS keyring and retry, or re-enter the client secret in the plugin settings. Resetting OAuth does not remove the configured client secret.",
+      DyadErrorKind.Precondition,
+    );
+  }
   const expectedState = generateState();
   const writeAuthority = issueMcpOAuthWriteAuthority(server.id);
   const provider = new DyadOAuthClientProvider({

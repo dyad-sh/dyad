@@ -37,6 +37,7 @@ import {
 import {
   recoveryNeedsKeychainUnlock,
   retryRecoveryWithKeychainUnlock,
+  setSafeStorageRecoveryFailureListener,
 } from "./main/safe_storage_legacy";
 import { recordUpdaterError } from "./main/updater_state";
 import { recordPreviousSessionCrash } from "./main/previous_session_crash";
@@ -689,16 +690,20 @@ export async function onReady() {
 }
 
 function scheduleSafeStorageKeychainUnlockRetryAfterRendererLoad(): void {
+  setSafeStorageRecoveryFailureListener(
+    scheduleSafeStorageKeychainUnlockRetryAfterRendererLoad,
+  );
   if (safeStorageKeychainUnlockRetryScheduled) {
     return;
   }
   safeStorageKeychainUnlockRetryScheduled = true;
   setTimeout(() => {
-    if (!recoveryNeedsKeychainUnlock()) {
-      return;
-    }
-    if (retryRecoveryWithKeychainUnlock()) {
-      rewriteRecoveredSafeStorageSecretsAfterKeychainUnlock();
+    try {
+      if (recoveryNeedsKeychainUnlock() && retryRecoveryWithKeychainUnlock()) {
+        rewriteRecoveredSafeStorageSecretsAfterKeychainUnlock();
+      }
+    } finally {
+      safeStorageKeychainUnlockRetryScheduled = false;
     }
   }, 0);
 }

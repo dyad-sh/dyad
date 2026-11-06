@@ -73,10 +73,10 @@ function load(): Credentials | undefined {
     credentialCache = null;
     return undefined;
   }
+  // Keep keyring setup failures distinct from unreadable credentials.
+  // macOS legacy recovery may work while the session's encryptor is down.
+  if (process.platform === "linux") requireEncryption();
   try {
-    // Preserve the subscription store's stronger Linux requirement. The
-    // macOS legacy reader may recover while the session's encryptor is down.
-    if (process.platform === "linux") requireEncryption();
     credentialCache = Credentials.parse(
       JSON.parse(decryptSafeStorageBuffer(fs.readFileSync(credentialPath()))),
     );
@@ -125,13 +125,15 @@ export function getCodexSubscriptionStatus() {
       celebrationPending,
       setupError,
     };
-  } catch {
+  } catch (error) {
     return {
       connected: false,
       credentialError: true,
       pending,
       error:
-        "Saved ChatGPT credentials could not be opened. Restore your OS keyring, reconnect ChatGPT, or disconnect it to use your OpenAI API key.",
+        error instanceof DyadError
+          ? error.message
+          : "Saved ChatGPT credentials could not be opened. Restore your OS keyring, reconnect ChatGPT, or disconnect it to use your OpenAI API key.",
     };
   }
 }

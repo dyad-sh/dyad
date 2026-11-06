@@ -121,6 +121,14 @@ let inProcessBindingLoader: KeychainReaderBindingLoader = () =>
   require("dyad-keychain-reader") as KeychainReaderBinding;
 let interactionNeededIdentities = new Set<string>();
 let unlockPromptAttempted = false;
+let recoveryFailureListener: (() => void) | undefined;
+
+/** Installed after renderer load so late credential reads can request unlock. */
+export function setSafeStorageRecoveryFailureListener(
+  listener: () => void,
+): void {
+  recoveryFailureListener = listener;
+}
 
 function loadInProcessKeychainReaderBinding(): KeychainReaderBinding | null {
   if (inProcessBinding !== undefined) {
@@ -545,6 +553,9 @@ export function recoverLegacySafeStorageSecret(
     nextFailureRetryAt = Date.now() + FAILURE_RETRY_INTERVAL_MS;
   }
   recoveryCache.set(ciphertextBase64, null);
+  if (!unlockPromptAttempted && interactionNeededIdentities.size > 0) {
+    recoveryFailureListener?.();
+  }
   if (plausibleRecoveries.length > 1) {
     logger.warn(
       "Ambiguous legacy safeStorage recovery: multiple Keychain identities " +
@@ -566,6 +577,7 @@ export function clearRecoveryCacheForTesting(): void {
   defaultReader = undefined;
   interactionNeededIdentities = new Set();
   unlockPromptAttempted = false;
+  recoveryFailureListener = undefined;
   inProcessBinding = undefined;
   inProcessBindingLoadFailureLogged = false;
   inProcessBindingLoader = () =>

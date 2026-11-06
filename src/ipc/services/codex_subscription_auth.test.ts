@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
+import { DyadErrorKind } from "@/errors/dyad_error";
 import os from "node:os";
 import path from "node:path";
 const mocks = vi.hoisted(() => ({
@@ -135,6 +136,35 @@ describe("subscription OAuth", () => {
     );
   });
 
+  it.each(["basic_text", "unavailable"])(
+    "preserves Linux keyring guidance: %s",
+    async (backend) => {
+      const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+      const file = path.join(mocks.directory, "codex-subscription.enc");
+      fs.writeFileSync(file, "saved-ciphertext");
+      mocks.backend = backend;
+      mocks.encryption = backend !== "unavailable";
+      Object.defineProperty(process, "platform", {
+        value: "linux",
+        configurable: true,
+      });
+      try {
+        expect(getCodexSubscriptionStatus()).toMatchObject({
+          credentialError: true,
+          error: expect.stringContaining("Configure an OS keyring"),
+        });
+        await expect(getCodexSubscriptionCredentials()).rejects.toMatchObject({
+          kind: DyadErrorKind.Precondition,
+          message: expect.stringContaining("Configure an OS keyring"),
+        });
+        expect(mocks.decrypt).not.toHaveBeenCalled();
+        expect(fs.readFileSync(file, "utf8")).toBe("saved-ciphertext");
+      } finally {
+        Object.defineProperty(process, "platform", platform);
+      }
+    },
+  );
+
   it("still rejects Linux basic_text storage even if its ciphertext decrypts", () => {
     const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
     const file = path.join(mocks.directory, "codex-subscription.enc");
@@ -186,7 +216,9 @@ describe("subscription OAuth", () => {
     const file = path.join(mocks.directory, "codex-subscription.enc");
     const ciphertext = Buffer.from("v10locked-subscription");
     fs.writeFileSync(file, ciphertext);
-    mocks.encryption = false;
+    mocks.decrypt.mockImplementation(() => {
+      throw new Error("keyring read denied");
+    });
     expect(getCodexSubscriptionStatus()).toMatchObject({
       credentialError: true,
     });
@@ -224,7 +256,7 @@ describe("subscription OAuth", () => {
         expect(getCodexSubscriptionStatus()).toMatchObject({
           connected: false,
           credentialError: true,
-          error: expect.stringContaining("reconnect"),
+          error: expect.any(String),
         });
       }
       await expect(getCodexSubscriptionCredentials()).rejects.toThrow();

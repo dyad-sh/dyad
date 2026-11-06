@@ -16,6 +16,7 @@ function makeServer(overrides: Partial<McpServer> = {}): McpServer {
     enabled: false,
     oauthEnabled: false,
     oauthConnected: false,
+    oauthUnreadable: false,
     oauthCallbackPort: null,
     oauthClientId: null,
     envUnreadable: false,

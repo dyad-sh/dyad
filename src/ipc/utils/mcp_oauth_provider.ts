@@ -93,12 +93,23 @@ function formUrlEncode(s: string): string {
 // registered client ID with no tokens yet. Drives the
 // "OAuth: connected" badge.
 export function oauthStateHasTokens(stored: string | null): boolean {
-  if (!stored) return false;
+  return getOAuthStateStatus(stored).oauthConnected;
+}
+
+/** Expose recovery actions without sending stored credentials to the renderer. */
+export function getOAuthStateStatus(stored: string | null): {
+  oauthConnected: boolean;
+  oauthUnreadable: boolean;
+} {
+  if (!stored) return { oauthConnected: false, oauthUnreadable: false };
   try {
     const parsed = parseStoredState(stored);
-    return Boolean(parsed.tokens?.access_token);
+    return {
+      oauthConnected: Boolean(parsed.tokens?.access_token),
+      oauthUnreadable: false,
+    };
   } catch {
-    return false;
+    return { oauthConnected: false, oauthUnreadable: true };
   }
 }
 

@@ -14,7 +14,7 @@ If a workflow's behavior depends on a deterministic check (identity comparisons,
 - When one branch doesn't need judgment (e.g., posting a fixed reply), drop the LLM entirely and use `gh` directly.
 - Add `github.event.*.user.type != 'Bot'` to prevent bot-comment loops when the same workflow can be triggered by its own output.
 
-For maintainer comment commands on external PRs, verify the commenter’s current repository write permission in a job without secrets before starting Claude. Do not authorize from `author_association` or the PR author. Use a comment-specific workflow concurrency key so an unauthorized comment cannot cancel a running review before authorization.
+For maintainer comment commands on external PRs, verify the commenter’s current repository write permission in a job without secrets before starting Claude. Do not authorize from `author_association` or the PR author. Use a comment-specific workflow concurrency key so an unauthorized comment cannot cancel a running review before authorization. After authorization, use one PR-number concurrency group across review generation and posting (e.g. a reusable-workflow call job); automatic and manual triggers must share it. Posting steps must also skip cancellation rather than use `always()`.
 
 ## Split LLM decisions from credentialed mutations
 

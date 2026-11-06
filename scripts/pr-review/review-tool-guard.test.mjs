@@ -199,7 +199,10 @@ test(
     const workflow = parse(
       fs.readFileSync(".github/workflows/claude-pr-review.yml", "utf8"),
     );
-    const agent = workflow.jobs["claude-review"].steps.find(
+    const execution = parse(
+      fs.readFileSync(workflow.jobs["run-review"].uses, "utf8"),
+    );
+    const agent = execution.jobs["claude-review"].steps.find(
       (step) => step.name === "PR Review",
     );
     const settings = JSON.parse(agent.with.settings);

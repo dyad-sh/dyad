@@ -159,8 +159,12 @@ for (const newline of ["\n", "\r\n"]) {
         .replace(/\r?\n/g, newline),
     );
     const request = workflow.jobs["review-request"];
-    const review = workflow.jobs["claude-review"];
-    const post = workflow.jobs["post-claude-review"];
+    const run = workflow.jobs["run-review"];
+    const execution = parse(
+      fs.readFileSync(run.uses, "utf8").replace(/\r?\n/g, newline),
+    );
+    const review = execution.jobs["claude-review"];
+    const post = execution.jobs["post-claude-review"];
     assert.deepEqual(workflow.on.issue_comment.types, ["created"]);
     assert.ok(workflow.concurrency.group.includes("github.event.comment.id"));
     assert.ok(workflow.concurrency.group.includes("github.event_name"));
@@ -180,8 +184,38 @@ for (const newline of ["\n", "\r\n"]) {
       "nourzakhama2003",
       "ryangroch",
     ]);
-    assert.equal(review.needs, "review-request");
-    assert.equal(review.if, "needs.review-request.outputs.pr_number != ''");
+    assert.equal(run.needs, "review-request");
+    assert.equal(run.if, "needs.review-request.outputs.pr_number != ''");
+    assert.equal(run.uses, "./.github/workflows/claude-pr-review-run.yml");
+    assert.equal(
+      run.with.pr_number,
+      "${{ needs.review-request.outputs.pr_number }}",
+    );
+    assert.equal(run.secrets, "inherit");
+    assert.deepEqual(run.permissions, {
+      contents: "read",
+      "pull-requests": "read",
+      actions: "read",
+    });
+    // The called workflow keeps BOTH generation and posting in the same lock.
+    // No event/comment id may appear here: automatic and manual requests share it.
+    assert.deepEqual(run.concurrency, {
+      group:
+        "claude-pr-review-execution-${{ github.repository }}-${{ needs.review-request.outputs.pr_number }}",
+      "cancel-in-progress": true,
+    });
+    assert.deepEqual(Object.keys(execution.on), ["workflow_call"]);
+    assert.deepEqual(Object.keys(execution.jobs), [
+      "claude-review",
+      "post-claude-review",
+    ]);
+    assert.equal(execution.on.workflow_call.inputs.pr_number.required, true);
+    assert.equal(execution.on.workflow_call.inputs.pr_number.type, "string");
+    // A second concurrency group in the callee could cancel its own caller.
+    assert.equal(execution.concurrency, undefined);
+    assert.equal(review.concurrency, undefined);
+    assert.equal(post.concurrency, undefined);
+    assert.equal(review.needs, undefined);
     assert.deepEqual(review.permissions, {
       contents: "read",
       "pull-requests": "read",
@@ -218,12 +252,9 @@ for (const newline of ["\n", "\r\n"]) {
     }
     assert.equal(
       review.steps.find((step) => step.id === "context").env.PR_NUMBER,
-      "${{ needs.review-request.outputs.pr_number }}",
+      "${{ inputs.pr_number }}",
     );
-    assert.equal(
-      review.outputs.pr_number,
-      "${{ needs.review-request.outputs.pr_number }}",
-    );
+    assert.equal(review.outputs.pr_number, "${{ inputs.pr_number }}");
     assert.equal(post.needs, "claude-review");
     for (const step of post.steps.filter((step) =>
       step.name.startsWith("Post Claude"),
@@ -233,6 +264,10 @@ for (const newline of ["\n", "\r\n"]) {
         "${{ needs.claude-review.outputs.pr_number }}",
       );
     }
+    assert.equal(
+      post.steps.find((step) => step.name === "Post Claude review comment").if,
+      "${{ !cancelled() && steps.post-token.outcome == 'success' }}",
+    );
     assert.ok(!request.steps.some((step) => step.env?.ANTHROPIC_BASE_URL));
 
     // Execute the actual workflow handoff: only an authorized request emits a PR number.
@@ -249,9 +284,14 @@ for (const newline of ["\n", "\r\n"]) {
     const AsyncFunction = Object.getPrototypeOf(
       async function () {},
     ).constructor;
-    const run = new AsyncFunction("context", "github", "core", authorizeScript);
+    const runAuthorization = new AsyncFunction(
+      "context",
+      "github",
+      "core",
+      authorizeScript,
+    );
     const automaticOutputs = {};
-    await run(
+    await runAuthorization(
       {
         eventName: "pull_request_target",
         payload: { pull_request: { number: 43 } },
@@ -267,7 +307,7 @@ for (const newline of ["\n", "\r\n"]) {
     for (const permission of ["write", "read"]) {
       const input = fixture({ permission });
       const outputs = {};
-      await run(input.context, input.github, {
+      await runAuthorization(input.context, input.github, {
         setOutput: (key, value) => {
           outputs[key] = value;
         },

@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { runningApps } from "@/ipc/utils/process_manager";
 import type { AgentContext } from "./types";
+import { MAX_BUILD_RUNS_PER_TURN } from "./turn_tool_budgets";
 
 import {
   accumulateBuildOutput,
@@ -758,13 +759,13 @@ describe("run_build", () => {
     const ctx = {
       appId: 42,
       appPath: "/unused",
-      buildAttemptState: { count: 3 },
+      buildAttemptState: { count: MAX_BUILD_RUNS_PER_TURN },
       onXmlComplete,
       onXmlStream: vi.fn(),
     } as unknown as AgentContext;
 
     await expect(runBuildTool.execute({}, ctx)).resolves.toContain(
-      "3-build limit",
+      `${MAX_BUILD_RUNS_PER_TURN}-build limit`,
     );
 
     expect(onXmlComplete).toHaveBeenCalledWith(

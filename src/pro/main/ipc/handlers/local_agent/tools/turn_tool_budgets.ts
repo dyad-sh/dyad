@@ -1,7 +1,7 @@
 import type { AgentContext } from "./types";
 
 /** Production builds `run_build` may count within one user turn. */
-export const MAX_BUILD_RUNS_PER_TURN = 3;
+export const MAX_BUILD_RUNS_PER_TURN = 10;
 
 /** Pre-commit hook runs `run_pre_commit` may make within one user turn. */
 export const MAX_PRE_COMMIT_RUNS_PER_TURN = 3;

@@ -9,6 +9,12 @@ import {
   type ModelMessage,
 } from "ai";
 import type { AgentContext } from "./tools/types";
+import {
+  MAX_BUILD_RUNS_PER_TURN,
+  MAX_PRE_COMMIT_RUNS_PER_TURN,
+  MAX_TEST_ATTEMPTS_PER_SPEC,
+  MAX_TEST_RUNS_PER_TURN,
+} from "./tools/turn_tool_budgets";
 import { buildCompactionBlock } from "@/ipc/handlers/compaction/compaction_utils";
 import {
   toRendererMessages,
@@ -5152,7 +5158,7 @@ describe("handleLocalAgentStream", () => {
       {
         limit: "the build limit",
         tool: "run_build",
-        runs: 3,
+        runs: MAX_BUILD_RUNS_PER_TURN,
         spend: (ctx: any) => {
           ctx.buildAttemptState ??= { count: 0 };
           ctx.buildAttemptState.count += 1;
@@ -5161,7 +5167,7 @@ describe("handleLocalAgentStream", () => {
       {
         limit: "the pre-commit limit",
         tool: "run_pre_commit",
-        runs: 3,
+        runs: MAX_PRE_COMMIT_RUNS_PER_TURN,
         spend: (ctx: any) => {
           ctx.preCommitRunCount = (ctx.preCommitRunCount ?? 0) + 1;
         },
@@ -5169,7 +5175,7 @@ describe("handleLocalAgentStream", () => {
       {
         limit: "the test batch limit",
         tool: "run_tests",
-        runs: 10,
+        runs: MAX_TEST_RUNS_PER_TURN,
         spend: (ctx: any) => {
           ctx.testRunCount = (ctx.testRunCount ?? 0) + 1;
         },
@@ -5177,7 +5183,7 @@ describe("handleLocalAgentStream", () => {
       {
         limit: "a spec's fix attempts",
         tool: "run_tests",
-        runs: 4,
+        runs: MAX_TEST_ATTEMPTS_PER_SPEC,
         spend: (ctx: any) => {
           ctx.testRunCount = (ctx.testRunCount ?? 0) + 1;
           const state = ctx.testRunAttempts.get("e2e-tests/app.spec.ts") ?? {

@@ -17,12 +17,19 @@ export async function authorizeReviewComment({ github, context }) {
   }
 
   const { owner, repo } = context.repo;
-  const { data: access } =
-    await github.rest.repos.getCollaboratorPermissionLevel({
+  let access;
+  try {
+    ({ data: access } = await github.rest.repos.getCollaboratorPermissionLevel({
       owner,
       repo,
       username: comment.user.login,
-    });
+    }));
+  } catch (error) {
+    // GitHub can return 404 for non-collaborators. Treat that as a normal
+    // denial; other API failures still fail closed rather than granting access.
+    if (error?.status === 404) return null;
+    throw error;
+  }
   if (!["write", "maintain", "admin"].includes(access.permission)) {
     return null;
   }

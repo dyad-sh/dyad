@@ -118,6 +118,26 @@ test("does not review a closed or merged PR", async () => {
   );
 });
 
+test("non-collaborator 404 denies normally without looking up the PR", async () => {
+  const input = fixture();
+  input.github.rest.repos.getCollaboratorPermissionLevel = async () => {
+    throw Object.assign(new Error("Not Found"), { status: 404 });
+  };
+  assert.equal(await authorizeReviewComment(input), null);
+  assert.deepEqual(input.calls, []);
+});
+
+for (const status of [403, 429, 500]) {
+  test(`permission lookup HTTP ${status} still fails closed`, async () => {
+    const input = fixture();
+    input.github.rest.repos.getCollaboratorPermissionLevel = async () => {
+      throw Object.assign(new Error("API failure"), { status });
+    };
+    await assert.rejects(authorizeReviewComment(input), /API failure/);
+    assert.deepEqual(input.calls, []);
+  });
+}
+
 test("fails closed when permission verification fails", async () => {
   const input = fixture();
   input.github.rest.repos.getCollaboratorPermissionLevel = async () => {
@@ -168,9 +188,24 @@ for (const newline of ["\n", "\r\n"]) {
     const agent = review.steps.find((step) => step.name === "PR Review");
     assert.match(agent.with.claude_args, /--setting-sources user/);
     assert.match(agent.with.claude_args, /--tools "Read,Glob,Grep,Edit,Write"/);
+    const settings = JSON.parse(agent.with.settings);
+    assert.ok(settings.permissions.deny.includes("Bash"));
+    assert.ok(settings.permissions.deny.includes("Read(//proc/**)"));
     assert.ok(
-      JSON.parse(agent.with.settings).permissions.deny.includes("Bash"),
+      settings.permissions.deny.includes("Read(/${{ runner.temp }}/**)"),
     );
+    assert.ok(!agent.with.claude_args.includes('--allowedTools "Read,'));
+    assert.ok(
+      agent.with.claude_args.includes("Read(/${{ github.workspace }}/**)"),
+    );
+    const guard = settings.hooks.PreToolUse[0];
+    assert.equal(guard.matcher, "");
+    assert.ok(
+      guard.hooks[0].command.includes(
+        "scripts/pr-review/review-tool-guard.mjs",
+      ),
+    );
+    assert.ok(guard.hooks[0].command.endsWith("|| exit 2"));
     assert.notEqual(agent.with.allowed_non_write_users, "*");
     for (const job of [request, review, post]) {
       for (const step of job.steps) {

@@ -145,8 +145,23 @@ jobs:
 
           # Static review only, including maintainer requests on external PRs.
           # Deny Bash explicitly because read-only shell commands can auto-allow.
+          # The trusted hook guards every file/search path (including symlinks)
+          # and blocks all other tools. Hook launch failures also exit 2.
           settings: |
-            {"permissions":{"deny":["Bash","WebFetch","WebSearch","NotebookEdit"]}}
+            {
+              "permissions": {
+                "deny": ["Bash", "WebFetch", "WebSearch", "NotebookEdit", "Read(//proc/**)", "Read(//dev/**)", "Read(//sys/**)", "Read(/${{ runner.temp }}/**)", "Read(/${{ github.workspace }}/.git/**)"]
+              },
+              "hooks": {
+                "PreToolUse": [{
+                  "matcher": "",
+                  "hooks": [{
+                    "type": "command",
+                    "command": "node '${{ github.workspace }}/scripts/pr-review/review-tool-guard.mjs' '${{ github.workspace }}' || exit 2"
+                  }]
+                }]
+              }
+            }
 
           # Path rules are absolute ("//" + workspace). Relative rules resolve
           # against the shell's current directory, so after the model runs
@@ -156,7 +171,7 @@ jobs:
             --model claude-opus-5-5
             --setting-sources user
             --tools "Read,Glob,Grep,Edit,Write"
-            --allowedTools "Read,Glob,Grep,Edit(/${{ github.workspace }}/tmp/pr-review/claude-review.md),Edit(/${{ github.workspace }}/tmp/pr-review/claude-findings.json)"
+            --allowedTools "Read(/${{ github.workspace }}/**),Glob,Grep,Edit(/${{ github.workspace }}/tmp/pr-review/claude-review.md),Edit(/${{ github.workspace }}/tmp/pr-review/claude-findings.json)"
 
       - name: Verify Claude review outputs
         run: |

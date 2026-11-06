@@ -5233,7 +5233,7 @@ describe("handleLocalAgentStream", () => {
               }
               yield {
                 type: "text-delta",
-                text: "The checks still fail after three attempts.",
+                text: "The checks still fail and the limit is used up.",
               };
             })(),
             response: Promise.resolve({
@@ -5243,7 +5243,7 @@ describe("handleLocalAgentStream", () => {
                   content: [
                     {
                       type: "text",
-                      text: "The checks still fail after three attempts.",
+                      text: "The checks still fail and the limit is used up.",
                     },
                   ],
                 },

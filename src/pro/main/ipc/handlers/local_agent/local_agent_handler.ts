@@ -2244,32 +2244,26 @@ export async function handleLocalAgentStream(
         continue;
       }
 
-      const todoFollowUpParams = {
-        readOnly,
-        planModeOnly,
-        passEndedWithText,
-        todos: ctx.todos,
-        todoFollowUpLoops,
-        maxTodoFollowUpLoops,
-      };
-      const turnToolBudgetExhausted = hasExhaustedTurnToolBudget(ctx);
       if (
         !shouldRunTodoFollowUpPass({
-          ...todoFollowUpParams,
-          turnToolBudgetExhausted,
+          readOnly,
+          planModeOnly,
+          passEndedWithText,
+          todos: ctx.todos,
+          todoFollowUpLoops,
+          maxTodoFollowUpLoops,
         })
       ) {
-        if (
-          turnToolBudgetExhausted &&
-          shouldRunTodoFollowUpPass({
-            ...todoFollowUpParams,
-            turnToolBudgetExhausted: false,
-          })
-        ) {
-          logger.info(
-            `Skipping todo follow-up pass for chat ${req.chatId}: a per-turn tool limit was reached`,
-          );
-        }
+        break;
+      }
+
+      // A follow-up pass is part of the same turn and keeps its tool budgets.
+      // Once a per-turn limit is used up, retrying would only hit it again; the
+      // incomplete todos stay persisted for the user's next message instead.
+      if (hasExhaustedTurnToolBudget(ctx)) {
+        logger.info(
+          `Skipping todo follow-up pass for chat ${req.chatId}: a per-turn tool limit was reached`,
+        );
         break;
       }
 
@@ -2954,7 +2948,6 @@ function shouldRunTodoFollowUpPass(params: {
   planModeOnly: boolean;
   passEndedWithText: boolean;
   todos: AgentContext["todos"];
-  turnToolBudgetExhausted: boolean;
   todoFollowUpLoops: number;
   maxTodoFollowUpLoops: number;
 }): boolean {
@@ -2963,19 +2956,14 @@ function shouldRunTodoFollowUpPass(params: {
     planModeOnly,
     passEndedWithText,
     todos,
-    turnToolBudgetExhausted,
     todoFollowUpLoops,
     maxTodoFollowUpLoops,
   } = params;
-  // A follow-up pass is part of the same turn and keeps its tool budgets. Once
-  // a per-turn limit is used up, retrying would only hit it again; the
-  // incomplete todos stay persisted for the user's next message instead.
   return (
     !readOnly &&
     !planModeOnly &&
     passEndedWithText &&
     hasIncompleteTodos(todos) &&
-    !turnToolBudgetExhausted &&
     todoFollowUpLoops < maxTodoFollowUpLoops
   );
 }

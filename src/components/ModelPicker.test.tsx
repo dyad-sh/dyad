@@ -1229,7 +1229,7 @@ describe("ModelPicker", () => {
       "Medium",
     );
     expect(screen.getByTestId("model-picker").className).toContain(
-      "max-w-[220px]",
+      "max-w-[360px]",
     );
     expect(screen.getByTestId("model-picker-dropdown").className).toContain(
       "w-[min(20rem,calc(100vw-1.5rem))]",
@@ -1400,6 +1400,46 @@ describe("ModelPicker", () => {
     expect(mocks.chat.messages).toEqual([{ id: 1 }]);
     expect(mocks.navigate).not.toHaveBeenCalled();
   });
+
+  it("shows the subscription used by this chat rather than the global selection", () => {
+    mocks.settings.selectedModel = { provider: "auto", name: "auto" };
+    mocks.pathname = "/chat";
+    mocks.search = { id: 42 };
+    mocks.chat = {
+      id: 42,
+      messages: [{ id: 1 }],
+      modelSelection: {
+        provider: "openai",
+        name: "gpt-5",
+        effortLevel: "medium",
+      },
+    };
+    render(<ModelPicker />);
+    const trigger = screen.getByTestId("model-picker");
+    expect(within(trigger).getByText("ChatGPT subscription")).toBeTruthy();
+    expect(trigger.getAttribute("aria-label")).toBe(
+      "GPT 5 · ChatGPT subscription",
+    );
+  });
+
+  it.each(["disconnected", "pro", "api-key", "unsupported", "loading"])(
+    "omits the selected subscription badge when usage is %s",
+    (state) => {
+      mocks.settings.selectedModel = { provider: "openai", name: "gpt-5" };
+      if (state === "disconnected") mocks.subscriptionConnected = false;
+      if (state === "pro" || state === "api-key")
+        mocks.settings.proModelUsage = state;
+      if (state === "unsupported")
+        mocks.settings.selectedModel.name = "gpt-5-mini";
+      if (state === "loading") mocks.subscriptionUnavailable = true;
+      render(<ModelPicker />);
+      expect(
+        within(screen.getByTestId("model-picker")).queryByTestId(
+          "selected-model-subscription",
+        ),
+      ).toBeNull();
+    },
+  );
 
   it.each([false, true])(
     "replaces price with ChatGPT plan for subscription models (selected: %s)",
@@ -1971,7 +2011,7 @@ describe("Claude Code subscription picker", () => {
     ["Default (recommended)", "Default"],
     ["Opus (1M context)", "Opus"],
   ])(
-    "shows %s without parenthetical details before the backend",
+    "shows %s with a separate Claude Code subscription badge",
     (displayName, shortName) => {
       mocks.chat!.modelSelection = {
         provider: "claude-code",
@@ -1987,8 +2027,13 @@ describe("Claude Code subscription picker", () => {
       ];
       render(<ModelPicker />);
       const trigger = screen.getByTestId("model-picker");
-      expect(trigger.textContent).toBe(`${shortName} (Claude Code)`);
-      expect(trigger.getAttribute("title")).toBe(`${shortName} (Claude Code)`);
+      expect(within(trigger).getByText(shortName)).toBeTruthy();
+      expect(
+        within(trigger).getByText("Claude Code subscription"),
+      ).toBeTruthy();
+      expect(trigger.getAttribute("title")).toBe(
+        `${shortName} · Claude Code subscription`,
+      );
     },
   );
   it.each(["loading", "error", "empty"])(

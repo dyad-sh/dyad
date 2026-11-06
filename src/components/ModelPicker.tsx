@@ -568,8 +568,21 @@ export function ModelPicker() {
     .trim();
   const modelDisplayName =
     selectedModel.provider === "claude-code"
-      ? `${selectedClaudeModelName} (Claude Code)`
+      ? selectedClaudeModelName
       : getModelDisplayName();
+  const selectedSubscriptionLabel =
+    selectedModel.provider === "claude-code"
+      ? "Claude Code subscription"
+      : usesChatGPTSubscription(
+            selectedModel,
+            settings,
+            subscription.data ?? { connected: false, models: [] },
+          )
+        ? "ChatGPT subscription"
+        : null;
+  const selectedModelLabel = [modelDisplayName, selectedSubscriptionLabel]
+    .filter(Boolean)
+    .join(" · ");
   const trialAutoModel = autoModels.find((model) => model.apiName === "auto");
   const trialAutoEffortSettings = getEffortSettings(trialAutoModel);
   const trialAutoEffort = createModelSelection({
@@ -1576,9 +1589,10 @@ export function ModelPicker() {
       <DropdownMenu open={open} onOpenChange={handleOpenChange}>
         <DropdownMenuTrigger
           disabled={isChatRoute && chatId != null && chatLoading}
-          className="inline-flex items-center justify-center whitespace-nowrap rounded-lg text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border-none bg-transparent shadow-none text-foreground/80 hover:text-foreground hover:bg-muted/60 h-7 max-w-[220px] px-2 gap-1.5 cursor-pointer"
+          className="inline-flex min-w-0 items-center justify-center whitespace-nowrap rounded-lg text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border-none bg-transparent shadow-none text-foreground/80 hover:text-foreground hover:bg-muted/60 h-7 max-w-[360px] px-2 gap-1.5 cursor-pointer"
           data-testid="model-picker"
-          title={modelDisplayName}
+          title={selectedModelLabel}
+          aria-label={selectedModelLabel}
         >
           <span className="truncate">
             {getModelDisplayName() === "Auto" && (
@@ -1590,6 +1604,14 @@ export function ModelPicker() {
             )}
             {modelDisplayName}
           </span>
+          {selectedSubscriptionLabel && (
+            <span
+              data-testid="selected-model-subscription"
+              className={cn(PILL_CLASS, "shrink-0 bg-primary/10 text-primary")}
+            >
+              {selectedSubscriptionLabel}
+            </span>
+          )}
         </DropdownMenuTrigger>
         <DropdownMenuContent className={MODEL_MENU_WIDTH_CLASS} align="start">
           <ClaudeCodeSubscriptionMenu

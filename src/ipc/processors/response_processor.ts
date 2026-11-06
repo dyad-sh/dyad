@@ -192,6 +192,7 @@ export async function processFullResponseActions(
     );
   } catch (error) {
     logger.error("Refusing unsafe delete response:", error);
+    reportFsFailure("apply_edits", error, { appPath });
     const message = error instanceof Error ? error.message : String(error);
     const skippedActions = formatSkippedActionSummary(fullResponse);
     return {
@@ -605,6 +606,7 @@ export async function processFullResponseActions(
           }
         }
       } catch (error) {
+        reportFsFailure("apply_edits", error, { appPath });
         errors.push({
           message: `Error applying search-replace to ${filePath}`,
           error: error,
@@ -642,6 +644,7 @@ export async function processFullResponseActions(
           });
         }
       } catch (error) {
+        reportFsFailure("apply_edits", error, { appPath });
         errors.push({
           message: `Failed to copy ${tag.from} to ${tag.to}`,
           error: error,

@@ -611,6 +611,7 @@ export function registerNodeHandlers() {
       return { pnpmVersion };
     } catch (error) {
       logger.error("Failed to install pnpm:", error);
+      reportFsFailure("pnpm_install", error);
       const details = getCommandExecutionDisplayDetails(error);
       if (details) {
         logger.error("pnpm install command output:", details);

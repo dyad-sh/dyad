@@ -3667,6 +3667,7 @@ async function replaceTextAttachmentWithContent(
     return text;
   } catch (error) {
     logger.error(`Error processing text file: ${error}`);
+    reportFsFailure("chat_stream", error);
     return text;
   }
 }
@@ -3737,6 +3738,7 @@ async function prepareMessageWithAttachments(
           logger.log(`Added image attachment: ${filePath}`);
         } catch (error) {
           logger.error(`Error reading image file: ${error}`);
+          reportFsFailure("chat_stream", error);
         }
       }
     }

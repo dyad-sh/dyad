@@ -43,7 +43,9 @@ export interface FsPathRoots {
   home?: string;
 }
 
-const ERRNO_CODE = /^E[A-Z0-9]{1,15}$/;
+// Windows errors libuv can't map, such as some OneDrive placeholder failures,
+// come through as "UNKNOWN".
+const ERRNO_CODE = /^(E[A-Z0-9]{1,15}|UNKNOWN)$/;
 
 // A filesystem call names one word ("open", "rename"). A failed spawn also
 // carries a path, but its syscall is "spawn <command>", so it is left out.

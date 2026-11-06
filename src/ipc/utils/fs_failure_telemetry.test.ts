@@ -144,6 +144,21 @@ describe("reportFsFailure", () => {
     );
   });
 
+  it("reports the UNKNOWN code Windows gives for unmapped errors", () => {
+    const error = Object.assign(new Error("UNKNOWN: unknown error, read"), {
+      code: "UNKNOWN",
+      syscall: "read",
+      path: path.join(appsDir, "my-app", "src", "App.tsx"),
+    });
+
+    reportFsFailure("agent_tool", error);
+
+    expect(sendTelemetryEvent).toHaveBeenCalledWith(
+      "fs:operation-failed",
+      expect.objectContaining({ code: "UNKNOWN", location: "app" }),
+    );
+  });
+
   it("counts an app outside the apps folder as an app", async () => {
     const elsewhere = await fs.mkdtemp(path.join(os.tmpdir(), "imported-app-"));
     try {

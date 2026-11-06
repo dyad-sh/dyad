@@ -6,8 +6,8 @@ import log from "electron-log/main";
 
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { runBufferedProcess } from "@/ipc/utils/buffered_process";
-import { getGitProcessEnvironment } from "@/ipc/utils/git_utils";
 import { reportFsFailure } from "@/ipc/utils/fs_failure_telemetry";
+import { getGitProcessEnvironment } from "@/ipc/utils/git_utils";
 import { startPhaseStallWatch } from "@/ipc/utils/phase_stall_watch";
 import {
   createGitOverlayWorkspaceDiagnostics,
@@ -1647,6 +1647,7 @@ async function removeGitOverlayWorkspaceOnce(
     } catch (error) {
       outcome = "marker deletion failed";
       logger.warn(`Failed to remove workspace marker ${worktreePath}:`, error);
+      reportFsFailure("workspace_cleanup", error);
     }
   } catch (error) {
     outcome = "failed";

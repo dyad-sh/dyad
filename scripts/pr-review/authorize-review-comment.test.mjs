@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
+import { pathToFileURL } from "node:url";
 import { parse } from "yaml";
 import { authorizeReviewComment } from "./authorize-review-comment.mjs";
 
@@ -237,7 +238,14 @@ for (const newline of ["\n", "\r\n"]) {
     // Execute the actual workflow handoff: only an authorized request emits a PR number.
     const authorizeScript = request.steps
       .find((step) => step.id === "authorize")
-      .with.script.replace("${{ github.workspace }}", path.resolve("."));
+      .with.script.replace(
+        "'${{ github.workspace }}/scripts/pr-review/authorize-review-comment.mjs'",
+        JSON.stringify(
+          pathToFileURL(
+            path.resolve("scripts/pr-review/authorize-review-comment.mjs"),
+          ).href,
+        ),
+      );
     const AsyncFunction = Object.getPrototypeOf(
       async function () {},
     ).constructor;

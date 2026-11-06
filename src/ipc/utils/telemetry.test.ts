@@ -22,6 +22,10 @@ import {
   GITLAB_REQUEST_ERROR_NAME,
   GITLAB_TRANSPORT_ERROR_NAME,
 } from "@/shared/gitlab_error_names";
+import {
+  CUSTOM_PROVIDER_MODELS_REQUEST_ERROR_NAME,
+  CUSTOM_PROVIDER_MODELS_TRANSPORT_ERROR_NAME,
+} from "@/shared/openai_compatible_error_names";
 import { ResponseValidationError } from "@vercel/sdk/models/responsevalidationerror.js";
 import { SDKError } from "@vercel/sdk/models/sdkerror.js";
 import { getVercelProjectCreationError } from "./vercel_errors";
@@ -122,6 +126,20 @@ describe("shouldFilterTelemetryException", () => {
         new DyadError("missing", DyadErrorKind.NotFound),
       ),
     ).toBe(true);
+  });
+
+  it("filters custom provider request and transport errors", () => {
+    for (const name of [
+      CUSTOM_PROVIDER_MODELS_REQUEST_ERROR_NAME,
+      CUSTOM_PROVIDER_MODELS_TRANSPORT_ERROR_NAME,
+    ]) {
+      const error = new DyadError(
+        "private endpoint details",
+        DyadErrorKind.External,
+      );
+      error.name = name;
+      expect(shouldFilterTelemetryException(error)).toBe(true);
+    }
   });
 
   it("does not filter DyadError Internal, External, or Unknown", () => {
@@ -273,6 +291,18 @@ describe("exceptions from a self-hosted instance", () => {
     expect(JSON.stringify(payload)).not.toContain("theirdomain.com");
     expect(payload.exception_message).toBeUndefined();
     expect(payload.ipc_channel).toBe("coolify-setup:run");
+  });
+
+  it("redacts custom provider endpoint details", () => {
+    sendTelemetryException(
+      new Error("Could not reach https://private.provider.example/models"),
+      { ipc_channel: "fetch-custom-provider-models" },
+    );
+
+    const payload = sent.calls[0];
+    expect(JSON.stringify(payload)).not.toContain("private.provider.example");
+    expect(payload.exception_message).toBeUndefined();
+    expect(payload.ipc_channel).toBe("fetch-custom-provider-models");
   });
 
   it("redacts a self-hosted GitLab the same way", () => {

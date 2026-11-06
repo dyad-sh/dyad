@@ -1,10 +1,16 @@
 import { useState } from "react";
-import { AlertTriangle, PlusIcon, TrashIcon } from "lucide-react";
+import {
+  AlertTriangle,
+  PlusIcon,
+  RefreshCwIcon,
+  TrashIcon,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { CreateCustomModelDialog } from "@/components/CreateCustomModelDialog";
 import { EditCustomModelDialog } from "@/components/EditCustomModelDialog";
+import { FetchModelsDialog } from "@/components/FetchModelsDialog";
 import { useLanguageModelsForProvider } from "@/hooks/useLanguageModelsForProvider"; // Use the hook directly here
 import { useDeleteCustomModel } from "@/hooks/useDeleteCustomModel"; // Import the new hook
 import {
@@ -27,6 +33,7 @@ interface ModelsSectionProps {
 export function ModelsSection({ providerId }: ModelsSectionProps) {
   const [isCustomModelDialogOpen, setIsCustomModelDialogOpen] = useState(false);
   const [isEditModelDialogOpen, setIsEditModelDialogOpen] = useState(false);
+  const [isFetchModelsDialogOpen, setIsFetchModelsDialogOpen] = useState(false);
   const [isConfirmDeleteDialogOpen, setIsConfirmDeleteDialogOpen] =
     useState(false);
   const [modelToDelete, setModelToDelete] = useState<string | null>(null);
@@ -210,16 +217,33 @@ export function ModelsSection({ providerId }: ModelsSectionProps) {
       {/* End Custom Models List Area */}
 
       {providerId !== "auto" && (
-        <Button
-          onClick={() => setIsCustomModelDialogOpen(true)}
-          variant="outline"
-          className="mt-6"
-        >
-          <PlusIcon className="mr-2 h-4 w-4" /> Add Custom Model
-        </Button>
+        <div className="mt-6 flex gap-2">
+          {providerId.startsWith("custom::") && (
+            <Button
+              onClick={() => setIsFetchModelsDialogOpen(true)}
+              disabled={modelsLoading}
+              variant="outline"
+            >
+              <RefreshCwIcon className="mr-2 h-4 w-4" /> Fetch Models
+            </Button>
+          )}
+          <Button
+            onClick={() => setIsCustomModelDialogOpen(true)}
+            variant="outline"
+          >
+            <PlusIcon className="mr-2 h-4 w-4" /> Add Custom Model
+          </Button>
+        </div>
       )}
 
       {/* Render the dialogs */}
+      <FetchModelsDialog
+        isOpen={isFetchModelsDialogOpen}
+        onClose={() => setIsFetchModelsDialogOpen(false)}
+        onSuccess={invalidateModels}
+        providerId={providerId}
+        existingApiNames={(models ?? []).map((m) => m.apiName)}
+      />
       <CreateCustomModelDialog
         isOpen={isCustomModelDialogOpen}
         onClose={() => setIsCustomModelDialogOpen(false)}

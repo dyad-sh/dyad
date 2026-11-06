@@ -299,10 +299,14 @@ export const queryKeys = {
   // Language Models / Providers
   // ─────────────────────────────────────────────────────────────────────────────
   languageModels: {
+    // Prefix of every per-provider model list (`forProvider`).
+    all: ["language-models"] as const,
     providers: ["languageModelProviders"] as const,
     byProviders: ["language-models-by-providers"] as const,
     forProvider: ({ providerId }: { providerId: string }) =>
       ["language-models", providerId] as const,
+    fetchCustomProviderModels: ({ providerId }: { providerId: string }) =>
+      ["fetch-custom-provider-models", providerId] as const,
     ollamaLocal: ["language-models", "ollama-local"] as const,
     lmStudioLocal: ["language-models", "lmstudio-local"] as const,
   },

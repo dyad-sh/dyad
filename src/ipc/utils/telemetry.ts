@@ -15,6 +15,10 @@ import {
   GITLAB_REQUEST_ERROR_NAME,
   GITLAB_TRANSPORT_ERROR_NAME,
 } from "@/shared/gitlab_error_names";
+import {
+  CUSTOM_PROVIDER_MODELS_REQUEST_ERROR_NAME,
+  CUSTOM_PROVIDER_MODELS_TRANSPORT_ERROR_NAME,
+} from "@/shared/openai_compatible_error_names";
 
 const logger = log.scope("telemetry");
 const FILTERED_EXCEPTION_MESSAGES = new Set([
@@ -110,6 +114,7 @@ const SELF_HOSTED_CHANNEL_PREFIXES = [
   // A GitLab instance is the user's own server too: these channels carry its
   // address, and the errors they raise quote whatever it answered.
   "gitlab:",
+  "fetch-custom-provider-models",
 ];
 
 function isSelfHostedChannel(context?: Record<string, unknown>): boolean {
@@ -169,6 +174,14 @@ export function shouldFilterTelemetryException(error: unknown): boolean {
   // failure nothing here recognised, which is what telemetry is for.
   const sshFailure = sshFailureOf(error);
   if (sshFailure === "unreachable" || sshFailure === "timeout") {
+    return true;
+  }
+
+  if (
+    error instanceof Error &&
+    (error.name === CUSTOM_PROVIDER_MODELS_REQUEST_ERROR_NAME ||
+      error.name === CUSTOM_PROVIDER_MODELS_TRANSPORT_ERROR_NAME)
+  ) {
     return true;
   }
 

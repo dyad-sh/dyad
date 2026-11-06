@@ -23,10 +23,42 @@ import {
 import { and, eq } from "drizzle-orm";
 import { IpcMainInvokeEvent } from "electron";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { readSettings } from "../../main/settings";
+import { getEnvVar } from "../utils/read_env";
+import { getProviderApiKeyForRequest } from "../utils/get_model_client";
+import {
+  fetchOpenAICompatibleModels,
+  selectModelsToImport,
+} from "./fetch_openai_compatible_models";
 
 const logger = log.scope("language_model_handlers");
 const handle = createLoggedHandler(logger);
 const handleTyped = createLoggedTypedHandler(logger);
+
+/**
+ * Looks the provider up in the database only. Going through
+ * getLanguageModelProviders() would also load the remote built-in model
+ * catalog, which can stall custom-endpoint discovery when the cloud is
+ * unreachable.
+ */
+function getCustomProvider(providerId: string) {
+  const provider = db
+    .select()
+    .from(languageModelProvidersSchema)
+    .where(eq(languageModelProvidersSchema.id, providerId))
+    .get();
+  if (!provider) {
+    throw new DyadError(
+      `Custom provider "${providerId}" not found`,
+      DyadErrorKind.NotFound,
+    );
+  }
+  return {
+    name: provider.name,
+    apiBaseUrl: provider.api_base_url,
+    envVarName: provider.env_var_name ?? undefined,
+  };
+}
 
 export function registerLanguageModelHandlers() {
   handle(
@@ -159,6 +191,60 @@ export function registerLanguageModelHandlers() {
         })
         .run();
       return Number(result.lastInsertRowid);
+    },
+  );
+
+  handleTyped(
+    languageModelContracts.fetchCustomProviderModels,
+    async (_event, { providerId }) => {
+      const provider = getCustomProvider(providerId);
+
+      // Same lookup as chat requests in get_model_client. Read the persisted
+      // settings only: readEffectiveSettings() also fetches remote desktop
+      // config, which would stall local/LAN discovery when api.dyad.sh is
+      // unreachable.
+      const apiKey = getProviderApiKeyForRequest(
+        readSettings().providerSettings?.[providerId]?.apiKey?.value ||
+          (provider.envVarName ? getEnvVar(provider.envVarName) : undefined),
+        provider.name,
+      );
+
+      return fetchOpenAICompatibleModels(provider.apiBaseUrl, apiKey);
+    },
+  );
+
+  handleTyped(
+    languageModelContracts.importCustomProviderModels,
+    async (_event, { providerId, models }) => {
+      getCustomProvider(providerId);
+
+      // Everything below is synchronous, so no other IPC handler (i.e. another
+      // window's import) can run between the duplicate check and the inserts.
+      const toInsert = selectModelsToImport(
+        models,
+        db
+          .select({ apiName: languageModelsSchema.apiName })
+          .from(languageModelsSchema)
+          .where(eq(languageModelsSchema.customProviderId, providerId))
+          .all()
+          .map((row) => row.apiName),
+      );
+      db.transaction((tx) => {
+        for (const model of toInsert) {
+          tx.insert(languageModelsSchema)
+            .values({
+              displayName: model.displayName,
+              apiName: model.apiName,
+              customProviderId: providerId,
+              context_window: model.contextWindow || null,
+            })
+            .run();
+        }
+      });
+      return {
+        added: toInsert.length,
+        skipped: models.length - toInsert.length,
+      };
     },
   );
 

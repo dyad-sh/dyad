@@ -27,6 +27,13 @@ export function queryKeysForInvalidationScope(
       return [queryKeys.freeAgentQuota.status];
     case "free-model-quota":
       return [queryKeys.freeModelQuota.status];
+    case "language-models":
+      // Model lists change when models are added, edited, or removed (e.g. a
+      // bulk import in another window).
+      return [
+        queryKeys.languageModels.byProviders,
+        queryKeys.languageModels.all,
+      ];
     case "codex-subscription":
       return [queryKeys.settings.codexSubscription];
     case "app":

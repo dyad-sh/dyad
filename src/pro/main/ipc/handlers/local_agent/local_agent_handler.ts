@@ -2244,17 +2244,32 @@ export async function handleLocalAgentStream(
         continue;
       }
 
+      const todoFollowUpParams = {
+        readOnly,
+        planModeOnly,
+        passEndedWithText,
+        todos: ctx.todos,
+        todoFollowUpLoops,
+        maxTodoFollowUpLoops,
+      };
+      const turnToolBudgetExhausted = hasExhaustedTurnToolBudget(ctx);
       if (
         !shouldRunTodoFollowUpPass({
-          readOnly,
-          planModeOnly,
-          passEndedWithText,
-          todos: ctx.todos,
-          turnToolBudgetExhausted: hasExhaustedTurnToolBudget(ctx),
-          todoFollowUpLoops,
-          maxTodoFollowUpLoops,
+          ...todoFollowUpParams,
+          turnToolBudgetExhausted,
         })
       ) {
+        if (
+          turnToolBudgetExhausted &&
+          shouldRunTodoFollowUpPass({
+            ...todoFollowUpParams,
+            turnToolBudgetExhausted: false,
+          })
+        ) {
+          logger.info(
+            `Skipping todo follow-up pass for chat ${req.chatId}: a per-turn tool limit was reached`,
+          );
+        }
         break;
       }
 

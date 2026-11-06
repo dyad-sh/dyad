@@ -5150,6 +5150,7 @@ describe("handleLocalAgentStream", () => {
 
     it.each([
       {
+        limit: "the build limit",
         tool: "run_build",
         runs: 3,
         spend: (ctx: any) => {
@@ -5158,6 +5159,7 @@ describe("handleLocalAgentStream", () => {
         },
       },
       {
+        limit: "the pre-commit limit",
         tool: "run_pre_commit",
         runs: 3,
         spend: (ctx: any) => {
@@ -5165,14 +5167,28 @@ describe("handleLocalAgentStream", () => {
         },
       },
       {
+        limit: "the test batch limit",
         tool: "run_tests",
         runs: 10,
         spend: (ctx: any) => {
           ctx.testRunCount = (ctx.testRunCount ?? 0) + 1;
         },
       },
+      {
+        limit: "a spec's fix attempts",
+        tool: "run_tests",
+        runs: 4,
+        spend: (ctx: any) => {
+          ctx.testRunCount = (ctx.testRunCount ?? 0) + 1;
+          const state = ctx.testRunAttempts.get("e2e-tests/app.spec.ts") ?? {
+            attempts: 0,
+          };
+          state.attempts += 1;
+          ctx.testRunAttempts.set("e2e-tests/app.spec.ts", state);
+        },
+      },
     ])(
-      "does not run a follow-up pass after $tool exhausts its per-turn limit",
+      "does not run a follow-up pass after $limit is used up",
       async ({ tool, runs, spend }) => {
         // Arrange
         const { event } = createFakeEvent();

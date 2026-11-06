@@ -6,10 +6,10 @@ import { AgentContext, escapeXmlAttr, escapeXmlContent } from "./types";
 
 export { isFailingStatus };
 
-/** Fix attempts allowed per spec per turn before the tool refuses to rerun. */
-export const MAX_ATTEMPTS = 4;
-/** Batches allowed per turn, including runs that fail during infrastructure setup. */
-export { MAX_TEST_RUNS_PER_TURN as MAX_RUNS_PER_TURN } from "./turn_tool_budgets";
+export {
+  MAX_TEST_ATTEMPTS_PER_SPEC as MAX_ATTEMPTS,
+  MAX_TEST_RUNS_PER_TURN as MAX_RUNS_PER_TURN,
+} from "./turn_tool_budgets";
 /** Hard wall-clock cap so one run can't stall the whole agent turn. */
 export const RUN_TIMEOUT_MS = 10 * 60_000;
 /**

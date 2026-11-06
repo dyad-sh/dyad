@@ -39,7 +39,6 @@ import { isSupabaseFunctionSyncDeferred } from "@/supabase_admin/supabase_record
 import { MAX_PRE_COMMIT_RUNS_PER_TURN } from "./turn_tool_budgets";
 
 export { isPreCommitHookAvailable } from "@/ipc/services/pre_commit_service";
-export { MAX_PRE_COMMIT_RUNS_PER_TURN } from "./turn_tool_budgets";
 
 const FINGERPRINT_TIMEOUT_MS = 30_000;
 const MAX_HOOK_CHANGED_PATHS = 10_000;

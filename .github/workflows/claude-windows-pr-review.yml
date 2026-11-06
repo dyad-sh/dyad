@@ -24,13 +24,13 @@ jobs:
       context_sha: ${{ steps.context.outputs.context_sha }}
     # Only review code from regular contributors since claude code has non-trivial costs.
     # This job intentionally executes PR code. The author allowlist is a trust
-    # boundary, not a sandbox; keep it aligned with the existing reviewer.
+    # boundary, not a sandbox; it is narrower than the static reviewer's.
     # https://github.com/anthropics/claude-code-action/blob/main/examples/pr-review-filtered-authors.yml
     # A closed event cancels in-flight runs via concurrency without a new review.
     if: >-
       github.event.action != 'closed' &&
       contains(
-        fromJSON('["wwwillchen","keppo-bot","keppo-bot[bot]","dyad-assistant","azizmejri1","princeaden1","nourzakhama2003","ryangroch"]'),
+        fromJSON('["wwwillchen","keppo-bot","keppo-bot[bot]","dyad-assistant","azizmejri1","ryangroch"]'),
         github.event.pull_request.user.login
       )
     runs-on: windows-2022
@@ -144,7 +144,7 @@ jobs:
 
           # See: https://github.com/anthropics/claude-code-action/blob/v1/docs/security.md
           github_token: ${{ github.token }}
-          allowed_non_write_users: "princeaden1,nourzakhama2003,ryangroch" # remember, we already filter above.
+          allowed_non_write_users: "ryangroch" # remember, we already filter above.
           allowed_bots: "keppo-bot[bot]"
 
           # Disable progress tracking (try to save tokens)

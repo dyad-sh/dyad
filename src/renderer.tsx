@@ -47,6 +47,11 @@ import {
   initializeChatTabSessionStorageAtom,
 } from "./atoms/chatAtoms";
 import {
+  startChatDraftPersistence,
+  pruneChatDrafts,
+  chatDraftCandidateChatIds,
+} from "./atoms/chatDraftStorage";
+import {
   configureChatTabWindowSession,
   promoteMostRecentChatTabSession,
   pruneChatTabWindowSessions,
@@ -311,6 +316,37 @@ function RendererServices() {
       if (retryTimer) clearTimeout(retryTimer);
     };
   }, []);
+
+  // Unsent composer drafts are renderer-local presentation state. Restore them
+  // before the router mounts so a reopened chat shows its prompt immediately,
+  // then keep every edit in sync with localStorage.
+  useEffect(() => startChatDraftPersistence(store), [store]);
+
+  // App deletion removes chats without the per-chat cleanup path, so drop
+  // drafts whose chat is gone. Runs after the router mounts (windowReady) so it
+  // never delays the entity-disposal subscription; the candidate snapshot taken
+  // below means a chat created while the query is in flight keeps its draft.
+  useEffect(() => {
+    if (!windowReady) return;
+    let cancelled = false;
+    const candidateChatIds = chatDraftCandidateChatIds(store);
+    void ipc.chat
+      .getChats(undefined)
+      .then((chats) => {
+        if (cancelled) return;
+        pruneChatDrafts(
+          store,
+          new Set(chats.map((chat) => chat.id)),
+          candidateChatIds,
+        );
+      })
+      .catch((error) => {
+        console.error("Failed to prune chat input drafts", error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [store, windowReady]);
 
   useEffect(() => {
     if (!windowReady) return;

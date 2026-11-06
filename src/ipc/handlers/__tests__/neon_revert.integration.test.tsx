@@ -1274,6 +1274,14 @@ describe("Neon database revert (integration)", () => {
       branchesNotDeleted: 4,
       cleanupFailed: false,
     });
+    expect(telemetryEvents("neon:branch-delete-failed")).toEqual([
+      {
+        kind: "old_tree",
+        failure: "unknown",
+        status: undefined,
+        errorCode: undefined,
+      },
+    ]);
   });
 
   it("flags a cleanup that stopped before it could count", async () => {
@@ -1438,6 +1446,30 @@ describe("Neon database revert (integration)", () => {
         authOnMain: true,
         authOnDevelopment: true,
         authOnPreview: true,
+      },
+    ]);
+  });
+
+  it("reports which branch a failed create was for", async () => {
+    const { appId } = await createGitApp();
+    fakeNeon.failures.createProjectBranch = (_projectId: string, body: any) => {
+      if (body.branch.name === "preview") {
+        throw Object.assign(new Error("Neon is unavailable"), {
+          response: { status: 503 },
+        });
+      }
+    };
+
+    await expect(
+      ipc.neon.createProject({ name: "new-project", appId }),
+    ).rejects.toThrow();
+
+    expect(telemetryEvents("neon:branch-create-failed")).toEqual([
+      {
+        kind: "preview",
+        failure: "http",
+        status: 503,
+        errorCode: undefined,
       },
     ]);
   });

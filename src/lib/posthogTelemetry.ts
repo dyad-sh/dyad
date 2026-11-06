@@ -836,11 +836,13 @@ export function shouldFilterPostHogExceptionEvent(
   );
 }
 
-const NEON_MIGRATION_EVENTS = new Set([
+const NEON_EVENTS = new Set([
   "neon:leaked-backups-at-branch-limit",
   "neon:migration",
   "neon:project-created",
   "neon:backup-cleanup",
+  "neon:branch-create-failed",
+  "neon:branch-delete-failed",
 ]);
 
 export function shouldBypassNonProTelemetrySampling(
@@ -864,9 +866,9 @@ export function shouldBypassNonProTelemetrySampling(
     return true;
   }
 
-  // Rare, and how the Neon development branch migration fares in beta: the
-  // users are mostly on free plans, and sampling would hide failures.
-  if (NEON_MIGRATION_EVENTS.has(eventName ?? "")) {
+  // Rare, and mostly from free-plan users: sampling would hide Neon failures,
+  // such as branches that are left behind.
+  if (NEON_EVENTS.has(eventName ?? "")) {
     return true;
   }
 

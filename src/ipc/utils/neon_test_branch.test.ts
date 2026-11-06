@@ -38,6 +38,7 @@ const mocks = vi.hoisted(() => {
     readEnvVarsOrEmpty: vi.fn().mockResolvedValue([]),
     updateNeonEnvVars: vi.fn().mockResolvedValue(undefined),
     detectFrameworkType: vi.fn().mockReturnValue("nextjs"),
+    sendTelemetryEvent: vi.fn(),
   };
 });
 
@@ -73,6 +74,9 @@ vi.mock("./framework_utils", () => ({
 vi.mock("./neon_utils", () => ({
   ensureNeonAuth: mocks.ensureNeonAuth,
   getOrCreateNeonAuthCookieSecret: mocks.getOrCreateNeonAuthCookieSecret,
+}));
+vi.mock("./telemetry", () => ({
+  sendTelemetryEvent: mocks.sendTelemetryEvent,
 }));
 vi.mock("./retryOnLocked", () => ({
   retryOnLocked: vi.fn((op: () => Promise<unknown>) => op()),
@@ -263,6 +267,24 @@ describe("createTempTestBranch", () => {
       expect.objectContaining({
         branch: expect.objectContaining({ parent_id: "preview-br" }),
       }),
+    );
+  });
+
+  it("reports a failed branch create before rethrowing it", async () => {
+    const error = {
+      response: { status: 422, data: { code: "BRANCHES_LIMIT_EXCEEDED" } },
+    };
+    mocks.createProjectBranch.mockRejectedValueOnce(error);
+
+    await expect(createTempTestBranch(makeApp())).rejects.toBe(error);
+    expect(mocks.sendTelemetryEvent).toHaveBeenCalledWith(
+      "neon:branch-create-failed",
+      {
+        kind: "test",
+        failure: "http",
+        status: 422,
+        errorCode: "BRANCHES_LIMIT_EXCEEDED",
+      },
     );
   });
 
@@ -556,6 +578,7 @@ describe("deleteTempTestBranch", () => {
     });
     await deleteTempTestBranch(makeApp({ neonTestBranchId: "gone-br" }));
     expect(mocks.set).toHaveBeenCalledWith({ neonTestBranchId: null });
+    expect(mocks.sendTelemetryEvent).not.toHaveBeenCalled();
   });
 
   it("keeps the column set when the delete fails for a non-404 reason", async () => {
@@ -564,6 +587,10 @@ describe("deleteTempTestBranch", () => {
     });
     await deleteTempTestBranch(makeApp({ neonTestBranchId: "test-br" }));
     expect(mocks.set).not.toHaveBeenCalledWith({ neonTestBranchId: null });
+    expect(mocks.sendTelemetryEvent).toHaveBeenCalledWith(
+      "neon:branch-delete-failed",
+      { kind: "test", failure: "http", status: 500, errorCode: undefined },
+    );
   });
 
   it("reports whether the branch is actually gone", async () => {

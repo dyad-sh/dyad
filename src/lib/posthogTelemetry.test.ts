@@ -986,7 +986,9 @@ describe("shouldBypassNonProTelemetrySampling", () => {
     "neon:migration",
     "neon:project-created",
     "neon:backup-cleanup",
-  ])("always sends the Neon migration event %s", (event) => {
+    "neon:branch-create-failed",
+    "neon:branch-delete-failed",
+  ])("always sends the Neon event %s", (event) => {
     expect(shouldBypassNonProTelemetrySampling({ event })).toBe(true);
   });
 

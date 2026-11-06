@@ -1,5 +1,6 @@
 import { withReferencedAppRead } from "./tools/referenced_app_read";
 import { recordShellReviewOutcome } from "./shell_review_history";
+import { reportFsFailure } from "@/ipc/utils/fs_failure_telemetry";
 import { runShellTool } from "./tools/run_shell";
 import { isShellExperimentAvailable } from "@/shared/shell_capability";
 /**
@@ -1028,6 +1029,10 @@ export function buildAgentToolSet(
             ? await withTrackedMutation(invocationCtx, invoke)
             : await invoke();
         } catch (error) {
+          reportFsFailure("agent_tool", error, {
+            tool: tool.name,
+            appPath: ctx.appPath,
+          });
           recordShellReviewOutcome(ctx, tool.name, args, {
             error,
             executed: executionStarted,

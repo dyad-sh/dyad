@@ -32,6 +32,7 @@ import {
   type NodeRuntimeSource,
 } from "@/ipc/utils/managed_node";
 import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
+import { reportFsFailure } from "@/ipc/utils/fs_failure_telemetry";
 import { prependPathSegment, sanitizePathEnv } from "@/ipc/utils/managed_tools";
 import {
   applyManagedPnpmToProcessPath,
@@ -222,6 +223,7 @@ function scheduleManagedPnpmInstall(currentPnpmVersion: string | null): void {
     .catch((error) => {
       managedPnpmImplicitInstallFailed = true;
       logger.warn("Failed to implicitly install managed pnpm:", error);
+      reportFsFailure("pnpm_install", error);
     });
 }
 

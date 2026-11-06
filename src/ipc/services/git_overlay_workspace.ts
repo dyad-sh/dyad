@@ -7,6 +7,7 @@ import log from "electron-log/main";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { runBufferedProcess } from "@/ipc/utils/buffered_process";
 import { getGitProcessEnvironment } from "@/ipc/utils/git_utils";
+import { reportFsFailure } from "@/ipc/utils/fs_failure_telemetry";
 import { startPhaseStallWatch } from "@/ipc/utils/phase_stall_watch";
 import {
   createGitOverlayWorkspaceDiagnostics,
@@ -1603,6 +1604,7 @@ async function removeGitOverlayWorkspaceOnce(
           `Failed to remove submodule worktree ${worktree.snapshotPath}:`,
           error,
         );
+        reportFsFailure("workspace_cleanup", error);
         allSubmodulesRemoved = false;
         continue;
       }
@@ -1631,6 +1633,7 @@ async function removeGitOverlayWorkspaceOnce(
       // The same three things stay here, for the same reason: the marker names
       // the repository, and the registration has to outlive the directory.
       logger.warn(`Failed to remove workspace ${worktreePath}:`, error);
+      reportFsFailure("workspace_cleanup", error);
       outcome = "directory deletion failed";
       return;
     }

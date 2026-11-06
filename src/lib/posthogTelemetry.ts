@@ -864,6 +864,12 @@ export function shouldBypassNonProTelemetrySampling(
     return true;
   }
 
+  // Filesystem failures hit Windows users, mostly on free plans; sampling
+  // would hide which flows and files they break.
+  if (eventName === "fs:operation-failed") {
+    return true;
+  }
+
   // Rare, and how the Neon development branch migration fares in beta: the
   // users are mostly on free plans, and sampling would hide failures.
   if (NEON_MIGRATION_EVENTS.has(eventName ?? "")) {

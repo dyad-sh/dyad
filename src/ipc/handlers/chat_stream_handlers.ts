@@ -104,6 +104,7 @@ import {
 } from "../utils/model_effort";
 import log from "electron-log";
 import { sendTelemetryEvent } from "../utils/telemetry";
+import { reportFsFailure } from "../utils/fs_failure_telemetry";
 import {
   getSupabaseContext,
   getSupabaseClientCode,
@@ -1075,6 +1076,7 @@ export function registerChatStreamHandlers() {
       resolveCompletion = resolve;
     });
     addTrackedValue(streamCompletions, req.chatId, completion);
+    let telemetryAppPath: string | undefined;
     try {
       // This legacy stream handler predates createTypedHandler, so enforce the
       // contract explicitly before any attachment string is decoded.
@@ -1115,6 +1117,9 @@ export function registerChatStreamHandlers() {
 
       // Get the chat to check for existing messages
       let chat = await loadChatForStream();
+      telemetryAppPath = chat?.app?.path
+        ? getDyadAppPath(chat.app.path)
+        : undefined;
 
       // Cancellation can arrive while the initial chat lookup is pending. Let
       // cancelTrackedStreams remain the sole sender of the cancelled end events
@@ -3500,6 +3505,7 @@ This conversation includes one or more image attachments. When the user uploads 
       return req.chatId;
     } catch (error) {
       logger.error("Error calling LLM:", error);
+      reportFsFailure("chat_stream", error, { appPath: telemetryAppPath });
       const errorMessage = isDyadError(error) ? error.message : String(error);
       const rendererError =
         error instanceof SubscriptionBillingError

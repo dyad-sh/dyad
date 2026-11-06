@@ -998,6 +998,12 @@ describe("shouldBypassNonProTelemetrySampling", () => {
     ).toBe(true);
   });
 
+  it("always sends filesystem failures", () => {
+    expect(
+      shouldBypassNonProTelemetrySampling({ event: "fs:operation-failed" }),
+    ).toBe(true);
+  });
+
   it("always sends sandbox.script.* events for non-Pro sampling", () => {
     expect(
       shouldBypassNonProTelemetrySampling({

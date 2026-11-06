@@ -131,6 +131,7 @@ import {
   type Todo,
 } from "./tools/types";
 import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
+import { reportFsFailure } from "@/ipc/utils/fs_failure_telemetry";
 import {
   prepareStepMessages,
   injectMessagesAtPositions,
@@ -2551,6 +2552,7 @@ export async function handleLocalAgentStream(
     }
 
     logger.error("Local agent error:", error);
+    reportFsFailure("local_agent", error, { appPath });
     safeSend(event.sender, "chat:response:error", {
       chatId: req.chatId,
       invocationRef: req.invocationRef,

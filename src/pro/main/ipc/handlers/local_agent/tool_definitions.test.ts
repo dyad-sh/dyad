@@ -1,4 +1,8 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
+import { reportFsFailure } from "@/ipc/utils/fs_failure_telemetry";
 
 import {
   BUILD_MODE_TOOL_NAMES,
@@ -8,6 +12,10 @@ import {
   estimateBuildModeToolTokens,
   TOOL_DEFINITIONS,
 } from "./tool_definitions";
+
+vi.mock("@/ipc/utils/fs_failure_telemetry", () => ({
+  reportFsFailure: vi.fn(),
+}));
 
 describe("Build mode tool profile", () => {
   it("is an exact, engine-free, non-sub-agent allowlist", () => {
@@ -267,4 +275,41 @@ it("refreshes reviewer availability from registration and invocation guards", ()
     ctx.shellReviewContext!.tools.find((t) => t.name === "run_pre_commit")
       ?.available,
   ).toBe(false);
+});
+
+describe("tool failure telemetry", () => {
+  it("reports a tool's filesystem failure with the tool name", async () => {
+    const appPath = fs.mkdtempSync(path.join(os.tmpdir(), "agent-tool-fs-"));
+    // A directory where the file should go makes the write fail with EISDIR.
+    fs.mkdirSync(path.join(appPath, "src", "App.tsx"), { recursive: true });
+    try {
+      const ctx = {
+        appId: 987657,
+        appPath,
+        chatId: 1,
+        isDyadPro: false,
+        sharedServerModulePaths: [],
+        fileEditTracker: {},
+        pendingFunctionDeploys: [],
+        onXmlComplete: vi.fn(),
+        onXmlStream: vi.fn(),
+        requireConsent: vi.fn(async () => true),
+        referencedApps: new Map(),
+        abortSignal: new AbortController().signal,
+      } as unknown as import("./tools/types").AgentContext;
+      const tools = buildAgentToolSet(ctx, { enableAppBlueprint: false });
+
+      await expect(
+        tools.write_file.execute({ path: "src/App.tsx", content: "x" }),
+      ).rejects.toThrow();
+
+      expect(reportFsFailure).toHaveBeenCalledWith(
+        "agent_tool",
+        expect.objectContaining({ code: "EISDIR" }),
+        { tool: "write_file", appPath },
+      );
+    } finally {
+      fs.rmSync(appPath, { recursive: true, force: true });
+    }
+  });
 });

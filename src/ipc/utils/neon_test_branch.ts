@@ -11,6 +11,10 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { readEnvVarsOrEmpty, updateNeonEnvVars } from "./app_env_var_utils";
 import { detectFrameworkType } from "./framework_utils";
 import { retryOnLocked } from "./retryOnLocked";
+import {
+  reportNeonBranchFailure,
+  reportingNeonBranchCreate,
+} from "./neon_branch_telemetry";
 import { retryTestDatabaseCleanup } from "./test_database_cleanup_retry";
 import { ensureNeonAuth, getOrCreateNeonAuthCookieSecret } from "./neon_utils";
 import {
@@ -280,16 +284,18 @@ export async function createTempTestBranch(
   const neonClient = await getNeonClient();
   const branchName = `dyad-test-${appData.id}-${randomUUID()}`;
 
-  const response = await retryOnLocked(
-    () =>
-      neonClient.createProjectBranch(projectId, {
-        endpoints: [{ type: EndpointType.ReadWrite }],
-        branch: {
-          name: branchName,
-          parent_id: parentBranchId,
-        },
-      }),
-    `Create test branch for app ${appData.id}`,
+  const response = await reportingNeonBranchCreate("test", () =>
+    retryOnLocked(
+      () =>
+        neonClient.createProjectBranch(projectId, {
+          endpoints: [{ type: EndpointType.ReadWrite }],
+          branch: {
+            name: branchName,
+            parent_id: parentBranchId,
+          },
+        }),
+      `Create test branch for app ${appData.id}`,
+    ),
   );
 
   const branch = response.data.branch;
@@ -550,6 +556,7 @@ async function deleteBranchBestEffort(
       );
       return true;
     }
+    reportNeonBranchFailure("delete", "test", error);
     logger.warn(
       `Failed to delete test branch ${branchId} for project ${projectId} (will be retried on next launch if still tracked): ${error}`,
     );

@@ -27,7 +27,8 @@ function codeOrUndefined(value: unknown): string | undefined {
 /**
  * Send `neon:branch-create-failed` or `neon:branch-delete-failed`. Only the
  * branch kind, the HTTP status and Neon's error code are sent, never branch
- * names, IDs or messages.
+ * names, IDs or messages. A delete that 404s isn't reported: the branch is
+ * already gone, so nothing leaked.
  */
 export function reportNeonBranchFailure(
   action: "create" | "delete",
@@ -36,17 +37,20 @@ export function reportNeonBranchFailure(
 ): void {
   const e = (error ?? {}) as NeonApiErrorLike;
   if (e.name === "AbortError" || e.code === "ERR_CANCELED") return;
-  const status = e.response?.status;
+  const rawStatus = e.response?.status;
+  const status = typeof rawStatus === "number" ? rawStatus : undefined;
+  if (action === "delete" && status === 404) return;
   sendTelemetryEvent(`neon:branch-${action}-failed`, {
     kind,
-    status:
-      typeof status === "number"
-        ? status
+    failure:
+      status !== undefined
+        ? "http"
         : codeOrUndefined(e.code)
           ? "network"
           : "unknown",
+    status,
     errorCode:
-      typeof status === "number"
+      status !== undefined
         ? codeOrUndefined(e.response?.data?.code)
         : codeOrUndefined(e.code),
   });

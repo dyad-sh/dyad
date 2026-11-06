@@ -1275,7 +1275,12 @@ describe("Neon database revert (integration)", () => {
       cleanupFailed: false,
     });
     expect(telemetryEvents("neon:branch-delete-failed")).toEqual([
-      { kind: "old_tree", status: "unknown", errorCode: undefined },
+      {
+        kind: "old_tree",
+        failure: "unknown",
+        status: undefined,
+        errorCode: undefined,
+      },
     ]);
   });
 
@@ -1460,7 +1465,12 @@ describe("Neon database revert (integration)", () => {
     ).rejects.toThrow();
 
     expect(telemetryEvents("neon:branch-create-failed")).toEqual([
-      { kind: "preview", status: 503, errorCode: undefined },
+      {
+        kind: "preview",
+        failure: "http",
+        status: 503,
+        errorCode: undefined,
+      },
     ]);
   });
 });

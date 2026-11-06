@@ -25,7 +25,12 @@ describe("reportNeonBranchFailure", () => {
 
     expect(mocks.sendTelemetryEvent).toHaveBeenCalledWith(
       "neon:branch-create-failed",
-      { kind: "preview", status: 422, errorCode: "BRANCHES_LIMIT_EXCEEDED" },
+      {
+        kind: "preview",
+        failure: "http",
+        status: 422,
+        errorCode: "BRANCHES_LIMIT_EXCEEDED",
+      },
     );
   });
 
@@ -37,7 +42,12 @@ describe("reportNeonBranchFailure", () => {
 
     expect(mocks.sendTelemetryEvent).toHaveBeenCalledWith(
       "neon:branch-delete-failed",
-      { kind: "test", status: "network", errorCode: "ECONNRESET" },
+      {
+        kind: "test",
+        failure: "network",
+        status: undefined,
+        errorCode: "ECONNRESET",
+      },
     );
   });
 
@@ -50,7 +60,12 @@ describe("reportNeonBranchFailure", () => {
 
     expect(mocks.sendTelemetryEvent).toHaveBeenCalledWith(
       "neon:branch-delete-failed",
-      { kind: "backup", status: "unknown", errorCode: undefined },
+      {
+        kind: "backup",
+        failure: "unknown",
+        status: undefined,
+        errorCode: undefined,
+      },
     );
   });
 
@@ -61,7 +76,12 @@ describe("reportNeonBranchFailure", () => {
 
     expect(mocks.sendTelemetryEvent).toHaveBeenCalledWith(
       "neon:branch-create-failed",
-      { kind: "development", status: 400, errorCode: undefined },
+      {
+        kind: "development",
+        failure: "http",
+        status: 400,
+        errorCode: undefined,
+      },
     );
   });
 
@@ -72,6 +92,21 @@ describe("reportNeonBranchFailure", () => {
     reportNeonBranchFailure("create", "test", error);
 
     expect(mocks.sendTelemetryEvent).not.toHaveBeenCalled();
+  });
+
+  it("ignores a delete of a branch that is already gone", () => {
+    reportNeonBranchFailure("delete", "backup", { response: { status: 404 } });
+
+    expect(mocks.sendTelemetryEvent).not.toHaveBeenCalled();
+  });
+
+  it("still reports a create that 404s", () => {
+    reportNeonBranchFailure("create", "preview", { response: { status: 404 } });
+
+    expect(mocks.sendTelemetryEvent).toHaveBeenCalledWith(
+      "neon:branch-create-failed",
+      expect.objectContaining({ failure: "http", status: 404 }),
+    );
   });
 });
 
@@ -86,7 +121,12 @@ describe("reportingNeonBranchCreate", () => {
     ).rejects.toBe(error);
     expect(mocks.sendTelemetryEvent).toHaveBeenCalledWith(
       "neon:branch-create-failed",
-      { kind: "migration_source", status: 500, errorCode: undefined },
+      {
+        kind: "migration_source",
+        failure: "http",
+        status: 500,
+        errorCode: undefined,
+      },
     );
   });
 

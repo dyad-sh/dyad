@@ -279,7 +279,12 @@ describe("createTempTestBranch", () => {
     await expect(createTempTestBranch(makeApp())).rejects.toBe(error);
     expect(mocks.sendTelemetryEvent).toHaveBeenCalledWith(
       "neon:branch-create-failed",
-      { kind: "test", status: 422, errorCode: "BRANCHES_LIMIT_EXCEEDED" },
+      {
+        kind: "test",
+        failure: "http",
+        status: 422,
+        errorCode: "BRANCHES_LIMIT_EXCEEDED",
+      },
     );
   });
 
@@ -584,7 +589,7 @@ describe("deleteTempTestBranch", () => {
     expect(mocks.set).not.toHaveBeenCalledWith({ neonTestBranchId: null });
     expect(mocks.sendTelemetryEvent).toHaveBeenCalledWith(
       "neon:branch-delete-failed",
-      { kind: "test", status: 500, errorCode: undefined },
+      { kind: "test", failure: "http", status: 500, errorCode: undefined },
     );
   });
 

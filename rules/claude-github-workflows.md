@@ -14,6 +14,8 @@ If a workflow's behavior depends on a deterministic check (identity comparisons,
 - When one branch doesn't need judgment (e.g., posting a fixed reply), drop the LLM entirely and use `gh` directly.
 - Add `github.event.*.user.type != 'Bot'` to prevent bot-comment loops when the same workflow can be triggered by its own output.
 
+For maintainer comment commands on external PRs, verify the commenter’s current repository write permission in a job without secrets before starting Claude. Do not authorize from `author_association` or the PR author. Use a comment-specific workflow concurrency key so an unauthorized comment cannot cancel a running review before authorization. After authorization, use one PR-number concurrency group across review generation and posting (e.g. a reusable-workflow call job); automatic and manual triggers must share it. Posting steps must also skip cancellation rather than use `always()`.
+
 ## Split LLM decisions from credentialed mutations
 
 When a Claude workflow needs write credentials, prefer a two-job shape: the Claude job runs with read-only permissions and uploads a constrained JSON/Markdown artifact, then a separate `needs:` job downloads the artifact, checks out trusted helper scripts from `github.sha`, validates the artifact, creates the GitHub App token, and performs deterministic GitHub mutations.
@@ -62,6 +64,8 @@ This has two consequences that bite in CI:
 Earlier, `claude-triage.yml` granted `Edit(/tmp/issue-triage/**)` while the decision file lived in the workspace, so every write was denied (`permission_denials_count: 13`, dyad-sh/dyad#4427).
 
 Anchor path rules to the checkout with `/${{ github.workspace }}/...` (the workspace is already absolute, so this yields `//home/runner/...`), and name the exact output files rather than a directory glob: `Edit(/${{ github.workspace }}/tmp/issue-triage/triage.json)`. An `Edit` rule also covers `Write` creating the file. To check a rule change locally, run `claude -p --setting-sources user --allowedTools "..."` in a scratch git repo, have it `cd` into a subdirectory before writing, and read `permission_denials` from `--output-format json`.
+
+When reviewing untrusted PR text in a credentialed process, disabling shell tools is insufficient: unscoped readers can expose `/proc`, user state, or runner temp files through public review artifacts. Scope reads and enforce canonical paths for Read/Grep/Glob in a trusted `PreToolUse` hook, including recursive-search and symlink checks. Use CLI >=2.1.295 with hook `onFailure: "block"` for launch errors and timeouts; a shell `|| exit 2` only covers failures after the shell starts.
 
 ## Proxy authentication and diagnostics
 

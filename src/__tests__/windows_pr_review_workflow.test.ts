@@ -20,8 +20,12 @@ describe("Windows PR reviewer", () => {
     const original = parse(
       fs.readFileSync(".github/workflows/claude-pr-review.yml", "utf8"),
     );
-    expect(review.if).toBe(
-      "github.event.action != 'closed' && " + original.jobs["claude-review"].if,
+    const allowlist = /fromJSON\('([^']+)'\)/;
+    const automaticAuthors =
+      original.jobs["review-request"].if.match(allowlist)?.[1];
+    expect(automaticAuthors).toBeTruthy();
+    expect(review.if.replace(/\s+/g, " ").trim()).toBe(
+      `github.event.action != 'closed' && contains( fromJSON('${automaticAuthors}'), github.event.pull_request.user.login )`,
     );
     expect(workflow.on.pull_request_target.types).toContain("closed");
     expect(workflow.concurrency["cancel-in-progress"]).toBe(true);

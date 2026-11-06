@@ -13,6 +13,7 @@ type Row = {
   url: string | null;
   oauthEnabled: boolean;
   oauthClientId: string | null;
+  oauthClientSecret: string | null;
   oauthState: string | null;
 };
 const dbStore = new Map<number, Row>();
@@ -25,7 +26,8 @@ vi.mock("electron", () => ({
     isEncryptionAvailable: vi.fn(() => true),
     decryptString: vi.fn((buf: Buffer) => {
       const s = buf.toString("utf8");
-      return s.startsWith("enc:") ? s.slice(4) : s;
+      if (!s.startsWith("enc:")) throw new Error("unreadable ciphertext");
+      return s.slice(4);
     }),
   },
 }));
@@ -105,6 +107,24 @@ const {
   withMcpOAuthServerMutation,
 } = flowImport;
 
+it("points unreadable client secrets to settings and preserves them through Disconnect", async () => {
+  seedRow({
+    id: 91,
+    oauthClientId: "client",
+    oauthClientSecret: "unreadable-secret",
+  });
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await expect(runOAuthFlow({ serverId: 91 })).rejects.toMatchObject({
+      message: expect.stringContaining(
+        "re-enter the client secret in the plugin settings",
+      ),
+    });
+    expect(authMock).not.toHaveBeenCalled();
+    await disconnectOAuth(91);
+    expect(dbStore.get(91)?.oauthClientSecret).toBe("unreadable-secret");
+  }
+});
+
 function seedRow(row: Partial<Row> & { id: number }): void {
   dbStore.set(row.id, {
     id: row.id,
@@ -116,6 +136,7 @@ function seedRow(row: Partial<Row> & { id: number }): void {
     url: "url" in row ? (row.url ?? null) : "https://example.com/mcp",
     oauthEnabled: row.oauthEnabled ?? true,
     oauthClientId: row.oauthClientId ?? null,
+    oauthClientSecret: row.oauthClientSecret ?? null,
     oauthState: row.oauthState ?? null,
   });
 }

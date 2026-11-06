@@ -92,7 +92,9 @@ export function PluginSummaryCard({
                 </span>
               ) : s.oauthEnabled && !s.oauthConnected ? (
                 <span className="text-xs font-medium px-2 py-1 rounded-full shrink-0 text-amber-600 bg-amber-50 dark:bg-amber-900/30 dark:text-amber-300 border border-amber-500/50">
-                  Not connected
+                  {s.oauthUnreadable
+                    ? "Saved credentials unavailable"
+                    : "Not connected"}
                 </span>
               ) : null}
             </CardTitle>
@@ -118,10 +120,16 @@ export function PluginSummaryCard({
               {s.oauthEnabled && !s.oauthConnected && !setupLocked && (
                 <Button
                   size="sm"
-                  onClick={() => onConnect(s.id)}
-                  disabled={connectDisabled}
+                  onClick={() =>
+                    s.oauthUnreadable ? onOpen(s.id) : onConnect(s.id)
+                  }
+                  disabled={!s.oauthUnreadable && connectDisabled}
                 >
-                  {isConnecting ? "Connecting…" : "Connect"}
+                  {s.oauthUnreadable
+                    ? "Review connection"
+                    : isConnecting
+                      ? "Connecting…"
+                      : "Connect"}
                 </Button>
               )}
               <Label

@@ -21,15 +21,16 @@
  *   the old code then DROPPED the undecryptable secret (GitHub disconnected,
  *   provider API keys gone).
  *
- * The fix (this PR) does NOT remove the pre-ready identity-flip race — that is
- * deliberately left in place — but makes the stored secret survive it:
+ * The candidate defers reconciliation until ready, while the pinned baseline
+ * retains the old race so it can produce both historical identities. Keep
+ * recovery for users carrying ciphertext from the old startup order:
  * - Layer 0 (settings.ts): a secret that fails to decrypt is no longer dropped.
  *   It is absent from `get-user-settings` (locked, not usable) but its
  *   ciphertext is preserved VERBATIM in user-settings.json across subsequent
  *   settings writes, so it stays recoverable.
  * - Layer 1 (legacy keychain recovery): when safeStorage decrypt fails on
  *   darwin, the app reads the Keychain passwords of BOTH legacy identities via
- *   the `security` CLI ("dyad Safe Storage"/"dyad Key" and
+ *   the in-process reader ("dyad Safe Storage"/"dyad Key" and
  *   "Chromium Safe Storage"/"Chromium Key"), derives the Chromium os_crypt key
  *   (PBKDF2-HMAC-SHA1, salt "saltysalt", 1003 iterations, 16 bytes ->
  *   AES-128-CBC, IV = 16 spaces, "v10" prefix) and decrypts. A secret encrypted
@@ -135,7 +136,7 @@ function freshTempKeychain(): void {
   // before EVERY app launch: each session then gets first-touch access,
   // sidestepping macOS partition-list restrictions on items previously
   // accessed by an unsigned binary. The Layer 1 recovery reads these same
-  // items via the `security` CLI (the -A ACL lets it read them without a
+  // items via the native reader (the -A ACL lets it read them without a
   // prompt), which is what makes the fallback exercisable in this environment.
   for (const [service, account, password] of [
     [CHROMIUM_SERVICE, "Chromium Key", "e2e-chromium-identity-key"],
@@ -299,6 +300,113 @@ function makeUserDataDir(label: string): string {
   return dir;
 }
 
+function legacyCiphertext(text: string, identity: "Chromium" | "dyad"): string {
+  const cipher = createCipheriv(
+    "aes-128-cbc",
+    pbkdf2Sync(
+      `e2e-${identity.toLowerCase()}-identity-key`,
+      "saltysalt",
+      1003,
+      16,
+      "sha1",
+    ),
+    Buffer.alloc(16, 0x20),
+  );
+  return Buffer.concat([
+    Buffer.from("v10"),
+    cipher.update(text, "utf8"),
+    cipher.final(),
+  ]).toString("base64");
+}
+
+async function invokeApp<T>(
+  app: ElectronApplication,
+  channel: string,
+  input?: unknown,
+): Promise<T> {
+  const page = await app.firstWindow();
+  return page.evaluate(
+    ({ channel, input }) =>
+      (window as any).electron.ipcRenderer.invoke(channel, input),
+    { channel, input },
+  );
+}
+
+// Use the packaged app's SQLite binding inside Electron so the host Node ABI
+// does not matter. This helper only seeds/inspects synthetic fixture bytes.
+async function storedIntegrationSecrets(
+  electronApp: ElectronApplication,
+  userDataDir: string,
+  serverId: number,
+  seed?: { mixedEnv: string },
+) {
+  return electronApp.evaluate(
+    ({ app, safeStorage }, params) => {
+      const fs = process.getBuiltinModule("fs");
+      const path = process.getBuiltinModule("path");
+      const { createRequire } = process.getBuiltinModule("module");
+      const require = createRequire(
+        path.join(app.getAppPath(), "package.json"),
+      );
+      const Database = require("better-sqlite3");
+      const database = new Database(path.join(params.userDataDir, "sqlite.db"));
+      const subscriptionFile = path.join(
+        params.userDataDir,
+        "codex-subscription.enc",
+      );
+      try {
+        if (params.seed) {
+          const oauth = safeStorage
+            .encryptString(
+              JSON.stringify({
+                tokens: {
+                  access_token: "synthetic-mcp-access",
+                  refresh_token: "synthetic-mcp-refresh",
+                  token_type: "Bearer",
+                },
+                clientInformation: {
+                  client_id: "synthetic-client",
+                  client_secret: "synthetic-client-secret",
+                },
+              }),
+            )
+            .toString("base64");
+          database
+            .prepare(
+              "UPDATE mcp_servers SET oauth_state = ?, env_encrypted = ? WHERE id = ?",
+            )
+            .run(oauth, params.seed.mixedEnv, params.serverId);
+          fs.writeFileSync(
+            subscriptionFile,
+            safeStorage.encryptString(
+              JSON.stringify({
+                access: "synthetic-subscription-access",
+                refresh: "synthetic-subscription-refresh",
+                accountId: "synthetic-account",
+                expires: Date.now() + 24 * 3600_000,
+              }),
+            ),
+            { mode: 0o600 },
+          );
+        }
+        return {
+          row: database
+            .prepare(
+              "SELECT env_encrypted, headers_encrypted, oauth_state, oauth_client_secret FROM mcp_servers WHERE id = ?",
+            )
+            .get(params.serverId),
+          subscription: fs.existsSync(subscriptionFile)
+            ? fs.readFileSync(subscriptionFile).toString("base64")
+            : null,
+        };
+      } finally {
+        database.close();
+      }
+    },
+    { userDataDir, serverId, seed },
+  );
+}
+
 // A well-formed (v10-prefixed) ciphertext that no key can decrypt. Its only
 // job is to make readSettings() attempt a safeStorage decrypt at startup.
 const UNDECRYPTABLE_CIPHERTEXT = Buffer.concat([
@@ -355,10 +463,12 @@ test.describe("safeStorage keychain identity (issue #3837)", () => {
     // (non-test-build) session.
     writeGithubTokenCiphertext(userDataDir, ciphertext);
 
-    // Electron 40 can resolve Chromium on restart; newer runtimes or a fixed
-    // startup order may retain dyad. Either way the stored token must survive.
+    // Moving reconciliation behind readiness keeps native encryption on dyad
+    // even when the profile already holds encrypted settings.
     freshTempKeychain();
     const session2 = await launchDyad({ userDataDir });
+    expect(await encryptViaApp(session2, token)).toBe(ciphertext);
+    expect(await decryptViaApp(session2, ciphertext)).toBe(token);
     const settings = await readSettingsViaIpc(session2);
     expect(settings.githubAccessToken?.value).toBe(token);
 
@@ -468,26 +578,37 @@ test.describe("safeStorage keychain identity (issue #3837)", () => {
       expect(
         (await readSettingsViaIpc(baseline)).githubAccessToken?.value,
       ).toBe(token);
+      const server = await invokeApp<{ id: number }>(
+        baseline,
+        "mcp:create-server",
+        {
+          name: "keychain-upgrade-fixture",
+          transport: "http",
+          url: "https://example.invalid/mcp",
+          enabled: false,
+          oauthEnabled: true,
+          oauthClientId: "synthetic-client",
+          oauthClientSecret: "synthetic-client-secret",
+          envJson: { FIXTURE_KEY: "synthetic-env" },
+          headersJson: { Authorization: "Bearer synthetic-header" },
+        },
+      );
+      const integrations = await storedIntegrationSecrets(
+        baseline,
+        userDataDir,
+        server.id,
+        {
+          mixedEnv: legacyCiphertext(
+            '{"FIXTURE_KEY":"synthetic-env"}',
+            identity === "dyad" ? "Chromium" : "dyad",
+          ),
+        },
+      );
       await closeDyad(baseline);
 
       // Prove the old app wrote real ciphertext under the intended identity,
       // rather than hand-installing encrypted bytes or accepting plaintext.
-      const cipher = createCipheriv(
-        "aes-128-cbc",
-        pbkdf2Sync(
-          `e2e-${identity.toLowerCase()}-identity-key`,
-          "saltysalt",
-          1003,
-          16,
-          "sha1",
-        ),
-        Buffer.alloc(16, 0x20),
-      );
-      const expectedCiphertext = Buffer.concat([
-        Buffer.from("v10"),
-        cipher.update(token, "utf8"),
-        cipher.final(),
-      ]).toString("base64");
+      const expectedCiphertext = legacyCiphertext(token, identity);
       expect(readSettingsFileRaw(userDataDir).githubAccessToken).toEqual({
         value: expectedCiphertext,
         encryptionType: "electron-safe-storage",
@@ -502,12 +623,50 @@ test.describe("safeStorage keychain identity (issue #3837)", () => {
         expect(
           (await readSettingsViaIpc(candidate)).githubAccessToken?.value,
         ).toBe(token);
+        const servers = await invokeApp<
+          Array<{
+            id: number;
+            envJson: unknown;
+            headersJson: unknown;
+            oauthConnected: boolean;
+            envUnreadable: boolean;
+            headersUnreadable: boolean;
+          }>
+        >(candidate, "mcp:list-servers");
+        expect(servers.find((entry) => entry.id === server.id)).toMatchObject({
+          envJson: { FIXTURE_KEY: "synthetic-env" },
+          headersJson: { Authorization: "Bearer synthetic-header" },
+          oauthConnected: true,
+          envUnreadable: false,
+          headersUnreadable: false,
+        });
+        expect(
+          await invokeApp(candidate, "codex-subscription:status"),
+        ).toMatchObject({ connected: true });
+        await invokeApp(candidate, "mcp:update-server", {
+          id: server.id,
+          name: `keychain-upgrade-${restart}`,
+        });
         await writeSettingsViaIpc(candidate, {
           hidePnpmMinimumReleaseAgeWarning: restart % 2 === 0,
         });
         expect(
           (await readSettingsViaIpc(candidate)).githubAccessToken?.value,
         ).toBe(token);
+        expect(
+          await storedIntegrationSecrets(candidate, userDataDir, server.id),
+        ).toEqual(integrations);
+        if (restart === 2) {
+          await invokeApp(candidate, "mcp:disconnect-oauth", server.id);
+          await invokeApp(candidate, "codex-subscription:disconnect");
+          const afterDisconnect = await storedIntegrationSecrets(
+            candidate,
+            userDataDir,
+            server.id,
+          );
+          expect(afterDisconnect.row.oauth_state).toBeNull();
+          expect(afterDisconnect.subscription).toBeNull();
+        }
         await closeDyad(candidate);
         const stored = readSettingsFileRaw(userDataDir);
         expect(stored.hidePnpmMinimumReleaseAgeWarning).toBe(restart % 2 === 0);

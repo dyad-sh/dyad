@@ -62,6 +62,13 @@ jobs:
           OUTPUT_FINDINGS_PATH: ${{ env.REVIEW_FINDINGS_PATH }}
         run: node scripts/issue-agent/render-template.mjs
 
+      - name: Install fail-closed hook runtime
+        id: claude-cli
+        run: |
+          npm install --global @anthropic-ai/claude-code@2.1.300
+          claude --version | grep -q '^2\.1\.300 '
+          echo "path=$(command -v claude)" >> "$GITHUB_OUTPUT"
+
       - name: Connect to Tailscale
         uses: tailscale/github-action@6cae46e2d796f265265cfcf628b72a32b4d7cade # v3.3.0
         with:
@@ -70,7 +77,7 @@ jobs:
           tags: tag:gha-dyad
 
       - name: PR Review
-        # This commit bundles Claude Code 2.1.280, required by claude-opus-5-5.
+        # Override bundled CLI 2.1.280: hook onFailure requires >= 2.1.295.
         uses: anthropics/claude-code-action@9ca9355b36297178e28d37c799d1c9c8a28e6507 # post-v1.0.231
         env:
           ANTHROPIC_BASE_URL: http://100.73.172.24:8081
@@ -79,6 +86,7 @@ jobs:
           CLAUDE_CODE_MAX_OUTPUT_TOKENS: 48000
         with:
           anthropic_api_key: ${{ secrets.UNDERCLASS_KEY }}
+          path_to_claude_code_executable: ${{ steps.claude-cli.outputs.path }}
 
           # See: https://github.com/anthropics/claude-code-action/blob/v1/docs/security.md
           github_token: ${{ github.token }}
@@ -94,7 +102,7 @@ jobs:
           # Static review only, including maintainer requests on external PRs.
           # Deny Bash explicitly because read-only shell commands can auto-allow.
           # The trusted hook guards every file/search path (including symlinks)
-          # and blocks all other tools. Hook launch failures also exit 2.
+          # and blocks all other tools. onFailure also blocks startup/timeouts.
           settings: |
             {
               "permissions": {
@@ -105,6 +113,8 @@ jobs:
                   "matcher": "",
                   "hooks": [{
                     "type": "command",
+                    "onFailure": "block",
+                    "timeout": 15,
                     "command": "node '${{ github.workspace }}/scripts/pr-review/review-tool-guard.mjs' '${{ github.workspace }}' || exit 2"
                   }]
                 }]

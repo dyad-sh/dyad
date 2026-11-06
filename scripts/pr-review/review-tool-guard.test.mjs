@@ -223,11 +223,19 @@ test(
       tool_name: "Read",
       tool_input: { file_path: path.join(outside, "credentials.json") },
     });
-    const run = () =>
-      spawnSync("bash", ["-c", command], { input: request, encoding: "utf8" });
+    const run = (input = request) =>
+      spawnSync("bash", ["-c", command], { input, encoding: "utf8" });
+    const allowedRequest = JSON.stringify({
+      hook_event_name: "PreToolUse",
+      tool_name: "Read",
+      tool_input: { file_path: path.join(workspace, "src", "example.ts") },
+    });
+    const allowed = run(allowedRequest);
+    assert.equal(allowed.status, 0, allowed.stderr);
     assert.equal(run().status, 2);
     fs.unlinkSync(installedGuard);
-    assert.equal(run().status, 2);
+    // The same allowed operation is blocked when the guard cannot load.
+    assert.equal(run(allowedRequest).status, 2);
   },
 );
 

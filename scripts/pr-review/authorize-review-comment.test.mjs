@@ -241,6 +241,15 @@ for (const newline of ["\n", "\r\n"]) {
       ),
     );
     assert.ok(guard.hooks[0].command.endsWith("|| exit 2"));
+    assert.equal(guard.hooks[0].onFailure, "block");
+    assert.equal(guard.hooks[0].timeout, 15);
+    const cliInstall = review.steps.find((step) => step.id === "claude-cli");
+    assert.match(cliInstall.run, /@anthropic-ai\/claude-code@2\.1\.300/);
+    assert.equal(
+      agent.with.path_to_claude_code_executable,
+      "${{ steps.claude-cli.outputs.path }}",
+    );
+    assert.ok(review.steps.indexOf(cliInstall) < review.steps.indexOf(agent));
     assert.notEqual(agent.with.allowed_non_write_users, "*");
     for (const job of [request, review, post]) {
       for (const step of job.steps) {

@@ -65,7 +65,7 @@ Earlier, `claude-triage.yml` granted `Edit(/tmp/issue-triage/**)` while the deci
 
 Anchor path rules to the checkout with `/${{ github.workspace }}/...` (the workspace is already absolute, so this yields `//home/runner/...`), and name the exact output files rather than a directory glob: `Edit(/${{ github.workspace }}/tmp/issue-triage/triage.json)`. An `Edit` rule also covers `Write` creating the file. To check a rule change locally, run `claude -p --setting-sources user --allowedTools "..."` in a scratch git repo, have it `cd` into a subdirectory before writing, and read `permission_denials` from `--output-format json`.
 
-When reviewing untrusted PR text in a credentialed process, disabling shell tools is insufficient: unscoped readers can expose `/proc`, user state, or runner temp files through public review artifacts. Scope reads and enforce canonical paths for Read/Grep/Glob in a trusted `PreToolUse` hook, including recursive-search and symlink checks; make hook failures block calls.
+When reviewing untrusted PR text in a credentialed process, disabling shell tools is insufficient: unscoped readers can expose `/proc`, user state, or runner temp files through public review artifacts. Scope reads and enforce canonical paths for Read/Grep/Glob in a trusted `PreToolUse` hook, including recursive-search and symlink checks. Use CLI >=2.1.295 with hook `onFailure: "block"` for launch errors and timeouts; a shell `|| exit 2` only covers failures after the shell starts.
 
 ## Proxy authentication and diagnostics
 

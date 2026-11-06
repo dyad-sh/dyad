@@ -47,6 +47,15 @@ describe("Windows PR reviewer", () => {
     expect(source.ref).toBe("${{ github.event.pull_request.head.sha }}");
     expect(source.path).toBe("${{ env.REVIEW_SOURCE_PATH }}");
     expect(source["persist-credentials"]).toBe(false);
+    expect(source["allow-unsafe-pr-checkout"]).toBe(true);
+    const checkouts = [...review.steps, ...post.steps].filter(
+      (entry: { uses?: string }) => entry.uses?.startsWith("actions/checkout@"),
+    );
+    for (const checkout of checkouts) {
+      if (checkout.with !== source) {
+        expect(checkout.with["allow-unsafe-pr-checkout"]).not.toBe(true);
+      }
+    }
     expect(post.needs).toBe("windows-review");
     const validation = post.steps.findIndex(
       (entry: { id?: string }) => entry.id === "validate-findings",

@@ -70,6 +70,8 @@ jobs:
       - name: Checkout exact PR head for Windows execution
         uses: actions/checkout@v5
         with:
+          # This job intentionally executes code from allowlisted authors.
+          allow-unsafe-pr-checkout: true
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0

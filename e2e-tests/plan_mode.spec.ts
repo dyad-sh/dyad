@@ -145,6 +145,11 @@ testSkipIfWindows(
     const planContent = po.previewPanel.getPlanContent();
     await expect(planContent).toBeVisible({ timeout: Timeout.MEDIUM });
 
+    const planNumbers = po.page.getByText(/^Plan #\d+$/);
+    await expect(planNumbers).toHaveCount(2);
+    const [cardNumber, previewNumber] = await planNumbers.allTextContents();
+    expect(cardNumber).toBe(previewNumber);
+
     // Collapse the preview panel
     await po.previewPanel.clickTogglePreviewPanel();
 

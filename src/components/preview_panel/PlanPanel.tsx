@@ -263,6 +263,14 @@ export const PlanPanel: React.FC = () => {
                 <h2 className="text-lg font-semibold">
                   {currentTitle || "Implementation Plan"}
                 </h2>
+                {chatId != null && (
+                  <span
+                    className="text-xs text-muted-foreground whitespace-nowrap"
+                    title={`chat-${chatId}-plan.md`}
+                  >
+                    Plan #{chatId}
+                  </span>
+                )}
               </div>
               {currentSummary && (
                 <p className="text-sm text-muted-foreground mt-1">

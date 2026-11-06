@@ -24,9 +24,16 @@ describe("Windows PR reviewer", () => {
     const automaticAuthors =
       original.jobs["review-request"].if.match(allowlist)?.[1];
     expect(automaticAuthors).toBeTruthy();
-    expect(review.if.replace(/\s+/g, " ").trim()).toBe(
-      `github.event.action != 'closed' && contains( fromJSON('${automaticAuthors}'), github.event.pull_request.user.login )`,
+    const executionAuthors = JSON.stringify(
+      JSON.parse(automaticAuthors).filter(
+        (author: string) =>
+          !["princeaden1", "nourzakhama2003"].includes(author),
+      ),
     );
+    expect(review.if.replace(/\s+/g, " ").trim()).toBe(
+      `github.event.action != 'closed' && contains( fromJSON('${executionAuthors}'), github.event.pull_request.user.login )`,
+    );
+    expect(step("PR Review").with.allowed_non_write_users).toBe("ryangroch");
     expect(workflow.on.pull_request_target.types).toContain("closed");
     expect(workflow.concurrency["cancel-in-progress"]).toBe(true);
     expect(review["runs-on"]).toBe("windows-2022");
@@ -47,6 +54,15 @@ describe("Windows PR reviewer", () => {
     expect(source.ref).toBe("${{ github.event.pull_request.head.sha }}");
     expect(source.path).toBe("${{ env.REVIEW_SOURCE_PATH }}");
     expect(source["persist-credentials"]).toBe(false);
+    expect(source["allow-unsafe-pr-checkout"]).toBe(true);
+    const checkouts = [...review.steps, ...post.steps].filter(
+      (entry: { uses?: string }) => entry.uses?.startsWith("actions/checkout@"),
+    );
+    for (const checkout of checkouts) {
+      if (checkout.with !== source) {
+        expect(checkout.with["allow-unsafe-pr-checkout"]).not.toBe(true);
+      }
+    }
     expect(post.needs).toBe("windows-review");
     const validation = post.steps.findIndex(
       (entry: { id?: string }) => entry.id === "validate-findings",

@@ -18,6 +18,8 @@ For maintainer comment commands on external PRs, verify the commenter’s curren
 
 ## Split LLM decisions from credentialed mutations
 
+`actions/checkout` rejects fork PR heads under `pull_request_target` unless `allow-unsafe-pr-checkout: true` is explicit. Use that opt-in only for the Windows reviewer's intentional, author-allowlisted code execution; keep trusted helper checkouts on the base SHA without the opt-in.
+
 When a Claude workflow needs write credentials, prefer a two-job shape: the Claude job runs with read-only permissions and uploads a constrained JSON/Markdown artifact, then a separate `needs:` job downloads the artifact, checks out trusted helper scripts from `github.sha`, validates the artifact, creates the GitHub App token, and performs deterministic GitHub mutations.
 
 When a headless Claude job must write local handoff artifacts, exclude project/local settings with `claude_args --setting-sources user`, explicitly pre-approve its inspection tools, and scope `Edit(...)` to the output directory via `--allowedTools`. Without the setting-source restriction, the repository's broad project allowlist merges with the scoped rule and defeats the intended boundary. After the action, verify every mandatory file with `test -s` before upload: `actions/upload-artifact`'s `if-no-files-found: error` still succeeds when only one of several listed paths exists, and Claude Code can report a successful session after denied tool calls.

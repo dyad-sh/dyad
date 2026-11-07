@@ -73,6 +73,7 @@ describe("distributed machine boundaries", () => {
       "ipc/handlers/distributed_machine_handlers.ts",
       "ipc/services/app_run_actor_service.ts",
       "ipc/services/distributed_machine_actor_host.ts",
+      "ipc/services/distributed_machine_error_reporter.ts",
       "ipc/services/distributed_machine_host.ts",
       "ipc/services/github_ops_definition.ts",
       "ipc/services/image_generation_actor_service.ts",

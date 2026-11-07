@@ -14,6 +14,7 @@ import { systemClock } from "@/state_machines/clock";
 import { windowRegistry } from "@/window_infrastructure/main/window_registry";
 import type { WindowSessionId } from "@/window_infrastructure/types";
 import { remoteMachineHost } from "./distributed_machine_actor_host";
+import { reportRemoteTransportError } from "./distributed_machine_error_reporter";
 import { githubOpsDefinition } from "./github_ops_definition";
 import { imageGenerationDefinition } from "./image_generation_definition";
 import { versionPreviewDefinition } from "./version_preview_definition";
@@ -40,6 +41,7 @@ export const remoteMachineTransport = new RemoteMachineTransport({
   manifest: remoteMachineManifest,
   windows: windowRegistry,
   clock: systemClock,
+  onError: reportRemoteTransportError,
   onProtocolMismatch: ({ sender, machineId, expected, received }) => {
     if (!sender.windowSessionId) return;
     const endpoint = windowRegistry.endpointForSession(

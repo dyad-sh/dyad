@@ -47,6 +47,10 @@ import {
 import { getGitHubApiBase } from "@/ipc/utils/github_endpoints";
 import { createAppOperationHandler } from "@/ipc/utils/app_mutation_lock";
 import { DyadErrorKind } from "@/errors/dyad_error";
+import {
+  appOperationCoordinator,
+  readAppResource,
+} from "@/ipc/services/app_operation_coordinator";
 import { db } from "@/db";
 import {
   gitCheckout,
@@ -113,6 +117,7 @@ describe("verifyGithubConnection", () => {
       githubRepo: "demo",
       githubBranch: "feature/deploy",
     } as never);
+    vi.mocked(gitListBranches).mockResolvedValue(["feature/deploy"]);
     vi.mocked(execGit).mockImplementation(
       async (args) =>
         ({
@@ -131,6 +136,22 @@ describe("verifyGithubConnection", () => {
       json: async () => ({ commit: { sha: "local-sha" } }),
     } as never);
     vi.mocked(isGitStatusClean).mockResolvedValue(true);
+  });
+
+  it("claims app metadata for writing only when it may repair the link", async () => {
+    const run = vi.spyOn(appOperationCoordinator, "run");
+    try {
+      await verifyGithubConnection({ appId: 1, requirePushable: true });
+      await verifyGithubConnection({ appId: 1, requireSynced: true });
+      const [pushable, readOnly] = run.mock.calls.map(
+        ([options]) => options.resources,
+      );
+      expect(pushable).toContain("metadata");
+      expect(readOnly).not.toContain("metadata");
+      expect(readOnly).toContainEqual(readAppResource("metadata"));
+    } finally {
+      run.mockRestore();
+    }
   });
 
   it("verifies the local remote and the exact remote branch with authenticated GitHub access", async () => {

@@ -365,15 +365,6 @@ export const ListAppsResponseSchema = z.object({
 });
 
 /**
- * Schema for rename branch params.
- */
-export const RenameBranchParamsSchema = z.object({
-  appId: z.number(),
-  oldBranchName: z.string(),
-  newBranchName: z.string(),
-});
-
-/**
  * Schema for add to favorite result.
  */
 export const AddToFavoriteResultSchema = z.object({
@@ -582,16 +573,6 @@ export const appContracts = {
     ],
   }),
 
-  renameBranch: defineContract({
-    channel: "rename-branch",
-    input: RenameBranchParamsSchema,
-    output: z.void(),
-    invalidates: (input) => [
-      { family: "branches", appId: input.appId },
-      { family: "versions", appId: input.appId },
-    ],
-  }),
-
   addToFavorite: defineContract({
     channel: "add-to-favorite",
     input: AppIdParamsSchema,
@@ -725,7 +706,6 @@ export type ChangeAppLocationResult = z.infer<
   typeof ChangeAppLocationResultSchema
 >;
 export type ListAppsResponse = z.infer<typeof ListAppsResponseSchema>;
-export type RenameBranchParams = z.infer<typeof RenameBranchParamsSchema>;
 export type AppSearchResult = z.infer<typeof AppSearchResultSchema>;
 export type UpdateAppCommandsParams = z.infer<
   typeof UpdateAppCommandsParamsSchema

@@ -2767,6 +2767,7 @@ This conversation includes one or more image attachments. When the user uploads 
                     attachmentDeliveryConfig.inlineTextAttachments,
                   pdfFileParts:
                     await buildInlinePdfFileParts(storedAttachments),
+                  appPath: telemetryAppPath,
                 },
               );
             }
@@ -3638,6 +3639,7 @@ async function replaceTextAttachmentWithContent(
   text: string,
   filePath: string,
   fileName: string,
+  appPath: string | undefined,
 ): Promise<string> {
   try {
     if (await isTextFile(filePath)) {
@@ -3667,7 +3669,7 @@ async function replaceTextAttachmentWithContent(
     return text;
   } catch (error) {
     logger.error(`Error processing text file: ${error}`);
-    reportFsFailure("chat_stream", error);
+    reportFsFailure("chat_stream", error, { appPath });
     return text;
   }
 }
@@ -3680,10 +3682,12 @@ async function prepareMessageWithAttachments(
     includeImageAttachments = true,
     inlineTextAttachments = true,
     pdfFileParts = [],
+    appPath,
   }: {
     includeImageAttachments?: boolean;
     inlineTextAttachments?: boolean;
     pdfFileParts?: FilePart[];
+    appPath?: string;
   } = {},
 ): Promise<ModelMessage> {
   let textContent = message.content;
@@ -3703,6 +3707,7 @@ async function prepareMessageWithAttachments(
         textContent,
         filePath,
         fileName,
+        appPath,
       );
     }
   }
@@ -3738,7 +3743,7 @@ async function prepareMessageWithAttachments(
           logger.log(`Added image attachment: ${filePath}`);
         } catch (error) {
           logger.error(`Error reading image file: ${error}`);
-          reportFsFailure("chat_stream", error);
+          reportFsFailure("chat_stream", error, { appPath });
         }
       }
     }

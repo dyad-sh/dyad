@@ -134,11 +134,21 @@ function isSelfHostedChannel(context?: Record<string, unknown>): boolean {
  *
  * Dropping `exception_message` alone leaves the message in the trace, since a
  * stack starts "Name: message". The frames are what identify the throw site,
- * so they are all that is kept.
+ * so they are all that is kept. Only lines after the message count, since a
+ * message line can look like a frame. If the message can't be found in the
+ * stack, no frames are kept.
  */
 export function framesOnly(err: Error): string | undefined {
   if (!err.stack) return undefined;
-  const frames = err.stack.split("\n").filter((line) => /^\s+at /.test(line));
+  let afterHeader: string[];
+  if (err.message) {
+    const start = err.stack.indexOf(err.message);
+    if (start === -1) return err.name;
+    afterHeader = err.stack.slice(start + err.message.length).split("\n");
+  } else {
+    afterHeader = err.stack.split("\n").slice(1);
+  }
+  const frames = afterHeader.filter((line) => /^\s+at /.test(line));
   return [err.name, ...frames].join("\n");
 }
 

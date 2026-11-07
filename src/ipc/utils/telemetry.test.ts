@@ -27,6 +27,7 @@ import { SDKError } from "@vercel/sdk/models/sdkerror.js";
 import { getVercelProjectCreationError } from "./vercel_errors";
 import { serializeIpcError, deserializeIpcError } from "../contracts/core";
 import {
+  framesOnly,
   sendTelemetryEventToWindow,
   sendTelemetryException,
   shouldFilterTelemetryException,
@@ -345,5 +346,25 @@ describe("main-process chunk IDs on forwarded exceptions", () => {
   it("omits the property in builds without injected chunk IDs", () => {
     sendTelemetryException(new Error("Boom"));
     expect(sent.calls[0]).not.toHaveProperty("posthog_chunk_ids");
+  });
+});
+
+describe("framesOnly", () => {
+  it("keeps a message line that looks like a frame out of the frames", () => {
+    const error = new Error("request failed:\n    at Bearer secret-token");
+
+    const frames = framesOnly(error);
+
+    expect(frames).not.toContain("secret-token");
+    expect(frames).toMatch(/^Error\n\s+at .*telemetry\.test/);
+  });
+
+  it("keeps no frames when the message is not in the stack", () => {
+    const error = new Error("original");
+    // V8 builds the stack text on first read, so read it before the change.
+    void error.stack;
+    error.message = "changed:\n    at Bearer secret-token";
+
+    expect(framesOnly(error)).toBe("Error");
   });
 });

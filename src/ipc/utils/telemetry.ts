@@ -136,7 +136,7 @@ function isSelfHostedChannel(context?: Record<string, unknown>): boolean {
  * stack starts "Name: message". The frames are what identify the throw site,
  * so they are all that is kept.
  */
-function framesOnly(err: Error): string | undefined {
+export function framesOnly(err: Error): string | undefined {
   if (!err.stack) return undefined;
   const frames = err.stack.split("\n").filter((line) => /^\s+at /.test(line));
   return [err.name, ...frames].join("\n");

@@ -1,5 +1,11 @@
 import { sameInvocationRef } from "@/state_machines/invocation_ref";
-import { ignore, type TransitionResult } from "@/state_machines/types";
+import { transitionValuesAreEqual } from "@/state_machines/transition_validation";
+import {
+  change,
+  ignore,
+  stay,
+  type TransitionResult,
+} from "@/state_machines/types";
 import type { ChatStreamHostCommand, ChatStreamHostState } from "./host_state";
 import type { ChatStreamWireEvent } from "./transport";
 
@@ -754,60 +760,62 @@ function transitionHost(
                   state.lastCompletion?.pausePromptQueue === true
                 ? ("step-limit" as const)
                 : state.queuePauseReason;
-        return {
-          kind: "applied",
-          state: {
-            ...state,
-            queueRevision: event.queueRevision,
-            queuePaused,
-            queuePauseReason,
-            queue: event.entries,
-            pendingQueueMutationId,
-            reviewBarrier,
-            pendingQueuePauseMutationId:
-              event.mutationId === state.pendingQueuePauseMutationId
-                ? null
-                : state.pendingQueuePauseMutationId,
-            pendingQueueResumeMutationId:
-              event.mutationId === state.pendingQueueResumeMutationId
-                ? null
-                : state.pendingQueueResumeMutationId,
-            active,
-            ...(event.mutationId
-              ? {
-                  lastQueueMutation: {
-                    mutationId: event.mutationId,
-                    ...(staleStopResume
-                      ? {
-                          outcome: "rejected" as const,
-                          error:
-                            "A newer Stop changed the queue; try resuming again.",
-                        }
-                      : { outcome: "applied" as const }),
-                  },
-                }
-              : {}),
-            ...(state.phase === "finalizing"
-              ? {
-                  phase:
-                    state.lastCompletion?.outcome === "errored"
-                      ? ("errored" as const)
-                      : ("idle" as const),
-                  active: null,
-                }
-              : {}),
-          },
-          commands:
-            reviewCommands.length > 0
-              ? reviewCommands
-              : pendingQueueMutationId === null &&
-                  !queuePaused &&
-                  !active?.pauseQueueOnCancel &&
-                  event.entries.length > 0 &&
-                  (state.phase === "idle" || state.phase === "finalizing")
-                ? [{ type: "dispatch-next" }]
-                : [],
+        const nextState: ChatStreamHostState = {
+          ...state,
+          queueRevision: event.queueRevision,
+          queuePaused,
+          queuePauseReason,
+          queue: event.entries,
+          pendingQueueMutationId,
+          reviewBarrier,
+          pendingQueuePauseMutationId:
+            event.mutationId === state.pendingQueuePauseMutationId
+              ? null
+              : state.pendingQueuePauseMutationId,
+          pendingQueueResumeMutationId:
+            event.mutationId === state.pendingQueueResumeMutationId
+              ? null
+              : state.pendingQueueResumeMutationId,
+          active,
+          ...(event.mutationId
+            ? {
+                lastQueueMutation: {
+                  mutationId: event.mutationId,
+                  ...(staleStopResume
+                    ? {
+                        outcome: "rejected" as const,
+                        error:
+                          "A newer Stop changed the queue; try resuming again.",
+                      }
+                    : { outcome: "applied" as const }),
+                },
+              }
+            : {}),
+          ...(state.phase === "finalizing"
+            ? {
+                phase:
+                  state.lastCompletion?.outcome === "errored"
+                    ? ("errored" as const)
+                    : ("idle" as const),
+                active: null,
+              }
+            : {}),
         };
+        const commands: ChatStreamHostCommand[] =
+          reviewCommands.length > 0
+            ? reviewCommands
+            : pendingQueueMutationId === null &&
+                !queuePaused &&
+                !active?.pauseQueueOnCancel &&
+                event.entries.length > 0 &&
+                (state.phase === "idle" || state.phase === "finalizing")
+              ? [{ type: "dispatch-next" }]
+              : [];
+        // A mutation that changes nothing, such as the one sent when a message
+        // is accepted, keeps the current state and starts nothing.
+        return transitionValuesAreEqual(state, nextState)
+          ? stay(state, [])
+          : change(nextState, commands);
       }
     case "REVIEW_BARRIER_RESULT":
       if (

@@ -131,6 +131,7 @@ import {
   type Todo,
 } from "./tools/types";
 import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
+import { reportFsFailure } from "@/ipc/utils/fs_failure_telemetry";
 import {
   prepareStepMessages,
   injectMessagesAtPositions,
@@ -1028,9 +1029,10 @@ export async function handleLocalAgentStream(
     // Ensure .dyad/ is gitignored (idempotent; also done by compaction/plans)
     // Skip in read-only/plan-only mode to avoid modifying the workspace
     if (!readOnly && !planModeOnly) {
-      await ensureDyadGitignored(appPath).catch((err: unknown) =>
-        logger.warn("Failed to ensure .dyad gitignored:", err),
-      );
+      await ensureDyadGitignored(appPath).catch((err: unknown) => {
+        logger.warn("Failed to ensure .dyad gitignored:", err);
+        reportFsFailure("local_agent", err, { appPath });
+      });
     }
     if (persistedTodos.length > 0) {
       // Emit loaded todos to the renderer so the UI shows them immediately
@@ -2562,6 +2564,7 @@ export async function handleLocalAgentStream(
     }
 
     logger.error("Local agent error:", error);
+    reportFsFailure("local_agent", error, { appPath });
     safeSend(event.sender, "chat:response:error", {
       chatId: req.chatId,
       invocationRef: req.invocationRef,

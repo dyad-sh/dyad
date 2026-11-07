@@ -115,6 +115,7 @@ async function readScreenshotEntries(
 }
 
 import log from "electron-log";
+import { reportFsFailure } from "../utils/fs_failure_telemetry";
 import {
   deploySupabaseFunction,
   getSupabaseProjectName,
@@ -445,8 +446,10 @@ async function removeAppFiles(appId: number, appPath: string): Promise<void> {
     });
   } catch (error: any) {
     logger.error(`Error deleting app files for app ${appId}:`, error);
+    reportFsFailure("app_delete", error, { appPath });
     throw new Error(
       `App deleted from database, but failed to delete app files. Please delete app files from ${appPath} manually.\n\nError: ${error.message}`,
+      { cause: error },
     );
   }
 }

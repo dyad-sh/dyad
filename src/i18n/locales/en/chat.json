@@ -377,13 +377,8 @@
     "notOnBranch": "You are not on a branch",
     "checkoutInProgress": "Version checkout is currently in progress",
     "checkoutMainBranch": "Checkout main branch, otherwise changes will not be saved properly",
-    "checkingBranch": "Checking branch...",
-    "onBranch": "You are on branch: {{name}}.",
-    "renameMasterToMain": "Rename master to main",
-    "renaming": "Renaming...",
     "switchToMainBranch": "Switch to main branch",
     "checkingOut": "Checking out...",
-    "masterRenamed": "Master branch renamed to main",
     "versionCount": "Version {{count}}"
   },
   "errorBox": {

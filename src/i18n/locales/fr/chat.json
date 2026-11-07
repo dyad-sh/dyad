@@ -334,13 +334,8 @@
     "notOnBranch": "Vous n'êtes sur aucune branche",
     "checkoutInProgress": "Le changement de version est en cours",
     "checkoutMainBranch": "Revenez sur la branche principale, sinon les modifications ne seront pas enregistrées correctement",
-    "checkingBranch": "Vérification de la branche...",
-    "onBranch": "Vous êtes sur la branche\u00a0: {{name}}.",
-    "renameMasterToMain": "Renommer master en main",
-    "renaming": "Renommage...",
     "switchToMainBranch": "Passer sur la branche main",
     "checkingOut": "Changement de branche...",
-    "masterRenamed": "Branche master renommée en main",
     "versionCount": "Version {{count}}"
   },
   "errorBox": {

@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -12,6 +13,7 @@ import { eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { apps } from "@/db/schema";
+import { handlePushToGithub } from "@/ipc/handlers/github_handlers";
 import { ipc } from "@/ipc/types";
 import { writeSettings } from "@/main/settings";
 import { invalidateDyadAppsBaseDirectoryCache } from "@/paths/paths";
@@ -217,6 +219,90 @@ describe("GitHub import dialog (integration)", () => {
       }),
     ).toHaveLength(1);
   }, 90_000);
+
+  it("links an imported repo to the default branch it cloned", async () => {
+    await harness.github.resetRepos();
+    const result = await ipc.github.cloneRepoFromUrl({
+      url: "https://github.com/testuser/existing-vite-app-on-master.git",
+      appName: "master-default-import",
+      optimizeForDyad: false,
+    });
+    expect(result).not.toHaveProperty("error");
+
+    const app = await findImportedApp("master-default-import");
+    expect(app.githubBranch).toBe("master");
+  }, 90_000);
+
+  describe("an app linked to a branch that does not exist", () => {
+    const pushEvent = undefined as unknown as Parameters<
+      typeof handlePushToGithub
+    >[0];
+
+    function git(appDir: string, ...args: string[]): string {
+      return execFileSync(
+        "git",
+        ["-c", "user.name=dyad", "-c", "user.email=dyad@example.com", ...args],
+        { cwd: appDir, encoding: "utf8" },
+      ).trim();
+    }
+
+    // Imports the master-default repo, then records `main` as its linked
+    // branch, which is what imports stored before they recorded the clone.
+    async function importLinkedToMissingMain(appName: string) {
+      await harness.github.resetRepos();
+      expect(
+        await ipc.github.cloneRepoFromUrl({
+          url: "https://github.com/testuser/existing-vite-app-on-master.git",
+          appName,
+          optimizeForDyad: false,
+        }),
+      ).not.toHaveProperty("error");
+      // Set after the import, which would otherwise look the repo up in the
+      // fake GitHub API's catalog. Sync needs it to authenticate.
+      writeSettings({
+        githubAccessToken: { value: "fake_access_token_12345" },
+      });
+      const app = await findImportedApp(appName);
+      await harness.db
+        .update(apps)
+        .set({ githubBranch: "main" })
+        .where(eq(apps.id, app.id));
+      return { app, appDir: importedAppPath(app.path) };
+    }
+
+    async function linkedBranch(appId: number) {
+      const row = await harness.db.query.apps.findFirst({
+        where: eq(apps.id, appId),
+      });
+      return row?.githubBranch;
+    }
+
+    it("relinks to the current branch when it is on the remote", async () => {
+      const { app, appDir } = await importLinkedToMissingMain("relink-master");
+      fs.writeFileSync(path.join(appDir, "added.txt"), "new\n");
+      git(appDir, "add", "added.txt");
+      git(appDir, "commit", "-m", "Add a file");
+
+      await handlePushToGithub(pushEvent, { appId: app.id });
+
+      expect(await linkedBranch(app.id)).toBe("master");
+      expect(git(appDir, "rev-parse", "origin/master")).toBe(
+        git(appDir, "rev-parse", "HEAD"),
+      );
+    }, 90_000);
+
+    it("refuses when the current branch is not on the remote", async () => {
+      const { app, appDir } = await importLinkedToMissingMain("relink-refused");
+      git(appDir, "checkout", "-b", "scratch");
+
+      await expect(
+        handlePushToGithub(pushEvent, { appId: app.id }),
+      ).rejects.toThrow(
+        "Dyad syncs the 'main' branch, but this app has no local branch with that name.",
+      );
+      expect(await linkedBranch(app.id)).toBe("main");
+    }, 90_000);
+  });
 
   it("requires both custom commands before enabling import", async () => {
     await mountImportDialog();

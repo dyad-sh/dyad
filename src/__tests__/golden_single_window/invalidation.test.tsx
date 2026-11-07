@@ -10,11 +10,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { queryKeys } from "@/lib/queryKeys";
 import { useCreateApp } from "@/hooks/useCreateApp";
-import { useRenameBranch } from "@/hooks/useRenameBranch";
 
 const mocks = vi.hoisted(() => ({
   createApp: vi.fn(),
-  renameBranch: vi.fn(),
 }));
 
 vi.mock("@/ipc/types", async (importOriginal) => {
@@ -26,7 +24,6 @@ vi.mock("@/ipc/types", async (importOriginal) => {
       app: {
         ...original.ipc.app,
         createApp: mocks.createApp,
-        renameBranch: mocks.renameBranch,
       },
     },
   };
@@ -76,7 +73,6 @@ describe("golden single-window: local invalidation counts", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.createApp.mockResolvedValue({ appId: 7, chatId: 11 });
-    mocks.renameBranch.mockResolvedValue(undefined);
   });
 
   it("app creation invalidates apps and chats exactly once each", async () => {
@@ -88,24 +84,5 @@ describe("golden single-window: local invalidation counts", () => {
     });
 
     expect(invalidations).toEqual([queryKeys.apps.all, queryKeys.chats.all]);
-  });
-
-  it("branch rename invalidates branch and version families once each", async () => {
-    const { invalidations, Wrapper } = setup();
-    const { result } = renderHook(() => useRenameBranch(), {
-      wrapper: Wrapper,
-    });
-
-    await act(async () => {
-      await result.current.renameBranch({
-        oldBranchName: "main",
-        newBranchName: "trunk",
-      });
-    });
-
-    expect(invalidations).toEqual([
-      queryKeys.branches.byApp({ appId: 7 }),
-      queryKeys.versions.list({ appId: 7 }),
-    ]);
   });
 });

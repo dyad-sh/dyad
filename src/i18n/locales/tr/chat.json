@@ -375,13 +375,8 @@
     "notOnBranch": "Bir dalda değilsiniz",
     "checkoutInProgress": "Sürüm geçişi şu anda sürüyor",
     "checkoutMainBranch": "main dalına geçin, aksi takdirde değişiklikler düzgün kaydedilmez",
-    "checkingBranch": "Dal kontrol ediliyor...",
-    "onBranch": "Şu daldasınız: {{name}}.",
-    "renameMasterToMain": "master dalını main olarak yeniden adlandır",
-    "renaming": "Yeniden adlandırılıyor...",
     "switchToMainBranch": "main dalına geç",
     "checkingOut": "Geçiş yapılıyor...",
-    "masterRenamed": "master dalı main olarak yeniden adlandırıldı",
     "versionCount": "Sürüm {{count}}"
   },
   "errorBox": {

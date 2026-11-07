@@ -23,13 +23,12 @@ import { useRouter } from "@tanstack/react-router";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useSelectChat } from "@/hooks/useSelectChat";
 import { useChats } from "@/hooks/useChats";
-import { showError, showSuccess } from "@/lib/toast";
+import { showError } from "@/lib/toast";
 import { useEffect } from "react";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { useCurrentBranch } from "@/hooks/useCurrentBranch";
 import { useVersionPreview } from "@/hooks/useVersionPreview";
 import { isMutatingState } from "@/version_preview/state";
-import { useRenameBranch } from "@/hooks/useRenameBranch";
 import { LoadingBar } from "../ui/LoadingBar";
 import { UncommittedFilesBanner } from "./UncommittedFilesBanner";
 import { terminalOpenByChatIdAtom } from "@/atoms/terminalAtoms";
@@ -71,7 +70,6 @@ export function ChatHeader({
     send: sendVersionPreviewEvent,
   } = useVersionPreview(appId);
   const isCheckingOutVersion = isMutatingState(versionPreviewState);
-  const { renameBranch, isRenamingBranch } = useRenameBranch();
 
   useEffect(() => {
     if (appId) {
@@ -82,14 +80,6 @@ export function ChatHeader({
   const handleCheckoutMainBranch = async () => {
     if (!appId) return;
     sendVersionPreviewEvent({ type: "SWITCH_BRANCH", appId, branch: "main" });
-  };
-
-  const handleRenameMasterToMain = async () => {
-    if (!appId) return;
-    // If this throws, it will automatically show an error toast
-    await renameBranch({ oldBranchName: "master", newBranchName: "main" });
-
-    showSuccess(t("header.masterRenamed"));
   };
 
   const handleNewChat = async () => {
@@ -109,9 +99,7 @@ export function ChatHeader({
   // REMINDER: KEEP UP TO DATE WITH app_handlers.ts
   const versionPostfix = versions.length === 100_000 ? `+` : "";
 
-  const isNotMainBranch = branchInfo && branchInfo.branch !== "main";
-
-  const currentBranchName = branchInfo?.branch;
+  const isDetachedHead = branchInfo?.branch === "<no-branch>";
   const isTerminalOpen = selectedChatId
     ? (terminalOpenByChatId.get(selectedChatId) ?? false)
     : false;
@@ -132,75 +120,53 @@ export function ChatHeader({
     <div className="flex flex-col w-full @container">
       <LoadingBar isVisible={isCheckingOutVersion} />
       {/* If the version pane is open, it's expected to not always be on the main branch. */}
-      {isNotMainBranch && !isVersionPaneOpen && (
-        <div className="flex flex-col @sm:flex-row items-center justify-between px-4 py-2 bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-200">
+      {isDetachedHead && !isVersionPaneOpen && (
+        <div
+          data-testid="detached-head-banner"
+          className="flex flex-col @sm:flex-row items-center justify-between px-4 py-2 bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-200"
+        >
           <div className="flex items-center gap-2 text-sm">
             <GitBranch size={16} />
-            <span>
-              {currentBranchName === "<no-branch>" && (
-                <>
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger>
-                        <span className="flex items-center  gap-1">
-                          {isCheckingOutVersion ? (
-                            <>
-                              <span>{t("header.switchingToLatest")}</span>
-                            </>
-                          ) : (
-                            <>
-                              <strong>
-                                {t("header.warningNotOnBranch").split(":")[0]}:
-                              </strong>
-                              <span>{t("header.notOnBranch")}</span>
-                              <Info size={14} />
-                            </>
-                          )}
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>
-                          {isCheckingOutVersion
-                            ? t("header.checkoutInProgress")
-                            : t("header.checkoutMainBranch")}
-                        </p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </>
-              )}
-              {currentBranchName && currentBranchName !== "<no-branch>" && (
-                <span>{t("header.onBranch", { name: currentBranchName })}</span>
-              )}
-              {branchInfoLoading && <span>{t("header.checkingBranch")}</span>}
-            </span>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger>
+                  <span className="flex items-center gap-1">
+                    {isCheckingOutVersion ? (
+                      <span>{t("header.switchingToLatest")}</span>
+                    ) : (
+                      <>
+                        <strong>
+                          {t("header.warningNotOnBranch").split(":")[0]}:
+                        </strong>
+                        <span>{t("header.notOnBranch")}</span>
+                        <Info size={14} />
+                      </>
+                    )}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>
+                    {isCheckingOutVersion
+                      ? t("header.checkoutInProgress")
+                      : t("header.checkoutMainBranch")}
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
-          {currentBranchName === "master" ? (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleRenameMasterToMain}
-              disabled={isRenamingBranch || branchInfoLoading}
-            >
-              {isRenamingBranch
-                ? t("header.renaming")
-                : t("header.renameMasterToMain")}
-            </Button>
-          ) : (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleCheckoutMainBranch}
-              disabled={
-                !versionPreviewProjection.capabilities.canSwitchBranch ||
-                branchInfoLoading
-              }
-            >
-              {isCheckingOutVersion
-                ? t("header.checkingOut")
-                : t("header.switchToMainBranch")}
-            </Button>
-          )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleCheckoutMainBranch}
+            disabled={
+              !versionPreviewProjection.capabilities.canSwitchBranch ||
+              branchInfoLoading
+            }
+          >
+            {isCheckingOutVersion
+              ? t("header.checkingOut")
+              : t("header.switchToMainBranch")}
+          </Button>
         </div>
       )}
 

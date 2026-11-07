@@ -372,13 +372,8 @@
     "notOnBranch": "Você não está em uma branch",
     "checkoutInProgress": "O checkout de versão está em andamento",
     "checkoutMainBranch": "Faça checkout da branch main, caso contrário as alterações não serão salvas corretamente",
-    "checkingBranch": "Verificando branch...",
-    "onBranch": "Você está na branch: {{name}}.",
-    "renameMasterToMain": "Renomear master para main",
-    "renaming": "Renomeando...",
     "switchToMainBranch": "Mudar para a branch main",
     "checkingOut": "Fazendo checkout...",
-    "masterRenamed": "Branch master renomeada para main",
     "versionCount": "Versão {{count}}"
   },
   "errorBox": {

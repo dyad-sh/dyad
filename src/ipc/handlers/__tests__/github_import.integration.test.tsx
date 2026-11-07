@@ -363,7 +363,9 @@ describe("GitHub import dialog (integration)", () => {
 
       await expect(
         ipc.github.verifyConnection({ appId: app.id, requireSynced: true }),
-      ).rejects.toThrow("Sync to GitHub to fix the connected branch");
+      ).rejects.toThrow(
+        "Sync to GitHub to fix the connected branch, or switch to the branch you want to deploy.",
+      );
       expect(await linkedBranch(app.id)).toBe("main");
     }, 90_000);
   });

@@ -109,5 +109,12 @@ describe("chat header branch banner", () => {
         timeout: 20_000,
       },
     );
+    // The banner closes once the switch completes and the branch query
+    // refreshes, which can trail the checkout itself.
+    await waitFor(
+      () => expect(screen.queryByTestId("detached-head-banner")).toBeNull(),
+      { timeout: 20_000 },
+    );
+    await harness.bridge.settleInFlight();
   }, 60_000);
 });

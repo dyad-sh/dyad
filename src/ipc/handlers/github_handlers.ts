@@ -871,7 +871,7 @@ async function resolveBranchToSync({
   }
   if (!repair) {
     throw new DyadError(
-      `Dyad syncs the '${linkedBranch}' branch, but this app has no local branch with that name. Sync to ${remote.providerLabel} to fix the connected branch, then try again.`,
+      `Dyad syncs the '${linkedBranch}' branch, but this app has no local branch with that name. Sync to ${remote.providerLabel} to fix the connected branch, or switch to the branch you want to deploy.`,
       DyadErrorKind.Precondition,
     );
   }

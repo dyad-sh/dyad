@@ -1690,7 +1690,7 @@ export async function verifyGithubConnection({
       operation: "github:verify-connection",
       resources: [
         readAppResource("app-path"),
-        readAppResource("metadata"),
+        requirePushable ? "metadata" : readAppResource("metadata"),
         requirePushable ? "repository" : readAppResource("repository"),
       ],
       refuseWhenRecording: "verify the GitHub repository",

@@ -90,12 +90,18 @@ export function ChatHeader({
         ? []
         : (await ipc.github.listLocalBranches({ appId })).branches,
     enabled: appId !== null && isDetachedHead,
+    networkMode: "always",
   });
   // Only offers a branch that exists locally. Prevents the case where a
-  // failed checkout leaves a Neon app on its development database.
-  const switchTarget = [describeLinkedRemote(app)?.branch, "main"].find(
-    (branch): branch is string => !!branch && !!localBranches?.includes(branch),
-  );
+  // failed checkout leaves a Neon app on its development database. Waits for
+  // the app so a linked branch is never passed over for main.
+  const switchTarget =
+    app === undefined
+      ? undefined
+      : [describeLinkedRemote(app)?.branch, "main"].find(
+          (branch): branch is string =>
+            !!branch && !!localBranches?.includes(branch),
+        );
 
   const handleSwitchToBranch = async () => {
     if (!appId || !switchTarget) return;

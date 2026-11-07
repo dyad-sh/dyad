@@ -17,6 +17,28 @@ vi.mock("@/ipc/utils/fs_failure_telemetry", () => ({
   reportFsFailure: vi.fn(),
 }));
 
+// Stands in for the database lookup: a read in a referenced app runs with that
+// app's current path, which may differ from the one the turn started with.
+const { refreshedAppPaths } = vi.hoisted(() => ({
+  refreshedAppPaths: new Map<string, string>(),
+}));
+vi.mock("./tools/referenced_app_read", () => ({
+  withReferencedAppRead: (
+    _name: string,
+    args: { app_name?: string },
+    ctx: import("./tools/types").AgentContext,
+    invoke: (ctx: import("./tools/types").AgentContext) => Promise<unknown>,
+  ) => {
+    const key = args.app_name?.toLowerCase();
+    const refreshed = key ? refreshedAppPaths.get(key) : undefined;
+    if (!key || !refreshed) return invoke(ctx);
+    return invoke({
+      ...ctx,
+      referencedApps: new Map([...ctx.referencedApps, [key, refreshed]]),
+    });
+  },
+}));
+
 describe("Build mode tool profile", () => {
   it("is an exact, engine-free, non-sub-agent allowlist", () => {
     expect(BUILD_MODE_TOOL_NAMES).toEqual([
@@ -312,4 +334,51 @@ describe("tool failure telemetry", () => {
       fs.rmSync(appPath, { recursive: true, force: true });
     }
   });
+
+  // chmod can't make a file unreadable on Windows, and root can read anything.
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+    "reports a referenced app's read failure against that app",
+    async () => {
+      const root = fs.mkdtempSync(path.join(os.tmpdir(), "agent-tool-ref-"));
+      const appPath = path.join(root, "current");
+      const otherPath = path.join(root, "other");
+      fs.mkdirSync(appPath);
+      fs.mkdirSync(otherPath);
+      const unreadable = path.join(otherPath, "secret.ts");
+      fs.writeFileSync(unreadable, "x");
+      fs.chmodSync(unreadable, 0o000);
+      refreshedAppPaths.set("other", otherPath);
+      try {
+        const ctx = {
+          appId: 987658,
+          appPath,
+          chatId: 1,
+          isDyadPro: false,
+          sharedServerModulePaths: [],
+          fileEditTracker: {},
+          pendingFunctionDeploys: [],
+          onXmlComplete: vi.fn(),
+          onXmlStream: vi.fn(),
+          requireConsent: vi.fn(async () => true),
+          referencedApps: new Map(),
+          abortSignal: new AbortController().signal,
+        } as unknown as import("./tools/types").AgentContext;
+        const tools = buildAgentToolSet(ctx, { enableAppBlueprint: false });
+
+        await expect(
+          tools.read_file.execute({ path: "secret.ts", app_name: "Other" }),
+        ).rejects.toThrow();
+
+        expect(reportFsFailure).toHaveBeenCalledWith(
+          "agent_tool",
+          expect.objectContaining({ code: "EACCES" }),
+          { tool: "read_file", appPath: otherPath },
+        );
+      } finally {
+        refreshedAppPaths.clear();
+        fs.chmodSync(unreadable, 0o644);
+        fs.rmSync(root, { recursive: true, force: true });
+      }
+    },
+  );
 });

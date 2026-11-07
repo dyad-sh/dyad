@@ -988,7 +988,10 @@ export function buildAgentToolSet(
               processedArgs,
               invocationCtx,
               (readCtx) => {
-                targetAppPath = readCtx.appPath;
+                const appName = processedArgs.app_name?.toLowerCase();
+                targetAppPath =
+                  (appName && readCtx.referencedApps.get(appName)) ||
+                  readCtx.appPath;
                 return tool.execute(processedArgs, readCtx);
               },
             );

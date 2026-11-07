@@ -316,7 +316,12 @@ describe("GitHub import dialog (integration)", () => {
           cwd: otherClone,
         });
       } finally {
-        fs.rmSync(otherClone, { recursive: true, force: true });
+        fs.rmSync(otherClone, {
+          recursive: true,
+          force: true,
+          maxRetries: 5,
+          retryDelay: 100,
+        });
       }
     }
 
@@ -364,7 +369,7 @@ describe("GitHub import dialog (integration)", () => {
       await expect(
         ipc.github.verifyConnection({ appId: app.id, requireSynced: true }),
       ).rejects.toThrow(
-        "Sync to GitHub to fix the connected branch, or switch to the branch you want to deploy.",
+        "Sync to GitHub to fix the connected branch, or switch to the branch you want to deploy and then sync.",
       );
       expect(await linkedBranch(app.id)).toBe("main");
     }, 90_000);

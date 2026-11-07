@@ -374,8 +374,8 @@
     "warningNotOnBranch": "Uyarı: Bir dalda değilsiniz",
     "notOnBranch": "Bir dalda değilsiniz",
     "checkoutInProgress": "Sürüm geçişi şu anda sürüyor",
-    "checkoutMainBranch": "main dalına geçin, aksi takdirde değişiklikler düzgün kaydedilmez",
-    "switchToMainBranch": "main dalına geç",
+    "checkoutBranch": "Bir dala geçin, aksi takdirde değişiklikler düzgün kaydedilmez",
+    "switchToBranch": "{{branch}} dalına geç",
     "checkingOut": "Geçiş yapılıyor...",
     "versionCount": "Sürüm {{count}}"
   },

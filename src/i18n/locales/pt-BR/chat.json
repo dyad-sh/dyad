@@ -371,8 +371,8 @@
     "warningNotOnBranch": "Aviso: Você não está em uma branch",
     "notOnBranch": "Você não está em uma branch",
     "checkoutInProgress": "O checkout de versão está em andamento",
-    "checkoutMainBranch": "Faça checkout da branch main, caso contrário as alterações não serão salvas corretamente",
-    "switchToMainBranch": "Mudar para a branch main",
+    "checkoutBranch": "Faça checkout de uma branch, caso contrário as alterações não serão salvas corretamente",
+    "switchToBranch": "Mudar para {{branch}}",
     "checkingOut": "Fazendo checkout...",
     "versionCount": "Versão {{count}}"
   },

@@ -27,6 +27,10 @@ import { showError } from "@/lib/toast";
 import { useEffect } from "react";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { useCurrentBranch } from "@/hooks/useCurrentBranch";
+import { useLoadApp } from "@/hooks/useLoadApp";
+import { useQuery } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/queryKeys";
+import { describeLinkedRemote } from "@/shared/linked_remote";
 import { useVersionPreview } from "@/hooks/useVersionPreview";
 import { isMutatingState } from "@/version_preview/state";
 import { LoadingBar } from "../ui/LoadingBar";
@@ -77,9 +81,29 @@ export function ChatHeader({
     }
   }, [appId, selectedChatId, isStreaming, refetchBranchInfo]);
 
-  const handleCheckoutMainBranch = async () => {
-    if (!appId) return;
-    sendVersionPreviewEvent({ type: "SWITCH_BRANCH", appId, branch: "main" });
+  const isDetachedHead = branchInfo?.branch === "<no-branch>";
+  const { app } = useLoadApp(appId);
+  const { data: localBranches } = useQuery({
+    queryKey: queryKeys.branches.local({ appId }),
+    queryFn: async () =>
+      appId === null
+        ? []
+        : (await ipc.github.listLocalBranches({ appId })).branches,
+    enabled: appId !== null && isDetachedHead,
+  });
+  // Only offers a branch that exists locally. Prevents the case where a
+  // failed checkout leaves a Neon app on its development database.
+  const switchTarget = [describeLinkedRemote(app)?.branch, "main"].find(
+    (branch): branch is string => !!branch && !!localBranches?.includes(branch),
+  );
+
+  const handleSwitchToBranch = async () => {
+    if (!appId || !switchTarget) return;
+    sendVersionPreviewEvent({
+      type: "SWITCH_BRANCH",
+      appId,
+      branch: switchTarget,
+    });
   };
 
   const handleNewChat = async () => {
@@ -99,7 +123,6 @@ export function ChatHeader({
   // REMINDER: KEEP UP TO DATE WITH app_handlers.ts
   const versionPostfix = versions.length === 100_000 ? `+` : "";
 
-  const isDetachedHead = branchInfo?.branch === "<no-branch>";
   const isTerminalOpen = selectedChatId
     ? (terminalOpenByChatId.get(selectedChatId) ?? false)
     : false;
@@ -119,7 +142,7 @@ export function ChatHeader({
   return (
     <div className="flex flex-col w-full @container">
       <LoadingBar isVisible={isCheckingOutVersion} />
-      {/* If the version pane is open, it's expected to not always be on the main branch. */}
+      {/* The version pane checks out detached versions on purpose, so the banner waits until it closes. */}
       {isDetachedHead && !isVersionPaneOpen && (
         <div
           data-testid="detached-head-banner"
@@ -148,25 +171,27 @@ export function ChatHeader({
                   <p>
                     {isCheckingOutVersion
                       ? t("header.checkoutInProgress")
-                      : t("header.checkoutMainBranch")}
+                      : t("header.checkoutBranch")}
                   </p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleCheckoutMainBranch}
-            disabled={
-              !versionPreviewProjection.capabilities.canSwitchBranch ||
-              branchInfoLoading
-            }
-          >
-            {isCheckingOutVersion
-              ? t("header.checkingOut")
-              : t("header.switchToMainBranch")}
-          </Button>
+          {switchTarget && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleSwitchToBranch}
+              disabled={
+                !versionPreviewProjection.capabilities.canSwitchBranch ||
+                branchInfoLoading
+              }
+            >
+              {isCheckingOutVersion
+                ? t("header.checkingOut")
+                : t("header.switchToBranch", { branch: switchTarget })}
+            </Button>
+          )}
         </div>
       )}
 

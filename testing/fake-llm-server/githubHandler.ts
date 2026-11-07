@@ -172,6 +172,14 @@ const initialMockRepos = [
     owner: { login: "testuser", id: 12345 },
     default_branch: "main",
   },
+  {
+    id: 5,
+    name: "existing-vite-app-on-master",
+    full_name: "testuser/existing-vite-app-on-master",
+    private: false,
+    owner: { login: "testuser", id: 12345 },
+    default_branch: "master",
+  },
 ];
 
 let mockRepos = structuredClone(initialMockRepos);
@@ -596,7 +604,9 @@ export function handleGitPush(req: Request, res: Response, next?: Function) {
         // Only repos that are meant to already exist on GitHub (e.g. the
         // "existing-vite-app" fixture used by the import auto-upgrade test) get
         // seeded with an initial commit so they can be cloned/imported.
-        const seededBranch = seededRepoDefaultBranches[repoName];
+        const seededBranch = Object.hasOwn(seededRepoDefaultBranches, repoName)
+          ? seededRepoDefaultBranches[repoName]
+          : undefined;
         if (seededBranch) {
           const tmpClone = fs.mkdtempSync(
             path.join(os.tmpdir(), "dyad-git-clone-"),

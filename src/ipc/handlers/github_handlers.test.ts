@@ -113,6 +113,7 @@ describe("verifyGithubConnection", () => {
       githubRepo: "demo",
       githubBranch: "feature/deploy",
     } as never);
+    vi.mocked(gitListBranches).mockResolvedValue(["feature/deploy"]);
     vi.mocked(execGit).mockImplementation(
       async (args) =>
         ({

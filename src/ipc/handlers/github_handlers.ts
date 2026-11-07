@@ -60,6 +60,7 @@ import {
   githubRemoteAuth,
   requireAppGitRemote,
   resolveAppGitRemote,
+  type AppGitRemote,
   type GitRemoteProvider,
 } from "../utils/app_git_remote";
 import { findAppOrThrow } from "../utils/find_app";
@@ -843,22 +844,39 @@ export async function handleConnectToExistingRepo(
  *
  * The link moves to the current branch only when the linked branch is absent
  * both locally and on the remote, and the current branch is on the remote.
- * Any other missing branch is refused, since guessing could push a branch
- * the user did not pick.
+ * The remote is fetched with pruning first, so a branch deleted or renamed
+ * on the server is not mistaken for one that still exists. Any other missing
+ * branch is refused, since guessing could push a branch the user did not pick.
+ *
+ * With `repair` false, nothing is fetched or written, and a missing linked
+ * branch is refused with a pointer to sync, which does the repair.
  */
 async function resolveBranchToSync({
   app,
   appPath,
-  linkedBranch,
+  remote,
+  auth,
+  repair = true,
 }: {
   app: Awaited<ReturnType<typeof findAppOrThrow>>;
   appPath: string;
-  linkedBranch: string;
+  remote: AppGitRemote;
+  auth: GitRemoteAuth;
+  repair?: boolean;
 }): Promise<string> {
+  const linkedBranch = remote.branch;
   const localBranches = await gitListBranches({ path: appPath });
   if (localBranches.includes(linkedBranch)) {
     return linkedBranch;
   }
+  if (!repair) {
+    throw new DyadError(
+      `Dyad syncs the '${linkedBranch}' branch, but this app has no local branch with that name. Sync to ${remote.providerLabel} to fix the connected branch, then try again.`,
+      DyadErrorKind.Precondition,
+    );
+  }
+  await gitSetRemoteUrl({ path: appPath, remoteUrl: remote.httpsUrl });
+  await gitFetch({ path: appPath, remote: "origin", auth, prune: true });
   const remoteBranches = await gitListRemoteBranches({
     path: appPath,
     remote: "origin",
@@ -902,11 +920,7 @@ export async function handlePushToGithub(
   assertRemoteProvider(remote, provider);
   const auth = getAppGitRemoteAuth(remote);
   const appPath = getDyadAppPath(app.path);
-  const branch = await resolveBranchToSync({
-    app,
-    appPath,
-    linkedBranch: remote.branch,
-  });
+  const branch = await resolveBranchToSync({ app, appPath, remote, auth });
 
   // Measured before anything changes, so a failure still logs what the
   // repository looked like, and the push can be compared against it after.
@@ -1696,7 +1710,6 @@ export async function verifyGithubConnection({
         );
       }
       const appPath = getDyadAppPath(app.path);
-      const branch = app.githubBranch || "main";
       const remote = await execGit(["remote", "get-url", "origin"], appPath);
       const expected = normalizeGitRemote(
         githubRemote({ owner: app.githubOrg, repo: app.githubRepo }).httpsUrl,
@@ -1711,6 +1724,19 @@ export async function verifyGithubConnection({
           DyadErrorKind.Precondition,
         );
       }
+      // Only a pushable check holds the repository for writing, so only it
+      // may repair the connected branch.
+      const branch = await resolveBranchToSync({
+        app,
+        appPath,
+        remote: githubRemote({
+          owner: app.githubOrg,
+          repo: app.githubRepo,
+          branch: app.githubBranch,
+        }),
+        auth: githubRemoteAuth(token),
+        repair: requirePushable,
+      });
       const current = await execGit(["branch", "--show-current"], appPath);
       if (current.exitCode !== 0 || current.stdout.trim() !== branch) {
         throw new DyadError(

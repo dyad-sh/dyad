@@ -368,8 +368,8 @@
     "warningNotOnBranch": "警告：您不在任何分支上",
     "notOnBranch": "您不在任何分支上",
     "checkoutInProgress": "版本检出正在进行中",
-    "checkoutMainBranch": "检出 main 分支，否则更改将无法正确保存",
-    "switchToMainBranch": "切换到 main 分支",
+    "checkoutBranch": "检出一个分支，否则更改将无法正确保存",
+    "switchToBranch": "切换到 {{branch}}",
     "checkingOut": "正在检出...",
     "versionCount": "版本 {{count}}"
   },

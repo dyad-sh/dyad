@@ -376,8 +376,8 @@
     "warningNotOnBranch": "경고: 브랜치에 있지 않습니다",
     "notOnBranch": "브랜치에 있지 않습니다",
     "checkoutInProgress": "버전 체크아웃이 진행 중입니다",
-    "checkoutMainBranch": "main 브랜치로 체크아웃하세요. 그렇지 않으면 변경 사항이 제대로 저장되지 않습니다",
-    "switchToMainBranch": "main 브랜치로 전환",
+    "checkoutBranch": "브랜치로 체크아웃하세요. 그렇지 않으면 변경 사항이 제대로 저장되지 않습니다",
+    "switchToBranch": "{{branch}}(으)로 전환",
     "checkingOut": "체크아웃 중...",
     "versionCount": "버전 {{count}}"
   },

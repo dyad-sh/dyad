@@ -320,3 +320,30 @@ describe("GitLab errors are not reported at all", () => {
     expect(shouldFilterTelemetryException(transportError)).toBe(true);
   });
 });
+
+describe("main-process chunk IDs on forwarded exceptions", () => {
+  const host = globalThis as { _posthogChunkIds?: unknown };
+
+  beforeEach(() => {
+    sent.calls.length = 0;
+    delete host._posthogChunkIds;
+  });
+
+  it("forwards the registry so the renderer can tag main-process frames", () => {
+    host._posthogChunkIds = { "Error\n    at main-abc.js:1:1": "chunk-main" };
+    try {
+      sendTelemetryException(new Error("Boom"), { ipc_channel: "app:list" });
+    } finally {
+      delete host._posthogChunkIds;
+    }
+
+    expect(sent.calls[0].posthog_chunk_ids).toEqual({
+      "Error\n    at main-abc.js:1:1": "chunk-main",
+    });
+  });
+
+  it("omits the property in builds without injected chunk IDs", () => {
+    sendTelemetryException(new Error("Boom"));
+    expect(sent.calls[0]).not.toHaveProperty("posthog_chunk_ids");
+  });
+});

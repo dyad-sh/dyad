@@ -3,6 +3,7 @@ import {
   removeUnusedAppPackageFiles,
   removeUnusedCopiedResources,
 } from "./src/lib/packaging_cleanup";
+import { uploadPostHogSourcemaps } from "./src/lib/posthog_sourcemaps";
 import type { ForgeConfig } from "@electron-forge/shared-types";
 import { MakerSquirrel } from "@electron-forge/maker-squirrel";
 import { MakerZIP } from "@electron-forge/maker-zip";
@@ -15,6 +16,7 @@ import { FuseV1Options, FuseVersion } from "@electron/fuses";
 import { AutoUnpackNativesPlugin } from "@electron-forge/plugin-auto-unpack-natives";
 import { readFileSync } from "fs";
 import { createRequire } from "module";
+import path from "path";
 
 console.log("AZURE_CODE_SIGNING_DLIB", process.env.AZURE_CODE_SIGNING_DLIB);
 
@@ -174,6 +176,19 @@ const config: ForgeConfig = {
     afterCopy: [
       (buildPath, _electronVersion, platform, arch, callback) => {
         removeUnusedAppPackageFiles(buildPath, platform, arch).then(
+          () => callback(),
+          (error) => callback(error as Error),
+        );
+      },
+      // Must run after the cleanup above and before the asar is created, so
+      // the shipped bundles are the ones carrying the injected chunk IDs.
+      (buildPath, _electronVersion, _platform, _arch, callback) => {
+        uploadPostHogSourcemaps({
+          buildPath,
+          releaseVersion: packageJson.version,
+          resolveCliPackageDir: () =>
+            path.dirname(require.resolve("@posthog/cli/package.json")),
+        }).then(
           () => callback(),
           (error) => callback(error as Error),
         );

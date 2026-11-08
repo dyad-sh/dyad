@@ -11,6 +11,7 @@ import {
 } from "@/shared/settings_defaults";
 import { localTemplatesData } from "@/shared/templates";
 import { themesData } from "@/shared/themes";
+import { POSTHOG_CHUNK_IDS_PROPERTY } from "@/shared/posthog_chunk_ids";
 import {
   appSizeEventFields,
   type AppSizeTelemetry,
@@ -942,6 +943,8 @@ export function getExceptionTelemetryContext(properties: TelemetryProperties) {
     exception_name: _exceptionName,
     exception_message: _exceptionMessage,
     exception_stack_trace: _exceptionStackTrace,
+    // Merged into the renderer's chunk ID registry, not sent as event context.
+    [POSTHOG_CHUNK_IDS_PROPERTY]: _chunkIds,
     ...context
   } = properties;
 

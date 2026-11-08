@@ -153,7 +153,10 @@ jobs:
           command: npm run publish -- --dry-run
         env:
           DEBUG: "@electron/*,electron-forge:*,electron-osx-sign*,electron-notarize*,electron-windows-installer:main,electron-windows-sign"
-          NODE_OPTIONS: "--max-old-space-size=4096"
+          # Headroom for source maps: Forge builds the main and renderer bundles
+          # concurrently in one process, and with maps the build peaks at ~4.3 GB
+          # RSS under a 4 GB cap in CI, which is close to running out of memory.
+          NODE_OPTIONS: "--max-old-space-size=6144"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -162,6 +165,12 @@ jobs:
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           WINDOWS_SIGN: ${{ contains(matrix.os.name, 'windows') && 'true' || '' }}
+          # Upload source maps to PostHog error tracking (src/lib/posthog_sourcemaps.ts).
+          # The build fails if the flag is set and either credential is missing.
+          POSTHOG_UPLOAD_SOURCEMAPS: "true"
+          POSTHOG_CLI_API_KEY: ${{ secrets.POSTHOG_SOURCEMAP_API_KEY }}
+          POSTHOG_CLI_PROJECT_ID: ${{ vars.POSTHOG_PROJECT_ID }}
+          POSTHOG_CLI_HOST: "https://us.posthog.com"
 
       - name: Generate release provenance manifest
         env:

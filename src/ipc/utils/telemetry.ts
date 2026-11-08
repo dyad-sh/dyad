@@ -15,6 +15,10 @@ import {
   GITLAB_REQUEST_ERROR_NAME,
   GITLAB_TRANSPORT_ERROR_NAME,
 } from "@/shared/gitlab_error_names";
+import {
+  POSTHOG_CHUNK_IDS_PROPERTY,
+  readPostHogChunkIds,
+} from "@/shared/posthog_chunk_ids";
 
 const logger = log.scope("telemetry");
 const FILTERED_EXCEPTION_MESSAGES = new Set([
@@ -88,11 +92,16 @@ export function sendTelemetryException(
   // site added later cannot opt back in by accident.
   const selfHosted = isSelfHostedChannel(context);
 
+  // posthog-js runs in the renderer, so main-process chunk IDs must travel
+  // with the exception for PostHog to find this stack's source maps.
+  const chunkIds = readPostHogChunkIds();
+
   sendTelemetryEvent("$exception", {
     exception_name: err.name,
     ...(selfHosted ? {} : { exception_message: err.message }),
     exception_stack_trace: selfHosted ? framesOnly(err) : err.stack,
     ...context,
+    ...(chunkIds ? { [POSTHOG_CHUNK_IDS_PROPERTY]: chunkIds } : {}),
   });
 }
 

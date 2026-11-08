@@ -1173,6 +1173,7 @@ describe("getExceptionTelemetryContext", () => {
         exception_message: "Boom",
         exception_stack_trace: "TypeError: Boom\n at ipc-handler",
         ipc_channel: "window:minimize",
+        posthog_chunk_ids: { "Error\n at main.js:1:1": "chunk-main" },
       }),
     ).toEqual({
       ipc_channel: "window:minimize",

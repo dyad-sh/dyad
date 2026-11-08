@@ -2,6 +2,7 @@ import path from "path";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
+import { posthogHiddenSourcemapsPlugin } from "./src/lib/posthog_sourcemaps";
 
 const ReactCompilerConfig = {};
 
@@ -14,6 +15,7 @@ export default defineConfig({
       },
     }),
     tailwindcss(),
+    ...posthogHiddenSourcemapsPlugin(),
   ],
   resolve: {
     alias: {

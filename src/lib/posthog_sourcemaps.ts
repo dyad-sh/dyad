@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
+import { readdir } from "node:fs/promises";
 import path from "node:path";
 import type { Plugin } from "vite";
 
@@ -39,9 +40,12 @@ export const POSTHOG_CLI_BINARY_SHA256: Readonly<Record<string, string>> = {
 };
 
 /**
- * The only environment the CLI binary receives, so it never sees the release
- * job's signing credentials or GitHub token. Matched case-insensitively,
- * because Windows environment names are (e.g. `Path`, `SystemRoot`).
+ * The only environment the CLI binary receives: the release job's signing
+ * credentials and GitHub token are not passed to it, so they cannot leak
+ * through its logs, crash reports, or telemetry. This is not a sandbox; the
+ * binary runs as the build user, and the hash pin above is the main
+ * protection against a tampered binary. Matched case-insensitively, because
+ * Windows environment names are (e.g. `Path`, `SystemRoot`).
  */
 const CLI_ENV_ALLOWLIST = new Set(
   [
@@ -120,6 +124,7 @@ export interface UploadPostHogSourcemapsOptions {
     args: string[],
     env: NodeJS.ProcessEnv,
   ) => Promise<void>;
+  findMapFiles?: (directory: string) => Promise<string[]>;
 }
 
 /**
@@ -142,6 +147,7 @@ export async function uploadPostHogSourcemaps({
   hostPlatform = `${process.platform}-${process.arch}`,
   hashFile = sha256File,
   runCli = runBinary,
+  findMapFiles = listMapFiles,
 }: UploadPostHogSourcemapsOptions): Promise<void> {
   if (!isPostHogSourcemapUploadEnabled(env)) {
     return;
@@ -200,6 +206,20 @@ export async function uploadPostHogSourcemaps({
     ],
     cliEnv,
   );
+
+  // The CLI only deletes maps it paired with a bundle; any other map would
+  // ship inside the app.
+  const leftoverMaps = await findMapFiles(directory);
+  if (leftoverMaps.length > 0) {
+    throw new Error(
+      `Source maps left in ${directory} after upload would ship in the app: ${leftoverMaps.join(", ")}`,
+    );
+  }
+}
+
+async function listMapFiles(directory: string): Promise<string[]> {
+  const entries = await readdir(directory, { recursive: true });
+  return entries.filter((entry) => entry.endsWith(".map"));
 }
 
 function sha256File(filePath: string): Promise<string> {

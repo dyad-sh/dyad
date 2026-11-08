@@ -1,4 +1,6 @@
 import { readFileSync } from "node:fs";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -22,6 +24,7 @@ function upload(
     hostPlatform = "linux-x64",
     binaryHash = POSTHOG_CLI_BINARY_SHA256["linux-x64"],
     runCli = vi.fn().mockResolvedValue(undefined),
+    findMapFiles = vi.fn().mockResolvedValue([]),
   } = {},
 ) {
   const resolveCliPackageDir = vi.fn(() => CLI_DIR);
@@ -34,8 +37,9 @@ function upload(
     hostPlatform,
     hashFile,
     runCli,
+    findMapFiles,
   });
-  return { result, runCli, resolveCliPackageDir, hashFile };
+  return { result, runCli, resolveCliPackageDir, hashFile, findMapFiles };
 }
 
 describe("posthogHiddenSourcemapsPlugin", () => {
@@ -148,6 +152,60 @@ describe("uploadPostHogSourcemaps", () => {
     const { result } = upload(ENABLED, { runCli });
     await expect(result).rejects.toThrow("inject failed");
     expect(runCli).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("leftover source maps after upload", () => {
+  async function uploadInto(buildPath: string) {
+    await uploadPostHogSourcemaps({
+      buildPath,
+      releaseVersion: "1.2.3",
+      resolveCliPackageDir: () => CLI_DIR,
+      env: ENABLED,
+      hostPlatform: "linux-x64",
+      hashFile: async () => POSTHOG_CLI_BINARY_SHA256["linux-x64"],
+      runCli: async () => {},
+    });
+  }
+
+  it("fails the build when a map file is still in the app", async () => {
+    const buildPath = await mkdtemp(path.join(tmpdir(), "posthog-maps-"));
+    try {
+      const assets = path.join(buildPath, ".vite", "renderer", "assets");
+      await mkdir(assets, { recursive: true });
+      await writeFile(path.join(assets, "index.js"), "");
+      await writeFile(path.join(assets, "orphan.js.map"), "{}");
+      await expect(uploadInto(buildPath)).rejects.toThrow("orphan.js.map");
+    } finally {
+      await rm(buildPath, { recursive: true, force: true });
+    }
+  });
+
+  it("passes when the upload removed every map", async () => {
+    const buildPath = await mkdtemp(path.join(tmpdir(), "posthog-maps-"));
+    try {
+      await mkdir(path.join(buildPath, ".vite", "build"), { recursive: true });
+      await writeFile(path.join(buildPath, ".vite", "build", "main.js"), "");
+      await expect(uploadInto(buildPath)).resolves.toBeUndefined();
+    } finally {
+      await rm(buildPath, { recursive: true, force: true });
+    }
+  });
+
+  it("checks for maps only after the upload", async () => {
+    const order: string[] = [];
+    const runCli = vi.fn(async (_bin: string, args: string[]) => {
+      order.push(args[1]);
+    });
+    const findMapFiles = vi.fn(async () => {
+      order.push("check");
+      return [];
+    });
+    await upload(ENABLED, { runCli, findMapFiles }).result;
+    expect(order).toEqual(["inject", "upload", "check"]);
+    expect(findMapFiles).toHaveBeenCalledWith(
+      path.join("/tmp/build/app", ".vite"),
+    );
   });
 });
 

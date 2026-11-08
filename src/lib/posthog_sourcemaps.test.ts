@@ -156,7 +156,10 @@ describe("uploadPostHogSourcemaps", () => {
 });
 
 describe("leftover source maps after upload", () => {
-  async function uploadInto(buildPath: string) {
+  async function uploadInto(
+    buildPath: string,
+    runCli: (binary: string, args: string[]) => Promise<void> = async () => {},
+  ) {
     await uploadPostHogSourcemaps({
       buildPath,
       releaseVersion: "1.2.3",
@@ -164,7 +167,7 @@ describe("leftover source maps after upload", () => {
       env: ENABLED,
       hostPlatform: "linux-x64",
       hashFile: async () => POSTHOG_CLI_BINARY_SHA256["linux-x64"],
-      runCli: async () => {},
+      runCli,
     });
   }
 
@@ -184,9 +187,17 @@ describe("leftover source maps after upload", () => {
   it("passes when the upload removed every map", async () => {
     const buildPath = await mkdtemp(path.join(tmpdir(), "posthog-maps-"));
     try {
-      await mkdir(path.join(buildPath, ".vite", "build"), { recursive: true });
-      await writeFile(path.join(buildPath, ".vite", "build", "main.js"), "");
-      await expect(uploadInto(buildPath)).resolves.toBeUndefined();
+      const build = path.join(buildPath, ".vite", "build");
+      await mkdir(build, { recursive: true });
+      await writeFile(path.join(build, "main.js"), "");
+      await writeFile(path.join(build, "main.js.map"), "{}");
+      // Like `upload --delete-after`, remove the map during the upload step.
+      const runCli = async (_binary: string, args: string[]) => {
+        if (args[1] === "upload") {
+          await rm(path.join(build, "main.js.map"));
+        }
+      };
+      await expect(uploadInto(buildPath, runCli)).resolves.toBeUndefined();
     } finally {
       await rm(buildPath, { recursive: true, force: true });
     }

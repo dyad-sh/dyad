@@ -35,6 +35,7 @@ import {
   prepareSchemaOnlyBranchForNeonAuth,
 } from "../utils/neon_branch_data";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
+import { isNeonAuthError } from "@/neon_admin/neon_errors";
 import { canUseUnsafeNeonBranch } from "@/shared/neon_branch_protection";
 import { readSettings } from "@/main/settings";
 import {
@@ -586,8 +587,17 @@ export function registerNeonHandlers() {
         branches,
       };
     } catch (error) {
-      logger.error(`Failed to get Neon project info for app ${appId}:`, error);
-      throw error;
+      // Log only the message: the raw SDK error carries the request config,
+      // including the Authorization header with the user's access token.
+      const errorMessage = getNeonErrorMessage(error);
+      logger.error(
+        `Failed to get Neon project info for app ${appId}: ${errorMessage}`,
+      );
+      if (isDyadError(error)) throw error;
+      throw new DyadError(
+        `Failed to get Neon project info: ${errorMessage}`,
+        isNeonAuthError(error) ? DyadErrorKind.Auth : DyadErrorKind.External,
+      );
     }
   });
 

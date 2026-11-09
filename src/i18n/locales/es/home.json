@@ -829,7 +829,13 @@
       "connectFailed": "Error al conectar con Neon",
       "removeCloudflareEnvVars": "Eliminar los secretos de Neon de Cloudflare",
       "removeCloudflareEnvVarsHelp": "Elimina DATABASE_URL y NEON_AUTH_BASE_URL de los Workers conectados para que no apunten a una base de datos desconectada.",
-      "failedRemoveCloudflareEnvVars": "Desconectado, pero no se pudieron eliminar los secretos de Neon de Cloudflare."
+      "failedRemoveCloudflareEnvVars": "Desconectado, pero no se pudieron eliminar los secretos de Neon de Cloudflare.",
+      "reconnectTitle": "Volver a conectar Neon",
+      "reconnectDescription": "Inicia sesión de nuevo para que Dyad pueda acceder a tus proyectos de Neon. Se conservará la conexión con tu proyecto actual.",
+      "projectAccessRequired": "Esta cuenta de Neon no puede acceder al proyecto vinculado. Inicia sesión con una cuenta que tenga acceso. Se conservará la conexión con tu proyecto actual.",
+      "signInAnotherAccount": "Iniciar sesión con otra cuenta",
+      "waitingForSignIn": "Esperando el inicio de sesión en Neon…",
+      "reconnectedSuccess": "Neon se ha vuelto a conectar."
     },
     "db": {
       "projectInfo": "Información del Proyecto {{provider}}",

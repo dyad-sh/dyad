@@ -6,8 +6,18 @@ import { IS_TEST_BUILD } from "../ipc/utils/test_utils";
 import { fetchWithRetry } from "../ipc/utils/retryWithRateLimit";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { getNeonErrorMessage } from "./neon_errors";
+import { getNeonOAuthErrorCode } from "./neon_oauth_errors";
+import { publishQueryInvalidations } from "@/ipc/utils/query_invalidation_delivery";
+import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
+import { NEON_RECONNECT_REQUIRED_MESSAGE } from "@/shared/neon_auth";
+import { z } from "zod";
 
 const logger = log.scope("neon_management_client");
+const refreshResponseSchema = z.object({
+  accessToken: z.string().trim().min(1),
+  refreshToken: z.string().trim().min(1).optional(),
+  expiresIn: z.number().finite().positive(),
+});
 
 /**
  * Checks if the Neon access token is expired or about to expire
@@ -35,15 +45,17 @@ async function refreshNeonTokenOnce(): Promise<void> {
   const settings = readSettings();
   const refreshToken = settings.neon?.refreshToken?.value;
 
+  if (settings.neon?.reconnectRequired) {
+    throw new DyadError(NEON_RECONNECT_REQUIRED_MESSAGE, DyadErrorKind.Auth);
+  }
+
   if (!isTokenExpired(settings.neon?.expiresIn)) {
     return;
   }
 
   if (!refreshToken) {
-    throw new DyadError(
-      "Neon refresh token not found. Please authenticate first.",
-      DyadErrorKind.Auth,
-    );
+    requireNeonReconnection("missing_refresh_token");
+    throw new DyadError(NEON_RECONNECT_REQUIRED_MESSAGE, DyadErrorKind.Auth);
   }
 
   try {
@@ -63,35 +75,85 @@ async function refreshNeonTokenOnce(): Promise<void> {
     );
 
     if (!response.ok) {
+      const code = await getNeonOAuthErrorCode(response);
+      // A sign-in or disconnect may have replaced the credentials while the
+      // request was in flight. An old rejection must not poison the new session.
+      if (!hasSameNeonCredentials(settings)) return;
+      if (
+        (response.status === 400 || response.status === 401) &&
+        code === "invalid_grant"
+      ) {
+        requireNeonReconnection(code);
+        throw new DyadError(
+          NEON_RECONNECT_REQUIRED_MESSAGE,
+          DyadErrorKind.Auth,
+        );
+      }
       throw new DyadError(
-        `Token refresh failed: ${response.statusText}`,
+        `Neon token refresh failed (HTTP ${response.status}${code ? `, ${code}` : ""}). Please try again.`,
         DyadErrorKind.External,
       );
     }
 
+    const refreshed = refreshResponseSchema.safeParse(
+      await response.json().catch(() => null),
+    );
+    if (!hasSameNeonCredentials(settings)) return;
+    if (!refreshed.success) {
+      throw new DyadError(
+        "Neon token refresh returned an invalid response. Please try again.",
+        DyadErrorKind.External,
+      );
+    }
     const {
       accessToken,
       refreshToken: newRefreshToken,
       expiresIn,
-    } = await response.json();
+    } = refreshed.data;
 
     // Update settings with new tokens
     writeSettings({
       neon: {
+        ...readSettings().neon,
         accessToken: {
           value: accessToken,
         },
         refreshToken: {
-          value: newRefreshToken,
+          value: newRefreshToken ?? refreshToken,
         },
         expiresIn,
         tokenTimestamp: Math.floor(Date.now() / 1000), // Store current timestamp
+        reconnectRequired: false,
       },
     });
   } catch (error) {
+    if (!hasSameNeonCredentials(settings)) return;
     logger.error("Error refreshing Neon token:", error);
     throw error;
   }
+}
+
+function hasSameNeonCredentials(
+  previous: ReturnType<typeof readSettings>,
+): boolean {
+  const current = readSettings().neon;
+  return (
+    current?.refreshToken?.value === previous.neon?.refreshToken?.value &&
+    current?.accessToken?.value === previous.neon?.accessToken?.value &&
+    current?.tokenTimestamp === previous.neon?.tokenTimestamp
+  );
+}
+
+function requireNeonReconnection(
+  reason: "invalid_grant" | "missing_refresh_token",
+): void {
+  const neon = readSettings().neon;
+  if (!neon || neon.reconnectRequired) return;
+  writeSettings({ neon: { ...neon, reconnectRequired: true } });
+  publishQueryInvalidations([{ family: "provider-status", provider: "neon" }]);
+  // One bounded, non-exception event per rejected credential set. Never send
+  // token values or the OAuth server's arbitrary error_description.
+  sendTelemetryEvent("neon:reconnect-required", { reason });
 }
 
 export function refreshNeonToken(): Promise<void> {
@@ -365,6 +427,9 @@ export async function getNeonClient(): Promise<Api<unknown>> {
   const settings = readSettings();
 
   // Check if Neon token exists in settings
+  if (settings.neon?.reconnectRequired) {
+    throw new DyadError(NEON_RECONNECT_REQUIRED_MESSAGE, DyadErrorKind.Auth);
+  }
   const neonAccessToken = settings.neon?.accessToken?.value;
   const expiresIn = settings.neon?.expiresIn;
 

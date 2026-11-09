@@ -826,7 +826,13 @@
       "connectFailed": "连接 Neon 失败",
       "removeCloudflareEnvVars": "从 Cloudflare 移除 Neon 密钥",
       "removeCloudflareEnvVarsHelp": "从已连接的 Worker 中删除 DATABASE_URL 和 NEON_AUTH_BASE_URL，以免它们指向已断开的数据库。",
-      "failedRemoveCloudflareEnvVars": "已断开连接，但未能从 Cloudflare 移除 Neon 密钥。"
+      "failedRemoveCloudflareEnvVars": "已断开连接，但未能从 Cloudflare 移除 Neon 密钥。",
+      "reconnectTitle": "重新连接 Neon",
+      "reconnectDescription": "请重新登录，以便 Dyad 访问您的 Neon 项目。现有项目连接将保留。",
+      "projectAccessRequired": "此 Neon 账户无法访问关联的项目。请使用有访问权限的账户登录。现有项目连接将保留。",
+      "signInAnotherAccount": "使用其他账户登录",
+      "waitingForSignIn": "正在等待 Neon 登录…",
+      "reconnectedSuccess": "已重新连接 Neon。"
     },
     "db": {
       "projectInfo": "{{provider}} 项目信息",

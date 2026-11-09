@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { useSettings } from "@/hooks/useSettings";
 import { NeonDisconnectButton } from "@/components/NeonDisconnectButton";
+import { NeonReconnectionNotice } from "./NeonReconnectionNotice";
 
 export function NeonIntegration() {
   const { t } = useTranslation("home");
@@ -8,8 +9,17 @@ export function NeonIntegration() {
 
   const isConnected = !!settings?.neon?.accessToken;
 
-  if (!isConnected) {
+  if (!isConnected && !settings?.neon?.reconnectRequired) {
     return null;
+  }
+
+  if (settings?.neon?.reconnectRequired) {
+    return (
+      <div className="space-y-3">
+        <NeonReconnectionNotice />
+        <NeonDisconnectButton />
+      </div>
+    );
   }
 
   return (

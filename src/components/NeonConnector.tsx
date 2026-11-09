@@ -44,6 +44,7 @@ import { getErrorMessage } from "@/lib/errors";
 import { canUseUnsafeNeonBranch } from "@/shared/neon_branch_protection";
 import { NeonBranchWarning } from "@/components/NeonBranchWarning";
 import { NeonSettingsStatus } from "@/components/NeonSettingsStatus";
+import { NeonReconnectionNotice } from "./NeonReconnectionNotice";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -91,6 +92,8 @@ export function NeonConnector({ appId }: { appId: number }) {
 
   const {
     isConnected,
+    requiresReconnection,
+    projectAccessDenied,
     projects,
     projectInfo,
     branches,
@@ -413,8 +416,24 @@ export function NeonConnector({ appId }: { appId: number }) {
     );
   }
 
+  if (!app?.neonProjectId && (requiresReconnection || projectAccessDenied)) {
+    return (
+      <Card className="mt-1">
+        <CardHeader>
+          <CardTitle>{t("integrations.neon.database")}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <NeonReconnectionNotice
+            appId={appId}
+            projectAccessDenied={!requiresReconnection && projectAccessDenied}
+          />
+        </CardContent>
+      </Card>
+    );
+  }
+
   // State 1: Connected and has project set
-  if (isConnected && app?.neonProjectId) {
+  if (app?.neonProjectId && (isConnected || requiresReconnection)) {
     return (
       <Card className="mt-1">
         <CardHeader>
@@ -452,7 +471,18 @@ export function NeonConnector({ appId }: { appId: number }) {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            <div className="space-y-2">
+            {(requiresReconnection || projectAccessDenied) && (
+              <NeonReconnectionNotice
+                appId={appId}
+                projectAccessDenied={
+                  !requiresReconnection && projectAccessDenied
+                }
+              />
+            )}
+            <div
+              className="space-y-2"
+              hidden={requiresReconnection || projectAccessDenied}
+            >
               <Label htmlFor="neon-branch-select">
                 {t("integrations.neon.activeBranch")}
               </Label>
@@ -585,7 +615,12 @@ export function NeonConnector({ appId }: { appId: number }) {
             </div>
 
             <AlertDialog
-              open={!!pendingProductionBranch && canSelectProduction}
+              open={
+                !!pendingProductionBranch &&
+                canSelectProduction &&
+                !requiresReconnection &&
+                !projectAccessDenied
+              }
               onOpenChange={(open) => {
                 if (!open) setPendingProductionBranch(null);
               }}
@@ -616,39 +651,42 @@ export function NeonConnector({ appId }: { appId: number }) {
               </AlertDialogContent>
             </AlertDialog>
 
-            {!isLoadingEmailConfig && emailPasswordConfig && (
-              <div className="space-y-1">
-                <div className="flex items-center space-x-2">
-                  <Switch
-                    id="neon-email-verification"
-                    checked={emailPasswordConfig.require_email_verification}
-                    onCheckedChange={handleEmailVerificationToggle}
-                    disabled={isUpdatingEmailVerification}
-                  />
-                  <Label htmlFor="neon-email-verification">
-                    {t("integrations.neon.requireEmailVerification")}
-                  </Label>
+            {!requiresReconnection &&
+              !projectAccessDenied &&
+              !isLoadingEmailConfig &&
+              emailPasswordConfig && (
+                <div className="space-y-1">
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="neon-email-verification"
+                      checked={emailPasswordConfig.require_email_verification}
+                      onCheckedChange={handleEmailVerificationToggle}
+                      disabled={isUpdatingEmailVerification}
+                    />
+                    <Label htmlFor="neon-email-verification">
+                      {t("integrations.neon.requireEmailVerification")}
+                    </Label>
+                  </div>
+                  <p className="text-xs text-muted-foreground pl-9">
+                    {t("integrations.neon.emailVerificationHelp")}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      ipc.system.openExternalUrl(
+                        "https://neon.com/docs/auth/production-checklist#email-provider",
+                      )
+                    }
+                    className="mt-2 w-full flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800 hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-200 dark:hover:bg-blue-900/30 transition-colors"
+                  >
+                    <Info className="h-4 w-4 flex-shrink-0 text-blue-600 dark:text-blue-400" />
+                    <span className="flex-1 text-left">
+                      {t("integrations.neon.customEmailProviderHint")}
+                    </span>
+                    <ExternalLink className="h-3.5 w-3.5 flex-shrink-0 opacity-70" />
+                  </button>
                 </div>
-                <p className="text-xs text-muted-foreground pl-9">
-                  {t("integrations.neon.emailVerificationHelp")}
-                </p>
-                <button
-                  type="button"
-                  onClick={() =>
-                    ipc.system.openExternalUrl(
-                      "https://neon.com/docs/auth/production-checklist#email-provider",
-                    )
-                  }
-                  className="mt-2 w-full flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800 hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-200 dark:hover:bg-blue-900/30 transition-colors"
-                >
-                  <Info className="h-4 w-4 flex-shrink-0 text-blue-600 dark:text-blue-400" />
-                  <span className="flex-1 text-left">
-                    {t("integrations.neon.customEmailProviderHint")}
-                  </span>
-                  <ExternalLink className="h-3.5 w-3.5 flex-shrink-0 opacity-70" />
-                </button>
-              </div>
-            )}
+              )}
 
             <AlertDialog
               open={isDisconnectDialogOpen}

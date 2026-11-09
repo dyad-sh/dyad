@@ -8,12 +8,18 @@ import { useSettings } from "@/hooks/useSettings";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { useQuery } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 export function useNeon(appId: number | null) {
   const { settings } = useSettings();
   const { app } = useLoadApp(appId);
 
-  const isConnected = !!settings?.neon?.accessToken;
+  const isConnected = !!settings?.neon?.accessToken?.value;
+  const requiresReconnection =
+    !!settings &&
+    (!!settings.neon?.reconnectRequired ||
+      (!!app?.neonProjectId && !isConnected));
+  const canQuery = isConnected && !requiresReconnection;
 
   // Fetch projects list
   const {
@@ -25,7 +31,7 @@ export function useNeon(appId: number | null) {
   } = useQuery({
     queryKey: queryKeys.neon.projects,
     queryFn: () => ipc.neon.listProjects(),
-    enabled: isConnected,
+    enabled: canQuery,
   });
 
   const projects: NeonProjectListItem[] = projectsData?.projects ?? [];
@@ -38,7 +44,7 @@ export function useNeon(appId: number | null) {
   } = useQuery({
     queryKey: queryKeys.neon.project({ appId }),
     queryFn: () => ipc.neon.getProject({ appId: appId! }),
-    enabled: !!appId && !!app?.neonProjectId,
+    enabled: canQuery && !!appId && !!app?.neonProjectId,
   });
 
   const branches: NeonBranch[] = projectInfo?.branches ?? [];
@@ -53,6 +59,7 @@ export function useNeon(appId: number | null) {
       }),
       queryFn: () => ipc.neon.getEmailPasswordConfig({ appId: appId! }),
       enabled:
+        canQuery &&
         !!appId &&
         !!app?.neonProjectId &&
         !!(app?.neonActiveBranchId ?? app?.neonDevelopmentBranchId),
@@ -60,6 +67,10 @@ export function useNeon(appId: number | null) {
 
   return {
     isConnected,
+    requiresReconnection,
+    projectAccessDenied:
+      branchesError instanceof DyadError &&
+      branchesError.kind === DyadErrorKind.Auth,
     projects,
     projectInfo,
     branches,

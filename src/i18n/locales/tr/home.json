@@ -857,7 +857,13 @@
       "failedRemoveVercelEnvVars": "Bağlantı kesildi ancak Neon ortam değişkenleri Vercel'den kaldırılamadı.",
       "removeCloudflareEnvVars": "Neon gizli değerlerini Cloudflare'den kaldır",
       "removeCloudflareEnvVarsHelp": "Bağlantısı kesilmiş bir veritabanını işaret etmemeleri için bağlı Worker'lardan DATABASE_URL ve NEON_AUTH_BASE_URL'yi siler.",
-      "failedRemoveCloudflareEnvVars": "Bağlantı kesildi ancak Neon gizli değerleri Cloudflare'den kaldırılamadı."
+      "failedRemoveCloudflareEnvVars": "Bağlantı kesildi ancak Neon gizli değerleri Cloudflare'den kaldırılamadı.",
+      "reconnectTitle": "Neon’a yeniden bağlan",
+      "reconnectDescription": "Dyad’ın Neon projelerinize erişebilmesi için tekrar oturum açın. Mevcut proje bağlantınız korunacaktır.",
+      "projectAccessRequired": "Bu Neon hesabı bağlı projeye erişemiyor. Erişim izni olan bir hesapla oturum açın. Mevcut proje bağlantınız korunacaktır.",
+      "signInAnotherAccount": "Başka bir hesapla oturum aç",
+      "waitingForSignIn": "Neon oturumu bekleniyor…",
+      "reconnectedSuccess": "Neon’a yeniden bağlanıldı."
     },
     "db": {
       "projectInfo": "{{provider}} Proje Bilgileri",

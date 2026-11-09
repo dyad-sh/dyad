@@ -23,6 +23,7 @@ import { useSettings } from "@/hooks/useSettings";
 import { canUseUnsafeNeonBranch } from "@/shared/neon_branch_protection";
 import { NeonBranchWarning } from "@/components/NeonBranchWarning";
 import { NeonSettingsStatus } from "@/components/NeonSettingsStatus";
+import { NeonReconnectionNotice } from "@/components/NeonReconnectionNotice";
 
 type EnvKind = "prod" | "dev";
 
@@ -94,7 +95,12 @@ export const DatabaseSection = ({ appId }: DatabaseSectionProps) => {
   const { t } = useTranslation("home");
   const queryClient = useQueryClient();
   const { app, refreshApp } = useLoadApp(appId);
-  const { branches, isLoadingBranches } = useNeon(appId);
+  const {
+    branches,
+    isLoadingBranches,
+    requiresReconnection,
+    projectAccessDenied,
+  } = useNeon(appId);
   const { settings, settingsLoading, refreshSettings } = useSettings();
   const canSelectDevelopment =
     !!settings &&
@@ -235,6 +241,15 @@ export const DatabaseSection = ({ appId }: DatabaseSectionProps) => {
     isProductionBranchActive || selectedEnv === "prod"
       ? "production"
       : "development";
+
+  if (requiresReconnection || projectAccessDenied) {
+    return (
+      <NeonReconnectionNotice
+        appId={appId}
+        projectAccessDenied={!requiresReconnection && projectAccessDenied}
+      />
+    );
+  }
 
   return (
     <Card data-testid="database-section">

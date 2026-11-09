@@ -374,6 +374,8 @@ export const NeonSchema = z.object({
   refreshToken: SecretSchema.optional(),
   expiresIn: z.number().optional(),
   tokenTimestamp: z.number().optional(),
+  // Set only after a definitive credential rejection; cleared by OAuth sign-in.
+  reconnectRequired: z.boolean().optional(),
 });
 export type Neon = z.infer<typeof NeonSchema>;
 

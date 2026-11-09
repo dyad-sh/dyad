@@ -857,7 +857,13 @@
       "failedRemoveVercelEnvVars": "Disconnected, but failed to remove Neon environment variables from Vercel.",
       "removeCloudflareEnvVars": "Remove Neon secrets from Cloudflare",
       "removeCloudflareEnvVarsHelp": "Deletes DATABASE_URL and NEON_AUTH_BASE_URL from the connected Workers so they don't point at a disconnected database.",
-      "failedRemoveCloudflareEnvVars": "Disconnected, but failed to remove Neon secrets from Cloudflare."
+      "failedRemoveCloudflareEnvVars": "Disconnected, but failed to remove Neon secrets from Cloudflare.",
+      "reconnectTitle": "Reconnect Neon",
+      "reconnectDescription": "Sign in again so Dyad can access your Neon projects. Your existing project connection will be kept.",
+      "projectAccessRequired": "This Neon account cannot access the linked project. Sign in with an account that has access. Your existing project connection will be kept.",
+      "signInAnotherAccount": "Sign in with another account",
+      "waitingForSignIn": "Waiting for Neon sign-in…",
+      "reconnectedSuccess": "Neon reconnected."
     },
     "db": {
       "projectInfo": "{{provider}} Project Info",

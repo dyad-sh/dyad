@@ -986,7 +986,8 @@ describe("shouldBypassNonProTelemetrySampling", () => {
     "neon:migration",
     "neon:project-created",
     "neon:backup-cleanup",
-  ])("always sends the Neon migration event %s", (event) => {
+    "neon:reconnect-required",
+  ])("always sends the Neon diagnostic event %s", (event) => {
     expect(shouldBypassNonProTelemetrySampling({ event })).toBe(true);
   });
 

@@ -23,7 +23,7 @@ export function NeonDisconnectButton({ className }: NeonDisconnectButtonProps) {
     }
   };
 
-  if (!settings?.neon?.accessToken) {
+  if (!settings?.neon?.accessToken && !settings?.neon?.reconnectRequired) {
     return null;
   }
 

@@ -5,6 +5,7 @@ import { createTestOnlyLoggedHandler } from "./safe_handle";
 import { createTypedHandler } from "./base";
 import type { IpcContract } from "../contracts/core";
 import { handleNeonOAuthReturn } from "../../neon_admin/neon_return_handler";
+import { NEON_PROJECT_ACCESS_DENIED_MESSAGE } from "@/shared/neon_auth";
 import { runOAuthReturnExchange } from "./connection_flow_handlers";
 import {
   getCachedEmailPasswordConfig,
@@ -587,6 +588,15 @@ export function registerNeonHandlers() {
       };
     } catch (error) {
       logger.error(`Failed to get Neon project info for app ${appId}:`, error);
+      if (error instanceof DyadError) throw error;
+      const status = (error as { response?: { status?: number } })?.response
+        ?.status;
+      if (status === 403 || status === 404) {
+        throw new DyadError(
+          NEON_PROJECT_ACCESS_DENIED_MESSAGE,
+          DyadErrorKind.Auth,
+        );
+      }
       throw error;
     }
   });
@@ -623,6 +633,7 @@ export function registerNeonHandlers() {
         })),
       };
     } catch (error: any) {
+      if (error instanceof DyadError) throw error;
       const errorMessage = getNeonErrorMessage(error);
       logger.error(`Failed to list Neon projects: ${errorMessage}`);
       throw new DyadError(

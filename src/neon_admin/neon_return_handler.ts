@@ -9,6 +9,8 @@ export function handleNeonOAuthReturn({
   refreshToken: string;
   expiresIn: number;
 }) {
+  // Replace only account credentials, clearing reconnectRequired. App/project
+  // associations and database environment files must survive reauthentication.
   writeSettings({
     neon: {
       accessToken: {

@@ -91,23 +91,24 @@ export async function reviewToolAction<D extends "ask" | "block">({
             }
           : {}),
       });
-      // Take the verdict from the newest step that has one. The final step
-      // can come back empty (e.g. after inspection tool calls), leaving no
-      // JSON to parse and causing a "Missing decision" error. But an earlier
-      // verdict must not override a later one: walk newest-first and take
-      // the first step whose text yields a parseable verdict, so a later
-      // block is never shadowed by an earlier allow.
+      // Take the verdict from the newest nonempty step. The final step can
+      // come back empty (e.g. after inspection tool calls), so fall back to
+      // the newest earlier step that actually produced text. But never
+      // search past a nonempty step with no valid verdict: a malformed
+      // newer response means the reviewer's latest decision is
+      // indeterminate, and failing closed (fallback) is safer than
+      // trusting a stale older verdict.
       const steps = await stream.steps;
       let json: string | null = null;
       for (let i = steps.length - 1; i >= 0; i--) {
         const stepText = steps[i].text;
         if (!stepText) continue;
         const candidate = extractJson(stepText);
-        if (!candidate) continue;
+        if (!candidate) break;
         try {
           JSON.parse(candidate);
         } catch {
-          continue;
+          break;
         }
         json = candidate;
         break;

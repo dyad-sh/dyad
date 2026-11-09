@@ -151,6 +151,34 @@ it("prefers the newest verdict over an earlier one", async () => {
   });
   expect((await reviewToolAction(input)).decision).toBe("block");
 });
+it("fails closed when the newest nonempty step is malformed", async () => {
+  mocks.streamText.mockReturnValue({
+    text: Promise.resolve('{"decision":"blo'),
+    steps: Promise.resolve([
+      { text: '{"reason":"Looks fine","decision":"allow"}' },
+      { text: '{"decision":"blo' },
+    ]),
+  });
+  expect(await reviewToolAction(input)).toEqual({
+    decision: "block",
+    unavailable: true,
+    reason: "The safety reviewer returned an invalid verdict.",
+  });
+});
+it("fails closed when the newest nonempty step has no verdict", async () => {
+  mocks.streamText.mockReturnValue({
+    text: Promise.resolve("Just checking the file."),
+    steps: Promise.resolve([
+      { text: '{"reason":"Looks fine","decision":"allow"}' },
+      { text: "Just checking the file." },
+    ]),
+  });
+  expect(await reviewToolAction(input)).toEqual({
+    decision: "block",
+    unavailable: true,
+    reason: "The safety reviewer returned an invalid verdict.",
+  });
+});
 it("gives shell preparation and multi-step inference time beyond the MCP deadline", async () => {
   vi.useFakeTimers();
   try {

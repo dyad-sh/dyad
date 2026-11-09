@@ -91,7 +91,11 @@ export async function reviewToolAction<D extends "ask" | "block">({
             }
           : {}),
       });
-      const text = await stream.text;
+      // Collect text from all steps, not just the last one. The final step
+      // can come back empty (e.g. after inspection tool calls), leaving no
+      // JSON to parse and causing a "Missing decision" error.
+      const steps = await stream.steps;
+      const text = steps.map((s) => s.text).join("\n");
       controller.signal.throwIfAborted();
       state.phase = "verdict";
       const json = extractJson(text);

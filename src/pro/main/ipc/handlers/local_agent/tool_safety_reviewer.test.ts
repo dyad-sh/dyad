@@ -29,7 +29,10 @@ describe("mandatory tool reviewer", () => {
   it.each(["garbage", '{"decision":"allow"}'])(
     "blocks invalid shell verdict %s",
     async (text) => {
-      mocks.streamText.mockReturnValue({ text: Promise.resolve(text) });
+      mocks.streamText.mockReturnValue({
+        text: Promise.resolve(text),
+        steps: Promise.resolve([{ text }]),
+      });
       expect(await reviewToolAction(input)).toEqual({
         decision: "block",
         unavailable: true,
@@ -40,6 +43,9 @@ describe("mandatory tool reviewer", () => {
   it("accepts a structured allow and preserves exact command data", async () => {
     mocks.streamText.mockReturnValue({
       text: Promise.resolve('{"reason":"Bounded task","decision":"allow"}'),
+      steps: Promise.resolve([
+        { text: '{"reason":"Bounded task","decision":"allow"}' },
+      ]),
     });
     expect((await reviewToolAction(input)).decision).toBe("allow");
     expect(mocks.getModelClient).toHaveBeenCalledWith(
@@ -97,6 +103,11 @@ it("accepts a structured ask verdict for shell authorization", async () => {
     text: Promise.resolve(
       '{"decision":"ask","reason":"Delete the production service; approval required."}',
     ),
+    steps: Promise.resolve([
+      {
+        text: '{"decision":"ask","reason":"Delete the production service; approval required."}',
+      },
+    ]),
   });
   expect(await reviewToolAction(input)).toEqual({
     decision: "ask",
@@ -108,23 +119,53 @@ it.each([
   'Here: {"reason":"safe read","decision":"allow"}',
   '```json\n{"reason":"safe read","decision":"allow"}\n```',
 ])("accepts a wrapped shell verdict: %s", async (text) => {
-  mocks.streamText.mockReturnValue({ text: Promise.resolve(text) });
+  mocks.streamText.mockReturnValue({
+    text: Promise.resolve(text),
+    steps: Promise.resolve([{ text }]),
+  });
   expect(await reviewToolAction(input)).toEqual({
     decision: "allow",
     reason: "safe read",
   });
 });
+it("uses the newest step verdict when the final step is empty", async () => {
+  mocks.streamText.mockReturnValue({
+    text: Promise.resolve(""),
+    steps: Promise.resolve([
+      { text: '{"reason":"Checked files","decision":"allow"}' },
+      { text: "" },
+    ]),
+  });
+  expect(await reviewToolAction(input)).toEqual({
+    decision: "allow",
+    reason: "Checked files",
+  });
+});
+it("prefers the newest verdict over an earlier one", async () => {
+  mocks.streamText.mockReturnValue({
+    text: Promise.resolve('{"reason":"Blocked","decision":"block"}'),
+    steps: Promise.resolve([
+      { text: '{"reason":"Looks fine","decision":"allow"}' },
+      { text: '{"reason":"Blocked","decision":"block"}' },
+    ]),
+  });
+  expect((await reviewToolAction(input)).decision).toBe("block");
+});
 it("gives shell preparation and multi-step inference time beyond the MCP deadline", async () => {
   vi.useFakeTimers();
   try {
-    mocks.streamText.mockImplementation(() => ({
-      text: new Promise((resolve) =>
+    mocks.streamText.mockImplementation(() => {
+      const textPromise = new Promise<string>((resolve) =>
         setTimeout(
           () => resolve('{"decision":"allow","reason":"Inspected migration"}'),
           20000,
         ),
-      ),
-    }));
+      );
+      return {
+        text: textPromise,
+        steps: textPromise.then((text) => [{ text }]),
+      };
+    });
     const pending = reviewToolAction({
       ...input,
       timeoutMs: SHELL_REVIEW_TIMEOUT_MS,

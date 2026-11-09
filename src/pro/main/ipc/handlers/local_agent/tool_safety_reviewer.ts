@@ -91,14 +91,29 @@ export async function reviewToolAction<D extends "ask" | "block">({
             }
           : {}),
       });
-      // Collect text from all steps, not just the last one. The final step
+      // Take the verdict from the newest step that has one. The final step
       // can come back empty (e.g. after inspection tool calls), leaving no
-      // JSON to parse and causing a "Missing decision" error.
+      // JSON to parse and causing a "Missing decision" error. But an earlier
+      // verdict must not override a later one: walk newest-first and take
+      // the first step whose text yields a parseable verdict, so a later
+      // block is never shadowed by an earlier allow.
       const steps = await stream.steps;
-      const text = steps.map((s) => s.text).join("\n");
+      let json: string | null = null;
+      for (let i = steps.length - 1; i >= 0; i--) {
+        const stepText = steps[i].text;
+        if (!stepText) continue;
+        const candidate = extractJson(stepText);
+        if (!candidate) continue;
+        try {
+          JSON.parse(candidate);
+        } catch {
+          continue;
+        }
+        json = candidate;
+        break;
+      }
       controller.signal.throwIfAborted();
       state.phase = "verdict";
-      const json = extractJson(text);
       if (!json) throw new Error("Missing decision");
       const result = z
         .object({

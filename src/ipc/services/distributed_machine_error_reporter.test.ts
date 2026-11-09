@@ -7,6 +7,7 @@ import {
   createSequentialIdSource,
 } from "@/state_machines/testing";
 import { change, stay } from "@/state_machines/types";
+import { reportableStack } from "@/ipc/utils/telemetry";
 import { remoteMachineHost } from "./distributed_machine_actor_host";
 import {
   reportActorHostError,
@@ -86,11 +87,12 @@ describe("state machine error reporting", () => {
     expect(remoteMachineHost["options"].reportError).toBe(reportActorHostError);
   });
 
-  it("reports a command that throws with its machine, stage and command", async () => {
+  it("reports a command that throws with its machine and stage", async () => {
+    const thrown = new TypeError("cannot read stream of undefined");
     run(
       machine({
         createCommandRunner: () => () => {
-          throw new TypeError("cannot read stream of undefined");
+          throw thrown;
         },
       }),
     );
@@ -101,14 +103,13 @@ describe("state machine error reporting", () => {
       properties: {
         exception_name: "TypeError",
         exception_message: "",
+        exception_stack_trace: reportableStack(thrown),
         source: "state_machine:test-machine",
         phase: "command",
-        command_type: "start-stream",
       },
     });
-    expect(sent[0].properties.exception_stack_trace).toMatch(
-      /^TypeError\n\s+at /,
-    );
+    // Nothing checks a command type against a fixed set, so it stays local.
+    expect(sent[0].properties).not.toHaveProperty("command_type");
   });
 
   it("never sends machine state from a validation error", async () => {
@@ -147,6 +148,48 @@ describe("state machine error reporting", () => {
       source: "state_machine:m",
     });
     expect(sent[0].properties).not.toHaveProperty("phase");
+  });
+
+  it("does not send a stage the dispatcher does not use", () => {
+    reportActorHostError({
+      machineId: "m",
+      key: "k",
+      failure: { stage: "secret-stage", error: new Error("x") },
+    });
+
+    expect(sent[0].properties).not.toHaveProperty("phase");
+    expect(JSON.stringify(sent)).not.toContain("secret-stage");
+  });
+
+  it("sends an unlisted error name as UnlistedError", () => {
+    const error = new Error("x");
+    error.name = "secret-name";
+
+    reportRemoteTransportError(error);
+
+    expect(sent[0].properties.exception_name).toBe("UnlistedError");
+    expect(sent[0].properties.exception_stack_trace).toBe(
+      reportableStack(error),
+    );
+    expect(JSON.stringify(sent)).not.toContain("secret-name");
+  });
+
+  it("keeps a multi-line name out of the frames", () => {
+    const error = new Error("");
+    error.name = "Error\n    at secret-frame";
+
+    reportRemoteTransportError(error);
+
+    expect(JSON.stringify(sent)).not.toContain("secret-frame");
+  });
+
+  it("sends a string stack for an error without one", () => {
+    const error = new Error("x");
+    error.stack = undefined;
+
+    reportRemoteTransportError(error);
+
+    expect(sent[0].properties.exception_stack_trace).toBe("Error");
   });
 
   it("reports transport failures without their message", () => {

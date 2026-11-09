@@ -28,9 +28,13 @@ import { getVercelProjectCreationError } from "./vercel_errors";
 import { serializeIpcError, deserializeIpcError } from "../contracts/core";
 import {
   framesOnly,
+  reportableErrorName,
   sendTelemetryEventToWindow,
   sendTelemetryException,
   shouldFilterTelemetryException,
+  reportableStack,
+  stackFrames,
+  type FrameSources,
 } from "@/ipc/utils/telemetry";
 
 describe("shouldFilterTelemetryException", () => {
@@ -366,5 +370,168 @@ describe("framesOnly", () => {
     error.message = "changed:\n    at Bearer secret-token";
 
     expect(framesOnly(error)).toBe("Error");
+  });
+});
+
+describe("stackFrames", () => {
+  it("keeps a name line that looks like a frame out of the frames", () => {
+    const error = new Error("");
+    error.name = "Error\n    at Bearer secret-token";
+
+    const frames = stackFrames(error);
+
+    expect(frames.join("\n")).not.toContain("secret-token");
+    expect(frames[0]).toMatch(/^\s+at .*telemetry\.test/);
+  });
+
+  it("keeps message lines out when the name contains the message", () => {
+    const error = new Error("Q");
+    error.name = "Q\n    at Bearer secret-token Q";
+
+    const frames = stackFrames(error);
+
+    expect(frames.join("\n")).not.toContain("secret-token");
+    expect(frames[0]).toMatch(/^\s+at .*telemetry\.test/);
+  });
+});
+
+describe("reportableErrorName", () => {
+  it("keeps a listed name", () => {
+    expect(reportableErrorName(new TypeError("x"))).toBe("TypeError");
+  });
+
+  it("replaces an unlisted name", () => {
+    const error = new Error("x");
+    error.name = "secret-name";
+
+    expect(reportableErrorName(error)).toBe("UnlistedError");
+  });
+});
+
+describe("reportableStack", () => {
+  const linux: FrameSources = {
+    buildDir: "/opt/Dyad/resources/app.asar/.vite/build",
+    buildFiles: new Set(["main-ABC.js"]),
+    packageRoots: [
+      "/opt/Dyad/resources/app.asar",
+      "/opt/Dyad/resources/app.asar.unpacked",
+    ],
+    packages: new Set(["ssh2", "@vscode/ripgrep"]),
+  };
+  const windowsRoot =
+    "C:/Users/Jane Doe/AppData/Local/dyad/app-1.0.0/resources/app.asar";
+  const windows: FrameSources = {
+    buildDir: `${windowsRoot}/.vite/build`,
+    buildFiles: new Set(["main-ABC.js"]),
+    packageRoots: [windowsRoot, `${windowsRoot}.unpacked`],
+    packages: new Set(["ssh2"]),
+  };
+  const macRoot = "/Applications/Dyad.app/Contents/Resources/app.asar";
+  const mac: FrameSources = {
+    buildDir: `${macRoot}/.vite/build`,
+    buildFiles: new Set(["main-ABC.js"]),
+    packageRoots: [macRoot],
+    packages: new Set(),
+  };
+
+  function errorWithFrames(frames: string[]): Error {
+    const error = new Error("m");
+    error.stack = ["Error: m", ...frames].join("\n");
+    return error;
+  }
+
+  it("reduces bundle frames to a shipped file and position", () => {
+    const error = errorWithFrames([
+      "    at Object.secretKey (/opt/Dyad/resources/app.asar/.vite/build/main-ABC.js:10:5)",
+      "    at async /opt/Dyad/resources/app.asar/.vite/build/main-ABC.js:20:7",
+    ]);
+
+    expect(reportableStack(error, linux)).toBe(
+      [
+        "Error",
+        "    at .vite/build/main-ABC.js:10:5",
+        "    at .vite/build/main-ABC.js:20:7",
+      ].join("\n"),
+    );
+  });
+
+  it("reduces Windows paths and file URLs, dropping the user's folder", () => {
+    const error = errorWithFrames([
+      "    at run (C:\\Users\\Jane Doe\\AppData\\Local\\dyad\\app-1.0.0\\resources\\app.asar\\.vite\\build\\main-ABC.js:1:2)",
+      "    at file:///C:/Users/Jane%20Doe/AppData/Local/dyad/app-1.0.0/resources/app.asar/.vite/build/main-ABC.js:3:4",
+      "    at connect (C:\\Users\\Jane Doe\\AppData\\Local\\dyad\\app-1.0.0\\resources\\app.asar.unpacked\\node_modules\\ssh2\\lib\\client.js:5:6)",
+    ]);
+
+    expect(reportableStack(error, windows)).toBe(
+      [
+        "Error",
+        "    at .vite/build/main-ABC.js:1:2",
+        "    at .vite/build/main-ABC.js:3:4",
+        "    at node_modules/ssh2",
+      ].join("\n"),
+    );
+  });
+
+  it("reduces a macOS frame", () => {
+    const error = errorWithFrames([
+      "    at /Applications/Dyad.app/Contents/Resources/app.asar/.vite/build/main-ABC.js:8:9",
+    ]);
+
+    expect(reportableStack(error, mac)).toBe(
+      "Error\n    at .vite/build/main-ABC.js:8:9",
+    );
+  });
+
+  it("reduces shipped packages and Node modules to their names", () => {
+    const error = errorWithFrames([
+      "    at Client.connect (/opt/Dyad/resources/app.asar.unpacked/node_modules/ssh2/lib/client.js:1:2)",
+      "    at search (/opt/Dyad/resources/app.asar/node_modules/@vscode/ripgrep/lib/index.js:3:4)",
+      "    at Object.readFileSync (node:fs:453:20)",
+      "    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)",
+    ]);
+
+    expect(reportableStack(error, linux)).toBe(
+      [
+        "Error",
+        "    at node_modules/ssh2",
+        "    at node_modules/@vscode/ripgrep",
+        "    at node:fs:453:20",
+        "    at node:internal",
+      ].join("\n"),
+    );
+  });
+
+  it("drops every frame that names nothing shipped", () => {
+    const error = errorWithFrames([
+      "    at Bearer secret-token",
+      "    at secret (/home/jane/notes-secret.txt:1:1)",
+      "    at /opt/Dyad/resources/app.asar/.vite/build/secret-file.js:1:1",
+      "    at /opt/Dyad/resources/app.asar/.vite/build/../../secret.js:1:1",
+      "    at /opt/Dyad/resources/app.asar/node_modules/secret-package/index.js:1:1",
+      "    at /opt/Dyad/resources/app.asar/node_modules/../secret.js:1:1",
+      "    at x (/opt/Dyad (secret)/resources/app.asar/.vite/build/main-ABC.js:1:1)",
+      "    at eval (eval at secret (/opt/Dyad/resources/app.asar/.vite/build/main-ABC.js:1:1), <anonymous>:1:1)",
+      "    at Array.map (<anonymous>)",
+      "    at async Promise.all (index 0)",
+      "    at /opt/Dyad/resources/app.asar/.vite/build/main-ABC.js:12345678:1",
+    ]);
+
+    expect(reportableStack(error, linux)).toBe("Error");
+  });
+
+  it("uses the listed name and skips the header", () => {
+    const error = new Error("");
+    error.name =
+      "secret\n    at /opt/Dyad/resources/app.asar/.vite/build/main-ABC.js:1:1";
+
+    expect(reportableStack(error, linux)).toMatch(/^UnlistedError(\n|$)/);
+    expect(reportableStack(error, linux)).not.toContain("secret");
+  });
+
+  it("is a string for an error without a stack", () => {
+    const error = new TypeError("x");
+    error.stack = undefined;
+
+    expect(reportableStack(error, linux)).toBe("TypeError");
   });
 });

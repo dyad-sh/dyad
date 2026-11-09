@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import { builtinModules } from "node:module";
+import path from "node:path";
 import { BrowserWindow } from "electron";
 import log from "electron-log";
 import {
@@ -134,22 +137,204 @@ function isSelfHostedChannel(context?: Record<string, unknown>): boolean {
  *
  * Dropping `exception_message` alone leaves the message in the trace, since a
  * stack starts "Name: message". The frames are what identify the throw site,
- * so they are all that is kept. Only lines after the message count, since a
- * message line can look like a frame. If the message can't be found in the
- * stack, no frames are kept.
+ * so they are all that is kept.
  */
 export function framesOnly(err: Error): string | undefined {
   if (!err.stack) return undefined;
-  let afterHeader: string[];
-  if (err.message) {
-    const start = err.stack.indexOf(err.message);
-    if (start === -1) return err.name;
-    afterHeader = err.stack.slice(start + err.message.length).split("\n");
-  } else {
-    afterHeader = err.stack.split("\n").slice(1);
+  return [err.name, ...stackFrames(err)].join("\n");
+}
+
+/**
+ * The frame lines of an error's stack, without its header.
+ *
+ * The header is the name and message, and a line of either can look like a
+ * frame, so it is skipped by its exact text. V8 writes it from the name and
+ * message as they are when the stack is first read. If the stack doesn't start
+ * with it, because one of them changed since, no frames are kept.
+ */
+export function stackFrames(err: Error): string[] {
+  const stack = err.stack;
+  if (typeof stack !== "string") return [];
+  const header = stackHeader(err);
+  if (!stack.startsWith(header)) return [];
+  return stack
+    .slice(header.length)
+    .split("\n")
+    .filter((line) => /^\s+at /.test(line));
+}
+
+/** The header V8 puts at the top of a stack, built as `Error.prototype.toString` does. */
+function stackHeader(err: Error): string {
+  const name = err.name === undefined ? "Error" : String(err.name);
+  const message = err.message === undefined ? "" : String(err.message);
+  if (!name) return message;
+  if (!message) return name;
+  return `${name}: ${message}`;
+}
+
+/**
+ * Error names that `reportableErrorName` sends as they are. A name is a
+ * writable string that code can build from anything, so any other name is
+ * replaced.
+ */
+const REPORTABLE_ERROR_NAMES = new Set<unknown>([
+  "Error",
+  "TypeError",
+  "RangeError",
+  "ReferenceError",
+  "SyntaxError",
+  "URIError",
+  "EvalError",
+  "AggregateError",
+  "DyadError",
+  "ActorAdmissionError",
+  "KeyedAdmissionGateError",
+  "PreparedRequestIdentityConflictError",
+  "OperationIdentityConflictError",
+  "OperationCapacityError",
+]);
+
+const UNLISTED_ERROR_NAME = "UnlistedError";
+
+/** The error's name if it is listed, otherwise `UNLISTED_ERROR_NAME`. */
+export function reportableErrorName(err: Error): string {
+  return REPORTABLE_ERROR_NAMES.has(err.name) ? err.name : UNLISTED_ERROR_NAME;
+}
+
+/**
+ * The places a reportable frame can point. Paths use forward slashes.
+ */
+export interface FrameSources {
+  /** The directory holding the main-process bundle. */
+  readonly buildDir: string;
+  /** The files in `buildDir`. */
+  readonly buildFiles: ReadonlySet<string>;
+  /** Directories whose `node_modules` hold the shipped packages. */
+  readonly packageRoots: readonly string[];
+  /** The shipped package names, including scoped ones such as `@a/b`. */
+  readonly packages: ReadonlySet<string>;
+}
+
+/**
+ * The error as a stack holding only values from fixed sets: a listed name,
+ * then frames that each name a shipped file, a shipped package or a Node
+ * module. Function names, paths and any frame that names something else are
+ * dropped. Always a string, even when the error has no stack.
+ */
+export function reportableStack(
+  err: Error,
+  sources: FrameSources = shippedFrameSources(),
+): string {
+  const frames = stackFrames(err)
+    .map((line) => reportableFrame(line, sources))
+    .filter((frame) => frame !== undefined);
+  return [reportableErrorName(err), ...frames].join("\n");
+}
+
+// A frame's location is the last `path:line:column`, inside the last
+// parentheses when there are any. A path that itself holds "(" is cut at it
+// and then matches no source, so that frame is dropped.
+const FRAME_LOCATION =
+  /^\s+at (?:async )?(?:.*\()?(.+):(\d{1,7}):(\d{1,7})\)?$/;
+
+function reportableFrame(
+  line: string,
+  sources: FrameSources,
+): string | undefined {
+  const match = FRAME_LOCATION.exec(line);
+  if (!match) return undefined;
+  const [, rawPath, lineNumber, column] = match;
+
+  if (rawPath.startsWith("node:")) {
+    const moduleName = rawPath.slice("node:".length);
+    return BUILTIN_MODULES.has(moduleName)
+      ? `    at node:${moduleName}:${lineNumber}:${column}`
+      : "    at node:internal";
   }
-  const frames = afterHeader.filter((line) => /^\s+at /.test(line));
-  return [err.name, ...frames].join("\n");
+
+  const filePath = normalizeFramePath(rawPath);
+  if (filePath === undefined) return undefined;
+
+  const buildPrefix = `${sources.buildDir}/`;
+  if (filePath.startsWith(buildPrefix)) {
+    const file = filePath.slice(buildPrefix.length);
+    return sources.buildFiles.has(file)
+      ? `    at .vite/build/${file}:${lineNumber}:${column}`
+      : undefined;
+  }
+
+  for (const root of sources.packageRoots) {
+    const modulesPrefix = `${root}/node_modules/`;
+    if (!filePath.startsWith(modulesPrefix)) continue;
+    const [first, second] = filePath.slice(modulesPrefix.length).split("/");
+    const name = first.startsWith("@") ? `${first}/${second}` : first;
+    return sources.packages.has(name)
+      ? `    at node_modules/${name}`
+      : undefined;
+  }
+  return undefined;
+}
+
+const BUILTIN_MODULES = new Set(
+  builtinModules.map((name) => name.replace(/^node:/, "")),
+);
+
+/** A frame path or file URL as a path with forward slashes. */
+function normalizeFramePath(rawPath: string): string | undefined {
+  let filePath = rawPath;
+  if (filePath.startsWith("file://")) {
+    try {
+      filePath = decodeURIComponent(filePath.slice("file://".length));
+    } catch {
+      return undefined;
+    }
+    // file:///C:/x is the Windows path C:/x.
+    if (/^\/[A-Za-z]:\//.test(filePath)) filePath = filePath.slice(1);
+  }
+  return filePath.replace(/\\/g, "/");
+}
+
+let shippedSources: FrameSources | undefined;
+
+/**
+ * Where the running app's code lives. The bundle sits in `.vite/build` under
+ * the app root, which is `app.asar` when packaged. Native packages are
+ * unpacked next to it.
+ */
+function shippedFrameSources(): FrameSources {
+  if (shippedSources) return shippedSources;
+  const buildDir = __dirname;
+  const appRoot = path.resolve(buildDir, "..", "..");
+  const packageRoots = [appRoot, `${appRoot}.unpacked`];
+  shippedSources = {
+    buildDir: buildDir.replace(/\\/g, "/"),
+    buildFiles: new Set(readDirectory(buildDir)),
+    packageRoots: packageRoots.map((root) => root.replace(/\\/g, "/")),
+    packages: new Set(
+      packageRoots.flatMap((root) =>
+        packageNames(path.join(root, "node_modules")),
+      ),
+    ),
+  };
+  return shippedSources;
+}
+
+function packageNames(modulesDir: string): string[] {
+  return readDirectory(modulesDir).flatMap((entry) =>
+    entry.startsWith("@")
+      ? readDirectory(path.join(modulesDir, entry)).map(
+          (name) => `${entry}/${name}`,
+        )
+      : [entry],
+  );
+}
+
+function readDirectory(dir: string): string[] {
+  try {
+    return fs.readdirSync(dir);
+  } catch {
+    return [];
+  }
 }
 
 export function shouldFilterTelemetryException(error: unknown): boolean {

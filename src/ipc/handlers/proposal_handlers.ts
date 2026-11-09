@@ -16,6 +16,10 @@ import {
 } from "../services/chat_workspace_service";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
+  canClaudeResumeFromAnotherDirectory,
+  claudeStatus,
+} from "@/ipc/services/claude_code/runtime";
+import {
   getDyadWriteTags,
   getDyadRenameTags,
   getDyadDeleteTags,
@@ -432,7 +436,10 @@ const approveProposalHandler = async (
       chatId,
       originalAppPath: getDyadAppPath(chat.app.path),
       writable: true,
-      allowIsolation: chat.executionBackend !== "claude-code",
+      // A workspace created here is where the chat's next CLI turn runs.
+      allowIsolation:
+        chat.executionBackend !== "claude-code" ||
+        canClaudeResumeFromAnotherDirectory((await claudeStatus()).version),
       synchronize: false,
       // Newer work being merged into this chat's workspace with unresolved
       // conflicts: applying the proposal now would mix it into that

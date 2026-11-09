@@ -1,6 +1,6 @@
 import { and, desc, eq, gt, gte } from "drizzle-orm";
 import { db } from "@/db";
-import { messages } from "@/db/schema";
+import { chats, messages } from "@/db/schema";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { blockNewStreamsForChat } from "@/ipc/handlers/chat_stream_handlers";
 import {
@@ -149,14 +149,28 @@ export async function undoIsolatedChatTurns({
             await execGit(["reset", "--mixed", headBeforeUndo], appPath);
             throw error;
           }
-          await db
-            .delete(messages)
-            .where(
-              and(
-                eq(messages.chatId, chatId),
-                gte(messages.id, fromUserMessageId),
-              ),
-            );
+          db.transaction((tx) => {
+            tx.delete(messages)
+              .where(
+                and(
+                  eq(messages.chatId, chatId),
+                  gte(messages.id, fromUserMessageId),
+                ),
+              )
+              .run();
+            // As with Undo in the app's folder: the CLI transcript still holds
+            // the undone turns, so the next turn starts a fresh session from
+            // the remaining visible history.
+            tx.update(chats)
+              .set({ claudeSessionId: null, claudeSessionState: null })
+              .where(
+                and(
+                  eq(chats.id, chatId),
+                  eq(chats.executionBackend, "claude-code"),
+                ),
+              )
+              .run();
+          });
           const integrated = await isWorkspaceIntegrated(
             getActiveWorkspaceForChat(chatId) ?? workspace,
           );

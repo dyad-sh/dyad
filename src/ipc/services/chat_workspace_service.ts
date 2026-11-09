@@ -131,7 +131,10 @@ export interface PrepareTurnWorkspaceInput {
   chatId: number;
   originalAppPath: string;
   writable: boolean;
-  /** False for chats whose execution backend cannot change directories. */
+  /**
+   * False when the chat cannot move into a worktree: a Claude Code chat whose
+   * CLI cannot resume its session from another directory.
+   */
   allowIsolation: boolean;
   /**
    * False when applying changes already generated against the workspace's

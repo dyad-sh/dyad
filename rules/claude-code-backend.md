@@ -34,6 +34,19 @@ from the globally selected model or the chat's stored backend alone.
   should cover the table above, including a globally selected model or stored
   backend that does not reflect the current chat's actual message history.
 
+## Sessions and working directories
+
+- A turn resumes the chat's CLI session only when `claudeSessionFingerprint`
+  matches. Anything that changes per turn but not per conversation (such as
+  the isolated worktree path) must be normalized out of it, or every such
+  turn silently starts a fresh session from visible history. See
+  `rules/worktree-isolation.md`.
+- To check what the CLI sends for a given working directory or resume, point
+  the real CLI at a local fake Messages API (`ANTHROPIC_BASE_URL`, a dummy
+  `ANTHROPIC_API_KEY`, an isolated `HOME`) and log the request bodies. The
+  first user message carries the CLI's environment reminder ("Primary working
+  directory"); a resume from another directory adds an "Environment update".
+
 ## Diagnosing CLI failures
 
 - On macOS, sandboxed `claude auth status` can report `loggedIn: false` when the same account is signed in outside the sandbox. Verify outside the sandbox before diagnosing an authentication failure.

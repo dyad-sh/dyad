@@ -3,9 +3,10 @@
 Opt-in (`enableWorktreeIsolation`). While it is on, every chat's first
 writable turn gives it its own linked Git worktree on `dyad/chat-<id>` (an
 app's first chat included), whether or not another chat is writing; Dyad
-later merges its finished work back. Only chats on a backend that cannot
-change directories (Claude Code) use the app's original folder, as every chat
-does while isolation is off.
+later merges its finished work back. Claude Code chats are isolated too
+when their CLI can resume a session from another directory; with an older
+CLI they use the app's original folder, as every chat does while isolation
+is off.
 
 ## Where a turn runs
 
@@ -40,6 +41,22 @@ does while isolation is off.
   workspace like a turn with `synchronize: false`: the proposal was written
   against the unsynchronized code, and merging the target first would let
   its full-file writes silently revert other chats' merged work.
+
+## Claude Code chats
+
+- The CLI runs in the turn's directory, so a Claude Code chat's folder
+  changes when it first gets a worktree (its earlier turns ran in the app's
+  folder: before isolation was on, or read-only), and again when its worktree
+  is deleted. Its session survives because `--resume` works from another
+  directory (CLI `CLAUDE_CROSS_DIRECTORY_RESUME_VERSION` and later; 2.1.42
+  fails with "No conversation found") and `claudeSessionFingerprint` hashes
+  the app's folder, with the worktree path in the system prompt mapped back to
+  it. Never fingerprint `ctx.appPath` directly.
+- With an older CLI the chat passes `allowIsolation: false` and keeps sharing
+  the app's folder; check the version from `claudeStatus()` wherever a chat
+  can be given a workspace (turns and proposal approval).
+- Undo in a workspace clears the chat's Claude session like Undo in the app's
+  folder: the CLI transcript still holds the undone turns.
 
 ## Runtime, ports, and logs
 

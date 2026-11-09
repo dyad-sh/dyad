@@ -1,5 +1,5 @@
 import log from "electron-log";
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { mkdtemp, writeFile, readFile, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -37,6 +37,7 @@ import { recoverQuestionnaires } from "@/user_input/questionnaire_journal";
 import { toMcpToolResult } from "./tool_result";
 import type { UserMessageContentPart } from "@/pro/main/ipc/handlers/local_agent/tools/types";
 import { claudeConversation } from "./prompt";
+import { claudeSessionFingerprint } from "./session_fingerprint";
 import { getUserDataPath } from "@/paths/paths";
 import { escapeXmlAttr, escapeXmlContent } from "../../../../shared/xmlEscape";
 
@@ -201,9 +202,15 @@ export class ClaudeCodeModel implements LanguageModelV3 {
           await asSchema(tool.inputSchema).jsonSchema,
         ]),
       );
-      const fingerprint = createHash("sha256")
-        .update(JSON.stringify([ctx.appPath, system, declarations]))
-        .digest("hex");
+      // The CLI runs in the turn's directory (an isolated worktree or the
+      // app's folder) and resumes across that move, so the session's identity
+      // is the app's own folder.
+      const fingerprint = claudeSessionFingerprint({
+        appPath: ctx.dyadMetadataPath ?? ctx.appPath,
+        turnPath: ctx.appPath,
+        system,
+        declarations,
+      });
       const manifestPath = path.join(
         getUserDataPath(),
         "claude-sessions",

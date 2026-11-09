@@ -6,7 +6,7 @@ import { fetch as undiciFetch } from "undici";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
-import { eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { writeFile, readFile, rename } from "node:fs/promises";
 import path from "node:path";
 import { getUserDataPath } from "@/paths/paths";
@@ -20,6 +20,13 @@ import { writeSettings } from "@/main/settings";
 import { ipc } from "@/ipc/types";
 import type { McpToolDef } from "@/pro/main/ipc/handlers/local_agent/tools/mcp_type_defs";
 import { CLAUDE_TOOL_DESCRIPTION_LIMIT } from "./tool_description_overflow";
+import { chatWorkspaceService } from "@/ipc/services/chat_workspace_service";
+import {
+  getWorkspaceAppPath,
+  getWorkspaceForChat,
+} from "@/ipc/services/chat_workspace_store";
+import { undoIsolatedChatTurns } from "@/ipc/services/workspace_turn_undo";
+import { CLAUDE_CROSS_DIRECTORY_RESUME_VERSION } from "@/shared/claude_code_cli";
 const calls = vi.hoisted(() => ({
   run: vi.fn(),
   operate: vi.fn(),
@@ -30,13 +37,14 @@ const calls = vi.hoisted(() => ({
   system: "",
   reportUsage: vi.fn(),
   mcpToolDefs: undefined as McpToolDef[] | undefined,
+  version: "2.1.261",
 }));
 vi.mock("./runtime", async (original) => ({
   ...(await original<typeof import("./runtime")>()),
   claudeStatus: async () => ({
     connected: true,
     compatible: true,
-    version: "2.1.261",
+    version: calls.version,
     detail: "ready",
   }),
   runClaudeTurn: calls.run,
@@ -128,7 +136,11 @@ beforeAll(async () => {
 }, 60_000);
 afterAll(async () => harness?.dispose());
 beforeEach(() => {
-  writeSettings({ enableClaudeCodeSubscription: true });
+  writeSettings({
+    enableClaudeCodeSubscription: true,
+    enableWorktreeIsolation: false,
+  });
+  calls.version = "2.1.261";
   calls.run.mockReset();
   calls.operate.mockReset();
   calls.beforeDispatch.mockReset();
@@ -326,6 +338,76 @@ it("resolves the claimed app path after usage preflight", async () => {
       .set({ path: app!.path })
       .where(eq(apps.id, harness.appId));
   }
+});
+
+it("keeps the CLI session while worktree isolation moves the chat between folders", async () => {
+  calls.version = CLAUDE_CROSS_DIRECTORY_RESUME_VERSION;
+  const chatId = await ipc.chat.createChat({ appId: harness.appId });
+  try {
+    await harness.streamChat("Plan the violet change", { chatId });
+    const first = calls.run.mock.calls[0][0];
+    expect(first).toMatchObject({ cwd: harness.appDir, resume: false });
+
+    // Turning isolation on gives the chat a worktree on its next writable
+    // turn, where it resumes the same CLI session.
+    writeSettings({ enableWorktreeIsolation: true });
+    await harness.streamChat("Make the violet change", { chatId });
+    const workspace = getWorkspaceForChat(chatId);
+    expect(workspace?.status).toBe("active");
+    const workspacePath = getWorkspaceAppPath(workspace!);
+    expect(workspacePath).not.toBe(harness.appDir);
+    const isolated = calls.run.mock.calls[1][0];
+    expect(isolated).toMatchObject({
+      cwd: workspacePath,
+      resume: true,
+      sessionId: first.sessionId,
+    });
+    expect(isolated.prompt).toContain("isolated workspace");
+
+    // Undo drops the undone turn from visible history, so the CLI transcript
+    // that still holds it is not resumed.
+    const lastUserMessage = await harness.db.query.messages.findFirst({
+      where: and(eq(messages.chatId, chatId), eq(messages.role, "user")),
+      orderBy: desc(messages.id),
+    });
+    await undoIsolatedChatTurns({
+      chatId,
+      fromUserMessageId: lastUserMessage!.id,
+    });
+    expect(
+      await harness.db.query.chats.findFirst({ where: eq(chats.id, chatId) }),
+    ).toMatchObject({ claudeSessionId: null, claudeSessionState: null });
+    await harness.streamChat("Make it teal instead", { chatId });
+    const afterUndo = calls.run.mock.calls[2][0];
+    expect(afterUndo).toMatchObject({ cwd: workspacePath, resume: false });
+    expect(afterUndo.sessionId).not.toBe(first.sessionId);
+    expect(afterUndo.prompt).toContain("Plan the violet change");
+    expect(afterUndo.prompt).not.toContain("Make the violet change");
+
+    // After its worktree is deleted (and isolation is off), the chat
+    // continues in the app's folder with the session it started there.
+    await chatWorkspaceService.deleteChatWorkspace(chatId);
+    expect(getWorkspaceForChat(chatId)).toBeUndefined();
+    writeSettings({ enableWorktreeIsolation: false });
+    await harness.streamChat("Continue", { chatId });
+    expect(calls.run.mock.calls[3][0]).toMatchObject({
+      cwd: harness.appDir,
+      resume: true,
+      sessionId: afterUndo.sessionId,
+    });
+  } finally {
+    if (getWorkspaceForChat(chatId))
+      await chatWorkspaceService.onChatDeleting(chatId);
+  }
+});
+
+it("keeps a Claude Code chat in the app's folder when its CLI cannot resume elsewhere", async () => {
+  writeSettings({ enableWorktreeIsolation: true });
+  const chatId = await ipc.chat.createChat({ appId: harness.appId });
+  await harness.streamChat("Make the change", { chatId });
+  expect(calls.run).toHaveBeenCalledOnce();
+  expect(calls.run.mock.calls[0][0].cwd).toBe(harness.appDir);
+  expect(getWorkspaceForChat(chatId)).toBeUndefined();
 });
 
 it("does not strand a new chat in running state when bridge setup fails", async () => {

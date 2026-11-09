@@ -20,6 +20,7 @@ import {
   ClaudeCodeModelsSchema,
   type ClaudeCodeModel,
 } from "@/shared/claude_code_models";
+import { CLAUDE_CROSS_DIRECTORY_RESUME_VERSION } from "@/shared/claude_code_cli";
 
 const execFileAsync = promisify(execFile);
 const running = new Set<ChildProcess>();
@@ -102,13 +103,38 @@ export async function findClaudeExecutable(): Promise<string> {
   );
 }
 
+function parseClaudeVersion(version: string | null): number[] | null {
+  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version ?? "");
+  return match ? match.slice(1).map(Number) : null;
+}
+
+function isClaudeVersionAtLeast(
+  version: string | null,
+  minimum: string,
+): boolean {
+  const parts = parseClaudeVersion(version);
+  const floor = parseClaudeVersion(minimum)!;
+  if (!parts) return false;
+  for (let index = 0; index < floor.length; index++) {
+    if (parts[index] !== floor[index]) return parts[index] > floor[index];
+  }
+  return true;
+}
+
 export function isClaudeVersionSupported(version: string): boolean {
-  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
-  if (!match) return false;
-  const [major, minor, patch] = match.slice(1).map(Number);
-  return (
-    major > 2 || (major === 2 && (minor > 1 || (minor === 1 && patch >= 259)))
-  );
+  return isClaudeVersionAtLeast(version, "2.1.259");
+}
+
+/**
+ * Whether this CLI can keep a chat's session when its turns move between the
+ * app's folder and an isolated worktree. Worktree isolation needs it: a chat's
+ * folder changes when it is isolated and again when its merged worktree is
+ * removed.
+ */
+export function canClaudeResumeFromAnotherDirectory(
+  version: string | null,
+): boolean {
+  return isClaudeVersionAtLeast(version, CLAUDE_CROSS_DIRECTORY_RESUME_VERSION);
 }
 let statusCache:
   | { value: Awaited<ReturnType<typeof probeClaudeStatus>>; expires: number }

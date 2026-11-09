@@ -16,7 +16,10 @@ import {
   executionBackendForModel,
   BACKEND_SWITCH_MESSAGE,
 } from "@/shared/execution_backend";
-import { claudeStatus } from "@/ipc/services/claude_code/runtime";
+import {
+  canClaudeResumeFromAnotherDirectory,
+  claudeStatus,
+} from "@/ipc/services/claude_code/runtime";
 import { handleLocalAgentStream } from "@/pro/main/ipc/handlers/local_agent/local_agent_handler";
 import { v4 as uuidv4 } from "uuid";
 import { app, type IpcMainInvokeEvent, type WebContents } from "electron";
@@ -1248,6 +1251,7 @@ export function registerChatStreamHandlers() {
         (chat.executionBackend ?? "dyad")
       )
         throw new DyadError(BACKEND_SWITCH_MESSAGE, DyadErrorKind.Precondition);
+      let allowWorkspaceIsolation = true;
       if (chat.executionBackend === "claude-code") {
         if (trackedStream) trackedStream.drainBeforeEnd = true;
         if (!baseSettings.enableClaudeCodeSubscription)
@@ -1263,6 +1267,11 @@ export function registerChatStreamHandlers() {
         const status = await claudeStatus();
         if (!status.connected || !status.compatible)
           throw new DyadError(status.detail, DyadErrorKind.Precondition);
+        // Isolating the chat moves the CLI between folders; an older CLI
+        // would lose the session, so it keeps sharing the app's folder.
+        allowWorkspaceIsolation = canClaudeResumeFromAnotherDirectory(
+          status.version,
+        );
       }
 
       // Reserve quota before redo or attachment persistence. The reservation
@@ -2197,7 +2206,7 @@ ${componentSnippet}
           chatId: req.chatId,
           originalAppPath: getDyadAppPath(updatedChat.app.path),
           writable: turnIsWritable,
-          allowIsolation: chat.executionBackend !== "claude-code",
+          allowIsolation: allowWorkspaceIsolation,
           signal: abortController.signal,
           onWaiting: showWorkspaceWait,
         });

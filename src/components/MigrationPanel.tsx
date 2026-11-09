@@ -22,6 +22,7 @@ import { getErrorMessage } from "@/lib/errors";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { useNeon } from "@/hooks/useNeon";
 import { MigrationSqlPreview } from "./MigrationSqlPreview";
+import { NeonReconnectionNotice } from "./NeonReconnectionNotice";
 
 export type MigrationOutcome = "no-changes" | "applied";
 
@@ -42,7 +43,8 @@ export const MigrationPanelBody = ({
 }: MigrationPanelProps) => {
   const { t } = useTranslation("home");
   const { app } = useLoadApp(appId);
-  const { projectInfo, branches } = useNeon(appId);
+  const { projectInfo, branches, requiresReconnection, projectAccessDenied } =
+    useNeon(appId);
   const [showErrorDetails, setShowErrorDetails] = useState(false);
   const errorDetailsId = useId();
   const previewTriggerId = useId();
@@ -99,7 +101,13 @@ export const MigrationPanelBody = ({
   }, [confirmOpen, presentation]);
   const didAutoPreview = useRef(false);
   useEffect(() => {
-    if (!autoPreview || didAutoPreview.current) return;
+    if (
+      !autoPreview ||
+      didAutoPreview.current ||
+      requiresReconnection ||
+      projectAccessDenied
+    )
+      return;
     let disposed = false;
     // Strict Mode replays effects and detaches the mutation observer. Start
     // after that replay so the live observer receives the result, and only
@@ -113,7 +121,7 @@ export const MigrationPanelBody = ({
     return () => {
       disposed = true;
     };
-  }, [autoPreview, startPreview]);
+  }, [autoPreview, startPreview, requiresReconnection, projectAccessDenied]);
   useEffect(() => {
     onBusyChange?.(migrateMutation.isPending);
   }, [migrateMutation.isPending, onBusyChange]);
@@ -245,6 +253,15 @@ export const MigrationPanelBody = ({
       </div>
     </>
   );
+
+  if (requiresReconnection || projectAccessDenied) {
+    return (
+      <NeonReconnectionNotice
+        appId={appId}
+        projectAccessDenied={!requiresReconnection && projectAccessDenied}
+      />
+    );
+  }
 
   return (
     <div className="space-y-4">

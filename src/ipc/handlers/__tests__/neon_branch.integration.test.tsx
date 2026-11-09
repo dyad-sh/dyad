@@ -32,7 +32,7 @@ import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { eq } from "drizzle-orm";
 
 import { apps, chats } from "@/db/schema";
-import { writeSettings } from "@/main/settings";
+import { readSettings, writeSettings } from "@/main/settings";
 import {
   setupHybridChatHarness,
   type HybridChatHarness,
@@ -44,6 +44,9 @@ import * as appEnvVars from "@/ipc/utils/app_env_var_utils";
 import { ipc } from "@/ipc/types";
 import * as neonManagement from "@/neon_admin/neon_management_client";
 import * as dependencies from "@/ipc/processors/executeAddDependency";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { shouldFilterTelemetryException } from "@/ipc/utils/telemetry";
+import { handleNeonOAuthReturn } from "@/neon_admin/neon_return_handler";
 
 type TestApp = {
   appId: number;
@@ -163,6 +166,64 @@ describe("Neon branch actions (integration)", () => {
   async function appRow(appId: number) {
     return harness.db.query.apps.findFirst({ where: eq(apps.id, appId) });
   }
+
+  it("preserves Auth errors across the projects IPC boundary and filters them from telemetry", async () => {
+    const client = vi
+      .spyOn(neonManagement, "getNeonClient")
+      .mockRejectedValue(new DyadError("Reconnect Neon", DyadErrorKind.Auth));
+    try {
+      const error = await ipc.neon
+        .listProjects()
+        .catch((error: unknown) => error);
+      expect(error).toBeInstanceOf(DyadError);
+      expect(error).toMatchObject({ kind: DyadErrorKind.Auth });
+      expect(shouldFilterTelemetryException(error)).toBe(true);
+    } finally {
+      client.mockRestore();
+    }
+  });
+
+  it.each([403, 404])(
+    "keeps the linked project when the new account cannot access it (HTTP %s)",
+    async (status) => {
+      const app = await createApp("reconnect-no-access", "vite");
+      await harness.db
+        .update(apps)
+        .set({
+          neonProjectId: "original-project",
+          neonActiveBranchId: "original-branch",
+        })
+        .where(eq(apps.id, app.appId));
+      writeSettings({
+        neon: { accessToken: { value: "old" }, reconnectRequired: true },
+      });
+      handleNeonOAuthReturn({
+        token: "new-access",
+        refreshToken: "new-refresh",
+        expiresIn: 3600,
+      });
+      const client = await neonManagement.getNeonClient();
+      const mockClient = vi
+        .spyOn(neonManagement, "getNeonClient")
+        .mockResolvedValue(
+          Object.assign(client, {
+            getProject: vi.fn().mockRejectedValue({ response: { status } }),
+          }),
+        );
+      try {
+        await expect(
+          ipc.neon.getProject({ appId: app.appId }),
+        ).rejects.toMatchObject({ kind: DyadErrorKind.Auth });
+        expect(await appRow(app.appId)).toMatchObject({
+          neonProjectId: "original-project",
+          neonActiveBranchId: "original-branch",
+        });
+        expect(readSettings().neon?.reconnectRequired).toBeUndefined();
+      } finally {
+        mockClient.mockRestore();
+      }
+    },
+  );
 
   async function waitForEnv(appDir: string, expected: string): Promise<string> {
     let contents = "";

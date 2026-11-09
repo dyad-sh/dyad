@@ -835,7 +835,13 @@
       "connectFailed": "Neon 연결에 실패했습니다",
       "removeCloudflareEnvVars": "Cloudflare에서 Neon 시크릿 제거",
       "removeCloudflareEnvVarsHelp": "연결된 Worker가 연결 해제된 데이터베이스를 가리키지 않도록 DATABASE_URL 및 NEON_AUTH_BASE_URL을 삭제합니다.",
-      "failedRemoveCloudflareEnvVars": "연결은 해제되었지만 Cloudflare에서 Neon 시크릿 제거에 실패했습니다."
+      "failedRemoveCloudflareEnvVars": "연결은 해제되었지만 Cloudflare에서 Neon 시크릿 제거에 실패했습니다.",
+      "reconnectTitle": "Neon 다시 연결",
+      "reconnectDescription": "Dyad가 Neon 프로젝트에 접근할 수 있도록 다시 로그인하세요. 기존 프로젝트 연결은 유지됩니다.",
+      "projectAccessRequired": "이 Neon 계정은 연결된 프로젝트에 접근할 수 없습니다. 접근 권한이 있는 계정으로 로그인하세요. 기존 프로젝트 연결은 유지됩니다.",
+      "signInAnotherAccount": "다른 계정으로 로그인",
+      "waitingForSignIn": "Neon 로그인 대기 중…",
+      "reconnectedSuccess": "Neon에 다시 연결되었습니다."
     },
     "db": {
       "projectInfo": "{{provider}} 프로젝트 정보",

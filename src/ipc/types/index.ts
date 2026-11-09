@@ -182,6 +182,13 @@ export {
   recordingEventClient,
   recordingEvents,
 } from "./recording";
+export { workspaceClient, workspaceContracts } from "./workspace";
+export type {
+  AppWorkspaceOverview,
+  ChatWorkspaceStatus,
+  WorkspaceIntegrationPhase,
+  WorkspaceValidationCheckDto,
+} from "./workspace";
 
 // =============================================================================
 // Type Exports
@@ -582,6 +589,7 @@ import { appCollectionClient } from "./app_collections";
 import { terminalClient } from "./terminal";
 import { testsClient, testsEventClient } from "./tests";
 import { recordingClient, recordingEventClient } from "./recording";
+import { workspaceClient } from "./workspace";
 import { userInputClient, userInputEventClient } from "./user_input";
 import { firstPromptClient } from "./first_prompt";
 import {
@@ -666,6 +674,7 @@ export const ipc = {
   terminal: terminalClient,
   tests: testsClient,
   recording: recordingClient,
+  workspace: workspaceClient,
   userInput: userInputClient,
   firstPrompt: firstPromptClient,
   windowInfrastructure: windowInfrastructureClient,

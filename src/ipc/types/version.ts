@@ -18,6 +18,21 @@ export const VersionSchema = z.object({
   dbTimestamp: z.string().nullable().optional(),
   isFavorite: z.boolean(),
   note: z.string().nullable(),
+  /**
+   * The chat worktree that added this version (its squash, or a checkpoint
+   * from before squashing), from the commit's `Dyad-*` trailers. Null for
+   * versions made in the app's own folder.
+   */
+  workspace: z
+    .object({
+      branch: z.string(),
+      chatId: z.number().nullable(),
+      chatTitle: z.string().nullable(),
+    })
+    .nullable()
+    .optional(),
+  /** Assistant messages whose turns this version contains. */
+  turnMessageIds: z.array(z.number()).optional(),
 });
 
 export type Version = z.infer<typeof VersionSchema>;

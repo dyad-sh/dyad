@@ -391,6 +391,9 @@ export const DyadAppBlueprintCard: React.FC<DyadAppBlueprintCardProps> = ({
         if (selectedAppId) {
           let currentApp = app;
           let templateNeedsRestart = false;
+          // The chat's isolated workspace when the template was brought into
+          // it, since that is what the chat previews; otherwise the app.
+          let templateRuntimeAppId = selectedAppId;
 
           if (!currentApp) {
             try {
@@ -483,12 +486,14 @@ export const DyadAppBlueprintCard: React.FC<DyadAppBlueprintCardProps> = ({
 
           if (!renameFailed) {
             try {
-              const { needsRestart } = await ipc.template.applyAppTemplate({
-                appId: selectedAppId,
-                templateId: plan.templateId,
-                chatId: chatId ?? undefined,
-              });
+              const { needsRestart, runtimeAppId } =
+                await ipc.template.applyAppTemplate({
+                  appId: selectedAppId,
+                  templateId: plan.templateId,
+                  chatId: chatId ?? undefined,
+                });
               templateNeedsRestart = needsRestart;
+              templateRuntimeAppId = runtimeAppId;
             } catch (error) {
               templateApplyFailed = true;
               recordApplyError("Could not apply the selected template.", error);
@@ -513,7 +518,7 @@ export const DyadAppBlueprintCard: React.FC<DyadAppBlueprintCardProps> = ({
           if (templateNeedsRestart) {
             try {
               await restartApp({
-                appId: selectedAppId,
+                appId: templateRuntimeAppId,
                 removeNodeModules: true,
               });
             } catch (error) {

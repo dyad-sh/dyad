@@ -3726,6 +3726,8 @@ describe("handleLocalAgentStream", () => {
             createdAtStrategy: "now",
             abortSignal: expect.any(AbortSignal),
             settingsOverride: expect.any(Object),
+            // Without an isolated workspace, the backup stays in the app.
+            durableAppPath: "/mock/apps/test-app-path",
           },
         );
         expect(secondStepPreparedMessages).toBeDefined();

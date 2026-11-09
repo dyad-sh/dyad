@@ -52,6 +52,8 @@ import type { SqlConsentMetadata } from "@/shared/sqlConsentMetadata";
 import { isFreeProModel } from "@/lib/freeProModel";
 import { readSettings } from "@/main/settings";
 import { getDyadAppPath } from "@/paths/paths";
+import type { TurnWorkspace } from "@/ipc/services/chat_workspace_service";
+import { isMergeInProgress } from "@/ipc/utils/git_worktree_utils";
 import { detectFrameworkType } from "@/ipc/utils/framework_utils";
 import {
   getModelClient,
@@ -570,6 +572,30 @@ function injectReferencedAppsReminder(
   }
 }
 
+/**
+ * Append a `<system-reminder>` describing the turn's workspace (isolation,
+ * synchronization with the target branch, unfinished merges) to the latest
+ * user message, keeping the system prompt static and cacheable.
+ */
+function injectWorkspaceReminder(
+  messageHistory: ModelMessage[],
+  notes: readonly string[],
+): void {
+  const reminder = `\n\n<system-reminder>\n${notes.map(escapeXmlContent).join("\n\n")}\n</system-reminder>`;
+  for (let i = messageHistory.length - 1; i >= 0; i--) {
+    const msg = messageHistory[i];
+    if (msg.role !== "user") continue;
+    messageHistory[i] =
+      typeof msg.content === "string"
+        ? { ...msg, content: msg.content + reminder }
+        : {
+            ...msg,
+            content: [...msg.content, { type: "text", text: reminder }],
+          };
+    return;
+  }
+}
+
 function getMessageText(message: ModelMessage): string {
   if (typeof message.content === "string") {
     return message.content;
@@ -659,6 +685,7 @@ export async function handleLocalAgentStream(
     implementerFallbackSystemPrompt,
     supabaseProviderToolsAvailable,
     neonProviderToolsAvailable,
+    workspace,
   }: {
     placeholderMessageId: number;
     systemPrompt: string;
@@ -705,6 +732,11 @@ export async function handleLocalAgentStream(
     supabaseProviderToolsAvailable: boolean;
     /** Whether the root and read-only children can authenticate Neon reads. */
     neonProviderToolsAvailable: boolean;
+    /**
+     * Where this turn works: the app's original directory or the chat's
+     * isolated workspace. Omitted only by callers that predate workspaces.
+     */
+    workspace?: TurnWorkspace;
   },
 ): Promise<boolean> {
   const storedSettings = settingsOverride ?? readSettings();
@@ -874,7 +906,17 @@ export async function handleLocalAgentStream(
     return false;
   }
 
-  let appPath = getDyadAppPath(chat.app.path);
+  // An isolated workspace's folder never moves, but the app's own folder can
+  // (rename or relocation) while the turn waits, so it is re-resolved from
+  // the latest app row whenever the chat is reloaded.
+  const resolveAppPath = () =>
+    workspace?.kind === "isolated"
+      ? workspace.appPath
+      : getDyadAppPath(chat.app.path);
+  let appPath = resolveAppPath();
+  // Plans, todos, and other `.dyad` state stay with the app's original
+  // directory so removing an isolated workspace never loses them.
+  let dyadMetadataPath = getDyadAppPath(chat.app.path);
 
   const maybePerformPendingCompaction = async (options?: {
     showOnTopOfCurrentResponse?: boolean;
@@ -914,6 +956,8 @@ export async function handleLocalAgentStream(
           : "before-latest-user",
         abortSignal: abortController.signal,
         settingsOverride: settings,
+        // In a worktree, also keep the backup where it outlives the worktree.
+        durableAppPath: dyadMetadataPath,
       },
     );
     if (compactionResult.skipped) {
@@ -1007,7 +1051,8 @@ export async function handleLocalAgentStream(
       if (!refreshed?.app)
         throw new DyadError("App no longer exists", DyadErrorKind.NotFound);
       chat = refreshed;
-      appPath = getDyadAppPath(chat.app.path);
+      appPath = resolveAppPath();
+      dyadMetadataPath = getDyadAppPath(chat.app.path);
     }
     currentInferenceSource = () =>
       getInferenceSource(
@@ -1025,7 +1070,7 @@ export async function handleLocalAgentStream(
         : messages;
 
     // Load persisted todos from a previous turn (if any)
-    persistedTodos = await loadTodos(appPath, chat.id);
+    persistedTodos = await loadTodos(dyadMetadataPath, chat.id);
     // Ensure .dyad/ is gitignored (idempotent; also done by compaction/plans)
     // Skip in read-only/plan-only mode to avoid modifying the workspace
     if (!readOnly && !planModeOnly) {
@@ -1061,6 +1106,20 @@ export async function handleLocalAgentStream(
       event,
       appId: chat.app.id,
       appPath,
+      dyadMetadataPath,
+      runtimeAppId: workspace?.runtimeAppId ?? chat.app.id,
+      workspaceCoordinationKey: workspace?.coordinationKey,
+      isolatedWorkspace:
+        workspace?.kind === "isolated" &&
+        workspace.workspaceId !== null &&
+        workspace.branch &&
+        workspace.targetBranch
+          ? {
+              workspaceId: workspace.workspaceId,
+              branch: workspace.branch,
+              targetBranch: workspace.targetBranch,
+            }
+          : undefined,
       referencedApps: referencedAppsMap,
       referencedAppIds: new Map(
         referencedApps.flatMap((ref) =>
@@ -1360,6 +1419,9 @@ export async function handleLocalAgentStream(
         codeExplorerAvailable: agentTools.spawn_agent != undefined,
         registeredToolNames,
       });
+    }
+    if (workspace && workspace.promptNotes.length > 0) {
+      injectWorkspaceReminder(messageHistory, workspace.promptNotes);
     }
 
     let compactBeforeNextStep = false;
@@ -2336,7 +2398,12 @@ export async function handleLocalAgentStream(
           content: appendCancelledResponseNotice(fullResponse ?? ""),
         })
         .where(eq(messages.id, placeholderMessageId));
-      await clearTodosOnCancel(event, appPath, chat.id, persistedTodos);
+      await clearTodosOnCancel(
+        event,
+        dyadMetadataPath,
+        chat.id,
+        persistedTodos,
+      );
       return false; // Cancelled - don't consume quota
     }
 
@@ -2368,6 +2435,7 @@ export async function handleLocalAgentStream(
     // Check if we hit the step limit and append a notice to the response
     if (totalStepsExecuted >= maxToolCallSteps) {
       hitStepLimit = true;
+      if (workspace) workspace.outcome.stepLimitReached = true;
       logger.info(
         `Chat ${req.chatId} hit step limit of ${maxToolCallSteps} steps`,
       );
@@ -2444,10 +2512,17 @@ export async function handleLocalAgentStream(
       logger.warn("Failed to save AI messages JSON:", err);
     }
 
-    // In read-only and plan mode, skip commits
-    if (!readOnly && !planModeOnly) {
+    // In read-only and plan mode, skip commits. While Dyad is combining an
+    // isolated workspace with its target, the turn's edits are the merge's
+    // resolution: integration verifies and completes that merge itself, so a
+    // checkpoint here would publish a partial resolution.
+    const mergeOwnedByIntegration =
+      ctx.isolatedWorkspace !== undefined && isMergeInProgress(appPath);
+    if (!readOnly && !planModeOnly && !mergeOwnedByIntegration) {
       // Commit all changes
-      const commitResult = await commitAllChanges(ctx, ctx.chatSummary);
+      const commitResult = await commitAllChanges(ctx, ctx.chatSummary, {
+        userPrompt: req.prompt,
+      });
 
       if (commitResult.commitHash) {
         await db
@@ -2459,7 +2534,11 @@ export async function handleLocalAgentStream(
       // Store Neon DB timestamp for version tracking / time-travel
       if (ctx.neonProjectId && ctx.neonActiveBranchId) {
         try {
-          await storeDbTimestampAtCurrentVersion({ appId: ctx.appId });
+          // The turn's own commit, in its worktree when it is isolated.
+          await storeDbTimestampAtCurrentVersion({
+            appId: ctx.appId,
+            appPath: ctx.appPath,
+          });
         } catch (error) {
           logger.error(
             "Error storing Neon timestamp at current version:",
@@ -2559,7 +2638,12 @@ export async function handleLocalAgentStream(
           content: appendCancelledResponseNotice(fullResponse ?? ""),
         })
         .where(eq(messages.id, placeholderMessageId));
-      await clearTodosOnCancel(event, appPath, chat.id, persistedTodos);
+      await clearTodosOnCancel(
+        event,
+        dyadMetadataPath,
+        chat.id,
+        persistedTodos,
+      );
       return false; // Cancelled - don't consume quota
     }
 

@@ -60,6 +60,7 @@ async function mutateChatAfterDrainingStreams({
   sender,
   cancellationCause,
   beforeLock,
+  afterDrain,
   mutation,
 }: {
   chatId: number;
@@ -71,6 +72,8 @@ async function mutateChatAfterDrainingStreams({
    */
   cancellationCause?: CancellationCause;
   beforeLock?: () => Promise<void | (() => void)>;
+  /** Runs once the chat's turns are cancelled and drained, outside the lock. */
+  afterDrain?: () => Promise<void>;
   mutation: () => Promise<void>;
 }): Promise<void> {
   const releaseActorAdmissionBlock = beginChatActorMutation(chatId);
@@ -102,6 +105,7 @@ async function mutateChatAfterDrainingStreams({
         undefined,
         cancellationCause,
       );
+      await afterDrain?.();
       await appOperationCoordinator.run(
         {
           appId: chat.appId,
@@ -356,6 +360,15 @@ export function registerChatHandlers() {
             releaseSubagents();
             throw error;
           }
+        },
+        // The chat's isolated workspace goes with it: its preview, worktree,
+        // and merge state. After its turns are drained (none is still writing
+        // there) and before the chat-content claim, because removal takes the
+        // app's claims itself. Only a fully merged branch is deleted.
+        afterDrain: async () => {
+          const { chatWorkspaceService } =
+            await import("@/ipc/services/chat_workspace_service");
+          await chatWorkspaceService.onChatDeleting(chatId);
         },
         mutation: async () => {
           await deleteChatJournals(chatId);

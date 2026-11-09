@@ -64,6 +64,7 @@ export const SETTING_IDS = {
   enableOwnServerDeployment: "setting-enable-own-server-deployment",
   enableGitlabPublishing: "setting-enable-gitlab-publishing",
   enableTestRunInPreview: "setting-enable-test-run-in-preview",
+  enableWorktreeIsolation: "setting-enable-worktree-isolation",
   reset: "setting-reset",
 } as const;
 
@@ -809,6 +810,25 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
       "debugging",
       "native",
       "webcontentsview",
+      "experiment",
+    ],
+    sectionId: SECTION_IDS.experiments,
+    sectionLabel: "Experiments",
+  },
+  {
+    id: SETTING_IDS.enableWorktreeIsolation,
+    label: "Worktree isolation",
+    description:
+      "Give every chat its own Git branch and working directory, then merge its finished work automatically",
+    keywords: [
+      "worktree",
+      "branch",
+      "isolation",
+      "concurrent",
+      "parallel",
+      "chats",
+      "merge",
+      "git",
       "experiment",
     ],
     sectionId: SECTION_IDS.experiments,

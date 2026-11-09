@@ -160,23 +160,23 @@ const ChatMessage = ({
       message.role === "assistant" ? assistantTextContent : message.content,
     );
   };
-  // Find the version that was active when this message was sent
+  // Find the version on the app's branch that holds this message's turn
   const messageVersion = useMemo(() => {
-    if (
-      message.role === "assistant" &&
-      message.commitHash &&
-      liveVersions.length
-    ) {
-      return (
-        liveVersions.find(
-          (version) =>
-            message.commitHash &&
-            version.oid.slice(0, 7) === message.commitHash.slice(0, 7),
-        ) || null
+    if (message.role !== "assistant" || !liveVersions.length) return null;
+    const commitHash = message.commitHash;
+    if (commitHash) {
+      const byCommit = liveVersions.find(
+        (version) => version.oid.slice(0, 7) === commitHash.slice(0, 7),
       );
+      if (byCommit) return byCommit;
     }
-    return null;
-  }, [message.commitHash, message.role, liveVersions]);
+    // A worktree's work lands as one squash that names the turns it holds.
+    return (
+      liveVersions.find((version) =>
+        version.turnMessageIds?.includes(message.id),
+      ) ?? null
+    );
+  }, [message.commitHash, message.id, message.role, liveVersions]);
 
   // Calculate version number (sequential: oldest = 1, newest = liveVersions.length)
   const versionNumber = useMemo(() => {

@@ -7,11 +7,13 @@ import { z } from "zod";
 
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
-  appOperationCoordinator,
   type AppOperationContext,
   readAppResource,
 } from "@/ipc/services/app_operation_coordinator";
+import { runWorkspaceScopedOperation } from "@/ipc/services/workspace_coordination";
 import {
+  BUILD_SNAPSHOT_PREFIX,
+  BUILD_SNAPSHOT_ROOT_NAME,
   copyGitOverlayEntriesOnWindows,
   createGitOverlayWorkspace,
   isGitOverlayWorkspaceActive,
@@ -44,9 +46,7 @@ const BUILD_TIMEOUT_MS = 10 * 60_000;
 const MAX_RESULT_OUTPUT_CHARS = 16_000;
 const BUILD_OUTPUT_PREVIEW_INTERVAL_MS = 250;
 const STALE_SNAPSHOT_AGE_MS = 60 * 60_000;
-const SNAPSHOT_PREFIX = ".dyad-build-";
 const SNAPSHOT_NAME_PATTERN = /^\.dyad-build-[A-Za-z0-9]{6}$/;
-const SNAPSHOT_ROOT_NAME = "build-snapshots";
 const SNAPSHOT_EXCLUDED_NAMES = new Set([
   "node_modules",
   ".next",
@@ -87,6 +87,11 @@ interface BuildSlot {
 }
 
 const activeBuilds = new Map<number, BuildSlot>();
+
+/** Builds are per runtime: isolated workspaces build independently. */
+function getBuildKey(ctx: AgentContext): number {
+  return ctx.runtimeAppId ?? ctx.appId;
+}
 
 function completeStatus(
   ctx: AgentContext,
@@ -163,7 +168,7 @@ export async function secureSnapshotSymlinks(
 }
 
 function getBuildSnapshotRoot(): string {
-  return path.join(getUserDataPath(), SNAPSHOT_ROOT_NAME);
+  return path.join(getUserDataPath(), BUILD_SNAPSHOT_ROOT_NAME);
 }
 
 export async function createBuildWorktree(
@@ -175,7 +180,7 @@ export async function createBuildWorktree(
   const workspace = await createGitOverlayWorkspace({
     sourceTargetPath: appPath,
     scratchRoot: snapshotRoot,
-    directoryPrefix: SNAPSHOT_PREFIX,
+    directoryPrefix: BUILD_SNAPSHOT_PREFIX,
     purpose: "build",
     excludedTargetRootNames: SNAPSHOT_EXCLUDED_NAMES,
     cleanupFailureMode: "background",
@@ -457,24 +462,29 @@ function runBuildOperation(
   operation: (scope: BuildOperationScope) => Promise<string>,
 ): Promise<string> {
   const label = `Production build ${slot.id} for app ${ctx.appId}`;
+  const buildKey = getBuildKey(ctx);
   const releaseBuildSlot = () => {
-    if (activeBuilds.get(ctx.appId) === slot) activeBuilds.delete(ctx.appId);
+    if (activeBuilds.get(buildKey) === slot) activeBuilds.delete(buildKey);
   };
   return new Promise((resolve, reject) => {
-    void appOperationCoordinator
-      .run(
-        {
-          appId: ctx.appId,
-          operation: "run production build",
-          resources: [
-            readAppResource("app-path"),
-            readAppResource("repository-ref"),
-            { resource: "repository-worktree", mode: "write" },
-            readAppResource("runtime"),
-          ],
-          refuseWhenRecording: "run a production build",
-          signal: ctx.abortSignal,
-        },
+    void runWorkspaceScopedOperation(
+      {
+        appId: ctx.appId,
+        workspaceKey: ctx.workspaceCoordinationKey,
+        operation: "run production build",
+        // Refs are shared by every worktree of the repository; the snapshot
+        // reads them and registers its own worktree there.
+        appResources: [
+          readAppResource("app-path"),
+          readAppResource("repository-ref"),
+        ],
+        workspaceResources: [
+          { resource: "repository-worktree", mode: "write" },
+          readAppResource("runtime"),
+        ],
+        refuseWhenRecording: "run a production build",
+        signal: ctx.abortSignal,
+      },
         async ({ releaseResources }) => {
           let snapshot: Snapshot | undefined;
           const retained: Promise<unknown>[] = [];
@@ -571,7 +581,8 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
       : '<dyad-status title="Running production build"></dyad-status>',
 
   execute: async (_args, ctx) => {
-    if (activeBuilds.has(ctx.appId)) {
+    const buildKey = getBuildKey(ctx);
+    if (activeBuilds.has(buildKey)) {
       const body =
         "A production build is already running for this app. Wait for it to finish instead of starting another one.";
       completeStatus(ctx, "Build already running", body, "warning");
@@ -582,7 +593,7 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
       id: randomUUID(),
       abandoned: false,
     };
-    activeBuilds.set(ctx.appId, slot);
+    activeBuilds.set(buildKey, slot);
     return runBuildOperation(
       ctx,
       slot,
@@ -591,7 +602,7 @@ export const runBuildTool: ToolDefinition<z.infer<typeof runBuildSchema>> = {
           count: 0,
         } satisfies BuildAttemptState);
         const currentMutationCount = ctx.mutationCount ?? 0;
-        if (runningApps.get(ctx.appId)?.mode === "cloud") {
+        if (runningApps.get(buildKey)?.mode === "cloud") {
           throw new DyadError(
             "Production build verification is unavailable while this app is running in a cloud sandbox because the build would run on the host instead of inside that sandbox. Switch the app runtime to Host and try again.",
             DyadErrorKind.Precondition,

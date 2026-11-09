@@ -1,4 +1,5 @@
 import React from "react";
+import { useChatWorkspaceStatus } from "@/hooks/useChatWorkspace";
 import type { Message, Version } from "@/ipc/types";
 import {
   forwardRef,
@@ -35,6 +36,10 @@ import { useVersionPreview } from "@/hooks/useVersionPreview";
 import type { PreviewEvent } from "@/version_preview/state";
 import { ExtraCommitsRevertDialog } from "./ExtraCommitsRevertDialog";
 import { getExtraRevertedCommits } from "./revertImpact";
+import {
+  findVersionIndexForMessage,
+  versionHoldsOtherTurns,
+} from "./version_lookup";
 
 interface MessagesListProps {
   chatId: number | null;
@@ -63,6 +68,11 @@ interface FooterContext {
   selectedChatId: number | null;
   appId: number | null;
   renderSetupBanner: () => React.ReactNode;
+  /**
+   * The chat works in an isolated workspace: Undo and Retry revert only its
+   * own commits there instead of restoring the app's branch.
+   */
+  isIsolatedWorkspace: boolean;
 }
 
 type RevertConfirmation = {
@@ -141,6 +151,7 @@ function FooterComponent({ context }: { context?: FooterContext }) {
     appId,
     renderSetupBanner,
     executionBackend,
+    isIsolatedWorkspace,
   } = context;
 
   let questionnaireSettledAt: number | undefined;
@@ -251,6 +262,19 @@ function FooterComponent({ context }: { context?: FooterContext }) {
     });
   };
 
+  // An isolated chat undoes inside its own workspace: only its commits are
+  // reverted, so work merged from other chats is never rolled back and no
+  // workspace commit is ever restored into the app's main folder.
+  const undoInWorkspace = async ({
+    chatId,
+    fromUserMessageId,
+  }: {
+    chatId: number;
+    fromUserMessageId: number;
+  }) => {
+    await ipc.workspace.undoTurns({ chatId, fromUserMessageId });
+  };
+
   // Reverts the whole last generation: targets the version just before the last
   // assistant message's commit (falling back to its source commit) and drops the
   // messages produced by that turn. Shared by the modified-files card and the
@@ -262,6 +286,28 @@ function FooterComponent({ context }: { context?: FooterContext }) {
     }
     if (!beginAction("undo")) return;
 
+    if (isIsolatedWorkspace) {
+      try {
+        const userMessage = messages[messages.length - 2];
+        if (!userMessage || userMessage.role !== "user") {
+          showWarning("There is no earlier message to undo to.");
+          return;
+        }
+        await undoInWorkspace({
+          chatId: selectedChatId,
+          fromUserMessageId: userMessage.id,
+        });
+      } catch (error) {
+        console.error("Error during undo operation:", error);
+        showError(
+          error instanceof Error ? error.message : "Failed to undo changes",
+        );
+      } finally {
+        endAction("undo");
+      }
+      return;
+    }
+
     try {
       const freshVersions = restoreTargetBranch
         ? await ipc.version.listVersions({ appId, ref: restoreTargetBranch })
@@ -270,17 +316,41 @@ function FooterComponent({ context }: { context?: FooterContext }) {
       if (!isCurrentContext(appId, selectedChatId, currentMessage?.id)) return;
       // The user message that triggered this assistant response
       const userMessage = messages[messages.length - 2];
-      const currentCommitIndex = currentMessage?.commitHash
-        ? freshVersions.findIndex(
-            (version) => version.oid === currentMessage.commitHash,
-          )
+      const currentCommitIndex = currentMessage
+        ? findVersionIndexForMessage(freshVersions, currentMessage)
         : -1;
+      if (
+        currentMessage &&
+        currentCommitIndex >= 0 &&
+        versionHoldsOtherTurns(
+          freshVersions[currentCommitIndex],
+          currentMessage.id,
+        )
+      ) {
+        // The response landed together with this chat's earlier responses
+        // as one squash; restoring to before it would undo those as well.
+        showWarning(
+          "This response was merged together with earlier responses from this chat, so it can't be undone on its own. Restore a version from the Version history instead.",
+        );
+        return;
+      }
+      const currentVersionOid =
+        currentCommitIndex >= 0
+          ? freshVersions[currentCommitIndex].oid
+          : undefined;
       const previousVersionId =
         currentCommitIndex >= 0
           ? freshVersions[currentCommitIndex + 1]?.oid
           : undefined;
+      // Only restore to a version on the app's branch: a chat that worked in
+      // a worktree started from a worktree commit, which is not one.
+      const sourceCommitHash = currentMessage?.sourceCommitHash;
       const revertTargetVersionId =
-        previousVersionId ?? currentMessage?.sourceCommitHash;
+        previousVersionId ??
+        (sourceCommitHash &&
+        freshVersions.some((version) => version.oid === sourceCommitHash)
+          ? sourceCommitHash
+          : undefined);
 
       if (revertTargetVersionId) {
         const currentChatMessageId = userMessage
@@ -289,9 +359,7 @@ function FooterComponent({ context }: { context?: FooterContext }) {
         const extraCommits = getExtraRevertedCommits({
           versions: freshVersions,
           targetOid: revertTargetVersionId,
-          ownCommitHashes: currentMessage?.commitHash
-            ? [currentMessage.commitHash]
-            : [],
+          ownCommitHashes: currentVersionOid ? [currentVersionOid] : [],
         });
         const expectedHeadOid = freshVersions[0]?.oid;
 
@@ -317,7 +385,7 @@ function FooterComponent({ context }: { context?: FooterContext }) {
         });
       } else {
         showWarning(
-          "No source commit hash found for message. Need to manually undo code changes",
+          "This response's changes aren't in the app's version history, so there's nothing to undo here. Undo code changes manually if you need to.",
         );
       }
     } catch (error) {
@@ -345,6 +413,35 @@ function FooterComponent({ context }: { context?: FooterContext }) {
     }
     if (!beginAction("retry")) return;
 
+    if (isIsolatedWorkspace) {
+      try {
+        const lastUserMessage = [...messages]
+          .reverse()
+          .find((message) => message.role === "user");
+        if (!lastUserMessage) {
+          console.error("No user message found");
+          return;
+        }
+        await undoInWorkspace({
+          chatId: selectedChatId,
+          fromUserMessageId: lastUserMessage.id,
+        });
+        streamMessage({
+          prompt: lastUserMessage.content,
+          chatId: selectedChatId,
+          redo: false,
+        });
+      } catch (error) {
+        console.error("Error during retry operation:", error);
+        showError(
+          error instanceof Error ? error.message : "Failed to retry message",
+        );
+      } finally {
+        endAction("retry");
+      }
+      return;
+    }
+
     try {
       const freshVersions = restoreTargetBranch
         ? await ipc.version.listVersions({ appId, ref: restoreTargetBranch })
@@ -361,13 +458,17 @@ function FooterComponent({ context }: { context?: FooterContext }) {
       // in the freshly loaded history. Otherwise retry from the current code;
       // restoring without that snapshot would bypass impact and HEAD guards.
       const lastMessage = messages[messages.length - 1];
-      const currentCommitIndex = lastMessage?.commitHash
-        ? freshVersions.findIndex(
-            (version) => version.oid === lastMessage.commitHash,
-          )
+      const currentCommitIndex = lastMessage
+        ? findVersionIndexForMessage(freshVersions, lastMessage)
         : -1;
+      // A squash holding earlier turns too can't be restored past without
+      // undoing them, so Retry then starts from the current code.
       const previousVersionId =
-        currentCommitIndex >= 0
+        currentCommitIndex >= 0 &&
+        !versionHoldsOtherTurns(
+          freshVersions[currentCommitIndex],
+          lastMessage.id,
+        )
           ? freshVersions[currentCommitIndex + 1]?.oid
           : undefined;
       const revertTargetVersionId = previousVersionId;
@@ -390,9 +491,10 @@ function FooterComponent({ context }: { context?: FooterContext }) {
           getExtraRevertedCommits({
             versions: freshVersions,
             targetOid: revertTargetVersionId,
-            ownCommitHashes: lastMessage?.commitHash
-              ? [lastMessage.commitHash]
-              : [],
+            ownCommitHashes:
+              currentCommitIndex >= 0
+                ? [freshVersions[currentCommitIndex].oid]
+                : [],
           }) ?? [];
         const expectedHeadOid = freshVersions[0]?.oid;
         if (
@@ -663,6 +765,13 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
       persistedMessages,
     );
     const { chat: selectedChat } = useChatMode(selectedChatId);
+    const { data: workspaceStatus } = useChatWorkspaceStatus(
+      appId,
+      selectedChatId ?? undefined,
+    );
+    const isIsolatedWorkspace =
+      workspaceStatus?.chatId === selectedChatId &&
+      workspaceStatus.kind === "isolated";
 
     // Virtualization only renders visible DOM elements, which creates issues for E2E tests:
     // 1. Off-screen logs don't exist in the DOM and can't be queried by test selectors
@@ -755,6 +864,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
         selectedChatId,
         appId,
         renderSetupBanner,
+        isIsolatedWorkspace,
       }),
       [
         persistedMessages,
@@ -772,6 +882,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
         selectedChatId,
         appId,
         renderSetupBanner,
+        isIsolatedWorkspace,
       ],
     );
 

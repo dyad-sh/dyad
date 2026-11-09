@@ -145,7 +145,8 @@ CRITICAL REQUIREMENTS FOR USING THIS TOOL:
       await fs.promises.writeFile(fullFilePath, result.content);
       logger.log(`Successfully applied search-replace to: ${fullFilePath}`);
       queueCloudSandboxSnapshotSync({
-        appId: ctx.appId,
+        // Isolated workspace edits reach the app's sandbox once merged.
+        appId: ctx.runtimeAppId ?? ctx.appId,
         changedPaths: [operationPath],
       });
       sendTelemetryEvent("local_agent:search_replace:success", {

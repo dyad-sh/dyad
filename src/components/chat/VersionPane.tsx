@@ -6,6 +6,7 @@ import {
   RotateCcw,
   X,
   Database,
+  GitBranch,
   Loader2,
   Search,
   Star,
@@ -30,6 +31,52 @@ import {
   diffVersionIdForState,
   isRestoreRecoveryFlowState,
 } from "@/version_preview/state";
+
+/**
+ * Commits from isolated chat workspaces carry a structured body (request,
+ * changed files, checks) and `Dyad-*` trailers; the version row shows the
+ * subject only. Other messages are shown as written.
+ */
+export function summarizeDyadCommitMessage(message: string): string {
+  if (!/^Dyad-Chat: \d+$/m.test(message)) return message;
+  return message.split("\n")[0].trim();
+}
+
+/** Which chat worktree added a version, shown next to its number. */
+function VersionWorkspaceLabel({
+  workspace,
+  versionNumber,
+  searchQuery,
+}: {
+  workspace: NonNullable<Version["workspace"]>;
+  versionNumber: number;
+  searchQuery: string;
+}) {
+  const description = workspace.chatTitle
+    ? `Added by the worktree of chat "${workspace.chatTitle}" (${workspace.branch})`
+    : `Added by worktree ${workspace.branch}`;
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span
+            tabIndex={0}
+            aria-label={description}
+            className="inline-flex min-w-0 max-w-40 items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            data-testid={`version-workspace-${versionNumber}`}
+            onClick={(event) => event.stopPropagation()}
+          />
+        }
+      >
+        <GitBranch size={10} className="shrink-0" aria-hidden />
+        <span className="truncate">
+          <HighlightMatch text={workspace.branch} query={searchQuery} />
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{description}</TooltipContent>
+    </Tooltip>
+  );
+}
 
 function HighlightMatch({
   text,
@@ -126,19 +173,20 @@ function VersionRow({
     isResolvingPreviewBranch ||
     isAnyVersionMutationPending;
   const trimmedSearchQuery = searchQuery.trim();
+  const versionMessage = summarizeDyadCommitMessage(version.message);
   const displayMessage =
-    version.message &&
-    (version.message.startsWith("Reverted all changes back to version ")
-      ? version.message.replace(
+    versionMessage &&
+    (versionMessage.startsWith("Reverted all changes back to version ")
+      ? versionMessage.replace(
           /Reverted all changes back to version ([a-f0-9]+)/,
           (_, hash) => {
             const targetVersionNumber = versionNumberByOid.get(hash);
             return targetVersionNumber !== undefined
               ? `Reverted all changes back to version ${targetVersionNumber}`
-              : version.message;
+              : versionMessage;
           },
         )
-      : version.message);
+      : versionMessage);
 
   return (
     <div
@@ -221,6 +269,13 @@ function VersionRow({
                 />
                 )
               </span>
+              {version.workspace && (
+                <VersionWorkspaceLabel
+                  workspace={version.workspace}
+                  versionNumber={versionNumber}
+                  searchQuery={trimmedSearchQuery}
+                />
+              )}
               {/* example format: '2025-07-25T21:52:01Z' */}
               {version.dbTimestamp &&
                 (() => {

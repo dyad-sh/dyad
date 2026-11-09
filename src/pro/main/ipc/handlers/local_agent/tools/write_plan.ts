@@ -72,7 +72,7 @@ export const writePlanTool: ToolDefinition<z.infer<typeof writePlanSchema>> = {
     // outer whitespace, so broadcasting raw model text would create a version
     // that cannot pass exact-version acceptance after a reload.
     await savePlanToDisk({
-      appPath: ctx.appPath,
+      appPath: ctx.dyadMetadataPath ?? ctx.appPath,
       chatId: ctx.chatId,
       title: args.title,
       summary: args.summary,
@@ -80,7 +80,7 @@ export const writePlanTool: ToolDefinition<z.infer<typeof writePlanSchema>> = {
       status: "draft",
     });
     const plan = await readPlanFromDisk({
-      appPath: ctx.appPath,
+      appPath: ctx.dyadMetadataPath ?? ctx.appPath,
       chatId: ctx.chatId,
     });
     rememberPlanDraft(ctx.chatId, plan);

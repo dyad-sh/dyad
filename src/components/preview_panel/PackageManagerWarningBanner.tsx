@@ -1,4 +1,5 @@
 import type { PackageManagerWarning } from "@/package_manager_warnings/store";
+import { usePreviewRuntime } from "@/hooks/usePreviewRuntime";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -64,7 +65,13 @@ function PackageManagerWarningBannerContent({
 }) {
   const warningStore = usePackageManagerWarningStore();
   const rebuildAppAfterPnpmInstall = useRebuildAppAfterPnpmInstall();
-  const { loading: appRunLoading, restartApp, stopApp } = useRunApp();
+  // Warnings come from the runtime the preview shows (possibly a chat's
+  // isolated workspace), so restart that runtime.
+  const {
+    loading: appRunLoading,
+    restartApp,
+    stopApp,
+  } = useRunApp(usePreviewRuntime().runtimeAppId);
   const { updateSettings } = useSettings();
   const queryClient = useQueryClient();
   const [installStatus, setInstallStatus] = useState<InstallStatus>("idle");

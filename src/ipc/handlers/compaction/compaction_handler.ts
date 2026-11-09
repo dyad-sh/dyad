@@ -3,6 +3,8 @@
  * Orchestrates the compaction of long conversations to stay within context limits.
  */
 
+import fs from "node:fs";
+import path from "node:path";
 import { getAuxiliarySettings } from "@/lib/auxiliaryModel";
 import { IpcMainInvokeEvent } from "electron";
 import { streamText, ModelMessage } from "ai";
@@ -170,6 +172,12 @@ export async function performCompaction(
     createdAtStrategy?: "before-latest-user" | "now";
     abortSignal?: AbortSignal;
     settingsOverride?: UserSettings;
+    /**
+     * The app's own folder when `appPath` is a chat's worktree: the backup
+     * is also kept there, so it outlives the worktree (later worktrees get it
+     * mirrored in).
+     */
+    durableAppPath?: string;
   },
 ): Promise<CompactionResult> {
   const abortSignal = options?.abortSignal;
@@ -246,6 +254,21 @@ export async function performCompaction(
       conversationText,
       messagesToBackup.length,
     );
+    const durableAppPath = options?.durableAppPath;
+    if (durableAppPath && durableAppPath !== appPath) {
+      const durableBackup = path.join(durableAppPath, backupPath);
+      try {
+        await fs.promises.mkdir(path.dirname(durableBackup), {
+          recursive: true,
+        });
+        await fs.promises.copyFile(
+          path.join(appPath, backupPath),
+          durableBackup,
+        );
+      } catch (error) {
+        logger.warn("Failed to keep the compaction backup in the app", error);
+      }
+    }
 
     // Get model client
     const { modelClient } = await getModelClient(

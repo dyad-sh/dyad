@@ -60,8 +60,17 @@ export async function getPreciseNeonTimestamp({
  */
 export async function storeDbTimestampAtCurrentVersion({
   appId,
+  appPath: checkoutPath,
+  commitHash,
 }: {
   appId: number;
+  /**
+   * Folder whose HEAD the timestamp belongs to: a chat's worktree during an
+   * isolated turn. Defaults to the app's own folder.
+   */
+  appPath?: string;
+  /** Commit the timestamp belongs to, instead of the folder's HEAD. */
+  commitHash?: string;
 }): Promise<{ timestamp: string }> {
   try {
     logger.info(`Storing DB timestamp for current version - app ${appId}`);
@@ -87,8 +96,9 @@ export async function storeDbTimestampAtCurrentVersion({
     }
 
     // 2. Get the current commit hash
-    const appPath = getDyadAppPath(app.path);
-    const currentCommitHash = await getCurrentCommitHash({ path: appPath });
+    const appPath = checkoutPath ?? getDyadAppPath(app.path);
+    const currentCommitHash =
+      commitHash ?? (await getCurrentCommitHash({ path: appPath }));
 
     logger.info(`Current commit hash: ${currentCommitHash}`);
 

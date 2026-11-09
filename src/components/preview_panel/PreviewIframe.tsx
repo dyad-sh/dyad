@@ -119,15 +119,28 @@ import { useAppRunRemoteManager } from "@/app_run/AppRunRemoteProvider";
 export const PreviewIframe = ({
   loading,
   recorder,
+  runtimeAppId,
+  isWorkspacePreview = false,
 }: {
   loading: boolean;
   recorder: TestRecorderController;
+  /**
+   * Runtime shown in the iframe: the selected chat's isolated workspace, or
+   * the app itself (the default).
+   */
+  runtimeAppId?: number | null;
+  /** Whether the iframe shows an isolated chat workspace. */
+  isWorkspacePreview?: boolean;
 }) => {
   const { t } = useTranslation("home");
   const selectedAppId = useAtomValue(selectedAppIdAtom);
+  // Runtime-facing state (URL, console, iframe history) follows the runtime;
+  // app-level features stay keyed by the app.
+  const previewRuntimeAppId =
+    runtimeAppId === undefined ? selectedAppId : runtimeAppId;
   const isPreviewOpen = useAtomValue(isPreviewOpenAtom);
   const { appUrl, originalUrl, mode, previewAuth } =
-    useCurrentAppUrl(selectedAppId);
+    useCurrentAppUrl(previewRuntimeAppId);
   const testRunPhase = useAtomValue(currentTestRunStateAtom).phase;
   const appRunManager = useAppRunRemoteManager();
   const selectedChatId = useAtomValue(selectedChatIdAtom);
@@ -137,7 +150,7 @@ export const PreviewIframe = ({
     loading: routesLoading,
     error: routesError,
   } = useParseRouter(selectedAppId);
-  const { restartApp, refreshAppIframe } = useRunApp();
+  const { restartApp, refreshAppIframe } = useRunApp(previewRuntimeAppId);
   const { settings, updateSettings } = useSettings();
   const { userBudget } = useUserBudgetInfo();
   const isProMode = !!userBudget;
@@ -172,15 +185,17 @@ export const PreviewIframe = ({
     postMessage: postPreviewMessage,
     onIframeLoaded,
   } = usePreviewIframe({
-    appId: selectedAppId,
+    appId: previewRuntimeAppId,
     appUrl,
     iframeRef,
     onSharedMachineEvent: (event) => screenshotAdapterHandlerRef.current(event),
     onComponentMessage: (event) => componentMessageHandlerRef.current(event),
   });
   const errorMessage = selectPreviewError(iframeState);
+  // Screenshots are saved against the app's own commits, so a workspace
+  // preview (other code) is never captured as the app's thumbnail.
   screenshotAdapterHandlerRef.current = useScreenshot({
-    appId: selectedAppId,
+    appId: isWorkspacePreview ? null : selectedAppId,
     postMessage: postPreviewMessage,
   });
   const navigationHistory = iframeState.history;
@@ -544,11 +559,11 @@ export const PreviewIframe = ({
   useEffect(() => {
     if (iframeRef.current?.contentWindow && isComponentSelectorInitialized) {
       iframeRef.current.contentWindow.postMessage(
-        { type: "dyad-pro-mode", enabled: isProMode },
+        { type: "dyad-pro-mode", enabled: isProMode && !isWorkspacePreview },
         "*",
       );
     }
-  }, [isProMode, isComponentSelectorInitialized]);
+  }, [isProMode, isWorkspacePreview, isComponentSelectorInitialized]);
 
   // Component-side postMessage routes. The preview-iframe hook owns the one
   // window listener and claims navigation/selector lifecycle messages before
@@ -578,7 +593,7 @@ export const PreviewIframe = ({
           level: logLevel,
           type: "client" as const,
           message: formattedMessage,
-          appId: selectedAppId!,
+          appId: previewRuntimeAppId!,
           timestamp: Date.now(),
         });
 
@@ -601,7 +616,7 @@ export const PreviewIframe = ({
           level: "info" as const,
           type: "network-requests" as const,
           message: formattedMessage,
-          appId: selectedAppId!,
+          appId: previewRuntimeAppId!,
           timestamp: Date.now(),
         });
 
@@ -635,7 +650,7 @@ export const PreviewIframe = ({
           level,
           type: "network-requests" as const,
           message: formattedMessage,
-          appId: selectedAppId!,
+          appId: previewRuntimeAppId!,
           timestamp: Date.now(),
         });
 
@@ -667,7 +682,7 @@ export const PreviewIframe = ({
           level: "error" as const,
           type: "network-requests" as const,
           message: formattedMessage,
-          appId: selectedAppId!,
+          appId: previewRuntimeAppId!,
           timestamp: Date.now(),
         });
 
@@ -730,7 +745,9 @@ export const PreviewIframe = ({
           return [...prev, component];
         });
 
-        if (isProMode) {
+        // Visual edits write to the app's main folder, so they are off while
+        // the preview shows a chat's isolated workspace.
+        if (isProMode && !isWorkspacePreview) {
           // Set as the highlighted component for visual editing
           setVisualEditingSelectedComponent(component);
           // Trigger AST analysis
@@ -860,7 +877,7 @@ export const PreviewIframe = ({
           level: "error" as const,
           type: "client" as const,
           message: `Iframe error: ${errorMessage}`,
-          appId: selectedAppId!,
+          appId: previewRuntimeAppId!,
           timestamp: Date.now(),
         });
 
@@ -887,7 +904,7 @@ export const PreviewIframe = ({
             "Source code:",
             payload?.frame,
           ]),
-          appId: selectedAppId!,
+          appId: previewRuntimeAppId!,
           timestamp: Date.now(),
         });
 
@@ -900,6 +917,8 @@ export const PreviewIframe = ({
     },
     [
       selectedAppId,
+      previewRuntimeAppId,
+      isWorkspacePreview,
       appRunManager,
       sendIframeEvent,
       setSelectedComponentsPreview,

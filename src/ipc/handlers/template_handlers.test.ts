@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { eq } from "drizzle-orm";
 
-import { apps } from "@/db/schema";
+import { apps, chats } from "@/db/schema";
 import { DyadErrorKind } from "@/errors/dyad_error";
 import {
   type HandlerTestHarness,
@@ -29,6 +29,12 @@ const runningAppsMock = vi.hoisted(
 );
 const stopAppByInfoMock = vi.hoisted(() => vi.fn(async () => {}));
 const ensureDyadGitignoredMock = vi.hoisted(() => vi.fn(async () => {}));
+const activeWorkspaceMock = vi.hoisted(() =>
+  vi.fn((_chatId: number): { id: number } | undefined => undefined),
+);
+const synchronizeIdleWorkspaceMock = vi.hoisted(() =>
+  vi.fn(async (_chatId: number): Promise<number | null> => null),
+);
 
 vi.mock("electron", () => ({
   ipcMain: { handle: vi.fn(), on: vi.fn() },
@@ -88,6 +94,19 @@ vi.mock("@/ipc/utils/process_manager", () => ({
   stopAppByInfo: stopAppByInfoMock,
 }));
 
+vi.mock("@/ipc/services/chat_workspace_store", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@/ipc/services/chat_workspace_store")
+  >()),
+  getActiveWorkspaceForChat: activeWorkspaceMock,
+}));
+vi.mock("@/ipc/services/chat_workspace_service", () => ({
+  chatWorkspaceService: {
+    reconnectAfterAppMove: vi.fn(),
+    synchronizeIdleWorkspace: synchronizeIdleWorkspaceMock,
+  },
+}));
+
 import { registerTemplateHandlers } from "./template_handlers";
 
 async function writeTree(root: string, files: Record<string, string>) {
@@ -125,6 +144,10 @@ describe("apply-app-template", () => {
     stageAllAndCommitIfChangedMock.mockReset();
     stageAllAndCommitIfChangedMock.mockResolvedValue("fake-commit-hash");
     createFromTemplateMock.mockReset();
+    synchronizeIdleWorkspaceMock.mockReset();
+    synchronizeIdleWorkspaceMock.mockResolvedValue(null);
+    activeWorkspaceMock.mockReset();
+    activeWorkspaceMock.mockReturnValue(undefined);
     registerTemplateHandlers();
   });
 
@@ -337,6 +360,72 @@ describe("apply-app-template", () => {
 
       expect(result.applied).toBe(false);
       expect(result.needsRestart).toBe(false);
+      expect(synchronizeIdleWorkspaceMock).not.toHaveBeenCalled();
+    });
+
+    it("restarts the chat's workspace when the template was brought into it", async () => {
+      await writeTree(appPath, { "package.json": '{"name":"old"}' });
+      const appId = seedApp("Imported App", appPath);
+      const chatId = Number(
+        harness.db.insert(chats).values({ appId }).run().lastInsertRowid,
+      );
+      stageTemplateTree({ "package.json": '{"name":"template"}' });
+      const workspaceRuntime = 1_000_000_007;
+      activeWorkspaceMock.mockReturnValue({ id: 7 });
+      synchronizeIdleWorkspaceMock.mockResolvedValueOnce(workspaceRuntime);
+
+      const result = await harness.invokeHandler<{
+        applied: boolean;
+        needsRestart: boolean;
+        runtimeAppId: number;
+      }>("apply-app-template", { appId, templateId: "react", chatId });
+
+      expect(synchronizeIdleWorkspaceMock).toHaveBeenCalledWith(chatId);
+      expect(result).toEqual({
+        applied: true,
+        needsRestart: true,
+        runtimeAppId: workspaceRuntime,
+      });
+    });
+
+    it("restarts the app itself when the chat has no workspace to update", async () => {
+      await writeTree(appPath, { "package.json": '{"name":"old"}' });
+      const appId = seedApp("Imported App", appPath);
+      const chatId = Number(
+        harness.db.insert(chats).values({ appId }).run().lastInsertRowid,
+      );
+      stageTemplateTree({ "package.json": '{"name":"template"}' });
+
+      const result = await harness.invokeHandler<{
+        runtimeAppId: number;
+      }>("apply-app-template", { appId, templateId: "react", chatId });
+
+      expect(synchronizeIdleWorkspaceMock).not.toHaveBeenCalled();
+      expect(result.runtimeAppId).toBe(appId);
+    });
+
+    it("does not restart anything when the chat's worktree keeps its own work", async () => {
+      await writeTree(appPath, { "package.json": '{"name":"old"}' });
+      const appId = seedApp("Imported App", appPath);
+      const chatId = Number(
+        harness.db.insert(chats).values({ appId }).run().lastInsertRowid,
+      );
+      stageTemplateTree({ "package.json": '{"name":"template"}' });
+      activeWorkspaceMock.mockReturnValue({ id: 7 });
+
+      const result = await harness.invokeHandler<{
+        applied: boolean;
+        needsRestart: boolean;
+        runtimeAppId: number;
+      }>("apply-app-template", { appId, templateId: "react", chatId });
+
+      // It previews its worktree, which merges the template later.
+      expect(synchronizeIdleWorkspaceMock).toHaveBeenCalledWith(chatId);
+      expect(result).toEqual({
+        applied: true,
+        needsRestart: false,
+        runtimeAppId: 1_000_000_007,
+      });
     });
   });
 

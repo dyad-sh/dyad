@@ -32,6 +32,9 @@ vi.mock("@/hooks/useChatMode", () => ({
     chat: { executionBackend: chatId === 2 ? "claude-code" : "dyad" },
   }),
 }));
+vi.mock("@/hooks/useChatWorkspace", () => ({
+  useChatWorkspaceStatus: () => ({ data: undefined }),
+}));
 vi.mock("@/hooks/useLanguageModelProviders", () => ({
   useLanguageModelProviders: () => ({
     isAnyProviderSetup: () => true,

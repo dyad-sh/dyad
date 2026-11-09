@@ -486,7 +486,8 @@ export const gitRestoreFileTool: ToolDefinition<
       ctx.onSharedServerModuleChange?.(operationPath);
     }
     queueCloudSandboxSnapshotSync({
-      appId: ctx.appId,
+      // Isolated workspace edits reach the app's sandbox once merged.
+      appId: ctx.runtimeAppId ?? ctx.appId,
       changedPaths: [operationPath],
     });
 

@@ -1,5 +1,6 @@
 import { db } from "@/db";
-import { apps } from "@/db/schema";
+import { apps, chatWorkspaces } from "@/db/schema";
+import { workspaceIdFromRuntimeId } from "../../shared/workspace_runtime_id";
 import {
   defineFrameworkCoveredRemoteMachine,
   type DistributedMachineDefinition,
@@ -431,6 +432,15 @@ function transitionActor(
 }
 
 async function appExists(appId: number): Promise<boolean> {
+  // An isolated chat workspace runs its own preview under a runtime id.
+  const workspaceId = workspaceIdFromRuntimeId(appId);
+  if (workspaceId !== null) {
+    const workspace = await db.query.chatWorkspaces.findFirst({
+      columns: { status: true },
+      where: eq(chatWorkspaces.id, workspaceId),
+    });
+    return workspace?.status === "active";
+  }
   const app = await db.query.apps.findFirst({
     columns: { id: true },
     where: eq(apps.id, appId),

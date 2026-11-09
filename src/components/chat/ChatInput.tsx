@@ -1,5 +1,9 @@
 import { SubscriptionLimitBanner } from "@/components/SubscriptionConnectionStatus";
 import {
+  WorkspaceIntegrationStatus,
+  WorkspaceStatusIndicator,
+} from "./WorkspaceStatusIndicator";
+import {
   StopCircleIcon,
   X,
   ChevronDown,
@@ -1287,19 +1291,25 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               </Tooltip>
             )}
           </div>
-          <div className="px-2 flex items-center justify-between pb-0.5 pt-0.5">
-            <div className="flex items-center">
+          <div className="px-2 flex items-center justify-between gap-2 pb-0.5 pt-0.5">
+            <div className="flex min-w-0 flex-1 items-center">
               <ChatInputControls />
             </div>
 
-            <AuxiliaryActionsMenu
-              onFileSelect={handleFileSelect}
-              showTokenBar={showTokenBar}
-              toggleShowTokenBar={toggleShowTokenBar}
-              appId={appId ?? undefined}
-              onGenerateImage={handleOpenImageGenerator}
-            />
+            <div className="flex min-w-0 max-w-[40%] shrink-0 items-center gap-2">
+              <WorkspaceStatusIndicator appId={appId} chatId={chatId} />
+              <div className="shrink-0">
+                <AuxiliaryActionsMenu
+                  onFileSelect={handleFileSelect}
+                  showTokenBar={showTokenBar}
+                  toggleShowTokenBar={toggleShowTokenBar}
+                  appId={appId ?? undefined}
+                  onGenerateImage={handleOpenImageGenerator}
+                />
+              </div>
+            </div>
           </div>
+          <WorkspaceIntegrationStatus appId={appId} chatId={chatId} />
           {/* TokenBar is only displayed when showTokenBar is true */}
           {showTokenBar && <TokenBar chatId={chatId} />}
         </div>

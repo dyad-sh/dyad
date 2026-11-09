@@ -11,6 +11,11 @@ import path from "node:path"; // Import path for basename
 // Import tag parsers
 import { processFullResponseActions } from "../processors/response_processor";
 import {
+  chatWorkspaceService,
+  type TurnWorkspace,
+} from "../services/chat_workspace_service";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import {
   getDyadWriteTags,
   getDyadRenameTags,
   getDyadDeleteTags,
@@ -361,6 +366,9 @@ const getProposalHandler = async (
   });
 };
 
+/** How long approval waits for the chat's workspace before giving up. */
+const APPROVAL_WORKSPACE_WAIT_MS = 2 * 60 * 1000;
+
 // Handler to approve a proposal (process actions and update message)
 const approveProposalHandler = async (
   _event: IpcMainInvokeEvent,
@@ -369,7 +377,13 @@ const approveProposalHandler = async (
   const storedSettings = readSettings();
   const chat = await db.query.chats.findFirst({
     where: eq(chats.id, chatId),
-    columns: { chatMode: true, modelSelection: true },
+    columns: {
+      appId: true,
+      chatMode: true,
+      executionBackend: true,
+      modelSelection: true,
+    },
+    with: { app: { columns: { path: true } } },
   });
   const selectedModel = chat?.modelSelection
     ? await normalizeModelSelection(chat.modelSelection)
@@ -402,16 +416,61 @@ const approveProposalHandler = async (
     );
   }
 
-  // 2. Process the actions defined in the message content
+  if (!chat?.app) {
+    throw new DyadError("App not found", DyadErrorKind.NotFound);
+  }
+  // 2. Approving writes like a turn does: it reserves the chat's isolated
+  // workspace (a new one if it has none, or the app's folder when isolation
+  // is off), and what it commits is merged like a turn's work. The
+  // workspace is not synchronized first: the changes were written against
+  // its current code.
+  const signal = AbortSignal.timeout(APPROVAL_WORKSPACE_WAIT_MS);
+  let workspace: TurnWorkspace;
+  try {
+    workspace = await chatWorkspaceService.prepareTurnWorkspace({
+      appId: chat.appId,
+      chatId,
+      originalAppPath: getDyadAppPath(chat.app.path),
+      writable: true,
+      allowIsolation: chat.executionBackend !== "claude-code",
+      synchronize: false,
+      // Newer work being merged into this chat's workspace with unresolved
+      // conflicts: applying the proposal now would mix it into that
+      // resolution. Checked under the reservation, since a merge can start
+      // while the approval waits for the workspace.
+      refuseWhileMerging:
+        "This chat's code is in the middle of combining its earlier work with newer changes. Send a message in this chat to finish resolving the conflicts, then approve.",
+      signal,
+    });
+  } catch (error) {
+    if (signal.aborted) {
+      throw new DyadError(
+        "This chat's code is still in use by another turn, a merge, or cleanup. Try approving again in a moment.",
+        DyadErrorKind.Conflict,
+      );
+    }
+    throw error;
+  }
+
+  // 3. Process the actions defined in the message content
   const chatSummary = getDyadChatSummaryTag(messageToApprove.content);
-  const processResult = await processFullResponseActions(
-    messageToApprove.content,
-    chatId,
-    {
-      chatSummary: chatSummary ?? undefined,
-      messageId,
-    }, // Pass summary if found
-  );
+  let processResult: Awaited<ReturnType<typeof processFullResponseActions>>;
+  try {
+    processResult = await processFullResponseActions(
+      messageToApprove.content,
+      chatId,
+      {
+        chatSummary: chatSummary ?? undefined,
+        messageId,
+        workspaceAppPath:
+          workspace.kind === "isolated" ? workspace.appPath : undefined,
+        workspaceCoordinationKey: workspace.coordinationKey,
+      }, // Pass summary if found
+    );
+    workspace.outcome.completed = !processResult.error;
+  } finally {
+    await workspace.settle();
+  }
 
   if (processResult.error) {
     return {

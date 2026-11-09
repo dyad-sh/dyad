@@ -33,6 +33,13 @@ import {
 } from "./neon_preview_domain_service";
 
 import { getAppPort, getAppProxyPort } from "../../../shared/ports";
+import {
+  isWorkspaceRuntimeId,
+  workspaceIdFromRuntimeId,
+} from "../../../shared/workspace_runtime_id";
+import { getWorkspaceAppPath, getWorkspaceById } from "./chat_workspace_store";
+import { runWorkspaceScopedOperation } from "./workspace_coordination";
+import { syncEnvironmentFiles } from "./workspace_environment";
 import { db } from "@/db";
 import { apps } from "@/db/schema";
 import { readSettings } from "@/main/settings";
@@ -119,6 +126,17 @@ export type { AppRuntimeOutput } from "@/ipc/types/app_runtime";
 
 // Needed, otherwise Electron on macOS/Linux may not find node/pnpm.
 fixPath();
+
+/**
+ * The preview hostname for a runtime. Isolated workspace previews always use
+ * `localhost`: per-app hostnames are registered with Supabase/Neon for the
+ * app itself, and a workspace is not a separately registered origin.
+ */
+function previewHostnameFor(appId: number, enableAppPreviewDomains?: boolean) {
+  return enableAppPreviewDomains && !isWorkspaceRuntimeId(appId)
+    ? getAppPreviewHostname(appId)
+    : "localhost";
+}
 
 export function formatCloudSandboxError(error: unknown) {
   if (!(error instanceof CloudSandboxApiError)) {
@@ -396,9 +414,7 @@ export async function executeApp({
 }): Promise<void> {
   const settings = readSettings();
   const previewAuthOptions: PreviewAuthOptions = {
-    hostname: settings.enableAppPreviewDomains
-      ? getAppPreviewHostname(appId)
-      : "localhost",
+    hostname: previewHostnameFor(appId, settings.enableAppPreviewDomains),
     isNeon,
     neonAuthTarget,
     signal: previewAbortSignal,
@@ -418,6 +434,12 @@ export async function executeApp({
       previewAuthOptions,
     });
   } else if (runtimeMode === "cloud") {
+    if (isWorkspaceRuntimeId(appId)) {
+      throw new DyadError(
+        "Previews of isolated chat workspaces run on this computer. Switch the runtime to Host to preview this chat's workspace, or open a chat that works in the app's main folder.",
+        DyadErrorKind.Precondition,
+      );
+    }
     await executeAppInCloud({
       appPath,
       appId,
@@ -724,10 +746,10 @@ export async function ensureProxyForRunningApp({
         !sameInvocationRef(appInfo.invocationRef, invocationRef)))
   )
     return;
-  const hostname = (appInfo.previewHostname ??= readSettings()
-    .enableAppPreviewDomains
-    ? getAppPreviewHostname(appId)
-    : "localhost");
+  const hostname = (appInfo.previewHostname ??= previewHostnameFor(
+    appId,
+    readSettings().enableAppPreviewDomains,
+  ));
   const cookieIsolationEnabled = isPreviewCookieIsolationEnabled();
   // Install the promise before the first asynchronous boundary: dev servers
   // can print their URL more than once before the proxy has bound.
@@ -2358,9 +2380,10 @@ export class AppRuntimeService {
     invocationRef?: AppRunInvocationRef;
     appInfo: RunningAppInfo;
   }): Promise<void> {
-    const hostname = readSettings().enableAppPreviewDomains
-      ? getAppPreviewHostname(input.appId)
-      : "localhost";
+    const hostname = previewHostnameFor(
+      input.appId,
+      readSettings().enableAppPreviewDomains,
+    );
     input.appInfo.previewHostname = hostname;
     if (hostname === "localhost") {
       input.appInfo.previewAuthRegistration?.controller.abort();
@@ -2480,20 +2503,81 @@ async function waitForAppReady(
   );
 }
 
-export const appRuntimeService = new AppRuntimeService({
-  runSerialized: (appId, lifecycle, operation) =>
-    appOperationCoordinator.run(
-      {
-        appId,
-        operation: `app-runtime:${lifecycle}`,
-        resources: getAppRuntimeOperationResources(lifecycle),
-      },
+/**
+ * Resolves the app a runtime runs. An isolated workspace's runtime id runs
+ * the owning app's commands from the workspace's copy of the app.
+ */
+async function findRuntimeApp(
+  runtimeId: number,
+): Promise<RuntimeAppRecord | undefined> {
+  const workspaceId = workspaceIdFromRuntimeId(runtimeId);
+  if (workspaceId === null) {
+    return db.query.apps.findFirst({ where: eq(apps.id, runtimeId) });
+  }
+  const workspace = getWorkspaceById(workspaceId);
+  if (!workspace || workspace.status !== "active") return undefined;
+  const app = await db.query.apps.findFirst({
+    where: eq(apps.id, workspace.appId),
+  });
+  if (!app) return undefined;
+  return { ...app, path: getWorkspaceAppPath(workspace) };
+}
+
+/**
+ * Runs a runtime lifecycle step under its claims. A workspace preview's
+ * process and ports are its own (claimed on the workspace key), but its app's
+ * path and runtime configuration are shared, so those claims stay on the app:
+ * app deletion, moves, and configuration swaps then fence workspace previews
+ * like the app's own.
+ */
+function runRuntimeLifecycle<T>(
+  runtimeId: number,
+  lifecycle: AppRuntimeLifecycle,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const resources = getAppRuntimeOperationResources(lifecycle);
+  const workspaceId = workspaceIdFromRuntimeId(runtimeId);
+  const workspace =
+    workspaceId === null ? undefined : getWorkspaceById(workspaceId);
+  if (!workspace) {
+    return appOperationCoordinator.run(
+      { appId: runtimeId, operation: `app-runtime:${lifecycle}`, resources },
       operation,
-    ),
-  findApp: (appId) =>
-    db.query.apps.findFirst({
-      where: eq(apps.id, appId),
-    }),
+    );
+  }
+  return runWorkspaceScopedOperation(
+    {
+      appId: workspace.appId,
+      workspaceKey: runtimeId,
+      operation: `app-runtime:${lifecycle}`,
+      appResources: resources.filter((resource) => resource !== "runtime"),
+      workspaceResources: resources.filter(
+        (resource) => resource === "runtime",
+      ),
+    },
+    async () => {
+      if (lifecycle !== "stop") {
+        // Under the app's runtime-config claim: the preview starts with the
+        // app's current environment, not the one copied when it was created.
+        const app = await db.query.apps.findFirst({
+          columns: { path: true },
+          where: eq(apps.id, workspace.appId),
+        });
+        if (app) {
+          await syncEnvironmentFiles(
+            getDyadAppPath(app.path),
+            getWorkspaceAppPath(workspace),
+          );
+        }
+      }
+      return operation();
+    },
+  );
+}
+
+export const appRuntimeService = new AppRuntimeService({
+  runSerialized: runRuntimeLifecycle,
+  findApp: findRuntimeApp,
   resolveAppPath: getDyadAppPath,
   assertAppFolderExists,
   getRunningApp: (appId) => runningApps.get(appId),

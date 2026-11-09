@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { runWorkspaceScopedOperation } from "@/ipc/services/workspace_coordination";
 import { eq } from "drizzle-orm";
 import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
 import { db } from "../../../../../../db";
@@ -9,10 +10,7 @@ import {
 } from "@/ipc/processors/executeAddDependency";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { trackAppMutation } from "./tool_invocation";
-import {
-  appOperationCoordinator,
-  readAppResource,
-} from "@/ipc/services/app_operation_coordinator";
+import { readAppResource } from "@/ipc/services/app_operation_coordinator";
 
 const addDependencySchema = z.object({
   packages: z
@@ -58,11 +56,13 @@ export const addDependencyTool: ToolDefinition<
     }
 
     try {
-      const result = await appOperationCoordinator.run(
+      const result = await runWorkspaceScopedOperation(
         {
           appId: ctx.appId,
+          workspaceKey: ctx.workspaceCoordinationKey,
           operation: "install Local Agent dependencies",
-          resources: [readAppResource("app-path"), "repository-worktree"],
+          appResources: [readAppResource("app-path")],
+          workspaceResources: ["repository-worktree"],
           refuseWhenRecording: "install dependencies",
         },
         () =>

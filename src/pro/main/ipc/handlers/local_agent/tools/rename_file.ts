@@ -137,7 +137,8 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
 
           if (renamed) {
             queueCloudSandboxSnapshotSync({
-              appId: ctx.appId,
+              // Isolated workspace edits reach the app's sandbox once merged.
+              appId: ctx.runtimeAppId ?? ctx.appId,
               changedPaths: [toOperationPath],
               deletedPaths: [fromOperationPath],
             });

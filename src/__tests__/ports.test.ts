@@ -1,13 +1,17 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  E2E_TEST_SERVER_PORT_RANGE,
+  E2E_TEST_SERVER_PORT_START,
   getAppPort,
   getAppProxyPort,
   getProxyFallbackPortStart,
+  isReservedDyadPort,
   PROXY_FALLBACK_PORT_START,
   PROXY_PORT_BASE,
   PROXY_PORT_RANGE,
 } from "../../shared/ports";
+import { workspaceRuntimeId } from "../../shared/workspace_runtime_id";
 
 describe("ports", () => {
   it("places the fallback band above the deterministic proxy range", () => {
@@ -42,6 +46,40 @@ describe("ports", () => {
       expect(getAppPort(1)).toBe(34151);
       expect(getAppProxyPort(1)).toBe(35151);
       expect(getProxyFallbackPortStart()).toBe(36150);
+    } finally {
+      if (previous == null) {
+        delete process.env.DYAD_E2E_PORT_BLOCK_INDEX;
+      } else {
+        process.env.DYAD_E2E_PORT_BLOCK_INDEX = previous;
+      }
+    }
+  });
+
+  it("gives isolated workspace runtimes their own reserved bands", () => {
+    const first = workspaceRuntimeId(1);
+    const second = workspaceRuntimeId(2);
+    expect(getAppPort(first)).toBe(52401);
+    expect(getAppProxyPort(first)).toBe(53401);
+    expect(getAppPort(second)).toBe(52402);
+    for (const port of [getAppPort(first), getAppProxyPort(first)]) {
+      expect(isReservedDyadPort(port)).toBe(true);
+      // Never inside an app band, the proxy fallback band, or the test band.
+      expect(port).toBeGreaterThanOrEqual(
+        E2E_TEST_SERVER_PORT_START + E2E_TEST_SERVER_PORT_RANGE,
+      );
+    }
+    // A workspace never collides with the app whose id matches its own.
+    expect(getAppPort(first)).not.toBe(getAppPort(1));
+    expect(getAppProxyPort(first)).not.toBe(getAppProxyPort(1));
+  });
+
+  it("keeps workspace runtimes inside their E2E block", () => {
+    const previous = process.env.DYAD_E2E_PORT_BLOCK_INDEX;
+    try {
+      process.env.DYAD_E2E_PORT_BLOCK_INDEX = "0";
+      expect(getAppPort(workspaceRuntimeId(3))).toBe(32603);
+      expect(getAppProxyPort(workspaceRuntimeId(3))).toBe(33603);
+      expect(getAppPort(3)).toBe(32103);
     } finally {
       if (previous == null) {
         delete process.env.DYAD_E2E_PORT_BLOCK_INDEX;

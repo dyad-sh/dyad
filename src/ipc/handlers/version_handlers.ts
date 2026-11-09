@@ -1,4 +1,5 @@
 import { db } from "../../db";
+import { getActiveWorkspaceForChat } from "@/ipc/services/chat_workspace_store";
 import {
   apps,
   chats,
@@ -6,7 +7,12 @@ import {
   messages,
   versions,
 } from "../../db/schema";
-import { desc, eq, and, gt, gte, isNotNull } from "drizzle-orm";
+import { desc, eq, and, gt, gte, inArray, isNotNull } from "drizzle-orm";
+import {
+  parseDyadCommitTrailers,
+  WORKTREE_BRANCH_PREFIX,
+} from "@/shared/dyad_commit_trailers";
+import { listBranchesContaining } from "@/ipc/utils/git_worktree_utils";
 import type { GitCommit } from "../git_types";
 import fs from "node:fs";
 import path from "node:path";
@@ -30,6 +36,7 @@ import type { SafeSender } from "../utils/safe_sender";
 import { deployAllSupabaseFunctions } from "../../supabase_admin/supabase_utils";
 import { readSettings } from "../../main/settings";
 import {
+  execGit,
   gitAddAll,
   gitCheckout,
   gitCommit,
@@ -952,6 +959,21 @@ async function revertCodebaseToVersion({
   };
 }
 
+/** Whether a squash of this chat's worktree work is on the app's branch. */
+async function hasIntegratedSquash({
+  appPath,
+  chatId,
+}: {
+  appPath: string;
+  chatId: number;
+}): Promise<boolean> {
+  const result = await execGit(
+    ["log", "-1", "--format=%H", `--grep=^Dyad-Chat: ${chatId}$`, "HEAD"],
+    appPath,
+  );
+  return result.exitCode === 0 && result.stdout.trim() !== "";
+}
+
 export function registerVersionHandlers() {
   createTypedHandler(versionContracts.listVersions, async (_, params) => {
     const { appId, ref } = params;
@@ -999,8 +1021,35 @@ export function registerVersionHandlers() {
       });
     }
 
+    // Versions from chat worktrees say which worktree (and chat) added them.
+    const origins = new Map(
+      commits.map((commit: GitCommit) => [
+        commit.oid,
+        parseDyadCommitTrailers(commit.commit.message),
+      ]),
+    );
+    const chatIds = [
+      ...new Set(
+        [...origins.values()]
+          .filter((origin) => origin.workspaceBranch !== null)
+          .map((origin) => origin.chatId)
+          .filter((chatId): chatId is number => chatId !== null),
+      ),
+    ];
+    const chatTitles = new Map(
+      chatIds.length > 0
+        ? (
+            await db
+              .select({ id: chats.id, title: chats.title })
+              .from(chats)
+              .where(and(eq(chats.appId, appId), inArray(chats.id, chatIds)))
+          ).map((chat) => [chat.id, chat.title])
+        : [],
+    );
+
     return commits.map((commit: GitCommit) => {
       const metadata = metadataMap.get(commit.oid);
+      const origin = origins.get(commit.oid)!;
       return {
         oid: commit.oid,
         message: commit.commit.message,
@@ -1008,6 +1057,17 @@ export function registerVersionHandlers() {
         dbTimestamp: metadata?.neonDbTimestamp,
         isFavorite: metadata?.isFavorite ?? false,
         note: metadata?.note ?? null,
+        workspace: origin.workspaceBranch
+          ? {
+              branch: origin.workspaceBranch,
+              chatId: origin.chatId,
+              chatTitle:
+                origin.chatId !== null
+                  ? (chatTitles.get(origin.chatId) ?? null)
+                  : null,
+            }
+          : null,
+        turnMessageIds: origin.turnMessageIds,
       };
     });
   });
@@ -1405,6 +1465,16 @@ export function registerVersionHandlers() {
           );
         }
 
+        // A chat in an isolated workspace keeps its checkpoints on its own
+        // branch. Restoring one of them into the app's main folder would
+        // publish unmerged work and roll back other chats' merged changes.
+        if (restoreCodebase && getActiveWorkspaceForChat(chatId)) {
+          throw new DyadError(
+            "This chat works in an isolated workspace, so restoring the app to one of its messages isn't available. Use Undo on its latest response, or restore from the Version history.",
+            DyadErrorKind.Precondition,
+          );
+        }
+
         const targetIndex = chat.messages.findIndex((m) => m.id === messageId);
         if (targetIndex === -1) {
           throw new DyadError("Message not found", DyadErrorKind.NotFound);
@@ -1462,6 +1532,31 @@ export function registerVersionHandlers() {
               };
             }
             throw error;
+          }
+          // A chat that worked in a worktree (even one since deleted) has
+          // checkpoints that live only on its worktree branch, or nowhere once
+          // a merged branch is gone: its work reached the app's branch as one
+          // squash. Restoring the app's branch to one of those commits would
+          // drop other chats' merged work.
+          // A commit on no branch at all is only a worktree checkpoint when
+          // the chat's work reached the app as a squash; otherwise its
+          // history was rewritten (a rebase) and restoring works as before.
+          const branches = await listBranchesContaining({
+            path: appPath,
+            commit: targetCommitHash,
+          });
+          const onlyInWorktrees =
+            branches.length > 0
+              ? branches.every((branch) =>
+                  branch.startsWith(WORKTREE_BRANCH_PREFIX),
+                )
+              : await hasIntegratedSquash({ appPath, chatId });
+          if (onlyInWorktrees) {
+            return {
+              status: "warn" as const,
+              warningMessage:
+                "This message's version only exists in a chat's worktree, not in the app's history, so the app can't be restored to it. Restore a version from the Version history instead.",
+            };
           }
         }
 

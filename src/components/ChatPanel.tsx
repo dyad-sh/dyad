@@ -7,6 +7,8 @@ import {
   useCallback,
   useMemo,
 } from "react";
+import { ConcurrentChatBanner } from "./chat/ConcurrentChatBanner";
+import { NpmWorktreeDiskBanner } from "./chat/NpmWorktreeDiskBanner";
 import { useTranslation } from "react-i18next";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { selectAtom } from "jotai/utils";
@@ -331,6 +333,11 @@ export function ChatPanel({
                     }}
                   />
                   <NotificationBanner />
+                  <ConcurrentChatBanner appId={selectedAppId} chatId={chatId} />
+                  <NpmWorktreeDiskBanner
+                    appId={selectedAppId}
+                    chatId={chatId}
+                  />
                   <TestRunQueueCard
                     key={selectedAppId}
                     appId={selectedAppId}

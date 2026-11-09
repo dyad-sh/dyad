@@ -663,6 +663,10 @@ const BaseUserSettingsFields = {
   // already linked to GitLab keeps its GitLab card when this is off again.
   enableGitlabPublishing: z.boolean().optional(),
   enableTestRunInPreview: z.boolean().optional(),
+  // Gives every writable chat its own Git worktree, including an app's first
+  // chat, then merges the finished work back automatically.
+  // Off by default while the feature is new.
+  enableWorktreeIsolation: z.boolean().optional(),
   enableAutoUpdate: z.boolean(),
   releaseChannel: ReleaseChannelSchema,
   runtimeMode2: RuntimeMode2Schema.optional(),

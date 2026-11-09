@@ -179,6 +179,24 @@ it("fails closed when the newest nonempty step has no verdict", async () => {
     reason: "The safety reviewer returned an invalid verdict.",
   });
 });
+it("fails closed when a later review stream errors after an earlier allow", async () => {
+  mocks.streamText.mockImplementation(
+    (options: { onError: (event: { error: Error }) => void }) => {
+      options.onError({ error: new Error("stream failed") });
+      return {
+        text: Promise.resolve('{"reason":"Looks fine","decision":"allow"}'),
+        steps: Promise.resolve([
+          { text: '{"reason":"Looks fine","decision":"allow"}' },
+        ]),
+      };
+    },
+  );
+  expect(await reviewToolAction(input)).toEqual({
+    decision: "block",
+    unavailable: true,
+    reason: "Tool safety review failed during generation.",
+  });
+});
 it("gives shell preparation and multi-step inference time beyond the MCP deadline", async () => {
   vi.useFakeTimers();
   try {

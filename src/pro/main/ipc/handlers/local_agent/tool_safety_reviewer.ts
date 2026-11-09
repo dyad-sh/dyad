@@ -72,11 +72,19 @@ export async function reviewToolAction<D extends "ask" | "block">({
       );
       controller.signal.throwIfAborted();
       state.phase = "generation";
+      // A rejected post-inspection request can still resolve `steps` with
+      // an earlier allow and expose the failure only via `onError`, so
+      // capture it and fail closed after draining instead of trusting the
+      // stale verdict.
+      let streamError: unknown;
       const stream = streamText({
         output: fastTextOutput(),
         model: modelClient.model,
         system,
         maxRetries: 1,
+        onError: ({ error }) => {
+          streamError ??= error;
+        },
         abortSignal: controller.signal,
         messages: [{ role: "user", content: payload }],
         ...(tools
@@ -99,6 +107,10 @@ export async function reviewToolAction<D extends "ask" | "block">({
       // indeterminate, and failing closed (fallback) is safer than
       // trusting a stale older verdict.
       const steps = await stream.steps;
+      // A stream error after an earlier allow means the final classifier
+      // request failed, so the verdict is untrustworthy even if the
+      // completed steps hold one. Fail closed via the catch below.
+      if (streamError) throw streamError;
       let json: string | null = null;
       for (let i = steps.length - 1; i >= 0; i--) {
         const stepText = steps[i].text;

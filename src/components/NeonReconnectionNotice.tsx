@@ -7,10 +7,13 @@ import { NeonSignInButton } from "./NeonSignInButton";
 export function NeonReconnectionNotice({
   appId,
   projectAccessDenied = false,
+  projectNotFound = false,
   onDismiss,
 }: {
   appId?: number;
   projectAccessDenied?: boolean;
+  /** The linked project may have been deleted rather than hidden. */
+  projectNotFound?: boolean;
   onDismiss?: () => void;
 }) {
   const { t } = useTranslation(["home", "common"]);
@@ -37,16 +40,18 @@ export function NeonReconnectionNotice({
         </p>
         <p className="text-sm text-foreground/80">
           {t(
-            projectAccessDenied
-              ? "integrations.neon.projectAccessRequired"
-              : "integrations.neon.reconnectDescription",
+            projectNotFound
+              ? "integrations.neon.projectNotFound"
+              : projectAccessDenied
+                ? "integrations.neon.projectAccessRequired"
+                : "integrations.neon.reconnectDescription",
           )}
         </p>
       </div>
       <NeonSignInButton
         appId={appId}
         reconnect
-        projectAccessDenied={projectAccessDenied}
+        projectAccessDenied={projectAccessDenied || projectNotFound}
       />
     </div>
   );

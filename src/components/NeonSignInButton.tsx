@@ -18,6 +18,21 @@ import { ipc } from "@/ipc/types";
 import { getErrorMessage } from "@/lib/errors";
 import { queryKeys } from "@/lib/queryKeys";
 
+interface NeonSignInInitiator {
+  appId?: number;
+  reconnect: boolean;
+  /** The initiating button is mounted and will handle the outcome itself. */
+  mounted: boolean;
+}
+
+// Module scope, so a sign-in outcome is still handled and acknowledged after
+// the initiating button unmounts. The chat banner can be dismissed, and every
+// notice unmounts on navigation while the browser OAuth step is open.
+const neonSignInInitiators = new Map<string, NeonSignInInitiator>();
+// Outcomes (operation id + revision) already claimed by a mounted button, so
+// several mounted buttons never toast or acknowledge the same outcome twice.
+const handledNeonSignInOutcomes = new Set<string>();
+
 export function NeonSignInButton({
   appId,
   reconnect = false,
@@ -32,13 +47,26 @@ export function NeonSignInButton({
   const { settings } = useSettings();
   const queryClient = useQueryClient();
   const { flowState, isFlowActive } = useConnectionFlow("neon");
-  const handledRevision = useRef<number | null>(null);
   const startedOperation = useRef<string | null>(null);
+  const isMounted = useRef(false);
   // A completed flow can outlive its initiating component. Other/re-mounted
   // buttons must still allow another sign-in (for example to change accounts).
   const isFinishing =
     flowState.status === "connected" &&
     flowState.invocationRef.operationId === startedOperation.current;
+
+  useEffect(() => {
+    isMounted.current = true;
+    const operationId = startedOperation.current;
+    const initiator = operationId && neonSignInInitiators.get(operationId);
+    if (initiator) initiator.mounted = true;
+    return () => {
+      isMounted.current = false;
+      const operationId = startedOperation.current;
+      const initiator = operationId && neonSignInInitiators.get(operationId);
+      if (initiator) initiator.mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (
@@ -48,38 +76,45 @@ export function NeonSignInButton({
     ) {
       return;
     }
-    if (flowState.invocationRef.operationId !== startedOperation.current)
-      return;
-    if (handledRevision.current === flowState.revision) return;
-    handledRevision.current = flowState.revision;
+    const { operationId } = flowState.invocationRef;
+    const initiator = neonSignInInitiators.get(operationId);
+    // A mounted initiator handles its own outcome. Otherwise any mounted
+    // button handles it once, on behalf of the initiator when it is known.
+    if (operationId !== startedOperation.current && initiator?.mounted) return;
+    const outcomeKey = `${operationId}:${flowState.revision}`;
+    if (handledNeonSignInOutcomes.has(outcomeKey)) return;
+    handledNeonSignInOutcomes.add(outcomeKey);
+    neonSignInInitiators.delete(operationId);
+    const outcome = initiator ?? { appId, reconnect };
 
     void (async () => {
       try {
         if (flowState.status === "connected") {
+          const outcomeAppId = outcome.appId;
           await Promise.all([
             queryClient.invalidateQueries({ queryKey: queryKeys.settings.all }),
             queryClient.invalidateQueries({ queryKey: queryKeys.neon.all }),
-            appId === undefined
+            outcomeAppId === undefined
               ? Promise.resolve()
               : queryClient.invalidateQueries({
-                  queryKey: queryKeys.apps.detail({ appId }),
+                  queryKey: queryKeys.apps.detail({ appId: outcomeAppId }),
                 }),
           ]);
-          if (reconnect && appId !== undefined) {
+          if (outcome.reconnect && outcomeAppId !== undefined) {
             const app = await queryClient.fetchQuery({
-              queryKey: queryKeys.apps.detail({ appId }),
-              queryFn: () => ipc.app.getApp(appId),
+              queryKey: queryKeys.apps.detail({ appId: outcomeAppId }),
+              queryFn: () => ipc.app.getApp(outcomeAppId),
             });
             if (app.neonProjectId) {
               await queryClient.fetchQuery({
-                queryKey: queryKeys.neon.project({ appId }),
-                queryFn: () => ipc.neon.getProject({ appId }),
+                queryKey: queryKeys.neon.project({ appId: outcomeAppId }),
+                queryFn: () => ipc.neon.getProject({ appId: outcomeAppId }),
               });
             }
           }
           toast.success(
             t(
-              reconnect
+              outcome.reconnect
                 ? "integrations.neon.reconnectedSuccess"
                 : "integrations.neon.connectedSuccess",
             ),
@@ -105,6 +140,11 @@ export function NeonSignInButton({
       const { started, invocationRef } = await startConnectionFlow("neon");
       if (!started) return;
       startedOperation.current = invocationRef.operationId;
+      neonSignInInitiators.set(invocationRef.operationId, {
+        appId,
+        reconnect,
+        mounted: isMounted.current,
+      });
       try {
         if (settings?.isTestMode) {
           await ipc.neon.fakeConnect();

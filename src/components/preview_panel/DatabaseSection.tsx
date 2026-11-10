@@ -100,6 +100,7 @@ export const DatabaseSection = ({ appId }: DatabaseSectionProps) => {
     isLoadingBranches,
     requiresReconnection,
     projectAccessDenied,
+    projectNotFound,
   } = useNeon(appId);
   const { settings, settingsLoading, refreshSettings } = useSettings();
   const canSelectDevelopment =
@@ -243,11 +244,25 @@ export const DatabaseSection = ({ appId }: DatabaseSectionProps) => {
       : "development";
 
   if (requiresReconnection || projectAccessDenied) {
+    // Keep the section frame so the publish panel layout stays consistent;
+    // the database controls themselves (data-testid="database-section") are
+    // unavailable until the user signs in.
     return (
-      <NeonReconnectionNotice
-        appId={appId}
-        projectAccessDenied={!requiresReconnection && projectAccessDenied}
-      />
+      <Card data-testid="database-section-reconnect">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2">
+            <Database className="w-5 h-5 text-primary" />
+            {t("integrations.database.title")}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <NeonReconnectionNotice
+            appId={appId}
+            projectAccessDenied={!requiresReconnection && projectAccessDenied}
+            projectNotFound={!requiresReconnection && projectNotFound}
+          />
+        </CardContent>
+      </Card>
     );
   }
 

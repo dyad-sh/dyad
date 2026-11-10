@@ -7,7 +7,7 @@ export function NeonIntegration() {
   const { t } = useTranslation("home");
   const { settings } = useSettings();
 
-  const isConnected = !!settings?.neon?.accessToken;
+  const isConnected = !!settings?.neon?.accessToken?.value;
 
   if (!isConnected && !settings?.neon?.reconnectRequired) {
     return null;

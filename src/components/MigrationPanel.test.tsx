@@ -13,9 +13,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MigrationPreviewResponse } from "@/ipc/types/migration";
 import { MigrationPanelBody } from "./MigrationPanel";
 
-const { preview, migrate } = vi.hoisted(() => ({
+const { preview, migrate, neon } = vi.hoisted(() => ({
   preview: vi.fn(),
   migrate: vi.fn(),
+  neon: {
+    requiresReconnection: false,
+    projectAccessDenied: false,
+    projectNotFound: false,
+    isAccessResolved: true,
+  },
 }));
 vi.mock("@/ipc/types", () => ({
   ipc: { migration: { preview, migrate } },
@@ -25,11 +31,23 @@ vi.mock("@/hooks/useLoadApp", () => ({
 }));
 vi.mock("@/hooks/useNeon", () => ({
   useNeon: () => ({
+    ...neon,
     branches: [
       { branchId: "prod", branchName: "main", type: "production" },
       { branchId: "dev", branchName: "development", type: "development" },
     ],
   }),
+}));
+vi.mock("./NeonReconnectionNotice", () => ({
+  NeonReconnectionNotice: ({
+    projectAccessDenied,
+  }: {
+    projectAccessDenied?: boolean;
+  }) => (
+    <div data-testid="neon-reconnection-notice">
+      {projectAccessDenied ? "access denied" : "reconnect"}
+    </div>
+  ),
 }));
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -82,6 +100,12 @@ async function startPreview() {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  Object.assign(neon, {
+    requiresReconnection: false,
+    projectAccessDenied: false,
+    projectNotFound: false,
+    isAccessResolved: true,
+  });
   client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -253,5 +277,69 @@ describe("migration preview lifecycle", () => {
     await act(async () => pending.resolve({ ...plan, statements: [] }));
     expect(onVerified).not.toHaveBeenCalled();
     expect(onBusyChange).toHaveBeenLastCalledWith(false);
+  });
+});
+
+describe("Neon sign-in recovery", () => {
+  function tree() {
+    return (
+      <QueryClientProvider client={client}>
+        <MigrationPanelBody appId={1} autoPreview onVerified={onVerified} />
+      </QueryClientProvider>
+    );
+  }
+
+  it.each([
+    ["reconnection is required", { requiresReconnection: true }, "reconnect"],
+    [
+      "the project is inaccessible",
+      { projectAccessDenied: true },
+      "access denied",
+    ],
+  ])(
+    "shows the sign-in notice instead of previewing when %s",
+    async (_, state, copy) => {
+      preview.mockResolvedValue(plan);
+      Object.assign(neon, state);
+      const view = render(tree());
+      expect(screen.getByTestId("neon-reconnection-notice").textContent).toBe(
+        copy,
+      );
+      expect(
+        screen.queryByRole("button", {
+          name: "integrations.migration.migrateToProduction",
+        }),
+      ).toBeNull();
+      await act(async () => {});
+      expect(preview).not.toHaveBeenCalled();
+
+      // Recovering the account starts the automatic preview it deferred.
+      Object.assign(neon, {
+        requiresReconnection: false,
+        projectAccessDenied: false,
+      });
+      view.rerender(tree());
+      await waitFor(() => expect(preview).toHaveBeenCalledOnce());
+      expect(screen.queryByTestId("neon-reconnection-notice")).toBeNull();
+    },
+  );
+
+  it("waits for the sign-in state before the automatic preview", async () => {
+    preview.mockResolvedValue(plan);
+    neon.isAccessResolved = false;
+    const view = render(tree());
+    await act(async () => {});
+    expect(preview).not.toHaveBeenCalled();
+
+    // The access check settles on a reconnect prompt, so nothing is spent.
+    Object.assign(neon, { isAccessResolved: true, requiresReconnection: true });
+    view.rerender(tree());
+    await screen.findByTestId("neon-reconnection-notice");
+    await act(async () => {});
+    expect(preview).not.toHaveBeenCalled();
+
+    neon.requiresReconnection = false;
+    view.rerender(tree());
+    await waitFor(() => expect(preview).toHaveBeenCalledOnce());
   });
 });

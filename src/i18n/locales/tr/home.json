@@ -861,6 +861,7 @@
       "reconnectTitle": "Neon’a yeniden bağlan",
       "reconnectDescription": "Dyad’ın Neon projelerinize erişebilmesi için tekrar oturum açın. Mevcut proje bağlantınız korunacaktır.",
       "projectAccessRequired": "Bu Neon hesabı bağlı projeye erişemiyor. Erişim izni olan bir hesapla oturum açın. Mevcut proje bağlantınız korunacaktır.",
+      "projectNotFound": "Dyad bağlı Neon projesini bulamıyor. Proje silinmiş olabilir veya bu Neon hesabının projeye erişimi olmayabilir. Erişim izni olan bir hesapla oturum açın ya da başka bir proje bağlamak için uygulamanın Neon Veritabanı ayarlarında Proje bağlantısını kes seçeneğini kullanın.",
       "signInAnotherAccount": "Başka bir hesapla oturum aç",
       "waitingForSignIn": "Neon oturumu bekleniyor…",
       "reconnectedSuccess": "Neon’a yeniden bağlanıldı."

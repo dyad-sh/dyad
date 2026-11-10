@@ -31,15 +31,17 @@ export async function getNeonOAuthErrorCode(
 function readOAuthCode(body: unknown): string | undefined {
   if (!body || typeof body !== "object") return undefined;
   const error = "error" in body ? body.error : undefined;
-  const code =
-    typeof error === "string"
-      ? error
-      : error && typeof error === "object" && "code" in error
-        ? error.code
-        : "code" in body
-          ? body.code
-          : undefined;
-  return typeof code === "string" && OAUTH_ERROR_CODES.has(code)
-    ? code
-    : undefined;
+  // `error` may be prose ("Failed to refresh tokens") next to a machine
+  // `code`, so check each candidate rather than stopping at the first string.
+  const candidates = [
+    error,
+    error && typeof error === "object" && "code" in error
+      ? error.code
+      : undefined,
+    "code" in body ? body.code : undefined,
+  ];
+  return candidates.find(
+    (code): code is string =>
+      typeof code === "string" && OAUTH_ERROR_CODES.has(code),
+  );
 }

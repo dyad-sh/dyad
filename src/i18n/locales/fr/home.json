@@ -836,6 +836,7 @@
       "reconnectTitle": "Reconnecter Neon",
       "reconnectDescription": "Reconnectez-vous pour que Dyad puisse accéder à vos projets Neon. La connexion à votre projet existant sera conservée.",
       "projectAccessRequired": "Ce compte Neon ne peut pas accéder au projet lié. Connectez-vous avec un compte disposant des droits nécessaires. La connexion à votre projet existant sera conservée.",
+      "projectNotFound": "Dyad ne trouve pas le projet Neon lié. Il a peut-être été supprimé, ou ce compte Neon n'y a peut-être pas accès. Connectez-vous avec un compte disposant des droits nécessaires, ou utilisez Déconnecter le projet dans les paramètres Base de données Neon de l'app pour en lier un autre.",
       "signInAnotherAccount": "Se connecter avec un autre compte",
       "waitingForSignIn": "En attente de la connexion à Neon…",
       "reconnectedSuccess": "Neon est reconnecté."

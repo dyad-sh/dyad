@@ -144,8 +144,21 @@ function hasSameNeonCredentials(
   );
 }
 
+/**
+ * The Neon API rejected an access token that has not expired locally, for
+ * example because the user revoked Dyad's access. Require reconnection only
+ * while the rejected credentials are still the stored ones: a sign-in or
+ * disconnect that landed while the request was in flight must win.
+ */
+export function requireNeonReconnectionForRejectedCredentials(
+  rejected: ReturnType<typeof readSettings>,
+): void {
+  if (!hasSameNeonCredentials(rejected)) return;
+  requireNeonReconnection("access_token_rejected");
+}
+
 function requireNeonReconnection(
-  reason: "invalid_grant" | "missing_refresh_token",
+  reason: "invalid_grant" | "missing_refresh_token" | "access_token_rejected",
 ): void {
   const neon = readSettings().neon;
   if (!neon || neon.reconnectRequired) return;

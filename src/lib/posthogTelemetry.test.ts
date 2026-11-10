@@ -91,6 +91,37 @@ describe("PostHogErrorDeduper", () => {
     });
   });
 
+  it("deduplicates filesystem failures by what failed and where", () => {
+    const deduper = new PostHogErrorDeduper();
+    const fsFailure = (properties: Record<string, unknown>) => ({
+      event: "fs:operation-failed",
+      properties: {
+        flow: "agent_tool",
+        code: "EPERM",
+        syscall: "open",
+        location: "app",
+        in_onedrive: false,
+        file_category: "gitignore",
+        tool: "write_file",
+        ...properties,
+      },
+    });
+
+    expect(deduper.process(fsFailure({}), false, 0)).not.toBeNull();
+    expect(deduper.process(fsFailure({}), false, 1_000)).toBeNull();
+    for (const change of [
+      { flow: "chat_stream" },
+      { code: "EBUSY" },
+      { syscall: "rename" },
+      { location: "home" },
+      { in_onedrive: true },
+      { file_category: "source" },
+      { tool: "delete_file" },
+    ]) {
+      expect(deduper.process(fsFailure(change), false, 2_000)).not.toBeNull();
+    }
+  });
+
   it("deduplicates Pro errors for 10 minutes", () => {
     const deduper = new PostHogErrorDeduper();
     const event = exceptionEvent();
@@ -997,6 +1028,12 @@ describe("shouldBypassNonProTelemetrySampling", () => {
       shouldBypassNonProTelemetrySampling({
         event: "chat:concurrent-stream-started",
       }),
+    ).toBe(true);
+  });
+
+  it("always sends filesystem failures", () => {
+    expect(
+      shouldBypassNonProTelemetrySampling({ event: "fs:operation-failed" }),
     ).toBe(true);
   });
 

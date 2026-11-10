@@ -40,6 +40,28 @@ const ERROR_FINGERPRINT_CONTEXT_KEYS = [
   "provider",
   "source",
 ] as const;
+// Failure events without "error" in their name, and the fields that tell one
+// failure apart from another. Their names are too generic for the shared list.
+const FAILURE_EVENT_FINGERPRINT_KEYS: Record<string, readonly string[]> = {
+  "fs:operation-failed": [
+    "flow",
+    "code",
+    "syscall",
+    "location",
+    "in_onedrive",
+    "file_category",
+    "tool",
+  ],
+};
+
+function failureEventFingerprintKeys(
+  eventName: string | undefined,
+): readonly string[] | undefined {
+  return eventName !== undefined &&
+    Object.hasOwn(FAILURE_EVENT_FINGERPRINT_KEYS, eventName)
+    ? FAILURE_EVENT_FINGERPRINT_KEYS[eventName]
+    : undefined;
+}
 
 type TelemetryStorage = Pick<Storage, "getItem" | "setItem">;
 type TelemetryStorageOwner = { readonly localStorage: TelemetryStorage };
@@ -602,6 +624,7 @@ export function isPostHogErrorTelemetryEvent(
   return (
     eventName === "$exception" ||
     eventName?.toLowerCase().includes("error") === true ||
+    failureEventFingerprintKeys(eventName) !== undefined ||
     Array.isArray(properties?.$exception_list) ||
     typeof properties?.$exception_type === "string" ||
     typeof properties?.exception_name === "string" ||
@@ -649,10 +672,15 @@ function getErrorTelemetryFingerprint(
     .join("|");
 
   const customErrorIdentity = normalizeTelemetryValue(properties?.error);
-  const stableContextIdentity = ERROR_FINGERPRINT_CONTEXT_KEYS.map((key) => {
-    const value = normalizeTelemetryValue(properties?.[key]);
-    return value ? `${key}:${value}` : "";
-  })
+  const contextKeys = [
+    ...ERROR_FINGERPRINT_CONTEXT_KEYS,
+    ...(failureEventFingerprintKeys(event.event) ?? []),
+  ];
+  const stableContextIdentity = contextKeys
+    .map((key) => {
+      const value = normalizeTelemetryValue(properties?.[key]);
+      return value ? `${key}:${value}` : "";
+    })
     .filter(Boolean)
     .join("|");
   return [

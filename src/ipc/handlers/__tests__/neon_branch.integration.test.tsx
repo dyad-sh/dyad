@@ -47,6 +47,11 @@ import * as dependencies from "@/ipc/processors/executeAddDependency";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { shouldFilterTelemetryException } from "@/ipc/utils/telemetry";
 import { handleNeonOAuthReturn } from "@/neon_admin/neon_return_handler";
+import {
+  NEON_PROJECT_ACCESS_DENIED_MESSAGE,
+  NEON_PROJECT_NOT_FOUND_MESSAGE,
+  NEON_RECONNECT_REQUIRED_MESSAGE,
+} from "@/shared/neon_auth";
 
 type TestApp = {
   appId: number;
@@ -183,9 +188,13 @@ describe("Neon branch actions (integration)", () => {
     }
   });
 
-  it.each([403, 404])(
-    "keeps the linked project when the new account cannot access it (HTTP %s)",
-    async (status) => {
+  it.each([
+    [401, DyadErrorKind.Auth, NEON_RECONNECT_REQUIRED_MESSAGE, true],
+    [403, DyadErrorKind.Auth, NEON_PROJECT_ACCESS_DENIED_MESSAGE, undefined],
+    [404, DyadErrorKind.NotFound, NEON_PROJECT_NOT_FOUND_MESSAGE, undefined],
+  ] as const)(
+    "keeps the linked project when Neon rejects it with HTTP %s",
+    async (status, kind, message, reconnectRequired) => {
       const app = await createApp("reconnect-no-access", "vite");
       await harness.db
         .update(apps)
@@ -213,12 +222,14 @@ describe("Neon branch actions (integration)", () => {
       try {
         await expect(
           ipc.neon.getProject({ appId: app.appId }),
-        ).rejects.toMatchObject({ kind: DyadErrorKind.Auth });
+        ).rejects.toMatchObject({ kind, message });
         expect(await appRow(app.appId)).toMatchObject({
           neonProjectId: "original-project",
           neonActiveBranchId: "original-branch",
         });
-        expect(readSettings().neon?.reconnectRequired).toBeUndefined();
+        // Only a rejected token (401) asks the user to sign in again.
+        expect(readSettings().neon?.reconnectRequired).toBe(reconnectRequired);
+        expect(readSettings().neon?.accessToken?.value).toBe("new-access");
       } finally {
         mockClient.mockRestore();
       }

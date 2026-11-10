@@ -830,6 +830,7 @@
       "reconnectTitle": "重新连接 Neon",
       "reconnectDescription": "请重新登录，以便 Dyad 访问您的 Neon 项目。现有项目连接将保留。",
       "projectAccessRequired": "此 Neon 账户无法访问关联的项目。请使用有访问权限的账户登录。现有项目连接将保留。",
+      "projectNotFound": "Dyad 找不到关联的 Neon 项目。该项目可能已被删除，或此 Neon 账户可能无权访问它。请使用有访问权限的账户登录，或在应用的 Neon 数据库设置中使用“断开项目连接”来关联其他项目。",
       "signInAnotherAccount": "使用其他账户登录",
       "waitingForSignIn": "正在等待 Neon 登录…",
       "reconnectedSuccess": "已重新连接 Neon。"

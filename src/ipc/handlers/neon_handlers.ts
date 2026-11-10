@@ -5,7 +5,11 @@ import { createTestOnlyLoggedHandler } from "./safe_handle";
 import { createTypedHandler } from "./base";
 import type { IpcContract } from "../contracts/core";
 import { handleNeonOAuthReturn } from "../../neon_admin/neon_return_handler";
-import { NEON_PROJECT_ACCESS_DENIED_MESSAGE } from "@/shared/neon_auth";
+import {
+  NEON_PROJECT_ACCESS_DENIED_MESSAGE,
+  NEON_PROJECT_NOT_FOUND_MESSAGE,
+  NEON_RECONNECT_REQUIRED_MESSAGE,
+} from "@/shared/neon_auth";
 import { runOAuthReturnExchange } from "./connection_flow_handlers";
 import {
   getCachedEmailPasswordConfig,
@@ -13,6 +17,7 @@ import {
   getNeonErrorMessage,
   getNeonOrganizationId,
   invalidateEmailPasswordConfigCache,
+  requireNeonReconnectionForRejectedCredentials,
 } from "../../neon_admin/neon_management_client";
 import { neonContracts, type NeonBranch } from "../types/neon";
 import { db } from "../../db";
@@ -491,6 +496,9 @@ export function registerNeonHandlers() {
   createTypedHandler(neonContracts.getProject, async (_, params) => {
     const { appId } = params;
     logger.info(`Getting Neon project info for app ${appId}`);
+    // Credentials the Neon client was built with, so a 401 can be attributed
+    // to them rather than to a sign-in that completed mid-request.
+    let requestCredentials: ReturnType<typeof readSettings> | undefined;
 
     try {
       // Get the app from the database to find the neonProjectId and neonBranchId
@@ -516,6 +524,7 @@ export function registerNeonHandlers() {
       }
 
       const neonClient = await getNeonClient();
+      requestCredentials = readSettings();
 
       // Get project info
       const projectResponse = await neonClient.getProject(
@@ -591,10 +600,27 @@ export function registerNeonHandlers() {
       if (error instanceof DyadError) throw error;
       const status = (error as { response?: { status?: number } })?.response
         ?.status;
-      if (status === 403 || status === 404) {
+      if (status === 401) {
+        // An unexpired token was rejected (for example, access was revoked).
+        if (requestCredentials) {
+          requireNeonReconnectionForRejectedCredentials(requestCredentials);
+        }
+        throw new DyadError(
+          NEON_RECONNECT_REQUIRED_MESSAGE,
+          DyadErrorKind.Auth,
+        );
+      }
+      if (status === 403) {
         throw new DyadError(
           NEON_PROJECT_ACCESS_DENIED_MESSAGE,
           DyadErrorKind.Auth,
+        );
+      }
+      if (status === 404) {
+        // Deleted projects and projects hidden from this account look alike.
+        throw new DyadError(
+          NEON_PROJECT_NOT_FOUND_MESSAGE,
+          DyadErrorKind.NotFound,
         );
       }
       throw error;

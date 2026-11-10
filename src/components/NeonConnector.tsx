@@ -94,6 +94,7 @@ export function NeonConnector({ appId }: { appId: number }) {
     isConnected,
     requiresReconnection,
     projectAccessDenied,
+    projectNotFound,
     projects,
     projectInfo,
     branches,
@@ -416,17 +417,14 @@ export function NeonConnector({ appId }: { appId: number }) {
     );
   }
 
-  if (!app?.neonProjectId && (requiresReconnection || projectAccessDenied)) {
+  if (!app?.neonProjectId && requiresReconnection) {
     return (
       <Card className="mt-1">
         <CardHeader>
           <CardTitle>{t("integrations.neon.database")}</CardTitle>
         </CardHeader>
         <CardContent>
-          <NeonReconnectionNotice
-            appId={appId}
-            projectAccessDenied={!requiresReconnection && projectAccessDenied}
-          />
+          <NeonReconnectionNotice appId={appId} />
         </CardContent>
       </Card>
     );
@@ -477,6 +475,7 @@ export function NeonConnector({ appId }: { appId: number }) {
                 projectAccessDenied={
                   !requiresReconnection && projectAccessDenied
                 }
+                projectNotFound={!requiresReconnection && projectNotFound}
               />
             )}
             <div

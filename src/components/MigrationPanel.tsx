@@ -43,8 +43,14 @@ export const MigrationPanelBody = ({
 }: MigrationPanelProps) => {
   const { t } = useTranslation("home");
   const { app } = useLoadApp(appId);
-  const { projectInfo, branches, requiresReconnection, projectAccessDenied } =
-    useNeon(appId);
+  const {
+    projectInfo,
+    branches,
+    requiresReconnection,
+    projectAccessDenied,
+    projectNotFound,
+    isAccessResolved,
+  } = useNeon(appId);
   const [showErrorDetails, setShowErrorDetails] = useState(false);
   const errorDetailsId = useId();
   const previewTriggerId = useId();
@@ -101,9 +107,12 @@ export const MigrationPanelBody = ({
   }, [confirmOpen, presentation]);
   const didAutoPreview = useRef(false);
   useEffect(() => {
+    // Wait until the sign-in state is known: a preview started before a
+    // reconnect prompt appears would fail and claim the one automatic start.
     if (
       !autoPreview ||
       didAutoPreview.current ||
+      !isAccessResolved ||
       requiresReconnection ||
       projectAccessDenied
     )
@@ -121,7 +130,13 @@ export const MigrationPanelBody = ({
     return () => {
       disposed = true;
     };
-  }, [autoPreview, startPreview, requiresReconnection, projectAccessDenied]);
+  }, [
+    autoPreview,
+    startPreview,
+    isAccessResolved,
+    requiresReconnection,
+    projectAccessDenied,
+  ]);
   useEffect(() => {
     onBusyChange?.(migrateMutation.isPending);
   }, [migrateMutation.isPending, onBusyChange]);
@@ -259,6 +274,7 @@ export const MigrationPanelBody = ({
       <NeonReconnectionNotice
         appId={appId}
         projectAccessDenied={!requiresReconnection && projectAccessDenied}
+        projectNotFound={!requiresReconnection && projectNotFound}
       />
     );
   }

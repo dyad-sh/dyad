@@ -18,6 +18,8 @@ const h = vi.hoisted(() => ({
   refreshSettings: vi.fn(),
   save: vi.fn(),
   sync: vi.fn(),
+  requiresReconnection: false,
+  projectAccessDenied: false,
 }));
 vi.mock("@/hooks/useSettings", () => ({
   useSettings: () => h,
@@ -32,7 +34,21 @@ vi.mock("@/hooks/useNeon", () => ({
       { type: "development", branchId: "dev" },
     ],
     isLoadingBranches: false,
+    requiresReconnection: h.requiresReconnection,
+    projectAccessDenied: h.projectAccessDenied,
+    projectNotFound: false,
   }),
+}));
+vi.mock("@/components/NeonReconnectionNotice", () => ({
+  NeonReconnectionNotice: ({
+    projectAccessDenied,
+  }: {
+    projectAccessDenied?: boolean;
+  }) => (
+    <div data-testid="neon-reconnection-notice">
+      {projectAccessDenied ? "access denied" : "reconnect"}
+    </div>
+  ),
 }));
 vi.mock("@/ipc/types", () => ({
   ipc: {
@@ -74,6 +90,8 @@ beforeEach(() => {
   });
   h.settings = {};
   h.settingsLoading = false;
+  h.requiresReconnection = false;
+  h.projectAccessDenied = false;
   h.refreshSettings.mockResolvedValue(undefined);
   h.app = {
     id: 1,
@@ -231,3 +249,30 @@ it("does not offer a missing development branch even with protection disabled", 
     }),
   ).toBeNull();
 });
+
+it.each([
+  ["reconnection is required", { requiresReconnection: true }, "reconnect"],
+  [
+    "the project is inaccessible",
+    { projectAccessDenied: true },
+    "access denied",
+  ],
+])(
+  "replaces the database controls with a sign-in notice when %s",
+  (_, state, copy) => {
+    Object.assign(h, state);
+    mount();
+    expect(screen.getByTestId("neon-reconnection-notice").textContent).toBe(
+      copy,
+    );
+    // The section keeps its frame and title, but none of its controls.
+    expect(screen.getByText(key("title"))).toBeDefined();
+    expect(screen.queryByTestId("database-section")).toBeNull();
+    expect(
+      screen.queryByRole("button", {
+        name: new RegExp(key("production.title")),
+      }),
+    ).toBeNull();
+    expect(h.save).not.toHaveBeenCalled();
+  },
+);

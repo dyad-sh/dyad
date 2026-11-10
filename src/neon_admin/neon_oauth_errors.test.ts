@@ -30,6 +30,11 @@ describe("safe Neon OAuth diagnostics", () => {
       "invalid_client",
     ],
     [{ code: "server_error" }, "server_error"],
+    [
+      { error: "Failed to refresh tokens", code: "invalid_grant" },
+      "invalid_grant",
+    ],
+    [{ error: { message: "secret" }, code: "invalid_grant" }, "invalid_grant"],
     [{ error: "secret-token" }, undefined],
     [{ error_description: "invalid_grant" }, undefined],
     [null, undefined],

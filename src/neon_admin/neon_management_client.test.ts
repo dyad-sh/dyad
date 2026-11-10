@@ -10,7 +10,11 @@ vi.mock("@/ipc/utils/query_invalidation_delivery", () => ({
 vi.mock("@/ipc/utils/telemetry", () => ({ sendTelemetryEvent: vi.fn() }));
 
 import { readSettings, writeSettings } from "@/main/settings";
-import { getNeonClient, refreshNeonToken } from "./neon_management_client";
+import {
+  getNeonClient,
+  refreshNeonToken,
+  requireNeonReconnectionForRejectedCredentials,
+} from "./neon_management_client";
 import { handleNeonOAuthReturn } from "./neon_return_handler";
 import { DyadErrorKind } from "@/errors/dyad_error";
 import { publishQueryInvalidations } from "@/ipc/utils/query_invalidation_delivery";
@@ -283,4 +287,28 @@ describe("refreshNeonToken", () => {
       expect(writeSettings).not.toHaveBeenCalled();
     },
   );
+});
+
+describe("requireNeonReconnectionForRejectedCredentials", () => {
+  it("requires reconnection when the stored credentials were rejected", () => {
+    requireNeonReconnectionForRejectedCredentials(readSettings());
+    expect(settings.neon?.reconnectRequired).toBe(true);
+    expect(settings.neon?.accessToken?.value).toBe("expired-access");
+    expect(publishQueryInvalidations).toHaveBeenCalledOnce();
+    expect(sendTelemetryEvent).toHaveBeenCalledWith("neon:reconnect-required", {
+      reason: "access_token_rejected",
+    });
+  });
+
+  it("ignores a rejection of credentials replaced by a newer sign-in", () => {
+    const rejected = readSettings();
+    handleNeonOAuthReturn({
+      token: "new-access",
+      refreshToken: "new-refresh",
+      expiresIn: 3600,
+    });
+    requireNeonReconnectionForRejectedCredentials(rejected);
+    expect(settings.neon?.reconnectRequired).toBeUndefined();
+    expect(sendTelemetryEvent).not.toHaveBeenCalled();
+  });
 });

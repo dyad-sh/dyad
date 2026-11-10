@@ -267,6 +267,13 @@ Background and before/after examples of why this pattern exists:
   other than the actor's observer, also settle the authoritative actor with the
   same correlated cancelled terminal; a silent handler return must not be
   synthesized as successful completion.
+- Renderer handlers for connection-flow terminal states (`connected` /
+  `failed` / `cancelled`) must not depend only on a per-instance "I started
+  this" ref. The initiating button can unmount while the browser OAuth step is
+  open, and then the outcome is never toasted or acknowledged. Claim each
+  outcome (`operationId:revision`) once in module scope and let any mounted
+  instance handle orphaned outcomes (see `NeonSignInButton`). Because that claim
+  set outlives a test, give each test its own `invocationRef.operationId`.
 - Compensation on abort rolls back only what the aborted operation touched.
 - When a multi-step side effect can fail partway through, retain the exact
   completed/next step in the failure state. Retrying from the start can repeat

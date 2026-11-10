@@ -60,7 +60,10 @@ App deletion closes coordinator admission before draining admitted work. Every
 new app-scoped main-process mutation must therefore use the coordinator unless
 it is already owned and drained by a domain-specific actor fence. Deletion-only
 work uses the opaque deletion handle after `drain()`; ordinary handlers must
-never bypass admission.
+never bypass admission. Work coordinated under another key (a worktree's
+`workspaceRuntimeId`) is invisible to the app's fence unless it is also
+admitted on the app id: `run({ appId, resources: [] }, ...)` conflicts with
+nothing but is refused during deletion and drained by `drain()`.
 
 Chat deletion must start `userInputRegistry.settleChat(chatId)` before closing
 chat-actor admission. Otherwise an already-due follow-up can observe the fence

@@ -19,6 +19,7 @@ import { apps } from "../../db/schema";
 import { and, eq } from "drizzle-orm";
 import { EndpointType } from "@neondatabase/api-client";
 import { retryOnLocked } from "../utils/retryOnLocked";
+import { reportingNeonBranchCreate } from "../utils/neon_branch_telemetry";
 import {
   createRootBranch,
   getDevelopmentBranchStatus,
@@ -334,16 +335,20 @@ export function registerNeonHandlers() {
         }
 
         // Create preview branch as a child of development
-        const previewBranchResponse = await retryOnLocked(
+        const previewBranchResponse = await reportingNeonBranchCreate(
+          "preview",
           () =>
-            neonClient.createProjectBranch(project.id, {
-              endpoints: [{ type: EndpointType.ReadWrite }],
-              branch: {
-                name: "preview",
-                parent_id: developmentBranch.id,
-              },
-            }),
-          `Create preview branch for project ${project.id}`,
+            retryOnLocked(
+              () =>
+                neonClient.createProjectBranch(project.id, {
+                  endpoints: [{ type: EndpointType.ReadWrite }],
+                  branch: {
+                    name: "preview",
+                    parent_id: developmentBranch.id,
+                  },
+                }),
+              `Create preview branch for project ${project.id}`,
+            ),
         );
 
         if (

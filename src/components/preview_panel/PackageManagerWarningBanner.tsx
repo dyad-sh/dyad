@@ -25,8 +25,6 @@ import {
   usePackageManagerWarning,
   usePackageManagerWarningStore,
 } from "@/package_manager_warnings/PackageManagerWarningProvider";
-import { useAtomValue } from "jotai";
-import { selectedAppIdAtom } from "@/atoms/appAtoms";
 
 type InstallStatus = "idle" | "installing" | "success" | "error";
 
@@ -41,10 +39,13 @@ function getInstallErrorMessage(error: unknown): string {
 }
 
 export function PackageManagerWarningBanner() {
-  const selectedAppId = useAtomValue(selectedAppIdAtom);
-  const warning = usePackageManagerWarning(selectedAppId);
+  // Warnings are stored under the runtime that reported them, so show the
+  // ones for the runtime the preview shows (a chat's isolated workspace, or
+  // the app itself).
+  const { runtimeAppId, appId } = usePreviewRuntime();
+  const warning = usePackageManagerWarning(runtimeAppId);
 
-  if (!warning) {
+  if (!warning || appId === null) {
     return null;
   }
 
@@ -54,24 +55,26 @@ export function PackageManagerWarningBanner() {
     <PackageManagerWarningBannerContent
       key={`${warning.appId}:${warning.message}`}
       warning={warning}
+      ownerAppId={appId}
     />
   );
 }
 
 function PackageManagerWarningBannerContent({
   warning,
+  ownerAppId,
 }: {
   warning: PackageManagerWarning;
+  /** The app whose preview reported the warning. */
+  ownerAppId: number;
 }) {
   const warningStore = usePackageManagerWarningStore();
   const rebuildAppAfterPnpmInstall = useRebuildAppAfterPnpmInstall();
-  // Warnings come from the runtime the preview shows (possibly a chat's
-  // isolated workspace), so restart that runtime.
-  const {
-    loading: appRunLoading,
-    restartApp,
-    stopApp,
-  } = useRunApp(usePreviewRuntime().runtimeAppId);
+  // The pnpm migration rewrites and commits the app's own folder (the
+  // upgrade takes an app id), so it stops, migrates, and restarts the app's
+  // runtime, even when the warning came from a chat's isolated workspace.
+  const { loading: appRunLoading, restartApp, stopApp } = useRunApp(ownerAppId);
+  const isWorkspaceWarning = warning.appId !== ownerAppId;
   const { updateSettings } = useSettings();
   const queryClient = useQueryClient();
   const [installStatus, setInstallStatus] = useState<InstallStatus>("idle");
@@ -132,21 +135,29 @@ function PackageManagerWarningBannerContent({
     setInstallErrorMessage(undefined);
 
     try {
-      await stopApp(warning.appId);
+      await stopApp(ownerAppId);
       await ipc.upgrade.executeAppUpgrade({
-        appId: warning.appId,
+        appId: ownerAppId,
         upgradeId: "pnpm-version-migration",
       });
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: queryKeys.appUpgrades.byApp({ appId: warning.appId }),
+          queryKey: queryKeys.appUpgrades.byApp({ appId: ownerAppId }),
         }),
         queryClient.invalidateQueries({
-          queryKey: queryKeys.versions.list({ appId: warning.appId }),
+          queryKey: queryKeys.versions.list({ appId: ownerAppId }),
         }),
       ]);
       setInstallStatus("success");
       await restartApp();
+      if (isWorkspaceWarning) {
+        // The workspace gets the migration commit when it next takes in the
+        // app's branch; its own runtime is not restarted here.
+        clearTimerRef.current = window.setTimeout(
+          () => warningStore.clear(warning.appId),
+          2_000,
+        );
+      }
     } catch (error) {
       setInstallStatus("error");
       setInstallErrorMessage(getInstallErrorMessage(error));
@@ -166,7 +177,9 @@ function PackageManagerWarningBannerContent({
       ));
   const displayMessage = isSuccess
     ? isPnpmMigrationWarning
-      ? "pnpm migration applied. Restarting preview..."
+      ? isWorkspaceWarning
+        ? "pnpm migration applied to the app. This chat's workspace picks it up with its next turn."
+        : "pnpm migration applied. Restarting preview..."
       : "pnpm installed. Rebuilding preview..."
     : isError
       ? `${installErrorMessage}.`

@@ -126,14 +126,18 @@ export function runWorkspaceScopedOperation<Result>(
           },
         }),
     );
-  if (appResources.length === 0) return runInWorkspace();
+  // Always admitted on the app too, even with no app claims (an empty claim
+  // conflicts with nothing): app deletion closes and drains admission by app
+  // id, and must neither admit nor outlive workspace work while it removes
+  // the app's worktrees.
   return appOperationCoordinator.run(
     {
       appId,
       operation: name,
       resources: appResources,
       signal,
-      refuseWhenRecording,
+      refuseWhenRecording:
+        appResources.length > 0 ? refuseWhenRecording : undefined,
     },
     (appContext) => runInWorkspace(appContext),
   );

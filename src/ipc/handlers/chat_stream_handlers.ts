@@ -2733,7 +2733,8 @@ ${componentSnippet}
           systemPrompt +=
             "\n\n" +
             (await buildNeonPromptForApp({
-              appPath: updatedChat.app.path,
+              // The code this turn reads and edits (its worktree, if any).
+              appPath: turnAppPath,
               neonProjectId: updatedChat.app.neonProjectId!,
               neonActiveBranchId: updatedChat.app.neonActiveBranchId,
               neonDevelopmentBranchId: updatedChat.app.neonDevelopmentBranchId,

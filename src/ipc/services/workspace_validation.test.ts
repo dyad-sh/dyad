@@ -27,6 +27,7 @@ vi.mock("@/ipc/utils/spawn_streaming", () => ({
 }));
 
 import { spawnStreaming } from "@/ipc/utils/spawn_streaming";
+import { runCleanPackageInstall } from "./isolated_package_install";
 import { validateWorkspace } from "./workspace_validation";
 
 function git(cwd: string, ...args: string[]): string {
@@ -137,6 +138,66 @@ describe("workspace validation isolation", () => {
       expect(
         git(repo, "worktree", "list", "--porcelain").match(/^worktree /gm),
       ).toHaveLength(2);
+    },
+  );
+
+  async function commitAndBranch(files: Record<string, string>) {
+    for (const [file, content] of Object.entries(files)) {
+      await fs.mkdir(path.dirname(path.join(repo, file)), { recursive: true });
+      await fs.writeFile(path.join(repo, file), content);
+    }
+    git(repo, "add", ".");
+    git(repo, "commit", "-m", "initial");
+    git(repo, "worktree", "add", "-b", "dyad/chat-1", workspace);
+  }
+
+  function succeed() {
+    vi.mocked(spawnStreaming).mockResolvedValue({
+      code: 0,
+      stdout: "",
+      stderr: "",
+      aborted: false,
+      timedOut: false,
+    });
+  }
+
+  it("installs a workspace member from its npm workspace root", async () => {
+    await commitAndBranch({
+      "package.json": JSON.stringify({ workspaces: ["packages/*"] }),
+      "packages/app/package.json": JSON.stringify({
+        name: "app",
+        scripts: { build: "build-app" },
+      }),
+    });
+    succeed();
+
+    await validateWorkspace({ appPath: path.join(workspace, "packages/app") });
+
+    const installCwd = vi.mocked(runCleanPackageInstall).mock.calls[0][0].cwd;
+    const buildCwd = vi.mocked(spawnStreaming).mock.calls[0][0].cwd;
+    expect(path.relative(installCwd, buildCwd)).toBe(
+      path.join("packages", "app"),
+    );
+  });
+
+  it.each([
+    { script: "jest --watchAll", runs: false },
+    { script: "jest --watch-all", runs: false },
+    { script: "vitest --watch", runs: false },
+    { script: "react-scripts test --watchAll=false", runs: true },
+  ])(
+    "skips a test script in watch mode ($script)",
+    async ({ script, runs }) => {
+      await commitAndBranch({
+        "package.json": JSON.stringify({ scripts: { test: script } }),
+      });
+      succeed();
+
+      const { checks } = await validateWorkspace({ appPath: workspace });
+
+      expect(checks.find((check) => check.name === "test")?.outcome).toBe(
+        runs ? "passed" : "skipped",
+      );
     },
   );
 });

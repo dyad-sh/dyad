@@ -109,7 +109,12 @@ describe("ensureDyadGitignored in a Git repository", () => {
   });
 
   afterEach(async () => {
-    await fs.promises.rm(appPath, { recursive: true, force: true });
+    await fs.promises.rm(appPath, {
+      recursive: true,
+      force: true,
+      maxRetries: 10,
+      retryDelay: 100,
+    });
     vi.clearAllMocks();
   });
 
@@ -149,5 +154,26 @@ describe("ensureDyadGitignored in a Git repository", () => {
         encoding: "utf8",
       }),
     ).toBe("");
+  });
+
+  it("excludes .dyad/ for an app in a subfolder of its repository", async () => {
+    readSettings.mockReturnValue({ enableWorktreeIsolation: true });
+    const nestedApp = path.join(appPath, "apps", "web");
+    await fs.promises.mkdir(nestedApp, { recursive: true });
+    await fs.promises.writeFile(path.join(nestedApp, ".gitignore"), "dist\n");
+
+    await ensureDyadGitignored(nestedApp);
+
+    expect(
+      await fs.promises.readFile(path.join(nestedApp, ".gitignore"), "utf8"),
+    ).toBe("dist\n");
+    expect(readExclude()).toContain(".dyad/");
+
+    // Once excluded, it stays out of every .gitignore, isolation on or off.
+    readSettings.mockReturnValue({ enableWorktreeIsolation: false });
+    await ensureDyadGitignored(nestedApp);
+    expect(
+      await fs.promises.readFile(path.join(nestedApp, ".gitignore"), "utf8"),
+    ).toBe("dist\n");
   });
 });

@@ -2080,9 +2080,12 @@ export class AppRuntimeService {
             this.dependencies.deleteRunningApp(appId);
           }
         }
+        // Keep an expected refusal (for example a workspace preview on the
+        // cloud runtime) classified as what it is, not as an outage.
         throw new DyadError(
           `Failed to run app ${appId}: ${errorMessage(error)}`,
-          DyadErrorKind.External,
+          error instanceof DyadError ? error.kind : DyadErrorKind.External,
+          { cause: error },
         );
       }
     });

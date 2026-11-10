@@ -13,6 +13,7 @@ import {
   removeGitOverlayWorkspace,
 } from "./git_overlay_workspace";
 import {
+  type IsolatedPackageManager,
   resolvePackageManager,
   runCleanPackageInstall,
 } from "./isolated_package_install";
@@ -37,6 +38,12 @@ export interface ValidationRunInput {
   baselineAppPath?: string;
   signal?: AbortSignal;
   onOutput?: (chunk: string) => void;
+}
+
+/** How the snapshot installs: from its npm/pnpm workspace root, if any. */
+interface SnapshotInstall {
+  packageManager: IsolatedPackageManager;
+  installPath: string;
 }
 
 export interface ValidationResult {
@@ -92,11 +99,10 @@ async function fileExists(filePath: string): Promise<boolean> {
  * Installs dependencies in the validation snapshot. Each snapshot starts
  * without node_modules, so this is always a clean install.
  */
-async function installSnapshotDependencies({
-  appPath,
-  signal,
-  onOutput,
-}: ValidationRunInput): Promise<WorkspaceValidationCheck> {
+async function installSnapshotDependencies(
+  { appPath, signal, onOutput }: ValidationRunInput,
+  { packageManager, installPath }: SnapshotInstall,
+): Promise<WorkspaceValidationCheck> {
   if (!(await fileExists(path.join(appPath, "package.json")))) {
     return {
       name: "install",
@@ -104,9 +110,8 @@ async function installSnapshotDependencies({
       summary: "No package.json, so there are no dependencies to install.",
     };
   }
-  const { packageManager } = await resolvePackageManager(appPath);
   const result = await runCleanPackageInstall({
-    cwd: appPath,
+    cwd: installPath,
     packageManager,
     signal,
     timeoutMs: INSTALL_TIMEOUT_MS,
@@ -228,12 +233,15 @@ async function runTypeCheck({
 }
 
 const BROWSER_TEST_PATTERN = /\b(playwright|cypress|webdriver|puppeteer)\b/i;
-const WATCH_FLAG_PATTERN = /--watch\b/;
+// `--watch`, Jest's `--watchAll` / `--watch-all`, but not an explicit
+// `=false` (Create React App's `test --watchAll=false` runs once).
+const WATCH_FLAG_PATTERN = /--watch(?:All|-all)?(?![\w-])(?!=(?:false|0)\b)/;
 
 async function runScript(
   name: "build" | "test",
   input: ValidationRunInput,
   scripts: Record<string, string> | null,
+  { packageManager }: SnapshotInstall,
 ): Promise<WorkspaceValidationCheck> {
   const script = scripts?.[name];
   if (!script) {
@@ -258,7 +266,6 @@ async function runScript(
       summary: `The "${name}" script runs in watch mode and would never finish.`,
     };
   }
-  const { packageManager } = await resolvePackageManager(input.appPath);
   const result = await spawnStreaming({
     command: packageManager,
     args: ["run", name],
@@ -320,7 +327,23 @@ export async function validateWorkspace(
     signal: input.signal,
   });
   try {
-    return await runWorkspaceChecks({ ...input, appPath: snapshot.targetPath });
+    // An app that is a member of an npm/pnpm workspace installs from the
+    // workspace root (root dependencies, workspace links), as its own
+    // installs do; scripts still run in the app's folder.
+    const { packageManager, sourceInstallPath } = await resolvePackageManager(
+      snapshot.sourceTargetPath,
+      snapshot.sourceRepoPath,
+    );
+    return await runWorkspaceChecks(
+      { ...input, appPath: snapshot.targetPath },
+      {
+        packageManager,
+        installPath: path.join(
+          snapshot.worktreePath,
+          path.relative(snapshot.sourceRepoPath, sourceInstallPath),
+        ),
+      },
+    );
   } finally {
     await removeGitOverlayWorkspace(
       snapshot.worktreePath,
@@ -331,19 +354,20 @@ export async function validateWorkspace(
 
 async function runWorkspaceChecks(
   input: ValidationRunInput,
+  install: SnapshotInstall,
 ): Promise<ValidationResult> {
   const checks: WorkspaceValidationCheck[] = [];
-  const install = await installSnapshotDependencies(input);
-  checks.push(install);
-  if (install.outcome === "failed" || install.outcome === "skipped") {
+  const installCheck = await installSnapshotDependencies(input, install);
+  checks.push(installCheck);
+  if (installCheck.outcome === "failed" || installCheck.outcome === "skipped") {
     return { checks, passed: false };
   }
   const scripts = await readPackageScripts(input.appPath);
   checks.push(await runTypeCheck(input));
   if (input.signal?.aborted) return { checks, passed: false };
-  checks.push(await runScript("build", input, scripts));
+  checks.push(await runScript("build", input, scripts, install));
   if (input.signal?.aborted) return { checks, passed: false };
-  checks.push(await runScript("test", input, scripts));
+  checks.push(await runScript("test", input, scripts, install));
   // Missing and skipped checks are reported, never counted as passes, but
   // they do not block: an app without a test script can still integrate.
   return {

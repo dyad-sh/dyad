@@ -27,14 +27,15 @@ export function WorktreeIsolationSettings() {
         <Label htmlFor="enable-worktree-isolation">Worktree isolation</Label>
       </div>
       <p className="text-[13px] leading-relaxed text-muted-foreground">
-        Give every chat its own Git branch and working directory, including a
-        new app&apos;s first chat. Dyad merges each chat&apos;s finished work
-        back into the app&apos;s branch after checking the combined code.
-        Turning this on affects the next turns you send; a running agent keeps
-        its current workspace. Turning it off stops new isolated workspaces but
-        keeps existing ones and their unfinished work. Claude Code subscription
-        chats need Claude Code {CLAUDE_CROSS_DIRECTORY_RESUME_VERSION} or later;
-        with an older CLI they keep working in the app&apos;s folder.
+        Give each chat that edits code its own Git branch and working directory,
+        including a new app&apos;s first chat. Dyad merges each chat&apos;s
+        finished work back into the app&apos;s branch after checking the
+        combined code. Turning this on affects the next turns you send; a
+        running agent keeps its current workspace. Turning it off stops new
+        isolated workspaces but keeps existing ones and their unfinished work.
+        Claude Code subscription chats need Claude Code{" "}
+        {CLAUDE_CROSS_DIRECTORY_RESUME_VERSION} or later; with an older CLI they
+        keep working in the app&apos;s folder.
       </p>
       {enabled && (
         <p className="text-xs text-muted-foreground">

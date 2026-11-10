@@ -154,6 +154,10 @@ export const PreviewIframe = ({
   const { settings, updateSettings } = useSettings();
   const { userBudget } = useUserBudgetInfo();
   const isProMode = !!userBudget;
+  // Visual edits write to the app's main folder, so they are off while the
+  // preview shows a chat's isolated workspace. Every path into visual editing
+  // (the iframe's Pro mode, component selection, the toolbar) checks this.
+  const isVisualEditingEnabled = isProMode && !isWorkspacePreview;
   const queryClient = useQueryClient();
   const setSelectedComponentsPreview = useSetAtom(
     selectedComponentsPreviewAtom,
@@ -559,11 +563,11 @@ export const PreviewIframe = ({
   useEffect(() => {
     if (iframeRef.current?.contentWindow && isComponentSelectorInitialized) {
       iframeRef.current.contentWindow.postMessage(
-        { type: "dyad-pro-mode", enabled: isProMode && !isWorkspacePreview },
+        { type: "dyad-pro-mode", enabled: isVisualEditingEnabled },
         "*",
       );
     }
-  }, [isProMode, isWorkspacePreview, isComponentSelectorInitialized]);
+  }, [isVisualEditingEnabled, isComponentSelectorInitialized]);
 
   // Component-side postMessage routes. The preview-iframe hook owns the one
   // window listener and claims navigation/selector lifecycle messages before
@@ -696,7 +700,7 @@ export const PreviewIframe = ({
 
       if (event.data?.type === "dyad-component-selector-initialized") {
         iframeRef.current?.contentWindow?.postMessage(
-          { type: "dyad-pro-mode", enabled: isProMode },
+          { type: "dyad-pro-mode", enabled: isVisualEditingEnabled },
           "*",
         );
         return;
@@ -725,7 +729,7 @@ export const PreviewIframe = ({
         if (!component) return;
 
         // Store the coordinates
-        if (event.data.coordinates && isProMode) {
+        if (event.data.coordinates && isVisualEditingEnabled) {
           setCurrentComponentCoordinates(event.data.coordinates);
         }
 
@@ -745,9 +749,7 @@ export const PreviewIframe = ({
           return [...prev, component];
         });
 
-        // Visual edits write to the app's main folder, so they are off while
-        // the preview shows a chat's isolated workspace.
-        if (isProMode && !isWorkspacePreview) {
+        if (isVisualEditingEnabled) {
           // Set as the highlighted component for visual editing
           setVisualEditingSelectedComponent(component);
           // Trigger AST analysis
@@ -918,7 +920,7 @@ export const PreviewIframe = ({
     [
       selectedAppId,
       previewRuntimeAppId,
-      isWorkspacePreview,
+      isVisualEditingEnabled,
       appRunManager,
       sendIframeEvent,
       setSelectedComponentsPreview,
@@ -1705,7 +1707,7 @@ export const PreviewIframe = ({
                   allow="clipboard-read; clipboard-write; fullscreen; microphone; camera; display-capture; geolocation; autoplay; picture-in-picture"
                 />
                 {/* Visual Editing Toolbar */}
-                {isProMode &&
+                {isVisualEditingEnabled &&
                   visualEditingSelectedComponent &&
                   selectedAppId && (
                     <VisualEditingToolbar

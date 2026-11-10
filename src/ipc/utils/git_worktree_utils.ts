@@ -722,7 +722,37 @@ export async function abortInProgressMerge(
 // content (for example a Markdown heading underline), and a real conflict
 // always leaves the other two markers too.
 const CONFLICT_MARKER_PATTERN = /^(<{7}|>{7})(?: |$)/m;
-const MAX_MARKER_SCAN_BYTES = 2 * 1024 * 1024;
+/** Larger files are scanned in chunks instead of read whole. */
+const MAX_WHOLE_FILE_SCAN_BYTES = 2 * 1024 * 1024;
+/** Like Git, a NUL byte in a file's start marks it binary. */
+const BINARY_SNIFF_BYTES = 8000;
+
+/**
+ * Scans a large file chunk by chunk, carrying the last partial line over so
+ * a marker split across chunks is still seen.
+ */
+async function hasConflictMarkersInLargeFile(
+  absolutePath: string,
+): Promise<boolean> {
+  let carry = "";
+  let sniffed = false;
+  for await (const chunk of fs.createReadStream(absolutePath, {
+    highWaterMark: 1024 * 1024,
+  })) {
+    const buffer = chunk as Buffer;
+    if (!sniffed) {
+      sniffed = true;
+      if (buffer.subarray(0, BINARY_SNIFF_BYTES).includes(0)) return false;
+    }
+    const text = carry + buffer.toString("utf8");
+    const lastNewline = text.lastIndexOf("\n");
+    if (CONFLICT_MARKER_PATTERN.test(text.slice(0, lastNewline + 1))) {
+      return true;
+    }
+    carry = text.slice(lastNewline + 1);
+  }
+  return CONFLICT_MARKER_PATTERN.test(carry);
+}
 
 /**
  * Files that still contain conflict markers. `git add` happily stages a file
@@ -736,17 +766,22 @@ export async function findFilesWithConflictMarkers(
   const withMarkers: string[] = [];
   for (const relativePath of relativePaths) {
     const absolutePath = path.join(worktreePath, relativePath);
-    let content: Buffer;
     try {
       const stat = await fsPromises.stat(absolutePath);
-      if (!stat.isFile() || stat.size > MAX_MARKER_SCAN_BYTES) continue;
-      content = await fsPromises.readFile(absolutePath);
+      if (!stat.isFile()) continue;
+      if (stat.size > MAX_WHOLE_FILE_SCAN_BYTES) {
+        if (await hasConflictMarkersInLargeFile(absolutePath)) {
+          withMarkers.push(relativePath);
+        }
+        continue;
+      }
+      const content = await fsPromises.readFile(absolutePath);
+      if (content.includes(0)) continue;
+      if (CONFLICT_MARKER_PATTERN.test(content.toString("utf8"))) {
+        withMarkers.push(relativePath);
+      }
     } catch {
       continue;
-    }
-    if (content.includes(0)) continue;
-    if (CONFLICT_MARKER_PATTERN.test(content.toString("utf8"))) {
-      withMarkers.push(relativePath);
     }
   }
   return withMarkers;
@@ -875,6 +910,30 @@ export async function diffPathsByStatus({
 export async function stageAllChanges(worktreePath: string): Promise<void> {
   await runOrThrow(
     ["-c", "core.fsmonitor=false", "add", "-A", "--", "."],
+    worktreePath,
+    "Failed to stage changes",
+  );
+}
+
+/**
+ * Stages exactly `files` (paths relative to `worktreePath`, deletions
+ * included), never anything else that changed meanwhile.
+ */
+export async function stagePaths(
+  worktreePath: string,
+  files: readonly string[],
+): Promise<void> {
+  if (files.length === 0) return;
+  await runOrThrow(
+    [
+      "--literal-pathspecs",
+      "-c",
+      "core.fsmonitor=false",
+      "add",
+      "-A",
+      "--",
+      ...files,
+    ],
     worktreePath,
     "Failed to stage changes",
   );

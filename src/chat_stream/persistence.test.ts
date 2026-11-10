@@ -382,6 +382,28 @@ describe("chat stream persistence", () => {
     ]);
   });
 
+  it("does not remove a queued merge-conflict repair turn", async () => {
+    persistQueuedIntent(
+      database,
+      intent("repair-turn", "Resolve the conflicts", {
+        kind: "workspace-integration",
+        workspaceId: 3,
+      }),
+    );
+
+    await expect(
+      mutateChatQueue(database, chatId, {
+        type: "mutate-queue",
+        mutation: { type: "remove", itemId: "repair-turn" },
+        expectedQueueRevision: 1,
+        mutationId: "remove-repair",
+      }),
+    ).rejects.toMatchObject({ kind: DyadErrorKind.Precondition });
+    expect(loadChatQueue(database, chatId).queue).toMatchObject([
+      { intentId: "repair-turn" },
+    ]);
+  });
+
   it("clears removable entries while retaining a live plan handoff", async () => {
     persistQueuedIntent(database, intent("ordinary-turn"));
     persistQueuedIntent(

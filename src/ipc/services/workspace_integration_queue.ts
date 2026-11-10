@@ -38,6 +38,7 @@ import {
   recordMergedCommit,
   restorePathsToHead,
   stageAllChanges,
+  stagePaths,
 } from "@/ipc/utils/git_worktree_utils";
 import {
   isIntegrationActive,
@@ -258,7 +259,7 @@ const INSTALL_WRITTEN_FILES = new Set([
   "pnpm-workspace.yaml",
 ]);
 
-function isInstallWrittenFile(file: string): boolean {
+export function isInstallWrittenFile(file: string): boolean {
   return INSTALL_WRITTEN_FILES.has(path.posix.basename(file));
 }
 
@@ -298,7 +299,7 @@ async function discardInstallRewritesInTheWay({
  * only uncommitted changes, commit them so integration does not wait for
  * another turn. Returns whether it did.
  */
-async function commitInstallChanges(
+export async function commitInstallChanges(
   workspace: ChatWorkspaceRow,
 ): Promise<boolean> {
   const appPath = getWorkspaceAppPath(workspace);
@@ -306,7 +307,9 @@ async function commitInstallChanges(
   if (dirty.length === 0 || !dirty.every(isInstallWrittenFile)) {
     return false;
   }
-  await stageAllChanges(workspace.path);
+  // Only the files checked above: an edit made meanwhile is not install
+  // output and must not slip into this commit.
+  await stagePaths(workspace.path, dirty);
   await gitCommit({
     path: appPath,
     message: [

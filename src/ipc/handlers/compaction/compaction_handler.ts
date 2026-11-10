@@ -266,7 +266,10 @@ export async function performCompaction(
           durableBackup,
         );
       } catch (error) {
-        logger.warn("Failed to keep the compaction backup in the app", error);
+        // The summary will point at this backup, and the worktree copy goes
+        // when the workspace is deleted: stay pending and retry instead.
+        logger.error("Failed to keep the compaction backup in the app", error);
+        throw error;
       }
     }
 

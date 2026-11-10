@@ -85,6 +85,17 @@ vi.mock("@/atoms/testRuntimeAtoms", () => ({
   currentTestRunStateAtom: mocks.currentTestRunStateAtom,
 }));
 
+// Which runtime the preview shows has its own suite (usePreviewRuntime.test);
+// here it is the selected app's own folder.
+vi.mock("@/hooks/usePreviewRuntime", () => ({
+  usePreviewRuntime: () => ({
+    runtimeAppId: mocks.selectedAppId,
+    appId: mocks.selectedAppId,
+    resolved: true,
+    isWorkspace: false,
+  }),
+}));
+
 vi.mock("@/preview_console/hooks", () => ({
   useLatestConsoleEntry: () => undefined,
 }));

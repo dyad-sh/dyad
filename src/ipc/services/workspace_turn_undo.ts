@@ -14,18 +14,47 @@ import {
   revertCommitsAsOne,
   stageAllChanges,
 } from "@/ipc/utils/git_worktree_utils";
+import {
+  getStoredTurnOutcomeForMessage,
+  type StoredTurnOutcome,
+} from "@/ipc/utils/turn_outcome";
 import { workspaceRuntimeId } from "../../../shared/workspace_runtime_id";
 import { readAppResource } from "./app_operation_coordinator";
 import { publishChatInvalidations } from "./chat_actor_platform";
 import { chatWorkspaceRegistry } from "./chat_workspace_registry";
+import { chatWorkspaceService } from "./chat_workspace_service";
 import {
   getActiveWorkspaceForChat,
   getWorkspaceAppPath,
   isWorkspaceIntegrated,
 } from "./chat_workspace_store";
 import { publishWorkspaceChanged } from "./workspace_events";
-import { workspaceIntegrationQueue } from "./workspace_integration_queue";
+import {
+  commitInstallChanges,
+  workspaceIntegrationQueue,
+} from "./workspace_integration_queue";
 import { runWorkspaceScopedOperation } from "./workspace_coordination";
+
+/** How the chat's latest turn (from `fromUserMessageId` on) ended. */
+async function getLatestTurnOutcome(
+  chatId: number,
+  fromUserMessageId: number,
+): Promise<StoredTurnOutcome> {
+  const latestUserMessage = await db.query.messages.findFirst({
+    columns: { id: true },
+    where: and(
+      eq(messages.chatId, chatId),
+      eq(messages.role, "user"),
+      gte(messages.id, fromUserMessageId),
+    ),
+    orderBy: desc(messages.id),
+  });
+  if (!latestUserMessage) return "unknown";
+  return getStoredTurnOutcomeForMessage({
+    chatId,
+    messageId: latestUserMessage.id,
+  });
+}
 
 /**
  * Undo (and the restore half of Retry) for a chat that works in an isolated
@@ -42,11 +71,19 @@ import { runWorkspaceScopedOperation } from "./workspace_coordination";
 export async function undoIsolatedChatTurns({
   chatId,
   fromUserMessageId,
+  requestIntegration: integrateNow = true,
 }: {
   chatId: number;
   /** The first user message to remove; it and everything after go. */
   fromUserMessageId: number;
+  /**
+   * Merge the revert into the target now. Retry passes `false`: the turn it
+   * starts next integrates the revert together with its own work.
+   */
+  requestIntegration?: boolean;
 }): Promise<{ undoCommit: string | null }> {
+  // Startup recovery may still be reconciling this worktree with Git.
+  await chatWorkspaceService.waitForRecovery();
   const workspace = getActiveWorkspaceForChat(chatId);
   if (!workspace) {
     throw new DyadError(
@@ -86,12 +123,30 @@ export async function undoIsolatedChatTurns({
             );
           }
           const commits: string[] = [];
+          // The workspace's own preview rewrites lockfiles with no turn
+          // left to commit them; those are not the chat's work, so keep them
+          // (as integration does) rather than reverting them.
+          const hasTurnLeftovers =
+            !health.isClean && !(await commitInstallChanges(workspace));
           const headBeforeUndo = await getCurrentCommitHash({ path: appPath });
-          if (!health.isClean) {
-            // An interrupted turn left edits behind. Keep them recoverable
-            // in a checkpoint, then undo them with the turn they belong to.
-            // Staged from the worktree root: an app in a subfolder can have
-            // changes outside it, which the status above counts.
+          if (hasTurnLeftovers) {
+            // Like Undo in the app's folder, only an interrupted turn's
+            // leftovers are undone with it. Any other uncommitted edit (one
+            // made in the worktree outside Dyad) is not this chat's turn.
+            const outcome = await getLatestTurnOutcome(
+              chatId,
+              fromUserMessageId,
+            );
+            if (outcome !== "cancelled" && outcome !== "errored") {
+              throw new DyadError(
+                "This chat's workspace has uncommitted changes that aren't from an interrupted response. Commit or discard them in the workspace folder, then try again.",
+                DyadErrorKind.Conflict,
+              );
+            }
+            // Keep them recoverable in a checkpoint, then undo them with the
+            // turn they belong to. Staged from the worktree root: an app in
+            // a subfolder can have changes outside it, which the status
+            // above counts.
             await stageAllChanges(workspace.path);
             commits.push(
               await gitCommit({
@@ -176,7 +231,10 @@ export async function undoIsolatedChatTurns({
           );
           // The undone work may already be in the target; merging the
           // revert carries the undo there too.
-          return { undoCommit, requestIntegration: !integrated };
+          return {
+            undoCommit,
+            requestIntegration: integrateNow && !integrated,
+          };
         },
       ).then(({ undoCommit, requestIntegration }) => {
         if (requestIntegration) {

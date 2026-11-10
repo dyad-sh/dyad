@@ -45,13 +45,13 @@ export function getAppPort(appId: number): number {
   const workspaceId = workspaceIdFromRuntimeId(appId);
   const e2ePortBlockBase = getE2ePortBlockBase();
   if (e2ePortBlockBase != null) {
-    // Isolated workspace runtimes use the upper half of the block's app range;
-    // E2E apps have small ids.
+    // Isolated workspace runtimes use the upper half of the block's app
+    // range and apps the lower half, so the two never share a port.
     return workspaceId !== null
       ? e2ePortBlockBase +
           E2E_WORKSPACE_OFFSET +
           (workspaceId % E2E_WORKSPACE_RANGE)
-      : e2ePortBlockBase + (Math.abs(appId) % E2E_APP_PORT_RANGE);
+      : e2ePortBlockBase + (Math.abs(appId) % E2E_WORKSPACE_OFFSET);
   }
   if (workspaceId !== null) {
     return WORKSPACE_APP_PORT_BASE + (workspaceId % WORKSPACE_PORT_RANGE);
@@ -157,7 +157,7 @@ export function getAppProxyPort(appId: number): number {
           (workspaceId % E2E_WORKSPACE_RANGE)
       : e2ePortBlockBase +
           E2E_APP_PORT_RANGE +
-          (Math.abs(appId) % E2E_PROXY_PORT_RANGE);
+          (Math.abs(appId) % E2E_WORKSPACE_OFFSET);
   }
   if (workspaceId !== null) {
     return WORKSPACE_PROXY_PORT_BASE + (workspaceId % WORKSPACE_PORT_RANGE);

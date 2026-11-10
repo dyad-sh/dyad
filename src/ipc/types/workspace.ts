@@ -128,6 +128,12 @@ export const workspaceContracts = {
     input: z.object({
       chatId: z.number().int().positive(),
       fromUserMessageId: z.number().int().positive(),
+      /**
+       * Merge the revert into the target branch now (Undo). Retry passes
+       * `false`: its replacement turn integrates the revert with its work,
+       * so the target never briefly loses the change.
+       */
+      requestIntegration: z.boolean().optional(),
     }),
     output: z.object({ undoCommit: z.string().nullable() }),
   }),

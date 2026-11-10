@@ -511,7 +511,6 @@
     "concurrentBannerMessage": "O Dyad está trabalhando em outro chat. Ative o isolamento com worktrees para manter separadas as alterações simultâneas.",
     "concurrentBannerEnable": "Ativar",
     "isolationEnabledToast": "O isolamento com worktrees está ativado. A próxima mensagem de cada chat começa em seu próprio espaço de trabalho.",
-    "isolationEnableFailed": "Não foi possível ativar o isolamento com worktrees",
     "npmDiskBannerMessage": "Este app instala as dependências com npm, então o worktree de cada chat recebe uma cópia completa de node_modules, e os worktrees são mantidos depois da mesclagem. Vários chats podem ocupar muito espaço em disco. Mude para o pnpm, que compartilha uma única cópia de cada pacote entre os worktrees.",
     "npmDiskBannerAction": "Obter pnpm",
     "deleteWorktree": "Excluir worktree",

@@ -8,6 +8,8 @@ const MAX_TARGET_COMMITS = 20;
 const MAX_REQUEST_CHARS = 1_200;
 const MAX_FILE_DIFF_CHARS = 4_000;
 const MAX_TOTAL_DIFF_CHARS = 20_000;
+/** Below this, a file's diffs are left out rather than shown as a stub. */
+const MIN_FILE_DIFF_CHARS = 200;
 
 /** Marks prompts Dyad writes into a chat to resume integration work. */
 export const WORKSPACE_REPAIR_PROMPT_PREFIX =
@@ -129,6 +131,62 @@ export interface RepairPromptInput {
   attempt: number;
 }
 
+/**
+ * One section per conflicted file with both sides' diffs, within
+ * `MAX_TOTAL_DIFF_CHARS` in all: each file's diffs shrink to what is left of
+ * the budget (never cut inside a code block), and files that no longer fit
+ * are named instead.
+ */
+export async function buildConflictDiffSections({
+  files,
+  targetBranch,
+  label,
+  readDiffs,
+}: {
+  files: readonly string[];
+  targetBranch: string;
+  /** How the agent addresses a file. */
+  label: (file: string) => string;
+  readDiffs: (file: string) => Promise<{ ours: string; theirs: string }>;
+}): Promise<string[]> {
+  let remainingDiffBudget = MAX_TOTAL_DIFF_CHARS;
+  const sections: string[] = [];
+  const omittedFiles: string[] = [];
+  for (const file of files) {
+    const buildSection = (ours: string, theirs: string, limit: number) =>
+      [
+        `### ${label(file)}`,
+        "This chat's change:",
+        "```diff",
+        truncate(ours.trim() || "(no change)", limit),
+        "```",
+        `Change already on ${targetBranch}:`,
+        "```diff",
+        truncate(theirs.trim() || "(no change)", limit),
+        "```",
+      ].join("\n");
+    const overhead = buildSection("", "", 0).length;
+    const diffLimit = Math.min(
+      MAX_FILE_DIFF_CHARS,
+      Math.floor((remainingDiffBudget - overhead) / 2),
+    );
+    if (diffLimit < MIN_FILE_DIFF_CHARS) {
+      omittedFiles.push(label(file));
+      continue;
+    }
+    const { ours, theirs } = await readDiffs(file);
+    const section = buildSection(ours, theirs, diffLimit);
+    sections.push(section);
+    remainingDiffBudget -= section.length;
+  }
+  if (omittedFiles.length > 0) {
+    sections.push(
+      `(Diffs for ${omittedFiles.join(", ")} are left out to keep this message short; read those files directly.)`,
+    );
+  }
+  return sections;
+}
+
 export async function buildWorkspaceRepairPrompt(
   input: RepairPromptInput,
 ): Promise<string> {
@@ -167,29 +225,17 @@ export async function buildWorkspaceRepairPrompt(
     ? await git(["diff", "--stat", mergeBase, "MERGE_HEAD", "--"], cwd)
     : "";
 
-  let remainingDiffBudget = MAX_TOTAL_DIFF_CHARS;
-  const fileSections: string[] = [];
-  for (const file of input.conflictedFiles) {
-    if (!mergeBase || remainingDiffBudget <= 0) break;
-    const ours = await git(["diff", mergeBase, "HEAD", "--", file], cwd);
-    const theirs = await git(
-      ["diff", mergeBase, "MERGE_HEAD", "--", file],
-      cwd,
-    );
-    const section = [
-      `### ${forAgent(file)}`,
-      "This chat's change:",
-      "```diff",
-      truncate(ours.trim() || "(no change)", MAX_FILE_DIFF_CHARS),
-      "```",
-      `Change already on ${input.targetBranch}:`,
-      "```diff",
-      truncate(theirs.trim() || "(no change)", MAX_FILE_DIFF_CHARS),
-      "```",
-    ].join("\n");
-    fileSections.push(section);
-    remainingDiffBudget -= section.length;
-  }
+  const fileSections = mergeBase
+    ? await buildConflictDiffSections({
+        files: input.conflictedFiles,
+        targetBranch: input.targetBranch,
+        label: forAgent,
+        readDiffs: async (file) => ({
+          ours: await git(["diff", mergeBase, "HEAD", "--", file], cwd),
+          theirs: await git(["diff", mergeBase, "MERGE_HEAD", "--", file], cwd),
+        }),
+      })
+    : [];
 
   const ownRequests = await recentUserRequests(input.chatId);
   const intents = await otherChatIntents(input.chatId, targetCommits);

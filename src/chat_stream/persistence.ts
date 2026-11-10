@@ -824,6 +824,19 @@ export async function mutateChatQueue(
         DyadErrorKind.Precondition,
       );
     }
+    // The workspace stays in conflict repair (and its worktree undeletable)
+    // until this turn settles, so it is never dropped from the queue.
+    if (
+      mutation.type === "remove" &&
+      selected.some(
+        ({ record }) => record.intent.owner?.kind === "workspace-integration",
+      )
+    ) {
+      throw new DyadError(
+        "Merge-conflict repair turns cannot be removed while Dyad is waiting for them",
+        DyadErrorKind.Precondition,
+      );
+    }
     if (
       (mutation.type === "edit" || mutation.type === "reorder") &&
       selected.some(({ entry }) => !entry.editable)

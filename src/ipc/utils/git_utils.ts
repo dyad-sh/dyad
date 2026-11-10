@@ -19,6 +19,7 @@ import { getPathEnvKey } from "./path_env";
 import type { UncommittedFile, UncommittedFileStatus } from "@/ipc/types";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import { GIT_ERROR_CODES, type GitErrorCode } from "@/shared/git_error_codes";
+import { WORKTREE_BRANCH_PREFIX } from "@/shared/dyad_commit_trailers";
 import {
   isDotenvFilePath,
   redactDotenvValues,
@@ -1025,7 +1026,9 @@ export async function gitCheckout({
       /is already (?:used by worktree|checked out) at/.test(error.message)
     ) {
       throw new DyadError(
-        `Branch '${ref}' is in use by an isolated chat workspace. It can be checked out here after that chat's work is merged and its workspace is cleaned up.`,
+        ref.startsWith(WORKTREE_BRANCH_PREFIX)
+          ? `Branch '${ref}' is in use by a chat's worktree. It can be checked out here after that chat's worktree is deleted.`
+          : `Branch '${ref}' is already checked out in another Git worktree. It can be checked out here after that worktree is removed or switched to another branch.`,
         DyadErrorKind.Conflict,
       );
     }

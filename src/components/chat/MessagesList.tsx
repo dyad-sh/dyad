@@ -268,11 +268,17 @@ function FooterComponent({ context }: { context?: FooterContext }) {
   const undoInWorkspace = async ({
     chatId,
     fromUserMessageId,
+    requestIntegration,
   }: {
     chatId: number;
     fromUserMessageId: number;
+    requestIntegration?: boolean;
   }) => {
-    await ipc.workspace.undoTurns({ chatId, fromUserMessageId });
+    await ipc.workspace.undoTurns({
+      chatId,
+      fromUserMessageId,
+      requestIntegration,
+    });
   };
 
   // Reverts the whole last generation: targets the version just before the last
@@ -422,9 +428,13 @@ function FooterComponent({ context }: { context?: FooterContext }) {
           console.error("No user message found");
           return;
         }
+        // The replacement turn integrates the revert with its own work, so
+        // the target never briefly loses the change and Retry never waits
+        // behind a merge of the revert alone.
         await undoInWorkspace({
           chatId: selectedChatId,
           fromUserMessageId: lastUserMessage.id,
+          requestIntegration: false,
         });
         streamMessage({
           prompt: lastUserMessage.content,
@@ -748,8 +758,16 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
       projection: previewProjection,
       sendAndWaitForMutation: sendPreviewMutation,
     } = useVersionPreview(appId);
+    const { data: workspaceStatus, isLoading: isWorkspaceStatusLoading } =
+      useChatWorkspaceStatus(appId, selectedChatId ?? undefined);
+    const isIsolatedWorkspace =
+      workspaceStatus?.chatId === selectedChatId &&
+      workspaceStatus.kind === "isolated";
+    // Undo and Retry take a different path for a chat in a worktree, so they
+    // wait until the chat's workspace is known. (The main process also
+    // refuses an app-branch restore for such a chat.)
     const isAnyVersionMutationPending =
-      !previewProjection.capabilities.canRestore;
+      !previewProjection.capabilities.canRestore || isWorkspaceStatusLoading;
     const restoreTargetBranch =
       previewState.type === "previewing" &&
       previewState.session.checkedOutVersionId !== null
@@ -765,13 +783,6 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
       persistedMessages,
     );
     const { chat: selectedChat } = useChatMode(selectedChatId);
-    const { data: workspaceStatus } = useChatWorkspaceStatus(
-      appId,
-      selectedChatId ?? undefined,
-    );
-    const isIsolatedWorkspace =
-      workspaceStatus?.chatId === selectedChatId &&
-      workspaceStatus.kind === "isolated";
 
     // Virtualization only renders visible DOM elements, which creates issues for E2E tests:
     // 1. Off-screen logs don't exist in the DOM and can't be queried by test selectors

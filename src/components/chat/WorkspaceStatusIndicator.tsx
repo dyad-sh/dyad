@@ -201,11 +201,15 @@ function DeleteWorktreeButton({
                   ? t("workspace.deleteWorktreeMerged", { target })
                   : t("workspace.deleteWorktreeUnmerged", { target, branch })}
               </span>
-              <span className="block">
-                {settings?.enableWorktreeIsolation
-                  ? t("workspace.deleteWorktreeNextIsolated", { target })
-                  : t("workspace.deleteWorktreeNextShared")}
-              </span>
+              {/* Where the next message works depends on the setting, so say
+                  nothing about it until settings load. */}
+              {settings && (
+                <span className="block">
+                  {settings.enableWorktreeIsolation
+                    ? t("workspace.deleteWorktreeNextIsolated", { target })
+                    : t("workspace.deleteWorktreeNextShared")}
+                </span>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

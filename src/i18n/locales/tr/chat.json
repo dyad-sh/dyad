@@ -511,7 +511,6 @@
     "concurrentBannerMessage": "Dyad başka bir sohbette çalışıyor. Eşzamanlı değişiklikleri ayrı tutmak için worktree yalıtımını etkinleştirin.",
     "concurrentBannerEnable": "Etkinleştir",
     "isolationEnabledToast": "Worktree yalıtımı açık. Her sohbetin sonraki mesajı kendi çalışma alanında başlar.",
-    "isolationEnableFailed": "Worktree yalıtımı etkinleştirilemedi",
     "npmDiskBannerMessage": "Bu uygulama bağımlılıkları npm ile kuruyor; bu yüzden her sohbetin worktree'si node_modules'un tam bir kopyasını alıyor ve worktree'ler birleştirmeden sonra da saklanıyor. Birkaç sohbet çok fazla disk alanı kaplayabilir. Her paketin tek bir kopyasını worktree'ler arasında paylaşan pnpm'e geçin.",
     "npmDiskBannerAction": "pnpm'i edinin",
     "deleteWorktree": "Worktree'yi sil",

@@ -433,7 +433,12 @@ export function buildIsolatedTurnCommitMessage({
     summary || `(${changedFiles.length} files changed)`,
     120,
   );
-  const listed = changedFiles.slice(0, COMMIT_LISTED_FILES).join(", ");
+  // Each path on one line: a file name containing a newline must not be
+  // able to add a `Dyad-*` trailer that version history would trust.
+  const listed = changedFiles
+    .slice(0, COMMIT_LISTED_FILES)
+    .map((file) => oneLine(file, 200))
+    .join(", ");
   const more =
     changedFiles.length > COMMIT_LISTED_FILES
       ? ` and ${changedFiles.length - COMMIT_LISTED_FILES} more`

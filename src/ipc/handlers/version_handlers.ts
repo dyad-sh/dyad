@@ -1,12 +1,6 @@
 import { db } from "../../db";
 import { getActiveWorkspaceForChat } from "@/ipc/services/chat_workspace_store";
-import {
-  apps,
-  chats,
-  chatTurnIntents,
-  messages,
-  versions,
-} from "../../db/schema";
+import { apps, chats, messages, versions } from "../../db/schema";
 import { desc, eq, and, gt, gte, inArray, isNotNull } from "drizzle-orm";
 import {
   parseDyadCommitTrailers,
@@ -94,8 +88,12 @@ import {
 import type { RestoreRecovery } from "@/version_preview/state";
 import { readStoredReferencedAppIds } from "../utils/mention_apps";
 import { blockRecordingStart } from "../services/recording_registry";
-import { isCancelledResponseContent } from "@/shared/chatCancellation";
-import type { ChatTurnTerminalOutcome } from "@/shared/chat_turn_outcome";
+import {
+  getStoredTurnOutcome,
+  getStoredTurnOutcomeForMessage,
+  type StoredTurnMessage,
+  type StoredTurnOutcome,
+} from "@/ipc/utils/turn_outcome";
 
 const logger = log.scope("version_handlers");
 
@@ -379,12 +377,7 @@ function appendInterruptedGenerationWarning(
     : warningMessage;
 }
 
-type RestoreMessageCommitMetadata = Pick<
-  typeof messages.$inferSelect,
-  "role" | "content" | "sourceCommitHash" | "commitHash" | "chatTurnIntentId"
->;
-
-type RestoreTargetTurnOutcome = ChatTurnTerminalOutcome | "unknown";
+type RestoreMessageCommitMetadata = StoredTurnMessage;
 
 async function getRestoreTargetTurnOutcome({
   chatMessages,
@@ -392,61 +385,11 @@ async function getRestoreTargetTurnOutcome({
 }: {
   chatMessages: RestoreMessageCommitMetadata[];
   targetIndex: number;
-}): Promise<RestoreTargetTurnOutcome> {
+}): Promise<StoredTurnOutcome> {
   const target = chatMessages[targetIndex];
   if (!target || target.role !== "user") return "unknown";
 
   return getStoredTurnOutcome(target, chatMessages[targetIndex + 1]);
-}
-
-async function getStoredTurnOutcome(
-  target: RestoreMessageCommitMetadata,
-  nextMessage?: RestoreMessageCommitMetadata,
-): Promise<RestoreTargetTurnOutcome> {
-  if (target.chatTurnIntentId) {
-    const intent = await db.query.chatTurnIntents.findFirst({
-      columns: { terminalOutcome: true },
-      where: eq(chatTurnIntents.intentId, target.chatTurnIntentId),
-    });
-    if (intent?.terminalOutcome) return intent.terminalOutcome;
-  }
-
-  if (
-    nextMessage?.role === "assistant" &&
-    !nextMessage.commitHash &&
-    isCancelledResponseContent(nextMessage.content)
-  ) {
-    return "cancelled";
-  }
-
-  return "unknown";
-}
-
-async function getRestoreTargetTurnOutcomeForMessage({
-  chatId,
-  messageId,
-}: {
-  chatId: number;
-  messageId: number;
-}): Promise<RestoreTargetTurnOutcome> {
-  const columns = {
-    role: true,
-    content: true,
-    sourceCommitHash: true,
-    commitHash: true,
-    chatTurnIntentId: true,
-  } as const;
-  const target = await db.query.messages.findFirst({
-    columns,
-    where: and(eq(messages.chatId, chatId), eq(messages.id, messageId)),
-  });
-  if (!target || target.role !== "user") return "unknown";
-  const nextMessage = await db.query.messages.findFirst({
-    columns,
-    where: and(eq(messages.chatId, chatId), gt(messages.id, messageId)),
-    orderBy: (messages, { asc }) => [asc(messages.id)],
-  });
-  return getStoredTurnOutcome(target, nextMessage);
 }
 
 function resolveTargetCommitHash({
@@ -959,16 +902,21 @@ async function revertCodebaseToVersion({
   };
 }
 
-/** Whether a squash of this chat's worktree work is on the app's branch. */
+/**
+ * Whether a squash of this chat's worktree work is on `ref`: the branch being
+ * restored, not a detached HEAD the Version pane may have checked out.
+ */
 async function hasIntegratedSquash({
   appPath,
   chatId,
+  ref,
 }: {
   appPath: string;
   chatId: number;
+  ref: string;
 }): Promise<boolean> {
   const result = await execGit(
-    ["log", "-1", "--format=%H", `--grep=^Dyad-Chat: ${chatId}$`, "HEAD"],
+    ["log", "-1", "--format=%H", `--grep=^Dyad-Chat: ${chatId}$`, ref, "--"],
     appPath,
   );
   return result.exitCode === 0 && result.stdout.trim() !== "";
@@ -1227,6 +1175,20 @@ export function registerVersionHandlers() {
 
           const appPath = getDyadAppPath(app.path);
 
+          // Undo/Retry for a chat in a worktree revert inside it
+          // (`workspace:undo-turns`). Restoring the app's branch for one, as
+          // a renderer that has not loaded the chat's workspace yet would
+          // ask, rolls back other chats' merged work.
+          if (
+            currentChatMessageId &&
+            getActiveWorkspaceForChat(currentChatMessageId.chatId)
+          ) {
+            throw new DyadError(
+              "This chat works in its own worktree, so its changes are undone there. Try again.",
+              DyadErrorKind.Conflict,
+            );
+          }
+
           if (expectedHeadOid) {
             const currentHeadOid = await getCurrentCommitHash({
               path: appPath,
@@ -1248,7 +1210,7 @@ export function registerVersionHandlers() {
             });
             preserveDirtyTree =
               targetChat?.appId === appId &&
-              (await getRestoreTargetTurnOutcomeForMessage({
+              (await getStoredTurnOutcomeForMessage({
                 chatId: currentChatMessageId.chatId,
                 messageId: currentChatMessageId.messageId,
               })) === "cancelled";
@@ -1550,7 +1512,11 @@ export function registerVersionHandlers() {
               ? branches.every((branch) =>
                   branch.startsWith(WORKTREE_BRANCH_PREFIX),
                 )
-              : await hasIntegratedSquash({ appPath, chatId });
+              : await hasIntegratedSquash({
+                  appPath,
+                  chatId,
+                  ref: targetBranchName ?? "HEAD",
+                });
           if (onlyInWorktrees) {
             return {
               status: "warn" as const,

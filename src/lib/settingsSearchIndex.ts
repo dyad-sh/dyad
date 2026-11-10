@@ -819,7 +819,7 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     id: SETTING_IDS.enableWorktreeIsolation,
     label: "Worktree isolation",
     description:
-      "Give every chat its own Git branch and working directory, then merge its finished work automatically",
+      "Give each chat that edits code its own Git branch and working directory, then merge its finished work automatically",
     keywords: [
       "worktree",
       "branch",

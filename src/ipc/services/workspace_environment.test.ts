@@ -6,7 +6,12 @@ import path from "node:path";
 
 vi.mock("electron-log", () => ({
   default: {
-    scope: () => ({ warn: vi.fn(), info: vi.fn(), error: vi.fn() }),
+    scope: () => ({
+      debug: vi.fn(),
+      warn: vi.fn(),
+      info: vi.fn(),
+      error: vi.fn(),
+    }),
   },
 }));
 
@@ -23,6 +28,7 @@ describe("syncEnvironmentFiles", () => {
     worktree = path.join(root, "worktree");
     await fs.promises.mkdir(app);
     await fs.promises.mkdir(worktree);
+    execFileSync("git", ["init", "-q"], { cwd: app });
     execFileSync("git", ["init", "-q"], { cwd: worktree });
   });
 
@@ -81,4 +87,43 @@ describe("syncEnvironmentFiles", () => {
       await fs.promises.readFile(path.join(worktree, ".env.local"), "utf8"),
     ).toBe("LOCAL=1\n");
   });
+
+  it("leaves files the app's folder tracks or has staged", async () => {
+    await write(path.join(app, ".env"), "STAGED=1\n", 0);
+    execFileSync("git", ["add", ".env"], { cwd: app });
+    await write(path.join(app, ".env.local"), "LOCAL=1\n", 0);
+
+    await syncEnvironmentFiles(app, worktree);
+
+    expect(fs.existsSync(path.join(worktree, ".env"))).toBe(false);
+    expect(
+      await fs.promises.readFile(path.join(worktree, ".env.local"), "utf8"),
+    ).toBe("LOCAL=1\n");
+  });
+
+  it("copies nothing when Git cannot list tracked files", async () => {
+    await fs.promises.rm(path.join(app, ".git"), {
+      recursive: true,
+      force: true,
+    });
+    await write(path.join(app, ".env.local"), "LOCAL=1\n", 0);
+
+    await syncEnvironmentFiles(app, worktree);
+
+    expect(fs.existsSync(path.join(worktree, ".env.local"))).toBe(false);
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "never writes through a symlink in the worktree",
+    async () => {
+      const outside = path.join(root, "outside.txt");
+      await write(outside, "OUTSIDE\n", 60);
+      await fs.promises.symlink(outside, path.join(worktree, ".env.local"));
+      await write(path.join(app, ".env.local"), "KEY=app\n", 0);
+
+      await syncEnvironmentFiles(app, worktree);
+
+      expect(await fs.promises.readFile(outside, "utf8")).toBe("OUTSIDE\n");
+    },
+  );
 });

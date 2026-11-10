@@ -511,7 +511,6 @@
     "concurrentBannerMessage": "Dyad is working in another chat. Enable worktree isolation to keep concurrent changes separate.",
     "concurrentBannerEnable": "Enable",
     "isolationEnabledToast": "Worktree isolation is on. Each chat's next message starts in its own workspace.",
-    "isolationEnableFailed": "Couldn't enable worktree isolation",
     "npmDiskBannerMessage": "This app installs dependencies with npm, so every chat's worktree gets its own full copy of node_modules, and worktrees are kept after merging. Several chats can take up a lot of disk space. Switch to pnpm, which shares one copy of each package between worktrees.",
     "npmDiskBannerAction": "Get pnpm",
     "deleteWorktree": "Delete worktree",

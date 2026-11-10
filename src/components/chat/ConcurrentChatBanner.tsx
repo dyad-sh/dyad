@@ -5,7 +5,7 @@ import { SkippableBanner } from "@/components/chat/SkippableBanner";
 import { dismissedConcurrentChatBannerAppIdsAtom } from "@/atoms/workspaceAtoms";
 import { useAppWorkspaceOverview } from "@/hooks/useChatWorkspace";
 import { useSettings } from "@/hooks/useSettings";
-import { showError, showSuccess } from "@/lib/toast";
+import { showSuccess } from "@/lib/toast";
 import { shouldShowConcurrentChatBanner } from "./workspace_status";
 
 /**
@@ -27,10 +27,13 @@ export function ConcurrentChatBanner({
   );
 
   if (
+    // Until settings load, whether isolation is already on is unknown, so
+    // neither the warning nor its Enable action can be trusted yet.
+    !settings ||
     !shouldShowConcurrentChatBanner({
       overview,
       chatId,
-      isolationEnabled: !!settings?.enableWorktreeIsolation,
+      isolationEnabled: !!settings.enableWorktreeIsolation,
       dismissedAppIds,
     })
   ) {
@@ -47,7 +50,8 @@ export function ConcurrentChatBanner({
       onEnable={() => {
         void updateSettings({ enableWorktreeIsolation: true })
           .then(() => showSuccess(t("workspace.isolationEnabledToast")))
-          .catch(() => showError(t("workspace.isolationEnableFailed")));
+          // The settings mutation shows its own error toast.
+          .catch(() => {});
       }}
       onSkip={() => {
         if (appId === null) return;

@@ -7,13 +7,13 @@ import { execGit } from "@/ipc/utils/git_utils";
 const logger = log.scope("workspace_environment");
 
 /**
- * The `.env*` files Git tracks in `appPath`. Those reach a worktree through
- * Git; copying the app folder's uncommitted edits of one would have the
- * chat commit them.
+ * The `.env*` files Git tracks (or has staged) in `appPath`, or `null` when
+ * Git could not say. Those reach a worktree through Git; copying the app
+ * folder's uncommitted edits of one would have the chat commit them.
  */
 async function listTrackedEnvironmentFiles(
   appPath: string,
-): Promise<Set<string>> {
+): Promise<Set<string> | null> {
   try {
     const result = await execGit(
       ["ls-files", "-z", "--", ":(glob).env*"],
@@ -26,7 +26,7 @@ async function listTrackedEnvironmentFiles(
   } catch (error) {
     logger.warn("Could not list tracked environment files", error);
   }
-  return new Set();
+  return null;
 }
 
 /**
@@ -36,6 +36,11 @@ async function listTrackedEnvironmentFiles(
  * provider connection rewrote it), so a worktree kept for days still runs
  * with current settings, while a newer edit made inside the worktree is left
  * alone.
+ *
+ * A file either checkout tracks or has staged is never copied, and nothing
+ * is copied when Git cannot list them: a copied tracked file would be
+ * committed by the chat. Only regular files are written, never through a
+ * symlink in the worktree.
  */
 export async function syncEnvironmentFiles(
   fromAppPath: string,
@@ -51,16 +56,33 @@ export async function syncEnvironmentFiles(
     (entry) => entry.isFile() && entry.name.startsWith(".env"),
   );
   if (candidates.length === 0) return;
-  const tracked = await listTrackedEnvironmentFiles(toAppPath);
+  const [trackedInApp, trackedInWorkspace] = await Promise.all([
+    listTrackedEnvironmentFiles(fromAppPath),
+    listTrackedEnvironmentFiles(toAppPath),
+  ]);
+  if (!trackedInApp || !trackedInWorkspace) {
+    logger.warn(
+      "Not copying environment files into the workspace: could not tell which ones Git tracks",
+    );
+    return;
+  }
   for (const entry of candidates) {
-    if (tracked.has(entry.name)) continue;
+    if (trackedInApp.has(entry.name) || trackedInWorkspace.has(entry.name)) {
+      continue;
+    }
     const source = path.join(fromAppPath, entry.name);
     const destination = path.join(toAppPath, entry.name);
     try {
       const [sourceStat, destinationStat] = await Promise.all([
         fsPromises.stat(source),
-        fsPromises.stat(destination).catch(() => null),
+        fsPromises.lstat(destination).catch(() => null),
       ]);
+      if (destinationStat && !destinationStat.isFile()) {
+        logger.warn(
+          `Not copying ${entry.name} into the workspace: the workspace has a non-file entry there`,
+        );
+        continue;
+      }
       if (destinationStat && destinationStat.mtimeMs >= sourceStat.mtimeMs) {
         continue;
       }

@@ -710,6 +710,38 @@ describe("worktree isolation (integration)", () => {
     ).toBeTruthy();
   }, 60_000);
 
+  it("refuses an undo while the worktree has edits no interrupted turn made", async () => {
+    await waitForQuietApp();
+    const workspacePath = getWorkspaceAppPath(
+      getWorkspaceForChat(featureChatId)!,
+    );
+    const head = git(["rev-parse", "HEAD"], workspacePath);
+    const [firstUserMessage] = await harness.db.query.messages.findMany({
+      where: and(eq(messages.chatId, featureChatId), eq(messages.role, "user")),
+      orderBy: [asc(messages.id)],
+    });
+    // Made in the worktree outside Dyad, after the chat's last turn finished.
+    const notes = path.join(workspacePath, "notes.txt");
+    fs.writeFileSync(notes, "my own notes\n");
+    try {
+      await expect(
+        undoIsolatedChatTurns({
+          chatId: featureChatId,
+          fromUserMessageId: firstUserMessage.id,
+        }),
+      ).rejects.toThrow(/uncommitted changes/);
+      expect(fs.readFileSync(notes, "utf8")).toBe("my own notes\n");
+      expect(git(["rev-parse", "HEAD"], workspacePath)).toBe(head);
+      expect(
+        await harness.db.query.messages.findFirst({
+          where: eq(messages.id, firstUserMessage.id),
+        }),
+      ).toBeTruthy();
+    } finally {
+      fs.rmSync(notes, { force: true });
+    }
+  }, 60_000);
+
   it("undoes only the chat's own commits and merges the undo", async () => {
     await waitForQuietApp();
     const workspacePath = getWorkspaceAppPath(
@@ -719,6 +751,12 @@ describe("worktree isolation (integration)", () => {
       where: and(eq(messages.chatId, featureChatId), eq(messages.role, "user")),
       orderBy: [asc(messages.id)],
     });
+    // The worktree preview's install rewrote a lockfile: not the chat's
+    // work, so the undo keeps it instead of refusing or reverting it.
+    fs.writeFileSync(
+      path.join(workspacePath, "package-lock.json"),
+      '{"lockfileVersion":3}\n',
+    );
     const { undoCommit } = await undoIsolatedChatTurns({
       chatId: featureChatId,
       fromUserMessageId: firstUserMessage.id,
@@ -727,6 +765,10 @@ describe("worktree isolation (integration)", () => {
     expect(fs.existsSync(path.join(workspacePath, "src/feature-b.ts"))).toBe(
       false,
     );
+    expect(
+      fs.readFileSync(path.join(workspacePath, "package-lock.json"), "utf8"),
+    ).toBe('{"lockfileVersion":3}\n');
+    expect(git(["status", "--porcelain"], workspacePath)).toBe("");
     // The undone turns' messages are gone; other chats are untouched.
     expect(
       await harness.db.query.messages.findMany({

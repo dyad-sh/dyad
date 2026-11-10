@@ -262,6 +262,32 @@ describe("git worktree helpers", () => {
     ).toHaveLength(2);
   });
 
+  it("finds conflict markers in files too large to read whole", async () => {
+    // Over the whole-file limit, with the marker straddling a 1 MiB chunk.
+    const filler = "x".repeat(1024 * 1024 - 3) + "\n";
+    const big = path.join(repo, "big.txt");
+    await fs.promises.writeFile(
+      big,
+      filler.repeat(2) + "<<<<<<< HEAD\nours\n=======\n" + filler,
+    );
+    const clean = path.join(repo, "clean.txt");
+    await fs.promises.writeFile(clean, filler.repeat(3) + "=======\n");
+    const binary = path.join(repo, "binary.bin");
+    await fs.promises.writeFile(
+      binary,
+      Buffer.concat([Buffer.from([0]), Buffer.from(filler.repeat(3))]),
+    );
+    await fs.promises.appendFile(binary, "<<<<<<< HEAD\n");
+
+    expect(
+      await findFilesWithConflictMarkers(repo, [
+        "big.txt",
+        "clean.txt",
+        "binary.bin",
+      ]),
+    ).toEqual(["big.txt"]);
+  });
+
   it("fast-forwards the target only to a result that contains it", async () => {
     await createWorkspace();
     const work = await commitFile(worktree, "src/feature.ts", "x\n", "feature");
@@ -425,7 +451,7 @@ describe("git worktree helpers", () => {
       commits: [own],
       message: "Undo feature",
     });
-    expect(undo).toMatch(/^[0-9a-f]{40}$/);
+    expect(undo).toMatch(/^[0-9a-f]{40,64}$/);
     expect(fs.existsSync(path.join(worktree, "src/feature.ts"))).toBe(false);
     expect(fs.existsSync(path.join(worktree, "src/other.ts"))).toBe(true);
   });

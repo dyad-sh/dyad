@@ -6,7 +6,8 @@ import { ConcurrentChatBanner } from "./ConcurrentChatBanner";
 
 const state = vi.hoisted(() => ({
   overview: undefined as AppWorkspaceOverview | undefined,
-  isolationEnabled: false,
+  // `null` while the settings query has not resolved, as `useSettings` returns.
+  settings: null as { enableWorktreeIsolation?: boolean } | null,
   update: vi.fn(),
   showSuccess: vi.fn(),
   showError: vi.fn(),
@@ -19,7 +20,6 @@ vi.mock("react-i18next", () => ({
         "workspace.concurrentBannerMessage": "Another chat is working",
         "workspace.concurrentBannerEnable": "Enable",
         "workspace.isolationEnabledToast": "Isolation is on",
-        "workspace.isolationEnableFailed": "Could not enable",
       })[key] ?? key,
   }),
 }));
@@ -30,7 +30,7 @@ vi.mock("@/hooks/useChatWorkspace", () => ({
 
 vi.mock("@/hooks/useSettings", () => ({
   useSettings: () => ({
-    settings: { enableWorktreeIsolation: state.isolationEnabled },
+    settings: state.settings,
     updateSettings: state.update,
   }),
 }));
@@ -40,12 +40,16 @@ vi.mock("@/lib/toast", () => ({
   showError: state.showError,
 }));
 
-function renderBanner() {
-  return render(
+function banner() {
+  return (
     <Provider>
       <ConcurrentChatBanner appId={1} chatId={7} />
-    </Provider>,
+    </Provider>
   );
+}
+
+function renderBanner() {
+  return render(banner());
 }
 
 describe("ConcurrentChatBanner", () => {
@@ -56,7 +60,7 @@ describe("ConcurrentChatBanner", () => {
       writableChatIds: [9],
       workspaces: [],
     };
-    state.isolationEnabled = false;
+    state.settings = { enableWorktreeIsolation: false };
     state.update.mockReset();
     state.showSuccess.mockReset();
     state.showError.mockReset();
@@ -77,13 +81,30 @@ describe("ConcurrentChatBanner", () => {
     );
   });
 
-  it("reports a failed enable", async () => {
+  it("waits for settings before warning or offering to enable", () => {
+    state.settings = null;
+    const { rerender } = renderBanner();
+    // Isolation may already be on; the stored value is not known yet.
+    expect(screen.queryByTestId("concurrent-chat-banner")).toBeNull();
+
+    state.settings = { enableWorktreeIsolation: true };
+    rerender(banner());
+    expect(screen.queryByTestId("concurrent-chat-banner")).toBeNull();
+
+    state.settings = { enableWorktreeIsolation: false };
+    rerender(banner());
+    expect(screen.getByTestId("concurrent-chat-banner")).toBeTruthy();
+  });
+
+  it("leaves a failed enable to the settings mutation's own error toast", async () => {
     state.update.mockRejectedValue(new Error("disk full"));
     renderBanner();
     fireEvent.click(screen.getByText("Enable"));
-    await waitFor(() =>
-      expect(state.showError).toHaveBeenCalledWith("Could not enable"),
-    );
+    await waitFor(() => expect(state.update).toHaveBeenCalledTimes(1));
+    // Let the rejection settle; an unhandled one would fail the run.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(state.showError).not.toHaveBeenCalled();
+    expect(state.showSuccess).not.toHaveBeenCalled();
   });
 
   it("stays hidden when only this chat writes, and once dismissed", () => {
@@ -92,11 +113,7 @@ describe("ConcurrentChatBanner", () => {
     expect(screen.queryByTestId("concurrent-chat-banner")).toBeNull();
 
     state.overview = { ...state.overview, writableChatIds: [9] };
-    rerender(
-      <Provider>
-        <ConcurrentChatBanner appId={1} chatId={7} />
-      </Provider>,
-    );
+    rerender(banner());
     fireEvent.click(screen.getByLabelText("Dismiss"));
     expect(screen.queryByTestId("concurrent-chat-banner")).toBeNull();
   });

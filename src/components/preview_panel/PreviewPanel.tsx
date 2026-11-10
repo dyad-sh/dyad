@@ -123,7 +123,9 @@ export function PreviewPanel() {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const [isConsoleOpen, setIsConsoleOpen] = useState(false);
   // The preview follows the selected chat's workspace; app-level panels
-  // (code, configure, publish, tests) stay keyed by the app.
+  // (code, configure, publish, tests) stay keyed by the app. While a test run
+  // drives the native view, the runtime is the app's own (the run's target),
+  // so starting, loading, and reloads below address what that view shows.
   const previewRuntime = usePreviewRuntime();
   const runtimeAppId = previewRuntime.runtimeAppId;
   const { runApp, loading } = useRunApp(runtimeAppId);

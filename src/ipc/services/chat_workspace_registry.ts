@@ -207,7 +207,9 @@ export class ChatWorkspaceRegistry {
       workspaceId,
       (this.workspaceReaders.get(workspaceId) ?? 0) + 1,
     );
-    this.notify(appId);
+    // Readers are not part of any workspace status a window shows, so they
+    // wake waiters (removal waits for them) without publishing a change.
+    this.notify(appId, { publish: false });
     let released = false;
     return () => {
       if (released) return;
@@ -215,7 +217,7 @@ export class ChatWorkspaceRegistry {
       const remaining = (this.workspaceReaders.get(workspaceId) ?? 1) - 1;
       if (remaining <= 0) this.workspaceReaders.delete(workspaceId);
       else this.workspaceReaders.set(workspaceId, remaining);
-      this.notify(appId);
+      this.notify(appId, { publish: false });
     };
   }
 
@@ -340,7 +342,10 @@ export class ChatWorkspaceRegistry {
     });
   }
 
-  /** Observes per-app changes (used to publish renderer invalidations). */
+  /**
+   * Observes per-app changes that windows show (used to publish renderer
+   * invalidations): turns, locks, and claims, not readers.
+   */
   subscribe(listener: (appId: number) => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
@@ -366,11 +371,12 @@ export class ChatWorkspaceRegistry {
     return reservation;
   }
 
-  private notify(appId: number) {
+  private notify(appId: number, { publish = true } = {}) {
     this.version++;
     const waiters = [...this.changeWaiters];
     this.changeWaiters.clear();
     for (const waiter of waiters) waiter();
+    if (!publish) return;
     for (const listener of this.listeners) {
       try {
         listener(appId);

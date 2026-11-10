@@ -395,6 +395,19 @@ async function mirrorIntoWorkspace(
   };
 }
 
+/**
+ * `input` with the app's folder read again from its row: the caller's path
+ * is a snapshot, and the app can be renamed or moved while a turn waits.
+ */
+async function withCurrentOriginalAppPath(
+  input: PrepareTurnWorkspaceInput,
+): Promise<PrepareTurnWorkspaceInput> {
+  const originalAppPath = await getOriginalAppPath(input.appId);
+  return originalAppPath && originalAppPath !== input.originalAppPath
+    ? { ...input, originalAppPath }
+    : input;
+}
+
 class ChatWorkspaceService {
   /**
    * Chooses where a turn runs. Writable turns reserve their placement for the
@@ -405,7 +418,8 @@ class ChatWorkspaceService {
   ): Promise<TurnWorkspace> {
     // Startup recovery deletes interrupted "creating" rows and sweeps orphan
     // folders; a workspace created while it runs could be swept with them.
-    await this.recovery?.catch(() => undefined);
+    await this.waitForRecovery();
+    input = await withCurrentOriginalAppPath(input);
     return input.writable
       ? this.prepareWritableTurn(input)
       : this.prepareReadOnlyTurn(input);
@@ -475,6 +489,13 @@ class ChatWorkspaceService {
           isolationEnabled:
             isWorktreeIsolationEnabled() && input.allowIsolation,
         });
+        if (decision.kind !== "wait") {
+          // The app's folder may have moved while this waited.
+          input = await withCurrentOriginalAppPath(input).catch((error) => {
+            chatWorkspaceRegistry.release(decision.reservation);
+            throw error;
+          });
+        }
         switch (decision.kind) {
           case "wait": {
             setWaiting(
@@ -597,19 +618,9 @@ class ChatWorkspaceService {
     try {
       while (true) {
         signal.throwIfAborted();
-        const original = await getOriginalAppPath(appId);
-        if (!original) {
-          throw new DyadError("App not found", DyadErrorKind.NotFound);
-        }
-        const branch = await gitCurrentBranch({ path: original });
-        if (branch) {
+        const workspace = await this.createWorkspace({ appId, chatId });
+        if (workspace) {
           setWaiting(null);
-          const workspace = await this.createWorkspace({
-            appId,
-            chatId,
-            originalAppPath: original,
-            targetBranch: branch,
-          });
           chatWorkspaceRegistry.bindWorkspace(reservation, workspace.id);
           return workspace;
         }
@@ -626,17 +637,18 @@ class ChatWorkspaceService {
     }
   }
 
+  /**
+   * Creates a workspace from the branch the app's folder is on, or returns
+   * null while it is on none. Both are read under the operation's claims, so
+   * a branch switch or a move cannot land between reading and creating.
+   */
   private async createWorkspace({
     appId,
     chatId,
-    originalAppPath,
-    targetBranch,
   }: {
     appId: number;
     chatId: number;
-    originalAppPath: string;
-    targetBranch: string;
-  }): Promise<ChatWorkspaceRow> {
+  }): Promise<ChatWorkspaceRow | null> {
     return runWorkspaceScopedOperation(
       {
         appId,
@@ -650,6 +662,12 @@ class ChatWorkspaceService {
         workspaceResources: [],
       },
       async () => {
+        const originalAppPath = await getOriginalAppPath(appId);
+        if (!originalAppPath) {
+          throw new DyadError("App not found", DyadErrorKind.NotFound);
+        }
+        const targetBranch = await gitCurrentBranch({ path: originalAppPath });
+        if (!targetBranch) return null;
         const repositoryRoot = (
           await execGit(["rev-parse", "--show-toplevel"], originalAppPath)
         ).stdout.trim();
@@ -886,6 +904,7 @@ class ChatWorkspaceService {
    * work (its next turn synchronizes it instead).
    */
   async synchronizeIdleWorkspace(chatId: number): Promise<number | null> {
+    await this.waitForRecovery();
     const workspace = getActiveWorkspaceForChat(chatId);
     if (!workspace) return null;
     // Exclusive like an integration step: turns, the queue, and removal wait.
@@ -922,6 +941,7 @@ class ChatWorkspaceService {
 
   /** Retries a paused or failed integration on the user's request. */
   async retryIntegration(chatId: number): Promise<void> {
+    await this.waitForRecovery();
     const workspace = getWorkspaceForChat(chatId);
     if (!workspace || workspace.status !== "active") {
       throw new DyadError(
@@ -1186,6 +1206,7 @@ class ChatWorkspaceService {
    * turn gets a new worktree.
    */
   async deleteChatWorkspace(chatId: number): Promise<void> {
+    await this.waitForRecovery();
     const workspace = getWorkspaceForChat(chatId);
     if (!workspace || workspace.status !== "active") {
       throw new DyadError(
@@ -1419,6 +1440,15 @@ class ChatWorkspaceService {
    */
   private recovery: Promise<void> | null = null;
 
+  /**
+   * Resolves once startup recovery has reconciled workspaces with Git.
+   * Startup does not wait for it (it runs Git in every worktree), so every
+   * operation that changes a workspace waits here instead.
+   */
+  async waitForRecovery(): Promise<void> {
+    await this.recovery?.catch(() => undefined);
+  }
+
   async recover(): Promise<void> {
     const recovery = this.recoverNow();
     this.recovery = recovery;
@@ -1430,30 +1460,35 @@ class ChatWorkspaceService {
   }
 
   private async recoverNow(): Promise<void> {
-    const brokenApps = new Set(
-      listAllWorkspaces()
-        .filter(
-          (workspace) =>
-            workspace.status === "active" &&
-            isWorktreeLinkBroken(workspace.path),
-        )
-        .map((workspace) => workspace.appId),
-    );
-    for (const appId of brokenApps) {
-      await this.reconnectWithClaims(appId).catch((error) =>
-        logger.error(`Failed to reconnect workspaces of app ${appId}`, error),
+    try {
+      const brokenApps = new Set(
+        listAllWorkspaces()
+          .filter(
+            (workspace) =>
+              workspace.status === "active" &&
+              isWorktreeLinkBroken(workspace.path),
+          )
+          .map((workspace) => workspace.appId),
       );
-    }
-    for (const workspace of listAllWorkspaces()) {
-      try {
-        await this.recoverWorkspace(workspace);
-      } catch (error) {
-        logger.error(`Failed to recover workspace ${workspace.id}`, error);
+      for (const appId of brokenApps) {
+        await this.reconnectWithClaims(appId).catch((error) =>
+          logger.error(`Failed to reconnect workspaces of app ${appId}`, error),
+        );
       }
+      for (const workspace of listAllWorkspaces()) {
+        try {
+          await this.recoverWorkspace(workspace);
+        } catch (error) {
+          logger.error(`Failed to recover workspace ${workspace.id}`, error);
+        }
+      }
+      await this.removeOrphanedDirectories();
+    } finally {
+      // Even after a failure above: queued integrations must still resume,
+      // and the queue must observe registry changes.
+      workspaceIntegrationQueue.start();
+      workspaceIntegrationQueue.resumePending();
     }
-    await this.removeOrphanedDirectories();
-    workspaceIntegrationQueue.start();
-    workspaceIntegrationQueue.resumePending();
   }
 
   /**

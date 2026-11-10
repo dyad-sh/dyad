@@ -90,7 +90,9 @@ is off.
 - Use `runWorkspaceScopedOperation`: file/index/runtime claims go on the
   workspace key, app-wide claims (providers, media, runtime-config, app-path)
   stay on the app id. Workspace keys are larger than app ids, so app-then-
-  workspace acquisition follows the ascending-id rule.
+  workspace acquisition follows the ascending-id rule. Workspace-only work
+  is still admitted on the app id (with no claims), so app deletion refuses
+  and drains it like any other app operation.
 - `chatWorkspaceRegistry` locks a workspace for a turn, integration, or
   removal. Removal must claim first (`tryClaimWorkspaceForRemoval`); a "not
   busy" check alone races new turns.
@@ -105,17 +107,25 @@ is off.
   changes go with it), and deletes the branch only when it is fully merged,
   so unmerged commits stay reachable. The chat's next writable turn creates
   a new workspace.
-- Every chat deletion path calls `onChatDeleting` before deleting the row,
-  after the chat's turns are cancelled and drained (`afterDrain`) and outside
-  any app claim (removal takes its own), or the runtime, worktree, and queue
-  state leak. Forced removal never deletes without the removal claim: if
+- Every deletion of a chat that may have run a turn calls `onChatDeleting`
+  before deleting the row, after the chat's turns are cancelled and drained
+  (`afterDrain`) and outside any app claim (removal takes its own), or the
+  runtime, worktree, and queue state leak. Only rollbacks of a chat created
+  moments earlier that never ran a turn (an abandoned first prompt, a
+  security-fix chat whose setup failed) delete the row directly: a
+  workspace is created by a turn, so they cannot have one. Forced removal never deletes without the removal claim: if
   something still holds the workspace, the folder is left for the startup
   orphan sweep.
-- `prepareTurnWorkspace` waits for startup recovery, which deletes
-  interrupted "creating" rows and sweeps orphan folders.
+- Startup does not wait for recovery (it runs Git in every worktree);
+  instead every operation that changes a workspace (`prepareTurnWorkspace`,
+  undo, delete, retry, idle synchronization) awaits `waitForRecovery()`.
+  Recovery deletes interrupted "creating" rows and sweeps orphan folders, and
+  starts the integration queue even when it fails.
 - `ensureDyadGitignored` does nothing inside a chat worktree
   (`isInsideChatWorkspace`) or where the repository's `info/exclude` already
-  lists `.dyad/` (`isDyadMetadataExcludedSync`, which isolation guarantees):
+  lists `.dyad/` (`isDyadMetadataExcludedSync`, which isolation guarantees;
+  looked up from the checkout root, since an app in a subfolder of its
+  repository has no `.git` of its own):
   a tracked `.gitignore` edit in the app's folder is never committed while
   chats work in worktrees and blocks merges that touch it. With isolation on
   it adds `.dyad/` to `info/exclude` itself, since an attachment on a
@@ -126,7 +136,9 @@ is off.
   `<dyad-copy>` resolve media from the app's folder and then the worktree. Undo
   that fails after committing interrupted edits resets them to uncommitted.
 - New workspace ids skip any port slot (`id % workspacePortSlotCount()`) a
-  kept workspace holds (`pickWorkspaceId`), so previews never share ports. A removal that fails while the folder still exists
+  kept workspace holds (`pickWorkspaceId`), so previews share ports only
+  once every slot (1,000; 500 in E2E) is held by a kept workspace; then the
+  next id is used anyway. A removal that fails while the folder still exists
   puts the workspace back to `active` so the chat is not stuck waiting,
   after `restoreMissingTrackedFiles` writes back files the removal already
   deleted (the next turn would otherwise commit their deletion). Forced
@@ -144,8 +156,10 @@ is off.
   that never integrated (history rewritten by a rebase) restores as before.
 - `.env*` files are gitignored, so `syncEnvironmentFiles` copies them into a
   worktree (missing or older than the app's copy) at creation, every writable
-  turn, and every worktree preview start. Files Git tracks are skipped: an
-  uncommitted edit in the app's folder would be committed by the chat. Compaction keeps its transcript
+  turn, and every worktree preview start. Files either checkout tracks or has
+  staged are skipped (an uncommitted edit in the app's folder would be
+  committed by the chat), nothing is copied when Git cannot list them, and a
+  worktree entry that is not a regular file (a symlink) is never written. Compaction keeps its transcript
   backup in the app's folder too (`durableAppPath`), and turns mirror the
   chat's `.dyad/chats/<id>/` backups in.
 - Use `waitForChange(signal, { timeoutMs })` to poll; racing it against a
@@ -262,7 +276,15 @@ is off.
 
 - Undo/Retry for an isolated chat call `workspace:undo-turns`, which reverts
   only the chat's own first-parent non-merge commits. Restore-to-message with
-  a codebase restore refuses for isolated chats.
+  a codebase restore refuses for isolated chats, and so does a version
+  restore that names a chat message (`currentChatMessageId`) of a chat with a
+  worktree: the renderer may not know the chat's workspace yet.
+- Retry passes `requestIntegration: false`: its replacement turn integrates
+  the revert with its own work, so the target never briefly loses the change.
+- Undo keeps uncommitted edits only when they are an interrupted
+  (cancelled or errored) turn's leftovers, like Undo in the app's folder;
+  install-written files alone are committed as install output first, and any
+  other uncommitted edit refuses the undo.
 - The version list is the app's branch for every chat. `list-versions`
   parses the `Dyad-*` trailers (`parseDyadCommitTrailers`) into each version's
   `workspace` (branch, chat, title) and `turnMessageIds`. Map a message to its

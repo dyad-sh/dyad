@@ -1,7 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { isInsideChatWorkspace } from "@/paths/chat_workspaces";
-import { isDyadMetadataExcludedSync } from "@/ipc/utils/git_dir";
+import {
+  findCheckoutRootSync,
+  isDyadMetadataExcludedSync,
+} from "@/ipc/utils/git_dir";
 import { excludeDyadMetadata } from "@/ipc/utils/git_worktree_utils";
 import { readSettings } from "@/main/settings";
 
@@ -55,16 +58,19 @@ export async function ensureDyadGitignored(appPath: string): Promise<void> {
   // an uncommitted change in the app's folder (nothing commits there while
   // chats work in worktrees) or a worktree commit that collides with it,
   // and either blocks merging.
-  if (isInsideChatWorkspace(appPath) || isDyadMetadataExcludedSync(appPath)) {
+  // From the checkout's root: an app in a subfolder of its repository has
+  // no `.git` of its own, and info/exclude is the repository's.
+  const checkoutRoot = findCheckoutRootSync(appPath);
+  if (
+    isInsideChatWorkspace(appPath) ||
+    (checkoutRoot !== null && isDyadMetadataExcludedSync(checkoutRoot))
+  ) {
     return;
   }
   // Before the app's first worktree exists (an attachment on its first
   // message), exclude it the same way rather than edit .gitignore there.
-  if (
-    readSettings().enableWorktreeIsolation === true &&
-    fs.existsSync(path.join(appPath, ".git"))
-  ) {
-    await excludeDyadMetadata(appPath);
+  if (readSettings().enableWorktreeIsolation === true && checkoutRoot) {
+    await excludeDyadMetadata(checkoutRoot);
     return;
   }
   await ensureGitignored(appPath, [".dyad/"]);

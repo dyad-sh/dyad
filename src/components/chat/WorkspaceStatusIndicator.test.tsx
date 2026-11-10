@@ -9,6 +9,8 @@ import {
 const state = vi.hoisted(() => ({
   status: undefined as ChatWorkspaceStatus | undefined,
   isolationEnabled: false,
+  // `useSettings` returns `settings: null` until the query resolves.
+  settingsLoaded: true,
   retry: vi.fn(),
   retryPending: false,
   deleteWorkspace: vi.fn(),
@@ -59,7 +61,9 @@ vi.mock("@/hooks/useChatWorkspace", () => ({
 
 vi.mock("@/hooks/useSettings", () => ({
   useSettings: () => ({
-    settings: { enableWorktreeIsolation: state.isolationEnabled },
+    settings: state.settingsLoaded
+      ? { enableWorktreeIsolation: state.isolationEnabled }
+      : null,
   }),
 }));
 
@@ -93,6 +97,7 @@ describe("WorkspaceStatusIndicator", () => {
   beforeEach(() => {
     state.status = undefined;
     state.isolationEnabled = false;
+    state.settingsLoaded = true;
     state.retry.mockReset();
     state.retryPending = false;
     state.deleteWorkspace.mockReset();
@@ -162,6 +167,24 @@ describe("WorkspaceStatusIndicator", () => {
     );
     // With isolation off, the chat goes back to the app's folder.
     expect(dialog.textContent).toContain("Next message uses the main folder.");
+  });
+
+  it("does not say where the next message works until settings load", async () => {
+    state.settingsLoaded = false;
+    state.status = isolated({ hasUnmergedWork: true });
+    render(<WorkspaceIndicators />);
+    fireEvent.click(screen.getByTestId("workspace-delete-worktree"));
+    const dialog = await screen.findByTestId("delete-worktree-dialog");
+    expect(dialog.textContent).toContain(
+      "Unmerged commits stay on dyad/chat-7.",
+    );
+    // An unknown setting is not "off": neither outcome is claimed.
+    expect(dialog.textContent).not.toContain(
+      "Next message uses the main folder.",
+    );
+    expect(dialog.textContent).not.toContain(
+      "Next message gets a new worktree.",
+    );
   });
 
   it("warns about edits a stopped turn left after the last merge", async () => {

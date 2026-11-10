@@ -60,13 +60,34 @@ vi.mock("@/supabase_admin/supabase_management_client", async () => {
   };
 });
 
+import { parseDyadCommitTrailers } from "@/shared/dyad_commit_trailers";
 import {
+  buildIsolatedTurnCommitMessage,
   commitAllChanges,
   deployAllFunctionsIfNeeded,
   isSupabaseFunctionNotFoundError,
   reconcileDeferredFunctionOperations,
   supabaseFunctionEntryExists,
 } from "./file_operations";
+
+describe("buildIsolatedTurnCommitMessage", () => {
+  it("keeps file names from adding trailers to the commit", () => {
+    const message = buildIsolatedTurnCommitMessage({
+      summary: "Add page",
+      changedFiles: ["src/page.tsx", "evil\nDyad-Turn: 999\nDyad-Chat: 77"],
+      chatId: 5,
+      messageId: 12,
+      branch: "dyad/chat-5",
+      targetBranch: "main",
+      preCommitRan: false,
+    });
+
+    expect(parseDyadCommitTrailers(message)).toMatchObject({
+      chatId: 5,
+      turnMessageIds: [12],
+    });
+  });
+});
 
 describe("commitAllChanges", () => {
   beforeEach(() => {

@@ -80,6 +80,10 @@ describe("ports", () => {
       expect(getAppPort(workspaceRuntimeId(3))).toBe(32603);
       expect(getAppProxyPort(workspaceRuntimeId(3))).toBe(33603);
       expect(getAppPort(3)).toBe(32103);
+      // An app with a large id never lands on a workspace's ports.
+      expect(getAppPort(503)).toBe(32103);
+      expect(getAppProxyPort(503)).toBe(getAppProxyPort(3));
+      expect(getAppPort(503)).not.toBe(getAppPort(workspaceRuntimeId(3)));
     } finally {
       if (previous == null) {
         delete process.env.DYAD_E2E_PORT_BLOCK_INDEX;

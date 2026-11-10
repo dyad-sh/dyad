@@ -73,3 +73,19 @@ export function isDyadMetadataExcludedSync(repositoryPath: string): boolean {
     return false;
   }
 }
+
+/**
+ * The checkout containing `startPath`: the nearest folder, from `startPath`
+ * up, with a `.git` entry (a directory, or a linked worktree's file). An app
+ * can live in a subfolder of its repository, so `<appPath>/.git` need not
+ * exist. Returns null outside any checkout.
+ */
+export function findCheckoutRootSync(startPath: string): string | null {
+  let candidate = path.resolve(startPath);
+  while (true) {
+    if (fs.existsSync(path.join(candidate, ".git"))) return candidate;
+    const parent = path.dirname(candidate);
+    if (parent === candidate) return null;
+    candidate = parent;
+  }
+}

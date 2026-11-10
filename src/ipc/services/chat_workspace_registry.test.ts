@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ChatWorkspaceRegistry } from "./chat_workspace_registry";
 
 const APP = 1;
@@ -143,6 +143,11 @@ describe("ChatWorkspaceRegistry", () => {
     expect(registry.tryClaimWorkspaceForRemoval(APP, 9)).toBeNull();
     releaseReader();
 
+    const turn = reserve(registry, 10, { existingWorkspaceId: 9 });
+    if (turn.kind !== "existing-workspace") throw new Error("expected reuse");
+    expect(registry.tryClaimWorkspaceForRemoval(APP, 9)).toBeNull();
+    registry.release(turn.reservation);
+
     const releaseRemoval = registry.tryClaimWorkspaceForRemoval(APP, 9);
     expect(releaseRemoval).not.toBeNull();
     // A turn that wants the workspace waits; a reader falls back.
@@ -150,6 +155,22 @@ describe("ChatWorkspaceRegistry", () => {
     expect(registry.tryAddReader(APP, 9)).toBeNull();
     releaseRemoval!();
     expect(registry.tryAddReader(APP, 9)).not.toBeNull();
+  });
+
+  it("publishes turn changes but not Ask/Plan readers", async () => {
+    const registry = new ChatWorkspaceRegistry();
+    const published: number[] = [];
+    registry.subscribe((appId) => published.push(appId));
+
+    const woke = registry.waitForChange();
+    const releaseReader = registry.addReader(APP, 9);
+    await expect(woke).resolves.toBeUndefined();
+    releaseReader();
+    expect(published).toEqual([]);
+
+    const writer = reserve(registry, 10);
+    expect(published).toEqual([APP]);
+    if (writer.kind !== "wait") registry.release(writer.reservation);
   });
 
   it("wakes waiters on every change and supports cancellation", async () => {
@@ -180,12 +201,16 @@ describe("ChatWorkspaceRegistry", () => {
   it("stops waiting after a timeout without leaving a waiter behind", async () => {
     const registry = new ChatWorkspaceRegistry();
     const controller = new AbortController();
+    const removeListener = vi.spyOn(controller.signal, "removeEventListener");
     // Polling loops wait like this repeatedly; each wait must clean up.
     for (let round = 0; round < 3; round++) {
       await expect(
         registry.waitForChange(controller.signal, { timeoutMs: 1 }),
       ).resolves.toBeUndefined();
     }
+    expect(
+      removeListener.mock.calls.filter(([type]) => type === "abort"),
+    ).toHaveLength(3);
     // A later abort reaches no stale waiter (it would reject unhandled).
     controller.abort(new Error("stopped"));
     const woke = registry.waitForChange(undefined, { timeoutMs: 1_000 });

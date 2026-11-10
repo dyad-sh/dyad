@@ -525,6 +525,7 @@ async function deleteAppById(
     throw error;
   }
   let deletedRow: typeof apps.$inferSelect | null = null;
+  let deletionCommitted = false;
   const testDeletion = beginAppTestDeletion(appId);
   try {
     await endTestsForApp(appId);
@@ -560,6 +561,7 @@ async function deleteAppById(
           commit: () => {
             appRunDeletion.commit();
             appRunDeletionCommitted = true;
+            deletionCommitted = true;
           },
         }),
       );
@@ -573,6 +575,10 @@ async function deleteAppById(
   } finally {
     testDeletion.release();
     appOperationDeletion.release();
+    // The deletion stopped the app's integration attempts; if it did not go
+    // through, pick them back up. Only now: while the fence above was held,
+    // a resumed attempt would be refused and recorded as failed.
+    if (!deletionCommitted) chatWorkspaceService.resumeIntegration();
   }
 
   // The app row is gone, so nothing will ever ask for its parked draft or its
@@ -838,9 +844,6 @@ async function deleteAppByIdExclusive(
     for (const release of releaseSubagentAdmission) release();
     for (const release of releaseChatActorAdmission) release();
     releaseChatCreation?.();
-    // The deletion stopped the app's integration attempts; if it did not go
-    // through, pick them back up.
-    if (!deletionCommitted) chatWorkspaceService.resumeIntegration();
     try {
       if (imageGenerationDeletion) {
         try {

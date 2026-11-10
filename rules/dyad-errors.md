@@ -7,6 +7,7 @@ Use `DyadError` from `src/errors/dyad_error.ts` when throwing from **main proces
 - **`DyadErrorKind`** — enum classifying the failure.
 - **`new DyadError(message, kind)`** — `error.name` is `"DyadError"`; use `error.kind` for branching.
 - **`isDyadError(error)`** — type guard.
+- `DyadError` has no `code` field, but `kind` and `message` survive IPC (`serializeIpcError` / `deserializeIpcError`). When the renderer must tell apart two errors of the same kind, export the message as a constant from `src/shared/` and compare both `kind` and `message` (see `src/shared/neon_auth.ts` and `useNeon`). Matching on `kind` alone treats every `Auth` error as one state.
 
 ## Telemetry (PostHog `$exception`)
 

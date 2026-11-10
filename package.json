@@ -176,7 +176,6 @@
     "@electron-forge/publisher-github": "^7.11.1",
     "@electron/fuses": "^1.8.0",
     "@playwright/test": "^1.58.2",
-    "@posthog/cli": "0.18.12",
     "@storybook/addon-essentials": "^8.6.14",
     "@storybook/blocks": "^8.6.14",
     "@storybook/react": "^8.6.15",

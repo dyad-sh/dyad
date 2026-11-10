@@ -1,45 +1,33 @@
-import { readFileSync } from "node:fs";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import vm from "node:vm";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-  filterPostHogCliEnv,
-  POSTHOG_CLI_BINARY_SHA256,
-  POSTHOG_CLI_VERSION,
+  injectChunkId,
   posthogHiddenSourcemapsPlugin,
-  uploadPostHogSourcemaps,
+  stagePostHogSourcemaps,
 } from "@/lib/posthog_sourcemaps";
 
-const CREDENTIALS = {
-  POSTHOG_CLI_API_KEY: "phx_test",
-  POSTHOG_CLI_PROJECT_ID: "123",
-};
-const ENABLED = { POSTHOG_UPLOAD_SOURCEMAPS: "true", ...CREDENTIALS };
-const CLI_DIR = "/repo/node_modules/@posthog/cli";
+const UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
-function upload(
-  env: NodeJS.ProcessEnv,
-  {
-    hostPlatform = "linux-x64",
-    binaryHash = POSTHOG_CLI_BINARY_SHA256["linux-x64"],
-    runCli = vi.fn().mockResolvedValue(undefined),
-    findMapFiles = vi.fn().mockResolvedValue([]),
-  } = {},
-) {
-  const resolveCliPackageDir = vi.fn(() => CLI_DIR);
-  const hashFile = vi.fn().mockResolvedValue(binaryHash);
-  const result = uploadPostHogSourcemaps({
-    buildPath: "/tmp/build/app",
-    releaseVersion: "1.2.3",
-    resolveCliPackageDir,
-    env,
-    hostPlatform,
-    hashFile,
-    runCli,
-    findMapFiles,
+function sourceMap(mappings: string): string {
+  return JSON.stringify({
+    version: 3,
+    file: "bundle.js",
+    sources: ["../src/a.ts", "../src/b.ts"],
+    names: ["foo"],
+    mappings,
   });
-  return { result, runCli, resolveCliPackageDir, hashFile, findMapFiles };
 }
 
 describe("posthogHiddenSourcemapsPlugin", () => {
@@ -59,214 +47,212 @@ describe("posthogHiddenSourcemapsPlugin", () => {
   });
 });
 
-describe("uploadPostHogSourcemaps", () => {
-  it("does nothing without the opt-in flag, even with credentials", async () => {
-    const { result, runCli, resolveCliPackageDir, hashFile } =
-      upload(CREDENTIALS);
-    await expect(result).resolves.toBeUndefined();
-    expect(runCli).not.toHaveBeenCalled();
-    expect(resolveCliPackageDir).not.toHaveBeenCalled();
-    expect(hashFile).not.toHaveBeenCalled();
-  });
+describe("injectChunkId", () => {
+  const MAPPINGS = "AAAA,SAASA;ACAA,GAAG;;ADEA";
+  // Minified like Vite's main-process output: the directive and code share a line.
+  const MINIFIED_CJS =
+    '"use strict";module.exports=(function(){return this===undefined})();';
 
-  it.each(["POSTHOG_CLI_API_KEY", "POSTHOG_CLI_PROJECT_ID"])(
-    "fails the build when opted in without %s",
-    async (missing) => {
-      const env: NodeJS.ProcessEnv = { ...ENABLED };
-      delete env[missing];
-      const { result, runCli } = upload(env);
-      await expect(result).rejects.toThrow(missing);
-      expect(runCli).not.toHaveBeenCalled();
-    },
-  );
+  it("registers the chunk ID when the bundle runs, keeping strict mode", () => {
+    const { chunkId, code } = injectChunkId(MINIFIED_CJS, sourceMap(MAPPINGS));
 
-  it("injects chunk IDs, then uploads and removes the local maps", async () => {
-    const { result, runCli, hashFile } = upload(ENABLED);
-    await result;
-
-    const binary = path.join(
-      CLI_DIR,
-      "node_modules",
-      ".bin_real",
-      "posthog-cli",
-    );
-    expect(hashFile).toHaveBeenCalledWith(binary);
-    const directory = path.join("/tmp/build/app", ".vite");
-    const release = ["--release-name", "dyad", "--release-version", "1.2.3"];
-    expect(runCli.mock.calls.map(([bin, args]) => [bin, args])).toEqual([
-      [binary, ["sourcemap", "inject", "--directory", directory, ...release]],
-      [
-        binary,
-        [
-          "sourcemap",
-          "upload",
-          "--directory",
-          directory,
-          "--delete-after",
-          ...release,
-        ],
-      ],
+    expect(code.startsWith(MINIFIED_CJS)).toBe(true);
+    const context: Record<string, unknown> = { module: { exports: null } };
+    vm.runInNewContext(code, context);
+    // `this` is undefined in a plain call only in strict mode.
+    expect((context.module as { exports: unknown }).exports).toBe(true);
+    expect(Object.values(context._posthogChunkIds as object)).toEqual([
+      chunkId,
     ]);
   });
 
-  it("runs the .exe binary on Windows", async () => {
-    const { result, runCli } = upload(ENABLED, {
-      hostPlatform: "win32-x64",
-      binaryHash: POSTHOG_CLI_BINARY_SHA256["win32-x64"],
+  it("leaves the code before it and the map's mappings unchanged", () => {
+    const original = sourceMap(MAPPINGS);
+    const { chunkId, map } = injectChunkId(MINIFIED_CJS, original);
+    expect(JSON.parse(map)).toEqual({
+      ...JSON.parse(original),
+      chunk_id: chunkId,
     });
-    await result;
-    expect(runCli.mock.calls[0][0]).toBe(
-      path.join(CLI_DIR, "node_modules", ".bin_real", "posthog-cli.exe"),
+  });
+
+  it("drops a trailing sourceMappingURL comment, since the map is not shipped", () => {
+    const { code } = injectChunkId(
+      "foo();\n//# sourceMappingURL=worker.js.map\n",
+      sourceMap(MAPPINGS),
     );
+    expect(code).not.toContain("sourceMappingURL");
+    expect(code.startsWith("foo();\n;!function")).toBe(true);
   });
 
-  it("refuses to run a binary whose hash does not match the pin", async () => {
-    const { result, runCli } = upload(ENABLED, { binaryHash: "0".repeat(64) });
-    await expect(result).rejects.toThrow("refusing to run it");
-    expect(runCli).not.toHaveBeenCalled();
-  });
-
-  it("refuses to run on a platform without a pinned hash", async () => {
-    const { result, runCli, hashFile } = upload(ENABLED, {
-      hostPlatform: "linux-arm64",
-    });
-    await expect(result).rejects.toThrow("linux-arm64");
-    expect(hashFile).not.toHaveBeenCalled();
-    expect(runCli).not.toHaveBeenCalled();
-  });
-
-  it("passes the CLI only the allowlisted environment", async () => {
-    const { result, runCli } = upload({
-      ...ENABLED,
-      APPLE_PASSWORD: "secret",
-      GITHUB_TOKEN: "ghs_secret",
-    });
-    await result;
-    for (const [, , env] of runCli.mock.calls) {
-      expect(env).toEqual(CREDENTIALS);
+  it("produces bundles Node can parse as scripts and as modules", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "posthog-inject-"));
+    try {
+      const bundles = {
+        "main.cjs": MINIFIED_CJS,
+        // No trailing newline or semicolon before the appended snippet.
+        "worker.cjs": '"use strict";const a=require("fs")\nmodule.exports=a',
+        "index.mjs": 'import fs from"node:fs";export const x=fs',
+        "comment.mjs": "export const y=1// trailing comment",
+      };
+      for (const [file, source] of Object.entries(bundles)) {
+        const target = path.join(dir, file);
+        await writeFile(
+          target,
+          injectChunkId(source, sourceMap(MAPPINGS)).code,
+        );
+        execFileSync(process.execPath, ["--check", target]);
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true });
     }
   });
 
-  it("does not upload when injection fails", async () => {
-    const runCli = vi.fn().mockRejectedValue(new Error("inject failed"));
-    const { result } = upload(ENABLED, { runCli });
-    await expect(result).rejects.toThrow("inject failed");
-    expect(runCli).toHaveBeenCalledTimes(1);
+  it("writes the same UUID-format chunk ID into the bundle and the map", () => {
+    const { chunkId, code, map } = injectChunkId("foo();", sourceMap(MAPPINGS));
+    expect(chunkId).toMatch(UUID);
+    expect(code.endsWith(`\n//# chunkId=${chunkId}\n`)).toBe(true);
+    expect(code).toContain(`e._posthogChunkIds[n]="${chunkId}"`);
+    expect(JSON.parse(map)).toMatchObject({ chunk_id: chunkId, version: 3 });
+  });
+
+  it("derives the chunk ID from both files, so rebuilds reproduce it", () => {
+    const id = (code: string, mappings: string) =>
+      injectChunkId(code, sourceMap(mappings)).chunkId;
+    expect(id("foo();", "AAAA")).toBe(id("foo();", "AAAA"));
+    expect(id("foo();", "AAAA")).not.toBe(id("bar();", "AAAA"));
+    expect(id("foo();", "AAAA")).not.toBe(id("foo();", "AACA"));
+  });
+
+  it("refuses a bundle that already has a chunk ID", () => {
+    const once = injectChunkId("foo();", sourceMap("AAAA"));
+    expect(() => injectChunkId(once.code, sourceMap("AAAA"))).toThrow(
+      "already has a chunk ID",
+    );
+    expect(() => injectChunkId("foo();", once.map)).toThrow(
+      "already has a chunk ID",
+    );
   });
 });
 
-describe("leftover source maps after upload", () => {
-  async function uploadInto(
-    buildPath: string,
-    runCli: (binary: string, args: string[]) => Promise<void> = async () => {},
-  ) {
-    await uploadPostHogSourcemaps({
-      buildPath,
-      releaseVersion: "1.2.3",
-      resolveCliPackageDir: () => CLI_DIR,
-      env: ENABLED,
-      hostPlatform: "linux-x64",
-      hashFile: async () => POSTHOG_CLI_BINARY_SHA256["linux-x64"],
-      runCli,
-    });
+describe("stagePostHogSourcemaps", () => {
+  let root: string;
+  let buildPath: string;
+  let stagingRoot: string;
+  let env: NodeJS.ProcessEnv;
+
+  beforeEach(async () => {
+    root = await mkdtemp(path.join(tmpdir(), "posthog-stage-"));
+    buildPath = path.join(root, "app");
+    stagingRoot = path.join(root, "sourcemaps");
+    env = {
+      POSTHOG_UPLOAD_SOURCEMAPS: "true",
+      POSTHOG_SOURCEMAPS_DIR: stagingRoot,
+    };
+  });
+
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+
+  async function seed(files: Record<string, string>) {
+    for (const [file, content] of Object.entries(files)) {
+      const target = path.join(buildPath, ".vite", file);
+      await mkdir(path.dirname(target), { recursive: true });
+      await writeFile(target, content);
+    }
   }
 
-  it("fails the build when a map file is still in the app", async () => {
-    const buildPath = await mkdtemp(path.join(tmpdir(), "posthog-maps-"));
-    try {
-      const assets = path.join(buildPath, ".vite", "renderer", "assets");
-      await mkdir(assets, { recursive: true });
-      await writeFile(path.join(assets, "index.js"), "");
-      await writeFile(path.join(assets, "orphan.js.map"), "{}");
-      await expect(uploadInto(buildPath)).rejects.toThrow("orphan.js.map");
-    } finally {
-      await rm(buildPath, { recursive: true, force: true });
-    }
-  });
+  const stage = () =>
+    stagePostHogSourcemaps({ buildPath, target: "linux-x64", env });
 
-  it("passes when the upload removed every map", async () => {
-    const buildPath = await mkdtemp(path.join(tmpdir(), "posthog-maps-"));
-    try {
-      const build = path.join(buildPath, ".vite", "build");
-      await mkdir(build, { recursive: true });
-      await writeFile(path.join(build, "main.js"), "");
-      await writeFile(path.join(build, "main.js.map"), "{}");
-      // Like `upload --delete-after`, remove the map during the upload step.
-      const runCli = async (_binary: string, args: string[]) => {
-        if (args[1] === "upload") {
-          await rm(path.join(build, "main.js.map"));
-        }
-      };
-      await expect(uploadInto(buildPath, runCli)).resolves.toBeUndefined();
-    } finally {
-      await rm(buildPath, { recursive: true, force: true });
-    }
-  });
-
-  it("checks for maps only after the upload", async () => {
-    const order: string[] = [];
-    const runCli = vi.fn(async (_bin: string, args: string[]) => {
-      order.push(args[1]);
+  it("does nothing without the opt-in flag", async () => {
+    await seed({
+      "build/main.js": "foo();",
+      "build/main.js.map": sourceMap("AAAA"),
     });
-    const findMapFiles = vi.fn(async () => {
-      order.push("check");
-      return [];
-    });
-    await upload(ENABLED, { runCli, findMapFiles }).result;
-    expect(order).toEqual(["inject", "upload", "check"]);
-    expect(findMapFiles).toHaveBeenCalledWith(
-      path.join("/tmp/build/app", ".vite"),
-    );
-  });
-});
-
-describe("filterPostHogCliEnv", () => {
-  it("keeps PostHog, system, and proxy variables in any case, and drops the rest", () => {
+    await stagePostHogSourcemaps({ buildPath, target: "linux-x64", env: {} });
     expect(
-      filterPostHogCliEnv({
-        POSTHOG_CLI_API_KEY: "phx",
-        POSTHOG_CLI_HOST: "https://us.posthog.com",
-        Path: "C:\\Windows",
-        SystemRoot: "C:\\Windows",
-        https_proxy: "http://proxy",
-        HOME: "/home/runner",
-        AZURE_CLIENT_SECRET: "secret",
-        APPLE_ID: "me@example.com",
-        GITHUB_TOKEN: "ghs",
-        NODE_OPTIONS: "--max-old-space-size=6144",
-        POSTHOG_UPLOAD_SOURCEMAPS: "true",
-      }),
-    ).toEqual({
-      POSTHOG_CLI_API_KEY: "phx",
-      POSTHOG_CLI_HOST: "https://us.posthog.com",
-      Path: "C:\\Windows",
-      SystemRoot: "C:\\Windows",
-      https_proxy: "http://proxy",
-      HOME: "/home/runner",
-    });
+      await readFile(path.join(buildPath, ".vite/build/main.js"), "utf8"),
+    ).toBe("foo();");
   });
-});
 
-describe("pinned posthog-cli binary", () => {
-  it("matches the @posthog/cli version in package.json", () => {
-    // Bumping @posthog/cli requires updating POSTHOG_CLI_BINARY_SHA256 too.
-    const packageJson = JSON.parse(
-      readFileSync(path.join(__dirname, "../../package.json"), "utf8"),
-    ) as { devDependencies: Record<string, string> };
-    expect(packageJson.devDependencies["@posthog/cli"]).toBe(
-      POSTHOG_CLI_VERSION,
+  it("fails when opted in without a staging directory", async () => {
+    delete env.POSTHOG_SOURCEMAPS_DIR;
+    await expect(stage()).rejects.toThrow("POSTHOG_SOURCEMAPS_DIR");
+  });
+
+  it("tags shipped bundles and moves their maps out of the app", async () => {
+    await seed({
+      "build/main.js": '"use strict";foo();',
+      "build/main.js.map": sourceMap("AAAA;AACA"),
+      "renderer/main_window/assets/index-abc.js": "bar();",
+      "renderer/main_window/assets/index-abc.js.map": sourceMap("AAAA"),
+      "build/worker.js": "baz();",
+    });
+    await stage();
+
+    const staged = path.join(stagingRoot, "linux-x64");
+    expect((await readdir(staged, { recursive: true })).sort()).toEqual(
+      [
+        "build",
+        "build/main.js",
+        "build/main.js.map",
+        "renderer",
+        "renderer/main_window",
+        "renderer/main_window/assets",
+        "renderer/main_window/assets/index-abc.js",
+        "renderer/main_window/assets/index-abc.js.map",
+      ].map((p) => path.normalize(p)),
+    );
+    for (const bundle of [
+      "build/main.js",
+      "renderer/main_window/assets/index-abc.js",
+    ]) {
+      const shipped = await readFile(
+        path.join(buildPath, ".vite", bundle),
+        "utf8",
+      );
+      const map = JSON.parse(
+        await readFile(path.join(staged, `${bundle}.map`), "utf8"),
+      );
+      expect(shipped).toContain(`//# chunkId=${map.chunk_id}`);
+      expect(await readFile(path.join(staged, bundle), "utf8")).toBe(shipped);
+    }
+    // No maps ship, and a bundle without a map is left alone.
+    const shippedFiles = await readdir(path.join(buildPath, ".vite"), {
+      recursive: true,
+    });
+    expect(shippedFiles.filter((f) => f.endsWith(".map"))).toEqual([]);
+    expect(
+      await readFile(path.join(buildPath, ".vite/build/worker.js"), "utf8"),
+    ).toBe("baz();");
+  });
+
+  it("replaces maps staged by a failed earlier attempt", async () => {
+    const stale = path.join(stagingRoot, "linux-x64", "build", "old.js.map");
+    await mkdir(path.dirname(stale), { recursive: true });
+    await writeFile(stale, "{}");
+    await seed({
+      "build/main.js": "foo();",
+      "build/main.js.map": sourceMap("AAAA"),
+    });
+    await stage();
+    await expect(readFile(stale)).rejects.toThrow();
+  });
+
+  it("fails when a map has no bundle, since it would ship", async () => {
+    await seed({
+      "build/main.js": "foo();",
+      "build/main.js.map": sourceMap("AAAA"),
+      "renderer/orphan.js.map": sourceMap("AAAA"),
+    });
+    await expect(stage()).rejects.toThrow(
+      path.normalize("renderer/orphan.js.map"),
     );
   });
 
-  it("pins every release runner platform", () => {
-    expect(Object.keys(POSTHOG_CLI_BINARY_SHA256).sort()).toEqual([
-      "darwin-arm64",
-      "darwin-x64",
-      "linux-x64",
-      "win32-x64",
-    ]);
-    for (const hash of Object.values(POSTHOG_CLI_BINARY_SHA256)) {
-      expect(hash).toMatch(/^[0-9a-f]{64}$/);
-    }
+  it("fails when the build produced no maps", async () => {
+    await seed({ "build/main.js": "foo();" });
+    await expect(stage()).rejects.toThrow("No source maps found");
   });
 });

@@ -1,86 +1,28 @@
-import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { createReadStream } from "node:fs";
-import { readdir } from "node:fs/promises";
+import {
+  copyFile,
+  mkdir,
+  readdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import path from "node:path";
 import type { Plugin } from "vite";
 
 /**
  * Release CI uploads source maps to PostHog error tracking so minified stack
  * traces from packaged builds resolve to original source. Local and PR builds
- * never set this flag and are unchanged. The flag only prevents accidental
- * uploads: the API key, which exists only as a release CI secret, is what
- * authorizes writing to Dyad's PostHog project.
+ * never set this flag and are unchanged.
+ *
+ * The build job only prepares the maps: it tags each bundle with a chunk ID,
+ * then moves the maps out of the app into POSTHOG_SOURCEMAPS_DIR. A separate
+ * release CI job, without the signing credentials, uploads that directory with
+ * posthog-cli. No PostHog code runs in the job that signs the app, and nothing
+ * outside this repo edits the shipped bundles.
  */
 export const POSTHOG_UPLOAD_SOURCEMAPS_ENV = "POSTHOG_UPLOAD_SOURCEMAPS";
-
-/** Read by posthog-cli itself. */
-const REQUIRED_CLI_ENV = ["POSTHOG_CLI_API_KEY", "POSTHOG_CLI_PROJECT_ID"];
-
-export const POSTHOG_RELEASE_NAME = "dyad";
-
-/**
- * The @posthog/cli npm package is verified by package-lock.json, but its
- * postinstall downloads a native binary that nothing verifies. Pin each
- * release runner's binary so a tampered download fails the build instead of
- * running in the release job. When bumping @posthog/cli, update the version
- * and every hash (the SHA-256 of the extracted `posthog-cli` binary from
- * https://github.com/PostHog/posthog/releases/tag/posthog-cli/v<version>).
- */
-export const POSTHOG_CLI_VERSION = "0.18.12";
-export const POSTHOG_CLI_BINARY_SHA256: Readonly<Record<string, string>> = {
-  "linux-x64":
-    "c69b03b0d604662ed9939f9017d21e75652b6efe064e0118c6c4378c2f26bc06",
-  "darwin-x64":
-    "30618b24a8225b70c69348245e155c232bf2b283ade250531c6ba1e98e924cdb",
-  "darwin-arm64":
-    "78c21417f3e3d30a88af9970712ab115c303caec21ee3c8ab853a4320968adfa",
-  "win32-x64":
-    "3ba85040aaca852ab9c65f2256fc351d84925928c9a70fdb4248f0627543d774",
-};
-
-/**
- * The only environment the CLI binary receives: the release job's signing
- * credentials and GitHub token are not passed to it, so they cannot leak
- * through its logs, crash reports, or telemetry. This is not a sandbox; the
- * binary runs as the build user, and the hash pin above is the main
- * protection against a tampered binary. Matched case-insensitively, because
- * Windows environment names are (e.g. `Path`, `SystemRoot`).
- */
-const CLI_ENV_ALLOWLIST = new Set(
-  [
-    "POSTHOG_CLI_API_KEY",
-    "POSTHOG_CLI_PROJECT_ID",
-    "POSTHOG_CLI_HOST",
-    "PATH",
-    "HOME",
-    "TMPDIR",
-    "TEMP",
-    "TMP",
-    "LANG",
-    "HTTPS_PROXY",
-    "HTTP_PROXY",
-    "NO_PROXY",
-    "SSL_CERT_FILE",
-    "SSL_CERT_DIR",
-    "USERPROFILE",
-    "APPDATA",
-    "LOCALAPPDATA",
-    "SYSTEMROOT",
-    "WINDIR",
-    "COMSPEC",
-    "PATHEXT",
-  ].map((name) => name.toUpperCase()),
-);
-
-export function filterPostHogCliEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  return Object.fromEntries(
-    Object.entries(env).filter(
-      ([name, value]) =>
-        value !== undefined && CLI_ENV_ALLOWLIST.has(name.toUpperCase()),
-    ),
-  );
-}
+export const POSTHOG_SOURCEMAPS_DIR_ENV = "POSTHOG_SOURCEMAPS_DIR";
 
 export function isPostHogSourcemapUploadEnabled(
   env: NodeJS.ProcessEnv = process.env,
@@ -90,7 +32,7 @@ export function isPostHogSourcemapUploadEnabled(
 
 /**
  * Makes a Vite build emit hidden source maps (no sourceMappingURL comment)
- * when uploads are enabled, for `uploadPostHogSourcemaps` to consume.
+ * when uploads are enabled, for `stagePostHogSourcemaps` to consume.
  */
 export function posthogHiddenSourcemapsPlugin(
   env: NodeJS.ProcessEnv = process.env,
@@ -106,154 +48,138 @@ export function posthogHiddenSourcemapsPlugin(
   ];
 }
 
-export interface UploadPostHogSourcemapsOptions {
+/**
+ * Registers the bundle's chunk ID on `globalThis._posthogChunkIds`, keyed by a
+ * stack trace captured inside the bundle; posthog-js reads this registry to
+ * tell PostHog which uploaded map belongs to each stack frame. This matches
+ * the snippet posthog-cli's `sourcemap inject` adds. It never throws, so it
+ * cannot stop a bundle from loading.
+ */
+function chunkIdSnippet(chunkId: string): string {
+  return `;!function(){try{var e="undefined"!=typeof window?window:"undefined"!=typeof global?global:"undefined"!=typeof globalThis?globalThis:"undefined"!=typeof self?self:{},n=(new e.Error).stack;n&&(e._posthogChunkIds=e._posthogChunkIds||{},e._posthogChunkIds[n]=${JSON.stringify(chunkId)})}catch(e){}}();`;
+}
+
+/** A trailing comment pointing at the map, which is not shipped. */
+const SOURCE_MAPPING_URL_COMMENT = /\n\/\/[#@] sourceMappingURL=[^\n]*\s*$/;
+
+export interface InjectedBundle {
+  chunkId: string;
+  code: string;
+  map: string;
+}
+
+/**
+ * Tags a bundle and its source map with a chunk ID. The ID is a hash of both
+ * files, so rebuilding the same release reproduces it and PostHog skips the
+ * duplicate upload.
+ *
+ * The snippet is appended rather than prepended: a bundle's first statement
+ * can be a "use strict" directive, which stops applying if anything comes
+ * before it, and code added at the end leaves every mapped position, and so
+ * the map's mappings, unchanged. The snippet runs once the bundle has loaded,
+ * before any error from it can be captured.
+ */
+export function injectChunkId(code: string, mapText: string): InjectedBundle {
+  const map = JSON.parse(mapText) as Record<string, unknown>;
+  if (code.includes("//# chunkId=") || map.chunk_id !== undefined) {
+    throw new Error("Bundle already has a chunk ID");
+  }
+  const chunkId = contentChunkId(code, mapText);
+
+  const injectedCode =
+    code.replace(SOURCE_MAPPING_URL_COMMENT, "") +
+    `\n${chunkIdSnippet(chunkId)}\n//# chunkId=${chunkId}\n`;
+  const injectedMap = { ...map, chunk_id: chunkId };
+
+  return { chunkId, code: injectedCode, map: JSON.stringify(injectedMap) };
+}
+
+/** Formatted as a UUID, like posthog-cli's chunk IDs. */
+function contentChunkId(code: string, mapText: string): string {
+  const hex = createHash("sha256")
+    .update(code)
+    .update("\0")
+    .update(mapText)
+    .digest("hex");
+  const variant = ((parseInt(hex[16], 16) & 0x3) | 0x8).toString(16);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-5${hex.slice(13, 16)}-${variant}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
+
+export interface StagePostHogSourcemapsOptions {
   /** The packaged app directory, before it is archived into app.asar. */
   buildPath: string;
-  releaseVersion: string;
-  /**
-   * Resolves the @posthog/cli package directory; called only when uploads are
-   * enabled.
-   */
-  resolveCliPackageDir: () => string;
+  /** Identifies this build's maps, e.g. `darwin-arm64`. */
+  target: string;
   env?: NodeJS.ProcessEnv;
-  /** `${process.platform}-${process.arch}` of the machine running the build. */
-  hostPlatform?: string;
-  hashFile?: (filePath: string) => Promise<string>;
-  runCli?: (
-    binaryPath: string,
-    args: string[],
-    env: NodeJS.ProcessEnv,
-  ) => Promise<void>;
-  findMapFiles?: (directory: string) => Promise<string[]>;
 }
 
 /**
  * Runs from Forge's afterCopy hook, after Vite has written source maps into
- * `<buildPath>/.vite` and before the asar is created. Injects a chunk ID into
- * each shipped bundle, uploads the maps to PostHog, then removes the local map
- * files so they do not ship. Uploaded symbol sets stay in PostHog, so older
- * releases keep resolving.
- *
- * Chunk IDs are content-addressed (posthog-cli's default `event` release
- * mode), so re-uploading an identical build skips or overwrites matching
- * symbol sets instead of failing. That keeps release retries and redone
- * releases of the same version safe.
+ * `<buildPath>/.vite` and before the asar is created. Tags each bundle that
+ * has a map with a chunk ID, then moves the map, with a copy of its tagged
+ * bundle (posthog-cli uploads them as a pair), to
+ * `<POSTHOG_SOURCEMAPS_DIR>/<target>`. Fails if any map would still ship.
  */
-export async function uploadPostHogSourcemaps({
+export async function stagePostHogSourcemaps({
   buildPath,
-  releaseVersion,
-  resolveCliPackageDir,
+  target,
   env = process.env,
-  hostPlatform = `${process.platform}-${process.arch}`,
-  hashFile = sha256File,
-  runCli = runBinary,
-  findMapFiles = listMapFiles,
-}: UploadPostHogSourcemapsOptions): Promise<void> {
+}: StagePostHogSourcemapsOptions): Promise<void> {
   if (!isPostHogSourcemapUploadEnabled(env)) {
     return;
   }
-  for (const name of REQUIRED_CLI_ENV) {
-    if (!env[name]) {
-      throw new Error(
-        `${POSTHOG_UPLOAD_SOURCEMAPS_ENV}=true but ${name} is not set; refusing to package a release without uploading its source maps.`,
-      );
+  const stagingRoot = env[POSTHOG_SOURCEMAPS_DIR_ENV];
+  if (!stagingRoot) {
+    throw new Error(
+      `${POSTHOG_UPLOAD_SOURCEMAPS_ENV}=true but ${POSTHOG_SOURCEMAPS_DIR_ENV} is not set; refusing to package a release without its source maps.`,
+    );
+  }
+
+  const viteDir = path.join(buildPath, ".vite");
+  const stagingDir = path.join(stagingRoot, target);
+  // A retried build replaces the maps from the failed attempt.
+  await rm(stagingDir, { recursive: true, force: true });
+
+  const maps = await listMapFiles(viteDir);
+  let staged = 0;
+  for (const mapFile of maps) {
+    const bundleFile = mapFile.slice(0, -".map".length);
+    if (!bundleFile.endsWith(".js")) {
+      continue;
     }
+    const bundlePath = path.join(viteDir, bundleFile);
+    const mapPath = path.join(viteDir, mapFile);
+    let code: string;
+    try {
+      code = await readFile(bundlePath, "utf8");
+    } catch {
+      continue; // No bundle to tag; the leftover check below reports the map.
+    }
+    const injected = injectChunkId(code, await readFile(mapPath, "utf8"));
+
+    await writeFile(bundlePath, injected.code);
+    const stagedBundle = path.join(stagingDir, bundleFile);
+    await mkdir(path.dirname(stagedBundle), { recursive: true });
+    await copyFile(bundlePath, stagedBundle);
+    await writeFile(`${stagedBundle}.map`, injected.map);
+    await rm(mapPath);
+    staged++;
   }
 
-  const expectedHash = POSTHOG_CLI_BINARY_SHA256[hostPlatform];
-  if (!expectedHash) {
+  if (staged === 0) {
     throw new Error(
-      `No pinned posthog-cli binary hash for ${hostPlatform}; source map uploads only run on the release runners (${Object.keys(POSTHOG_CLI_BINARY_SHA256).join(", ")}).`,
+      `No source maps found in ${viteDir}; the release would ship without symbolicated errors.`,
     );
   }
-  // Run the verified binary directly. The package's JS wrapper would instead
-  // re-download a missing binary on the spot, unverified.
-  const binaryPath = path.join(
-    resolveCliPackageDir(),
-    "node_modules",
-    ".bin_real",
-    hostPlatform.startsWith("win32") ? "posthog-cli.exe" : "posthog-cli",
-  );
-  const actualHash = await hashFile(binaryPath);
-  if (actualHash !== expectedHash) {
-    throw new Error(
-      `posthog-cli binary at ${binaryPath} has SHA-256 ${actualHash}, expected ${expectedHash} (posthog-cli ${POSTHOG_CLI_VERSION}, ${hostPlatform}); refusing to run it. If @posthog/cli was bumped, update POSTHOG_CLI_BINARY_SHA256.`,
-    );
-  }
-
-  const cliEnv = filterPostHogCliEnv(env);
-  const directory = path.join(buildPath, ".vite");
-  const release = [
-    "--release-name",
-    POSTHOG_RELEASE_NAME,
-    "--release-version",
-    releaseVersion,
-  ];
-  await runCli(
-    binaryPath,
-    ["sourcemap", "inject", "--directory", directory, ...release],
-    cliEnv,
-  );
-  await runCli(
-    binaryPath,
-    [
-      "sourcemap",
-      "upload",
-      "--directory",
-      directory,
-      "--delete-after",
-      ...release,
-    ],
-    cliEnv,
-  );
-
-  // The CLI only deletes maps it paired with a bundle; any other map would
-  // ship inside the app.
-  const leftoverMaps = await findMapFiles(directory);
+  const leftoverMaps = await listMapFiles(viteDir);
   if (leftoverMaps.length > 0) {
     throw new Error(
-      `Source maps left in ${directory} after upload would ship in the app: ${leftoverMaps.join(", ")}`,
+      `Source maps without a matching bundle in ${viteDir} would ship in the app: ${leftoverMaps.join(", ")}`,
     );
   }
 }
 
 async function listMapFiles(directory: string): Promise<string[]> {
   const entries = await readdir(directory, { recursive: true });
-  return entries.filter((entry) => entry.endsWith(".map"));
-}
-
-function sha256File(filePath: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const hash = createHash("sha256");
-    createReadStream(filePath)
-      .on("error", reject)
-      .on("data", (chunk) => hash.update(chunk))
-      .on("end", () => resolve(hash.digest("hex")));
-  });
-}
-
-/**
- * Spawns the native binary directly (not the node_modules/.bin shim, which is
- * a .cmd file on Windows), with only the allowlisted environment.
- */
-function runBinary(
-  binaryPath: string,
-  args: string[],
-  env: NodeJS.ProcessEnv,
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(binaryPath, args, { stdio: "inherit", env });
-    child.on("error", reject);
-    child.on("exit", (code, signal) => {
-      if (code === 0) {
-        resolve();
-        return;
-      }
-      reject(
-        new Error(
-          `posthog-cli ${args.slice(0, 2).join(" ")} failed (${signal ?? `exit code ${code}`})`,
-        ),
-      );
-    });
-  });
+  return entries.filter((entry) => entry.endsWith(".map")).sort();
 }

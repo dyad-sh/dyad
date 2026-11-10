@@ -77,12 +77,16 @@ export async function reviewToolAction<D extends "ask" | "block">({
       // capture it and fail closed after draining instead of trusting the
       // stale verdict.
       let streamError: unknown;
+      // Track separately whether onError ran: the error itself can be
+      // falsy, and a falsy check must not look like no error happened.
+      let streamErrored = false;
       const stream = streamText({
         output: fastTextOutput(),
         model: modelClient.model,
         system,
         maxRetries: 1,
         onError: ({ error }) => {
+          streamErrored = true;
           streamError ??= error;
         },
         abortSignal: controller.signal,
@@ -110,7 +114,8 @@ export async function reviewToolAction<D extends "ask" | "block">({
       // A stream error after an earlier allow means the final classifier
       // request failed, so the verdict is untrustworthy even if the
       // completed steps hold one. Fail closed via the catch below.
-      if (streamError) throw streamError;
+      if (streamErrored)
+        throw streamError ?? new Error("Tool safety review stream failed");
       let json: string | null = null;
       for (let i = steps.length - 1; i >= 0; i--) {
         const stepText = steps[i].text;

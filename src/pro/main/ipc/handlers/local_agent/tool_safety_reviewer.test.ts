@@ -197,6 +197,24 @@ it("fails closed when a later review stream errors after an earlier allow", asyn
     reason: "Tool safety review failed during generation.",
   });
 });
+it("fails closed when onError fires with a falsy error after an earlier allow", async () => {
+  mocks.streamText.mockImplementation(
+    (options: { onError: (event: { error: unknown }) => void }) => {
+      options.onError({ error: undefined });
+      return {
+        text: Promise.resolve('{"reason":"Looks fine","decision":"allow"}'),
+        steps: Promise.resolve([
+          { text: '{"reason":"Looks fine","decision":"allow"}' },
+        ]),
+      };
+    },
+  );
+  expect(await reviewToolAction(input)).toEqual({
+    decision: "block",
+    unavailable: true,
+    reason: "Tool safety review failed during generation.",
+  });
+});
 it("gives shell preparation and multi-step inference time beyond the MCP deadline", async () => {
   vi.useFakeTimers();
   try {

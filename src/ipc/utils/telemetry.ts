@@ -155,18 +155,33 @@ export function framesOnly(err: Error): string | undefined {
 export function stackFrames(err: Error): string[] {
   const stack = err.stack;
   if (typeof stack !== "string") return [];
-  const header = stackHeader(err);
-  if (!stack.startsWith(header)) return [];
+  const header = stackHeaders(err).find((candidate) =>
+    stack.startsWith(candidate),
+  );
+  if (header === undefined) return [];
   return stack
     .slice(header.length)
     .split("\n")
     .filter((line) => /^\s+at /.test(line));
 }
 
-/** The header V8 puts at the top of a stack, built as `Error.prototype.toString` does. */
-function stackHeader(err: Error): string {
+/**
+ * The headers a stack can start with: the name and message, built as
+ * `Error.prototype.toString` does, and Node's form for its own errors, which
+ * puts the code after the name, as in "TypeError [ERR_INVALID_ARG_TYPE]: ...".
+ */
+function stackHeaders(err: Error): string[] {
   const name = err.name === undefined ? "Error" : String(err.name);
   const message = err.message === undefined ? "" : String(err.message);
+  const headers = [joinHeader(name, message)];
+  const code = (err as { code?: unknown }).code;
+  if (name && typeof code === "string") {
+    headers.push(joinHeader(`${name} [${code}]`, message));
+  }
+  return headers;
+}
+
+function joinHeader(name: string, message: string): string {
   if (!name) return message;
   if (!message) return name;
   return `${name}: ${message}`;

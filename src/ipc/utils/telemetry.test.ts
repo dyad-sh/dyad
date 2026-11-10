@@ -393,6 +393,36 @@ describe("stackFrames", () => {
     expect(frames.join("\n")).not.toContain("secret-token");
     expect(frames[0]).toMatch(/^\s+at .*telemetry\.test/);
   });
+
+  // Node writes its own errors' headers with the code after the name. Vitest
+  // formats stacks itself, so these tests write the stack as Node prints it.
+  it("keeps the frames of a Node error with its code in the header", () => {
+    const message = 'The "path" argument must be of type string';
+    const error = Object.assign(new TypeError(message), {
+      code: "ERR_INVALID_ARG_TYPE",
+    });
+    error.stack = [
+      `TypeError [ERR_INVALID_ARG_TYPE]: ${message}`,
+      "    at Object.join (node:path:1339:7)",
+      "    at run (/app/main.js:1:2)",
+    ].join("\n");
+
+    expect(stackFrames(error)).toEqual([
+      "    at Object.join (node:path:1339:7)",
+      "    at run (/app/main.js:1:2)",
+    ]);
+  });
+
+  it("keeps message lines out of a header with a code", () => {
+    const message = "m\n    at Bearer secret-token";
+    const error = Object.assign(new Error(message), { code: "ERR_X" });
+    error.stack = [
+      `Error [ERR_X]: ${message}`,
+      "    at run (/app/main.js:1:2)",
+    ].join("\n");
+
+    expect(stackFrames(error)).toEqual(["    at run (/app/main.js:1:2)"]);
+  });
 });
 
 describe("reportableErrorName", () => {

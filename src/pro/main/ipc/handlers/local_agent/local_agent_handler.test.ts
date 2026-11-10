@@ -2801,6 +2801,69 @@ describe("handleLocalAgentStream", () => {
       ]);
     });
 
+    it("streams the compaction summary as patches after one full-messages send", async () => {
+      const { event, getMessagesByChannel } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat({
+        messages: [
+          { id: 1, role: "user", content: "long history ".repeat(1000) },
+          { id: 10, role: "assistant", content: "" },
+        ],
+      });
+      mockIsChatPendingCompaction.mockResolvedValue(true);
+      const summaryChunks = [
+        "The user",
+        "The user asked <x>",
+        "The user asked <x> & more",
+      ];
+      mockPerformCompaction.mockImplementation(async (...args: unknown[]) => {
+        const onSummaryChunk = args[4] as (summary: string) => void;
+        for (const summary of summaryChunks) onSummaryChunk(summary);
+        return { success: false, error: "stop after preview" };
+      });
+      mockStreamResult = createFakeStream([{ type: "text-delta", text: "ok" }]);
+
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      type ChunkPayload = {
+        messages?: Array<{ id: number; content: string }>;
+        streamingMessageId?: number;
+        streamingPatch?: { offset: number; content: string };
+      };
+      const compactionChunks = getMessagesByChannel("chat:response:chunk")
+        .map((message) => message.args[0] as ChunkPayload)
+        .slice(0, summaryChunks.length);
+
+      // Only the first preview chunk carries the (large) message history.
+      expect(compactionChunks[0].messages).toBeDefined();
+      for (const chunk of compactionChunks.slice(1)) {
+        expect(chunk.messages).toBeUndefined();
+        expect(chunk.streamingMessageId).toBe(10);
+        expect(chunk.streamingPatch).toBeDefined();
+      }
+
+      // Replaying the patches the way the renderer does yields the final preview.
+      let content = compactionChunks[0].messages!.find(
+        (m) => m.id === 10,
+      )!.content;
+      for (const chunk of compactionChunks.slice(1)) {
+        const { offset, content: tail } = chunk.streamingPatch!;
+        content = content.slice(0, offset) + tail;
+      }
+      expect(content).toBe(
+        '<dyad-compaction title="Compacting conversation">\nThe user asked &lt;x&gt; &amp; more\n</dyad-compaction>',
+      );
+    });
+
     it("should not run pending compaction when context compaction is disabled", async () => {
       // Arrange
       const { event } = createFakeEvent();

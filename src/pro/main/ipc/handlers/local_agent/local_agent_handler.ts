@@ -752,7 +752,10 @@ export async function handleLocalAgentStream(
   // whether to send the full messages array.
   const sendChunk = (
     response: string,
-    { fullMessages = false }: { fullMessages?: boolean } = {},
+    {
+      fullMessages = false,
+      allowGrowingRewrite = false,
+    }: { fullMessages?: boolean; allowGrowingRewrite?: boolean } = {},
   ) =>
     sendResponseChunk(
       event,
@@ -764,6 +767,7 @@ export async function handleLocalAgentStream(
       placeholderMessageId,
       fullMessages,
       lastSentRef,
+      allowGrowingRewrite,
     );
   // Sidecar preview send — independent of the patch protocol. The renderer
   // overlays this string after the message's parsed blocks and clears the
@@ -889,6 +893,7 @@ export async function handleLocalAgentStream(
     }
 
     logger.info(`Performing pending compaction for chat ${req.chatId}`);
+    let compactionPreviewStarted = false;
     const compactionResult = await performCompaction(
       event,
       req.chatId,
@@ -904,7 +909,18 @@ export async function handleLocalAgentStream(
         const previewContent = options?.showOnTopOfCurrentResponse
           ? `${fullResponse}\n${compactionPreview}`
           : compactionPreview;
-        sendChunk(previewContent, { fullMessages: true });
+        // Compaction only runs on long chats, so a full-messages send
+        // re-serializes megabytes of history. Doing that per summary chunk
+        // exhausted main-process memory in IPC serialization. Send the full
+        // array once to sync the renderer, then patch only the placeholder.
+        // Each chunk rewrites the trailing `</dyad-compaction>` tag, so the
+        // patch is not tail-only, but the content only grows.
+        if (!compactionPreviewStarted) {
+          compactionPreviewStarted = true;
+          sendChunk(previewContent, { fullMessages: true });
+        } else {
+          sendChunk(previewContent, { allowGrowingRewrite: true });
+        }
       },
       {
         // Mid-turn compaction should not render as a separate message above the
@@ -2811,6 +2827,12 @@ function sendResponseChunk(
   sendFullMessages: boolean | undefined,
   /** Mutable ref tracking the renderer's last seen placeholder content. */
   lastSentRef: { value: string },
+  /**
+   * When true, a patch that rewrites part of the previous tail is sent as a
+   * patch instead of escalating to a full-messages send, as long as the
+   * content does not shrink (so nothing can briefly vanish).
+   */
+  allowGrowingRewrite = false,
 ) {
   if (sendFullMessages) {
     // Project the live placeholder before filtering, since chat was loaded
@@ -2843,7 +2865,9 @@ function sendResponseChunk(
     // cleanly shrink visible content with no mismatch, briefly vanishing
     // the response. Escalate to a fullMessages send so the renderer
     // authoritatively replaces content.
-    if (patch.offset < oldLen) {
+    const isGrowingRewrite =
+      allowGrowingRewrite && fullResponse.length >= oldLen;
+    if (patch.offset < oldLen && !isGrowingRewrite) {
       sendResponseChunk(
         event,
         chatId,

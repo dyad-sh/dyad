@@ -141,6 +141,73 @@ it("uses the newest step verdict when the final step is empty", async () => {
     reason: "Checked files",
   });
 });
+it("fails closed when the only allow is in the inspection step and the final step is empty", async () => {
+  // Text in a step that called inspect_app_path was generated before the
+  // inspection result arrived, so it cannot classify the inspected
+  // script. With no verdict after the inspection, fail closed.
+  mocks.streamText.mockReturnValue({
+    text: Promise.resolve(""),
+    steps: Promise.resolve([
+      {
+        text: '{"reason":"Looks fine","decision":"allow"}',
+        toolCalls: [
+          {
+            toolCallId: "inspect-1",
+            toolName: "inspect_app_path",
+            input: "{}",
+          },
+        ],
+      },
+      { text: "" },
+    ]),
+  });
+  expect(await reviewToolAction(input)).toEqual({
+    decision: "block",
+    unavailable: true,
+    reason: "The safety reviewer returned an invalid verdict.",
+  });
+});
+it("prefers a post-inspection verdict over a pre-inspection allow in the inspection step", async () => {
+  mocks.streamText.mockReturnValue({
+    text: Promise.resolve('{"reason":"Blocked","decision":"block"}'),
+    steps: Promise.resolve([
+      {
+        text: '{"reason":"Looks fine","decision":"allow"}',
+        toolCalls: [
+          {
+            toolCallId: "inspect-1",
+            toolName: "inspect_app_path",
+            input: "{}",
+          },
+        ],
+      },
+      { text: '{"reason":"Blocked","decision":"block"}' },
+    ]),
+  });
+  expect((await reviewToolAction(input)).decision).toBe("block");
+});
+it("accepts a verdict from the step after an inspection step with no text", async () => {
+  mocks.streamText.mockReturnValue({
+    text: Promise.resolve('{"reason":"Checked files","decision":"allow"}'),
+    steps: Promise.resolve([
+      {
+        text: "",
+        toolCalls: [
+          {
+            toolCallId: "inspect-1",
+            toolName: "inspect_app_path",
+            input: "{}",
+          },
+        ],
+      },
+      { text: '{"reason":"Checked files","decision":"allow"}' },
+    ]),
+  });
+  expect(await reviewToolAction(input)).toEqual({
+    decision: "allow",
+    reason: "Checked files",
+  });
+});
 it("prefers the newest verdict over an earlier one", async () => {
   mocks.streamText.mockReturnValue({
     text: Promise.resolve('{"reason":"Blocked","decision":"block"}'),

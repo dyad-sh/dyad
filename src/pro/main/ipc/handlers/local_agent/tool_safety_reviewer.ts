@@ -110,14 +110,26 @@ export async function reviewToolAction<D extends "ask" | "block">({
       // newer response means the reviewer's latest decision is
       // indeterminate, and failing closed (fallback) is safer than
       // trusting a stale older verdict.
+      // A verdict must also come from a step after the last tool call:
+      // text in a step that called a tool was generated before that
+      // tool's result arrived, so an allow written there cannot reflect
+      // what the inspection found. If the only verdict sits in (or
+      // before) the last inspection step and nothing after it says
+      // otherwise, the review never classified the inspected content —
+      // fail closed instead of running the shell on a pre-inspection
+      // allow.
       const steps = await stream.steps;
+      const lastToolCallIndex = steps.reduce(
+        (last, step, i) => (step.toolCalls?.length ? i : last),
+        -1,
+      );
       // A stream error after an earlier allow means the final classifier
       // request failed, so the verdict is untrustworthy even if the
       // completed steps hold one. Fail closed via the catch below.
       if (streamErrored)
         throw streamError ?? new Error("Tool safety review stream failed");
       let json: string | null = null;
-      for (let i = steps.length - 1; i >= 0; i--) {
+      for (let i = steps.length - 1; i > lastToolCallIndex; i--) {
         const stepText = steps[i].text;
         if (!stepText) continue;
         const candidate = extractJson(stepText);

@@ -173,6 +173,9 @@ it("waits for settings, then loads the linked project after reconnection", async
   expect(screen.getByText("dev-branch")).toBeDefined();
   expect(screen.queryByTestId("neon-reconnection-notice")).toBeNull();
   expect(h.getProject).toHaveBeenCalledExactlyOnceWith({ appId: 1 });
+  // The panel only shows the linked project, so it loads nothing else.
+  expect(h.listProjects).not.toHaveBeenCalled();
+  expect(h.getEmailPasswordConfig).not.toHaveBeenCalled();
   expect(h.showError).not.toHaveBeenCalled();
 });
 

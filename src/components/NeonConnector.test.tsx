@@ -409,6 +409,43 @@ it.each([
   },
 );
 
+it("reports a successful sign-in when the other account cannot use the project either", async () => {
+  connectedApp();
+  h.getProject.mockRejectedValue(
+    new DyadError(NEON_PROJECT_ACCESS_DENIED_MESSAGE, DyadErrorKind.Auth),
+  );
+  const view = render(connector());
+  fireEvent.click(
+    await screen.findByRole("button", {
+      name: "integrations.neon.signInAnotherAccount",
+    }),
+  );
+  await waitFor(() => expect(h.openExternalUrl).toHaveBeenCalledOnce());
+  h.getProject.mockClear();
+  h.settings = { neon: { accessToken: { value: "other-account" } } };
+  h.flowState = {
+    status: "connected",
+    revision: 1,
+    provider: "neon",
+    invocationRef,
+  };
+  view.rerender(connector());
+
+  await waitFor(() =>
+    expect(h.acknowledge).toHaveBeenCalledExactlyOnceWith(
+      "neon",
+      invocationRef,
+    ),
+  );
+  expect(h.getProject).toHaveBeenCalledWith({ appId: 1 });
+  expect(h.success).toHaveBeenCalledExactlyOnceWith(
+    "integrations.neon.reconnectedSuccess",
+  );
+  expect(h.error).not.toHaveBeenCalled();
+  // The inline notice, not a toast, reports the remaining access problem.
+  await screen.findByText("integrations.neon.projectAccessRequired");
+});
+
 it("shows the project picker after unlinking a project this account cannot access", async () => {
   connectedApp();
   h.getProject.mockRejectedValue(

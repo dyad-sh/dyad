@@ -142,8 +142,12 @@ the 401 reconnect interceptor. To exercise it, build a real client with
 `createNeonApiClient(token, readSettings())`, set `client.instance.defaults.adapter`
 to reject with `{ response: { status, data: {}, headers: {} } }`, and spy
 `getNeonClient` to return it. A custom adapter must reject non-2xx itself: a
-resolved 401 counts as success. When code builds its own client internally
-(e.g. `getNeonOrganizationId`), wrap `createApiClient` in a
+resolved 401 counts as success. The interceptor treats a 401 on credentials
+whose token has expired (including a missing `expiresIn`) as expiry: it
+refreshes and retries once, which needs `config` in the rejection. A spy on
+`getNeonClient` cannot intercept same-module calls, such as
+`getNeonOrganizationId` calling `getNeonClient` in a unit test without
+`IS_TEST_BUILD`. To cover those, wrap `createApiClient` in a
 `vi.mock("@neondatabase/api-client", importOriginal)` that passes the adapter.
 
 The shared Electron mock's `utilityProcess.fork()` is intentionally inert and

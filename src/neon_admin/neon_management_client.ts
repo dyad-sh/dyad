@@ -19,16 +19,22 @@ const refreshResponseSchema = z.object({
   expiresIn: z.number().finite().positive(),
 });
 
+type NeonSettings = ReturnType<typeof readSettings>["neon"];
+type NeonRequestConfig = Parameters<Api<unknown>["instance"]["request"]>[0] & {
+  /** Set on the single retry after refreshing an access token that expired. */
+  dyadNeonTokenRefreshed?: boolean;
+};
+
 /**
  * Checks if the Neon access token is expired or about to expire
  * Returns true if token needs to be refreshed
  */
-function isTokenExpired(expiresIn?: number): boolean {
+function isTokenExpired(neon: NeonSettings): boolean {
+  const expiresIn = neon?.expiresIn;
   if (!expiresIn) return true;
 
-  // Get when the token was saved (expiresIn is stored at the time of token receipt)
-  const settings = readSettings();
-  const tokenTimestamp = settings.neon?.tokenTimestamp || 0;
+  // expiresIn is relative to when the token was saved.
+  const tokenTimestamp = neon?.tokenTimestamp || 0;
   const currentTime = Math.floor(Date.now() / 1000);
 
   // Check if the token is expired or about to expire (within 5 minutes)
@@ -49,7 +55,7 @@ async function refreshNeonTokenOnce(): Promise<void> {
     throw new DyadError(NEON_RECONNECT_REQUIRED_MESSAGE, DyadErrorKind.Auth);
   }
 
-  if (!isTokenExpired(settings.neon?.expiresIn)) {
+  if (!isTokenExpired(settings.neon)) {
     return;
   }
 
@@ -145,8 +151,8 @@ function hasSameNeonCredentials(
 }
 
 /**
- * The Neon API rejected an access token that has not expired locally, for
- * example because the user revoked Dyad's access. Require reconnection only
+ * The Neon API rejected an access token that has not expired, for example
+ * because the user revoked Dyad's access. Require reconnection only
  * while the rejected credentials are still the stored ones: a sign-in or
  * disconnect that landed while the request was in flight must win.
  */
@@ -444,7 +450,6 @@ export async function getNeonClient(): Promise<Api<unknown>> {
     throw new DyadError(NEON_RECONNECT_REQUIRED_MESSAGE, DyadErrorKind.Auth);
   }
   const neonAccessToken = settings.neon?.accessToken?.value;
-  const expiresIn = settings.neon?.expiresIn;
 
   if (!neonAccessToken) {
     throw new DyadError(
@@ -454,7 +459,7 @@ export async function getNeonClient(): Promise<Api<unknown>> {
   }
 
   // Check if token needs refreshing
-  if (isTokenExpired(expiresIn)) {
+  if (isTokenExpired(settings.neon)) {
     await withLock("refresh-neon-token", refreshNeonToken);
     // Get updated settings after refresh
     const updatedSettings = readSettings();
@@ -488,17 +493,57 @@ export function createNeonApiClient(
     apiKey: accessToken,
     baseURL: getNeonApiBaseUrl(),
   });
-  client.instance.interceptors.response.use(undefined, (error: unknown) => {
-    const status = (error as { response?: { status?: number } })?.response
-      ?.status;
-    if (status !== 401) return Promise.reject(error);
-    // The token has not expired locally, so Neon rejected it (for example,
-    // because the user revoked Dyad's access).
-    requireNeonReconnectionForRejectedCredentials(credentials);
-    return Promise.reject(
-      new DyadError(NEON_RECONNECT_REQUIRED_MESSAGE, DyadErrorKind.Auth),
-    );
-  });
+  client.instance.interceptors.response.use(
+    undefined,
+    async (error: unknown) => {
+      const status = (error as { response?: { status?: number } })?.response
+        ?.status;
+      if (status !== 401) throw error;
+      if (!isTokenExpired(credentials.neon)) {
+        // Neon rejected a token that has not expired (for example, because
+        // the user revoked Dyad's access).
+        requireNeonReconnectionForRejectedCredentials(credentials);
+        throw new DyadError(
+          NEON_RECONNECT_REQUIRED_MESSAGE,
+          DyadErrorKind.Auth,
+        );
+      }
+      // getNeonClient() checks expiry only when it builds a client, so a
+      // client held across long work (such as a dev-branch migration) can
+      // outlive its token. The refresh token may still be valid: refresh and
+      // retry once instead of discarding the session.
+      const config = (error as { config?: NeonRequestConfig }).config;
+      if (!config || config.dyadNeonTokenRefreshed) {
+        throw new DyadError(
+          "The Neon access token expired during the request. Please try again.",
+          DyadErrorKind.External,
+        );
+      }
+      // Throws the reconnect error itself when the refresh grant is rejected.
+      await withLock("refresh-neon-token", refreshNeonToken);
+      const refreshed = readSettings();
+      const refreshedToken = refreshed.neon?.accessToken?.value;
+      if (!refreshedToken) {
+        throw new DyadError(
+          "Neon access token not found. Please authenticate first.",
+          DyadErrorKind.Auth,
+        );
+      }
+      // A client built from the refreshed settings attributes a 401 on the
+      // retry to the new credentials.
+      const retry: NeonRequestConfig = {
+        ...config,
+        headers: {
+          ...config.headers,
+          Authorization: `Bearer ${refreshedToken}`,
+        },
+        dyadNeonTokenRefreshed: true,
+      };
+      return createNeonApiClient(refreshedToken, refreshed).instance.request(
+        retry,
+      );
+    },
+  );
   return client;
 }
 

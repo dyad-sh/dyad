@@ -485,78 +485,74 @@ function runBuildOperation(
         refuseWhenRecording: "run a production build",
         signal: ctx.abortSignal,
       },
-        async ({ releaseResources }) => {
-          let snapshot: Snapshot | undefined;
-          const retained: Promise<unknown>[] = [];
-          const cleanupSnapshot = async () => {
-            if (snapshot) {
-              await removeSnapshot(
-                snapshot.worktreePath,
-                snapshot.sourceRepoPath,
-              ).catch((error) => {
-                logger.warn(
-                  "Failed to clean production build snapshot:",
-                  error,
-                );
-              });
-            }
-          };
-          try {
-            resolve(
-              await operation({
-                releaseResources,
-                registerSnapshot: (captured) => {
-                  snapshot = captured;
-                },
-                abandonPreparation: (work) => {
-                  slot.abandoned = true;
-                  retained.push(work);
-                  releaseBuildSlot();
-                  logger.info(`${label} build slot released`);
-                },
-              }),
-            );
-          } catch (error) {
-            reject(error);
-          } finally {
-            if (slot.abandoned) {
-              logger.info(
-                `${label} tool result settled; underlying preparation still outstanding; ending coordinator ownership and releasing all claims`,
-              );
-              // Do not await this owner in the coordinator callback: even an
-              // empty resource list still participates in app deletion's drain.
-              void (async () => {
-                await Promise.allSettled(retained);
-                logger.info(
-                  `${label} outstanding preparation settled after ${Date.now() - slot.cancelledAt!} ms since cancellation/deadline`,
-                );
-                await cleanupSnapshot();
-                logger.info(`${label} abandoned snapshot cleanup settled`);
-              })().catch((error) => {
-                logger.warn(
-                  `${label} abandoned preparation cleanup failed:`,
-                  error,
-                );
-              });
-              // Returning ends the active operation as well as its claims.
-              // Snapshot registration remains captured by the detached owner.
-            } else {
-              releaseBuildSlot();
-              releaseResources([
-                "repository-ref",
-                "repository-worktree",
-                "runtime",
-              ]);
-              await cleanupSnapshot();
-              releaseResources(["app-path"]);
-            }
+      async ({ releaseResources }) => {
+        let snapshot: Snapshot | undefined;
+        const retained: Promise<unknown>[] = [];
+        const cleanupSnapshot = async () => {
+          if (snapshot) {
+            await removeSnapshot(
+              snapshot.worktreePath,
+              snapshot.sourceRepoPath,
+            ).catch((error) => {
+              logger.warn("Failed to clean production build snapshot:", error);
+            });
           }
-        },
-      )
-      .catch((error) => {
-        releaseBuildSlot();
-        reject(error);
-      });
+        };
+        try {
+          resolve(
+            await operation({
+              releaseResources,
+              registerSnapshot: (captured) => {
+                snapshot = captured;
+              },
+              abandonPreparation: (work) => {
+                slot.abandoned = true;
+                retained.push(work);
+                releaseBuildSlot();
+                logger.info(`${label} build slot released`);
+              },
+            }),
+          );
+        } catch (error) {
+          reject(error);
+        } finally {
+          if (slot.abandoned) {
+            logger.info(
+              `${label} tool result settled; underlying preparation still outstanding; ending coordinator ownership and releasing all claims`,
+            );
+            // Do not await this owner in the coordinator callback: even an
+            // empty resource list still participates in app deletion's drain.
+            void (async () => {
+              await Promise.allSettled(retained);
+              logger.info(
+                `${label} outstanding preparation settled after ${Date.now() - slot.cancelledAt!} ms since cancellation/deadline`,
+              );
+              await cleanupSnapshot();
+              logger.info(`${label} abandoned snapshot cleanup settled`);
+            })().catch((error) => {
+              logger.warn(
+                `${label} abandoned preparation cleanup failed:`,
+                error,
+              );
+            });
+            // Returning ends the active operation as well as its claims.
+            // Snapshot registration remains captured by the detached owner.
+          } else {
+            releaseBuildSlot();
+            releaseResources([
+              "repository-ref",
+              "repository-worktree",
+              "runtime",
+            ]);
+            await cleanupSnapshot();
+            releaseResources(["app-path"]);
+          }
+        }
+      },
+    ).catch((error) => {
+      releaseBuildSlot();
+      reject(error);
+    });
   });
 }
 

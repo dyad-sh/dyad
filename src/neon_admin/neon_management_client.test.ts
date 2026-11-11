@@ -11,6 +11,9 @@ vi.mock("@/ipc/utils/telemetry", () => ({ sendTelemetryEvent: vi.fn() }));
 const { neonApi } = vi.hoisted(() => ({
   neonApi: {
     status: 500,
+    /** Statuses for specific access tokens, overriding `status`. */
+    statusByToken: {} as Record<string, number>,
+    requestTokens: [] as string[],
     onRequest: undefined as (() => void) | undefined,
   },
 }));
@@ -20,15 +23,33 @@ vi.mock("@neondatabase/api-client", async (importOriginal) => {
   return {
     ...actual,
     // Real axios clients, including Dyad's interceptors, over a fake transport
-    // that fails every request with the status the test chooses.
+    // that answers each request with the status the test chooses.
     createApiClient: (config: Parameters<typeof actual.createApiClient>[0]) =>
       actual.createApiClient({
         ...config,
-        adapter: async () => {
+        adapter: async (request) => {
           neonApi.onRequest?.();
+          const token = String(request.headers.Authorization).replace(
+            /^Bearer /,
+            "",
+          );
+          neonApi.requestTokens.push(token);
+          const status = neonApi.statusByToken[token] ?? neonApi.status;
+          if (status < 300) {
+            return {
+              data: { token },
+              status,
+              statusText: "OK",
+              headers: {},
+              config: request,
+            };
+          }
           throw Object.assign(
-            new Error(`Request failed with status code ${neonApi.status}`),
-            { response: { status: neonApi.status, data: {}, headers: {} } },
+            new Error(`Request failed with status code ${status}`),
+            {
+              config: request,
+              response: { status, data: {}, headers: {} },
+            },
           );
         },
       }),
@@ -37,6 +58,7 @@ vi.mock("@neondatabase/api-client", async (importOriginal) => {
 
 import { readSettings, writeSettings } from "@/main/settings";
 import {
+  createNeonApiClient,
   getNeonClient,
   getNeonOrganizationId,
   refreshNeonToken,
@@ -324,6 +346,8 @@ describe("Neon API rejection of an unexpired access token", () => {
 
   beforeEach(() => {
     neonApi.status = 401;
+    neonApi.statusByToken = {};
+    neonApi.requestTokens = [];
     neonApi.onRequest = undefined;
     settings = {
       neon: {
@@ -388,6 +412,89 @@ describe("Neon API rejection of an unexpired access token", () => {
     await expect(client.getProject("project-1")).rejects.toMatchObject({
       response: { status: 404 },
     });
+    expect(settings.neon?.reconnectRequired).toBeUndefined();
+    expect(sendTelemetryEvent).not.toHaveBeenCalled();
+  });
+});
+
+describe("Neon API rejection of an access token that expired mid-use", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  // A client built while its token was valid, e.g. one held across a
+  // dev-branch migration's data copy, whose token has since expired.
+  function longLivedClient() {
+    return createNeonApiClient("expired-access", readSettings());
+  }
+
+  function stubRefresh(response: () => Response) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => response()),
+    );
+  }
+
+  beforeEach(() => {
+    neonApi.status = 401;
+    neonApi.statusByToken = {};
+    neonApi.requestTokens = [];
+    neonApi.onRequest = undefined;
+    stubRefresh(
+      () =>
+        new Response(
+          JSON.stringify({ accessToken: "fresh-access", expiresIn: 3600 }),
+        ),
+    );
+  });
+
+  it("refreshes once and retries concurrent requests with the new token", async () => {
+    neonApi.statusByToken = { "fresh-access": 200 };
+    const client = longLivedClient();
+
+    const results = await Promise.all([
+      client.getProject("project-1"),
+      client.listProjects({}),
+    ]);
+
+    expect(results.map((result) => result.data)).toEqual([
+      { token: "fresh-access" },
+      { token: "fresh-access" },
+    ]);
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(neonApi.requestTokens.sort()).toEqual([
+      "expired-access",
+      "expired-access",
+      "fresh-access",
+      "fresh-access",
+    ]);
+    expect(settings.neon?.accessToken?.value).toBe("fresh-access");
+    expect(settings.neon?.reconnectRequired).toBe(false);
+    expect(sendTelemetryEvent).not.toHaveBeenCalled();
+  });
+
+  it("requires reconnection when Neon also rejects the refreshed token", async () => {
+    const client = longLivedClient();
+
+    await expect(client.getProject("project-1")).rejects.toMatchObject({
+      kind: DyadErrorKind.Auth,
+      message: NEON_RECONNECT_REQUIRED_MESSAGE,
+    });
+    // One retry, then the unexpired refreshed token's rejection is definitive.
+    expect(neonApi.requestTokens).toEqual(["expired-access", "fresh-access"]);
+    expect(settings.neon?.reconnectRequired).toBe(true);
+    expect(sendTelemetryEvent).toHaveBeenCalledExactlyOnceWith(
+      "neon:reconnect-required",
+      { reason: "access_token_rejected" },
+    );
+  });
+
+  it("keeps the session when the refresh fails transiently", async () => {
+    stubRefresh(() => new Response("{}", { status: 503 }));
+    const client = longLivedClient();
+
+    await expect(client.getProject("project-1")).rejects.toMatchObject({
+      kind: DyadErrorKind.External,
+    });
+    expect(neonApi.requestTokens).toEqual(["expired-access"]);
     expect(settings.neon?.reconnectRequired).toBeUndefined();
     expect(sendTelemetryEvent).not.toHaveBeenCalled();
   });

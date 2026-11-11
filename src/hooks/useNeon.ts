@@ -26,7 +26,16 @@ function isProjectAccessError(
   );
 }
 
-export function useNeon(appId: number | null) {
+export function useNeon(
+  appId: number | null,
+  {
+    projectOnly = false,
+  }: {
+    /** Skip the account's project list and the branch auth config, for
+     * panels that only show the linked project. */
+    projectOnly?: boolean;
+  } = {},
+) {
   const { settings } = useSettings();
   const { app, loading: isLoadingApp } = useLoadApp(appId);
 
@@ -47,7 +56,7 @@ export function useNeon(appId: number | null) {
   } = useQuery({
     queryKey: queryKeys.neon.projects,
     queryFn: () => ipc.neon.listProjects(),
-    enabled: canQuery,
+    enabled: canQuery && !projectOnly,
   });
 
   const projects: NeonProjectListItem[] = projectsData?.projects ?? [];
@@ -103,6 +112,7 @@ export function useNeon(appId: number | null) {
       queryFn: () => ipc.neon.getEmailPasswordConfig({ appId: appId! }),
       enabled:
         canQuery &&
+        !projectOnly &&
         !!appId &&
         !!app?.neonProjectId &&
         !!(app?.neonActiveBranchId ?? app?.neonDevelopmentBranchId),

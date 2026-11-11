@@ -1,5 +1,9 @@
 import { useEffect, useRef } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  type QueryClient,
+  useMutation,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -14,7 +18,7 @@ import {
 } from "@/hooks/useConnectionFlow";
 import { useSettings } from "@/hooks/useSettings";
 import { buildOAuthLoginUrl } from "@/connection_flow/oauth_deep_link";
-import { ipc } from "@/ipc/types";
+import { ipc, type App } from "@/ipc/types";
 import { getErrorMessage } from "@/lib/errors";
 import { queryKeys } from "@/lib/queryKeys";
 
@@ -32,6 +36,28 @@ const neonSignInInitiators = new Map<string, NeonSignInInitiator>();
 // Outcomes (operation id + revision) already claimed by a mounted button, so
 // several mounted buttons never toast or acknowledge the same outcome twice.
 const handledNeonSignInOutcomes = new Set<string>();
+
+/**
+ * Refreshes the linked project even if the surface that shows it is not
+ * mounted. Best effort: the sign-in already succeeded, so a failure (for
+ * example, the new account cannot use the project) stays in the query cache
+ * for the inline NeonReconnectionNotice instead of being toasted.
+ */
+async function refreshReconnectedProject(
+  queryClient: QueryClient,
+  appId: number,
+): Promise<void> {
+  const appKey = queryKeys.apps.detail({ appId });
+  await queryClient.prefetchQuery({
+    queryKey: appKey,
+    queryFn: () => ipc.app.getApp(appId),
+  });
+  if (!queryClient.getQueryData<App>(appKey)?.neonProjectId) return;
+  await queryClient.prefetchQuery({
+    queryKey: queryKeys.neon.project({ appId }),
+    queryFn: () => ipc.neon.getProject({ appId }),
+  });
+}
 
 export function NeonSignInButton({
   appId,
@@ -100,18 +126,6 @@ export function NeonSignInButton({
                   queryKey: queryKeys.apps.detail({ appId: outcomeAppId }),
                 }),
           ]);
-          if (outcome.reconnect && outcomeAppId !== undefined) {
-            const app = await queryClient.fetchQuery({
-              queryKey: queryKeys.apps.detail({ appId: outcomeAppId }),
-              queryFn: () => ipc.app.getApp(outcomeAppId),
-            });
-            if (app.neonProjectId) {
-              await queryClient.fetchQuery({
-                queryKey: queryKeys.neon.project({ appId: outcomeAppId }),
-                queryFn: () => ipc.neon.getProject({ appId: outcomeAppId }),
-              });
-            }
-          }
           toast.success(
             t(
               outcome.reconnect
@@ -119,6 +133,9 @@ export function NeonSignInButton({
                 : "integrations.neon.connectedSuccess",
             ),
           );
+          if (outcome.reconnect && outcomeAppId !== undefined) {
+            await refreshReconnectedProject(queryClient, outcomeAppId);
+          }
         } else if (flowState.status === "failed") {
           if (flowState.reason === "timeout") {
             toast.warning(t("integrations.neon.signInTimedOut"));

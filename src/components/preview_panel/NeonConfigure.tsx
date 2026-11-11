@@ -41,7 +41,7 @@ export const NeonConfigure = () => {
     requiresReconnection,
     projectAccessDenied,
     projectNotFound,
-  } = useNeon(selectedAppId);
+  } = useNeon(selectedAppId, { projectOnly: true });
 
   // Don't show component if app doesn't have Neon project
   if (selectedAppId === null || !app?.neonProjectId) {

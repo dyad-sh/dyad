@@ -41,11 +41,17 @@ vi.mock("@/hooks/useNeon", () => ({
 vi.mock("./NeonReconnectionNotice", () => ({
   NeonReconnectionNotice: ({
     projectAccessDenied,
+    projectNotFound,
   }: {
     projectAccessDenied?: boolean;
+    projectNotFound?: boolean;
   }) => (
     <div data-testid="neon-reconnection-notice">
-      {projectAccessDenied ? "access denied" : "reconnect"}
+      {projectNotFound
+        ? "not found"
+        : projectAccessDenied
+          ? "access denied"
+          : "reconnect"}
     </div>
   ),
 }));
@@ -296,6 +302,21 @@ describe("Neon sign-in recovery", () => {
       { projectAccessDenied: true },
       "access denied",
     ],
+    // useNeon reports a missing project as a narrower access denial.
+    [
+      "the project may have been deleted",
+      { projectAccessDenied: true, projectNotFound: true },
+      "not found",
+    ],
+    [
+      "reconnection is required for a missing project",
+      {
+        requiresReconnection: true,
+        projectAccessDenied: true,
+        projectNotFound: true,
+      },
+      "reconnect",
+    ],
   ])(
     "shows the sign-in notice instead of previewing when %s",
     async (_, state, copy) => {
@@ -317,6 +338,7 @@ describe("Neon sign-in recovery", () => {
       Object.assign(neon, {
         requiresReconnection: false,
         projectAccessDenied: false,
+        projectNotFound: false,
       });
       view.rerender(tree());
       await waitFor(() => expect(preview).toHaveBeenCalledOnce());

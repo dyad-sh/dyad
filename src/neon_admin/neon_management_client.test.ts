@@ -8,17 +8,44 @@ vi.mock("@/ipc/utils/query_invalidation_delivery", () => ({
   publishQueryInvalidations: vi.fn(),
 }));
 vi.mock("@/ipc/utils/telemetry", () => ({ sendTelemetryEvent: vi.fn() }));
+const { neonApi } = vi.hoisted(() => ({
+  neonApi: {
+    status: 500,
+    onRequest: undefined as (() => void) | undefined,
+  },
+}));
+vi.mock("@neondatabase/api-client", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@neondatabase/api-client")>();
+  return {
+    ...actual,
+    // Real axios clients, including Dyad's interceptors, over a fake transport
+    // that fails every request with the status the test chooses.
+    createApiClient: (config: Parameters<typeof actual.createApiClient>[0]) =>
+      actual.createApiClient({
+        ...config,
+        adapter: async () => {
+          neonApi.onRequest?.();
+          throw Object.assign(
+            new Error(`Request failed with status code ${neonApi.status}`),
+            { response: { status: neonApi.status, data: {}, headers: {} } },
+          );
+        },
+      }),
+  };
+});
 
 import { readSettings, writeSettings } from "@/main/settings";
 import {
   getNeonClient,
+  getNeonOrganizationId,
   refreshNeonToken,
-  requireNeonReconnectionForRejectedCredentials,
 } from "./neon_management_client";
 import { handleNeonOAuthReturn } from "./neon_return_handler";
 import { DyadErrorKind } from "@/errors/dyad_error";
 import { publishQueryInvalidations } from "@/ipc/utils/query_invalidation_delivery";
 import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
+import { NEON_RECONNECT_REQUIRED_MESSAGE } from "@/shared/neon_auth";
 
 let settings: ReturnType<typeof readSettings>;
 beforeEach(() => {
@@ -289,25 +316,78 @@ describe("refreshNeonToken", () => {
   );
 });
 
-describe("requireNeonReconnectionForRejectedCredentials", () => {
-  it("requires reconnection when the stored credentials were rejected", () => {
-    requireNeonReconnectionForRejectedCredentials(readSettings());
-    expect(settings.neon?.reconnectRequired).toBe(true);
-    expect(settings.neon?.accessToken?.value).toBe("expired-access");
-    expect(publishQueryInvalidations).toHaveBeenCalledOnce();
-    expect(sendTelemetryEvent).toHaveBeenCalledWith("neon:reconnect-required", {
-      reason: "access_token_rejected",
-    });
+describe("Neon API rejection of an unexpired access token", () => {
+  const reconnectError = {
+    kind: DyadErrorKind.Auth,
+    message: NEON_RECONNECT_REQUIRED_MESSAGE,
+  };
+
+  beforeEach(() => {
+    neonApi.status = 401;
+    neonApi.onRequest = undefined;
+    settings = {
+      neon: {
+        accessToken: { value: "revoked-access" },
+        refreshToken: { value: "old-refresh" },
+        expiresIn: 3600,
+        tokenTimestamp: Math.floor(Date.now() / 1000),
+      },
+    } as ReturnType<typeof readSettings>;
   });
 
-  it("ignores a rejection of credentials replaced by a newer sign-in", () => {
-    const rejected = readSettings();
-    handleNeonOAuthReturn({
-      token: "new-access",
-      refreshToken: "new-refresh",
-      expiresIn: 3600,
+  it("requires reconnection once for concurrent rejected requests", async () => {
+    const client = await getNeonClient();
+    const results = await Promise.allSettled([
+      client.getProject("project-1"),
+      client.listProjects({}),
+    ]);
+
+    for (const result of results) {
+      expect(result.status).toBe("rejected");
+      expect((result as PromiseRejectedResult).reason).toMatchObject(
+        reconnectError,
+      );
+    }
+    expect(settings.neon?.reconnectRequired).toBe(true);
+    expect(settings.neon?.accessToken?.value).toBe("revoked-access");
+    expect(publishQueryInvalidations).toHaveBeenCalledOnce();
+    expect(sendTelemetryEvent).toHaveBeenCalledExactlyOnceWith(
+      "neon:reconnect-required",
+      { reason: "access_token_rejected" },
+    );
+    // Later Neon operations stop before reaching the API.
+    await expect(getNeonClient()).rejects.toMatchObject(reconnectError);
+  });
+
+  it("keeps the reconnect error through organization lookup", async () => {
+    await expect(getNeonOrganizationId()).rejects.toMatchObject(reconnectError);
+    expect(settings.neon?.reconnectRequired).toBe(true);
+  });
+
+  it("ignores a rejection of credentials replaced by a newer sign-in", async () => {
+    const client = await getNeonClient();
+    neonApi.onRequest = () =>
+      handleNeonOAuthReturn({
+        token: "new-access",
+        refreshToken: "new-refresh",
+        expiresIn: 3600,
+      });
+
+    await expect(client.getProject("project-1")).rejects.toMatchObject(
+      reconnectError,
+    );
+    expect(settings.neon?.reconnectRequired).toBeUndefined();
+    expect(settings.neon?.accessToken?.value).toBe("new-access");
+    expect(sendTelemetryEvent).not.toHaveBeenCalled();
+  });
+
+  it("leaves other HTTP errors for callers to classify", async () => {
+    neonApi.status = 404;
+    const client = await getNeonClient();
+
+    await expect(client.getProject("project-1")).rejects.toMatchObject({
+      response: { status: 404 },
     });
-    requireNeonReconnectionForRejectedCredentials(rejected);
     expect(settings.neon?.reconnectRequired).toBeUndefined();
     expect(sendTelemetryEvent).not.toHaveBeenCalled();
   });

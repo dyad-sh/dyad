@@ -150,7 +150,7 @@ function hasSameNeonCredentials(
  * while the rejected credentials are still the stored ones: a sign-in or
  * disconnect that landed while the request was in flight must win.
  */
-export function requireNeonReconnectionForRejectedCredentials(
+function requireNeonReconnectionForRejectedCredentials(
   rejected: ReturnType<typeof readSettings>,
 ): void {
   if (!hasSameNeonCredentials(rejected)) return;
@@ -467,16 +467,39 @@ export async function getNeonClient(): Promise<Api<unknown>> {
       );
     }
 
-    return createApiClient({
-      apiKey: newAccessToken,
-      baseURL: getNeonApiBaseUrl(),
-    });
+    return createNeonApiClient(newAccessToken, updatedSettings);
   }
 
-  return createApiClient({
-    apiKey: neonAccessToken,
+  return createNeonApiClient(neonAccessToken, settings);
+}
+
+/**
+ * Every Neon API call goes through this client, so a revoked token is
+ * detected wherever it is first used (project discovery, branches,
+ * migrations, env sync, agent tools), not only on one screen. `credentials`
+ * are the settings the client was built from, so a 401 is attributed to them
+ * rather than to a sign-in that completed mid-request.
+ */
+export function createNeonApiClient(
+  accessToken: string,
+  credentials: ReturnType<typeof readSettings>,
+): Api<unknown> {
+  const client = createApiClient({
+    apiKey: accessToken,
     baseURL: getNeonApiBaseUrl(),
   });
+  client.instance.interceptors.response.use(undefined, (error: unknown) => {
+    const status = (error as { response?: { status?: number } })?.response
+      ?.status;
+    if (status !== 401) return Promise.reject(error);
+    // The token has not expired locally, so Neon rejected it (for example,
+    // because the user revoked Dyad's access).
+    requireNeonReconnectionForRejectedCredentials(credentials);
+    return Promise.reject(
+      new DyadError(NEON_RECONNECT_REQUIRED_MESSAGE, DyadErrorKind.Auth),
+    );
+  });
+  return client;
 }
 
 // Overridable so benchmarks/tests can point the management client at a local
@@ -512,6 +535,8 @@ export async function getNeonOrganizationId(): Promise<string> {
     return response.data.organizations[0].id;
   } catch (error) {
     logger.error("Error fetching Neon organizations:", error);
+    // Keep classified errors, such as a rejected token's reconnect prompt.
+    if (error instanceof DyadError) throw error;
     throw new DyadError(
       "Failed to fetch Neon organizations",
       DyadErrorKind.External,

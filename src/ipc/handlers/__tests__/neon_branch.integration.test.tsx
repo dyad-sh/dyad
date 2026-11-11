@@ -211,14 +211,22 @@ describe("Neon branch actions (integration)", () => {
         refreshToken: "new-refresh",
         expiresIn: 3600,
       });
-      const client = await neonManagement.getNeonClient();
+      // Test builds use a mock Neon client, so build the real one from the
+      // stored credentials and fail it at the HTTP layer: its own 401
+      // handling must run.
+      const client = neonManagement.createNeonApiClient(
+        "new-access",
+        readSettings(),
+      );
+      client.instance.defaults.adapter = async () => {
+        throw Object.assign(
+          new Error(`Request failed with status code ${status}`),
+          { response: { status, data: {}, headers: {} } },
+        );
+      };
       const mockClient = vi
         .spyOn(neonManagement, "getNeonClient")
-        .mockResolvedValue(
-          Object.assign(client, {
-            getProject: vi.fn().mockRejectedValue({ response: { status } }),
-          }),
-        );
+        .mockResolvedValue(client);
       try {
         await expect(
           ipc.neon.getProject({ appId: app.appId }),

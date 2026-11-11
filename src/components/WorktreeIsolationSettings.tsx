@@ -1,7 +1,6 @@
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useSettings } from "@/hooks/useSettings";
-import { CLAUDE_CROSS_DIRECTORY_RESUME_VERSION } from "@/shared/claude_code_cli";
 
 export function WorktreeIsolationSettings() {
   const { settings, updateSettings } = useSettings();
@@ -33,9 +32,6 @@ export function WorktreeIsolationSettings() {
         combined code. Turning this on affects the next turns you send; a
         running agent keeps its current workspace. Turning it off stops new
         isolated workspaces but keeps existing ones and their unfinished work.
-        Claude Code subscription chats need Claude Code{" "}
-        {CLAUDE_CROSS_DIRECTORY_RESUME_VERSION} or later; with an older CLI they
-        keep working in the app&apos;s folder.
       </p>
       {enabled && (
         <p className="text-xs text-muted-foreground">

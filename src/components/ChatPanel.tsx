@@ -8,6 +8,7 @@ import {
   useMemo,
 } from "react";
 import { ConcurrentChatBanner } from "./chat/ConcurrentChatBanner";
+import { ClaudeCodeWorktreeBanner } from "./chat/ClaudeCodeWorktreeBanner";
 import { NpmWorktreeDiskBanner } from "./chat/NpmWorktreeDiskBanner";
 import { useTranslation } from "react-i18next";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
@@ -105,7 +106,12 @@ export function ChatPanel({
   const streamState = useChatStreamState(chatId) ?? { type: "idle" };
   const chatStreamManager = useChatStreamManager();
   const { settings } = useSettings();
-  const { selectedMode, selectedModel, setChatMode } = useChatMode(chatId);
+  const {
+    selectedMode,
+    selectedModel,
+    setChatMode,
+    isLoading: isChatLoading,
+  } = useChatMode(chatId);
   const { isQuotaExceeded } = useFreeAgentQuota();
   const showFreeAgentQuotaBanner =
     settings &&
@@ -334,6 +340,12 @@ export function ChatPanel({
                   />
                   <NotificationBanner />
                   <ConcurrentChatBanner appId={selectedAppId} chatId={chatId} />
+                  <ClaudeCodeWorktreeBanner
+                    usesClaudeCode={
+                      !isChatLoading &&
+                      selectedModel?.provider === "claude-code"
+                    }
+                  />
                   <NpmWorktreeDiskBanner
                     appId={selectedAppId}
                     chatId={chatId}

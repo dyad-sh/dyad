@@ -132,8 +132,7 @@ export interface PrepareTurnWorkspaceInput {
   originalAppPath: string;
   writable: boolean;
   /**
-   * False when the chat cannot move into a worktree: a Claude Code chat whose
-   * CLI cannot resume its session from another directory.
+   * Whether this turn may create a worktree when isolation is enabled.
    */
   allowIsolation: boolean;
   /**

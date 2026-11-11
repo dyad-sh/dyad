@@ -15,10 +15,8 @@ import {
   type TurnWorkspace,
 } from "../services/chat_workspace_service";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import {
-  canClaudeResumeFromAnotherDirectory,
-  claudeStatus,
-} from "@/ipc/services/claude_code/runtime";
+import { claudeStatus } from "@/ipc/services/claude_code/runtime";
+import { canClaudeResumeFromAnotherDirectory } from "@/shared/claude_code_cli";
 import {
   getDyadWriteTags,
   getDyadRenameTags,
@@ -436,7 +434,6 @@ const approveProposalHandler = async (
       chatId,
       originalAppPath: getDyadAppPath(chat.app.path),
       writable: true,
-      // A workspace created here is where the chat's next CLI turn runs.
       allowIsolation:
         chat.executionBackend !== "claude-code" ||
         canClaudeResumeFromAnotherDirectory((await claudeStatus()).version),

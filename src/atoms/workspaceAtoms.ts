@@ -19,3 +19,8 @@ export const dismissedConcurrentChatBannerAppIdsAtom = atom<
 export const dismissedNpmWorktreeBannerAppIdsAtom = atom<ReadonlySet<number>>(
   new Set<number>(),
 );
+
+/** Dismiss the CLI upgrade nudge for this version across chats until relaunch. */
+export const dismissedClaudeWorktreeBannerVersionsAtom = atom<
+  ReadonlySet<string>
+>(new Set<string>());

@@ -18,6 +18,11 @@ interface SkippableBannerProps {
   /** Blocks the action while it's already running. */
   enableDisabled?: boolean;
   dismissLabel?: string;
+  /**
+   * "inline" puts the action beside the message and wraps it under the
+   * message on narrow banners; "below" always puts it under the message.
+   */
+  actionPlacement?: "inline" | "below";
   "data-testid"?: string;
 }
 
@@ -54,9 +59,11 @@ export function SkippableBanner({
   variant = "info",
   enableDisabled = false,
   dismissLabel = "Dismiss",
+  actionPlacement = "inline",
   "data-testid": testId,
 }: SkippableBannerProps) {
   const c = colors[variant];
+  const actionBelow = actionPlacement === "below";
 
   return (
     <div
@@ -75,7 +82,9 @@ export function SkippableBanner({
           <X className="h-3.5 w-3.5" />
         </button>
 
-        <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 px-3 py-2 pr-8 @max-sm:grid-cols-[auto_minmax(0,1fr)]">
+        <div
+          className={`grid items-center gap-x-3 gap-y-2 px-3 py-2 pr-8 ${actionBelow ? "grid-cols-[auto_minmax(0,1fr)]" : "grid-cols-[auto_minmax(0,1fr)_auto] @max-sm:grid-cols-[auto_minmax(0,1fr)]"}`}
+        >
           {/* Icon badge */}
           <div className={`shrink-0 rounded-lg p-2 ${c.icon}`}>
             <Icon className="h-5 w-5" />
@@ -93,7 +102,7 @@ export function SkippableBanner({
             type="button"
             onClick={onEnable}
             disabled={enableDisabled}
-            className={`inline-flex items-center justify-self-start rounded-lg px-4 py-1.5 text-sm font-semibold transition-all duration-150 ${c.enableBtn} cursor-pointer disabled:opacity-60 disabled:cursor-default @max-sm:col-start-2`}
+            className={`inline-flex items-center justify-self-start rounded-lg px-4 py-1.5 text-sm font-semibold transition-all duration-150 ${c.enableBtn} cursor-pointer disabled:opacity-60 disabled:cursor-default ${actionBelow ? "col-start-2" : "@max-sm:col-start-2"}`}
           >
             {enableLabel}
           </button>

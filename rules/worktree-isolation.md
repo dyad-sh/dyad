@@ -3,10 +3,9 @@
 Opt-in (`enableWorktreeIsolation`). While it is on, every chat's first
 writable turn gives it its own linked Git worktree on `dyad/chat-<id>` (an
 app's first chat included), whether or not another chat is writing; Dyad
-later merges its finished work back. Claude Code chats are isolated too
-when their CLI can resume a session from another directory; with an older
-CLI they use the app's original folder, as every chat does while isolation
-is off.
+later merges its finished work back. Claude Code chats require CLI 2.1.19 or
+later to create a worktree. While isolation is off, chats without an existing
+worktree use the app's original folder.
 
 ## Where a turn runs
 
@@ -47,14 +46,17 @@ is off.
 - The CLI runs in the turn's directory, so a Claude Code chat's folder
   changes when it first gets a worktree (its earlier turns ran in the app's
   folder: before isolation was on, or read-only), and again when its worktree
-  is deleted. Its session survives because `--resume` works from another
-  directory (CLI `CLAUDE_CROSS_DIRECTORY_RESUME_VERSION` and later; 2.1.42
-  fails with "No conversation found") and `claudeSessionFingerprint` hashes
-  the app's folder, with the worktree path in the system prompt mapped back to
-  it. Never fingerprint `ctx.appPath` directly.
-- With an older CLI the chat passes `allowIsolation: false` and keeps sharing
-  the app's folder; check the version from `claudeStatus()` wherever a chat
-  can be given a workspace (turns and proposal approval).
+  is deleted. Dyad attempts to preserve its session with `--resume` across
+  these moves. `claudeSessionFingerprint` hashes the app's folder, with the
+  worktree path in the system prompt mapped back to it. Never fingerprint
+  `ctx.appPath` directly.
+- Turns and proposal approval use `canClaudeResumeFromAnotherDirectory` from
+  `shared/claude_code_cli.ts` to gate new worktrees at CLI 2.1.19. Unknown
+  versions cannot create a worktree. The chat shows a dismissible upgrade
+  banner for known older versions when isolation is enabled and the chat uses
+  Claude Code. Dismissal is per CLI version for the current renderer session.
+  This check is separate from the stricter CLI minimum for restricted tool
+  execution; do not lower that minimum to match the worktree threshold.
 - Undo in a workspace clears the chat's Claude session like Undo in the app's
   folder: the CLI transcript still holds the undone turns.
 

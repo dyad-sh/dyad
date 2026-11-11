@@ -1328,8 +1328,8 @@ describe("worktree isolation (integration)", () => {
 
   it("waits for a chat working in the app's folder before fast-forwarding", async () => {
     await waitForQuietApp();
-    // Chats whose backend cannot change directories (Claude Code) still
-    // write in the app's folder, so the final fast-forward waits for them.
+    // A turn admitted in the app's folder before isolation was enabled
+    // keeps writing there, so the final fast-forward waits for it.
     const sharedChatId = await createChat();
     const shared = await chatWorkspaceService.prepareTurnWorkspace({
       appId: harness.appId,

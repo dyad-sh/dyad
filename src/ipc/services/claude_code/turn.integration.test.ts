@@ -26,7 +26,6 @@ import {
   getWorkspaceForChat,
 } from "@/ipc/services/chat_workspace_store";
 import { undoIsolatedChatTurns } from "@/ipc/services/workspace_turn_undo";
-import { CLAUDE_CROSS_DIRECTORY_RESUME_VERSION } from "@/shared/claude_code_cli";
 const calls = vi.hoisted(() => ({
   run: vi.fn(),
   operate: vi.fn(),
@@ -340,75 +339,144 @@ it("resolves the claimed app path after usage preflight", async () => {
   }
 });
 
-it("keeps the CLI session while worktree isolation moves the chat between folders", async () => {
-  calls.version = CLAUDE_CROSS_DIRECTORY_RESUME_VERSION;
+it.each(["2.1.19", "2.1.281"])(
+  "resumes the CLI session across workspace moves with version %s",
+  async (version) => {
+    calls.version = version;
+    const chatId = await ipc.chat.createChat({ appId: harness.appId });
+    try {
+      await harness.streamChat("Plan the violet change", { chatId });
+      const first = calls.run.mock.calls[0][0];
+      expect(first).toMatchObject({ cwd: harness.appDir, resume: false });
+
+      // Turning isolation on gives the chat a worktree on its next writable
+      // turn, where it resumes the same CLI session.
+      writeSettings({ enableWorktreeIsolation: true });
+      await harness.streamChat("Make the violet change", { chatId });
+      const workspace = getWorkspaceForChat(chatId);
+      expect(workspace?.status).toBe("active");
+      const workspacePath = getWorkspaceAppPath(workspace!);
+      expect(workspacePath).not.toBe(harness.appDir);
+      const isolated = calls.run.mock.calls[1][0];
+      expect(isolated).toMatchObject({
+        cwd: workspacePath,
+        resume: true,
+        sessionId: first.sessionId,
+      });
+      expect(isolated.prompt).toContain("isolated workspace");
+
+      // Undo drops the undone turn from visible history, so the CLI transcript
+      // that still holds it is not resumed.
+      const lastUserMessage = await harness.db.query.messages.findFirst({
+        where: and(eq(messages.chatId, chatId), eq(messages.role, "user")),
+        orderBy: desc(messages.id),
+      });
+      await undoIsolatedChatTurns({
+        chatId,
+        fromUserMessageId: lastUserMessage!.id,
+      });
+      expect(
+        await harness.db.query.chats.findFirst({ where: eq(chats.id, chatId) }),
+      ).toMatchObject({ claudeSessionId: null, claudeSessionState: null });
+      await harness.streamChat("Make it teal instead", { chatId });
+      const afterUndo = calls.run.mock.calls[2][0];
+      expect(afterUndo).toMatchObject({ cwd: workspacePath, resume: false });
+      expect(afterUndo.sessionId).not.toBe(first.sessionId);
+      expect(afterUndo.prompt).toContain("Plan the violet change");
+      expect(afterUndo.prompt).not.toContain("Make the violet change");
+
+      // After its worktree is deleted (and isolation is off), the chat
+      // continues in the app's folder with the session it started there.
+      await chatWorkspaceService.deleteChatWorkspace(chatId);
+      expect(getWorkspaceForChat(chatId)).toBeUndefined();
+      writeSettings({ enableWorktreeIsolation: false });
+      await harness.streamChat("Continue", { chatId });
+      expect(calls.run.mock.calls[3][0]).toMatchObject({
+        cwd: harness.appDir,
+        resume: true,
+        sessionId: afterUndo.sessionId,
+      });
+    } finally {
+      if (getWorkspaceForChat(chatId))
+        await chatWorkspaceService.onChatDeleting(chatId);
+    }
+  },
+);
+
+it.each(["local-agent", "build"] as const)(
+  "isolates the first %s turn with Claude Code 2.1.281",
+  async (initialChatMode) => {
+    calls.version = "2.1.281";
+    writeSettings({ enableWorktreeIsolation: true });
+    const chatId = await ipc.chat.createChat({
+      appId: harness.appId,
+      initialChatMode,
+    });
+    try {
+      const turn = await harness.streamChat("Make the change", { chatId });
+      expect(turn.event("chat:response:error")).toBeUndefined();
+      const workspace = getWorkspaceForChat(chatId);
+      expect(workspace?.status).toBe("active");
+      const workspacePath = getWorkspaceAppPath(workspace!);
+      expect(workspacePath).not.toBe(harness.appDir);
+      expect(calls.run).toHaveBeenCalledOnce();
+      expect(calls.run.mock.calls[0][0]).toMatchObject({
+        cwd: workspacePath,
+        resume: false,
+      });
+    } finally {
+      if (getWorkspaceForChat(chatId))
+        await chatWorkspaceService.onChatDeleting(chatId);
+    }
+  },
+);
+
+it("keeps turns before Claude Code 2.1.19 in the app folder", async () => {
+  // Status mocks admit the turn so this exercises the worktree gate
+  // independently of the stricter restricted-tool runtime minimum.
+  calls.version = "2.1.18";
+  writeSettings({ enableWorktreeIsolation: true });
   const chatId = await ipc.chat.createChat({ appId: harness.appId });
   try {
-    await harness.streamChat("Plan the violet change", { chatId });
-    const first = calls.run.mock.calls[0][0];
-    expect(first).toMatchObject({ cwd: harness.appDir, resume: false });
-
-    // Turning isolation on gives the chat a worktree on its next writable
-    // turn, where it resumes the same CLI session.
-    writeSettings({ enableWorktreeIsolation: true });
-    await harness.streamChat("Make the violet change", { chatId });
-    const workspace = getWorkspaceForChat(chatId);
-    expect(workspace?.status).toBe("active");
-    const workspacePath = getWorkspaceAppPath(workspace!);
-    expect(workspacePath).not.toBe(harness.appDir);
-    const isolated = calls.run.mock.calls[1][0];
-    expect(isolated).toMatchObject({
-      cwd: workspacePath,
-      resume: true,
-      sessionId: first.sessionId,
-    });
-    expect(isolated.prompt).toContain("isolated workspace");
-
-    // Undo drops the undone turn from visible history, so the CLI transcript
-    // that still holds it is not resumed.
-    const lastUserMessage = await harness.db.query.messages.findFirst({
-      where: and(eq(messages.chatId, chatId), eq(messages.role, "user")),
-      orderBy: desc(messages.id),
-    });
-    await undoIsolatedChatTurns({
-      chatId,
-      fromUserMessageId: lastUserMessage!.id,
-    });
-    expect(
-      await harness.db.query.chats.findFirst({ where: eq(chats.id, chatId) }),
-    ).toMatchObject({ claudeSessionId: null, claudeSessionState: null });
-    await harness.streamChat("Make it teal instead", { chatId });
-    const afterUndo = calls.run.mock.calls[2][0];
-    expect(afterUndo).toMatchObject({ cwd: workspacePath, resume: false });
-    expect(afterUndo.sessionId).not.toBe(first.sessionId);
-    expect(afterUndo.prompt).toContain("Plan the violet change");
-    expect(afterUndo.prompt).not.toContain("Make the violet change");
-
-    // After its worktree is deleted (and isolation is off), the chat
-    // continues in the app's folder with the session it started there.
-    await chatWorkspaceService.deleteChatWorkspace(chatId);
+    const turn = await harness.streamChat("Make the change", { chatId });
+    expect(turn.event("chat:response:error")).toBeUndefined();
+    expect(calls.run).toHaveBeenCalledOnce();
+    expect(calls.run.mock.calls[0][0].cwd).toBe(harness.appDir);
     expect(getWorkspaceForChat(chatId)).toBeUndefined();
-    writeSettings({ enableWorktreeIsolation: false });
-    await harness.streamChat("Continue", { chatId });
-    expect(calls.run.mock.calls[3][0]).toMatchObject({
-      cwd: harness.appDir,
-      resume: true,
-      sessionId: afterUndo.sessionId,
-    });
   } finally {
     if (getWorkspaceForChat(chatId))
       await chatWorkspaceService.onChatDeleting(chatId);
   }
 });
 
-it("keeps a Claude Code chat in the app's folder when its CLI cannot resume elsewhere", async () => {
-  writeSettings({ enableWorktreeIsolation: true });
-  const chatId = await ipc.chat.createChat({ appId: harness.appId });
-  await harness.streamChat("Make the change", { chatId });
-  expect(calls.run).toHaveBeenCalledOnce();
-  expect(calls.run.mock.calls[0][0].cwd).toBe(harness.appDir);
-  expect(getWorkspaceForChat(chatId)).toBeUndefined();
-});
+it.each(["2.1.18", "2.1.19"])(
+  "applies the worktree version gate to proposal approval with CLI %s",
+  async (version) => {
+    calls.version = version;
+    writeSettings({ enableWorktreeIsolation: true });
+    const chatId = await ipc.chat.createChat({ appId: harness.appId });
+    const [message] = await harness.db
+      .insert(messages)
+      .values({
+        chatId,
+        role: "assistant",
+        content: "Proposal with no file changes",
+      })
+      .returning();
+    try {
+      const result = await ipc.proposal.approveProposal({
+        chatId,
+        messageId: message.id,
+      });
+      expect(result.success).toBe(true);
+      expect(!!getWorkspaceForChat(chatId)).toBe(version === "2.1.19");
+      expect(calls.run).not.toHaveBeenCalled();
+    } finally {
+      if (getWorkspaceForChat(chatId))
+        await chatWorkspaceService.onChatDeleting(chatId);
+    }
+  },
+);
 
 it("does not strand a new chat in running state when bridge setup fails", async () => {
   const chatId = await ipc.chat.createChat({ appId: harness.appId });

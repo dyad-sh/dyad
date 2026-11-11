@@ -1,7 +1,22 @@
-/**
- * Oldest Claude Code CLI verified to `--resume` a session from a different
- * working directory. Older releases (2.1.42 was checked) look the session up
- * only under the current directory's project and fail with "No conversation
- * found with session ID". Worktree isolation needs it for Claude Code chats.
- */
-export const CLAUDE_CROSS_DIRECTORY_RESUME_VERSION = "2.1.319";
+/** Minimum CLI version allowed to create isolated worktrees for Claude chats. */
+export const CLAUDE_CROSS_DIRECTORY_RESUME_VERSION = "2.1.19";
+
+export function isClaudeVersionAtLeast(
+  version: string | null,
+  minimum: string,
+): boolean {
+  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version ?? "");
+  if (!match) return false;
+  const parts = match.slice(1).map(Number);
+  const floor = minimum.split(".").map(Number);
+  for (let index = 0; index < floor.length; index++) {
+    if (parts[index] !== floor[index]) return parts[index] > floor[index];
+  }
+  return true;
+}
+
+export function canClaudeResumeFromAnotherDirectory(
+  version: string | null,
+): boolean {
+  return isClaudeVersionAtLeast(version, CLAUDE_CROSS_DIRECTORY_RESUME_VERSION);
+}

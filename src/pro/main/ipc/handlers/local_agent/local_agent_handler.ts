@@ -191,7 +191,10 @@ import {
   maybeAppendRetryReplayForRetry,
 } from "./retry_replay_utils";
 import { setChatSummaryTool } from "./tools/set_chat_summary";
-import { computeStreamingPatch } from "@/ipc/utils/stream_text_utils";
+import {
+  computeAnchoredStreamingPatch,
+  computeStreamingPatch,
+} from "@/ipc/utils/stream_text_utils";
 import { userInputRegistry } from "@/user_input/main";
 import {
   rendererMessageColumns,
@@ -752,10 +755,7 @@ export async function handleLocalAgentStream(
   // whether to send the full messages array.
   const sendChunk = (
     response: string,
-    {
-      fullMessages = false,
-      allowGrowingRewrite = false,
-    }: { fullMessages?: boolean; allowGrowingRewrite?: boolean } = {},
+    { fullMessages = false }: { fullMessages?: boolean } = {},
   ) =>
     sendResponseChunk(
       event,
@@ -767,7 +767,6 @@ export async function handleLocalAgentStream(
       placeholderMessageId,
       fullMessages,
       lastSentRef,
-      allowGrowingRewrite,
     );
   // Sidecar preview send — independent of the patch protocol. The renderer
   // overlays this string after the message's parsed blocks and clears the
@@ -911,14 +910,29 @@ export async function handleLocalAgentStream(
           : compactionPreview;
         // Compaction runs on long chats, so sending the full message history
         // per chunk is expensive. Send it once to sync the renderer, then send
-        // patches. Each chunk rewrites the closing `</dyad-compaction>` tag,
-        // but the content only grows.
+        // patches.
         if (!compactionPreviewStarted) {
           compactionPreviewStarted = true;
           sendChunk(previewContent, { fullMessages: true });
-        } else {
-          sendChunk(previewContent, { allowGrowingRewrite: true });
+          return;
         }
+        // The preview is never saved to the database, so start each patch
+        // where the saved message ends. A window that opens this chat now
+        // loads the saved message and can still apply the patch.
+        const savedLength = options?.showOnTopOfCurrentResponse
+          ? fullResponse.length
+          : 0;
+        sendChatChunk(event.sender, {
+          chatId: req.chatId,
+          invocationRef: req.invocationRef,
+          streamId: req.streamId,
+          streamingMessageId: placeholderMessageId,
+          streamingPatch: computeAnchoredStreamingPatch(
+            previewContent,
+            savedLength,
+          ),
+        });
+        lastSentRef.value = previewContent;
       },
       {
         // Mid-turn compaction should not render as a separate message above the
@@ -2825,12 +2839,6 @@ function sendResponseChunk(
   sendFullMessages: boolean | undefined,
   /** Mutable ref tracking the renderer's last seen placeholder content. */
   lastSentRef: { value: string },
-  /**
-   * When true, a patch that rewrites part of the previous tail is sent as a
-   * patch instead of escalating to a full-messages send, as long as the
-   * content does not shrink (so nothing can briefly vanish).
-   */
-  allowGrowingRewrite = false,
 ) {
   if (sendFullMessages) {
     // Project the live placeholder before filtering, since chat was loaded
@@ -2857,15 +2865,13 @@ function sendResponseChunk(
     if (!patch) {
       return;
     }
-    // Streaming patches are normally reserved for append-only growth
+    // Streaming patches are reserved for true append-only tail growth
     // (offset === oldLen). When offset < oldLen the new content diverges
-    // inside the prior tail, and a patch could shrink visible content,
-    // briefly vanishing the response, so escalate to a fullMessages send.
-    // Callers that pass allowGrowingRewrite may still patch a rewrite, as
-    // long as the content does not get shorter.
-    const isGrowingRewrite =
-      allowGrowingRewrite && fullResponse.length >= oldLen;
-    if (patch.offset < oldLen && !isGrowingRewrite) {
+    // inside the prior tail; applying the patch on the renderer would
+    // cleanly shrink visible content with no mismatch, briefly vanishing
+    // the response. Escalate to a fullMessages send so the renderer
+    // authoritatively replaces content.
+    if (patch.offset < oldLen) {
       sendResponseChunk(
         event,
         chatId,

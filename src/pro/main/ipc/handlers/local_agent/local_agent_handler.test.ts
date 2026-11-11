@@ -16,6 +16,7 @@ import {
   MAX_TEST_RUNS_PER_TURN,
 } from "./tools/turn_tool_budgets";
 import { buildCompactionBlock } from "@/ipc/handlers/compaction/compaction_utils";
+import { applyStreamingPatch } from "@/lib/applyStreamingPatch";
 import {
   toRendererMessages,
   type RendererMessageRow,
@@ -2851,14 +2852,22 @@ describe("handleLocalAgentStream", () => {
         expect(chunk.streamingPatch).toBeDefined();
       }
 
-      // Replaying the patches the way the renderer does yields the final preview.
-      let content = compactionChunks[0].messages!.find(
-        (m) => m.id === 10,
-      )!.content;
+      // Apply the patches with the renderer's own patch logic.
+      let messagesById = new Map<number, any[]>([
+        [1, compactionChunks[0].messages!],
+      ]);
       for (const chunk of compactionChunks.slice(1)) {
-        const { offset, content: tail } = chunk.streamingPatch!;
-        content = content.slice(0, offset) + tail;
+        const applied = applyStreamingPatch(
+          (update) => {
+            messagesById = update(messagesById);
+          },
+          1,
+          chunk.streamingMessageId!,
+          chunk.streamingPatch!,
+        );
+        expect(applied).toBe(true);
       }
+      const content = messagesById.get(1)!.find((m) => m.id === 10)!.content;
       expect(content).toBe(
         '<dyad-compaction title="Compacting conversation">\nThe user asked &lt;x&gt; &amp; more\n</dyad-compaction>',
       );

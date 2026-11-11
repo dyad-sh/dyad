@@ -909,12 +909,10 @@ export async function handleLocalAgentStream(
         const previewContent = options?.showOnTopOfCurrentResponse
           ? `${fullResponse}\n${compactionPreview}`
           : compactionPreview;
-        // Compaction only runs on long chats, so a full-messages send
-        // re-serializes megabytes of history. Doing that per summary chunk
-        // exhausted main-process memory in IPC serialization. Send the full
-        // array once to sync the renderer, then patch only the placeholder.
-        // Each chunk rewrites the trailing `</dyad-compaction>` tag, so the
-        // patch is not tail-only, but the content only grows.
+        // Compaction runs on long chats, so sending the full message history
+        // per chunk is expensive. Send it once to sync the renderer, then send
+        // patches. Each chunk rewrites the closing `</dyad-compaction>` tag,
+        // but the content only grows.
         if (!compactionPreviewStarted) {
           compactionPreviewStarted = true;
           sendChunk(previewContent, { fullMessages: true });
@@ -2859,12 +2857,12 @@ function sendResponseChunk(
     if (!patch) {
       return;
     }
-    // Streaming patches are reserved for true append-only tail growth
+    // Streaming patches are normally reserved for append-only growth
     // (offset === oldLen). When offset < oldLen the new content diverges
-    // inside the prior tail; applying the patch on the renderer would
-    // cleanly shrink visible content with no mismatch, briefly vanishing
-    // the response. Escalate to a fullMessages send so the renderer
-    // authoritatively replaces content.
+    // inside the prior tail, and a patch could shrink visible content,
+    // briefly vanishing the response, so escalate to a fullMessages send.
+    // Callers that pass allowGrowingRewrite may still patch a rewrite, as
+    // long as the content does not get shorter.
     const isGrowingRewrite =
       allowGrowingRewrite && fullResponse.length >= oldLen;
     if (patch.offset < oldLen && !isGrowingRewrite) {

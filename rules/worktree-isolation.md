@@ -170,7 +170,10 @@ worktree use the app's original folder.
   branch. A commit on no branch for a chat that never integrated (history
   rewritten by a rebase) restores as before.
 - `parseDyadCommitTrailers` reads trailers only from a message's last
-  paragraph, never its subject (the chat summary), like Git.
+  paragraph, never its subject (the chat summary), like Git. To tell whether
+  a commit was written in a worktree, check `chatId`, not `workspaceBranch`:
+  Build-mode worktree commits carry only `Dyad-Chat`/`Dyad-Turn`, and
+  main-folder commits carry no trailers.
 - `syncEnvironmentFiles` copies the app's untracked `.env*` files into a
   worktree (missing or older than the app's copy) at creation, every writable
   turn, and every worktree preview start. Only files the worktree's Git

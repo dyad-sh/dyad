@@ -65,12 +65,14 @@ export async function deleteOwnedChatAfterSettlingActors(
     releaseSubagents = await settleSubagentsForChatDeletion(chatId);
     await settleChatActorsForDeletion(chatId);
     await deleteChatJournals(chatId);
-    // The chat's isolated workspace goes with it. Only a fully merged branch
-    // is deleted, so unmerged commits stay reachable in the repository.
+    // The chat's isolated workspace goes with it, removed only once the
+    // chat's row is deleted. Only a fully merged branch is deleted, so
+    // unmerged commits stay reachable in the repository.
     const { chatWorkspaceService } = await import("./chat_workspace_service");
-    await chatWorkspaceService.onChatDeleting(chatId);
+    const removeWorkspace = chatWorkspaceService.prepareChatDeletion(chatId);
     await db.delete(chats).where(eq(chats.id, chatId));
     entityDisposalBus.publish({ kind: "chat", id: chatId });
+    await removeWorkspace();
   } finally {
     releaseSubagents?.();
     releaseSubagentAdmission();

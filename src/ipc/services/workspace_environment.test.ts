@@ -30,7 +30,16 @@ describe("syncEnvironmentFiles", () => {
     await fs.promises.mkdir(worktree);
     execFileSync("git", ["init", "-q"], { cwd: app });
     execFileSync("git", ["init", "-q"], { cwd: worktree });
+    await fs.promises.writeFile(path.join(worktree, ".gitignore"), ".env*\n");
   });
+
+  function git(cwd: string, args: string[]) {
+    execFileSync(
+      "git",
+      ["-c", "user.name=Test", "-c", "user.email=test@example.com", ...args],
+      { cwd },
+    );
+  }
 
   afterEach(async () => {
     await fs.promises.rm(root, { recursive: true, force: true });
@@ -72,7 +81,7 @@ describe("syncEnvironmentFiles", () => {
 
   it("leaves files Git tracks to arrive through Git", async () => {
     await write(path.join(worktree, ".env"), "TRACKED=committed\n", 60);
-    execFileSync("git", ["add", ".env"], { cwd: worktree });
+    execFileSync("git", ["add", "-f", ".env"], { cwd: worktree });
     // An uncommitted edit in the app's folder would otherwise be committed
     // by the chat's next turn.
     await write(path.join(app, ".env"), "TRACKED=uncommitted\n", 0);
@@ -99,6 +108,33 @@ describe("syncEnvironmentFiles", () => {
     expect(
       await fs.promises.readFile(path.join(worktree, ".env.local"), "utf8"),
     ).toBe("LOCAL=1\n");
+  });
+
+  it("leaves files the worktree's Git does not ignore", async () => {
+    // The scaffold's `.gitignore` covers only `*.local`: a plain `.env`
+    // copied in would be committed by the chat's next turn.
+    await fs.promises.writeFile(path.join(worktree, ".gitignore"), "*.local\n");
+    await write(path.join(app, ".env"), "SECRET=1\n", 0);
+    await write(path.join(app, ".env.local"), "LOCAL=1\n", 0);
+
+    await syncEnvironmentFiles(app, worktree);
+
+    expect(fs.existsSync(path.join(worktree, ".env"))).toBe(false);
+    expect(
+      await fs.promises.readFile(path.join(worktree, ".env.local"), "utf8"),
+    ).toBe("LOCAL=1\n");
+  });
+
+  it("leaves a file whose deletion the worktree has staged", async () => {
+    await write(path.join(worktree, ".env"), "TRACKED=1\n", 60);
+    git(worktree, ["add", "-f", ".env"]);
+    git(worktree, ["commit", "-q", "-m", "track env"]);
+    git(worktree, ["rm", "-q", ".env"]);
+    await write(path.join(app, ".env"), "APP=1\n", 0);
+
+    await syncEnvironmentFiles(app, worktree);
+
+    expect(fs.existsSync(path.join(worktree, ".env"))).toBe(false);
   });
 
   it("copies nothing when Git cannot list tracked files", async () => {

@@ -87,10 +87,7 @@ describe("ensureDyadGitignored", () => {
 describe("ensureDyadGitignored in a Git repository", () => {
   let appPath: string;
 
-  beforeEach(async () => {
-    appPath = await fs.promises.mkdtemp(path.join(os.tmpdir(), "dyad-ignore-"));
-    execFileSync("git", ["init", "-q"], { cwd: appPath });
-    await fs.promises.writeFile(path.join(appPath, ".gitignore"), "dist\n");
+  function commitAll(message: string): void {
     execFileSync("git", ["add", "-A"], { cwd: appPath });
     execFileSync(
       "git",
@@ -102,10 +99,24 @@ describe("ensureDyadGitignored in a Git repository", () => {
         "commit",
         "-q",
         "-m",
-        "init",
+        message,
       ],
       { cwd: appPath },
     );
+  }
+
+  function gitStatus(): string {
+    return execFileSync("git", ["status", "--porcelain"], {
+      cwd: appPath,
+      encoding: "utf8",
+    });
+  }
+
+  beforeEach(async () => {
+    appPath = await fs.promises.mkdtemp(path.join(os.tmpdir(), "dyad-ignore-"));
+    execFileSync("git", ["init", "-q"], { cwd: appPath });
+    await fs.promises.writeFile(path.join(appPath, ".gitignore"), "dist\n");
+    commitAll("init");
   });
 
   afterEach(async () => {
@@ -161,6 +172,7 @@ describe("ensureDyadGitignored in a Git repository", () => {
     const nestedApp = path.join(appPath, "apps", "web");
     await fs.promises.mkdir(nestedApp, { recursive: true });
     await fs.promises.writeFile(path.join(nestedApp, ".gitignore"), "dist\n");
+    commitAll("nested app");
 
     await ensureDyadGitignored(nestedApp);
 
@@ -168,12 +180,38 @@ describe("ensureDyadGitignored in a Git repository", () => {
       await fs.promises.readFile(path.join(nestedApp, ".gitignore"), "utf8"),
     ).toBe("dist\n");
     expect(readExclude()).toContain(".dyad/");
+    await fs.promises.mkdir(path.join(nestedApp, ".dyad"));
+    await fs.promises.writeFile(path.join(nestedApp, ".dyad", "a.md"), "x\n");
+    // Neither .gitignore changed and the metadata is ignored.
+    expect(gitStatus()).toBe("");
 
     // Once excluded, it stays out of every .gitignore, isolation on or off.
     readSettings.mockReturnValue({ enableWorktreeIsolation: false });
     await ensureDyadGitignored(nestedApp);
-    expect(
-      await fs.promises.readFile(path.join(nestedApp, ".gitignore"), "utf8"),
-    ).toBe("dist\n");
+    expect(gitStatus()).toBe("");
+  });
+
+  it("falls back to .gitignore when the repository's exclude file can't be written", async () => {
+    readSettings.mockReturnValue({ enableWorktreeIsolation: true });
+    // A linked checkout whose repository moved: its `.git` file points at a
+    // Git directory that no longer exists.
+    const linked = await fs.promises.mkdtemp(
+      path.join(os.tmpdir(), "dyad-ignore-linked-"),
+    );
+    try {
+      await fs.promises.writeFile(
+        path.join(linked, ".git"),
+        `gitdir: ${path.join(linked, "missing", ".git", "worktrees", "x")}\n`,
+      );
+
+      await ensureDyadGitignored(linked);
+
+      expect(
+        await fs.promises.readFile(path.join(linked, ".gitignore"), "utf8"),
+      ).toBe(".dyad/\n");
+      expect(fs.existsSync(path.join(linked, "missing"))).toBe(false);
+    } finally {
+      await fs.promises.rm(linked, { recursive: true, force: true });
+    }
   });
 });

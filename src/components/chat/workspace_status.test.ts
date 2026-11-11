@@ -95,6 +95,53 @@ describe("workspace status presentation", () => {
     ).toBe(false);
   });
 
+  it("does not count chats that keep their own worktree as sharing the folder", () => {
+    const base = {
+      chatId: 5,
+      isolationEnabled: false,
+      dismissedAppIds: new Set<number>(),
+    };
+    const worktree = (chatId: number) => ({
+      chatId,
+      workspaceId: chatId * 10,
+      branch: `dyad/chat-${chatId}`,
+      phase: "idle" as const,
+    });
+    // Chat 7 kept its worktree after isolation was turned off, so its turn
+    // runs there, not in the app's folder.
+    expect(
+      shouldShowConcurrentChatBanner({
+        ...base,
+        overview: overview({
+          writableChatIds: [7],
+          workspaces: [worktree(7)],
+        }),
+      }),
+    ).toBe(false);
+    // A chat writing in the app's folder still counts alongside one that
+    // writes in its worktree.
+    expect(
+      shouldShowConcurrentChatBanner({
+        ...base,
+        overview: overview({
+          writableChatIds: [7, 8],
+          workspaces: [worktree(7)],
+        }),
+      }),
+    ).toBe(true);
+    // This chat has its own worktree, so another chat in the app's folder
+    // does not share a folder with it.
+    expect(
+      shouldShowConcurrentChatBanner({
+        ...base,
+        overview: overview({
+          writableChatIds: [8],
+          workspaces: [worktree(5)],
+        }),
+      }),
+    ).toBe(false);
+  });
+
   it("warns about disk use only for a chat whose worktree installs with npm", () => {
     const npm = status({ kind: "isolated", packageManager: "npm" });
     const none = new Set<number>();

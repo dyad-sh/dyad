@@ -51,7 +51,7 @@ worktree use the app's original folder.
   worktree path in the system prompt mapped back to it. Never fingerprint
   `ctx.appPath` directly.
 - Turns and proposal approval use `canClaudeResumeFromAnotherDirectory` from
-  `shared/claude_code_cli.ts` to gate new worktrees at CLI 2.1.19. Unknown
+  `src/shared/claude_code_cli.ts` to gate new worktrees at CLI 2.1.19. Unknown
   versions cannot create a worktree. The chat shows a dismissible upgrade
   banner for known older versions when isolation is enabled and the chat uses
   Claude Code. Dismissal is per CLI version for the current renderer session.
@@ -98,6 +98,10 @@ worktree use the app's original folder.
 - `chatWorkspaceRegistry` locks a workspace for a turn, integration, or
   removal. Removal must claim first (`tryClaimWorkspaceForRemoval`); a "not
   busy" check alone races new turns.
+- With isolation off, chats without a worktree share the app's folder and
+  may write concurrently (the pre-isolation behavior). The concurrent-chat
+  banner counts only those writers: a chat that kept its worktree still
+  writes there.
 
 ## Keeping and deleting workspaces
 
@@ -109,10 +113,13 @@ worktree use the app's original folder.
   changes go with it), and deletes the branch only when it is fully merged,
   so unmerged commits stay reachable. The chat's next writable turn creates
   a new workspace.
-- Every deletion of a chat that may have run a turn calls `onChatDeleting`
-  before deleting the row, after the chat's turns are cancelled and drained
-  (`afterDrain`) and outside any app claim (removal takes its own), or the
-  runtime, worktree, and queue state leak. Only rollbacks of a chat created
+- Every deletion of a chat that may have run a turn calls
+  `prepareChatDeletion` before deleting the row, after the chat's turns are
+  cancelled and drained (`afterDrain`), or the runtime, worktree, and queue
+  state leak. It captures the workspace (its row cascades with the chat's)
+  and returns the removal, which runs only once the delete has committed and
+  outside any app claim (removal takes its own): a delete that fails keeps
+  the worktree, uncommitted edits included. Only rollbacks of a chat created
   moments earlier that never ran a turn (an abandoned first prompt, a
   security-fix chat whose setup failed) delete the row directly: a
   workspace is created by a turn, so they cannot have one. Forced removal never deletes without the removal claim: if
@@ -131,7 +138,8 @@ worktree use the app's original folder.
   a tracked `.gitignore` edit in the app's folder is never committed while
   chats work in worktrees and blocks merges that touch it. With isolation on
   it adds `.dyad/` to `info/exclude` itself, since an attachment on a
-  chat's first message is stored before its worktree exists.
+  chat's first message is stored before its worktree exists; it falls back
+  to `.gitignore` when the repository's Git directory is missing.
 - Settlement copies back only media the turn created (not what was mirrored
   in), so media the user deleted or moved meanwhile does not return. Until
   then a turn's generated media is only in the worktree, so `copy_file` /
@@ -149,19 +157,29 @@ worktree use the app's original folder.
   uncommitted changes) picks the delete dialog's copy. Never infer it from
   the phase: "merged" stays after a stopped turn leaves edits.
 - `deleteMergedBranch` (orphan sweep, failed creation) also deletes a
-  branch whose tree equals its merge-base with `HEAD`: squashed work is
-  never "merged" to `git branch -d`.
-- Restore-to-message refuses a target commit that only worktree branches
-  contain, or that no branch contains when the chat has a squash
-  (`Dyad-Chat` trailer) on the app's branch: after a merged worktree is
-  deleted its checkpoints are on no branch. A commit on no branch for a chat
-  that never integrated (history rewritten by a rebase) restores as before.
-- `.env*` files are gitignored, so `syncEnvironmentFiles` copies them into a
+  branch whose tree equals its merge-base with `HEAD` (once
+  `recordIntegratedSquash` has merged the squash into the worktree, that
+  merge-base is the squash): squashed work is never "merged" to
+  `git branch -d`.
+- Restore-to-message decides by the branch being restored: a target commit
+  that branch contains restores as usual. Otherwise it refuses one that only
+  worktree branches contain, one written in a worktree (a `Dyad-Chat`
+  trailer) that another ordinary branch also reaches, or one no branch
+  contains when the chat has a squash (`Dyad-Chat` trailer) on the app's
+  branch: after a merged worktree is deleted its checkpoints are on no
+  branch. A commit on no branch for a chat that never integrated (history
+  rewritten by a rebase) restores as before.
+- `parseDyadCommitTrailers` reads trailers only from a message's last
+  paragraph, never its subject (the chat summary), like Git.
+- `syncEnvironmentFiles` copies the app's untracked `.env*` files into a
   worktree (missing or older than the app's copy) at creation, every writable
-  turn, and every worktree preview start. Files either checkout tracks or has
-  staged are skipped (an uncommitted edit in the app's folder would be
-  committed by the chat), nothing is copied when Git cannot list them, and a
-  worktree entry that is not a regular file (a symlink) is never written. Compaction keeps its transcript
+  turn, and every worktree preview start. Only files the worktree's Git
+  ignores (`git check-ignore`) are copied: the scaffold `.gitignore` covers
+  only `*.local`, so a plain `.env` would be committed by the chat. Files
+  either checkout tracks or has staged (a staged deletion included) are
+  skipped (an uncommitted edit in the app's folder would be committed by the
+  chat), nothing is copied when Git cannot tell, and a worktree entry that is
+  not a regular file (a symlink) is never written. Compaction keeps its transcript
   backup in the app's folder too (`durableAppPath`), and turns mirror the
   chat's `.dyad/chats/<id>/` backups in.
 - Use `waitForChange(signal, { timeoutMs })` to poll; racing it against a
@@ -215,6 +233,9 @@ worktree use the app's original folder.
   tests (`failedTrees`; never install failures, which are often transient,
   nor `transientFailure` results: a timeout or a check that could not run)
   fails again without rerunning until Retry calls `forgetValidation`.
+  A missing TypeScript package or tsconfig after a successful snapshot
+  install makes the type-check `missing` (non-blocking), not transient: it
+  would still be missing on a retry.
 - The type-check baseline (errors the target already has) uses the app's
   folder when it is at the target commit and has no uncommitted changes
   other than install-written files.
@@ -227,7 +248,8 @@ worktree use the app's original folder.
   `WAITING` asking the user to commit or discard those files. Install-written
   files in the way (the main preview rewrote a lockfile) are restored to
   `HEAD` first (`discardInstallRewritesInTheWay`), so only the user's own
-  edits ever block.
+  edits ever block. Not when the `package.json` beside them is edited too:
+  that is the user's own dependency change, so it waits for them.
 - A turn that hit its step limit still committed, so it requests integration
   like a finished one; only cancelled or failed turns wait for the next turn.
   A turn that completes a merge left by an attempt that already failed also
@@ -252,7 +274,8 @@ worktree use the app's original folder.
   come only from this app's chats.
 - A worktree is never deleted while `resolving-conflicts` (a repair turn is
   queued for it). An app deletion that does not go through resumes the
-  integration it stopped.
+  integration it stopped, for that app only (`resumeIntegrationForApp`):
+  another app's deletion may be holding its own stopped.
 - An automatic `REQUESTED` from `resolving-conflicts` keeps `repairAttempts`
   (only a user-initiated request resets it), so the repair limit holds.
 - A resolved repair with no `targetCommit` (a pause recovered after a
@@ -316,8 +339,10 @@ worktree use the app's original folder.
 
 - `.git` is a file in a linked worktree. Use `resolveGitDirSync` /
   `rev-parse --git-path` for per-worktree markers and
-  `resolveGitCommonDirSync` for shared config. Parse branch lists with
-  `--format=%(refname:short)` (otherwise `+ branch` markers leak through).
+  `resolveGitCommonDirSync` for shared config. List branches with
+  `for-each-ref --format=%(refname:lstrip=2) refs/heads`: `git branch --list`
+  adds `*`/`+` markers and a detached-HEAD entry, and `refname:short` prints
+  `heads/<name>` when a tag shares the branch's name.
 
 ## Tests
 

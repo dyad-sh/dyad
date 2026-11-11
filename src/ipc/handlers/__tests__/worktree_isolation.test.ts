@@ -81,6 +81,7 @@ import {
 } from "@/ipc/handlers/version_handlers";
 import { registerChatHandlers } from "@/ipc/handlers/chat_handlers";
 import * as gitWorktreeUtils from "@/ipc/utils/git_worktree_utils";
+import * as chatJournalCleanup from "@/ipc/services/chat_journal_cleanup";
 import type { Version } from "@/ipc/types";
 
 describe("worktree isolation (integration)", () => {
@@ -1400,6 +1401,7 @@ describe("worktree isolation (integration)", () => {
     await waitForMerged(chatId);
     await waitForQuietApp();
     const branch = getWorkspaceForChat(chatId)!.branch;
+    const worktreeTip = git(["rev-parse", branch]);
     await chatWorkspaceService.deleteChatWorkspace(chatId);
     // Its work is merged, so the branch went with the worktree.
     expect(git(["branch", "--list", branch])).toBe("");
@@ -1409,17 +1411,33 @@ describe("worktree isolation (integration)", () => {
       orderBy: [asc(messages.id)],
     });
     const main = git(["rev-parse", targetBranch]);
-    const restore = await versionPreviewHandlerService.restoreToMessage({
-      appId: harness.appId,
-      chatId,
-      messageId: prompts.at(-1)!.id,
-      restoreCodebase: true,
-    });
+    const restoreLastPrompt = () =>
+      versionPreviewHandlerService.restoreToMessage({
+        appId: harness.appId,
+        chatId,
+        messageId: prompts.at(-1)!.id,
+        restoreCodebase: true,
+      });
+    const restore = await restoreLastPrompt();
     expect(restore.repositoryOutcome).toBe("unchanged");
     expect(restore.notification?.message).toMatch(
       /only exists in a chat's worktree/,
     );
     expect(git(["rev-parse", targetBranch])).toBe(main);
+
+    // An ordinary branch that also reaches the checkpoint (one a user cut
+    // from the worktree) does not put it in the app branch's history.
+    git(["branch", "kept-from-worktree", worktreeTip]);
+    try {
+      const restoreWithSideBranch = await restoreLastPrompt();
+      expect(restoreWithSideBranch.repositoryOutcome).toBe("unchanged");
+      expect(restoreWithSideBranch.notification?.message).toMatch(
+        /only exists in a chat's worktree/,
+      );
+      expect(git(["rev-parse", targetBranch])).toBe(main);
+    } finally {
+      git(["branch", "-D", "kept-from-worktree"]);
+    }
   }, 60_000);
 
   it("removes a chat's worktree when the chat is deleted", async () => {
@@ -1433,6 +1451,26 @@ describe("worktree isolation (integration)", () => {
     expect(fs.existsSync(workspace.path)).toBe(true);
 
     const deleteChat = h.ipcHandlers.get("delete-chat")!;
+    // A delete that fails leaves the chat with its worktree, uncommitted
+    // edits included.
+    fs.writeFileSync(path.join(workspace.path, "draft.txt"), "keep me\n");
+    const deleteSpy = vi
+      .spyOn(chatJournalCleanup, "deleteChatJournals")
+      .mockRejectedValueOnce(new Error("EBUSY: resource busy or locked"));
+    try {
+      const failed = (await deleteChat(createFakeIpcEvent([]), chatId)) as {
+        ok: boolean;
+      };
+      expect(failed.ok).toBe(false);
+    } finally {
+      deleteSpy.mockRestore();
+    }
+    expect(getWorkspaceForChat(chatId)?.status).toBe("active");
+    expect(
+      fs.readFileSync(path.join(workspace.path, "draft.txt"), "utf8"),
+    ).toBe("keep me\n");
+    fs.rmSync(path.join(workspace.path, "draft.txt"));
+
     const result = (await deleteChat(createFakeIpcEvent([]), chatId)) as {
       ok: boolean;
     };
@@ -1753,6 +1791,38 @@ describe("worktree isolation (integration)", () => {
       "# the chat added a dependency",
     );
     expect(git(["status", "--porcelain"])).toBe("");
+    await discardWorkspace(chatId);
+  }, 60_000);
+
+  it("keeps a lockfile the user changed with package.json in the app's folder", async () => {
+    await waitForQuietApp();
+    const chatId = await createChat();
+    const lockfile = harness.readAppFile("pnpm-lock.yaml");
+    const manifest = harness.readAppFile("package.json");
+    // The user installed a dependency by hand: both files are edited.
+    const userLockfile = `${lockfile}\n# the user added a dependency\n`;
+    fs.writeFileSync(path.join(harness.appDir, "pnpm-lock.yaml"), userLockfile);
+    fs.writeFileSync(
+      path.join(harness.appDir, "package.json"),
+      manifest.replace(/\}\s*$/, ',\n  "x-user-edit": true\n}\n'),
+    );
+    try {
+      await landTurn(chatId, {
+        "pnpm-lock.yaml": `${lockfile}\n# the chat added a dependency\n`,
+      });
+      await vi.waitFor(
+        () =>
+          expect(getWorkspaceForChat(chatId)?.integrationDetail).toMatch(
+            /files this chat also changed/,
+          ),
+        { timeout: 30_000, interval: 50 },
+      );
+      expect(harness.readAppFile("pnpm-lock.yaml")).toBe(userLockfile);
+    } finally {
+      git(["checkout", "--", "pnpm-lock.yaml", "package.json"]);
+    }
+    workspaceIntegrationQueue.resumePending();
+    await waitForMerged(chatId);
     await discardWorkspace(chatId);
   }, 60_000);
 

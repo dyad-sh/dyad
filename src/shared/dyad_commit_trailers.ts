@@ -18,11 +18,20 @@ export interface DyadCommitOrigin {
  * checkpoint carries `Dyad-Chat`, `Dyad-Turn`, and `Dyad-Workspace`; the one
  * squash commit that lands a worktree's work on the app's branch carries the
  * chat, the worktree, and a `Dyad-Turn` for every turn it includes.
+ *
+ * Like Git, only the message's last paragraph holds trailers, and never its
+ * subject: a chat summary such as "Dyad-Chat: 5" must not be able to claim
+ * a commit for another chat.
  */
 export function parseDyadCommitTrailers(message: string): DyadCommitOrigin {
-  const chat = /^Dyad-Chat: (\d+)\s*$/m.exec(message);
-  const workspace = /^Dyad-Workspace: (\S+)\s*$/m.exec(message);
-  const turnMessageIds = [...message.matchAll(/^Dyad-Turn: (\d+)\s*$/gm)]
+  const paragraphs = message
+    .replace(/\r\n/g, "\n")
+    .trim()
+    .split(/\n[ \t]*\n/);
+  const trailers = paragraphs.length > 1 ? paragraphs.at(-1)! : "";
+  const chat = /^Dyad-Chat: (\d+)\s*$/m.exec(trailers);
+  const workspace = /^Dyad-Workspace: (\S+)\s*$/m.exec(trailers);
+  const turnMessageIds = [...trailers.matchAll(/^Dyad-Turn: (\d+)\s*$/gm)]
     .map((match) => Number.parseInt(match[1], 10))
     .filter((id) => Number.isSafeInteger(id) && id > 0);
   return {

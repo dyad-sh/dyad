@@ -162,9 +162,11 @@ describe("ChatWorkspaceRegistry", () => {
     const published: number[] = [];
     registry.subscribe((appId) => published.push(appId));
 
-    const woke = registry.waitForChange();
+    // One change wakes every waiter (a turn and an integration worker, say),
+    // not only the first.
+    const woke = [registry.waitForChange(), registry.waitForChange()];
     const releaseReader = registry.addReader(APP, 9);
-    await expect(woke).resolves.toBeUndefined();
+    await expect(Promise.all(woke)).resolves.toEqual([undefined, undefined]);
     releaseReader();
     expect(published).toEqual([]);
 

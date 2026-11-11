@@ -47,4 +47,49 @@ describe("runWorkspaceScopedOperation", () => {
       deletion.release();
     }
   });
+
+  it("releases app-wide and workspace claims from a workspace-scoped operation", async () => {
+    const appId = 4243;
+    const workspaceKey = workspaceRuntimeId(8);
+    const released = deferred();
+    const finish = deferred();
+    const operation = runWorkspaceScopedOperation(
+      {
+        appId,
+        workspaceKey,
+        operation: "prepare then deploy",
+        appResources: ["app-path"],
+        workspaceResources: ["repository"],
+      },
+      async (context) => {
+        context.releaseResources(["app-path", "repository"]);
+        released.resolve();
+        await finish.promise;
+      },
+    );
+    await released.promise;
+
+    try {
+      // Both claims are free while the operation is still running.
+      await expect(
+        appOperationCoordinator.run(
+          { appId, operation: "rename app", resources: ["app-path"] },
+          async () => "renamed",
+        ),
+      ).resolves.toBe("renamed");
+      await expect(
+        appOperationCoordinator.run(
+          {
+            appId: workspaceKey,
+            operation: "commit in workspace",
+            resources: ["repository"],
+          },
+          async () => "committed",
+        ),
+      ).resolves.toBe("committed");
+    } finally {
+      finish.resolve();
+      await operation;
+    }
+  });
 });

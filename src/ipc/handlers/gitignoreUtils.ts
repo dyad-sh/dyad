@@ -48,8 +48,14 @@ async function ensureGitignored(
 }
 
 /**
- * Ensures `.dyad/` is listed in the project's `.gitignore`.
- * Creates `.gitignore` if it doesn't exist.
+ * Keeps `.dyad/` out of Git for the app.
+ *
+ * - Does nothing inside a chat worktree, or when the repository's
+ *   `info/exclude` already lists `.dyad/`.
+ * - With worktree isolation on, adds `.dyad/` to the repository's
+ *   `info/exclude` and leaves `.gitignore` untouched.
+ * - Otherwise (or when `info/exclude` cannot be written), adds `.dyad/` to
+ *   the app's `.gitignore`, creating it if needed.
  */
 export async function ensureDyadGitignored(appPath: string): Promise<void> {
   // With worktree isolation `.dyad/` is excluded through the repository's
@@ -69,8 +75,14 @@ export async function ensureDyadGitignored(appPath: string): Promise<void> {
   }
   // Before the app's first worktree exists (an attachment on its first
   // message), exclude it the same way rather than edit .gitignore there.
-  if (readSettings().enableWorktreeIsolation === true && checkoutRoot) {
-    await excludeDyadMetadata(checkoutRoot);
+  // When the repository's Git directory is missing (a linked checkout whose
+  // repository moved), fall back to .gitignore: an uncommitted .gitignore
+  // edit is better than committing .dyad/.
+  if (
+    readSettings().enableWorktreeIsolation === true &&
+    checkoutRoot &&
+    (await excludeDyadMetadata(checkoutRoot))
+  ) {
     return;
   }
   await ensureGitignored(appPath, [".dyad/"]);

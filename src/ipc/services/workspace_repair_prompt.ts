@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, lt, or } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, notLike, or } from "drizzle-orm";
 import { db } from "@/db";
 import { chats, messages } from "@/db/schema";
 import { execGit } from "@/ipc/utils/git_utils";
@@ -20,8 +20,13 @@ function truncate(text: string, limit: number): string {
 }
 
 async function git(args: string[], cwd: string): Promise<string> {
+  return (await gitOrNull(args, cwd)) ?? "";
+}
+
+/** Git's output, or `null` when the command failed. */
+async function gitOrNull(args: string[], cwd: string): Promise<string | null> {
   const result = await execGit(args, cwd);
-  return result.exitCode === 0 ? result.stdout : "";
+  return result.exitCode === 0 ? result.stdout : null;
 }
 
 /** The chat's recent user requests, newest last, excluding Dyad prompts. */
@@ -95,6 +100,8 @@ async function otherChatIntents(
   for (const producer of producers) {
     if (producer.chatId === chatId || seenChats.has(producer.chatId)) continue;
     seenChats.add(producer.chatId);
+    // A repair turn's own prompt is Dyad's, not the chat's intent: use the
+    // request before it.
     const request = await db
       .select({ content: messages.content })
       .from(messages)
@@ -103,6 +110,7 @@ async function otherChatIntents(
           eq(messages.chatId, producer.chatId),
           eq(messages.role, "user"),
           lt(messages.id, producer.id),
+          notLike(messages.content, `${WORKSPACE_REPAIR_PROMPT_PREFIX}%`),
         ),
       )
       .orderBy(desc(messages.id))
@@ -147,22 +155,33 @@ export async function buildConflictDiffSections({
   targetBranch: string;
   /** How the agent addresses a file. */
   label: (file: string) => string;
-  readDiffs: (file: string) => Promise<{ ours: string; theirs: string }>;
+  /** Each side's diff, or `null` when Git could not produce it. */
+  readDiffs: (
+    file: string,
+  ) => Promise<{ ours: string | null; theirs: string | null }>;
 }): Promise<string[]> {
   let remainingDiffBudget = MAX_TOTAL_DIFF_CHARS;
   const sections: string[] = [];
   const omittedFiles: string[] = [];
+  const describeDiff = (diff: string | null) =>
+    diff === null
+      ? "(diff unavailable: Git could not compute it; read the file directly)"
+      : diff.trim() || "(no change)";
   for (const file of files) {
-    const buildSection = (ours: string, theirs: string, limit: number) =>
+    const buildSection = (
+      ours: string | null,
+      theirs: string | null,
+      limit: number,
+    ) =>
       [
         `### ${label(file)}`,
         "This chat's change:",
         "```diff",
-        truncate(ours.trim() || "(no change)", limit),
+        truncate(describeDiff(ours), limit),
         "```",
         `Change already on ${targetBranch}:`,
         "```diff",
-        truncate(theirs.trim() || "(no change)", limit),
+        truncate(describeDiff(theirs), limit),
         "```",
       ].join("\n");
     const overhead = buildSection("", "", 0).length;
@@ -231,8 +250,11 @@ export async function buildWorkspaceRepairPrompt(
         targetBranch: input.targetBranch,
         label: forAgent,
         readDiffs: async (file) => ({
-          ours: await git(["diff", mergeBase, "HEAD", "--", file], cwd),
-          theirs: await git(["diff", mergeBase, "MERGE_HEAD", "--", file], cwd),
+          ours: await gitOrNull(["diff", mergeBase, "HEAD", "--", file], cwd),
+          theirs: await gitOrNull(
+            ["diff", mergeBase, "MERGE_HEAD", "--", file],
+            cwd,
+          ),
         }),
       })
     : [];

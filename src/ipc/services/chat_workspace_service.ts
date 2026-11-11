@@ -210,24 +210,41 @@ async function detectPackageManager(
   }
 }
 
+/**
+ * `dyad/chat-<id>`, or the first `-<n>` suffix no branch uses yet: a deleted
+ * workspace's unmerged branch is kept, so a chat can retain any number of
+ * them.
+ */
 async function uniqueBranchName(
   repositoryPath: string,
   chatId: number,
 ): Promise<string> {
   const base = `${WORKTREE_BRANCH_PREFIX}${chatId}`;
-  if (!(await gitBranchExists({ path: repositoryPath, branch: base }))) {
-    return base;
-  }
-  for (let suffix = 2; suffix < 100; suffix++) {
-    const candidate = `${base}-${suffix}`;
-    if (!(await gitBranchExists({ path: repositoryPath, branch: candidate }))) {
-      return candidate;
-    }
-  }
-  throw new DyadError(
-    "Could not choose a branch name for the isolated workspace",
-    DyadErrorKind.Conflict,
+  const result = await execGit(
+    [
+      "for-each-ref",
+      "--format=%(refname:lstrip=2)",
+      `refs/heads/${base}`,
+      `refs/heads/${base}-*`,
+    ],
+    repositoryPath,
   );
+  if (result.exitCode !== 0) {
+    throw new DyadError(
+      `Could not list branches to name the isolated workspace: ${result.stderr.trim()}`,
+      DyadErrorKind.External,
+    );
+  }
+  const taken = new Set(
+    result.stdout
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean),
+  );
+  if (!taken.has(base)) return base;
+  let suffix = 2;
+  while (taken.has(`${base}-${suffix}`)) suffix++;
+  return `${base}-${suffix}`;
 }
 
 /**
@@ -283,33 +300,53 @@ async function mirrorMedia(
  * ordinary file tools, which resolve paths inside the workspace. The chat's
  * plan files are copied in before a turn. Returns the working plan's content
  * so settlement copies it back only when the turn changed it.
+ *
+ * A plan that fails to copy is logged and skipped rather than failing the
+ * turn. When that plan is the working plan, the workspace may hold a stale
+ * copy, so settlement must not copy it back over the app's newer one
+ * (`copyWorkingPlanBack: false`).
  */
 async function mirrorChatPlansIn(
   fromAppPath: string,
   toAppPath: string,
   chatId: number,
-): Promise<string | null> {
+): Promise<{ planBaseline: string | null; copyWorkingPlanBack: boolean }> {
   const slug = planSlugForChat(chatId);
+  const workingPlanName = `${slug}.md`;
   const fromDir = planDirForAppPath(fromAppPath);
   let names: string[];
   try {
     names = (await fsPromises.readdir(fromDir)).filter(
       (name) =>
-        name === `${slug}.md` ||
+        name === workingPlanName ||
         (name.startsWith(`${slug}-`) && name.endsWith(".md")),
     );
   } catch {
-    return null;
+    return { planBaseline: null, copyWorkingPlanBack: true };
   }
-  if (names.length === 0) return null;
+  if (names.length === 0) {
+    return { planBaseline: null, copyWorkingPlanBack: true };
+  }
   const toDir = planDirForAppPath(toAppPath);
   await fsPromises.mkdir(toDir, { recursive: true });
+  let copyWorkingPlanBack = true;
   for (const name of names) {
-    await fsPromises.copyFile(path.join(fromDir, name), path.join(toDir, name));
+    try {
+      await fsPromises.copyFile(
+        path.join(fromDir, name),
+        path.join(toDir, name),
+      );
+    } catch (error) {
+      logger.warn(`Failed to mirror plan ${name} into the workspace`, error);
+      if (name === workingPlanName) copyWorkingPlanBack = false;
+    }
   }
-  return fsPromises
-    .readFile(path.join(toDir, `${slug}.md`), "utf8")
-    .catch(() => null);
+  return {
+    planBaseline: await fsPromises
+      .readFile(path.join(toDir, workingPlanName), "utf8")
+      .catch(() => null),
+    copyWorkingPlanBack,
+  };
 }
 
 /**
@@ -362,6 +399,8 @@ async function mirrorWorkingPlanBack(
 /** What a turn's settlement compares against to copy back only its own changes. */
 interface MirroredState {
   planBaseline: string | null;
+  /** False when the working plan could not be copied in. */
+  copyWorkingPlanBack: boolean;
   mediaBaseline: ReadonlySet<string>;
 }
 
@@ -386,11 +425,7 @@ async function mirrorIntoWorkspace(
   );
   return {
     mediaBaseline,
-    planBaseline: await mirrorChatPlansIn(
-      originalAppPath,
-      workspaceAppPath,
-      chatId,
-    ),
+    ...(await mirrorChatPlansIn(originalAppPath, workspaceAppPath, chatId)),
   };
 }
 
@@ -964,9 +999,12 @@ class ChatWorkspaceService {
     workspaceIntegrationQueue.stopApp(appId);
   }
 
-  /** Reschedules every workspace that is mid-integration. */
-  resumeIntegration(): void {
-    workspaceIntegrationQueue.resumePending();
+  /**
+   * Reschedules the app's workspaces that are mid-integration, after an app
+   * deletion that stopped them did not go through.
+   */
+  resumeIntegrationForApp(appId: number): void {
+    workspaceIntegrationQueue.resumePending(appId);
   }
 
   private async settleIsolatedTurn(
@@ -1028,14 +1066,19 @@ class ChatWorkspaceService {
         }).catch((error) =>
           logger.warn("Failed to mirror media back to the app", error),
         );
-        await mirrorWorkingPlanBack(
-          getWorkspaceAppPath(settledWorkspace),
-          original,
-          settledWorkspace.chatId,
-          mirrored.planBaseline,
-        ).catch((error) =>
-          logger.warn("Failed to copy the chat's plan back to the app", error),
-        );
+        if (mirrored.copyWorkingPlanBack) {
+          await mirrorWorkingPlanBack(
+            getWorkspaceAppPath(settledWorkspace),
+            original,
+            settledWorkspace.chatId,
+            mirrored.planBaseline,
+          ).catch((error) =>
+            logger.warn(
+              "Failed to copy the chat's plan back to the app",
+              error,
+            ),
+          );
+        }
       }
       chatWorkspaceRegistry.release(reservation);
       const workspace = getWorkspaceById(workspaceId);
@@ -1366,19 +1409,24 @@ class ChatWorkspaceService {
   }
 
   /**
-   * Called before a chat is deleted: its workspace goes with it. Unmerged
-   * commits stay reachable on the branch because only merged branches are
-   * deleted.
+   * Called before a chat is deleted (after its turns are drained), and
+   * returns the removal of its workspace to run once the chat row's delete
+   * has committed. Removing first would throw away the worktree, uncommitted
+   * changes included, of a chat whose delete then failed. Unmerged commits
+   * stay reachable on the branch because only merged branches are deleted.
    */
-  async onChatDeleting(chatId: number): Promise<void> {
+  prepareChatDeletion(chatId: number): () => Promise<void> {
+    // Captured now: deleting the chat row deletes this one by cascade.
     const workspace = getWorkspaceForChat(chatId);
-    if (!workspace) return;
-    await this.forceRemoveWorkspace(workspace).catch((error) =>
-      logger.warn(
-        `Failed to remove workspace of deleted chat ${chatId}`,
-        error,
-      ),
-    );
+    return async () => {
+      if (!workspace) return;
+      await this.forceRemoveWorkspace(workspace).catch((error) =>
+        logger.warn(
+          `Failed to remove workspace of deleted chat ${chatId}`,
+          error,
+        ),
+      );
+    };
   }
 
   /**

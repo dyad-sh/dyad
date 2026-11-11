@@ -9,8 +9,9 @@ import { showSuccess } from "@/lib/toast";
 import { shouldShowConcurrentChatBanner } from "./workspace_status";
 
 /**
- * Shown while another chat is changing the same app and worktree isolation is
- * off: both chats would edit (and checkpoint) the same folder.
+ * Shown while another chat is changing the same app's folder and worktree
+ * isolation is off: both chats would edit (and checkpoint) that folder. Chats
+ * that kept a worktree write there instead, so they do not count.
  */
 export function ConcurrentChatBanner({
   appId,

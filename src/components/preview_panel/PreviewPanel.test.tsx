@@ -35,6 +35,19 @@ const mocks = vi.hoisted(() => ({
   runApp: vi.fn(),
   previewIframeMounted: vi.fn(),
   previewIframeUnmounted: vi.fn(),
+  /**
+   * What `usePreviewRuntime` returns; null means the selected app's own
+   * folder, resolved.
+   */
+  previewRuntime: null as {
+    runtimeAppId: number | null;
+    appId: number | null;
+    resolved: boolean;
+    isWorkspace: boolean;
+  } | null,
+  attachInterest: vi.fn(),
+  detachInterest: vi.fn(),
+  useRunAppTarget: vi.fn(),
   selectAppForPreview: vi.fn(),
   selectedAppIdAtom: Symbol("selectedAppIdAtom"),
   selectedAppId: 1,
@@ -86,14 +99,16 @@ vi.mock("@/atoms/testRuntimeAtoms", () => ({
 }));
 
 // Which runtime the preview shows has its own suite (usePreviewRuntime.test);
-// here it is the selected app's own folder.
+// here it is the selected app's own folder unless a test sets
+// `mocks.previewRuntime` (an isolated chat's workspace, or not yet known).
 vi.mock("@/hooks/usePreviewRuntime", () => ({
-  usePreviewRuntime: () => ({
-    runtimeAppId: mocks.selectedAppId,
-    appId: mocks.selectedAppId,
-    resolved: true,
-    isWorkspace: false,
-  }),
+  usePreviewRuntime: () =>
+    mocks.previewRuntime ?? {
+      runtimeAppId: mocks.selectedAppId,
+      appId: mocks.selectedAppId,
+      resolved: true,
+      isWorkspace: false,
+    },
 }));
 
 vi.mock("@/preview_console/hooks", () => ({
@@ -143,6 +158,10 @@ vi.mock("@/ipc/types", () => ({
       selectNodeFolder: vi.fn(),
       openExternalUrl: mocks.openExternalUrl,
     },
+    windowInfrastructure: {
+      attachInterest: mocks.attachInterest,
+      detachInterest: mocks.detachInterest,
+    },
     events: {
       system: {
         onManagedNodeInstallProgress: vi.fn(() => vi.fn()),
@@ -153,10 +172,13 @@ vi.mock("@/ipc/types", () => ({
 
 vi.mock("@/hooks/useRunApp", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/hooks/useRunApp")>()),
-  useRunApp: () => ({
-    loading: false,
-    runApp: mocks.runApp,
-  }),
+  useRunApp: (targetRuntimeId?: number | null) => {
+    mocks.useRunAppTarget(targetRuntimeId);
+    return {
+      loading: false,
+      runApp: mocks.runApp,
+    };
+  },
 }));
 
 vi.mock("@/hooks/useTestRecorder", async () => {
@@ -200,13 +222,26 @@ vi.mock("react-resizable-panels", () => ({
 }));
 
 vi.mock("./PreviewIframe", () => ({
-  PreviewIframe: ({ recorder }: { recorder: { instanceId: number } }) => {
+  PreviewIframe: ({
+    recorder,
+    runtimeAppId,
+    isWorkspacePreview,
+  }: {
+    recorder: { instanceId: number };
+    runtimeAppId: number | null;
+    isWorkspacePreview: boolean;
+  }) => {
     useEffect(() => {
       mocks.previewIframeMounted();
       return () => mocks.previewIframeUnmounted();
     }, []);
     return (
-      <div data-testid="preview-iframe" data-recorder={recorder.instanceId}>
+      <div
+        data-testid="preview-iframe"
+        data-recorder={recorder.instanceId}
+        data-runtime-app-id={String(runtimeAppId)}
+        data-workspace-preview={String(isWorkspacePreview)}
+      >
         Preview iframe
       </div>
     );
@@ -298,6 +333,12 @@ describe("PreviewPanel", () => {
     mocks.runApp.mockResolvedValue(undefined);
     mocks.previewIframeMounted.mockReset();
     mocks.previewIframeUnmounted.mockReset();
+    mocks.previewRuntime = null;
+    mocks.attachInterest.mockReset();
+    mocks.attachInterest.mockResolvedValue(undefined);
+    mocks.detachInterest.mockReset();
+    mocks.detachInterest.mockResolvedValue(undefined);
+    mocks.useRunAppTarget.mockReset();
     mocks.previewMode = "preview";
     mocks.previewNativeViewAppId = null;
     mocks.testRunPhase = "idle";
@@ -541,5 +582,101 @@ describe("PreviewPanel", () => {
     expect(
       screen.getByRole("button", { name: "Reopen nodejs.org download" }),
     ).toBeTruthy();
+  });
+
+  describe("isolated chat workspaces", () => {
+    const WORKSPACE_RUNTIME_ID = 1_000_000_003;
+    const workspaceRuntime = {
+      runtimeAppId: WORKSPACE_RUNTIME_ID,
+      appId: 1,
+      resolved: true,
+      isWorkspace: true,
+    };
+
+    it("starts nothing until the selected chat's runtime is known, then starts the workspace's", async () => {
+      // The chat's workspace lookup is still in flight.
+      mocks.previewRuntime = {
+        runtimeAppId: null,
+        appId: 1,
+        resolved: false,
+        isWorkspace: false,
+      };
+      const { rerender } = render(<PreviewPanel />);
+      await act(async () => {
+        await Promise.resolve();
+      });
+      // Starting the app's folder here would preview the wrong code for an
+      // isolated chat.
+      expect(mocks.selectAppForPreview).not.toHaveBeenCalled();
+      expect(mocks.runApp).not.toHaveBeenCalled();
+      expect(screen.getByTestId("preview-iframe").dataset.runtimeAppId).toBe(
+        "null",
+      );
+
+      mocks.previewRuntime = workspaceRuntime;
+      rerender(<PreviewPanel />);
+
+      await waitFor(() =>
+        expect(mocks.runApp).toHaveBeenCalledWith(WORKSPACE_RUNTIME_ID),
+      );
+      expect(mocks.runApp).toHaveBeenCalledTimes(1);
+      expect(mocks.selectAppForPreview).toHaveBeenCalledWith({
+        appId: WORKSPACE_RUNTIME_ID,
+      });
+      expect(mocks.selectAppForPreview).not.toHaveBeenCalledWith({ appId: 1 });
+      expect(mocks.useRunAppTarget).toHaveBeenLastCalledWith(
+        WORKSPACE_RUNTIME_ID,
+      );
+    });
+
+    it("asks for the workspace's output while it is shown and stops when it is not", async () => {
+      mocks.previewRuntime = workspaceRuntime;
+      const { rerender } = render(<PreviewPanel />);
+
+      const interest = { kind: "app-output", appId: WORKSPACE_RUNTIME_ID };
+      expect(mocks.attachInterest).toHaveBeenCalledTimes(1);
+      expect(mocks.attachInterest).toHaveBeenCalledWith(interest);
+      expect(mocks.detachInterest).not.toHaveBeenCalled();
+
+      // Switching to a chat in the app's folder: the window already gets the
+      // selected app's output, so only the workspace's interest is dropped.
+      mocks.previewRuntime = null;
+      rerender(<PreviewPanel />);
+
+      expect(mocks.detachInterest).toHaveBeenCalledTimes(1);
+      expect(mocks.detachInterest).toHaveBeenCalledWith(interest);
+      expect(mocks.attachInterest).toHaveBeenCalledTimes(1);
+    });
+
+    it("never asks for extra output for the app's own folder", () => {
+      render(<PreviewPanel />);
+
+      expect(mocks.attachInterest).not.toHaveBeenCalled();
+    });
+
+    it("shows the workspace's runtime in the iframe", () => {
+      mocks.previewRuntime = workspaceRuntime;
+      render(<PreviewPanel />);
+
+      const iframe = screen.getByTestId("preview-iframe");
+      expect(iframe.dataset.runtimeAppId).toBe(String(WORKSPACE_RUNTIME_ID));
+      expect(iframe.dataset.workspacePreview).toBe("true");
+    });
+
+    it("remounts the iframe when switching from the app's folder to a workspace", () => {
+      const { rerender } = render(<PreviewPanel />);
+      expect(
+        screen.getByTestId("preview-iframe").dataset.workspacePreview,
+      ).toBe("false");
+
+      mocks.previewRuntime = workspaceRuntime;
+      rerender(<PreviewPanel />);
+
+      expect(mocks.previewIframeUnmounted).toHaveBeenCalledTimes(1);
+      expect(mocks.previewIframeMounted).toHaveBeenCalledTimes(2);
+      expect(screen.getByTestId("preview-iframe").dataset.runtimeAppId).toBe(
+        String(WORKSPACE_RUNTIME_ID),
+      );
+    });
   });
 });

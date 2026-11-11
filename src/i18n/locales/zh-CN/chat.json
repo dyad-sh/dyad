@@ -515,7 +515,7 @@
     "npmDiskBannerMessage": "此应用使用 npm 安装依赖，因此每个聊天的工作树都会拥有一份完整的 node_modules 副本，并且工作树在合并后仍会保留。多个聊天可能会占用大量磁盘空间。请切换到 pnpm，它会在工作树之间共享每个包的同一份副本。",
     "npmDiskBannerAction": "获取 pnpm",
     "deleteWorktree": "删除工作树",
-    "deleteWorktreeBusy": "等此聊天的代理和合并完成后，即可删除此工作树。",
+    "deleteWorktreeBusy": "等此聊天的智能体和合并完成后，即可删除此工作树。",
     "deleteWorktreeTitle": "要删除此聊天的工作树吗？",
     "deleteWorktreeMerged": "它的工作已合并到 {{target}}。删除会移除工作树文件夹及其已安装的依赖，以释放磁盘空间。",
     "deleteWorktreeUnmerged": "尚未合并到 {{target}} 的工作会将提交保留在分支 {{branch}} 上，但工作树中未提交的更改会被删除。删除还会移除其已安装的依赖，以释放磁盘空间。",

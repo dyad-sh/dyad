@@ -578,7 +578,8 @@ async function deleteAppById(
     // The deletion stopped the app's integration attempts; if it did not go
     // through, pick them back up. Only now: while the fence above was held,
     // a resumed attempt would be refused and recorded as failed.
-    if (!deletionCommitted) chatWorkspaceService.resumeIntegration();
+    // Only this app's: another app's deletion may be stopping its own.
+    if (!deletionCommitted) chatWorkspaceService.resumeIntegrationForApp(appId);
   }
 
   // The app row is gone, so nothing will ever ask for its parked draft or its

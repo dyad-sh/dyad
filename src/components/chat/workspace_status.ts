@@ -95,7 +95,16 @@ export function shouldShowConcurrentChatBanner({
   if (!overview || chatId === undefined) return false;
   if (isolationEnabled) return false;
   if (dismissedAppIds.has(overview.appId)) return false;
-  return overview.writableChatIds.some((id) => id !== chatId);
+  // A chat that kept its worktree still writes there with isolation off
+  // (only chats without one use the app's folder), so neither this chat nor
+  // another chat with a worktree shares the folder.
+  const chatsWithWorktree = new Set(
+    overview.workspaces.map((workspace) => workspace.chatId),
+  );
+  if (chatsWithWorktree.has(chatId)) return false;
+  return overview.writableChatIds.some(
+    (id) => id !== chatId && !chatsWithWorktree.has(id),
+  );
 }
 
 /**

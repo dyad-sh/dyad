@@ -2,7 +2,10 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import log from "electron-log";
 import type { WorkspaceValidationCheck } from "@/db/schema";
-import { runTypeScriptCheck } from "@/ipc/processors/tsc";
+import {
+  getTypeCheckPreconditionKind,
+  runTypeScriptCheck,
+} from "@/ipc/processors/tsc";
 import { spawnStreaming } from "@/ipc/utils/spawn_streaming";
 import { getPackageManagerCommandEnv } from "@/ipc/utils/socket_firewall";
 import { getUserDataPath } from "@/paths/paths";
@@ -153,11 +156,15 @@ async function runTypeCheck({
   appPath,
   baselineAppPath,
 }: ValidationRunInput): Promise<WorkspaceValidationCheck> {
-  if (!(await fileExists(path.join(appPath, "tsconfig.json")))) {
+  if (
+    !(await fileExists(path.join(appPath, "tsconfig.app.json"))) &&
+    !(await fileExists(path.join(appPath, "tsconfig.json")))
+  ) {
     return {
       name: "type-check",
       outcome: "missing",
-      summary: "No tsconfig.json, so there is no type-check to run.",
+      summary:
+        "No tsconfig.app.json or tsconfig.json, so there is no type-check to run.",
     };
   }
   try {
@@ -176,10 +183,20 @@ async function runTypeCheck({
         const baseline = await runTypeScriptCheck({
           appPath: baselineAppPath,
         });
-        const existing = new Set(baseline.problems.map(diagnosticKey));
-        const introduced = report.problems.filter(
-          (problem) => !existing.has(diagnosticKey(problem)),
-        );
+        // Count occurrences: a second copy of a diagnostic the target already
+        // has once is still new.
+        const existing = new Map<string, number>();
+        for (const problem of baseline.problems) {
+          const key = diagnosticKey(problem);
+          existing.set(key, (existing.get(key) ?? 0) + 1);
+        }
+        const introduced = report.problems.filter((problem) => {
+          const key = diagnosticKey(problem);
+          const remaining = existing.get(key) ?? 0;
+          if (remaining === 0) return true;
+          existing.set(key, remaining - 1);
+          return false;
+        });
         if (introduced.length === 0) {
           return {
             name: "type-check",
@@ -223,12 +240,35 @@ async function runTypeCheck({
       ),
     };
   } catch (error) {
-    return transient({
-      name: "type-check",
-      outcome: "failed",
-      summary: "TypeScript could not run.",
-      output: tail(error instanceof Error ? error.message : String(error)),
-    });
+    const message = error instanceof Error ? error.message : String(error);
+    // The snapshot's install already succeeded, so a missing TypeScript
+    // package or config will still be missing next time: report the check
+    // as missing (which does not block) rather than as a transient failure.
+    switch (getTypeCheckPreconditionKind(error)) {
+      case "typescript-not-found":
+        return {
+          name: "type-check",
+          outcome: "missing",
+          summary:
+            "TypeScript is not installed, so there is no type-check to run.",
+          output: tail(message),
+        };
+      case "tsconfig-not-found":
+        return {
+          name: "type-check",
+          outcome: "missing",
+          summary:
+            "TypeScript found no tsconfig, so there is no type-check to run.",
+          output: tail(message),
+        };
+      default:
+        return transient({
+          name: "type-check",
+          outcome: "failed",
+          summary: "TypeScript could not run.",
+          output: tail(message),
+        });
+    }
   }
 }
 

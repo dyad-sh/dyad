@@ -5,7 +5,11 @@ import { tmpdir } from "node:os";
 import log from "electron-log";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { normalizePath } from "../../../shared/normalizePath";
-import { resolveGitCommonDirSync, resolveGitDirSync } from "./git_dir";
+import {
+  findCheckoutRootSync,
+  resolveGitCommonDirSync,
+  resolveGitDirSync,
+} from "./git_dir";
 import { execGit, gitGetMergeConflicts, withGitAuthor } from "./git_utils";
 
 const logger = log.scope("git_worktree_utils");
@@ -225,12 +229,17 @@ export async function pruneGitWorktrees(repositoryPath: string): Promise<void> {
  * worktrees share. Media and plans mirrored into a workspace then never count
  * as uncommitted work or get swept into a commit, even when the branch the
  * workspace started from predates the app's `.gitignore` entry.
+ *
+ * Returns whether `.dyad/` is excluded afterwards: false when the
+ * repository's Git directory could not be found.
  */
-export async function excludeDyadMetadata(worktreePath: string): Promise<void> {
+export async function excludeDyadMetadata(
+  worktreePath: string,
+): Promise<boolean> {
   const commonDir = resolveGitCommonDirSync(worktreePath);
   // A worktree whose repository moved points at a folder that is gone;
   // creating `info/` there would recreate the old location.
-  if (!fs.existsSync(commonDir)) return;
+  if (!fs.existsSync(commonDir)) return false;
   const excludePath = path.join(commonDir, "info", "exclude");
   let content = "";
   try {
@@ -243,7 +252,7 @@ export async function excludeDyadMetadata(worktreePath: string): Promise<void> {
       .split(/\r?\n/)
       .some((line) => line.trim() === ".dyad/" || line.trim() === ".dyad")
   ) {
-    return;
+    return true;
   }
   await fsPromises.mkdir(path.dirname(excludePath), { recursive: true });
   const separator = content.length > 0 && !content.endsWith("\n") ? "\n" : "";
@@ -252,6 +261,7 @@ export async function excludeDyadMetadata(worktreePath: string): Promise<void> {
     `${content}${separator}.dyad/\n`,
     "utf8",
   );
+  return true;
 }
 
 /**
@@ -289,9 +299,12 @@ export async function repairLinkedWorktrees({
 
 /**
  * Deletes a branch only when its work is already in the checked-out branch:
- * Git agrees it is fully merged, or its files are exactly those of a commit
- * the checked-out branch contains (a chat's work squashed into the target,
- * which Git never sees as merged).
+ * Git agrees it is fully merged, or the branch has exactly the files of its
+ * merge-base with the checked-out branch. Squashed work is never "merged" to
+ * Git, but once integration records the squash in the worktree
+ * (`recordIntegratedSquash`), that merge-base is the squash itself. A branch
+ * whose squash was never recorded, or that has commits since, is kept: losing
+ * a branch is not recoverable, keeping one costs nothing.
  */
 export async function deleteMergedBranch({
   repositoryPath,
@@ -379,12 +392,8 @@ export async function listCommitsNotIn({
  * the checkout's `.git` is looked up the way Git discovers it.
  */
 export function isMergeInProgress(folder: string): boolean {
-  let checkout = path.resolve(folder);
-  while (!fs.existsSync(path.join(checkout, ".git"))) {
-    const parent = path.dirname(checkout);
-    if (parent === checkout) return false;
-    checkout = parent;
-  }
+  const checkout = findCheckoutRootSync(folder);
+  if (checkout === null) return false;
   return fs.existsSync(path.join(resolveGitDirSync(checkout), "MERGE_HEAD"));
 }
 
@@ -471,12 +480,25 @@ export async function mergeIntoWorkspace({
 /**
  * Paths with uncommitted changes (tracked or untracked), relative to the
  * repository root when run from it.
+ *
+ * Read-only: the chat's status is polled while a turn or integration writes
+ * to the same worktree, and a plain `git status` takes `index.lock` to save
+ * its index refresh, which would make their `git add` or commit fail. Like
+ * every automatic Git command here, it never runs the repository's fsmonitor.
  */
 export async function listUncommittedPaths(
   worktreePath: string,
 ): Promise<string[]> {
   const stdout = await runOrThrow(
-    ["status", "--porcelain=v1", "-z", "--untracked-files=all"],
+    [
+      "--no-optional-locks",
+      "-c",
+      "core.fsmonitor=false",
+      "status",
+      "--porcelain=v1",
+      "-z",
+      "--untracked-files=all",
+    ],
     worktreePath,
     "Failed to read the workspace status",
   );
@@ -502,7 +524,9 @@ export async function listBranchesContaining({
   const stdout = await runOrThrow(
     [
       "for-each-ref",
-      "--format=%(refname:short)",
+      // Not `refname:short`, which prints `heads/<name>` for a branch whose
+      // name is also a tag's.
+      "--format=%(refname:lstrip=2)",
       "--contains",
       commit,
       "refs/heads",
@@ -780,8 +804,13 @@ export async function findFilesWithConflictMarkers(
       if (CONFLICT_MARKER_PATTERN.test(content.toString("utf8"))) {
         withMarkers.push(relativePath);
       }
-    } catch {
-      continue;
+    } catch (error) {
+      // A conflict resolved by deleting the file leaves nothing to scan. Any
+      // other failure means the file could not be checked, which must not
+      // pass as "no markers".
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ENOENT" || code === "ENOTDIR") continue;
+      throw error;
     }
   }
   return withMarkers;

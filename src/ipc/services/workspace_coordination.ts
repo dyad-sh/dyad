@@ -78,12 +78,6 @@ export function blockConflictingWorkspaceScopedOperations(
   };
 }
 
-/**
- * Runs `operation` holding the app-wide claims on the app and the file/runtime
- * claims on the workspace. `releaseResources` drops the named claims on
- * whichever key holds them, so a caller can release preparation claims the
- * same way whether or not the turn is isolated.
- */
 export function runWorkspaceScopedOperation<Result>(
   request: WorkspaceScopedOperationRequest,
   operation: (context: AppOperationContext) => Promise<Result>,
@@ -109,7 +103,7 @@ export function runWorkspaceScopedOperation<Result>(
       operation,
     );
   }
-  const runInWorkspace = (appContext?: AppOperationContext) =>
+  const runInWorkspace = (appContext: AppOperationContext) =>
     appOperationCoordinator.run(
       {
         appId: workspaceKey,
@@ -119,10 +113,11 @@ export function runWorkspaceScopedOperation<Result>(
       },
       (workspaceContext) =>
         operation({
-          // Releasing a resource a key does not hold is a no-op there.
+          // Each context drops only the claims it holds: app-wide ones are
+          // on the app, file and runtime ones on the workspace.
           releaseResources: (resources) => {
             workspaceContext.releaseResources(resources);
-            appContext?.releaseResources(resources);
+            appContext.releaseResources(resources);
           },
         }),
     );
@@ -139,6 +134,6 @@ export function runWorkspaceScopedOperation<Result>(
       refuseWhenRecording:
         appResources.length > 0 ? refuseWhenRecording : undefined,
     },
-    (appContext) => runInWorkspace(appContext),
+    runInWorkspace,
   );
 }

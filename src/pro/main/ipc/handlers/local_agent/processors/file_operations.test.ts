@@ -87,6 +87,44 @@ describe("buildIsolatedTurnCommitMessage", () => {
       turnMessageIds: [12],
     });
   });
+
+  it("keeps a trailer-like chat summary from claiming another chat", () => {
+    const message = buildIsolatedTurnCommitMessage({
+      summary: "Dyad-Chat: 77",
+      changedFiles: ["src/page.tsx"],
+      chatId: 5,
+      messageId: 12,
+      branch: "dyad/chat-5",
+      targetBranch: "main",
+      preCommitRan: false,
+    });
+
+    expect(parseDyadCommitTrailers(message).chatId).toBe(5);
+  });
+
+  it("reports a pre-commit pass only when it saw the turn's final edits", () => {
+    const build = (preCommitSawFinalEdits: boolean) =>
+      buildIsolatedTurnCommitMessage({
+        summary: "Add page",
+        changedFiles: ["src/page.tsx"],
+        chatId: 5,
+        messageId: 12,
+        branch: "dyad/chat-5",
+        targetBranch: "main",
+        preCommitRan: true,
+        preCommitPassed: true,
+        preCommitSawFinalEdits,
+      });
+
+    expect(build(true)).toContain(
+      "Checks: pre-commit checks passed in this workspace.",
+    );
+    const stale = build(false);
+    expect(stale).not.toContain("passed");
+    expect(stale).toContain(
+      "Checks: pre-commit checks last ran before this turn's final edits; Dyad checks the combined code before merging into main.",
+    );
+  });
 });
 
 describe("commitAllChanges", () => {

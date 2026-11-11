@@ -16,6 +16,7 @@ import type { Version } from "@/ipc/types";
 import { ipc, MAX_VERSION_NOTE_LENGTH } from "@/ipc/types";
 import { cn } from "@/lib/utils";
 import { queryKeys } from "@/lib/queryKeys";
+import { parseDyadCommitTrailers } from "@/shared/dyad_commit_trailers";
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Textarea } from "@/components/ui/textarea";
@@ -38,7 +39,7 @@ import {
  * subject only. Other messages are shown as written.
  */
 export function summarizeDyadCommitMessage(message: string): string {
-  if (!/^Dyad-Chat: \d+$/m.test(message)) return message;
+  if (parseDyadCommitTrailers(message).chatId === null) return message;
   return message.split("\n")[0].trim();
 }
 

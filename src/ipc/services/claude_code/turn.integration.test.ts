@@ -398,7 +398,7 @@ it.each(["2.1.19", "2.1.281"])(
       });
     } finally {
       if (getWorkspaceForChat(chatId))
-        await chatWorkspaceService.onChatDeleting(chatId);
+        await chatWorkspaceService.prepareChatDeletion(chatId)();
     }
   },
 );
@@ -426,7 +426,7 @@ it.each(["local-agent", "build"] as const)(
       });
     } finally {
       if (getWorkspaceForChat(chatId))
-        await chatWorkspaceService.onChatDeleting(chatId);
+        await chatWorkspaceService.prepareChatDeletion(chatId)();
     }
   },
 );
@@ -445,7 +445,7 @@ it("keeps turns before Claude Code 2.1.19 in the app folder", async () => {
     expect(getWorkspaceForChat(chatId)).toBeUndefined();
   } finally {
     if (getWorkspaceForChat(chatId))
-      await chatWorkspaceService.onChatDeleting(chatId);
+      await chatWorkspaceService.prepareChatDeletion(chatId)();
   }
 });
 
@@ -473,7 +473,7 @@ it.each(["2.1.18", "2.1.19"])(
       expect(calls.run).not.toHaveBeenCalled();
     } finally {
       if (getWorkspaceForChat(chatId))
-        await chatWorkspaceService.onChatDeleting(chatId);
+        await chatWorkspaceService.prepareChatDeletion(chatId)();
     }
   },
 );

@@ -47,4 +47,31 @@ describe("parseDyadCommitTrailers", () => {
       parseDyadCommitTrailers("Explain what Dyad-Chat: 5 means").chatId,
     ).toBeNull();
   });
+
+  it("never reads a trailer from the subject", () => {
+    // A chat summary is the subject; it must not claim another chat.
+    expect(parseDyadCommitTrailers("Dyad-Chat: 5").chatId).toBeNull();
+    expect(
+      parseDyadCommitTrailers(
+        [
+          "Dyad-Chat: 5",
+          "",
+          "Requested: add a page",
+          "",
+          "Dyad-Chat: 12",
+          "Dyad-Turn: 40",
+          "Dyad-Workspace: dyad/chat-12",
+        ].join("\n"),
+      ),
+    ).toEqual({
+      chatId: 12,
+      workspaceBranch: "dyad/chat-12",
+      turnMessageIds: [40],
+    });
+    expect(
+      parseDyadCommitTrailers(
+        "Dyad-Chat: 5\nDyad-Turn: 7\n\nA body without trailers",
+      ),
+    ).toEqual({ chatId: null, workspaceBranch: null, turnMessageIds: [] });
+  });
 });

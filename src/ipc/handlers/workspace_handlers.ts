@@ -61,7 +61,10 @@ export function registerWorkspaceHandlers() {
           runtimeAppId: workspaceRuntimeId(workspace.id),
           writableTurnRunning,
           packageManager: workspace.packageManager,
-          hasUnmergedWork: await hasUnmergedWork(workspace),
+          // A running turn is making work, and the worktree can't be deleted
+          // meanwhile, so skip running Git in the folder it is writing to.
+          hasUnmergedWork:
+            writableTurnRunning || (await hasUnmergedWork(workspace)),
           integration: {
             phase: workspace.integrationStatus,
             detail: workspace.integrationDetail,

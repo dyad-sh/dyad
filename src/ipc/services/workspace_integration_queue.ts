@@ -269,7 +269,9 @@ export function isInstallWrittenFile(file: string): boolean {
  * file, the fast-forward would refuse and ask the user about a file they
  * never touched; put it back as the target has it instead, since the squash
  * brings the chat's version and the next install rewrites it anyway. Any
- * other uncommitted file in the way is left for the user.
+ * other uncommitted file in the way is left for the user, and so is every
+ * such file when the `package.json` beside it is edited too: that is the
+ * user's own dependency change, not an install's rewrite.
  */
 async function discardInstallRewritesInTheWay({
   originalPath,
@@ -286,6 +288,15 @@ async function discardInstallRewritesInTheWay({
     await listChangedPaths({ path: originalPath, from, to })
   ).filter((file) => dirty.has(file));
   if (inTheWay.length === 0 || !inTheWay.every(isInstallWrittenFile)) return;
+  const manifestEdited = inTheWay.some((file) =>
+    dirty.has(path.posix.join(path.posix.dirname(file), "package.json")),
+  );
+  if (manifestEdited) {
+    logger.info(
+      `Leaving ${inTheWay.join(", ")} in the app's folder for the user: package.json beside them has uncommitted changes too`,
+    );
+    return;
+  }
   logger.info(
     `Restoring ${inTheWay.join(", ")} in the app's folder: an install rewrote them and the merge changes them`,
   );
@@ -532,11 +543,15 @@ export class WorkspaceIntegrationQueue {
     }
   }
 
-  /** Re-queues every workspace that was mid-integration (startup). */
-  resumePending(): void {
+  /**
+   * Re-queues every workspace that was mid-integration (startup), or only
+   * `appId`'s: another app's deletion may still be holding its own stopped.
+   */
+  resumePending(appId?: number): void {
     for (const workspace of listAllWorkspaces()) {
       const phase = workspace.integrationStatus;
       if (
+        (appId === undefined || workspace.appId === appId) &&
         workspace.status === "active" &&
         (phase === "queued" || isIntegrationActive(phase))
       ) {

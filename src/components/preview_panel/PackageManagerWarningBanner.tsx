@@ -1,5 +1,7 @@
 import type { PackageManagerWarning } from "@/package_manager_warnings/store";
 import { usePreviewRuntime } from "@/hooks/usePreviewRuntime";
+import { useAppRunState } from "@/hooks/useAppRun";
+import type { AppRunRemoteSnapshot } from "@/app_run/transport";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -29,6 +31,9 @@ import {
 type InstallStatus = "idle" | "installing" | "success" | "error";
 
 const PNPM_11_MINIMUM_NODE_VERSION = "22.13.0";
+
+const OWNER_RUNNING_PHASES: ReadonlySet<AppRunRemoteSnapshot["phase"]> =
+  new Set(["starting", "ready", "reloading"]);
 
 function getInstallErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message) {
@@ -71,9 +76,10 @@ function PackageManagerWarningBannerContent({
   const warningStore = usePackageManagerWarningStore();
   const rebuildAppAfterPnpmInstall = useRebuildAppAfterPnpmInstall();
   // The pnpm migration rewrites and commits the app's own folder (the
-  // upgrade takes an app id), so it stops, migrates, and restarts the app's
-  // runtime, even when the warning came from a chat's isolated workspace.
+  // upgrade takes an app id), so it stops and migrates the app's runtime,
+  // even when the warning came from a chat's isolated workspace.
   const { loading: appRunLoading, restartApp, stopApp } = useRunApp(ownerAppId);
+  const ownerRunPhase = useAppRunState(ownerAppId).phase;
   const isWorkspaceWarning = warning.appId !== ownerAppId;
   const { updateSettings } = useSettings();
   const queryClient = useQueryClient();
@@ -133,6 +139,12 @@ function PackageManagerWarningBannerContent({
   const handleMigratePnpm = async () => {
     setInstallStatus("installing");
     setInstallErrorMessage(undefined);
+    // The preview shows the app's own runtime for an app warning, so it is
+    // restarted to recover the preview. A workspace's warning leaves the
+    // app's runtime as it was: the user is not viewing it, so it restarts
+    // only if it was running.
+    const restartOwnerApp =
+      !isWorkspaceWarning || OWNER_RUNNING_PHASES.has(ownerRunPhase);
 
     try {
       await stopApp(ownerAppId);
@@ -149,14 +161,12 @@ function PackageManagerWarningBannerContent({
         }),
       ]);
       setInstallStatus("success");
-      await restartApp();
-      if (isWorkspaceWarning) {
-        // The workspace gets the migration commit when it next takes in the
-        // app's branch; its own runtime is not restarted here.
-        clearTimerRef.current = window.setTimeout(
-          () => warningStore.clear(warning.appId),
-          2_000,
-        );
+      // The workspace gets the migration commit when it next takes in the
+      // app's branch; its own runtime is not restarted here. Its success
+      // message stays until the user closes it or the workspace's runtime
+      // clears the warning when it next starts.
+      if (restartOwnerApp) {
+        await restartApp({ appId: ownerAppId });
       }
     } catch (error) {
       setInstallStatus("error");
@@ -254,7 +264,13 @@ function PackageManagerWarningBannerContent({
           size="icon"
           variant="ghost"
           className="size-7"
-          onClick={() => warningStore.dismiss(warning.appId)}
+          // Closing a success message acknowledges it; only dismissing the
+          // warning itself hides this runtime's later warnings.
+          onClick={() =>
+            isSuccess
+              ? warningStore.clear(warning.appId)
+              : warningStore.dismiss(warning.appId)
+          }
           aria-label="Dismiss pnpm warning"
         >
           <X className="size-3.5" />

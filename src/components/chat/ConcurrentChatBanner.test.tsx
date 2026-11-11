@@ -96,7 +96,10 @@ describe("ConcurrentChatBanner", () => {
     expect(screen.getByTestId("concurrent-chat-banner")).toBeTruthy();
   });
 
-  it("leaves a failed enable to the settings mutation's own error toast", async () => {
+  it("shows neither a success toast nor a second error toast when enabling fails", async () => {
+    // `updateSettings` is mocked, so this cannot see the settings mutation's
+    // own error toast (`meta.showErrorToast`); it checks only that the banner
+    // adds nothing of its own and swallows the rejection.
     state.update.mockRejectedValue(new Error("disk full"));
     renderBanner();
     fireEvent.click(screen.getByText("Enable"));
@@ -105,6 +108,18 @@ describe("ConcurrentChatBanner", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(state.showError).not.toHaveBeenCalled();
     expect(state.showSuccess).not.toHaveBeenCalled();
+  });
+
+  it("stays hidden while the other writer works in its own worktree", () => {
+    state.overview = {
+      ...state.overview!,
+      writableChatIds: [9],
+      workspaces: [
+        { chatId: 9, workspaceId: 3, branch: "dyad/chat-9", phase: "idle" },
+      ],
+    };
+    renderBanner();
+    expect(screen.queryByTestId("concurrent-chat-banner")).toBeNull();
   });
 
   it("stays hidden when only this chat writes, and once dismissed", () => {

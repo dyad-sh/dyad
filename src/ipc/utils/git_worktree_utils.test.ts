@@ -46,6 +46,7 @@ import {
   isAncestorCommit,
   isMergeInProgress,
   isWorktreeLinkBroken,
+  listBranchesContaining,
   listCommitsNotIn,
   listGitWorktrees,
   listUncommittedPaths,
@@ -148,13 +149,25 @@ describe("git worktree helpers", () => {
   });
 
   it("lists branch names without worktree markers", async () => {
-    await createWorkspace();
+    const base = await createWorkspace();
     // `git branch --list` prints "+ dyad/chat-1" for a branch checked out in
     // another worktree; callers must get the bare name.
     expect((await gitListBranches({ path: repo })).sort()).toEqual([
       "dyad/chat-1",
       "main",
     ]);
+    // A tag with a branch's name makes `refname:short` print
+    // "heads/<name>", and a detached HEAD adds a "(HEAD detached at …)"
+    // entry to `git branch --list`.
+    await git(repo, ["tag", "dyad/chat-1"]);
+    await git(repo, ["checkout", "--detach"]);
+    expect((await gitListBranches({ path: repo })).sort()).toEqual([
+      "dyad/chat-1",
+      "main",
+    ]);
+    expect(
+      (await listBranchesContaining({ path: repo, commit: base })).sort(),
+    ).toEqual(["dyad/chat-1", "main"]);
   });
 
   it("reports nothing to do, fast-forwards, or merges without rewriting history", async () => {
@@ -229,7 +242,15 @@ describe("git worktree helpers", () => {
     // exists in a linked worktree.
     expect(isGitMergeInProgress({ path: worktree })).toBe(true);
     expect(isGitMergeOrRebaseInProgress({ path: worktree })).toBe(true);
+    // An app in a subfolder of its checkout has no `.git` of its own.
+    expect(isGitMergeInProgress({ path: path.join(worktree, "src") })).toBe(
+      true,
+    );
+    expect(
+      isGitMergeOrRebaseInProgress({ path: path.join(worktree, "src") }),
+    ).toBe(true);
     expect(isGitMergeInProgress({ path: repo })).toBe(false);
+    expect(isGitMergeInProgress({ path: path.join(repo, "src") })).toBe(false);
     expect(
       (await inspectRepositoryHealth({ path: worktree })).operationInProgress,
     ).toBe("merge");
@@ -253,6 +274,10 @@ describe("git worktree helpers", () => {
       [],
     );
     await fs.promises.rm(path.join(worktree, "README.md"));
+    // A file the resolution deleted has no markers left to find.
+    expect(await findFilesWithConflictMarkers(worktree, ["README.md"])).toEqual(
+      [],
+    );
     await stageAllChanges(worktree);
     const mergeCommit = await commitInProgressMerge(worktree);
     expect(isMergeInProgress(worktree)).toBe(false);
@@ -287,6 +312,22 @@ describe("git worktree helpers", () => {
       ]),
     ).toEqual(["big.txt"]);
   });
+
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+    "fails instead of passing a conflicted file it cannot read",
+    async () => {
+      const unreadable = path.join(repo, "src/App.tsx");
+      await fs.promises.writeFile(unreadable, "<<<<<<< HEAD\nours\n");
+      await fs.promises.chmod(unreadable, 0o000);
+      try {
+        await expect(
+          findFilesWithConflictMarkers(repo, ["src/App.tsx"]),
+        ).rejects.toMatchObject({ code: "EACCES" });
+      } finally {
+        await fs.promises.chmod(unreadable, 0o644);
+      }
+    },
+  );
 
   it("fast-forwards the target only to a result that contains it", async () => {
     await createWorkspace();
@@ -410,6 +451,34 @@ describe("git worktree helpers", () => {
     // Shared by the app's own checkout and every worktree.
     expect(isDyadMetadataExcludedSync(repo)).toBe(true);
     expect(isDyadMetadataExcludedSync(worktree)).toBe(true);
+  });
+
+  it("reads uncommitted paths without writing the index or running fsmonitor", async () => {
+    await createWorkspace();
+    // Stale stat data makes a plain `git status` save a refreshed index,
+    // which takes index.lock while a turn may be staging in this worktree.
+    const tracked = path.join(worktree, "src/App.tsx");
+    const past = new Date("2020-01-01T00:00:00Z");
+    await fs.promises.utimes(tracked, past, past);
+    const indexPath = path.join(resolveGitDirSync(worktree), "index");
+    const indexBefore = await fs.promises.readFile(indexPath);
+    if (process.platform !== "win32") {
+      const marker = path.join(root, "fsmonitor-ran");
+      const hook = path.join(root, "fsmonitor.sh");
+      await fs.promises.writeFile(
+        hook,
+        `#!/bin/sh\ntouch "${marker}"\nexit 1\n`,
+        { mode: 0o755 },
+      );
+      await git(repo, ["config", "core.fsmonitor", hook]);
+      expect(await listUncommittedPaths(worktree)).toEqual([]);
+      expect(fs.existsSync(marker)).toBe(false);
+    } else {
+      expect(await listUncommittedPaths(worktree)).toEqual([]);
+    }
+    expect((await fs.promises.readFile(indexPath)).equals(indexBefore)).toBe(
+      true,
+    );
   });
 
   it("restores a branch's worktree without running the repository's hooks", async () => {

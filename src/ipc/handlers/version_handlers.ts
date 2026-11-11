@@ -6,7 +6,10 @@ import {
   parseDyadCommitTrailers,
   WORKTREE_BRANCH_PREFIX,
 } from "@/shared/dyad_commit_trailers";
-import { listBranchesContaining } from "@/ipc/utils/git_worktree_utils";
+import {
+  isAncestorCommit,
+  listBranchesContaining,
+} from "@/ipc/utils/git_worktree_utils";
 import type { GitCommit } from "../git_types";
 import fs from "node:fs";
 import path from "node:path";
@@ -922,6 +925,28 @@ async function hasIntegratedSquash({
   return result.exitCode === 0 && result.stdout.trim() !== "";
 }
 
+/**
+ * Whether `commit` was written in a chat's worktree: only commits made there
+ * carry a `Dyad-Chat` trailer (Local Agent and Build-mode turns, merges,
+ * undos, and squashes).
+ */
+async function isWorktreeCheckpoint({
+  appPath,
+  commit,
+}: {
+  appPath: string;
+  commit: string;
+}): Promise<boolean> {
+  const result = await execGit(
+    ["show", "-s", "--format=%B", commit, "--"],
+    appPath,
+  );
+  return (
+    result.exitCode === 0 &&
+    parseDyadCommitTrailers(result.stdout).chatId !== null
+  );
+}
+
 export function registerVersionHandlers() {
   createTypedHandler(versionContracts.listVersions, async (_, params) => {
     const { appId, ref } = params;
@@ -1184,7 +1209,7 @@ export function registerVersionHandlers() {
             getActiveWorkspaceForChat(currentChatMessageId.chatId)
           ) {
             throw new DyadError(
-              "This chat works in its own worktree, so its changes are undone there. Try again.",
+              "This chat just started working in its own worktree, so its changes are undone there. Try Undo again once the chat shows its worktree.",
               DyadErrorKind.Conflict,
             );
           }
@@ -1503,20 +1528,36 @@ export function registerVersionHandlers() {
           // A commit on no branch at all is only a worktree checkpoint when
           // the chat's work reached the app as a squash; otherwise its
           // history was rewritten (a rebase) and restoring works as before.
-          const branches = await listBranchesContaining({
+          // Only the branch being restored decides whether the commit is in
+          // the app's history: a checkpoint some other branch also reaches
+          // (one a user branched off a worktree) is still not on this one.
+          const restoreRef = targetBranchName ?? "HEAD";
+          const onRestoreRef = await isAncestorCommit({
             path: appPath,
-            commit: targetCommitHash,
+            ancestor: targetCommitHash,
+            descendant: restoreRef,
           });
-          const onlyInWorktrees =
-            branches.length > 0
-              ? branches.every((branch) =>
-                  branch.startsWith(WORKTREE_BRANCH_PREFIX),
-                )
-              : await hasIntegratedSquash({
-                  appPath,
-                  chatId,
-                  ref: targetBranchName ?? "HEAD",
-                });
+          let onlyInWorktrees = false;
+          if (!onRestoreRef) {
+            const branches = await listBranchesContaining({
+              path: appPath,
+              commit: targetCommitHash,
+            });
+            onlyInWorktrees =
+              branches.length > 0
+                ? branches.every((branch) =>
+                    branch.startsWith(WORKTREE_BRANCH_PREFIX),
+                  ) ||
+                  (await isWorktreeCheckpoint({
+                    appPath,
+                    commit: targetCommitHash,
+                  }))
+                : await hasIntegratedSquash({
+                    appPath,
+                    chatId,
+                    ref: restoreRef,
+                  });
+          }
           if (onlyInWorktrees) {
             return {
               status: "warn" as const,

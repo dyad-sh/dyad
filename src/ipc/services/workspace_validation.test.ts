@@ -9,7 +9,8 @@ vi.mock("@/paths/paths", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/paths/paths")>()),
   getUserDataPath: () => h.userDataPath,
 }));
-vi.mock("@/ipc/processors/tsc", () => ({
+vi.mock("@/ipc/processors/tsc", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/ipc/processors/tsc")>()),
   runTypeScriptCheck: vi.fn(async () => ({ problems: [] })),
 }));
 vi.mock("./isolated_package_install", async (importOriginal) => ({
@@ -26,6 +27,10 @@ vi.mock("@/ipc/utils/spawn_streaming", () => ({
   spawnStreaming: vi.fn(),
 }));
 
+import {
+  runTypeScriptCheck,
+  TypeCheckPreconditionError,
+} from "@/ipc/processors/tsc";
 import { spawnStreaming } from "@/ipc/utils/spawn_streaming";
 import { runCleanPackageInstall } from "./isolated_package_install";
 import { validateWorkspace } from "./workspace_validation";
@@ -200,4 +205,104 @@ describe("workspace validation isolation", () => {
       );
     },
   );
+
+  describe("type-check", () => {
+    const problem = {
+      file: "src/a.ts",
+      line: 1,
+      column: 1,
+      code: 2322,
+      message: "Type 'string' is not assignable to type 'number'.",
+    };
+
+    function typeCheck(checks: { name: string }[]) {
+      return checks.find((check) => check.name === "type-check") as
+        | { outcome: string; summary: string }
+        | undefined;
+    }
+
+    it("type-checks a project that has only tsconfig.app.json", async () => {
+      await commitAndBranch({
+        "package.json": JSON.stringify({}),
+        "tsconfig.app.json": "{}",
+      });
+
+      const { checks } = await validateWorkspace({ appPath: workspace });
+
+      expect(runTypeScriptCheck).toHaveBeenCalledTimes(1);
+      expect(typeCheck(checks)?.outcome).toBe("passed");
+    });
+
+    it("reports a missing TypeScript package as missing, not a transient failure", async () => {
+      await commitAndBranch({
+        "package.json": JSON.stringify({}),
+        "tsconfig.json": "{}",
+      });
+      vi.mocked(runTypeScriptCheck).mockRejectedValueOnce(
+        new TypeCheckPreconditionError(
+          "typescript-not-found",
+          "No local TypeScript CLI found",
+        ),
+      );
+
+      const result = await validateWorkspace({ appPath: workspace });
+
+      expect(typeCheck(result.checks)?.outcome).toBe("missing");
+      expect(result.passed).toBe(true);
+      expect(result.transientFailure).toBe(false);
+    });
+
+    it("keeps reporting other TypeScript errors as transient failures", async () => {
+      await commitAndBranch({
+        "package.json": JSON.stringify({}),
+        "tsconfig.json": "{}",
+      });
+      vi.mocked(runTypeScriptCheck).mockRejectedValueOnce(
+        new Error("utility process crashed"),
+      );
+
+      const result = await validateWorkspace({ appPath: workspace });
+
+      expect(typeCheck(result.checks)?.outcome).toBe("failed");
+      expect(result.passed).toBe(false);
+      expect(result.transientFailure).toBe(true);
+    });
+
+    it("fails a second copy of a diagnostic the target already has once", async () => {
+      await commitAndBranch({
+        "package.json": JSON.stringify({}),
+        "tsconfig.json": "{}",
+      });
+      vi.mocked(runTypeScriptCheck)
+        .mockResolvedValueOnce({ problems: [problem, problem] } as never)
+        .mockResolvedValueOnce({ problems: [problem] } as never);
+
+      const { checks } = await validateWorkspace({
+        appPath: workspace,
+        baselineAppPath: repo,
+      });
+
+      expect(typeCheck(checks)).toMatchObject({
+        outcome: "failed",
+        summary: "1 new TypeScript error.",
+      });
+    });
+
+    it("passes when every diagnostic already existed on the target", async () => {
+      await commitAndBranch({
+        "package.json": JSON.stringify({}),
+        "tsconfig.json": "{}",
+      });
+      vi.mocked(runTypeScriptCheck)
+        .mockResolvedValueOnce({ problems: [problem, problem] } as never)
+        .mockResolvedValueOnce({ problems: [problem, problem] } as never);
+
+      const { checks } = await validateWorkspace({
+        appPath: workspace,
+        baselineAppPath: repo,
+      });
+
+      expect(typeCheck(checks)?.outcome).toBe("passed");
+    });
+  });
 });

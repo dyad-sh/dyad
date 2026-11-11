@@ -342,6 +342,7 @@ export function registerChatHandlers() {
     // race from changing the follow-up outcome from swept to rejected.
     const userInputSettlement = userInputRegistry.settleChat(chatId);
     const releaseSubagentAdmission = blockSubagentAdmissionsForChat(chatId);
+    let removeWorkspace: (() => Promise<void>) | undefined;
     try {
       await mutateChatAfterDrainingStreams({
         chatId,
@@ -362,13 +363,12 @@ export function registerChatHandlers() {
           }
         },
         // The chat's isolated workspace goes with it: its preview, worktree,
-        // and merge state. After its turns are drained (none is still writing
-        // there) and before the chat-content claim, because removal takes the
-        // app's claims itself. Only a fully merged branch is deleted.
+        // and merge state. Captured once its turns are drained (none is
+        // still writing there), since its row cascades with the chat's.
         afterDrain: async () => {
           const { chatWorkspaceService } =
             await import("@/ipc/services/chat_workspace_service");
-          await chatWorkspaceService.onChatDeleting(chatId);
+          removeWorkspace = chatWorkspaceService.prepareChatDeletion(chatId);
         },
         mutation: async () => {
           await deleteChatJournals(chatId);
@@ -376,6 +376,10 @@ export function registerChatHandlers() {
           entityDisposalBus.publish({ kind: "chat", id: chatId });
         },
       });
+      // Only once the delete committed (a failed one throws above and keeps
+      // the worktree), and outside the chat-content claim, because removal
+      // takes the app's claims itself. Only a fully merged branch is deleted.
+      await removeWorkspace?.();
     } finally {
       releaseSubagentAdmission();
     }

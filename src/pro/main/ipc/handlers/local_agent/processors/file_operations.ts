@@ -304,6 +304,7 @@ export async function commitAllChanges(
         | "messageId"
         | "preCommitRunCount"
         | "preCommitLastRunPassed"
+        | "preCommitFileMutationCountAtLastRun"
       >
     >,
   chatSummary?: string,
@@ -346,6 +347,9 @@ export async function commitAllChanges(
                 targetBranch: ctx.isolatedWorkspace.targetBranch,
                 preCommitRan: (ctx.preCommitRunCount ?? 0) > 0,
                 preCommitPassed: ctx.preCommitLastRunPassed,
+                preCommitSawFinalEdits:
+                  ctx.preCommitFileMutationCountAtLastRun ===
+                  (ctx.fileMutationCount ?? 0),
               })
             : trimmedChatSummary ||
               `(${uncommittedFiles.length} files changed)`;
@@ -418,6 +422,7 @@ export function buildIsolatedTurnCommitMessage({
   targetBranch,
   preCommitRan,
   preCommitPassed,
+  preCommitSawFinalEdits = true,
 }: {
   summary?: string;
   userPrompt?: string;
@@ -428,6 +433,8 @@ export function buildIsolatedTurnCommitMessage({
   targetBranch: string;
   preCommitRan: boolean;
   preCommitPassed?: boolean;
+  /** False when files changed after the last pre-commit run. */
+  preCommitSawFinalEdits?: boolean;
 }): string {
   const subject = oneLine(
     summary || `(${changedFiles.length} files changed)`,
@@ -443,11 +450,14 @@ export function buildIsolatedTurnCommitMessage({
     changedFiles.length > COMMIT_LISTED_FILES
       ? ` and ${changedFiles.length - COMMIT_LISTED_FILES} more`
       : "";
-  const checks = preCommitRan
-    ? preCommitPassed
-      ? "pre-commit checks passed in this workspace."
-      : "pre-commit checks did not pass in this workspace."
-    : `not run during this turn; Dyad checks the combined code before merging into ${targetBranch}.`;
+  const mergeCheck = `Dyad checks the combined code before merging into ${targetBranch}.`;
+  const checks = !preCommitRan
+    ? `not run during this turn; ${mergeCheck}`
+    : !preCommitSawFinalEdits
+      ? `pre-commit checks last ran before this turn's final edits; ${mergeCheck}`
+      : preCommitPassed
+        ? "pre-commit checks passed in this workspace."
+        : "pre-commit checks did not pass in this workspace.";
   return [
     subject,
     "",

@@ -76,12 +76,18 @@ const persistence = vi.hoisted(() => ({
 const subagents = vi.hoisted(() => ({
   settle: vi.fn(async () => vi.fn()),
 }));
-const workspaces = vi.hoisted(() => ({
-  onChatDeleting: vi.fn(async (_chatId: number) => undefined),
-}));
+const workspaces = vi.hoisted(() => {
+  const removeWorkspace = vi.fn(async () => undefined);
+  return {
+    removeWorkspace,
+    prepareChatDeletion: vi.fn((_chatId: number) => removeWorkspace),
+  };
+});
 
 vi.mock("./chat_workspace_service", () => ({
-  chatWorkspaceService: { onChatDeleting: workspaces.onChatDeleting },
+  chatWorkspaceService: {
+    prepareChatDeletion: workspaces.prepareChatDeletion,
+  },
 }));
 
 vi.mock("@/ipc/services/distributed_machine_actor_host", () => ({
@@ -167,6 +173,8 @@ describe("waitForChatActorIdle", () => {
     persistence.getIntentAcceptance.mockReset();
     persistence.getIntentAcceptance.mockReturnValue(undefined);
     subagents.settle.mockClear();
+    workspaces.prepareChatDeletion.mockClear();
+    workspaces.removeWorkspace.mockClear();
   });
 
   it("observes a submission cutoff from the main-owned chat actor", () => {
@@ -361,11 +369,27 @@ describe("waitForChatActorIdle", () => {
       expect.objectContaining({ chatId: 7 }),
     );
     expect(cleanup.deleteWhere).toHaveBeenCalledOnce();
-    // The chat's isolated workspace is removed before its row cascades.
-    expect(workspaces.onChatDeleting).toHaveBeenCalledWith(7);
-    expect(workspaces.onChatDeleting.mock.invocationCallOrder[0]).toBeLessThan(
-      cleanup.deleteWhere.mock.invocationCallOrder[0],
-    );
+    // The chat's isolated workspace is captured before its row cascades,
+    // and removed only once the delete went through.
+    expect(workspaces.prepareChatDeletion).toHaveBeenCalledWith(7);
+    expect(
+      workspaces.prepareChatDeletion.mock.invocationCallOrder[0],
+    ).toBeLessThan(cleanup.deleteWhere.mock.invocationCallOrder[0]);
+    expect(workspaces.removeWorkspace).toHaveBeenCalledOnce();
+    expect(
+      workspaces.removeWorkspace.mock.invocationCallOrder[0],
+    ).toBeGreaterThan(cleanup.deleteWhere.mock.invocationCallOrder[0]);
     expect(cleanup.publish).toHaveBeenCalledWith({ kind: "chat", id: 7 });
+  });
+
+  it("keeps the chat's workspace when deleting its row fails", async () => {
+    cleanup.deleteWhere.mockRejectedValueOnce(new Error("SQLITE_BUSY"));
+
+    await expect(deleteOwnedChatAfterSettlingActors(7)).rejects.toThrow(
+      "SQLITE_BUSY",
+    );
+
+    expect(workspaces.prepareChatDeletion).toHaveBeenCalledWith(7);
+    expect(workspaces.removeWorkspace).not.toHaveBeenCalled();
   });
 });

@@ -23,7 +23,11 @@ const {
   getChatWorkspaceStatusMock,
   getAppWorkspaceOverviewMock,
 } = vi.hoisted(() => ({
-  appRunState: { loading: false },
+  appRunState: {
+    loading: false,
+    /** Run phase of the owner app (the app whose folder is migrated). */
+    ownerPhase: "ready" as string,
+  },
   getNodejsStatusMock: vi.fn(),
   installPnpmMock: vi.fn(),
   openExternalUrlMock: vi.fn(),
@@ -72,12 +76,17 @@ vi.mock("@/hooks/useRunApp", () => ({
   },
 }));
 
+vi.mock("@/hooks/useAppRun", () => ({
+  useAppRunState: () => ({ phase: appRunState.ownerPhase }),
+}));
+
 const WORKSPACE_RUNTIME_ID = 1_000_000_003;
 
 describe("PackageManagerWarningBanner", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     appRunState.loading = false;
+    appRunState.ownerPhase = "ready";
     getNodejsStatusMock.mockReset();
     installPnpmMock.mockReset();
     openExternalUrlMock.mockReset();
@@ -317,6 +326,7 @@ describe("PackageManagerWarningBanner", () => {
       upgradeId: "pnpm-version-migration",
     });
     expect(restartAppMock).toHaveBeenCalledTimes(1);
+    expect(restartAppMock).toHaveBeenCalledWith({ appId: 1 });
     expect(installPnpmMock).not.toHaveBeenCalled();
 
     expect(stopAppMock.mock.invocationCallOrder[0]).toBeLessThan(
@@ -385,15 +395,60 @@ describe("PackageManagerWarningBanner", () => {
       appId: 1,
       upgradeId: "pnpm-version-migration",
     });
+    // The app was running, so it is restarted, and never the workspace.
     expect(restartAppMock).toHaveBeenCalledTimes(1);
+    expect(restartAppMock).toHaveBeenCalledWith({ appId: 1 });
+    const successMessage =
+      "pnpm migration applied to the app. This chat's workspace picks it up with its next turn.";
+    screen.getByText(successMessage);
+
+    // The explanation stays until the user closes it.
+    act(() => {
+      vi.advanceTimersByTime(10_000);
+    });
+    screen.getByText(successMessage);
+    expect(warningStore.getSnapshot(WORKSPACE_RUNTIME_ID)).toBeDefined();
+
+    fireEvent.click(screen.getByLabelText("Dismiss pnpm warning"));
+    expect(warningStore.getSnapshot(WORKSPACE_RUNTIME_ID)).toBeUndefined();
+    // Closing the success message is not a dismissal: the workspace's later
+    // warnings still show.
+    act(() => {
+      warningStore.setWarning(WORKSPACE_RUNTIME_ID, {
+        kind: "release-age",
+        message: "Install pnpm 10.16.0 or newer",
+      });
+    });
+    screen.getByText("Install pnpm 10.16.0 or newer");
+  });
+
+  it("leaves a stopped app stopped when a workspace reported the pnpm migration", async () => {
+    vi.useRealTimers();
+    appRunState.ownerPhase = "idle";
+    renderBanner({
+      kind: "pnpm-migration",
+      message: "Migrate to pnpm 11",
+      workspaceChat: true,
+    });
+    const migrateButton = await screen.findByTestId(
+      "package-manager-warning-run-upgrade",
+    );
+
+    await act(async () => {
+      fireEvent.click(migrateButton);
+      await Promise.resolve();
+    });
+
+    expect(executeAppUpgradeMock).toHaveBeenCalledWith({
+      appId: 1,
+      upgradeId: "pnpm-version-migration",
+    });
+    // The user is viewing the workspace's preview, not the app's, so the
+    // app's runtime is not started just because its folder was migrated.
+    expect(restartAppMock).not.toHaveBeenCalled();
     screen.getByText(
       "pnpm migration applied to the app. This chat's workspace picks it up with its next turn.",
     );
-
-    act(() => {
-      vi.advanceTimersByTime(2_000);
-    });
-    expect(warningStore.getSnapshot(WORKSPACE_RUNTIME_ID)).toBeUndefined();
   });
 
   it("keeps release-age warnings ahead of pnpm migration warnings", () => {

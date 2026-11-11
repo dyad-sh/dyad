@@ -62,7 +62,7 @@ it is already owned and drained by a domain-specific actor fence. Deletion-only
 work uses the opaque deletion handle after `drain()`; ordinary handlers must
 never bypass admission. Work coordinated under another key (a worktree's
 `workspaceRuntimeId`) is invisible to the app's fence unless it is also
-admitted on the app id: `run({ appId, resources: [] }, ...)` conflicts with
+admitted on the app id: `run({ appId, operation: "workspace-only", resources: [] }, ...)` conflicts with
 nothing but is refused during deletion and drained by `drain()`.
 
 Chat deletion must start `userInputRegistry.settleChat(chatId)` before closing

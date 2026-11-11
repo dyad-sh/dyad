@@ -234,6 +234,10 @@ jobs:
           RELEASE_VERSION: ${{ needs.prepare-release.outputs.version }}
         run: |
           set -euo pipefail
+          if [ -z "$POSTHOG_CLI_API_KEY" ] || [ -z "$POSTHOG_CLI_PROJECT_ID" ]; then
+            echo "::error::Set the POSTHOG_SOURCEMAP_API_KEY secret and POSTHOG_PROJECT_ID variable at repository level. This job does not use the release environment." >&2
+            exit 1
+          fi
           shopt -s nullglob
           dirs=("$RUNNER_TEMP"/sourcemaps/posthog-sourcemaps-*/*/)
           if [ "${#dirs[@]}" -eq 0 ]; then

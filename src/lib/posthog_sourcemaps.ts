@@ -140,15 +140,28 @@ export async function stagePostHogSourcemaps({
   // A retried build replaces the maps from the failed attempt.
   await rm(stagingDir, { recursive: true, force: true });
 
-  const maps = await listMapFiles(viteDir);
+  let maps: string[];
+  try {
+    maps = await listMapFiles(viteDir);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      throw new Error(
+        `No Vite output found at ${viteDir}; cannot stage source maps for this release.`,
+      );
+    }
+    throw error;
+  }
   let staged = 0;
   for (const mapFile of maps) {
     const bundleFile = mapFile.slice(0, -".map".length);
-    if (!bundleFile.endsWith(".js")) {
-      continue;
-    }
     const bundlePath = path.join(viteDir, bundleFile);
     const mapPath = path.join(viteDir, mapFile);
+    if (!bundleFile.endsWith(".js")) {
+      // PostHog only uses JavaScript maps; others, such as CSS maps, must
+      // still not ship.
+      await rm(mapPath);
+      continue;
+    }
     let code: string;
     try {
       code = await readFile(bundlePath, "utf8");

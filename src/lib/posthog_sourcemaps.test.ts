@@ -251,6 +251,36 @@ describe("stagePostHogSourcemaps", () => {
     );
   });
 
+  it("removes maps of non-JavaScript files without staging them", async () => {
+    await seed({
+      "build/main.js": "foo();",
+      "build/main.js.map": sourceMap("AAAA"),
+      "renderer/assets/index.css": "a{}",
+      "renderer/assets/index.css.map": sourceMap("AAAA"),
+    });
+    await stage();
+    const shippedFiles = await readdir(path.join(buildPath, ".vite"), {
+      recursive: true,
+    });
+    expect(shippedFiles.filter((f) => f.endsWith(".map"))).toEqual([]);
+    expect(
+      await readFile(
+        path.join(buildPath, ".vite/renderer/assets/index.css"),
+        "utf8",
+      ),
+    ).toBe("a{}");
+    expect(
+      (await readdir(path.join(stagingRoot, "linux-x64"), { recursive: true }))
+        .filter((f) => f.endsWith(".map"))
+        .sort(),
+    ).toEqual([path.normalize("build/main.js.map")]);
+  });
+
+  it("fails clearly when the build has no Vite output", async () => {
+    await mkdir(buildPath, { recursive: true });
+    await expect(stage()).rejects.toThrow("No Vite output found");
+  });
+
   it("fails when the build produced no maps", async () => {
     await seed({ "build/main.js": "foo();" });
     await expect(stage()).rejects.toThrow("No source maps found");

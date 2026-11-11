@@ -2802,6 +2802,67 @@ describe("handleLocalAgentStream", () => {
       ]);
     });
 
+    const SUMMARY_CHUNKS = [
+      "The user",
+      "The user asked <x>",
+      "The user asked <x> & more",
+    ];
+    const FINAL_PREVIEW =
+      '<dyad-compaction title="Compacting conversation">\nThe user asked &lt;x&gt; &amp; more\n</dyad-compaction>';
+    type ChunkPayload = {
+      messages?: Array<{ id: number; content: string }>;
+      streamingMessageId?: number;
+      streamingPatch?: { offset: number; content: string };
+    };
+
+    // Collects the compaction preview chunks sent for placeholder 10 in chat
+    // 1, checks that only the first carries the message history, and returns
+    // a replay that applies the patches with the renderer's patch logic.
+    function collectCompactionPreview(
+      getMessagesByChannel: (
+        channel: string,
+      ) => Array<{ channel: string; args: unknown[] }>,
+      expectedCount: number,
+    ) {
+      const isCompactionChunk = (chunk: ChunkPayload) =>
+        chunk.messages
+          ? chunk.messages.some(
+              (m) => m.id === 10 && m.content.includes("<dyad-compaction"),
+            )
+          : (chunk.streamingPatch?.content.includes("<dyad-compaction") ??
+            false);
+      const compactionChunks = getMessagesByChannel("chat:response:chunk")
+        .map((message) => message.args[0] as ChunkPayload)
+        .filter(isCompactionChunk);
+      expect(compactionChunks).toHaveLength(expectedCount);
+
+      const [fullSend, ...patchChunks] = compactionChunks;
+      expect(fullSend.messages).toBeDefined();
+      for (const chunk of patchChunks) {
+        expect(chunk.messages).toBeUndefined();
+        expect(chunk.streamingMessageId).toBe(10);
+      }
+
+      const replay = (
+        startingMessages: Array<{ id: number; content: string }>,
+      ) => {
+        let messagesById = new Map<number, any[]>([[1, startingMessages]]);
+        for (const chunk of patchChunks) {
+          const applied = applyStreamingPatch(
+            (update) => {
+              messagesById = update(messagesById);
+            },
+            1,
+            chunk.streamingMessageId!,
+            chunk.streamingPatch!,
+          );
+          expect(applied).toBe(true);
+        }
+        return messagesById.get(1)!.find((m) => m.id === 10)!.content;
+      };
+      return { fullSend, patchChunks, replay };
+    }
+
     it("streams the compaction summary as patches after one full-messages send", async () => {
       const { event, getMessagesByChannel } = createFakeEvent();
       mockSettings = buildTestSettings({ enableDyadPro: true });
@@ -2812,11 +2873,7 @@ describe("handleLocalAgentStream", () => {
         ],
       });
       mockIsChatPendingCompaction.mockResolvedValue(true);
-      const summaryChunks = [
-        "The user",
-        "The user asked <x>",
-        "The user asked <x> & more",
-      ];
+      const summaryChunks = SUMMARY_CHUNKS;
       mockPerformCompaction.mockImplementation(async (...args: unknown[]) => {
         const onSummaryChunk = args[4] as (summary: string) => void;
         for (const summary of summaryChunks) onSummaryChunk(summary);
@@ -2835,54 +2892,16 @@ describe("handleLocalAgentStream", () => {
         },
       );
 
-      type ChunkPayload = {
-        messages?: Array<{ id: number; content: string }>;
-        streamingMessageId?: number;
-        streamingPatch?: { offset: number; content: string };
-      };
-      const isCompactionChunk = (chunk: ChunkPayload) =>
-        chunk.messages
-          ? chunk.messages.some(
-              (m) => m.id === 10 && m.content.includes("<dyad-compaction"),
-            )
-          : (chunk.streamingPatch?.content.includes("<dyad-compaction") ??
-            false);
-      const compactionChunks = getMessagesByChannel("chat:response:chunk")
-        .map((message) => message.args[0] as ChunkPayload)
-        .filter(isCompactionChunk);
-      expect(compactionChunks).toHaveLength(summaryChunks.length);
-
-      // Only the first preview chunk carries the (large) message history.
-      expect(compactionChunks[0].messages).toBeDefined();
-      const patchChunks = compactionChunks.slice(1);
+      const { fullSend, patchChunks, replay } = collectCompactionPreview(
+        getMessagesByChannel,
+        summaryChunks.length,
+      );
       for (const chunk of patchChunks) {
-        expect(chunk.messages).toBeUndefined();
-        expect(chunk.streamingMessageId).toBe(10);
+        expect(chunk.streamingPatch!.offset).toBe(0);
       }
 
-      // Apply the patches with the renderer's own patch logic.
-      const replay = (
-        startingMessages: Array<{ id: number; content: string }>,
-      ) => {
-        let messagesById = new Map<number, any[]>([[1, startingMessages]]);
-        for (const chunk of patchChunks) {
-          const applied = applyStreamingPatch(
-            (update) => {
-              messagesById = update(messagesById);
-            },
-            1,
-            chunk.streamingMessageId!,
-            chunk.streamingPatch!,
-          );
-          expect(applied).toBe(true);
-        }
-        return messagesById.get(1)!.find((m) => m.id === 10)!.content;
-      };
-      const finalPreview =
-        '<dyad-compaction title="Compacting conversation">\nThe user asked &lt;x&gt; &amp; more\n</dyad-compaction>';
-
       // The window that received the first full send.
-      expect(replay(compactionChunks[0].messages!)).toBe(finalPreview);
+      expect(replay(fullSend.messages!)).toBe(FINAL_PREVIEW);
       // A window that opened the chat mid-compaction and loaded the saved
       // placeholder, which is still empty.
       expect(
@@ -2890,7 +2909,73 @@ describe("handleLocalAgentStream", () => {
           { id: 1, content: "long history" },
           { id: 10, content: "" },
         ]),
-      ).toBe(finalPreview);
+      ).toBe(FINAL_PREVIEW);
+    });
+
+    it("anchors mid-turn compaction patches at the saved response", async () => {
+      const { event, getMessagesByChannel } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat({
+        messages: [
+          { id: 1, role: "user", content: "long history ".repeat(1000) },
+          { id: 10, role: "assistant", content: "" },
+        ],
+      });
+      const streamed = "Streamed before compaction";
+      mockCheckAndMarkForCompaction.mockResolvedValue(true);
+      mockPerformCompaction.mockImplementation(async (...args: unknown[]) => {
+        const onSummaryChunk = args[4] as (summary: string) => void;
+        for (const summary of SUMMARY_CHUNKS) onSummaryChunk(summary);
+        return { success: false, error: "stop after preview" };
+      });
+      mockStreamTextImpl = (options) => ({
+        fullStream: (async function* () {
+          yield { type: "text-delta", text: streamed };
+          // A step with tool calls over the token threshold compacts before
+          // the next step.
+          await options.onStepFinish({
+            usage: { totalTokens: 200_000 },
+            toolCalls: [{}],
+          });
+          await options.prepareStep({
+            messages: options.messages,
+            stepNumber: 1,
+            steps: [],
+          });
+        })(),
+        response: Promise.resolve({ messages: [] }),
+        steps: Promise.resolve([]),
+      });
+
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      const { fullSend, patchChunks, replay } = collectCompactionPreview(
+        getMessagesByChannel,
+        SUMMARY_CHUNKS.length,
+      );
+      for (const chunk of patchChunks) {
+        expect(chunk.streamingPatch!.offset).toBe(streamed.length);
+      }
+
+      const finalContent = `${streamed}\n${FINAL_PREVIEW}`;
+      expect(replay(fullSend.messages!)).toBe(finalContent);
+      // A window that opened the chat mid-compaction and loaded the saved
+      // response.
+      expect(
+        replay([
+          { id: 1, content: "long history" },
+          { id: 10, content: streamed },
+        ]),
+      ).toBe(finalContent);
     });
 
     it("should not run pending compaction when context compaction is disabled", async () => {

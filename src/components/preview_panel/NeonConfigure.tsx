@@ -1,4 +1,3 @@
-import { useQuery } from "@tanstack/react-query";
 import { useAtomValue } from "jotai";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,10 +6,10 @@ import { Badge } from "@/components/ui/badge";
 import { Database, GitBranch } from "lucide-react";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useLoadApp } from "@/hooks/useLoadApp";
-import { ipc } from "@/ipc/types";
-import type { GetNeonProjectResponse, NeonBranch } from "@/ipc/types";
+import { useNeon } from "@/hooks/useNeon";
+import type { NeonBranch } from "@/ipc/types";
 import { NeonDisconnectButton } from "@/components/NeonDisconnectButton";
-import { queryKeys } from "@/lib/queryKeys";
+import { NeonReconnectionNotice } from "@/components/NeonReconnectionNotice";
 
 const getBranchTypeColor = (type: NeonBranch["type"]) => {
   switch (type) {
@@ -35,28 +34,22 @@ export const NeonConfigure = () => {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const { app } = useLoadApp(selectedAppId);
 
-  // Query to get Neon project information
   const {
-    data: neonProject,
-    isLoading,
-    error,
-  } = useQuery<GetNeonProjectResponse, Error>({
-    queryKey: queryKeys.neon.project({ appId: selectedAppId }),
-    queryFn: async () => {
-      if (!selectedAppId) throw new Error("No app selected");
-      return await ipc.neon.getProject({ appId: selectedAppId });
-    },
-    enabled: !!selectedAppId && !!app?.neonProjectId,
-    meta: { showErrorToast: true },
-  });
+    projectInfo: neonProject,
+    branchesError: error,
+    isAccessResolved,
+    requiresReconnection,
+    projectAccessDenied,
+    projectNotFound,
+  } = useNeon(selectedAppId);
 
   // Don't show component if app doesn't have Neon project
-  if (!app?.neonProjectId) {
+  if (selectedAppId === null || !app?.neonProjectId) {
     return null;
   }
 
   // Show loading state
-  if (isLoading) {
+  if (!isAccessResolved) {
     return (
       <Card>
         <CardHeader>
@@ -71,6 +64,26 @@ export const NeonConfigure = () => {
               Loading Neon project information...
             </div>
           </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (requiresReconnection || projectAccessDenied) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Database size={20} />
+            Neon Database
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <NeonReconnectionNotice
+            appId={selectedAppId}
+            projectAccessDenied={!requiresReconnection && projectAccessDenied}
+            projectNotFound={!requiresReconnection && projectNotFound}
+          />
         </CardContent>
       </Card>
     );

@@ -95,6 +95,11 @@ worktree use the app's original folder.
   workspace acquisition follows the ascending-id rule. Workspace-only work
   is still admitted on the app id (with no claims), so app deletion refuses
   and drains it like any other app operation.
+- `repository-ref` goes in `appResources`: refs and worktree registrations
+  are shared by every worktree of the repository. The callback's
+  `releaseResources` drops the named claims on both keys, so app-keyed code
+  that releases preparation claims step by step (e.g. upstream `run_build`)
+  ports by splitting its resource list, not by restructuring the releases.
 - `chatWorkspaceRegistry` locks a workspace for a turn, integration, or
   removal. Removal must claim first (`tryClaimWorkspaceForRemoval`); a "not
   busy" check alone races new turns.

@@ -242,6 +242,14 @@ Add `#skip-bugbot` to the PR description for trivial PRs that won't affect end-u
   (`would clobber existing tag`). Verify the base ref was updated, then rebase
   onto it; do not treat an unrelated remote's failure as a stale upstream
   fetch.
+- A SessionStart `npm install` ran against the pre-rebase lockfile, so after
+  rebasing onto dependency bumps rerun `npm install` before tests. Stale
+  packages show up as failures in files the branch never touched, such as
+  `Failed to resolve import "@vercel/sdk/models/..."` or `MCPClientError:
+Server's protocol version is not supported`. The install also strips
+  `"libc": ["glibc"]` from `package-lock.json`; that hunk alone is an npm
+  artifact, so discard it (`git checkout -- package-lock.json`) instead of
+  committing it, before and after the rebase.
 
 When running GitHub Actions with `pull_request_target` on cross-repo PRs (from forks):
 

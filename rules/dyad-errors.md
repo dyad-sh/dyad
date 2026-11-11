@@ -55,6 +55,7 @@ When changing crash exemptions, inventory `sendTelemetryEvent` emitters instead 
 - **`createTypedHandler` / `createLoggedTypedHandler`** rethrow the original error after telemetry — `DyadError` is preserved.
 - **`createLoggedHandler` (`safe_handle.ts`)** rethrows `DyadError` unchanged so the renderer keeps `instanceof DyadError`.
 - In broad `catch` blocks that convert unknown failures to `DyadError`, first rethrow existing `DyadError` instances. Otherwise an already-classified error (for example `Precondition` or `External`) can be wrapped as the wrong kind and change telemetry filtering.
+- Classify provider credential rejection (HTTP 401) where the API client is built, not in one handler. Neon has ~30 `getNeonClient()` call sites, so `createNeonApiClient` installs an axios response interceptor that sets `reconnectRequired` and throws the shared reconnect `DyadError`; a handler-local 401 check left project discovery, branch, and agent paths showing a failing Retry instead of Reconnect.
 - When changing a main-process utility from swallowing/logging failures to throwing `DyadError`, audit non-IPC callers such as `app.whenReady()` startup, deep-link handlers, and consent callbacks. These are outside typed handler boundaries, so wrap best-effort writes or surface an explicit dialog instead of letting an unhandled rejection block `createWindow()` or send a success event.
 
 ## Migration

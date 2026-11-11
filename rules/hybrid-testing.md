@@ -135,6 +135,17 @@ before app imports. `setupHybridChatHarness({ testBuild: true })` sets the flag
 before dynamic IPC registration, but it cannot fix static imports that already
 loaded modules such as the Neon management client.
 
+In test builds, `getNeonClient()` returns a mock object with no axios
+`instance` (`Cannot read properties of undefined (reading 'defaults')`), and
+stubbing a client method such as `getProject` bypasses HTTP-layer handling like
+the 401 reconnect interceptor. To exercise it, build a real client with
+`createNeonApiClient(token, readSettings())`, set `client.instance.defaults.adapter`
+to reject with `{ response: { status, data: {}, headers: {} } }`, and spy
+`getNeonClient` to return it. A custom adapter must reject non-2xx itself: a
+resolved 401 counts as success. When code builds its own client internally
+(e.g. `getNeonOrganizationId`), wrap `createApiClient` in a
+`vi.mock("@neondatabase/api-client", importOriginal)` that passes the adapter.
+
 The shared Electron mock's `utilityProcess.fork()` is intentionally inert and
 never emits `spawn`, `message`, or `exit`. If a hybrid flow reaches a packaged
 utility-process boundary, mock that processor in `hybrid.setup.ts` with a

@@ -117,6 +117,32 @@ describe("fetchOpenAICompatibleModels", () => {
     ).rejects.toThrow("Network request failed");
   });
 
+  it("does not retain response text from malformed JSON errors", async () => {
+    const secret = "internal-host.example token=query-secret";
+    stubFetch({
+      json: async () => {
+        throw new SyntaxError(`Unexpected token ${secret}`);
+      },
+    });
+
+    let failure: unknown;
+    try {
+      await fetchOpenAICompatibleModels("http://host:8000/v1");
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure).toBeInstanceOf(Error);
+    if (!(failure instanceof Error)) {
+      throw new Error("Expected malformed provider response to fail");
+    }
+    expect(failure.message).toBe(
+      "The provider endpoint did not return valid JSON",
+    );
+    expect(failure.message).not.toContain(secret);
+    expect(failure.cause).toBeUndefined();
+  });
+
   it("includes nested transport diagnostics", async () => {
     const refused = Object.assign(new Error("connect ECONNREFUSED"), {
       code: "ECONNREFUSED",

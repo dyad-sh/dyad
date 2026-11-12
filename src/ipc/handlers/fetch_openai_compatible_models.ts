@@ -116,7 +116,6 @@ export async function fetchOpenAICompatibleModels(
       throw new CustomProviderModelsRequestError(
         "The provider endpoint did not return valid JSON",
         DyadErrorKind.External,
-        { cause: error },
       );
     }
     throw new CustomProviderModelsTransportError(

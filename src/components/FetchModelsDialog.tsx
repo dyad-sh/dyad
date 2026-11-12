@@ -139,97 +139,104 @@ export function FetchModelsDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {list.length > 0 && (
-          <div className="relative">
-            <SearchIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search models..."
-              aria-label="Search models"
-              className="pl-9"
-            />
-          </div>
-        )}
-
-        <div className="max-h-80 overflow-y-auto space-y-2 pt-2">
-          {/* Several rows, so the dialog doesn't jump in height once loaded. */}
-          {isFetching &&
-            Array.from({ length: 5 }, (_, i) => (
-              <Skeleton key={i} className="h-16 w-full" />
-            ))}
-          {!isFetching && error && (
-            <div className="text-sm text-red-600 dark:text-red-400">
-              {error.message}
-              <Button
-                variant="outline"
-                size="sm"
-                className="ml-2"
-                onClick={() => refetch()}
-              >
-                Retry
-              </Button>
+        <div
+          data-testid="model-import-region"
+          className="flex h-[368px] flex-col gap-2"
+        >
+          {(isFetching || list.length > 0) && (
+            <div className="relative h-10 shrink-0">
+              <SearchIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search models..."
+                aria-label="Search models"
+                className="h-10 pl-9"
+              />
             </div>
           )}
-          {!isFetching && !error && fetched?.length === 0 && (
-            <p className="text-sm text-muted-foreground">
-              The server reported no models.
-            </p>
-          )}
-          {list.length > 0 && visible.length === 0 && (
-            <p className="text-sm text-muted-foreground">
-              No models match "{search.trim()}".
-            </p>
-          )}
-        </div>
 
-        {/* Virtualized: gateways can serve hundreds or thousands of models. */}
-        {visible.length > 0 && (
-          <Virtuoso
-            // Hug short lists; scroll once the content passes the max height.
-            style={{
-              height: Math.min(
-                listHeight ?? visible.length * ROW_HEIGHT,
-                MAX_LIST_HEIGHT,
-              ),
-            }}
-            data={visible}
-            defaultItemHeight={ROW_HEIGHT}
-            totalListHeightChanged={setListHeight}
-            computeItemKey={(_, m) => m.apiName}
-            itemContent={(_, m) => {
-              const already = existing.has(m.apiName);
-              return (
-                <div className="pb-2">
-                  <label
-                    className={`flex items-center gap-3 rounded-md border p-3 ${
-                      already ? "opacity-50" : "cursor-pointer"
-                    }`}
-                  >
-                    <Checkbox
-                      checked={already || selected.has(m.apiName)}
-                      disabled={already}
-                      onCheckedChange={() => toggle(m.apiName)}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="truncate font-medium">{m.apiName}</div>
-                      {m.contextWindow && (
-                        <div className="text-xs text-muted-foreground">
-                          Context: {m.contextWindow.toLocaleString()} tokens
+          <div
+            data-testid="model-list-region"
+            className="h-80 shrink-0 overflow-y-auto space-y-2"
+          >
+            {isFetching &&
+              Array.from({ length: 5 }, (_, i) => (
+                <Skeleton key={i} className="h-14 w-full" />
+              ))}
+            {!isFetching && error && (
+              <div className="text-sm text-red-600 dark:text-red-400">
+                {error.message}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="ml-2"
+                  onClick={() => refetch()}
+                >
+                  Retry
+                </Button>
+              </div>
+            )}
+            {!isFetching && !error && fetched?.length === 0 && (
+              <p className="text-sm text-muted-foreground">
+                The server reported no models.
+              </p>
+            )}
+            {list.length > 0 && visible.length === 0 && (
+              <p className="text-sm text-muted-foreground">
+                No models match "{search.trim()}".
+              </p>
+            )}
+
+            {visible.length > 0 && (
+              <Virtuoso
+                style={{
+                  height: Math.min(
+                    listHeight ?? visible.length * ROW_HEIGHT,
+                    MAX_LIST_HEIGHT,
+                  ),
+                }}
+                data={visible}
+                defaultItemHeight={ROW_HEIGHT}
+                totalListHeightChanged={setListHeight}
+                computeItemKey={(_, m) => m.apiName}
+                itemContent={(_, m) => {
+                  const already = existing.has(m.apiName);
+                  return (
+                    <div className="pb-2">
+                      <label
+                        className={`flex items-center gap-3 rounded-md border p-3 ${
+                          already ? "opacity-50" : "cursor-pointer"
+                        }`}
+                      >
+                        <Checkbox
+                          checked={already || selected.has(m.apiName)}
+                          disabled={already}
+                          onCheckedChange={() => toggle(m.apiName)}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="truncate font-medium">
+                            {m.apiName}
+                          </div>
+                          {m.contextWindow && (
+                            <div className="text-xs text-muted-foreground">
+                              Context: {m.contextWindow.toLocaleString()} tokens
+                            </div>
+                          )}
                         </div>
-                      )}
+                        {already && (
+                          <span className="text-xs text-muted-foreground">
+                            Already added
+                          </span>
+                        )}
+                      </label>
                     </div>
-                    {already && (
-                      <span className="text-xs text-muted-foreground">
-                        Already added
-                      </span>
-                    )}
-                  </label>
-                </div>
-              );
-            }}
-          />
-        )}
+                  );
+                }}
+              />
+            )}
+          </div>
+        </div>
 
         <DialogFooter>
           {visibleAddable.length > 0 && (

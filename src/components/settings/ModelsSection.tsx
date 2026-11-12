@@ -216,8 +216,8 @@ export function ModelsSection({ providerId }: ModelsSectionProps) {
           {providerId.startsWith("custom::") && (
             <Button
               onClick={() => setIsFetchModelsDialogOpen(true)}
-              // Without the saved list every fetched model would look new.
-              disabled={modelsLoading || !models}
+              // The import handler rechecks duplicates when the saved list is unavailable.
+              disabled={modelsLoading}
               variant="outline"
             >
               <DownloadIcon className="mr-2 h-4 w-4" /> Import Models

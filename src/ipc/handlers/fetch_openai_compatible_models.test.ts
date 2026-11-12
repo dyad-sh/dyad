@@ -71,6 +71,36 @@ describe("fetchOpenAICompatibleModels", () => {
     ).rejects.toThrow(/API key/);
   });
 
+  it("does not include private endpoint URLs or credentials in failures", async () => {
+    const privateUrl =
+      "https://user:secret@private-host.example/v1?token=query-secret";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockRejectedValue(
+        Object.assign(new Error(`connect ECONNREFUSED ${privateUrl}`), {
+          code: "ECONNREFUSED",
+        }),
+      ),
+    );
+
+    let failure: unknown;
+    try {
+      await fetchOpenAICompatibleModels(privateUrl);
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure).toBeInstanceOf(Error);
+    if (!(failure instanceof Error)) {
+      throw new Error("Expected provider discovery to fail");
+    }
+    expect(failure.message).toContain("ECONNREFUSED");
+    expect(failure.message).not.toContain("private-host.example");
+    expect(failure.message).not.toContain("secret");
+    expect(failure.message).not.toContain("query-secret");
+    expect(failure.cause).toBeUndefined();
+  });
+
   it("includes nested transport diagnostics", async () => {
     const refused = Object.assign(new Error("connect ECONNREFUSED"), {
       code: "ECONNREFUSED",

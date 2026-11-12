@@ -22,21 +22,14 @@ function describeTransportFailure(error: unknown): string {
 
     const fields =
       typeof current === "object"
-        ? (current as { message?: unknown; code?: unknown; cause?: unknown })
+        ? (current as { name?: unknown; code?: unknown; cause?: unknown })
         : undefined;
-    const message =
-      typeof fields?.message === "string"
-        ? fields.message
-        : typeof current === "string"
-          ? current
-          : "";
     const code = typeof fields?.code === "string" ? fields.code : "";
-    const detail = [code, message]
-      .filter(Boolean)
+    const name = typeof fields?.name === "string" ? fields.name : "";
+    const detail = [code, name]
+      .filter((value) => /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(value))
       .join(": ")
-      .replace(/\s+/g, " ")
-      .trim()
-      .slice(0, 500);
+      .slice(0, 128);
     if (detail) details.push(detail);
 
     if (fields?.cause != null) pending.push(fields.cause);
@@ -92,9 +85,8 @@ export async function fetchOpenAICompatibleModels(
   } catch (error) {
     const detail = describeTransportFailure(error);
     throw new CustomProviderModelsTransportError(
-      `Could not reach ${url}: ${detail}`,
+      `Could not reach the configured provider endpoint: ${detail}`,
       DyadErrorKind.External,
-      { cause: error },
     );
   }
 
@@ -110,7 +102,7 @@ export async function fetchOpenAICompatibleModels(
           ? DyadErrorKind.RateLimited
           : DyadErrorKind.External;
     throw new CustomProviderModelsRequestError(
-      `Server returned ${response.status} for ${url}.${authHint}`,
+      `The provider endpoint returned ${response.status}.${authHint}`,
       errorKind,
     );
   }
@@ -121,22 +113,21 @@ export async function fetchOpenAICompatibleModels(
   } catch (error) {
     if (error instanceof SyntaxError) {
       throw new CustomProviderModelsRequestError(
-        `${url} did not return valid JSON`,
+        "The provider endpoint did not return valid JSON",
         DyadErrorKind.External,
         { cause: error },
       );
     }
     throw new CustomProviderModelsTransportError(
-      `Could not read response body from ${url}: ${describeTransportFailure(
+      `Could not read the provider endpoint response: ${describeTransportFailure(
         error,
       )}`,
       DyadErrorKind.External,
-      { cause: error },
     );
   }
   if (!Array.isArray(body?.data)) {
     throw new CustomProviderModelsRequestError(
-      `${url} did not return an OpenAI-style model list`,
+      "The provider endpoint did not return an OpenAI-style model list",
       DyadErrorKind.External,
     );
   }
@@ -155,7 +146,7 @@ export async function fetchOpenAICompatibleModels(
   }
   const models = [...byId.values()];
 
-  logger.info(`Fetched ${models.length} models from ${url}`);
+  logger.info(`Fetched ${models.length} models from custom provider endpoint`);
   return models;
 }
 

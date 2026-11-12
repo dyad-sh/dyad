@@ -1,5 +1,11 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FetchModelsDialog } from "./FetchModelsDialog";
 
@@ -111,7 +117,13 @@ describe("FetchModelsDialog", () => {
     expect(
       document.querySelectorAll('[data-slot="skeleton"]').length,
     ).toBeGreaterThan(1);
-    expect(screen.queryByLabelText("Search models")).toBeNull();
+    expect(screen.getByLabelText("Search models")).toBeTruthy();
+    expect(
+      screen.getByTestId("model-import-region").classList.contains("h-[368px]"),
+    ).toBe(true);
+    expect(
+      screen.getByTestId("model-list-region").classList.contains("h-80"),
+    ).toBe(true);
   });
 
   it("lists fetched models and disables ones already added", async () => {
@@ -120,9 +132,22 @@ describe("FetchModelsDialog", () => {
     expect(await screen.findByText("llama-3-8b")).toBeTruthy();
     expect(screen.getByText("Context: 8,192 tokens")).toBeTruthy();
     expect(screen.getByText("Already added")).toBeTruthy();
+    const existingModel = screen.getByText("qwen-2-72b").closest("label");
+    expect(existingModel).not.toBeNull();
+    expect(
+      within(existingModel!)
+        .getByRole("checkbox")
+        .getAttribute("aria-disabled"),
+    ).toBe("true");
     expect(
       (addButton() as HTMLButtonElement).disabled,
       "nothing selected yet",
+    ).toBe(true);
+    expect(
+      screen.getByTestId("model-import-region").classList.contains("h-[368px]"),
+    ).toBe(true);
+    expect(
+      screen.getByTestId("model-list-region").classList.contains("h-80"),
     ).toBe(true);
   });
 

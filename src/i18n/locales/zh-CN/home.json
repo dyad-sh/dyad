@@ -285,6 +285,7 @@
     "queueAllTests": "将所有测试加入队列",
     "retryRun": "重试",
     "runAgain": "再次运行",
+    "selectionAlreadyRunning": "已在运行。请在本次运行结束后再运行。",
     "testGate": {
       "settingsLoading": "正在加载设置…",
       "settingsUnavailable": "Dyad 无法加载你的设置，因此无法确定测试将如何运行。",

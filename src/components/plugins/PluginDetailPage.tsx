@@ -187,6 +187,16 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
         </Button>
 
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
+          {s.oauthUnreadable && (
+            <Alert variant="destructive" className="mb-3">
+              <AlertTitle>Saved OAuth credentials can't be read</AlertTitle>
+              <AlertDescription>
+                Unlock or restore your OS keyring and reopen this page to retry.
+                To sign in again, Reset OAuth removes the saved OAuth
+                credentials.
+              </AlertDescription>
+            </Alert>
+          )}
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3 min-w-0">
               <PluginIcon
@@ -206,7 +216,12 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
                           : "text-amber-600 bg-amber-50 dark:bg-amber-900/30 dark:text-amber-300 border border-amber-500/50"
                       }`}
                     >
-                      OAuth: {s.oauthConnected ? "connected" : "not connected"}
+                      OAuth:{" "}
+                      {s.oauthUnreadable
+                        ? "saved credentials unavailable"
+                        : s.oauthConnected
+                          ? "connected"
+                          : "not connected"}
                     </span>
                   )}
                 </h1>
@@ -221,30 +236,37 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              {s.oauthEnabled && !s.oauthConnected && !setupIncomplete && (
-                // Only one OAuth flow can run at a time (shared
-                // connect slot), so Connect is blocked while any
-                // server is connecting; the label only spins for this
-                // server's own flow.
-                <Button
-                  variant="default"
-                  onClick={() => onConnect(s.id)}
-                  disabled={connectingServerId !== null}
-                >
-                  {connectingServerId === s.id ? "Connecting…" : "Connect"}
-                </Button>
-              )}
-              {s.oauthEnabled && s.oauthConnected && !setupIncomplete && (
-                <Button
-                  variant="outline"
-                  onClick={() => onDisconnect(s.id)}
-                  disabled={disconnectingServerId === s.id}
-                >
-                  {disconnectingServerId === s.id
-                    ? "Disconnecting…"
-                    : "Disconnect"}
-                </Button>
-              )}
+              {s.oauthEnabled &&
+                !s.oauthConnected &&
+                !s.oauthUnreadable &&
+                !setupIncomplete && (
+                  // Only one OAuth flow can run at a time (shared
+                  // connect slot), so Connect is blocked while any
+                  // server is connecting; the label only spins for this
+                  // server's own flow.
+                  <Button
+                    variant="default"
+                    onClick={() => onConnect(s.id)}
+                    disabled={connectingServerId !== null}
+                  >
+                    {connectingServerId === s.id ? "Connecting…" : "Connect"}
+                  </Button>
+                )}
+              {s.oauthEnabled &&
+                (s.oauthUnreadable ||
+                  (s.oauthConnected && !setupIncomplete)) && (
+                  <Button
+                    variant="outline"
+                    onClick={() => onDisconnect(s.id)}
+                    disabled={disconnectingServerId === s.id}
+                  >
+                    {disconnectingServerId === s.id
+                      ? "Disconnecting…"
+                      : s.oauthUnreadable
+                        ? "Reset OAuth"
+                        : "Disconnect"}
+                  </Button>
+                )}
               <Switch
                 aria-label={`Enabled toggle for ${s.name}`}
                 checked={!!s.enabled}

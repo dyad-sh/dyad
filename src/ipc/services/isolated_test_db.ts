@@ -4,6 +4,9 @@ import {
   type TestStepTiming,
 } from "./test_run_timing";
 import fs from "node:fs";
+import { randomUUID } from "node:crypto";
+import { acquireNeonTestBranch } from "./neon_test_branch_lease";
+import type { NeonBranchLimitStatus } from "@/shared/neon_branch_limit";
 import log from "electron-log";
 import { DyadError, DyadErrorKind } from "../../errors/dyad_error";
 import { testRunStoppedError, testRunStoppedInfraError } from "./test_run_stop";
@@ -14,6 +17,7 @@ import {
   createTempTestBranch,
   markAndDeleteTempTestBranch,
   trackedTestBranchId,
+  trackedRunTestBranchId,
 } from "../utils/neon_test_branch";
 import { createNeonTestAccount } from "../utils/neon_test_account";
 import { retryOnLocked } from "../utils/retryOnLocked";
@@ -31,7 +35,12 @@ import {
   type AdminKey,
   type TempTestUser,
 } from "../utils/supabase_test_user";
-import { SupabaseTestUserCreationRejectedError } from "../utils/supabase_test_user_errors";
+import {
+  SupabaseTestUserActionError,
+  SupabaseTestUserCreationRejectedError,
+  supabaseTestUserStepError,
+  withSupabaseTestUserStep,
+} from "../utils/supabase_test_user_errors";
 import { detectLegacyAppKey } from "../../supabase_admin/supabase_app_key";
 import { getPublishableKey } from "../../supabase_admin/supabase_context";
 import {
@@ -150,6 +159,12 @@ export interface PreparedIsolation {
    */
   authorizeRuntimeOrigin?: (origin: string) => Promise<void>;
   teardown: (options?: TeardownOptions) => Promise<TeardownResult>;
+  /**
+   * Called instead of `teardown` when the run's processes could not be
+   * stopped. Provider state stays tracked for startup recovery, but the run no
+   * longer claims shared capacity that only its teardown would free.
+   */
+  retainForRecovery?: () => void;
 }
 
 export interface TestCaseLifecycle {
@@ -193,6 +208,7 @@ export async function prepareIsolatedTestDatabase({
   perTestCase = false,
   appPathOverride,
   restartApp = true,
+  onNeonBranchLimit,
 }: {
   timing?: TestRunTiming;
   app: AppRow;
@@ -205,6 +221,7 @@ export async function prepareIsolatedTestDatabase({
   appPathOverride?: string;
   /** E2E sandboxes start their own runtime after isolation is prepared. */
   restartApp?: boolean;
+  onNeonBranchLimit?: (status: NeonBranchLimitStatus | undefined) => void;
 }): Promise<PreparedIsolation> {
   // Supabase: isolate via a throwaway, RLS-scoped test user.
   if (app.supabaseProjectId) {
@@ -243,6 +260,11 @@ export async function prepareIsolatedTestDatabase({
   let envSnapshot: string | null = null;
   let envModified = false;
   let branchId: string | undefined;
+  const branchOwnerId =
+    envIsDisposable && perTestCase ? randomUUID() : undefined;
+  let branchLease:
+    | Awaited<ReturnType<typeof acquireNeonTestBranch>>
+    | undefined;
   // What the row tracked before this run touched anything. The failure paths
   // below can only claim a marker that differs from this one — see the catch.
   const entryMarker = app.neonTestBranchId;
@@ -306,7 +328,10 @@ export async function prepareIsolatedTestDatabase({
       remoteCleanupCompleted = await measureTestRunStep(
         timing,
         "neon_branch_delete",
-        () => markAndDeleteTempTestBranch(app, branchId!),
+        () =>
+          branchLease
+            ? branchLease.release()
+            : markAndDeleteTempTestBranch(app, branchId!),
         (result) => (result ? "completed" : "failed"),
       );
     } else if (branchId || trackedBranchUnknown) {
@@ -336,14 +361,37 @@ export async function prepareIsolatedTestDatabase({
     // `createTempTestBranch`, before its own auth provisioning. Writing it
     // afterwards would leave a window where a crash makes startup recovery
     // rewrite the user's real `.env.local` for a run that never touched it.
-    const branch = await measureTestRunStep(timing, "neon_branch_create", () =>
-      createTempTestBranch(app, {
-        cleanupOnly: !restartApp,
-        // The tree whose `.env.local` the run's server will read. Detecting Neon
-        // Auth from the live project instead would provision (or skip) auth based
-        // on a directory the sandbox stopped mirroring at capture time.
-        appPathOverride,
-      }),
+    const branch = await measureTestRunStep(
+      timing,
+      "neon_branch_create",
+      async () => {
+        if (branchOwnerId) {
+          branchLease = await acquireNeonTestBranch(
+            app,
+            appPath,
+            branchOwnerId,
+            {
+              signal,
+              onCapacity: (status) => {
+                onNeonBranchLimit?.(status);
+                if (status === "waiting")
+                  emit(
+                    "Your Neon plan's branch limit was reached. This run is queued until another test run finishes cleaning up its branch.\n",
+                    "setup",
+                  );
+              },
+            },
+          );
+          return branchLease.branch;
+        }
+        return createTempTestBranch(app, {
+          cleanupOnly: !restartApp,
+          // The tree whose `.env.local` the run's server will read. Detecting Neon
+          // Auth from the live project instead would provision (or skip) auth based
+          // on a directory the sandbox stopped mirroring at capture time.
+          appPathOverride,
+        });
+      },
     );
     branchId = branch.branchId;
 
@@ -501,7 +549,7 @@ export async function prepareIsolatedTestDatabase({
               caseTiming = timing,
             ): Promise<Record<string, string>> => {
               signal?.throwIfAborted();
-              // Clear the copied parent data before the first case too. Repeating
+              // Clear copied parent data before the first case too. Repeating
               // this before later cases recovers a worker killed before teardown.
               await measureTestRunStep(caseTiming, "neon_data_cleanup", () =>
                 clearTestData(caseSignal),
@@ -541,8 +589,18 @@ export async function prepareIsolatedTestDatabase({
             }
           : undefined,
       teardown,
+      retainForRecovery: () => branchLease?.retire(),
     };
   } catch (error) {
+    if (branchOwnerId && !branchLease) {
+      // The branch manager owns failed creation compensation. Preserve a failed
+      // cleanup verdict without adopting/deleting another owner's marker here.
+      try {
+        trackedBranchUnknown = !!(await trackedRunTestBranchId(branchOwnerId));
+      } catch {
+        trackedBranchUnknown = true;
+      }
+    }
     // `createTempTestBranch` persists its marker BEFORE the provisioning that
     // can still fail, and its own dead-end keeps the row when the compensating
     // delete fails too. The local `branchId` is unset in exactly those cases, so
@@ -558,7 +616,7 @@ export async function prepareIsolatedTestDatabase({
     // a crashed recorder left the user's real `.env.local` pointed at it, so
     // this would erase the record startup recovery needs, after the branch was
     // already gone.
-    if (!branchId) {
+    if (!branchId && !branchOwnerId) {
       try {
         const tracked = await trackedTestBranchId(app.id);
         if (tracked && tracked !== entryMarker) branchId = tracked;
@@ -663,41 +721,52 @@ async function prepareSupabaseTestUserIsolation({
   }
 
   let testUser: TempTestUser | undefined;
+  const runOwnerId = randomUUID();
+  let caseAttempt = 0;
   // Fetched once per run for lifecycle hooks and Node test-fixture injection.
   let adminKey: AdminKey | undefined;
   // Keep failed deletions tracked. Never overwrite the durable recovery slot
   // by creating the next user while the previous one still exists.
-  let trackedUserId = app.supabaseTestUserId;
+  let trackedUserId = perTestCase ? null : app.supabaseTestUserId;
   const afterEach = async (
     caseSignal?: AbortSignal,
     caseTiming: TestStepTiming | undefined = timing,
-  ) => {
-    if (!trackedUserId) return;
-    const userApp = { ...app, supabaseTestUserId: trackedUserId };
-    const deleted = perTestCase
-      ? await measureTestRunStep(
-          caseTiming,
-          "supabase_user_cleanup",
-          () =>
-            deleteTempTestUser(userApp, {
-              adminKey,
-              timing: caseTiming,
-              signal:
-                caseSignal ?? AbortSignal.timeout(TEST_CASE_HOOK_TIMEOUT_MS),
-            }),
-          (result) => (result ? "completed" : "failed"),
-        )
-      : await measureTestRunStep(
-          timing,
-          "supabase_user_cleanup",
-          () => deleteTempTestUser(userApp),
-          (result) => (result ? "completed" : "failed"),
-        );
-    if (!deleted)
-      throw new Error("Couldn't delete the previous Supabase test user.");
-    trackedUserId = null;
-    testUser = undefined;
-  };
+  ) =>
+    withSupabaseTestUserStep(
+      "cleanup",
+      async () => {
+        if (!trackedUserId) return;
+        const userApp = { ...app, supabaseTestUserId: trackedUserId };
+        const deleted = perTestCase
+          ? await measureTestRunStep(
+              caseTiming,
+              "supabase_user_cleanup",
+              () =>
+                deleteTempTestUser(userApp, {
+                  throwOnError: true,
+                  adminKey,
+                  timing: caseTiming,
+                  signal:
+                    caseSignal ??
+                    AbortSignal.timeout(TEST_CASE_HOOK_TIMEOUT_MS),
+                }),
+              (result) => (result ? "completed" : "failed"),
+            )
+          : await measureTestRunStep(
+              timing,
+              "supabase_user_cleanup",
+              () => deleteTempTestUser(userApp, { throwOnError: true }),
+              (result) => (result ? "completed" : "failed"),
+            );
+        if (!deleted)
+          throw new SupabaseTestUserActionError(
+            "Couldn't delete the previous Supabase test user.",
+          );
+        trackedUserId = null;
+        testUser = undefined;
+      },
+      caseSignal,
+    );
   // Nothing here touches `.env.local` — the Supabase path isolates by test user,
   // not by swapping the app's database — so the environment is never at risk.
   const teardown = async (): Promise<TeardownResult> => {
@@ -727,6 +796,10 @@ async function prepareSupabaseTestUserIsolation({
     const rls = await measureTestRunStep(timing, "supabase_rls_check", () =>
       checkRls({ projectId, organizationSlug }),
     );
+    const warning = buildRlsWarning(rls);
+    // Disclose the risk before setup can fail; keep it in isolation.reason too
+    // so completed runs retain the warning outside the transient output log.
+    if (warning) emit(`Warning: ${warning}\n`, "setup");
 
     if (signal?.aborted) {
       throw testRunStoppedError(signal);
@@ -753,8 +826,6 @@ async function prepareSupabaseTestUserIsolation({
     // the user's own language (`reason` is main-process English), and can drop
     // it the moment the user takes the fix — a warning that outlives the
     // problem it describes reads as the fix not having worked.
-    const warning = buildRlsWarning(rls);
-
     if (signal?.aborted) {
       throw testRunStoppedError(signal);
     }
@@ -843,17 +914,24 @@ async function prepareSupabaseTestUserIsolation({
               signal?.throwIfAborted();
               caseSignal?.throwIfAborted();
               try {
-                testUser = await measureTestRunStep(
-                  caseTiming,
-                  "supabase_user_create",
+                testUser = await withSupabaseTestUserStep(
+                  "per-test setup",
                   () =>
-                    createTempTestUser(
-                      {
-                        ...app,
-                        supabaseTestUserId: null,
-                      },
-                      { adminKey, signal: caseSignal, timing: caseTiming },
+                    measureTestRunStep(caseTiming, "supabase_user_create", () =>
+                      createTempTestUser(
+                        {
+                          ...app,
+                          supabaseTestUserId: null,
+                        },
+                        {
+                          adminKey,
+                          signal: caseSignal,
+                          timing: caseTiming,
+                          ownerId: `${runOwnerId}:${++caseAttempt}`,
+                        },
+                      ),
                     ),
+                  caseSignal,
                 );
               } catch (error) {
                 signal?.throwIfAborted();
@@ -902,9 +980,9 @@ async function prepareSupabaseTestUserIsolation({
         teardown: settledTeardown,
       };
     }
-    const message = error instanceof Error ? error.message : String(error);
+    const failure = supabaseTestUserStepError("setup", error);
     logger.error(
-      `Failed to set up isolated test user for app ${app.id}: ${message}`,
+      `Failed to set up isolated test user for app ${app.id}: ${failure.message}`,
     );
     return {
       isolation: {
@@ -913,7 +991,9 @@ async function prepareSupabaseTestUserIsolation({
       },
       cleanupProvider: "supabase-test-user",
       infraError: {
-        message: `Couldn't set up an isolated test user, so the run was stopped. Your real data was not touched. Reason: ${message}`,
+        // Setup can already have mutated the real project, so only promise
+        // that execution was blocked, not that existing data was untouched.
+        message: `The run was stopped before any tests or recording started. ${failure.userMessage}`,
       },
       teardown: settledTeardown,
     };
@@ -926,7 +1006,7 @@ function buildRlsWarning(rls: {
   unverified?: boolean;
 }): string | undefined {
   if (rls.unverified) {
-    return "Tests ran as an isolated test user, but Dyad couldn't verify Row-Level Security — some real data may be reachable.";
+    return "Dyad couldn't check whether your Supabase data is protected. Tests may be able to access existing data. Check your Supabase connection and data access rules.";
   }
   if (rls.tablesWithoutRls.length === 0) {
     return undefined;
@@ -936,7 +1016,7 @@ function buildRlsWarning(rls: {
     rls.tablesWithoutRls.length > 5
       ? `, and ${rls.tablesWithoutRls.length - 5} more`
       : "";
-  return `Tests ran as an isolated test user, but these tables don't have Row-Level Security, so the test could affect real data in them: ${shown}${more}. Enable RLS for full isolation.`;
+  return `These tables don't have Row-Level Security, so tests could affect real data in them: ${shown}${more}. Enable RLS for full isolation.`;
 }
 
 /** Restore `.env.local` to a previous snapshot (or remove it if there was none). */

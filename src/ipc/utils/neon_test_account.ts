@@ -37,7 +37,7 @@ export async function createNeonTestAccount({
   appId: number;
   signal?: AbortSignal;
 }): Promise<NeonTestAccount> {
-  const email = `dyad-test+${appId}-${Date.now()}@dyad.test`;
+  const email = `dyad-test+${appId}-${crypto.randomUUID()}@dyad.test`;
   const password = crypto.randomBytes(24).toString("base64url");
 
   if (IS_TEST_BUILD) {

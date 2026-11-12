@@ -89,6 +89,7 @@ import { getPackageManagerCommandEnv } from "../utils/socket_firewall";
 import { withoutInheritedDatabaseEnv } from "../utils/sandbox_env";
 import { queueCloudSandboxSnapshotSync } from "../utils/cloud_sandbox_provider";
 import { sendTelemetryEvent } from "../utils/telemetry";
+import { getSupabaseTestUserMessage } from "../utils/supabase_test_user_errors";
 import {
   prepareIsolatedTestDatabase,
   type IsolationCleanupProvider,
@@ -101,6 +102,7 @@ import {
   restoreAppFromTestBranch,
 } from "../utils/neon_test_branch";
 import {
+  retainUnsettledE2eTestOwner,
   settleE2eTestProcesses,
   stopE2eTestProcessesSync,
   trackE2eTestProcess,
@@ -127,12 +129,16 @@ import {
   usesSandboxedE2eTests,
 } from "@/lib/e2eSandbox";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
-import type { TestRunExecution } from "@/test_run_queue/controller";
 import {
   getAppTestRunQueue,
+  setNeonBranchLimit,
   ownsAppTestRun,
   withAppTestRun,
   stopAppTestsForApp,
+  cancelAppTestRun,
+  dismissNeonBranchLimit,
+  validateTestRunInputs,
+  type AppTestRunExecution,
   stopAllAppTestRuns,
   drainAppTestRuns,
 } from "../services/test_run_queue_service";
@@ -317,9 +323,10 @@ export function stopAllAppTestsSync(): void {
 export async function endTestsForApp(appId: number): Promise<void> {
   stopAppTestsForApp(appId, { kind: "app-deleted" });
   let timer: ReturnType<typeof setTimeout> | undefined;
+  const drain = new AbortController();
   try {
     await Promise.race([
-      drainAppTestRuns(appId),
+      drainAppTestRuns(appId, drain.signal),
       new Promise<never>((_resolve, reject) => {
         timer = setTimeout(
           () =>
@@ -335,6 +342,7 @@ export async function endTestsForApp(appId: number): Promise<void> {
     ]);
   } finally {
     clearTimeout(timer);
+    drain.abort();
   }
 }
 
@@ -357,6 +365,7 @@ export function getRunningTestBaseUrl(appId: number): string | null {
 }
 
 // Read-only replay of the active lifecycle; queue ownership remains authoritative.
+// Run IDs are process-wide; app membership is checked at every read boundary.
 const activeRunSnapshots = new Map<number, ActiveTestRunSnapshot>();
 
 function emitOutput(
@@ -366,10 +375,17 @@ function emitOutput(
   chunk: string,
   phase: "setup" | "running",
 ): void {
-  const current = activeRunSnapshots.get(appId);
+  const current = activeRunSnapshots.get(runId);
   if (current?.run.runId === runId) {
-    activeRunSnapshots.set(appId, {
+    activeRunSnapshots.set(runId, {
       ...current,
+      run: {
+        ...current.run,
+        branch:
+          getAppTestRunQueue(appId).activeRuns.find(
+            (run) => run.runId === runId,
+          )?.branch ?? current.run.branch,
+      },
       phase: current.phase === "setup" ? phase : current.phase,
       output: (current.output + chunk).slice(-100_000),
     });
@@ -386,6 +402,13 @@ function emitRunState(
   event: IpcMainInvokeEvent,
   payload: TestsRunStatePayload,
 ): void {
+  payload = {
+    ...payload,
+    branch:
+      getAppTestRunQueue(payload.appId).activeRuns.find(
+        (run) => run.runId === payload.runId,
+      )?.branch ?? activeRunSnapshots.get(payload.runId)?.run.branch,
+  };
   // Stamped on any payload about a preview run, whatever its source: the
   // native view belongs to the invoking window, so every window has to be able
   // to tell whether a broadcast is about the view it is showing.
@@ -397,17 +420,18 @@ function emitRunState(
         ),
       }
     : payload;
-  const current = activeRunSnapshots.get(payload.appId);
+  const current = activeRunSnapshots.get(payload.runId);
   if (payload.state === "started") {
-    activeRunSnapshots.set(payload.appId, {
+    activeRunSnapshots.set(payload.runId, {
       run: emittedPayload,
       phase: "setup",
       output: "",
     });
   } else if (current?.run.runId === payload.runId) {
-    if (payload.state === "finished") activeRunSnapshots.delete(payload.appId);
-    else
-      activeRunSnapshots.set(payload.appId, {
+    if (payload.state === "finished") {
+      activeRunSnapshots.delete(payload.runId);
+    } else
+      activeRunSnapshots.set(payload.runId, {
         ...current,
         run: {
           ...current.run,
@@ -452,6 +476,8 @@ function playwrightCliInvocationForApp(
 
 export interface RunAppTestsCoreOptions {
   timing?: TestRunTiming;
+  /** Captured at queue admission; concurrent runs always use one worker. */
+  parallelRunsEnabled?: boolean;
   /** Requires the auto fixture and serial execution for provider cleanup. */
   isolateTestCases?: boolean;
   appId: number;
@@ -1027,6 +1053,7 @@ export async function runAppTestsCore(
 
 async function runAppTestsCoreUnredacted({
   timing,
+  parallelRunsEnabled = false,
   isolateTestCases,
   appId,
   appPath: explicitAppPath,
@@ -1281,7 +1308,7 @@ async function runAppTestsCoreUnredacted({
   // Preview runs, which can only ever be sequential, returned above — so the
   // caller's choice is honored as-is here, including on the fallback path where
   // preview routing was refused and this became an ordinary browser run.
-  if (isolateTestCases) {
+  if (isolateTestCases || parallelRunsEnabled) {
     args.push("--workers=1");
   } else if (parallel) {
     args.push("--fully-parallel", `--workers=${parallelWorkerCount()}`);
@@ -1771,8 +1798,22 @@ async function runTestsWithPreviewAutomation({
   if (caseServer?.failure) {
     const message = `Per-test database isolation failed: ${caseServer.failure.message}`;
     logger.warn(message);
-    if (!signal.aborted && !result.infraError) {
-      result = { ...result, infraError: { message } };
+    if (!signal.aborted) {
+      const userMessage =
+        getSupabaseTestUserMessage(caseServer.failure) ?? message;
+      if (result.infraError)
+        logger.warn(
+          "Test runner also failed while per-test database isolation was unsuccessful.",
+        );
+      result = {
+        ...result,
+        infraError: {
+          ...result.infraError,
+          message: result.infraError
+            ? `${result.infraError.message}\n${userMessage}`
+            : userMessage,
+        },
+      };
     }
   }
 
@@ -1805,6 +1846,7 @@ async function runTestsWithPreviewAutomation({
  */
 async function runTestsAgainstNormalPreview({
   timing,
+  parallelRunsEnabled,
   appId,
   disclosure,
   neonRefusal,
@@ -1829,6 +1871,7 @@ async function runTestsAgainstNormalPreview({
   emitPreviewFallback,
 }: {
   timing?: TestRunTiming;
+  parallelRunsEnabled: boolean;
   appId: number;
   /** Why this run isn't sandboxed, shown on the result's isolation badge. */
   disclosure: string;
@@ -1972,6 +2015,7 @@ async function runTestsAgainstNormalPreview({
           emitPreviewFallback,
           coreOptions: {
             timing,
+            parallelRunsEnabled,
             appId,
             testFile,
             testFiles,
@@ -1997,6 +2041,7 @@ async function runTestsAgainstNormalPreview({
         const settled = await settleRunProcesses();
         if (!settled) {
           onProcessSettlementFailed(testRunResources, prepared?.isolation);
+          prepared?.retainForRecovery?.();
         } else if (prepared) {
           try {
             if (prepared.isolation.mode !== "none") {
@@ -2115,6 +2160,9 @@ const PROCESS_SETTLEMENT_FAILED_MESSAGE =
  */
 interface CapturedConfiguration {
   neonProjectId: string | null;
+  neonActiveBranchId: string | null;
+  neonDevelopmentBranchId: string | null;
+  neonPreviewBranchId: string | null;
   supabaseProjectId: string | null;
   installCommand: string | null;
   startCommand: string | null;
@@ -2178,14 +2226,14 @@ export interface RunTestsWithIsolationOptions {
    */
   preview?: boolean;
   /** Internal queue ownership, supplied by the agent to include result accounting. */
-  queueRun?: TestRunExecution;
+  queueRun?: AppTestRunExecution;
 }
 
 /** Shared admission for panel requests and agent-owned queue executions. */
 export function runAppTestsWithIsolation(
   options: RunTestsWithIsolationOptions,
 ): Promise<RunAppTestsResult> {
-  const execute = async (run: TestRunExecution, timing?: TestRunTiming) => {
+  const execute = async (run: AppTestRunExecution, timing?: TestRunTiming) => {
     try {
       const result = await executeAppTestsWithIsolation(
         { ...options, timing },
@@ -2233,10 +2281,16 @@ async function executeAppTestsWithIsolation(
     source,
     preview,
   }: RunTestsWithIsolationOptions,
-  { runId, signal }: TestRunExecution,
+  { runId, signal, parallelRunsEnabled }: AppTestRunExecution,
 ): Promise<RunAppTestsResult> {
   if (signal.aborted)
     return { appId, results: [], infraError: testRunStoppedInfraError(signal) };
+  // Concurrent runs use their own browsers. One native preview surface cannot
+  // be leased by two runs, and queueing behind it would invalidate reservations.
+  if (parallelRunsEnabled) {
+    preview = false;
+    parallel = false;
+  }
   const selection = normalizeRunTestSelection({
     testFile,
     testFiles,
@@ -2436,6 +2490,9 @@ async function executeAppTestsWithIsolation(
       { appId, operation: "unsettled-app-tests", resources },
       PROCESS_SETTLEMENT_FAILED_MESSAGE,
     );
+    // The scheduler keeps this run's global slot while its owner is unsettled.
+    // A daemonized server's wrapper may already have left the child registry.
+    retainUnsettledE2eTestOwner(signal);
   };
   // The real env is never changed. This only reports a sandbox/provider cleanup
   // failure (for example, a temporary Neon branch left for startup recovery).
@@ -2548,6 +2605,7 @@ async function executeAppTestsWithIsolation(
       finalResult = withIsolationCleanupWarning(
         await runTestsAgainstNormalPreview({
           timing,
+          parallelRunsEnabled,
           appId,
           ...sandboxUnavailable,
           runtimeMode,
@@ -2652,6 +2710,7 @@ async function executeAppTestsWithIsolation(
         }
         const realAppPath = getDyadAppPath(claimedApp.path);
         try {
+          await validateTestRunInputs(runId);
           // Written into the REAL app, before the capture, so the snapshot
           // carries it: a sandboxed preview run executes from the workspace,
           // and the shim has to already be in what was copied.
@@ -2678,6 +2737,9 @@ async function executeAppTestsWithIsolation(
           // only agree when nothing moved.
           const captured: CapturedConfiguration = {
             neonProjectId: claimedApp.neonProjectId,
+            neonActiveBranchId: claimedApp.neonActiveBranchId,
+            neonDevelopmentBranchId: claimedApp.neonDevelopmentBranchId,
+            neonPreviewBranchId: claimedApp.neonPreviewBranchId,
             supabaseProjectId: claimedApp.supabaseProjectId,
             installCommand: claimedApp.installCommand,
             startCommand: claimedApp.startCommand,
@@ -2707,6 +2769,11 @@ async function executeAppTestsWithIsolation(
             const afterCapture = await getApp(appId);
             if (
               afterCapture.neonProjectId !== captured.neonProjectId ||
+              afterCapture.neonActiveBranchId !== captured.neonActiveBranchId ||
+              afterCapture.neonDevelopmentBranchId !==
+                captured.neonDevelopmentBranchId ||
+              afterCapture.neonPreviewBranchId !==
+                captured.neonPreviewBranchId ||
               afterCapture.supabaseProjectId !== captured.supabaseProjectId ||
               afterCapture.installCommand !== captured.installCommand ||
               afterCapture.startCommand !== captured.startCommand ||
@@ -2743,6 +2810,14 @@ async function executeAppTestsWithIsolation(
           // A Stop is not a setup failure — let it reach the outer catch, which
           // turns it into the same stopped result, with its cause, that the
           // in-run Stop path produces.
+          if (!(await settleRunProcesses())) {
+            onProcessSettlementFailed([
+              readAppResource("app-path"),
+              readAppResource("repository-ref"),
+              "repository-worktree",
+              "test-files",
+            ]);
+          }
           if (signal.aborted) throw error;
           // Everything else here — a Playwright install that can't reach the
           // registry, a browser download that fails, a missing `node_modules`,
@@ -2780,13 +2855,14 @@ async function executeAppTestsWithIsolation(
     // this run actually did.
     sandboxed = true;
 
-    // The live test only owns provider/test inputs. It deliberately does not
-    // claim the normal runtime or runtime-config: its process is run-scoped and
-    // never registered in runningApps.
+    // Serial runs retain the legacy test-files exclusion through execution and
+    // artifact retention. Parallel runs use captured inputs and independent
+    // artifacts. Neither path claims the normal runtime or runtime-config:
+    // its process is run-scoped and never registered in runningApps.
     const testRunResources = [
       readAppResource("app-path"),
-      "provider",
-      "test-files",
+      readAppResource("provider"),
+      ...(!parallelRunsEnabled ? (["test-files"] as const) : []),
     ] as const;
     if (appOperationCoordinator.isBusy(appId, testRunResources)) {
       logger.info(
@@ -2868,6 +2944,10 @@ async function executeAppTestsWithIsolation(
           // isolated. Dead-end instead; the retry captures a fresh snapshot.
           if (
             app.neonProjectId !== capturedProvider.neonProjectId ||
+            app.neonActiveBranchId !== capturedProvider.neonActiveBranchId ||
+            app.neonDevelopmentBranchId !==
+              capturedProvider.neonDevelopmentBranchId ||
+            app.neonPreviewBranchId !== capturedProvider.neonPreviewBranchId ||
             app.supabaseProjectId !== capturedProvider.supabaseProjectId ||
             app.installCommand !== capturedProvider.installCommand ||
             app.startCommand !== capturedProvider.startCommand
@@ -2890,6 +2970,8 @@ async function executeAppTestsWithIsolation(
                 timing,
                 app,
                 workspacePath: workspace!.workspacePath,
+                onNeonBranchLimit: (status) =>
+                  setNeonBranchLimit(runId, app.neonProjectId!, status),
                 emit,
                 runtimeMode,
                 signal,
@@ -3086,6 +3168,7 @@ async function executeAppTestsWithIsolation(
               }),
             coreOptions: {
               timing,
+              parallelRunsEnabled,
               appId,
               appPath: workspace!.workspacePath,
               baseUrl: testRuntime.baseUrl,
@@ -3126,8 +3209,16 @@ async function executeAppTestsWithIsolation(
                   // their screenshots live in earlier runs' artifact directories —
                   // so the prune has to keep those rather than treat this run's
                   // output as a complete replacement.
+                  // Only serial full-suite runs supersede all prior results.
+                  // The workspace owner also excludes active directories.
                   replacesEveryResult:
-                    !normalizedTestFiles && testLine === undefined && !grep,
+                    !parallelRunsEnabled &&
+                    !readSettings().enableParallelTestRuns &&
+                    getAppTestRunQueue(appId).activeRuns.length === 1 &&
+                    testFile === undefined &&
+                    testFiles === undefined &&
+                    testLine === undefined &&
+                    !grep,
                 }),
               );
               retained = true;
@@ -3150,6 +3241,7 @@ async function executeAppTestsWithIsolation(
           // and fence conflicting operations before releasing this callback.
           if (!stopped) {
             onProcessSettlementFailed(testRunResources, prepared?.isolation);
+            prepared?.retainForRecovery?.();
           } else if (prepared) {
             try {
               // Announce the teardown before it starts. It removes the
@@ -3309,8 +3401,26 @@ async function moveFileWithFallback(src: string, dst: string): Promise<void> {
 
 export function registerTestsHandlers() {
   createTypedHandler(
+    testsContracts.dismissNeonBranchLimit,
+    async (event, { appId, runId }) => {
+      dismissNeonBranchLimit(appId, runId);
+      broadcastToRegisteredWindows(event.sender, "tests:queue-state", {
+        appId,
+        ...getAppTestRunQueue(appId),
+      });
+    },
+  );
+  createTypedHandler(
     testsContracts.getActiveRun,
-    async (_event, { appId }) => activeRunSnapshots.get(appId) ?? null,
+    async (_event, { appId }) =>
+      [...activeRunSnapshots.values()].find(
+        (snapshot) => snapshot.run.appId === appId,
+      ) ?? null,
+  );
+  createTypedHandler(testsContracts.getActiveRuns, async (_event, { appId }) =>
+    [...activeRunSnapshots.values()].filter(
+      (snapshot) => snapshot.run.appId === appId,
+    ),
   );
   createTypedHandler(testsContracts.getRunQueue, async (_event, { appId }) =>
     getAppTestRunQueue(appId),
@@ -3332,6 +3442,13 @@ export function registerTestsHandlers() {
     stopAppTestsForApp(params.appId, { kind: "tests-panel-stop" });
     return { ok: true as const };
   });
+  createTypedHandler(
+    testsContracts.cancelRun,
+    async (_event, { appId, runId }) => {
+      cancelAppTestRun(appId, runId, { kind: "test-queue-stop" });
+      return { ok: true as const };
+    },
+  );
 
   createTypedHandler(
     testsContracts.getTestScreenshot,
@@ -3369,8 +3486,9 @@ export function registerTestsHandlers() {
       );
     }
 
-    // Same per-app lock the runs take, so a delete can't remove a spec out
-    // from under an in-flight run (or interleave with its env swap).
+    // Serial and non-sandboxed runs hold test-files through cleanup, so deletes
+    // wait for them. Parallel sandboxed runs capture inputs under this claim,
+    // then execute from their independent copies while source edits proceed.
     //
     // A recording holds `repository`/`test-files` for its whole session, so
     // without the refusal the coordinator would queue the delete behind it — up

@@ -48,6 +48,8 @@ const SERVER_READY_POLL_MS = 250;
  * instead of pointing Playwright at a stranger's server.
  */
 const SERVER_READY_CONFIRM_MS = 1_000;
+/** How long a port probe waits for a loopback connection to be accepted. */
+const CONNECT_PROBE_TIMEOUT_MS = 1_000;
 /**
  * Echoed by the shell between a custom app's install and start commands.
  *
@@ -138,9 +140,9 @@ class PortInUseError extends Error {
     message: string,
     /**
      * The port that turned out to be unusable. The retry loop excludes it from
-     * the next allocation: `probePort` only binds `127.0.0.1`, so a listener on
-     * `::1` (or one that appears between the probe and the spawn and stays)
-     * leaves the probe succeeding on a port the dev server still cannot take.
+     * the next allocation: a listener that appears between the probe and the
+     * spawn and stays leaves the probe succeeding on a port the dev server
+     * still cannot take.
      * Without this the rescan picks the same port every attempt and the run
      * fails with "couldn't get a free port" while the other 199 sit free.
      */
@@ -177,11 +179,16 @@ export interface E2eTestRuntime {
 }
 
 /**
- * Ports handed out but whose server has not bound yet. The probe below binds
- * and immediately closes, so without this two runs starting within the same
- * second — tests for two different apps — would be handed the same port.
+ * Ports handed out to a run and not yet confirmed free again: held from
+ * allocation until the run's server is confirmed stopped, not just until it
+ * answers. The probe below binds and immediately closes, so without this two
+ * runs starting within the same second would be handed the same port — and a
+ * running server is not reliably visible to the probe either: a dev server
+ * between restarts holds no listener at all, and on macOS a bind to one
+ * loopback succeeds next to a wildcard (`::`) listener, which is how parallel
+ * runs of one Vite app were all pointed at the first run's server.
  */
-const pendingE2eTestPorts = new Set<number>();
+const reservedE2eTestPorts = new Set<number>();
 
 /**
  * Errors that mean the machine has no IPv6 loopback at all rather than that
@@ -232,6 +239,27 @@ function bindProbe(
 }
 
 /**
+ * Whether something accepts connections on one loopback address.
+ *
+ * Any failure means nothing is listening, and so does the timeout: Windows takes
+ * about two seconds to refuse a loopback connection to a closed port, while a
+ * listener there — as everywhere — accepts at once.
+ */
+function acceptsConnections(port: number, host: string): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
+    const socket = net.connect({ port, host });
+    socket.unref();
+    const settle = (listening: boolean) => {
+      socket.destroy();
+      resolve(listening);
+    };
+    socket.setTimeout(CONNECT_PROBE_TIMEOUT_MS, () => settle(false));
+    socket.once("connect", () => settle(true));
+    socket.once("error", () => settle(false));
+  });
+}
+
+/**
  * Probe one port on both loopback stacks. Resolves to the bound port, or null
  * if it's unavailable.
  *
@@ -240,18 +268,27 @@ function bindProbe(
  * dev server then can't take it, and the run burns a retry on a port that was
  * never usable. Checking both here is also what lets readiness trust that
  * nothing was serving on this port when the child was spawned.
+ *
+ * Binding alone is not enough: Node listens with `SO_REUSEADDR`, so on macOS
+ * (and Windows) a bind to `127.0.0.1` or `::1` succeeds next to a wildcard
+ * listener — which is what Vite's `host: "::"` is. Connecting is what sees
+ * every listener shape, so a port that binds is still taken if anything answers.
  */
 async function probePort(port: number): Promise<number | null> {
   const bound = await bindProbe(port, "127.0.0.1", false);
   if (bound === null) return null;
-  return (await bindProbe(bound, "::1", true)) === null ? null : bound;
+  if ((await bindProbe(bound, "::1", true)) === null) return null;
+  const listening = await Promise.all(
+    ["127.0.0.1", "::1"].map((host) => acceptsConnections(bound, host)),
+  );
+  return listening.some(Boolean) ? null : bound;
 }
 
 export async function allocateE2eTestPort(
   /**
-   * Ports a caller has already tried and found unusable. `probePort` can only
-   * answer for `127.0.0.1`, so a port it calls free may still be unbindable by
-   * the dev server; without excluding those, a rescan hands back the same one.
+   * Ports a caller has already tried and found unusable. `probePort` answers
+   * for one moment, so a port it calls free may be taken before the dev server
+   * binds it; without excluding those, a rescan hands back the same one.
    */
   excludePorts?: ReadonlySet<number>,
 ): Promise<number> {
@@ -262,7 +299,7 @@ export async function allocateE2eTestPort(
   // fail to start with nothing to point at as the cause.
   for (let offset = 0; offset < E2E_TEST_SERVER_PORT_RANGE; offset += 1) {
     const port = E2E_TEST_SERVER_PORT_START + offset;
-    if (pendingE2eTestPorts.has(port) || excludePorts?.has(port)) continue;
+    if (reservedE2eTestPorts.has(port) || excludePorts?.has(port)) continue;
     // The band is above every *default* reserved range, but Dyad's own E2E
     // shards relocate those ranges: `DYAD_E2E_PORT_BLOCK_INDEX=9` puts a
     // block's proxy sub-range at 51550–52549, straight through this band. The
@@ -273,14 +310,14 @@ export async function allocateE2eTestPort(
     // neither probe had resolved, and the bind inside `probePort` — which is
     // released between its two loopback attempts — is not a lock that holds
     // across them.
-    pendingE2eTestPorts.add(port);
+    reservedE2eTestPorts.add(port);
     try {
       if ((await probePort(port)) !== null) return port;
     } catch (error) {
-      pendingE2eTestPorts.delete(port);
+      reservedE2eTestPorts.delete(port);
       throw error;
     }
-    pendingE2eTestPorts.delete(port);
+    reservedE2eTestPorts.delete(port);
   }
   // Band exhausted (200 concurrent runs, or a foreign service squatting the
   // whole range): fall back to an OS-assigned port, rejecting any that lands in
@@ -290,10 +327,10 @@ export async function allocateE2eTestPort(
     if (
       port !== null &&
       !isReservedDyadPort(port) &&
-      !pendingE2eTestPorts.has(port) &&
+      !reservedE2eTestPorts.has(port) &&
       !excludePorts?.has(port)
     ) {
-      pendingE2eTestPorts.add(port);
+      reservedE2eTestPorts.add(port);
       return port;
     }
   }
@@ -306,9 +343,9 @@ export async function allocateE2eTestPort(
   );
 }
 
-/** Hand a port back once its server has bound it (or failed to start). */
+/** Hand a port back once nothing the run started can still be listening on it. */
 export function releaseE2eTestPort(port: number): void {
-  pendingE2eTestPorts.delete(port);
+  reservedE2eTestPorts.delete(port);
 }
 
 /**
@@ -613,15 +650,19 @@ async function startE2eTestRuntimeOnce({
   if (signal?.aborted) throw testRunStoppedError(signal);
   const port = await allocateE2eTestPort(excludePorts);
   // Every exit from here on must hand the port back. Without this, anything
-  // that throws before the try/catch below — a workspace read, the pnpm version
-  // probe, `spawn` itself — permanently burns one of the 200 band ports, and
-  // enough failures leave the process unable to allocate at all.
+  // that throws before the server is spawned — a workspace read, the pnpm
+  // version probe, `spawn` itself — permanently burns one of the 200 band
+  // ports, and enough failures leave the process unable to allocate at all.
+  // Once spawned, the server's own `stop()` hands it back instead, and only when
+  // it confirms the tree is gone: a server that has answered still owns the
+  // port for the rest of the run.
   let portReserved = true;
   const releasePort = () => {
     if (!portReserved) return;
     portReserved = false;
     releaseE2eTestPort(port);
   };
+  let releasedByServer = false;
   try {
     return await startServerOnPort({
       port,
@@ -631,10 +672,13 @@ async function startE2eTestRuntimeOnce({
       startCommand,
       signal,
       onOutput,
-      onBound: releasePort,
+      onSpawned: () => {
+        releasedByServer = true;
+      },
+      releasePort,
     });
   } finally {
-    releasePort();
+    if (!releasedByServer) releasePort();
   }
 }
 
@@ -646,7 +690,8 @@ async function startServerOnPort({
   startCommand,
   signal,
   onOutput,
-  onBound,
+  onSpawned,
+  releasePort,
 }: {
   port: number;
   workspacePath: string;
@@ -655,7 +700,9 @@ async function startServerOnPort({
   startCommand?: string | null;
   signal?: AbortSignal;
   onOutput?: (chunk: string) => void;
-  onBound: () => void;
+  /** From here on, releasing the port is this server's `stop()`'s job. */
+  onSpawned: () => void;
+  releasePort: () => void;
 }): Promise<E2eTestRuntime> {
   const isCustom = hasCustomE2eStartCommand({ installCommand, startCommand });
   const { command, env } = await buildE2eTestStartCommand({
@@ -681,6 +728,7 @@ async function startServerOnPort({
     stdio: "pipe",
     detached: false,
   });
+  onSpawned();
   // Owned by this run's signal, so another app's concurrent run cannot settle
   // (and SIGKILL) this server as part of its own cleanup.
   const untrack = trackE2eTestProcess(child, signal);
@@ -725,9 +773,9 @@ async function startServerOnPort({
           // clean exit proves nothing about a descendant that daemonized or
           // was reparented — that survivor left the shell's tree, so
           // `forceKillProcessTree` can neither see nor signal it, yet it is
-          // exactly what still holds the workspace as its cwd. Nothing can
-          // bind the port while something is listening on it, on either stack,
-          // so that is the observable tied to what the caller decides with.
+          // exactly what still holds the workspace as its cwd. Whether
+          // anything still listens on the port, on either stack, is the
+          // observable tied to what the caller decides with.
           if (child.exitCode === null && child.signalCode === null) {
             return false;
           }
@@ -769,8 +817,12 @@ async function startServerOnPort({
       // A child with no pid never started, so there is nothing for quit to kill
       // and nothing that could later exit to drop it: untrack it here or it
       // sits in the registry for the life of the process.
+      //
+      // The port follows the same rule. An unconfirmed stop keeps it reserved:
+      // losing one band port beats pointing another run at a survivor.
       if (stopped) {
         untrack();
+        releasePort();
       }
       return stopped;
     })();
@@ -796,9 +848,6 @@ async function startServerOnPort({
       ownershipNonce,
       ownershipNonceFile,
     });
-    // The server owns the port now, so a concurrent allocation only needs the
-    // real bind check to see it is taken.
-    onBound();
     logger.info(`Isolated E2E server ready on ${baseUrl}`);
     return {
       baseUrl,
@@ -828,13 +877,13 @@ export async function startE2eTestRuntime(
   options: Omit<Parameters<typeof startE2eTestRuntimeOnce>[0], "excludePorts">,
 ): Promise<E2eTestRuntime> {
   let lastError: unknown;
-  // `startE2eTestRuntimeOnce` hands its port back in a `finally`, so by the time
-  // the failure arrives here the port is already back in the pool and the next
-  // rescan starts from the same offset. Carry the ports that actually failed
-  // across attempts, or a port that probes free but the server cannot bind —
-  // an `::1`-only listener, or one that appears between probe and spawn and
-  // stays — is picked all three times and the run reports "couldn't get a free
-  // port" with 199 of the band still free.
+  // A failed attempt hands its port back once its server is confirmed stopped,
+  // so by the time the failure arrives here the port is usually back in the
+  // pool and the next rescan starts from the same offset. Carry the ports that
+  // actually failed across attempts, or a port that probes free but the server
+  // cannot bind — one that a listener takes between probe and spawn and keeps —
+  // is picked all three times and the run reports "couldn't get a free port"
+  // with 199 of the band still free.
   const failedPorts = new Set<number>();
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {

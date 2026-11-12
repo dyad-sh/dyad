@@ -255,6 +255,44 @@ describe("mcp updateServer handler", () => {
     expect(disposeMock).toHaveBeenCalledWith(44);
   });
 
+  it("preserves unreadable secret columns on unrelated edits and permits deliberate replacement", async () => {
+    const raw = Buffer.from("v10unreadable").toString("base64");
+    seedRow({
+      id: 75,
+      envEncrypted: raw,
+      headersEncrypted: raw,
+      oauthState: raw,
+    });
+    const listed = await invoke<Array<Record<string, unknown>>>(
+      "mcp:list-servers",
+      undefined,
+    );
+    expect(listed.find((server) => server.id === 75)).toMatchObject({
+      oauthConnected: false,
+      oauthUnreadable: true,
+    });
+    expect(listed.find((server) => server.id === 75)).not.toHaveProperty(
+      "oauthState",
+    );
+    await invoke("mcp:update-server", { id: 75, name: "renamed" });
+    expect(dbStore.get(75)).toMatchObject({
+      envEncrypted: raw,
+      headersEncrypted: raw,
+      oauthState: raw,
+    });
+    await invoke("mcp:update-server", {
+      id: 75,
+      envJson: { KEY: "replacement" },
+    });
+    expect(dbStore.get(75)?.envEncrypted).not.toBe(raw);
+    expect(dbStore.get(75)).toMatchObject({
+      headersEncrypted: raw,
+      oauthState: raw,
+    });
+    await invoke("mcp:update-server", { id: 75, oauthEnabled: false });
+    expect(dbStore.get(75)?.oauthState).toBeNull();
+  });
+
   it.each([
     { oauthEnabled: false },
     { enabled: false },
@@ -598,6 +636,7 @@ describe("mcp listTools handler", () => {
     getClientMock.mockRejectedValueOnce(
       new Error(
         "Connection failed. Authorization: Bearer very-secret-token-value\n" +
+          "Failed to fetch https://private-mcp.example.com/tools?token=secret\n" +
           "Could not read '/Users/example/Private Files/config.json'\n" +
           "Details ".repeat(1_000),
       ),
@@ -605,6 +644,8 @@ describe("mcp listTools handler", () => {
     const result = await invoke<{ errorMessage: string }>("mcp:list-tools", 1);
     expect(result.errorMessage).toContain("Connection failed");
     expect(result.errorMessage).not.toContain("very-secret-token-value");
+    expect(result.errorMessage).toContain("[redacted URL]");
+    expect(result.errorMessage).not.toContain("private-mcp.example.com");
     expect(result.errorMessage).not.toContain("/Users/example");
     expect(result.errorMessage.length).toBeLessThanOrEqual(2_000);
   });

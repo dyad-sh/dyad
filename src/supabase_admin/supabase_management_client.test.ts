@@ -4,6 +4,7 @@ import {
   classifyManagementApiError,
   createSupabaseProject,
   getProjectApiKeys,
+  getSupabaseClient,
   getSupabaseProjectLogs,
   listSupabaseOrganizations,
   refreshSupabaseToken,
@@ -13,6 +14,7 @@ import { hasSupabaseCredentialsForOrganization } from "../lib/schemas";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import { readSettings } from "@/main/settings";
 import { SUPABASE_PROJECT_CREATED_BUT_UNLINKED } from "@/ipc/types/supabase";
+import { SupabaseTokenRefreshError } from "./supabase_errors";
 
 vi.mock("@/main/settings", () => ({
   readSettings: vi.fn(() => ({})),
@@ -211,6 +213,61 @@ describe("listSupabaseOrganizations", () => {
 
 describe("refreshSupabaseToken", () => {
   afterEach(() => vi.unstubAllGlobals());
+
+  it.each(
+    [null, "org-1"].flatMap((organizationSlug) =>
+      [400, 401, 403, 404, 429, 500, 503].map((status) => ({
+        organizationSlug,
+        status,
+      })),
+    ),
+  )(
+    "classifies refresh HTTP $status for $organizationSlug with safe recovery guidance",
+    async ({ organizationSlug, status }) => {
+      const credentials = {
+        accessToken: { value: "expired-access-token" },
+        refreshToken: { value: "private-refresh-token" },
+        expiresIn: 1,
+        tokenTimestamp: 0,
+      };
+      vi.mocked(readSettings).mockReturnValue({
+        supabase: organizationSlug
+          ? { organizations: { [organizationSlug]: credentials } }
+          : credentials,
+      } as ReturnType<typeof readSettings>);
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(
+          new Response("private response body", {
+            status,
+            statusText: "private response status",
+          }),
+        ),
+      );
+
+      const error = await getSupabaseClient({ organizationSlug }).catch(
+        (error) => error,
+      );
+      expect(error).toBeInstanceOf(SupabaseTokenRefreshError);
+      expect(error.message).toContain(`HTTP ${status}`);
+      if ([400, 401, 403].includes(status)) {
+        expect(error.kind).toBe(DyadErrorKind.Auth);
+        expect(error.userMessage).toContain(
+          "Go to Settings to disconnect Supabase and then reconnect",
+        );
+      } else {
+        expect(error.kind).toBe(
+          status === 429 ? DyadErrorKind.RateLimited : DyadErrorKind.External,
+        );
+        expect(error.userMessage).toMatch(/try again/i);
+        expect(error.userMessage).not.toMatch(/disconnect|reconnect/);
+      }
+      expect(JSON.stringify(error)).not.toMatch(/private|expired-access-token/);
+      expect(error.message).not.toContain("private");
+      expect(error.userMessage).not.toContain("HTTP");
+      expect(fetch).toHaveBeenCalledOnce();
+    },
+  );
 
   it("shares one refresh request across concurrent callers", async () => {
     vi.mocked(readSettings).mockReturnValue({

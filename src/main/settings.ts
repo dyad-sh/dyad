@@ -38,6 +38,7 @@ import {
   DEFAULT_ENABLE_PREVIEW_COOKIE_ISOLATION,
   DEFAULT_ENABLE_NEON_BRANCH_PROTECTION,
   DEFAULT_ENABLE_TESTING_FOR_NEW_APPS,
+  DEFAULT_MAX_CONCURRENT_TEST_RUNS,
 } from "@/shared/settings_defaults";
 
 const logger = log.scope("settings");
@@ -89,6 +90,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   autoApproveSafeMcpTools: true,
   autoExpandPreviewPanel: true,
   disableSandboxedE2eTests: false,
+  maxConcurrentTestRuns: DEFAULT_MAX_CONCURRENT_TEST_RUNS,
   enableContextCompaction: true,
   enablePnpmMinimumReleaseAgeWarning: true,
   enablePreviewCookieIsolation: DEFAULT_ENABLE_PREVIEW_COOKIE_ISOLATION,
@@ -1171,7 +1173,12 @@ function writeSettingsFileAtomically(
 
 export function encrypt(data: string): Secret {
   const trimmed = data.trim();
-  if (safeStorage.isEncryptionAvailable() && !IS_TEST_BUILD) {
+  // The hosted Keychain suite opts into the production write path. This flag
+  // only enables encryption; ordinary production writes already encrypt.
+  if (
+    safeStorage.isEncryptionAvailable() &&
+    (!IS_TEST_BUILD || process.env.DYAD_E2E_REAL_ENCRYPTION === "true")
+  ) {
     return {
       value: safeStorage.encryptString(trimmed).toString("base64"),
       encryptionType: "electron-safe-storage",

@@ -44,6 +44,7 @@ function createService(): AppRuntimeService {
       startCommand: null,
     })),
     resolveAppPath: (relativePath) => `/apps/${relativePath}`,
+    assertAppFolderExists: vi.fn(async () => {}),
     getRunningApp: () =>
       running
         ? {

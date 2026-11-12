@@ -131,6 +131,7 @@ import {
   type Todo,
 } from "./tools/types";
 import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
+import { reportFsFailure } from "@/ipc/utils/fs_failure_telemetry";
 import {
   prepareStepMessages,
   injectMessagesAtPositions,
@@ -141,6 +142,7 @@ import {
   type InjectedMessage,
 } from "./prepare_step_utils";
 import { deleteTodos, loadTodos, saveTodos } from "./todo_persistence";
+import { hasExhaustedTurnToolBudget } from "./tools/turn_tool_budgets";
 import { ensureDyadGitignored } from "@/ipc/handlers/gitignoreUtils";
 import { TOOL_DEFINITIONS } from "./tool_definitions";
 import {
@@ -1027,9 +1029,10 @@ export async function handleLocalAgentStream(
     // Ensure .dyad/ is gitignored (idempotent; also done by compaction/plans)
     // Skip in read-only/plan-only mode to avoid modifying the workspace
     if (!readOnly && !planModeOnly) {
-      await ensureDyadGitignored(appPath).catch((err: unknown) =>
-        logger.warn("Failed to ensure .dyad gitignored:", err),
-      );
+      await ensureDyadGitignored(appPath).catch((err: unknown) => {
+        logger.warn("Failed to ensure .dyad gitignored:", err);
+        reportFsFailure("local_agent", err, { appPath });
+      });
     }
     if (persistedTodos.length > 0) {
       // Emit loaded todos to the renderer so the UI shows them immediately
@@ -2256,6 +2259,16 @@ export async function handleLocalAgentStream(
         break;
       }
 
+      // A follow-up pass is part of the same turn and keeps its tool budgets.
+      // Once a per-turn limit is used up, retrying would only hit it again; the
+      // incomplete todos stay persisted for the user's next message instead.
+      if (hasExhaustedTurnToolBudget(ctx)) {
+        logger.info(
+          `Skipping todo follow-up pass for chat ${req.chatId}: a per-turn tool limit was reached`,
+        );
+        break;
+      }
+
       todoFollowUpLoops += 1;
       const reminderText = buildTodoReminderMessage(ctx.todos);
       const reminderMessage: ModelMessage = {
@@ -2551,6 +2564,7 @@ export async function handleLocalAgentStream(
     }
 
     logger.error("Local agent error:", error);
+    reportFsFailure("local_agent", error, { appPath });
     safeSend(event.sender, "chat:response:error", {
       chatId: req.chatId,
       invocationRef: req.invocationRef,

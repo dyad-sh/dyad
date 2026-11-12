@@ -98,15 +98,37 @@ describe("model effort", () => {
     });
   });
 
-  it("offers none as an Ollama-specific effort level", () => {
-    expect(getEffortSettings(undefined, "ollama")).toEqual({
-      defaultEffortLevel: "medium",
-      possibleEffortLevels: ["none", "low", "medium", "high"],
-    });
-    expect(getEffortSettings(undefined, "lmstudio")).toEqual({
-      defaultEffortLevel: "medium",
-      possibleEffortLevels: ["low", "medium", "high"],
-    });
+  it.each(["ollama", "lmstudio", "custom::local"])(
+    "offers None effort for %s and preserves it when reselecting a model",
+    (provider) => {
+      expect(getEffortSettings(undefined, provider)).toEqual({
+        defaultEffortLevel: "medium",
+        possibleEffortLevels: ["none", "low", "medium", "high"],
+      });
+      expect(
+        createModelSelection({
+          model: { provider, name: "gemma2" },
+          catalogModel: { apiName: "gemma2", displayName: "Gemma 2" },
+          preferredEffortLevel: "none",
+        }).effortLevel,
+      ).toBe("none");
+    },
+  );
+
+  it("keeps cloud fallback levels and respects explicit catalog settings", () => {
+    expect(getEffortSettings(undefined, "openai").possibleEffortLevels).toEqual(
+      ["low", "medium", "high"],
+    );
+    const effortSettings = {
+      defaultEffortLevel: "low",
+      possibleEffortLevels: ["low", "high"],
+    };
+    expect(
+      getEffortSettings(
+        { apiName: "custom-model", displayName: "Custom", effortSettings },
+        "custom::local",
+      ),
+    ).toEqual(effortSettings);
   });
 
   it("accepts arbitrary catalog levels and falls back when a preference is stale", () => {

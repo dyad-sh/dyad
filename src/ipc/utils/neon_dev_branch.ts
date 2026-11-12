@@ -33,6 +33,11 @@ import {
 import { autoInjectNeonEnvVars, ensureNeonAuth } from "./neon_utils";
 import { getEnvFilePath, readEnvFileIfExists } from "./app_env_var_utils";
 import { sendTelemetryEvent } from "./telemetry";
+import {
+  reportNeonBranchFailure,
+  reportingNeonBranchCreate,
+  type NeonBranchKind,
+} from "./neon_branch_telemetry";
 
 const logger = log.scope("neon_dev_branch");
 
@@ -98,6 +103,7 @@ async function deleteBranch(
   projectId: string,
   branchId: string,
   label: string,
+  kind: NeonBranchKind,
 ): Promise<boolean> {
   try {
     await retryOnLocked(
@@ -106,6 +112,7 @@ async function deleteBranch(
     );
     return true;
   } catch (error) {
+    reportNeonBranchFailure("delete", kind, error);
     logger.warn(
       `Failed to delete ${label} ${branchId}: ${getNeonErrorMessage(error)}`,
     );
@@ -129,24 +136,32 @@ export async function createRootBranch({
   sourceTimestamp?: string;
 }): Promise<{ branch: Branch; connectionUri: string }> {
   const neonClient = await getNeonClient();
-  const response = await retryOnLocked(
-    () =>
-      neonClient.createProjectBranch(projectId, {
-        endpoints: [{ type: EndpointType.ReadWrite }],
-        branch: {
-          name,
-          parent_id: sourceBranchId,
-          init_source: "schema-only",
-          ...(sourceTimestamp ? { parent_timestamp: sourceTimestamp } : {}),
-        },
-      }),
-    `Create root branch ${name} for project ${projectId}`,
+  const response = await reportingNeonBranchCreate("development", () =>
+    retryOnLocked(
+      () =>
+        neonClient.createProjectBranch(projectId, {
+          endpoints: [{ type: EndpointType.ReadWrite }],
+          branch: {
+            name,
+            parent_id: sourceBranchId,
+            init_source: "schema-only",
+            ...(sourceTimestamp ? { parent_timestamp: sourceTimestamp } : {}),
+          },
+        }),
+      `Create root branch ${name} for project ${projectId}`,
+    ),
   );
   const branch = response.data.branch;
   const connectionUri = response.data.connection_uris?.[0]?.connection_uri;
   if (!branch || !connectionUri) {
     if (branch) {
-      await deleteBranch(neonClient, projectId, branch.id, "root branch");
+      await deleteBranch(
+        neonClient,
+        projectId,
+        branch.id,
+        "root branch",
+        "development",
+      );
     }
     throw new DyadError(
       `Failed to create branch ${name}: no branch data returned.`,
@@ -219,6 +234,7 @@ async function sweepLeftoverBranches(
           projectId,
           branch.id,
           "leftover branch",
+          "leftover",
         ))
       ) {
         failed.add(branch.id);
@@ -390,6 +406,7 @@ async function repairInterruptedMigration({
         projectId,
         unfinished.id,
         "unfinished development branch",
+        "development",
       );
       if (!deleted) {
         throw new DyadError(
@@ -580,7 +597,15 @@ async function deleteBranchTree(
     if (leaves.length === 0) break;
     for (const leaf of leaves) {
       remaining.delete(leaf.id);
-      if (await deleteBranch(neonClient, projectId, leaf.id, "old branch")) {
+      if (
+        await deleteBranch(
+          neonClient,
+          projectId,
+          leaf.id,
+          "old branch",
+          "old_tree",
+        )
+      ) {
         ids.delete(leaf.id);
       } else {
         failed.push(leaf.name);
@@ -885,17 +910,19 @@ async function migrateToRootDevelopmentBranch({
     );
     sourceBranchId = oldPreview.id;
   } else {
-    const response = await retryOnLocked(
-      () =>
-        neonClient.createProjectBranch(projectId, {
-          endpoints: [{ type: EndpointType.ReadWrite }],
-          branch: {
-            name: `dyad-restore-source-${stamp}`,
-            parent_id: oldDevelopment.id,
-            parent_timestamp: timestamp,
-          },
-        }),
-      `Create migration source branch for ${label}`,
+    const response = await reportingNeonBranchCreate("migration_source", () =>
+      retryOnLocked(
+        () =>
+          neonClient.createProjectBranch(projectId, {
+            endpoints: [{ type: EndpointType.ReadWrite }],
+            branch: {
+              name: `dyad-restore-source-${stamp}`,
+              parent_id: oldDevelopment.id,
+              parent_timestamp: timestamp,
+            },
+          }),
+        `Create migration source branch for ${label}`,
+      ),
     );
     sourceBranchId = response.data.branch.id;
     temporarySourceId = sourceBranchId;
@@ -1041,6 +1068,7 @@ async function migrateToRootDevelopmentBranch({
         projectId,
         newDevelopmentId,
         "unfinished development branch",
+        "development",
       );
       if (!deleted && renamedNew) {
         await retryOnLocked(
@@ -1075,6 +1103,7 @@ async function migrateToRootDevelopmentBranch({
         projectId,
         temporarySourceId,
         "migration source branch",
+        "migration_source",
       );
     }
     throw error;
@@ -1176,16 +1205,20 @@ async function finishMigration({
       const nameTaken = (await listBranches(neonClient, projectId)).some(
         (b) => b.name === oldPreview.name,
       );
-      const response = await retryOnLocked(
-        () =>
-          neonClient.createProjectBranch(projectId, {
-            endpoints: [{ type: EndpointType.ReadWrite }],
-            branch: {
-              name: nameTaken ? `${oldPreview.name}-${stamp}` : oldPreview.name,
-              parent_id: newDevelopment.id,
-            },
-          }),
-        `Create preview branch for ${label}`,
+      const response = await reportingNeonBranchCreate("preview", () =>
+        retryOnLocked(
+          () =>
+            neonClient.createProjectBranch(projectId, {
+              endpoints: [{ type: EndpointType.ReadWrite }],
+              branch: {
+                name: nameTaken
+                  ? `${oldPreview.name}-${stamp}`
+                  : oldPreview.name,
+                parent_id: newDevelopment.id,
+              },
+            }),
+          `Create preview branch for ${label}`,
+        ),
       );
       const previewId = response.data.branch.id;
       newPreviewId = previewId;
@@ -1655,7 +1688,13 @@ export async function deleteRestoreBackup({
     );
     const backupDeleted =
       !backup ||
-      (await deleteBranch(neonClient, projectId, backup.id, "backup branch"));
+      (await deleteBranch(
+        neonClient,
+        projectId,
+        backup.id,
+        "backup branch",
+        "backup",
+      ));
     await sweepLeftoverBranches(neonClient, projectId);
     return { backupDeleted };
   } catch (error) {

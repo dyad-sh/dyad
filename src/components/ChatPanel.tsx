@@ -25,6 +25,8 @@ import { VersionPane } from "./chat/VersionPane";
 import { FreeAgentQuotaBanner } from "./chat/FreeAgentQuotaBanner";
 import { NotificationBanner } from "./chat/NotificationBanner";
 import { SupabaseLegacyKeyBanner } from "./chat/SupabaseLegacyKeyBanner";
+import { NeonBranchLimitBanner } from "./chat/NeonBranchLimitBanner";
+import { NeonTestingBanner } from "./chat/NeonTestingBanner";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -278,6 +280,7 @@ export function ChatPanel({
                   exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 24 }}
                   transition={chatLayerTransition}
                 >
+                  <NeonBranchLimitBanner appId={selectedAppId} />
                   <div className="flex-1 relative overflow-hidden">
                     <MessagesList
                       chatId={chatId ?? null}
@@ -320,6 +323,13 @@ export function ChatPanel({
                     />
                   )}
                   <SupabaseLegacyKeyBanner appId={selectedAppId} />
+                  <NeonTestingBanner
+                    appId={selectedAppId}
+                    onEnabled={() => {
+                      setPreviewMode("tests");
+                      if (!isPreviewOpen) onTogglePreview();
+                    }}
+                  />
                   <NotificationBanner />
                   <TestRunQueueCard
                     key={selectedAppId}

@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const isEncryptionAvailable = vi.fn(() => true);
+const recovery = vi.hoisted(() => vi.fn<() => string | null>(() => null));
+vi.mock("@/main/safe_storage_legacy", () => ({
+  recoverLegacySafeStorageSecret: recovery,
+}));
 const encryptString = vi.fn((s: string) => Buffer.from(`enc:${s}`, "utf8"));
 const decryptString = vi.fn((b: Buffer) => {
   const s = b.toString("utf8");
@@ -29,6 +33,7 @@ vi.mock("electron-log", () => ({
 
 import {
   decryptSecretMap,
+  decryptFromString,
   encryptSecretMap,
   readServerSecretMap,
 } from "./secret_storage";
@@ -37,11 +42,59 @@ describe("encryptSecretMap / decryptSecretMap", () => {
   beforeEach(() => {
     isEncryptionAvailable.mockReturnValue(true);
     vi.clearAllMocks();
+    recovery.mockReturnValue(null);
   });
 
   it("round-trips a map", () => {
     const stored = encryptSecretMap({ Authorization: "Bearer sk-1" });
     expect(decryptSecretMap(stored)).toEqual({ Authorization: "Bearer sk-1" });
+  });
+
+  it("recovers legacy maps and client secrets before reporting a failed read", () => {
+    const stored = Buffer.from("v10old-ciphertext").toString("base64");
+    recovery.mockReturnValueOnce('{"API_KEY":"restored"}');
+    expect(decryptSecretMap(stored)).toEqual({ API_KEY: "restored" });
+    recovery.mockReturnValueOnce("restored-client-secret");
+    expect(decryptFromString(stored)).toBe("restored-client-secret");
+  });
+
+  it("rejects ciphertext instead of passing its bytes as a client secret", () => {
+    const stored = Buffer.from("v10old-ciphertext").toString("base64");
+    expect(() => decryptFromString(stored)).toThrow("Saved credentials");
+    expect(decryptSecretMap(stored)).toBeNull();
+    isEncryptionAvailable.mockReturnValue(false);
+    expect(() => decryptFromString(stored)).toThrow("Saved credentials");
+  });
+
+  it("retains only identifiable historical untagged plaintext objects", () => {
+    expect(
+      decryptSecretMap(Buffer.from('{"A":"legacy"}').toString("base64")),
+    ).toEqual({ A: "legacy" });
+    expect(() =>
+      decryptFromString(Buffer.from("ambiguous-secret").toString("base64")),
+    ).toThrow();
+  });
+
+  it("supports tagged client secrets while rejecting readable-looking encrypted envelopes", () => {
+    const oldPlaintext =
+      "plain:" + Buffer.from("legacy-client-secret").toString("base64");
+    expect(decryptFromString(oldPlaintext)).toBe("legacy-client-secret");
+    for (const prefix of ["v10", "v11", "v20"]) {
+      const encrypted = Buffer.from(
+        `${prefix}printable-but-encrypted`,
+      ).toString("base64");
+      expect(() => decryptFromString(encrypted)).toThrow("Saved credentials");
+    }
+  });
+
+  it("retries a failed read when the key becomes available without changing the blob", () => {
+    const stored = Buffer.from("v10old-ciphertext").toString("base64");
+    expect(readServerSecretMap(stored, null)).toEqual({ status: "unreadable" });
+    recovery.mockReturnValue('{"A":"recovered"}');
+    expect(readServerSecretMap(stored, null)).toEqual({
+      status: "ok",
+      value: { A: "recovered" },
+    });
   });
 
   it("hands the whole map to safeStorage and stores only its output", () => {
@@ -94,6 +147,7 @@ describe("readServerSecretMap", () => {
   beforeEach(() => {
     isEncryptionAvailable.mockReturnValue(true);
     vi.clearAllMocks();
+    recovery.mockReturnValue(null);
   });
 
   it("prefers the encrypted column over the plaintext one", () => {

@@ -1244,6 +1244,9 @@ export class WorkspaceIntegrationQueue {
       { family: "versions", appId: workspace.appId },
       { family: "uncommitted-files", appId: workspace.appId },
       { family: "app", appId: workspace.appId },
+      // Turn completion can precede integration, so its spec discovery still
+      // saw the old main folder. Refresh again after the files have landed.
+      { family: "test-specs", appId: workspace.appId },
     ]);
     return { event: { type: "INTEGRATED" } };
   }

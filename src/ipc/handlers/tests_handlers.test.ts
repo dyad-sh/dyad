@@ -29,6 +29,7 @@ import {
 } from "../utils/supabase_test_user_errors";
 import { withAppTestRun } from "../services/test_run_queue_service";
 import type { RunAppTestsResult } from "../types/tests";
+import { workspaceRuntimeId } from "../../../shared/workspace_runtime_id";
 
 // Every app folder lives under one throwaway base so the delete handler runs
 // against real directories (its path guards resolve symlinks on disk).
@@ -372,6 +373,230 @@ describe("tests handlers", () => {
   }
 
   describe("tests:run", () => {
+    it("bootstraps and snapshots the chat worktree, then runs its specs in the sandbox", async () => {
+      const appId = seedApp("app");
+      harness.db
+        .update(apps)
+        .set({ testingEnabled: true })
+        .where(eq(apps.id, appId))
+        .run();
+      const root = await fs.promises.realpath(TEMP_BASE);
+      const mainPath = path.join(root, "app");
+      const worktreePath = path.join(root, "chat-worktree");
+      const sandboxPath = path.join(root, "sandbox");
+      fs.cpSync(mainPath, worktreePath, { recursive: true });
+      const spec = "e2e-tests/worktree-only.spec.ts";
+      writeSpec("chat-worktree", spec);
+      fs.writeFileSync(path.join(mainPath, "app.txt"), "main app");
+      fs.writeFileSync(path.join(worktreePath, "app.txt"), "unmerged edits");
+      const sourceWorkspace = { appPath: worktreePath, workspaceId: 7 };
+      const workspaceKey = workspaceRuntimeId(7);
+      const dispose = vi.fn();
+      ensurePlaywrightBootstrapMock.mockImplementation(async ({ appPath }) => {
+        expect(appPath).toBe(worktreePath);
+        expect(
+          appOperationCoordinator.isBusy(workspaceKey, ["repository-worktree"]),
+        ).toBe(true);
+        expect(
+          appOperationCoordinator.isBusy(appId, ["repository-worktree"]),
+        ).toBe(false);
+        fs.writeFileSync(
+          path.join(appPath, "playwright.config.ts"),
+          "// bootstrapped",
+        );
+        return { installed: false };
+      });
+      createE2eTestWorkspaceMock.mockImplementation(async ({ appPath }) => {
+        fs.cpSync(appPath, sandboxPath, { recursive: true });
+        return {
+          workspacePath: sandboxPath,
+          artifactPath: path.join(TEMP_BASE, "artifacts"),
+          dispose,
+        };
+      });
+      prepareIsolatedTestDatabaseMock.mockResolvedValue({
+        isolation: { mode: "none" },
+        teardown: vi.fn().mockResolvedValue({
+          envRestored: true,
+          remoteCleanupCompleted: true,
+        }),
+      });
+      spawnStreamingMock.mockImplementation(async ({ cwd, env }) => {
+        expect(cwd).toBe(sandboxPath);
+        expect(fs.readFileSync(path.join(cwd, "app.txt"), "utf8")).toBe(
+          "unmerged edits",
+        );
+        expect(fs.existsSync(path.join(cwd, spec))).toBe(true);
+        expect(env[TEST_BASE_URL_ENV]).toBe("http://127.0.0.1:49999");
+        expect(
+          appOperationCoordinator.isBusy(workspaceKey, ["test-files"]),
+        ).toBe(true);
+        expect(appOperationCoordinator.isBusy(appId, ["test-files"])).toBe(
+          false,
+        );
+        const reportPath = env.PLAYWRIGHT_JSON_OUTPUT_NAME;
+        fs.mkdirSync(path.dirname(reportPath), { recursive: true });
+        fs.writeFileSync(
+          reportPath,
+          JSON.stringify({
+            suites: [
+              {
+                file: spec,
+                specs: [
+                  {
+                    title: "worktree works",
+                    ok: true,
+                    tests: [{ results: [{ status: "passed" }] }],
+                  },
+                ],
+              },
+            ],
+          }),
+        );
+        return {
+          code: 0,
+          stdout: "",
+          stderr: "",
+          aborted: false,
+          timedOut: false,
+        };
+      });
+
+      const result = await runAppTestsWithIsolation({
+        event: { sender: {} } as any,
+        appId,
+        chatId: 7,
+        source: "agent",
+        sourceWorkspace,
+        testFiles: [spec],
+      });
+
+      expect(result.infraError).toBeUndefined();
+      expect(result.results).toEqual([
+        expect.objectContaining({ file: spec, status: "passed" }),
+      ]);
+      expect(createE2eTestWorkspaceMock).toHaveBeenCalledWith(
+        expect.objectContaining({ appPath: worktreePath }),
+      );
+      expect(startE2eTestRuntimeMock).toHaveBeenCalledWith(
+        expect.objectContaining({ workspacePath: sandboxPath }),
+      );
+      expect(prepareIsolatedTestDatabaseMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          appPathOverride: sandboxPath,
+          restartApp: false,
+        }),
+      );
+      expect(fs.readFileSync(path.join(mainPath, "app.txt"), "utf8")).toBe(
+        "main app",
+      );
+      expect(fs.existsSync(path.join(mainPath, "playwright.config.ts"))).toBe(
+        false,
+      );
+      expect(fs.existsSync(path.join(mainPath, spec))).toBe(false);
+      expect(dispose).toHaveBeenCalledOnce();
+    });
+
+    it("refuses a missing source worktree before bootstrap can recreate it", async () => {
+      const appId = seedApp("app");
+      harness.db
+        .update(apps)
+        .set({ testingEnabled: true })
+        .where(eq(apps.id, appId))
+        .run();
+      const appPath = path.join(TEMP_BASE, "missing-worktree");
+      const result = await runAppTestsWithIsolation({
+        event: { sender: {} } as any,
+        appId,
+        source: "agent",
+        sourceWorkspace: { appPath, workspaceId: 7 },
+      });
+      expect(result.infraError?.message).toContain(
+        "worktree folder no longer exists",
+      );
+      expect(ensurePlaywrightBootstrapMock).not.toHaveBeenCalled();
+      expect(createE2eTestWorkspaceMock).not.toHaveBeenCalled();
+      expect(fs.existsSync(appPath)).toBe(false);
+    });
+
+    it("fences the source worktree when a failed bootstrap leaves processes running", async () => {
+      const appId = seedApp("app");
+      harness.db
+        .update(apps)
+        .set({ testingEnabled: true })
+        .where(eq(apps.id, appId))
+        .run();
+      const appPath = path.join(TEMP_BASE, "chat-worktree");
+      fs.mkdirSync(appPath);
+      ensurePlaywrightBootstrapMock.mockRejectedValue(
+        new Error("bootstrap failed"),
+      );
+      settleE2eTestProcessesMock.mockResolvedValue(false);
+
+      await runAppTestsWithIsolation({
+        event: { sender: {} } as any,
+        appId,
+        source: "agent",
+        sourceWorkspace: { appPath, workspaceId: 7 },
+      });
+
+      await expect(
+        appOperationCoordinator.run(
+          {
+            appId: workspaceRuntimeId(7),
+            operation: "edit worktree",
+            resources: ["repository-worktree"],
+          },
+          async () => undefined,
+        ),
+      ).rejects.toMatchObject({ kind: DyadErrorKind.Precondition });
+      await expect(
+        appOperationCoordinator.run(
+          {
+            appId,
+            operation: "edit original folder",
+            resources: ["repository-worktree"],
+          },
+          async () => "edited",
+        ),
+      ).resolves.toBe("edited");
+      expect(retainUnsettledE2eTestOwnerMock).toHaveBeenCalledOnce();
+    });
+
+    it.each([
+      { disableSandboxedE2eTests: true },
+      { runtimeMode2: "docker" as const },
+      { runtimeMode2: "cloud" as const },
+    ])(
+      "never falls back to the main preview for a worktree (%j)",
+      async (settings) => {
+        const appId = seedApp("app");
+        harness.db
+          .update(apps)
+          .set({ testingEnabled: true })
+          .where(eq(apps.id, appId))
+          .run();
+        readSettingsMock.mockReturnValue({ ...DEFAULT_SETTINGS, ...settings });
+        const result = await runAppTestsWithIsolation({
+          event: { sender: {} } as any,
+          appId,
+          source: "agent",
+          sourceWorkspace: {
+            appPath: path.join(TEMP_BASE, "chat-worktree"),
+            workspaceId: 7,
+          },
+        });
+        expect(result.preflightRefused).toBe(true);
+        expect(result.infraError?.message).toContain(
+          "requires host runtime with isolated test servers",
+        );
+        expect(ensurePlaywrightBootstrapMock).not.toHaveBeenCalled();
+        expect(createE2eTestWorkspaceMock).not.toHaveBeenCalled();
+        expect(prepareIsolatedTestDatabaseMock).not.toHaveBeenCalled();
+        expect(spawnStreamingMock).not.toHaveBeenCalled();
+      },
+    );
+
     it.each([false, true])(
       "injects Supabase fixture credentials only into the runner (normal preview: %s)",
       async (disableSandboxedE2eTests) => {

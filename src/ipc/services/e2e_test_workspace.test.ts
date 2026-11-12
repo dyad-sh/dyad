@@ -137,6 +137,74 @@ async function createE2eTestWorkspace(
 }
 
 describe("E2E test workspace", () => {
+  it("captures committed and uncommitted inputs from a linked chat worktree", async () => {
+    const root = await fs.realpath(await tempRoot());
+    const mainPath = path.join(root, "app");
+    const chatPath = path.join(root, "chat");
+    vi.mocked(getUserDataPath).mockReturnValue(path.join(root, "data"));
+    await fs.mkdir(mainPath);
+    await fs.writeFile(path.join(mainPath, "app.txt"), "main app");
+    await fs.writeFile(path.join(mainPath, "removed.txt"), "old file");
+    await ensureGitRepo(mainPath);
+    await execFileAsync(
+      "git",
+      ["worktree", "add", "-b", "dyad/chat-7", chatPath],
+      { cwd: mainPath },
+    );
+    await fs.writeFile(path.join(chatPath, "committed.txt"), "worktree commit");
+    await execFileAsync("git", ["add", "committed.txt"], { cwd: chatPath });
+    await execFileAsync("git", ["commit", "-m", "chat change"], {
+      cwd: chatPath,
+    });
+    await fs.writeFile(path.join(chatPath, "app.txt"), "uncommitted chat edit");
+    await fs.rm(path.join(chatPath, "removed.txt"));
+    await fs.mkdir(path.join(chatPath, "e2e-tests"));
+    await fs.writeFile(
+      path.join(chatPath, "e2e-tests", "new.spec.ts"),
+      "// untracked spec",
+    );
+
+    const workspace = await createWorkspaceUnderTest({
+      appId: 7,
+      appPath: chatPath,
+    });
+    try {
+      expect(
+        await fs.readFile(
+          path.join(workspace.workspacePath, "app.txt"),
+          "utf8",
+        ),
+      ).toBe("uncommitted chat edit");
+      expect(
+        await fs.readFile(
+          path.join(workspace.workspacePath, "committed.txt"),
+          "utf8",
+        ),
+      ).toBe("worktree commit");
+      expect(
+        await fs.readFile(
+          path.join(workspace.workspacePath, "e2e-tests", "new.spec.ts"),
+          "utf8",
+        ),
+      ).toBe("// untracked spec");
+      await expect(
+        fs.stat(path.join(workspace.workspacePath, "removed.txt")),
+      ).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      await workspace.dispose();
+    }
+    expect(await fs.readFile(path.join(mainPath, "app.txt"), "utf8")).toBe(
+      "main app",
+    );
+    expect(await fs.readFile(path.join(chatPath, "app.txt"), "utf8")).toBe(
+      "uncommitted chat edit",
+    );
+    expect(await listWorktreePaths(mainPath)).toEqual(
+      expect.arrayContaining([mainPath, chatPath]),
+    );
+    expect(await listWorktreePaths(mainPath)).toHaveLength(2);
+  });
+
   it("preserves live output-named source inside a submodule below the app", async () => {
     const root = await tempRoot();
     const source = path.join(root, "library");

@@ -59,6 +59,16 @@ import {
   readAppResource,
   type AppOperationRequest,
 } from "../services/app_operation_coordinator";
+import {
+  blockConflictingWorkspaceScopedOperations,
+  runWorkspaceScopedOperation,
+} from "../services/workspace_coordination";
+import { workspaceRuntimeId } from "../../../shared/workspace_runtime_id";
+import {
+  resolveTestRunAppPath,
+  WORKTREE_TEST_SANDBOX_REQUIRED,
+  type TestRunSourceWorkspace,
+} from "../services/test_run_workspace";
 import { broadcastToRegisteredWindows } from "@/ipc/utils/window_broadcast";
 import { windowRegistry } from "@/window_infrastructure/main/window_registry";
 import { spawnStreaming } from "../utils/spawn_streaming";
@@ -2189,6 +2199,8 @@ type E2eTestPrepareResult =
 // a sandbox directory silently, so it must dispose before returning instead.
 
 export interface RunTestsWithIsolationOptions {
+  /** Main-only source owned by the invoking agent turn, including queue waits. */
+  sourceWorkspace?: TestRunSourceWorkspace;
   /** Shared with the agent's queue admission; omitted by panel callers. */
   timing?: TestRunTiming;
   /**
@@ -2270,6 +2282,7 @@ async function executeAppTestsWithIsolation(
     event,
     appId,
     chatId,
+    sourceWorkspace,
     testFile,
     testFiles,
     testLine,
@@ -2283,6 +2296,9 @@ async function executeAppTestsWithIsolation(
   }: RunTestsWithIsolationOptions,
   { runId, signal, parallelRunsEnabled }: AppTestRunExecution,
 ): Promise<RunAppTestsResult> {
+  const workspaceKey = sourceWorkspace
+    ? workspaceRuntimeId(sourceWorkspace.workspaceId)
+    : undefined;
   if (signal.aborted)
     return { appId, results: [], infraError: testRunStoppedInfraError(signal) };
   // Concurrent runs use their own browsers. One native preview surface cannot
@@ -2486,8 +2502,24 @@ async function executeAppTestsWithIsolation(
     // Install the fence before the current coordinator callback releases its
     // claims. Throwing or merely skipping teardown would still admit queued
     // work while a browser could be using its already-issued Supabase session.
-    appOperationCoordinator.blockConflictingOperations(
-      { appId, operation: "unsettled-app-tests", resources },
+    const workspaceResources: AppOperationRequest["resources"] = sourceWorkspace
+      ? resources.filter(
+          (resource) =>
+            resource === "test-files" || resource === "repository-worktree",
+        )
+      : [];
+    blockConflictingWorkspaceScopedOperations(
+      {
+        appId,
+        workspaceKey,
+        operation: "unsettled-app-tests",
+        // Bootstrap can leave a process touching the source checkout too.
+        // Keep its file fence on that workspace and shared claims on the app.
+        appResources: resources.filter(
+          (resource) => !workspaceResources.includes(resource),
+        ),
+        workspaceResources,
+      },
       PROCESS_SETTLEMENT_FAILED_MESSAGE,
     );
     // The scheduler keeps this run's global slot while its owner is unsettled.
@@ -2602,6 +2634,17 @@ async function executeAppTestsWithIsolation(
               "Isolated test servers are turned off in Settings, and Dyad won't run Neon tests against your real database. Turn them back on to run tests for this app.",
           };
     if (sandboxUnavailable) {
+      // The legacy preview route resolves paths and runtime by app id. It
+      // cannot represent unmerged work in a chat's workspace.
+      if (sourceWorkspace) {
+        finalResult = {
+          appId,
+          results: [],
+          preflightRefused: true,
+          infraError: { message: WORKTREE_TEST_SANDBOX_REQUIRED },
+        };
+        return finalResult;
+      }
       finalResult = withIsolationCleanupWarning(
         await runTestsAgainstNormalPreview({
           timing,
@@ -2674,21 +2717,21 @@ async function executeAppTestsWithIsolation(
       }
     }
 
-    // Bootstrap and snapshot under the real working-tree claim, then release it
+    // Bootstrap and snapshot under the source working-tree claim, then release it
     // before Playwright runs so ordinary app editing can continue against the
     // normal preview while this run uses its captured filesystem state.
     const workspaceLockWait = timing?.startStep("workspace_lock_wait");
-    const preparation = appOperationCoordinator.run(
+    const preparation = runWorkspaceScopedOperation(
       {
         appId,
+        workspaceKey,
         operation: "prepare-e2e-test-workspace",
         signal,
-        resources: [
+        appResources: [
           readAppResource("app-path"),
           readAppResource("repository-ref"),
-          "repository-worktree",
-          "test-files",
         ],
+        workspaceResources: ["repository-worktree", "test-files"],
         // Same as the run stage below: while this waits behind, say, a git
         // operation holding `repository-worktree`, an unrelated operation that
         // only conflicts with this one on `test-files` should still proceed
@@ -2708,10 +2751,12 @@ async function executeAppTestsWithIsolation(
               "The previous test environment could not be restored. Restart the app to recover its database settings before running more tests.",
           };
         }
-        const realAppPath = getDyadAppPath(claimedApp.path);
         try {
+          const sourceAppPath = sourceWorkspace
+            ? await resolveTestRunAppPath(claimedApp.path, sourceWorkspace)
+            : getDyadAppPath(claimedApp.path);
           await validateTestRunInputs(runId);
-          // Written into the REAL app, before the capture, so the snapshot
+          // Written into the source checkout before capture, so the snapshot
           // carries it: a sandboxed preview run executes from the workspace,
           // and the shim has to already be in what was copied.
           const { installed, previewRouted } = await measureTestRunStep(
@@ -2720,7 +2765,7 @@ async function executeAppTestsWithIsolation(
             () =>
               ensurePlaywrightBootstrap({
                 timing,
-                appPath: realAppPath,
+                appPath: sourceAppPath,
                 signal,
                 onOutput: (chunk) => emit(chunk, "setup"),
                 ensurePreviewShim: !!previewWindow,
@@ -2747,7 +2792,7 @@ async function executeAppTestsWithIsolation(
           // Read alongside the row, before the copy, for the same reason: the
           // credentials the run isolates from and the ones the sandbox will
           // hold have to be the same ones.
-          const capturedEnv = await readEnvFile(realAppPath);
+          const capturedEnv = await readEnvFile(sourceAppPath);
           emit("Capturing the app in an isolated Git workspace…\n", "setup");
           const workspace = await measureTestRunStep(
             timing,
@@ -2755,7 +2800,7 @@ async function executeAppTestsWithIsolation(
             () =>
               createE2eTestWorkspace({
                 appId,
-                appPath: realAppPath,
+                appPath: sourceAppPath,
                 hasCustomCommands: hasCustomE2eStartCommand(claimedApp),
                 signal,
               }),
@@ -2785,7 +2830,7 @@ async function executeAppTestsWithIsolation(
               // Comparing the copy against the live file is the direct check,
               // and it covers writers this code has never heard of.
               !(await sandboxEnvMatchesCapture(
-                realAppPath,
+                sourceAppPath,
                 workspace,
                 capturedEnv,
               ))
@@ -2859,12 +2904,24 @@ async function executeAppTestsWithIsolation(
     // artifact retention. Parallel runs use captured inputs and independent
     // artifacts. Neither path claims the normal runtime or runtime-config:
     // its process is run-scoped and never registered in runningApps.
-    const testRunResources = [
+    const testRunAppResources = [
       readAppResource("app-path"),
       readAppResource("provider"),
-      ...(!parallelRunsEnabled ? (["test-files"] as const) : []),
     ] as const;
-    if (appOperationCoordinator.isBusy(appId, testRunResources)) {
+    const testRunWorkspaceResources = !parallelRunsEnabled
+      ? (["test-files"] as const)
+      : [];
+    const testRunResources = [
+      ...testRunAppResources,
+      ...testRunWorkspaceResources,
+    ];
+    if (
+      appOperationCoordinator.isBusy(appId, testRunAppResources) ||
+      appOperationCoordinator.isBusy(
+        workspaceKey ?? appId,
+        testRunWorkspaceResources,
+      )
+    ) {
       logger.info(
         `Test run for app ${appId} is waiting for another app operation to finish before isolation setup`,
       );
@@ -2874,11 +2931,13 @@ async function executeAppTestsWithIsolation(
       );
     }
     const runLockWait = timing?.startStep("run_lock_wait");
-    const execution = appOperationCoordinator.run(
+    const execution = runWorkspaceScopedOperation(
       {
         appId,
+        workspaceKey,
         operation: "run-app-tests",
-        resources: testRunResources,
+        appResources: testRunAppResources,
+        workspaceResources: testRunWorkspaceResources,
         allowCompatibleQueueBypass: true,
         signal,
         // Recheck recording admission atomically with the resource claim.

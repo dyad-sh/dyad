@@ -37,6 +37,7 @@ export interface WorkspaceScopedOperationRequest {
    * applies when the operation claims app resources or runs in the original.
    */
   refuseWhenRecording?: string;
+  allowCompatibleQueueBypass?: boolean;
 }
 
 /**
@@ -90,6 +91,7 @@ export function runWorkspaceScopedOperation<Result>(
     workspaceResources,
     signal,
     refuseWhenRecording,
+    allowCompatibleQueueBypass,
   } = request;
   if (workspaceKey === undefined) {
     return appOperationCoordinator.run(
@@ -99,6 +101,7 @@ export function runWorkspaceScopedOperation<Result>(
         resources: [...appResources, ...workspaceResources],
         signal,
         refuseWhenRecording,
+        allowCompatibleQueueBypass,
       },
       operation,
     );
@@ -110,6 +113,7 @@ export function runWorkspaceScopedOperation<Result>(
         operation: name,
         resources: workspaceResources,
         signal,
+        allowCompatibleQueueBypass,
       },
       (workspaceContext) =>
         operation({
@@ -133,6 +137,7 @@ export function runWorkspaceScopedOperation<Result>(
       signal,
       refuseWhenRecording:
         appResources.length > 0 ? refuseWhenRecording : undefined,
+      allowCompatibleQueueBypass,
     },
     runInWorkspace,
   );

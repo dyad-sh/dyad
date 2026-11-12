@@ -26,10 +26,11 @@ vi.mock("@/paths/paths", () => ({
 vi.mock("@/main/settings", () => ({ readSettings: () => h.settings }));
 vi.mock("../utils/git_utils", () => ({
   execGit: async () => ({ exitCode: 0, stdout: h.root }),
-  gitCurrentBranch: async () => h.branch,
-  getCurrentCommitHash: async () => h.commit,
+  gitCurrentBranch: vi.fn(async () => h.branch),
+  getCurrentCommitHash: vi.fn(async () => h.commit),
 }));
 import { loadTestRunContext } from "./test_run_context";
+import { gitCurrentBranch, getCurrentCommitHash } from "../utils/git_utils";
 
 const request = {
   appId: 7,
@@ -116,6 +117,42 @@ it("classifies a deleted app as missing", async () => {
   await expect(loadTestRunContext(request)).rejects.toEqual(
     new DyadError("App no longer exists", DyadErrorKind.NotFound),
   );
+});
+
+it("uses the source worktree for admission identity and revision", async () => {
+  const appPath = path.join(h.root, "chat-worktree");
+  await fs.mkdir(appPath);
+  h.branch = "dyad/chat-7";
+  h.commit = "worktree-commit";
+  const context = await loadTestRunContext({
+    ...request,
+    source: "agent",
+    sourceWorkspace: { appPath, workspaceId: 7 },
+  });
+  expect(context).toMatchObject({
+    workspaceKey: appPath,
+    branch: "dyad/chat-7",
+    revision: "worktree-commit",
+  });
+  expect(gitCurrentBranch).toHaveBeenCalledWith({ path: appPath });
+  expect(getCurrentCommitHash).toHaveBeenCalledWith({ path: appPath });
+});
+
+it("refuses a missing worktree even when the main app still exists", async () => {
+  await expect(
+    loadTestRunContext({
+      ...request,
+      source: "agent",
+      sourceWorkspace: {
+        appPath: path.join(h.root, "missing-worktree"),
+        workspaceId: 7,
+      },
+    }),
+  ).rejects.toMatchObject({
+    kind: DyadErrorKind.NotFound,
+    message: expect.stringContaining("worktree folder no longer exists"),
+  });
+  expect(gitCurrentBranch).not.toHaveBeenCalled();
 });
 
 it("explains how to recover a missing app folder", async () => {

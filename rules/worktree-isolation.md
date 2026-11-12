@@ -81,7 +81,12 @@ worktree use the app's original folder.
   follow `usePreviewRuntime()`; app-level features stay keyed by the app.
 - Workspace runtimes use their own port bands and always `localhost`; cloud
   runtime refuses them, visual editing and screenshots are off for them, and
-  E2E `run_tests` refuses in isolated turns.
+  E2E `run_tests` snapshots the turn's worktree and serves that snapshot on its
+  own port. It requires host runtime with isolated test servers enabled; never
+  fall back to the main app's preview for a worktree run. Pass the same
+  `sourceWorkspace` through queue admission and execution so branch/revision
+  checks and file claims describe the code being tested. The invoking turn
+  retains workspace ownership through queue waits and cleanup.
 - Cloud sandbox syncs from agent tools use `ctx.runtimeAppId`: a workspace's
   edits (especially deletions) must not reach the app's sandbox before they
   are merged. The integration queue syncs the merged files after the
@@ -216,6 +221,9 @@ worktree use the app's original folder.
   synchronization, recording a squash) must update `lastIntegratedCommit`; a
   spurious "unintegrated" self-heals because identical trees integrate as
   `NOTHING_TO_INTEGRATE`.
+- After integration, publish the app's `test-specs` query invalidation along
+  with its app/version updates. Chat completion can refresh the Tests panel
+  before the background merge lands, leaving its cached spec list stale.
 - After the fast-forward, `recordIntegratedSquash` merges the squash into the
   worktree with `-s ours` (no file changes). Without it the next merge with
   the target would start from the old merge-base and conflict with the chat's

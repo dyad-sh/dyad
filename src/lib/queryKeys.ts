@@ -182,6 +182,7 @@ export const queryKeys = {
   // ─────────────────────────────────────────────────────────────────────────────
   tests: {
     all: ["tests"] as const,
+    lists: ["tests", "list"] as const,
     activeRun: ({ appId }: { appId: number | null }) =>
       ["tests", appId, "active-run"] as const,
     activeRuns: ({ appId }: { appId: number | null }) =>

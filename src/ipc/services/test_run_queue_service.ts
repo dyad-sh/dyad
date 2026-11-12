@@ -387,7 +387,11 @@ export function createTestRunQueueService({
       slowMo: options.slowMo,
       preview: options.preview,
     };
-    const record: RunRecord = { request, parallelRunsEnabled: false };
+    // Keep main-only paths out of the queue snapshots sent to renderers.
+    const record: RunRecord = {
+      request: { ...request, sourceWorkspace: options.sourceWorkspace },
+      parallelRunsEnabled: false,
+    };
     records.set(runId, record);
     const sender = options.event.sender;
     senders.set(options.appId, sender);

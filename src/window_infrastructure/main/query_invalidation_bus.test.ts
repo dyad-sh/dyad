@@ -70,6 +70,17 @@ describe("QueryInvalidationBus", () => {
     bus.publish([{ family: "branches", appId: 1 }]);
     bus.publish([{ family: "problems", appId: 1 }]);
     bus.publish([{ family: "uncommitted-files", appId: 1 }]);
+    bus.publish([
+      { family: "test-specs", appId: 1 },
+      { family: "test-specs", appId: 2 },
+    ]);
+
+    expect(
+      bus.synchronize(bus.currentEpoch() - 1).invalidations[0].scopes,
+    ).toEqual([
+      { family: "test-specs", appId: 1 },
+      { family: "test-specs", appId: 2 },
+    ]);
 
     expect(bus.synchronize(0).recoveryScopes).toEqual([
       { family: "apps" },
@@ -78,6 +89,7 @@ describe("QueryInvalidationBus", () => {
       { family: "branches" },
       { family: "problems" },
       { family: "uncommitted-files" },
+      { family: "test-specs" },
     ]);
   });
 });

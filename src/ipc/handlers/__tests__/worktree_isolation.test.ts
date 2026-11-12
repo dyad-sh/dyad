@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { QueryClient, QueryObserver } from "@tanstack/react-query";
 
 const h = vi.hoisted(() => {
   process.env.NODE_ENV = "development";
@@ -83,6 +84,15 @@ import { registerChatHandlers } from "@/ipc/handlers/chat_handlers";
 import * as gitWorktreeUtils from "@/ipc/utils/git_worktree_utils";
 import * as chatJournalCleanup from "@/ipc/services/chat_journal_cleanup";
 import type { Version } from "@/ipc/types";
+import { listSpecFiles } from "@/ipc/handlers/tests_handlers";
+import { queryKeys } from "@/lib/queryKeys";
+import { queryInvalidationBus } from "@/window_infrastructure/main/query_invalidation_bus";
+import { windowRegistry } from "@/window_infrastructure/main/window_registry";
+import { RendererQueryInvalidationConsumer } from "@/window_infrastructure/renderer_query_invalidation";
+import {
+  QueryInvalidationBatchSchema,
+  WindowSessionIdSchema,
+} from "@/window_infrastructure/types";
 
 describe("worktree isolation (integration)", () => {
   let harness: ChatFlowHarness;
@@ -1842,6 +1852,66 @@ describe("worktree isolation (integration)", () => {
     expect(harness.readAppFile("src/builds.ts")).toContain("builds");
     expect(harness.readAppFile("pnpm-workspace.yaml")).toContain("esbuild");
     await discardWorkspace(chatId);
+  }, 60_000);
+
+  it("refreshes a cached test list after a worktree spec reaches the main folder", async () => {
+    await waitForQuietApp();
+    const chatId = await createChat();
+    const spec = "e2e-tests/from-worktree.spec.ts";
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+    });
+    const queryKey = queryKeys.tests.list({ appId: harness.appId });
+    const otherAppKey = queryKeys.tests.list({ appId: harness.appId + 1 });
+    queryClient.setQueryData(queryKey, { specs: [] });
+    queryClient.setQueryData(otherAppKey, { specs: [] });
+    const discoverSpecs = vi.fn(async () => ({
+      specs: await listSpecFiles(harness.appDir),
+    }));
+    const observer = new QueryObserver(queryClient, {
+      queryKey,
+      queryFn: discoverSpecs,
+    });
+    const unsubscribe = observer.subscribe(() => {});
+    const sessionId = WindowSessionIdSchema.parse(
+      "10000000-0000-4000-8000-000000000099",
+    );
+    const consumer = new RendererQueryInvalidationConsumer(
+      queryClient,
+      sessionId,
+    );
+    const endpoint = {
+      id: 98765,
+      isDestroyed: () => false,
+      send: (channel: string, payload: unknown) => {
+        if (channel === "window:query-invalidations") {
+          consumer.consume(QueryInvalidationBatchSchema.parse(payload));
+        }
+      },
+    };
+    // Ignore earlier app activity: this window already cached the list before
+    // the chat's background merge. No stream-finished event will refresh it.
+    queryInvalidationBus.flush();
+    consumer.recover(queryInvalidationBus.currentEpoch(), [], []);
+    windowRegistry.register(endpoint, sessionId);
+    try {
+      expect(discoverSpecs).not.toHaveBeenCalled();
+      await landTurn(chatId, {
+        [spec]: 'test("merged test", async () => {});\n',
+      });
+      await waitForMerged(chatId);
+      queryInvalidationBus.flush();
+      await vi.waitFor(() => {
+        expect(observer.getCurrentResult().data?.specs).toContain(spec);
+      });
+      expect(discoverSpecs).toHaveBeenCalledOnce();
+      expect(queryClient.getQueryState(otherAppKey)?.isInvalidated).toBe(false);
+    } finally {
+      windowRegistry.unregister(endpoint.id);
+      unsubscribe();
+      queryClient.clear();
+      await discardWorkspace(chatId);
+    }
   }, 60_000);
 
   it("copies back only media the turn created", async () => {

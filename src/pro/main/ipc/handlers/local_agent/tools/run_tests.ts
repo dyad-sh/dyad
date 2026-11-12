@@ -25,6 +25,10 @@ import {
   type AppTestRunExecution,
 } from "@/ipc/services/test_run_queue_service";
 import type { TestRunTiming } from "@/ipc/services/test_run_timing";
+import {
+  WORKTREE_TEST_SANDBOX_REQUIRED,
+  type TestRunSourceWorkspace,
+} from "@/ipc/services/test_run_workspace";
 import { readSettings } from "@/main/settings";
 import type { RunAppTestsResult, TestResult } from "@/ipc/types/tests";
 import { getCancellationInfo } from "@/shared/cancellation_reason";
@@ -244,6 +248,7 @@ function guardTurnRunLimit(ctx: AgentContext): string | null {
  */
 function guardDevServerRunning(ctx: AgentContext): string | null {
   if (usesSandboxedE2eTests(readSettings())) return null;
+  if (ctx.isolatedWorkspace) return WORKTREE_TEST_SANDBOX_REQUIRED;
   if (getRunningTestBaseUrl(ctx.appId)) return null;
   const body =
     "The app's dev server isn't running, so the tests can't execute. Ask the user to start the app with the Run button in the preview panel, then call run_tests again. This did NOT count as a fix attempt.";
@@ -334,6 +339,7 @@ async function runSpecs(
   queueRun: AppTestRunExecution,
   grep?: string,
   timing?: TestRunTiming,
+  sourceWorkspace?: TestRunSourceWorkspace,
 ): Promise<RunAppTestsResult> {
   const filesLabel = testFiles.join(", ");
   const label = grep ? `${filesLabel} › /${grep}/` : filesLabel;
@@ -353,6 +359,7 @@ async function runSpecs(
     event: ctx.event,
     appId: ctx.appId,
     chatId: ctx.chatId,
+    sourceWorkspace,
     testFiles,
     grep,
     source: "agent",
@@ -654,15 +661,6 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
         completeWarning(ctx, title, body);
       return body;
     };
-    // End-to-end runs snapshot and serve the app's original folder, so from an
-    // isolated workspace they would test other code than this chat's.
-    if (ctx.isolatedWorkspace) {
-      const body =
-        "End-to-end tests run against the app's main folder, but this chat works in its own isolated workspace, so they would not test these changes. Dyad runs the app's type-check, build, and unit tests on the combined code before merging this chat's work. Use run_type_checks or run_build to verify your changes now. Nothing ran.";
-      if (ctx.onToolActivity || !getAppTestRunQueue(ctx.appId).activeRun)
-        completeWarning(ctx, "Tests unavailable in isolated workspace", body);
-      return body;
-    }
     // Direct callers must also fail closed: a legacy testFile must never be
     // stripped into an empty object and accidentally select the whole suite.
     const parsed = runTestsSchema.safeParse(args);
@@ -676,6 +674,14 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
       if (error) return refuseInput("Invalid grep pattern", error);
     }
 
+    const sourceWorkspace: TestRunSourceWorkspace | undefined =
+      ctx.isolatedWorkspace
+        ? {
+            appPath: ctx.appPath,
+            workspaceId: ctx.isolatedWorkspace.workspaceId,
+          }
+        : undefined;
+
     // Filesystem selections and retry eligibility are resolved under the queue
     // slot: preceding work may change spec files, results, or the turn budget.
     // Requests can become ineligible while waiting; a refusal spends no run.
@@ -683,6 +689,7 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
       {
         appId: ctx.appId,
         chatId: ctx.chatId,
+        sourceWorkspace,
         event: ctx.event,
         source: "agent",
         testFiles: args.testFiles,
@@ -752,7 +759,12 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
         if (turnLimit) return warn("Test run limit reached", turnLimit);
         const devServerBlocked = guardDevServerRunning(ctx);
         if (devServerBlocked)
-          return warn("App isn't running", devServerBlocked);
+          return warn(
+            sourceWorkspace
+              ? "Worktree tests unavailable"
+              : "App isn't running",
+            devServerBlocked,
+          );
         if (queueRun.signal.aborted) {
           return warn(
             "Test run stopped",
@@ -776,7 +788,14 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
         let res: RunAppTestsResult;
         try {
           ctx.testRunCount = (ctx.testRunCount ?? 0) + 1;
-          res = await runSpecs(ctx, testFiles, queueRun, args.grep, timing);
+          res = await runSpecs(
+            ctx,
+            testFiles,
+            queueRun,
+            args.grep,
+            timing,
+            sourceWorkspace,
+          );
         } catch (error) {
           refundFlakeChecks();
           const message =

@@ -349,7 +349,7 @@ function RendererServices() {
     return () => {
       cancelled = true;
     };
-  }, [store, windowReady]);
+  }, [queryClient, store, windowReady]);
 
   useEffect(() => {
     if (!windowReady) return;

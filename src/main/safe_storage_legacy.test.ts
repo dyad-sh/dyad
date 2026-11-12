@@ -6,6 +6,7 @@ import {
   describe,
   expect,
   it,
+  vi,
 } from "vitest";
 import crypto from "node:crypto";
 import { execFileSync } from "node:child_process";
@@ -27,6 +28,7 @@ import {
   retryRecoveryWithKeychainUnlock,
   SecurityCliKeychainPasswordReader,
   setInProcessKeychainBindingLoaderForTesting,
+  setSafeStorageRecoveryFailureListener,
 } from "./safe_storage_legacy";
 
 // --- Test crypto helpers: mirror Chromium's frozen os_crypt v10 scheme. ---
@@ -128,6 +130,40 @@ describe("deriveLegacyOsCryptKey", () => {
       "sha1",
     );
     expect(deriveLegacyOsCryptKey("some-password")).toEqual(expected);
+  });
+});
+
+it("silently retries failed Keychain lookups after a bounded delay", async () => {
+  await withPlatform("darwin", () => {
+    clearRecoveryCacheForTesting();
+    let unlocked = false;
+    let now = 10_000;
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+    const read = vi.fn((service: string) => ({
+      status: unlocked && service === "dyad Safe Storage" ? 0 : -25308,
+      password: unlocked && service === "dyad Safe Storage" ? "password" : null,
+    }));
+    setInProcessKeychainBindingLoaderForTesting(() => ({
+      readGenericPassword: read,
+      isDefaultKeychainLocked: () => !unlocked,
+    }));
+    const ciphertext = encryptV10Base64(
+      "recovered",
+      deriveLegacyOsCryptKey("password"),
+    );
+    try {
+      expect(recoverLegacySafeStorageSecret(ciphertext)).toBeNull();
+      expect(read).toHaveBeenCalledTimes(2);
+      unlocked = true;
+      expect(recoverLegacySafeStorageSecret(ciphertext)).toBeNull();
+      expect(read).toHaveBeenCalledTimes(2);
+      now += 5_001;
+      expect(recoverLegacySafeStorageSecret(ciphertext)).toBe("recovered");
+      expect(read).toHaveBeenCalledTimes(4);
+    } finally {
+      clock.mockRestore();
+      clearRecoveryCacheForTesting();
+    }
   });
 });
 
@@ -415,6 +451,43 @@ describe("Keychain unlock recovery retry", () => {
     await withPlatform("darwin", () => {
       expect(recoverLegacySafeStorageSecret(ciphertext)).toBeNull();
       expect(recoveryNeedsKeychainUnlock()).toBe(true);
+    });
+  });
+
+  it("notifies the renderer-ready scheduler after a late locked read, with only one unlock attempt", async () => {
+    const ciphertext = encryptV10Base64(
+      "late-secret",
+      deriveLegacyOsCryptKey("password"),
+    );
+    const schedule = vi.fn();
+    const unlock = vi.fn(() => -128);
+    setInProcessKeychainBindingLoaderForTesting(() => ({
+      readGenericPassword: () => ({ status: -25308, password: null }),
+      isDefaultKeychainLocked: () => true,
+      unlockDefaultKeychain: unlock,
+    }));
+    await withPlatform("darwin", () => {
+      setSafeStorageRecoveryFailureListener(schedule);
+      // Startup has no settings failures; only a later MCP/subscription read fails.
+      expect(retryRecoveryWithKeychainUnlock()).toBe(false);
+      expect(schedule).not.toHaveBeenCalled();
+      expect(recoverLegacySafeStorageSecret(ciphertext)).toBeNull();
+      expect(schedule).toHaveBeenCalledTimes(1);
+      expect(recoveryNeedsKeychainUnlock()).toBe(true);
+      expect(retryRecoveryWithKeychainUnlock()).toBe(false);
+      expect(unlock).toHaveBeenCalledTimes(1);
+      // Another ciphertext after cancellation cannot request a second prompt.
+      expect(
+        recoverLegacySafeStorageSecret(
+          encryptV10Base64(
+            "another-secret",
+            deriveLegacyOsCryptKey("password"),
+          ),
+        ),
+      ).toBeNull();
+      expect(schedule).toHaveBeenCalledTimes(1);
+      expect(retryRecoveryWithKeychainUnlock()).toBe(false);
+      expect(unlock).toHaveBeenCalledTimes(1);
     });
   });
 

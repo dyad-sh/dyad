@@ -23,6 +23,10 @@ const git = vi.hoisted(() => ({
       | null,
   })),
 }));
+const appFolder = vi.hoisted(() => ({
+  assertAppFolderExists: vi.fn(async (_appPath: string) => undefined),
+  assertAppGitRepository: vi.fn(async (_appPath: string) => undefined),
+}));
 const handlers = vi.hoisted(() => ({
   revertVersion: vi.fn(),
   restoreToMessage: vi.fn(),
@@ -45,6 +49,7 @@ vi.mock("node:fs", () => ({
   default: { existsSync: vi.fn(() => true) },
 }));
 vi.mock("../utils/git_utils", () => git);
+vi.mock("@/ipc/utils/app_git_repository", () => appFolder);
 vi.mock("./app_operation_coordinator", () => ({
   readAppResource: (resource: string) => `read:${resource}`,
   appOperationCoordinator: {
@@ -72,6 +77,7 @@ vi.mock("./version_preview_presentation_service", () => ({
   versionPreviewPresentationService: { originEndpointFor: vi.fn() },
 }));
 
+import fs from "node:fs";
 import { VersionPreviewService } from "./version_preview_service";
 
 describe("VersionPreviewService reconciliation admission", () => {
@@ -186,6 +192,38 @@ describe("VersionPreviewService reconciliation admission", () => {
       kind: "blocked",
       assessment: { type: "blocked", blocker: "detached-head" },
     });
+  });
+
+  it("explains a missing app folder when the repository is missing", async () => {
+    const service = new VersionPreviewService();
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    appFolder.assertAppFolderExists.mockRejectedValueOnce(
+      new Error(
+        "App folder not found: '/test/app'. It may have been moved or deleted.",
+      ),
+    );
+
+    try {
+      await expect(service.validateCurrentRepository(7)).resolves.toMatchObject(
+        {
+          kind: "blocked",
+          assessment: { type: "blocked", blocker: "missing-repository" },
+          message:
+            "App folder not found: '/test/app'. It may have been moved or deleted.",
+        },
+      );
+      expect(appFolder.assertAppFolderExists).toHaveBeenCalledWith("/test/app");
+
+      // A folder without .git keeps the generic message.
+      await expect(service.validateCurrentRepository(7)).resolves.toMatchObject(
+        {
+          kind: "blocked",
+          message: "The project repository could not be found.",
+        },
+      );
+    } finally {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+    }
   });
 
   it("refuses recovery actions during recording instead of queueing silently", async () => {

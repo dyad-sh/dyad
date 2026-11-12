@@ -7,6 +7,7 @@ import {
 import {
   DEFAULT_ENABLE_SUGGESTED_PROMPTS,
   DEFAULT_ENABLE_TESTING_FOR_NEW_APPS,
+  DEFAULT_MAX_CONCURRENT_TEST_RUNS,
 } from "@/shared/settings_defaults";
 import { localTemplatesData } from "@/shared/templates";
 import { themesData } from "@/shared/themes";
@@ -39,6 +40,28 @@ const ERROR_FINGERPRINT_CONTEXT_KEYS = [
   "provider",
   "source",
 ] as const;
+// Failure events without "error" in their name, and the fields that tell one
+// failure apart from another. Their names are too generic for the shared list.
+const FAILURE_EVENT_FINGERPRINT_KEYS: Record<string, readonly string[]> = {
+  "fs:operation-failed": [
+    "flow",
+    "code",
+    "syscall",
+    "location",
+    "in_onedrive",
+    "file_category",
+    "tool",
+  ],
+};
+
+function failureEventFingerprintKeys(
+  eventName: string | undefined,
+): readonly string[] | undefined {
+  return eventName !== undefined &&
+    Object.hasOwn(FAILURE_EVENT_FINGERPRINT_KEYS, eventName)
+    ? FAILURE_EVENT_FINGERPRINT_KEYS[eventName]
+    : undefined;
+}
 
 type TelemetryStorage = Pick<Storage, "getItem" | "setItem">;
 type TelemetryStorageOwner = { readonly localStorage: TelemetryStorage };
@@ -78,6 +101,7 @@ export function getSettingsPersonTelemetryProperties(settings: UserSettings) {
     enableOwnServerDeployment: settings.enableOwnServerDeployment ?? false,
     enableGitlabPublishing: settings.enableGitlabPublishing ?? false,
     enableTestRunInPreview: settings.enableTestRunInPreview ?? false,
+    enableParallelTestRuns: settings.enableParallelTestRuns ?? false,
     enableAppPreviewDomains: settings.enableAppPreviewDomains ?? false,
     autoApproveChanges: settings.autoApproveChanges ?? false,
     enableSupabaseWriteSqlMigration:
@@ -87,6 +111,8 @@ export function getSettingsPersonTelemetryProperties(settings: UserSettings) {
       settings.enableSuggestedPrompts ?? DEFAULT_ENABLE_SUGGESTED_PROMPTS,
     blockUnsafeNpmPackages: settings.blockUnsafeNpmPackages ?? true,
     maxToolCallSteps: settings.maxToolCallSteps ?? DEFAULT_MAX_TOOL_CALL_STEPS,
+    maxConcurrentTestRuns:
+      settings.maxConcurrentTestRuns ?? DEFAULT_MAX_CONCURRENT_TEST_RUNS,
     maxChatTurnsInContext:
       settings.maxChatTurnsInContext || MAX_CHAT_TURNS_IN_CONTEXT,
     // Null when unset, because no single value describes the unset behavior.
@@ -598,6 +624,7 @@ export function isPostHogErrorTelemetryEvent(
   return (
     eventName === "$exception" ||
     eventName?.toLowerCase().includes("error") === true ||
+    failureEventFingerprintKeys(eventName) !== undefined ||
     Array.isArray(properties?.$exception_list) ||
     typeof properties?.$exception_type === "string" ||
     typeof properties?.exception_name === "string" ||
@@ -645,10 +672,15 @@ function getErrorTelemetryFingerprint(
     .join("|");
 
   const customErrorIdentity = normalizeTelemetryValue(properties?.error);
-  const stableContextIdentity = ERROR_FINGERPRINT_CONTEXT_KEYS.map((key) => {
-    const value = normalizeTelemetryValue(properties?.[key]);
-    return value ? `${key}:${value}` : "";
-  })
+  const contextKeys = [
+    ...ERROR_FINGERPRINT_CONTEXT_KEYS,
+    ...(failureEventFingerprintKeys(event.event) ?? []),
+  ];
+  const stableContextIdentity = contextKeys
+    .map((key) => {
+      const value = normalizeTelemetryValue(properties?.[key]);
+      return value ? `${key}:${value}` : "";
+    })
     .filter(Boolean)
     .join("|");
   return [
@@ -832,11 +864,13 @@ export function shouldFilterPostHogExceptionEvent(
   );
 }
 
-const NEON_MIGRATION_EVENTS = new Set([
+const NEON_EVENTS = new Set([
   "neon:leaked-backups-at-branch-limit",
   "neon:migration",
   "neon:project-created",
   "neon:backup-cleanup",
+  "neon:branch-create-failed",
+  "neon:branch-delete-failed",
 ]);
 
 export function shouldBypassNonProTelemetrySampling(
@@ -860,9 +894,9 @@ export function shouldBypassNonProTelemetrySampling(
     return true;
   }
 
-  // Rare, and how the Neon development branch migration fares in beta: the
-  // users are mostly on free plans, and sampling would hide failures.
-  if (NEON_MIGRATION_EVENTS.has(eventName ?? "")) {
+  // Rare, and mostly from free-plan users: sampling would hide Neon failures,
+  // such as branches that are left behind.
+  if (NEON_EVENTS.has(eventName ?? "")) {
     return true;
   }
 

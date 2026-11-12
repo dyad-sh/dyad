@@ -403,8 +403,36 @@ jobs:
           name: build-macos
       - name: Extract macOS app bundle
         run: tar -xf out-macos.tar
+      # Build the old app here rather than publishing a permanent binary fixture.
+      # This SHA is Electron 40 with the legacy recovery reader already present.
+      - name: Checkout pinned Electron 40 baseline
+        uses: actions/checkout@v5
+        with:
+          repository: dyad-sh/dyad
+          ref: 643efc30b58da8999716bc66f40cf5ecacf661eb
+          path: .claude/tmp/safe-storage-baseline
+          persist-credentials: false
+      - name: Enable real encrypted writes in baseline fixture
+        run: node scripts/prepare-safe-storage-baseline.mjs .claude/tmp/safe-storage-baseline
+      - name: Install baseline dependencies
+        working-directory: .claude/tmp/safe-storage-baseline
+        run: bash scripts/npm-ci-retry.sh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Prepare baseline test server
+        working-directory: .claude/tmp/safe-storage-baseline/testing/fake-llm-server
+        run: npm ci && npm run build
+      - name: Build unsigned Electron 40 baseline
+        working-directory: .claude/tmp/safe-storage-baseline
+        run: npm run build
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
       - name: Safe storage keychain identity tests
-        run: DYAD_E2E_SAFE_STORAGE=1 npx playwright test e2e-tests/safe_storage_keychain_identity.spec.ts --workers=1
+        run: npx playwright test e2e-tests/safe_storage_keychain_identity.spec.ts --workers=1
+        env:
+          DYAD_E2E_SAFE_STORAGE: "1"
+          DYAD_E2E_SAFE_STORAGE_BASELINE_BUILD: ${{ github.workspace }}/.claude/tmp/safe-storage-baseline/out
+          DYAD_E2E_SAFE_STORAGE_CANDIDATE_BUILD: ${{ github.workspace }}/out
       - name: Upload Playwright report
         # In CI the reporter is "blob" (blob-report/) and traces/screenshots are
         # retained under test-results/ on failure; there is no playwright-report/.
@@ -468,9 +496,9 @@ jobs:
             ${{ matrix.os.name }}-pnpm-store-
       # Not strictly needed but makes the e2e tests faster (and less flaky)
       - name: Install scaffold dependencies
-        run: cd scaffold && pnpm install
+        run: bash scripts/pnpm-install-retry.sh scaffold
       - name: Install nextjs-template dependencies
-        run: cd nextjs-template && pnpm install
+        run: bash scripts/pnpm-install-retry.sh nextjs-template
       - name: Download build artifacts
         uses: actions/download-artifact@v7
         with:

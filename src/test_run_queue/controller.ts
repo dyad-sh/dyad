@@ -3,6 +3,7 @@ import {
   getCancellationInfo,
 } from "@/shared/cancellation_reason";
 import { SnapshotStore } from "@/state_machines/snapshot_store";
+import type { TestRunWaitReason } from "@/shared/test_run_queue";
 import {
   observeTransition,
   type TransitionObserver,
@@ -32,6 +33,7 @@ function stopReasonOf(signal: AbortSignal): TestRunStopReason {
 }
 
 interface PendingRun {
+  admissionError?: Error;
   controller: AbortController;
   execute: (run: TestRunExecution) => Promise<unknown>;
   cancelled: (reason: TestRunStopReason) => unknown;
@@ -57,20 +59,25 @@ export class TestRunQueue {
     private readonly deps: {
       onChange: (state: TestRunQueueState) => void;
       onError: (error: unknown) => void;
+      manualAdmission?: boolean;
       observer?: TransitionObserver<
         TestRunQueueState,
         TestRunQueueEvent,
         TestRunQueueCommand
       >;
     },
-  ) {}
+  ) {
+    if (deps.manualAdmission)
+      this.store.setState({ ...EMPTY_TEST_RUN_QUEUE, activeRuns: [] });
+  }
 
   getSnapshot = this.store.getSnapshot;
 
   ownsExecution(run: TestRunExecution): boolean {
     return (
-      this.getSnapshot().activeRun?.runId === run.runId &&
-      this.runs.get(run.runId)?.controller.signal === run.signal
+      (this.getSnapshot().activeRuns ?? [this.getSnapshot().activeRun]).some(
+        (active) => active?.runId === run.runId,
+      ) && this.runs.get(run.runId)?.controller.signal === run.signal
     );
   }
 
@@ -113,11 +120,37 @@ export class TestRunQueue {
     this.send({ type: "stop", reason });
   }
 
-  async drain(): Promise<void> {
-    if (!this.getSnapshot().activeRun) return;
+  admit(runId: number) {
+    this.send({ type: "admit", runId });
+  }
+  waiting(runId: number, reason: TestRunWaitReason, branch?: string) {
+    this.send({ type: "waiting", runId, reason, branch });
+  }
+  cancel(runId: number, reason: TestRunStopReason) {
+    this.send({ type: "cancel", runId, reason });
+  }
+
+  failAdmission(runId: number, error: Error) {
+    const pending = this.runs.get(runId);
+    if (
+      !pending ||
+      !this.getSnapshot().queuedRuns.some((run) => run.runId === runId)
+    )
+      return;
+    pending.admissionError ??= error;
+    this.send({ type: "reject", runId });
+  }
+
+  async drain(appId?: number): Promise<void> {
+    const busy = () =>
+      [
+        ...(this.getSnapshot().activeRuns ?? [this.getSnapshot().activeRun]),
+        ...this.getSnapshot().queuedRuns,
+      ].some((run) => run && (appId === undefined || run.appId === appId));
+    if (!busy()) return;
     await new Promise<void>((resolve) => {
       const unsubscribe = this.store.subscribe(() => {
-        if (this.getSnapshot().activeRun) return;
+        if (busy()) return;
         unsubscribe();
         resolve();
       });
@@ -161,6 +194,11 @@ export class TestRunQueue {
     const pending = this.runs.get(command.runId);
     if (!pending) return;
     switch (command.type) {
+      case "reject-queued":
+        pending.detach();
+        this.runs.delete(command.runId);
+        pending.reject(pending.admissionError);
+        break;
       case "execute":
         // Defer execution so reentrant cancellation published during admission
         // is committed before a callback can acquire resources.

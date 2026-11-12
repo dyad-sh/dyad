@@ -187,6 +187,9 @@ export type ChatStreamIntentEvent = z.infer<typeof ChatStreamIntentEventSchema>;
 
 export const ChatStreamHostEventSchema = z.discriminatedUnion("type", [
   z
+    .object({ type: z.literal("EXECUTION_HOLD_CHANGED"), held: z.boolean() })
+    .strict(),
+  z
     .object({
       type: z.literal("ADMISSION_ACCEPTED"),
       intentId: z.string(),

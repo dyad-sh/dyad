@@ -178,7 +178,11 @@ export const PublishPanel = () => {
             />
             {app.githubOrg && app.githubRepo && (
               <div className="pt-4 border-t border-gray-100 dark:border-gray-800">
-                <GithubCollaboratorManager appId={selectedAppId} />
+                <GithubCollaboratorManager
+                  appId={selectedAppId}
+                  githubOrg={app.githubOrg}
+                  githubRepo={app.githubRepo}
+                />
               </div>
             )}
           </CardContent>

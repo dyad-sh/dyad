@@ -24,6 +24,111 @@ function eventStream(events: unknown[]) {
 afterEach(() => {
   setModelClientFetchForTesting(undefined);
   vi.unstubAllEnvs();
+  vi.useRealTimers();
+});
+
+function googleError(status: number, message: string) {
+  return new Response(
+    JSON.stringify({ error: { code: status, message, status: "ERROR" } }),
+    { status, headers: { "content-type": "application/json" } },
+  );
+}
+
+describe("Google API-key validation", () => {
+  it("lists models with the key instead of generating text", async () => {
+    const fetch = vi.fn(async () =>
+      Response.json({ models: [{ name: "models/gemini-flash-latest" }] }),
+    );
+    setModelClientFetchForTesting(fetch);
+
+    await expect(
+      validateProviderApiKey({ provider: "google", apiKey: " test-key " }),
+    ).resolves.toEqual({ ok: true });
+
+    expect(fetch).toHaveBeenCalledOnce();
+    const [url, init] = fetch.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe(
+      "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1",
+    );
+    expect(init.method).toBe("GET");
+    expect(init.body).toBeUndefined();
+    expect(new Headers(init.headers).get("x-goog-api-key")).toBe("test-key");
+  });
+
+  it.each([
+    [400, "API key not valid. Please pass a valid API key."],
+    [401, "Request had invalid authentication credentials."],
+    [403, "Generative Language API has not been used in project 123."],
+  ])("classifies a %i response as a rejected key", async (status, message) => {
+    setModelClientFetchForTesting(async () => googleError(status, message));
+    await expect(
+      validateProviderApiKey({ provider: "google", apiKey: "bad-key" }),
+    ).rejects.toMatchObject({
+      kind: DyadErrorKind.Auth,
+      message: expect.stringContaining("Google rejected this API key"),
+    });
+  });
+
+  it("classifies a 429 response as rate limited", async () => {
+    setModelClientFetchForTesting(async () =>
+      googleError(429, "Resource has been exhausted (e.g. check quota)."),
+    );
+    await expect(
+      validateProviderApiKey({ provider: "google", apiKey: "key" }),
+    ).rejects.toMatchObject({ kind: DyadErrorKind.RateLimited });
+  });
+
+  it("reports unexpected server errors with Google's message", async () => {
+    setModelClientFetchForTesting(async () =>
+      googleError(503, "The service is currently unavailable."),
+    );
+    await expect(
+      validateProviderApiKey({ provider: "google", apiKey: "key" }),
+    ).rejects.toMatchObject({
+      kind: DyadErrorKind.External,
+      message:
+        "Dyad could not verify this Google API key: The service is currently unavailable.",
+    });
+  });
+
+  it("treats a network failure as a connection problem", async () => {
+    setModelClientFetchForTesting(async () => {
+      throw new TypeError("fetch failed", {
+        cause: Object.assign(new Error("getaddrinfo ENOTFOUND"), {
+          code: "ENOTFOUND",
+        }),
+      });
+    });
+    await expect(
+      validateProviderApiKey({ provider: "google", apiKey: "key" }),
+    ).rejects.toMatchObject({
+      kind: DyadErrorKind.Precondition,
+      message: expect.stringContaining("Couldn't reach Google"),
+    });
+  });
+
+  it("aborts and reports a connection problem when Google never answers", async () => {
+    vi.useFakeTimers();
+    let signal: AbortSignal | undefined;
+    setModelClientFetchForTesting(
+      (_url, init) =>
+        new Promise<Response>((_, reject) => {
+          signal = init?.signal ?? undefined;
+          signal?.addEventListener("abort", () =>
+            reject(new DOMException("aborted", "AbortError")),
+          );
+        }),
+    );
+
+    const result = validateProviderApiKey({ provider: "google", apiKey: "k" });
+    const assertion = expect(result).rejects.toMatchObject({
+      kind: DyadErrorKind.Precondition,
+      message: expect.stringContaining("Couldn't reach Google"),
+    });
+    await vi.advanceTimersByTimeAsync(20_000);
+    await assertion;
+    expect(signal?.aborted).toBe(true);
+  });
 });
 
 describe("Dyad API-key validation", () => {

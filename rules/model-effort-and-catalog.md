@@ -67,3 +67,7 @@ requested about 1055390 tokens`. Keep catalog output limits well under the
 - **BYO applies to main-chat inference, not Pro auxiliary tasks.** Keep fixed
   helper/persona models and route Pro BYO helpers through the engine using a
   request-only settings snapshot; never require another provider key or mutate the main-chat source.
+
+- **Pass the provider ID when resolving custom-model effort.** Custom providers
+  use `custom::` IDs; both the picker and `createModelSelection` must use the
+  provider-aware effort settings, or a saved `none` falls back to `medium`.

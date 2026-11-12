@@ -46,6 +46,8 @@ region and screen readers announce the same update repeatedly. Use a labeled
 
 For polled queries, keep verified success messages and completion buttons visible during background refetches; gating them on `!isFetching` makes them flicker on every poll. Gate initial verification separately (for example, with `isFetchedAfterMount`) and derive completion from the latest confirmed data.
 
+For streamed logs that follow the tail, a programmatic `scrollTop` write queues an async `scroll` event. If more output lands before it fires, a distance-from-bottom check turns following off with no user input. Record the position you wrote and disengage only when `scrollTop` drops below it, as `TestOutputDrawer` does.
+
 ## SVG chart animation
 
 For sample-triggered SMIL animations inside an existing SVG, use `begin="indefinite"` and call `beginElement()` when the sample arrives; `begin="0s"` uses the SVG's original timeline and may already have elapsed. To inspect animated transforms in browser tests, read `animVal.getItem(0).matrix`; `animVal.consolidate()` throws `NoModificationAllowedError` because the animated list is read-only.
@@ -53,6 +55,10 @@ For sample-triggered SMIL animations inside an existing SVG, use `begin="indefin
 ## Flex containers with non-shrinkable children
 
 Don't put an explicit `min-w-*` on a flex item whose children are `flex-shrink-0` (icon buttons, etc.) if that value is smaller than the children's combined width. An explicit `min-width` overrides flexbox's content-based minimum, so the item gets squeezed below its content and the overflow paints over sibling elements — visually broken and it intercepts their pointer events (this broke the preview Restart button at narrow widths). Use `min-w-fit` to let the item refuse to shrink below its content.
+
+For banners in resizable panels, use container queries to move the action below
+the message at narrow widths. Check long translations at 320px; a fixed icon and
+button can otherwise squeeze the message into a one-word-wide column.
 
 ## Tailwind v4 conventions
 

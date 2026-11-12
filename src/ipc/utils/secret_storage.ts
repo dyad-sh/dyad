@@ -1,5 +1,6 @@
 import { safeStorage } from "electron";
 import log from "electron-log";
+import { decryptSafeStorageBuffer } from "@/main/safe_storage";
 
 const logger = log.scope("secret_storage");
 
@@ -31,25 +32,27 @@ export function decryptFromString(stored: string): string {
     ).toString("utf8");
   }
   const buf = Buffer.from(stored, "base64");
-  if (!safeStorage.isEncryptionAvailable()) {
-    // Untagged blob without a keyring: best-effort UTF-8. Callers
-    // validate the result, so garbage bytes surface as a failed read.
-    logger.warn(
-      "safeStorage encryption unavailable while reading a secret; treating stored blob as plaintext",
-    );
-    return buf.toString("utf8");
-  }
   try {
-    return safeStorage.decryptString(buf);
-  } catch (err) {
-    // Either untagged plaintext from a no-keyring write (recoverable)
-    // or undecryptable ciphertext. Return bytes either way and let the
-    // caller decide.
-    logger.warn(
-      "safeStorage.decryptString rejected a stored secret; treating as plaintext",
-      err,
-    );
-    return buf.toString("utf8");
+    return decryptSafeStorageBuffer(buf);
+  } catch (error) {
+    // Retain the old reader's compatibility for untagged base64 JSON only.
+    // Actual no-keyring writers use plain:, including OAuth client secrets.
+    // Known encrypted envelopes must NEVER take this compatibility path.
+    if (!/^v\d\d$/.test(buf.subarray(0, 3).toString("ascii"))) {
+      try {
+        const text = new TextDecoder("utf-8", { fatal: true }).decode(buf);
+        const parsed: unknown = JSON.parse(text);
+        if (
+          parsed !== null &&
+          typeof parsed === "object" &&
+          !Array.isArray(parsed)
+        )
+          return text;
+      } catch {
+        // Neither supported ciphertext nor a historical plaintext object.
+      }
+    }
+    throw error;
   }
 }
 
@@ -78,13 +81,9 @@ export function decryptSecretMap(
   if (!stored) {
     return null;
   }
-  const json = decryptFromString(stored);
-  if (!json) {
-    return null;
-  }
   let parsed: unknown;
   try {
-    parsed = JSON.parse(json);
+    parsed = JSON.parse(decryptFromString(stored));
   } catch {
     return null;
   }

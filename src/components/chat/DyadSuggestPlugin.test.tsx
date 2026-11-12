@@ -86,6 +86,7 @@ const CREATED = {
   enabled: true,
   oauthEnabled: false,
   oauthConnected: false,
+  oauthUnreadable: false,
   oauthCallbackPort: null,
 };
 

@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { migrateStoredSettings, StoredUserSettingsSchema } from "@/lib/schemas";
+import {
+  migrateStoredSettings,
+  StoredUserSettingsSchema,
+  UserSettingsSchema,
+} from "@/lib/schemas";
 
 const baseSettings = {
   selectedModel: { name: "auto", provider: "auto" },
@@ -8,6 +12,40 @@ const baseSettings = {
   enableAutoUpdate: true,
   releaseChannel: "stable",
 };
+
+describe("StoredUserSettingsSchema maxConcurrentTestRuns", () => {
+  it.each([1, 128])("keeps the valid limit %s", (maxConcurrentTestRuns) => {
+    expect(
+      StoredUserSettingsSchema.parse({ ...baseSettings, maxConcurrentTestRuns })
+        .maxConcurrentTestRuns,
+    ).toBe(maxConcurrentTestRuns);
+  });
+
+  it.each([0, 129, 2.5, "3"])(
+    "drops the invalid limit %s without discarding other settings",
+    (maxConcurrentTestRuns) => {
+      const parsed = StoredUserSettingsSchema.parse({
+        ...baseSettings,
+        enableParallelTestRuns: true,
+        maxConcurrentTestRuns,
+      });
+      expect(parsed.maxConcurrentTestRuns).toBeUndefined();
+      expect(parsed.enableParallelTestRuns).toBe(true);
+      expect(parsed.selectedTemplateId).toBe("react");
+    },
+  );
+
+  it("still rejects an invalid limit sent as a settings update", () => {
+    expect(
+      UserSettingsSchema.partial().safeParse({ maxConcurrentTestRuns: 0 })
+        .success,
+    ).toBe(false);
+    expect(
+      UserSettingsSchema.partial().parse({ maxConcurrentTestRuns: 4 })
+        .maxConcurrentTestRuns,
+    ).toBe(4);
+  });
+});
 
 // Pins that the lastKnownPerformance shape written by the performance
 // monitor survives the validation parse in writeSettings, and that old

@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { generateText } from "ai";
 
 import type { ModelSelection, UserSettings } from "@/lib/schemas";
 import {
@@ -72,6 +74,65 @@ describe("getProviderOptions model effort", () => {
         .google,
     ).toBeUndefined();
   });
+
+  it.each(["lmstudio", "custom::local"])(
+    "passes None effort to %s",
+    (provider) => {
+      expect(
+        optionsFor(settingsFor(provider, "gemma2", "none"), provider, provider)[
+          provider
+        ],
+      ).toEqual({ reasoningEffort: "none" });
+    },
+  );
+
+  it.each(["lmstudio", "custom::local"])(
+    "serializes None effort in the %s request",
+    async (providerId) => {
+      let requestBody: Record<string, unknown> | undefined;
+      const provider = createOpenAICompatible({
+        name: providerId,
+        baseURL: "http://localhost:1234/v1",
+        fetch: async (_url, init) => {
+          requestBody = JSON.parse(init!.body as string);
+          return new Response(
+            JSON.stringify({
+              id: "test",
+              object: "chat.completion",
+              created: 0,
+              model: "gemma2",
+              choices: [
+                {
+                  index: 0,
+                  message: { role: "assistant", content: "Hello" },
+                  finish_reason: "stop",
+                },
+              ],
+              usage: {
+                prompt_tokens: 1,
+                completion_tokens: 1,
+                total_tokens: 2,
+              },
+            }),
+            { headers: { "Content-Type": "application/json" } },
+          );
+        },
+      });
+      await generateText({
+        model: provider("gemma2"),
+        prompt: "Hello",
+        providerOptions: optionsFor(
+          settingsFor(providerId, "gemma2", "none"),
+          providerId,
+          providerId,
+        ),
+      });
+      expect(requestBody).toMatchObject({
+        model: "gemma2",
+        reasoning_effort: "none",
+      });
+    },
+  );
 
   it("passes effort to OpenAI-compatible local and custom providers", () => {
     expect(

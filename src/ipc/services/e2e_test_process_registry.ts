@@ -91,6 +91,28 @@ export async function settleE2eTestProcesses(
   return settled.every(Boolean);
 }
 
+/**
+ * Owners whose caller could not confirm settlement. A dev server that
+ * daemonized leaves no tracked child once its wrapper closes, yet a port probe
+ * can still see it listening, so an empty child list alone does not prove that
+ * a run's processes stopped. Kept until quit, like the operation fence that
+ * accompanies the same verdict.
+ */
+const unconfirmedOwners = new WeakSet<AbortSignal>();
+
+/** Record a failed settlement verdict that the child registry cannot see. */
+export function retainUnsettledE2eTestOwner(owner: AbortSignal): void {
+  unconfirmedOwners.add(owner);
+}
+
+/** Whether one run may still have live processes. */
+export function hasUnsettledE2eTestProcesses(owner: AbortSignal): boolean {
+  return (
+    unconfirmedOwners.has(owner) ||
+    trackedE2eTestProcessesForOwner(owner).length > 0
+  );
+}
+
 /** Number of tracked children. Exposed for tests. */
 export function trackedE2eTestProcessCount(): number {
   return runScopedProcesses.size;

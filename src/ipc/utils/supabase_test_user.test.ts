@@ -1,14 +1,36 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { SupabaseManagementAPIError } from "@dyad-sh/supabase-management-js";
 
 const mocks = vi.hoisted(() => {
+  const testUserCleanup = {
+    userId: "cleanup.userId",
+    projectId: "cleanup.projectId",
+  };
   const where = vi.fn().mockResolvedValue(undefined);
   const set = vi.fn(() => ({ where }));
   const update = vi.fn(() => ({ set }));
   const selectWhere = vi.fn().mockResolvedValue([]);
-  const from = vi.fn(() => ({ where: selectWhere }));
+  const cleanupRows = vi.fn().mockResolvedValue([]);
+  const from = vi.fn((table: unknown) =>
+    table === testUserCleanup ? cleanupRows() : { where: selectWhere },
+  );
   const select = vi.fn(() => ({ from }));
+  const insertValues = vi.fn().mockResolvedValue(undefined);
+  const deleteWhere = vi.fn().mockResolvedValue(undefined);
+  const findFirst = vi.fn();
   return {
-    db: { update, select },
+    db: {
+      update,
+      select,
+      delete: vi.fn(() => ({ where: deleteWhere })),
+      insert: vi.fn(() => ({ values: insertValues })),
+      query: { apps: { findFirst } },
+    },
+    testUserCleanup,
+    cleanupRows,
+    deleteWhere,
+    findFirst,
+    insertValues,
     update,
     set,
     where,
@@ -25,13 +47,20 @@ vi.mock("@/db", () => ({ db: mocks.db }));
 vi.mock("../../db", () => ({ db: mocks.db }));
 vi.mock("@/db/schema", () => ({
   apps: { id: "id", supabaseTestUserId: "stu" },
+  testUserCleanup: mocks.testUserCleanup,
 }));
 vi.mock("../../db/schema", () => ({
   apps: { id: "id", supabaseTestUserId: "stu" },
+  testUserCleanup: mocks.testUserCleanup,
 }));
 vi.mock("drizzle-orm", async (importOriginal) => {
   const actual = await importOriginal<typeof import("drizzle-orm")>();
-  return { ...actual, eq: vi.fn((a, b) => ({ a, b })), isNotNull: vi.fn() };
+  return {
+    ...actual,
+    and: vi.fn((...conditions) => ({ and: conditions })),
+    eq: vi.fn((a, b) => ({ a, b })),
+    isNotNull: vi.fn(),
+  };
 });
 vi.mock("@/ipc/utils/test_utils", () => ({ IS_TEST_BUILD: false }));
 vi.mock("@/ipc/utils/retryWithRateLimit", () => ({
@@ -65,7 +94,10 @@ import {
   reconcileOrphanTestUsers,
 } from "./supabase_test_user";
 import { DyadErrorKind } from "@/errors/dyad_error";
-import { SupabaseTestUserCreationRejectedError } from "./supabase_test_user_errors";
+import {
+  SupabaseTestUserCreationRejectedError,
+  supabaseTestUserStepError,
+} from "./supabase_test_user_errors";
 
 type AppRow = any;
 
@@ -109,11 +141,133 @@ beforeEach(() => {
   vi.unstubAllGlobals();
   mocks.where.mockResolvedValue(undefined);
   mocks.selectWhere.mockResolvedValue([]);
+  mocks.cleanupRows.mockResolvedValue([]);
+  mocks.insertValues.mockResolvedValue(undefined);
+  mocks.deleteWhere.mockResolvedValue(undefined);
   mocks.getProjectApiKeys.mockResolvedValue(PROJECT_API_KEYS);
   mocks.executeSupabaseSql.mockResolvedValue("[]");
 });
 
 describe("createTempTestUser", () => {
+  it.each(["create", "delete"] as const)(
+    "classifies failed %s response bodies without losing cancellation or clearing recovery state",
+    async (operation) => {
+      const connectionReset = new TypeError(SECRET_KEY, {
+        cause: { code: "ECONNRESET" },
+      });
+      const failures = [
+        new DOMException(SECRET_KEY, "TimeoutError"),
+        new DOMException(SECRET_KEY, "AbortError"),
+        new TypeError(SECRET_KEY, { cause: { code: "UND_ERR_BODY_TIMEOUT" } }),
+        connectionReset,
+      ];
+      for (const cause of failures) {
+        const response = new Response("", { status: 500 });
+        // Model Node fetch's rejected body read directly; Happy DOM rewrites
+        // stream TypeErrors to EncodingErrors without retaining their cause.
+        vi.spyOn(response, "text").mockRejectedValueOnce(cause);
+        mockFetch(() => response);
+        const error = await (
+          operation === "create"
+            ? createTempTestUser(makeApp())
+            : deleteTempTestUser(makeApp({ supabaseTestUserId: UUID }), {
+                throwOnError: true,
+              })
+        ).catch((error) => error);
+        if (cause.name === "AbortError") {
+          expect(error).toBe(cause);
+        } else {
+          expect(error.cause).toBe(cause);
+          expect(error.kind).toBe(DyadErrorKind.External);
+          expect(error.message).not.toMatch(/HTTP 500|sb_secret_/);
+          expect(error.userMessage).toContain(
+            cause === connectionReset
+              ? "couldn't reach Supabase"
+              : "didn't respond in time",
+          );
+        }
+        expect(mocks.set).not.toHaveBeenCalled();
+        expect(mocks.executeSupabaseSql).not.toHaveBeenCalledWith(
+          expect.objectContaining({
+            query: expect.stringContaining("user_exists"),
+          }),
+        );
+      }
+    },
+  );
+
+  it.each(["create", "delete"] as const)(
+    "preserves a caller's abort reason when the %s error body fails",
+    async (operation) => {
+      const controller = new AbortController();
+      const cancelled = new Error("Stopped by user");
+      const response = new Response("", { status: 500 });
+      vi.spyOn(response, "text").mockImplementationOnce(async () => {
+        controller.abort(cancelled);
+        throw new TypeError(SECRET_KEY);
+      });
+      mockFetch(() => response);
+      const result =
+        operation === "create"
+          ? createTempTestUser(makeApp(), { signal: controller.signal })
+          : deleteTempTestUser(makeApp({ supabaseTestUserId: UUID }), {
+              signal: controller.signal,
+              throwOnError: true,
+            });
+      await expect(result).rejects.toBe(cancelled);
+      expect(mocks.set).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    { code: "email_address_invalid" },
+    { code: 400, error_code: "email_address_invalid" },
+  ])(
+    "preserves a safe reason from HTTP 400 and reads the body once (%j)",
+    async (code) => {
+      const response = new Response(
+        JSON.stringify({
+          ...code,
+          message: `private@example.com ${SECRET_KEY}`,
+        }),
+        { status: 400 },
+      );
+      const readBody = vi.spyOn(response, "text");
+      mockFetch(() => response);
+      const error = await createTempTestUser(makeApp()).catch((error) => error);
+      expect(error.message).toContain("POST /auth/v1/admin/users");
+      expect(error.message).toContain("HTTP 400");
+      expect(error.message).toContain("email_address_invalid");
+      expect(error.message).toContain(
+        "rejected the email address or its domain",
+      );
+      expect(JSON.stringify(error)).not.toContain(SECRET_KEY);
+      expect(JSON.stringify(error)).not.toContain("private@example.com");
+      expect(readBody).toHaveBeenCalledTimes(1);
+      expect(mocks.executeSupabaseSql).not.toHaveBeenCalled();
+      expect(mocks.set).not.toHaveBeenCalled();
+    },
+  );
+
+  it("reports an unknown 400 without copying arbitrary provider details", async () => {
+    mockFetch(
+      () =>
+        new Response(
+          JSON.stringify({
+            code: SECRET_KEY,
+            message: "email_address_invalid private@example.com",
+          }),
+          { status: 400 },
+        ),
+    );
+    const error = await createTempTestUser(makeApp()).catch((error) => error);
+    expect(error.message).toContain("HTTP 400");
+    expect(error.providerCode).toBeUndefined();
+    expect(error.message).not.toContain("email_address_invalid");
+    expect(JSON.stringify(error)).not.toContain(SECRET_KEY);
+    expect(JSON.stringify(error)).not.toContain("private@example.com");
+  });
+
   const databaseCreateError = {
     code: 500,
     error_code: "unexpected_failure",
@@ -124,6 +278,27 @@ describe("createTempTestUser", () => {
     code: "23514",
     message: "organization_id is required to create a user",
   };
+
+  it.each([400, 500])(
+    "retains the constraint code without bypassing the fallback guard (HTTP %s)",
+    async (status) => {
+      mockFetch(
+        () => new Response(JSON.stringify(constraintCreateError), { status }),
+      );
+      if (status === 500)
+        mocks.executeSupabaseSql.mockResolvedValueOnce(
+          '[{"user_exists":true}]',
+        );
+      const error = await createTempTestUser(makeApp()).catch((error) => error);
+      expect(error).not.toBeInstanceOf(SupabaseTestUserCreationRejectedError);
+      expect(error.providerCode).toBe("23514");
+      expect(error.message).toContain("database check constraint");
+      expect(error.message).not.toContain("organization_id");
+      expect(mocks.executeSupabaseSql).toHaveBeenCalledTimes(
+        status === 500 ? 1 : 0,
+      );
+    },
+  );
 
   it.each([
     databaseCreateError,
@@ -233,7 +408,10 @@ describe("createTempTestUser", () => {
     );
     const error = new Error("verification unavailable");
     mocks.executeSupabaseSql.mockRejectedValueOnce(error);
-    await expect(createTempTestUser(makeApp())).rejects.toBe(error);
+    await expect(createTempTestUser(makeApp())).rejects.toMatchObject({
+      operation: "verify",
+      cause: error,
+    });
   });
 
   it("honors cancellation while verifying a database-create rejection", async () => {
@@ -259,17 +437,79 @@ describe("createTempTestUser", () => {
     "does not treat uncertain network outcomes as rejected creations (%s)",
     async (error) => {
       vi.stubGlobal("fetch", vi.fn().mockRejectedValue(error));
-      await expect(createTempTestUser(makeApp())).rejects.toBe(error);
+      await expect(createTempTestUser(makeApp())).rejects.toMatchObject({
+        operation: "create",
+        cause: error,
+      });
       expect(mocks.executeSupabaseSql).not.toHaveBeenCalled();
     },
   );
 
   it("keeps a successful response without a user ID fatal", async () => {
     mockFetch(() => new Response("{}"));
-    await expect(createTempTestUser(makeApp())).rejects.toThrow(
-      "did not return an id",
+    const error = await createTempTestUser(makeApp()).catch((error) => error);
+    expect(supabaseTestUserStepError("per-test setup", error).userMessage).toBe(
+      "Supabase did not return an id for the test user.",
     );
     expect(mocks.executeSupabaseSql).not.toHaveBeenCalled();
+  });
+
+  it.each([true, false])(
+    "keeps rejected-key advice through lifecycle projection (legacy: %s)",
+    async (isLegacyJwt) => {
+      mockFetch(
+        () =>
+          new Response(
+            JSON.stringify({ code: "bad_jwt", message: SECRET_KEY }),
+            { status: 403 },
+          ),
+      );
+      const error = await createTempTestUser(makeApp(), {
+        adminKey: { apiKey: SECRET_KEY, isLegacyJwt },
+      }).catch((error) => error);
+      for (const step of ["setup", "per-test setup"] as const) {
+        const failure = supabaseTestUserStepError(step, error);
+        expect(failure.userMessage).toContain(
+          isLegacyJwt ? "legacy service_role" : "secret key",
+        );
+        expect(failure.userMessage).toContain("Settings → API Keys");
+        expect(failure.userMessage).not.toMatch(/internet|sb_secret_/);
+      }
+    },
+  );
+
+  it("reports the Auth endpoint and DNS cause without credentials or a project URL", async () => {
+    const request = vi.fn().mockImplementation(async (_url, init) => {
+      throw new TypeError(
+        `fetch failed ${init.body} ${JSON.stringify(init.headers)}`,
+        {
+          cause: Object.assign(new Error("lookup proj-1.supabase.co"), {
+            code: "ENOTFOUND",
+          }),
+        },
+      );
+    });
+    vi.stubGlobal("fetch", request);
+    const error = await createTempTestUser(makeApp()).catch((error) => error);
+    expect(error.message).toContain("POST /auth/v1/admin/users");
+    expect(error.message).toContain("ENOTFOUND");
+    expect(error.message).toContain("Check DNS");
+    expect(error.message).not.toContain(SECRET_KEY);
+    expect(error.message).not.toContain("proj-1");
+    expect(error.message).not.toContain("dyad-test+");
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(mocks.set).not.toHaveBeenCalled();
+  });
+
+  it("does not expose raw Auth error responses", async () => {
+    mockFetch(
+      () => new Response(`private@example.com ${SECRET_KEY}`, { status: 503 }),
+    );
+    const error = await createTempTestUser(makeApp()).catch((error) => error);
+    expect(error.message).toContain("HTTP 503");
+    expect(error.message).toContain("POST /auth/v1/admin/users");
+    expect(error.message).not.toContain(SECRET_KEY);
+    expect(error.message).not.toContain("private@example.com");
   });
 
   it("records a user created while cancellation is draining the request", async () => {
@@ -322,6 +562,40 @@ describe("createTempTestUser", () => {
     for (const [, init] of fetchSpy.mock.calls)
       expect(init.headers.apikey).toBe(SECRET_KEY);
   });
+  it("records overlapping case owners separately without replacing another run's user", async () => {
+    const ids = [UUID, "00000000-0000-4000-8000-000000000001"];
+    let index = 0;
+    mockFetch(() => new Response(JSON.stringify({ id: ids[index++] })));
+    const app = makeApp({ supabaseTestUserId: "legacy-recorder-user" });
+    await Promise.all([
+      createTempTestUser(app, { ownerId: "run-one:case-one" }),
+      createTempTestUser(app, { ownerId: "run-two:case-one" }),
+    ]);
+    expect(mocks.set).not.toHaveBeenCalled();
+    expect(mocks.insertValues).toHaveBeenCalledTimes(2);
+    for (const [value] of mocks.insertValues.mock.calls) {
+      expect(value).toMatchObject({
+        appId: 7,
+        projectId: "proj-1",
+        organizationSlug: "org-1",
+      });
+      expect(Object.keys(value).sort()).toEqual([
+        "appId",
+        "organizationSlug",
+        "ownerId",
+        "projectId",
+        "userId",
+      ]);
+    }
+    expect(
+      mocks.insertValues.mock.calls.map(([value]) => value.ownerId).sort(),
+    ).toEqual(["run-one:case-one", "run-two:case-one"]);
+    expect(
+      new Set(mocks.insertValues.mock.calls.map(([value]) => value.userId))
+        .size,
+    ).toBe(2);
+  });
+
   it("creates a confirmed admin user and persists the id immediately", async () => {
     const fetchSpy = mockFetch(
       () => new Response(JSON.stringify({ id: UUID })),
@@ -342,7 +616,7 @@ describe("createTempTestUser", () => {
       userId: UUID,
       projectUrl: "https://proj-1.supabase.co",
     });
-    expect(result.email).toMatch(/^dyad-test\+7-\d+@dyad\.test$/);
+    expect(result.email).toMatch(/^dyad-test\+7-[a-f0-9-]{36}@dyad\.test$/);
     // Persists the in-flight user id for crash reconciliation.
     expect(mocks.set).toHaveBeenCalledWith({ supabaseTestUserId: UUID });
   });
@@ -359,7 +633,7 @@ describe("createTempTestUser", () => {
 
     await expect(
       createTempTestUser(makeApp({ supabaseTestUserId: PRIOR })),
-    ).rejects.toThrow(/previous Supabase test user/);
+    ).rejects.toMatchObject({ operation: "delete", status: 500 });
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect(mocks.set).not.toHaveBeenCalledWith({ supabaseTestUserId: UUID });
@@ -381,6 +655,53 @@ describe("createTempTestUser", () => {
       `https://proj-1.supabase.co/auth/v1/admin/users/${UUID}`,
       expect.objectContaining({ method: "DELETE" }),
     );
+  });
+
+  it.each([
+    ["a run owner", "run:case"],
+    ["the legacy column", undefined],
+  ])(
+    "records the user again for %s when the compensating delete also fails",
+    async (_label, ownerId) => {
+      const error = new Error("sqlite locked");
+      const persist = ownerId ? mocks.insertValues : mocks.where;
+      persist.mockRejectedValueOnce(error);
+      mockFetch((_url, init) =>
+        init?.method === "DELETE"
+          ? new Response("nope", { status: 500 })
+          : new Response(JSON.stringify({ id: UUID })),
+      );
+
+      await expect(createTempTestUser(makeApp(), { ownerId })).rejects.toBe(
+        error,
+      );
+
+      expect(persist).toHaveBeenCalledTimes(2);
+      if (ownerId)
+        expect(mocks.insertValues).toHaveBeenLastCalledWith(
+          expect.objectContaining({ userId: UUID, ownerId }),
+        );
+      else
+        expect(mocks.set).toHaveBeenLastCalledWith({
+          supabaseTestUserId: UUID,
+        });
+    },
+  );
+
+  it("does not record the user again once the compensating delete succeeds", async () => {
+    const error = new Error("sqlite locked");
+    mocks.insertValues.mockRejectedValueOnce(error);
+    mockFetch((_url, init) =>
+      init?.method === "DELETE"
+        ? new Response(null, { status: 200 })
+        : new Response(JSON.stringify({ id: UUID })),
+    );
+
+    await expect(
+      createTempTestUser(makeApp(), { ownerId: "run:case" }),
+    ).rejects.toBe(error);
+
+    expect(mocks.insertValues).toHaveBeenCalledOnce();
   });
 
   it("throws when the app has no Supabase project", async () => {
@@ -548,6 +869,48 @@ describe("createTempTestUser", () => {
 
 describe("deleteTempTestUser", () => {
   afterEach(() => vi.useRealTimers());
+
+  it("logs the safe provider reason for a rejected deletion", async () => {
+    mockFetch(
+      () =>
+        new Response(
+          JSON.stringify({
+            code: "23503",
+            message: `private@example.com ${SECRET_KEY}`,
+          }),
+          { status: 400 },
+        ),
+    );
+    const error = await deleteTempTestUser(
+      makeApp({ supabaseTestUserId: UUID }),
+      { throwOnError: true },
+    ).catch((error) => error);
+    expect(error.message).toContain("DELETE /auth/v1/admin/users/{userId}");
+    expect(error.message).toContain("HTTP 400");
+    expect(error.message).toContain("23503: A database foreign-key constraint");
+    const warnings = mocks.warn.mock.calls.flat().join("\n");
+    expect(warnings).toContain(error.message);
+    expect(warnings).not.toContain(SECRET_KEY);
+    expect(warnings).not.toContain("private@example.com");
+    expect(mocks.set).not.toHaveBeenCalled();
+  });
+
+  it("retains deletion transport context for lifecycle callers and the recovery marker", async () => {
+    const cause = new TypeError("fetch failed", {
+      cause: Object.assign(new Error(SECRET_KEY), { code: "CERT_HAS_EXPIRED" }),
+    });
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(cause));
+    const error = await deleteTempTestUser(
+      makeApp({ supabaseTestUserId: UUID }),
+      { throwOnError: true },
+    ).catch((error) => error);
+    expect(error.cause).toBe(cause);
+    expect(error.message).toContain("DELETE /auth/v1/admin/users/{userId}");
+    expect(error.message).toContain("CERT_HAS_EXPIRED");
+    expect(error.message).not.toContain(SECRET_KEY);
+    expect(error.message).not.toContain(UUID);
+    expect(mocks.set).not.toHaveBeenCalled();
+  });
 
   it.each([200, 404])(
     "recovers from a lost deletion response followed by %s",
@@ -945,6 +1308,34 @@ describe("reconcileOrphanTestUsers", () => {
     );
   });
 
+  it("deletes run-owned users from their recovery records and forgets them", async () => {
+    mocks.cleanupRows.mockResolvedValue([
+      {
+        userId: UUID,
+        appId: 7,
+        ownerId: "run:case",
+        projectId: "proj-1",
+        organizationSlug: "org-1",
+      },
+    ]);
+    mocks.findFirst.mockResolvedValue(makeApp());
+    const fetchSpy = mockFetch(() => new Response(null, { status: 200 }));
+
+    await reconcileOrphanTestUsers();
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      `https://proj-1.supabase.co/auth/v1/admin/users/${UUID}`,
+      expect.objectContaining({ method: "DELETE" }),
+    );
+    expect(mocks.db.delete).toHaveBeenCalledWith(mocks.testUserCleanup);
+    expect(mocks.deleteWhere).toHaveBeenCalledWith({
+      and: [
+        { a: mocks.testUserCleanup.userId, b: UUID },
+        { a: mocks.testUserCleanup.projectId, b: "proj-1" },
+      ],
+    });
+  });
+
   it("never throws when the query fails", async () => {
     mocks.selectWhere.mockRejectedValue(new Error("db down"));
     await expect(reconcileOrphanTestUsers()).resolves.toBeUndefined();
@@ -952,6 +1343,48 @@ describe("reconcileOrphanTestUsers", () => {
 });
 
 describe("checkRls", () => {
+  it("preserves the Management API HTTP status without private provider details", async () => {
+    mocks.executeSupabaseSql.mockRejectedValueOnce(
+      new SupabaseManagementAPIError(
+        "private provider details",
+        new Response(null, { status: 400 }),
+      ),
+    );
+
+    const result = await checkRls({
+      projectId: "proj-1",
+      organizationSlug: "org-1",
+    });
+
+    expect(result.unverified).toBe(true);
+    expect(result.tablesWithoutRls).toEqual([]);
+    expect(result.diagnostic).toContain("HTTP 400");
+    expect(result.diagnostic).toContain("verify Row-Level Security");
+    expect(result.diagnostic).toContain(
+      "POST /v1/projects/{ref}/database/query",
+    );
+    expect(result.diagnostic).not.toMatch(
+      /private provider details|Transport failure|Unexpected failure/,
+    );
+    expect(mocks.warn).toHaveBeenCalledExactlyOnceWith(result.diagnostic);
+  });
+
+  it("keeps a sanitized diagnostic while leaving verification best-effort", async () => {
+    mocks.executeSupabaseSql.mockRejectedValueOnce(
+      new TypeError(SECRET_KEY, {
+        cause: { code: "ENOTFOUND", message: "proj-1.supabase.co" },
+      }),
+    );
+    const result = await checkRls({
+      projectId: "proj-1",
+      organizationSlug: "org-1",
+    });
+    expect(result.unverified).toBe(true);
+    expect(result.diagnostic).toContain("Row-Level Security");
+    expect(result.diagnostic).toContain("ENOTFOUND");
+    expect(result.diagnostic).not.toContain(SECRET_KEY);
+    expect(result.diagnostic).not.toContain("proj-1");
+  });
   it("reports tables without RLS", async () => {
     mocks.executeSupabaseSql.mockResolvedValue(
       JSON.stringify([

@@ -983,7 +983,7 @@ export function ModelPicker() {
         : freeModelQuota.error
           ? "Unavailable"
           : `${freeModelQuota.messagesRemaining}/${freeModelQuota.messagesLimit} left`;
-    const effortSettings = getEffortSettings(model);
+    const effortSettings = getEffortSettings(model, providerId);
     const currentEffort = isSelected
       ? selectedEffortLevel
       : createModelSelection({

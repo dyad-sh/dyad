@@ -69,6 +69,7 @@ import {
   waitForRestoreDetach,
 } from "../utils/neon_dev_branch";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { assertAppGitRepository } from "@/ipc/utils/app_git_repository";
 import { syncCloudSandboxSnapshot } from "../utils/cloud_sandbox_provider";
 import {
   DIFF_BINARY_PLACEHOLDER,
@@ -527,9 +528,7 @@ async function getVersionAppPath(appId: number): Promise<string> {
   }
 
   const appPath = getDyadAppPath(app.path);
-  if (!fs.existsSync(path.join(appPath, ".git"))) {
-    throw new DyadError("Not a git repository", DyadErrorKind.External);
-  }
+  await assertAppGitRepository(appPath);
 
   return appPath;
 }
@@ -1035,10 +1034,7 @@ export function registerVersionHandlers() {
 
     const appPath = getDyadAppPath(app.path);
 
-    // Return appropriate result if the app is not a git repo
-    if (!fs.existsSync(path.join(appPath, ".git"))) {
-      throw new DyadError("Not a git repository", DyadErrorKind.External);
-    }
+    await assertAppGitRepository(appPath);
 
     try {
       const currentBranch = await gitCurrentBranch({ path: appPath });
@@ -1067,9 +1063,7 @@ export function registerVersionHandlers() {
 
     const appPath = getDyadAppPath(app.path);
 
-    if (!fs.existsSync(path.join(appPath, ".git"))) {
-      throw new DyadError("Not a git repository", DyadErrorKind.External);
-    }
+    await assertAppGitRepository(appPath);
 
     try {
       const changedFiles = await getChangedFilesForCommit({

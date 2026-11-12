@@ -33,6 +33,8 @@ export const McpServerSchema = z.object({
   // Connected / Not connected badge without sending the token blob to
   // the renderer.
   oauthConnected: z.boolean(),
+  // Unreadable state requires an explicit reset before reconnecting.
+  oauthUnreadable: z.boolean(),
   // Null falls back to DEFAULT_OAUTH_CALLBACK_PORT.
   oauthCallbackPort: z.number().nullable(),
   // Public OAuth client id (not a secret). Surfaced so the UI can tell

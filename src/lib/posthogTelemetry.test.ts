@@ -16,7 +16,10 @@ import {
   DEFAULT_MAX_TOOL_CALL_STEPS,
   MAX_CHAT_TURNS_IN_CONTEXT,
 } from "@/constants/settings_constants";
-import { DEFAULT_ENABLE_SUGGESTED_PROMPTS } from "@/shared/settings_defaults";
+import {
+  DEFAULT_ENABLE_SUGGESTED_PROMPTS,
+  DEFAULT_MAX_CONCURRENT_TEST_RUNS,
+} from "@/shared/settings_defaults";
 
 function makeSettings(overrides: Partial<UserSettings> = {}): UserSettings {
   return {
@@ -86,6 +89,37 @@ describe("PostHogErrorDeduper", () => {
         dyad_error_suppression_duration_ms: 25 * HOUR_MS,
       },
     });
+  });
+
+  it("deduplicates filesystem failures by what failed and where", () => {
+    const deduper = new PostHogErrorDeduper();
+    const fsFailure = (properties: Record<string, unknown>) => ({
+      event: "fs:operation-failed",
+      properties: {
+        flow: "agent_tool",
+        code: "EPERM",
+        syscall: "open",
+        location: "app",
+        in_onedrive: false,
+        file_category: "gitignore",
+        tool: "write_file",
+        ...properties,
+      },
+    });
+
+    expect(deduper.process(fsFailure({}), false, 0)).not.toBeNull();
+    expect(deduper.process(fsFailure({}), false, 1_000)).toBeNull();
+    for (const change of [
+      { flow: "chat_stream" },
+      { code: "EBUSY" },
+      { syscall: "rename" },
+      { location: "home" },
+      { in_onedrive: true },
+      { file_category: "source" },
+      { tool: "delete_file" },
+    ]) {
+      expect(deduper.process(fsFailure(change), false, 2_000)).not.toBeNull();
+    }
   });
 
   it("deduplicates Pro errors for 10 minutes", () => {
@@ -697,6 +731,7 @@ const PERSON_PROPERTY_NAMES = [
   "enableMcpToolSearch",
   "enableMultiWindow",
   "enableOwnServerDeployment",
+  "enableParallelTestRuns",
   "enablePreviewCookieIsolation",
   "enableProWebSearch",
   "enableReviewButton",
@@ -711,6 +746,7 @@ const PERSON_PROPERTY_NAMES = [
   "isPro",
   "language",
   "maxChatTurnsInContext",
+  "maxConcurrentTestRuns",
   "maxToolCallSteps",
   "neonConnected",
   "nodeRuntimePreference",
@@ -943,8 +979,10 @@ describe("getSettingsPersonTelemetryProperties", () => {
       enableShellTool: false,
       enableCloudSandbox: false,
       enableSuggestedPrompts: DEFAULT_ENABLE_SUGGESTED_PROMPTS,
+      enableParallelTestRuns: false,
       blockUnsafeNpmPackages: true,
       maxToolCallSteps: DEFAULT_MAX_TOOL_CALL_STEPS,
+      maxConcurrentTestRuns: DEFAULT_MAX_CONCURRENT_TEST_RUNS,
       maxChatTurnsInContext: MAX_CHAT_TURNS_IN_CONTEXT,
       proSmartContextOption: null,
     });
@@ -956,15 +994,19 @@ describe("getSettingsPersonTelemetryProperties", () => {
         makeSettings({
           enableShellTool: true,
           blockUnsafeNpmPackages: false,
+          enableParallelTestRuns: true,
           maxToolCallSteps: 7,
           maxChatTurnsInContext: 9,
+          maxConcurrentTestRuns: 4,
         }),
       ),
     ).toMatchObject({
       enableShellTool: true,
       blockUnsafeNpmPackages: false,
+      enableParallelTestRuns: true,
       maxToolCallSteps: 7,
       maxChatTurnsInContext: 9,
+      maxConcurrentTestRuns: 4,
     });
   });
 });
@@ -975,7 +1017,9 @@ describe("shouldBypassNonProTelemetrySampling", () => {
     "neon:migration",
     "neon:project-created",
     "neon:backup-cleanup",
-  ])("always sends the Neon migration event %s", (event) => {
+    "neon:branch-create-failed",
+    "neon:branch-delete-failed",
+  ])("always sends the Neon event %s", (event) => {
     expect(shouldBypassNonProTelemetrySampling({ event })).toBe(true);
   });
 
@@ -984,6 +1028,12 @@ describe("shouldBypassNonProTelemetrySampling", () => {
       shouldBypassNonProTelemetrySampling({
         event: "chat:concurrent-stream-started",
       }),
+    ).toBe(true);
+  });
+
+  it("always sends filesystem failures", () => {
+    expect(
+      shouldBypassNonProTelemetrySampling({ event: "fs:operation-failed" }),
     ).toBe(true);
   });
 

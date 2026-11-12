@@ -9,6 +9,12 @@ import {
   type ModelMessage,
 } from "ai";
 import type { AgentContext } from "./tools/types";
+import {
+  MAX_BUILD_RUNS_PER_TURN,
+  MAX_PRE_COMMIT_RUNS_PER_TURN,
+  MAX_TEST_ATTEMPTS_PER_SPEC,
+  MAX_TEST_RUNS_PER_TURN,
+} from "./tools/turn_tool_budgets";
 import { buildCompactionBlock } from "@/ipc/handlers/compaction/compaction_utils";
 import {
   toRendererMessages,
@@ -5147,6 +5153,128 @@ describe("handleLocalAgentStream", () => {
       );
       expect(hasTodoReminder).toBe(true);
     });
+
+    it.each([
+      {
+        limit: "the build limit",
+        tool: "run_build",
+        runs: MAX_BUILD_RUNS_PER_TURN,
+        spend: (ctx: any) => {
+          ctx.buildAttemptState ??= { count: 0 };
+          ctx.buildAttemptState.count += 1;
+        },
+      },
+      {
+        limit: "the pre-commit limit",
+        tool: "run_pre_commit",
+        runs: MAX_PRE_COMMIT_RUNS_PER_TURN,
+        spend: (ctx: any) => {
+          ctx.preCommitRunCount = (ctx.preCommitRunCount ?? 0) + 1;
+        },
+      },
+      {
+        limit: "the test batch limit",
+        tool: "run_tests",
+        runs: MAX_TEST_RUNS_PER_TURN,
+        spend: (ctx: any) => {
+          ctx.testRunCount = (ctx.testRunCount ?? 0) + 1;
+        },
+      },
+      {
+        limit: "a spec's fix attempts",
+        tool: "run_tests",
+        runs: MAX_TEST_ATTEMPTS_PER_SPEC,
+        spend: (ctx: any) => {
+          ctx.testRunCount = (ctx.testRunCount ?? 0) + 1;
+          const state = ctx.testRunAttempts.get("e2e-tests/app.spec.ts") ?? {
+            attempts: 0,
+          };
+          state.attempts += 1;
+          ctx.testRunAttempts.set("e2e-tests/app.spec.ts", state);
+        },
+      },
+    ])(
+      "does not run a follow-up pass after $limit is used up",
+      async ({ tool, runs, spend }) => {
+        // Arrange
+        const { event } = createFakeEvent();
+        mockSettings = buildTestSettings({ enableDyadPro: true });
+        mockChatData = buildTestChat();
+
+        vi.mocked(buildAgentToolSet).mockImplementation((ctx) => {
+          return {
+            update_todos: {
+              execute: async (args: any) => {
+                ctx.todos = args.todos;
+                ctx.onUpdateTodos(ctx.todos);
+                return "Updated todos";
+              },
+            },
+            [tool]: {
+              execute: async () => {
+                spend(ctx);
+                return "Still failing";
+              },
+            },
+          } as any;
+        });
+
+        let passCount = 0;
+        mockStreamTextImpl = (options) => {
+          passCount += 1;
+          return {
+            fullStream: (async function* () {
+              await options.tools.update_todos.execute({
+                merge: false,
+                todos: [
+                  {
+                    id: "todo-1",
+                    content: "Get the checks passing",
+                    status: "in_progress",
+                  },
+                ],
+              });
+              for (let i = 0; i < runs; i += 1) {
+                await options.tools[tool].execute({});
+              }
+              yield {
+                type: "text-delta",
+                text: "The checks still fail and the limit is used up.",
+              };
+            })(),
+            response: Promise.resolve({
+              messages: [
+                {
+                  role: "assistant",
+                  content: [
+                    {
+                      type: "text",
+                      text: "The checks still fail and the limit is used up.",
+                    },
+                  ],
+                },
+              ],
+            }),
+            steps: Promise.resolve([{ toolCalls: [] }]),
+          };
+        };
+
+        // Act
+        await handleLocalAgentStream(
+          event,
+          { chatId: 1, prompt: "test" },
+          new AbortController(),
+          {
+            placeholderMessageId: 10,
+            systemPrompt: "You are helpful",
+            dyadRequestId,
+          },
+        );
+
+        // Assert
+        expect(passCount).toBe(1);
+      },
+    );
   });
 
   describe("Abort handling", () => {

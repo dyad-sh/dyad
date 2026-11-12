@@ -158,6 +158,8 @@ if (!IS_VITEST) {
     monaco.editor.defineTheme("dyad-dark", customDark);
 
     monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
+      // Preserve allowNonTsExtensions for anonymous diff models (inmemory://).
+      ...monaco.languages.typescript.typescriptDefaults.getCompilerOptions(),
       jsx: monaco.languages.typescript.JsxEmit.React, // Enable JSX
     });
     monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({

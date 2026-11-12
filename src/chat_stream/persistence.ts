@@ -134,7 +134,8 @@ export function toQueueEntry(
     editable: intent.owner === undefined,
     removable:
       intent.owner?.kind !== "plan-handoff" &&
-      intent.owner?.kind !== "review-remediation",
+      intent.owner?.kind !== "review-remediation" &&
+      intent.owner?.kind !== "workspace-integration",
   };
 }
 
@@ -820,6 +821,19 @@ export async function mutateChatQueue(
     ) {
       throw new DyadError(
         "Plan implementation turns cannot be removed while their handoff is active",
+        DyadErrorKind.Precondition,
+      );
+    }
+    // The workspace stays in conflict repair (and its worktree undeletable)
+    // until this turn settles, so it is never dropped from the queue.
+    if (
+      mutation.type === "remove" &&
+      selected.some(
+        ({ record }) => record.intent.owner?.kind === "workspace-integration",
+      )
+    ) {
+      throw new DyadError(
+        "Merge-conflict repair turns cannot be removed while Dyad is waiting for them",
         DyadErrorKind.Precondition,
       );
     }

@@ -24,7 +24,7 @@ This project uses a **contract-driven IPC architecture**. Contracts in `src/ipc/
 1. Define contracts in the relevant `src/ipc/types/<domain>.ts` file using `defineContract()`.
 2. Export the client via `createClient(contracts)` from the same file.
 3. Re-export the contract, client, and types from `src/ipc/types/index.ts`.
-4. The preload allowlist is auto-derived from contracts — no manual channel registration needed.
+4. Within an existing domain, the preload allowlist picks up new contracts automatically. A **new domain's** contract object must be imported in `src/ipc/preload/channels.ts`, spread into `VALID_INVOKE_CHANNELS` with `getInvokeChannels(...)`, and added to `channels.test.ts`. The renderer+IPC bridge enforces the allowlist by default (`validateChannels ?? true`), but the chat-flow harness and bridge tests that pass `validateChannels: false` bypass it, so a missing domain can pass those and fail only in the packaged app as `Invalid channel` (a failing React Query lookup that keeps refetching can then loop effects that depend on it).
 5. Register the handler in `src/ipc/handlers/<domain>_handlers.ts` using `createTypedHandler(contract, handler)`.
 6. Import and call the registration function in `src/ipc/ipc_host.ts`.
 
@@ -400,6 +400,14 @@ When creating hooks/components that call IPC handlers:
   of that contract performs the matching local cache update/invalidation.
 - A tab-scoped event subscription must refresh its IPC snapshot on remount (`staleTime: 0`), since events may be missed while the tab is closed. Apply complete event snapshots directly and prevent an older in-flight bootstrap from overwriting them.
 - Wrap reads in `useQuery`, using keys from `queryKeys` factory (see above), async `queryFn` that calls the relevant domain client (e.g., `appClient.getApp(...)`) or unified `ipc` namespace, and conditionally use `enabled`/`initialData`/`meta` as needed.
+- To keep a control disabled until a query answers, gate on `isLoading`
+  (first fetch in flight), not `isPending`: a query disabled by `enabled:
+false` stays `isPending` forever. A `select` that filters the result out
+  by returning `undefined` (an entity of another app during navigation)
+  leaves `data` undefined with `isSuccess` true, so check `isSuccess` before
+  treating missing data as "not loaded yet". (A `select` that throws puts the
+  query in the error state instead.) Settings-dependent UI must also treat `settings === null`
+  as unknown, never as `false`.
 - Wrap writes in `useMutation`; validate inputs locally, call the domain client, and invalidate related queries on success. Use shared utilities (e.g., toast helpers) in `onError`.
 - When a mutation changes fields exposed by both `apps.detail(...)` and `apps.all` (for example linking or unlinking a GitHub repository), invalidate both query families. Refreshing only the detail query can leave parent pages that derive conditional UI from the apps list stale.
 - To require a fresh read before enabling an action, gate on `query.isFetchedAfterMount`, not `!query.isFetching`. `isFetching` flips on every background refetch (window focus with `staleTime: 0`), so UI gated on it unmounts mid-flow — e.g. it unmounted `MigrationPanelBody` mid-migration in the deploy dialog.

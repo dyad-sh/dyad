@@ -8,10 +8,8 @@ import {
   isWithinDyadMediaDir,
   resolveAttachmentLogicalPath,
 } from "./media_path_utils";
-import {
-  appOperationCoordinator,
-  readAppResource,
-} from "../services/app_operation_coordinator";
+import { readAppResource } from "../services/app_operation_coordinator";
+import { runWorkspaceScopedOperation } from "../services/workspace_coordination";
 import { deploySupabaseFunction } from "../../supabase_admin/supabase_management_client";
 import {
   isServerFunction,
@@ -47,6 +45,7 @@ export async function executeCopyFile({
   from,
   to,
   appId,
+  workspace,
   isSharedModulesChanged,
   allowDeploySideEffects,
   signal,
@@ -54,6 +53,16 @@ export async function executeCopyFile({
   from: string;
   to: string;
   appId: number;
+  /**
+   * The isolated workspace the copy writes into. Media and attachments
+   * resolve from the app's original folder, where they are stored, and then
+   * from the workspace's own copy, which also holds media this turn made.
+   */
+  workspace?: {
+    appPath: string;
+    mediaAppPath: string;
+    coordinationKey: number;
+  };
   isSharedModulesChanged?: boolean;
   allowDeploySideEffects?: boolean;
   signal?: AbortSignal;
@@ -64,16 +73,17 @@ export async function executeCopyFile({
     path.isAbsolute(from) ||
     normalizedSource === DYAD_MEDIA_DIR_NAME ||
     normalizedSource.startsWith(`${DYAD_MEDIA_DIR_NAME}/`);
-  const result = await appOperationCoordinator.run(
+  const result = await runWorkspaceScopedOperation(
     {
       appId,
+      workspaceKey: workspace?.coordinationKey,
       operation: "copy-app-file",
-      resources: [
+      appResources: [
         readAppResource("app-path"),
         readAppResource("provider"),
         ...(readsMedia ? [readAppResource("media")] : []),
-        "repository",
       ],
+      workspaceResources: ["repository"],
       // No signal here: Build mode applies the rest of a response's file
       // mutations after Stop, so cancelling only the copy would leave the
       // response half-applied. Cancellation applies to the deploy below.
@@ -85,13 +95,27 @@ export async function executeCopyFile({
       if (!app) {
         throw new DyadError("App not found", DyadErrorKind.NotFound);
       }
-      const appPath = getDyadAppPath(app.path);
+      const appPath = workspace?.appPath ?? getDyadAppPath(app.path);
       const { supabaseProjectId, supabaseOrganizationSlug } = app;
+      // Media and attachments live with the app's original folder even when
+      // the copy targets an isolated workspace. Media generated during this
+      // turn is only in the workspace's copy until the turn settles.
+      const mediaRoots = workspace
+        ? [workspace.mediaAppPath, workspace.appPath]
+        : [appPath];
 
       // Resolve the source path: allow both .dyad/media paths and app-relative paths
       let fromFullPath: string;
+      let sourceRoot = appPath;
       if (from.startsWith("attachments:")) {
-        const attachment = await resolveAttachmentLogicalPath(appPath, from);
+        let attachment = null;
+        for (const root of mediaRoots) {
+          attachment = await resolveAttachmentLogicalPath(root, from);
+          if (attachment) {
+            sourceRoot = root;
+            break;
+          }
+        }
         if (!attachment) {
           throw new DyadError(
             `Attachment does not exist: ${from}`,
@@ -101,14 +125,23 @@ export async function executeCopyFile({
         fromFullPath = attachment.filePath;
       } else if (path.isAbsolute(from)) {
         // Security: only allow absolute paths within the app's .dyad/media directory
-        if (!isWithinDyadMediaDir(from, appPath)) {
+        const root = mediaRoots.find((candidate) =>
+          isWithinDyadMediaDir(from, candidate),
+        );
+        if (!root) {
           throw new Error(
             `Absolute source paths are only allowed within the .dyad/media directory`,
           );
         }
+        sourceRoot = root;
         fromFullPath = path.resolve(from);
+      } else if (readsMedia) {
+        sourceRoot =
+          mediaRoots.find((root) => fs.existsSync(safeJoin(root, from))) ??
+          mediaRoots[0];
+        fromFullPath = safeJoin(sourceRoot, from);
       } else {
-        fromFullPath = safeJoin(appPath, from);
+        fromFullPath = safeJoin(sourceRoot, from);
       }
 
       const operationPath = await assertMutationPathAllowed({
@@ -128,7 +161,7 @@ export async function executeCopyFile({
       // path.resolve() does not follow symlinks, so an attacker could place a
       // symlink inside the allowed directory that points outside it.
       const realFromPath = fs.realpathSync(fromFullPath);
-      const resolvedAppPath = fs.realpathSync(appPath);
+      const resolvedAppPath = fs.realpathSync(sourceRoot);
       if (
         path.isAbsolute(from) &&
         !isWithinDyadMediaDir(realFromPath, resolvedAppPath)

@@ -124,6 +124,37 @@ async function tick(ms = 10) {
   await vi.advanceTimersByTimeAsync(ms);
 }
 
+it("retains worktree admission context without exposing its path in queue events", async () => {
+  h.settings.enableParallelTestRuns = true;
+  const sourceWorkspace = { appPath: "/worktrees/chat-7", workspaceId: 7 };
+  const result = service.withAppTestRun(
+    {
+      appId: 1,
+      event: { sender: {} } as IpcMainInvokeEvent,
+      source: "agent",
+      chatId: 7,
+      sourceWorkspace,
+    },
+    async (run) => {
+      await service.validateTestRunInputs(run.runId);
+      expect(service.getAppTestRunQueue(1).activeRun).not.toHaveProperty(
+        "sourceWorkspace",
+      );
+      return "done";
+    },
+    () => "cancelled",
+  );
+  await tick();
+  await expect(result).resolves.toBe("done");
+  expect(loadTestRunContext).toHaveBeenCalledTimes(2);
+  for (const [request] of vi.mocked(loadTestRunContext).mock.calls) {
+    expect(request.sourceWorkspace).toEqual(sourceWorkspace);
+  }
+  expect(
+    JSON.stringify(vi.mocked(broadcastToRegisteredWindows).mock.calls),
+  ).not.toContain(sourceWorkspace.appPath);
+});
+
 it("publishes app-scoped Neon capacity waits and clears them on cancellation", async () => {
   const run = enqueue(1);
   await tick();

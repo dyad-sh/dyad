@@ -31,10 +31,8 @@ import {
   withSupabaseFunctionDeployment,
 } from "@/supabase_admin/supabase_management_client";
 import { isSupabaseFunctionSyncDeferred } from "@/supabase_admin/supabase_recording_deferred_sync";
-import {
-  appOperationCoordinator,
-  readAppResource,
-} from "@/ipc/services/app_operation_coordinator";
+import { readAppResource } from "@/ipc/services/app_operation_coordinator";
+import { runWorkspaceScopedOperation } from "@/ipc/services/workspace_coordination";
 
 const logger = log.scope("file_operations");
 
@@ -296,17 +294,37 @@ export async function commitAllChanges(
   ctx: Pick<
     AgentContext,
     "appId" | "appPath" | "fileMutationCount" | "supabaseProjectId"
-  >,
+  > &
+    Partial<
+      Pick<
+        AgentContext,
+        | "workspaceCoordinationKey"
+        | "isolatedWorkspace"
+        | "chatId"
+        | "messageId"
+        | "preCommitRunCount"
+        | "preCommitLastRunPassed"
+        | "preCommitFileMutationCountAtLastRun"
+      >
+    >,
   chatSummary?: string,
+  options: { userPrompt?: string } = {},
 ): Promise<{
   commitHash?: string;
 }> {
-  return appOperationCoordinator.run(
+  // An isolated workspace has its own index and HEAD, so its checkpoint only
+  // needs that workspace's repository claim, not the original folder's.
+  return runWorkspaceScopedOperation(
     {
       appId: ctx.appId,
+      workspaceKey: ctx.workspaceCoordinationKey,
       operation: "commit current Local Agent app changes",
-      resources: [readAppResource("app-path"), "repository"],
-      refuseWhenRecording: "create a Local Agent checkpoint",
+      appResources: [readAppResource("app-path")],
+      workspaceResources: ["repository"],
+      refuseWhenRecording:
+        ctx.workspaceCoordinationKey === undefined
+          ? "create a Local Agent checkpoint"
+          : undefined,
     },
     async () => {
       try {
@@ -316,7 +334,25 @@ export async function commitAllChanges(
         });
         const trimmedChatSummary = chatSummary?.trim();
         const message =
-          trimmedChatSummary || `(${uncommittedFiles.length} files changed)`;
+          ctx.isolatedWorkspace &&
+          ctx.chatId !== undefined &&
+          ctx.messageId !== undefined
+            ? buildIsolatedTurnCommitMessage({
+                summary: trimmedChatSummary,
+                userPrompt: options.userPrompt,
+                changedFiles: uncommittedFiles,
+                chatId: ctx.chatId,
+                messageId: ctx.messageId,
+                branch: ctx.isolatedWorkspace.branch,
+                targetBranch: ctx.isolatedWorkspace.targetBranch,
+                preCommitRan: (ctx.preCommitRunCount ?? 0) > 0,
+                preCommitPassed: ctx.preCommitLastRunPassed,
+                preCommitSawFinalEdits:
+                  ctx.preCommitFileMutationCountAtLastRun ===
+                  (ctx.fileMutationCount ?? 0),
+              })
+            : trimmedChatSummary ||
+              `(${uncommittedFiles.length} files changed)`;
         let commitHash: string | undefined;
 
         if (uncommittedFiles.length > 0) {
@@ -357,4 +393,82 @@ export async function commitAllChanges(
       }
     },
   );
+}
+
+const COMMIT_REQUEST_CHARS = 600;
+const COMMIT_LISTED_FILES = 15;
+
+function oneLine(text: string, limit: number): string {
+  const collapsed = text.replace(/\s+/g, " ").trim();
+  return collapsed.length > limit
+    ? `${collapsed.slice(0, limit - 1)}…`
+    : collapsed;
+}
+
+/**
+ * Commit message for a turn in an isolated workspace. The subject stays the
+ * chat summary (what the version list shows); the body records what was
+ * asked, what changed, which checks ran, and trailers that durably link the
+ * commit to its chat and turn. Integration status is stored on the chat's
+ * workspace row, never inferred from this prose.
+ */
+export function buildIsolatedTurnCommitMessage({
+  summary,
+  userPrompt,
+  changedFiles,
+  chatId,
+  messageId,
+  branch,
+  targetBranch,
+  preCommitRan,
+  preCommitPassed,
+  preCommitSawFinalEdits = true,
+}: {
+  summary?: string;
+  userPrompt?: string;
+  changedFiles: readonly string[];
+  chatId: number;
+  messageId: number;
+  branch: string;
+  targetBranch: string;
+  preCommitRan: boolean;
+  preCommitPassed?: boolean;
+  /** False when files changed after the last pre-commit run. */
+  preCommitSawFinalEdits?: boolean;
+}): string {
+  const subject = oneLine(
+    summary || `(${changedFiles.length} files changed)`,
+    120,
+  );
+  // Each path on one line: a file name containing a newline must not be
+  // able to add a `Dyad-*` trailer that version history would trust.
+  const listed = changedFiles
+    .slice(0, COMMIT_LISTED_FILES)
+    .map((file) => oneLine(file, 200))
+    .join(", ");
+  const more =
+    changedFiles.length > COMMIT_LISTED_FILES
+      ? ` and ${changedFiles.length - COMMIT_LISTED_FILES} more`
+      : "";
+  const mergeCheck = `Dyad checks the combined code before merging into ${targetBranch}.`;
+  const checks = !preCommitRan
+    ? `not run during this turn; ${mergeCheck}`
+    : !preCommitSawFinalEdits
+      ? `pre-commit checks last ran before this turn's final edits; ${mergeCheck}`
+      : preCommitPassed
+        ? "pre-commit checks passed in this workspace."
+        : "pre-commit checks did not pass in this workspace.";
+  return [
+    subject,
+    "",
+    ...(userPrompt?.trim()
+      ? [`Requested: ${oneLine(userPrompt, COMMIT_REQUEST_CHARS)}`]
+      : []),
+    `Changed: ${changedFiles.length > 0 ? `${listed}${more}` : "no files"}`,
+    `Checks: ${checks}`,
+    "",
+    `Dyad-Chat: ${chatId}`,
+    `Dyad-Turn: ${messageId}`,
+    `Dyad-Workspace: ${branch}`,
+  ].join("\n");
 }

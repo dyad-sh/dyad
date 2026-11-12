@@ -72,6 +72,13 @@ fake-fixture routing or turn count and make timing-based tests hang. Cover
 per-invocation tracking with a focused unit test, and use separate chats for
 integration coverage of app-wide cancellation.
 
+To make a handler's DB mutation fail in a chat-flow test, do not spy on the
+Drizzle client: `vi.spyOn(harness.db, "delete")` throws `delete does not exist`.
+Spy on a module-namespace function the mutation calls instead (`import * as
+chatJournalCleanup ...; vi.spyOn(chatJournalCleanup, "deleteChatJournals")
+.mockRejectedValueOnce(...)`), which this repo's Vitest setup patches for
+importers too.
+
 When a renderer+IPC hybrid or chat-flow harness test passes `engine: true`,
 production code must read Dyad Engine/Gateway URLs at call time. If a test still
 logs `POST https://engine.dyad.sh/v1/... 401 (Unauthorized)`, search for

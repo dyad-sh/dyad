@@ -2,6 +2,19 @@ import { describe, expect, it } from "vitest";
 import { queryKeys } from "@/lib/queryKeys";
 import { queryKeysForInvalidationScope } from "./query_keys";
 
+it("refreshes only spec lists for app-scoped and recovery invalidations", () => {
+  expect(
+    queryKeysForInvalidationScope({ family: "test-specs", appId: 7 }),
+  ).toEqual([queryKeys.tests.list({ appId: 7 })]);
+  const [prefix] = queryKeysForInvalidationScope({ family: "test-specs" });
+  expect(queryKeys.tests.list({ appId: 7 }).slice(0, prefix.length)).toEqual(
+    prefix,
+  );
+  expect(
+    queryKeys.tests.queue({ appId: 7 }).slice(0, prefix.length),
+  ).not.toEqual(prefix);
+});
+
 describe("the app-name scope", () => {
   it("reaches both the check and folder-preview caches", () => {
     // Both the name-check and folder-preview hooks disable every React Query

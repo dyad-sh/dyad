@@ -8,7 +8,7 @@ import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import type { Version } from "@/ipc/types";
 import { isPaneVisibleState, type PreviewState } from "@/version_preview/state";
 import { projectVersionPreview } from "@/version_preview/projection";
-import { VersionPane } from "./VersionPane";
+import { summarizeDyadCommitMessage, VersionPane } from "./VersionPane";
 
 const mocks = vi.hoisted(() => ({
   listAppScreenshots: vi.fn(),
@@ -145,6 +145,35 @@ describe("VersionPane", () => {
     });
   });
 
+  it("labels each version with the worktree that added it", async () => {
+    mocks.state = browsingState();
+    mocks.versions.push(
+      {
+        ...makeVersion(2),
+        workspace: {
+          branch: "dyad/chat-12",
+          chatId: 12,
+          chatTitle: "Pricing page",
+        },
+        turnMessageIds: [40],
+      },
+      { ...makeVersion(1), workspace: null },
+    );
+    render(<VersionPane />, { wrapper });
+    await screen.findByText("Version History");
+
+    const label = screen.getByTestId("version-workspace-2");
+    expect(label.textContent).toBe("dyad/chat-12");
+    expect(label.getAttribute("aria-label")).toBe(
+      'Added by the worktree of chat "Pricing page" (dyad/chat-12)',
+    );
+    // Versions made in the app's own folder have no worktree.
+    expect(screen.queryByTestId("version-workspace-1")).toBeNull();
+    // Clicking the label does not select the version.
+    fireEvent.click(label);
+    expect(mocks.send).not.toHaveBeenCalled();
+  });
+
   it("keeps restore disabled in recovery-required projection", async () => {
     const browsing = browsingState();
     if (browsing.type !== "browsing") throw new Error("invalid fixture");
@@ -181,5 +210,20 @@ describe("VersionPane", () => {
       screen.getByText("Resolve the version recovery notice to continue."),
     ).toBeDefined();
     expect(screen.queryByTestId("virtualized-version-list")).toBeNull();
+  });
+});
+
+describe("summarizeDyadCommitMessage", () => {
+  it("shows only the subject of an isolated chat's structured commit", () => {
+    expect(
+      summarizeDyadCommitMessage(
+        "Add navigation\n\nRequested: add a navbar\nChanged: src/Nav.tsx\n\nDyad-Chat: 12\nDyad-Turn: 40",
+      ),
+    ).toBe("Add navigation");
+  });
+
+  it("leaves other commit messages as written", () => {
+    const message = "Initial commit\n\nCo-authored-by: someone";
+    expect(summarizeDyadCommitMessage(message)).toBe(message);
   });
 });

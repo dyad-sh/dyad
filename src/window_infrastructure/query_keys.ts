@@ -66,6 +66,18 @@ export function queryKeysForInvalidationScope(
           ? queryKeys.uncommittedFiles.all
           : queryKeys.uncommittedFiles.byApp({ appId: scope.appId }),
       ];
+    case "workspaces":
+      return [
+        scope.appId === undefined
+          ? queryKeys.workspaces.all
+          : queryKeys.workspaces.byApp({ appId: scope.appId }),
+      ];
+    case "test-specs":
+      return [
+        scope.appId === undefined
+          ? queryKeys.tests.lists
+          : queryKeys.tests.list({ appId: scope.appId }),
+      ];
     case "chat":
       return [queryKeys.chats.detail({ chatId: scope.chatId })];
     case "provider-status":

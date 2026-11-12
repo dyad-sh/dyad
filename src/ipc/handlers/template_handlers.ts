@@ -20,6 +20,9 @@ import { slugifyAppFolderName } from "@/shared/app_names";
 import { resolveUniqueFolderName } from "../utils/app_name_resolution";
 import { getGitUncommittedFiles } from "../utils/git_utils";
 import { gitService } from "../services/git_service";
+import { chatWorkspaceService } from "../services/chat_workspace_service";
+import { getActiveWorkspaceForChat } from "../services/chat_workspace_store";
+import { workspaceRuntimeId } from "../../../shared/workspace_runtime_id";
 
 const logger = log.scope("template_handlers");
 
@@ -173,7 +176,7 @@ export function registerTemplateHandlers() {
   createTypedHandler(templateContracts.applyAppTemplate, async (_, params) => {
     const { appId, templateId, chatId } = params;
 
-    return appOperationCoordinator.run(
+    const result = await appOperationCoordinator.run(
       {
         appId,
         operation: "apply-app-template",
@@ -292,6 +295,9 @@ export function registerTemplateHandlers() {
               .set({ path: newSlug })
               .where(eq(apps.id, appId));
             dbUpdated = true;
+            // The repository moved with `.git`; point the app's isolated
+            // chat workspaces at its new location.
+            await chatWorkspaceService.reconnectAfterAppMove(appId);
 
             if (chatId) {
               const chatRecord = await db.query.chats.findFirst({
@@ -398,5 +404,26 @@ export function registerTemplateHandlers() {
         return { applied: true, needsRestart: true };
       },
     );
+
+    // A chat in an isolated workspace previews its worktree, not the app's
+    // folder, so bring its (idle, fully merged) workspace onto the new
+    // template too. This runs after the app's claims are released: it takes
+    // the workspace's own claims, and one app's claims are never nested.
+    const workspace =
+      result.applied && chatId ? getActiveWorkspaceForChat(chatId) : undefined;
+    if (!workspace || !chatId) return { ...result, runtimeAppId: appId };
+    const syncedRuntimeId =
+      await chatWorkspaceService.synchronizeIdleWorkspace(chatId);
+    if (syncedRuntimeId !== null) {
+      return { ...result, runtimeAppId: syncedRuntimeId };
+    }
+    // The worktree has its own unmerged work, so it keeps its code until it
+    // merges; restarting (and reinstalling) the app's folder, which the chat
+    // does not preview, would only cost time.
+    return {
+      ...result,
+      needsRestart: false,
+      runtimeAppId: workspaceRuntimeId(workspace.id),
+    };
   });
 }

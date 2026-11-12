@@ -1,0 +1,1017 @@
+import fs from "node:fs";
+import { promises as fsPromises } from "node:fs";
+import path from "node:path";
+import { tmpdir } from "node:os";
+import log from "electron-log";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { normalizePath } from "../../../shared/normalizePath";
+import {
+  findCheckoutRootSync,
+  resolveGitCommonDirSync,
+  resolveGitDirSync,
+} from "./git_dir";
+import { execGit, gitGetMergeConflicts, withGitAuthor } from "./git_utils";
+
+const logger = log.scope("git_worktree_utils");
+
+/**
+ * Git helpers for linked worktrees owned by chat workspaces.
+ *
+ * Every command that can run repository hooks (worktree checkout, merge,
+ * commit) points `core.hooksPath` at a fresh empty directory outside the
+ * repository, matching `gitCommit`: these are automatic Dyad operations, and an
+ * imported repository must not be able to run code through them.
+ */
+
+async function withEmptyHooks<Result>(
+  operation: (hooksArgs: string[]) => Promise<Result>,
+): Promise<Result> {
+  const hooksPath = await fsPromises.mkdtemp(
+    path.join(tmpdir(), "dyad-no-git-hooks-"),
+  );
+  try {
+    return await operation([
+      "-c",
+      `core.hooksPath=${normalizePath(hooksPath)}`,
+      "-c",
+      "core.fsmonitor=false",
+    ]);
+  } finally {
+    await fsPromises
+      .rm(hooksPath, { recursive: true, force: true })
+      .catch((error) =>
+        logger.warn("Failed to remove temporary Git hooks directory", error),
+      );
+  }
+}
+
+function describeFailure(result: { stderr: string; stdout: string }): string {
+  return result.stderr.trim() || result.stdout.trim();
+}
+
+async function runOrThrow(
+  args: string[],
+  cwd: string,
+  message: string,
+  kind: DyadErrorKind = DyadErrorKind.External,
+): Promise<string> {
+  const result = await execGit(args, cwd);
+  if (result.exitCode !== 0) {
+    throw new DyadError(`${message}: ${describeFailure(result)}`, kind);
+  }
+  return result.stdout;
+}
+
+export interface GitWorktreeEntry {
+  path: string;
+  head: string | null;
+  /** Short branch name, or null when detached. */
+  branch: string | null;
+  prunable: boolean;
+}
+
+/** Lists the repository's worktrees, including the primary checkout. */
+export async function listGitWorktrees(
+  repositoryPath: string,
+): Promise<GitWorktreeEntry[]> {
+  const stdout = await runOrThrow(
+    ["worktree", "list", "--porcelain"],
+    repositoryPath,
+    "Failed to list Git worktrees",
+  );
+  const entries: GitWorktreeEntry[] = [];
+  let current: GitWorktreeEntry | null = null;
+  for (const line of stdout.split("\n")) {
+    if (line.startsWith("worktree ")) {
+      current = {
+        path: line.slice("worktree ".length),
+        head: null,
+        branch: null,
+        prunable: false,
+      };
+      entries.push(current);
+    } else if (!current) {
+      continue;
+    } else if (line.startsWith("HEAD ")) {
+      current.head = line.slice("HEAD ".length);
+    } else if (line.startsWith("branch ")) {
+      current.branch = line
+        .slice("branch ".length)
+        .replace(/^refs\/heads\//, "");
+    } else if (line.startsWith("prunable")) {
+      current.prunable = true;
+    }
+  }
+  return entries;
+}
+
+export async function gitBranchExists({
+  path: repositoryPath,
+  branch,
+}: {
+  path: string;
+  branch: string;
+}): Promise<boolean> {
+  const result = await execGit(
+    ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}^{commit}`],
+    repositoryPath,
+  );
+  return result.exitCode === 0;
+}
+
+/**
+ * Creates `branch` at `startPoint` and checks it out in a new linked worktree.
+ * Only committed state is copied: uncommitted edits in any other checkout are
+ * deliberately left behind.
+ */
+export async function addBranchWorktree({
+  repositoryPath,
+  worktreePath,
+  branch,
+  startPoint,
+}: {
+  repositoryPath: string;
+  worktreePath: string;
+  branch: string;
+  startPoint: string;
+}): Promise<void> {
+  await withEmptyHooks(async (hooksArgs) => {
+    await runOrThrow(
+      [...hooksArgs, "worktree", "add", "-b", branch, worktreePath, startPoint],
+      repositoryPath,
+      "Failed to create the isolated workspace",
+    );
+  });
+}
+
+/**
+ * Checks an existing branch out into a new linked worktree (restoring one
+ * whose folder was deleted). Like every automatic checkout, it never runs the
+ * repository's own hooks or fsmonitor.
+ */
+export async function checkoutBranchWorktree({
+  repositoryPath,
+  worktreePath,
+  branch,
+}: {
+  repositoryPath: string;
+  worktreePath: string;
+  branch: string;
+}): Promise<void> {
+  await withEmptyHooks(async (hooksArgs) => {
+    await runOrThrow(
+      [...hooksArgs, "worktree", "add", worktreePath, branch],
+      repositoryPath,
+      "Could not restore this chat's workspace",
+    );
+  });
+}
+
+/**
+ * Unregisters and deletes a linked worktree. Falls back to deleting the
+ * directory and pruning stale registrations when Git cannot remove it (for
+ * example after the directory was already deleted by hand).
+ */
+export async function removeLinkedWorktree({
+  repositoryPath,
+  worktreePath,
+}: {
+  repositoryPath: string;
+  worktreePath: string;
+}): Promise<void> {
+  const result = await execGit(
+    ["worktree", "remove", "--force", worktreePath],
+    repositoryPath,
+  );
+  if (result.exitCode === 0) return;
+  logger.warn(
+    `git worktree remove failed for ${worktreePath}; falling back to deletion`,
+    describeFailure(result),
+  );
+  await fsPromises.rm(worktreePath, {
+    recursive: true,
+    force: true,
+    maxRetries: 3,
+    retryDelay: 100,
+  });
+  await pruneGitWorktrees(repositoryPath);
+}
+
+/**
+ * Writes back the tracked files missing from a worktree (a deletion that
+ * stopped part way), leaving every file that still exists as it is. Returns
+ * whether none are missing afterwards.
+ */
+export async function restoreMissingTrackedFiles(
+  worktreePath: string,
+): Promise<boolean> {
+  // Reports (and exits non-zero for) each file that already exists, which
+  // it leaves alone; what matters is whether any is still missing.
+  await execGit(["checkout-index", "--all", "--quiet"], worktreePath);
+  const missing = await execGit(["ls-files", "--deleted", "-z"], worktreePath);
+  return missing.exitCode === 0 && missing.stdout === "";
+}
+
+export async function pruneGitWorktrees(repositoryPath: string): Promise<void> {
+  const result = await execGit(["worktree", "prune"], repositoryPath);
+  if (result.exitCode !== 0) {
+    logger.warn(
+      `git worktree prune failed in ${repositoryPath}`,
+      describeFailure(result),
+    );
+  }
+}
+
+/**
+ * Keeps Dyad's internal `.dyad/` folders out of Git in every worktree of a
+ * repository without changing tracked files: the entry Dyad otherwise adds to
+ * `.gitignore` goes into the repository's local `info/exclude`, which all its
+ * worktrees share. Media and plans mirrored into a workspace then never count
+ * as uncommitted work or get swept into a commit, even when the branch the
+ * workspace started from predates the app's `.gitignore` entry.
+ *
+ * Returns whether `.dyad/` is excluded afterwards: false when the
+ * repository's Git directory could not be found.
+ */
+export async function excludeDyadMetadata(
+  worktreePath: string,
+): Promise<boolean> {
+  const commonDir = resolveGitCommonDirSync(worktreePath);
+  // A worktree whose repository moved points at a folder that is gone;
+  // creating `info/` there would recreate the old location.
+  if (!fs.existsSync(commonDir)) return false;
+  const excludePath = path.join(commonDir, "info", "exclude");
+  let content = "";
+  try {
+    content = await fsPromises.readFile(excludePath, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  if (
+    content
+      .split(/\r?\n/)
+      .some((line) => line.trim() === ".dyad/" || line.trim() === ".dyad")
+  ) {
+    return true;
+  }
+  await fsPromises.mkdir(path.dirname(excludePath), { recursive: true });
+  const separator = content.length > 0 && !content.endsWith("\n") ? "\n" : "";
+  await fsPromises.writeFile(
+    excludePath,
+    `${content}${separator}.dyad/\n`,
+    "utf8",
+  );
+  return true;
+}
+
+/**
+ * True when a linked worktree's `.git` file points at a Git directory that no
+ * longer exists, which is what renaming or moving the main checkout does:
+ * every Git command in the worktree fails until it is repaired.
+ */
+export function isWorktreeLinkBroken(worktreePath: string): boolean {
+  try {
+    if (!fs.statSync(path.join(worktreePath, ".git")).isFile()) return false;
+  } catch {
+    return false;
+  }
+  return !fs.existsSync(resolveGitDirSync(worktreePath));
+}
+
+/**
+ * Reconnects linked worktrees with a main checkout that was renamed or moved.
+ * Run from the main checkout's new location; naming each worktree lets Git
+ * rewrite the links in both directions.
+ */
+export async function repairLinkedWorktrees({
+  repositoryPath,
+  worktreePaths,
+}: {
+  repositoryPath: string;
+  worktreePaths: readonly string[];
+}): Promise<void> {
+  await runOrThrow(
+    ["worktree", "repair", ...worktreePaths],
+    repositoryPath,
+    "Failed to reconnect isolated workspaces with the app's repository",
+  );
+}
+
+/**
+ * Deletes a branch only when its work is already in the checked-out branch:
+ * Git agrees it is fully merged, or the branch has exactly the files of its
+ * merge-base with the checked-out branch. Squashed work is never "merged" to
+ * Git, but once integration records the squash in the worktree
+ * (`recordIntegratedSquash`), that merge-base is the squash itself. A branch
+ * whose squash was never recorded, or that has commits since, is kept: losing
+ * a branch is not recoverable, keeping one costs nothing.
+ */
+export async function deleteMergedBranch({
+  repositoryPath,
+  branch,
+}: {
+  repositoryPath: string;
+  branch: string;
+}): Promise<boolean> {
+  const result = await execGit(["branch", "-d", branch], repositoryPath);
+  if (result.exitCode === 0) return true;
+  const ref = `refs/heads/${branch}`;
+  const base = await execGit(["merge-base", "HEAD", ref], repositoryPath);
+  if (
+    base.exitCode === 0 &&
+    (await haveSameTree({
+      path: repositoryPath,
+      a: base.stdout.trim(),
+      b: ref,
+    }).catch(() => false))
+  ) {
+    return forceDeleteBranch({ repositoryPath, branch });
+  }
+  logger.info(`Kept branch ${branch}: ${describeFailure(result)}`);
+  return false;
+}
+
+/** Whether `ancestor` is reachable from `descendant`. */
+export async function isAncestorCommit({
+  path: repositoryPath,
+  ancestor,
+  descendant,
+}: {
+  path: string;
+  ancestor: string;
+  descendant: string;
+}): Promise<boolean> {
+  const result = await execGit(
+    ["merge-base", "--is-ancestor", ancestor, descendant],
+    repositoryPath,
+  );
+  if (result.exitCode === 0) return true;
+  if (result.exitCode === 1) return false;
+  throw new DyadError(
+    `Failed to compare commits: ${describeFailure(result)}`,
+    DyadErrorKind.External,
+  );
+}
+
+/** Commits reachable from `from` but not from `exclude`, newest first. */
+export async function listCommitsNotIn({
+  path: repositoryPath,
+  from,
+  exclude,
+  firstParent = false,
+  noMerges = false,
+}: {
+  path: string;
+  from: string;
+  exclude: string;
+  firstParent?: boolean;
+  noMerges?: boolean;
+}): Promise<string[]> {
+  const stdout = await runOrThrow(
+    [
+      "rev-list",
+      ...(firstParent ? ["--first-parent"] : []),
+      ...(noMerges ? ["--no-merges"] : []),
+      from,
+      "--not",
+      exclude,
+      "--",
+    ],
+    repositoryPath,
+    "Failed to list workspace commits",
+  );
+  return stdout
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Whether a merge is in progress in the checkout containing `folder`. The
+ * folder may be an app inside its repository (and so inside a workspace), so
+ * the checkout's `.git` is looked up the way Git discovers it.
+ */
+export function isMergeInProgress(folder: string): boolean {
+  const checkout = findCheckoutRootSync(folder);
+  if (checkout === null) return false;
+  return fs.existsSync(path.join(resolveGitDirSync(checkout), "MERGE_HEAD"));
+}
+
+export type MergeIntoWorkspaceResult =
+  | { kind: "up-to-date" }
+  | { kind: "fast-forward" }
+  | { kind: "merged"; mergeCommit: string }
+  | { kind: "conflicts"; conflictedFiles: string[] };
+
+/**
+ * Brings `ref` into the branch checked out at `worktreePath` without
+ * rewriting history: nothing when it is already contained, a fast-forward
+ * when the branch is strictly behind, otherwise a merge commit.
+ *
+ * Conflicts leave the merge in progress (MERGE_HEAD set) so it can be resolved
+ * in place; every other failure is aborted and rethrown.
+ */
+export async function mergeIntoWorkspace({
+  worktreePath,
+  ref,
+  message,
+  allowFastForward,
+}: {
+  worktreePath: string;
+  ref: string;
+  message: string;
+  allowFastForward: boolean;
+}): Promise<MergeIntoWorkspaceResult> {
+  if (
+    await isAncestorCommit({
+      path: worktreePath,
+      ancestor: ref,
+      descendant: "HEAD",
+    })
+  ) {
+    return { kind: "up-to-date" };
+  }
+  if (
+    allowFastForward &&
+    (await isAncestorCommit({
+      path: worktreePath,
+      ancestor: "HEAD",
+      descendant: ref,
+    }))
+  ) {
+    await fastForwardCheckedOutBranch({ worktreePath, ref });
+    return { kind: "fast-forward" };
+  }
+  return withEmptyHooks(async (hooksArgs) => {
+    const args = await withGitAuthor([
+      ...hooksArgs,
+      "merge",
+      "--no-ff",
+      "--no-edit",
+      "-m",
+      message,
+      ref,
+    ]);
+    const result = await execGit(args, worktreePath);
+    if (result.exitCode === 0) {
+      const head = await runOrThrow(
+        ["rev-parse", "HEAD"],
+        worktreePath,
+        "Failed to read the merge commit",
+      );
+      return { kind: "merged" as const, mergeCommit: head.trim() };
+    }
+    const conflictedFiles = isMergeInProgress(worktreePath)
+      ? await gitGetMergeConflicts({ path: worktreePath })
+      : [];
+    if (conflictedFiles.length > 0) {
+      return { kind: "conflicts" as const, conflictedFiles };
+    }
+    if (isMergeInProgress(worktreePath)) {
+      await execGit(["merge", "--abort"], worktreePath);
+    }
+    throw new DyadError(
+      `Failed to merge ${ref}: ${describeFailure(result)}`,
+      DyadErrorKind.Conflict,
+    );
+  });
+}
+
+/**
+ * Paths with uncommitted changes (tracked or untracked), relative to the
+ * repository root when run from it.
+ *
+ * Read-only: the chat's status is polled while a turn or integration writes
+ * to the same worktree, and a plain `git status` takes `index.lock` to save
+ * its index refresh, which would make their `git add` or commit fail. Like
+ * every automatic Git command here, it never runs the repository's fsmonitor.
+ */
+export async function listUncommittedPaths(
+  worktreePath: string,
+): Promise<string[]> {
+  const stdout = await runOrThrow(
+    [
+      "--no-optional-locks",
+      "-c",
+      "core.fsmonitor=false",
+      "status",
+      "--porcelain=v1",
+      "-z",
+      "--untracked-files=all",
+    ],
+    worktreePath,
+    "Failed to read the workspace status",
+  );
+  const entries = stdout.split("\0").filter(Boolean);
+  const paths: string[] = [];
+  for (let index = 0; index < entries.length; index++) {
+    const entry = entries[index];
+    paths.push(entry.slice(3));
+    // A rename or copy is followed by its source path.
+    if (entry[0] === "R" || entry[0] === "C") index++;
+  }
+  return paths;
+}
+
+/** Local branches whose history contains `commit`. */
+export async function listBranchesContaining({
+  path: repositoryPath,
+  commit,
+}: {
+  path: string;
+  commit: string;
+}): Promise<string[]> {
+  const stdout = await runOrThrow(
+    [
+      "for-each-ref",
+      // Not `refname:short`, which prints `heads/<name>` for a branch whose
+      // name is also a tag's.
+      "--format=%(refname:lstrip=2)",
+      "--contains",
+      commit,
+      "refs/heads",
+    ],
+    repositoryPath,
+    "Failed to list the branches that contain a commit",
+  );
+  return stdout
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+/** The tree (exact set of files) a commit points at. */
+export async function getCommitTree({
+  path: repositoryPath,
+  ref,
+}: {
+  path: string;
+  ref: string;
+}): Promise<string> {
+  return (
+    await runOrThrow(
+      ["rev-parse", `${ref}^{tree}`],
+      repositoryPath,
+      "Failed to read the commit tree",
+    )
+  ).trim();
+}
+
+/** Whether two commits have exactly the same files. */
+export async function haveSameTree({
+  path: repositoryPath,
+  a,
+  b,
+}: {
+  path: string;
+  a: string;
+  b: string;
+}): Promise<boolean> {
+  const stdout = await runOrThrow(
+    ["rev-parse", `${a}^{tree}`, `${b}^{tree}`],
+    repositoryPath,
+    "Failed to read commit trees",
+  );
+  const [first, second] = stdout.trim().split("\n");
+  return Boolean(first) && first === second;
+}
+
+/** The subject line of a commit. */
+export async function getCommitSubject({
+  path: repositoryPath,
+  ref,
+}: {
+  path: string;
+  ref: string;
+}): Promise<string> {
+  return (
+    await runOrThrow(
+      ["log", "-1", "--format=%s", ref, "--"],
+      repositoryPath,
+      "Failed to read the commit subject",
+    )
+  ).trim();
+}
+
+/**
+ * Creates one commit on top of `parent` whose files are exactly `source`'s,
+ * without touching any checkout or ref. When `source` already merged
+ * `parent`, this is the squash of everything `source` adds to it.
+ */
+export async function createSquashCommit({
+  path: repositoryPath,
+  source,
+  parent,
+  message,
+}: {
+  path: string;
+  source: string;
+  parent: string;
+  message: string;
+}): Promise<string> {
+  const args = await withGitAuthor([
+    "commit-tree",
+    `${source}^{tree}`,
+    "-p",
+    parent,
+    "-m",
+    message,
+  ]);
+  return (
+    await runOrThrow(args, repositoryPath, "Failed to create the squash commit")
+  ).trim();
+}
+
+/**
+ * Makes `commit` part of the checked-out branch's history without changing
+ * any file (an "ours" merge). Used after a squash of the branch's own
+ * content landed on the target, so later merges with the target start from
+ * that squash instead of re-applying changes the branch already has. Returns
+ * the new HEAD (unchanged when `commit` was already in the history).
+ */
+export async function recordMergedCommit({
+  worktreePath,
+  commit,
+  message,
+}: {
+  worktreePath: string;
+  commit: string;
+  message: string;
+}): Promise<string> {
+  return withEmptyHooks(async (hooksArgs) => {
+    const args = await withGitAuthor([
+      ...hooksArgs,
+      "merge",
+      "-s",
+      "ours",
+      "--no-ff",
+      "--no-edit",
+      "-m",
+      message,
+      commit,
+    ]);
+    await runOrThrow(
+      args,
+      worktreePath,
+      `Failed to record ${commit} in the workspace history`,
+    );
+    return (
+      await runOrThrow(
+        ["rev-parse", "HEAD"],
+        worktreePath,
+        "Failed to read HEAD",
+      )
+    ).trim();
+  });
+}
+
+/**
+ * Deletes a branch even though Git does not consider it merged: work that
+ * reached the target as a squash is not in the target's history by commit.
+ */
+export async function forceDeleteBranch({
+  repositoryPath,
+  branch,
+}: {
+  repositoryPath: string;
+  branch: string;
+}): Promise<boolean> {
+  const result = await execGit(["branch", "-D", branch], repositoryPath);
+  if (result.exitCode !== 0) {
+    logger.info(
+      `Could not delete branch ${branch}: ${describeFailure(result)}`,
+    );
+    return false;
+  }
+  return true;
+}
+
+/** Moves the checked-out branch forward to `ref`; refuses anything else. */
+export async function fastForwardCheckedOutBranch({
+  worktreePath,
+  ref,
+}: {
+  worktreePath: string;
+  ref: string;
+}): Promise<void> {
+  await withEmptyHooks(async (hooksArgs) => {
+    await runOrThrow(
+      [...hooksArgs, "merge", "--ff-only", ref],
+      worktreePath,
+      `Failed to fast-forward to ${ref}`,
+      DyadErrorKind.Conflict,
+    );
+  });
+}
+
+/** Completes an in-progress merge with its prepared message. */
+export async function commitInProgressMerge(
+  worktreePath: string,
+): Promise<string> {
+  return withEmptyHooks(async (hooksArgs) => {
+    const args = await withGitAuthor([
+      ...hooksArgs,
+      "commit",
+      "--no-edit",
+      "--no-verify",
+    ]);
+    await runOrThrow(
+      args,
+      worktreePath,
+      "Failed to complete the merge",
+      DyadErrorKind.Conflict,
+    );
+    const head = await runOrThrow(
+      ["rev-parse", "HEAD"],
+      worktreePath,
+      "Failed to read the merge commit",
+    );
+    return head.trim();
+  });
+}
+
+export async function abortInProgressMerge(
+  worktreePath: string,
+): Promise<void> {
+  if (!isMergeInProgress(worktreePath)) return;
+  await runOrThrow(
+    ["merge", "--abort"],
+    worktreePath,
+    "Failed to abort the merge",
+    DyadErrorKind.Conflict,
+  );
+}
+
+// Only the opening and closing markers: a lone "=======" line is ordinary
+// content (for example a Markdown heading underline), and a real conflict
+// always leaves the other two markers too.
+const CONFLICT_MARKER_PATTERN = /^(<{7}|>{7})(?: |$)/m;
+/** Larger files are scanned in chunks instead of read whole. */
+const MAX_WHOLE_FILE_SCAN_BYTES = 2 * 1024 * 1024;
+/** Like Git, a NUL byte in a file's start marks it binary. */
+const BINARY_SNIFF_BYTES = 8000;
+
+/**
+ * Scans a large file chunk by chunk, carrying the last partial line over so
+ * a marker split across chunks is still seen.
+ */
+async function hasConflictMarkersInLargeFile(
+  absolutePath: string,
+): Promise<boolean> {
+  let carry = "";
+  let sniffed = false;
+  for await (const chunk of fs.createReadStream(absolutePath, {
+    highWaterMark: 1024 * 1024,
+  })) {
+    const buffer = chunk as Buffer;
+    if (!sniffed) {
+      sniffed = true;
+      if (buffer.subarray(0, BINARY_SNIFF_BYTES).includes(0)) return false;
+    }
+    const text = carry + buffer.toString("utf8");
+    const lastNewline = text.lastIndexOf("\n");
+    if (CONFLICT_MARKER_PATTERN.test(text.slice(0, lastNewline + 1))) {
+      return true;
+    }
+    carry = text.slice(lastNewline + 1);
+  }
+  return CONFLICT_MARKER_PATTERN.test(carry);
+}
+
+/**
+ * Files that still contain conflict markers. `git add` happily stages a file
+ * with markers, which would mark the conflict resolved in the index, so the
+ * content is checked before a merge is completed.
+ */
+export async function findFilesWithConflictMarkers(
+  worktreePath: string,
+  relativePaths: readonly string[],
+): Promise<string[]> {
+  const withMarkers: string[] = [];
+  for (const relativePath of relativePaths) {
+    const absolutePath = path.join(worktreePath, relativePath);
+    try {
+      const stat = await fsPromises.stat(absolutePath);
+      if (!stat.isFile()) continue;
+      if (stat.size > MAX_WHOLE_FILE_SCAN_BYTES) {
+        if (await hasConflictMarkersInLargeFile(absolutePath)) {
+          withMarkers.push(relativePath);
+        }
+        continue;
+      }
+      const content = await fsPromises.readFile(absolutePath);
+      if (content.includes(0)) continue;
+      if (CONFLICT_MARKER_PATTERN.test(content.toString("utf8"))) {
+        withMarkers.push(relativePath);
+      }
+    } catch (error) {
+      // A conflict resolved by deleting the file leaves nothing to scan. Any
+      // other failure means the file could not be checked, which must not
+      // pass as "no markers".
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ENOENT" || code === "ENOTDIR") continue;
+      throw error;
+    }
+  }
+  return withMarkers;
+}
+
+/** Paths that differ between two commits (or a commit and the index). */
+export async function listChangedPaths({
+  path: repositoryPath,
+  from,
+  to,
+}: {
+  path: string;
+  from: string;
+  to?: string;
+}): Promise<string[]> {
+  const stdout = await runOrThrow(
+    ["diff", "--name-only", "-z", from, ...(to ? [to] : []), "--"],
+    repositoryPath,
+    "Failed to list changed files",
+  );
+  return stdout.split("\0").filter(Boolean);
+}
+
+/**
+ * Puts `files` (relative to the repository root) back the way HEAD has them
+ * in a checkout: tracked files are restored in the index and working tree,
+ * files HEAD does not have are deleted.
+ */
+export async function restorePathsToHead({
+  checkoutPath,
+  files,
+}: {
+  checkoutPath: string;
+  files: readonly string[];
+}): Promise<void> {
+  if (files.length === 0) return;
+  const root = (
+    await runOrThrow(
+      ["rev-parse", "--show-toplevel"],
+      checkoutPath,
+      "Failed to find the repository root",
+    )
+  ).trim();
+  const pathspecs = files.map((file) => `:(literal)${file}`);
+  const known = new Set(
+    [
+      ...(
+        await runOrThrow(
+          ["ls-files", "-z", "--", ...pathspecs],
+          root,
+          "Failed to list tracked files",
+        )
+      ).split("\0"),
+      ...(
+        await runOrThrow(
+          ["ls-tree", "-z", "--name-only", "HEAD", "--", ...pathspecs],
+          root,
+          "Failed to list files at HEAD",
+        )
+      ).split("\0"),
+    ].filter(Boolean),
+  );
+  const restored = files.filter((file) => known.has(file));
+  if (restored.length > 0) {
+    await runOrThrow(
+      [
+        "restore",
+        "--source=HEAD",
+        "--staged",
+        "--worktree",
+        "--",
+        ...restored.map((file) => `:(literal)${file}`),
+      ],
+      root,
+      "Failed to restore files",
+    );
+  }
+  for (const file of files) {
+    if (!known.has(file)) {
+      await fsPromises.rm(path.join(root, file), { force: true });
+    }
+  }
+}
+
+/**
+ * Files that differ between two commits, split into changed and deleted.
+ * Paths are relative to `path`, and an app inside a larger repository sees
+ * only its own files.
+ */
+export async function diffPathsByStatus({
+  path: cwd,
+  from,
+  to,
+}: {
+  path: string;
+  from: string;
+  to: string;
+}): Promise<{ changed: string[]; deleted: string[] }> {
+  const stdout = await runOrThrow(
+    [
+      "diff",
+      "--name-status",
+      "--no-renames",
+      "--relative",
+      "-z",
+      from,
+      to,
+      "--",
+    ],
+    cwd,
+    "Failed to list changed files",
+  );
+  // `-z` output alternates status and path fields.
+  const fields = stdout.split("\0");
+  const changed: string[] = [];
+  const deleted: string[] = [];
+  for (let index = 0; index + 1 < fields.length; index += 2) {
+    const [status, file] = [fields[index], fields[index + 1]];
+    if (!status || !file) continue;
+    (status.startsWith("D") ? deleted : changed).push(file);
+  }
+  return { changed, deleted };
+}
+
+/** Stages every change in the worktree, including deletions. */
+export async function stageAllChanges(worktreePath: string): Promise<void> {
+  await runOrThrow(
+    ["-c", "core.fsmonitor=false", "add", "-A", "--", "."],
+    worktreePath,
+    "Failed to stage changes",
+  );
+}
+
+/**
+ * Stages exactly `files` (paths relative to `worktreePath`, deletions
+ * included), never anything else that changed meanwhile.
+ */
+export async function stagePaths(
+  worktreePath: string,
+  files: readonly string[],
+): Promise<void> {
+  if (files.length === 0) return;
+  await runOrThrow(
+    [
+      "--literal-pathspecs",
+      "-c",
+      "core.fsmonitor=false",
+      "add",
+      "-A",
+      "--",
+      ...files,
+    ],
+    worktreePath,
+    "Failed to stage changes",
+  );
+}
+
+/**
+ * Reverts `commits` (newest first) as one new commit. Conflicts abort the
+ * revert and leave the worktree untouched.
+ */
+export async function revertCommitsAsOne({
+  worktreePath,
+  commits,
+  message,
+}: {
+  worktreePath: string;
+  commits: readonly string[];
+  message: string;
+}): Promise<string | null> {
+  if (commits.length === 0) return null;
+  return withEmptyHooks(async (hooksArgs) => {
+    const revert = await execGit(
+      [...hooksArgs, "revert", "--no-commit", ...commits],
+      worktreePath,
+    );
+    if (revert.exitCode !== 0) {
+      await execGit(["revert", "--abort"], worktreePath);
+      throw new DyadError(
+        `These changes can't be undone automatically because later work changed the same lines: ${describeFailure(revert)}`,
+        DyadErrorKind.Conflict,
+      );
+    }
+    const staged = await execGit(["diff", "--cached", "--quiet"], worktreePath);
+    if (staged.exitCode === 0) {
+      await execGit(["revert", "--quit"], worktreePath);
+      return null;
+    }
+    const args = await withGitAuthor([
+      ...hooksArgs,
+      "commit",
+      "--no-verify",
+      "-m",
+      message,
+    ]);
+    await runOrThrow(args, worktreePath, "Failed to commit the undo");
+    const head = await runOrThrow(
+      ["rev-parse", "HEAD"],
+      worktreePath,
+      "Failed to read the undo commit",
+    );
+    return head.trim();
+  });
+}

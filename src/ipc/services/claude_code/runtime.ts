@@ -20,6 +20,7 @@ import {
   ClaudeCodeModelsSchema,
   type ClaudeCodeModel,
 } from "@/shared/claude_code_models";
+import { isClaudeVersionAtLeast } from "@/shared/claude_code_cli";
 
 const execFileAsync = promisify(execFile);
 const running = new Set<ChildProcess>();
@@ -103,13 +104,9 @@ export async function findClaudeExecutable(): Promise<string> {
 }
 
 export function isClaudeVersionSupported(version: string): boolean {
-  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
-  if (!match) return false;
-  const [major, minor, patch] = match.slice(1).map(Number);
-  return (
-    major > 2 || (major === 2 && (minor > 1 || (minor === 1 && patch >= 259)))
-  );
+  return isClaudeVersionAtLeast(version, "2.1.259");
 }
+
 let statusCache:
   | { value: Awaited<ReturnType<typeof probeClaudeStatus>>; expires: number }
   | undefined;

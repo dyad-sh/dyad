@@ -1288,6 +1288,60 @@ describe("runTestsTool", () => {
     expect(runner).toHaveBeenCalledTimes(1);
   });
 
+  it("discovers and runs specs from the agent's isolated worktree", async () => {
+    baseUrl.mockReturnValue(null);
+    runner.mockResolvedValue(passedResult);
+    const ctx = makeCtx();
+    ctx.appPath = "/worktrees/chat-7";
+    ctx.isolatedWorkspace = {
+      workspaceId: 7,
+      branch: "dyad/chat-7",
+      targetBranch: "main",
+    };
+
+    const out = await runTestsTool.execute(
+      { testFiles: ["e2e-tests/a.spec.ts"] },
+      ctx,
+    );
+
+    expect(out).toContain("All runnable tests passed");
+    expect(specLister).toHaveBeenCalledWith(ctx.appPath);
+    expect(runner).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appId: ctx.appId,
+        sourceWorkspace: { appPath: ctx.appPath, workspaceId: 7 },
+      }),
+    );
+  });
+
+  it.each([
+    { disableSandboxedE2eTests: true },
+    { runtimeMode2: "docker" as const },
+    { runtimeMode2: "cloud" as const },
+  ])(
+    "refuses a worktree run without sandbox support (%j)",
+    async (settings) => {
+      settingsReader.mockReturnValue(
+        settings as ReturnType<typeof readSettings>,
+      );
+      const ctx = makeCtx();
+      ctx.isolatedWorkspace = {
+        workspaceId: 7,
+        branch: "dyad/chat-7",
+        targetBranch: "main",
+      };
+      // Even a running main preview must never make this worktree eligible.
+      const out = await runTestsTool.execute(
+        { testFiles: ["e2e-tests/a.spec.ts"] },
+        ctx,
+      );
+      expect(out).toContain("requires host runtime with isolated test servers");
+      expect(runner).not.toHaveBeenCalled();
+      expect(ctx.testRunCount ?? 0).toBe(0);
+      expect(ctx.testRunAttempts.size).toBe(0);
+    },
+  );
+
   it("adds a no-progress note when the failure signature is unchanged", async () => {
     runner.mockResolvedValue(failResult("boom"));
     const ctx = makeCtx();

@@ -1,4 +1,5 @@
 import { getAppPreviewHostname } from "../../../shared/preview_hostname";
+import { usePreviewRuntime } from "@/hooks/usePreviewRuntime";
 import { useAtomValue, useSetAtom } from "jotai";
 import { previewModeAtom, selectedAppIdAtom } from "../../atoms/appAtoms";
 import { previewNativeViewAppIdAtom } from "@/atoms/previewAtoms";
@@ -121,12 +122,18 @@ export function PreviewPanel() {
   const previewMode = useAtomValue(previewModeAtom);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const [isConsoleOpen, setIsConsoleOpen] = useState(false);
-  const { runApp, loading } = useRunApp();
+  // The preview follows the selected chat's workspace; app-level panels
+  // (code, configure, publish, tests) stay keyed by the app. While a test run
+  // drives the native view, the runtime is the app's own (the run's target),
+  // so starting, loading, and reloads below address what that view shows.
+  const previewRuntime = usePreviewRuntime();
+  const runtimeAppId = previewRuntime.runtimeAppId;
+  const { runApp, loading } = useRunApp(runtimeAppId);
   const { app } = useLoadApp(selectedAppId);
   const { settings, updateSettings } = useSettings();
   const queryClient = useQueryClient();
-  const key = usePreviewReloadToken(selectedAppId);
-  const latestConsoleEntry = useLatestConsoleEntry(selectedAppId);
+  const key = usePreviewReloadToken(runtimeAppId);
+  const latestConsoleEntry = useLatestConsoleEntry(runtimeAppId);
   // Above the previewMode switch below, so a tab change doesn't end a recording
   // or drop the events that keep the review bar honest.
   const { recorder, recorderReloadKey } = useHoistedRecorder();
@@ -201,28 +208,52 @@ export function PreviewPanel() {
     edgeLogsAppId: app?.id,
   });
 
+  // An isolated workspace's preview reports output under its runtime id,
+  // which the window must ask for in addition to the selected app's.
+  useEffect(() => {
+    if (!previewRuntime.isWorkspace || runtimeAppId === null) return;
+    const interest = { kind: "app-output" as const, appId: runtimeAppId };
+    void ipc.windowInfrastructure
+      .attachInterest(interest)
+      .catch((error) =>
+        console.error("Failed to attach workspace preview output", error),
+      );
+    return () => {
+      void ipc.windowInfrastructure
+        .detachInterest(interest)
+        .catch((error) =>
+          console.error("Failed to detach workspace preview output", error),
+        );
+    };
+  }, [previewRuntime.isWorkspace, runtimeAppId]);
+
+  const previewRuntimeResolved = previewRuntime.resolved;
   useEffect(() => {
     let cancelled = false;
 
     const handleAppSelection = async () => {
-      // Notify backend which app is currently selected (for GC tracking)
-      await notifyAppSelected(selectedAppId);
+      // Wait until the selected chat's workspace is known so switching to an
+      // isolated chat never starts the app's main-folder preview by mistake.
+      if (!previewRuntimeResolved) return;
+
+      // Notify backend which runtime is currently shown (for GC tracking)
+      await notifyAppSelected(runtimeAppId);
 
       // If the effect was cleaned up while awaiting, don't proceed
       if (cancelled) return;
 
       // Start the app if it's selected
       // The backend will handle the case where the app is already running
-      if (selectedAppId !== null) {
+      if (runtimeAppId !== null) {
         if (!nodeVersion) {
           return;
         }
 
         console.debug(
           "Running app (will start if not already running)",
-          selectedAppId,
+          runtimeAppId,
         );
-        runAppLifecycleInBackground("start", runApp(selectedAppId));
+        runAppLifecycleInBackground("start", runApp(runtimeAppId));
       }
     };
 
@@ -239,7 +270,13 @@ export function PreviewPanel() {
     // 1. User manually stops them
     // 2. App is deleted
     // 3. Garbage collector determines they've been idle too long
-  }, [selectedAppId, runApp, notifyAppSelected, nodeVersion]);
+  }, [
+    runtimeAppId,
+    previewRuntimeResolved,
+    runApp,
+    notifyAppSelected,
+    nodeVersion,
+  ]);
 
   // Note: We no longer stop all apps on unmount. The garbage collector
   // will handle cleanup of idle apps, and users may want apps to keep
@@ -322,9 +359,11 @@ export function PreviewPanel() {
                     />
                   ) : (
                     <PreviewIframe
-                      key={`${selectedAppId}-${key}:${recorderReloadKey}`}
+                      key={`${runtimeAppId}-${key}:${recorderReloadKey}`}
                       loading={loading}
                       recorder={recorder}
+                      runtimeAppId={runtimeAppId}
+                      isWorkspacePreview={previewRuntime.isWorkspace}
                     />
                   )
                 ) : previewMode === "code" ? (

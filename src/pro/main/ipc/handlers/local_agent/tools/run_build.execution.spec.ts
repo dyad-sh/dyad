@@ -16,6 +16,7 @@ import {
 import { spawnStreaming } from "@/ipc/utils/spawn_streaming";
 import { runningApps } from "@/ipc/utils/process_manager";
 import { getUserDataPath } from "@/paths/paths";
+import { workspaceRuntimeId } from "../../../../../../../shared/workspace_runtime_id";
 import { runBuildTool } from "./run_build";
 import type { AgentContext } from "./types";
 import { MAX_BUILD_RUNS_PER_TURN } from "./turn_tool_budgets";
@@ -23,7 +24,10 @@ import { MAX_BUILD_RUNS_PER_TURN } from "./turn_tool_budgets";
 const buildLogs = vi.hoisted(() => ({ info: vi.fn(), warn: vi.fn() }));
 vi.mock("electron-log/main", () => ({ default: { scope: () => buildLogs } }));
 
-vi.mock("@/ipc/services/git_overlay_workspace", () => ({
+vi.mock("@/ipc/services/git_overlay_workspace", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@/ipc/services/git_overlay_workspace")
+  >()),
   createGitOverlayWorkspace: vi.fn(),
   removeGitOverlayWorkspace: vi.fn(),
   readGitOverlayWorkspaceMarker: vi.fn(),
@@ -366,6 +370,76 @@ describe("isolated production build execution", () => {
       }
     },
   );
+
+  it("claims an isolated chat workspace's files on its own key and releases the app's refs after capture", async () => {
+    const workspaceKey = workspaceRuntimeId(31);
+    const workspaceCtx = {
+      ...ctx,
+      runtimeAppId: workspaceKey,
+      workspaceCoordinationKey: workspaceKey,
+    } as AgentContext;
+    const capture = deferred();
+    const install = deferred();
+    const copyWorkspace = vi
+      .mocked(createGitOverlayWorkspace)
+      .getMockImplementation()!;
+    vi.mocked(createGitOverlayWorkspace).mockImplementation(async (options) => {
+      await capture.promise;
+      return copyWorkspace(options);
+    });
+    vi.mocked(runCleanPackageInstall).mockImplementation(async () => {
+      await install.promise;
+      return success;
+    });
+    const execution = runBuildTool.execute({}, workspaceCtx);
+    try {
+      await vi.waitFor(() =>
+        expect(createGitOverlayWorkspace).toHaveBeenCalledOnce(),
+      );
+      // Refs are shared by the repository's worktrees; files are the
+      // workspace's own, so the app's folder stays free for other chats.
+      expect(
+        appOperationCoordinator.isBusy(ctx.appId, ["repository-ref"]),
+      ).toBe(true);
+      expect(
+        appOperationCoordinator.isBusy(workspaceKey, ["repository-worktree"]),
+      ).toBe(true);
+      expect(
+        appOperationCoordinator.isBusy(ctx.appId, ["repository-worktree"]),
+      ).toBe(false);
+
+      capture.resolve();
+      await vi.waitFor(() =>
+        expect(runCleanPackageInstall).toHaveBeenCalledOnce(),
+      );
+      expect(
+        appOperationCoordinator.isBusy(ctx.appId, ["repository-ref"]),
+      ).toBe(false);
+      expect(
+        appOperationCoordinator.isBusy(workspaceKey, ["repository-worktree"]),
+      ).toBe(false);
+      expect(appOperationCoordinator.isBusy(workspaceKey, ["runtime"])).toBe(
+        true,
+      );
+      await expect(
+        runBuildTool.execute({}, { ...workspaceCtx }),
+      ).resolves.toContain("already running");
+
+      install.resolve();
+      await expect(execution).resolves.toContain(
+        "passed for the captured snapshot",
+      );
+    } finally {
+      capture.resolve();
+      install.resolve();
+      await Promise.allSettled([execution]);
+    }
+    await vi.waitFor(() =>
+      expect(appOperationCoordinator.isBusy(workspaceKey, ["runtime"])).toBe(
+        false,
+      ),
+    );
+  });
 
   it("allows another build after execution settles while prior cleanup continues", async () => {
     const cleanup = deferred();

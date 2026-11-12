@@ -61,6 +61,9 @@ export const ApplyAppTemplateResultSchema = z.object({
   // template was applied, or because the handler stopped a running dev server
   // and made no changes (so the user is left without a running preview).
   needsRestart: z.boolean(),
+  // The runtime to restart: the chat's isolated workspace when the new
+  // template was brought into it (the chat previews that), else the app.
+  runtimeAppId: z.number(),
 });
 
 export type ApplyAppTemplateResult = z.infer<

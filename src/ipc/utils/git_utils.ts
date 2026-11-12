@@ -19,12 +19,14 @@ import { getPathEnvKey } from "./path_env";
 import type { UncommittedFile, UncommittedFileStatus } from "@/ipc/types";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import { GIT_ERROR_CODES, type GitErrorCode } from "@/shared/git_error_codes";
+import { WORKTREE_BRANCH_PREFIX } from "@/shared/dyad_commit_trailers";
 import {
   isDotenvFilePath,
   redactDotenvValues,
   selectTextLineRange,
 } from "@/utils/dotenv_redaction";
 import { runBufferedProcess } from "./buffered_process";
+import { findCheckoutRootSync, resolveGitDirSync } from "./git_dir";
 import {
   collectGitLaunchDiagnostics,
   getGitLaunchTelemetryProperties,
@@ -33,6 +35,7 @@ import {
 import { sendTelemetryEvent } from "./telemetry";
 
 export { GIT_ERROR_CODES } from "@/shared/git_error_codes";
+export { resolveGitCommonDirSync, resolveGitDirSync } from "./git_dir";
 
 const logger = log.scope("git_utils");
 
@@ -1016,6 +1019,19 @@ export async function gitCheckout({
       `Failed to checkout ref '${ref}'`,
     );
   } catch (error) {
+    // Git refuses to check out a branch another worktree has checked out,
+    // which is how isolated chat workspaces hold their branches.
+    if (
+      error instanceof Error &&
+      /is already (?:used by worktree|checked out) at/.test(error.message)
+    ) {
+      throw new DyadError(
+        ref.startsWith(WORKTREE_BRANCH_PREFIX)
+          ? `Branch '${ref}' is in use by a chat's worktree. It can be checked out here after that chat's worktree is deleted.`
+          : `Branch '${ref}' is already checked out in another Git worktree. It can be checked out here after that worktree is removed or switched to another branch.`,
+        DyadErrorKind.Conflict,
+      );
+    }
     throw classifyGitOperationError(error, [
       GIT_ERROR_CODES.UNCOMMITTED_CHANGES,
     ]);
@@ -1764,17 +1780,22 @@ function mapDiffStatusToChangeType(status: string): GitChangedFileType | null {
 export async function gitListBranches({
   path,
 }: GitBaseParams): Promise<string[]> {
-  const result = await execGit(["branch", "--list"], path);
+  // `for-each-ref` over `refs/heads` lists only real branches: no `*` or `+`
+  // (checked out in another linked worktree) markers and no "(HEAD detached
+  // at …)" entry. `lstrip=2` keeps the full name where `refname:short` would
+  // print `heads/<name>` for a branch whose name is also a tag's.
+  const result = await execGit(
+    ["for-each-ref", "--format=%(refname:lstrip=2)", "refs/heads"],
+    path,
+  );
 
   if (result.exitCode !== 0) {
     throw new DyadError(result.stderr.toString(), DyadErrorKind.Conflict);
   }
-  // Parse output:
-  // e.g. "* main\n  feature/login"
   return result.stdout
     .toString()
     .split("\n")
-    .map((line) => line.replace("*", "").trim())
+    .map((line) => line.trim())
     .filter((line) => line.length > 0);
 }
 
@@ -3229,12 +3250,21 @@ export async function gitGetMergeConflicts({
 }
 
 /**
+ * The Git directory of the checkout containing `path`. An app can live in a
+ * subfolder of its repository, so `<path>/.git` need not exist; joining the
+ * merge and rebase markers onto it would report no operation in progress.
+ */
+function resolveContainingGitDirSync(path: string): string {
+  return resolveGitDirSync(findCheckoutRootSync(path) ?? path);
+}
+
+/**
  * Check if Git is currently in a merge or rebase state.
  * This is important because commits are not allowed during merge/rebase
  * if there are still unmerged files.
  */
 export function isGitMergeOrRebaseInProgress({ path }: GitBaseParams): boolean {
-  const gitDir = pathModule.join(path, ".git");
+  const gitDir = resolveContainingGitDirSync(path);
 
   // Check for merge in progress
   const mergeHeadPath = pathModule.join(gitDir, "MERGE_HEAD");
@@ -3262,7 +3292,7 @@ export function isGitMergeOrRebaseInProgress({ path }: GitBaseParams): boolean {
  * This checks for MERGE_HEAD file which indicates a merge is in progress.
  */
 export function isGitMergeInProgress({ path }: GitBaseParams): boolean {
-  const gitDir = pathModule.join(path, ".git");
+  const gitDir = resolveContainingGitDirSync(path);
   const mergeHeadPath = pathModule.join(gitDir, "MERGE_HEAD");
   return fs.existsSync(mergeHeadPath);
 }
@@ -3273,7 +3303,7 @@ export function isGitMergeInProgress({ path }: GitBaseParams): boolean {
  * or `git commit` when completing conflict resolution.
  */
 export function isGitRebaseInProgress({ path }: GitBaseParams): boolean {
-  const gitDir = pathModule.join(path, ".git");
+  const gitDir = resolveContainingGitDirSync(path);
 
   // Check for rebase in progress via REBASE_HEAD
   const rebaseHeadPath = pathModule.join(gitDir, "REBASE_HEAD");

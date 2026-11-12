@@ -74,6 +74,16 @@ function isMergeConflictResolutionPrompt(content: string): boolean {
   );
 }
 
+/**
+ * Dyad resumes a chat with this prompt when combining its isolated workspace
+ * with the target branch hits conflicts (see workspace_repair_prompt.ts).
+ */
+function isWorkspaceIntegrationRepairPrompt(content: string): boolean {
+  return content.startsWith(
+    "[Dyad] Combine this chat's work with the latest changes",
+  );
+}
+
 function hasTool(req: Request, toolName: string): boolean {
   return (
     Array.isArray(req.body.tools) &&
@@ -282,6 +292,18 @@ export const createChatCompletionHandler =
       hasTool(req, "write_file")
     ) {
       localAgentFixture = "merge-conflict";
+    }
+
+    if (
+      !localAgentFixture &&
+      hasTool(req, "write_file") &&
+      userMessages.some((message: unknown) =>
+        isWorkspaceIntegrationRepairPrompt(getTextContent(message)),
+      ) &&
+      (isWorkspaceIntegrationRepairPrompt(userTextContent) ||
+        isToolResultMessage(lastUserMessage))
+    ) {
+      localAgentFixture = "workspace-integration-repair";
     }
 
     fakeLlmLog(

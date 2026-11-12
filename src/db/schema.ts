@@ -516,6 +516,117 @@ export const versions = sqliteTable(
   ],
 );
 
+/**
+ * Integration progress for an isolated chat workspace. "queued" is shown as
+ * "Waiting to merge"; "paused" and "failed" carry an explanation in `detail`.
+ */
+export const WORKSPACE_INTEGRATION_STATUSES = [
+  "idle",
+  "queued",
+  "merging",
+  "resolving-conflicts",
+  "validating",
+  "integrating",
+  "merged",
+  "paused",
+  "failed",
+] as const;
+export type WorkspaceIntegrationStatus =
+  (typeof WORKSPACE_INTEGRATION_STATUSES)[number];
+
+/** One validation check run against a workspace's combined result. */
+export interface WorkspaceValidationCheck {
+  name: "install" | "type-check" | "build" | "test";
+  outcome: "passed" | "failed" | "missing" | "skipped";
+  /** Command that ran, or why nothing ran. */
+  summary: string;
+  /** Bounded tail of the command output when it failed. */
+  output?: string;
+}
+
+/**
+ * A chat's isolated Git workspace: a linked worktree on its own branch, cut
+ * from the app's branch at the time the workspace was assigned.
+ *
+ * Chats that use the app's original directory have no row. A row outlives
+ * successful integration so the chat keeps its workspace across turns. Nothing
+ * removes it automatically: the user deletes it from the chat, or it goes with
+ * the chat or the app.
+ */
+export const chatWorkspaces = sqliteTable(
+  "chat_workspaces",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    appId: integer("app_id")
+      .notNull()
+      .references(() => apps.id, { onDelete: "cascade" }),
+    chatId: integer("chat_id")
+      .notNull()
+      .references(() => chats.id, { onDelete: "cascade" }),
+    /** Absolute path of the linked worktree's root. */
+    path: text("path").notNull(),
+    /**
+     * The app's location relative to its repository root ("" for the root),
+     * so an app imported from a subdirectory maps to the same subdirectory of
+     * its worktree.
+     */
+    appSubpath: text("app_subpath").notNull().default(""),
+    /** Branch checked out in the worktree. */
+    branch: text("branch").notNull(),
+    /**
+     * The app branch this workspace integrates into, captured when the
+     * workspace was assigned. Switching the original directory to another
+     * branch pauses integration instead of retargeting it.
+     */
+    targetBranch: text("target_branch").notNull(),
+    /** Target commit the worktree was created from. */
+    baseCommit: text("base_commit").notNull(),
+    status: text("status", { enum: ["creating", "active", "removing"] })
+      .notNull()
+      .default("creating"),
+    integrationStatus: text("integration_status", {
+      enum: WORKSPACE_INTEGRATION_STATUSES,
+    })
+      .notNull()
+      .default("idle"),
+    /** User-facing explanation for paused/failed integration. */
+    integrationDetail: text("integration_detail"),
+    /** Target commit captured for the merge currently in progress. */
+    integrationTargetCommit: text("integration_target_commit"),
+    /** Validation results for the most recent combined result. */
+    validationJson: text("validation_json", { mode: "json" }).$type<
+      WorkspaceValidationCheck[] | null
+    >(),
+    /** Automatic conflict/validation repair turns started for this attempt. */
+    repairAttempts: integer("repair_attempts").notNull().default(0),
+    /**
+     * Workspace HEAD when its work last reached the target (after the squash
+     * was fast-forwarded and recorded here) or it was last synchronized. The
+     * workspace is fully integrated while HEAD is still this commit.
+     */
+    lastIntegratedCommit: text("last_integrated_commit"),
+    /**
+     * Package manager the worktree's installs use, detected when it was
+     * created. npm copies every dependency into each worktree; pnpm links
+     * them from one shared store. Null when detection failed.
+     */
+    packageManager: text("package_manager", { enum: ["npm", "pnpm"] }),
+    lastActiveAt: integer("last_active_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [
+    uniqueIndex("chat_workspaces_chat_unique").on(table.chatId),
+    index("chat_workspaces_app_idx").on(table.appId),
+  ],
+);
+
 export const security_fix_chats = sqliteTable(
   "security_fix_chats",
   {

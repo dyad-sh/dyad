@@ -1,12 +1,15 @@
 import { db } from "../../db";
+import { getActiveWorkspaceForChat } from "@/ipc/services/chat_workspace_store";
+import { apps, chats, messages, versions } from "../../db/schema";
+import { desc, eq, and, gt, gte, inArray, isNotNull } from "drizzle-orm";
 import {
-  apps,
-  chats,
-  chatTurnIntents,
-  messages,
-  versions,
-} from "../../db/schema";
-import { desc, eq, and, gt, gte, isNotNull } from "drizzle-orm";
+  parseDyadCommitTrailers,
+  WORKTREE_BRANCH_PREFIX,
+} from "@/shared/dyad_commit_trailers";
+import {
+  isAncestorCommit,
+  listBranchesContaining,
+} from "@/ipc/utils/git_worktree_utils";
 import type { GitCommit } from "../git_types";
 import fs from "node:fs";
 import path from "node:path";
@@ -30,6 +33,7 @@ import type { SafeSender } from "../utils/safe_sender";
 import { deployAllSupabaseFunctions } from "../../supabase_admin/supabase_utils";
 import { readSettings } from "../../main/settings";
 import {
+  execGit,
   gitAddAll,
   gitCheckout,
   gitCommit,
@@ -87,8 +91,12 @@ import {
 import type { RestoreRecovery } from "@/version_preview/state";
 import { readStoredReferencedAppIds } from "../utils/mention_apps";
 import { blockRecordingStart } from "../services/recording_registry";
-import { isCancelledResponseContent } from "@/shared/chatCancellation";
-import type { ChatTurnTerminalOutcome } from "@/shared/chat_turn_outcome";
+import {
+  getStoredTurnOutcome,
+  getStoredTurnOutcomeForMessage,
+  type StoredTurnMessage,
+  type StoredTurnOutcome,
+} from "@/ipc/utils/turn_outcome";
 
 const logger = log.scope("version_handlers");
 
@@ -372,12 +380,7 @@ function appendInterruptedGenerationWarning(
     : warningMessage;
 }
 
-type RestoreMessageCommitMetadata = Pick<
-  typeof messages.$inferSelect,
-  "role" | "content" | "sourceCommitHash" | "commitHash" | "chatTurnIntentId"
->;
-
-type RestoreTargetTurnOutcome = ChatTurnTerminalOutcome | "unknown";
+type RestoreMessageCommitMetadata = StoredTurnMessage;
 
 async function getRestoreTargetTurnOutcome({
   chatMessages,
@@ -385,61 +388,11 @@ async function getRestoreTargetTurnOutcome({
 }: {
   chatMessages: RestoreMessageCommitMetadata[];
   targetIndex: number;
-}): Promise<RestoreTargetTurnOutcome> {
+}): Promise<StoredTurnOutcome> {
   const target = chatMessages[targetIndex];
   if (!target || target.role !== "user") return "unknown";
 
   return getStoredTurnOutcome(target, chatMessages[targetIndex + 1]);
-}
-
-async function getStoredTurnOutcome(
-  target: RestoreMessageCommitMetadata,
-  nextMessage?: RestoreMessageCommitMetadata,
-): Promise<RestoreTargetTurnOutcome> {
-  if (target.chatTurnIntentId) {
-    const intent = await db.query.chatTurnIntents.findFirst({
-      columns: { terminalOutcome: true },
-      where: eq(chatTurnIntents.intentId, target.chatTurnIntentId),
-    });
-    if (intent?.terminalOutcome) return intent.terminalOutcome;
-  }
-
-  if (
-    nextMessage?.role === "assistant" &&
-    !nextMessage.commitHash &&
-    isCancelledResponseContent(nextMessage.content)
-  ) {
-    return "cancelled";
-  }
-
-  return "unknown";
-}
-
-async function getRestoreTargetTurnOutcomeForMessage({
-  chatId,
-  messageId,
-}: {
-  chatId: number;
-  messageId: number;
-}): Promise<RestoreTargetTurnOutcome> {
-  const columns = {
-    role: true,
-    content: true,
-    sourceCommitHash: true,
-    commitHash: true,
-    chatTurnIntentId: true,
-  } as const;
-  const target = await db.query.messages.findFirst({
-    columns,
-    where: and(eq(messages.chatId, chatId), eq(messages.id, messageId)),
-  });
-  if (!target || target.role !== "user") return "unknown";
-  const nextMessage = await db.query.messages.findFirst({
-    columns,
-    where: and(eq(messages.chatId, chatId), gt(messages.id, messageId)),
-    orderBy: (messages, { asc }) => [asc(messages.id)],
-  });
-  return getStoredTurnOutcome(target, nextMessage);
 }
 
 function resolveTargetCommitHash({
@@ -952,6 +905,48 @@ async function revertCodebaseToVersion({
   };
 }
 
+/**
+ * Whether a squash of this chat's worktree work is on `ref`: the branch being
+ * restored, not a detached HEAD the Version pane may have checked out.
+ */
+async function hasIntegratedSquash({
+  appPath,
+  chatId,
+  ref,
+}: {
+  appPath: string;
+  chatId: number;
+  ref: string;
+}): Promise<boolean> {
+  const result = await execGit(
+    ["log", "-1", "--format=%H", `--grep=^Dyad-Chat: ${chatId}$`, ref, "--"],
+    appPath,
+  );
+  return result.exitCode === 0 && result.stdout.trim() !== "";
+}
+
+/**
+ * Whether `commit` was written in a chat's worktree: only commits made there
+ * carry a `Dyad-Chat` trailer (Local Agent and Build-mode turns, merges,
+ * undos, and squashes).
+ */
+async function isWorktreeCheckpoint({
+  appPath,
+  commit,
+}: {
+  appPath: string;
+  commit: string;
+}): Promise<boolean> {
+  const result = await execGit(
+    ["show", "-s", "--format=%B", commit, "--"],
+    appPath,
+  );
+  return (
+    result.exitCode === 0 &&
+    parseDyadCommitTrailers(result.stdout).chatId !== null
+  );
+}
+
 export function registerVersionHandlers() {
   createTypedHandler(versionContracts.listVersions, async (_, params) => {
     const { appId, ref } = params;
@@ -999,8 +994,35 @@ export function registerVersionHandlers() {
       });
     }
 
+    // Versions from chat worktrees say which worktree (and chat) added them.
+    const origins = new Map(
+      commits.map((commit: GitCommit) => [
+        commit.oid,
+        parseDyadCommitTrailers(commit.commit.message),
+      ]),
+    );
+    const chatIds = [
+      ...new Set(
+        [...origins.values()]
+          .filter((origin) => origin.workspaceBranch !== null)
+          .map((origin) => origin.chatId)
+          .filter((chatId): chatId is number => chatId !== null),
+      ),
+    ];
+    const chatTitles = new Map(
+      chatIds.length > 0
+        ? (
+            await db
+              .select({ id: chats.id, title: chats.title })
+              .from(chats)
+              .where(and(eq(chats.appId, appId), inArray(chats.id, chatIds)))
+          ).map((chat) => [chat.id, chat.title])
+        : [],
+    );
+
     return commits.map((commit: GitCommit) => {
       const metadata = metadataMap.get(commit.oid);
+      const origin = origins.get(commit.oid)!;
       return {
         oid: commit.oid,
         message: commit.commit.message,
@@ -1008,6 +1030,17 @@ export function registerVersionHandlers() {
         dbTimestamp: metadata?.neonDbTimestamp,
         isFavorite: metadata?.isFavorite ?? false,
         note: metadata?.note ?? null,
+        workspace: origin.workspaceBranch
+          ? {
+              branch: origin.workspaceBranch,
+              chatId: origin.chatId,
+              chatTitle:
+                origin.chatId !== null
+                  ? (chatTitles.get(origin.chatId) ?? null)
+                  : null,
+            }
+          : null,
+        turnMessageIds: origin.turnMessageIds,
       };
     });
   });
@@ -1167,6 +1200,20 @@ export function registerVersionHandlers() {
 
           const appPath = getDyadAppPath(app.path);
 
+          // Undo/Retry for a chat in a worktree revert inside it
+          // (`workspace:undo-turns`). Restoring the app's branch for one, as
+          // a renderer that has not loaded the chat's workspace yet would
+          // ask, rolls back other chats' merged work.
+          if (
+            currentChatMessageId &&
+            getActiveWorkspaceForChat(currentChatMessageId.chatId)
+          ) {
+            throw new DyadError(
+              "This chat just started working in its own worktree, so its changes are undone there. Try Undo again once the chat shows its worktree.",
+              DyadErrorKind.Conflict,
+            );
+          }
+
           if (expectedHeadOid) {
             const currentHeadOid = await getCurrentCommitHash({
               path: appPath,
@@ -1188,7 +1235,7 @@ export function registerVersionHandlers() {
             });
             preserveDirtyTree =
               targetChat?.appId === appId &&
-              (await getRestoreTargetTurnOutcomeForMessage({
+              (await getStoredTurnOutcomeForMessage({
                 chatId: currentChatMessageId.chatId,
                 messageId: currentChatMessageId.messageId,
               })) === "cancelled";
@@ -1405,6 +1452,16 @@ export function registerVersionHandlers() {
           );
         }
 
+        // A chat in an isolated workspace keeps its checkpoints on its own
+        // branch. Restoring one of them into the app's main folder would
+        // publish unmerged work and roll back other chats' merged changes.
+        if (restoreCodebase && getActiveWorkspaceForChat(chatId)) {
+          throw new DyadError(
+            "This chat works in an isolated workspace, so restoring the app to one of its messages isn't available. Use Undo on its latest response, or restore from the Version history.",
+            DyadErrorKind.Precondition,
+          );
+        }
+
         const targetIndex = chat.messages.findIndex((m) => m.id === messageId);
         if (targetIndex === -1) {
           throw new DyadError("Message not found", DyadErrorKind.NotFound);
@@ -1462,6 +1519,51 @@ export function registerVersionHandlers() {
               };
             }
             throw error;
+          }
+          // A chat that worked in a worktree (even one since deleted) has
+          // checkpoints that live only on its worktree branch, or nowhere once
+          // a merged branch is gone: its work reached the app's branch as one
+          // squash. Restoring the app's branch to one of those commits would
+          // drop other chats' merged work.
+          // A commit on no branch at all is only a worktree checkpoint when
+          // the chat's work reached the app as a squash; otherwise its
+          // history was rewritten (a rebase) and restoring works as before.
+          // Only the branch being restored decides whether the commit is in
+          // the app's history: a checkpoint some other branch also reaches
+          // (one a user branched off a worktree) is still not on this one.
+          const restoreRef = targetBranchName ?? "HEAD";
+          const onRestoreRef = await isAncestorCommit({
+            path: appPath,
+            ancestor: targetCommitHash,
+            descendant: restoreRef,
+          });
+          let onlyInWorktrees = false;
+          if (!onRestoreRef) {
+            const branches = await listBranchesContaining({
+              path: appPath,
+              commit: targetCommitHash,
+            });
+            onlyInWorktrees =
+              branches.length > 0
+                ? branches.every((branch) =>
+                    branch.startsWith(WORKTREE_BRANCH_PREFIX),
+                  ) ||
+                  (await isWorktreeCheckpoint({
+                    appPath,
+                    commit: targetCommitHash,
+                  }))
+                : await hasIntegratedSquash({
+                    appPath,
+                    chatId,
+                    ref: restoreRef,
+                  });
+          }
+          if (onlyInWorktrees) {
+            return {
+              status: "warn" as const,
+              warningMessage:
+                "This message's version only exists in a chat's worktree, not in the app's history, so the app can't be restored to it. Restore a version from the Version history instead.",
+            };
           }
         }
 

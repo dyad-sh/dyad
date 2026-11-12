@@ -60,6 +60,7 @@ async function mutateChatAfterDrainingStreams({
   sender,
   cancellationCause,
   beforeLock,
+  afterDrain,
   mutation,
 }: {
   chatId: number;
@@ -71,6 +72,8 @@ async function mutateChatAfterDrainingStreams({
    */
   cancellationCause?: CancellationCause;
   beforeLock?: () => Promise<void | (() => void)>;
+  /** Runs once the chat's turns are cancelled and drained, outside the lock. */
+  afterDrain?: () => Promise<void>;
   mutation: () => Promise<void>;
 }): Promise<void> {
   const releaseActorAdmissionBlock = beginChatActorMutation(chatId);
@@ -102,6 +105,7 @@ async function mutateChatAfterDrainingStreams({
         undefined,
         cancellationCause,
       );
+      await afterDrain?.();
       await appOperationCoordinator.run(
         {
           appId: chat.appId,
@@ -338,6 +342,7 @@ export function registerChatHandlers() {
     // race from changing the follow-up outcome from swept to rejected.
     const userInputSettlement = userInputRegistry.settleChat(chatId);
     const releaseSubagentAdmission = blockSubagentAdmissionsForChat(chatId);
+    let removeWorkspace: (() => Promise<void>) | undefined;
     try {
       await mutateChatAfterDrainingStreams({
         chatId,
@@ -357,12 +362,24 @@ export function registerChatHandlers() {
             throw error;
           }
         },
+        // The chat's isolated workspace goes with it: its preview, worktree,
+        // and merge state. Captured once its turns are drained (none is
+        // still writing there), since its row cascades with the chat's.
+        afterDrain: async () => {
+          const { chatWorkspaceService } =
+            await import("@/ipc/services/chat_workspace_service");
+          removeWorkspace = chatWorkspaceService.prepareChatDeletion(chatId);
+        },
         mutation: async () => {
           await deleteChatJournals(chatId);
           await db.delete(chats).where(eq(chats.id, chatId));
           entityDisposalBus.publish({ kind: "chat", id: chatId });
         },
       });
+      // Only once the delete committed (a failed one throws above and keeps
+      // the worktree), and outside the chat-content claim, because removal
+      // takes the app's claims itself. Only a fully merged branch is deleted.
+      await removeWorkspace?.();
     } finally {
       releaseSubagentAdmission();
     }

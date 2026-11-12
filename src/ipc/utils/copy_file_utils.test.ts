@@ -120,5 +120,66 @@ describe.runIf(process.platform !== "win32")(
         expect.objectContaining({ signal: abortController.signal }),
       );
     });
+
+    it("copies media from the app folder, or from the workspace when this turn made it", async () => {
+      const workspacePath = await fs.mkdtemp(
+        path.join(os.tmpdir(), "dyad-copy-workspace-"),
+      );
+      try {
+        await fs.mkdir(path.join(appPath, ".dyad", "media"), {
+          recursive: true,
+        });
+        await fs.writeFile(
+          path.join(appPath, ".dyad", "media", "uploaded.png"),
+          "uploaded",
+        );
+        await fs.mkdir(path.join(workspacePath, ".dyad", "media"), {
+          recursive: true,
+        });
+        await fs.writeFile(
+          path.join(workspacePath, ".dyad", "media", "generated.png"),
+          "generated",
+        );
+        const workspace = {
+          appPath: workspacePath,
+          mediaAppPath: appPath,
+          coordinationKey: 1_000_987_654,
+        };
+
+        await executeCopyFile({
+          from: ".dyad/media/uploaded.png",
+          to: "public/uploaded.png",
+          appId: 987654,
+          workspace,
+        });
+        await executeCopyFile({
+          from: ".dyad/media/generated.png",
+          to: "public/generated.png",
+          appId: 987654,
+          workspace,
+        });
+        await executeCopyFile({
+          from: path.join(workspacePath, ".dyad", "media", "generated.png"),
+          to: "public/generated-absolute.png",
+          appId: 987654,
+          workspace,
+        });
+
+        for (const [name, content] of [
+          ["uploaded.png", "uploaded"],
+          ["generated.png", "generated"],
+          ["generated-absolute.png", "generated"],
+        ]) {
+          await expect(
+            fs.readFile(path.join(workspacePath, "public", name), "utf8"),
+          ).resolves.toBe(content);
+        }
+        await expect(
+          fs.stat(path.join(appPath, "public")),
+        ).rejects.toMatchObject({ code: "ENOENT" });
+      } finally {
+        await fs.rm(workspacePath, { recursive: true, force: true });
+      }
+    });
   },
 );

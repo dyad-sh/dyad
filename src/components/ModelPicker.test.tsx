@@ -505,16 +505,6 @@ vi.mock("@/components/PriceBadge", () => ({
   PriceBadge: () => <span data-testid="price-badge" />,
 }));
 
-vi.mock("@/components/ui/tooltip", () => ({
-  Tooltip: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  TooltipTrigger: ({
-    render,
-    ...props
-  }: React.ComponentProps<"button"> & { render?: React.ReactElement }) =>
-    render ?? <button {...props} />,
-  TooltipContent: () => null,
-}));
-
 vi.mock("@/components/ui/dropdown-menu", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/components/ui/dropdown-menu")>()),
   DropdownMenuCheckboxItem: ({
@@ -1416,10 +1406,8 @@ describe("ModelPicker", () => {
     };
     render(<ModelPicker />);
     const trigger = screen.getByTestId("model-picker");
-    expect(within(trigger).getByText("ChatGPT subscription")).toBeTruthy();
-    expect(trigger.getAttribute("aria-label")).toBe(
-      "GPT 5 · ChatGPT subscription",
-    );
+    expect(within(trigger).getByText("ChatGPT")).toBeTruthy();
+    expect(trigger.getAttribute("aria-label")).toBe("GPT 5 · ChatGPT");
   });
 
   it.each(["disconnected", "pro", "api-key", "unsupported", "loading"])(
@@ -2012,7 +2000,7 @@ describe("Claude Code subscription picker", () => {
     ["Opus (1M context)", "Opus"],
   ])(
     "shows %s with a separate Claude Code subscription badge",
-    (displayName, shortName) => {
+    async (displayName, shortName) => {
       mocks.chat!.modelSelection = {
         provider: "claude-code",
         name: "claude-fable-5-1[1m]",
@@ -2028,12 +2016,14 @@ describe("Claude Code subscription picker", () => {
       render(<ModelPicker />);
       const trigger = screen.getByTestId("model-picker");
       expect(within(trigger).getByText(shortName)).toBeTruthy();
+      const chip = within(trigger).getByText("Claude Code");
+      fireEvent.pointerEnter(chip, { pointerType: "mouse" });
+      fireEvent.mouseEnter(chip);
+      fireEvent.mouseMove(chip);
       expect(
-        within(trigger).getByText("Claude Code subscription"),
+        await screen.findByText("Uses your Claude Code subscription"),
       ).toBeTruthy();
-      expect(trigger.getAttribute("title")).toBe(
-        `${shortName} · Claude Code subscription`,
-      );
+      expect(trigger.getAttribute("title")).toBe(`${shortName} · Claude Code`);
     },
   );
   it.each(["loading", "error", "empty"])(

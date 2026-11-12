@@ -572,13 +572,13 @@ export function ModelPicker() {
       : getModelDisplayName();
   const selectedSubscriptionLabel =
     selectedModel.provider === "claude-code"
-      ? "Claude Code subscription"
+      ? "Claude Code"
       : usesChatGPTSubscription(
             selectedModel,
             settings,
             subscription.data ?? { connected: false, models: [] },
           )
-        ? "ChatGPT subscription"
+        ? "ChatGPT"
         : null;
   const selectedModelLabel = [modelDisplayName, selectedSubscriptionLabel]
     .filter(Boolean)
@@ -1605,12 +1605,26 @@ export function ModelPicker() {
             {modelDisplayName}
           </span>
           {selectedSubscriptionLabel && (
-            <span
-              data-testid="selected-model-subscription"
-              className={cn(PILL_CLASS, "shrink-0 bg-primary/10 text-primary")}
-            >
-              {selectedSubscriptionLabel}
-            </span>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <span
+                    data-testid="selected-model-subscription"
+                    className={cn(
+                      PILL_CLASS,
+                      "shrink-0 bg-primary/10 text-primary",
+                    )}
+                  >
+                    {selectedSubscriptionLabel}
+                  </span>
+                }
+              />
+              <TooltipContent>
+                {selectedModel.provider === "claude-code"
+                  ? "Uses your Claude Code subscription"
+                  : "Uses your connected ChatGPT subscription"}
+              </TooltipContent>
+            </Tooltip>
           )}
         </DropdownMenuTrigger>
         <DropdownMenuContent className={MODEL_MENU_WIDTH_CLASS} align="start">

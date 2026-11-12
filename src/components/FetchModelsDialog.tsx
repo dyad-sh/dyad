@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { SearchIcon } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Dialog,
@@ -10,6 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ipc } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
@@ -33,6 +35,7 @@ export function FetchModelsDialog({
 }: FetchModelsDialogProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [isAdding, setIsAdding] = useState(false);
+  const [search, setSearch] = useState("");
 
   const {
     data: fetched,
@@ -52,19 +55,39 @@ export function FetchModelsDialog({
   });
 
   useEffect(() => {
-    if (isOpen) setSelected(new Set());
+    if (isOpen) {
+      setSelected(new Set());
+      setSearch("");
+    }
   }, [isOpen]);
 
   const existing = new Set(existingApiNames);
   // Ignore stale results while a refetch is running or after it failed.
   const list = isFetching || error ? [] : (fetched ?? []);
+  const needle = search.trim().toLowerCase();
+  const visible = list.filter((m) => m.apiName.toLowerCase().includes(needle));
+  // Selection survives filtering, so "Add N" also counts models the filter hides.
   const addable = list.filter((m) => !existing.has(m.apiName));
   const chosen = addable.filter((m) => selected.has(m.apiName));
+  const visibleAddable = visible.filter((m) => !existing.has(m.apiName));
+  const allVisibleChosen =
+    visibleAddable.length > 0 &&
+    visibleAddable.every((m) => selected.has(m.apiName));
 
   const toggle = (apiName: string) =>
     setSelected((prev) => {
       const next = new Set(prev);
       if (!next.delete(apiName)) next.add(apiName);
+      return next;
+    });
+
+  const toggleAllVisible = () =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      for (const m of visibleAddable) {
+        if (allVisibleChosen) next.delete(m.apiName);
+        else next.add(m.apiName);
+      }
       return next;
     });
 
@@ -102,14 +125,31 @@ export function FetchModelsDialog({
     >
       <DialogContent className="sm:max-w-[525px]">
         <DialogHeader>
-          <DialogTitle>Fetch Models</DialogTitle>
+          <DialogTitle>Import Models</DialogTitle>
           <DialogDescription>
             Models served by this provider's endpoint. Select the ones to add.
           </DialogDescription>
         </DialogHeader>
 
+        {list.length > 0 && (
+          <div className="relative">
+            <SearchIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search models..."
+              aria-label="Search models"
+              className="pl-9"
+            />
+          </div>
+        )}
+
         <div className="max-h-80 overflow-y-auto space-y-2 py-2">
-          {isFetching && <Skeleton className="h-16 w-full" />}
+          {/* Several rows, so the dialog doesn't jump in height once loaded. */}
+          {isFetching &&
+            Array.from({ length: 5 }, (_, i) => (
+              <Skeleton key={i} className="h-16 w-full" />
+            ))}
           {!isFetching && error && (
             <div className="text-sm text-red-600 dark:text-red-400">
               {error.message}
@@ -128,54 +168,51 @@ export function FetchModelsDialog({
               The server reported no models.
             </p>
           )}
-          {!isFetching &&
-            !error &&
-            fetched?.map((m) => {
-              const already = existing.has(m.apiName);
-              return (
-                <label
-                  key={m.apiName}
-                  className={`flex items-center gap-3 rounded-md border p-3 ${
-                    already ? "opacity-50" : "cursor-pointer"
-                  }`}
-                >
-                  <Checkbox
-                    checked={already || selected.has(m.apiName)}
-                    disabled={already}
-                    onCheckedChange={() => toggle(m.apiName)}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="truncate font-medium">{m.apiName}</div>
-                    {m.contextWindow && (
-                      <div className="text-xs text-muted-foreground">
-                        Context: {m.contextWindow.toLocaleString()} tokens
-                      </div>
-                    )}
-                  </div>
-                  {already && (
-                    <span className="text-xs text-muted-foreground">
-                      Already added
-                    </span>
+          {list.length > 0 && visible.length === 0 && (
+            <p className="text-sm text-muted-foreground">
+              No models match "{search.trim()}".
+            </p>
+          )}
+          {visible.map((m) => {
+            const already = existing.has(m.apiName);
+            return (
+              <label
+                key={m.apiName}
+                className={`flex items-center gap-3 rounded-md border p-3 ${
+                  already ? "opacity-50" : "cursor-pointer"
+                }`}
+              >
+                <Checkbox
+                  checked={already || selected.has(m.apiName)}
+                  disabled={already}
+                  onCheckedChange={() => toggle(m.apiName)}
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="truncate font-medium">{m.apiName}</div>
+                  {m.contextWindow && (
+                    <div className="text-xs text-muted-foreground">
+                      Context: {m.contextWindow.toLocaleString()} tokens
+                    </div>
                   )}
-                </label>
-              );
-            })}
+                </div>
+                {already && (
+                  <span className="text-xs text-muted-foreground">
+                    Already added
+                  </span>
+                )}
+              </label>
+            );
+          })}
         </div>
 
         <DialogFooter>
-          {addable.length > 0 && (
+          {visibleAddable.length > 0 && (
             <Button
               variant="ghost"
-              onClick={() =>
-                setSelected(
-                  chosen.length === addable.length
-                    ? new Set()
-                    : new Set(addable.map((m) => m.apiName)),
-                )
-              }
+              onClick={toggleAllVisible}
               disabled={isAdding}
             >
-              {chosen.length === addable.length ? "Clear" : "Select all"}
+              {allVisibleChosen ? "Clear" : "Select all"}
             </Button>
           )}
           <Button variant="outline" onClick={onClose} disabled={isAdding}>

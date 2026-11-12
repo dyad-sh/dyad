@@ -1,10 +1,5 @@
 import { useState } from "react";
-import {
-  AlertTriangle,
-  PlusIcon,
-  RefreshCwIcon,
-  TrashIcon,
-} from "lucide-react";
+import { AlertTriangle, PlusIcon, DownloadIcon, TrashIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -224,7 +219,7 @@ export function ModelsSection({ providerId }: ModelsSectionProps) {
               disabled={modelsLoading}
               variant="outline"
             >
-              <RefreshCwIcon className="mr-2 h-4 w-4" /> Fetch Models
+              <DownloadIcon className="mr-2 h-4 w-4" /> Import Models
             </Button>
           )}
           <Button

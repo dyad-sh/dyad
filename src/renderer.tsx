@@ -330,8 +330,11 @@ function RendererServices() {
     if (!windowReady) return;
     let cancelled = false;
     const candidateChatIds = chatDraftCandidateChatIds(store);
-    void ipc.chat
-      .getChats(undefined)
+    void queryClient
+      .fetchQuery({
+        queryKey: queryKeys.chats.list({ appId: null }),
+        queryFn: () => ipc.chat.getChats(undefined),
+      })
       .then((chats) => {
         if (cancelled) return;
         pruneChatDrafts(

@@ -74,18 +74,22 @@ describe("fetchOpenAICompatibleModels", () => {
   it("does not include private endpoint URLs or credentials in failures", async () => {
     const privateUrl =
       "https://user:secret@private-host.example/v1?token=query-secret";
+    const apiKey = "sk-private-api-key";
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockRejectedValue(
-        Object.assign(new Error(`connect ECONNREFUSED ${privateUrl}`), {
-          code: "ECONNREFUSED",
-        }),
-      ),
+      vi
+        .fn()
+        .mockRejectedValue(
+          Object.assign(
+            new Error(`connect ECONNREFUSED ${privateUrl} with key ${apiKey}`),
+            { code: "ECONNREFUSED" },
+          ),
+        ),
     );
 
     let failure: unknown;
     try {
-      await fetchOpenAICompatibleModels(privateUrl);
+      await fetchOpenAICompatibleModels(privateUrl, apiKey);
     } catch (error) {
       failure = error;
     }
@@ -98,7 +102,19 @@ describe("fetchOpenAICompatibleModels", () => {
     expect(failure.message).not.toContain("private-host.example");
     expect(failure.message).not.toContain("secret");
     expect(failure.message).not.toContain("query-secret");
+    expect(failure.message).not.toContain(apiKey);
     expect(failure.cause).toBeUndefined();
+  });
+
+  it("uses a safe fallback when a transport error has no stable diagnostic", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockRejectedValue(new TypeError("fetch failed")),
+    );
+
+    await expect(
+      fetchOpenAICompatibleModels("http://host:8000/v1"),
+    ).rejects.toThrow("Network request failed");
   });
 
   it("includes nested transport diagnostics", async () => {

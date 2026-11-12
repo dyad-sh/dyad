@@ -1,4 +1,8 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  onlineManager,
+  QueryClient,
+  QueryClientProvider,
+} from "@tanstack/react-query";
 import {
   fireEvent,
   render,
@@ -6,7 +10,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FetchModelsDialog } from "./FetchModelsDialog";
 
 const mocks = vi.hoisted(() => ({
@@ -52,8 +56,16 @@ vi.mock("react-virtuoso", () => ({
 vi.mock("@/components/ui/dialog", () => ({
   Dialog: ({ open, children }: { open: boolean; children: React.ReactNode }) =>
     open ? <div>{children}</div> : null,
-  DialogContent: ({ children }: { children: React.ReactNode }) => (
-    <div>{children}</div>
+  DialogContent: ({
+    children,
+    className,
+  }: {
+    children: React.ReactNode;
+    className?: string;
+  }) => (
+    <div data-testid="dialog-content" className={className}>
+      {children}
+    </div>
   ),
   DialogHeader: ({ children }: { children: React.ReactNode }) => (
     <div>{children}</div>
@@ -99,6 +111,7 @@ const addButton = () =>
 
 describe("FetchModelsDialog", () => {
   beforeEach(() => {
+    onlineManager.setOnline(true);
     mocks.fetchCustomProviderModels.mockReset();
     mocks.fetchCustomProviderModels.mockResolvedValue(MODELS);
     mocks.importCustomProviderModels.mockReset();
@@ -110,6 +123,10 @@ describe("FetchModelsDialog", () => {
     mocks.showSuccess.mockReset();
   });
 
+  afterEach(() => {
+    onlineManager.setOnline(true);
+  });
+
   it("shows several skeleton rows while the models load", () => {
     mocks.fetchCustomProviderModels.mockReturnValue(new Promise(() => {}));
     renderDialog();
@@ -119,10 +136,17 @@ describe("FetchModelsDialog", () => {
     ).toBeGreaterThan(1);
     expect(screen.getByLabelText("Search models")).toBeTruthy();
     expect(
-      screen.getByTestId("model-import-region").classList.contains("h-[368px]"),
+      screen
+        .getByTestId("model-import-region")
+        .classList.contains("h-[min(368px,calc(100dvh-16rem))]"),
     ).toBe(true);
     expect(
-      screen.getByTestId("model-list-region").classList.contains("h-80"),
+      screen.getByTestId("model-list-region").classList.contains("flex-1"),
+    ).toBe(true);
+    expect(
+      screen
+        .getByTestId("dialog-content")
+        .classList.contains("max-h-[calc(100dvh-2rem)]"),
     ).toBe(true);
   });
 
@@ -144,10 +168,12 @@ describe("FetchModelsDialog", () => {
       "nothing selected yet",
     ).toBe(true);
     expect(
-      screen.getByTestId("model-import-region").classList.contains("h-[368px]"),
+      screen
+        .getByTestId("model-import-region")
+        .classList.contains("h-[min(368px,calc(100dvh-16rem))]"),
     ).toBe(true);
     expect(
-      screen.getByTestId("model-list-region").classList.contains("h-80"),
+      screen.getByTestId("model-list-region").classList.contains("flex-1"),
     ).toBe(true);
   });
 
@@ -209,6 +235,22 @@ describe("FetchModelsDialog", () => {
     expect(mocks.showSuccess).toHaveBeenCalledWith("Added 1 model");
     expect(mocks.showSuccess).toHaveBeenCalledWith("1 model was already added");
     expect(mocks.showError).not.toHaveBeenCalled();
+  });
+
+  it("imports selected models while offline", async () => {
+    onlineManager.setOnline(false);
+    renderDialog();
+    await screen.findByText("llama-3-8b");
+
+    fireEvent.click(screen.getByText("llama-3-8b"));
+    fireEvent.click(addButton());
+
+    await waitFor(() =>
+      expect(mocks.importCustomProviderModels).toHaveBeenCalledWith({
+        providerId: "custom::vllm",
+        models: [MODELS[0]],
+      }),
+    );
   });
 
   it("stays open and keeps the selection when the import fails", async () => {

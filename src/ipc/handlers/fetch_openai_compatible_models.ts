@@ -26,7 +26,8 @@ function describeTransportFailure(error: unknown): string {
         : undefined;
     const code = typeof fields?.code === "string" ? fields.code : "";
     const name = typeof fields?.name === "string" ? fields.name : "";
-    const detail = [code, name]
+    const safeName = name === "Error" || name === "TypeError" ? "" : name;
+    const detail = [code, safeName]
       .filter((value) => /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(value))
       .join(": ")
       .slice(0, 128);
@@ -39,7 +40,7 @@ function describeTransportFailure(error: unknown): string {
   }
 
   return (
-    details.join("; caused by: ").slice(0, 2_000) || "Unknown network error"
+    details.join("; caused by: ").slice(0, 2_000) || "Network request failed"
   );
 }
 

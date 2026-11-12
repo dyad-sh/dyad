@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { SearchIcon } from "lucide-react";
 import { Virtuoso } from "react-virtuoso";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   Dialog,
   DialogContent,
@@ -37,7 +37,6 @@ export function FetchModelsDialog({
   existingApiNames,
 }: FetchModelsDialogProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [isAdding, setIsAdding] = useState(false);
   const [search, setSearch] = useState("");
   const [listHeight, setListHeight] = useState<number | null>(null);
 
@@ -82,6 +81,24 @@ export function FetchModelsDialog({
     visibleAddable.length > 0 &&
     visibleAddable.every((m) => selected.has(m.apiName));
 
+  const importModelsMutation = useMutation({
+    mutationFn: (models: typeof chosen) =>
+      ipc.languageModel.importCustomProviderModels({ providerId, models }),
+    networkMode: "always",
+    onSuccess: ({ added, skipped }) => {
+      if (added > 0) {
+        showSuccess(`Added ${added} model${added === 1 ? "" : "s"}`);
+      }
+      if (skipped > 0) {
+        showSuccess(
+          `${skipped} model${skipped === 1 ? " was" : "s were"} already added`,
+        );
+      }
+      onClose();
+    },
+    onError: (error) => showError(error),
+  });
+
   const toggle = (apiName: string) =>
     setSelected((prev) => {
       const next = new Set(prev);
@@ -99,39 +116,14 @@ export function FetchModelsDialog({
       return next;
     });
 
-  const handleAdd = async () => {
-    setIsAdding(true);
-    try {
-      // The main process re-checks for duplicates against the database, so
-      // this stays correct even if another window imported in the meantime.
-      // The contract's `invalidates` refreshes the model lists in every window.
-      const { added, skipped } =
-        await ipc.languageModel.importCustomProviderModels({
-          providerId,
-          models: chosen,
-        });
-      if (added > 0) {
-        showSuccess(`Added ${added} model${added === 1 ? "" : "s"}`);
-      }
-      if (skipped > 0) {
-        showSuccess(
-          `${skipped} model${skipped === 1 ? " was" : "s were"} already added`,
-        );
-      }
-      onClose();
-    } catch (error) {
-      showError(error);
-    } finally {
-      setIsAdding(false);
-    }
-  };
-
   return (
     <Dialog
       open={isOpen}
-      onOpenChange={(open) => !open && !isAdding && onClose()}
+      onOpenChange={(open) =>
+        !open && !importModelsMutation.isPending && onClose()
+      }
     >
-      <DialogContent className="sm:max-w-[525px]">
+      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-hidden sm:max-w-[525px]">
         <DialogHeader>
           <DialogTitle>Import Models</DialogTitle>
           <DialogDescription>
@@ -141,7 +133,7 @@ export function FetchModelsDialog({
 
         <div
           data-testid="model-import-region"
-          className="flex h-[368px] flex-col gap-2"
+          className="flex h-[min(368px,calc(100dvh-16rem))] min-h-0 flex-col gap-2"
         >
           {(isFetching || list.length > 0) && (
             <div className="relative h-10 shrink-0">
@@ -158,7 +150,7 @@ export function FetchModelsDialog({
 
           <div
             data-testid="model-list-region"
-            className="h-80 shrink-0 overflow-y-auto space-y-2"
+            className="min-h-0 flex-1 overflow-y-auto space-y-2"
           >
             {isFetching &&
               Array.from({ length: 5 }, (_, i) => (
@@ -195,6 +187,7 @@ export function FetchModelsDialog({
                     listHeight ?? visible.length * ROW_HEIGHT,
                     MAX_LIST_HEIGHT,
                   ),
+                  maxHeight: "100%",
                 }}
                 data={visible}
                 defaultItemHeight={ROW_HEIGHT}
@@ -243,19 +236,23 @@ export function FetchModelsDialog({
             <Button
               variant="ghost"
               onClick={toggleAllVisible}
-              disabled={isAdding}
+              disabled={importModelsMutation.isPending}
             >
               {allVisibleChosen ? "Clear" : "Select all"}
             </Button>
           )}
-          <Button variant="outline" onClick={onClose} disabled={isAdding}>
+          <Button
+            variant="outline"
+            onClick={onClose}
+            disabled={importModelsMutation.isPending}
+          >
             Cancel
           </Button>
           <Button
-            onClick={handleAdd}
-            disabled={isAdding || chosen.length === 0}
+            onClick={() => importModelsMutation.mutate(chosen)}
+            disabled={importModelsMutation.isPending || chosen.length === 0}
           >
-            {isAdding
+            {importModelsMutation.isPending
               ? "Adding..."
               : `Add ${chosen.length} model${chosen.length === 1 ? "" : "s"}`}
           </Button>

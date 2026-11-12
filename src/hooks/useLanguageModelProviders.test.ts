@@ -54,6 +54,7 @@ vi.mock("./useSettings", () => ({
 
 describe("useLanguageModelProviders", () => {
   beforeEach(() => {
+    mocks.queryOptions = null;
     mocks.subscriptionLoading = false;
     mocks.subscription = {
       connected: false,

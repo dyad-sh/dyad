@@ -62,6 +62,7 @@ import {
   waitAgentsTool,
 } from "./tools/subagent_tools";
 import { planningQuestionnaireTool } from "./tools/planning_questionnaire";
+import { enableTestingTool } from "./tools/enable_testing";
 import { writePlanTool } from "./tools/write_plan";
 import { exitPlanTool } from "./tools/exit_plan";
 import { readGuideTool } from "./tools/read_guide";
@@ -179,6 +180,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   getDatabaseTableSchemaTool,
   setChatSummaryTool,
   addIntegrationTool,
+  enableTestingTool,
   enableNitroTool,
   readLogsTool,
   webSearchTool,

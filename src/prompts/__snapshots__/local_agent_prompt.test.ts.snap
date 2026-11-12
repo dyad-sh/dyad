@@ -309,6 +309,10 @@ When you reach the Implement step and the implementation requires a server layer
 - For non-database server work (e.g., a webhook handler with no DB), \`add_integration\` is not required and you can call \`enable_nitro\` directly.
 </server_layer>
 
+<testing_disabled>
+E2E testing is disabled for this app. If the user asks to add, write, or run E2E tests, automated tests, or tests in general, call \`enable_testing\` before creating test files, installing a testing framework, or delegating test work. The tool displays a card and waits for the user to enable testing or decline. Call it on its own, without parallel implementation tools.
+Do not improvise a test setup or write tests you cannot run. After approval, Dyad automatically resumes with its test-writing conventions and \`run_tests\` available. After a decline, continue without writing or running tests and do not ask again unless the user explicitly requests enabling testing. If \`enable_testing\` is unavailable, explain that testing can be enabled in the app's Tests panel. A question about testing alone does not require enabling it.
+</testing_disabled>
 
 <image_generation_guidelines>
 When a user explicitly requests custom images, illustrations, or visual media for their app:
@@ -476,6 +480,10 @@ If \`search_replace\` fails twice in a row on the same edit (e.g., the target te
 6. **Finalize:** After all verification passes, consider the task complete and briefly summarize the changes you made.
 </development_workflow>
 
+<testing_disabled>
+E2E testing is disabled for this app. If the user asks to add, write, or run E2E tests, automated tests, or tests in general, call \`enable_testing\` before creating test files, installing a testing framework, or delegating test work. The tool displays a card and waits for the user to enable testing or decline. Call it on its own, without parallel implementation tools.
+Do not improvise a test setup or write tests you cannot run. After approval, Dyad automatically resumes with its test-writing conventions and \`run_tests\` available. After a decline, continue without writing or running tests and do not ask again unless the user explicitly requests enabling testing. If \`enable_testing\` is unavailable, explain that testing can be enabled in the app's Tests panel. A question about testing alone does not require enabling it.
+</testing_disabled>
 
 <image_generation_guidelines>
 When a user explicitly requests custom images, illustrations, or visual media for their app:
@@ -643,6 +651,10 @@ If \`search_replace\` fails twice in a row on the same edit (e.g., the target te
 6. **Finalize:** After all verification passes, consider the task complete and briefly summarize the changes you made.
 </development_workflow>
 
+<testing_disabled>
+E2E testing is disabled for this app. If the user asks to add, write, or run E2E tests, automated tests, or tests in general, call \`enable_testing\` before creating test files, installing a testing framework, or delegating test work. The tool displays a card and waits for the user to enable testing or decline. Call it on its own, without parallel implementation tools.
+Do not improvise a test setup or write tests you cannot run. After approval, Dyad automatically resumes with its test-writing conventions and \`run_tests\` available. After a decline, continue without writing or running tests and do not ask again unless the user explicitly requests enabling testing. If \`enable_testing\` is unavailable, explain that testing can be enabled in the app's Tests panel. A question about testing alone does not require enabling it.
+</testing_disabled>
 
 <image_generation_guidelines>
 When a user explicitly requests custom images, illustrations, or visual media for their app:
@@ -803,6 +815,10 @@ If \`search_replace\` fails twice in a row on the same edit (e.g., the target te
 2. **Required App Blueprint Gate:** Blueprint mode is enabled for this turn. Dyad has already determined that the current app requires an initial blueprint, so do not decide whether this flow applies. Follow the \`<app_blueprint mode="required">\` instructions now. Successfully complete \`planning_questionnaire\`, then call \`write_app_blueprint\` and end the turn. Do not call any other state-changing tool before the blueprint is approved.
 </development_workflow>
 
+<testing_disabled>
+E2E testing is disabled for this app. If the user asks to add, write, or run E2E tests, automated tests, or tests in general, call \`enable_testing\` before creating test files, installing a testing framework, or delegating test work. The tool displays a card and waits for the user to enable testing or decline. Call it on its own, without parallel implementation tools.
+Do not improvise a test setup or write tests you cannot run. After approval, Dyad automatically resumes with its test-writing conventions and \`run_tests\` available. After a decline, continue without writing or running tests and do not ask again unless the user explicitly requests enabling testing. If \`enable_testing\` is unavailable, explain that testing can be enabled in the app's Tests panel. A question about testing alone does not require enabling it.
+</testing_disabled>
 
 <image_generation_guidelines>
 When a user explicitly requests custom images, illustrations, or visual media for their app:
@@ -989,6 +1005,10 @@ If \`search_replace\` fails twice in a row on the same edit (e.g., the target te
 6. **Finalize:** After all verification passes, consider the task complete and briefly summarize the changes you made.
 </development_workflow>
 
+<testing_disabled>
+E2E testing is disabled for this app. If the user asks to add, write, or run E2E tests, automated tests, or tests in general, call \`enable_testing\` before creating test files, installing a testing framework, or delegating test work. The tool displays a card and waits for the user to enable testing or decline. Call it on its own, without parallel implementation tools.
+Do not improvise a test setup or write tests you cannot run. After approval, Dyad automatically resumes with its test-writing conventions and \`run_tests\` available. After a decline, continue without writing or running tests and do not ask again unless the user explicitly requests enabling testing. If \`enable_testing\` is unavailable, explain that testing can be enabled in the app's Tests panel. A question about testing alone does not require enabling it.
+</testing_disabled>
 
 <image_generation_guidelines>
 When a user explicitly requests custom images, illustrations, or visual media for their app:
@@ -1253,6 +1273,10 @@ When you reach the Implement step and the implementation requires a server layer
 - For non-database server work (e.g., a webhook handler with no DB), \`add_integration\` is not required and you can call \`enable_nitro\` directly.
 </server_layer>
 
+<testing_disabled>
+E2E testing is disabled for this app. If the user asks to add, write, or run E2E tests, automated tests, or tests in general, call \`enable_testing\` before creating test files, installing a testing framework, or delegating test work. The tool displays a card and waits for the user to enable testing or decline. Call it on its own, without parallel implementation tools.
+Do not improvise a test setup or write tests you cannot run. After approval, Dyad automatically resumes with its test-writing conventions and \`run_tests\` available. After a decline, continue without writing or running tests and do not ask again unless the user explicitly requests enabling testing. If \`enable_testing\` is unavailable, explain that testing can be enabled in the app's Tests panel. A question about testing alone does not require enabling it.
+</testing_disabled>
 
 <ai_rules_meta>
 AI_RULES.md is the app's persistent project guidance file. Its current contents are provided in the \`<ai_rules>\` block below — treat that as the source of truth without re-reading the file.
@@ -1407,6 +1431,10 @@ You have two tools for editing files. Choose based on the scope of your change:
 6. **Finalize:** After all verification passes, consider the task complete and briefly summarize the changes you made.
 </development_workflow>
 
+<testing_disabled>
+E2E testing is disabled for this app. If the user asks to add, write, or run E2E tests, automated tests, or tests in general, call \`enable_testing\` before creating test files, installing a testing framework, or delegating test work. The tool displays a card and waits for the user to enable testing or decline. Call it on its own, without parallel implementation tools.
+Do not improvise a test setup or write tests you cannot run. After approval, Dyad automatically resumes with its test-writing conventions and \`run_tests\` available. After a decline, continue without writing or running tests and do not ask again unless the user explicitly requests enabling testing. If \`enable_testing\` is unavailable, explain that testing can be enabled in the app's Tests panel. A question about testing alone does not require enabling it.
+</testing_disabled>
 
 <ai_rules_meta>
 AI_RULES.md is the app's persistent project guidance file. Its current contents are provided in the \`<ai_rules>\` block below — treat that as the source of truth without re-reading the file.
@@ -1554,6 +1582,10 @@ You have two tools for editing files. Choose based on the scope of your change:
 2. **Required App Blueprint Gate:** Blueprint mode is enabled for this turn. Dyad has already determined that the current app requires an initial blueprint, so do not decide whether this flow applies. Follow the \`<app_blueprint mode="required">\` instructions now. Successfully complete \`planning_questionnaire\`, then call \`write_app_blueprint\` and end the turn. Do not call any other state-changing tool before the blueprint is approved.
 </development_workflow>
 
+<testing_disabled>
+E2E testing is disabled for this app. If the user asks to add, write, or run E2E tests, automated tests, or tests in general, call \`enable_testing\` before creating test files, installing a testing framework, or delegating test work. The tool displays a card and waits for the user to enable testing or decline. Call it on its own, without parallel implementation tools.
+Do not improvise a test setup or write tests you cannot run. After approval, Dyad automatically resumes with its test-writing conventions and \`run_tests\` available. After a decline, continue without writing or running tests and do not ask again unless the user explicitly requests enabling testing. If \`enable_testing\` is unavailable, explain that testing can be enabled in the app's Tests panel. A question about testing alone does not require enabling it.
+</testing_disabled>
 
 <app_blueprint mode="required">
 Blueprint mode is enabled for this turn. Dyad has already determined that the current app requires an approved blueprint before any state-changing tool can run. Do not infer whether the flow applies from the user's request; it applies now.

@@ -18,6 +18,33 @@ export interface PendingIntegration {
   provider?: "supabase" | "neon";
 }
 
+export interface PendingEnableTesting {
+  chatId: number;
+  requestId: string;
+  isResponding: boolean;
+}
+
+export function selectPendingEnableTesting({
+  requests,
+  respondingRequestIds,
+}: UserInputReadModelSnapshot): Map<number, PendingEnableTesting> {
+  const pending = new Map<number, PendingEnableTesting>();
+  for (const request of requests.values()) {
+    if (
+      request.status !== "awaiting" ||
+      request.descriptor.kind !== "enable-testing"
+    )
+      continue;
+    const { chatId, requestId } = request.descriptor;
+    pending.set(chatId, {
+      chatId,
+      requestId,
+      isResponding: respondingRequestIds.has(requestId),
+    });
+  }
+  return pending;
+}
+
 export interface PendingPluginSuggestion {
   chatId: number;
   requestId: string;

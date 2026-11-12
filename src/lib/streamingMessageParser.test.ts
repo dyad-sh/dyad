@@ -38,6 +38,20 @@ function feedAll(content: string, splits: number[]) {
 }
 
 describe("streamingMessageParser", () => {
+  it("preserves a testing card's request identity across streaming and reload", () => {
+    const content =
+      '<dyad-enable-testing request-id="testing:7" outcome="pending"></dyad-enable-testing>';
+    const expected = {
+      kind: "custom-tag",
+      tag: "dyad-enable-testing",
+      attributes: { "request-id": "testing:7", outcome: "pending" },
+      complete: true,
+    };
+    expect(parseFullMessage(content).blocks[0]).toMatchObject(expected);
+    expect(getParserBlocks(feedAll(content, [15, 45]))[0]).toMatchObject(
+      expected,
+    );
+  });
   it("parses pure markdown as a single block", () => {
     const content = "Hello **world**\n\nSecond paragraph";
     const { blocks } = parseFullMessage(content);

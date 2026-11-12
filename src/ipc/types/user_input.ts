@@ -37,6 +37,12 @@ export const UserInputQuestionSchema = z
   );
 export const UserInputDescriptorSchema = z.discriminatedUnion("kind", [
   DescriptorBaseSchema.extend({
+    kind: z.literal("enable-testing"),
+    appId: z.number(),
+    classifier: z.literal("none"),
+    followUpPrompt: z.string(),
+  }),
+  DescriptorBaseSchema.extend({
     kind: z.literal("mcp-consent"),
     serverId: z.number(),
     serverName: z.string(),
@@ -97,6 +103,7 @@ export const UserInputDescriptorSchema = z.discriminatedUnion("kind", [
 ]);
 
 export const UserInputResponseSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("enable-testing"), enabled: z.boolean() }),
   z.object({ kind: z.literal("mcp-consent"), decision: ConsentDecisionSchema }),
   z.object({
     kind: z.literal("agent-consent"),
@@ -201,3 +208,23 @@ export type UserInputDescriptorPayload = z.infer<
 export type UserInputResponsePayload = z.infer<typeof UserInputResponseSchema>;
 export type PendingUserInputPayload = z.infer<typeof PendingSnapshotSchema>;
 export type UserInputQuestionPayload = z.infer<typeof UserInputQuestionSchema>;
+
+// The machine stays free of Zod; keep its hand-written wire types in sync.
+type Assert<T extends true> = T;
+export type UserInputDescriptorMatchesMachine = Assert<
+  UserInputDescriptorPayload extends import("../../user_input/state").UserInputDescriptor
+    ? import("../../user_input/state").UserInputDescriptor extends UserInputDescriptorPayload
+      ? true
+      : false
+    : false
+>;
+export type UserInputResponseMatchesMachine = Assert<
+  Exclude<
+    UserInputResponsePayload,
+    { kind: "follow-up-dispatched" }
+  > extends import("../../user_input/state").UserInputResponse
+    ? import("../../user_input/state").UserInputResponse extends UserInputResponsePayload
+      ? true
+      : false
+    : false
+>;

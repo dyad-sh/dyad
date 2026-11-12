@@ -298,6 +298,7 @@ export class ClaudeCodeModel implements LanguageModelV3 {
                 name === "write_plan" ||
                 name === "exit_plan" ||
                 name === "add_integration" ||
+                name === "enable_testing" ||
                 ctx.appBlueprintWrittenThisTurn
               )
                 stopAfterTool = true;

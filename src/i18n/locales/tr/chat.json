@@ -484,5 +484,18 @@
     "tabList": "Test çalıştırma çıktısı",
     "noTabs": "Test çıktısı sekmesi yok. Çıktıyı görmek için testleri çalıştırın.",
     "noOutput": "Henüz çıktı yok."
+  },
+  "enableTesting": {
+    "title": "E2E testleri etkinleştirilsin mi?",
+    "description": "Dyad’ın kendi test kurallarına uygun uçtan uca testler yazmasına ve çalıştırmasına izin verin.",
+    "scope": "Diğer sohbetler ve Testler paneli dahil olmak üzere bu uygulama için testleri etkinleştirir.",
+    "enable": "Testleri etkinleştir",
+    "notNow": "Şimdi değil",
+    "enabling": "Etkinleştiriliyor…",
+    "saving": "Seçiminiz kaydediliyor…",
+    "waiting": "Ajan seçiminizi bekliyor.",
+    "enabled": "E2E testleri etkinleştirildi",
+    "declined": "Testler devre dışı kalacak",
+    "failed": "Seçiminiz kaydedilemedi. Lütfen tekrar deneyin."
   }
 }

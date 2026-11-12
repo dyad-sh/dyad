@@ -484,5 +484,18 @@
     "tabList": "Saída das execuções de teste",
     "noTabs": "Nenhuma aba de saída de testes. Execute os testes para ver a saída.",
     "noOutput": "Ainda não há saída."
+  },
+  "enableTesting": {
+    "title": "Ativar testes E2E?",
+    "description": "Permita que o Dyad escreva e execute testes de ponta a ponta seguindo suas convenções.",
+    "scope": "Ativa os testes para este aplicativo, incluindo os outros chats e o painel Testes.",
+    "enable": "Ativar testes",
+    "notNow": "Agora não",
+    "enabling": "Ativando…",
+    "saving": "Salvando sua escolha…",
+    "waiting": "O agente está aguardando sua escolha.",
+    "enabled": "Testes E2E ativados",
+    "declined": "Os testes continuam desativados",
+    "failed": "Não foi possível salvar sua escolha. Tente novamente."
   }
 }

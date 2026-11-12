@@ -17,6 +17,7 @@ import { DyadExploreCode } from "./DyadExploreCode";
 import { DyadExploreChatHistory } from "./DyadExploreChatHistory";
 import { DyadAddIntegration } from "./DyadAddIntegration";
 import { DyadSuggestPlugin } from "./DyadSuggestPlugin";
+import { DyadEnableTesting } from "./DyadEnableTesting";
 import { DyadEnableNitro } from "./DyadEnableNitro";
 import { DyadEdit } from "./DyadEdit";
 import { DyadSearchReplace } from "./DyadSearchReplace";
@@ -908,6 +909,21 @@ function renderCustomTag(
             attributes.outcome === "connected" ||
             attributes.outcome === "declined" ||
             attributes.outcome === "never" ||
+            attributes.outcome === "dismissed"
+              ? attributes.outcome
+              : undefined
+          }
+        />
+      );
+
+    case "dyad-enable-testing":
+      return (
+        <DyadEnableTesting
+          requestId={attributes["request-id"]}
+          outcome={
+            attributes.outcome === "pending" ||
+            attributes.outcome === "enabled" ||
+            attributes.outcome === "declined" ||
             attributes.outcome === "dismissed"
               ? attributes.outcome
               : undefined

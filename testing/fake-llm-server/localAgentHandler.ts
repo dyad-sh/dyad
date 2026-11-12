@@ -917,6 +917,15 @@ export async function handleLocalAgentFixture(
  */
 export function extractLocalAgentFixture(content: string): string | null {
   if (!content) return null;
+  // The opt-in response starts a new turn with refreshed test capabilities.
+  // All provider routes use this extractor, including Responses and Anthropic.
+  if (
+    content.startsWith("Continue my original request") &&
+    (content.includes("I enabled E2E testing.") ||
+      content.includes("I declined to enable E2E testing."))
+  ) {
+    return "enable-testing-resume";
+  }
   if (content.startsWith("Fix error: Error Line 6 error")) {
     return "fix-runtime-error";
   }

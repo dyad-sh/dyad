@@ -243,3 +243,104 @@ it("reserves a verdict step after six inspections across three tool rounds", asy
   expect(inspect).toHaveBeenCalledTimes(6);
   expect(calls).toBe(4);
 });
+
+/** One inspection round whose reasoning and tool call carry OpenAI itemIds. */
+function inspectThenVerdict(onFollowUp: (prompt: unknown) => void) {
+  let calls = 0;
+  return new MockLanguageModelV3({
+    doStream: async (options) => {
+      const usage = {
+        inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+        outputTokens: { total: 1, text: 1, reasoning: 0 },
+      };
+      if (++calls === 1) {
+        const openai = { itemId: "rs_1", reasoningEncryptedContent: "enc" };
+        const chunks: LanguageModelV3StreamPart[] = [
+          { type: "stream-start", warnings: [] },
+          { type: "reasoning-start", id: "r", providerMetadata: { openai } },
+          { type: "reasoning-end", id: "r", providerMetadata: { openai } },
+          {
+            type: "tool-call",
+            toolCallId: "call_1",
+            toolName: "inspect_app_path",
+            input: "{}",
+            providerMetadata: { openai: { itemId: "fc_1" } },
+          },
+          {
+            type: "finish",
+            finishReason: { unified: "tool-calls", raw: "tool_calls" },
+            usage,
+          },
+        ];
+        return { stream: simulateReadableStream({ chunks }) };
+      }
+      onFollowUp(options.prompt);
+      const chunks: LanguageModelV3StreamPart[] = [
+        { type: "stream-start", warnings: [] },
+        { type: "text-start", id: "v" },
+        {
+          type: "text-delta",
+          id: "v",
+          delta: '{"decision":"allow","reason":"Inspected package.json"}',
+        },
+        { type: "text-end", id: "v" },
+        {
+          type: "finish",
+          finishReason: { unified: "stop", raw: "stop" },
+          usage,
+        },
+      ];
+      return { stream: simulateReadableStream({ chunks }) };
+    },
+  });
+}
+
+async function reviewWithInspection(model: MockLanguageModelV3) {
+  const actual = await vi.importActual<typeof import("ai")>("ai");
+  mocks.streamText.mockImplementation(actual.streamText);
+  mocks.getModelClient.mockResolvedValue({ modelClient: { model } });
+  return reviewToolAction({
+    ...input,
+    prepare: async () => ({
+      payload: "cd web && pnpm lint",
+      tools: {
+        inspect_app_path: actual.tool({
+          inputSchema: z.object({}),
+          execute: async () => "ordinary app file",
+        }),
+      },
+    }),
+  });
+}
+
+it("does not replay OpenAI itemIds after an inspection round", async () => {
+  // The engine sends `store: false`, so a replayed itemId becomes an
+  // item_reference that the provider rejects with "Item ... not found".
+  let followUp = "";
+  const result = await reviewWithInspection(
+    inspectThenVerdict((prompt) => {
+      followUp = JSON.stringify(prompt);
+    }),
+  );
+  expect(result).toEqual({
+    decision: "allow",
+    reason: "Inspected package.json",
+  });
+  expect(followUp).toContain('"toolName":"inspect_app_path"');
+  expect(followUp).not.toContain("itemId");
+  // Reasoning still travels inline as encrypted content.
+  expect(followUp).toContain('"reasoningEncryptedContent":"enc"');
+});
+
+it("reports a failed follow-up request instead of an invalid verdict", async () => {
+  const result = await reviewWithInspection(
+    inspectThenVerdict(() => {
+      throw new Error("Item with id 'rs_1' not found.");
+    }),
+  );
+  expect(result).toEqual({
+    decision: "block",
+    unavailable: true,
+    reason: "Tool safety review failed during generation.",
+  });
+});

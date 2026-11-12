@@ -31,6 +31,10 @@ import {
   shouldBypassNonProTelemetrySampling,
   shouldFilterPostHogExceptionEvent,
 } from "./lib/posthogTelemetry";
+import {
+  mergePostHogChunkIds,
+  POSTHOG_CHUNK_IDS_PROPERTY,
+} from "./shared/posthog_chunk_ids";
 import { registerRendererIpcListeners } from "./app_wiring/registerRendererIpcListeners";
 import {
   ChatStreamProvider,
@@ -238,6 +242,8 @@ function RendererServices() {
     () =>
       earlyTelemetryEvents.subscribe(({ eventName, properties }) => {
         if (eventName === "$exception") {
+          // Lets posthog-js tag main-process frames with their chunk IDs.
+          mergePostHogChunkIds(properties?.[POSTHOG_CHUNK_IDS_PROPERTY]);
           posthog.captureException(
             createExceptionFromTelemetry(properties),
             getExceptionTelemetryContext(properties),

@@ -305,6 +305,14 @@ describe("exceptions from a self-hosted instance", () => {
     expect(payload.ipc_channel).toBe("fetch-custom-provider-models");
   });
 
+  it("matches the custom provider channel exactly, not by prefix", () => {
+    sendTelemetryException(new Error("boom"), {
+      ipc_channel: "fetch-custom-provider-models-v2",
+    });
+
+    expect(sent.calls[0].exception_message).toBe("boom");
+  });
+
   it("redacts a self-hosted GitLab the same way", () => {
     // A GitLab the user runs is the same class of surface as their Coolify:
     // the address is theirs and the body is whatever that machine returned.

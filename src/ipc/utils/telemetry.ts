@@ -123,14 +123,18 @@ const SELF_HOSTED_CHANNEL_PREFIXES = [
   // A GitLab instance is the user's own server too: these channels carry its
   // address, and the errors they raise quote whatever it answered.
   "gitlab:",
-  "fetch-custom-provider-models",
 ];
+
+// Single channels, matched exactly so a future channel sharing the name as a
+// prefix isn't redacted by accident.
+const SELF_HOSTED_CHANNELS = new Set(["fetch-custom-provider-models"]);
 
 function isSelfHostedChannel(context?: Record<string, unknown>): boolean {
   const channel = context?.ipc_channel;
   if (typeof channel !== "string") return false;
-  return SELF_HOSTED_CHANNEL_PREFIXES.some((prefix) =>
-    channel.startsWith(prefix),
+  return (
+    SELF_HOSTED_CHANNELS.has(channel) ||
+    SELF_HOSTED_CHANNEL_PREFIXES.some((prefix) => channel.startsWith(prefix))
   );
 }
 

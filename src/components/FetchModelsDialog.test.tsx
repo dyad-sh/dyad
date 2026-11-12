@@ -24,6 +24,25 @@ vi.mock("@/lib/toast", () => ({
   showSuccess: mocks.showSuccess,
 }));
 
+// Virtuoso measures real layout, which jsdom doesn't have; render every row.
+vi.mock("react-virtuoso", () => ({
+  Virtuoso: ({
+    data,
+    itemContent,
+    computeItemKey,
+  }: {
+    data: unknown[];
+    itemContent: (index: number, item: any) => React.ReactNode;
+    computeItemKey: (index: number, item: any) => string;
+  }) => (
+    <div>
+      {data.map((item, index) => (
+        <div key={computeItemKey(index, item)}>{itemContent(index, item)}</div>
+      ))}
+    </div>
+  ),
+}));
+
 vi.mock("@/components/ui/dialog", () => ({
   Dialog: ({ open, children }: { open: boolean; children: React.ReactNode }) =>
     open ? <div>{children}</div> : null,
@@ -54,21 +73,19 @@ function renderDialog(
   props: Partial<React.ComponentProps<typeof FetchModelsDialog>> = {},
 ) {
   const onClose = vi.fn();
-  const onSuccess = vi.fn();
   const queryClient = new QueryClient();
   render(
     <QueryClientProvider client={queryClient}>
       <FetchModelsDialog
         isOpen
         onClose={onClose}
-        onSuccess={onSuccess}
         providerId="custom::vllm"
         existingApiNames={[]}
         {...props}
       />
     </QueryClientProvider>,
   );
-  return { onClose, onSuccess };
+  return { onClose };
 }
 
 const addButton = () =>
@@ -156,7 +173,7 @@ describe("FetchModelsDialog", () => {
       added: 1,
       skipped: 1,
     });
-    const { onClose, onSuccess } = renderDialog();
+    const { onClose } = renderDialog();
     await screen.findByText("llama-3-8b");
 
     fireEvent.click(screen.getByText("llama-3-8b"));
@@ -164,7 +181,6 @@ describe("FetchModelsDialog", () => {
     fireEvent.click(addButton());
 
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
-    expect(onSuccess).toHaveBeenCalledTimes(1);
     expect(mocks.showSuccess).toHaveBeenCalledWith("Added 1 model");
     expect(mocks.showSuccess).toHaveBeenCalledWith("1 model was already added");
     expect(mocks.showError).not.toHaveBeenCalled();
@@ -173,7 +189,7 @@ describe("FetchModelsDialog", () => {
   it("stays open and keeps the selection when the import fails", async () => {
     const failure = new Error("db locked");
     mocks.importCustomProviderModels.mockRejectedValue(failure);
-    const { onClose, onSuccess } = renderDialog();
+    const { onClose } = renderDialog();
     await screen.findByText("llama-3-8b");
 
     fireEvent.click(screen.getByText("llama-3-8b"));
@@ -181,7 +197,6 @@ describe("FetchModelsDialog", () => {
 
     await waitFor(() => expect(mocks.showError).toHaveBeenCalledWith(failure));
     expect(onClose).not.toHaveBeenCalled();
-    expect(onSuccess).not.toHaveBeenCalled();
     expect(mocks.showSuccess).not.toHaveBeenCalled();
     await waitFor(() => expect(addButton().textContent).toBe("Add 1 model"));
   });

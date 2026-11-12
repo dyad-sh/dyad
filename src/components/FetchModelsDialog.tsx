@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { SearchIcon } from "lucide-react";
+import { Virtuoso } from "react-virtuoso";
 import { useQuery } from "@tanstack/react-query";
 import {
   Dialog,
@@ -17,10 +18,13 @@ import { ipc } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
 import { showError, showSuccess } from "@/lib/toast";
 
+const MAX_LIST_HEIGHT = 320;
+// Row plus its gap; only the first-render estimate before rows are measured.
+const ROW_HEIGHT = 72;
+
 interface FetchModelsDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: () => void;
   providerId: string;
   /** apiNames already saved for this provider; shown as "Already added". */
   existingApiNames: string[];
@@ -29,13 +33,13 @@ interface FetchModelsDialogProps {
 export function FetchModelsDialog({
   isOpen,
   onClose,
-  onSuccess,
   providerId,
   existingApiNames,
 }: FetchModelsDialogProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [isAdding, setIsAdding] = useState(false);
   const [search, setSearch] = useState("");
+  const [listHeight, setListHeight] = useState<number | null>(null);
 
   const {
     data: fetched,
@@ -51,6 +55,10 @@ export function FetchModelsDialog({
     networkMode: "always",
     staleTime: 0,
     gcTime: 0, // always ask the server again when the dialog reopens
+    // The list is replaced by skeletons while fetching, so a background
+    // refetch would wipe the user's view just from switching windows.
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
     retry: false,
   });
 
@@ -96,6 +104,7 @@ export function FetchModelsDialog({
     try {
       // The main process re-checks for duplicates against the database, so
       // this stays correct even if another window imported in the meantime.
+      // The contract's `invalidates` refreshes the model lists in every window.
       const { added, skipped } =
         await ipc.languageModel.importCustomProviderModels({
           providerId,
@@ -109,7 +118,6 @@ export function FetchModelsDialog({
           `${skipped} model${skipped === 1 ? " was" : "s were"} already added`,
         );
       }
-      onSuccess();
       onClose();
     } catch (error) {
       showError(error);
@@ -144,7 +152,7 @@ export function FetchModelsDialog({
           </div>
         )}
 
-        <div className="max-h-80 overflow-y-auto space-y-2 py-2">
+        <div className="max-h-80 overflow-y-auto space-y-2 pt-2">
           {/* Several rows, so the dialog doesn't jump in height once loaded. */}
           {isFetching &&
             Array.from({ length: 5 }, (_, i) => (
@@ -173,37 +181,55 @@ export function FetchModelsDialog({
               No models match "{search.trim()}".
             </p>
           )}
-          {visible.map((m) => {
-            const already = existing.has(m.apiName);
-            return (
-              <label
-                key={m.apiName}
-                className={`flex items-center gap-3 rounded-md border p-3 ${
-                  already ? "opacity-50" : "cursor-pointer"
-                }`}
-              >
-                <Checkbox
-                  checked={already || selected.has(m.apiName)}
-                  disabled={already}
-                  onCheckedChange={() => toggle(m.apiName)}
-                />
-                <div className="flex-1 min-w-0">
-                  <div className="truncate font-medium">{m.apiName}</div>
-                  {m.contextWindow && (
-                    <div className="text-xs text-muted-foreground">
-                      Context: {m.contextWindow.toLocaleString()} tokens
-                    </div>
-                  )}
-                </div>
-                {already && (
-                  <span className="text-xs text-muted-foreground">
-                    Already added
-                  </span>
-                )}
-              </label>
-            );
-          })}
         </div>
+
+        {/* Virtualized: gateways can serve hundreds or thousands of models. */}
+        {visible.length > 0 && (
+          <Virtuoso
+            // Hug short lists; scroll once the content passes the max height.
+            style={{
+              height: Math.min(
+                listHeight ?? visible.length * ROW_HEIGHT,
+                MAX_LIST_HEIGHT,
+              ),
+            }}
+            data={visible}
+            defaultItemHeight={ROW_HEIGHT}
+            totalListHeightChanged={setListHeight}
+            computeItemKey={(_, m) => m.apiName}
+            itemContent={(_, m) => {
+              const already = existing.has(m.apiName);
+              return (
+                <div className="pb-2">
+                  <label
+                    className={`flex items-center gap-3 rounded-md border p-3 ${
+                      already ? "opacity-50" : "cursor-pointer"
+                    }`}
+                  >
+                    <Checkbox
+                      checked={already || selected.has(m.apiName)}
+                      disabled={already}
+                      onCheckedChange={() => toggle(m.apiName)}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="truncate font-medium">{m.apiName}</div>
+                      {m.contextWindow && (
+                        <div className="text-xs text-muted-foreground">
+                          Context: {m.contextWindow.toLocaleString()} tokens
+                        </div>
+                      )}
+                    </div>
+                    {already && (
+                      <span className="text-xs text-muted-foreground">
+                        Already added
+                      </span>
+                    )}
+                  </label>
+                </div>
+              );
+            }}
+          />
+        )}
 
         <DialogFooter>
           {visibleAddable.length > 0 && (

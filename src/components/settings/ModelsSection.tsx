@@ -216,7 +216,8 @@ export function ModelsSection({ providerId }: ModelsSectionProps) {
           {providerId.startsWith("custom::") && (
             <Button
               onClick={() => setIsFetchModelsDialogOpen(true)}
-              disabled={modelsLoading}
+              // Without the saved list every fetched model would look new.
+              disabled={modelsLoading || !models}
               variant="outline"
             >
               <DownloadIcon className="mr-2 h-4 w-4" /> Import Models
@@ -235,7 +236,6 @@ export function ModelsSection({ providerId }: ModelsSectionProps) {
       <FetchModelsDialog
         isOpen={isFetchModelsDialogOpen}
         onClose={() => setIsFetchModelsDialogOpen(false)}
-        onSuccess={invalidateModels}
         providerId={providerId}
         existingApiNames={(models ?? []).map((m) => m.apiName)}
       />

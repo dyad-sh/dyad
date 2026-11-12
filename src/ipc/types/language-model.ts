@@ -110,6 +110,7 @@ export const ImportCustomProviderModelsParamsSchema = z.object({
     FetchedCustomProviderModelSchema.extend({
       apiName: z.string().min(1),
       displayName: z.string().min(1),
+      contextWindow: z.number().int().positive().optional(),
     }),
   ),
 });

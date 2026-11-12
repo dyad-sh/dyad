@@ -191,7 +191,10 @@ import {
   maybeAppendRetryReplayForRetry,
 } from "./retry_replay_utils";
 import { setChatSummaryTool } from "./tools/set_chat_summary";
-import { computeStreamingPatch } from "@/ipc/utils/stream_text_utils";
+import {
+  computeAnchoredStreamingPatch,
+  computeStreamingPatch,
+} from "@/ipc/utils/stream_text_utils";
 import { userInputRegistry } from "@/user_input/main";
 import {
   rendererMessageColumns,
@@ -889,6 +892,7 @@ export async function handleLocalAgentStream(
     }
 
     logger.info(`Performing pending compaction for chat ${req.chatId}`);
+    let compactionPreviewStarted = false;
     const compactionResult = await performCompaction(
       event,
       req.chatId,
@@ -904,7 +908,31 @@ export async function handleLocalAgentStream(
         const previewContent = options?.showOnTopOfCurrentResponse
           ? `${fullResponse}\n${compactionPreview}`
           : compactionPreview;
-        sendChunk(previewContent, { fullMessages: true });
+        // Compaction runs on long chats, so sending the full message history
+        // per chunk is expensive. Send it once to sync the renderer, then send
+        // patches.
+        if (!compactionPreviewStarted) {
+          compactionPreviewStarted = true;
+          sendChunk(previewContent, { fullMessages: true });
+          return;
+        }
+        // The preview is never saved to the database, so start each patch
+        // where the saved message ends. A window that opens this chat now
+        // loads the saved message and can still apply the patch.
+        const savedLength = options?.showOnTopOfCurrentResponse
+          ? fullResponse.length
+          : 0;
+        sendChatChunk(event.sender, {
+          chatId: req.chatId,
+          invocationRef: req.invocationRef,
+          streamId: req.streamId,
+          streamingMessageId: placeholderMessageId,
+          streamingPatch: computeAnchoredStreamingPatch(
+            previewContent,
+            savedLength,
+          ),
+        });
+        lastSentRef.value = previewContent;
       },
       {
         // Mid-turn compaction should not render as a separate message above the

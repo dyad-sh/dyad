@@ -104,6 +104,7 @@ export function getSettingsPersonTelemetryProperties(settings: UserSettings) {
     enableTestRunInPreview: settings.enableTestRunInPreview ?? false,
     enableParallelTestRuns: settings.enableParallelTestRuns ?? false,
     enableAppPreviewDomains: settings.enableAppPreviewDomains ?? false,
+    showTokenBar: settings.showTokenBar ?? false,
     autoApproveChanges: settings.autoApproveChanges ?? false,
     enableSupabaseWriteSqlMigration:
       settings.enableSupabaseWriteSqlMigration ?? false,

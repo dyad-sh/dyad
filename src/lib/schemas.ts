@@ -633,6 +633,9 @@ const BaseUserSettingsFields = {
   autoExpandPreviewPanel: z.boolean().optional(),
   // Follow-up prompt chips above the chat input after Build and Agent turns.
   enableSuggestedPrompts: z.boolean().optional(),
+  // Token usage bar under the chat input, toggled from the composer menu.
+  // Hidden while unset.
+  showTokenBar: z.boolean().optional(),
   enableChatEventNotifications: z.boolean().optional(),
   blockUnsafeNpmPackages: z.boolean().optional(),
   enablePnpmMinimumReleaseAgeWarning: z.boolean().optional(),

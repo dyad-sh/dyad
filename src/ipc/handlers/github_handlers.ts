@@ -5,6 +5,7 @@ import {
   gitSetRemoteUrl,
   gitPush,
   gitClone,
+  gitCurrentBranch,
   gitPull,
   gitRebaseAbort,
   gitRebaseContinue,
@@ -59,9 +60,11 @@ import {
   githubRemoteAuth,
   requireAppGitRemote,
   resolveAppGitRemote,
+  type AppGitRemote,
   type GitRemoteProvider,
 } from "../utils/app_git_remote";
 import { findAppOrThrow } from "../utils/find_app";
+import { updateAppLinkedBranch } from "../utils/app_linked_branch";
 import { withPushHint } from "../utils/git_push_hints";
 import { createTypedHandler } from "./base";
 import { githubContracts } from "../types/github";
@@ -833,6 +836,69 @@ export async function handleConnectToExistingRepo(
   }
 }
 
+/**
+ * Returns the branch sync should push, repairing a linked branch that exists
+ * nowhere. Prevents the case where sync tries to push a recorded branch that
+ * was never created, such as `main` recorded for a clone of a repo whose
+ * default branch is `master`.
+ *
+ * The link moves to the current branch only when the linked branch is absent
+ * both locally and on the remote, and the current branch is on the remote.
+ * The remote is fetched with pruning first, so a branch deleted or renamed
+ * on the server is not mistaken for one that still exists. Any other missing
+ * branch is refused, since guessing could push a branch the user did not pick.
+ *
+ * With `repair` false, nothing is fetched or written, and a missing linked
+ * branch is refused with a pointer to sync, which does the repair.
+ */
+async function resolveBranchToSync({
+  app,
+  appPath,
+  remote,
+  auth,
+  repair = true,
+}: {
+  app: Awaited<ReturnType<typeof findAppOrThrow>>;
+  appPath: string;
+  remote: AppGitRemote;
+  auth: GitRemoteAuth;
+  repair?: boolean;
+}): Promise<string> {
+  const linkedBranch = remote.branch;
+  const localBranches = await gitListBranches({ path: appPath });
+  if (localBranches.includes(linkedBranch)) {
+    return linkedBranch;
+  }
+  if (!repair) {
+    throw new DyadError(
+      `Dyad syncs the '${linkedBranch}' branch, but this app has no local branch with that name. Sync to ${remote.providerLabel} to fix the connected branch, or switch to the branch you want to deploy and then sync.`,
+      DyadErrorKind.Precondition,
+    );
+  }
+  await gitSetRemoteUrl({ path: appPath, remoteUrl: remote.httpsUrl });
+  await gitFetch({ path: appPath, remote: "origin", auth, prune: true });
+  const remoteBranches = await gitListRemoteBranches({
+    path: appPath,
+    remote: "origin",
+  });
+  const currentBranch = await gitCurrentBranch({ path: appPath });
+  if (
+    !remoteBranches.includes(linkedBranch) &&
+    currentBranch &&
+    remoteBranches.includes(currentBranch)
+  ) {
+    await updateAppLinkedBranch({ app, branch: currentBranch });
+    logger.warn(
+      `[GitHub Handler] Linked branch '${linkedBranch}' does not exist; relinked app ${app.id} to '${currentBranch}'.`,
+    );
+    return currentBranch;
+  }
+  throw new DyadError(
+    `Dyad syncs the '${linkedBranch}' branch, but this app has no local branch with that name. Switch to the branch you want to sync, or reconnect the repository.`,
+    DyadErrorKind.Precondition,
+  );
+}
+
 // --- GitHub Push Handler ---
 export async function handlePushToGithub(
   event: IpcMainInvokeEvent,
@@ -854,7 +920,7 @@ export async function handlePushToGithub(
   assertRemoteProvider(remote, provider);
   const auth = getAppGitRemoteAuth(remote);
   const appPath = getDyadAppPath(app.path);
-  const branch = remote.branch;
+  const branch = await resolveBranchToSync({ app, appPath, remote, auth });
 
   // Measured before anything changes, so a failure still logs what the
   // repository looked like, and the push can be compared against it after.
@@ -1447,6 +1513,9 @@ async function handleCloneRepoFromUrl(
             "Failed to clone repository. Please check the URL and try again.",
         };
       }
+      // Sync pushes the stored branch, so it must match the repo's default
+      // branch that the clone checked out.
+      const clonedBranch = await gitCurrentBranch({ path: appPath });
       const aiRulesPath = path.join(appPath, "AI_RULES.md");
       const hasAiRules = fs.existsSync(aiRulesPath);
       const [newApp] = await db
@@ -1458,7 +1527,7 @@ async function handleCloneRepoFromUrl(
           updatedAt: new Date(),
           githubOrg: owner,
           githubRepo: repoName,
-          githubBranch: "main",
+          githubBranch: clonedBranch ?? "main",
           installCommand: installCommand || null,
           startCommand: startCommand || null,
         })
@@ -1621,7 +1690,7 @@ export async function verifyGithubConnection({
       operation: "github:verify-connection",
       resources: [
         readAppResource("app-path"),
-        readAppResource("metadata"),
+        requirePushable ? "metadata" : readAppResource("metadata"),
         requirePushable ? "repository" : readAppResource("repository"),
       ],
       refuseWhenRecording: "verify the GitHub repository",
@@ -1641,7 +1710,6 @@ export async function verifyGithubConnection({
         );
       }
       const appPath = getDyadAppPath(app.path);
-      const branch = app.githubBranch || "main";
       const remote = await execGit(["remote", "get-url", "origin"], appPath);
       const expected = normalizeGitRemote(
         githubRemote({ owner: app.githubOrg, repo: app.githubRepo }).httpsUrl,
@@ -1656,6 +1724,19 @@ export async function verifyGithubConnection({
           DyadErrorKind.Precondition,
         );
       }
+      // Only a pushable check holds the repository for writing, so only it
+      // may repair the connected branch.
+      const branch = await resolveBranchToSync({
+        app,
+        appPath,
+        remote: githubRemote({
+          owner: app.githubOrg,
+          repo: app.githubRepo,
+          branch: app.githubBranch,
+        }),
+        auth: githubRemoteAuth(token),
+        repair: requirePushable,
+      });
       const current = await execGit(["branch", "--show-current"], appPath);
       if (current.exitCode !== 0 || current.stdout.trim() !== branch) {
         throw new DyadError(

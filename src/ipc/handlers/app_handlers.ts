@@ -131,11 +131,7 @@ import {
 import { createFromTemplate } from "./createFromTemplate";
 import { getInitialChatModeForNewChat } from "./chat_mode_resolution";
 import { ensureDyadGitignored } from "./gitignoreUtils";
-import {
-  gitListBranches,
-  gitRenameBranch,
-  getCurrentCommitHash,
-} from "../utils/git_utils";
+import { getCurrentCommitHash } from "../utils/git_utils";
 import { gitService } from "../services/git_service";
 import { normalizePath } from "../../../shared/normalizePath";
 import { safeJoin } from "../utils/path_utils";
@@ -2096,65 +2092,6 @@ export function registerAppHandlers() {
     const packageJsonPath = path.resolve(__dirname, "..", "..", "package.json");
     const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
     return { version: packageJson.version };
-  });
-
-  createTypedHandler(appContracts.renameBranch, async (_, params) => {
-    const { appId, oldBranchName, newBranchName } = params;
-    return appOperationCoordinator.run(
-      {
-        appId,
-        operation: "rename-branch",
-        resources: [readAppResource("app-path"), "repository"],
-        refuseWhenRecording: "rename this branch",
-      },
-      async () => {
-        const app = await db.query.apps.findFirst({
-          where: eq(apps.id, appId),
-        });
-        if (!app) {
-          throw new DyadError("App not found", DyadErrorKind.NotFound);
-        }
-        const appPath = getDyadAppPath(app.path);
-
-        try {
-          // Check if the old branch exists
-          const branches = await gitListBranches({ path: appPath });
-          if (!branches.includes(oldBranchName)) {
-            throw new DyadError(
-              `Branch '${oldBranchName}' not found.`,
-              DyadErrorKind.NotFound,
-            );
-          }
-
-          // Check if the new branch name already exists
-          if (branches.includes(newBranchName)) {
-            // If newBranchName is 'main' and oldBranchName is 'master',
-            // and 'main' already exists, we might want to allow this if 'main' is the current branch
-            // and just switch to it, or delete 'master'.
-            // For now, let's keep it simple and throw an error.
-            throw new Error(
-              `Branch '${newBranchName}' already exists. Cannot rename.`,
-            );
-          }
-
-          await gitRenameBranch({
-            path: appPath,
-            oldBranch: oldBranchName,
-            newBranch: newBranchName,
-          });
-          logger.info(
-            `Branch renamed from '${oldBranchName}' to '${newBranchName}' for app ${appId}`,
-          );
-        } catch (error: any) {
-          logger.error(
-            `Failed to rename branch for app ${appId}: ${error.message}`,
-          );
-          throw new Error(
-            `Failed to rename branch '${oldBranchName}' to '${newBranchName}': ${error.message}`,
-          );
-        }
-      },
-    );
   });
 
   createTypedHandler(appContracts.respondToAppInput, async (_, params) => {

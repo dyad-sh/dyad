@@ -27,9 +27,9 @@
     "dev": "cross-env NODE_ENV=development npm start",
     "dev:engine": "cross-env DYAD_ENGINE_URL=http://localhost:8080/v1 npm start",
     "staging:engine": "cross-env DYAD_ENGINE_URL=https://staging---dyad-llm-engine-kq7pivehnq-uc.a.run.app/v1 npm start",
-    "package": "npm run rebuild:keychain-reader && npm run clean && electron-forge package",
-    "make": "npm run rebuild:keychain-reader && npm run clean && electron-forge make",
-    "publish": "npm run rebuild:keychain-reader && npm run clean && electron-forge publish",
+    "package": "npm run hydrate-electron && npm run rebuild:keychain-reader && npm run clean && electron-forge package",
+    "make": "npm run hydrate-electron && npm run rebuild:keychain-reader && npm run clean && electron-forge make",
+    "publish": "npm run hydrate-electron && npm run rebuild:keychain-reader && npm run clean && electron-forge publish",
     "rebuild:keychain-reader": "node scripts/rebuild-keychain-reader.mjs",
     "verify-release": "node scripts/verify-release-assets.js",
     "ts": "npm run ts:main && npm run ts:workers",
@@ -46,7 +46,7 @@
     "fmt": "npx oxfmt",
     "presubmit": "npm run fmt:check && npm run lint",
     "eval": "cross-env NODE_OPTIONS=--no-deprecation vitest run --config vitest.eval.config.ts",
-    "test": "node --test scripts/pnpm-install-retry.test.mjs scripts/prepare-safe-storage-baseline.test.mjs scripts/promote-previous-beta.test.mjs scripts/start-supervisor.test.mjs scripts/copy-data-to-dev.test.mjs scripts/unauthorized-release-alert.test.mjs scripts/pr-review/validate-review.test.mjs scripts/pr-review/authorize-review-comment.test.mjs scripts/pr-review/review-tool-guard.test.mjs scripts/issue-triage/triage-comment.test.mjs scripts/issue-triage/prepare-context.test.mjs && cross-env NODE_OPTIONS=--no-deprecation VITE_CJS_IGNORE_WARNING=true vitest run",
+    "test": "node --test scripts/hydrate-electron.test.mjs scripts/pnpm-install-retry.test.mjs scripts/prepare-safe-storage-baseline.test.mjs scripts/promote-previous-beta.test.mjs scripts/start-supervisor.test.mjs scripts/copy-data-to-dev.test.mjs scripts/unauthorized-release-alert.test.mjs scripts/pr-review/validate-review.test.mjs scripts/pr-review/authorize-review-comment.test.mjs scripts/pr-review/review-tool-guard.test.mjs scripts/issue-triage/triage-comment.test.mjs scripts/issue-triage/prepare-context.test.mjs && cross-env NODE_OPTIONS=--no-deprecation VITE_CJS_IGNORE_WARNING=true vitest run",
     "test:watch": "cross-env NODE_OPTIONS=--no-deprecation VITE_CJS_IGNORE_WARNING=true vitest",
     "test:ui": "cross-env NODE_OPTIONS=--no-deprecation VITE_CJS_IGNORE_WARNING=true vitest --ui",
     "extract-codebase": "ts-node scripts/extract-codebase.ts",
@@ -61,7 +61,13 @@
     "benchmark:code-explorer": "node benchmarks/code-explorer/run.mjs",
     "benchmark:code-explorer:suite": "node benchmarks/code-explorer/suite.mjs",
     "benchmark:code-explorer:smoke": "node benchmarks/code-explorer/suite.mjs --mode smoke",
-    "benchmark:code-explorer:full": "node benchmarks/code-explorer/suite.mjs --mode full"
+    "benchmark:code-explorer:full": "node benchmarks/code-explorer/suite.mjs --mode full",
+    "hydrate-electron": "node scripts/hydrate-electron.mjs",
+    "pretest": "npm run hydrate-electron",
+    "pretest:watch": "npm run hydrate-electron",
+    "pretest:ui": "npm run hydrate-electron",
+    "preeval": "npm run hydrate-electron",
+    "prestart": "npm run hydrate-electron"
   },
   "dependencies": {
     "@ai-sdk/amazon-bedrock": "^4.0.46",
@@ -165,15 +171,15 @@
     "dyad-keychain-reader": "file:native/keychain-reader"
   },
   "devDependencies": {
-    "@electron-forge/cli": "^7.11.1",
-    "@electron-forge/maker-deb": "^7.11.1",
-    "@electron-forge/maker-rpm": "^7.11.1",
-    "@electron-forge/maker-squirrel": "^7.11.1",
-    "@electron-forge/maker-zip": "^7.11.1",
-    "@electron-forge/plugin-auto-unpack-natives": "^7.11.1",
-    "@electron-forge/plugin-fuses": "^7.11.1",
-    "@electron-forge/plugin-vite": "^7.11.1",
-    "@electron-forge/publisher-github": "^7.11.1",
+    "@electron-forge/cli": "^7.11.2",
+    "@electron-forge/maker-deb": "^7.11.2",
+    "@electron-forge/maker-rpm": "^7.11.2",
+    "@electron-forge/maker-squirrel": "^7.11.2",
+    "@electron-forge/maker-zip": "^7.11.2",
+    "@electron-forge/plugin-auto-unpack-natives": "^7.11.2",
+    "@electron-forge/plugin-fuses": "^7.11.2",
+    "@electron-forge/plugin-vite": "^7.11.2",
+    "@electron-forge/publisher-github": "^7.11.2",
     "@electron/fuses": "^1.8.0",
     "@playwright/test": "^1.58.2",
     "@storybook/addon-essentials": "^8.6.14",
@@ -219,5 +225,8 @@
   "engines": {
     "node": ">=24 <26"
   },
-  "productName": "dyad"
+  "productName": "dyad",
+  "overrides": {
+    "@electron/rebuild": "4.1.0"
+  }
 }

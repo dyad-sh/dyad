@@ -15,9 +15,22 @@ import {
 } from "./distributed_machine_error_reporter";
 
 // What the main process sends to the renderer, where PostHog captures it.
-const { sent } = vi.hoisted(() => ({
+const { sent, logged } = vi.hoisted(() => ({
   sent: [] as { eventName: string; properties: Record<string, unknown> }[],
+  // Every argument of every line written to the log, whatever its level.
+  logged: [] as unknown[],
 }));
+vi.mock("electron-log", () => {
+  const write = (...args: unknown[]) => void logged.push(...args);
+  const scope = () => ({
+    error: write,
+    warn: write,
+    info: write,
+    debug: write,
+    log: write,
+  });
+  return { default: { scope, ...scope() } };
+});
 vi.mock("electron", () => ({
   BrowserWindow: {
     getAllWindows: () => [
@@ -81,6 +94,7 @@ function run(definition: ReturnType<typeof machine>): void {
 describe("state machine error reporting", () => {
   beforeEach(() => {
     sent.length = 0;
+    logged.length = 0;
   });
 
   it("is wired into the production host", () => {
@@ -120,6 +134,30 @@ describe("state machine error reporting", () => {
     await vi.waitFor(() => expect(sent).toHaveLength(1));
     expect(sent[0].properties).toMatchObject({ phase: "validation" });
     expect(JSON.stringify(sent)).not.toContain("my secret prompt");
+  });
+
+  it("logs a validation error without the machine state", async () => {
+    run(machine({ transition: (state) => change({ ...state }) }));
+
+    await vi.waitFor(() => expect(sent).toHaveLength(1));
+    const text = logged.map(String).join("\n");
+    expect(text).toContain("State machine test-machine failed in validation");
+    // The first line of the message says what went wrong.
+    expect(text).toMatch(/Error: \S/);
+    expect(text).not.toContain("my secret prompt");
+    expect(logged.some((value) => value instanceof Error)).toBe(false);
+  });
+
+  it("logs a transport failure as one bounded line and its frames", () => {
+    const error = new Error(`${"x".repeat(500)}\nstate: my secret prompt`);
+
+    reportRemoteTransportError(error);
+
+    const text = logged.map(String).join("\n");
+    expect(text).toContain(`Error: ${"x".repeat(300)}\n`);
+    expect(text).not.toContain("x".repeat(301));
+    expect(text).not.toContain("my secret prompt");
+    expect(text).toMatch(/\n\s+at .*distributed_machine_error_reporter\.test/);
   });
 
   it("does not send expected errors", async () => {

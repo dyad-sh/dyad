@@ -151,6 +151,11 @@ export function framesOnly(err: Error): string | undefined {
  * frame, so it is skipped by its exact text. V8 writes it from the name and
  * message as they are when the stack is first read. If the stack doesn't start
  * with it, because one of them changed since, no frames are kept.
+ *
+ * A message shortened after the stack was read still matches as a prefix, and
+ * leaves the rest of the old message after it. So every line after the header
+ * has to have the shape of a frame, or no frames are kept. This cannot catch
+ * a leftover message line that has that exact shape.
  */
 export function stackFrames(err: Error): string[] {
   const stack = err.stack;
@@ -159,10 +164,26 @@ export function stackFrames(err: Error): string[] {
     stack.startsWith(candidate),
   );
   if (header === undefined) return [];
-  return stack
-    .slice(header.length)
+  const rest = stack.slice(header.length);
+  if (rest === "") return [];
+  // Anything else on the header's own line is message the header lacks.
+  if (!rest.startsWith("\n")) return [];
+  const lines = rest
+    .slice(1)
     .split("\n")
-    .filter((line) => /^\s+at /.test(line));
+    .filter((line) => line.trim() !== "");
+  return lines.every(isFrameLine) ? lines : [];
+}
+
+// Longer than any real frame, and short enough to bound the frame patterns.
+const MAX_FRAME_LINE_CHARS = 1000;
+
+// How V8 ends a frame: a position, or a marker for code that has none.
+const FRAME_LINE =
+  /^\s+at .*(?::\d+:\d+\)?|:0x[0-9a-f]+\)?|\(<anonymous>\)|\(native\)|\(index \d+\)|<anonymous>)$/;
+
+function isFrameLine(line: string): boolean {
+  return line.length <= MAX_FRAME_LINE_CHARS && FRAME_LINE.test(line);
 }
 
 /**

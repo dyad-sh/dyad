@@ -374,14 +374,14 @@ describe("framesOnly", () => {
 });
 
 describe("stackFrames", () => {
+  // Vitest writes "name: " for an error with no message, where V8 writes the
+  // name alone, so this test writes the stack as V8 does.
   it("keeps a name line that looks like a frame out of the frames", () => {
     const error = new Error("");
     error.name = "Error\n    at Bearer secret-token";
+    error.stack = [error.name, "    at run (/app/main.js:1:2)"].join("\n");
 
-    const frames = stackFrames(error);
-
-    expect(frames.join("\n")).not.toContain("secret-token");
-    expect(frames[0]).toMatch(/^\s+at .*telemetry\.test/);
+    expect(stackFrames(error)).toEqual(["    at run (/app/main.js:1:2)"]);
   });
 
   it("keeps message lines out when the name contains the message", () => {
@@ -422,6 +422,64 @@ describe("stackFrames", () => {
     ].join("\n");
 
     expect(stackFrames(error)).toEqual(["    at run (/app/main.js:1:2)"]);
+  });
+
+  // V8 builds the stack text on first read, so these read it, as a logger
+  // would, before the message changes.
+  it("keeps no frames when the message was cut to its first line", () => {
+    const error = new Error("Invalid state\n    at prompt: my secret prompt");
+    void error.stack;
+    error.message = "Invalid state";
+
+    expect(stackFrames(error)).toEqual([]);
+    expect(framesOnly(error)).toBe("Error");
+  });
+
+  it("keeps no frames when the message was cut mid-line", () => {
+    const error = new Error("token abc123\n    at run (/app/main.js:1:2)");
+    void error.stack;
+    error.message = "token";
+
+    expect(stackFrames(error)).toEqual([]);
+  });
+
+  it("keeps no frames when the message was cleared", () => {
+    const error = new Error("secret\n    at Bearer secret-token");
+    void error.stack;
+    error.message = "";
+
+    expect(stackFrames(error)).toEqual([]);
+  });
+
+  it("keeps no frames when a line is too long to be a frame", () => {
+    const error = new Error("x");
+    error.stack = [
+      "Error: x",
+      `    at run (/app/${"a".repeat(1000)}.js:1:2)`,
+      "    at run (/app/main.js:1:2)",
+    ].join("\n");
+
+    expect(stackFrames(error)).toEqual([]);
+  });
+
+  it("keeps every form of frame V8 writes", () => {
+    const frames = [
+      "    at run (/app/main.js:1:2)",
+      "    at /app/main.js:1:2",
+      "    at async run (file:///C:/app/main.js:1:2)",
+      "    at JSON.parse (<anonymous>)",
+      "    at new Promise (<anonymous>)",
+      "    at <anonymous>",
+      "    at async Promise.all (index 0)",
+      "    at Array.map (native)",
+      "    at eval (eval at <anonymous> (/app/main.js:26:7), <anonymous>:1:6)",
+      "    at add (wasm://wasm/9a8b7c:wasm-function[1]:0x1f)",
+      "    at node:internal/process/task_queues:95:5",
+    ];
+    const error = new Error("x");
+    error.stack = ["Error: x", ...frames].join("\n");
+
+    expect(stackFrames(error)).toEqual(frames);
   });
 });
 

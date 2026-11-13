@@ -5,6 +5,7 @@ import {
   reportableStack,
   sendTelemetryException,
   shouldFilterTelemetryException,
+  stackFrames,
 } from "@/ipc/utils/telemetry";
 import type { DispatcherErrorStage } from "@/state_machines/dispatcher";
 
@@ -100,7 +101,7 @@ export function reportActorHostError({
         commandType ? ` (${commandType})` : ""
       }, key:`,
       key,
-      error,
+      describeForLog(error),
     );
     sendWithoutMessage(error, {
       source: `state_machine:${machineId}`,
@@ -111,10 +112,29 @@ export function reportActorHostError({
   }
 }
 
+const MAX_LOGGED_MESSAGE_CHARS = 300;
+
+/**
+ * The failure as the log keeps it: the first line of its message and its
+ * frames. The rest of a message can hold machine state, such as a validation
+ * error that prints the whole state, and recent log lines go into bug reports.
+ */
+function describeForLog(error: unknown): string {
+  const text = error instanceof Error ? error.message : String(error);
+  const firstLine = String(text)
+    .split("\n", 1)[0]
+    .slice(0, MAX_LOGGED_MESSAGE_CHARS);
+  if (!(error instanceof Error)) return firstLine;
+  return [
+    `${reportableErrorName(error)}: ${firstLine}`,
+    ...stackFrames(error),
+  ].join("\n");
+}
+
 /** Log and report a failure sending machine state or results to a window. */
 export function reportRemoteTransportError(error: unknown): void {
   try {
-    logger.error("State machine transport failed:", error);
+    logger.error("State machine transport failed:", describeForLog(error));
     sendWithoutMessage(error, { source: "state_machine_transport" });
   } catch {
     // Reporting must not break the transport.

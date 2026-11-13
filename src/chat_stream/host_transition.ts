@@ -812,7 +812,9 @@ function transitionHost(
               ? [{ type: "dispatch-next" }]
               : [];
         // A mutation that changes nothing, such as the one sent when a message
-        // is accepted, keeps the current state and starts nothing.
+        // is accepted, keeps the current state and starts nothing. The
+        // commands are dropped on purpose: running them for a repeated update
+        // could start the same work twice.
         return transitionValuesAreEqual(state, nextState)
           ? stay(state, [])
           : change(nextState, commands);

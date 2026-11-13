@@ -34,6 +34,7 @@ import {
   shouldFilterTelemetryException,
   reportableStack,
   stackFrames,
+  withReducedChunkKeys,
   type FrameSources,
 } from "@/ipc/utils/telemetry";
 
@@ -621,5 +622,50 @@ describe("reportableStack", () => {
     error.stack = undefined;
 
     expect(reportableStack(error, linux)).toBe("TypeError");
+  });
+});
+
+describe("withReducedChunkKeys", () => {
+  const root = "C:/Users/Jane Doe/AppData/Local/dyad/app-1.0.0/resources";
+  const sources: FrameSources = {
+    buildDir: `${root}/app.asar/.vite/build`,
+    buildFiles: new Set(["main-ABC.js", "index-DEF.js"]),
+    packageRoots: [`${root}/app.asar`],
+    packages: new Set(["ssh2"]),
+  };
+  const file = String.raw`C:\Users\Jane Doe\AppData\Local\dyad\app-1.0.0\resources\app.asar\.vite\build\main-ABC.js`;
+  // A key as the injected snippet writes it: a stack captured in the file.
+  const key = [
+    "Error",
+    `    at ${file}:1:234`,
+    `    at Object.<anonymous> (${file}:9:9)`,
+    "    at Module._compile (node:internal/modules/cjs/loader:1871:14)",
+  ].join("\n");
+
+  it("adds a key that names the file as a reduced frame does", () => {
+    const registry = withReducedChunkKeys({ [key]: "chunk-main" }, sources);
+
+    expect(registry).toEqual({
+      [key]: "chunk-main",
+      "Error\n    at .vite/build/main-ABC.js:1:234": "chunk-main",
+    });
+
+    // The file a reported frame names is the file the new key names.
+    const error = new Error("x");
+    error.stack = `Error: x\n    at run (${file}:10:20)`;
+    expect(reportableStack(error, sources)).toBe(
+      "Error\n    at .vite/build/main-ABC.js:10:20",
+    );
+  });
+
+  it("adds no key for a stack that names no bundle file", () => {
+    const registry = {
+      "Error\n    at main-abc.js:1:1": "a",
+      [`Error\n    at ${root}/app.asar/node_modules/ssh2/index.js:1:1`]: "b",
+      "Error\n    at node:fs:1:1": "c",
+      "not a stack": "d",
+    };
+
+    expect(withReducedChunkKeys(registry, sources)).toEqual(registry);
   });
 });

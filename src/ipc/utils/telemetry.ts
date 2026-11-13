@@ -20,6 +20,7 @@ import {
 } from "@/shared/gitlab_error_names";
 import {
   POSTHOG_CHUNK_IDS_PROPERTY,
+  type PostHogChunkIdRegistry,
   readPostHogChunkIds,
 } from "@/shared/posthog_chunk_ids";
 
@@ -97,7 +98,8 @@ export function sendTelemetryException(
 
   // posthog-js runs in the renderer, so main-process chunk IDs must travel
   // with the exception for PostHog to find this stack's source maps.
-  const chunkIds = readPostHogChunkIds();
+  const registry = readPostHogChunkIds();
+  const chunkIds = registry && withReducedChunkKeys(registry);
 
   sendTelemetryEvent("$exception", {
     exception_name: err.name,
@@ -273,6 +275,8 @@ export function reportableStack(
 const FRAME_LOCATION =
   /^\s+at (?:async )?(?:.*\()?(.+):(\d{1,7}):(\d{1,7})\)?$/;
 
+const BUNDLE_FRAME_PREFIX = "    at .vite/build/";
+
 function reportableFrame(
   line: string,
   sources: FrameSources,
@@ -295,7 +299,7 @@ function reportableFrame(
   if (filePath.startsWith(buildPrefix)) {
     const file = filePath.slice(buildPrefix.length);
     return sources.buildFiles.has(file)
-      ? `    at .vite/build/${file}:${lineNumber}:${column}`
+      ? `${BUNDLE_FRAME_PREFIX}${file}:${lineNumber}:${column}`
       : undefined;
   }
 
@@ -309,6 +313,30 @@ function reportableFrame(
       : undefined;
   }
   return undefined;
+}
+
+/**
+ * The registry with a second key for each bundle file, written the way
+ * `reportableStack` writes that file's frames.
+ *
+ * posthog-js finds a frame's chunk ID by the file name in the frame. A key
+ * holds the file's full path, which a reduced frame no longer has, so without
+ * the second key PostHog cannot find the source map for a reduced stack.
+ */
+export function withReducedChunkKeys(
+  registry: PostHogChunkIdRegistry,
+  sources: FrameSources = shippedFrameSources(),
+): PostHogChunkIdRegistry {
+  const reduced: PostHogChunkIdRegistry = {};
+  for (const [stack, chunkId] of Object.entries(registry)) {
+    // The key is a stack captured in the file, so its first frame names it.
+    const first = stack.split("\n").find(isFrameLine);
+    const frame = first && reportableFrame(first, sources);
+    if (frame?.startsWith(BUNDLE_FRAME_PREFIX)) {
+      reduced[`Error\n${frame}`] = chunkId;
+    }
+  }
+  return { ...reduced, ...registry };
 }
 
 const BUILTIN_MODULES = new Set(

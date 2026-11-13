@@ -230,6 +230,11 @@ const REPORTABLE_ERROR_NAMES = new Set<unknown>([
   "PreparedRequestIdentityConflictError",
   "OperationIdentityConflictError",
   "OperationCapacityError",
+  "OperationRouteIdentityConflictError",
+  "OperationRouteCapacityError",
+  "AbortError",
+  "TimeoutError",
+  "SqliteError",
 ]);
 
 const UNLISTED_ERROR_NAME = "UnlistedError";

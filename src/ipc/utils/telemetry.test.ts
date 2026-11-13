@@ -489,6 +489,15 @@ describe("reportableErrorName", () => {
     expect(reportableErrorName(new TypeError("x"))).toBe("TypeError");
   });
 
+  it("keeps the names of cancelled, timed out and database failures", () => {
+    for (const name of ["AbortError", "TimeoutError", "SqliteError"]) {
+      const error = new Error("x");
+      error.name = name;
+
+      expect(reportableErrorName(error)).toBe(name);
+    }
+  });
+
   it("replaces an unlisted name", () => {
     const error = new Error("x");
     error.name = "secret-name";

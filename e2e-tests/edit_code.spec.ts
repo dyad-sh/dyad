@@ -31,6 +31,7 @@ test("edit code", async ({ po }) => {
   await po.setUp({ autoApprove: true });
   const editedFilePath = path.join("src", "components", "made-with-dyad.tsx");
   await po.sendPrompt("foo");
+  await po.appManagement.ensurePnpmInstall();
   const appPath = await po.appManagement.getCurrentAppPath();
 
   await po.previewPanel.clickTogglePreviewPanel();
@@ -75,6 +76,7 @@ test("edit code edits the right file during rapid switches", async ({ po }) => {
   );
   const robotsFilePath = path.join("public", "robots.txt");
   await po.sendPrompt("foo");
+  await po.appManagement.ensurePnpmInstall();
   const appPath = await po.appManagement.getCurrentAppPath();
   let firstFileEdit = "";
   let updatedRobotsFile = "";

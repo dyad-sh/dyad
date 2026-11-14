@@ -1,0 +1,27 @@
+name: Windows installer guards
+
+on:
+  pull_request:
+    paths:
+      - "tools/windows-installer/**"
+      - "forge.config.ts"
+      - "package-lock.json"
+      - "package.json"
+      - ".github/workflows/windows-installer.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  installer-guards:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: v24.13.1
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: node --test tools/windows-installer/prepare-vendor.test.cjs
+      - run: node tools/windows-installer/prepare-vendor.cjs
+      - run: node --test tools/windows-installer/guard.integration.test.cjs

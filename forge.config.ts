@@ -20,6 +20,11 @@ import { createRequire } from "module";
 console.log("AZURE_CODE_SIGNING_DLIB", process.env.AZURE_CODE_SIGNING_DLIB);
 
 const require = createRequire(import.meta.url);
+const { prepareSquirrelVendor, squirrelVendorDirectory } =
+  require("./tools/windows-installer/prepare-vendor.cjs") as {
+    prepareSquirrelVendor: () => Promise<void>;
+    squirrelVendorDirectory: string;
+  };
 const { isPrereleaseVersion } =
   require("./scripts/release-version-utils.js") as {
     isPrereleaseVersion: (version: string) => boolean;
@@ -165,6 +170,11 @@ if (isWindowsSigningEnabled && !process.env.AZURE_CODE_SIGNING_DLIB) {
 }
 
 const config: ForgeConfig = {
+  hooks: {
+    preMake: async () => {
+      if (process.platform === "win32") await prepareSquirrelVendor();
+    },
+  },
   packagerConfig: {
     // E2E test builds install local file: dependencies as links on Windows.
     // Dereference them so packaging does not require symlink privileges in the temp app.
@@ -231,7 +241,13 @@ const config: ForgeConfig = {
         "{node_modules/dyad-keychain-reader,node_modules/node-pty,node_modules/mustardscript,node_modules/@mustardscript}",
     },
     ignore,
-    extraResource: ["node_modules/dugite/git", "node_modules/@vscode"],
+    extraResource: [
+      "node_modules/dugite/git",
+      "node_modules/@vscode",
+      ...(process.platform === "win32"
+        ? ["tools/windows-installer/SQUIRREL-LICENSE"]
+        : []),
+    ],
     // ignore: [/node_modules\/(?!(better-sqlite3|bindings|file-uri-to-path)\/)/],
   },
   rebuildConfig: shouldSkipNativeRebuild
@@ -245,12 +261,14 @@ const config: ForgeConfig = {
       // @ts-expect-error - incorrect types exported by MakerSquirrel
       isWindowsSigningEnabled
         ? {
+            vendorDirectory: squirrelVendorDirectory,
             windowsSign,
             iconUrl:
               "https://raw.githubusercontent.com/dyad-sh/dyad/main/assets/icon/logo.ico",
             setupIcon: "./assets/icon/logo.ico",
           }
         : {
+            vendorDirectory: squirrelVendorDirectory,
             iconUrl:
               "https://raw.githubusercontent.com/dyad-sh/dyad/main/assets/icon/logo.ico",
             setupIcon: "./assets/icon/logo.ico",

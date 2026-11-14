@@ -60,6 +60,16 @@ test(
     await fs.mkdir(sibling);
 
     await t.test(
+      "only blocks uninspectable named processes in our session or an unknown session",
+      () => {
+        assert.equal(run(probe, ["--uninspectable", "1", "1", "7", "8"]), 0);
+        assert.equal(run(probe, ["--uninspectable", "1", "1", "7", "7"]), 1);
+        assert.equal(run(probe, ["--uninspectable", "1", "0", "7", "8"]), 1);
+        assert.equal(run(probe, ["--uninspectable", "0", "0", "7", "7"]), 0);
+      },
+    );
+
+    await t.test(
       "matches case-insensitively without matching sibling prefixes",
       () => {
         assert.equal(
@@ -110,6 +120,17 @@ test(
         const appDirectory = path.join(temporary, "app");
         const outputDirectory = path.join(temporary, "installer");
         await fs.mkdir(appDirectory);
+        // electron-winstaller's standard Electron nuspec requires these paths.
+        for (const directory of ["locales", "resources"]) {
+          await fs.mkdir(path.join(appDirectory, directory));
+          await fs.writeFile(
+            path.join(appDirectory, directory, "fixture.txt"),
+            "fixture",
+          );
+        }
+        for (const filename of ["icudtl.dat", "LICENSE"]) {
+          await fs.writeFile(path.join(appDirectory, filename), "fixture");
+        }
         await fs.copyFile(probe, path.join(appDirectory, "dyad.exe"));
         await createWindowsInstaller({
           appDirectory,
@@ -138,12 +159,21 @@ test(
           if (error.code !== "ENOENT") throw error;
         }
         await fs.mkdir(installRoot);
-        t.after(() => fs.rm(installRoot, { recursive: true, force: true }));
+        let runningApp;
+        t.after(async () => {
+          // Stop the fixture before removing its executable even if an assertion fails.
+          if (runningApp && runningApp.exitCode === null) {
+            const exited = once(runningApp, "exit");
+            runningApp.kill();
+            await exited;
+          }
+          await fs.rm(installRoot, { recursive: true, force: true });
+        });
         const installedExe = path.join(installRoot, "dyad.exe");
         await fs.copyFile(probe, installedExe);
         const sentinel = path.join(installRoot, "preserve-me.txt");
         await fs.writeFile(sentinel, "existing installation");
-        const runningApp = await startWaiting(installedExe, ["--wait"], t);
+        runningApp = await startWaiting(installedExe, ["--wait"], t);
         assert.equal(run(setup, ["--silent"]), 170);
         assert.equal(
           await fs.readFile(sentinel, "utf8"),

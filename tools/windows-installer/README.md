@@ -13,7 +13,9 @@ The guard holds a per-user mutex across extraction, the updater process, and
 cleanup. It refuses to proceed if a process runs from the target installation,
 including Electron children and the installed updater. Path comparisons ignore
 case and require a directory boundary. An inaccessible process with a known
-Dyad/updater name also blocks the install conservatively.
+Dyad/updater name also blocks the install conservatively within the current
+Windows session (or when its session cannot be determined). Inaccessible
+processes in another session do not block the install.
 
 The rebuilt template replaces `Setup.exe` in a copy of the stock vendor tools
 under `.cache/squirrel-vendor`. `MakerSquirrel` uses that directory for signed

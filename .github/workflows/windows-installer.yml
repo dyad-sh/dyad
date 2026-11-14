@@ -6,6 +6,7 @@ on:
       - "tools/windows-installer/**"
       - "forge.config.ts"
       - "package-lock.json"
+      - "package.json"
       - ".github/workflows/windows-installer.yml"
 
 permissions:

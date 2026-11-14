@@ -29,6 +29,17 @@ inline bool IsInsideInstallation(const std::wstring& image, const std::wstring& 
         _wcsnicmp(image.c_str(), prefix.c_str(), prefix.size()) == 0;
 }
 
+inline bool MayBlockUninspectableProcess(bool knownName, bool sessionKnown, DWORD ourSession, DWORD otherSession) {
+    return knownName && (!sessionKnown || ourSession == otherSession);
+}
+
+inline bool MayBlockUninspectableProcess(bool knownName, DWORD processId) {
+    DWORD ourSession = 0, otherSession = 0;
+    const bool sessionKnown = ProcessIdToSessionId(GetCurrentProcessId(), &ourSession) &&
+        ProcessIdToSessionId(processId, &otherSession);
+    return MayBlockUninspectableProcess(knownName, sessionKnown, ourSession, otherSession);
+}
+
 // Unlike Process.MainModule, this works across the 32/64-bit process boundary.
 inline bool InstallationIsIdle(const std::wstring& root) {
     Handle snapshot(CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0));
@@ -44,15 +55,17 @@ inline bool InstallationIsIdle(const std::wstring& root) {
         Handle process(OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, entry.th32ProcessID));
         if (!process.get()) {
             // Processes can exit between enumeration and inspection. Inaccessible
-            // Dyad/updater processes must not be mistaken for an idle installation.
-            if (candidate && GetLastError() != ERROR_INVALID_PARAMETER) return false;
+            // Known processes in our session must not be mistaken for an idle
+            // installation. Other users' inaccessible updaters must not block us.
+            if (GetLastError() != ERROR_INVALID_PARAMETER && MayBlockUninspectableProcess(candidate, entry.th32ProcessID)) return false;
             continue;
         }
         std::vector<wchar_t> image(32768);
         DWORD length = static_cast<DWORD>(image.size());
         if (!QueryFullProcessImageNameW(process.get(), 0, image.data(), &length)) {
             DWORD exitCode = STILL_ACTIVE;
-            if (candidate && (!GetExitCodeProcess(process.get(), &exitCode) || exitCode == STILL_ACTIVE)) return false;
+            if ((!GetExitCodeProcess(process.get(), &exitCode) || exitCode == STILL_ACTIVE) &&
+                MayBlockUninspectableProcess(candidate, entry.th32ProcessID)) return false;
             continue;
         }
         if (IsInsideInstallation(std::wstring(image.data(), length), root)) return false;
@@ -93,7 +106,11 @@ public:
         }
         mutex_ = CreateMutexW(NULL, TRUE, name.c_str());
         const DWORD mutexError = GetLastError();
-        if (!mutex_ || mutexError == ERROR_ALREADY_EXISTS) {
+        if (!mutex_) {
+            error = L"Setup could not acquire the installation lock. Please try again.";
+            return ERROR_INSTALL_FAILURE;
+        }
+        if (mutexError == ERROR_ALREADY_EXISTS) {
             error = L"Dyad installation is already in progress. Please wait for it to finish.";
             return ERROR_INSTALL_ALREADY_RUNNING;
         }

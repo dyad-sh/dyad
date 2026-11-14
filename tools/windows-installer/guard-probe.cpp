@@ -22,6 +22,11 @@ int wmain(int argc, wchar_t** argv) {
     if (argc == 4 && wcscmp(argv[1], L"--inside") == 0) {
         return dyad::IsInsideInstallation(argv[2], argv[3]) ? 0 : 1;
     }
+    if (argc == 6 && wcscmp(argv[1], L"--uninspectable") == 0) {
+        return dyad::MayBlockUninspectableProcess(wcstoul(argv[2], NULL, 10) != 0,
+            wcstoul(argv[3], NULL, 10) != 0, wcstoul(argv[4], NULL, 10),
+            wcstoul(argv[5], NULL, 10)) ? 1 : 0;
+    }
     // Squirrel's install/update hooks and normal launch finish immediately.
     return 0;
 }

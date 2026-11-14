@@ -117,6 +117,7 @@ export function getSessionDebugSettings(
     enableAppBlueprint: settings.enableAppBlueprint ?? null,
     enableTestingForNewApps: settings.enableTestingForNewApps ?? null,
     enableClaudeCodeSubscription: settings.enableClaudeCodeSubscription ?? null,
+    enableClaudeCodeNativeTools: settings.enableClaudeCodeNativeTools ?? null,
     selectedTemplateId: settings.selectedTemplateId,
     selectedThemeId: settings.selectedThemeId ?? null,
     runTypeScriptForWholeProject: settings.runTypeScriptForWholeProject ?? null,

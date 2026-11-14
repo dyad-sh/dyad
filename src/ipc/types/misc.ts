@@ -171,6 +171,7 @@ export const DebugSettingsSchema = z.object({
   enableAppBlueprint: z.boolean().nullable(),
   enableTestingForNewApps: z.boolean().nullable(),
   enableClaudeCodeSubscription: z.boolean().nullable(),
+  enableClaudeCodeNativeTools: z.boolean().nullable(),
   /** Raw ID; community templates are "org/repo" */
   selectedTemplateId: z.string(),
   /** Raw ID; custom themes are "custom:<id>" */

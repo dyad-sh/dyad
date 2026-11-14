@@ -435,6 +435,16 @@ export const chatContracts = {
       detail: z.string(),
     }),
   }),
+  /** Deliver a message to a running native Claude Code turn ("Send now").
+   * `delivered: false` means no native turn can take it any more. */
+  claudeCodeSteer: defineContract({
+    channel: "claude-code:steer",
+    input: z.object({
+      chatId: z.number(),
+      text: z.string().min(1).max(MAX_CHAT_PROMPT_CHARS),
+    }),
+    output: z.object({ delivered: z.boolean() }),
+  }),
   createChat: defineContract({
     channel: "create-chat",
     input: z.union([

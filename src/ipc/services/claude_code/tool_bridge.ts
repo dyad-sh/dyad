@@ -21,6 +21,9 @@ const MAX_CANCELLATION_REASON_LENGTH = 200;
 export async function createDyadToolBridge(options: {
   tools: ToolSet;
   signal: AbortSignal;
+  /** Additional CLI MCP servers written into the same per-turn config (native
+   * turns pass Dyad-configured servers through). Never named "dyad". */
+  extraServers?: Record<string, unknown>;
   /**
    * `signal` aborts when the CLI stops waiting for this call (its MCP tool
    * timeout fired, or it cancelled the request). The turn itself stays live;
@@ -191,6 +194,11 @@ export async function createDyadToolBridge(options: {
       configPath,
       JSON.stringify({
         mcpServers: {
+          ...Object.fromEntries(
+            Object.entries(options.extraServers ?? {}).filter(
+              ([name]) => name !== "dyad",
+            ),
+          ),
           dyad: {
             type: "http",
             url: `http://127.0.0.1:${address.port}/mcp`,

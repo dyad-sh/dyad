@@ -3,6 +3,7 @@ import {
   listClaudeModels,
 } from "@/ipc/services/claude_code/runtime";
 import { getClaudeUsageLimits } from "@/ipc/services/claude_code/usage_limits";
+import { steerChat } from "@/ipc/services/claude_code/native/steer_registry";
 import { db } from "../../db";
 import { chats, messages } from "../../db/schema";
 import { desc, eq, and, like } from "drizzle-orm";
@@ -138,6 +139,10 @@ export function registerChatHandlers() {
   createTypedHandler(chatContracts.claudeCodeStatus, async (_, options) => {
     assertClaudeExperiment();
     return claudeStatus(options);
+  });
+  createTypedHandler(chatContracts.claudeCodeSteer, async (_, input) => {
+    assertClaudeExperiment();
+    return { delivered: steerChat(input.chatId, input.text) };
   });
   createTypedHandler(
     chatContracts.observeSubmissionStopPolicy,

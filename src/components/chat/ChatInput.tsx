@@ -26,6 +26,7 @@ import { useTranslation } from "react-i18next";
 import { getNpmPackagePageUrl } from "./npmPackageUrl";
 
 import { useSettings } from "@/hooks/useSettings";
+import { resolveClaudeCodeHarness } from "@/shared/claude_code_harness";
 import { useChatMessages } from "@/hooks/useChatMessages";
 import { ipc } from "@/ipc/types";
 import {
@@ -189,6 +190,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     updateQueuedMessage,
     removeQueuedMessage,
     reorderQueuedMessages,
+    sendQueuedMessageNow,
     isPaused,
     pauseQueue,
     clearPauseOnly,
@@ -335,6 +337,18 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
   const { userBudget } = useUserBudgetInfo();
   const isProEnabled = settings ? isDyadProEnabled(settings) : false;
+  // A running native Claude Code turn can take queued text messages early
+  // ("Send now"). The main process makes the final call; a message it
+  // cannot deliver is resubmitted and runs next.
+  const canSteerRunningTurn =
+    isStreaming &&
+    !!settings &&
+    resolveClaudeCodeHarness({
+      settings,
+      provider: selectedModel.provider,
+      agentMode: chatMode === "local-agent",
+      runtimeMode: settings.runtimeMode2 ?? "host",
+    }).harness === "native";
 
   const handleTranscription = useCallback(
     (text: string) => {
@@ -1035,6 +1049,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               isPaused={isPaused}
               onPauseQueue={pauseQueue}
               onResumeQueue={resumeQueue}
+              onSendNow={canSteerRunningTurn ? sendQueuedMessageNow : undefined}
             />
           )}
           {/* Show editing indicator when editing a queued message */}

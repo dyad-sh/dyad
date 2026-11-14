@@ -28,6 +28,13 @@ Supabase/Neon, image generation, chat history, integrations, …).
 | Subagents                   | **Native Task only.** Shown as nested cards; Dyad child-agent tools are not offered.                                                                                                                                        |
 | Billing                     | Same as today: Agent + Pro reports usage, including native subagent `modelUsage`. Nothing else is charged.                                                                                                                  |
 
+Delivery decisions (2026-11-13): one PR, with commits split by phase. Build for
+all platforms, including Windows; Windows CI must exercise the native-harness
+fake-CLI tests (process-tree cleanup, PowerShell/Bash tool cards). Trust auto
+mode: if the CLI never sends an approval request to Dyad, that's accepted.
+Real-CLI testing uses Haiku first and Sonnet only for the final end-to-end
+smoke runs.
+
 Defaults I picked (flag if wrong):
 
 - If auto mode isn't available for the account, use `default` mode. Edits

@@ -20,6 +20,7 @@ async function open(connected = true, fail = false, enabled = true) {
     ? vi.fn().mockRejectedValue(new Error("Could not enable subscription"))
     : vi.fn().mockResolvedValue(undefined);
   const refresh = vi.fn();
+  const nativeToolsChange = vi.fn().mockResolvedValue(undefined);
   const user = userEvent.setup();
   render(
     <QueryClientProvider client={new QueryClient()}>
@@ -32,6 +33,8 @@ async function open(connected = true, fail = false, enabled = true) {
             connected={connected}
             detail="CLI connection details"
             onRefresh={refresh}
+            nativeTools={false}
+            onNativeToolsChange={nativeToolsChange}
           />
         </DropdownMenuContent>
       </DropdownMenu>
@@ -49,7 +52,7 @@ async function open(connected = true, fail = false, enabled = true) {
     name: "Use Claude subscription",
   });
   expect(screen.getAllByText("Experimental")).toHaveLength(1);
-  return { user, refresh, enablement };
+  return { user, refresh, enablement, nativeToolsChange };
 }
 
 it.each([true, false])(
@@ -115,4 +118,26 @@ it("keeps billing explanations out of the menu body", async () => {
     screen.getByRole("button", { name: "Subscription billing details" }),
   ).toBeInTheDocument();
   expect(screen.queryByText("Use API / Pro models")).not.toBeInTheDocument();
+});
+
+it("offers the native tools toggle only while the subscription is enabled", async () => {
+  const { user, nativeToolsChange } = await open(true, false, true);
+  await user.click(
+    screen.getByRole("menuitemcheckbox", {
+      name: "Use native Claude Code tools",
+    }),
+  );
+  await waitFor(() => expect(nativeToolsChange).toHaveBeenCalledWith(true));
+  expect(
+    screen.getByText(/Includes Bash, which runs on your machine/),
+  ).toBeInTheDocument();
+});
+
+it("hides the native tools toggle while the subscription is disabled", async () => {
+  await open(true, false, false);
+  expect(
+    screen.queryByRole("menuitemcheckbox", {
+      name: "Use native Claude Code tools",
+    }),
+  ).not.toBeInTheDocument();
 });

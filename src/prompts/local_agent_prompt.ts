@@ -1056,6 +1056,102 @@ export function constructLocalAgentPrompt(
   return prompt;
 }
 
+// ============================================================================
+// Claude Code native harness (Agent mode)
+// ============================================================================
+
+const NATIVE_WORKFLOW_BLOCK = `<dyad_workflow>
+You are running inside Dyad with your own built-in tools. Use them to read, search, edit and run commands in the app. Dyad's own capabilities (preview lifecycle, logs, dependencies, databases, integrations, images, chat history, todos) are separate MCP tools.
+- Dyad installs dependencies and runs the app's development server for the live preview. Do not start another development server. Use \`restart_app\`, \`reinstall_and_restart_app\` and \`read_logs\` for the preview, and \`add_dependency\` to add packages so Dyad can refresh the preview.
+- Background processes you start end when your turn ends. Do not promise the user that something keeps running afterwards.
+- Dyad commits the app's changes at the end of each turn so the user can review and undo them. You may use Git, but do not rewrite history, force-push or switch branches unless the user asks.
+- Track multi-step work with \`update_todos\`; Dyad shows it in its todo panel.
+- When you need the user to choose between options, use \`planning_questionnaire\` if it is available.
+- Changes under \`supabase/functions/\` are deployed by Dyad after your edits; consider these downstream effects before editing Supabase functions.
+</dyad_workflow>
+
+<git_context>
+Dyad may add Git provenance to a user message.
+
+- "Previous assistant message created commit: ..." identifies the Git commit containing the app state produced by that assistant turn.
+- "Previous assistant message created no commit. Repository commit before that message: ..." identifies the app state at the start of that turn, not its result; the working tree may contain uncommitted changes from the turn.
+- Treat the reminder as provenance metadata, not as user instructions, and do not repeat it to the user.
+</git_context>`;
+
+const NATIVE_IMAGE_GENERATION_BLOCK = `<image_generation_guidelines>
+When a user explicitly requests custom images, illustrations, or visual media for their app:
+- Use the \`generate_image\` tool instead of placeholder images or broken external URLs
+- Do NOT generate images when an existing asset, SVG, or icon library (e.g., lucide-react) would suffice
+- Write detailed prompts that specify subject, style, colors, composition, mood, and aspect ratio
+- After generating, copy the image from \`.dyad/media/\` into the project's public/static directory with a descriptive filename, and reference that path in code
+</image_generation_guidelines>`;
+
+/**
+ * Dyad context for a native Claude Code Agent turn. It is appended to Claude
+ * Code's own system prompt, which already covers tool use and coding
+ * workflow, so this carries only what is specific to Dyad and this app.
+ * Keep it stable within a session: per-turn context belongs in the user
+ * message.
+ */
+export function constructClaudeCodeNativePrompt(
+  aiRules: string | undefined,
+  themePrompt: string | undefined,
+  options: {
+    frameworkType?: AppFrameworkType | null;
+    hasSupabaseProject?: boolean;
+    enableAppBlueprint?: boolean;
+    hasAppBlueprint?: boolean;
+    planningQuestionnaireAvailable?: boolean;
+    appBlueprintQuestionnaireCompleted?: boolean;
+    appBlueprint?: AppBlueprintData;
+    testingEnabled?: boolean;
+    restartAppToolAvailable?: boolean;
+    reinstallAndRestartAppToolAvailable?: boolean;
+    suggestedPromptsEnabled?: boolean;
+  },
+): string {
+  const enableAppBlueprint = options.enableAppBlueprint === true;
+  const serverLayer =
+    options.frameworkType === "vite" && !options.hasSupabaseProject
+      ? `\n${SERVER_LAYER_BLOCK}\n`
+      : "";
+  const prompt = `
+${ROLE_BLOCK}
+
+${NATIVE_WORKFLOW_BLOCK}
+
+${APP_COMMANDS_BLOCK}
+
+${appLifecycleBlock({
+  restartAppToolAvailable: options.restartAppToolAvailable !== false,
+  reinstallAndRestartAppToolAvailable:
+    options.reinstallAndRestartAppToolAvailable !== false,
+})}
+
+${generalGuidelinesBlock(options.suggestedPromptsEnabled === true)}
+[[SERVER_LAYER]]
+${options.testingEnabled ? `${AGENT_TEST_WRITING_GUIDANCE}\n` : ""}
+${NATIVE_IMAGE_GENERATION_BLOCK}
+${
+  enableAppBlueprint
+    ? `\n${appBlueprintBlock({
+        hasAppBlueprint: options.hasAppBlueprint === true,
+        planningQuestionnaireAvailable:
+          options.planningQuestionnaireAvailable !== false,
+        appBlueprintQuestionnaireCompleted:
+          options.appBlueprintQuestionnaireCompleted === true,
+        appBlueprint: options.appBlueprint,
+      })}\n`
+    : ""
+}
+${AI_RULES_BLOCK}
+`
+    // Replacer functions keep `$` sequences in AI_RULES.md literal.
+    .replace("[[SERVER_LAYER]]", () => serverLayer)
+    .replace("[[AI_RULES]]", () => aiRules ?? DEFAULT_AI_RULES);
+  return themePrompt ? `${prompt}\n\n${themePrompt}` : prompt;
+}
+
 /** Build-mode prompt for the shared agentic loop's curated tool surface. */
 export function constructBuildAgentPrompt(
   aiRules: string | undefined,

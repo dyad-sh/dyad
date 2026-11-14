@@ -484,5 +484,20 @@
     "tabList": "테스트 실행 출력",
     "noTabs": "테스트 출력 탭이 없습니다. 테스트를 실행하면 출력이 표시됩니다.",
     "noOutput": "아직 출력이 없습니다."
+  },
+  "claudeNativeTool": {
+    "runningCommand": "{{command}} 실행 중",
+    "ranCommand": "{{command}} 실행함",
+    "searching": "{{pattern}} 검색 중",
+    "searched": "{{pattern}} 검색함",
+    "searchingWeb": "웹에서 {{query}} 검색 중",
+    "searchedWeb": "웹에서 {{query}} 검색함",
+    "runningSubagent": "하위 에이전트가 {{task}} 작업 중",
+    "ranSubagent": "하위 에이전트가 {{task}} 완료함",
+    "usingTool": "{{tool}} 사용 중",
+    "usedTool": "{{tool}} 사용함",
+    "steps": "단계",
+    "compacted": "Claude Code가 대화를 압축했습니다",
+    "steered": "Claude가 작업하는 동안 보낸 메시지"
   }
 }

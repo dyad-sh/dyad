@@ -484,5 +484,20 @@
   "suggestedPrompts": {
     "label": "Prochaines étapes suggérées",
     "dismiss": "Masquer les suggestions"
+  },
+  "claudeNativeTool": {
+    "runningCommand": "Exécution de {{command}}",
+    "ranCommand": "{{command}} exécuté",
+    "searching": "Recherche de {{pattern}}",
+    "searched": "Recherche de {{pattern}} terminée",
+    "searchingWeb": "Recherche sur le web de {{query}}",
+    "searchedWeb": "Recherche sur le web de {{query}} terminée",
+    "runningSubagent": "Sous-agent en cours sur {{task}}",
+    "ranSubagent": "Sous-agent a terminé {{task}}",
+    "usingTool": "Utilisation de {{tool}}",
+    "usedTool": "{{tool}} utilisé",
+    "steps": "Étapes",
+    "compacted": "Claude Code a compacté la conversation",
+    "steered": "Vous, pendant que Claude travaillait"
   }
 }

@@ -117,6 +117,7 @@ describe("getSessionDebugSettings", () => {
         "enableAutoReview",
         "enableAutoUpdate",
         "enableChatEventNotifications",
+        "enableClaudeCodeNativeTools",
         "enableClaudeCodeSubscription",
         "enableCodeExplorer",
         "enableContextCompaction",

@@ -285,7 +285,7 @@ export function EditCustomModelDialog({
                 />
                 <p className="text-xs text-muted-foreground">
                   Comma-separated; the first is the default. Leave empty to use
-                  Dyad's defaults (low, medium, high).
+                  this provider's default effort levels.
                 </p>
               </div>
             </div>

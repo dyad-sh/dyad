@@ -71,7 +71,7 @@ When reviewing untrusted PR text in a credentialed process, disabling shell tool
 
 ## Proxy authentication and diagnostics
 
-- On native Windows, the full action's bundled shell installer fails with "Windows is not supported by this script." Install a pinned CLI with the PowerShell installer, verify its version, and pass the absolute `claude.exe` path via `path_to_claude_code_executable` to skip that installer.
+- On native Windows, the full action's bundled shell installer fails with "Windows is not supported by this script." Install a pinned CLI with the PowerShell installer, verify its version, and pass the absolute `claude.exe` path via `path_to_claude_code_executable` to skip that installer. Set `DISABLE_AUTOUPDATER=1` for installation and review so the native CLI stays pinned. This workflow trusts the vendor-maintained HTTPS bootstrap script; only the CLI version is pinned.
 
 - A GitHub debug rerun does not enable the actions' `show_full_output` input. When a run reports `is_error: true` without its underlying error, temporarily enable that input to expose Claude's response; full output includes tool results and is visible in public Actions logs.
 

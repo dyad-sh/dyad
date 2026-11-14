@@ -39,6 +39,8 @@ jobs:
       contents: read
       pull-requests: read
     env:
+      # Keep the native CLI pinned during installation and review.
+      DISABLE_AUTOUPDATER: "1"
       REVIEW_SOURCE_PATH: tmp/windows-pr-review/source
       REVIEW_CONTEXT_PATH: tmp/windows-pr-review/windows-context.json
       REVIEW_PROMPT_PATH: tmp/windows-pr-review/windows-prompt.txt
@@ -127,6 +129,8 @@ jobs:
       - name: Install Claude Code for Windows
         id: claude-cli
         shell: pwsh
+        # Trust Anthropic's HTTPS installer endpoint; the CLI version is pinned,
+        # but the vendor-maintained bootstrap script intentionally is not.
         run: |
           & ([scriptblock]::Create((Invoke-RestMethod https://claude.ai/install.ps1))) 2.1.280
           $claudeExe = Join-Path $env:USERPROFILE '.local\bin\claude.exe'

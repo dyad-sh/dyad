@@ -159,7 +159,7 @@ describe("screenshot clipboard handoff", () => {
           {},
           { captureId: id },
         ),
-      ).rejects.toThrow("clipboard denied");
+      ).resolves.toEqual({ copied: false, retained: true });
       expect(getCapture(id)).toBe(image);
     } finally {
       discardCapture(id);

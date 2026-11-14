@@ -182,6 +182,7 @@
     "sessionUploadFailed": "채팅 세션을 업로드하지 못했습니다. 세션 없이 신고서를 제출합니다.",
     "systemInfoFailed": "시스템 정보를 포함하지 못했습니다. 해당 정보 없이 신고서를 제출합니다.",
     "screenshotRestoreFailed": "스크린샷을 복원하지 못했습니다. 스크린샷 없이 신고서를 제출합니다.",
+    "screenshotClipboardRetry": "스크린샷을 복사하지 못했습니다. 다시 시도하거나 스크린샷을 제거하고 이미지 없이 신고서를 제출하세요.",
     "screenshotDropped": "스크린샷을 더 이상 복원할 수 없어 이 신고서에서 제거했습니다.",
     "screenshotUploadFailed": "스크린샷을 첨부하지 못했습니다. 대신 이슈에 붙여넣을 수 있도록 Dyad가 클립보드에 복사해 둡니다.",
     "filingFailed": "신고서를 제출하는 중 문제가 발생했습니다. 다시 시도해 주세요.",

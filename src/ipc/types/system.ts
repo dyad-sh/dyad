@@ -516,7 +516,7 @@ export const systemContracts = {
     // Names the capture to restore. Two reports can be open at once, and the
     // reporter must never be handed another report's screenshot to paste.
     input: z.object({ captureId: z.string().min(1) }),
-    output: z.object({ copied: z.boolean() }),
+    output: z.object({ copied: z.boolean(), retained: z.boolean().optional() }),
   }),
 
   takeScreenshot: defineContract({

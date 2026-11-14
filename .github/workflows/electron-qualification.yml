@@ -1,0 +1,90 @@
+name: Electron release-platform qualification
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - package.json
+      - package-lock.json
+      - forge.config.ts
+      - makers/**
+      - scripts/hydrate-electron.mjs
+      - e2e-tests/electron_packaging.spec.ts
+      - e2e-tests/helpers/packaged-native-probe.cjs
+      - .github/workflows/electron-qualification.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: electron-qualification-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  qualify:
+    name: Qualify ${{ matrix.target.name }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - { name: macos-arm64, image: macos-latest }
+          - { name: macos-x64, image: macos-26-intel }
+          - { name: windows-x64, image: windows-2022 }
+          - { name: linux-x64, image: ubuntu-22.04 }
+    runs-on: ${{ matrix.target.image }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: v24.13.1
+          package-manager-cache: false
+      - run: npm install -g npm@11.8.0
+      - run: npm ci
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - name: Linux release toolchain and display
+        if: runner.os == 'Linux'
+        run: |
+          sudo install -d -m 0755 /etc/apt/keyrings
+          wget -qO /tmp/llvm-snapshot.gpg.key https://apt.llvm.org/llvm-snapshot.gpg.key
+          gpg --dearmor /tmp/llvm-snapshot.gpg.key
+          sudo install -m 0644 /tmp/llvm-snapshot.gpg.key.gpg /etc/apt/keyrings/apt.llvm.org.gpg
+          echo "deb [signed-by=/etc/apt/keyrings/apt.llvm.org.gpg] https://apt.llvm.org/jammy/ llvm-toolchain-jammy-18 main" | sudo tee /etc/apt/sources.list.d/llvm-toolchain-jammy-18.list
+          sudo apt-get update
+          sudo apt-get install -y clang-18 rpm squashfs-tools xvfb libgtk-3-0 libnss3 libasound2 libgbm1
+          echo "CC=clang-18" >> "$GITHUB_ENV"
+          echo "CXX=clang++-18" >> "$GITHUB_ENV"
+      - name: Build unsigned release formats
+        run: npm run make
+        env:
+          E2E_TEST_BUILD: "true"
+          NODE_OPTIONS: --max-old-space-size=6144
+      - name: Prepare test server
+        run: npm --prefix testing/fake-llm-server ci
+      - name: Exercise packaged natives, GitHub transport, and screenshot recovery
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            xvfb-run -a npm run e2e -- e2e-tests/electron_packaging.spec.ts e2e-tests/github_device_transport.spec.ts e2e-tests/bug_report_screenshot.spec.ts
+          else
+            npm run e2e -- e2e-tests/electron_packaging.spec.ts e2e-tests/github_device_transport.spec.ts e2e-tests/bug_report_screenshot.spec.ts
+          fi
+        env:
+          PLAYWRIGHT_PARALLELISM: "1"
+          PLAYWRIGHT_RETRIES: "0"
+      - name: Save qualification evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: electron-qualification-${{ matrix.target.name }}
+          path: |
+            out/make/
+            blob-report/
+            test-results/
+          retention-days: 3

@@ -32,9 +32,15 @@ test("real Claude subscription with native tools: Bash, Edit, cards, preview, co
     "Use your Bash tool to run exactly: echo native-e2e > native-e2e.txt\nThen use your Edit tool to replace the text Minimal imported app with Native harness preview in src/App.tsx. Do not edit other files. Reply with the single word done.",
     { timeout: 180_000 },
   );
-  const lastResponse = po.page.locator(".justify-start").last();
   // Native tool calls show as Dyad cards in the response.
-  await expect(lastResponse.getByText(/^Ran /).first()).toBeVisible();
+  await expect(
+    po.page.getByRole("button", { name: /^Ran / }).first(),
+  ).toBeVisible();
+  await expect(
+    po.page.getByRole("button", { name: /Search & Replace .*App\.tsx/ }),
+  ).toBeVisible();
+  // Dyad committed both changes as one version.
+  await expect(po.page.getByText("(2 files changed)")).toBeVisible();
   await expect(
     po.page
       .frameLocator("iframe")

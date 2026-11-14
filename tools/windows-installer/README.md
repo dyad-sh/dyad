@@ -6,8 +6,8 @@ still loaded, and concurrent Setup processes share an extraction directory.
 See [#4303](https://github.com/dyad-sh/dyad/issues/4303).
 
 Forge's `preMake` hook rebuilds **only the native Setup bootstrap** from upstream
-commit `eef37460aef77b2f9de8cd2237c1e55b344a6554`. The source archive's SHA-256 is
-checked before extraction. `prepare-vendor.cjs` inserts our guard immediately
+commit `eef37460aef77b2f9de8cd2237c1e55b344a6554`. Git fetches that exact commit,
+and its identity is checked before patching. `prepare-vendor.cjs` inserts our guard immediately
 before `ExtractUpdaterAndRun`, after Squirrel's administrator-to-user handoff.
 The guard holds a per-user mutex across extraction, the updater process, and
 cleanup. It refuses to proceed if a process runs from the target installation,

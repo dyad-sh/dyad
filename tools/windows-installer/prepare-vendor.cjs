@@ -1,4 +1,3 @@
-const { createHash } = require("node:crypto");
 const { execFileSync } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
@@ -6,8 +5,6 @@ const path = require("node:path");
 
 // Same source revision as electron-winstaller 5.4.0's Squirrel 2.0.1 binaries.
 const revision = "eef37460aef77b2f9de8cd2237c1e55b344a6554";
-const archiveSha256 =
-  "ba2d871033a2e45e4cb39e8c754a8f8f65fb932474c11dc549c45eca65bb99ab";
 const squirrelVendorDirectory = path.resolve(
   __dirname,
   "../../.cache/squirrel-vendor",
@@ -67,29 +64,28 @@ async function prepareSquirrelVendor() {
   }
   const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "dyad-squirrel-"));
   try {
-    const response = await fetch(
-      `https://codeload.github.com/Squirrel/Squirrel.Windows/tar.gz/${revision}`,
-      {
-        signal: AbortSignal.timeout(120_000),
-      },
-    );
-    if (!response.ok)
-      throw new Error(
-        `Squirrel source download failed: HTTP ${response.status}`,
-      );
-    const archive = Buffer.from(await response.arrayBuffer());
-    if (createHash("sha256").update(archive).digest("hex") !== archiveSha256) {
-      throw new Error("Squirrel source archive checksum mismatch");
-    }
-    const archivePath = path.join(temporary, "source.tar.gz");
     const source = path.join(temporary, "source");
-    fs.writeFileSync(archivePath, archive);
-    fs.mkdirSync(source);
-    execFileSync(
-      "tar.exe",
-      ["-xf", archivePath, "-C", source, "--strip-components=1"],
-      { stdio: "inherit" },
-    );
+    const git = (args, capture = false) =>
+      execFileSync("git.exe", args, {
+        stdio: capture ? "pipe" : "inherit",
+        encoding: "utf8",
+        timeout: 120_000,
+      });
+    // Pin Git's source-content identity instead of generated archive bytes.
+    git(["init", "--quiet", source]);
+    git([
+      "-C",
+      source,
+      "remote",
+      "add",
+      "origin",
+      "https://github.com/Squirrel/Squirrel.Windows.git",
+    ]);
+    git(["-C", source, "fetch", "--depth=1", "origin", revision]);
+    git(["-C", source, "checkout", "--detach", "FETCH_HEAD"]);
+    if (git(["-C", source, "rev-parse", "HEAD"], true).trim() !== revision) {
+      throw new Error("Unexpected Squirrel source revision");
+    }
     const setup = path.join(source, "src/Setup");
     const entry = path.join(setup, "winmain.cpp");
     fs.writeFileSync(entry, patchSetup(fs.readFileSync(entry, "utf8")));

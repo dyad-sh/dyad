@@ -171,7 +171,14 @@ test(
         t.after(async () => {
           // Stop the fixture before removing its executable even if an assertion fails.
           if (runningApp) await stopChild(runningApp);
-          await fs.rm(installRoot, { recursive: true, force: true });
+          // Squirrel can briefly keep its self-update executable mapped after
+          // Setup exits. Retry Windows sharing violations during fixture teardown.
+          await fs.rm(installRoot, {
+            recursive: true,
+            force: true,
+            maxRetries: 20,
+            retryDelay: 100,
+          });
         });
         const installedExe = path.join(installRoot, "dyad.exe");
         await fs.copyFile(probe, installedExe);

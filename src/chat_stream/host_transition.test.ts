@@ -3,6 +3,7 @@ import {
   initialChatStreamHostState,
   transitionChatStreamHost,
 } from "./host_transition";
+import { validateTransitionResult } from "@/state_machines/transition_validation";
 import type { SerializableChatTurnIntent } from "./transport";
 import {
   canCancelActiveChatStreamPhase,
@@ -25,6 +26,28 @@ function intent(intentId: string): SerializableChatTurnIntent {
 }
 
 describe("transitionChatStreamHost", () => {
+  it("keeps the same state for a queue mutation that changes nothing", () => {
+    const started = transitionChatStreamHost(initialChatStreamHostState(), {
+      type: "SUBMIT",
+      intent: intent("first"),
+    });
+    if (started.kind !== "applied") throw new Error("expected applied");
+    const event = {
+      type: "QUEUE_MUTATED" as const,
+      queueRevision: started.state.queueRevision,
+      paused: false,
+      entries: [],
+    };
+
+    const result = transitionChatStreamHost(started.state, event);
+
+    expect(result.state).toBe(started.state);
+    expect(result.kind === "applied" && result.commands).toEqual([]);
+    expect(() =>
+      validateTransitionResult(started.state, event, result),
+    ).not.toThrow();
+  });
+
   it("keeps the active turn authoritative while a second submission queues", () => {
     const first = transitionChatStreamHost(initialChatStreamHostState(), {
       type: "SUBMIT",

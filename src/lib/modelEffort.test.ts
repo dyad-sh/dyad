@@ -4,10 +4,84 @@ import {
   createModelSelection,
   formatCompactEffortLevel,
   formatEffortLevel,
+  formatEffortLevelsInput,
   getEffortSettings,
   getModelPreferenceKey,
+  parseEffortLevelsInput,
   resolveEffortLevel,
 } from "./modelEffort";
+
+describe("custom model effort levels input", () => {
+  it("parses comma-separated levels with the first as the default", () => {
+    const settings = parseEffortLevelsInput(" xhigh, medium ,low,, medium ");
+    expect(settings).toEqual({
+      defaultEffortLevel: "xhigh",
+      possibleEffortLevels: ["xhigh", "medium", "low"],
+    });
+    expect(EffortSettingsSchema.safeParse(settings).success).toBe(true);
+  });
+
+  it("de-duplicates levels case-insensitively, keeping the first spelling", () => {
+    expect(parseEffortLevelsInput("High, high, Medium")).toEqual({
+      defaultEffortLevel: "High",
+      possibleEffortLevels: ["High", "Medium"],
+    });
+  });
+
+  it("keeps the previous settings unchanged when the text was not edited", () => {
+    const previous = {
+      defaultEffortLevel: "medium",
+      possibleEffortLevels: ["low", "medium", "high"],
+    };
+    // Displayed as "medium, low, high"; saving untouched must not reorder or
+    // move the default.
+    expect(
+      parseEffortLevelsInput(formatEffortLevelsInput(previous), previous),
+    ).toBe(previous);
+    // Once edited, the text is authoritative again.
+    expect(parseEffortLevelsInput("low, medium", previous)).toEqual({
+      defaultEffortLevel: "low",
+      possibleEffortLevels: ["low", "medium"],
+    });
+  });
+
+  it("treats empty input as unset so Dyad's defaults apply", () => {
+    expect(parseEffortLevelsInput("")).toBeUndefined();
+    expect(parseEffortLevelsInput(" , ,")).toBeUndefined();
+  });
+
+  it("formats with the default level first and round-trips", () => {
+    const settings = {
+      defaultEffortLevel: "medium",
+      possibleEffortLevels: ["low", "medium", "xhigh"],
+    };
+    expect(formatEffortLevelsInput(settings)).toBe("medium, low, xhigh");
+    expect(formatEffortLevelsInput(undefined)).toBe("");
+    expect(parseEffortLevelsInput(formatEffortLevelsInput(settings))).toEqual({
+      defaultEffortLevel: "medium",
+      possibleEffortLevels: ["medium", "low", "xhigh"],
+    });
+  });
+
+  it("drives the picker's levels and default for a custom model", () => {
+    const model = {
+      apiName: "my-model",
+      displayName: "My Model",
+      type: "custom" as const,
+      effortSettings: parseEffortLevelsInput("xhigh, medium, low"),
+    };
+    expect(getEffortSettings(model).possibleEffortLevels).toEqual([
+      "xhigh",
+      "medium",
+      "low",
+    ]);
+    expect(resolveEffortLevel({ catalogModel: model })).toBe("xhigh");
+    // A stale "high" preference (not offered by this model) falls back to the default.
+    expect(
+      resolveEffortLevel({ catalogModel: model, preferredEffortLevel: "high" }),
+    ).toBe("xhigh");
+  });
+});
 
 describe("model effort", () => {
   it("uses medium and low/medium/high when catalog settings are absent", () => {

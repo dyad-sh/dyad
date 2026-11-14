@@ -1,0 +1,1 @@
+ALTER TABLE `language_models` ADD `effort_settings` text;

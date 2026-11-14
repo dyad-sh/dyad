@@ -5,6 +5,7 @@ import type {
   CreateCustomLanguageModelParams,
 } from "@/ipc/types";
 import { languageModelContracts } from "@/ipc/types";
+import { EffortSettingsSchema } from "@/ipc/types/language-model";
 import { createLoggedHandler } from "./safe_handle";
 import { createLoggedTypedHandler } from "./base";
 import log from "electron-log";
@@ -113,6 +114,7 @@ export function registerLanguageModelHandlers() {
         description,
         maxOutputTokens,
         contextWindow,
+        effortSettings,
       } = params;
 
       // Validation
@@ -131,6 +133,16 @@ export function registerLanguageModelHandlers() {
       if (!providerId) {
         throw new DyadError(
           "Provider ID is required",
+          DyadErrorKind.Validation,
+        );
+      }
+
+      if (
+        effortSettings &&
+        !EffortSettingsSchema.safeParse(effortSettings).success
+      ) {
+        throw new DyadError(
+          "Invalid effort settings",
           DyadErrorKind.Validation,
         );
       }
@@ -156,6 +168,7 @@ export function registerLanguageModelHandlers() {
           description: description || null,
           max_output_tokens: maxOutputTokens || null,
           context_window: contextWindow || null,
+          effort_settings: effortSettings ?? null,
         })
         .run();
       return Number(result.lastInsertRowid);
@@ -173,6 +186,7 @@ export function registerLanguageModelHandlers() {
         description,
         maxOutputTokens,
         contextWindow,
+        effortSettings,
       } = params;
 
       if (!apiName) {
@@ -219,6 +233,9 @@ export function registerLanguageModelHandlers() {
           description: description || null,
           max_output_tokens: maxOutputTokens || null,
           context_window: contextWindow || null,
+          ...(effortSettings !== undefined && {
+            effort_settings: effortSettings,
+          }),
           updatedAt: new Date(),
         })
         .where(

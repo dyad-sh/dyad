@@ -4,6 +4,7 @@ import {
   language_models as languageModelsSchema,
 } from "@/db/schema";
 import type { LanguageModelProvider, LanguageModel } from "@/ipc/types";
+import { EffortSettingsSchema } from "@/ipc/types/language-model";
 import { eq } from "drizzle-orm";
 import log from "electron-log";
 import {
@@ -117,6 +118,7 @@ export async function getLanguageModels({
         description: languageModelsSchema.description,
         maxOutputTokens: languageModelsSchema.max_output_tokens,
         contextWindow: languageModelsSchema.context_window,
+        effortSettings: languageModelsSchema.effort_settings,
       })
       .from(languageModelsSchema)
       .where(
@@ -131,6 +133,8 @@ export async function getLanguageModels({
       tag: undefined,
       maxOutputTokens: model.maxOutputTokens ?? undefined,
       contextWindow: model.contextWindow ?? undefined,
+      // null (unset) or a malformed stored value falls back to Dyad's defaults.
+      effortSettings: EffortSettingsSchema.safeParse(model.effortSettings).data,
       type: "custom",
     }));
   } catch (error) {

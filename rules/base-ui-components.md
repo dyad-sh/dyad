@@ -55,6 +55,9 @@ restore focus with `{ preventScroll: true }`.
 
 ## TooltipTrigger render prop
 
+Base UI tooltip popups have no `role="tooltip"`. In renderer tests, hover the
+real trigger and use `findByText` for the explanation instead of `findByRole`.
+
 `TooltipTrigger` from `@base-ui/react/tooltip` (wrapped in `src/components/ui/tooltip.tsx`) renders a `<button>` by default. Wrapping another button-like element (`<button>`, `<Button>`, `<DropdownMenuTrigger>`, `<PopoverTrigger>`, `<MiniSelectTrigger>`, `<ToggleGroupItem>`) inside it creates invalid nested `<button>` HTML. Use the `render` prop instead:
 
 ```tsx

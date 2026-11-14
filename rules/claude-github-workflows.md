@@ -71,6 +71,8 @@ When reviewing untrusted PR text in a credentialed process, disabling shell tool
 
 ## Proxy authentication and diagnostics
 
+- On native Windows, the full action's bundled shell installer fails with "Windows is not supported by this script." Install a pinned CLI with the PowerShell installer, verify its version, and pass the absolute `claude.exe` path via `path_to_claude_code_executable` to skip that installer. Set `DISABLE_AUTOUPDATER=1` for installation and review so the native CLI stays pinned. This workflow trusts the vendor-maintained HTTPS bootstrap script; only the CLI version is pinned.
+
 - A GitHub debug rerun does not enable the actions' `show_full_output` input. When a run reports `is_error: true` without its underlying error, temporarily enable that input to expose Claude's response; full output includes tool results and is visible in public Actions logs.
 
 - All Claude workflow jobs use `claude-opus-5-5`, connect to Tailscale with `tag:gha-dyad` and route Claude requests to `http://100.73.172.24:8081` using `secrets.UNDERCLASS_KEY` for the `anthropic_api_key` input. Keep `ANTHROPIC_BASE_URL` scoped to the Claude step and Tailscale credentials scoped to the connection step; the separate GitHub mutation jobs do not need tailnet access. Full-output logging is off by default. Use an Opus 5.5-compatible CLI pin (the full action bundles 2.1.280; the base action bundles 2.1.300), not the older 2.1.216/2.1.219 pins.

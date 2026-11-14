@@ -1,5 +1,4 @@
-import { Readable } from "node:stream";
-import fetch from "node-fetch";
+import fetch from "@/ipc/utils/native_fetch";
 import { z } from "zod";
 
 export const UserInfoResponseSchema = z.object({
@@ -36,7 +35,7 @@ export async function fetchUserInfo(
     },
   );
   if (!response.ok) {
-    if (response.body instanceof Readable) response.body.destroy();
+    await response.body?.cancel().catch(() => {});
     throw new UserInfoApiError(response.status);
   }
   return UserInfoResponseSchema.parse(await response.json());

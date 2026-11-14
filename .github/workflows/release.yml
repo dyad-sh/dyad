@@ -153,7 +153,10 @@ jobs:
           command: npm run publish -- --dry-run
         env:
           DEBUG: "@electron/*,electron-forge:*,electron-osx-sign*,electron-notarize*,electron-windows-installer:main,electron-windows-sign"
-          NODE_OPTIONS: "--max-old-space-size=4096"
+          # Headroom for source maps: Forge builds the main and renderer bundles
+          # concurrently in one process, and with maps the build peaks at ~4.3 GB
+          # RSS under a 4 GB cap in CI, which is close to running out of memory.
+          NODE_OPTIONS: "--max-old-space-size=6144"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -162,6 +165,18 @@ jobs:
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           WINDOWS_SIGN: ${{ contains(matrix.os.name, 'windows') && 'true' || '' }}
+          # Tag bundles with chunk IDs and move their source maps out of the app
+          # (src/lib/posthog_sourcemaps.ts); upload-sourcemaps uploads them.
+          POSTHOG_UPLOAD_SOURCEMAPS: "true"
+          POSTHOG_SOURCEMAPS_DIR: ${{ runner.temp }}/posthog-sourcemaps
+
+      - name: Upload source maps artifact
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: posthog-sourcemaps-${{ matrix.os.name }}
+          path: ${{ runner.temp }}/posthog-sourcemaps/
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Generate release provenance manifest
         env:
@@ -181,9 +196,63 @@ jobs:
           path: out/
           retention-days: 1
 
+  # Uploads source maps to PostHog error tracking, in a job without the signing
+  # credentials: posthog-cli only ever sees the maps and the PostHog key.
+  upload-sourcemaps:
+    name: Upload source maps to PostHog
+    needs: [prepare-release, build]
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Download source maps
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          path: ${{ runner.temp }}/sourcemaps
+          pattern: posthog-sourcemaps-*
+
+      - name: Install posthog-cli
+        # Verify the archive before extracting it. When bumping the version,
+        # update the hash from the release's .sha256 file.
+        env:
+          VERSION: "0.18.12"
+          SHA256: 313458fd8caf7adec1d15e59b2a1abcc2e9ff52a00e54cad181ec052daa50b25
+        run: |
+          cd "$RUNNER_TEMP"
+          curl -fsSL -o posthog-cli.tar.gz \
+            "https://github.com/PostHog/posthog/releases/download/posthog-cli%2Fv${VERSION}/posthog-cli-x86_64-unknown-linux-gnu.tar.gz"
+          echo "${SHA256}  posthog-cli.tar.gz" | sha256sum -c -
+          tar -xzf posthog-cli.tar.gz --strip-components=1 posthog-cli-x86_64-unknown-linux-gnu/posthog-cli
+
+      - name: Upload source maps
+        # Chunk IDs are content hashes, so maps shared across platforms, or
+        # already uploaded by an earlier run of this release, are skipped.
+        # Symbol sets are never deleted, so older releases keep resolving.
+        env:
+          POSTHOG_CLI_API_KEY: ${{ secrets.POSTHOG_SOURCEMAP_API_KEY }}
+          POSTHOG_CLI_PROJECT_ID: ${{ vars.POSTHOG_PROJECT_ID }}
+          POSTHOG_CLI_HOST: "https://us.posthog.com"
+          RELEASE_VERSION: ${{ needs.prepare-release.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -z "$POSTHOG_CLI_API_KEY" ] || [ -z "$POSTHOG_CLI_PROJECT_ID" ]; then
+            echo "::error::Set the POSTHOG_SOURCEMAP_API_KEY secret and POSTHOG_PROJECT_ID variable at repository level. This job does not use the release environment." >&2
+            exit 1
+          fi
+          shopt -s nullglob
+          dirs=("$RUNNER_TEMP"/sourcemaps/posthog-sourcemaps-*/*/)
+          if [ "${#dirs[@]}" -eq 0 ]; then
+            echo "No source maps were staged by the build jobs" >&2
+            exit 1
+          fi
+          for dir in "${dirs[@]}"; do
+            echo "Uploading $dir"
+            "$RUNNER_TEMP/posthog-cli" sourcemap upload --directory "$dir" \
+              --release-name dyad --release-version "$RELEASE_VERSION"
+          done
+
   publish:
     name: Publish Release
-    needs: [prepare-release, build]
+    needs: [prepare-release, build, upload-sourcemaps]
     runs-on: ubuntu-latest
     permissions:
       contents: write

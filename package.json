@@ -1,6 +1,6 @@
 {
   "name": "dyad",
-  "version": "1.23.0-beta.1",
+  "version": "1.24.0-beta.1",
   "description": "Free, local, open-source AI app builder",
   "keywords": [],
   "license": "MIT",
@@ -187,7 +187,6 @@
     "@types/glob": "^8.1.0",
     "@types/kill-port": "^2.0.3",
     "@types/node": "^22.20.1",
-    "@types/node-fetch": "^2.6.13",
     "@types/pg": "^8.20.0",
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",

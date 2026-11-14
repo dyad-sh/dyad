@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import { streamText } from "ai";
 import { MockLanguageModelV3, simulateReadableStream } from "ai/test";
 import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
-import { fastTextOutput } from "./stream_text_utils";
+import {
+  computeAnchoredStreamingPatch,
+  fastTextOutput,
+} from "./stream_text_utils";
+import { hashPrefix } from "@/lib/prefixHash";
 
 describe("fastTextOutput", () => {
   it("returns the text length (a number) as the partial output", async () => {
@@ -82,5 +86,31 @@ describe("fastTextOutput", () => {
     // One delta per input chunk = incremental, not batched at the end.
     expect(deltas).toEqual(["Hello ", "world", "!"]);
     await expect(result.text).resolves.toBe("Hello world!");
+  });
+});
+
+describe("computeAnchoredStreamingPatch", () => {
+  it("sends the whole content when anchored at zero", () => {
+    expect(computeAnchoredStreamingPatch("abc", 0)).toEqual({
+      offset: 0,
+      content: "abc",
+      prefixHash: undefined,
+    });
+  });
+
+  it("applies to any base that shares the saved prefix", () => {
+    const saved = "saved response";
+    const preview = `${saved}\n<dyad-compaction>summary</dyad-compaction>`;
+    const patch = computeAnchoredStreamingPatch(preview, saved.length);
+
+    expect(patch.offset).toBe(saved.length);
+    expect(patch.prefixHash).toBe(hashPrefix(saved, saved.length));
+    // A base holding only the saved text and one holding an older preview
+    // both rebuild the same content.
+    const olderPreview = `${saved}\n<dyad-compaction>sum</dyad-compaction>`;
+    for (const base of [saved, olderPreview]) {
+      expect(hashPrefix(base, patch.offset)).toBe(patch.prefixHash);
+      expect(base.slice(0, patch.offset) + patch.content).toBe(preview);
+    }
   });
 });

@@ -63,20 +63,11 @@ DYAD_E2E_GITHUB_ELECTRON_EXECUTABLE=/absolute/path/to/electron npm run e2e -- e2
 
 The selectable-runtime test bundles the actual production helper and consumes device/pending/token responses in a real Electron main process without loading app native modules. The other test always uses the current packaged application and real renderer-to-main IPC. These fixtures intentionally use loopback HTTP; the live reproduction separately checked GitHub HTTPS. Signed builds, system proxies and corporate TLS still belong to runtime qualification.
 
-#### Remaining node-fetch transport inventory
+#### Node fetch migration status
 
-Production imports under `src/` after the GitHub migration:
+All six remaining production consumers now use Node's built-in fetch through `native_fetch.ts`: subscription status, free-model quotas, account usage, signed uploads, server-time HEAD checks, and release-note HEAD checks. The helper omits credentials, disables caching, and normalizes Buffer upload bodies to a web-compatible byte array. Account-usage errors and status-only uploads cancel unread response bodies instead of relying on Node Readable destruction.
 
-| Consumer                          | Request/body consumption                                                          | Follow-up                                                                                                                     |
-| --------------------------------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `pro_handlers.ts`                 | Subscription status GET with bearer auth; JSON body                               | Compressed body exposure; migrate and verify null/error behavior separately                                                   |
-| `free_model_quota_handlers.ts`    | Engine quota GET with bearer auth; JSON success and text error bodies             | Compressed body exposure on both paths; preserve validation and auth classification                                           |
-| `services/user_budget_service.ts` | Account usage GET with bearer auth; JSON body; 10s timeout and redirect rejection | Compressed body exposure; preserve cancellation and replace Node Readable destruction deliberately when migrating             |
-| `upload_handlers.ts`              | Signed PUT, string or Buffer payload, abort/timeout; response status only         | No response-body consumption at present; verify signed headers, cancellation, memory and upload-body compatibility separately |
-| `free_agent_quota_handlers.ts`    | HEAD health check; reads Date header                                              | No response-body consumption; preserve server-time fallback and timeout                                                       |
-| `release_note_handlers.ts`        | HEAD existence check; reads status only                                           | No response-body consumption; lower priority for this specific failure                                                        |
-
-No production node-fetch multipart/FormData or streaming upload body was found in this inventory. `user_budget_service.ts` does depend on Node Readable for response cleanup. Keep node-fetch installed transitively for these remaining consumers; do not remove or globally alias it as part of the GitHub fix. Separate migrations should carry their own compressed-response and transport-semantics tests.
+Regression coverage exercises actual gzip/chunked response bytes, quota authentication/error classification, account redirects, signed PUT byte preservation, HEAD Date headers, cancellation and timeout signals. Existing subscription-preflight and upload-handler tests retain their behavior checks using native Response fixtures. Application code and tests no longer import node-fetch; Forge and other third-party dependencies may still install their own copies.
 
 ### macOS Keychain identity and secret loss
 

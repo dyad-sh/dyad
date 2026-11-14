@@ -32,6 +32,7 @@ import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { eq } from "drizzle-orm";
 
 import { apps, chats } from "@/db/schema";
+import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import { writeSettings } from "@/main/settings";
 import {
   setupHybridChatHarness,
@@ -503,4 +504,65 @@ describe("Neon branch actions (integration)", () => {
     row = await appRow(app.appId);
     expect(row?.neonActiveBranchId).toBe("test-development-branch-id");
   }, 90_000);
+
+  it("classifies getProject failures instead of rethrowing the raw Neon SDK error", async () => {
+    const app = await createApp("get-project-errors");
+    await harness.db
+      .update(apps)
+      .set({ neonProjectId: "test-project-id" })
+      .where(eq(apps.id, app.appId));
+    connectNeonAccount();
+    // Shaped like the AxiosError the Neon SDK throws, including the request
+    // config that carries the access token.
+    const sdkError = (status: number) =>
+      Object.assign(new Error(`Request failed with status code ${status}`), {
+        name: "AxiosError",
+        config: {
+          headers: { Authorization: "Bearer fake-neon-access-token" },
+        },
+        response: { status, data: { message: "neon detail" } },
+      });
+    const client = await neonManagement.getNeonClient();
+    const mockClient = vi
+      .spyOn(neonManagement, "getNeonClient")
+      .mockResolvedValue(
+        Object.assign(client, {
+          getProject: vi
+            .fn()
+            .mockRejectedValueOnce(sdkError(401))
+            .mockRejectedValueOnce(sdkError(500)),
+        }),
+      );
+    const failure = (appId: number) =>
+      ipc.neon.getProject({ appId }).then(
+        () => {
+          throw new Error("expected getProject to fail");
+        },
+        (error: unknown) => error,
+      );
+    try {
+      // Rejected credentials: the user must reconnect Neon.
+      const unauthorized = await failure(app.appId);
+      expect(isDyadError(unauthorized)).toBe(true);
+      expect((unauthorized as DyadError).kind).toBe(DyadErrorKind.Auth);
+      expect((unauthorized as Error).message).toContain(
+        "Request failed with status code 401 neon detail",
+      );
+      expect((unauthorized as Error).message).not.toContain(
+        "fake-neon-access-token",
+      );
+
+      // Any other provider failure is an upstream error.
+      const serverError = await failure(app.appId);
+      expect(isDyadError(serverError)).toBe(true);
+      expect((serverError as DyadError).kind).toBe(DyadErrorKind.External);
+
+      // Errors that are already classified keep their kind.
+      const missingApp = await failure(999_999);
+      expect(isDyadError(missingApp)).toBe(true);
+      expect((missingApp as DyadError).kind).toBe(DyadErrorKind.NotFound);
+    } finally {
+      mockClient.mockRestore();
+    }
+  });
 });

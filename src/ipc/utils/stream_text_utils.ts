@@ -73,6 +73,22 @@ export function computeStreamingPatch(
 }
 
 /**
+ * Builds a patch that replaces everything after the first `offset`
+ * characters of `content`. Use it when the receiver is known to already have
+ * that prefix, for example because it is saved in the database.
+ */
+export function computeAnchoredStreamingPatch(
+  content: string,
+  offset: number,
+): StreamingPatch {
+  return {
+    offset,
+    content: content.slice(offset),
+    prefixHash: offset > 0 ? hashPrefix(content, offset) : undefined,
+  };
+}
+
+/**
  * Cancel the orphaned `baseStream` tee branch the AI SDK leaves behind
  * after `.fullStream` is read.
  *

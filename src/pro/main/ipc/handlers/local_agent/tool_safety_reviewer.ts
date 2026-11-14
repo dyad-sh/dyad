@@ -4,6 +4,7 @@ import log from "electron-log";
 import { getModelClient } from "@/ipc/utils/get_model_client";
 import { fastTextOutput } from "@/ipc/utils/stream_text_utils";
 import { extractJson } from "@/ipc/utils/extract_json";
+import { cleanMessage } from "@/ipc/utils/ai_messages_utils";
 import type { UserSettings } from "@/lib/schemas";
 import { getAuxiliarySettings } from "@/lib/auxiliaryModel";
 
@@ -72,6 +73,11 @@ export async function reviewToolAction<D extends "ask" | "block">({
       );
       controller.signal.throwIfAborted();
       state.phase = "generation";
+      // streamText reports a failed follow-up request only through onError
+      // and still resolves with the steps completed before it, so record the
+      // failure instead of parsing an earlier tool-call step as the verdict.
+      let streamFailed = false;
+      let streamError: unknown;
       const stream = streamText({
         output: fastTextOutput(),
         model: modelClient.model,
@@ -79,19 +85,32 @@ export async function reviewToolAction<D extends "ask" | "block">({
         maxRetries: 1,
         abortSignal: controller.signal,
         messages: [{ role: "user", content: payload }],
+        onError: ({ error }) => {
+          streamFailed = true;
+          streamError ??= error;
+        },
         ...(tools
           ? {
               tools,
               stopWhen: stepCountIs(4),
-              // Reserve the last round trip for a verdict instead of more inspection.
-              prepareStep: ({ stepNumber }) =>
-                stepNumber >= 3
-                  ? { toolChoice: "none", activeTools: [] }
-                  : undefined,
+              prepareStep: ({ stepNumber, messages }) => ({
+                // The engine sends OpenAI requests with `store: false`, so a
+                // replayed itemId becomes an unresolvable item_reference and
+                // the post-inspection request fails with "Item ... not found".
+                messages: messages.map(cleanMessage),
+                // Reserve the last round trip for a verdict instead of more inspection.
+                ...(stepNumber >= 3
+                  ? { toolChoice: "none" as const, activeTools: [] }
+                  : {}),
+              }),
             }
           : {}),
       });
       const text = await stream.text;
+      if (streamFailed)
+        throw streamError instanceof Error
+          ? streamError
+          : new Error("Tool safety review stream failed");
       controller.signal.throwIfAborted();
       state.phase = "verdict";
       const json = extractJson(text);

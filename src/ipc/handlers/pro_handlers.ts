@@ -1,4 +1,4 @@
-import fetch from "node-fetch"; // Electron main process might need node-fetch
+import fetch from "@/ipc/utils/native_fetch";
 import { shell } from "electron";
 import log from "electron-log";
 import { createLoggedHandler } from "./safe_handle";
@@ -186,6 +186,7 @@ export function registerProHandlers() {
         },
       });
       if (!response.ok) {
+        await response.body?.cancel().catch(() => {});
         logger.warn(
           `Failed to fetch subscription status. Status: ${response.status}`,
         );

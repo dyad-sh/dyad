@@ -166,6 +166,12 @@ export const test = base.extend<{
   po: [
     async ({ electronApp, electronConfig }, use, testInfo) => {
       const page = await electronApp.firstWindow();
+      // Electron 45 exposes the window before its initial navigation commits.
+      // Writing settings in that temporary context loses the IPC result when
+      // index.html replaces it. Wait for the app document before using IPC.
+      await page.waitForURL(/\/index\.html(?:[?#].*)?$/, {
+        waitUntil: "domcontentloaded",
+      });
 
       const po = new PageObject(electronApp, page, {
         userDataDir: (electronApp as any).$dyadUserDataDir,

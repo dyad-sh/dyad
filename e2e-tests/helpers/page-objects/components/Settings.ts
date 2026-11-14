@@ -195,7 +195,11 @@ export class Settings {
     const modelNameInput = dialog.locator("#model-name");
     const addModelButton = dialog.getByRole("button", { name: "Add Model" });
 
+    await expect(dialog).toBeVisible();
     await expect(async () => {
+      // A click can time out after dispatch on a cold runner even though the
+      // model was saved. Do not refill a dialog that the successful save closed.
+      if (!(await dialog.isVisible())) return;
       await modelIdInput.fill("test-model");
       await expect(modelIdInput).toHaveValue("test-model", { timeout: 1_000 });
       await modelNameInput.fill("test-model");
@@ -206,6 +210,9 @@ export class Settings {
       await addModelButton.click({ timeout: 1_000 });
     }).toPass({ timeout: 10_000 });
     await expect(dialog).toBeHidden({ timeout: 10_000 });
+    await expect(
+      this.page.getByRole("heading", { name: "test-model", exact: true }),
+    ).toBeVisible();
   }
 
   async addCustomTestModel({

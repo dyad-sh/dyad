@@ -185,6 +185,8 @@ connection flow and otherwise fail with "OAuth return did not match an active co
 
 ## Handler expectations
 
+- For main-owned resources such as screenshots, distinguish a missing resource from a failed operation that retains it. The renderer must keep its cleanup/retry handle on retained or uncertain IPC failures; test the renderer and real IPC handler together.
+
 - Vercel project scope comes from the project's `accountId`, not the first team
   in the user's team list. Personal owners require unscoped requests; preserve
   legacy rows with a bounded 403/404 fallback, never retries of ambiguous writes.

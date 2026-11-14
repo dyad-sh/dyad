@@ -188,6 +188,7 @@
     "sessionUploadFailed": "Could not upload your chat session. Filing the report without it.",
     "systemInfoFailed": "Your system information could not be included. Filing the report without it.",
     "screenshotRestoreFailed": "Your screenshot could not be restored. Filing the report without it.",
+    "screenshotClipboardRetry": "Your screenshot could not be copied. Try again, or remove it to file without an image.",
     "screenshotDropped": "Your screenshot could no longer be restored, so it was removed from this report.",
     "screenshotUploadFailed": "Your screenshot could not be attached. Dyad will put it on your clipboard so you can paste it into the issue instead.",
     "filingFailed": "Something went wrong while filing your report. Please try again.",

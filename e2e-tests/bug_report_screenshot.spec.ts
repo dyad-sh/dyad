@@ -335,3 +335,84 @@ test("falls back to pasting when the screenshot upload fails", async ({
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });
+
+for (const action of ["retry", "remove"] as const) {
+  test(`retained clipboard failure can ${action} through real renderer and IPC handlers`, async ({
+    po,
+  }) => {
+    await po.setUp();
+    await recordIssueUrls(po.electronApp);
+    // Keep the production capture/store/restore/discard handlers. Replace only
+    // native window focus/capture and clipboard access, which CI cannot grant.
+    await po.electronApp.evaluate(
+      ({ BrowserWindow, nativeImage, clipboard }) => {
+        const win = BrowserWindow.getAllWindows()[0];
+        BrowserWindow.getFocusedWindow = () => win;
+        win.capturePage = async () =>
+          nativeImage.createFromBitmap(Buffer.alloc(4, 255), {
+            width: 1,
+            height: 1,
+          });
+        const state = { calls: 0, denied: true };
+        (globalThis as any).__clipboardRecovery = state;
+        clipboard.write = async () => {
+          state.calls++;
+          if (state.denied) throw new Error("synthetic clipboard denial");
+        };
+      },
+    );
+    await po.page.route("**/generate-screenshot-upload-url", (route) =>
+      route.fulfill({ status: 503, json: { error: "down" } }),
+    );
+    await po.page.getByRole("button", { name: "Help" }).click();
+    await po.page.getByRole("button", { name: "Report a Bug" }).click();
+    await po.page
+      .getByLabel("What happened?")
+      .fill("Clipboard recovery regression");
+    await po.page
+      .getByRole("checkbox", { name: "Basic system information and logs" })
+      .uncheck();
+    await po.page.getByRole("button", { name: /Add a screenshot/ }).click();
+    await po.page
+      .getByTestId("screenshot-capture-bar")
+      .getByRole("button", { name: "Capture screenshot" })
+      .click();
+    const preview = po.page.getByAltText("Screenshot of the Dyad window");
+    await expect(preview).toBeVisible({ timeout: Timeout.MEDIUM });
+    const submit = po.page.getByRole("button", { name: "Create GitHub issue" });
+    await submit.click();
+    await expect(
+      po.page.getByText(
+        "Your screenshot could not be copied. Try again, or remove it to file without an image.",
+      ),
+    ).toBeVisible();
+    await expect(preview).toBeVisible();
+    await expect(submit).toBeEnabled();
+    await po.page
+      .locator("[data-sonner-toast]")
+      .filter({ hasText: "Your screenshot could not be copied." })
+      .getByRole("button", { name: "Close error" })
+      .click();
+    expect(
+      await po.electronApp.evaluate(() => (globalThis as any).__openedUrls),
+    ).toEqual([]);
+    if (action === "retry") {
+      await po.electronApp.evaluate(() => {
+        (globalThis as any).__clipboardRecovery.denied = false;
+      });
+    } else {
+      await po.page.getByRole("button", { name: /Remove/ }).click();
+      await expect(preview).toHaveCount(0);
+    }
+    await submit.click();
+    const params = await firstIssueUrl(po.electronApp);
+    expect(params.get("body")).toContain(
+      `Screenshot status: ${action === "retry" ? "captured" : "declined"}`,
+    );
+    expect(
+      await po.electronApp.evaluate(
+        () => (globalThis as any).__clipboardRecovery.calls,
+      ),
+    ).toBe(action === "retry" ? 2 : 1);
+  });
+}

@@ -97,6 +97,7 @@ describe("local-agent default request (integration)", () => {
       "copy_file",
       "delete_file",
       "enable_nitro",
+      "enable_testing",
       "execute_sandbox_script",
       "explore_chat_history",
       "generate_image",

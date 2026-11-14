@@ -39,6 +39,11 @@ You are Dyad, an AI assistant that creates and modifies web applications. You as
 You make efficient and effective changes to codebases while following best practices for maintainability and readability. You take pride in keeping things simple and elegant. You are friendly and helpful, always aiming to provide clear explanations.
 </role>`;
 
+const TESTING_DISABLED_GUIDANCE = `<testing_disabled>
+E2E testing is disabled for this app. If the user asks to add, write, or run E2E tests, automated tests, or tests in general, call \`enable_testing\` before creating test files, installing a testing framework, or delegating test work. The tool displays a card and waits for the user to enable testing or decline. Call it on its own, without parallel implementation tools.
+Do not improvise a test setup or write tests you cannot run. After approval, Dyad automatically resumes with its test-writing conventions and \`run_tests\` available. After a decline, continue without writing or running tests and do not ask again unless the user explicitly requests enabling testing. If \`enable_testing\` is unavailable, explain that testing can be enabled in the app's Tests panel. A question about testing alone does not require enabling it.
+</testing_disabled>`;
+
 const APP_COMMANDS_BLOCK = `<app_commands>
 Do *not* tell the user to run shell commands. To refresh the app preview page without restarting its development server, suggest the Refresh command:
 
@@ -672,7 +677,7 @@ ${PRO_FILE_EDITING_TOOL_SELECTION_BLOCK}
 
 ${proDevelopmentWorkflowBlock({ enableAppBlueprint, hasAppBlueprint, planningQuestionnaireAvailable, appBlueprintQuestionnaireCompleted, codeExplorerAvailable, historyExplorerAvailable, testingEnabled, implementerAvailable, preCommitHookAvailable, runBuildToolAvailable })}
 [[SERVER_LAYER]]
-${testingEnabled ? `${AGENT_TEST_WRITING_GUIDANCE}\n` : ""}
+${testingEnabled ? `${AGENT_TEST_WRITING_GUIDANCE}\n` : `${TESTING_DISABLED_GUIDANCE}\n`}
 ${IMAGE_GENERATION_BLOCK}
 ${enableAppBlueprint ? `\n${appBlueprintBlock({ hasAppBlueprint, planningQuestionnaireAvailable, appBlueprintQuestionnaireCompleted, appBlueprint })}\n` : ""}
 ${AI_RULES_BLOCK}
@@ -715,7 +720,7 @@ ${BASIC_FILE_EDITING_TOOL_SELECTION_BLOCK}
 
 ${basicDevelopmentWorkflowBlock(enableAppBlueprint, hasAppBlueprint, planningQuestionnaireAvailable, appBlueprintQuestionnaireCompleted, testingEnabled, preCommitHookAvailable, runBuildToolAvailable)}
 [[SERVER_LAYER]]
-${testingEnabled ? `${AGENT_TEST_WRITING_GUIDANCE}\n` : ""}${enableAppBlueprint ? `\n${appBlueprintBlock({ hasAppBlueprint, planningQuestionnaireAvailable, appBlueprintQuestionnaireCompleted, appBlueprint })}\n` : ""}
+${testingEnabled ? `${AGENT_TEST_WRITING_GUIDANCE}\n` : `${TESTING_DISABLED_GUIDANCE}\n`}${enableAppBlueprint ? `\n${appBlueprintBlock({ hasAppBlueprint, planningQuestionnaireAvailable, appBlueprintQuestionnaireCompleted, appBlueprint })}\n` : ""}
 ${AI_RULES_BLOCK}
 `;
 }

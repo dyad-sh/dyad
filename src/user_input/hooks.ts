@@ -9,6 +9,7 @@ import {
 } from "./read_model";
 import {
   selectPendingIntegrations,
+  selectPendingEnableTesting,
   selectPendingPluginSuggestions,
   selectPendingQuestionnaires,
   selectPendingToolConsents,
@@ -71,6 +72,16 @@ export function usePendingPluginSuggestions() {
     readModel.getSnapshot,
     undefined,
     selectPendingPluginSuggestions,
+  );
+}
+
+export function usePendingEnableTesting() {
+  const readModel = useUserInputReadModel();
+  return useSyncExternalStoreWithSelector(
+    readModel.subscribe,
+    readModel.getSnapshot,
+    undefined,
+    selectPendingEnableTesting,
   );
 }
 

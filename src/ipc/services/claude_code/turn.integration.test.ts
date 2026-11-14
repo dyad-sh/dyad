@@ -445,6 +445,60 @@ it("executes real Dyad file tools through MCP and persists safe shared cards", a
   ).toContain("hello");
 });
 
+it("ends MCP tool admission after testing opt-in so continuation can refresh tools", async () => {
+  const { userInputRegistry } = await import("@/user_input/main");
+  const { waitForChatActorIdle } =
+    await import("@/ipc/services/chat_actor_service");
+  await harness.db
+    .update(apps)
+    .set({ testingEnabled: false })
+    .where(eq(apps.id, harness.appId));
+  const chatId = await ipc.chat.createChat({
+    appId: harness.appId,
+    initialChatMode: "local-agent",
+  });
+  calls.operate.mockImplementationOnce(async (turn) => {
+    const client = await connectTools(turn);
+    try {
+      const choice = client.callTool({ name: "enable_testing", arguments: {} });
+      await vi.waitFor(() =>
+        expect(
+          userInputRegistry
+            .getPending()
+            .some(
+              (entry) =>
+                entry.descriptor.chatId === chatId &&
+                entry.descriptor.kind === "enable-testing",
+            ),
+        ).toBe(true),
+      );
+      const pending = userInputRegistry
+        .getPending()
+        .find(
+          (entry) =>
+            entry.descriptor.chatId === chatId &&
+            entry.descriptor.kind === "enable-testing",
+        )!;
+      await ipc.userInput.respond({
+        requestId: pending.descriptor.requestId,
+        response: { kind: "enable-testing", enabled: false },
+      });
+      expect(JSON.stringify(await choice)).toContain("user declined");
+      await expect(
+        client.callTool({
+          name: "list_files",
+          arguments: {},
+        }),
+      ).rejects.toThrow("Tool admission is closed");
+    } finally {
+      await client.close();
+    }
+  });
+  await harness.streamChat("Add E2E tests", { chatId });
+  await vi.waitFor(() => expect(calls.run).toHaveBeenCalledTimes(2));
+  await waitForChatActorIdle(chatId);
+});
+
 it("parks a questionnaire behind a decision barrier, survives renderer resubscription, and persists answers", async () => {
   const { userInputRegistry } = await import("@/user_input/main");
   const { recoverQuestionnaires } =

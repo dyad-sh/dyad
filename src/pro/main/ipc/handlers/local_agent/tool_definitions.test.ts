@@ -180,6 +180,23 @@ describe("Build mode tool profile", () => {
 });
 
 describe("discovery versus invocation availability", () => {
+  it("offers testing opt-in only to writable agents with testing disabled", () => {
+    const tool = TOOL_DEFINITIONS.find(
+      (tool) => tool.name === "enable_testing",
+    )!;
+    const ctx = {
+      testingEnabled: false,
+      isDyadPro: true,
+    } as import("./tools/types").AgentContext;
+    expect(shouldIncludeTool(tool, ctx)).toBe(true);
+    expect(shouldIncludeTool(tool, ctx, { basicAgentMode: true })).toBe(true);
+    expect(shouldIncludeTool(tool, { ...ctx, testingEnabled: true })).toBe(
+      false,
+    );
+    expect(shouldIncludeTool(tool, ctx, { readOnly: true })).toBe(false);
+    expect(shouldIncludeTool(tool, ctx, { planModeOnly: true })).toBe(false);
+    expect(shouldIncludeTool(tool, ctx, { toolProfile: "build" })).toBe(false);
+  });
   it("keeps operationally unavailable pre-commit calls invocable but enforces read-only boundaries", () => {
     const tool = TOOL_DEFINITIONS.find(
       (tool) => tool.name === "run_pre_commit",

@@ -484,5 +484,18 @@
   "suggestedPrompts": {
     "label": "Prochaines étapes suggérées",
     "dismiss": "Masquer les suggestions"
+  },
+  "enableTesting": {
+    "title": "Activer les tests E2E\u00a0?",
+    "description": "Permettez à Dyad d’écrire et d’exécuter des tests de bout en bout selon ses conventions.",
+    "scope": "Active les tests pour cette application, y compris ses autres chats et le panneau Tests.",
+    "enable": "Activer les tests",
+    "notNow": "Pas maintenant",
+    "enabling": "Activation…",
+    "saving": "Enregistrement de votre choix…",
+    "waiting": "L’agent attend votre choix.",
+    "enabled": "Tests E2E activés",
+    "declined": "Les tests restent désactivés",
+    "failed": "Impossible d’enregistrer votre choix. Veuillez réessayer."
   }
 }

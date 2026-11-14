@@ -51,6 +51,7 @@ import {
 import {
   Tooltip,
   TooltipContent,
+  TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useChats } from "@/hooks/useChats";
@@ -700,44 +701,47 @@ function ChatRow({
         }
       }}
     >
-      <Tooltip
-        open={isTitleTooltipOpen}
-        onOpenChange={(open) =>
-          setIsTitleTooltipOpen(open && isTitleTruncated())
-        }
-      >
-        <TooltipTrigger
-          delay={500}
-          render={
-            <Button
-              variant="ghost"
-              onClick={onSelect}
-              className={cn(
-                // h-auto: the default h-9 is shorter than the two text lines
-                // and squeezed the vertical padding to nothing.
-                "h-auto w-full min-w-0 cursor-pointer justify-start py-2 pl-3 pr-16 text-left hover:bg-sidebar-accent/80",
-                isSelected &&
-                  "bg-sidebar-accent text-sidebar-accent-foreground",
-              )}
-              data-testid={`chat-list-item-${chat.id}`}
-            />
+      {/* The sidebar-wide TooltipProvider uses delay={0}, which overrides a
+          trigger's own delay, so this tooltip gets its own provider. */}
+      <TooltipProvider delay={500}>
+        <Tooltip
+          open={isTitleTooltipOpen}
+          onOpenChange={(open) =>
+            setIsTitleTooltipOpen(open && isTitleTruncated())
           }
         >
-          <div className="flex w-full min-w-0 flex-col gap-0.5">
-            <span ref={titleRef} className="truncate">
-              {title}
-            </span>
-            <span className="text-xs text-gray-500">
-              {formatDistanceToNow(new Date(chat.createdAt), {
-                addSuffix: true,
-              })}
-            </span>
-          </div>
-        </TooltipTrigger>
-        <TooltipContent side="right" className="break-words">
-          {title}
-        </TooltipContent>
-      </Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant="ghost"
+                onClick={onSelect}
+                className={cn(
+                  // h-auto: the default h-9 is shorter than the two text lines
+                  // and squeezed the vertical padding to nothing.
+                  "h-auto w-full min-w-0 cursor-pointer justify-start py-2 pl-3 pr-16 text-left hover:bg-sidebar-accent/80",
+                  isSelected &&
+                    "bg-sidebar-accent text-sidebar-accent-foreground",
+                )}
+                data-testid={`chat-list-item-${chat.id}`}
+              />
+            }
+          >
+            <div className="flex w-full min-w-0 flex-col gap-0.5">
+              <span ref={titleRef} className="truncate">
+                {title}
+              </span>
+              <span className="text-xs text-gray-500">
+                {formatDistanceToNow(new Date(chat.createdAt), {
+                  addSuffix: true,
+                })}
+              </span>
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="right" className="break-words">
+            {title}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
 
       <div className="absolute right-1.5 flex w-14 items-center">
         <motion.button

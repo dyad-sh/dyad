@@ -87,6 +87,10 @@ describe("ChatList title tooltip (integration)", () => {
 
     hover(row);
 
+    // The tooltip waits 500ms so it doesn't flash while scanning the list.
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(screen.getAllByText(LONG_TITLE)).toHaveLength(1);
+
     await waitFor(
       () => {
         // Title text appears twice: the truncated row label and the tooltip.

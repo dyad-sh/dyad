@@ -60,6 +60,20 @@ test("real Claude subscription with native tools: Bash, Edit, cards, preview, co
   await expect(po.page.locator(".justify-start .prose").last()).toContainText(
     /native-e2e\.txt/,
   );
+
+  // Undo removes that exchange, and the next turn resumes a session rewound
+  // to before it: Claude must not see the undone question any more.
+  await po.page.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(
+    po.page.getByText(/what exact text did your Bash command write/),
+  ).toHaveCount(0, { timeout: 30_000 });
+  await po.sendPrompt(
+    "Without using any tools: quote every message I have sent you in this conversation, verbatim, one per line.",
+    { timeout: 120_000 },
+  );
+  const recalled = po.page.locator(".justify-start .prose").last();
+  await expect(recalled).toContainText(/native-e2e/);
+  await expect(recalled).not.toContainText(/what exact text/i);
   await po.page.screenshot({
     path: "test-results/claude-code-native-smoke.png",
     fullPage: true,

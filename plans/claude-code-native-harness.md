@@ -1,6 +1,6 @@
 # Claude Code native harness (experimental)
 
-Status: **plan, product decisions made 2026-11-06; Phase 0 spikes pending**
+Status: **plan, product decisions made 2026-11-06; core Phase 0 checks passed 2026-11-13**
 
 ## Goal
 
@@ -128,7 +128,10 @@ effects. That way a migration written by native Write is deployed before
 - One turn-scoped mutation activity covers the whole native turn, because Bash
   can write at any time. Cancellation and drain behave exactly as today.
 - Turn end or Stop: interrupt → SIGINT → SIGKILL the process group (existing),
-  which also stops background Bash. Verify on macOS/Linux/Windows.
+  which also stops background Bash (verified on macOS). The CLI stays alive
+  after `result` while a background task runs, so a native turn must end the
+  process group once `result` arrives instead of waiting for the process to
+  exit (today `runClaudeTurn` resolves on `close`). Verify on Linux and Windows.
 - Undo/restore/retry: look up the CLI uuid for the target message and resume
   from that point (fork). If that's not possible, fall back to keeping the
   session and adding a revert notice, then to a fresh session.
@@ -143,15 +146,27 @@ effects. That way a migration written by native Write is deployed before
    Check with `env -i HOME=$HOME PATH=$PATH USER=$USER claude auth status`,
    because an agent session's inherited `ANTHROPIC_AUTH_TOKEN` hides a
    signed-out machine. Run `DYAD_REAL_CLAUDE_SMOKE=1` tests with the sandbox
-   off. On 2026-11-06 the existing smoke failed with "OAuth session expired"
-   until `claude auth login` was rerun. Record sanitized transcripts as
-   fixtures for:
-   resume with a different `--tools`/MCP set and switching
-   `--restricted` on/off on one session; resuming from a message uuid (rewind);
-   auto-mode prompts over `can_use_tool` in `-p` and behavior when auto mode
-   is unavailable; Dyad hooks working alongside user hooks; background Bash
-   cleanup on exit (incl. Windows/PowerShell tool); AskUserQuestion over
-   `can_use_tool`; mid-turn stdin messages.
+   off.
+
+   **Results, 2026-11-13, CLI 2.1.325, Max plan, macOS, Haiku:** the existing
+   `live_tools.test.ts` smoke passes (3/3).
+
+   | Check                                           | Result                                                                                                                                                                                                                       |
+   | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+   | Explicit `--tools Bash,Read,Edit,…`             | Init reports exactly that list.                                                                                                                                                                                              |
+   | `--permission-prompt-tool stdio` (default mode) | Bash and Edit arrive as `can_use_tool` and run after a Dyad `allow`. Read-only Bash (`cat`) is allowed without a prompt.                                                                                                     |
+   | SDK hooks in `initialize`                       | `hook_callback` arrives for PreToolUse and PostToolUse on Bash and Edit.                                                                                                                                                     |
+   | Same session, different tools                   | Native → `--restricted --tools ""` → native on one session id: works, and Claude recalls the exact earlier command each time.                                                                                                |
+   | Rewind                                          | `--resume <id> --resume-session-at <assistant uuid> --fork-session` gives a new session that remembers only turns up to that uuid. **The flag is not in `--help`**: add a version-gated contract test and keep the fallback. |
+   | `--permission-mode auto`                        | Accepted (`permissionMode: "auto"`). A network `curl` and an explicitly requested `git push --force` ran without any `can_use_tool`. A prompt routed to Dyad was not observed.                                               |
+   | Background Bash                                 | **The CLI does not exit after `result` while a `run_in_background` task is alive**, and a plain SIGKILL of the CLI orphans the task. Dyad's detached spawn + process-group SIGINT→SIGKILL kills it.                          |
+
+   Still to check: the auto-mode classifier sending a prompt to Dyad (or
+   denying), and behavior on a plan without auto mode; Dyad hooks alongside
+   the user's own hooks; AskUserQuestion over `can_use_tool`; mid-turn stdin
+   messages; Windows (PowerShell tool, process-tree cleanup). Record sanitized
+   transcripts of these runs as projector fixtures.
+
 1. Setting, `tool_policy`, CLI args, projector, reconciler: native Agent turns
    on host. Fake-CLI integration tests.
 2. Shared session across modes/toggles, session ledger, undo rewind.
@@ -168,7 +183,7 @@ effects. That way a migration written by native Write is deployed before
   speaks `can_use_tool` + `hook_callback`. Cover: Supabase deploy from a native
   write, undo rewind, cancel mid-Bash, Agent→Ask same-session switch, steer.
 - E2E: fake-CLI Playwright spec for cards, consent, preview refresh, undo, steer.
-- Real smoke: extend `DYAD_CLAUDE_CODE_SMOKE=1` to native mode.
+- Real smoke: extend `DYAD_REAL_CLAUDE_SMOKE=1` to native mode.
 
 ## Known risks
 
@@ -177,7 +192,11 @@ effects. That way a migration written by native Write is deployed before
   customizations" summary (names only) in the session debug bundle.
 - With "like the terminal", Bash can reach anything the user can. Dyad's guards
   are minimal by design; auto mode is the safety layer.
-- Undo rewind and same-session tool swaps depend on CLI behavior that Phase 0
-  must confirm. Each has a fallback above.
+- Same-session tool swaps and rewind work on CLI 2.1.325, but rewind uses the
+  undocumented `--resume-session-at` flag. It can change without notice, so a
+  contract test must pin it and the fallback above must stay.
+- Auto mode might never send a prompt to Dyad in `-p` (it may only allow or
+  deny), in which case Dyad's approval card would only show in default mode.
+  Still to check.
 - Commercial terms for a Dyad surcharge on subscription usage are still
   unverified (same caveat as the current backend).

@@ -1,6 +1,6 @@
 # Claude Code native harness (experimental)
 
-Status: **plan, product decisions made 2026-11-06; core Phase 0 checks passed 2026-11-13**
+Status: **implemented (experimental), 2026-11-13** — see the "Native tools harness" section of `docs/claude-code-shared-runtime.md` for the shipped architecture.
 
 ## Goal
 
@@ -207,3 +207,14 @@ effects. That way a migration written by native Write is deployed before
   Still to check.
 - Commercial terms for a Dyad surcharge on subscription usage are still
   unverified (same caveat as the current backend).
+
+## Implementation notes (2026-11-13)
+
+Where the shipped code differs from the plan above:
+
+- **Questions and todos stay on Dyad's tools.** `AskUserQuestion` and `TodoWrite` are not in the native allowlist; Dyad's `planning_questionnaire` and `update_todos` are offered over MCP instead. That keeps questionnaire recovery and the todo panel unchanged, and CLI 2.1.325 does not ship `TodoWrite` by default anyway.
+- **Approvals have no "always".** An "always allow" for a Claude Code tool would be saved where Settings cannot show or revoke it, so auto-mode prompts offer allow once / decline only.
+- **The setting is always visible.** It sits under the Claude Code experiment in Settings and stays disabled until that experiment is on, so settings search can always find it. It appears in the model picker's Claude Code submenu while the subscription is enabled.
+- **"Send now" lives on queued messages.** Queue stays the default; each plain-text queued message gets a Send now action while a native turn runs. Messages with attachments, selected components or a redo always wait for their own turn.
+- **Guards are minimal by design.** The only Dyad PreToolUse rule blocks file-tool edits inside other Dyad apps. Plan-mode tools are kept out by the allowlist instead of a hook.
+- **Verified CLI facts** (2.1.325, Max plan): see `rules/claude-code-backend.md` → "Native tools harness".

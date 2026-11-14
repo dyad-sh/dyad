@@ -124,6 +124,22 @@ jobs:
           OUTPUT_FINDINGS_PATH: ${{ env.REVIEW_FINDINGS_PATH }}
         run: node scripts/issue-agent/render-template.mjs
 
+      - name: Install Claude Code for Windows
+        id: claude-cli
+        shell: pwsh
+        run: |
+          & ([scriptblock]::Create((Invoke-RestMethod https://claude.ai/install.ps1))) 2.1.280
+          $claudeExe = Join-Path $env:USERPROFILE '.local\bin\claude.exe'
+          if (!(Test-Path $claudeExe)) {
+            throw "Claude executable missing: $claudeExe"
+          }
+          $version = & $claudeExe --version
+          if ($LASTEXITCODE -ne 0 -or $version -notmatch '^2\.1\.280 ') {
+            throw "Unexpected Claude version: $version"
+          }
+          Write-Output $version
+          "path=$claudeExe" >> $env:GITHUB_OUTPUT
+
       - name: Connect to Tailscale
         uses: tailscale/github-action@6cae46e2d796f265265cfcf628b72a32b4d7cade # v3.3.0
         with:
@@ -132,7 +148,7 @@ jobs:
           tags: tag:gha-dyad
 
       - name: PR Review
-        # This commit bundles Claude Code 2.1.280, required by claude-opus-5-5.
+        # Use the Windows CLI above; the bundled shell installer rejects Windows.
         uses: anthropics/claude-code-action@9ca9355b36297178e28d37c799d1c9c8a28e6507 # post-v1.0.231
         env:
           ANTHROPIC_BASE_URL: http://100.73.172.24:8081
@@ -141,6 +157,7 @@ jobs:
           CLAUDE_CODE_MAX_OUTPUT_TOKENS: 48000
         with:
           anthropic_api_key: ${{ secrets.UNDERCLASS_KEY }}
+          path_to_claude_code_executable: ${{ steps.claude-cli.outputs.path }}
 
           # See: https://github.com/anthropics/claude-code-action/blob/v1/docs/security.md
           github_token: ${{ github.token }}

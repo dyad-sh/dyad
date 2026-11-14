@@ -16,6 +16,31 @@ describe("Windows PR reviewer", () => {
   const step = (name: string) =>
     review.steps.find((entry: { name: string }) => entry.name === name);
 
+  it("hands the verified native Windows CLI to the action without auto-updates", () => {
+    const installer = step("Install Claude Code for Windows");
+    const agent = step("PR Review");
+    expect(installer.shell).toBe("pwsh");
+    expect(installer.run).toContain(
+      "Invoke-RestMethod https://claude.ai/install.ps1",
+    );
+    expect(installer.run).toContain("))) 2.1.280");
+    expect(installer.run).toContain("Test-Path $claudeExe");
+    expect(installer.run).toContain(
+      "$LASTEXITCODE -ne 0 -or $version -notmatch '^2\\.1\\.280 '",
+    );
+    expect(installer.run).toContain('"path=$claudeExe" >> $env:GITHUB_OUTPUT');
+    expect(agent.with.path_to_claude_code_executable).toBe(
+      `\${{ steps.${installer.id}.outputs.path }}`,
+    );
+    expect(review.steps.indexOf(installer)).toBeLessThan(
+      review.steps.indexOf(agent),
+    );
+    // Job scope protects both the installer's version probe and the action.
+    expect(review.env.DISABLE_AUTOUPDATER).toBe("1");
+    expect(installer.env?.DISABLE_AUTOUPDATER).toBeUndefined();
+    expect(agent.env.DISABLE_AUTOUPDATER).toBeUndefined();
+  });
+
   it("isolates code execution from write credentials and trusted helpers", () => {
     const original = parse(
       fs.readFileSync(".github/workflows/claude-pr-review.yml", "utf8"),

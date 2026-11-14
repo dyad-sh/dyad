@@ -104,6 +104,14 @@ async function prepareSquirrelVendor() {
     );
     fs.mkdirSync(squirrelVendorDirectory, { recursive: true });
     fs.cpSync(stockVendor, squirrelVendorDirectory, { recursive: true });
+    // CI installs JS dependencies without lifecycle scripts. Materialize the
+    // host's 7-Zip tools just as electron-winstaller's install script would.
+    for (const extension of ["exe", "dll"]) {
+      fs.copyFileSync(
+        path.join(stockVendor, `7z-${os.arch()}.${extension}`),
+        path.join(squirrelVendorDirectory, `7z.${extension}`),
+      );
+    }
     // Never leave a stock Setup.exe behind if the guarded build fails.
     fs.rmSync(path.join(squirrelVendorDirectory, "Setup.exe"));
     execFileSync(

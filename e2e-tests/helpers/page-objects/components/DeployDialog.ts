@@ -57,9 +57,20 @@ export class DeployDialog {
   }
 
   async selectDatabase(branch: "production" | "development") {
-    await this.button(
-      branch === "production" ? "Production database" : "Development database",
-    ).click();
+    // Startup chat restoration can close the dialog after open() saw its
+    // first step. Reopening and selecting a branch are both idempotent.
+    await expect(async () => {
+      await this.open();
+      const button = this.button(
+        branch === "production"
+          ? "Production database"
+          : "Development database",
+      );
+      await button.click({ timeout: 1_000 });
+      await expect(button).toHaveAttribute("aria-pressed", "true", {
+        timeout: 1_000,
+      });
+    }).toPass({ timeout: Timeout.MEDIUM });
   }
 
   async approveMigration() {

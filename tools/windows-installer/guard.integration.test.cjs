@@ -13,12 +13,20 @@ const probe = path.resolve(
   "../../.cache/squirrel-tests/guard-probe.exe",
 );
 
+async function stopChild(child) {
+  // Windows reports a signal-terminated child with exitCode === null. It has
+  // already emitted 'exit', so waiting for that event again would never finish.
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  const exited = once(child, "exit");
+  child.kill();
+  await exited;
+}
+
 async function startWaiting(executable, args, t) {
   const child = spawn(executable, args, { windowsHide: true });
   const exited = once(child, "exit");
   t.after(async () => {
-    if (child.exitCode === null) child.kill();
-    await exited;
+    await stopChild(child);
   });
   await Promise.race([
     (async () => {
@@ -162,11 +170,7 @@ test(
         let runningApp;
         t.after(async () => {
           // Stop the fixture before removing its executable even if an assertion fails.
-          if (runningApp && runningApp.exitCode === null) {
-            const exited = once(runningApp, "exit");
-            runningApp.kill();
-            await exited;
-          }
+          if (runningApp) await stopChild(runningApp);
           await fs.rm(installRoot, { recursive: true, force: true });
         });
         const installedExe = path.join(installRoot, "dyad.exe");

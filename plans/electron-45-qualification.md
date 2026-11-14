@@ -23,6 +23,9 @@ migration [#5031](https://github.com/dyad-sh/dyad/pull/5031) is already on main.
   exercising the actual candidate-runtime adapter path.
 - Wait for the initial app document in the E2E fixture: Electron 45 exposes the
   window before that navigation completes, destroying premature settings IPC.
+- Recognize completed model setup after a post-dispatch click timeout. The
+  Intel trace showed a saved model and closed dialog, followed by a retry
+  waiting for the already-removed inputs; assert the resulting model as well.
 
 ## Automated platform evidence
 

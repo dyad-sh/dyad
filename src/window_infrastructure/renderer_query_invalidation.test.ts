@@ -137,6 +137,7 @@ describe("RendererQueryInvalidationConsumer", () => {
         { family: "mcp-servers" },
         { family: "mcp-catalog" },
         { family: "mcp-tools" },
+        { family: "language-models" },
       ],
     );
 
@@ -155,6 +156,8 @@ describe("RendererQueryInvalidationConsumer", () => {
       queryKeys.mcp.servers,
       queryKeys.mcp.catalog,
       queryKeys.mcp.toolsByServer.all,
+      queryKeys.languageModels.byProviders,
+      queryKeys.languageModels.all,
     ]);
   });
 

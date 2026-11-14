@@ -16,6 +16,10 @@ import {
   GITLAB_TRANSPORT_ERROR_NAME,
 } from "@/shared/gitlab_error_names";
 import {
+  CUSTOM_PROVIDER_MODELS_REQUEST_ERROR_NAME,
+  CUSTOM_PROVIDER_MODELS_TRANSPORT_ERROR_NAME,
+} from "@/shared/openai_compatible_error_names";
+import {
   POSTHOG_CHUNK_IDS_PROPERTY,
   readPostHogChunkIds,
 } from "@/shared/posthog_chunk_ids";
@@ -121,11 +125,16 @@ const SELF_HOSTED_CHANNEL_PREFIXES = [
   "gitlab:",
 ];
 
+// Single channels, matched exactly so a future channel sharing the name as a
+// prefix isn't redacted by accident.
+const SELF_HOSTED_CHANNELS = new Set(["fetch-custom-provider-models"]);
+
 function isSelfHostedChannel(context?: Record<string, unknown>): boolean {
   const channel = context?.ipc_channel;
   if (typeof channel !== "string") return false;
-  return SELF_HOSTED_CHANNEL_PREFIXES.some((prefix) =>
-    channel.startsWith(prefix),
+  return (
+    SELF_HOSTED_CHANNELS.has(channel) ||
+    SELF_HOSTED_CHANNEL_PREFIXES.some((prefix) => channel.startsWith(prefix))
   );
 }
 
@@ -178,6 +187,14 @@ export function shouldFilterTelemetryException(error: unknown): boolean {
   // failure nothing here recognised, which is what telemetry is for.
   const sshFailure = sshFailureOf(error);
   if (sshFailure === "unreachable" || sshFailure === "timeout") {
+    return true;
+  }
+
+  if (
+    error instanceof Error &&
+    (error.name === CUSTOM_PROVIDER_MODELS_REQUEST_ERROR_NAME ||
+      error.name === CUSTOM_PROVIDER_MODELS_TRANSPORT_ERROR_NAME)
+  ) {
     return true;
   }
 

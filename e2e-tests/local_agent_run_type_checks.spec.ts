@@ -150,7 +150,17 @@ testSkipIfWindows(
     await fs.rm(path.join(appPath, "pnpm-lock.yaml"));
 
     await po.previewPanel.clickRebuild();
-    await expect(po.previewPanel.locateLoadingAppPreview()).toBeVisible();
+    // Observe the replacement itself: the loading screen can disappear before
+    // the assertion runs, and dependency-directory existence accepts TS 5.
+    await expect(async () => {
+      const installed = JSON.parse(
+        await fs.readFile(
+          path.join(appPath, "node_modules/typescript/package.json"),
+          "utf8",
+        ),
+      );
+      expect(installed.version).toBe("7.0.2");
+    }).toPass({ timeout: Timeout.LONG });
     await expect(po.previewPanel.locateLoadingAppPreview()).not.toBeVisible({
       timeout: Timeout.LONG,
     });

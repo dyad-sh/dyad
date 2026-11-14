@@ -4,14 +4,16 @@ import {
   test as baseTest,
   type Locator,
   type Page,
-  type TestInfo,
 } from "@playwright/test";
 import fs from "fs";
 import os from "os";
 import path from "path";
 import type { ElectronApplication } from "playwright";
 import { FAKE_LLM_BASE_PORT } from "./helpers/test-ports";
-import { launchElectronApp, terminateElectronApp } from "./helpers/fixtures";
+import {
+  launchDyadWithProfile,
+  terminateElectronApp,
+} from "./helpers/fixtures";
 
 async function queueMessage(page: Page, chatInput: Locator, message: string) {
   await expect(async () => {
@@ -30,39 +32,6 @@ async function waitForGeneration(po: PageObject) {
   await expect(
     po.page.getByRole("button", { name: /cancel generation/i }),
   ).toBeVisible({ timeout: Timeout.MEDIUM });
-}
-
-async function launchDyadWithProfile({
-  userDataDir,
-  fakeLlmPort,
-  testInfo,
-}: {
-  userDataDir: string;
-  fakeLlmPort: number;
-  testInfo: TestInfo;
-}) {
-  const electronApp = await launchElectronApp({
-    userDataDir,
-    fakeLlmPort,
-    parallelIndex: testInfo.parallelIndex,
-  });
-  const page = await electronApp.firstWindow();
-  const po = new PageObject(electronApp, page, {
-    userDataDir,
-    fakeLlmPort,
-    testInfo,
-  });
-  await page.evaluate(async () => {
-    await (window as any).electron.ipcRenderer.invoke("set-user-settings", {
-      enablePnpmMinimumReleaseAgeWarning: false,
-      hidePnpmMinimumReleaseAgeWarning: true,
-    });
-  });
-  return { electronApp, po };
-}
-
-async function closeDyad(electronApp: ElectronApplication) {
-  await terminateElectronApp(electronApp);
 }
 
 test.describe("queued messages", () => {
@@ -358,7 +327,7 @@ baseTest(
         firstSession.po.page.getByTestId("queue-header"),
       ).toContainText("2 Queued");
 
-      await closeDyad(firstSession.electronApp);
+      await terminateElectronApp(firstSession.electronApp);
       activeApp = undefined;
 
       const secondSession = await launchDyadWithProfile({
@@ -382,7 +351,7 @@ baseTest(
         ).toBeVisible();
       }
     } finally {
-      if (activeApp) await closeDyad(activeApp);
+      if (activeApp) await terminateElectronApp(activeApp);
       await fs.promises.rm(userDataDir, { recursive: true, force: true });
     }
   },

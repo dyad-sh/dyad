@@ -3,7 +3,7 @@
  * Provides Electron app launching and PageObject initialization.
  */
 
-import { test as base } from "@playwright/test";
+import { test as base, type TestInfo } from "@playwright/test";
 import * as eph from "electron-playwright-helpers";
 import { ElectronApplication, _electron as electron } from "playwright";
 import os from "os";
@@ -55,18 +55,63 @@ export async function launchElectronApp({
   if (showSetupScreen) delete process.env.OPENAI_API_KEY;
   else process.env.OPENAI_API_KEY = "sk-test";
 
-  const electronApp = await electron.launch({
-    args: [
-      appInfo.main,
-      "--enable-logging",
-      `--user-data-dir=${userDataDir}`,
-      ...launchArgs,
-    ],
-    executablePath: appInfo.executable,
+  // The token exists only for trusted Node-side fixture setup such as a
+  // preLaunchHook. Never let Electron or generated-app child processes inherit
+  // it, so scrub it for the launch and restore it afterwards.
+  const sfwGitHubToken = process.env.SFW_GITHUB_TOKEN;
+  delete process.env.SFW_GITHUB_TOKEN;
+  try {
+    const electronApp = await electron.launch({
+      args: [
+        appInfo.main,
+        "--enable-logging",
+        `--user-data-dir=${userDataDir}`,
+        ...launchArgs,
+      ],
+      executablePath: appInfo.executable,
+    });
+    (electronApp as any).$dyadUserDataDir = userDataDir;
+    (electronApp as any).$fakeLlmPort = fakeLlmPort;
+    return electronApp;
+  } finally {
+    if (sfwGitHubToken === undefined) {
+      delete process.env.SFW_GITHUB_TOKEN;
+    } else {
+      process.env.SFW_GITHUB_TOKEN = sfwGitHubToken;
+    }
+  }
+}
+
+export async function launchDyadWithProfile({
+  userDataDir,
+  fakeLlmPort,
+  testInfo,
+}: {
+  userDataDir: string;
+  fakeLlmPort: number;
+  testInfo: TestInfo;
+}): Promise<{ electronApp: ElectronApplication; po: PageObject }> {
+  // Each launch starts from the supported pnpm default rather than inheriting
+  // a previous scenario's version. Matches the electronApp fixture's sequence.
+  delete process.env.DYAD_TEST_PNPM_VERSION;
+  const electronApp = await launchElectronApp({
+    userDataDir,
+    fakeLlmPort,
+    parallelIndex: testInfo.parallelIndex,
   });
-  (electronApp as any).$dyadUserDataDir = userDataDir;
-  (electronApp as any).$fakeLlmPort = fakeLlmPort;
-  return electronApp;
+  const page = await electronApp.firstWindow();
+  const po = new PageObject(electronApp, page, {
+    userDataDir,
+    fakeLlmPort,
+    testInfo,
+  });
+  await page.evaluate(async () => {
+    await (window as any).electron.ipcRenderer.invoke("set-user-settings", {
+      enablePnpmMinimumReleaseAgeWarning: false,
+      hidePnpmMinimumReleaseAgeWarning: true,
+    });
+  });
+  return { electronApp, po };
 }
 
 // Close through Playwright first so it tears down its Electron protocol
@@ -238,29 +283,18 @@ export const test = base.extend<{
       // Each launch starts from the supported default unless its own hook
       // selects another version. Do not inherit a previous scenario's value.
       delete process.env.DYAD_TEST_PNPM_VERSION;
-      const sfwGitHubToken = process.env.SFW_GITHUB_TOKEN;
-      let electronApp: ElectronApplication;
-      try {
-        if (electronConfig.preLaunchHook) {
-          await electronConfig.preLaunchHook({ userDataDir, fakeLlmPort });
-        }
-        // The token exists only for trusted Node-side fixture setup. Never let
-        // Electron or generated-app child processes inherit it.
-        delete process.env.SFW_GITHUB_TOKEN;
-        electronApp = await launchElectronApp({
-          userDataDir,
-          fakeLlmPort,
-          parallelIndex: testInfo.parallelIndex,
-          showSetupScreen: electronConfig.showSetupScreen,
-          launchArgs: electronConfig.launchArgs,
-        });
-      } finally {
-        if (sfwGitHubToken === undefined) {
-          delete process.env.SFW_GITHUB_TOKEN;
-        } else {
-          process.env.SFW_GITHUB_TOKEN = sfwGitHubToken;
-        }
+      if (electronConfig.preLaunchHook) {
+        await electronConfig.preLaunchHook({ userDataDir, fakeLlmPort });
       }
+      // launchElectronApp scrubs SFW_GITHUB_TOKEN for the launch and restores it
+      // afterwards, so the trusted fixture setup above still sees it.
+      const electronApp = await launchElectronApp({
+        userDataDir,
+        fakeLlmPort,
+        parallelIndex: testInfo.parallelIndex,
+        showSetupScreen: electronConfig.showSetupScreen,
+        launchArgs: electronConfig.launchArgs,
+      });
 
       console.log("electronApp launched!");
       if (showDebugLogs) {

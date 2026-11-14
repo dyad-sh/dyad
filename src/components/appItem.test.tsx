@@ -50,6 +50,19 @@ describe("AppItem", () => {
     );
   }
 
+  it("sizes the row to its content and shows a pointer cursor", () => {
+    renderAppItem(false);
+
+    const row = screen.getByTestId("app-list-item-Product app");
+    // The default h-9 button height is shorter than the avatar plus two text
+    // lines and squeezed the row's vertical padding to nothing.
+    expect(row.className).toContain("h-auto");
+    expect(row.className).not.toContain("h-9");
+    expect(row.className).toContain("cursor-pointer");
+    // The row fills the sidebar instead of a hard-coded pixel width.
+    expect(row.parentElement?.className).not.toMatch(/w-\[\d+px\]/);
+  });
+
   it("hides the new-window entry point by default", () => {
     renderAppItem(false);
 

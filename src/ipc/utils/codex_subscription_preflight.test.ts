@@ -1,15 +1,11 @@
 // @vitest-environment node
 import { beforeEach, afterEach, describe, it, expect, vi } from "vitest";
-import { Response as NodeResponse } from "node-fetch";
 const mocks = vi.hoisted(() => ({
   accountFetch: vi.fn(),
   key: "test-billing-key",
   warn: vi.fn(),
 }));
-vi.mock("node-fetch", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("node-fetch")>()),
-  default: mocks.accountFetch,
-}));
+vi.mock("@/ipc/utils/native_fetch", () => ({ default: mocks.accountFetch }));
 vi.mock("@/main/settings", () => ({
   readSettings: () => ({
     enableDyadPro: true,
@@ -35,7 +31,7 @@ const info = {
   userId: "test-user",
 };
 const accountResponse = (body = info) =>
-  new NodeResponse(JSON.stringify(body), { status: 200 });
+  new Response(JSON.stringify(body), { status: 200 });
 async function run(signal?: AbortSignal) {
   const model = await createCodexSubscriptionModel(
     "gpt-5.6-luna",
@@ -113,7 +109,7 @@ describe("BYO subscription preflight through the actual provider", () => {
     "blocks a confirmed HTTP %i rejection without inference",
     async (status) => {
       mocks.accountFetch.mockResolvedValue(
-        new NodeResponse("untrusted upstream detail", { status }),
+        new Response("untrusted upstream detail", { status }),
       );
       await expect(run()).rejects.toMatchObject({
         kind: status === 402 ? DyadErrorKind.Precondition : DyadErrorKind.Auth,
@@ -126,7 +122,7 @@ describe("BYO subscription preflight through the actual provider", () => {
     "allows generation if the account API returns %i",
     async (status) => {
       mocks.accountFetch.mockResolvedValue(
-        new NodeResponse("untrusted upstream detail", { status }),
+        new Response("untrusted upstream detail", { status }),
       );
       await run();
       expect(fetch).toHaveBeenCalledTimes(1);
@@ -157,7 +153,7 @@ describe("BYO subscription preflight through the actual provider", () => {
   });
   it("does not interpret malformed API responses as exhausted credits", async () => {
     mocks.accountFetch.mockResolvedValue(
-      new NodeResponse('{"totalCredits":null}', { status: 200 }),
+      new Response('{"totalCredits":null}', { status: 200 }),
     );
     await run();
     expect(fetch).toHaveBeenCalledTimes(1);

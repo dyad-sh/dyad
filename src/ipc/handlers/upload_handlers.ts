@@ -1,5 +1,5 @@
 import log from "electron-log";
-import fetch from "node-fetch";
+import fetch from "@/ipc/utils/native_fetch";
 import { createTypedHandler } from "./base";
 import { systemContracts } from "../types/system";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
@@ -101,6 +101,8 @@ async function putToSignedUrl({
       body,
       signal: controller.signal,
     });
+    // Status-only response: release the Undici connection without buffering it.
+    await response.body?.cancel().catch(() => {});
   } catch (error) {
     if (timedOut) {
       throw new UploadTimeoutError(

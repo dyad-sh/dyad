@@ -40,7 +40,7 @@ vi.mock("electron", () => ({
   shell: { openExternal: mocks.openExternal },
 }));
 
-vi.mock("node-fetch", () => ({ default: mocks.fetch }));
+vi.mock("@/ipc/utils/native_fetch", () => ({ default: mocks.fetch }));
 
 vi.mock("electron-log", () => ({
   default: { scope: () => mocks.logger },

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const fetchMock = vi.hoisted(() => vi.fn());
-vi.mock("node-fetch", () => ({ default: fetchMock }));
+vi.mock("@/ipc/utils/native_fetch", () => ({ default: fetchMock }));
 vi.mock("electron-log", () => ({
   default: { scope: () => ({ debug: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
 }));

@@ -74,6 +74,22 @@ describe("native Claude Code turns", () => {
     expect(args).not.toContain("untrusted prompt");
   });
 
+  it("lets referenced apps be read without approval prompts", () => {
+    const args = claudeArguments({
+      cwd: "/app",
+      prompt: "p",
+      model: "sonnet",
+      sessionId: "s",
+      resume: false,
+      mcpConfigPath: "/mcp.json",
+      native: { ...native, addDirs: ["/apps/other one"] },
+    });
+    expect(args[args.indexOf("--add-dir") + 1]).toBe("/apps/other one");
+    // A flag must follow the variadic --add-dir so no later value is
+    // mistaken for another directory.
+    expect(args[args.indexOf("--add-dir") + 2]).toMatch(/^--/);
+  });
+
   it("never forks a session that is not being resumed", () => {
     const args = claudeArguments({
       cwd: "/app",
@@ -172,4 +188,20 @@ describe("native Claude Code turns", () => {
       "permission: none",
     );
   }, 30_000);
+});
+
+describe("native harness CLI version gate", () => {
+  it("requires the verified CLI version and rejects unknown versions", async () => {
+    const { isNativeHarnessVersionSupported, NATIVE_HARNESS_MIN_VERSION } =
+      await import("./runtime");
+    expect(isNativeHarnessVersionSupported(NATIVE_HARNESS_MIN_VERSION)).toBe(
+      true,
+    );
+    expect(isNativeHarnessVersionSupported("2.1.400")).toBe(true);
+    expect(isNativeHarnessVersionSupported("3.0.0")).toBe(true);
+    expect(isNativeHarnessVersionSupported("2.1.324")).toBe(false);
+    expect(isNativeHarnessVersionSupported("2.0.999")).toBe(false);
+    expect(isNativeHarnessVersionSupported("unknown")).toBe(false);
+    expect(isNativeHarnessVersionSupported(null)).toBe(false);
+  });
 });

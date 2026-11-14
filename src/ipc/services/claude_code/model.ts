@@ -20,7 +20,13 @@ import type { AgentContext } from "@/pro/main/ipc/handlers/local_agent/tools/typ
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { CancellationReason } from "@/shared/cancellation_reason";
 import { createDyadToolBridge } from "./tool_bridge";
-import { runClaudeTurn, safeClaudeDiagnostic } from "./runtime";
+import {
+  NATIVE_HARNESS_MIN_VERSION,
+  claudeStatus,
+  isNativeHarnessVersionSupported,
+  runClaudeTurn,
+  safeClaudeDiagnostic,
+} from "./runtime";
 import { allowsSuggestedPrompts, claudeTextFilter } from "./text";
 import { startExternalModelUsage } from "../external_model_usage";
 import type { ExternalModelAdmission } from "../external_model_admission";
@@ -59,6 +65,7 @@ import {
 import { loadPassthroughMcpServers } from "./native/mcp_passthrough";
 import { planClaudeSession, recordLedgerEntry } from "./native/session";
 import { registerSteerTarget } from "./native/steer_registry";
+import { nativeAttachmentReminder } from "./native/attachments";
 
 /** How a bound Dyad turn should run on Claude Code. */
 export interface ClaudeCodeTurnOptions {
@@ -302,12 +309,24 @@ export class ClaudeCodeModel implements LanguageModelV3 {
       )
         .map((row) => row.id)
         .filter((id) => id !== ctx.messageId);
+      // Native tools and session continuity rely on newer CLI flags. An older
+      // CLI keeps strict sessions, even for a session that used continuity.
+      const cliCapable = isNativeHarnessVersionSupported(
+        (await claudeStatus()).version,
+      );
+      if (native && !cliCapable)
+        throw new DyadError(
+          `Native Claude Code tools need Claude Code ${NATIVE_HARNESS_MIN_VERSION} or later. Run claude update in your terminal, or turn off "Use native Claude Code tools".`,
+          DyadErrorKind.Precondition,
+        );
       const session = planClaudeSession({
         chat,
-        manifest,
+        manifest: cliCapable
+          ? manifest
+          : { ...manifest, continuity: undefined },
         strictFingerprint: fingerprint,
         appFingerprint,
-        continuityRequested: turn.continuity,
+        continuityRequested: turn.continuity && cliCapable,
         assistantMessageIds,
         newSessionId: randomUUID,
       });
@@ -359,7 +378,10 @@ export class ClaudeCodeModel implements LanguageModelV3 {
       if (recovery.some((receipt) => receipt.outcome === "answered"))
         ctx.appBlueprintQuestionnaireCompleted = true;
       const conversation = claudeConversation(options.prompt, resume, recovery);
-      const prompt = conversation.text;
+      const prompt = native
+        ? conversation.text +
+          (await nativeAttachmentReminder(ctx.appPath, conversation.text))
+        : conversation.text;
       const { tools: bridgeTools, systemPromptSection } =
         moveOversizedToolDescriptions(tools);
       await writeFile(
@@ -504,6 +526,7 @@ export class ClaudeCodeModel implements LanguageModelV3 {
                   tools: [...NATIVE_TOOL_ALLOWLIST],
                   permissionMode: "auto" as const,
                   appendSystemPromptPath: path.join(directory, "system.txt"),
+                  addDirs: [...(ctx.referencedApps?.values() ?? [])],
                   hooks: {
                     PreToolUse: [...NATIVE_HOOK_IDS.PreToolUse],
                     PostToolUse: [...NATIVE_HOOK_IDS.PostToolUse],

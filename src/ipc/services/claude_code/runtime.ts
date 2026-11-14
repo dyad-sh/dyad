@@ -102,6 +102,31 @@ export async function findClaudeExecutable(): Promise<string> {
   );
 }
 
+/** Oldest CLI verified with native tools and session continuity
+ * (`--permission-prompt-tool stdio` with SDK hooks, `--system-prompt-snapshot`,
+ * `--resume-session-at`). Older CLIs keep the Dyad-tools path. */
+export const NATIVE_HARNESS_MIN_VERSION = "2.1.325";
+
+function compareVersions(a: string, b: string): number | undefined {
+  const parse = (v: string) =>
+    /^(\d+)\.(\d+)\.(\d+)$/.exec(v)?.slice(1).map(Number);
+  const left = parse(a);
+  const right = parse(b);
+  if (!left || !right) return undefined;
+  for (let i = 0; i < 3; i++)
+    if (left[i] !== right[i]) return left[i] - right[i];
+  return 0;
+}
+
+export function isNativeHarnessVersionSupported(
+  version: string | null | undefined,
+): boolean {
+  const order = version
+    ? compareVersions(version, NATIVE_HARNESS_MIN_VERSION)
+    : undefined;
+  return order !== undefined && order >= 0;
+}
+
 export function isClaudeVersionSupported(version: string): boolean {
   const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
   if (!match) return false;
@@ -347,6 +372,9 @@ export interface NativeTurnOptions {
   appendSystemPromptPath: string;
   /** Hook callback ids registered through `initialize`, by hook event. */
   hooks: Record<string, string[]>;
+  /** Extra readable folders (referenced apps). Dyad's PreToolUse guard still
+   * blocks file-tool edits inside other Dyad apps. */
+  addDirs?: string[];
 }
 
 export interface BackendTurn {
@@ -426,6 +454,7 @@ export function claudeArguments(
       "user,project,local",
       "--append-system-prompt-file",
       turn.native.appendSystemPromptPath,
+      ...(turn.native.addDirs ?? []).flatMap((dir) => ["--add-dir", dir]),
       ...snapshot,
       ...(turn.maxTurns ? ["--max-turns", String(turn.maxTurns)] : []),
       "--model",

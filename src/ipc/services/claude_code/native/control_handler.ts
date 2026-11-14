@@ -8,6 +8,7 @@ import {
 import type { CliControlRequest } from "../runtime";
 import type { NativeMutationTracker } from "./mutation_tracker";
 import { NATIVE_FILE_EDIT_TOOLS } from "./tool_policy";
+import { readsAttachment } from "./attachments";
 
 /** Hook callback ids Dyad registers in `initialize`. */
 export const NATIVE_HOOK_IDS = {
@@ -145,6 +146,8 @@ export function createNativeControlHandler({
       }
       if (parsed.callback_id === NATIVE_HOOK_IDS.PostToolUse[0]) {
         mutations.afterTool(toolName, input);
+        if (readsAttachment(ctx.appPath, toolName, input))
+          ctx.onAttachmentAccess?.();
         return {};
       }
       return {};

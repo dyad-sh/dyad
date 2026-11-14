@@ -17,13 +17,14 @@ const calls = vi.hoisted(() => ({
   run: vi.fn(),
   /** Extra work done "by the CLI" in the middle of a turn. */
   during: vi.fn(),
+  version: "2.1.325",
 }));
 vi.mock("./runtime", async (original) => ({
   ...(await original<typeof import("./runtime")>()),
   claudeStatus: async () => ({
     connected: true,
     compatible: true,
-    version: "2.1.325",
+    version: calls.version,
     detail: "ready",
   }),
   runClaudeTurn: calls.run,
@@ -134,6 +135,7 @@ beforeEach(() => {
   });
   calls.run.mockReset();
   calls.during.mockReset();
+  calls.version = "2.1.325";
   calls.run.mockImplementation(nativeTurn);
 });
 
@@ -317,4 +319,17 @@ it("keeps Dyad's tools when the app does not run on this computer", async () => 
   } finally {
     writeSettings({ runtimeMode2: "host" });
   }
+});
+
+it("asks the user to update an outdated CLI instead of running natively", async () => {
+  calls.version = "2.1.300";
+  const chatId = await ipc.chat.createChat({
+    appId: harness.appId,
+    initialChatMode: "local-agent",
+  });
+  const result = await harness.streamChat("Write a file", { chatId });
+  expect(calls.run).not.toHaveBeenCalled();
+  expect(JSON.stringify(result.event("chat:response:error"))).toContain(
+    "Native Claude Code tools need Claude Code 2.1.325 or later",
+  );
 });

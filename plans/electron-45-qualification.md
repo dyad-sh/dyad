@@ -13,6 +13,9 @@ migration [#5031](https://github.com/dyad-sh/dyad/pull/5031) is already on main.
   45's V8 headers (`GetPrototypeV2`, `PropertyCallbackInfo.This`, and callback
   signature errors). [Version 13 uses Node-API](https://github.com/WiseLibs/better-sqlite3/releases/tag/v13.0.0).
   This changes SQLite too, so DB and integration CI must pass before merging.
+- Prune SQLite's bundled prebuilds to the target platform/architecture. The
+  first Linux qualification failed because RPM's native strip step tried to
+  process ARM64 ELF files included by SQLite 13 in the x64 package.
 - Rename `electron_wer.dll` to `dyad_wer.dll` before Windows signing. Packager
   18 renames only the executable. Electron 45's [WER helper](https://releases.electronjs.org/release/v45.0.0)
   must match the executable name; packaging fails if the helper is missing.

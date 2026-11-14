@@ -13,6 +13,7 @@ import {
 import { ipc } from "@/ipc/types";
 import { useTranslation } from "react-i18next";
 import { showError } from "@/lib/toast";
+import { cn } from "@/lib/utils";
 
 type AppItemProps = {
   app: ListedApp;
@@ -29,19 +30,21 @@ export function AppItem({
 }: AppItemProps) {
   const { t } = useTranslation("home");
   const appButton = (
-    <div className="flex w-[206px] items-center" title={app.name}>
+    <div className="mx-2 flex items-center" title={app.name}>
       <Button
         variant="ghost"
         onClick={() => handleAppClick(app.id)}
-        className={`flex w-full justify-start gap-2 py-3 text-left hover:bg-sidebar-accent/80 ${
-          selectedAppId === app.id
-            ? "bg-sidebar-accent text-sidebar-accent-foreground"
-            : ""
-        }`}
+        className={cn(
+          // h-auto: the default h-9 is shorter than the avatar and two text
+          // lines, which squeezed the vertical padding to nothing.
+          "flex h-auto w-full min-w-0 cursor-pointer justify-start gap-2.5 px-3 py-2 text-left hover:bg-sidebar-accent/80",
+          selectedAppId === app.id &&
+            "bg-sidebar-accent text-sidebar-accent-foreground",
+        )}
         data-testid={`app-list-item-${app.name}`}
       >
         <AppAvatar appId={app.id} name={app.name} />
-        <div className="flex min-w-0 flex-1 flex-col items-start">
+        <div className="flex min-w-0 flex-1 flex-col items-start gap-0.5">
           <div className="flex w-full items-center gap-1">
             <span className="truncate">{app.name}</span>
             {app.isFavorite && (

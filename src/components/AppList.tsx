@@ -103,7 +103,7 @@ export function AppList({ show }: { show?: boolean }) {
               <Button
                 onClick={handleNewApp}
                 variant="outline"
-                className="flex flex-1 items-center justify-start gap-2 py-3"
+                className="flex flex-1 cursor-pointer items-center justify-start gap-2 py-3"
               >
                 <PlusCircle size={16} />
                 <span>New App</span>
@@ -111,7 +111,7 @@ export function AppList({ show }: { show?: boolean }) {
               <Button
                 onClick={() => setIsSearchDialogOpen(!isSearchDialogOpen)}
                 variant="outline"
-                className="flex shrink-0 items-center justify-center py-3 px-3"
+                className="flex shrink-0 cursor-pointer items-center justify-center py-3 px-3"
                 title="Search Apps"
                 aria-label="Search Apps"
                 data-testid="search-apps-button"
@@ -134,7 +134,7 @@ export function AppList({ show }: { show?: boolean }) {
               </div>
             ) : (
               <SidebarMenu className="space-y-1" data-testid="app-list">
-                <div className="px-3 pb-1 text-xs font-medium text-muted-foreground">
+                <div className="px-5 pb-1 text-xs font-medium text-muted-foreground">
                   Favorite apps
                 </div>
                 {favoriteApps.length === 0 ? (
@@ -158,7 +158,7 @@ export function AppList({ show }: { show?: boolean }) {
                     data-testid="sidebar-collections-section"
                     className="mt-2"
                   >
-                    <div className="px-3 pb-1 text-xs font-medium text-muted-foreground">
+                    <div className="px-5 pb-1 text-xs font-medium text-muted-foreground">
                       Collections
                     </div>
                     <Accordion multiple className="px-1">
@@ -172,7 +172,7 @@ export function AppList({ show }: { show?: boolean }) {
                             className="border-b-0"
                             data-testid={`sidebar-collection-${collection.id}`}
                           >
-                            <AccordionTrigger className="py-2 px-2 hover:no-underline hover:bg-sidebar-accent/60 rounded-md">
+                            <AccordionTrigger className="cursor-pointer py-2 px-2 hover:no-underline hover:bg-sidebar-accent/60 rounded-md">
                               <div className="flex min-w-0 flex-1 items-center gap-2">
                                 <Folder
                                   size={14}
@@ -209,7 +209,7 @@ export function AppList({ show }: { show?: boolean }) {
                     </Accordion>
                   </div>
                 )}
-                <div className="px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">
+                <div className="px-5 pb-1 pt-2 text-xs font-medium text-muted-foreground">
                   Other apps
                 </div>
                 {nonFavoriteApps.map((app) => (

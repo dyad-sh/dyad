@@ -484,5 +484,20 @@
     "tabList": "Test run output",
     "noTabs": "No test output tabs. Run tests to see output.",
     "noOutput": "No output yet."
+  },
+  "claudeNativeTool": {
+    "runningCommand": "Running {{command}}",
+    "ranCommand": "Ran {{command}}",
+    "searching": "Searching for {{pattern}}",
+    "searched": "Searched for {{pattern}}",
+    "searchingWeb": "Searching the web for {{query}}",
+    "searchedWeb": "Searched the web for {{query}}",
+    "runningSubagent": "Subagent working on {{task}}",
+    "ranSubagent": "Subagent finished {{task}}",
+    "usingTool": "Using {{tool}}",
+    "usedTool": "Used {{tool}}",
+    "steps": "Steps",
+    "compacted": "Claude Code compacted the conversation",
+    "steered": "You, while Claude was working"
   }
 }

@@ -18,6 +18,9 @@ import {
 } from "@/shared/chatAttachmentLimits";
 import { convertFileAttachmentsToChatAttachments } from "@/lib/chatAttachmentConversion";
 import { chatAttachmentToFileAttachment } from "@/lib/attachment_conversion";
+import { chatClient } from "@/ipc/types/chat";
+
+import { canSendQueuedMessageNow } from "@/lib/queuedMessageSteer";
 
 /**
  * Chat streaming facade for React components.
@@ -220,6 +223,51 @@ export function useStreamChat({
     [chatId, chatStreamManager, queueRevision],
   );
 
+  // "Send now": hand a queued text message to the running native Claude Code
+  // turn instead of waiting for the next turn. Removing it from the queue
+  // first means it can never run twice; if the turn can no longer take it,
+  // it is submitted again and runs next.
+  const sendQueuedMessageNow = useCallback(
+    async (id: string) => {
+      if (chatId === undefined) return;
+      const message = queuedMessages.find((m) => m.id === id);
+      if (!message || !canSendQueuedMessageNow(message)) return;
+      try {
+        await chatStreamManager.dispatchQueueEvent(
+          chatId,
+          { type: "REMOVE_QUEUE_ENTRY", itemId: id },
+          queueRevision,
+        );
+      } catch (error) {
+        // Already dequeued (the turn ended and took it) or changed: leave it.
+        showError(error);
+        return;
+      }
+      let delivered = false;
+      try {
+        ({ delivered } = await chatClient.claudeCodeSteer({
+          chatId,
+          text: message.prompt,
+        }));
+      } catch {
+        delivered = false;
+      }
+      if (!delivered)
+        chatStreamManager.ensure(chatId).send({
+          type: "submit",
+          request: {
+            prompt: message.prompt,
+            chatId,
+            ...(message.appId !== undefined ? { appId: message.appId } : {}),
+            ...(message.requestedChatMode !== undefined
+              ? { requestedChatMode: message.requestedChatMode }
+              : {}),
+          },
+        });
+    },
+    [chatId, chatStreamManager, queueRevision, queuedMessages],
+  );
+
   const reorderQueuedMessages = useCallback(
     (fromIndex: number, toIndex: number) => {
       if (chatId === undefined) return;
@@ -286,6 +334,7 @@ export function useStreamChat({
     removeQueuedMessage,
     reorderQueuedMessages,
     clearAllQueuedMessages,
+    sendQueuedMessageNow,
     isPaused:
       hasChatId && chatId !== undefined
         ? (streamState?.queuePaused ?? false)

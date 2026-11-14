@@ -53,6 +53,7 @@ export const SETTING_IDS = {
   enableMultiWindow: "setting-enable-multi-window",
   enableNeonBranchProtection: "setting-enable-neon-branch-protection",
   enableClaudeCodeSubscription: "setting-enable-claude-code-subscription",
+  enableClaudeCodeNativeTools: "setting-enable-claude-code-native-tools",
   enableAppPreviewDomains: "setting-enable-app-preview-domains",
   enablePreviewCookieIsolation: "setting-enable-preview-cookie-isolation",
   enableExplorerSubagent: "setting-enable-explorer-subagent",
@@ -520,6 +521,15 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     description:
       "Use the official local Claude Code CLI with your Claude subscription",
     keywords: ["claude", "anthropic", "subscription", "cli", "experiment"],
+    sectionId: SECTION_IDS.experiments,
+    sectionLabel: "Experiments",
+  },
+  {
+    id: SETTING_IDS.enableClaudeCodeNativeTools,
+    label: "Use native Claude Code tools",
+    description:
+      "Let Claude Code use its own tools, including Bash on your machine, in Agent mode",
+    keywords: ["claude", "native", "bash", "shell", "tools", "experiment"],
     sectionId: SECTION_IDS.experiments,
     sectionLabel: "Experiments",
   },

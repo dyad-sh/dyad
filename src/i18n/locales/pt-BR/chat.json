@@ -484,5 +484,20 @@
     "tabList": "Saída das execuções de teste",
     "noTabs": "Nenhuma aba de saída de testes. Execute os testes para ver a saída.",
     "noOutput": "Ainda não há saída."
+  },
+  "claudeNativeTool": {
+    "runningCommand": "Executando {{command}}",
+    "ranCommand": "{{command}} executado",
+    "searching": "Buscando {{pattern}}",
+    "searched": "Busca por {{pattern}} concluída",
+    "searchingWeb": "Buscando na web {{query}}",
+    "searchedWeb": "Busca na web por {{query}} concluída",
+    "runningSubagent": "Subagente trabalhando em {{task}}",
+    "ranSubagent": "Subagente concluiu {{task}}",
+    "usingTool": "Usando {{tool}}",
+    "usedTool": "{{tool}} usado",
+    "steps": "Etapas",
+    "compacted": "O Claude Code compactou a conversa",
+    "steered": "Você, enquanto o Claude trabalhava"
   }
 }

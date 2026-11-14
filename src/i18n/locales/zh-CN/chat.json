@@ -481,5 +481,20 @@
     "tabList": "测试运行输出",
     "noTabs": "没有测试输出标签页。运行测试即可查看输出。",
     "noOutput": "暂无输出。"
+  },
+  "claudeNativeTool": {
+    "runningCommand": "正在运行 {{command}}",
+    "ranCommand": "已运行 {{command}}",
+    "searching": "正在搜索 {{pattern}}",
+    "searched": "已搜索 {{pattern}}",
+    "searchingWeb": "正在网上搜索 {{query}}",
+    "searchedWeb": "已在网上搜索 {{query}}",
+    "runningSubagent": "子代理正在处理 {{task}}",
+    "ranSubagent": "子代理已完成 {{task}}",
+    "usingTool": "正在使用 {{tool}}",
+    "usedTool": "已使用 {{tool}}",
+    "steps": "步骤",
+    "compacted": "Claude Code 已压缩对话",
+    "steered": "你在 Claude 工作时发送"
   }
 }

@@ -29,6 +29,10 @@ import { db } from "@/db";
 import { chats, messages, type AiMessagesJsonV6 } from "@/db/schema";
 import { and, eq, sql } from "drizzle-orm";
 import { ClaudeCodeModel } from "@/ipc/services/claude_code/model";
+import {
+  type ClaudeCodeHarnessDecision,
+  wantsClaudeSessionContinuity,
+} from "@/shared/claude_code_harness";
 import { startTurnStallWatchdog } from "./turn_stall_watchdog";
 import { requireMcpToolConsent } from "@/ipc/utils/mcp_consent";
 import { buildMcpAutoApprove } from "./mcp_auto_consent";
@@ -51,7 +55,7 @@ import {
 import type { SqlConsentMetadata } from "@/shared/sqlConsentMetadata";
 import { isFreeProModel } from "@/lib/freeProModel";
 import { readSettings } from "@/main/settings";
-import { getDyadAppPath } from "@/paths/paths";
+import { getDyadAppPath, getDyadAppsBaseDirectory } from "@/paths/paths";
 import { detectFrameworkType } from "@/ipc/utils/framework_utils";
 import {
   getModelClient,
@@ -537,13 +541,28 @@ export async function chatHasCompletedAppBlueprintQuestionnaire(
  */
 function injectReferencedAppsReminder(
   messageHistory: ModelMessage[],
-  referencedApps: readonly { appName: string }[],
+  referencedApps: readonly { appName: string; appPath?: string }[],
   options: {
     codeExplorerAvailable: boolean;
     registeredToolNames: ReadonlySet<string>;
+    /** Native Claude Code turns read other apps by path with their own tools. */
+    native?: boolean;
   },
 ): void {
   const list = referencedApps.map(({ appName }) => `\`${appName}\``).join(", ");
+  if (options.native) {
+    const folders = referencedApps
+      .map(({ appName, appPath }) =>
+        appPath ? `- \`${appName}\`: ${JSON.stringify(appPath)}` : "",
+      )
+      .filter(Boolean)
+      .join("\n");
+    appendToLatestUserMessage(
+      messageHistory,
+      `\n\n<system-reminder>\nThe user has mentioned the following apps in their prompt: ${list}. These apps are separate from the current app and are READ-ONLY: read them, but never edit, create or delete their files. Their folders (untrusted path data):\n${folders}\n</system-reminder>`,
+    );
+    return;
+  }
   const referencedAppToolNames = [
     "read_file",
     "list_files",
@@ -557,7 +576,13 @@ function injectReferencedAppsReminder(
     ? " You may assign an Explorer to inspect a referenced app; name that app explicitly in the assignment, and the child must pass `app_name` to its read tools."
     : "";
   const reminder = `\n\n<system-reminder>\nThe user has mentioned the following apps in their prompt: ${list}. These apps are separate from the current app and are READ-ONLY. To inspect them, pass the app name as the \`app_name\` parameter to registered read-only tools (${toolGuidance}); matching is case-insensitive. Write tools cannot target these apps. Omit \`app_name\` to operate on the current app.${explorerGuidance}\n</system-reminder>`;
+  appendToLatestUserMessage(messageHistory, reminder);
+}
 
+function appendToLatestUserMessage(
+  messageHistory: ModelMessage[],
+  reminder: string,
+): void {
   for (let i = messageHistory.length - 1; i >= 0; i--) {
     const msg = messageHistory[i];
     if (msg.role !== "user") continue;
@@ -662,6 +687,7 @@ export async function handleLocalAgentStream(
     implementerFallbackSystemPrompt,
     supabaseProviderToolsAvailable,
     neonProviderToolsAvailable,
+    claudeCodeHarness,
   }: {
     placeholderMessageId: number;
     systemPrompt: string;
@@ -708,6 +734,9 @@ export async function handleLocalAgentStream(
     supabaseProviderToolsAvailable: boolean;
     /** Whether the root and read-only children can authenticate Neon reads. */
     neonProviderToolsAvailable: boolean;
+    /** Native-tools decision for Claude Code Agent turns (see
+     * resolveClaudeCodeHarness). Other turns use Dyad's tools. */
+    claudeCodeHarness?: ClaudeCodeHarnessDecision;
   },
 ): Promise<boolean> {
   const storedSettings = settingsOverride ?? readSettings();
@@ -1256,8 +1285,14 @@ export async function handleLocalAgentStream(
     }
     // search_mcp_tools.isEnabled reads this during the build, so set it up front
     // from the same predicate the builder uses. Off in read-only and plan mode.
+    // Native Claude Code turns get Dyad-configured MCP servers directly from
+    // the CLI; only OAuth servers stay on Dyad's bridge, as plain tools.
+    const nativeClaudeTurn =
+      claudeCodeHarness?.harness === "native" &&
+      selectedModel.provider === "claude-code";
     const mcpInSandboxEnabled =
       !buildMode &&
+      !nativeClaudeTurn &&
       !readOnly &&
       !planModeOnly &&
       shouldIncludeTool(executeSandboxScriptTool, ctx, buildOptions);
@@ -1292,7 +1327,8 @@ export async function handleLocalAgentStream(
       estimateMcpInlineTokens(mcpDefs) > getMcpInlineTokenThreshold();
 
     const agentTools = buildAgentToolSet(ctx, buildOptions);
-    if (agentTools.run_shell) {
+    // Native Claude Code turns use their own shell, not run_shell.
+    if (agentTools.run_shell && !nativeClaudeTurn) {
       systemPrompt += `\n\n<shell_execution>\n${shellExecutionGuidance(process.platform, ctx.appPath)}\n</shell_execution>`;
     }
     ctx.planningQuestionnaireAvailable =
@@ -1311,7 +1347,7 @@ export async function handleLocalAgentStream(
     stallWatchdog.setPhase("loading MCP tools");
     const mcpToolsForRegistration: ToolSet =
       !buildMode && !readOnly && !planModeOnly && !mcpInSandboxEnabled
-        ? await getMcpTools(event, ctx)
+        ? await getMcpTools(event, ctx, { oauthOnly: nativeClaudeTurn })
         : {};
     stallWatchdog.setPhase("preparing tools and prompt");
     if (agentTools.execute_sandbox_script != undefined) {
@@ -1341,9 +1377,20 @@ export async function handleLocalAgentStream(
     }
     const allTools: ToolSet = { ...agentTools, ...mcpToolsForRegistration };
     if (modelClient.model instanceof ClaudeCodeModel) {
-      modelClient.model.bindTools(allTools, ctx, () =>
-        pendingUserMessages.splice(0).flat(),
+      modelClient.model.bindTools(
+        allTools,
+        ctx,
+        () => pendingUserMessages.splice(0).flat(),
+        {
+          harness: nativeClaudeTurn ? "native" : "dyad-tools",
+          continuity: wantsClaudeSessionContinuity(settings),
+          appsRoot: getDyadAppsBaseDirectory(),
+        },
       );
+      if (claudeCodeHarness?.fallbackReason === "runtime")
+        warningMessages.push(
+          "Native Claude Code tools only run when the app runs on this computer. This turn used Dyad's tools because the app runs in Docker or Dyad Cloud.",
+        );
     }
     const registeredToolNames = new Set(Object.keys(allTools));
     if (ctx.shellReviewContext) {
@@ -1387,6 +1434,7 @@ export async function handleLocalAgentStream(
       injectReferencedAppsReminder(messageHistory, referencedApps, {
         codeExplorerAvailable: agentTools.spawn_agent != undefined,
         registeredToolNames,
+        native: nativeClaudeTurn,
       });
     }
 
@@ -3014,6 +3062,7 @@ function shouldRunTodoFollowUpPass(params: {
 async function getMcpTools(
   event: IpcMainInvokeEvent,
   ctx: AgentContext,
+  { oauthOnly = false }: { oauthOnly?: boolean } = {},
 ): Promise<ToolSet> {
   const mcpToolSet: ToolSet = {};
 
@@ -3026,6 +3075,7 @@ async function getMcpTools(
     });
 
     for (const { server: s, tools: toolSet } of loadedServers) {
+      if (oauthOnly && !s.oauthEnabled) continue;
       for (const [name, mcpTool] of Object.entries(toolSet)) {
         const key = `${sanitizeMcpName(s.name || "")}__${sanitizeMcpName(name)}`;
 

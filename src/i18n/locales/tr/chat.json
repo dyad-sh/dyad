@@ -484,5 +484,20 @@
     "tabList": "Test çalıştırma çıktısı",
     "noTabs": "Test çıktısı sekmesi yok. Çıktıyı görmek için testleri çalıştırın.",
     "noOutput": "Henüz çıktı yok."
+  },
+  "claudeNativeTool": {
+    "runningCommand": "{{command}} çalıştırılıyor",
+    "ranCommand": "{{command}} çalıştırıldı",
+    "searching": "{{pattern}} aranıyor",
+    "searched": "{{pattern}} arandı",
+    "searchingWeb": "Web'de {{query}} aranıyor",
+    "searchedWeb": "Web'de {{query}} arandı",
+    "runningSubagent": "Alt ajan {{task}} üzerinde çalışıyor",
+    "ranSubagent": "Alt ajan {{task}} görevini bitirdi",
+    "usingTool": "{{tool}} kullanılıyor",
+    "usedTool": "{{tool}} kullanıldı",
+    "steps": "Adımlar",
+    "compacted": "Claude Code konuşmayı sıkıştırdı",
+    "steered": "Claude çalışırken gönderdiğiniz mesaj"
   }
 }

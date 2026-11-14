@@ -15,6 +15,17 @@ export const ClaudeSessionManifestSchema = z.object({
   sessionId: z.string(),
   fingerprint: z.string(),
   usageBaseline: ClaudeUsageBaselineSchema.optional(),
+  /** Fingerprint of the app alone. Continuity sessions resume across prompt
+   * and tool changes, so only the app identity must match. */
+  appFingerprint: z.string().optional(),
+  /** Set once a session served a turn with native tools enabled; it keeps
+   * resuming across harness and mode changes from then on. */
+  continuity: z.boolean().optional(),
+  /** Dyad assistant message id → last top-level CLI assistant uuid of that
+   * turn. Used to rewind the session after undo, restore or retry. */
+  ledger: z.record(z.string(), z.string()).optional(),
+  /** The Dyad assistant message the session last answered. */
+  lastMessageId: z.number().int().optional(),
 });
 export type ClaudeSessionManifest = z.infer<typeof ClaudeSessionManifestSchema>;
 

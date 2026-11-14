@@ -757,6 +757,7 @@ const PERSON_PROPERTY_NAMES = [
   "selectedChatMode",
   "selectedTemplateId",
   "selectedThemeId",
+  "showTokenBar",
   "supabaseConnected",
   "vercelConnected",
 ];

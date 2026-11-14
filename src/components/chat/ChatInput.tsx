@@ -35,7 +35,7 @@ import {
   agentTodosByChatIdAtom,
 } from "@/atoms/chatAtoms";
 import { chatAnnotationsAtom } from "@/atoms/chatAnnotationAtoms";
-import { atom, useAtom, useSetAtom, useAtomValue, useStore } from "jotai";
+import { useAtom, useSetAtom, useAtomValue, useStore } from "jotai";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { Button } from "@/components/ui/button";
@@ -134,8 +134,6 @@ import {
   hasChatComposerPayload,
 } from "@/lib/serializeChatAnnotations";
 
-const showTokenBarAtom = atom(false);
-
 export function ChatInput({ chatId }: { chatId?: number }) {
   const { t } = useTranslation("chat");
   const posthog = usePostHog();
@@ -162,7 +160,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     () => (chatId ? (allChatAnnotations.get(chatId) ?? []) : []),
     [allChatAnnotations, chatId],
   );
-  const { settings } = useSettings();
+  const { settings, updateSettings } = useSettings();
   const {
     chat: activeChat,
     selectedMode: chatMode,
@@ -210,12 +208,13 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const messages = useChatMessages(chatId);
   const setMessagesById = useSetAtom(chatMessagesByIdAtom);
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
-  const [showTokenBar, setShowTokenBar] = useAtom(showTokenBarAtom);
+  const showTokenBar = settings?.showTokenBar ?? false;
   const queryClient = useQueryClient();
   const toggleShowTokenBar = useCallback(() => {
-    setShowTokenBar((prev) => !prev);
+    // The settings mutation shows its own error toast.
+    void updateSettings({ showTokenBar: !showTokenBar }).catch(() => {});
     queryClient.invalidateQueries({ queryKey: queryKeys.tokenCount.all });
-  }, [setShowTokenBar, queryClient]);
+  }, [updateSettings, showTokenBar, queryClient]);
   const [selectedComponents, setSelectedComponents] = useAtom(
     selectedComponentsPreviewAtom,
   );

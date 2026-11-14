@@ -1,10 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { systemContracts } from "../types/system";
+import {
+  retainCapture,
+  getCapture,
+  discardCapture,
+} from "../utils/screenshot_captures";
 import { miscContracts } from "../types/misc";
 
 const mocks = vi.hoisted(() => ({
   handlers: new Map<unknown, (event: unknown, req: unknown) => Promise<any>>(),
   readEffectiveSettings: vi.fn(),
   readSettings: vi.fn(),
+  writeClipboardImage: vi.fn(),
+}));
+
+vi.mock("@/main/clipboard_image", () => ({
+  writeClipboardImage: mocks.writeClipboardImage,
 }));
 
 vi.mock("electron", () => ({
@@ -109,5 +120,49 @@ describe("getSessionDebugBundle", () => {
     const bundle = await handler({}, { chatId: 1 });
 
     expect(bundle.settings.blockUnsafeNpmPackages).toBe(false);
+  });
+});
+
+describe("screenshot clipboard handoff", () => {
+  beforeEach(() => {
+    mocks.handlers.clear();
+    mocks.writeClipboardImage.mockReset();
+    registerDebugHandlers();
+  });
+  it("retains the capture until the asynchronous clipboard write finishes", async () => {
+    const id = "clipboard-pending";
+    const image = {} as Electron.NativeImage;
+    retainCapture(id, image);
+    let finish!: () => void;
+    mocks.writeClipboardImage.mockReturnValue(
+      new Promise<void>((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const result = mocks.handlers.get(systemContracts.recopyScreenshot)!(
+      {},
+      { captureId: id },
+    );
+    expect(getCapture(id)).toBe(image);
+    finish();
+    await expect(result).resolves.toEqual({ copied: true });
+    expect(getCapture(id)).toBeUndefined();
+  });
+  it("preserves the capture if clipboard access fails", async () => {
+    const id = "clipboard-failed";
+    const image = {} as Electron.NativeImage;
+    retainCapture(id, image);
+    mocks.writeClipboardImage.mockRejectedValue(new Error("clipboard denied"));
+    try {
+      await expect(
+        mocks.handlers.get(systemContracts.recopyScreenshot)!(
+          {},
+          { captureId: id },
+        ),
+      ).resolves.toEqual({ copied: false, retained: true });
+      expect(getCapture(id)).toBe(image);
+    } finally {
+      discardCapture(id);
+    }
   });
 });

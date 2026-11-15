@@ -92,6 +92,9 @@ describe("local-agent consent banner (integration)", () => {
       await expect(consent).resolves.toBe(true);
       expect(readSettings().agentToolConsents?.run_shell).toBe("always");
     },
+    // Mounting the real chat UI and exercising both IPC responses can exceed
+    // Vitest's five-second default on a loaded macOS runner.
+    15_000,
   );
 
   it("persists Always allow through the real consent response path", async () => {

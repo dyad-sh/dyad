@@ -1,142 +1,644 @@
 import type { IpcMainInvokeEvent } from "electron";
 import log from "electron-log";
-import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
+import { readSettings } from "@/main/settings";
 import {
   TestRunQueue,
   type TestRunExecution,
 } from "@/test_run_queue/controller";
+import type { TestRunStopReason } from "@/test_run_queue/state";
+import { DEFAULT_MAX_CONCURRENT_TEST_RUNS } from "@/shared/settings_defaults";
+import type { TestRunWaitReason } from "@/shared/test_run_queue";
+import type { NeonBranchLimitStatus } from "@/shared/neon_branch_limit";
+import type { TestRunQueueSnapshot } from "../types/tests";
 import {
-  EMPTY_TEST_RUN_QUEUE,
-  type TestRunRequest,
-  type TestRunStopReason,
-} from "@/test_run_queue/state";
+  systemClock,
+  type Clock,
+  type ClockHandle,
+} from "@/state_machines/clock";
 import { createTraceObserver } from "@/state_machines/trace";
 import { broadcastToRegisteredWindows } from "../utils/window_broadcast";
 import { TestRunTiming } from "./test_run_timing";
+import { hasUnsettledE2eTestProcesses } from "./e2e_test_process_registry";
+import {
+  loadTestRunContext,
+  type TestRunContext,
+  type TestRunContextRequest,
+} from "./test_run_context";
+
 const logger = log.scope("test_run_queue");
-const deletingApps = new Set<number>();
+const ADMISSION_RETRY_INTERVAL_MS = 2000;
+const ADMISSION_CONTEXT_REFRESH_INTERVAL_MS = 30_000;
+const MAX_ADMISSION_CONTEXT_FAILURES = 3;
+export interface AppTestRunExecution extends TestRunExecution {
+  /** The mode that granted this run its queue slot, stable through cleanup. */
+  readonly parallelRunsEnabled: boolean;
+}
+type RunRecord = {
+  request: TestRunContextRequest;
+  parallelRunsEnabled: boolean;
+  context?: TestRunContext | null;
+  contextCheckedAt?: number;
+  contextStateKey?: string;
+  contextFailures?: number;
+  signal?: AbortSignal;
+  neonBranchLimit?: { status: NeonBranchLimitStatus; projectId: string };
+};
 
-// Composition root: the queue knows no IPC, provider, or agent modules.
-// Each callback owns the complete lifecycle, including agent result accounting.
-const testRunQueues = new Map<number, TestRunQueue>();
-// Process-wide identities survive idle-queue eviction without retaining app IDs.
-let nextTestRunId = 0;
+/**
+ * One owner arbitrates admission across apps, windows and invocation sources.
+ * The queue reserves slots through cleanup and result delivery. Admission uses
+ * the current user-configured limit and database/workspace compatibility.
+ * Lowering the limit only delays queued work; active runs finish normally.
+ */
+export function createTestRunQueueService({
+  clock = systemClock,
+}: {
+  clock?: Clock;
+} = {}) {
+  const deletingApps = new Set<number>();
+  const senders = new Map<number, IpcMainInvokeEvent["sender"]>();
+  const records = new Map<number, RunRecord>();
+  const blockedNeonRuns = new Map<
+    number,
+    { runId: number; projectId: string }
+  >();
+  let nextTestRunId = clock.now() * 1000;
+  let driving = false;
+  let driveTimer: ClockHandle | undefined;
+  const unsettledOwners = new Map<AbortSignal, RunRecord>();
 
-export function withAppTestRun<Result>(
-  options: Omit<TestRunRequest, "runId"> & {
-    appId: number;
-    event: IpcMainInvokeEvent;
-    externalSignal?: AbortSignal;
-    onQueued?: (position: number) => void;
-  },
-  execute: (run: TestRunExecution, timing: TestRunTiming) => Promise<Result>,
-  cancelled: (reason: TestRunStopReason) => Result,
-): Promise<Result> {
-  const { appId, event } = options;
-  if (deletingApps.has(appId))
-    return Promise.reject(
-      new DyadError("App is being deleted", DyadErrorKind.Precondition),
-    );
-  const runId = ++nextTestRunId;
-  const timing = new TestRunTiming({ appId, runId, source: options.source });
-  const queueWait = timing.startStep("queue_wait");
-  let signal = options.externalSignal;
-  let queue = testRunQueues.get(appId);
-  if (!queue) {
-    queue = new TestRunQueue({
-      observer: createTraceObserver("test_run_queue", appId),
-      onChange: (state) => {
-        if (!state.activeRun && testRunQueues.get(appId) === queue)
-          testRunQueues.delete(appId);
-        broadcastToRegisteredWindows(event.sender, "tests:queue-state", {
+  function refreshUnsettledOwners() {
+    for (const signal of unsettledOwners.keys()) {
+      if (!hasUnsettledE2eTestProcesses(signal)) unsettledOwners.delete(signal);
+    }
+  }
+
+  const queue = new TestRunQueue({
+    manualAdmission: true,
+    observer: createTraceObserver("test_run_queue", "global"),
+    onChange() {
+      for (const [appId, sender] of senders) {
+        const state = getAppTestRunQueue(appId);
+        broadcastToRegisteredWindows(sender, "tests:queue-state", {
           appId,
           ...state,
         });
-      },
-      onError: (error) =>
-        logger.error("Failed to publish test queue state", error),
-    });
-    testRunQueues.set(appId, queue);
+        if (!state.activeRuns.length && !state.queuedRuns.length)
+          senders.delete(appId);
+      }
+      if (!driving && queue.getSnapshot().queuedRuns.length) startSerialRun();
+      scheduleDrive();
+    },
+    onError: (error) =>
+      logger.error("Failed to publish test queue state", error),
+  });
+
+  function startSerialRun(settings = readSettings()) {
+    if (settings.enableParallelTestRuns) return;
+    refreshUnsettledOwners();
+    const state = queue.getSnapshot();
+    const busyApps = new Set([
+      ...(state.activeRuns ?? []).map((run) => run.appId),
+      ...[...unsettledOwners.values()].map((owner) => owner.request.appId),
+    ]);
+    // Preserve the original per-app queue when parallel execution is off.
+    for (const run of state.queuedRuns) {
+      if (busyApps.has(run.appId)) continue;
+      busyApps.add(run.appId);
+      const record = records.get(run.runId);
+      if (record) {
+        record.context = undefined;
+        record.parallelRunsEnabled = false;
+      }
+      queue.admit(run.runId);
+    }
   }
-  const result = queue.enqueue({
-    request: {
+
+  function scheduleDrive(delay = 0) {
+    if (driving) return;
+    if (driveTimer !== undefined) clock.cancel(driveTimer);
+    driveTimer = undefined;
+    const state = queue.getSnapshot();
+    if (!state.queuedRuns.length) return;
+    driveTimer = clock.schedule(() => {
+      driveTimer = undefined;
+      void drive();
+    }, delay);
+    driveTimer.unref?.();
+  }
+
+  function compatibleWithRun(
+    request: TestRunContextRequest,
+    context: TestRunContext | null | undefined,
+    otherRunId: number,
+  ) {
+    const other = records.get(otherRunId);
+    if (!context || !other?.context) return false;
+    const sharedWorkspace =
+      request.appId === other.request.appId ||
+      context.workspaceKey === other.context.workspaceKey;
+    const sharedDatabase =
+      !!context.databaseKey &&
+      context.databaseKey === other.context.databaseKey;
+    if (
+      (sharedWorkspace || sharedDatabase) &&
+      (context.exclusive || other.context.exclusive)
+    )
+      return false;
+    return (
+      !sharedDatabase ||
+      (context.branch === other.context.branch &&
+        context.revision === other.context.revision)
+    );
+  }
+
+  function processCleanupBlocks(record: RunRecord) {
+    return [...unsettledOwners.values()].some((owner) => {
+      if (owner.request.appId === record.request.appId) return true;
+      // A surviving process may still touch its workspace or remote database.
+      // Retain that context after the queue removes its finished run record.
+      const context = record.context;
+      const other = owner.context;
+      return (
+        !context ||
+        !other ||
+        context.workspaceKey === other.workspaceKey ||
+        (!!context.databaseKey && context.databaseKey === other.databaseKey)
+      );
+    });
+  }
+
+  async function drive() {
+    if (driving) return;
+    driving = true;
+    let queueAdvanced = false;
+    try {
+      const settings = readSettings();
+      let limit =
+        settings.maxConcurrentTestRuns ?? DEFAULT_MAX_CONCURRENT_TEST_RUNS;
+      startSerialRun(settings);
+      const earlierApps = new Set<number | undefined>();
+      const waitingRunIds: number[] = [];
+      for (const candidate of queue.getSnapshot().queuedRuns) {
+        if (earlierApps.has(candidate.appId)) {
+          queue.waiting(candidate.runId, "earlier-run");
+          continue;
+        }
+        earlierApps.add(candidate.appId);
+        const record = records.get(candidate.runId);
+        if (!record) continue;
+        refreshUnsettledOwners();
+        const activeCount = queue.getSnapshot().activeRuns?.length ?? 0;
+        // Polling observes settings and late process settlement cheaply. No git
+        // or workspace reads are needed when admission is already impossible.
+        const ownProcessCleanupBlocked = [...unsettledOwners.values()].some(
+          (owner) => owner.request.appId === candidate.appId,
+        );
+        if (ownProcessCleanupBlocked) {
+          queue.waiting(candidate.runId, "process-cleanup");
+          continue;
+        }
+        // Serial mode has already admitted every app without an active run, so
+        // what remains waits behind its own app's earlier run.
+        if (!settings.enableParallelTestRuns) {
+          queue.waiting(candidate.runId, "earlier-run");
+          continue;
+        }
+        if (activeCount + unsettledOwners.size >= limit) {
+          queue.waiting(candidate.runId, "capacity");
+          return;
+        }
+        // Reuse admission metadata while resource owners are unchanged. A slow
+        // refresh observes branch/config edits; snapshot capture still performs
+        // a fresh compatibility check immediately before execution. A failed
+        // read retries on the admission interval, so a persistent failure
+        // surfaces within seconds instead of holding its app's queue.
+        const stateKey = JSON.stringify([
+          (queue.getSnapshot().activeRuns ?? []).map((run) => run.runId),
+          [...unsettledOwners.values()].map((owner) => owner.request.runId),
+        ]);
+        if (
+          record.contextStateKey !== stateKey ||
+          record.contextCheckedAt === undefined ||
+          clock.now() - record.contextCheckedAt >=
+            (record.contextFailures
+              ? ADMISSION_RETRY_INTERVAL_MS
+              : ADMISSION_CONTEXT_REFRESH_INTERVAL_MS)
+        ) {
+          try {
+            record.context = await loadTestRunContext(record.request, settings);
+            record.contextFailures = 0;
+          } catch (error) {
+            record.context = null;
+            record.contextFailures = (record.contextFailures ?? 0) + 1;
+            logger.warn("Failed to load test admission context", {
+              appId: candidate.appId,
+              runId: candidate.runId,
+              error,
+            });
+            // A deleted app or missing folder will not come back on retry.
+            const deterministic =
+              isDyadError(error) &&
+              (error.kind === DyadErrorKind.NotFound ||
+                error.kind === DyadErrorKind.Precondition);
+            if (
+              deterministic ||
+              record.contextFailures >= MAX_ADMISSION_CONTEXT_FAILURES
+            ) {
+              queue.failAdmission(
+                candidate.runId,
+                isDyadError(error)
+                  ? error
+                  : new DyadError(
+                      "Could not read the app's test setup after three attempts. Check that the app folder exists and its Git repository is readable, then run the tests again.",
+                      DyadErrorKind.Precondition,
+                      { cause: error },
+                    ),
+              );
+              earlierApps.delete(candidate.appId);
+              queueAdvanced = true;
+              continue;
+            }
+          }
+          record.contextStateKey = stateKey;
+          record.contextCheckedAt = clock.now();
+        }
+        if (
+          !queue
+            .getSnapshot()
+            .queuedRuns.some((run) => run.runId === candidate.runId)
+        )
+          continue;
+        refreshUnsettledOwners();
+        const processCleanupBlocked = processCleanupBlocks(record);
+        const active = queue.getSnapshot().activeRuns ?? [];
+        const context = record.context;
+        const compatible = active.every((run) =>
+          compatibleWithRun(record.request, context, run.runId),
+        );
+        const conflictsWithEarlierRun = waitingRunIds.some(
+          (runId) => !compatibleWithRun(record.request, context, runId),
+        );
+        let reason: TestRunWaitReason | null = !context
+          ? "context-unavailable"
+          : processCleanupBlocked
+            ? "process-cleanup"
+            : active.length + unsettledOwners.size >= limit
+              ? "capacity"
+              : conflictsWithEarlierRun
+                ? "earlier-run"
+                : active.length && !compatible
+                  ? "compatibility"
+                  : null;
+        if (!reason) {
+          // Metadata reads yield to settings changes. Refresh only for a run
+          // that can be admitted, not for every blocked candidate or event.
+          const latestSettings = readSettings();
+          if (!latestSettings.enableParallelTestRuns) {
+            startSerialRun(latestSettings);
+            return;
+          }
+          limit =
+            latestSettings.maxConcurrentTestRuns ??
+            DEFAULT_MAX_CONCURRENT_TEST_RUNS;
+          if (active.length + unsettledOwners.size >= limit)
+            reason = "capacity";
+        }
+        if (!reason || candidate.queuedReason !== reason) {
+          try {
+            logger.info("e2e_test_admission_decision", {
+              app_id: candidate.appId,
+              run_id: candidate.runId,
+              source: candidate.source,
+              decision: reason ? "queued" : "admitted",
+              reason,
+              previous_reason: candidate.queuedReason ?? null,
+              active_run_count: active.length,
+              unsettled_run_count: unsettledOwners.size,
+              active_run_ids: active.map((run) => run.runId),
+              parallel_enabled: !!settings.enableParallelTestRuns,
+              process_cleanup_blocked: processCleanupBlocked,
+              admission: {
+                limit,
+                compatible,
+              },
+            });
+          } catch {
+            // Diagnostics must never prevent queue updates or test execution.
+          }
+        }
+        if (reason) {
+          queue.waiting(candidate.runId, reason, context?.branch);
+          if (reason === "capacity") return;
+          if (context) waitingRunIds.push(candidate.runId);
+          continue;
+        }
+        queue.waiting(candidate.runId, "starting", context?.branch);
+        record.parallelRunsEnabled = true;
+        queue.admit(candidate.runId);
+        queueAdvanced = true;
+        return;
+      }
+    } catch (error) {
+      logger.error("Test admission failed", error);
+    } finally {
+      driving = false;
+      // Fill available slots without waiting for dependency setup.
+      scheduleDrive(queueAdvanced ? 0 : ADMISSION_RETRY_INTERVAL_MS);
+    }
+  }
+
+  function withAppTestRun<Result>(
+    options: Omit<TestRunContextRequest, "runId"> & {
+      event: IpcMainInvokeEvent;
+      externalSignal?: AbortSignal;
+      onQueued?: (position: number) => void;
+    },
+    execute: (
+      run: AppTestRunExecution,
+      timing: TestRunTiming,
+    ) => Promise<Result>,
+    cancelled: (reason: TestRunStopReason) => Result,
+  ): Promise<Result> {
+    if (deletingApps.has(options.appId))
+      return Promise.reject(
+        new DyadError("App is being deleted", DyadErrorKind.Precondition),
+      );
+    if (queue.getSnapshot().queuedRuns.length >= 256)
+      return Promise.reject(
+        new DyadError(
+          "The test queue is full. Wait for a run to finish before adding another.",
+          DyadErrorKind.Precondition,
+        ),
+      );
+    const runId = ++nextTestRunId;
+    const request: TestRunContextRequest = {
       runId,
+      appId: options.appId,
       source: options.source,
       chatId: options.chatId,
       testFile: options.testFile,
       testFiles: options.testFiles,
       testLine: options.testLine,
       grep: options.grep,
-    },
-    signal: options.externalSignal,
-    execute: (run) => {
-      queueWait.end();
-      signal = run.signal;
-      return execute(run, timing);
-    },
-    cancelled: (reason) => {
-      queueWait.end("cancelled");
-      timing.finish("cancelled");
-      return cancelled(reason);
-    },
-    onQueued: options.onQueued,
-  });
-  if (!queue.getSnapshot().activeRun && testRunQueues.get(appId) === queue)
-    testRunQueues.delete(appId);
-  return result.then(
-    (value) => {
-      timing.finish(signal?.aborted ? "cancelled" : undefined);
-      return value;
-    },
-    (error) => {
-      queueWait.end("failed");
-      timing.finish(signal?.aborted ? "cancelled" : "failed");
-      throw error;
-    },
-  );
-}
+      headed: options.headed,
+      parallel: options.parallel,
+      slowMo: options.slowMo,
+      preview: options.preview,
+    };
+    const record: RunRecord = { request, parallelRunsEnabled: false };
+    records.set(runId, record);
+    const sender = options.event.sender;
+    senders.set(options.appId, sender);
+    const timing = new TestRunTiming({
+      appId: options.appId,
+      runId,
+      source: options.source,
+    });
+    const queueWait = timing.startStep("queue_wait");
+    return queue
+      .enqueue({
+        request,
+        signal: options.externalSignal,
+        onQueued: options.onQueued,
+        execute: async (run) => {
+          queueWait.end();
+          record.signal = run.signal;
+          try {
+            return await execute(
+              { ...run, parallelRunsEnabled: record.parallelRunsEnabled },
+              timing,
+            );
+          } finally {
+            if (hasUnsettledE2eTestProcesses(run.signal))
+              unsettledOwners.set(run.signal, record);
+          }
+        },
+        cancelled: (reason) => {
+          queueWait.end("cancelled");
+          timing.finish("cancelled");
+          return cancelled(reason);
+        },
+      })
+      .then(
+        (value) => {
+          timing.finish(record.signal?.aborted ? "cancelled" : undefined);
+          return value;
+        },
+        (error) => {
+          queueWait.end("failed");
+          timing.finish(record.signal?.aborted ? "cancelled" : "failed");
+          throw error;
+        },
+      )
+      .finally(() => {
+        records.delete(runId);
+        // An already-aborted request never enters the queue, so no queue change
+        // retires its sender. Leave a newer request's sender in place.
+        if (
+          senders.get(options.appId) === sender &&
+          !isAppQueued(options.appId)
+        )
+          senders.delete(options.appId);
+      });
+  }
 
-export function getAppTestRunQueue(appId: number) {
-  return testRunQueues.get(appId)?.getSnapshot() ?? EMPTY_TEST_RUN_QUEUE;
-}
+  function isAppQueued(appId: number) {
+    const state = getAppTestRunQueue(appId);
+    return state.activeRuns.length > 0 || state.queuedRuns.length > 0;
+  }
 
-export function ownsAppTestRun(appId: number, run: TestRunExecution): boolean {
-  return testRunQueues.get(appId)?.ownsExecution(run) ?? false;
-}
+  function getAppTestRunQueue(appId: number): TestRunQueueSnapshot & {
+    activeRuns: NonNullable<TestRunQueueSnapshot["activeRuns"]>;
+  } {
+    const state = queue.getSnapshot();
+    const activeRuns = (state.activeRuns ?? [])
+      .filter((run) => run.appId === appId)
+      .map((run) => ({
+        ...run,
+        branch: records.get(run.runId)?.context?.branch ?? run.branch,
+        waitingForNeonBranch:
+          !run.stopping &&
+          records.get(run.runId)?.neonBranchLimit?.status === "waiting",
+      }));
+    const waitingRun = activeRuns.find((run) => run.waitingForNeonBranch);
+    const blockedRun = blockedNeonRuns.get(appId);
+    return {
+      ...(waitingRun
+        ? {
+            neonBranchLimit: {
+              runId: waitingRun.runId,
+              projectId: records.get(waitingRun.runId)!.neonBranchLimit!
+                .projectId,
+              status: "waiting" as const,
+            },
+          }
+        : blockedRun
+          ? { neonBranchLimit: { ...blockedRun, status: "blocked" as const } }
+          : {}),
+      activeRun: activeRuns[0] ?? null,
+      activeRuns,
+      queuedRuns: state.queuedRuns.filter((run) => run.appId === appId),
+    };
+  }
 
-export function stopAppTestsForApp(
-  appId: number,
-  reason: TestRunStopReason,
-): void {
-  testRunQueues.get(appId)?.stop(reason);
-}
+  // The queue service owns provider admission notices, so remounting the chat
+  // or opening another window can bootstrap the same current explanation.
+  function setNeonBranchLimit(
+    runId: number,
+    projectId: string,
+    status: NeonBranchLimitStatus | undefined,
+  ) {
+    const record = records.get(runId);
+    if (!record || record.signal?.aborted) return;
+    record.neonBranchLimit = status ? { status, projectId } : undefined;
+    const appId = record.request.appId;
+    if (status === "blocked") blockedNeonRuns.set(appId, { runId, projectId });
+    else if (status === undefined) blockedNeonRuns.delete(appId);
+    const sender = senders.get(appId);
+    if (sender)
+      broadcastToRegisteredWindows(sender, "tests:queue-state", {
+        appId,
+        ...getAppTestRunQueue(appId),
+      });
+  }
 
-export function stopAllAppTestRuns(reason: TestRunStopReason): void {
-  for (const queue of testRunQueues.values()) queue.stop(reason);
-}
+  /** Called under the source snapshot claim before expensive setup begins. */
+  async function validateTestRunInputs(runId: number) {
+    const record = records.get(runId);
+    if (!record?.context) return;
+    let current: TestRunContext;
+    try {
+      current = await loadTestRunContext(record.request);
+    } catch (error) {
+      // A missing app folder or unreadable repository is not a conflict with
+      // another run, which may not even exist. Report the actual cause.
+      logger.warn("Failed to reload test run context before setup", {
+        appId: record.request.appId,
+        runId,
+        error,
+      });
+      if (isDyadError(error)) throw error;
+      throw new DyadError(
+        "Could not read the app's test setup. Check that the app folder exists and its Git repository is readable, then run the tests again.",
+        DyadErrorKind.Precondition,
+        { cause: error },
+      );
+    }
+    // Serially admitted runs carry no context: serial mode never checked them
+    // against other apps, so turning parallel runs off mid-setup must not fail
+    // a parallel run that was already admitted alongside them.
+    const others = (queue.getSnapshot().activeRuns ?? []).filter(
+      (run) => run.runId !== runId && records.get(run.runId)?.context,
+    );
+    if (
+      others.some(
+        (run) => !compatibleWithRun(record.request, current, run.runId),
+      )
+    )
+      throw new DyadError(
+        "The test database or workspace changed and is no longer compatible with another active run. Run it again after that run finishes.",
+        DyadErrorKind.Precondition,
+      );
+    // Spec edits, lockfile updates and display preferences do not change safe
+    // admission. Capture their latest contents under the source snapshot claim.
+    record.context = current;
+  }
 
-export function drainAppTestRuns(appId: number): Promise<void> {
-  return testRunQueues.get(appId)?.drain() ?? Promise.resolve();
-}
+  function dismissNeonBranchLimit(appId: number, runId: number) {
+    if (blockedNeonRuns.get(appId)?.runId === runId)
+      blockedNeonRuns.delete(appId);
+  }
 
-/**
- * Whether a test run is in flight for the app. Consulted by the recording
- * handler for mutual exclusion — a recording session and a test run must never
- * run at once (both restart the dev server and share the Neon test-branch slot).
- */
-export function isTestRunActive(appId: number): boolean {
-  return testRunQueues.get(appId)?.getSnapshot().activeRun != null;
-}
-
-/** Close test admission before app deletion's first await; drain full callbacks. */
-export function beginAppTestDeletion(appId: number) {
-  deletingApps.add(appId);
-  const queue = testRunQueues.get(appId);
-  queue?.stop({ kind: "app-deleted" });
+  function ownsAppTestRun(appId: number, run: TestRunExecution) {
+    return (
+      getAppTestRunQueue(appId).activeRuns.some(
+        (active) => active.runId === run.runId,
+      ) && queue.ownsExecution(run)
+    );
+  }
+  function cancelAppTestRun(
+    appId: number,
+    runId: number,
+    reason: TestRunStopReason,
+  ) {
+    const state = getAppTestRunQueue(appId);
+    if (
+      [...state.activeRuns, ...state.queuedRuns].some(
+        (run) => run.runId === runId,
+      )
+    )
+      queue.cancel(runId, reason);
+  }
+  function stopAppTestsForApp(appId: number, reason: TestRunStopReason) {
+    const state = getAppTestRunQueue(appId);
+    for (const run of [...state.queuedRuns, ...state.activeRuns])
+      queue.cancel(run.runId, reason);
+  }
+  function stopAllAppTestRuns(reason: TestRunStopReason) {
+    queue.stop(reason);
+  }
+  /**
+   * Wait until the app has no queued or active runs and no surviving process
+   * trees from finished ones, which can still use its workspace or database.
+   * `signal` stops polling once the caller gives up waiting.
+   */
+  async function drainAppTestRuns(appId: number, signal?: AbortSignal) {
+    await queue.drain(appId);
+    const hasUnsettledOwner = () => {
+      refreshUnsettledOwners();
+      return [...unsettledOwners.values()].some(
+        (owner) => owner.request.appId === appId,
+      );
+    };
+    while (!signal?.aborted && hasUnsettledOwner()) {
+      await new Promise<void>((resolve) => {
+        clock.schedule(resolve, ADMISSION_RETRY_INTERVAL_MS);
+      });
+    }
+  }
+  function isTestRunActive(appId: number) {
+    return getAppTestRunQueue(appId).activeRuns.length > 0;
+  }
+  function beginAppTestDeletion(appId: number) {
+    blockedNeonRuns.delete(appId);
+    deletingApps.add(appId);
+    stopAppTestsForApp(appId, { kind: "app-deleted" });
+    return {
+      drain: (signal?: AbortSignal) => drainAppTestRuns(appId, signal),
+      release: () => {
+        deletingApps.delete(appId);
+      },
+    };
+  }
   return {
-    drain: () => queue?.drain() ?? Promise.resolve(),
-    release: () => {
-      deletingApps.delete(appId);
-    },
+    dismissNeonBranchLimit,
+    setNeonBranchLimit,
+    withAppTestRun,
+    getAppTestRunQueue,
+    validateTestRunInputs,
+    ownsAppTestRun,
+    cancelAppTestRun,
+    stopAppTestsForApp,
+    stopAllAppTestRuns,
+    drainAppTestRuns,
+    isTestRunActive,
+    beginAppTestDeletion,
   };
 }
+
+export const {
+  dismissNeonBranchLimit,
+  setNeonBranchLimit,
+  withAppTestRun,
+  getAppTestRunQueue,
+  validateTestRunInputs,
+  ownsAppTestRun,
+  cancelAppTestRun,
+  stopAppTestsForApp,
+  stopAllAppTestRuns,
+  drainAppTestRuns,
+  isTestRunActive,
+  beginAppTestDeletion,
+} = createTestRunQueueService();

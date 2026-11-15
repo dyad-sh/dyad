@@ -9,6 +9,8 @@ const mocks = vi.hoisted(() => ({
   revoke: vi.fn(),
   applyClientChange: vi.fn(),
   storedClient: undefined as Record<string, unknown> | undefined,
+  storedClientError: undefined as Error | undefined,
+  decrypt: vi.fn((stored: string) => stored.replace(/^enc:/, "")),
   updatedRows: [{ id: 1 }] as { id: number }[],
   updateWhere: undefined as unknown,
 }));
@@ -50,13 +52,16 @@ vi.mock("@/ipc/shared/remote_mcp_catalog", () => ({
 
 vi.mock("./mcp_oauth_provider", () => ({
   revokeMcpOAuthWriteAuthority: mocks.revoke,
-  readStoredOAuthClient: async () => mocks.storedClient,
+  readStoredOAuthClient: async () => {
+    if (mocks.storedClientError) throw mocks.storedClientError;
+    return mocks.storedClient;
+  },
   applyOAuthClientChange: mocks.applyClientChange,
 }));
 
 vi.mock("./secret_storage", () => ({
   encryptToString: (plaintext: string) => `enc:${plaintext}`,
-  decryptFromString: (stored: string) => stored.replace(/^enc:/, ""),
+  decryptFromString: mocks.decrypt,
 }));
 
 vi.mock("electron-log", () => ({
@@ -88,6 +93,10 @@ describe("syncVendoredOAuthClient", () => {
     mocks.revoke.mockReset();
     mocks.applyClientChange.mockReset();
     mocks.storedClient = undefined;
+    mocks.storedClientError = undefined;
+    mocks.decrypt
+      .mockReset()
+      .mockImplementation((stored: string) => stored.replace(/^enc:/, ""));
     mocks.updatedRows = [{ id: 1 }];
     mocks.updateWhere = undefined;
     mocks.entries = [catalogEntry()];
@@ -109,6 +118,24 @@ describe("syncVendoredOAuthClient", () => {
       oauthClientSecret: "enc:secret-1",
     });
   });
+
+  it.each(["client-secret", "oauth-state"])(
+    "preserves unreadable %s during catalog reconciliation",
+    async (field) => {
+      if (field === "client-secret") {
+        mocks.row.oauthClientSecret = "unreadable";
+        mocks.decrypt.mockImplementation(() => {
+          throw new Error("keyring denied");
+        });
+      } else {
+        mocks.storedClientError = new Error("keyring denied");
+      }
+      expect(await syncVendoredOAuthClient(1)).toBe(false);
+      expect(mocks.revoke).not.toHaveBeenCalled();
+      expect(mocks.update).not.toHaveBeenCalled();
+      expect(mocks.applyClientChange).not.toHaveBeenCalled();
+    },
+  );
 
   it("leaves a row that already matches alone", async () => {
     mocks.row.oauthClientId = "client-1";

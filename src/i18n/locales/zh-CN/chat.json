@@ -1,5 +1,19 @@
 {
+  "neonTestingBanner": {
+    "message": "让智能体在构建应用的过程中检查自己的工作，及时修复问题。测试在临时 Neon 数据库中运行，不会更改你的数据和预览。",
+    "enable": "启用测试",
+    "enabling": "正在启用…",
+    "dismiss": "关闭测试建议"
+  },
   "testRunQueue": {
+    "waitReason": {
+      "process-cleanup": "正在等待测试进程停止",
+      "capacity": "正在等待运行中的测试完成",
+      "compatibility": "正在等待兼容的数据库和工作区",
+      "earlier-run": "正在等待先前的测试运行",
+      "context-unavailable": "正在等待读取应用的测试配置。请检查应用文件和 Git 仓库。",
+      "starting": "正在启动"
+    },
     "title": "测试队列",
     "openTests": "打开测试",
     "allTests": "所有测试",
@@ -8,6 +22,7 @@
     "testsPanel": "测试面板",
     "queued": "排队中",
     "running": "运行中",
+    "waitingForNeonBranch": "等待 Neon 分支",
     "stopping": "正在停止",
     "passed": "通过",
     "failed": "失败",
@@ -15,6 +30,7 @@
     "stopped": "已停止",
     "stopReason": {
       "tests-panel-stop": "已从测试面板停止",
+      "test-queue-stop": "已从测试队列停止",
       "chat-stop": "聊天回复已停止",
       "chat-deleted": "聊天已删除",
       "version-restored": "已恢复到早期版本",
@@ -25,7 +41,8 @@
       "agent-cancelled": "代理轮次已取消",
       "app-deleted": "正在删除应用",
       "app-quit": "Dyad 正在退出"
-    }
+    },
+    "stopRun": "停止 {{target}}"
   },
   "newChat": "新建聊天",
   "viewAllApps": "所有应用",
@@ -446,5 +463,23 @@
   "mcpResultTruncated": "显示前 {{shown}} 个字符（共 {{total}} 个）。智能体已收到全部 {{total}} 个字符。",
   "mcpResultBothTruncated": "显示智能体收到的 {{total}} 个字符中的前 {{shown}} 个。工具结果原本更长，在发送给智能体之前已被截断。",
   "mcpResultToolTruncated": "工具结果过大，智能体收到的是缩短后的版本。",
-  "mcpErrorTruncated": "显示错误信息的前 {{shown}} 个字符（共 {{total}} 个）。"
+  "mcpErrorTruncated": "显示错误信息的前 {{shown}} 个字符（共 {{total}} 个）。",
+  "neonBranchLimit": {
+    "title": "已达到 Neon 分支数量上限",
+    "waiting": "您的 Neon 套餐限制了数据库分支的数量。测试正在等待其他运行结束并释放分支，随后将自动继续。",
+    "blocked": "您的 Neon 套餐无法再创建测试分支。请在 Neon 中删除不再使用的分支或升级套餐，然后重新运行测试。",
+    "manage": "打开 Neon",
+    "dismiss": "关闭 Neon 分支提示"
+  },
+  "testOutput": {
+    "runLabel": "运行 {{number}} · {{target}}",
+    "files": "{{count}} 个文件",
+    "closeRun": "关闭 {{label}} 的输出",
+    "close": "关闭输出标签页",
+    "title": "输出",
+    "toggle": "显示或隐藏测试输出",
+    "tabList": "测试运行输出",
+    "noTabs": "没有测试输出标签页。运行测试即可查看输出。",
+    "noOutput": "暂无输出。"
+  }
 }

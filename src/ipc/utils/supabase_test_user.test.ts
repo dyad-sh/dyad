@@ -2,14 +2,35 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SupabaseManagementAPIError } from "@dyad-sh/supabase-management-js";
 
 const mocks = vi.hoisted(() => {
+  const testUserCleanup = {
+    userId: "cleanup.userId",
+    projectId: "cleanup.projectId",
+  };
   const where = vi.fn().mockResolvedValue(undefined);
   const set = vi.fn(() => ({ where }));
   const update = vi.fn(() => ({ set }));
   const selectWhere = vi.fn().mockResolvedValue([]);
-  const from = vi.fn(() => ({ where: selectWhere }));
+  const cleanupRows = vi.fn().mockResolvedValue([]);
+  const from = vi.fn((table: unknown) =>
+    table === testUserCleanup ? cleanupRows() : { where: selectWhere },
+  );
   const select = vi.fn(() => ({ from }));
+  const insertValues = vi.fn().mockResolvedValue(undefined);
+  const deleteWhere = vi.fn().mockResolvedValue(undefined);
+  const findFirst = vi.fn();
   return {
-    db: { update, select },
+    db: {
+      update,
+      select,
+      delete: vi.fn(() => ({ where: deleteWhere })),
+      insert: vi.fn(() => ({ values: insertValues })),
+      query: { apps: { findFirst } },
+    },
+    testUserCleanup,
+    cleanupRows,
+    deleteWhere,
+    findFirst,
+    insertValues,
     update,
     set,
     where,
@@ -26,13 +47,20 @@ vi.mock("@/db", () => ({ db: mocks.db }));
 vi.mock("../../db", () => ({ db: mocks.db }));
 vi.mock("@/db/schema", () => ({
   apps: { id: "id", supabaseTestUserId: "stu" },
+  testUserCleanup: mocks.testUserCleanup,
 }));
 vi.mock("../../db/schema", () => ({
   apps: { id: "id", supabaseTestUserId: "stu" },
+  testUserCleanup: mocks.testUserCleanup,
 }));
 vi.mock("drizzle-orm", async (importOriginal) => {
   const actual = await importOriginal<typeof import("drizzle-orm")>();
-  return { ...actual, eq: vi.fn((a, b) => ({ a, b })), isNotNull: vi.fn() };
+  return {
+    ...actual,
+    and: vi.fn((...conditions) => ({ and: conditions })),
+    eq: vi.fn((a, b) => ({ a, b })),
+    isNotNull: vi.fn(),
+  };
 });
 vi.mock("@/ipc/utils/test_utils", () => ({ IS_TEST_BUILD: false }));
 vi.mock("@/ipc/utils/retryWithRateLimit", () => ({
@@ -113,6 +141,9 @@ beforeEach(() => {
   vi.unstubAllGlobals();
   mocks.where.mockResolvedValue(undefined);
   mocks.selectWhere.mockResolvedValue([]);
+  mocks.cleanupRows.mockResolvedValue([]);
+  mocks.insertValues.mockResolvedValue(undefined);
+  mocks.deleteWhere.mockResolvedValue(undefined);
   mocks.getProjectApiKeys.mockResolvedValue(PROJECT_API_KEYS);
   mocks.executeSupabaseSql.mockResolvedValue("[]");
 });
@@ -531,6 +562,40 @@ describe("createTempTestUser", () => {
     for (const [, init] of fetchSpy.mock.calls)
       expect(init.headers.apikey).toBe(SECRET_KEY);
   });
+  it("records overlapping case owners separately without replacing another run's user", async () => {
+    const ids = [UUID, "00000000-0000-4000-8000-000000000001"];
+    let index = 0;
+    mockFetch(() => new Response(JSON.stringify({ id: ids[index++] })));
+    const app = makeApp({ supabaseTestUserId: "legacy-recorder-user" });
+    await Promise.all([
+      createTempTestUser(app, { ownerId: "run-one:case-one" }),
+      createTempTestUser(app, { ownerId: "run-two:case-one" }),
+    ]);
+    expect(mocks.set).not.toHaveBeenCalled();
+    expect(mocks.insertValues).toHaveBeenCalledTimes(2);
+    for (const [value] of mocks.insertValues.mock.calls) {
+      expect(value).toMatchObject({
+        appId: 7,
+        projectId: "proj-1",
+        organizationSlug: "org-1",
+      });
+      expect(Object.keys(value).sort()).toEqual([
+        "appId",
+        "organizationSlug",
+        "ownerId",
+        "projectId",
+        "userId",
+      ]);
+    }
+    expect(
+      mocks.insertValues.mock.calls.map(([value]) => value.ownerId).sort(),
+    ).toEqual(["run-one:case-one", "run-two:case-one"]);
+    expect(
+      new Set(mocks.insertValues.mock.calls.map(([value]) => value.userId))
+        .size,
+    ).toBe(2);
+  });
+
   it("creates a confirmed admin user and persists the id immediately", async () => {
     const fetchSpy = mockFetch(
       () => new Response(JSON.stringify({ id: UUID })),
@@ -551,7 +616,7 @@ describe("createTempTestUser", () => {
       userId: UUID,
       projectUrl: "https://proj-1.supabase.co",
     });
-    expect(result.email).toMatch(/^dyad-test\+7-\d+@dyad\.test$/);
+    expect(result.email).toMatch(/^dyad-test\+7-[a-f0-9-]{36}@dyad\.test$/);
     // Persists the in-flight user id for crash reconciliation.
     expect(mocks.set).toHaveBeenCalledWith({ supabaseTestUserId: UUID });
   });
@@ -590,6 +655,53 @@ describe("createTempTestUser", () => {
       `https://proj-1.supabase.co/auth/v1/admin/users/${UUID}`,
       expect.objectContaining({ method: "DELETE" }),
     );
+  });
+
+  it.each([
+    ["a run owner", "run:case"],
+    ["the legacy column", undefined],
+  ])(
+    "records the user again for %s when the compensating delete also fails",
+    async (_label, ownerId) => {
+      const error = new Error("sqlite locked");
+      const persist = ownerId ? mocks.insertValues : mocks.where;
+      persist.mockRejectedValueOnce(error);
+      mockFetch((_url, init) =>
+        init?.method === "DELETE"
+          ? new Response("nope", { status: 500 })
+          : new Response(JSON.stringify({ id: UUID })),
+      );
+
+      await expect(createTempTestUser(makeApp(), { ownerId })).rejects.toBe(
+        error,
+      );
+
+      expect(persist).toHaveBeenCalledTimes(2);
+      if (ownerId)
+        expect(mocks.insertValues).toHaveBeenLastCalledWith(
+          expect.objectContaining({ userId: UUID, ownerId }),
+        );
+      else
+        expect(mocks.set).toHaveBeenLastCalledWith({
+          supabaseTestUserId: UUID,
+        });
+    },
+  );
+
+  it("does not record the user again once the compensating delete succeeds", async () => {
+    const error = new Error("sqlite locked");
+    mocks.insertValues.mockRejectedValueOnce(error);
+    mockFetch((_url, init) =>
+      init?.method === "DELETE"
+        ? new Response(null, { status: 200 })
+        : new Response(JSON.stringify({ id: UUID })),
+    );
+
+    await expect(
+      createTempTestUser(makeApp(), { ownerId: "run:case" }),
+    ).rejects.toBe(error);
+
+    expect(mocks.insertValues).toHaveBeenCalledOnce();
   });
 
   it("throws when the app has no Supabase project", async () => {
@@ -1194,6 +1306,34 @@ describe("reconcileOrphanTestUsers", () => {
       `https://proj-1.supabase.co/auth/v1/admin/users/${secondId}`,
       expect.objectContaining({ method: "DELETE" }),
     );
+  });
+
+  it("deletes run-owned users from their recovery records and forgets them", async () => {
+    mocks.cleanupRows.mockResolvedValue([
+      {
+        userId: UUID,
+        appId: 7,
+        ownerId: "run:case",
+        projectId: "proj-1",
+        organizationSlug: "org-1",
+      },
+    ]);
+    mocks.findFirst.mockResolvedValue(makeApp());
+    const fetchSpy = mockFetch(() => new Response(null, { status: 200 }));
+
+    await reconcileOrphanTestUsers();
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      `https://proj-1.supabase.co/auth/v1/admin/users/${UUID}`,
+      expect.objectContaining({ method: "DELETE" }),
+    );
+    expect(mocks.db.delete).toHaveBeenCalledWith(mocks.testUserCleanup);
+    expect(mocks.deleteWhere).toHaveBeenCalledWith({
+      and: [
+        { a: mocks.testUserCleanup.userId, b: UUID },
+        { a: mocks.testUserCleanup.projectId, b: "proj-1" },
+      ],
+    });
   });
 
   it("never throws when the query fails", async () => {

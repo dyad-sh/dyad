@@ -626,7 +626,11 @@ export default function AppDetailsPage() {
             <RepositoryConnector appId={appId} folderName={selectedApp.path} />
             {selectedApp.githubOrg && selectedApp.githubRepo && appId && (
               <div className="pt-4 border-t border-gray-100 dark:border-gray-800">
-                <GithubCollaboratorManager appId={appId} />
+                <GithubCollaboratorManager
+                  appId={appId}
+                  githubOrg={selectedApp.githubOrg}
+                  githubRepo={selectedApp.githubRepo}
+                />
               </div>
             )}
           </div>

@@ -787,7 +787,8 @@ export async function ensurePnpmAllowBuildsConfigured({
       return { changed: false, promotedPackages: [] };
     }
 
-    await fs.mkdir(path.dirname(configPath), { recursive: true });
+    // Never create the app folder here: recreating a deleted app as an
+    // empty, non-git folder hides the real error. The write fails instead.
     const tempPath = `${configPath}.tmp`;
     await fs.writeFile(tempPath, nextContent);
     await fs.rename(tempPath, configPath);

@@ -1,4 +1,4 @@
-import fetch from "node-fetch";
+import fetch from "@/ipc/utils/native_fetch";
 import { z } from "zod";
 import log from "electron-log";
 import { createTypedHandler } from "./base";

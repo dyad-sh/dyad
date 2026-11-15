@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   getNeonErrorMessage,
   getRetentionWindowFromError,
+  isNeonAuthError,
   isRetentionWindowError,
 } from "./neon_errors";
 
@@ -40,6 +41,27 @@ describe("getNeonErrorMessage", () => {
     expect(getNeonErrorMessage("plain string error")).toBe(
       "plain string error",
     );
+  });
+});
+
+describe("isNeonAuthError", () => {
+  const withStatus = (status: number) =>
+    Object.assign(new Error(`Request failed with status code ${status}`), {
+      response: { status, data: { message: "detail" } },
+    });
+
+  it("detects rejected credentials (401 and 403)", () => {
+    expect(isNeonAuthError(withStatus(401))).toBe(true);
+    expect(isNeonAuthError(withStatus(403))).toBe(true);
+  });
+
+  it("returns false for other statuses and non-HTTP errors", () => {
+    expect(isNeonAuthError(withStatus(404))).toBe(false);
+    expect(isNeonAuthError(withStatus(500))).toBe(false);
+    expect(isNeonAuthError(RETENTION_ERROR)).toBe(false);
+    expect(isNeonAuthError(new Error("socket hang up"))).toBe(false);
+    expect(isNeonAuthError(null)).toBe(false);
+    expect(isNeonAuthError("401")).toBe(false);
   });
 });
 

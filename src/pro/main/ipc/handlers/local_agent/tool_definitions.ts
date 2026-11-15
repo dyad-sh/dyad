@@ -1,5 +1,6 @@
 import { withReferencedAppRead } from "./tools/referenced_app_read";
 import { recordShellReviewOutcome } from "./shell_review_history";
+import { reportFsFailure } from "@/ipc/utils/fs_failure_telemetry";
 import { runShellTool } from "./tools/run_shell";
 import { isShellExperimentAvailable } from "@/shared/shell_capability";
 /**
@@ -878,6 +879,8 @@ export function buildAgentToolSet(
         const toolCallId = executionOptions?.toolCallId;
         let presentationXml = "";
         let executionStarted = false;
+        // A read tool can target a referenced app instead of the current one.
+        let targetAppPath = ctx.appPath;
         const invocationCtx =
           toolCallId && ctx.onToolActivity
             ? {
@@ -984,7 +987,13 @@ export function buildAgentToolSet(
               tool.name,
               processedArgs,
               invocationCtx,
-              (readCtx) => tool.execute(processedArgs, readCtx),
+              (readCtx) => {
+                const appName = processedArgs.app_name?.toLowerCase();
+                targetAppPath =
+                  (appName && readCtx.referencedApps.get(appName)) ||
+                  readCtx.appPath;
+                return tool.execute(processedArgs, readCtx);
+              },
             );
             recordShellReviewOutcome(ctx, tool.name, processedArgs, { result });
 
@@ -1028,6 +1037,10 @@ export function buildAgentToolSet(
             ? await withTrackedMutation(invocationCtx, invoke)
             : await invoke();
         } catch (error) {
+          reportFsFailure("agent_tool", error, {
+            tool: tool.name,
+            appPath: targetAppPath,
+          });
           recordShellReviewOutcome(ctx, tool.name, args, {
             error,
             executed: executionStarted,

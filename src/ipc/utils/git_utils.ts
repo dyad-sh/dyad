@@ -28,6 +28,7 @@ import { runBufferedProcess } from "./buffered_process";
 import {
   collectGitLaunchDiagnostics,
   getGitLaunchTelemetryProperties,
+  type GitLaunchDiagnostics,
 } from "./git_launch_diagnostics";
 import { sendTelemetryEvent } from "./telemetry";
 
@@ -38,6 +39,13 @@ const logger = log.scope("git_utils");
 const GIT_STATE_FINGERPRINT_TIMEOUT_MS = 30_000;
 const GIT_STATE_FINGERPRINT_MAX_PATH_BYTES = 16 * 1024 * 1024;
 const GIT_STATE_FINGERPRINT_MAX_UNTRACKED_PATHS = 10_000;
+/**
+ * dugite buffers output without limit by default. Past V8's ~512M-character
+ * string limit, Node's execFile throws "RangeError: Invalid string length"
+ * from its exit handler, outside any caller's try/catch, which crashes the
+ * main process. A finite cap makes oversized output a catchable ExecError.
+ */
+export const DEFAULT_GIT_EXEC_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
 let didReportGitLaunchFailure = false;
 
 export function isUserVisibleGitPath(filePath: string) {
@@ -225,12 +233,21 @@ export async function execGit(
     return await exec(args, path, {
       ...options,
       env,
+      maxBuffer: options?.maxBuffer ?? DEFAULT_GIT_EXEC_MAX_BUFFER_BYTES,
     });
   } catch (error) {
+    if (
+      error instanceof ExecError &&
+      error.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER"
+    ) {
+      // Name the command; Node's message only says which stream overflowed.
+      logger.warn(`git ${args.join(" ")} exceeded maxBuffer: ${error.message}`);
+    }
     if (error instanceof ExecError && error.code === "ENOENT") {
+      let diagnostics: GitLaunchDiagnostics | null = null;
       try {
         const { env: gitEnv, gitLocation } = setupEnvironment(env);
-        const diagnostics = await collectGitLaunchDiagnostics({
+        diagnostics = await collectGitLaunchDiagnostics({
           gitLocation,
           cwd: path,
           localGitDirectory: gitEnv.LOCAL_GIT_DIRECTORY,
@@ -249,6 +266,18 @@ export async function execGit(
         logger.warn(
           "Failed to collect Git launch diagnostics",
           diagnosticError,
+        );
+      }
+      // Node reports a missing cwd with the same ENOENT as a missing binary,
+      // and dugite's message blames the binary. Name the folder instead.
+      if (
+        diagnostics &&
+        !diagnostics.cwdPath.targetExists &&
+        diagnostics.gitBinary.targetExists
+      ) {
+        throw new DyadError(
+          `Folder not found: '${path}'. It may have been moved or deleted, or be on a drive that isn't connected.`,
+          DyadErrorKind.NotFound,
         );
       }
     }

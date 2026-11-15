@@ -15,7 +15,7 @@ import {
   runOAuthFlow,
   withMcpOAuthServerMutation,
 } from "../utils/mcp_oauth_flow";
-import { oauthStateHasTokens } from "../utils/mcp_oauth_provider";
+import { getOAuthStateStatus } from "../utils/mcp_oauth_provider";
 import { syncVendoredOAuthClient } from "../utils/vendored_oauth_client";
 import {
   encryptSecretMap,
@@ -159,10 +159,7 @@ function toMcpServer(dbServer: typeof mcpServers.$inferSelect): McpServer {
     url: dbServer.url,
     enabled: dbServer.enabled,
     oauthEnabled: dbServer.oauthEnabled,
-    // `oauthState` being set isn't enough -- it can hold just a
-    // registered client ID before any tokens exist.
-    // `oauthStateHasTokens` checks for a real access token.
-    oauthConnected: oauthStateHasTokens(dbServer.oauthState),
+    ...getOAuthStateStatus(dbServer.oauthState),
     oauthCallbackPort: dbServer.oauthCallbackPort,
     oauthClientId: dbServer.oauthClientId,
     catalogSlug: dbServer.catalogSlug,

@@ -138,18 +138,46 @@ async function pathExists(target: string): Promise<boolean> {
 }
 
 async function holdDirectoryOpen(directory: string): Promise<ChildProcess> {
-  // On Windows a process's cwd is an open handle on that directory, so this is
-  // the same lock a surviving dev server or test runner would hold.
+  // A cwd does not reliably prevent deletion on current Windows/Node versions.
+  // Open a real file without FILE_SHARE_DELETE and wait until the handle exists;
+  // the spawn event alone only proves the process was created.
   const holder = spawn(
-    process.execPath,
-    ["-e", "setInterval(() => {}, 1000)"],
+    "powershell.exe",
+    [
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      "$lock = [System.IO.File]::Open($env:DYAD_TEST_LOCK_FILE, 'Open', 'Read', 'ReadWrite'); [Console]::WriteLine('locked'); [Console]::Out.Flush(); [Console]::ReadLine()",
+    ],
     {
       cwd: directory,
-      stdio: "ignore",
+      env: {
+        ...process.env,
+        DYAD_TEST_LOCK_FILE: path.join(directory, "app.ts"),
+      },
+      stdio: ["pipe", "pipe", "pipe"],
     },
   );
   holders.add(holder);
-  await once(holder, "spawn");
+  let stderr = "";
+  holder.stderr!.on("data", (data) => {
+    stderr += data.toString();
+  });
+  await new Promise<void>((resolve, reject) => {
+    const onExit = (code: number | null) => {
+      reject(
+        new Error(`Lock holder exited before readiness (${code}): ${stderr}`),
+      );
+    };
+    holder.once("error", reject);
+    holder.once("exit", onExit);
+    holder.stdout!.once("data", (data) => {
+      holder.off("exit", onExit);
+      holder.off("error", reject);
+      if (data.toString().trim() === "locked") resolve();
+      else reject(new Error(`Unexpected lock readiness: ${data}`));
+    });
+  });
   return holder;
 }
 

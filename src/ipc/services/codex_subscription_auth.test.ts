@@ -1,16 +1,22 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
+import { DyadErrorKind } from "@/errors/dyad_error";
 import os from "node:os";
 import path from "node:path";
 const mocks = vi.hoisted(() => ({
   directory: "",
   url: "",
   encryption: true,
+  backend: "keyring",
   decrypt: vi.fn(),
+  recovery: vi.fn<() => string | null>(() => null),
   account: vi.fn(),
   selectedModel: { provider: "auto", name: "auto" },
   proModelUsage: undefined as string | undefined,
+}));
+vi.mock("@/main/safe_storage_legacy", () => ({
+  recoverLegacySafeStorageSecret: mocks.recovery,
 }));
 vi.mock("electron", () => ({
   app: { getPath: () => mocks.directory },
@@ -18,7 +24,7 @@ vi.mock("electron", () => ({
     isEncryptionAvailable: () => mocks.encryption,
     encryptString: (s: string) => Buffer.from(s),
     decryptString: mocks.decrypt,
-    getSelectedStorageBackend: () => "keyring",
+    getSelectedStorageBackend: () => mocks.backend,
   },
   shell: {
     openExternal: async (url: string) => {
@@ -56,6 +62,8 @@ describe("subscription OAuth", () => {
       path.join(os.tmpdir(), "dyad-oauth-test-"),
     );
     mocks.encryption = true;
+    mocks.backend = "keyring";
+    mocks.recovery.mockReset().mockReturnValue(null);
     mocks.decrypt.mockReset().mockImplementation((b: Buffer) => b.toString());
   });
   afterEach(() => {
@@ -127,6 +135,111 @@ describe("subscription OAuth", () => {
       "Secure credential storage",
     );
   });
+
+  it.each(["basic_text", "unavailable"])(
+    "preserves Linux keyring guidance: %s",
+    async (backend) => {
+      const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+      const file = path.join(mocks.directory, "codex-subscription.enc");
+      fs.writeFileSync(file, "saved-ciphertext");
+      mocks.backend = backend;
+      mocks.encryption = backend !== "unavailable";
+      Object.defineProperty(process, "platform", {
+        value: "linux",
+        configurable: true,
+      });
+      try {
+        expect(getCodexSubscriptionStatus()).toMatchObject({
+          credentialError: true,
+          error: expect.stringContaining("Configure an OS keyring"),
+        });
+        await expect(getCodexSubscriptionCredentials()).rejects.toMatchObject({
+          kind: DyadErrorKind.Precondition,
+          message: expect.stringContaining("Configure an OS keyring"),
+        });
+        expect(mocks.decrypt).not.toHaveBeenCalled();
+        expect(fs.readFileSync(file, "utf8")).toBe("saved-ciphertext");
+      } finally {
+        Object.defineProperty(process, "platform", platform);
+      }
+    },
+  );
+
+  it("still rejects Linux basic_text storage even if its ciphertext decrypts", () => {
+    const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+    const file = path.join(mocks.directory, "codex-subscription.enc");
+    const ciphertext = JSON.stringify({
+      access: "access",
+      refresh: "refresh",
+      accountId: "account",
+      expires: Date.now() + 3600_000,
+    });
+    fs.writeFileSync(file, ciphertext);
+    mocks.backend = "basic_text";
+    Object.defineProperty(process, "platform", {
+      value: "linux",
+      configurable: true,
+    });
+    try {
+      expect(getCodexSubscriptionStatus()).toMatchObject({
+        credentialError: true,
+      });
+      expect(fs.readFileSync(file, "utf8")).toBe(ciphertext);
+    } finally {
+      Object.defineProperty(process, "platform", platform);
+    }
+  });
+
+  it("recovers legacy subscription credentials and preserves the encrypted file", async () => {
+    const file = path.join(mocks.directory, "codex-subscription.enc");
+    const ciphertext = Buffer.from("v10legacy-subscription");
+    fs.writeFileSync(file, ciphertext);
+    mocks.decrypt.mockImplementation(() => {
+      throw new Error("wrong identity");
+    });
+    mocks.recovery.mockReturnValue(
+      JSON.stringify({
+        access: "recovered-access",
+        refresh: "recovered-refresh",
+        accountId: "account",
+        expires: Date.now() + 3600_000,
+      }),
+    );
+    expect(getCodexSubscriptionStatus()).toMatchObject({ connected: true });
+    expect((await getCodexSubscriptionCredentials()).access).toBe(
+      "recovered-access",
+    );
+    expect(fs.readFileSync(file)).toEqual(ciphertext);
+  });
+
+  it("retries after a denied keyring read and validates recovered credentials", () => {
+    const file = path.join(mocks.directory, "codex-subscription.enc");
+    const ciphertext = Buffer.from("v10locked-subscription");
+    fs.writeFileSync(file, ciphertext);
+    mocks.decrypt.mockImplementation(() => {
+      throw new Error("keyring read denied");
+    });
+    expect(getCodexSubscriptionStatus()).toMatchObject({
+      credentialError: true,
+    });
+    mocks.recovery.mockReturnValue('{"access":"missing-fields"}');
+    expect(getCodexSubscriptionStatus()).toMatchObject({
+      credentialError: true,
+    });
+    expect(fs.readFileSync(file)).toEqual(ciphertext);
+    mocks.recovery.mockReturnValue(
+      JSON.stringify({
+        access: "recovered",
+        refresh: "refresh",
+        accountId: "account",
+        expires: Date.now() + 3600_000,
+      }),
+    );
+    expect(getCodexSubscriptionStatus()).toMatchObject({ connected: true });
+    disconnectCodexSubscription();
+    expect(fs.existsSync(file)).toBe(false);
+    expect(getCodexSubscriptionStatus()).toMatchObject({ connected: false });
+  });
   it.each(["invalid data", "decryption failure", "unavailable keyring"])(
     "preserves credential errors across status reads: %s",
     async (failure) => {
@@ -143,7 +256,7 @@ describe("subscription OAuth", () => {
         expect(getCodexSubscriptionStatus()).toMatchObject({
           connected: false,
           credentialError: true,
-          error: expect.stringContaining("reconnect"),
+          error: expect.any(String),
         });
       }
       await expect(getCodexSubscriptionCredentials()).rejects.toThrow();

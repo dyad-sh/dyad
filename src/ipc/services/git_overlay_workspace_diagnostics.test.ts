@@ -14,7 +14,11 @@ import {
 } from "./git_overlay_workspace";
 import { createGitOverlayWorkspaceDiagnostics } from "./git_overlay_workspace_diagnostics";
 
-const logger = vi.hoisted(() => ({ error: vi.fn(), warn: vi.fn() }));
+const logger = vi.hoisted(() => ({
+  error: vi.fn(),
+  warn: vi.fn(),
+  info: vi.fn(),
+}));
 vi.mock("electron-log/main", () => ({ default: { scope: () => logger } }));
 vi.mock("@/ipc/utils/git_utils", () => ({
   getGitProcessEnvironment: () => ({ gitLocation: "git", env: {} }),
@@ -78,6 +82,39 @@ afterEach(async () => {
   for (const root of roots.splice(0)) {
     await fs.rm(root, { recursive: true, force: true });
   }
+});
+
+it("retains a locked workspace and its owner until a later cleanup succeeds", async () => {
+  const { sourceRoot, scratchRoot } = await fixture();
+  await fs.mkdir(scratchRoot);
+  const marker = `${scratchRoot}.owner.json`;
+  await fs.writeFile(marker, "owner metadata");
+  mockGit(sourceRoot);
+  const rm = fs.rm.bind(fs);
+  const remove = vi
+    .spyOn(fs, "rm")
+    .mockImplementation(async (entry, options) => {
+      if (entry === scratchRoot) {
+        throw Object.assign(new Error("file is locked"), { code: "EBUSY" });
+      }
+      return rm(entry, options);
+    });
+
+  await removeGitOverlayWorkspace(scratchRoot, sourceRoot);
+
+  expect((await fs.stat(scratchRoot)).isDirectory()).toBe(true);
+  expect(await fs.readFile(marker, "utf8")).toBe("owner metadata");
+  expect(runBufferedProcess).not.toHaveBeenCalled();
+  expect(logger.warn).toHaveBeenCalledWith(
+    expect.stringContaining("Failed to remove workspace"),
+    expect.objectContaining({ code: "EBUSY" }),
+  );
+
+  remove.mockRestore();
+  await removeGitOverlayWorkspace(scratchRoot, sourceRoot);
+  await expect(fs.stat(scratchRoot)).rejects.toMatchObject({ code: "ENOENT" });
+  await expect(fs.stat(marker)).rejects.toMatchObject({ code: "ENOENT" });
+  expect(runBufferedProcess).toHaveBeenCalled();
 });
 
 describe("workspace preparation failure logs", () => {
@@ -369,7 +406,7 @@ describe("workspace preparation failure logs", () => {
       }),
     );
     expect(logger.warn).toHaveBeenCalledWith(
-      expect.stringContaining("Failed to unregister worktree"),
+      expect.stringContaining("Failed to withdraw the worktree registration"),
       cleanupFailure,
     );
     const worktreePath = path.join(scratchRoot, logsAtCleanup[0].workspace);

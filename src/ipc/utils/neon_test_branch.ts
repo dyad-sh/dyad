@@ -1,15 +1,20 @@
 import log from "electron-log";
-import { eq, isNotNull } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
+import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import { EndpointType } from "@neondatabase/api-client";
 
 import { db } from "../../db";
-import { apps } from "../../db/schema";
+import { apps, testBranchCleanup } from "../../db/schema";
 import { getNeonClient } from "../../neon_admin/neon_management_client";
 import { getConnectionUri } from "../../neon_admin/neon_context";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { readEnvVarsOrEmpty, updateNeonEnvVars } from "./app_env_var_utils";
 import { detectFrameworkType } from "./framework_utils";
 import { retryOnLocked } from "./retryOnLocked";
+import {
+  reportNeonBranchFailure,
+  reportingNeonBranchCreate,
+} from "./neon_branch_telemetry";
 import { retryTestDatabaseCleanup } from "./test_database_cleanup_retry";
 import { ensureNeonAuth, getOrCreateNeonAuthCookieSecret } from "./neon_utils";
 import {
@@ -70,6 +75,15 @@ export async function trackedTestBranchId(
   return row?.neonTestBranchId ?? null;
 }
 
+export async function trackedRunTestBranchId(
+  ownerId: string,
+): Promise<string | null> {
+  const row = await db.query.testBranchCleanup.findFirst({
+    where: eq(testBranchCleanup.ownerId, ownerId),
+  });
+  return row?.branchId ?? null;
+}
+
 export async function markTestBranchCleanupOnly(
   appData: AppRow,
   branchId: string,
@@ -78,13 +92,18 @@ export async function markTestBranchCleanupOnly(
   await db
     .update(apps)
     .set({ neonTestBranchId: marker })
-    .where(eq(apps.id, appData.id));
+    .where(
+      and(
+        eq(apps.id, appData.id),
+        inArray(apps.neonTestBranchId, [trackedBranchId(branchId), marker]),
+      ),
+    );
   return { ...appData, neonTestBranchId: marker };
 }
 
 /** Connection details for an isolated, throwaway Neon test branch. */
 export interface TempTestBranch {
-  /** The ephemeral branch's id (also persisted on the app row while live). */
+  /** The ephemeral branch's id (persisted for crash recovery while live). */
   branchId: string;
   /** Connection string pointing at the throwaway branch. */
   databaseUrl: string;
@@ -177,8 +196,8 @@ function resolveAuthBranchType(
  * The branch is cut from the app's active branch (or the development/preview
  * branch as a fallback) so it inherits the current schema and data instantly.
  * Neon Auth + a per-branch cookie secret are provisioned best-effort so
- * auth-gated tests can run. The branch id is persisted on the app row
- * (`neonTestBranchId`) so a crash mid-run can be reconciled on next launch.
+ * auth-gated tests can run. Sandboxed runs persist an independent recovery row;
+ * recordings use `apps.neonTestBranchId` to track their live env swap.
  *
  * Throws `DyadError` if the app has no Neon project or no parent branch.
  */
@@ -187,12 +206,18 @@ export async function createTempTestBranch(
   {
     cleanupOnly = false,
     appPathOverride,
+    ownerId,
   }: {
     cleanupOnly?: boolean;
     /** The sandbox copy, for an E2E run — the tree whose env will be read. */
     appPathOverride?: string;
+    /** Independent recovery record for a sandboxed run; never swaps the live env. */
+    ownerId?: string;
   } = {},
 ): Promise<TempTestBranch> {
+  if (ownerId && !cleanupOnly) {
+    throw new Error("Run-owned Neon branches require a disposable environment");
+  }
   const projectId = appData.neonProjectId;
   if (!projectId) {
     throw new DyadError(
@@ -238,10 +263,16 @@ export async function createTempTestBranch(
         DyadErrorKind.Precondition,
       );
     }
-    const priorCleanupOk = await deleteBranchBestEffort(
-      projectId,
-      trackedBranchId(appData.neonTestBranchId),
-    );
+    // Run-owned branches will not replace the legacy slot, so retire its stale
+    // cleanup-only marker here. Recordings keep the existing marker until their
+    // replacement is persisted: their live env can still need recovery if the
+    // next create fails.
+    const priorCleanupOk = ownerId
+      ? await deleteTempTestBranch(appData)
+      : await deleteBranchBestEffort(
+          projectId,
+          trackedBranchId(appData.neonTestBranchId),
+        );
     if (!priorCleanupOk) {
       throw new DyadError(
         `Couldn't clean up the previous Neon test branch for app ${appData.id}. Skipping this run to avoid leaking a branch; it will be retried on the next launch.`,
@@ -251,28 +282,56 @@ export async function createTempTestBranch(
   }
 
   const neonClient = await getNeonClient();
-  const branchName = `dyad-test-${appData.id}-${Date.now()}`;
+  const branchName = `dyad-test-${appData.id}-${randomUUID()}`;
 
-  const response = await retryOnLocked(
-    () =>
-      neonClient.createProjectBranch(projectId, {
-        endpoints: [{ type: EndpointType.ReadWrite }],
-        branch: {
-          name: branchName,
-          parent_id: parentBranchId,
-        },
-      }),
-    `Create test branch for app ${appData.id}`,
+  const response = await reportingNeonBranchCreate("test", () =>
+    retryOnLocked(
+      () =>
+        neonClient.createProjectBranch(projectId, {
+          endpoints: [{ type: EndpointType.ReadWrite }],
+          branch: {
+            name: branchName,
+            parent_id: parentBranchId,
+          },
+        }),
+      `Create test branch for app ${appData.id}`,
+    ),
   );
 
   const branch = response.data.branch;
   const connectionUri = response.data.connection_uris?.[0]?.connection_uri;
+  // Record run-owned branches before any further validation or provisioning.
+  // In particular, a missing URI must not make a failed compensating delete
+  // lose the only reference to a successfully created branch.
+  if (branch && ownerId) {
+    const recordOwnedBranch = () =>
+      db.insert(testBranchCleanup).values({
+        branchId: branch.id,
+        appId: appData.id,
+        ownerId,
+        projectId,
+      });
+    try {
+      await recordOwnedBranch();
+    } catch (error) {
+      // The record is the only durable reference to this branch. If the
+      // compensating delete fails too, its retries gave a transient SQLite lock
+      // time to clear, so record it once more for startup reconciliation.
+      if (!(await deleteBranchBestEffort(projectId, branch.id))) {
+        await recordOwnedBranch().catch((retryError) =>
+          logger.error(
+            `Leaked test branch ${branch.id} in Neon project ${projectId}: couldn't delete it or record it for cleanup: ${retryError}`,
+          ),
+        );
+      }
+      throw error;
+    }
+  }
   if (!branch || !connectionUri) {
     // Partial success: Neon created the branch but returned no connection URI.
-    // We haven't persisted the branch id yet, so neither teardown nor startup
-    // reconciliation could ever find it — delete it best-effort before throwing
-    // instead of leaking it in the user's Neon project.
-    if (branch) {
+    // A run owner can recover its durable record. Legacy callers have no id yet,
+    // so compensate here before throwing.
+    if (branch && !ownerId) {
       await deleteBranchBestEffort(projectId, branch.id);
     }
     throw new DyadError(
@@ -296,14 +355,16 @@ export async function createTempTestBranch(
   const marker = cleanupOnly
     ? `${CLEANUP_ONLY_BRANCH_PREFIX}${branch.id}`
     : branch.id;
-  try {
-    await db
-      .update(apps)
-      .set({ neonTestBranchId: marker })
-      .where(eq(apps.id, appData.id));
-  } catch (error) {
-    await deleteBranchBestEffort(projectId, branch.id);
-    throw error;
+  if (!ownerId) {
+    try {
+      await db
+        .update(apps)
+        .set({ neonTestBranchId: marker })
+        .where(eq(apps.id, appData.id));
+    } catch (error) {
+      await deleteBranchBestEffort(projectId, branch.id);
+      throw error;
+    }
   }
 
   // Provision Neon Auth on the throwaway branch best-effort. Auth-gated tests
@@ -344,16 +405,10 @@ export async function createTempTestBranch(
     // delete the branch we just created and clear the column (it points at this
     // now-deleted branch), then throw so the caller restores and never runs.
     if (!neonAuthBaseUrl) {
-      const deleted = await deleteBranchBestEffort(projectId, branch.id);
-      // Clear the column when the delete succeeded so reconciliation doesn't
-      // later try to re-delete a branch that's already gone. If the delete
-      // failed, leave the column set so startup reconciliation retries it.
-      if (deleted) {
-        await db
-          .update(apps)
-          .set({ neonTestBranchId: null })
-          .where(eq(apps.id, appData.id));
-      }
+      await deleteTempTestBranch({
+        ...appData,
+        neonTestBranchId: marker,
+      });
       throw new DyadError(
         "Couldn't set up isolated Neon Auth for the test branch.",
         DyadErrorKind.External,
@@ -409,9 +464,17 @@ export async function deleteTempTestBranch(appData: AppRow): Promise<boolean> {
   if (deleted) {
     try {
       await db
+        .delete(testBranchCleanup)
+        .where(
+          and(
+            eq(testBranchCleanup.branchId, branchId),
+            eq(testBranchCleanup.projectId, projectId),
+          ),
+        );
+      await db
         .update(apps)
         .set({ neonTestBranchId: null })
-        .where(eq(apps.id, appData.id));
+        .where(and(eq(apps.id, appData.id), eq(apps.neonTestBranchId, marker)));
     } catch (error) {
       // The branch IS gone, which is what this function reports. A failed row
       // update leaves a stale marker the next sweep re-reads — and that sweep
@@ -493,6 +556,7 @@ async function deleteBranchBestEffort(
       );
       return true;
     }
+    reportNeonBranchFailure("delete", "test", error);
     logger.warn(
       `Failed to delete test branch ${branchId} for project ${projectId} (will be retried on next launch if still tracked): ${error}`,
     );
@@ -570,6 +634,31 @@ async function restoreRealBranchEnvVars(appData: AppRow): Promise<boolean> {
  */
 export async function reconcileOrphanTestBranches(): Promise<void> {
   try {
+    // Snapshot before any provider awaits. Recovery takes exclusive provider
+    // admission, while live sandbox runs retain shared admission until teardown.
+    const ownedBranches = await db.select().from(testBranchCleanup);
+    for (const branch of ownedBranches) {
+      try {
+        await appOperationCoordinator.run(
+          {
+            appId: branch.appId,
+            operation: "reconcile-run-test-branch",
+            resources: ["provider"],
+          },
+          async () => {
+            await deleteTempTestBranch({
+              id: branch.appId,
+              neonProjectId: branch.projectId,
+              neonTestBranchId: `${CLEANUP_ONLY_BRANCH_PREFIX}${branch.branchId}`,
+            } as AppRow);
+          },
+        );
+      } catch (error) {
+        logger.warn(
+          `Failed to reconcile test branch ${branch.branchId}: ${error}`,
+        );
+      }
+    }
     const rows = await db
       .select()
       .from(apps)

@@ -395,6 +395,7 @@ describe("synthetic overlapping run_tests calls", () => {
       expect(fs.readFileSync(envPath, "utf8")).toBe(ORIGINAL_ENV);
       expect(getAppTestRunQueue(APP_ID)).toEqual({
         activeRun: null,
+        activeRuns: [],
         queuedRuns: [],
       });
       expect(new Set(reportPaths).size).toBe(executed.length);

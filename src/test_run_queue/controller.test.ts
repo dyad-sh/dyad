@@ -20,6 +20,49 @@ const request = (runId: number) => ({
 });
 
 describe("test run queue", () => {
+  it("rejects failed admission without executing or cancelling it and keeps siblings available", async () => {
+    const queue = new TestRunQueue({
+      manualAdmission: true,
+      onChange: vi.fn(),
+      onError: vi.fn(),
+    });
+    const external = new AbortController();
+    const detach = vi.spyOn(external.signal, "removeEventListener");
+    const execute = vi.fn(async () => "unexpected");
+    const cancelled = vi.fn(() => "cancelled");
+    const first = queue.enqueue({
+      request: request(1),
+      signal: external.signal,
+      execute,
+      cancelled,
+    });
+    const cleanup = gate();
+    const second = queue.enqueue({
+      request: request(2),
+      execute: async () => {
+        await cleanup.promise;
+        return "second";
+      },
+      cancelled,
+    });
+    const error = new Error("setup unavailable");
+    queue.failAdmission(1, error);
+    await expect(first).rejects.toBe(error);
+    expect(detach).toHaveBeenCalledOnce();
+    external.abort();
+    queue.failAdmission(1, new Error("stale"));
+    expect(execute).not.toHaveBeenCalled();
+    expect(cancelled).not.toHaveBeenCalled();
+    expect(queue.getSnapshot().queuedRuns.map((run) => run.runId)).toEqual([2]);
+    queue.admit(2);
+    queue.failAdmission(2, new Error("already admitted"));
+    cleanup.resolve();
+    await expect(second).resolves.toBe("second");
+    await queue.drain();
+    expect(queue.getSnapshot().activeRuns).toEqual([]);
+    expect(queue.getSnapshot().queuedRuns).toEqual([]);
+  });
+
   it("rejects asynchronously when an already-aborted request cannot deliver cancellation", async () => {
     const queue = createQueue();
     const execute = vi.fn(async () => "unexpected");

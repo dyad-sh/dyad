@@ -11,10 +11,12 @@ async function ensureGitignored(
 ): Promise<void> {
   const gitignorePath = path.join(appPath, ".gitignore");
   let content = "";
+  let exists = true;
   try {
     content = await fs.promises.readFile(gitignorePath, "utf-8");
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+    exists = false;
     // .gitignore doesn't exist yet — will be created below
   }
 
@@ -32,7 +34,9 @@ async function ensureGitignored(
   await fs.promises.writeFile(
     gitignorePath,
     content + suffix + missing.map((e) => e + "\n").join(""),
-    "utf-8",
+    // Windows rejects the default `w` flag for existing hidden/system files.
+    // The updated content only grows, so `r+` needs no trailing truncation.
+    { encoding: "utf-8", flag: exists ? "r+" : "w" },
   );
 }
 

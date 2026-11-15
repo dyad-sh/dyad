@@ -30,6 +30,14 @@ export const GitHubCollaboratorSchema = z.object({
   permissions: z.any().optional(),
 });
 
+// GitHub only lets users with push access list collaborators. canManage is
+// false when the signed-in user lacks that access, so the UI can explain it
+// instead of showing an error.
+export const ListCollaboratorsResultSchema = z.object({
+  canManage: z.boolean(),
+  collaborators: z.array(GitHubCollaboratorSchema),
+});
+
 export const GitBranchAppIdParamsSchema = z.object({
   appId: z.number(),
 });
@@ -183,7 +191,7 @@ export const githubContracts = {
   listCollaborators: defineContract({
     channel: "github:list-collaborators",
     input: z.object({ appId: z.number() }),
-    output: z.array(GitHubCollaboratorSchema),
+    output: ListCollaboratorsResultSchema,
   }),
 
   inviteCollaborator: defineContract({
@@ -259,6 +267,9 @@ export const gitEventClient = createEventClient(gitEvents);
 // Type Exports
 // =============================================================================
 
+export type ListCollaboratorsResult = z.infer<
+  typeof ListCollaboratorsResultSchema
+>;
 export type GitBranchAppIdParams = z.infer<typeof GitBranchAppIdParamsSchema>;
 export type GitBranchParams = z.infer<typeof GitBranchParamsSchema>;
 export type CreateGitBranchParams = z.infer<typeof CreateGitBranchParamsSchema>;

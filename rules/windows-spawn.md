@@ -11,6 +11,10 @@ exits. Keep Windows quit cleanup on direct `taskkill.exe` argv and avoid
 - Windows PowerShell 5.1 turns piped native stderr into error records: avoid `$ErrorActionPreference = 'Stop'` in wrappers that must tolerate warnings. Derive implicit exit status from the final `$?` (0/1), not stale `$LASTEXITCODE` from an earlier native command; explicit `exit` codes remain intact. Bound `-EncodedCommand` input before review; UTF-16/base64 expands it about 2.7 times against Windows' 32,767-character command-line limit.
 - Do not invoke `taskkill` for a root PID after its `exit` event; it can already be reused while pipes are draining. Windows tree-kill already uses `/T /F`, so an additional delayed force-kill is unnecessary.
 
+- For deletion-lock tests, use an explicit file handle without `FILE_SHARE_DELETE`
+  and await a readiness signal. A spawned process's cwd does not reliably lock
+  its directory, and the spawn event does not prove the handle is open.
+
 - PowerShell startup can exceed a short test timeout before the first command runs. For tool-level partial-edit tests, mock the process result and write the fixture during the mock; keep real deadline and shutdown checks in subprocess tests.
 
 ## Never let Git delete a tree that may contain junctions

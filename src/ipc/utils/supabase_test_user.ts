@@ -4,10 +4,10 @@ import {
 } from "../services/test_run_timing";
 import crypto from "node:crypto";
 import log from "electron-log";
-import { eq, isNotNull } from "drizzle-orm";
+import { and, eq, isNotNull } from "drizzle-orm";
 
 import { db } from "../../db";
-import { apps } from "../../db/schema";
+import { apps, testUserCleanup } from "../../db/schema";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
 import { fetchWithRetry } from "@/ipc/utils/retryWithRateLimit";
@@ -37,7 +37,7 @@ type AppRow = typeof apps.$inferSelect;
 export interface TempTestUser {
   /** The auth user's id (also persisted on the app row while live). */
   userId: string;
-  /** Login email, of the form `dyad-test+<appId>-<ts>@dyad.test`. */
+  /** Login email, of the form `dyad-test+<appId>-<uuid>@dyad.test`. */
   email: string;
   /** Generated login password (handed to the test runner, never persisted). */
   password: string;
@@ -139,6 +139,8 @@ export async function createTempTestUser(
     adminKey?: AdminKey;
     signal?: AbortSignal;
     timing?: TestStepTiming;
+    /** Run/case attempt identity. Omitted by the exclusive preview recorder. */
+    ownerId?: string;
   } = {},
 ): Promise<TempTestUser> {
   options.signal?.throwIfAborted();
@@ -158,13 +160,13 @@ export async function createTempTestUser(
   }
 
   const projectUrl = projectUrlFor(projectId);
-  const email = `dyad-test+${appData.id}-${Date.now()}@dyad.test`;
+  const email = `dyad-test+${appData.id}-${crypto.randomUUID()}@dyad.test`;
   const password = crypto.randomBytes(24).toString("base64url");
 
   if (IS_TEST_BUILD) {
     // Don't hit the network in Dyad's own E2E build (fake Supabase project).
-    const userId = "00000000-0000-4000-8000-000000000000";
-    await persistTestUserId(appData.id, userId);
+    const userId = crypto.randomUUID();
+    await persistTestUserId(appData, userId, options.ownerId);
     return { userId, email, password, projectUrl };
   }
 
@@ -174,7 +176,7 @@ export async function createTempTestUser(
   // below (that would drop the prior user id and orphan it forever, since the
   // startup reconciliation sweep relies on the column to find it again).
   let priorCleanupOk = true;
-  if (appData.supabaseTestUserId) {
+  if (!options.ownerId && appData.supabaseTestUserId) {
     priorCleanupOk = await measureTestRunStep(
       options.timing,
       "supabase_user_delete",
@@ -310,9 +312,9 @@ export async function createTempTestUser(
   // trackable: every created user is persisted before the run can proceed.
   if (priorCleanupOk) {
     try {
-      await persistTestUserId(appData.id, created.id);
+      await persistTestUserId(appData, created.id, options.ownerId);
     } catch (error) {
-      await measureTestRunStep(
+      const deleted = await measureTestRunStep(
         options.timing,
         "supabase_user_delete",
         () =>
@@ -325,6 +327,16 @@ export async function createTempTestUser(
           }),
         (result) => (result ? "completed" : "failed"),
       );
+      // The record is the only durable reference to this user, so record it
+      // once more for startup reconciliation if the compensating delete failed.
+      if (!deleted) {
+        await persistTestUserId(appData, created.id, options.ownerId).catch(
+          (retryError) =>
+            logger.error(
+              `Leaked test user ${created.id} in Supabase project ${projectId}: couldn't delete it or record it for cleanup: ${retryError}`,
+            ),
+        );
+      }
       throw error;
     }
   }
@@ -356,10 +368,7 @@ export async function deleteTempTestUser(
     return true;
   }
   if (IS_TEST_BUILD) {
-    await db
-      .update(apps)
-      .set({ supabaseTestUserId: null })
-      .where(eq(apps.id, appData.id));
+    await forgetTestUser(appData, userId);
     return true;
   }
 
@@ -392,10 +401,7 @@ export async function deleteTempTestUser(
     (result) => (result ? "completed" : "failed"),
   );
   if (deleted) {
-    await db
-      .update(apps)
-      .set({ supabaseTestUserId: null })
-      .where(eq(apps.id, appData.id));
+    await forgetTestUser(appData, userId);
   }
   return deleted;
 }
@@ -408,6 +414,36 @@ export async function deleteTempTestUser(
  */
 export async function reconcileOrphanTestUsers(): Promise<void> {
   try {
+    // Snapshot before awaiting provider work. Fresh runs take shared provider
+    // claims; this exclusive recovery claim cannot race their user lifecycle.
+    const ownedUsers = await db.select().from(testUserCleanup);
+    for (const user of ownedUsers) {
+      try {
+        await appOperationCoordinator.run(
+          {
+            appId: user.appId,
+            operation: "reconcile-test-user",
+            resources: ["provider"],
+          },
+          async () => {
+            const appData = await db.query.apps.findFirst({
+              where: eq(apps.id, user.appId),
+            });
+            // The recovery record retains provider identity after reassociation
+            // or local app deletion. The deleter reads only these four fields.
+            await deleteTempTestUser({
+              ...appData,
+              id: user.appId,
+              supabaseProjectId: user.projectId,
+              supabaseOrganizationSlug: user.organizationSlug,
+              supabaseTestUserId: user.userId,
+            } as AppRow);
+          },
+        );
+      } catch (error) {
+        logger.warn(`Failed to reconcile test user ${user.userId}: ${error}`);
+      }
+    }
     const rows = await db
       .select()
       .from(apps)
@@ -728,9 +764,39 @@ async function deleteUserBestEffort({
   }
 }
 
-async function persistTestUserId(appId: number, userId: string): Promise<void> {
+async function persistTestUserId(
+  app: AppRow,
+  userId: string,
+  ownerId?: string,
+): Promise<void> {
+  if (ownerId) {
+    await db.insert(testUserCleanup).values({
+      userId,
+      appId: app.id,
+      ownerId,
+      projectId: app.supabaseProjectId!,
+      organizationSlug: app.supabaseOrganizationSlug!,
+    });
+    return;
+  }
   await db
     .update(apps)
     .set({ supabaseTestUserId: userId })
-    .where(eq(apps.id, appId));
+    .where(eq(apps.id, app.id));
+}
+
+async function forgetTestUser(app: AppRow, userId: string): Promise<void> {
+  await db
+    .delete(testUserCleanup)
+    .where(
+      and(
+        eq(testUserCleanup.userId, userId),
+        eq(testUserCleanup.projectId, app.supabaseProjectId!),
+      ),
+    );
+  // Legacy recorder/recovery slot: only the owner may clear it.
+  await db
+    .update(apps)
+    .set({ supabaseTestUserId: null })
+    .where(and(eq(apps.id, app.id), eq(apps.supabaseTestUserId, userId)));
 }

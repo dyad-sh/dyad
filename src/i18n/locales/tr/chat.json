@@ -1,5 +1,19 @@
 {
+  "neonTestingBanner": {
+    "message": "Ajan, uygulamanızı geliştirirken çalışmasını kontrol edip sorunları düzeltsin. Testler geçici bir Neon veritabanında çalışır; verileriniz ve önizlemeniz değişmez.",
+    "enable": "Testleri etkinleştir",
+    "enabling": "Etkinleştiriliyor…",
+    "dismiss": "Test önerisini kapat"
+  },
   "testRunQueue": {
+    "waitReason": {
+      "process-cleanup": "Bir test işleminin durması bekleniyor",
+      "capacity": "Etkin bir test çalıştırmasının bitmesi bekleniyor",
+      "compatibility": "Uyumlu veritabanı ve çalışma alanı bekleniyor",
+      "earlier-run": "Önceki bir test çalıştırması bekleniyor",
+      "context-unavailable": "Uygulamanın test ayarlarının okunması bekleniyor. Uygulama dosyalarını ve Git deposunu kontrol edin.",
+      "starting": "Başlatılıyor"
+    },
     "title": "Test kuyruğu",
     "openTests": "Testleri aç",
     "allTests": "Tüm testler",
@@ -8,6 +22,7 @@
     "testsPanel": "Test paneli",
     "queued": "Sırada",
     "running": "Çalışıyor",
+    "waitingForNeonBranch": "Neon dalı bekleniyor",
     "stopping": "Durduruluyor",
     "passed": "Başarılı",
     "failed": "Başarısız",
@@ -15,6 +30,7 @@
     "stopped": "Durduruldu",
     "stopReason": {
       "tests-panel-stop": "Test panelinden durduruldu",
+      "test-queue-stop": "Test kuyruğundan durduruldu",
       "chat-stop": "Sohbet yanıtı durduruldu",
       "chat-deleted": "Sohbet silindi",
       "version-restored": "Önceki bir sürüm geri yüklendi",
@@ -25,7 +41,8 @@
       "agent-cancelled": "Ajan turu iptal edildi",
       "app-deleted": "Uygulama siliniyor",
       "app-quit": "Dyad kapanıyor"
-    }
+    },
+    "stopRun": "Durdur: {{target}}"
   },
   "newChat": "Yeni Sohbet",
   "viewAllApps": "Tüm uygulamalar",
@@ -449,5 +466,23 @@
   },
   "cancellationRemovingTestDatabase": "Geçici test veritabanı kaldırılıyor. Bu işlem biraz zaman alabilir.",
   "cancellationCleaningTestSandbox": "Bu çalıştırmanın test ortamı ve verileri temizleniyor.",
-  "safetyReviewUnavailable": "Güvenlik incelemesi kullanılamıyor"
+  "safetyReviewUnavailable": "Güvenlik incelemesi kullanılamıyor",
+  "neonBranchLimit": {
+    "title": "Neon dal sınırına ulaşıldı",
+    "waiting": "Neon planınız veritabanı dalı sayısını sınırlar. Testler, başka bir çalıştırmanın bitip bir dalı boşaltmasını bekliyor. Ardından otomatik olarak devam edecek.",
+    "blocked": "Neon planınız başka bir test dalı oluşturmaya izin vermiyor. Neon’da kullanılmayan bir dalı silin veya planınızı yükseltin, ardından testleri yeniden çalıştırın.",
+    "manage": "Neon’u aç",
+    "dismiss": "Neon dal bildirimini kapat"
+  },
+  "testOutput": {
+    "runLabel": "Çalıştırma {{number}} · {{target}}",
+    "files": "{{count}} dosya",
+    "closeRun": "{{label}} çıktısını kapat",
+    "close": "Çıktı sekmesini kapat",
+    "title": "Çıktı",
+    "toggle": "Test çıktısını göster veya gizle",
+    "tabList": "Test çalıştırma çıktısı",
+    "noTabs": "Test çıktısı sekmesi yok. Çıktıyı görmek için testleri çalıştırın.",
+    "noOutput": "Henüz çıktı yok."
+  }
 }

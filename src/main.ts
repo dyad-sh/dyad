@@ -37,6 +37,7 @@ import {
 import {
   recoveryNeedsKeychainUnlock,
   retryRecoveryWithKeychainUnlock,
+  setSafeStorageRecoveryFailureListener,
 } from "./main/safe_storage_legacy";
 import { recordUpdaterError } from "./main/updater_state";
 import { recordPreviousSessionCrash } from "./main/previous_session_crash";
@@ -111,6 +112,7 @@ import { recoverInterruptedSubagents } from "./pro/main/ipc/handlers/local_agent
 import { cleanupOldMediaFiles } from "./ipc/utils/media_cleanup";
 import { scrubTokensFromRemotes } from "./ipc/utils/git_remote_token_scrub";
 import { encryptStoredMcpSecrets } from "./ipc/utils/mcp_secret_encryption";
+import { reconcileCloudSandboxes } from "./ipc/utils/cloud_sandbox_provider";
 import fs from "fs";
 import { gitAddSafeDirectory } from "./ipc/utils/git_utils";
 import {
@@ -522,6 +524,12 @@ export async function onReady() {
 
   const settings = await readEffectiveSettings();
 
+  // Handler registration happens before ready. Reconciliation can decrypt
+  // settings, so start it here after the runtime and database are ready.
+  void reconcileCloudSandboxes().catch((error) => {
+    logger.warn("Failed to reconcile cloud sandboxes on startup:", error);
+  });
+
   // Add dyad-apps directory to git safe.directory (required for Windows).
   // The trailing /* allows access to all repositories under the named directory.
   // See: https://git-scm.com/docs/git-config#Documentation/git-config.txt-safedirectory
@@ -682,16 +690,20 @@ export async function onReady() {
 }
 
 function scheduleSafeStorageKeychainUnlockRetryAfterRendererLoad(): void {
+  setSafeStorageRecoveryFailureListener(
+    scheduleSafeStorageKeychainUnlockRetryAfterRendererLoad,
+  );
   if (safeStorageKeychainUnlockRetryScheduled) {
     return;
   }
   safeStorageKeychainUnlockRetryScheduled = true;
   setTimeout(() => {
-    if (!recoveryNeedsKeychainUnlock()) {
-      return;
-    }
-    if (retryRecoveryWithKeychainUnlock()) {
-      rewriteRecoveredSafeStorageSecretsAfterKeychainUnlock();
+    try {
+      if (recoveryNeedsKeychainUnlock() && retryRecoveryWithKeychainUnlock()) {
+        rewriteRecoveredSafeStorageSecretsAfterKeychainUnlock();
+      }
+    } finally {
+      safeStorageKeychainUnlockRetryScheduled = false;
     }
   }, 0);
 }

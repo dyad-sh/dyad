@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import { ExecError } from "dugite";
 
 vi.mock("electron-log", () => ({
   default: {
@@ -17,8 +18,12 @@ vi.mock("electron-log", () => ({
   },
 }));
 
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { safeGithubOpsErrorMessage } from "@/ipc/services/github_ops_safe_error";
 import {
+  DEFAULT_GIT_EXEC_MAX_BUFFER_BYTES,
   gitAuthHeaderConfig,
+  execGit,
   gitFetch,
   gitListFilesNative,
   gitLog,
@@ -1228,5 +1233,87 @@ describe("gitAuthHeaderConfig", () => {
     });
 
     expect(key).toBe("http.http://localhost:3500/github/git/.extraheader");
+  });
+});
+
+describe("execGit launch failures", () => {
+  it("reports a missing working directory as a not-found folder", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "exec-git-cwd-"));
+    const missingPath = path.join(tmpDir, "deleted-app");
+    try {
+      const error = await execGit(["status"], missingPath).then(
+        () => null,
+        (caught: unknown) => caught,
+      );
+      expect(error).toBeInstanceOf(DyadError);
+      expect((error as DyadError).kind).toBe(DyadErrorKind.NotFound);
+      expect((error as DyadError).message).toContain(
+        `Folder not found: '${missingPath}'`,
+      );
+      expect(safeGithubOpsErrorMessage(error, "")).toBe(
+        "Folder not found: '[redacted path]'. It may have been moved or deleted, or be on a drive that isn't connected.",
+      );
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("still runs git normally when the working directory exists", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "exec-git-cwd-"));
+    try {
+      const result = await execGit(["--version"], tmpDir);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("git version");
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("execGit output limit", () => {
+  it("rejects oversized output by default instead of buffering it all", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "exec-git-buffer-"));
+    try {
+      await execGit(["init", "-q"], tmpDir);
+      // Zeros compress well, so the blob is cheap to store but large to print.
+      const { stdout: oid } = await execGit(
+        ["hash-object", "-w", "--stdin"],
+        tmpDir,
+        { stdin: Buffer.alloc(DEFAULT_GIT_EXEC_MAX_BUFFER_BYTES + 1) },
+      );
+      const blob = oid.trim();
+
+      const error = await execGit(["cat-file", "blob", blob], tmpDir).then(
+        () => null,
+        (caught: unknown) => caught,
+      );
+      expect(error).toBeInstanceOf(ExecError);
+      expect((error as ExecError).code).toBe(
+        "ERR_CHILD_PROCESS_STDIO_MAXBUFFER",
+      );
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("lets a caller raise the limit", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "exec-git-buffer-"));
+    try {
+      await execGit(["init", "-q"], tmpDir);
+      const size = DEFAULT_GIT_EXEC_MAX_BUFFER_BYTES + 1;
+      const { stdout: oid } = await execGit(
+        ["hash-object", "-w", "--stdin"],
+        tmpDir,
+        { stdin: Buffer.alloc(size) },
+      );
+
+      const result = await execGit(["cat-file", "blob", oid.trim()], tmpDir, {
+        maxBuffer: size * 2,
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.length).toBe(size);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 });

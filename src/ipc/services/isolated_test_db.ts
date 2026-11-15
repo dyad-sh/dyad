@@ -4,6 +4,9 @@ import {
   type TestStepTiming,
 } from "./test_run_timing";
 import fs from "node:fs";
+import { randomUUID } from "node:crypto";
+import { acquireNeonTestBranch } from "./neon_test_branch_lease";
+import type { NeonBranchLimitStatus } from "@/shared/neon_branch_limit";
 import log from "electron-log";
 import { DyadError, DyadErrorKind } from "../../errors/dyad_error";
 import { testRunStoppedError, testRunStoppedInfraError } from "./test_run_stop";
@@ -14,6 +17,7 @@ import {
   createTempTestBranch,
   markAndDeleteTempTestBranch,
   trackedTestBranchId,
+  trackedRunTestBranchId,
 } from "../utils/neon_test_branch";
 import { createNeonTestAccount } from "../utils/neon_test_account";
 import { retryOnLocked } from "../utils/retryOnLocked";
@@ -155,6 +159,12 @@ export interface PreparedIsolation {
    */
   authorizeRuntimeOrigin?: (origin: string) => Promise<void>;
   teardown: (options?: TeardownOptions) => Promise<TeardownResult>;
+  /**
+   * Called instead of `teardown` when the run's processes could not be
+   * stopped. Provider state stays tracked for startup recovery, but the run no
+   * longer claims shared capacity that only its teardown would free.
+   */
+  retainForRecovery?: () => void;
 }
 
 export interface TestCaseLifecycle {
@@ -198,6 +208,7 @@ export async function prepareIsolatedTestDatabase({
   perTestCase = false,
   appPathOverride,
   restartApp = true,
+  onNeonBranchLimit,
 }: {
   timing?: TestRunTiming;
   app: AppRow;
@@ -210,6 +221,7 @@ export async function prepareIsolatedTestDatabase({
   appPathOverride?: string;
   /** E2E sandboxes start their own runtime after isolation is prepared. */
   restartApp?: boolean;
+  onNeonBranchLimit?: (status: NeonBranchLimitStatus | undefined) => void;
 }): Promise<PreparedIsolation> {
   // Supabase: isolate via a throwaway, RLS-scoped test user.
   if (app.supabaseProjectId) {
@@ -248,6 +260,11 @@ export async function prepareIsolatedTestDatabase({
   let envSnapshot: string | null = null;
   let envModified = false;
   let branchId: string | undefined;
+  const branchOwnerId =
+    envIsDisposable && perTestCase ? randomUUID() : undefined;
+  let branchLease:
+    | Awaited<ReturnType<typeof acquireNeonTestBranch>>
+    | undefined;
   // What the row tracked before this run touched anything. The failure paths
   // below can only claim a marker that differs from this one — see the catch.
   const entryMarker = app.neonTestBranchId;
@@ -311,7 +328,10 @@ export async function prepareIsolatedTestDatabase({
       remoteCleanupCompleted = await measureTestRunStep(
         timing,
         "neon_branch_delete",
-        () => markAndDeleteTempTestBranch(app, branchId!),
+        () =>
+          branchLease
+            ? branchLease.release()
+            : markAndDeleteTempTestBranch(app, branchId!),
         (result) => (result ? "completed" : "failed"),
       );
     } else if (branchId || trackedBranchUnknown) {
@@ -341,14 +361,37 @@ export async function prepareIsolatedTestDatabase({
     // `createTempTestBranch`, before its own auth provisioning. Writing it
     // afterwards would leave a window where a crash makes startup recovery
     // rewrite the user's real `.env.local` for a run that never touched it.
-    const branch = await measureTestRunStep(timing, "neon_branch_create", () =>
-      createTempTestBranch(app, {
-        cleanupOnly: !restartApp,
-        // The tree whose `.env.local` the run's server will read. Detecting Neon
-        // Auth from the live project instead would provision (or skip) auth based
-        // on a directory the sandbox stopped mirroring at capture time.
-        appPathOverride,
-      }),
+    const branch = await measureTestRunStep(
+      timing,
+      "neon_branch_create",
+      async () => {
+        if (branchOwnerId) {
+          branchLease = await acquireNeonTestBranch(
+            app,
+            appPath,
+            branchOwnerId,
+            {
+              signal,
+              onCapacity: (status) => {
+                onNeonBranchLimit?.(status);
+                if (status === "waiting")
+                  emit(
+                    "Your Neon plan's branch limit was reached. This run is queued until another test run finishes cleaning up its branch.\n",
+                    "setup",
+                  );
+              },
+            },
+          );
+          return branchLease.branch;
+        }
+        return createTempTestBranch(app, {
+          cleanupOnly: !restartApp,
+          // The tree whose `.env.local` the run's server will read. Detecting Neon
+          // Auth from the live project instead would provision (or skip) auth based
+          // on a directory the sandbox stopped mirroring at capture time.
+          appPathOverride,
+        });
+      },
     );
     branchId = branch.branchId;
 
@@ -506,7 +549,7 @@ export async function prepareIsolatedTestDatabase({
               caseTiming = timing,
             ): Promise<Record<string, string>> => {
               signal?.throwIfAborted();
-              // Clear the copied parent data before the first case too. Repeating
+              // Clear copied parent data before the first case too. Repeating
               // this before later cases recovers a worker killed before teardown.
               await measureTestRunStep(caseTiming, "neon_data_cleanup", () =>
                 clearTestData(caseSignal),
@@ -546,8 +589,18 @@ export async function prepareIsolatedTestDatabase({
             }
           : undefined,
       teardown,
+      retainForRecovery: () => branchLease?.retire(),
     };
   } catch (error) {
+    if (branchOwnerId && !branchLease) {
+      // The branch manager owns failed creation compensation. Preserve a failed
+      // cleanup verdict without adopting/deleting another owner's marker here.
+      try {
+        trackedBranchUnknown = !!(await trackedRunTestBranchId(branchOwnerId));
+      } catch {
+        trackedBranchUnknown = true;
+      }
+    }
     // `createTempTestBranch` persists its marker BEFORE the provisioning that
     // can still fail, and its own dead-end keeps the row when the compensating
     // delete fails too. The local `branchId` is unset in exactly those cases, so
@@ -563,7 +616,7 @@ export async function prepareIsolatedTestDatabase({
     // a crashed recorder left the user's real `.env.local` pointed at it, so
     // this would erase the record startup recovery needs, after the branch was
     // already gone.
-    if (!branchId) {
+    if (!branchId && !branchOwnerId) {
       try {
         const tracked = await trackedTestBranchId(app.id);
         if (tracked && tracked !== entryMarker) branchId = tracked;
@@ -668,11 +721,13 @@ async function prepareSupabaseTestUserIsolation({
   }
 
   let testUser: TempTestUser | undefined;
+  const runOwnerId = randomUUID();
+  let caseAttempt = 0;
   // Fetched once per run for lifecycle hooks and Node test-fixture injection.
   let adminKey: AdminKey | undefined;
   // Keep failed deletions tracked. Never overwrite the durable recovery slot
   // by creating the next user while the previous one still exists.
-  let trackedUserId = app.supabaseTestUserId;
+  let trackedUserId = perTestCase ? null : app.supabaseTestUserId;
   const afterEach = async (
     caseSignal?: AbortSignal,
     caseTiming: TestStepTiming | undefined = timing,
@@ -868,7 +923,12 @@ async function prepareSupabaseTestUserIsolation({
                           ...app,
                           supabaseTestUserId: null,
                         },
-                        { adminKey, signal: caseSignal, timing: caseTiming },
+                        {
+                          adminKey,
+                          signal: caseSignal,
+                          timing: caseTiming,
+                          ownerId: `${runOwnerId}:${++caseAttempt}`,
+                        },
                       ),
                     ),
                   caseSignal,

@@ -2,13 +2,12 @@ import { useAtomValue, useSetAtom, useStore } from "jotai";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "@tanstack/react-router";
 import {
-  useIsMutating,
   useMutation,
+  useMutationState,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
 import {
-  memo,
   useCallback,
   useEffect,
   useMemo,
@@ -46,7 +45,7 @@ import {
   recordingStartRequestAtom,
 } from "@/atoms/recorderAtoms";
 import {
-  currentTestRunOutputAtom,
+  testRunOutputByAppIdAtom,
   currentTestSpecsAtom,
   currentTestRunStateAtom,
   setTestSpecsForAppAtom,
@@ -88,6 +87,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { AgentModeRequiredDialog } from "./AgentModeRequiredDialog";
 import { MigrateTestsBanner } from "./MigrateTestsBanner";
+import { TestOutputDrawer } from "./TestOutputDrawer";
 import { queryKeys } from "@/lib/queryKeys";
 import { cn } from "@/lib/utils";
 import { showError, showInfo, showSuccess } from "@/lib/toast";
@@ -100,8 +100,30 @@ import {
 import { usePreviewIframeController } from "@/preview_iframe/usePreviewIframe";
 import { sameOriginStartPath } from "./previewAddressPath";
 
-function StatusIcon({ status }: { status: TestStatus }) {
+type DisplayTestStatus = TestStatus | "waitingForNeonBranch";
+const queuedBadgeClass =
+  "mr-1.5 inline-block rounded bg-amber-100 px-1 font-medium text-amber-900 dark:bg-amber-900/50 dark:text-amber-200";
+
+function TestStatusLabel({ status }: { status: DisplayTestStatus }) {
+  const { t } = useTranslation("chat");
+  return status === "waitingForNeonBranch" ? (
+    <span className={queuedBadgeClass}>
+      {t("testRunQueue.waitingForNeonBranch")}
+    </span>
+  ) : (
+    statusLabel(status)
+  );
+}
+
+function StatusIcon({ status }: { status: DisplayTestStatus }) {
   switch (status) {
+    case "waitingForNeonBranch":
+      return (
+        <Circle
+          size={16}
+          className="text-amber-900 dark:text-amber-200 shrink-0"
+        />
+      );
     case "passed":
       return (
         <CheckCircle2
@@ -140,8 +162,10 @@ function StatusIcon({ status }: { status: TestStatus }) {
   }
 }
 
-function statusTextClass(status: TestStatus): string {
+function statusTextClass(status: DisplayTestStatus): string {
   switch (status) {
+    case "waitingForNeonBranch":
+      return "text-amber-900 dark:text-amber-200";
     case "failed":
       return "text-red-600 dark:text-red-400";
     case "inconclusive":
@@ -223,6 +247,13 @@ function FailureDetails({
       )}
     </div>
   );
+}
+
+type RunAppTestsParams = Parameters<typeof ipc.tests.runAppTests>[0];
+
+/** Identifies a Run target: every test, one file, or one case. */
+function runSelectionKey(file?: string, line?: number) {
+  return JSON.stringify([file ?? null, line ?? null]);
 }
 
 function RunButton({
@@ -367,6 +398,7 @@ interface AskAiToFix {
     error: string | undefined,
     testTitle?: string,
     screenshotPath?: string,
+    runIds?: number[],
   ): void;
 }
 
@@ -374,8 +406,8 @@ interface TestCaseRowProps {
   appId: number;
   file: string;
   testCase: TestCase;
-  status: TestStatus;
-  result: TestCaseResult | undefined;
+  status: DisplayTestStatus;
+  result: (TestCaseResult & { runId?: number }) | undefined;
   disabled: boolean;
   /** Explains a disabled Run button; the default hint applies when unset. */
   runTitle?: string;
@@ -442,8 +474,9 @@ function TestCaseRow({
               statusTextClass(status),
             )}
           >
-            {statusLabel(status)}
-            {result?.durationMs != null &&
+            <TestStatusLabel status={status} />
+            {status !== "waitingForNeonBranch" &&
+              result?.durationMs != null &&
               ` · ${(result.durationMs / 1000).toFixed(1)}s`}
           </span>
         </button>
@@ -464,6 +497,7 @@ function TestCaseRow({
                 result?.error,
                 testCase.title,
                 result?.screenshotPath,
+                result?.runId === undefined ? [] : [result.runId],
               )
             }
             label={`Ask AI to fix test: ${testCase.title}`}
@@ -507,7 +541,7 @@ interface FileRowProps {
   queued: boolean;
   file: string;
   tests: TestCase[];
-  status: TestStatus;
+  status: DisplayTestStatus;
   result: RuntimeTestResult | undefined;
   disabled: boolean;
   /** Explains a disabled Run button; the default hint applies when unset. */
@@ -518,11 +552,13 @@ interface FileRowProps {
    * (a state that only stops runs).
    */
   deleteDisabled: boolean;
+  /** Whether this file (no line) or one of its cases is already running. */
+  isRunPending: (line?: number) => boolean;
   onRunFile: () => void;
   onRunCase: (line: number) => void;
   onOpenInEditor: (line?: number) => void;
   onDelete: () => void;
-  caseStatus: (testCase: TestCase) => TestStatus;
+  caseStatus: (testCase: TestCase) => DisplayTestStatus;
   caseResult: (testCase: TestCase) => TestCaseResult | undefined;
   onAskAiToFix: AskAiToFix;
 }
@@ -537,6 +573,7 @@ function FileRow({
   disabled,
   runTitle,
   deleteDisabled,
+  isRunPending,
   onRunFile,
   onRunCase,
   onOpenInEditor,
@@ -549,6 +586,8 @@ function FileRow({
   const fileName = file.split("/").pop() ?? file;
   const hasTests = tests.length > 0;
   const isFailing = status === "failed" || status === "inconclusive";
+  const fileRunPending = isRunPending();
+  const alreadyRunningTitle = t("preview.selectionAlreadyRunning");
 
   const [expanded, setExpanded] = useState(false);
   // Auto-expand a file the moment it transitions into a failing state, so the
@@ -566,7 +605,8 @@ function FileRow({
       <div
         className={cn(
           "group flex items-center gap-2 px-3 py-2",
-          queued && "bg-amber-50 dark:bg-amber-950/30",
+          (queued || status === "waitingForNeonBranch") &&
+            "bg-amber-50 dark:bg-amber-950/30",
         )}
       >
         <button
@@ -603,14 +643,15 @@ function FileRow({
             )}
           >
             {queued && (
-              <span className="mr-1.5 inline-block rounded bg-amber-100 px-1 font-medium text-amber-900 dark:bg-amber-900/50 dark:text-amber-200">
+              <span className={queuedBadgeClass}>
                 {t("preview.testQueued")}
               </span>
             )}
-            {statusLabel(status)}
+            <TestStatusLabel status={status} />
             {hasTests &&
               ` · ${tests.length} ${tests.length === 1 ? "test" : "tests"}`}
-            {result?.durationMs != null &&
+            {status !== "waitingForNeonBranch" &&
+              result?.durationMs != null &&
               ` · ${(result.durationMs / 1000).toFixed(1)}s`}
           </span>
         </button>
@@ -622,6 +663,16 @@ function FileRow({
                 result?.error,
                 undefined,
                 result?.screenshotPath,
+                [
+                  ...new Set(
+                    [
+                      ...(result?.tests ?? [])
+                        .filter((test) => test.status !== "passed")
+                        .map((test) => test.runId),
+                      result?.runId,
+                    ].filter((id): id is number => id !== undefined),
+                  ),
+                ],
               )
             }
             label={`Ask AI to fix tests in: ${fileName}`}
@@ -629,8 +680,8 @@ function FileRow({
         )}
         <RunButton
           onRun={onRunFile}
-          disabled={disabled}
-          title={runTitle}
+          disabled={disabled || fileRunPending}
+          title={fileRunPending ? alreadyRunningTitle : runTitle}
           label={`Run all tests in: ${fileName}`}
         />
         <OpenInEditorButton
@@ -653,8 +704,10 @@ function FileRow({
               testCase={testCase}
               status={caseStatus(testCase)}
               result={caseResult(testCase)}
-              disabled={disabled}
-              runTitle={runTitle}
+              disabled={disabled || isRunPending(testCase.line)}
+              runTitle={
+                isRunPending(testCase.line) ? alreadyRunningTitle : runTitle
+              }
               isLast={index === tests.length - 1}
               onRun={() => onRunCase(testCase.line)}
               onOpenInEditor={() => onOpenInEditor(testCase.line)}
@@ -669,16 +722,29 @@ function FileRow({
 
 export function TestsPanel() {
   const { t } = useTranslation("home");
+  const { t: tChat } = useTranslation("chat");
   const navigate = useNavigate();
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const specs = useAtomValue(currentTestSpecsAtom);
   const runState = useAtomValue(currentTestRunStateAtom);
   const { data: testQueue } = useTestRunQueue(selectedAppId);
-  const runMutationKey = queryKeys.tests.run({ appId: selectedAppId });
-  // Keep one outstanding panel submission per app, including across tab remounts.
-  const isSubmitting = useIsMutating({ mutationKey: runMutationKey }) > 0;
+  const waitingForNeonBranchRunIds = useMemo(
+    () =>
+      new Set(
+        (
+          testQueue?.activeRuns ??
+          (testQueue?.activeRun ? [testQueue.activeRun] : [])
+        )
+          .filter((run) => run.waitingForNeonBranch && !run.stopping)
+          .map((run) => run.runId),
+      ),
+    [testQueue],
+  );
+  const waitingForNeonBranch =
+    runState.runId !== undefined &&
+    waitingForNeonBranchRunIds.has(runState.runId);
   const { mutate: submitRun } = useMutation({
-    mutationKey: runMutationKey,
+    mutationKey: queryKeys.tests.run({ appId: selectedAppId }),
     mutationFn: ipc.tests.runAppTests,
     onSuccess: (res) => {
       // Lifecycle failures are rendered inline; cancellation is an ordinary outcome.
@@ -721,6 +787,38 @@ export function TestsPanel() {
     loading: settingsLoading,
     refreshSettings,
   } = useSettings();
+  // Match every app's runs and narrow to the selected app afterwards:
+  // useMutationState only recomputes on mutation-cache events, so a filter
+  // keyed on selectedAppId would keep the previous app's pending runs after
+  // the panel switches apps.
+  const pendingRuns = useMutationState({
+    filters: { mutationKey: queryKeys.tests.runs, status: "pending" },
+    select: (mutation) => {
+      const pending = mutation.state.variables as RunAppTestsParams | undefined;
+      return {
+        appId: pending?.appId,
+        selection: runSelectionKey(pending?.testFile, pending?.testLine),
+      };
+    },
+  });
+  // Parallel mode admits different selections side by side, but the one
+  // already in flight stays disabled and says why until its run settles.
+  const pendingRunSelections = useMemo(
+    () =>
+      pendingRuns
+        .filter((run) => run.appId === selectedAppId)
+        .map((run) => run.selection),
+    [pendingRuns, selectedAppId],
+  );
+  // Keep one outstanding panel submission per app, including across tab remounts.
+  const isSubmitting =
+    !settings?.enableParallelTestRuns && pendingRunSelections.length > 0;
+  const isRunPending = useCallback(
+    (file?: string, line?: number) =>
+      pendingRunSelections.includes(runSelectionKey(file, line)),
+    [pendingRunSelections],
+  );
+  const runAllPending = isRunPending();
   const { runApp } = useRunApp();
   const { setTestingEnabled, isLoading: isTogglingTesting } =
     useSetTestingEnabled();
@@ -744,6 +842,7 @@ export function TestsPanel() {
           error: string | undefined;
           testTitle?: string;
           screenshotPath?: string;
+          runIds?: number[];
         };
       }
     | null
@@ -855,10 +954,16 @@ export function TestsPanel() {
   // Narrower: tests are executing or their completed results are waiting for
   // teardown to finish. A stopped run cannot produce more results, so only
   // that cleanup path drops the per-test spinners.
-  const isExecuting =
-    runState.phase === "setup" ||
-    runState.phase === "running" ||
-    (runState.phase === "cleaning-up" && !runState.wasStopped);
+  const executingRuns = useMemo(
+    () =>
+      Object.values(runState.activeRuns ?? { current: runState }).filter(
+        (run) =>
+          run.phase === "setup" ||
+          run.phase === "running" ||
+          (run.phase === "cleaning-up" && !run.wasStopped),
+      ),
+    [runState],
+  );
   const isStopping = runState.phase === "stopping";
   const isCleaningUp = runState.phase === "cleaning-up";
   // Nothing about the user's app is restored any more: the run had its own
@@ -871,14 +976,19 @@ export function TestsPanel() {
   // With the experiment enabled, "headed" means visible in Dyad's preview
   // rather than in a separate Playwright browser window.
   const previewRunEnabled = !!settings?.enableTestRunInPreview;
-  const runsInPreviewWebContentsView = previewRunEnabled && headed;
+  const parallelRunsEnabled = !!settings?.enableParallelTestRuns;
+  const runsInPreviewWebContentsView =
+    previewRunEnabled && headed && !parallelRunsEnabled;
   // Display only. The value SENT to the runner is the user's raw choice: main
   // decides whether the preview actually gets the run, and a run that falls
   // back to an ordinary browser can parallelize when it has no per-case data.
   const isolatesTestCases =
     hasSupabaseIsolation || (!hasSupabase && hasNeonIsolation);
   const effectiveParallel =
-    parallel && !runsInPreviewWebContentsView && !isolatesTestCases;
+    parallel &&
+    !parallelRunsEnabled &&
+    !runsInPreviewWebContentsView &&
+    !isolatesTestCases;
 
   const specsQuery = useQuery({
     queryKey: queryKeys.tests.list({ appId: selectedAppId }),
@@ -1012,10 +1122,20 @@ export function TestsPanel() {
       if (selectedAppId == null) return;
       // Read the mutation cache synchronously so a second click in the same
       // render cannot enqueue another expensive run before main acknowledges it.
+      // Parallel mode still admits deliberately different selections.
+      const pendingRuns = queryClient.getMutationCache().findAll({
+        mutationKey: queryKeys.tests.run({ appId: selectedAppId }),
+        status: "pending",
+      });
       if (
-        queryClient.isMutating({
-          mutationKey: queryKeys.tests.run({ appId: selectedAppId }),
-        })
+        settings?.enableParallelTestRuns
+          ? pendingRuns.some((mutation) => {
+              const pending = mutation.state.variables as
+                | RunAppTestsParams
+                | undefined;
+              return pending?.testFile === file && pending?.testLine === line;
+            })
+          : pendingRuns.length > 0
       )
         return;
       submitRun({
@@ -1037,6 +1157,7 @@ export function TestsPanel() {
       parallel,
       slowMo,
       runsInPreviewWebContentsView,
+      settings?.enableParallelTestRuns,
     ],
   );
 
@@ -1099,6 +1220,7 @@ export function TestsPanel() {
       error: string | undefined,
       testTitle?: string,
       screenshotPath?: string,
+      runIds: number[] = [],
     ) => {
       if (chatId == null) {
         showInfo("Open a chat to ask the AI to fix this test.");
@@ -1116,7 +1238,14 @@ export function TestsPanel() {
       // Include the tail of the raw run output for extra context (capped). Read
       // lazily from the store so this callback doesn't subscribe to the
       // streamed output and get recreated (re-rendering every row) per flush.
-      const output = jotaiStore.get(currentTestRunOutputAtom).trim();
+      const outputs =
+        selectedAppId === null
+          ? undefined
+          : jotaiStore.get(testRunOutputByAppIdAtom).get(selectedAppId);
+      const output = runIds
+        .map((id) => outputs?.get(id)?.trim())
+        .filter(Boolean)
+        .join("\n\n---\n\n");
       if (output) {
         const MAX = 4000;
         const tail =
@@ -1172,13 +1301,13 @@ export function TestsPanel() {
   // Public entry point: confirm the switch to Agent mode first if we aren't
   // already in it, then run the fix.
   const askAiToFix = useCallback<AskAiToFix>(
-    (file, error, testTitle, screenshotPath) => {
+    (file, error, testTitle, screenshotPath, runIds) => {
       if (isAgentMode) {
-        doAskAiToFix(file, error, testTitle, screenshotPath);
+        doAskAiToFix(file, error, testTitle, screenshotPath, runIds);
       } else {
         setAgentModeDialog({
           action: "fix",
-          params: { file, error, testTitle, screenshotPath },
+          params: { file, error, testTitle, screenshotPath, runIds },
         });
       }
     },
@@ -1347,35 +1476,46 @@ export function TestsPanel() {
   // File-level status: a spinner while the file is part of an in-flight run,
   // otherwise the parsed run result (or not-run).
   const fileStatus = useCallback(
-    (file: string): TestStatus => {
-      if (isExecuting && runState.runningFiles.includes(file)) return "running";
+    (file: string): DisplayTestStatus => {
+      const runs = executingRuns.filter((run) =>
+        run.runningFiles.includes(file),
+      );
+      if (runs.length)
+        return runs.every(
+          (run) =>
+            run.runId !== undefined &&
+            waitingForNeonBranchRunIds.has(run.runId),
+        )
+          ? "waitingForNeonBranch"
+          : "running";
       return runState.results[file]?.status ?? "not-run";
     },
-    [isExecuting, runState.runningFiles, runState.results],
+    [executingRuns, runState.results, waitingForNeonBranchRunIds],
   );
 
   // Per-test status. A test spins when it's the specific test being run, or
   // when its whole file is running (no single test targeted).
   const caseStatus = useCallback(
-    (file: string, testCase: TestCase): TestStatus => {
-      if (isExecuting) {
-        const runningTests = runState.runningTests ?? [];
-        const isThisRunning =
-          runningTests.length > 0
-            ? runningTests.includes(testKey(file, testCase.line))
-            : runState.runningFiles.includes(file);
-        if (isThisRunning) return "running";
-      }
+    (file: string, testCase: TestCase): DisplayTestStatus => {
+      const runs = executingRuns.filter((run) => {
+        const runningTests = run.runningTests ?? [];
+        return runningTests.length > 0
+          ? runningTests.includes(testKey(file, testCase.line))
+          : run.runningFiles.includes(file);
+      });
+      if (runs.length)
+        return runs.every(
+          (run) =>
+            run.runId !== undefined &&
+            waitingForNeonBranchRunIds.has(run.runId),
+        )
+          ? "waitingForNeonBranch"
+          : "running";
       return (
         findCaseResult(runState.results[file], testCase)?.status ?? "not-run"
       );
     },
-    [
-      isExecuting,
-      runState.runningFiles,
-      runState.runningTests,
-      runState.results,
-    ],
+    [executingRuns, runState.results, waitingForNeonBranchRunIds],
   );
 
   const caseResult = useCallback(
@@ -1448,11 +1588,13 @@ export function TestsPanel() {
                       Run in parallel
                     </Label>
                     <p className="text-xs leading-relaxed text-muted-foreground">
-                      {isolatesTestCases
-                        ? "Unavailable while each test uses isolated database data."
-                        : runsInPreviewWebContentsView
-                          ? "Unavailable while tests run in the preview panel."
-                          : "Run independent tests in a file at the same time."}
+                      {parallelRunsEnabled
+                        ? "Parallel E2E runs is enabled in Settings. Tests run one at a time within each run, even when only one run is active."
+                        : isolatesTestCases
+                          ? "Unavailable while each test uses isolated database data."
+                          : runsInPreviewWebContentsView
+                            ? "Unavailable while tests run in the preview panel."
+                            : "Run independent tests in a file at the same time."}
                     </p>
                   </div>
                   <Switch
@@ -1460,6 +1602,7 @@ export function TestsPanel() {
                     checked={effectiveParallel}
                     disabled={
                       isRunning ||
+                      parallelRunsEnabled ||
                       runsInPreviewWebContentsView ||
                       isolatesTestCases
                     }
@@ -1478,9 +1621,11 @@ export function TestsPanel() {
                   <div className="space-y-0.5">
                     <Label htmlFor="test-option-headed">Show the browser</Label>
                     <p className="text-xs leading-relaxed text-muted-foreground">
-                      {previewRunEnabled
-                        ? "Watch tests run in the preview panel."
-                        : "Open a browser window while tests run."}
+                      {parallelRunsEnabled
+                        ? "Parallel E2E runs is enabled in Settings. Watch each run in a separate browser window; the preview panel is unavailable."
+                        : previewRunEnabled
+                          ? "Watch tests run in the preview panel."
+                          : "Open a browser window while tests run."}
                     </p>
                   </div>
                   <Switch
@@ -1629,15 +1774,19 @@ export function TestsPanel() {
         {testingEnabled && specs.length > 0 && (
           <button
             onClick={() => runTests()}
-            disabled={testRunBlocked || isSubmitting}
-            title="During database-isolated runs, other app operations may wait until the run finishes."
+            disabled={testRunBlocked || isSubmitting || runAllPending}
+            title={
+              runAllPending
+                ? t("preview.selectionAlreadyRunning")
+                : "During database-isolated runs, other app operations may wait until the run finishes."
+            }
             aria-label={
               isRunning ? t("preview.queueAllTests") : "Run all tests"
             }
             className={cn(
               "flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md cursor-pointer",
               "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-900/60",
-              (testRunBlocked || isSubmitting) &&
+              (testRunBlocked || isSubmitting || runAllPending) &&
                 "opacity-40 cursor-not-allowed",
             )}
           >
@@ -1668,9 +1817,11 @@ export function TestsPanel() {
               {isRunning && (
                 <span
                   className={cn(
-                    showStopping || isCleaningUp
-                      ? "text-amber-600 dark:text-amber-400"
-                      : "text-blue-600 dark:text-blue-400",
+                    waitingForNeonBranch
+                      ? "text-amber-900 dark:text-amber-200"
+                      : showStopping || isCleaningUp
+                        ? "text-amber-600 dark:text-amber-400"
+                        : "text-blue-600 dark:text-blue-400",
                   )}
                 >
                   {isCleaningUp
@@ -1686,21 +1837,23 @@ export function TestsPanel() {
                         : "Cleaning up the test data… "
                     : showStopping
                       ? "Stopping the tests… "
-                      : runState.phase === "setup"
-                        ? // A sandboxed run copies the app and installs its
-                          // dependencies from scratch before a single test
-                          // executes. That is minutes on a large project, and
-                          // naming it here is the difference between a wait and
-                          // an apparent hang — the streamed detail is in the
-                          // output drawer, but the header is what the user
-                          // watches.
-                          // The run's OWN recorded expectation, not the current
-                          // setting: a toggle mid-run must not relabel a run
-                          // that already picked its path.
-                          runState.sandboxed
-                          ? "Setting up the test sandbox — installing dependencies can take a few minutes… "
-                          : "Setting up testing… "
-                        : "Running… "}
+                      : waitingForNeonBranch
+                        ? `${tChat("testRunQueue.waitingForNeonBranch")}… `
+                        : runState.phase === "setup"
+                          ? // A sandboxed run copies the app and installs its
+                            // dependencies from scratch before a single test
+                            // executes. That is minutes on a large project, and
+                            // naming it here is the difference between a wait and
+                            // an apparent hang — the streamed detail is in the
+                            // output drawer, but the header is what the user
+                            // watches.
+                            // The run's OWN recorded expectation, not the current
+                            // setting: a toggle mid-run must not relabel a run
+                            // that already picked its path.
+                            runState.sandboxed
+                            ? "Setting up the test sandbox — installing dependencies can take a few minutes… "
+                            : "Setting up testing… "
+                          : "Running… "}
                 </span>
               )}
               <span className="text-green-600 dark:text-green-500">
@@ -1900,13 +2053,18 @@ export function TestsPanel() {
               </span>
               <button
                 onClick={() => runTests()}
-                disabled={isSubmitting || testRunBlocked}
+                disabled={isSubmitting || testRunBlocked || runAllPending}
+                title={
+                  runAllPending
+                    ? t("preview.selectionAlreadyRunning")
+                    : undefined
+                }
                 className={cn(
                   "shrink-0 px-2 py-1 rounded-md cursor-pointer text-xs font-medium",
                   runState.runError.kind === "stopped"
                     ? "bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600"
                     : "bg-amber-200 dark:bg-amber-800 hover:bg-amber-300 dark:hover:bg-amber-700",
-                  (isSubmitting || testRunBlocked) &&
+                  (isSubmitting || testRunBlocked || runAllPending) &&
                     "opacity-40 cursor-not-allowed",
                 )}
               >
@@ -2021,6 +2179,7 @@ export function TestsPanel() {
                 result={runState.results[spec.file]}
                 disabled={isSubmitting || testRunBlocked}
                 deleteDisabled={isRunning || isSubmitting || isDeleting}
+                isRunPending={(line) => isRunPending(spec.file, line)}
                 onRunFile={() => runTests(spec.file)}
                 onRunCase={(line) => runTests(spec.file, line)}
                 onOpenInEditor={(line) => openInEditor(spec.file, line)}
@@ -2036,7 +2195,9 @@ export function TestsPanel() {
         )}
       </div>
 
-      <OutputDrawer open={outputOpen} onToggle={toggleOutput} />
+      {testingEnabled && (
+        <TestOutputDrawer open={outputOpen} onToggle={toggleOutput} />
+      )}
 
       <DeleteTestFileDialog
         file={pendingDelete?.file ?? null}
@@ -2057,9 +2218,9 @@ export function TestsPanel() {
         action={agentModeDialog?.action ?? lastAgentModeActionRef.current}
         onContinue={() => {
           if (agentModeDialog?.action === "fix") {
-            const { file, error, testTitle, screenshotPath } =
+            const { file, error, testTitle, screenshotPath, runIds } =
               agentModeDialog.params;
-            doAskAiToFix(file, error, testTitle, screenshotPath);
+            doAskAiToFix(file, error, testTitle, screenshotPath, runIds);
           } else if (agentModeDialog) {
             doGenerateTest();
           }
@@ -2192,48 +2353,3 @@ function EnableTestingScreen({
     </div>
   );
 }
-
-// Collapsible raw output drawer. The only component that subscribes to the
-// streamed output atom, and memoized so per-flush appends re-render just this
-// drawer (and its auto-scroll) instead of the whole panel and every test row.
-const OutputDrawer = memo(function OutputDrawer({
-  open,
-  onToggle,
-}: {
-  open: boolean;
-  onToggle: () => void;
-}) {
-  const output = useAtomValue(currentTestRunOutputAtom);
-  const outputRef = useRef<HTMLPreElement>(null);
-
-  // Auto-scroll to the newest output.
-  useEffect(() => {
-    if (open && outputRef.current) {
-      outputRef.current.scrollTop = outputRef.current.scrollHeight;
-    }
-  }, [output, open]);
-
-  if (!output) return null;
-
-  return (
-    <div className="border-t border-border">
-      <button
-        onClick={onToggle}
-        aria-expanded={open}
-        aria-label="Toggle test output"
-        className="flex items-center gap-2 w-full px-4 py-1.5 text-xs font-medium text-muted-foreground hover:bg-(--background-darkest) cursor-pointer"
-      >
-        {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-        Output
-      </button>
-      {open && (
-        <pre
-          ref={outputRef}
-          className="text-[11px] whitespace-pre-wrap break-words bg-(--background-darkest) px-4 py-2 max-h-48 overflow-auto"
-        >
-          {output}
-        </pre>
-      )}
-    </div>
-  );
-});

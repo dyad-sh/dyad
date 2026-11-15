@@ -1,11 +1,25 @@
 import { atom } from "jotai";
+import { atomWithStorage } from "jotai/utils";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
-import type { TestSpec, TestResult, TestIsolation } from "@/ipc/types";
+import {
+  appendTestOutputTabAtom,
+  clearTestOutputTabsForAppAtom,
+  MAX_TEST_RUN_OUTPUT_LENGTH,
+  openTestOutputTabAtom,
+  finishTestOutputTabAtom,
+} from "./testOutputAtoms";
+import type {
+  TestSpec,
+  TestResult,
+  TestIsolation,
+  TestCaseResult,
+} from "@/ipc/types";
 import type { RunAppTestsResult } from "@/ipc/types/tests";
 import type { TestRunStopReason } from "@/shared/test_run_stop";
 import {
   buildSingleTestFileResult,
   reconcileResultFile,
+  sameTestCaseByLineOrTitleFallback,
   testKey,
 } from "@/lib/testResultUtils";
 
@@ -17,6 +31,14 @@ import {
  */
 export const dismissedLegacyTestMigrationAppIdsAtom = atom<Set<number>>(
   new Set<number>(),
+);
+
+/** Remember declined testing offers per app, including across launches. */
+export const dismissedNeonTestingBannerAppIdsAtom = atomWithStorage<number[]>(
+  "dyad:dismissed-neon-testing-banner-app-ids",
+  [],
+  undefined,
+  { getOnInit: true },
 );
 
 /** Last completed batch hidden from each app's chat card in this window/session. */
@@ -37,8 +59,10 @@ export type TestStatus =
   | "running"
   | "not-run";
 
-export type RuntimeTestResult = Omit<TestResult, "status"> & {
+export type RuntimeTestResult = Omit<TestResult, "status" | "tests"> & {
   status: TestResult["status"] | "partial";
+  runId?: number;
+  tests?: (TestCaseResult & { runId?: number })[];
 };
 
 /**
@@ -55,6 +79,8 @@ export type TestRunPhase =
 
 export interface TestRunState {
   phase: TestRunPhase;
+  /** Per-run presentation of main's lifecycle events; never schedules runs. */
+  activeRuns?: Record<number, TestRunProgress>;
   /** Main-owned per-app generation used to reject stale lifecycle events. */
   runId?: number;
   /** Surface that started the active run. */
@@ -95,6 +121,36 @@ export interface TestRunState {
   startedAt?: number;
 }
 
+export type TestRunProgress = Omit<TestRunState, "results" | "activeRuns">;
+
+function runProgress({
+  results: _results,
+  activeRuns: _runs,
+  ...progress
+}: TestRunState): TestRunProgress {
+  return progress;
+}
+
+/** Keep the app's summary active until every independently owned run settles. */
+function projectActiveRuns(state: TestRunState): TestRunState {
+  const runs = Object.values(state.activeRuns ?? {});
+  if (!runs.length) return state;
+  // Executing runs take precedence over another run's teardown in the toolbar.
+  const executing = runs.filter(
+    (run) => run.phase === "setup" || run.phase === "running",
+  );
+  const current = (executing.length ? executing : runs).reduce((latest, run) =>
+    (run.runId ?? 0) > (latest.runId ?? 0) ? run : latest,
+  );
+  return {
+    ...state,
+    ...current,
+    runError: state.runError,
+    isolation: state.isolation,
+    runningFiles: [...new Set(runs.flatMap((run) => run.runningFiles))],
+  };
+}
+
 // Frozen (deeply) so the shared default can't be mutated in place and leak
 // across apps. Callers must spread into a new object to modify.
 export const EMPTY_TEST_RUN_STATE: TestRunState = Object.freeze({
@@ -103,33 +159,62 @@ export const EMPTY_TEST_RUN_STATE: TestRunState = Object.freeze({
   runningFiles: Object.freeze([]),
 }) as TestRunState;
 
-/** Cap on the accumulated run output kept in the renderer (keeps the tail). */
-const MAX_OUTPUT_LENGTH = 500_000;
-
-// Streamed raw run output (bootstrap + test runner) lives in its own per-app
-// atom, deliberately OUTSIDE TestRunState: output is by far the chattiest
-// field, and keeping it in the state object every panel row subscribes to
-// would re-render the whole Tests panel on every appended chunk.
-export const testRunOutputByAppIdAtom = atom<Map<number, string>>(new Map());
+// Keep the current batch's output for Ask AI to Fix, independently of which
+// output tabs the user has selected or closed. Logs stay outside TestRunState
+// so appending chunks does not re-render every test row.
+export const testRunOutputByAppIdAtom = atom<Map<number, Map<number, string>>>(
+  new Map(),
+);
 
 export const currentTestRunOutputAtom = atom((get) => {
   const appId = get(selectedAppIdAtom);
-  return appId === null ? "" : (get(testRunOutputByAppIdAtom).get(appId) ?? "");
+  const runId =
+    appId === null ? undefined : get(testRunStateByAppIdAtom).get(appId)?.runId;
+  return appId === null || runId === undefined
+    ? ""
+    : (get(testRunOutputByAppIdAtom).get(appId)?.get(runId) ?? "");
 });
 
 export const appendTestRunOutputAtom = atom(
   null,
-  (_get, set, { appId, chunk }: { appId: number; chunk: string }) => {
+  (
+    _get,
+    set,
+    { appId, runId, chunk }: { appId: number; runId: number; chunk: string },
+  ) => {
+    set(appendTestOutputTabAtom, { appId, runId, chunk });
     set(testRunOutputByAppIdAtom, (prev) => {
       const next = new Map(prev);
-      next.set(
-        appId,
-        ((prev.get(appId) ?? "") + chunk).slice(-MAX_OUTPUT_LENGTH),
+      const runs = new Map(prev.get(appId));
+      runs.set(
+        runId,
+        ((runs.get(runId) ?? "") + chunk).slice(-MAX_TEST_RUN_OUTPUT_LENGTH),
       );
+      next.set(appId, runs);
       return next;
     });
   },
 );
+
+// Retain output only while a run is active or a displayed result refers to it.
+// Closing an output tab must not discard context for Ask AI to Fix.
+const pruneTestRunOutputAtom = atom(null, (get, set, appId: number) => {
+  const state = get(testRunStateByAppIdAtom).get(appId);
+  const ids = new Set(Object.keys(state?.activeRuns ?? {}).map(Number));
+  for (const result of Object.values(state?.results ?? {})) {
+    if (result.runId !== undefined) ids.add(result.runId);
+    for (const test of result.tests ?? [])
+      if (test.runId !== undefined) ids.add(test.runId);
+  }
+  set(testRunOutputByAppIdAtom, (prev) => {
+    const runs = prev.get(appId);
+    if (!runs) return prev;
+    return new Map(prev).set(
+      appId,
+      new Map([...runs].filter(([id]) => ids.has(id))),
+    );
+  });
+});
 
 export const clearTestRunOutputForAppAtom = atom(
   null,
@@ -179,15 +264,32 @@ export const setTestRunStateForAppAtom = atom(
     set,
     {
       appId,
+      runId,
       update,
     }: {
       appId: number;
+      /** Scope progress updates to their producer, even while other runs execute. */
+      runId?: number;
       update: TestRunState | ((prev: TestRunState) => TestRunState);
     },
   ) => {
     set(testRunStateByAppIdAtom, (prev) => {
       const current = prev.get(appId) ?? EMPTY_TEST_RUN_STATE;
-      const nextState = typeof update === "function" ? update(current) : update;
+      const progress =
+        runId === undefined ? undefined : current.activeRuns?.[runId];
+      if (runId !== undefined && !progress) return prev;
+      const target = progress ? { ...current, ...progress } : current;
+      const updated = typeof update === "function" ? update(target) : update;
+      if (updated === target) return prev;
+      const nextState = progress
+        ? projectActiveRuns({
+            ...current,
+            activeRuns: {
+              ...current.activeRuns,
+              [runId!]: runProgress(updated),
+            },
+          })
+        : updated;
       // An updater may return the previous state to signal "no change" (e.g.
       // the streamed-output subscriber when the phase is unchanged) — skip the
       // Map copy so subscribers don't re-render for nothing.
@@ -203,7 +305,7 @@ export const setTestRunStateForAppAtom = atom(
  * Transition an app into the "running" state for a test run. Shared by
  * panel-initiated runs (TestsPanel.runTests) and agent-initiated runs (the
  * root-level tests:run-state subscriber in useTestRunEvents), so both show the
- * same spinners/cleared-output state. Global per-app writes only — UI side
+ * same spinners and per-run output tabs. Global per-app writes only — UI side
  * effects (e.g. popping the output drawer) stay in the panel, keyed off the
  * resulting phase transition.
  */
@@ -273,6 +375,19 @@ export const applyTestRunStartedAtom = atom(
     const specs = get(testSpecsByAppIdAtom).get(appId) ?? [];
     const targetFiles =
       testFiles ?? (testFile ? [testFile] : specs.map((s) => s.file));
+    if (runId !== undefined) {
+      const files = testFiles ?? (testFile ? [testFile] : []);
+      const target =
+        files.length === 1
+          ? `${files[0].split(/[\\/]/).pop()}${testLine != null ? `:${testLine}` : ""}`
+          : undefined;
+      set(openTestOutputTabAtom, {
+        appId,
+        runId,
+        target,
+        fileCount: files.length,
+      });
+    }
     const grepMatchedTests =
       testLine == null && grep
         ? targetFiles.flatMap(
@@ -285,52 +400,69 @@ export const applyTestRunStartedAtom = atom(
               ),
           )
         : null;
-    set(clearTestRunOutputForAppAtom, appId);
     set(setTestRunStateForAppAtom, {
       appId,
-      update: (prev) => ({
-        ...prev,
-        // A run starts in setup: isolation prep and the Playwright bootstrap
-        // both run before the first test does. Setup-phase output keeps it
-        // here; the first running-phase output advances it.
-        phase: "setup",
-        runId,
-        source,
-        wasStopped: false,
-        runningFiles: targetFiles,
-        runningTests:
-          targetFiles.length === 1 && testLine != null
-            ? [testKey(targetFiles[0], testLine)]
-            : (grepMatchedTests ?? []),
-        // For a single-test run, keep the file's existing results (siblings
-        // keep their status; we merge the one test back in afterward). Grep
-        // runs are also partial because they return only the matched tests.
-        // For a file/all run, clear the targeted files.
-        results: isPartialRun
-          ? prev.results
-          : Object.fromEntries(
-              Object.entries(prev.results).filter(
-                ([f]) => !targetFiles.includes(f),
+      update: (prev) => {
+        const started: TestRunState = {
+          ...prev,
+          activeRuns: runId === undefined ? undefined : prev.activeRuns,
+          // A run starts in setup: isolation prep and the Playwright bootstrap
+          // both run before the first test does. Setup-phase output keeps it
+          // here; the first running-phase output advances it.
+          phase: "setup",
+          runId,
+          source,
+          wasStopped: false,
+          runningFiles: targetFiles,
+          runningTests:
+            targetFiles.length === 1 && testLine != null
+              ? [testKey(targetFiles[0], testLine)]
+              : (grepMatchedTests ?? []),
+          // For a single-test run, keep the file's existing results (siblings
+          // keep their status; we merge the one test back in afterward). Grep
+          // runs are also partial because they return only the matched tests.
+          // For a file/all run, clear the targeted files.
+          results: isPartialRun
+            ? prev.results
+            : Object.fromEntries(
+                Object.entries(prev.results).filter(
+                  ([f]) => !targetFiles.includes(f),
+                ),
               ),
-            ),
-        runError: undefined,
-        isolation: undefined,
-        // The starter's expectation; the main process confirms (or corrects)
-        // it on the progress and finished events. `?? prev` rather than a bare
-        // assignment: this atom is applied TWICE for one run — once optimistically
-        // at the click, then again when the main process broadcasts `started` —
-        // and a caller that omits the flag must not erase what the first call
-        // knew.
-        sandboxed: sandboxed ?? prev.sandboxed,
-        startedAt: startedAt ?? Date.now(),
-      }),
+          runError: Object.keys(prev.activeRuns ?? {}).length
+            ? prev.runError
+            : undefined,
+          isolation: Object.keys(prev.activeRuns ?? {}).length
+            ? prev.isolation
+            : undefined,
+          // The starter's expectation; the main process confirms (or corrects)
+          // it on the progress and finished events. `?? prev` rather than a bare
+          // assignment: this atom is applied TWICE for one run — once optimistically
+          // at the click, then again when the main process broadcasts `started` —
+          // and a caller that omits the flag must not erase what the first call
+          // knew.
+          sandboxed: sandboxed ?? prev.sandboxed,
+          startedAt: startedAt ?? Date.now(),
+        };
+        return runId === undefined
+          ? started
+          : projectActiveRuns({
+              ...started,
+              activeRuns: { ...prev.activeRuns, [runId]: runProgress(started) },
+            });
+      },
     });
+    set(pruneTestRunOutputAtom, appId);
   },
 );
 
 /**
  * Merge a finished run's results back onto an app's run state. Shared by
  * panel- and agent-initiated runs (see applyTestRunStartedAtom).
+ *
+ * `reconcileOnly` re-keys an already-finished run's results against a
+ * refreshed spec list. The run is no longer active, so it touches only results
+ * and never replaces a result from a newer run.
  */
 export const applyTestRunFinishedAtom = atom(
   null,
@@ -344,6 +476,7 @@ export const applyTestRunFinishedAtom = atom(
       expectedStartedAt,
       expectedRunId,
       sandboxed,
+      reconcileOnly = false,
     }: {
       appId: number;
       res: RunAppTestsResult;
@@ -351,6 +484,7 @@ export const applyTestRunFinishedAtom = atom(
       expectedStartedAt?: number;
       expectedRunId?: number;
       sandboxed?: boolean;
+      reconcileOnly?: boolean;
     },
   ) => {
     // Playwright reports a spec's `file` relative to its own rootDir, which
@@ -363,24 +497,49 @@ export const applyTestRunFinishedAtom = atom(
     set(setTestRunStateForAppAtom, {
       appId,
       update: (prev) => {
+        const progress =
+          expectedRunId === undefined
+            ? prev
+            : (prev.activeRuns?.[expectedRunId] ?? prev);
         if (
-          (expectedRunId !== undefined && prev.runId !== expectedRunId) ||
-          (expectedStartedAt !== undefined &&
-            prev.startedAt !== expectedStartedAt)
+          !reconcileOnly &&
+          ((expectedRunId !== undefined && progress.runId !== expectedRunId) ||
+            (expectedStartedAt !== undefined &&
+              progress.startedAt !== expectedStartedAt))
         ) {
           return prev;
         }
         const nextResults = { ...prev.results };
+        const ownedByNewerRun = (runId: number | undefined) =>
+          reconcileOnly &&
+          expectedRunId !== undefined &&
+          (runId ?? 0) > expectedRunId;
         // Infrastructure/cleanup warnings do not invalidate completed results.
         // Main marks files whose selected cases did not all finish separately.
         for (const r of res.results) {
           const key = reconcileResultFile(r.file, specFiles);
-          const mapped = { ...r, file: key };
-          if (isPartialRun) {
+          const previous = prev.results[key];
+          if (ownedByNewerRun(previous?.runId)) continue;
+          // Merged partial results carry no file-level owner, so a delayed
+          // refresh also keeps every case a newer run already reported.
+          const newerCases =
+            previous?.tests?.filter((test) => ownedByNewerRun(test.runId)) ??
+            [];
+          const tests = r.tests
+            ?.filter(
+              (test) =>
+                !newerCases.some((newer) =>
+                  sameTestCaseByLineOrTitleFallback(newer, test),
+                ),
+            )
+            .map((test) => ({ ...test, runId: expectedRunId }));
+          if (newerCases.length && !tests?.length) continue;
+          const mapped = { ...r, file: key, runId: expectedRunId, tests };
+          if (isPartialRun || newerCases.length) {
             nextResults[key] = buildSingleTestFileResult({
               file: key,
               knownTests: specsByFile.get(key)?.tests ?? [],
-              previous: prev.results[key],
+              previous,
               incoming: mapped,
             });
           } else {
@@ -395,8 +554,12 @@ export const applyTestRunFinishedAtom = atom(
             };
           }
         }
-        return {
+        if (reconcileOnly) return { ...prev, results: nextResults };
+        const activeRuns = { ...prev.activeRuns };
+        if (expectedRunId !== undefined) delete activeRuns[expectedRunId];
+        return projectActiveRuns({
           ...prev,
+          activeRuns: expectedRunId === undefined ? {} : activeRuns,
           phase: "idle",
           wasStopped: false,
           runningFiles: [],
@@ -410,18 +573,30 @@ export const applyTestRunFinishedAtom = atom(
               }
             : res.infraError
               ? { message: res.infraError.message, kind: "infra" }
-              : undefined,
+              : prev.runError,
           isolation: res.isolation,
           sandboxed: sandboxed ?? prev.sandboxed,
-        };
+        });
       },
     });
+    if (reconcileOnly) return;
+    if (expectedRunId !== undefined)
+      set(finishTestOutputTabAtom, {
+        appId,
+        runId: expectedRunId,
+        error: res.infraError?.message,
+      });
+    set(pruneTestRunOutputAtom, appId);
   },
 );
 
 export const clearTestRuntimeForAppAtom = atom(
   null,
   (_get, set, appId: number) => {
+    set(clearTestOutputTabsForAppAtom, appId);
+    set(dismissedNeonTestingBannerAppIdsAtom, (prev) =>
+      prev.includes(appId) ? prev.filter((id) => id !== appId) : prev,
+    );
     set(dismissedTestRunThroughIdByAppIdAtom, (prev) => {
       if (!prev.has(appId)) return prev;
       const next = new Map(prev);

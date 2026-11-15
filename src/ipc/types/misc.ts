@@ -149,6 +149,8 @@ export const DebugSettingsSchema = z.object({
   enableGitlabPublishing: z.boolean().nullable(),
   enableTestRunInPreview: z.boolean().nullable(),
   disableSandboxedE2eTests: z.boolean().nullable(),
+  enableParallelTestRuns: z.boolean().nullable(),
+  maxConcurrentTestRuns: z.number().nullable(),
   enableAppPreviewDomains: z.boolean().nullable(),
   enablePreviewCookieIsolation: z.boolean().nullable(),
   proModelUsage: z.string().nullable(),

@@ -502,7 +502,8 @@
       "getDyadPro": "Passer à Dyad Pro"
     },
     "retryRun": "Réessayer",
-    "runAgain": "Relancer"
+    "runAgain": "Relancer",
+    "selectionAlreadyRunning": "Déjà en cours d'exécution. Relancez-le une fois cette exécution terminée."
   },
   "integrations": {
     "github": {

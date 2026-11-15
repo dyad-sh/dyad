@@ -69,6 +69,8 @@ describe("getSharedSettingsDiagnostics", () => {
     expect(getSharedSettingsDiagnostics(makeSettings())).toMatchObject({
       enableShellTool: null,
       maxToolCallSteps: null,
+      enableParallelTestRuns: null,
+      maxConcurrentTestRuns: null,
       githubConnected: false,
       supabaseConnected: false,
     });
@@ -125,6 +127,7 @@ describe("getSessionDebugSettings", () => {
         "enableMcpToolSearch",
         "enableMultiWindow",
         "enableOwnServerDeployment",
+        "enableParallelTestRuns",
         "enablePnpmMinimumReleaseAgeWarning",
         "enablePreviewCookieIsolation",
         "enableProLazyEditsMode",
@@ -145,6 +148,7 @@ describe("getSessionDebugSettings", () => {
         "isTestMode",
         "language",
         "maxChatTurnsInContext",
+        "maxConcurrentTestRuns",
         "maxToolCallSteps",
         "neonConnected",
         "neverSuggestPluginSlugs",

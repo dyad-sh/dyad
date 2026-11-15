@@ -1,14 +1,10 @@
 // @vitest-environment node
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { Response as NodeResponse } from "node-fetch";
 import type { LanguageModelV3 } from "@ai-sdk/provider";
 import type { UserSettings } from "@/lib/schemas";
 import { DyadErrorKind } from "@/errors/dyad_error";
 const mocks = vi.hoisted(() => ({ credits: vi.fn(), key: "checked-dyad-key" }));
-vi.mock("node-fetch", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("node-fetch")>()),
-  default: mocks.credits,
-}));
+vi.mock("@/ipc/utils/native_fetch", () => ({ default: mocks.credits }));
 vi.mock("@/main/settings", () => ({
   readSettings: () => ({
     enableDyadPro: true,
@@ -74,7 +70,7 @@ import type { AutoModelCandidates } from "./auto_model_candidates";
 
 const signal = () => new AbortController().signal;
 const balance = () =>
-  new NodeResponse(
+  new Response(
     JSON.stringify({
       totalCredits: 100,
       usedCredits: 1,
@@ -82,7 +78,7 @@ const balance = () =>
       userId: "test-user",
     }),
   );
-const denied = () => new NodeResponse("out of credits", { status: 402 });
+const denied = () => new Response("out of credits", { status: 402 });
 const billing = { connection: "local" as const, modelProvider: "ollama" };
 const settings = () =>
   ({
@@ -163,7 +159,7 @@ it.each(["outage", "timeout", "malformed"])(
       );
     if (failure === "malformed")
       mocks.credits.mockResolvedValueOnce(
-        new NodeResponse('{"totalCredits":null}'),
+        new Response('{"totalCredits":null}'),
       );
     const admitted = await preflightSubscriptionTurn(
       { provider: "openai", name: "test-model", effortLevel: "medium" },

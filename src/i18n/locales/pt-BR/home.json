@@ -290,6 +290,7 @@
     "queueAllTests": "Adicionar todos os testes à fila",
     "retryRun": "Tentar novamente",
     "runAgain": "Executar novamente",
+    "selectionAlreadyRunning": "Já está em execução. Execute novamente quando esta execução terminar.",
     "testGate": {
       "settingsLoading": "Carregando configurações…",
       "settingsUnavailable": "O Dyad não conseguiu carregar suas configurações, então não sabe como os testes seriam executados.",

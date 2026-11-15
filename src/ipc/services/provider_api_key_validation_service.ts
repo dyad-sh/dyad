@@ -1,4 +1,3 @@
-import { createGoogleGenerativeAI as createGoogle } from "@ai-sdk/google";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { streamText, type LanguageModel } from "ai";
 import log from "electron-log";
@@ -60,6 +59,10 @@ export async function validateProviderApiKey({
     );
   }
 
+  if (provider === "google") {
+    return validateGoogleApiKey(normalizedApiKey);
+  }
+
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
@@ -114,19 +117,93 @@ export async function validateProviderApiKey({
   }
 }
 
+/**
+ * Google keys are checked by listing models rather than generating text.
+ * A generation request depends on the chosen model having capacity, and the
+ * free tier's newest Flash models often answer with 503 "high demand" or hang
+ * with no response at all, so valid keys failed the check. Listing models
+ * returns 400 for a bad key and 200 for a good one, in well under a second,
+ * without using quota.
+ */
+async function validateGoogleApiKey(apiKey: string): Promise<{ ok: true }> {
+  const fetchImpl = getTestFetchOption().fetch ?? fetch;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), VALIDATION_TIMEOUT_MS);
+  try {
+    let response: Response;
+    let body: string;
+    try {
+      response = await fetchImpl(`${getGoogleBaseUrl()}/models?pageSize=1`, {
+        method: "GET",
+        headers: { "x-goog-api-key": apiKey },
+        signal: controller.signal,
+      });
+      body = response.ok ? "" : await response.text();
+    } catch (error) {
+      // The request never got an HTTP answer: offline, DNS, proxy, TLS, or
+      // our timeout. That is the user's network, not a Dyad bug, so it is
+      // logged here and kept out of exception telemetry.
+      logger.warn(
+        `Could not reach Google to validate API key: ${describeNetworkError(error)}`,
+      );
+      throw new DyadError(
+        "Couldn't reach Google to check this API key. Check your internet connection, or keep this key anyway.",
+        DyadErrorKind.Precondition,
+      );
+    }
+
+    if (response.ok) {
+      return { ok: true };
+    }
+    throw classifyValidationError(
+      new ProviderHttpError(
+        extractGoogleErrorMessage(body) || `HTTP ${response.status}`,
+        response.status,
+      ),
+      PROVIDER_DISPLAY_NAMES.google,
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+class ProviderHttpError extends Error {
+  constructor(
+    message: string,
+    readonly statusCode: number,
+  ) {
+    super(message);
+    this.name = "ProviderHttpError";
+  }
+}
+
+// Google error bodies look like {"error":{"code":400,"message":"API key not valid. ..."}}.
+function extractGoogleErrorMessage(body: string): string {
+  try {
+    const parsed = JSON.parse(body) as { error?: { message?: unknown } };
+    if (typeof parsed.error?.message === "string") {
+      return parsed.error.message;
+    }
+  } catch {
+    // Not JSON; fall back to the raw body.
+  }
+  return body.trim().slice(0, 300);
+}
+
+function describeNetworkError(error: unknown): string {
+  if (error instanceof Error) {
+    const cause = error.cause as { code?: unknown } | undefined;
+    const code = typeof cause?.code === "string" ? ` (${cause.code})` : "";
+    return `${error.name}: ${error.message}${code}`;
+  }
+  return String(error);
+}
+
 async function createValidationModel(
-  provider: ProviderApiKeyValidationProvider,
+  provider: Exclude<ProviderApiKeyValidationProvider, "google">,
   apiKey: string,
 ): Promise<LanguageModel> {
   switch (provider) {
-    case "google": {
-      const google = createGoogle({
-        apiKey,
-        baseURL: getGoogleBaseUrl(),
-        ...getTestFetchOption(),
-      });
-      return google("gemini-flash-latest");
-    }
     case "openrouter": {
       const openrouter = createOpenAICompatible({
         name: "openrouter",
@@ -172,7 +249,7 @@ function getGoogleBaseUrl() {
   if (IS_TEST_BUILD && process.env.FAKE_LLM_PORT) {
     return `http://localhost:${process.env.FAKE_LLM_PORT}/google/v1beta`;
   }
-  return undefined;
+  return "https://generativelanguage.googleapis.com/v1beta";
 }
 
 function getOpenRouterBaseUrl() {

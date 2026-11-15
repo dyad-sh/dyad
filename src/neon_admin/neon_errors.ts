@@ -53,6 +53,17 @@ export function getNeonErrorMessage(error: unknown): string {
   }
 }
 
+/**
+ * Neon rejected the credentials (HTTP 401/403), for example a revoked or
+ * otherwise invalid access token. The user has to reconnect Neon; this is not
+ * a Dyad bug.
+ */
+export function isNeonAuthError(error: unknown): boolean {
+  const status = (error as { response?: { status?: unknown } })?.response
+    ?.status;
+  return status === 401 || status === 403;
+}
+
 /** The project has as many branches as its Neon plan allows. */
 export function isBranchLimitError(error: unknown): boolean {
   const data = (error as { response?: { data?: { code?: unknown } } })?.response

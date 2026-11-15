@@ -48,6 +48,9 @@ describe("describeTestRunStop", () => {
     expect(describeTestRunStop({ kind: "tests-panel-stop" })).toBe(
       "Test run stopped from the Tests panel.",
     );
+    expect(describeTestRunStop({ kind: "test-queue-stop" })).toBe(
+      "Test run stopped from the test queue.",
+    );
     expect(
       describeTestRunStop({ kind: "chat-stop" }, { beforeExecution: true }),
     ).toBe(

@@ -2,6 +2,7 @@ import { builtinModules } from "node:module";
 import { defineConfig } from "vite";
 import path from "path";
 import { assertDeferredMainBootstrapBundle } from "./src/lib/main_bootstrap_bundle";
+import { posthogHiddenSourcemapsPlugin } from "./src/lib/posthog_sourcemaps";
 
 const nodeBuiltins = builtinModules.flatMap((name) => [name, `node:${name}`]);
 
@@ -47,6 +48,7 @@ export default defineConfig(({ forgeConfigSelf }) => ({
     },
   },
   plugins: [
+    ...posthogHiddenSourcemapsPlugin(),
     {
       name: "verify-deferred-main-bootstrap",
       generateBundle(outputOptions, bundle) {

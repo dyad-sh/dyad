@@ -14,7 +14,7 @@ import { dismissedTestRunThroughIdByAppIdAtom } from "@/atoms/testRuntimeAtoms";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useSelectChat } from "@/hooks/useSelectChat";
-import { useTestRunQueue } from "@/hooks/useTestRunQueue";
+import { useTestRunQueue, useCancelTestRun } from "@/hooks/useTestRunQueue";
 import { queryKeys } from "@/lib/queryKeys";
 import type { CompletedTestRun } from "@/lib/testRunSummary";
 import type { TestRunRequest, TestRunStopReason } from "@/test_run_queue/state";
@@ -23,7 +23,12 @@ import { cn } from "@/lib/utils";
 /** How long a batch's final outcomes stay readable/announced after it drains. */
 export const DRAINED_BATCH_LINGER_MS = 5_000;
 
-type RunStatus = CompletedTestRun["status"] | "queued" | "running" | "stopping";
+type RunStatus =
+  | CompletedTestRun["status"]
+  | "queued"
+  | "running"
+  | "stopping"
+  | "waitingForNeonBranch";
 type QueueRow = TestRunRequest & {
   status: RunStatus;
   stopReason?: TestRunStopReason;
@@ -31,6 +36,7 @@ type QueueRow = TestRunRequest & {
 
 const statusClasses: Record<RunStatus, string> = {
   queued: "text-yellow-700 dark:text-yellow-400",
+  waitingForNeonBranch: "text-yellow-700 dark:text-yellow-400",
   running: "text-gray-500 dark:text-gray-400",
   stopping: "text-gray-500 dark:text-gray-400",
   passed: "text-green-600 dark:text-green-400",
@@ -56,7 +62,8 @@ function RunIcon({ status }: { status: RunStatus }) {
       className={cn(
         "size-3.5 shrink-0",
         (status === "running" || status === "stopping") && "animate-spin",
-        status === "queued" && "size-2 fill-current mx-0.75",
+        (status === "queued" || status === "waitingForNeonBranch") &&
+          "size-2 fill-current mx-0.75",
       )}
     />
   );
@@ -73,6 +80,7 @@ export function TestRunQueueCard({
 }) {
   const { t } = useTranslation("chat");
   const { selectChat } = useSelectChat();
+  const cancelRun = useCancelTestRun();
   const [dismissedRunIds, setDismissedRunIds] = useAtom(
     dismissedTestRunThroughIdByAppIdAtom,
   );
@@ -133,16 +141,16 @@ export function TestRunQueueCard({
   ]);
   const completedIds = new Set(completed.map((run) => run.runId));
   const rows: QueueRow[] = [
-    ...(queue?.activeRun && !completedIds.has(queue.activeRun.runId)
-      ? [
-          {
-            ...queue.activeRun,
-            status: queue.activeRun.stopping
-              ? ("stopping" as const)
-              : ("running" as const),
-          },
-        ]
-      : []),
+    ...(queue?.activeRuns ?? (queue?.activeRun ? [queue.activeRun] : []))
+      .filter((run) => !completedIds.has(run.runId))
+      .map((run) => ({
+        ...run,
+        status: run.stopping
+          ? ("stopping" as const)
+          : run.waitingForNeonBranch
+            ? ("waitingForNeonBranch" as const)
+            : ("running" as const),
+      })),
     ...(queue?.queuedRuns ?? [])
       .filter((run) => !completedIds.has(run.runId))
       .map((run) => ({ ...run, status: "queued" as const })),
@@ -195,6 +203,9 @@ export function TestRunQueueCard({
         {rows.map((run) => {
           const label = runLabel(run);
           const runChatId = run.chatId;
+          const queuedReason = run.queuedReason
+            ? t(`testRunQueue.waitReason.${run.queuedReason}`)
+            : undefined;
           // Say why a run stopped (or is stopping) instead of a bare status.
           const stopReason =
             (run.status === "stopped" || run.status === "stopping") &&
@@ -210,15 +221,37 @@ export function TestRunQueueCard({
               )}
             >
               <RunIcon status={run.status} />
-              <span className="min-w-0 flex-1 truncate" title={label}>
-                {label}
-              </span>
-              <span className="shrink-0" title={stopReason}>
+              <div className="min-w-0 flex-1">
+                <div className="truncate" title={label}>
+                  {label}
+                </div>
+                {run.status === "queued" && queuedReason && (
+                  <p className="mt-0.5 whitespace-normal">{queuedReason}</p>
+                )}
+              </div>
+              <span className="shrink-0" title={stopReason ?? queuedReason}>
                 {t(`testRunQueue.${run.status}`)}
                 {stopReason && (
                   <span className="sr-only">{`: ${stopReason}`}</span>
                 )}
               </span>
+              {(run.status === "queued" ||
+                run.status === "running" ||
+                run.status === "waitingForNeonBranch") && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-6"
+                  aria-label={t("testRunQueue.stopRun", { target: label })}
+                  disabled={
+                    cancelRun.isPending &&
+                    cancelRun.variables?.runId === run.runId
+                  }
+                  onClick={() => cancelRun.mutate({ appId, runId: run.runId })}
+                >
+                  <CircleStop className="size-3.5" aria-hidden="true" />
+                </Button>
+              )}
               {runChatId != null ? (
                 runChatId === chatId ? (
                   <Badge

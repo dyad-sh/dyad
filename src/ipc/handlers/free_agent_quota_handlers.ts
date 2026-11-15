@@ -7,7 +7,7 @@ import log from "electron-log";
 import { IS_TEST_BUILD } from "../utils/test_utils";
 import { registerTrustedIpcHandler } from "./trusted_handle";
 import { FREE_AGENT_QUOTA_LIMIT } from "@/lib/free_agent_quota_limit";
-import fetch from "node-fetch";
+import fetch from "@/ipc/utils/native_fetch";
 import { withLock } from "../utils/lock_utils";
 import { shouldSimulateFreeAgentQuotaExceeded } from "../utils/free_agent_quota_fixture";
 

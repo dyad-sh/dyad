@@ -22,9 +22,14 @@ test("file tree search finds content matches and surfaces line numbers", async (
   const fileTree = po.page.locator(".file-tree");
 
   // Content search should find files whose contents match the query and show line info
-  await searchInput.fill("import");
   const resultItem = fileTree.getByText("src/main.tsx").first();
-  await expect(resultItem).toBeVisible({ timeout: Timeout.MEDIUM });
+  // App selection can still settle after Code mode first renders, clearing
+  // its per-app search. Refill until the query and its result agree.
+  await expect(async () => {
+    await searchInput.fill("import", { timeout: 1_000 });
+    await expect(searchInput).toHaveValue("import", { timeout: 1_000 });
+    await expect(resultItem).toBeVisible({ timeout: 1_000 });
+  }).toPass({ timeout: Timeout.MEDIUM });
 
   // Click on the file path text to expand the accordion and show snippets.
   // Clicking the text bubbles to the parent div's handleFileClick handler.

@@ -496,9 +496,9 @@ jobs:
             ${{ matrix.os.name }}-pnpm-store-
       # Not strictly needed but makes the e2e tests faster (and less flaky)
       - name: Install scaffold dependencies
-        run: cd scaffold && pnpm install
+        run: bash scripts/pnpm-install-retry.sh scaffold
       - name: Install nextjs-template dependencies
-        run: cd nextjs-template && pnpm install
+        run: bash scripts/pnpm-install-retry.sh nextjs-template
       - name: Download build artifacts
         uses: actions/download-artifact@v7
         with:

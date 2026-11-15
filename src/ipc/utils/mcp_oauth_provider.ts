@@ -1,5 +1,7 @@
 import { shell } from "electron";
 import log from "electron-log";
+import { z } from "zod";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { eq } from "drizzle-orm";
 import type {
   OAuthClientInformation,
@@ -10,7 +12,11 @@ import type {
 import { db } from "../../db";
 import { mcpServers } from "../../db/schema";
 import { DEFAULT_OAUTH_CALLBACK_PORT } from "../types/mcp";
-import { encryptToString, decryptFromString } from "./secret_storage";
+import {
+  encryptToString,
+  decryptFromString,
+  PLAINTEXT_PREFIX,
+} from "./secret_storage";
 
 export { encryptToString, decryptFromString } from "./secret_storage";
 
@@ -21,6 +27,48 @@ const logger = log.scope("mcp_oauth_provider");
 interface StoredOAuthState {
   tokens?: OAuthTokens;
   clientInformation?: OAuthClientInformation;
+}
+
+// Validate the structures we use before any read-modify-write. Passthrough
+// preserves SDK metadata (expiry, scopes, registration endpoints, etc.).
+const StoredOAuthStateSchema = z
+  .object({
+    tokens: z
+      .object({
+        access_token: z.string().min(1),
+        token_type: z.string().default("Bearer"),
+        refresh_token: z.string().optional(),
+        id_token: z.string().optional(),
+        expires_in: z.number().optional(),
+        scope: z.string().optional(),
+        authorization_server: z.string().optional(),
+        token_endpoint: z.string().optional(),
+      })
+      .passthrough()
+      .optional(),
+    clientInformation: z
+      .object({
+        client_id: z.string().min(1),
+        client_secret: z.string().optional(),
+        client_id_issued_at: z.number().optional(),
+        client_secret_expires_at: z.number().optional(),
+        authorization_server: z.string().optional(),
+        token_endpoint: z.string().optional(),
+      })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough();
+
+function parseStoredState(raw: string): StoredOAuthState {
+  try {
+    return StoredOAuthStateSchema.parse(JSON.parse(decryptFromString(raw)));
+  } catch {
+    throw new DyadError(
+      "Saved MCP OAuth credentials could not be opened. Unlock or restore your OS keyring and retry, or disconnect OAuth to replace them.",
+      DyadErrorKind.Precondition,
+    );
+  }
 }
 
 // PKCE code verifiers live on the provider instance so a superseded
@@ -45,14 +93,23 @@ function formUrlEncode(s: string): string {
 // registered client ID with no tokens yet. Drives the
 // "OAuth: connected" badge.
 export function oauthStateHasTokens(stored: string | null): boolean {
-  if (!stored) return false;
-  const json = decryptFromString(stored);
-  if (!json) return false;
+  return getOAuthStateStatus(stored).oauthConnected;
+}
+
+/** Expose recovery actions without sending stored credentials to the renderer. */
+export function getOAuthStateStatus(stored: string | null): {
+  oauthConnected: boolean;
+  oauthUnreadable: boolean;
+} {
+  if (!stored) return { oauthConnected: false, oauthUnreadable: false };
   try {
-    const parsed = JSON.parse(json) as StoredOAuthState;
-    return Boolean(parsed.tokens?.access_token);
+    const parsed = parseStoredState(stored);
+    return {
+      oauthConnected: Boolean(parsed.tokens?.access_token),
+      oauthUnreadable: false,
+    };
   } catch {
-    return false;
+    return { oauthConnected: false, oauthUnreadable: true };
   }
 }
 
@@ -63,13 +120,7 @@ async function readState(serverId: number): Promise<StoredOAuthState> {
     .where(eq(mcpServers.id, serverId));
   const raw = rows[0]?.oauthState;
   if (!raw) return {};
-  const json = decryptFromString(raw);
-  if (!json) return {};
-  try {
-    return JSON.parse(json) as StoredOAuthState;
-  } catch {
-    return {};
-  }
+  return parseStoredState(raw);
 }
 
 async function writeState(
@@ -80,6 +131,27 @@ async function writeState(
   // empty object, so the column clearly means "nothing stored".
   const isEmpty = !state.tokens && !state.clientInformation;
   const blob = isEmpty ? null : encryptToString(JSON.stringify(state));
+  // Inspect the actual output, not an availability precheck: the keyring can
+  // disappear between two calls. Never replace encrypted state with plaintext.
+  if (blob?.startsWith(PLAINTEXT_PREFIX)) {
+    const [current] = await db
+      .select({ oauthState: mcpServers.oauthState })
+      .from(mcpServers)
+      .where(eq(mcpServers.id, serverId));
+    if (
+      current?.oauthState &&
+      /^v\d\d$/.test(
+        Buffer.from(current.oauthState, "base64")
+          .subarray(0, 3)
+          .toString("ascii"),
+      )
+    ) {
+      throw new DyadError(
+        "Secure storage is unavailable. Unlock your OS keyring before updating saved MCP OAuth credentials.",
+        DyadErrorKind.Precondition,
+      );
+    }
+  }
   await db
     .update(mcpServers)
     .set({ oauthState: blob })
@@ -537,6 +609,17 @@ export class DyadOAuthClientProvider implements OAuthClientProvider {
         this.cachedClientInformation = undefined;
       }
       await writeState(this.serverId, state);
+    });
+  }
+
+  /** Only the user's explicit Disconnect action may discard unreadable state. */
+  async disconnect(): Promise<void> {
+    if (!this.allowInteractive || !this.canWrite()) return;
+    await withStateLock(this.serverId, async () => {
+      if (!this.canWrite()) return;
+      await writeState(this.serverId, {});
+      this.codeVerifierBuf = undefined;
+      this.cachedClientInformation = undefined;
     });
   }
 }

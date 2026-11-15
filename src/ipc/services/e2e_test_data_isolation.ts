@@ -1,5 +1,6 @@
 import type { TestRunTiming } from "./test_run_timing";
 import { apps } from "@/db/schema";
+import type { NeonBranchLimitStatus } from "@/shared/neon_branch_limit";
 import {
   prepareIsolatedTestDatabase,
   type PreparedIsolation,
@@ -19,6 +20,7 @@ export function prepareE2eTestDataIsolation({
   emit,
   runtimeMode,
   signal,
+  onNeonBranchLimit,
 }: {
   timing?: TestRunTiming;
   app: AppRow;
@@ -37,6 +39,7 @@ export function prepareE2eTestDataIsolation({
    */
   runtimeMode: string;
   signal?: AbortSignal;
+  onNeonBranchLimit?: (status: NeonBranchLimitStatus | undefined) => void;
 }): Promise<PreparedIsolation> {
   return prepareIsolatedTestDatabase({
     timing,
@@ -44,6 +47,7 @@ export function prepareE2eTestDataIsolation({
     emit,
     runtimeMode,
     signal,
+    onNeonBranchLimit,
     appPathOverride: workspacePath,
     restartApp: false,
     perTestCase: true,

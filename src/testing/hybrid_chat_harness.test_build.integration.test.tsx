@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { ipc } from "@/ipc/types";
 import { setupHybridChatHarness } from "@/testing/hybrid_chat_harness";
 import { h } from "@/testing/hybrid.setup";
+import { readSettings } from "@/main/settings";
 
 type FlowStatePayload = {
   provider?: string;
@@ -12,6 +13,7 @@ type FlowStatePayload = {
 
 describe("hybrid chat harness testBuild mode", () => {
   it("routes GitHub device flow through the harness fake server", async () => {
+    const previousFetch = globalThis.fetch;
     const harness = await setupHybridChatHarness({
       electronMock: h,
       settings: { isTestMode: true },
@@ -63,8 +65,20 @@ describe("hybrid chat harness testBuild mode", () => {
           ).toBe(true),
         { timeout: 15_000 },
       );
+
+      // Exercise the authenticated API after OAuth. Browser fetch can complete
+      // the public device flow while silently stripping this request's token.
+      expect(readSettings().githubAccessToken?.value).toBe(
+        "fake_access_token_12345",
+      );
+      await expect(ipc.github.listRepos()).resolves.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ full_name: "testuser/existing-app" }),
+        ]),
+      );
     } finally {
       await harness.dispose();
     }
+    expect(globalThis.fetch).toBe(previousFetch);
   }, 60_000);
 });

@@ -13,6 +13,7 @@ import {
 } from "../../lib/test_recorder/assertion_proposal";
 import { WindowSessionIdSchema } from "../../window_infrastructure/types";
 import { CANCELLATION_CAUSES } from "../../shared/cancellation_reason";
+import { TEST_RUN_WAIT_REASONS } from "../../shared/test_run_queue";
 import type { TestRunStopReason } from "../../shared/test_run_stop";
 import type { TestRunQueueState } from "../../test_run_queue/state";
 
@@ -383,6 +384,9 @@ export type ApplyTestAssertionsResult = z.infer<
 // =============================================================================
 
 const QueuedTestRunSchema = z.object({
+  appId: z.number().int().optional(),
+  branch: z.string().optional(),
+  queuedReason: z.enum(TEST_RUN_WAIT_REASONS).optional(),
   runId: z.number().int().positive(),
   source: z.enum(["panel", "agent"]),
   chatId: z.number().int().positive().optional(),
@@ -391,11 +395,23 @@ const QueuedTestRunSchema = z.object({
   testLine: z.number().optional(),
   grep: z.string().optional(),
 });
+const ActiveTestRunSchema = QueuedTestRunSchema.extend({
+  stopping: z.boolean(),
+  stopReason: TestRunStopReasonSchema.optional(),
+  /** Includes runs waiting behind another run's Neon capacity wait. */
+  waitingForNeonBranch: z.boolean().optional(),
+});
 export const TestRunQueueSchema = z.object({
-  activeRun: QueuedTestRunSchema.extend({
-    stopping: z.boolean(),
-    stopReason: TestRunStopReasonSchema.optional(),
-  }).nullable(),
+  /** Provider admission notice, retained for failed setup until a later success. */
+  neonBranchLimit: z
+    .object({
+      runId: z.number(),
+      projectId: z.string(),
+      status: z.enum(["waiting", "blocked"]),
+    })
+    .optional(),
+  activeRuns: z.array(ActiveTestRunSchema).readonly().optional(),
+  activeRun: ActiveTestRunSchema.nullable(),
   queuedRuns: z.array(QueuedTestRunSchema).readonly(),
 });
 // Keep the pure machine read model and its wire codec mutually assignable.
@@ -428,6 +444,7 @@ export type TestOutputPayload = z.infer<typeof TestOutputPayloadSchema>;
  */
 export const TestsRunStatePayloadSchema = z.object({
   appId: z.number(),
+  branch: z.string().optional(),
   /**
    * Main-owned per-app generation. Only active runs emit lifecycle events;
    * queued requests are projected separately through tests:queue-state.
@@ -493,8 +510,22 @@ export const ActiveTestRunSnapshotSchema = z.object({
   output: z.string(),
 });
 export type ActiveTestRunSnapshot = z.infer<typeof ActiveTestRunSnapshotSchema>;
-
 export const testsContracts = {
+  dismissNeonBranchLimit: defineContract({
+    channel: "tests:dismiss-neon-branch-limit",
+    input: z.object({ appId: z.number(), runId: z.number().int().positive() }),
+    output: z.void(),
+  }),
+  getActiveRuns: defineContract({
+    channel: "tests:get-active-runs",
+    input: z.object({ appId: z.number() }),
+    output: z.array(ActiveTestRunSnapshotSchema),
+  }),
+  cancelRun: defineContract({
+    channel: "tests:cancel-run",
+    input: z.object({ appId: z.number(), runId: z.number().int().positive() }),
+    output: z.object({ ok: z.literal(true) }),
+  }),
   getActiveRun: defineContract({
     channel: "tests:get-active-run",
     input: z.object({ appId: z.number() }),

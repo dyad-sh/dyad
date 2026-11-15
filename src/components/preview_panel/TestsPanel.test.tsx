@@ -12,10 +12,15 @@ import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
+import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { recordingStartRequestAtom } from "@/atoms/recorderAtoms";
 import { previewNativeViewAppIdAtom } from "@/atoms/previewAtoms";
 import {
+  appendTestRunOutputAtom,
+  applyTestRunStartedAtom,
+  applyTestRunFinishedAtom,
   EMPTY_TEST_RUN_STATE,
+  setTestRunStateForAppAtom,
   testRunStateByAppIdAtom,
   type TestRunState,
 } from "@/atoms/testRuntimeAtoms";
@@ -25,6 +30,7 @@ import type { TestRunQueueSnapshot } from "@/ipc/types/tests";
 
 const mocks = vi.hoisted(() => ({
   listAppTests: vi.fn(),
+  streamMessage: vi.fn(),
   deleteAppTest: vi.fn(),
   runAppTests: vi.fn(),
   stopAppTests: vi.fn(),
@@ -42,11 +48,16 @@ const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
   queuedRuns: [] as TestRunQueueSnapshot["queuedRuns"],
   activeRun: null as TestRunQueueSnapshot["activeRun"],
+  activeRuns: undefined as TestRunQueueSnapshot["activeRuns"],
 }));
 
 vi.mock("@/hooks/useTestRunQueue", () => ({
   useTestRunQueue: () => ({
-    data: { activeRun: mocks.activeRun, queuedRuns: mocks.queuedRuns },
+    data: {
+      activeRun: mocks.activeRun,
+      activeRuns: mocks.activeRuns,
+      queuedRuns: mocks.queuedRuns,
+    },
   }),
 }));
 
@@ -89,7 +100,12 @@ vi.mock("react-i18next", async () => {
     string,
     unknown
   >;
-  const t = (key: string, options?: Record<string, unknown>) => {
+  const chat = (await import("@/i18n/locales/en/chat.json")).default;
+  const t = (
+    key: string,
+    options?: Record<string, unknown>,
+    catalog = home,
+  ) => {
     const lookupKey =
       options?.count === undefined
         ? key
@@ -101,14 +117,19 @@ vi.mock("react-i18next", async () => {
           typeof node === "object" && node !== null
             ? (node as Record<string, unknown>)[segment]
             : undefined,
-        home,
+        catalog,
       );
     if (typeof value !== "string") return key;
     return value.replaceAll(/\{\{(\w+)\}\}/g, (match, name: string) =>
       String(options?.[name] ?? match),
     );
   };
-  return { useTranslation: () => ({ t }) };
+  return {
+    useTranslation: (namespace: string) => ({
+      t: (key: string, options?: Record<string, unknown>) =>
+        t(key, options, namespace === "chat" ? chat : home),
+    }),
+  };
 });
 
 vi.mock("@tanstack/react-router", () => ({
@@ -149,7 +170,10 @@ vi.mock("@/hooks/useSetTestingEnabled", () => ({
 }));
 
 vi.mock("@/hooks/useStreamChat", () => ({
-  useStreamChat: () => ({ streamMessage: vi.fn(), isStreaming: false }),
+  useStreamChat: () => ({
+    streamMessage: mocks.streamMessage,
+    isStreaming: false,
+  }),
 }));
 
 vi.mock("@/chat_stream/ChatStreamProvider", () => ({
@@ -182,6 +206,60 @@ function renderPanel() {
 }
 
 describe("TestsPanel", () => {
+  it("asks AI to fix a failed case with only its producing run's output", async () => {
+    const { store } = renderPanel();
+    await screen.findByText("signup.spec.ts");
+    act(() => {
+      store.set(selectedChatIdAtom, 11);
+      for (const runId of [1, 2]) {
+        store.set(applyTestRunStartedAtom, {
+          appId: 1,
+          runId,
+          source: "panel",
+          testFile: SPEC_FILE,
+          testLine: runId === 1 ? 4 : 12,
+        });
+        store.set(appendTestRunOutputAtom, {
+          appId: 1,
+          runId,
+          chunk:
+            runId === 1 ? "signup failure output" : "unrelated password output",
+        });
+      }
+      store.set(applyTestRunFinishedAtom, {
+        appId: 1,
+        expectedRunId: 1,
+        isPartialRun: true,
+        res: {
+          appId: 1,
+          results: [
+            {
+              file: SPEC_FILE,
+              status: "failed",
+              tests: [
+                {
+                  title: "signs up",
+                  line: 4,
+                  status: "failed",
+                  error: "signup broke",
+                },
+              ],
+            },
+          ],
+        },
+      });
+    });
+    fireEvent.click(screen.getByText("signup.spec.ts"));
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Ask AI to fix test: signs up",
+      }),
+    );
+    expect(mocks.streamMessage).toHaveBeenCalledOnce();
+    const prompt = mocks.streamMessage.mock.calls[0][0].prompt;
+    expect(prompt).toContain("signup failure output");
+    expect(prompt).not.toContain("unrelated password output");
+  });
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.appUrl = "http://localhost:32100";
@@ -210,6 +288,7 @@ describe("TestsPanel", () => {
     mocks.app = { id: 1, testingEnabled: true };
     mocks.queuedRuns = [];
     mocks.activeRun = null;
+    mocks.activeRuns = undefined;
     mocks.runAppTests.mockResolvedValue({ appId: 1, results: [] });
   });
 
@@ -274,6 +353,57 @@ describe("TestsPanel", () => {
     const experimentOn = {
       enableTestRunInPreview: true,
     };
+
+    it("explains concurrent-run overrides and restores saved options when disabled", async () => {
+      mocks.settings = {
+        ...experimentOn,
+        enableParallelTestRuns: true,
+        testHeaded: true,
+        testParallel: true,
+      };
+      renderPanel();
+      fireEvent.click(await screen.findByTestId("tests-options-button"));
+      const parallelToggle = screen.getByRole("switch", {
+        name: "Switch to parallel mode",
+      });
+      expect(parallelToggle.getAttribute("aria-checked")).toBe("false");
+      expect(parallelToggle.hasAttribute("data-disabled")).toBe(true);
+      expect(screen.getByText(/even when only one run is active/)).toBeTruthy();
+      expect(screen.getByText(/preview panel is unavailable/)).toBeTruthy();
+      const headedToggle = screen.getByRole("switch", {
+        name: "Switch to headless mode",
+      });
+      expect(headedToggle.getAttribute("aria-checked")).toBe("true");
+      expect(headedToggle.hasAttribute("data-disabled")).toBe(false);
+      fireEvent.click(parallelToggle);
+      expect(mocks.updateSettings).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole("button", { name: "Close" }));
+      await act(async () => fireEvent.click(screen.getByText("Run all")));
+      expect(mocks.runAppTests).toHaveBeenCalledWith(
+        expect.objectContaining({ headed: true, preview: false }),
+      );
+
+      // Saved preferences survive the override and are available again when
+      // concurrent runs is turned off. Opening options rerenders the panel.
+      mocks.settings = { ...mocks.settings, enableParallelTestRuns: false };
+      fireEvent.click(screen.getByTestId("tests-options-button"));
+      expect(
+        screen.getByText("Watch tests run in the preview panel."),
+      ).toBeTruthy();
+      expect(screen.queryByText(/even when only one run is active/)).toBeNull();
+      fireEvent.click(
+        screen.getByRole("switch", { name: "Switch to headless mode" }),
+      );
+      expect(mocks.updateSettings).toHaveBeenCalledWith({ testHeaded: false });
+      fireEvent.click(screen.getByRole("button", { name: "Close" }));
+      mocks.settings = { ...mocks.settings, testHeaded: false };
+      fireEvent.click(screen.getByTestId("tests-options-button"));
+      const restoredParallel = screen.getByRole("switch", {
+        name: "Switch to serial mode",
+      });
+      expect(restoredParallel.getAttribute("aria-checked")).toBe("true");
+      expect(restoredParallel.hasAttribute("data-disabled")).toBe(false);
+    });
 
     it("requests headed preview without activating it before main starts the run", async () => {
       mocks.settings = { ...experimentOn, testHeaded: true };
@@ -407,6 +537,91 @@ describe("TestsPanel", () => {
         );
       });
     });
+  });
+
+  it.each([false, true])(
+    "shows the output drawer only once testing is enabled (enabled: %s)",
+    async (testingEnabled) => {
+      mocks.app = { id: 1, testingEnabled };
+      renderPanel();
+      await screen.findByRole("button", {
+        name: testingEnabled ? "Run all tests" : "Enable testing for this app",
+      });
+      expect(
+        screen.queryByRole("button", { name: "Toggle test output" }) !== null,
+      ).toBe(testingEnabled);
+    },
+  );
+
+  it("skips duplicate parallel submissions but starts different selections", async () => {
+    mocks.settings = { enableParallelTestRuns: true };
+    mocks.runAppTests.mockReturnValue(new Promise(() => {}));
+    renderPanel();
+    const runAll = await screen.findByRole("button", { name: "Run all tests" });
+    await act(async () => {
+      fireEvent.click(runAll);
+      fireEvent.click(runAll);
+    });
+    expect(mocks.runAppTests).toHaveBeenCalledTimes(1);
+    // The in-flight selection explains itself instead of ignoring clicks.
+    await waitFor(() =>
+      expect((runAll as HTMLButtonElement).disabled).toBe(true),
+    );
+    expect(runAll.getAttribute("title")).toBe(
+      "Already running. Run it again after this run finishes.",
+    );
+    const runFile = screen.getByRole("button", {
+      name: "Run all tests in: signup.spec.ts",
+    }) as HTMLButtonElement;
+    expect(runFile.disabled).toBe(false);
+    await act(async () => fireEvent.click(runFile));
+    expect(mocks.runAppTests).toHaveBeenCalledTimes(2);
+    expect(mocks.runAppTests).toHaveBeenLastCalledWith(
+      expect.objectContaining({ testFile: SPEC_FILE }),
+    );
+    await waitFor(() => expect(runFile.disabled).toBe(true));
+    expect(runFile.getAttribute("title")).toBe(
+      "Already running. Run it again after this run finishes.",
+    );
+  });
+
+  it("does not carry another app's pending submission across an app switch", async () => {
+    mocks.settings = { enableParallelTestRuns: true };
+    mocks.runAppTests.mockReturnValue(new Promise(() => {}));
+    const { store } = renderPanel();
+    const runAll = await screen.findByRole("button", { name: "Run all tests" });
+    await act(async () => fireEvent.click(runAll));
+    await waitFor(() =>
+      expect((runAll as HTMLButtonElement).disabled).toBe(true),
+    );
+
+    // The panel stays mounted across app switches; app 2 has nothing in
+    // flight, and switching back restores app 1's pending selection.
+    act(() => {
+      store.set(selectedAppIdAtom, 2);
+    });
+    await waitFor(() =>
+      expect(
+        (
+          screen.getByRole("button", {
+            name: "Run all tests",
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false),
+    );
+
+    act(() => {
+      store.set(selectedAppIdAtom, 1);
+    });
+    await waitFor(() =>
+      expect(
+        (
+          screen.getByRole("button", {
+            name: "Run all tests",
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(true),
+    );
   });
 
   it("keeps only the primary actions in the header", async () => {
@@ -1053,6 +1268,339 @@ describe("TestsPanel", () => {
       expect(screen.queryByText("Queued")).toBeNull();
       expect(row.classList.contains("bg-amber-50")).toBe(false);
       expect(within(row).getByRole("img", { name: "Running" })).toBeTruthy();
+    });
+  });
+
+  describe("overlapping runs", () => {
+    const otherFile = "e2e-tests/login.spec.ts";
+    const fileRow = (file: string) =>
+      within(
+        screen.getByText(file.split("/").pop()!).closest("button")!
+          .parentElement!,
+      );
+
+    it.each([{ testLine: 4 }, { grep: "signs up" }])(
+      "shows all Neon waits in queued colors and preserves case selection: %j",
+      async (selection) => {
+        const waitingFile = "e2e-tests/profile.spec.ts";
+        mocks.listAppTests.mockResolvedValue({
+          specs: [
+            {
+              file: SPEC_FILE,
+              tests: [
+                { title: "signs up", line: 4 },
+                { title: "rejects a bad password", line: 12 },
+              ],
+            },
+            ...[otherFile, waitingFile].map((file) => ({
+              file,
+              tests: [{ title: "works", line: 4 }],
+            })),
+          ],
+        });
+        mocks.activeRuns = [
+          {
+            runId: 1,
+            source: "agent",
+            testFile: SPEC_FILE,
+            ...selection,
+            stopping: false,
+            waitingForNeonBranch: true,
+          },
+          { runId: 2, source: "panel", testFile: otherFile, stopping: false },
+          {
+            runId: 3,
+            source: "agent",
+            testFile: waitingFile,
+            stopping: false,
+            waitingForNeonBranch: true,
+          },
+        ];
+        mocks.activeRun = mocks.activeRuns[0];
+        const { store, rerender } = renderPanel();
+        fireEvent.click(
+          await screen.findByRole("button", {
+            name: "Toggle tests in signup.spec.ts",
+          }),
+        );
+        act(() => {
+          for (const run of mocks.activeRuns!)
+            store.set(applyTestRunStartedAtom, {
+              appId: 1,
+              ...run,
+              testFiles: run.testFiles ? [...run.testFiles] : undefined,
+            });
+        });
+
+        for (const file of [SPEC_FILE, waitingFile]) {
+          const label = fileRow(file).getByText("Waiting for Neon branch");
+          expect(label.className).toContain("bg-amber-100");
+          expect(label.className).toContain("text-amber-900");
+          expect(label.className).toContain("dark:text-amber-200");
+          expect(
+            fileRow(file).queryByRole("img", { name: "Running" }),
+          ).toBeNull();
+          expect(label.closest("button")!.parentElement!.className).toContain(
+            "bg-amber-50",
+          );
+        }
+        expect(
+          fileRow(otherFile).getByRole("img", { name: "Running" }),
+        ).toBeTruthy();
+        const caseRow = (title: string) =>
+          within(screen.getByText(title).closest("button")!.parentElement!);
+        expect(
+          caseRow("signs up").getByText("Waiting for Neon branch"),
+        ).toBeTruthy();
+        expect(
+          caseRow("rejects a bad password").getByText("Not run yet"),
+        ).toBeTruthy();
+        expect(screen.getByText("Waiting for Neon branch…")).toBeTruthy();
+
+        mocks.activeRuns = mocks.activeRuns!.map((run) => ({
+          ...run,
+          waitingForNeonBranch: run.runId === 3,
+        }));
+        mocks.activeRun = mocks.activeRuns[0];
+        rerender(<TestsPanel />);
+        expect(
+          fileRow(SPEC_FILE).getByRole("img", { name: "Running" }),
+        ).toBeTruthy();
+        expect(
+          caseRow("signs up").getByRole("img", { name: "Running" }),
+        ).toBeTruthy();
+        expect(
+          fileRow(waitingFile).getByText("Waiting for Neon branch"),
+        ).toBeTruthy();
+      },
+    );
+
+    it("keeps a running case distinct from a Neon wait in the same file", async () => {
+      mocks.activeRuns = [
+        {
+          runId: 1,
+          source: "agent",
+          testFile: SPEC_FILE,
+          testLine: 4,
+          stopping: false,
+          waitingForNeonBranch: true,
+        },
+        {
+          runId: 2,
+          source: "agent",
+          testFile: SPEC_FILE,
+          testLine: 12,
+          stopping: false,
+        },
+      ];
+      mocks.activeRun = mocks.activeRuns[0];
+      const { store } = renderPanel();
+      fireEvent.click(
+        await screen.findByRole("button", {
+          name: "Toggle tests in signup.spec.ts",
+        }),
+      );
+      act(() => {
+        for (const run of mocks.activeRuns!)
+          store.set(applyTestRunStartedAtom, {
+            appId: 1,
+            ...run,
+            testFiles: run.testFiles ? [...run.testFiles] : undefined,
+          });
+      });
+      expect(
+        fileRow(SPEC_FILE).getByRole("img", { name: "Running" }),
+      ).toBeTruthy();
+      const waitingCase = within(
+        screen.getByText("signs up").closest("button")!.parentElement!,
+      );
+      expect(waitingCase.getByText("Waiting for Neon branch")).toBeTruthy();
+      expect(waitingCase.queryByRole("img", { name: "Running" })).toBeNull();
+      expect(
+        within(
+          screen.getByText("rejects a bad password").closest("button")!
+            .parentElement!,
+        ).getByRole("img", { name: "Running" }),
+      ).toBeTruthy();
+    });
+
+    it.each([1, 2])(
+      "tracks concurrent cases in the same file when run %s finishes first",
+      async (firstFinished) => {
+        const { store } = renderPanel();
+        fireEvent.click(
+          await screen.findByRole("button", {
+            name: "Toggle tests in signup.spec.ts",
+          }),
+        );
+        const cases = [
+          { title: "signs up", line: 4 },
+          { title: "rejects a bad password", line: 12 },
+        ];
+        act(() => {
+          for (const runId of [1, 2])
+            store.set(applyTestRunStartedAtom, {
+              appId: 1,
+              runId,
+              source: "panel",
+              testFile: SPEC_FILE,
+              testLine: cases[runId - 1].line,
+            });
+        });
+        expect(screen.getAllByRole("img", { name: "Running" })).toHaveLength(3);
+        expect(screen.queryByText(/^Not run yet/)).toBeNull();
+        const finish = (runId: number) =>
+          act(() =>
+            store.set(applyTestRunFinishedAtom, {
+              appId: 1,
+              expectedRunId: runId,
+              isPartialRun: true,
+              res: {
+                appId: 1,
+                results: [
+                  {
+                    file: SPEC_FILE,
+                    status: "passed",
+                    tests: [{ ...cases[runId - 1], status: "passed" }],
+                  },
+                ],
+              },
+            }),
+          );
+        finish(firstFinished);
+        expect(screen.getAllByRole("img", { name: "Running" })).toHaveLength(2);
+        expect(screen.getByText("Passed")).toBeTruthy();
+        finish(3 - firstFinished);
+        expect(screen.queryByRole("img", { name: "Running" })).toBeNull();
+        expect(fileRow(SPEC_FILE).getByText(/^Passed/)).toBeTruthy();
+        expect(screen.getAllByText("Passed")).toHaveLength(2);
+      },
+    );
+
+    it.each([1, 2])(
+      "keeps both files running and retains results when run %s finishes first",
+      async (firstFinished) => {
+        mocks.listAppTests.mockResolvedValue({
+          specs: [SPEC_FILE, otherFile].map((file) => ({
+            file,
+            tests: [{ title: "works", line: 4 }],
+          })),
+        });
+        const { store } = renderPanel();
+        await screen.findByText("signup.spec.ts");
+        act(() =>
+          store.set(applyTestRunStartedAtom, {
+            appId: 1,
+            runId: 1,
+            source: "panel",
+            testFile: SPEC_FILE,
+          }),
+        );
+        expect(
+          fileRow(SPEC_FILE).getByRole("img", { name: "Running" }),
+        ).toBeTruthy();
+        act(() =>
+          store.set(applyTestRunStartedAtom, {
+            appId: 1,
+            runId: 2,
+            source: "agent",
+            testFile: otherFile,
+          }),
+        );
+        for (const file of [SPEC_FILE, otherFile]) {
+          expect(
+            fileRow(file).getByRole("img", { name: "Running" }),
+          ).toBeTruthy();
+          expect(fileRow(file).queryByText(/^Not run yet/)).toBeNull();
+        }
+        const files = [SPEC_FILE, otherFile];
+        const finish = (runId: number) =>
+          act(() =>
+            store.set(applyTestRunFinishedAtom, {
+              appId: 1,
+              expectedRunId: runId,
+              isPartialRun: false,
+              res: {
+                appId: 1,
+                results: [{ file: files[runId - 1], status: "passed" }],
+              },
+            }),
+          );
+        finish(firstFinished);
+        expect(
+          fileRow(files[firstFinished - 1]).getByText(/^Passed/),
+        ).toBeTruthy();
+        expect(
+          fileRow(files[2 - firstFinished]).getByRole("img", {
+            name: "Running",
+          }),
+        ).toBeTruthy();
+        finish(3 - firstFinished);
+        for (const file of files)
+          expect(fileRow(file).getByText(/^Passed/)).toBeTruthy();
+        expect(
+          screen.queryByRole("button", { name: "Stop running tests" }),
+        ).toBeNull();
+      },
+    );
+
+    it("keeps a whole-file selection separate from another run's single-case selection", async () => {
+      mocks.listAppTests.mockResolvedValue({
+        specs: [
+          {
+            file: SPEC_FILE,
+            tests: [
+              { title: "signs up", line: 4 },
+              { title: "rejects a bad password", line: 12 },
+            ],
+          },
+          {
+            file: otherFile,
+            tests: [
+              { title: "logs in", line: 4 },
+              { title: "logs out", line: 12 },
+            ],
+          },
+        ],
+      });
+      const { store } = renderPanel();
+      fireEvent.click(
+        await screen.findByRole("button", {
+          name: "Toggle tests in signup.spec.ts",
+        }),
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: "Toggle tests in login.spec.ts" }),
+      );
+      act(() => {
+        store.set(applyTestRunStartedAtom, {
+          appId: 1,
+          runId: 1,
+          source: "panel",
+          testFile: SPEC_FILE,
+        });
+        store.set(applyTestRunStartedAtom, {
+          appId: 1,
+          runId: 2,
+          source: "panel",
+          testFile: otherFile,
+          testLine: 4,
+        });
+      });
+      // Two file spinners, both signup cases, and only the selected login case.
+      expect(screen.getAllByRole("img", { name: "Running" })).toHaveLength(5);
+      expect(screen.getAllByText("Not run yet")).toHaveLength(1);
+      act(() =>
+        store.set(setTestRunStateForAppAtom, {
+          appId: 1,
+          runId: 2,
+          update: (prev) => ({ ...prev, phase: "stopping", wasStopped: true }),
+        }),
+      );
+      expect(screen.getAllByRole("img", { name: "Running" })).toHaveLength(3);
+      expect(
+        fileRow(SPEC_FILE).getByRole("img", { name: "Running" }),
+      ).toBeTruthy();
     });
   });
 

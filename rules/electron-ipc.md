@@ -247,6 +247,8 @@ queryClient.invalidateQueries({ queryKey: queryKeys.apps.all });
 
 **Event-fed read models (`setQueryData` + `queryFn: skipToken`):** a key written only by a permanent event subscriber is garbage-collected after React Query's default 5-minute `gcTime` whenever no component observes it, so data collected while a panel is closed silently vanishes. Call `queryClient.setQueryDefaults(key, { gcTime: Infinity, staleTime: Infinity })` before `setQueryData` (it applies query defaults when it creates the query), keep the payload bounded, and cover it with a fake-timer test that advances past five minutes with no observer (see `recentRuns` in `useTestRunEvents`).
 
+**Mutation-state filters must not change with the selection:** `useMutationState`/`useIsMutating` compute once and recompute only on mutation-cache events, reading their filter from a ref updated in an effect, so a filter keyed on `selectedAppId` keeps showing the previous app's pending mutations after a switch. Filter on a stable prefix (e.g. `queryKeys.tests.runs`, with `appId` last in `tests.run`) and narrow by the mutation variables in a `useMemo`. A component whose own `useMutation` takes inline callbacks emits `observerOptionsUpdated` on every render, which hides the staleness one render later — so a render test usually passes on the broken code too.
+
 A plain IPC `Error` is not proof of a transport failure: `deserializeIpcError` also reconstructs unclassified handler errors and validation failures as plain errors. Do not use `!isDyadError(error)` as an automatic retry predicate.
 
 ## Events and invoke replies are not ordered relative to each other

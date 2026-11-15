@@ -13,6 +13,7 @@ import { createAnthropicMessagesHandler } from "./anthropicMessagesHandler";
 import { fakeLlmLog } from "./log";
 import {
   handleDeviceCode,
+  handleDeviceFlowConfig,
   handleAccessToken,
   handleUser,
   handleUserEmails,
@@ -648,6 +649,28 @@ export function createFakeLlmApp(getPort: () => number) {
     res.json(lmStudioModels);
   });
 
+  // Google API-key validation lists models instead of generating text.
+  app.get("/google/v1beta/models", (req, res) => {
+    const apiKey = String(req.headers["x-goog-api-key"] ?? "");
+    if (/invalid/i.test(apiKey)) {
+      return res.status(400).json({
+        error: {
+          code: 400,
+          message: "API key not valid. Please pass a valid API key.",
+          status: "INVALID_ARGUMENT",
+        },
+      });
+    }
+    res.json({
+      models: [
+        {
+          name: "models/gemini-flash-latest",
+          displayName: "Gemini Flash Latest",
+        },
+      ],
+    });
+  });
+
   app.post(
     /^\/google\/v1beta\/models\/.+:(streamGenerateContent|generateContent)/,
     (req, res) => {
@@ -741,6 +764,7 @@ export function createFakeLlmApp(getPort: () => number) {
 
   // GitHub OAuth Device Flow
   app.post("/github/login/device/code", handleDeviceCode);
+  app.post("/github/api/test/device-flow-config", handleDeviceFlowConfig);
   app.post("/github/login/oauth/access_token", handleAccessToken);
 
   // GitHub API endpoints

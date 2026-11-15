@@ -50,6 +50,7 @@ import {
   sameInvocationRef,
 } from "@/state_machines/invocation_ref";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { assertAppFolderExists } from "@/ipc/utils/app_git_repository";
 import { addLog, clearLogs } from "@/lib/log_store";
 import { ProcessOutputLogLimiter } from "@/ipc/utils/process_output_log_limiter";
 import { getDyadAppPath } from "@/paths/paths";
@@ -1879,6 +1880,8 @@ export interface AppRuntimeServiceDependencies {
   ): Promise<T>;
   findApp(appId: number): Promise<RuntimeAppRecord | undefined>;
   resolveAppPath(relativePath: string): string;
+  /** Throws a classified error when the resolved app folder is unusable. */
+  assertAppFolderExists(appPath: string): Promise<void>;
   getRunningApp(appId: number): RunningAppInfo | undefined;
   deleteRunningApp(appId: number): void;
   getProcessCounter(): number;
@@ -2036,6 +2039,7 @@ export class AppRuntimeService {
 
       const app = await this.requireApp(appId);
       const appPath = this.dependencies.resolveAppPath(app.path);
+      await this.dependencies.assertAppFolderExists(appPath);
       logger.debug(`Starting app ${appId} in path ${app.path}`);
       let processStarted = false;
       try {
@@ -2081,6 +2085,7 @@ export class AppRuntimeService {
         appInfo.cloudSandboxId &&
         !recreateSandbox
       ) {
+        await this.dependencies.assertAppFolderExists(appPath);
         await this.restartCloudSandboxInPlace({
           isNeon: !!app.neonProjectId,
           appId,
@@ -2102,6 +2107,9 @@ export class AppRuntimeService {
         logger.log(`App ${appId} not running. Proceeding to start.`);
       }
 
+      // Checked after stopping, so a missing folder doesn't leave the old
+      // process running.
+      await this.dependencies.assertAppFolderExists(appPath);
       await this.dependencies.cleanPort(getAppPort(appId));
       if (removeNodeModules) {
         const runtimeMode = this.dependencies.readRuntimeMode();
@@ -2487,6 +2495,7 @@ export const appRuntimeService = new AppRuntimeService({
       where: eq(apps.id, appId),
     }),
   resolveAppPath: getDyadAppPath,
+  assertAppFolderExists,
   getRunningApp: (appId) => runningApps.get(appId),
   deleteRunningApp: (appId) => {
     runningApps.delete(appId);

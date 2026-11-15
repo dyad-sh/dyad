@@ -43,6 +43,10 @@ vi.mock("node:fs", async () => ({
   },
 }));
 
+vi.mock("../utils/fs_failure_telemetry", () => ({
+  reportFsFailure: vi.fn(),
+}));
+
 vi.mock("../../db", () => ({
   db: {
     query: {
@@ -121,6 +125,7 @@ import { db } from "../../db";
 import { gitAdd, gitCommit, hasStagedChanges } from "../utils/git_utils";
 import { processFullResponseActions } from "./response_processor";
 import { resolveSelfAlias } from "../utils/path_test_utils";
+import { reportFsFailure } from "../utils/fs_failure_telemetry";
 
 describe("processFullResponseActions add dependency errors", () => {
   beforeEach(() => {
@@ -355,6 +360,34 @@ describe("processFullResponseActions add dependency errors", () => {
     expect(gitCommit).toHaveBeenCalledWith({
       path: "/mock/apps/test-app",
       message: "updated project files",
+    });
+  });
+
+  it("reports a filesystem failure while applying edits", async () => {
+    const eperm = Object.assign(
+      new Error("EPERM: operation not permitted, open"),
+      {
+        code: "EPERM",
+        syscall: "open",
+        path: "/mock/apps/test-app/src/file1.js",
+      },
+    );
+    vi.mocked(fs.writeFileSync).mockImplementationOnce(() => {
+      throw eperm;
+    });
+
+    const result = await processFullResponseActions(
+      `<dyad-write path="src/file1.js">console.log("Hello");</dyad-write>`,
+      1,
+      {
+        chatSummary: undefined,
+        messageId: 1,
+      },
+    );
+
+    expect(result.error).toContain("EPERM");
+    expect(reportFsFailure).toHaveBeenCalledWith("apply_edits", eperm, {
+      appPath: "/mock/apps/test-app",
     });
   });
 

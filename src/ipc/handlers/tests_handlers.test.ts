@@ -28,6 +28,7 @@ import {
   supabaseTestUserStepError,
 } from "../utils/supabase_test_user_errors";
 import { withAppTestRun } from "../services/test_run_queue_service";
+import { scheduleE2eTestCleanup } from "../services/e2e_test_cleanup_queue";
 import type { RunAppTestsResult } from "../types/tests";
 
 // Every app folder lives under one throwaway base so the delete handler runs
@@ -2815,10 +2816,10 @@ describe("tests handlers", () => {
       ).toBeNull();
     });
 
-    it("announces the sandbox deletion even with no isolation to tear down", async () => {
-      // `NOOP_TEARDOWN` returns immediately, but removing the cloned
-      // node_modules tree does not, and the panel keeps Run/Record/Delete
-      // disabled for all of it. An unlabelled wait reads as a hang.
+    it("publishes the finished result before queueing the sandbox deletion", async () => {
+      // Removing the cloned node_modules tree is tens of thousands of unlinks.
+      // The result is final once processes, artifacts and isolation are done,
+      // so neither the panel nor the run's caller may wait on that deletion.
       const appId = seedTestableApp("app");
       prepareIsolatedTestDatabaseMock.mockResolvedValue({
         isolation: { mode: "none" },
@@ -2827,6 +2828,15 @@ describe("tests handlers", () => {
           remoteCleanupCompleted: true,
         }),
       });
+      // A deletion that never finishes must not hold the run open.
+      const dispose = vi.fn(() => new Promise<void>(() => {}));
+      createE2eTestWorkspaceMock.mockImplementationOnce(
+        async ({ appPath }: { appPath: string }) => ({
+          workspacePath: appPath,
+          artifactPath: path.join(TEMP_BASE, "artifacts"),
+          dispose,
+        }),
+      );
 
       await runAppTestsWithIsolation({
         event: { sender: {} } as any,
@@ -2834,7 +2844,20 @@ describe("tests handlers", () => {
         source: "panel",
       });
 
-      expect(runStates()).toContain("cleaning-up");
+      expect(runStates()).not.toContain("cleaning-up");
+      expect(runStates().at(-1)).toBe("finished");
+      expect(dispose).toHaveBeenCalledOnce();
+      const finishedCall =
+        broadcastToRegisteredWindowsMock.mock.calls.findIndex(
+          ([, channel, payload]) =>
+            channel === "tests:run-state" && payload.state === "finished",
+        );
+      expect(
+        broadcastToRegisteredWindowsMock.mock.invocationCallOrder[finishedCall],
+      ).toBeLessThan(dispose.mock.invocationCallOrder[0]);
+      expect(
+        retainE2eTestArtifactsMock.mock.invocationCallOrder[0],
+      ).toBeLessThan(dispose.mock.invocationCallOrder[0]);
     });
 
     it("stays quiet when no sandbox was taken and there is nothing to tear down", async () => {
@@ -2934,6 +2957,35 @@ describe("tests handlers", () => {
         await Promise.all([firstRun, secondRun]);
       }
       await expect(endTestsForApp(appId)).resolves.toBeUndefined();
+    });
+
+    it("holds app deletion until the app's queued directory deletions finish", async () => {
+      // Results are published before the sandbox is deleted, but removing it
+      // runs Git inside the app's repository, so the app directory must outlive
+      // it exactly as when deletion was part of the run.
+      const appId = seedTestableApp("app");
+      let finishRemoval!: () => void;
+      const removal = scheduleE2eTestCleanup({
+        appId,
+        label: "test workspace",
+        run: () =>
+          new Promise<void>((resolve) => {
+            finishRemoval = resolve;
+          }),
+      });
+      let ended = false;
+      const ending = endTestsForApp(appId).then(() => {
+        ended = true;
+      });
+      try {
+        await vi.waitFor(() => expect(finishRemoval).toBeTypeOf("function"));
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        expect(ended).toBe(false);
+      } finally {
+        finishRemoval?.();
+      }
+      await ending;
+      expect(await removal).toBe("completed");
     });
 
     it("queues three runs in FIFO order and waits for the first cleanup", async () => {
@@ -3129,8 +3181,7 @@ describe("tests handlers", () => {
       expect(runStates()).toEqual([
         "started",
         "stopping",
-        "cleaning-up", // Provider cleanup.
-        "cleaning-up", // Workspace cleanup.
+        "cleaning-up", // Provider cleanup; the sandbox is deleted afterward.
         "finished",
       ]);
       expect(prepareIsolatedTestDatabaseMock).toHaveBeenCalledOnce();

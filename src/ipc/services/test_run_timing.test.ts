@@ -255,7 +255,7 @@ it("keeps workspace setup and every other run area independently measurable", as
     ["server_stop", 20],
     ["process_settlement", 10],
     ["database_teardown", 40],
-    ["workspace_disposal", 5],
+    ["artifact_retention", 5],
   ];
   for (const [step, duration] of steps) {
     await measureTestRunStep(run, step, async () => {
@@ -557,7 +557,7 @@ it("records resolved failures and includes cleanup in cancelled runs", async () 
     async () => false,
     (ok) => (ok ? "completed" : "failed"),
   );
-  await measureTestRunStep(run, "workspace_disposal", async () => {
+  await measureTestRunStep(run, "artifact_retention", async () => {
     now += 100;
   });
   run.finish("cancelled");

@@ -114,6 +114,7 @@ import {
   rewriteE2eArtifactPath,
   type E2eTestWorkspace,
 } from "../services/e2e_test_workspace";
+import { settleE2eTestCleanupsForApp } from "../services/e2e_test_cleanup_queue";
 import {
   hasCustomE2eStartCommand,
   startE2eTestRuntime,
@@ -326,7 +327,13 @@ export async function endTestsForApp(appId: number): Promise<void> {
   const drain = new AbortController();
   try {
     await Promise.race([
-      drainAppTestRuns(appId, drain.signal),
+      // Runs publish results before their sandbox is deleted, and removing a
+      // sandbox withdraws its worktree registration with Git running inside
+      // the app's repository. Wait for that too before the app directory goes,
+      // as when deletion was part of the run.
+      drainAppTestRuns(appId, drain.signal).then(() =>
+        settleE2eTestCleanupsForApp(appId),
+      ),
       new Promise<never>((_resolve, reject) => {
         timer = setTimeout(
           () =>
@@ -2183,10 +2190,11 @@ type E2eTestPrepareResult =
     }
   | { setupError: string };
 // INVARIANT: the two arms are exclusive — a `setupError` never carries a
-// workspace. `createE2eTestWorkspace` disposes its own partial worktree
-// before it throws, which is what makes the caller's early return safe to take
-// without a dispose of its own. A future variant that returned both would leak
-// a sandbox directory silently, so it must dispose before returning instead.
+// workspace. `createE2eTestWorkspace` queues its own partial worktree for
+// disposal before it throws, which is what makes the caller's early return
+// safe to take without a dispose of its own. A future variant that returned
+// both would leak a sandbox directory silently, so it must dispose before
+// returning instead.
 
 export interface RunTestsWithIsolationOptions {
   /** Shared with the agent's queue admission; omitted by panel callers. */
@@ -2796,13 +2804,9 @@ async function executeAppTestsWithIsolation(
               );
             }
           } catch (error) {
-            await measureTestRunStep(timing, "workspace_disposal", () =>
-              workspace.dispose(),
-            ).catch((disposeError) => {
-              logger.warn(
-                `Failed to remove a captured E2E workspace after a setup failure: ${disposeError}`,
-              );
-            });
+            // Nothing has run in the copy yet. Queued so the setup failure is
+            // reported without waiting on the deletion.
+            void workspace.dispose();
             throw error;
           }
           return { installed, previewRouted, workspace, provider: captured };
@@ -3321,7 +3325,9 @@ async function executeAppTestsWithIsolation(
     // Also cover exits before that callback was admitted, and preserve a failed
     // settlement verdict so survivors' workspaces are kept for startup cleanup.
     const runProcessesSettled = workspace ? await settleRunProcesses() : true;
-    if (workspace && (!serverStopped || !runProcessesSettled)) {
+    const disposableWorkspace =
+      workspace && serverStopped && runProcessesSettled ? workspace : undefined;
+    if (workspace && !disposableWorkspace) {
       // Something still has this directory as its cwd. Deleting it would leave
       // that survivor running against a deleted tree — serving the app under a
       // port a later run may allocate, or writing artifacts into nothing — and
@@ -3335,40 +3341,34 @@ async function executeAppTestsWithIsolation(
             : "its server did not stop"
         }, so the startup sweep will remove it.`,
       );
-    } else if (workspace) {
-      // Deleting an installed node_modules tree is tens of thousands of
-      // unlinks. The results are
-      // already computed but the panel still has Run/Record/Delete disabled
-      // until `finished`, so label the wait for every isolation mode instead of
-      // leaving it unexplained (the provider teardown above only announces
-      // itself when there was provider state to remove).
-      emitProgress("cleaning-up", finalResult.isolation);
-      try {
-        await measureTestRunStep(timing, "workspace_disposal", () =>
-          workspace!.dispose(),
-        );
-      } catch (error) {
-        logger.error(
-          `Failed to remove isolated test workspace for app ${appId}: ${error}`,
-        );
-      }
     }
     signal.removeEventListener("abort", onAbort);
-    emitRunState(event, {
-      appId,
-      runId,
-      source,
-      chatId,
-      state: "finished",
-      testFile: normalizedTestFile,
-      testFiles: testFile === undefined ? normalizedTestFiles : undefined,
-      testLine,
-      grep,
-      results: finalResult.results,
-      infraError: finalResult.infraError,
-      isolation: finalResult.isolation,
-      sandboxed,
-    });
+    // The result is final here: processes are stopped, artifacts retained out
+    // of the sandbox, and provider isolation torn down. Nothing in it points
+    // into the sandbox, so its deletion — tens of thousands of unlinks for an
+    // installed dependency tree — is not part of the run. Publishing first
+    // releases the panel and the queue slot without waiting on the disk.
+    try {
+      emitRunState(event, {
+        appId,
+        runId,
+        source,
+        chatId,
+        state: "finished",
+        testFile: normalizedTestFile,
+        testFiles: testFile === undefined ? normalizedTestFiles : undefined,
+        testLine,
+        grep,
+        results: finalResult.results,
+        infraError: finalResult.infraError,
+        isolation: finalResult.isolation,
+        sandboxed,
+      });
+    } finally {
+      // Never rejects; failures are logged by the cleanup queue, and app
+      // deletion waits for this app's queued deletions (`endTestsForApp`).
+      void disposableWorkspace?.dispose();
+    }
   }
 }
 

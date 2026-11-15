@@ -51,11 +51,14 @@ export function createE2eTestCleanupQueue({
   const pending: Entry[] = [];
   const running = new Set<Entry>();
 
+  function start(entry: Entry) {
+    running.add(entry);
+    void execute(entry);
+  }
+
   function pump() {
     while (running.size < concurrency && pending.length > 0) {
-      const entry = pending.shift()!;
-      running.add(entry);
-      void execute(entry);
+      start(pending.shift()!);
     }
   }
 
@@ -92,21 +95,24 @@ export function createE2eTestCleanupQueue({
   }
 
   /**
-   * Wait for every job of one app, moving its waiting jobs to the front so a
-   * caller that is blocked on this app (deletion) does not also wait out other
-   * apps' backlogs.
+   * Wait for every job of one app, starting its waiting jobs immediately.
+   *
+   * The caller is blocked on this app (deletion, or a move of its repository),
+   * so its jobs skip the concurrency limit: other apps' dependency-tree
+   * deletions can hold every slot for minutes, and reordering alone would still
+   * leave this app's jobs waiting behind them. The bypass is bounded by one
+   * app's own backlog, typically a sandbox and a prune per finished run.
    */
   async function settleApp(appId: number): Promise<void> {
-    const own = pending.filter((entry) => entry.job.appId === appId);
-    if (own.length > 0) {
-      const others = pending.filter((entry) => entry.job.appId !== appId);
-      pending.splice(0, pending.length, ...own, ...others);
+    for (;;) {
+      for (const entry of pending.filter((e) => e.job.appId === appId)) {
+        pending.splice(pending.indexOf(entry), 1);
+        start(entry);
+      }
+      const own = [...running].filter((entry) => entry.job.appId === appId);
+      if (own.length === 0) return;
+      await Promise.all(own.map((entry) => entry.done));
     }
-    await Promise.all(
-      [...running, ...own]
-        .filter((entry) => entry.job.appId === appId)
-        .map((entry) => entry.done),
-    );
   }
 
   /** Wait until the queue is empty, including jobs enqueued meanwhile. */
@@ -132,6 +138,17 @@ export function scheduleE2eTestCleanup(
   return e2eTestCleanupQueue.enqueue(job);
 }
 
+/**
+ * Wait for one app's queued deletions, starting them immediately.
+ *
+ * Required before the app's repository is deleted or moved (rename, relocation,
+ * template path swap). Removing a sandbox ends by withdrawing its worktree
+ * registration with Git running inside that repository, using the path
+ * captured when the run started. A move first would leave the registration in
+ * the moved copy and run Git against a directory being copied or deleted.
+ * Jobs take no coordinator claims, so a caller holding `app-path` cannot
+ * deadlock here.
+ */
 export function settleE2eTestCleanupsForApp(appId: number): Promise<void> {
   return e2eTestCleanupQueue.settleApp(appId);
 }

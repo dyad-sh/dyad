@@ -90,7 +90,9 @@ describe("e2e test cleanup queue", () => {
     expect(await later).toBe("completed");
   });
 
-  it("moves one app's waiting deletions ahead when that app is being deleted", async () => {
+  it("starts a settled app's deletions without waiting for other apps' slots", async () => {
+    // Another app's dependency-tree deletion can hold every slot for minutes;
+    // the app being deleted or moved must not wait it out.
     const queue = createE2eTestCleanupQueue({ concurrency: 1, maxPending: 8 });
     const started: string[] = [];
     const busy = blockingJob(1, started, "app1-running");
@@ -104,16 +106,47 @@ describe("e2e test cleanup queue", () => {
     const settling = queue.settleApp(2).then(() => {
       settled = true;
     });
-    busy.release();
     await flush();
-    // App 2's deletion now runs before app 1's earlier-queued one.
     expect(started).toEqual(["app1-running", "app2-waiting"]);
+    expect(queue.size()).toEqual({ running: 2, pending: 1 });
     expect(settled).toBe(false);
 
     target.release();
     await settling;
     expect(settled).toBe(true);
+    // Other apps keep the normal limit: app 1's waiting job still needs a slot.
+    await flush();
+    expect(started).toEqual(["app1-running", "app2-waiting"]);
+    busy.release();
+    await flush();
+    expect(started).toEqual(["app1-running", "app2-waiting", "app1-waiting"]);
     otherWaiting.release();
+    await queue.settleAll();
+  });
+
+  it("also starts deletions the settled app enqueues while it waits", async () => {
+    const queue = createE2eTestCleanupQueue({ concurrency: 1, maxPending: 8 });
+    const started: string[] = [];
+    const busy = blockingJob(1, started, "app1-running");
+    const first = blockingJob(2, started, "app2-first");
+    const late = blockingJob(2, started, "app2-late");
+    queue.enqueue(busy.job);
+    queue.enqueue(first.job);
+
+    let settled = false;
+    const settling = queue.settleApp(2).then(() => {
+      settled = true;
+    });
+    await flush();
+    queue.enqueue(late.job);
+    first.release();
+    await flush();
+    expect(started).toEqual(["app1-running", "app2-first", "app2-late"]);
+    expect(settled).toBe(false);
+
+    late.release();
+    await settling;
+    busy.release();
     await queue.settleAll();
   });
 

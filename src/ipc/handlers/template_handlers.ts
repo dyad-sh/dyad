@@ -20,6 +20,7 @@ import { slugifyAppFolderName } from "@/shared/app_names";
 import { resolveUniqueFolderName } from "../utils/app_name_resolution";
 import { getGitUncommittedFiles } from "../utils/git_utils";
 import { gitService } from "../services/git_service";
+import { settleE2eTestCleanupsForApp } from "../services/e2e_test_cleanup_queue";
 
 const logger = log.scope("template_handlers");
 
@@ -260,6 +261,8 @@ export function registerTemplateHandlers() {
             });
             newDirCreated = true;
 
+            // Before `.git` moves: see `settleE2eTestCleanupsForApp`.
+            await settleE2eTestCleanupsForApp(appId);
             await copyPreservedEntries({
               fromPath: oldAbsPath,
               toPath: newAbsPath,

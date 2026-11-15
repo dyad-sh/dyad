@@ -327,13 +327,7 @@ export async function endTestsForApp(appId: number): Promise<void> {
   const drain = new AbortController();
   try {
     await Promise.race([
-      // Runs publish results before their sandbox is deleted, and removing a
-      // sandbox withdraws its worktree registration with Git running inside
-      // the app's repository. Wait for that too before the app directory goes,
-      // as when deletion was part of the run.
-      drainAppTestRuns(appId, drain.signal).then(() =>
-        settleE2eTestCleanupsForApp(appId),
-      ),
+      drainAppTestRuns(appId, drain.signal),
       new Promise<never>((_resolve, reject) => {
         timer = setTimeout(
           () =>
@@ -351,6 +345,14 @@ export async function endTestsForApp(appId: number): Promise<void> {
     clearTimeout(timer);
     drain.abort();
   }
+  // Runs publish results before their sandbox is deleted, and removing a
+  // sandbox withdraws its worktree registration with Git running inside the
+  // app's repository. Wait for that before the app directory goes, as when
+  // deletion was part of the run. Outside the run-drain deadline: failing here
+  // would not stop the deletion, only make the user retry while it finishes,
+  // and the jobs always settle. This app's jobs start immediately rather than
+  // queueing behind other apps'.
+  await settleE2eTestCleanupsForApp(appId);
 }
 
 async function getApp(appId: number) {
@@ -3365,8 +3367,9 @@ async function executeAppTestsWithIsolation(
         sandboxed,
       });
     } finally {
-      // Never rejects; failures are logged by the cleanup queue, and app
-      // deletion waits for this app's queued deletions (`endTestsForApp`).
+      // Never rejects; failures are logged by the cleanup queue. App deletion
+      // and moves wait for this app's queued deletions
+      // (`settleE2eTestCleanupsForApp`).
       void disposableWorkspace?.dispose();
     }
   }

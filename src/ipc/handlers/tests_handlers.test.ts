@@ -28,7 +28,10 @@ import {
   supabaseTestUserStepError,
 } from "../utils/supabase_test_user_errors";
 import { withAppTestRun } from "../services/test_run_queue_service";
-import { scheduleE2eTestCleanup } from "../services/e2e_test_cleanup_queue";
+import {
+  E2E_TEST_CLEANUP_CONCURRENCY,
+  scheduleE2eTestCleanup,
+} from "../services/e2e_test_cleanup_queue";
 import type { RunAppTestsResult } from "../types/tests";
 
 // Every app folder lives under one throwaway base so the delete handler runs
@@ -2964,6 +2967,19 @@ describe("tests handlers", () => {
       // runs Git inside the app's repository, so the app directory must outlive
       // it exactly as when deletion was part of the run.
       const appId = seedTestableApp("app");
+      // Another app's slow deletions hold every slot. Deleting this app must
+      // start its own removal anyway, not wait them out (and time out).
+      const releaseOthers: (() => void)[] = [];
+      const others = Array.from({ length: E2E_TEST_CLEANUP_CONCURRENCY }, () =>
+        scheduleE2eTestCleanup({
+          appId: appId + 1,
+          label: "test workspace",
+          run: () =>
+            new Promise<void>((resolve) => {
+              releaseOthers.push(resolve);
+            }),
+        }),
+      );
       let finishRemoval!: () => void;
       const removal = scheduleE2eTestCleanup({
         appId,
@@ -2981,11 +2997,14 @@ describe("tests handlers", () => {
         await vi.waitFor(() => expect(finishRemoval).toBeTypeOf("function"));
         await new Promise((resolve) => setTimeout(resolve, 20));
         expect(ended).toBe(false);
+        finishRemoval();
+        await ending;
+        expect(await removal).toBe("completed");
       } finally {
         finishRemoval?.();
+        releaseOthers.splice(0).forEach((release) => release());
+        await Promise.all(others);
       }
-      await ending;
-      expect(await removal).toBe("completed");
     });
 
     it("queues three runs in FIFO order and waits for the first cleanup", async () => {

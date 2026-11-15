@@ -45,7 +45,6 @@ import * as appEnvVars from "@/ipc/utils/app_env_var_utils";
 import { ipc } from "@/ipc/types";
 import * as neonManagement from "@/neon_admin/neon_management_client";
 import * as dependencies from "@/ipc/processors/executeAddDependency";
-import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { shouldFilterTelemetryException } from "@/ipc/utils/telemetry";
 import { handleNeonOAuthReturn } from "@/neon_admin/neon_return_handler";
 import {

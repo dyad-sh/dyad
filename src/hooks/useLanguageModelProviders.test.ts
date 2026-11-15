@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
     data: undefined,
     isLoading: true,
   },
+  queryOptions: null as { networkMode?: string } | null,
   subscriptionLoading: false,
   subscription: {
     connected: false,
@@ -27,7 +28,10 @@ vi.mock("./useSubscriptionAccount", () => ({
 }));
 
 vi.mock("@tanstack/react-query", () => ({
-  useQuery: () => mocks.useQueryResult,
+  useQuery: (options: { networkMode?: string }) => {
+    mocks.queryOptions = options;
+    return mocks.useQueryResult;
+  },
 }));
 
 vi.mock("@/ipc/types", () => ({
@@ -50,6 +54,7 @@ vi.mock("./useSettings", () => ({
 
 describe("useLanguageModelProviders", () => {
   beforeEach(() => {
+    mocks.queryOptions = null;
     mocks.subscriptionLoading = false;
     mocks.subscription = {
       connected: false,
@@ -84,6 +89,12 @@ describe("useLanguageModelProviders", () => {
     const { result } = renderHook(() => useLanguageModelProviders());
 
     expect(result.current.isAnyProviderSetup()).toBe(true);
+  });
+
+  it("loads provider metadata while the renderer is offline", () => {
+    renderHook(() => useLanguageModelProviders());
+
+    expect(mocks.queryOptions?.networkMode).toBe("always");
   });
 
   it("treats a selected LM Studio model as a configured provider", () => {

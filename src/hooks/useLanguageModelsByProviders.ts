@@ -13,5 +13,7 @@ export function useLanguageModelsByProviders() {
     queryFn: async () => {
       return ipc.languageModel.getModelsByProviders();
     },
+    // Local IPC read; must refresh after an import even when offline.
+    networkMode: "always",
   });
 }

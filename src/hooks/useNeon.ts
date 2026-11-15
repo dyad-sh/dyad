@@ -12,6 +12,7 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
   NEON_PROJECT_ACCESS_DENIED_MESSAGE,
   NEON_PROJECT_NOT_FOUND_MESSAGE,
+  NEON_RECONNECT_REQUIRED_MESSAGE,
 } from "@/shared/neon_auth";
 
 function isProjectAccessError(
@@ -40,11 +41,13 @@ export function useNeon(
   const { app, loading: isLoadingApp } = useLoadApp(appId);
 
   const isConnected = !!settings?.neon?.accessToken?.value;
-  const requiresReconnection =
+  const settingsRequireReconnection =
     !!settings &&
     (!!settings.neon?.reconnectRequired ||
       (!!app?.neonProjectId && !isConnected));
-  const canQuery = isConnected && !requiresReconnection;
+  // Keep query eligibility settings-based so cached auth errors cannot prevent
+  // the project from refetching after a successful sign-in.
+  const canQuery = isConnected && !settingsRequireReconnection;
 
   // Fetch projects list
   const {
@@ -77,6 +80,16 @@ export function useNeon(
 
   // A disabled query keeps its last error, so only trust it while a project
   // is still linked (it is stale after the project is unlinked).
+  // The request can reject before the settings invalidation reaches us; show
+  // recovery immediately instead of briefly rendering a generic error.
+  const requiresReconnection =
+    settingsRequireReconnection ||
+    (!!app?.neonProjectId &&
+      isProjectAccessError(
+        branchesError,
+        DyadErrorKind.Auth,
+        NEON_RECONNECT_REQUIRED_MESSAGE,
+      ));
   const projectNotFound =
     !!app?.neonProjectId &&
     isProjectAccessError(

@@ -23,6 +23,7 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
   NEON_PROJECT_ACCESS_DENIED_MESSAGE,
   NEON_PROJECT_NOT_FOUND_MESSAGE,
+  NEON_RECONNECT_REQUIRED_MESSAGE,
 } from "@/shared/neon_auth";
 
 const h = vi.hoisted(() => ({
@@ -446,24 +447,25 @@ it("reports a successful sign-in when the other account cannot use the project e
   await screen.findByText("integrations.neon.projectAccessRequired");
 });
 
-it("shows the project picker after unlinking a project this account cannot access", async () => {
-  connectedApp();
-  h.getProject.mockRejectedValue(
-    new DyadError(NEON_PROJECT_ACCESS_DENIED_MESSAGE, DyadErrorKind.Auth),
-  );
-  render(connector());
-  await screen.findByText("integrations.neon.projectAccessRequired");
-  // The project query is disabled once unlinked, so its access error is stale.
-  h.getApp.mockResolvedValue({ id: 1, frameworkType: "vite" });
-  await act(() =>
-    client.refetchQueries({ queryKey: queryKeys.apps.detail({ appId: 1 }) }),
-  );
-  await screen.findByText("integrations.neon.noProjectsFound");
-  expect(screen.queryByTestId("neon-reconnection-notice")).toBeNull();
-  expect(
-    client.getQueryState(queryKeys.neon.project({ appId: 1 }))?.error,
-  ).toBeInstanceOf(DyadError);
-});
+it.each([NEON_PROJECT_ACCESS_DENIED_MESSAGE, NEON_RECONNECT_REQUIRED_MESSAGE])(
+  "shows the project picker after unlinking a project with error %s",
+  async (message) => {
+    connectedApp();
+    h.getProject.mockRejectedValue(new DyadError(message, DyadErrorKind.Auth));
+    render(connector());
+    await screen.findByTestId("neon-reconnection-notice");
+    // The project query is disabled once unlinked, so its access error is stale.
+    h.getApp.mockResolvedValue({ id: 1, frameworkType: "vite" });
+    await act(() =>
+      client.refetchQueries({ queryKey: queryKeys.apps.detail({ appId: 1 }) }),
+    );
+    await screen.findByText("integrations.neon.noProjectsFound");
+    expect(screen.queryByTestId("neon-reconnection-notice")).toBeNull();
+    expect(
+      client.getQueryState(queryKeys.neon.project({ appId: 1 }))?.error,
+    ).toBeInstanceOf(DyadError);
+  },
+);
 
 it("keeps a retry action for transient errors without requiring sign-in", async () => {
   h.settings = { neon: { accessToken: { value: "valid-token" } } };

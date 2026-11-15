@@ -179,32 +179,67 @@ it("waits for settings, then loads the linked project after reconnection", async
   expect(h.showError).not.toHaveBeenCalled();
 });
 
-it("handles credentials rejected during a request without an error toast", async () => {
-  let rejectProject!: (error: Error) => void;
-  h.getProject.mockReturnValue(
-    new Promise((_, reject) => {
-      rejectProject = reject;
-    }),
-  );
-  render(panel());
-  await waitFor(() => expect(h.getProject).toHaveBeenCalledOnce());
-  await act(async () => {
-    rejectProject(
-      new DyadError(NEON_RECONNECT_REQUIRED_MESSAGE, DyadErrorKind.Auth),
-    );
-  });
-  await act(async () => {
-    client.setQueryData(queryKeys.settings.user, {
-      neon: { accessToken: { value: "old-token" }, reconnectRequired: true },
-    });
-  });
-  await screen.findByTestId("neon-reconnection-notice");
-  await refocus();
+it.each(["initial load", "background refresh"])(
+  "shows reconnection during %s before the settings update arrives",
+  async (phase) => {
+    const isBackgroundRefresh = phase === "background refresh";
+    if (isBackgroundRefresh) {
+      render(panel());
+      await screen.findByText("Demo database");
+    }
 
-  expect(h.getProject).toHaveBeenCalledOnce();
-  expect(h.showError).not.toHaveBeenCalled();
-  expect(screen.queryByText(/Error loading Neon project:/)).toBeNull();
-});
+    let rejectProject!: (error: Error) => void;
+    h.getProject.mockReturnValueOnce(
+      new Promise((_, reject) => {
+        rejectProject = reject;
+      }),
+    );
+    if (isBackgroundRefresh) {
+      await act(async () => {
+        void client.invalidateQueries({
+          queryKey: queryKeys.neon.project({ appId: 1 }),
+        });
+      });
+    } else {
+      render(panel());
+    }
+    const requestCount = isBackgroundRefresh ? 2 : 1;
+    await waitFor(() =>
+      expect(h.getProject).toHaveBeenCalledTimes(requestCount),
+    );
+    await act(async () => {
+      rejectProject(
+        new DyadError(NEON_RECONNECT_REQUIRED_MESSAGE, DyadErrorKind.Auth),
+      );
+    });
+    // The IPC rejection can reach the renderer before the invalidated settings.
+    // Assert this intermediate state, not just the eventual recovery card.
+    await screen.findByTestId("neon-reconnection-notice");
+    expect(screen.queryByText(/Error loading Neon project:/)).toBeNull();
+    await act(async () => {
+      client.setQueryData(queryKeys.settings.user, {
+        neon: { accessToken: { value: "old-token" }, reconnectRequired: true },
+      });
+    });
+    await screen.findByTestId("neon-reconnection-notice");
+    await refocus();
+
+    expect(h.getProject).toHaveBeenCalledTimes(requestCount);
+    expect(h.showError).not.toHaveBeenCalled();
+    expect(screen.queryByText(/Error loading Neon project:/)).toBeNull();
+
+    await act(async () => {
+      client.setQueryData(queryKeys.settings.user, {
+        neon: { accessToken: { value: "fresh-token" } },
+      });
+    });
+    await waitFor(() =>
+      expect(screen.queryByTestId("neon-reconnection-notice")).toBeNull(),
+    );
+    expect(screen.getByText("Demo database")).toBeDefined();
+    expect(h.getProject).toHaveBeenCalledTimes(requestCount + 1);
+  },
+);
 
 it.each([
   [
@@ -227,9 +262,16 @@ it.each([
   },
 );
 
-it("keeps unexpected project failures visible inline", async () => {
-  h.getProject.mockRejectedValue(new Error("Neon is unavailable"));
+it.each([
+  ["unexpected failure", new Error("Neon is unavailable")],
+  [
+    "unrelated auth error",
+    new DyadError("Other auth error", DyadErrorKind.Auth),
+  ],
+  ["unclassified error", new Error(NEON_RECONNECT_REQUIRED_MESSAGE)],
+])("keeps an %s visible inline", async (_, error) => {
+  h.getProject.mockRejectedValue(error);
   render(panel());
-  await screen.findByText("Error loading Neon project: Neon is unavailable");
+  await screen.findByText(`Error loading Neon project: ${error.message}`);
   expect(screen.queryByTestId("neon-reconnection-notice")).toBeNull();
 });

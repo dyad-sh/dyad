@@ -2,10 +2,8 @@ import type {
   LanguageModelProvider,
   LanguageModel,
   CreateCustomLanguageModelProviderParams,
-  CreateCustomLanguageModelParams,
 } from "@/ipc/types";
 import { languageModelContracts } from "@/ipc/types";
-import { EffortSettingsSchema } from "@/ipc/types/language-model";
 import { createLoggedHandler } from "./safe_handle";
 import { createLoggedTypedHandler } from "./base";
 import log from "electron-log";
@@ -133,12 +131,9 @@ export function registerLanguageModelHandlers() {
     },
   );
 
-  handle(
-    "create-custom-language-model",
-    async (
-      event: IpcMainInvokeEvent,
-      params: CreateCustomLanguageModelParams,
-    ): Promise<number> => {
+  handleTyped(
+    languageModelContracts.createCustomModel,
+    async (_event, params): Promise<number> => {
       const {
         apiName,
         displayName,
@@ -165,16 +160,6 @@ export function registerLanguageModelHandlers() {
       if (!providerId) {
         throw new DyadError(
           "Provider ID is required",
-          DyadErrorKind.Validation,
-        );
-      }
-
-      if (
-        effortSettings &&
-        !EffortSettingsSchema.safeParse(effortSettings).success
-      ) {
-        throw new DyadError(
-          "Invalid effort settings",
           DyadErrorKind.Validation,
         );
       }

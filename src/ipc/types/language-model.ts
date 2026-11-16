@@ -26,9 +26,14 @@ export const EffortSettingsSchema = z
     possibleEffortLevels: z
       .array(z.string().trim().min(1))
       .min(1)
-      .refine((levels) => new Set(levels).size === levels.length, {
-        message: "Effort levels must be unique",
-      }),
+      .refine(
+        (levels) =>
+          new Set(levels.map((level) => level.toLowerCase())).size ===
+          levels.length,
+        {
+          message: "Effort levels must be unique, ignoring case",
+        },
+      ),
   })
   .refine(
     ({ defaultEffortLevel, possibleEffortLevels }) =>

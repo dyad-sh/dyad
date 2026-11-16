@@ -63,7 +63,7 @@ export function EditCustomModelDialog({
   const { settings, updateSettings } = useSettings();
 
   useEffect(() => {
-    if (model) {
+    if (isOpen && model) {
       setApiName(model.apiName);
       setDisplayName(model.displayName);
       setDescription(model.description || "");
@@ -71,7 +71,7 @@ export function EditCustomModelDialog({
       setContextWindow(model.contextWindow?.toString() || "");
       setEffortLevels(formatEffortLevelsInput(model.effortSettings));
     }
-  }, [model]);
+  }, [isOpen, model]);
 
   const mutation = useMutation({
     mutationFn: async () => {

@@ -152,4 +152,42 @@ describe("EditCustomModelDialog", () => {
       });
     });
   });
+
+  it("reinitializes unsaved effort levels when reopened for the same model", () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { mutations: { retry: false } },
+    });
+    const model = {
+      id: 12,
+      apiName: "shared-api-name",
+      displayName: "Original name",
+      effortSettings: {
+        defaultEffortLevel: "medium",
+        possibleEffortLevels: ["medium", "low"],
+      },
+      type: "custom" as const,
+    };
+    const renderDialog = (isOpen: boolean) => (
+      <QueryClientProvider client={queryClient}>
+        <EditCustomModelDialog
+          isOpen={isOpen}
+          onClose={vi.fn()}
+          onSuccess={vi.fn()}
+          providerId="openai"
+          model={model}
+        />
+      </QueryClientProvider>
+    );
+    const { rerender } = render(renderDialog(true));
+
+    fireEvent.change(screen.getByLabelText("Effort Levels"), {
+      target: { value: "xhigh, low" },
+    });
+    rerender(renderDialog(false));
+    rerender(renderDialog(true));
+
+    expect(
+      (screen.getByLabelText("Effort Levels") as HTMLInputElement).value,
+    ).toBe("medium, low");
+  });
 });

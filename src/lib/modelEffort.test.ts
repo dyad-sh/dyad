@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { EffortSettingsSchema } from "@/ipc/types/language-model";
+import {
+  CreateCustomLanguageModelParamsSchema,
+  EffortSettingsSchema,
+} from "@/ipc/types/language-model";
 import {
   createModelSelection,
   formatCompactEffortLevel,
@@ -26,6 +29,23 @@ describe("custom model effort levels input", () => {
       defaultEffortLevel: "High",
       possibleEffortLevels: ["High", "Medium"],
     });
+  });
+
+  it("rejects case-insensitive duplicates at the IPC schema boundary", () => {
+    expect(
+      EffortSettingsSchema.safeParse({
+        defaultEffortLevel: "High",
+        possibleEffortLevels: ["High", "high"],
+      }).success,
+    ).toBe(false);
+    expect(
+      CreateCustomLanguageModelParamsSchema.safeParse({
+        apiName: "model",
+        displayName: "Model",
+        providerId: "provider",
+        effortSettings: null,
+      }).success,
+    ).toBe(false);
   });
 
   it("keeps the previous settings unchanged when the text was not edited", () => {

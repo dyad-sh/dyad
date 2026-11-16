@@ -21,6 +21,7 @@ export function useLanguageModelProviders() {
     queryFn: async () => {
       return ipc.languageModel.getProviders();
     },
+    networkMode: "always",
   });
 
   const isProviderSetup = (provider: string) => {

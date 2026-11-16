@@ -1021,7 +1021,7 @@ function getRegularModelClient(
   }
 }
 
-function getProviderApiKeyForRequest(
+export function getProviderApiKeyForRequest(
   value: string | null | undefined,
   providerDisplayName: string,
 ): string | undefined {

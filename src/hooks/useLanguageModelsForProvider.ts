@@ -25,5 +25,6 @@ export function useLanguageModelsForProvider(providerId: string | undefined) {
       return ipc.languageModel.getModels({ providerId });
     },
     enabled: !!providerId,
+    networkMode: "always",
   });
 }

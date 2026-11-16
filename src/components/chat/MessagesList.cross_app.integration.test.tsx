@@ -34,7 +34,7 @@ describe("MessagesList modified-files card across apps", () => {
       .filter((entry) => entry.channel === "get-version-changes")
       .map((entry) => ({
         args: entry.args[0] as VersionChangesArgs,
-        result: entry.result as { ok?: boolean } | undefined,
+        status: entry.status,
       }));
 
   // App A's chat shows its card, so the switches below start from the state
@@ -43,9 +43,9 @@ describe("MessagesList modified-files card across apps", () => {
     screen.findByTestId("modified-files-card", undefined, { timeout: 10_000 });
 
   const expectNoMismatchedQueries = async (since: number) => {
-    // Let any query the switch kicked off reach the main process and settle.
+    // Wait for every call the switch kicked off, and their follow-ups, to settle.
     await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      await harness.bridge.settleInFlight();
     });
     const calls = versionChangeCalls(since);
     expect(
@@ -54,7 +54,7 @@ describe("MessagesList modified-files card across apps", () => {
           args.versionId === appACommit && args.appId !== harness.appId,
       ),
     ).toEqual([]);
-    expect(calls.filter(({ result }) => result?.ok === false)).toEqual([]);
+    expect(calls.filter(({ status }) => status === "rejected")).toEqual([]);
   };
 
   beforeAll(async () => {

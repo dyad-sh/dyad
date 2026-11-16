@@ -450,11 +450,14 @@ function FooterComponent({ context }: { context?: FooterContext }) {
   // different app than these messages. The card looks the commit up in
   // `appId`'s repository, where another app's commit fails with
   // `fatal: bad object`. Render it only once the chat record confirms it
-  // belongs to `appId`, and show neither the card nor the fallback buttons
-  // while the two disagree.
+  // belongs to `appId`. Hide the fallback buttons while the two are known to
+  // disagree, since their handlers would also mix the two apps.
   const chatBelongsToSelectedApp = appId != null && chatAppId === appId;
+  const chatInOtherApp =
+    appId != null && chatAppId != null && chatAppId !== appId;
   const showModifiedFilesCard = lastTurnHasCommit && chatBelongsToSelectedApp;
-  const showFallbackButtons = !lastTurnHasCommit || appId == null;
+  const showFallbackButtons =
+    !chatInOtherApp && (!lastTurnHasCommit || appId == null);
   const currentPendingRevert =
     pendingRevert &&
     isCurrentContext(

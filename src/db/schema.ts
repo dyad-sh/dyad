@@ -11,6 +11,7 @@ import {
 import { relations } from "drizzle-orm";
 import type { ModelMessage } from "ai";
 import type { ModelSelection, StoredChatMode } from "@/lib/schemas";
+import type { EffortSettings } from "@/ipc/types/language-model";
 import type { SerializableChatTurnIntent } from "@/chat_stream/transport";
 import {
   CHAT_TURN_TERMINAL_OUTCOMES,
@@ -770,6 +771,10 @@ export const language_models = sqliteTable("language_models", {
   description: text("description"),
   max_output_tokens: integer("max_output_tokens"),
   context_window: integer("context_window"),
+  // User-defined reasoning effort levels; null means use Dyad's defaults.
+  effort_settings: text("effort_settings", {
+    mode: "json",
+  }).$type<EffortSettings | null>(),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .default(sql`(unixepoch())`),

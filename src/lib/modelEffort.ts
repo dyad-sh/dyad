@@ -1,4 +1,4 @@
-import type { LanguageModel } from "@/ipc/types/language-model";
+import type { EffortSettings, LanguageModel } from "@/ipc/types/language-model";
 import type { LargeLanguageModel, ModelSelection } from "@/lib/schemas";
 import { getAutoSidekickRuntimeModel } from "@/lib/autoSidekick";
 
@@ -11,6 +11,48 @@ export const LOCAL_PROVIDER_EFFORT_SETTINGS = {
   defaultEffortLevel: "medium",
   possibleEffortLevels: ["none", "low", "medium", "high"],
 } as const;
+
+/**
+ * Parses the "Effort levels" form field (e.g. "xhigh, medium, low") into
+ * effort settings. The first level is the default. Empty input means "use
+ * Dyad's defaults", so it returns undefined. Levels are de-duplicated
+ * case-insensitively (the first spelling wins).
+ *
+ * Pass `previous` when editing: if the text is unchanged from how `previous`
+ * is displayed, `previous` is returned as-is so saving doesn't reorder it or
+ * move its default.
+ */
+export function parseEffortLevelsInput(
+  text: string,
+  previous?: EffortSettings,
+): EffortSettings | undefined {
+  if (previous && text.trim() === formatEffortLevelsInput(previous)) {
+    return previous;
+  }
+  const seen = new Set<string>();
+  const levels = text
+    .split(",")
+    .map((level) => level.trim())
+    .filter((level) => {
+      const key = level.toLowerCase();
+      if (!level || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  return levels.length > 0
+    ? { defaultEffortLevel: levels[0], possibleEffortLevels: levels }
+    : undefined;
+}
+
+/** Inverse of parseEffortLevelsInput: default level first. */
+export function formatEffortLevelsInput(settings?: EffortSettings): string {
+  if (!settings) return "";
+  const { defaultEffortLevel, possibleEffortLevels } = settings;
+  return [
+    defaultEffortLevel,
+    ...possibleEffortLevels.filter((level) => level !== defaultEffortLevel),
+  ].join(", ");
+}
 
 export function getModelPreferenceKey(model: LargeLanguageModel): string {
   const preferenceModel = getAutoSidekickRuntimeModel(model);

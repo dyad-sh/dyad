@@ -2,7 +2,6 @@ import type {
   LanguageModelProvider,
   LanguageModel,
   CreateCustomLanguageModelProviderParams,
-  CreateCustomLanguageModelParams,
 } from "@/ipc/types";
 import { languageModelContracts } from "@/ipc/types";
 import { createLoggedHandler } from "./safe_handle";
@@ -132,12 +131,9 @@ export function registerLanguageModelHandlers() {
     },
   );
 
-  handle(
-    "create-custom-language-model",
-    async (
-      event: IpcMainInvokeEvent,
-      params: CreateCustomLanguageModelParams,
-    ): Promise<number> => {
+  handleTyped(
+    languageModelContracts.createCustomModel,
+    async (_event, params): Promise<number> => {
       const {
         apiName,
         displayName,
@@ -145,6 +141,7 @@ export function registerLanguageModelHandlers() {
         description,
         maxOutputTokens,
         contextWindow,
+        effortSettings,
       } = params;
 
       // Validation
@@ -188,6 +185,7 @@ export function registerLanguageModelHandlers() {
           description: description || null,
           max_output_tokens: maxOutputTokens || null,
           context_window: contextWindow || null,
+          effort_settings: effortSettings ?? null,
         })
         .run();
       return Number(result.lastInsertRowid);
@@ -259,6 +257,7 @@ export function registerLanguageModelHandlers() {
         description,
         maxOutputTokens,
         contextWindow,
+        effortSettings,
       } = params;
 
       if (!apiName) {
@@ -305,6 +304,9 @@ export function registerLanguageModelHandlers() {
           description: description || null,
           max_output_tokens: maxOutputTokens || null,
           context_window: contextWindow || null,
+          ...(effortSettings !== undefined && {
+            effort_settings: effortSettings,
+          }),
           updatedAt: new Date(),
         })
         .where(

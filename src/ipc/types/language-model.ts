@@ -26,9 +26,14 @@ export const EffortSettingsSchema = z
     possibleEffortLevels: z
       .array(z.string().trim().min(1))
       .min(1)
-      .refine((levels) => new Set(levels).size === levels.length, {
-        message: "Effort levels must be unique",
-      }),
+      .refine(
+        (levels) =>
+          new Set(levels.map((level) => level.toLowerCase())).size ===
+          levels.length,
+        {
+          message: "Effort levels must be unique, ignoring case",
+        },
+      ),
   })
   .refine(
     ({ defaultEffortLevel, possibleEffortLevels }) =>
@@ -81,6 +86,7 @@ export const CreateCustomLanguageModelParamsSchema = z.object({
   description: z.string().optional(),
   maxOutputTokens: z.number().optional(),
   contextWindow: z.number().optional(),
+  effortSettings: EffortSettingsSchema.optional(),
 });
 
 export type CreateCustomLanguageModelParams = z.infer<
@@ -88,7 +94,11 @@ export type CreateCustomLanguageModelParams = z.infer<
 >;
 
 export const UpdateCustomLanguageModelParamsSchema =
-  CreateCustomLanguageModelParamsSchema.extend({ id: z.number() });
+  CreateCustomLanguageModelParamsSchema.extend({
+    id: z.number(),
+    // Omitted = leave the stored effort levels alone; null = clear them.
+    effortSettings: EffortSettingsSchema.nullable().optional(),
+  });
 
 export type UpdateCustomLanguageModelParams = z.infer<
   typeof UpdateCustomLanguageModelParamsSchema

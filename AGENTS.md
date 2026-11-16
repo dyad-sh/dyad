@@ -153,7 +153,7 @@ Use unit testing for pure business logic and util functions.
 
 Target a Vitest file with `npm test -- path/to/file.test.ts`. Do not pass Jest-only flags such as `--runInBand`; Vitest will fail with `Unknown option '--runInBand'`.
 
-On Windows, if that command fails in `scripts/pnpm-install-retry.test.mjs` before Vitest with WSL `execvpe(/bin/bash) failed`, run the targeted suite directly with `node_modules/.bin/vitest.cmd run <paths>` and report the Node bootstrap failure separately.
+On Windows, if that command fails in `scripts/pnpm-install-retry.test.mjs` before Vitest with WSL `execvpe(/bin/bash) failed`, run the targeted suite directly from PowerShell with `.\node_modules\.bin\vitest.cmd run <paths>` and report the Node bootstrap failure separately.
 
 The pinned Vitest version does not support `--repeat`; it fails with `Unknown option '--repeat'`. Stress-run a target by repeating the supported `npm test -- path/to/file.test.ts` command externally.
 

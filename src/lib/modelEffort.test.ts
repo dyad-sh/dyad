@@ -32,10 +32,19 @@ describe("custom model effort levels input", () => {
   });
 
   it("rejects case-insensitive duplicates at the IPC schema boundary", () => {
+    const duplicateEffortSettings = {
+      defaultEffortLevel: "High",
+      possibleEffortLevels: ["High", "high"],
+    };
     expect(
-      EffortSettingsSchema.safeParse({
-        defaultEffortLevel: "High",
-        possibleEffortLevels: ["High", "high"],
+      EffortSettingsSchema.safeParse(duplicateEffortSettings).success,
+    ).toBe(false);
+    expect(
+      CreateCustomLanguageModelParamsSchema.safeParse({
+        apiName: "model",
+        displayName: "Model",
+        providerId: "provider",
+        effortSettings: duplicateEffortSettings,
       }).success,
     ).toBe(false);
     expect(

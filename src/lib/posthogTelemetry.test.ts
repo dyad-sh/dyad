@@ -1019,6 +1019,7 @@ describe("shouldBypassNonProTelemetrySampling", () => {
     "neon:backup-cleanup",
     "neon:branch-create-failed",
     "neon:branch-delete-failed",
+    "neon:reconnect-required",
   ])("always sends the Neon event %s", (event) => {
     expect(shouldBypassNonProTelemetrySampling({ event })).toBe(true);
   });

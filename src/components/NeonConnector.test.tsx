@@ -13,9 +13,18 @@ import {
 } from "@tanstack/react-query";
 import { StrictMode } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import type { ConnectionFlowState } from "@/connection_flow/state";
+import type {
+  ConnectionFlowInvocationRef,
+  ConnectionFlowState,
+} from "@/connection_flow/state";
 import type { UserSettings } from "@/lib/schemas";
 import { queryKeys } from "@/lib/queryKeys";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import {
+  NEON_PROJECT_ACCESS_DENIED_MESSAGE,
+  NEON_PROJECT_NOT_FOUND_MESSAGE,
+  NEON_RECONNECT_REQUIRED_MESSAGE,
+} from "@/shared/neon_auth";
 
 const h = vi.hoisted(() => ({
   settings: {} as Partial<UserSettings>,
@@ -33,6 +42,7 @@ const h = vi.hoisted(() => ({
   openExternalUrl: vi.fn(),
   success: vi.fn(),
   error: vi.fn(),
+  warning: vi.fn(),
 }));
 
 vi.mock("@/ipc/types", () => ({
@@ -80,16 +90,18 @@ vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 vi.mock("sonner", () => ({
-  toast: { success: h.success, error: h.error, warning: vi.fn() },
+  toast: { success: h.success, error: h.error, warning: h.warning },
 }));
 
 import { NeonConnector } from "./NeonConnector";
+import { NeonSignInButton } from "./NeonSignInButton";
+import { NeonIntegration } from "./NeonIntegration";
+import { NeonReconnectionBanner } from "./chat/NeonReconnectionBanner";
 
-const invocationRef = {
-  kind: "connection-flow",
-  entityKey: "neon",
-  operationId: "neon-sign-in",
-} as const;
+// Sign-in outcomes are claimed in module state shared by every test, so each
+// test gets its own operation.
+let operationCount = 0;
+let invocationRef: ConnectionFlowInvocationRef;
 let client: QueryClient;
 
 function connector() {
@@ -102,6 +114,11 @@ function connector() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  invocationRef = {
+    kind: "connection-flow",
+    entityKey: "neon",
+    operationId: `neon-sign-in-${++operationCount}`,
+  };
   client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -112,6 +129,7 @@ beforeEach(() => {
   h.listProjects.mockResolvedValue({ projects: [] });
   h.start.mockResolvedValue({ started: true, invocationRef });
   h.acknowledge.mockResolvedValue(undefined);
+  h.cancel.mockResolvedValue(undefined);
   h.openExternalUrl.mockResolvedValue(undefined);
   h.fakeConnect.mockResolvedValue(undefined);
   h.getProject.mockResolvedValue({
@@ -139,7 +157,7 @@ it("uses the shared sign-in button and loads projects after authentication", asy
   fireEvent.click(connect);
   await waitFor(() =>
     expect(h.openExternalUrl).toHaveBeenCalledWith(
-      "https://oauth.dyad.sh/api/integrations/neon/login?state=neon-sign-in",
+      `https://oauth.dyad.sh/api/integrations/neon/login?state=${invocationRef.operationId}`,
     ),
   );
   expect(h.start).toHaveBeenCalledExactlyOnceWith("neon");
@@ -194,6 +212,391 @@ function connectedApp(activeBranchId = "dev") {
     return {};
   });
 }
+
+it("reconnects rejected credentials while retaining the linked project and branch", async () => {
+  connectedApp();
+  h.settings.neon!.reconnectRequired = true;
+  const view = render(connector(), { wrapper: StrictMode });
+  const reconnect = await screen.findByRole("button", {
+    name: "integrations.neon.reconnectTitle",
+  });
+  expect(h.listProjects).not.toHaveBeenCalled();
+  expect(h.getProject).not.toHaveBeenCalled();
+  expect(h.getEmailPasswordConfig).not.toHaveBeenCalled();
+  expect(h.openExternalUrl).not.toHaveBeenCalled();
+  expect(
+    screen.getByRole("button", { name: "integrations.neon.disconnectProject" }),
+  ).toBeDefined();
+  fireEvent.click(reconnect);
+  await waitFor(() => expect(h.start).toHaveBeenCalledExactlyOnceWith("neon"));
+  await waitFor(() => expect(h.openExternalUrl).toHaveBeenCalledOnce());
+  h.settings = { neon: { accessToken: { value: "fresh-access" } } };
+  h.flowState = {
+    status: "connected",
+    revision: 1,
+    provider: "neon",
+    invocationRef,
+  };
+  view.rerender(connector());
+  await screen.findByTestId("neon-branch-select");
+  expect(
+    client.getQueryData(queryKeys.apps.detail({ appId: 1 })),
+  ).toMatchObject({
+    neonProjectId: "project",
+    neonActiveBranchId: "dev",
+  });
+  await waitFor(() =>
+    expect(h.success).toHaveBeenCalledWith(
+      "integrations.neon.reconnectedSuccess",
+    ),
+  );
+  expect(h.setActiveBranch).not.toHaveBeenCalled();
+});
+
+it.each([
+  ["cancelled", undefined],
+  ["failed", "timeout"],
+  ["failed", "network"],
+] as const)(
+  "keeps reconnection available after sign-in is %s (%s)",
+  async (status, reason) => {
+    connectedApp();
+    h.settings.neon!.reconnectRequired = true;
+    const view = render(connector());
+    fireEvent.click(await screen.findByTestId("connect-neon-button"));
+    await waitFor(() => expect(h.start).toHaveBeenCalledOnce());
+    h.flowState = {
+      status: "awaiting-return",
+      revision: 1,
+      provider: "neon",
+      invocationRef,
+    };
+    view.rerender(connector());
+    await screen.findByText("integrations.neon.waitingForSignIn");
+    fireEvent.click(screen.getByTestId("cancel-neon-flow-button"));
+    await waitFor(() =>
+      expect(h.cancel).toHaveBeenCalledWith("neon", invocationRef),
+    );
+    h.flowState =
+      status === "cancelled"
+        ? { status, revision: 2, provider: "neon", invocationRef }
+        : {
+            status,
+            revision: 2,
+            provider: "neon",
+            invocationRef,
+            reason: reason!,
+            message: reason === "network" ? "Could not reach Neon" : undefined,
+          };
+    view.rerender(connector());
+    await waitFor(() =>
+      expect(
+        (screen.getByTestId("connect-neon-button") as HTMLButtonElement)
+          .disabled,
+      ).toBe(false),
+    );
+    await waitFor(() =>
+      expect(h.acknowledge).toHaveBeenCalledExactlyOnceWith(
+        "neon",
+        invocationRef,
+      ),
+    );
+    if (reason === "network") {
+      expect(h.error).toHaveBeenCalledExactlyOnceWith("Could not reach Neon");
+      expect(h.warning).not.toHaveBeenCalled();
+    } else if (reason === "timeout") {
+      expect(h.warning).toHaveBeenCalledExactlyOnceWith(
+        "integrations.neon.signInTimedOut",
+      );
+      expect(h.error).not.toHaveBeenCalled();
+    } else {
+      expect(h.warning).not.toHaveBeenCalled();
+      expect(h.error).not.toHaveBeenCalled();
+    }
+    expect(screen.getByTestId("neon-reconnection-notice")).toBeDefined();
+    expect(h.success).not.toHaveBeenCalled();
+    expect(h.listProjects).not.toHaveBeenCalled();
+  },
+);
+
+it.each([
+  ["failed", "integrations.neon.signInTimedOut"],
+  ["connected", "integrations.neon.reconnectedSuccess"],
+] as const)(
+  "handles a %s sign-in once after the initiating notice unmounts",
+  async (status, message) => {
+    connectedApp();
+    h.settings.neon!.reconnectRequired = true;
+    const initiator = render(
+      <QueryClientProvider client={client}>
+        <NeonReconnectionBanner appId={1} />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(await screen.findByTestId("connect-neon-button"));
+    await waitFor(() => expect(h.openExternalUrl).toHaveBeenCalledOnce());
+    // e.g. the user dismissed the chat banner while signing in.
+    initiator.unmount();
+
+    if (status === "connected") {
+      h.settings = { neon: { accessToken: { value: "fresh-access" } } };
+    }
+    h.flowState =
+      status === "connected"
+        ? { status, revision: 2, provider: "neon", invocationRef }
+        : {
+            status,
+            revision: 2,
+            provider: "neon",
+            invocationRef,
+            reason: "timeout",
+          };
+    // Two surfaces that each render a sign-in button mount afterwards.
+    render(
+      <QueryClientProvider client={client}>
+        <NeonConnector appId={1} />
+        <NeonIntegration />
+      </QueryClientProvider>,
+    );
+
+    const toast = status === "connected" ? h.success : h.warning;
+    await waitFor(() => expect(toast).toHaveBeenCalledExactlyOnceWith(message));
+    await waitFor(() =>
+      expect(h.acknowledge).toHaveBeenCalledExactlyOnceWith(
+        "neon",
+        invocationRef,
+      ),
+    );
+    if (status === "connected") {
+      // The initiator's reconnect context still refreshes the linked project.
+      await screen.findByTestId("neon-branch-select");
+      expect(h.getProject).toHaveBeenCalledWith({ appId: 1 });
+    }
+  },
+);
+
+it.each([
+  [
+    new DyadError(NEON_PROJECT_ACCESS_DENIED_MESSAGE, DyadErrorKind.Auth),
+    "integrations.neon.projectAccessRequired",
+  ],
+  [
+    new DyadError(NEON_PROJECT_NOT_FOUND_MESSAGE, DyadErrorKind.NotFound),
+    "integrations.neon.projectNotFound",
+  ],
+])(
+  "offers another account when the signed-in account cannot use the existing project (%s)",
+  async (error, description) => {
+    connectedApp();
+    h.getProject.mockRejectedValue(error);
+    render(connector());
+    await screen.findByText(description);
+    expect(
+      screen.getByRole("button", {
+        name: "integrations.neon.disconnectProject",
+      }),
+    ).toBeDefined();
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "integrations.neon.signInAnotherAccount",
+      }),
+    );
+    await waitFor(() => expect(h.openExternalUrl).toHaveBeenCalledOnce());
+    expect(
+      client.getQueryData(queryKeys.apps.detail({ appId: 1 })),
+    ).toMatchObject({
+      neonProjectId: "project",
+      neonActiveBranchId: "dev",
+    });
+    expect(h.setActiveBranch).not.toHaveBeenCalled();
+  },
+);
+
+it("reports a successful sign-in when the other account cannot use the project either", async () => {
+  connectedApp();
+  h.getProject.mockRejectedValue(
+    new DyadError(NEON_PROJECT_ACCESS_DENIED_MESSAGE, DyadErrorKind.Auth),
+  );
+  const view = render(connector());
+  fireEvent.click(
+    await screen.findByRole("button", {
+      name: "integrations.neon.signInAnotherAccount",
+    }),
+  );
+  await waitFor(() => expect(h.openExternalUrl).toHaveBeenCalledOnce());
+  h.getProject.mockClear();
+  h.settings = { neon: { accessToken: { value: "other-account" } } };
+  h.flowState = {
+    status: "connected",
+    revision: 1,
+    provider: "neon",
+    invocationRef,
+  };
+  view.rerender(connector());
+
+  await waitFor(() =>
+    expect(h.acknowledge).toHaveBeenCalledExactlyOnceWith(
+      "neon",
+      invocationRef,
+    ),
+  );
+  expect(h.getProject).toHaveBeenCalledWith({ appId: 1 });
+  expect(h.success).toHaveBeenCalledExactlyOnceWith(
+    "integrations.neon.reconnectedSuccess",
+  );
+  expect(h.error).not.toHaveBeenCalled();
+  // The inline notice, not a toast, reports the remaining access problem.
+  await screen.findByText("integrations.neon.projectAccessRequired");
+});
+
+it.each(["failed", "unlinked"])(
+  "uses the app refresh result after reconnection (%s)",
+  async (outcome) => {
+    client.setQueryData(queryKeys.apps.detail({ appId: 1 }), {
+      id: 1,
+      neonProjectId: "stale-project",
+    });
+    h.settings = { neon: { accessToken: { value: "fresh-access" } } };
+    if (outcome === "failed")
+      h.getApp.mockRejectedValue(new Error("App could not be loaded"));
+    else h.getApp.mockResolvedValue({ id: 1, neonProjectId: null });
+    h.flowState = {
+      status: "connected",
+      revision: 1,
+      provider: "neon",
+      invocationRef,
+    };
+    render(
+      <QueryClientProvider client={client}>
+        <NeonSignInButton appId={1} reconnect />
+      </QueryClientProvider>,
+    );
+    await waitFor(() =>
+      expect(h.acknowledge).toHaveBeenCalledExactlyOnceWith(
+        "neon",
+        invocationRef,
+      ),
+    );
+    expect(h.success).toHaveBeenCalledExactlyOnceWith(
+      "integrations.neon.reconnectedSuccess",
+    );
+    expect(h.getApp).toHaveBeenCalledWith(1);
+    expect(h.getProject).not.toHaveBeenCalled();
+    if (outcome === "failed")
+      expect(h.error).toHaveBeenCalledExactlyOnceWith(
+        "App could not be loaded",
+      );
+    else expect(h.error).not.toHaveBeenCalled();
+  },
+);
+
+it.each([NEON_PROJECT_ACCESS_DENIED_MESSAGE, NEON_RECONNECT_REQUIRED_MESSAGE])(
+  "shows the project picker after unlinking a project with error %s",
+  async (message) => {
+    connectedApp();
+    h.getProject.mockRejectedValue(new DyadError(message, DyadErrorKind.Auth));
+    render(connector());
+    await screen.findByTestId("neon-reconnection-notice");
+    // The project query is disabled once unlinked, so its access error is stale.
+    h.getApp.mockResolvedValue({ id: 1, frameworkType: "vite" });
+    await act(() =>
+      client.refetchQueries({ queryKey: queryKeys.apps.detail({ appId: 1 }) }),
+    );
+    await screen.findByText("integrations.neon.noProjectsFound");
+    expect(screen.queryByTestId("neon-reconnection-notice")).toBeNull();
+    expect(
+      client.getQueryState(queryKeys.neon.project({ appId: 1 }))?.error,
+    ).toBeInstanceOf(DyadError);
+  },
+);
+
+it("keeps a retry action for transient errors without requiring sign-in", async () => {
+  h.settings = { neon: { accessToken: { value: "valid-token" } } };
+  h.listProjects.mockRejectedValueOnce(
+    new DyadError("Server unavailable", DyadErrorKind.External),
+  );
+  render(connector());
+  fireEvent.click(
+    await screen.findByRole("button", { name: "integrations.neon.retry" }),
+  );
+  await waitFor(() => expect(h.listProjects).toHaveBeenCalledTimes(2));
+  expect(screen.queryByTestId("neon-reconnection-notice")).toBeNull();
+  expect(h.openExternalUrl).not.toHaveBeenCalled();
+});
+
+it("allows another sign-in after the initiating component has unmounted", async () => {
+  connectedApp();
+  h.settings.neon!.reconnectRequired = true;
+  h.flowState = {
+    status: "connected",
+    revision: 5,
+    provider: "neon",
+    invocationRef,
+  };
+  render(connector());
+  const button = await screen.findByTestId("connect-neon-button");
+  expect((button as HTMLButtonElement).disabled).toBe(false);
+  fireEvent.click(button);
+  await waitFor(() => expect(h.start).toHaveBeenCalledOnce());
+});
+
+it("offers reconnection directly from Settings without needing an app", async () => {
+  h.settings = {
+    neon: { accessToken: { value: "old" }, reconnectRequired: true },
+  };
+  render(
+    <QueryClientProvider client={client}>
+      <NeonIntegration />
+    </QueryClientProvider>,
+  );
+  fireEvent.click(
+    await screen.findByRole("button", {
+      name: "integrations.neon.reconnectTitle",
+    }),
+  );
+  await waitFor(() => expect(h.openExternalUrl).toHaveBeenCalledOnce());
+  expect(h.getApp).not.toHaveBeenCalled();
+  expect(h.listProjects).not.toHaveBeenCalled();
+  expect(screen.queryByText("integrations.neon.connected")).toBeNull();
+  expect(
+    screen.getByRole("button", { name: "integrations.neon.disconnect" }),
+  ).toBeDefined();
+});
+
+it("retains the explicit unlink action when a linked app has no saved credentials", async () => {
+  connectedApp();
+  h.settings = {};
+  render(connector());
+  await screen.findByRole("button", {
+    name: "integrations.neon.reconnectTitle",
+  });
+  expect(
+    screen.getByRole("button", { name: "integrations.neon.disconnectProject" }),
+  ).toBeDefined();
+  expect(h.getProject).not.toHaveBeenCalled();
+  expect(h.setActiveBranch).not.toHaveBeenCalled();
+});
+
+it("shows a reconnect action in chat only for a linked app requiring sign-in", async () => {
+  connectedApp();
+  h.settings.neon!.reconnectRequired = true;
+  const view = render(
+    <QueryClientProvider client={client}>
+      <NeonReconnectionBanner appId={1} />
+    </QueryClientProvider>,
+  );
+  await screen.findByTestId("neon-reconnection-notice");
+  expect(h.listProjects).not.toHaveBeenCalled();
+  expect(h.openExternalUrl).not.toHaveBeenCalled();
+  h.getApp.mockResolvedValue({ id: 2, frameworkType: "vite" });
+  view.rerender(
+    <QueryClientProvider client={client}>
+      <NeonReconnectionBanner appId={2} />
+    </QueryClientProvider>,
+  );
+  await waitFor(() =>
+    expect(screen.queryByTestId("neon-reconnection-notice")).toBeNull(),
+  );
+});
 
 it("hides production and preview branches by default", async () => {
   connectedApp();

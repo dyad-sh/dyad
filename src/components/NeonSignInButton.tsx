@@ -1,5 +1,9 @@
 import { useEffect, useRef } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  type QueryClient,
+  useMutation,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -18,14 +22,77 @@ import { ipc } from "@/ipc/types";
 import { getErrorMessage } from "@/lib/errors";
 import { queryKeys } from "@/lib/queryKeys";
 
-export function NeonSignInButton({ appId }: { appId: number }) {
+interface NeonSignInInitiator {
+  appId?: number;
+  reconnect: boolean;
+  /** The initiating button is mounted and will handle the outcome itself. */
+  mounted: boolean;
+}
+
+// Module scope, so a sign-in outcome is still handled and acknowledged after
+// the initiating button unmounts. The chat banner can be dismissed, and every
+// notice unmounts on navigation while the browser OAuth step is open.
+const neonSignInInitiators = new Map<string, NeonSignInInitiator>();
+// Outcomes (operation id + revision) already claimed by a mounted button, so
+// several mounted buttons never toast or acknowledge the same outcome twice.
+const handledNeonSignInOutcomes = new Set<string>();
+
+/**
+ * Refreshes the linked project even if the surface that shows it is not
+ * mounted. The app lookup must succeed before deciding what to refresh.
+ * The project fetch is best effort: sign-in already succeeded, so an access
+ * failure stays in the query cache for the inline NeonReconnectionNotice.
+ */
+async function refreshReconnectedProject(
+  queryClient: QueryClient,
+  appId: number,
+): Promise<void> {
+  const appKey = queryKeys.apps.detail({ appId });
+  const app = await queryClient.fetchQuery({
+    queryKey: appKey,
+    queryFn: () => ipc.app.getApp(appId),
+  });
+  if (!app.neonProjectId) return;
+  await queryClient.prefetchQuery({
+    queryKey: queryKeys.neon.project({ appId }),
+    queryFn: () => ipc.neon.getProject({ appId }),
+  });
+}
+
+export function NeonSignInButton({
+  appId,
+  reconnect = false,
+  projectAccessDenied = false,
+}: {
+  appId?: number;
+  reconnect?: boolean;
+  projectAccessDenied?: boolean;
+}) {
   const { t } = useTranslation("home");
   const { isDarkMode } = useTheme();
   const { settings } = useSettings();
   const queryClient = useQueryClient();
   const { flowState, isFlowActive } = useConnectionFlow("neon");
-  const handledRevision = useRef<number | null>(null);
-  const isFinishing = flowState.status === "connected";
+  const startedOperation = useRef<string | null>(null);
+  const isMounted = useRef(false);
+  // A completed flow can outlive its initiating component. Other/re-mounted
+  // buttons must still allow another sign-in (for example to change accounts).
+  const isFinishing =
+    flowState.status === "connected" &&
+    flowState.invocationRef.operationId === startedOperation.current;
+
+  useEffect(() => {
+    isMounted.current = true;
+    const operationId = startedOperation.current;
+    const initiator = operationId && neonSignInInitiators.get(operationId);
+    if (initiator) initiator.mounted = true;
+    return () => {
+      isMounted.current = false;
+      const operationId = startedOperation.current;
+      const initiator = operationId && neonSignInInitiators.get(operationId);
+      if (initiator) initiator.mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (
@@ -35,20 +102,40 @@ export function NeonSignInButton({ appId }: { appId: number }) {
     ) {
       return;
     }
-    if (handledRevision.current === flowState.revision) return;
-    handledRevision.current = flowState.revision;
+    const { operationId } = flowState.invocationRef;
+    const initiator = neonSignInInitiators.get(operationId);
+    // A mounted initiator handles its own outcome. Otherwise any mounted
+    // button handles it once, on behalf of the initiator when it is known.
+    if (operationId !== startedOperation.current && initiator?.mounted) return;
+    const outcomeKey = `${operationId}:${flowState.revision}`;
+    if (handledNeonSignInOutcomes.has(outcomeKey)) return;
+    handledNeonSignInOutcomes.add(outcomeKey);
+    neonSignInInitiators.delete(operationId);
+    const outcome = initiator ?? { appId, reconnect };
 
     void (async () => {
       try {
         if (flowState.status === "connected") {
-          toast.success(t("integrations.neon.connectedSuccess"));
+          const outcomeAppId = outcome.appId;
           await Promise.all([
             queryClient.invalidateQueries({ queryKey: queryKeys.settings.all }),
             queryClient.invalidateQueries({ queryKey: queryKeys.neon.all }),
-            queryClient.invalidateQueries({
-              queryKey: queryKeys.apps.detail({ appId }),
-            }),
+            outcomeAppId === undefined
+              ? Promise.resolve()
+              : queryClient.invalidateQueries({
+                  queryKey: queryKeys.apps.detail({ appId: outcomeAppId }),
+                }),
           ]);
+          toast.success(
+            t(
+              outcome.reconnect
+                ? "integrations.neon.reconnectedSuccess"
+                : "integrations.neon.connectedSuccess",
+            ),
+          );
+          if (outcome.reconnect && outcomeAppId !== undefined) {
+            await refreshReconnectedProject(queryClient, outcomeAppId);
+          }
         } else if (flowState.status === "failed") {
           if (flowState.reason === "timeout") {
             toast.warning(t("integrations.neon.signInTimedOut"));
@@ -62,13 +149,19 @@ export function NeonSignInButton({ appId }: { appId: number }) {
         await acknowledgeConnectionFlow("neon", flowState.invocationRef);
       }
     })().catch((error) => toast.error(getErrorMessage(error)));
-  }, [appId, flowState, queryClient, t]);
+  }, [appId, flowState, queryClient, t, reconnect]);
 
   const signIn = useMutation({
     mutationFn: async () => {
       if (!settings || isFlowActive || isFinishing) return;
       const { started, invocationRef } = await startConnectionFlow("neon");
       if (!started) return;
+      startedOperation.current = invocationRef.operationId;
+      neonSignInInitiators.set(invocationRef.operationId, {
+        appId,
+        reconnect,
+        mounted: isMounted.current,
+      });
       try {
         if (settings?.isTestMode) {
           await ipc.neon.fakeConnect();
@@ -92,19 +185,39 @@ export function NeonSignInButton({ appId }: { appId: number }) {
         variant="outline"
         onClick={() => signIn.mutate()}
         disabled={!settings || isFlowActive || isFinishing || signIn.isPending}
-        className="w-auto h-10 flex items-center justify-center px-4 py-2 border-2 transition-colors font-medium text-sm dark:bg-gray-900 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
+        className="w-auto min-h-10 h-auto max-w-full whitespace-normal flex items-center justify-center px-4 py-2 border-2 transition-colors font-medium text-sm dark:bg-gray-900 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
         data-testid="connect-neon-button"
-        aria-label={t("integrations.neon.connectTo") + " Neon"}
+        aria-label={
+          reconnect
+            ? t(
+                projectAccessDenied
+                  ? "integrations.neon.signInAnotherAccount"
+                  : "integrations.neon.reconnectTitle",
+              )
+            : t("integrations.neon.connectTo") + " Neon"
+        }
       >
         {isFlowActive || isFinishing || signIn.isPending ? (
           <>
             <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
-            {t("integrations.neon.completingSignIn")}
+            {t(
+              flowState.status === "awaiting-return"
+                ? "integrations.neon.waitingForSignIn"
+                : "integrations.neon.completingSignIn",
+            )}
           </>
         ) : (
           <>
-            <span className="mr-2">{t("integrations.neon.connectTo")}</span>
-            <NeonLogo isDarkMode={isDarkMode} />
+            <span className={reconnect ? undefined : "mr-2"}>
+              {t(
+                reconnect
+                  ? projectAccessDenied
+                    ? "integrations.neon.signInAnotherAccount"
+                    : "integrations.neon.reconnectTitle"
+                  : "integrations.neon.connectTo",
+              )}
+            </span>
+            {!reconnect && <NeonLogo isDarkMode={isDarkMode} />}
           </>
         )}
       </Button>

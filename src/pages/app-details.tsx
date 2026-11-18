@@ -9,6 +9,7 @@ import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { ipc } from "@/ipc/types";
 import { useLoadApps } from "@/hooks/useLoadApps";
+import { useDeleteApp } from "@/hooks/useDeleteApp";
 import { useChats } from "@/hooks/useChats";
 import { useSelectChat } from "@/hooks/useSelectChat";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -101,6 +102,7 @@ export default function AppDetailsPage() {
   const appId = search.appId ? Number(search.appId) : null;
   const { t } = useTranslation("home");
   const { apps: appsList, refreshApps } = useLoadApps();
+  const { mutateAsync: deleteApp } = useDeleteApp();
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
@@ -191,7 +193,7 @@ export default function AppDetailsPage() {
       // Otherwise a pending batch would recreate this app's log buffer in
       // main after deletion clears it.
       appLogForwarder.discard(appId);
-      await ipc.app.deleteApp({ appId });
+      await deleteApp(appId);
       setIsDeleteDialogOpen(false);
       setSelectedAppId(null);
       setSelectedChatId(null);

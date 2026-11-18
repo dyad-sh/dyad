@@ -21,11 +21,11 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { useLoadApps } from "@/hooks/useLoadApps";
+import { useDeleteApps } from "@/hooks/useDeleteApp";
 import { useOpenApp } from "@/hooks/useOpenApp";
 import { AppShowcaseCard } from "@/components/AppShowcaseCard";
 import { useAppThumbnails } from "@/hooks/useAppThumbnails";
 import { sortAppsForShowcase } from "@/lib/sortApps";
-import { ipc } from "@/ipc/types";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { showError } from "@/lib/toast";
 import { AppsViewTabs, type AppsView } from "@/components/AppsViewTabs";
@@ -42,6 +42,7 @@ import { DeleteCollectionDialog } from "@/components/DeleteCollectionDialog";
 export default function AppsPage() {
   const navigate = useNavigate();
   const { apps, loading, refreshApps } = useLoadApps();
+  const { mutateAsync: deleteApps } = useDeleteApps();
   const { collections, isLoading: collectionsLoading } = useAppCollections();
   const openApp = useOpenApp();
   const [searchQuery, setSearchQuery] = useState("");
@@ -139,7 +140,7 @@ export default function AppsPage() {
     const idsToDelete = [...selectedAppIds];
     setIsDeleting(true);
     try {
-      const { results } = await ipc.app.deleteApps({ appIds: idsToDelete });
+      const { results } = await deleteApps(idsToDelete);
 
       const failed = results.filter((r) => !r.success);
       const succeededIds = new Set(

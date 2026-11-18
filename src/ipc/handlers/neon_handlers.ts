@@ -5,6 +5,10 @@ import { createTestOnlyLoggedHandler } from "./safe_handle";
 import { createTypedHandler } from "./base";
 import type { IpcContract } from "../contracts/core";
 import { handleNeonOAuthReturn } from "../../neon_admin/neon_return_handler";
+import {
+  NEON_PROJECT_ACCESS_DENIED_MESSAGE,
+  NEON_PROJECT_NOT_FOUND_MESSAGE,
+} from "@/shared/neon_auth";
 import { runOAuthReturnExchange } from "./connection_flow_handlers";
 import {
   getCachedEmailPasswordConfig,
@@ -598,7 +602,23 @@ export function registerNeonHandlers() {
       logger.error(
         `Failed to get Neon project info for app ${appId}: ${errorMessage}`,
       );
+      // Includes the reconnect error the Neon client raises for a 401.
       if (isDyadError(error)) throw error;
+      const status = (error as { response?: { status?: number } })?.response
+        ?.status;
+      if (status === 403) {
+        throw new DyadError(
+          NEON_PROJECT_ACCESS_DENIED_MESSAGE,
+          DyadErrorKind.Auth,
+        );
+      }
+      if (status === 404) {
+        // Deleted projects and projects hidden from this account look alike.
+        throw new DyadError(
+          NEON_PROJECT_NOT_FOUND_MESSAGE,
+          DyadErrorKind.NotFound,
+        );
+      }
       throw new DyadError(
         `Failed to get Neon project info: ${errorMessage}`,
         isNeonAuthError(error) ? DyadErrorKind.Auth : DyadErrorKind.External,
@@ -638,6 +658,7 @@ export function registerNeonHandlers() {
         })),
       };
     } catch (error: any) {
+      if (error instanceof DyadError) throw error;
       const errorMessage = getNeonErrorMessage(error);
       logger.error(`Failed to list Neon projects: ${errorMessage}`);
       throw new DyadError(

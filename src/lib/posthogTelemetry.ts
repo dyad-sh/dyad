@@ -872,6 +872,7 @@ const NEON_EVENTS = new Set([
   "neon:backup-cleanup",
   "neon:branch-create-failed",
   "neon:branch-delete-failed",
+  "neon:reconnect-required",
 ]);
 
 export function shouldBypassNonProTelemetrySampling(
@@ -896,7 +897,7 @@ export function shouldBypassNonProTelemetrySampling(
   }
 
   // Rare, and mostly from free-plan users: sampling would hide Neon failures,
-  // such as branches that are left behind.
+  // such as branches that are left behind and authentication recovery episodes.
   if (NEON_EVENTS.has(eventName ?? "")) {
     return true;
   }

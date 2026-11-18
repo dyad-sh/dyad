@@ -27,6 +27,7 @@ import { NotificationBanner } from "./chat/NotificationBanner";
 import { SupabaseLegacyKeyBanner } from "./chat/SupabaseLegacyKeyBanner";
 import { NeonBranchLimitBanner } from "./chat/NeonBranchLimitBanner";
 import { NeonTestingBanner } from "./chat/NeonTestingBanner";
+import { NeonReconnectionBanner } from "./chat/NeonReconnectionBanner";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -281,6 +282,7 @@ export function ChatPanel({
                   transition={chatLayerTransition}
                 >
                   <NeonBranchLimitBanner appId={selectedAppId} />
+                  <NeonReconnectionBanner appId={selectedAppId} />
                   <div className="flex-1 relative overflow-hidden">
                     <MessagesList
                       chatId={chatId ?? null}

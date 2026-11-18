@@ -22,6 +22,7 @@ import { getErrorMessage } from "@/lib/errors";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { useNeon } from "@/hooks/useNeon";
 import { MigrationSqlPreview } from "./MigrationSqlPreview";
+import { NeonReconnectionNotice } from "./NeonReconnectionNotice";
 
 export type MigrationOutcome = "no-changes" | "applied";
 
@@ -42,7 +43,14 @@ export const MigrationPanelBody = ({
 }: MigrationPanelProps) => {
   const { t } = useTranslation("home");
   const { app } = useLoadApp(appId);
-  const { projectInfo, branches } = useNeon(appId);
+  const {
+    projectInfo,
+    branches,
+    requiresReconnection,
+    projectAccessDenied,
+    projectNotFound,
+    isAccessResolved,
+  } = useNeon(appId);
   const [showErrorDetails, setShowErrorDetails] = useState(false);
   const errorDetailsId = useId();
   const previewTriggerId = useId();
@@ -99,7 +107,16 @@ export const MigrationPanelBody = ({
   }, [confirmOpen, presentation]);
   const didAutoPreview = useRef(false);
   useEffect(() => {
-    if (!autoPreview || didAutoPreview.current) return;
+    // Wait until the sign-in state is known: a preview started before a
+    // reconnect prompt appears would fail and claim the one automatic start.
+    if (
+      !autoPreview ||
+      didAutoPreview.current ||
+      !isAccessResolved ||
+      requiresReconnection ||
+      projectAccessDenied
+    )
+      return;
     let disposed = false;
     // Strict Mode replays effects and detaches the mutation observer. Start
     // after that replay so the live observer receives the result, and only
@@ -113,7 +130,13 @@ export const MigrationPanelBody = ({
     return () => {
       disposed = true;
     };
-  }, [autoPreview, startPreview]);
+  }, [
+    autoPreview,
+    startPreview,
+    isAccessResolved,
+    requiresReconnection,
+    projectAccessDenied,
+  ]);
   useEffect(() => {
     onBusyChange?.(migrateMutation.isPending);
   }, [migrateMutation.isPending, onBusyChange]);
@@ -245,6 +268,16 @@ export const MigrationPanelBody = ({
       </div>
     </>
   );
+
+  if (requiresReconnection || projectAccessDenied) {
+    return (
+      <NeonReconnectionNotice
+        appId={appId}
+        projectAccessDenied={!requiresReconnection && projectAccessDenied}
+        projectNotFound={!requiresReconnection && projectNotFound}
+      />
+    );
+  }
 
   return (
     <div className="space-y-4">

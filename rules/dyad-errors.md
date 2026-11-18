@@ -7,6 +7,7 @@ Use `DyadError` from `src/errors/dyad_error.ts` when throwing from **main proces
 - **`DyadErrorKind`** — enum classifying the failure.
 - **`new DyadError(message, kind)`** — `error.name` is `"DyadError"`; use `error.kind` for branching.
 - **`isDyadError(error)`** — type guard.
+- `DyadError` has no `code` field, but `kind` and `message` survive IPC (`serializeIpcError` / `deserializeIpcError`). When the renderer must tell apart two errors of the same kind, export the message as a constant from `src/shared/` and compare both `kind` and `message` (see `src/shared/neon_auth.ts` and `useNeon`). Matching on `kind` alone treats every `Auth` error as one state.
 
 ## Telemetry (PostHog `$exception`)
 
@@ -54,6 +55,7 @@ When changing crash exemptions, inventory `sendTelemetryEvent` emitters instead 
 - **`createTypedHandler` / `createLoggedTypedHandler`** rethrow the original error after telemetry — `DyadError` is preserved.
 - **`createLoggedHandler` (`safe_handle.ts`)** rethrows `DyadError` unchanged so the renderer keeps `instanceof DyadError`.
 - In broad `catch` blocks that convert unknown failures to `DyadError`, first rethrow existing `DyadError` instances. Otherwise an already-classified error (for example `Precondition` or `External`) can be wrapped as the wrong kind and change telemetry filtering.
+- Classify provider credential rejection (HTTP 401) where the API client is built, not in one handler. Neon has ~30 `getNeonClient()` call sites, so `createNeonApiClient` installs an axios response interceptor that sets `reconnectRequired` and throws the shared reconnect `DyadError`; a handler-local 401 check left project discovery, branch, and agent paths showing a failing Retry instead of Reconnect. Check expiry against the client's captured credentials before latching: `getNeonClient()` checks expiry only when building a client, so a client held across long work (dev-branch migration copy) can get an expiry 401 that must refresh and retry once, not force a browser sign-in.
 - When changing a main-process utility from swallowing/logging failures to throwing `DyadError`, audit non-IPC callers such as `app.whenReady()` startup, deep-link handlers, and consent callbacks. These are outside typed handler boundaries, so wrap best-effort writes or surface an explicit dialog instead of letting an unhandled rejection block `createWindow()` or send a success event.
 
 ## Migration

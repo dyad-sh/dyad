@@ -33,7 +33,7 @@ import { eq } from "drizzle-orm";
 
 import { apps, chats } from "@/db/schema";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
-import { writeSettings } from "@/main/settings";
+import { readSettings, writeSettings } from "@/main/settings";
 import {
   setupHybridChatHarness,
   type HybridChatHarness,
@@ -44,7 +44,15 @@ import { neonPreviewDomainService } from "@/ipc/services/neon_preview_domain_ser
 import * as appEnvVars from "@/ipc/utils/app_env_var_utils";
 import { ipc } from "@/ipc/types";
 import * as neonManagement from "@/neon_admin/neon_management_client";
+import * as rateLimitRetry from "@/ipc/utils/retryWithRateLimit";
 import * as dependencies from "@/ipc/processors/executeAddDependency";
+import { shouldFilterTelemetryException } from "@/ipc/utils/telemetry";
+import { handleNeonOAuthReturn } from "@/neon_admin/neon_return_handler";
+import {
+  NEON_PROJECT_ACCESS_DENIED_MESSAGE,
+  NEON_PROJECT_NOT_FOUND_MESSAGE,
+  NEON_RECONNECT_REQUIRED_MESSAGE,
+} from "@/shared/neon_auth";
 
 type TestApp = {
   appId: number;
@@ -164,6 +172,87 @@ describe("Neon branch actions (integration)", () => {
   async function appRow(appId: number) {
     return harness.db.query.apps.findFirst({ where: eq(apps.id, appId) });
   }
+
+  it("preserves Auth errors across the projects IPC boundary and filters them from telemetry", async () => {
+    const client = vi
+      .spyOn(neonManagement, "getNeonClient")
+      .mockRejectedValue(new DyadError("Reconnect Neon", DyadErrorKind.Auth));
+    try {
+      const error = await ipc.neon
+        .listProjects()
+        .catch((error: unknown) => error);
+      expect(error).toBeInstanceOf(DyadError);
+      expect(error).toMatchObject({ kind: DyadErrorKind.Auth });
+      expect(shouldFilterTelemetryException(error)).toBe(true);
+    } finally {
+      client.mockRestore();
+    }
+  });
+
+  it.each([
+    [401, DyadErrorKind.Auth, NEON_RECONNECT_REQUIRED_MESSAGE, true],
+    [403, DyadErrorKind.Auth, NEON_PROJECT_ACCESS_DENIED_MESSAGE, undefined],
+    [404, DyadErrorKind.NotFound, NEON_PROJECT_NOT_FOUND_MESSAGE, undefined],
+  ] as const)(
+    "keeps the linked project when Neon rejects it with HTTP %s",
+    async (status, kind, message, reconnectRequired) => {
+      const app = await createApp("reconnect-no-access", "vite");
+      await harness.db
+        .update(apps)
+        .set({
+          neonProjectId: "original-project",
+          neonActiveBranchId: "original-branch",
+        })
+        .where(eq(apps.id, app.appId));
+      writeSettings({
+        neon: { accessToken: { value: "old" }, reconnectRequired: true },
+      });
+      handleNeonOAuthReturn({
+        token: "new-access",
+        refreshToken: "new-refresh",
+        expiresIn: 3600,
+      });
+      // Test builds use a mock Neon client, so build the real one from the
+      // stored credentials and fail it at the HTTP layer: its own 401
+      // handling must run.
+      const client = neonManagement.createNeonApiClient(
+        "new-access",
+        readSettings(),
+      );
+      client.instance.defaults.adapter = async (config) => {
+        throw Object.assign(
+          new Error(`Request failed with status code ${status}`),
+          { config, response: { status, data: {}, headers: {} } },
+        );
+      };
+      const mockClient = vi
+        .spyOn(neonManagement, "getNeonClient")
+        .mockResolvedValue(client);
+      const refresh = vi
+        .spyOn(rateLimitRetry, "fetchWithRetry")
+        .mockResolvedValue(
+          new Response(JSON.stringify({ error: "invalid_grant" }), {
+            status: 400,
+          }),
+        );
+      try {
+        await expect(
+          ipc.neon.getProject({ appId: app.appId }),
+        ).rejects.toMatchObject({ kind, message });
+        expect(await appRow(app.appId)).toMatchObject({
+          neonProjectId: "original-project",
+          neonActiveBranchId: "original-branch",
+        });
+        // Only a rejected token (401) asks the user to sign in again.
+        expect(readSettings().neon?.reconnectRequired).toBe(reconnectRequired);
+        expect(readSettings().neon?.accessToken?.value).toBe("new-access");
+        expect(refresh).toHaveBeenCalledTimes(status === 401 ? 1 : 0);
+      } finally {
+        mockClient.mockRestore();
+        refresh.mockRestore();
+      }
+    },
+  );
 
   async function waitForEnv(appDir: string, expected: string): Promise<string> {
     let contents = "";

@@ -17,16 +17,12 @@ class GithubRequestError extends Error {
   }
 }
 
-function readReleasePackage(packageJsonPath) {
+function readPackageVersion(packageJsonPath) {
   const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
   if (typeof packageJson.version !== "string" || !packageJson.version) {
     throw new Error(`No package.json version found at ${packageJsonPath}`);
   }
-  return packageJson;
-}
-
-function readPackageVersion(packageJsonPath) {
-  return readReleasePackage(packageJsonPath).version;
+  return packageJson.version;
 }
 
 async function githubRequest({ owner, path, repo, token }) {
@@ -199,8 +195,21 @@ async function prepareReleaseTag({
     throw new Error("GITHUB_TOKEN environment variable is required");
   }
 
-  const { version, devDependencies } = readReleasePackage(packageJsonPath);
-  if (Number.parseInt(devDependencies?.electron, 10) >= 44) {
+  const version = readPackageVersion(packageJsonPath);
+  const lockfile = JSON.parse(
+    fs.readFileSync(
+      path.join(path.dirname(packageJsonPath), "package-lock.json"),
+      "utf8",
+    ),
+  );
+  const electronVersion = lockfile.packages?.["node_modules/electron"]?.version;
+  const electronMajor = Number(electronVersion?.split(".")[0]);
+  if (!Number.isSafeInteger(electronMajor) || electronMajor < 1) {
+    throw new Error(
+      "Cannot determine the locked Electron version for release.",
+    );
+  }
+  if (electronMajor >= 44) {
     throw new Error(
       "Release blocked until the update service keeps macOS 12 clients on a compatible build. Electron 44 and later require macOS 13.",
     );

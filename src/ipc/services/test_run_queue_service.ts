@@ -47,7 +47,9 @@ type RunRecord = {
 
 /**
  * One owner arbitrates admission across apps, windows and invocation sources.
- * The queue reserves slots through cleanup and result delivery. Admission uses
+ * The queue reserves slots through process shutdown, artifact retention,
+ * isolation teardown and result delivery; sandbox and artifact directory
+ * deletion runs afterward on the bounded cleanup queue. Admission uses
  * the current user-configured limit and database/workspace compatibility.
  * Lowering the limit only delays queued work; active runs finish normally.
  */

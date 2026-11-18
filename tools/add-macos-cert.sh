@@ -24,6 +24,9 @@ echo "Certificate size is $file_size bytes"
 # Create a keychain
 security create-keychain -p actions $KEY_CHAIN
 
+# Keep the keychain unlocked through three 30-minute build attempts with margin.
+security set-keychain-settings -lut 7200 "$KEY_CHAIN"
+
 # Make the keychain the default so identities are found
 security default-keychain -s $KEY_CHAIN
 

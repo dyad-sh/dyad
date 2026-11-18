@@ -3420,3 +3420,53 @@ describe("HelpDialog closing step", () => {
     expect(screen.queryByAltText("Screenshot of the Dyad window")).toBeNull();
   });
 });
+
+describe("retained clipboard failures", () => {
+  it("keeps the preview and retries the same capture after clipboard denial", async () => {
+    screenshotUploadDown();
+    mocks.recopyScreenshot
+      .mockResolvedValueOnce({ copied: false, retained: true })
+      .mockResolvedValueOnce({ copied: true });
+    await openForm();
+    await addScreenshot();
+    submit();
+    await waitFor(() =>
+      expect(mocks.showError).toHaveBeenCalledWith(
+        "Your screenshot could not be copied. Try again, or remove it to file without an image.",
+      ),
+    );
+    expect(mocks.openExternalUrl).not.toHaveBeenCalled();
+    expect(screen.getByAltText("Screenshot of the Dyad window")).toBeTruthy();
+    expect(
+      (
+        screen.getByRole("button", {
+          name: /Create GitHub issue/,
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
+    await fileIt();
+    expect(mocks.recopyScreenshot.mock.calls[1]).toEqual(
+      mocks.recopyScreenshot.mock.calls[0],
+    );
+    expect(bodyOfOpenedIssue()).toContain("Screenshot status: captured");
+  });
+  it("keeps an uncertain IPC failure reachable and discards it on removal", async () => {
+    screenshotUploadDown();
+    mocks.recopyScreenshot.mockRejectedValueOnce(new Error("IPC interrupted"));
+    await openForm();
+    await addScreenshot();
+    submit();
+    await waitFor(() =>
+      expect(mocks.showError).toHaveBeenCalledWith(
+        "Your screenshot could not be copied. Try again, or remove it to file without an image.",
+      ),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Remove/ }));
+    expect(mocks.discardScreenshot).toHaveBeenCalledWith(
+      mocks.recopyScreenshot.mock.calls[0][0],
+    );
+    await fileIt();
+    expect(mocks.recopyScreenshot).toHaveBeenCalledTimes(1);
+    expect(bodyOfOpenedIssue()).toContain("Screenshot status: declined");
+  });
+});

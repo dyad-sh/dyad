@@ -159,6 +159,7 @@ import type { AppSearchResult } from "@/lib/schemas";
 import { searchApps } from "../utils/app_search";
 import { endTestsForApp } from "./tests_handlers";
 import { removeE2eTestArtifactsForApp } from "../services/e2e_test_workspace";
+import { settleE2eTestCleanupsForApp } from "../services/e2e_test_cleanup_queue";
 import { clearPreviewNamespacedCookies } from "../services/preview_storage";
 
 import {
@@ -1809,6 +1810,10 @@ export function registerAppHandlers() {
         }
 
         const oldAppPath = currentResolvedPath;
+        if (newAppPath !== oldAppPath) {
+          // Before the repository moves: see `settleE2eTestCleanupsForApp`.
+          await settleE2eTestCleanupsForApp(appId);
+        }
         // A case-only rename (e.g. `MyApp` -> `myapp`) targets the same
         // physical directory on case-insensitive filesystems (macOS/Windows
         // defaults), so copy-then-delete would destroy the app. fs.rename
@@ -2407,6 +2412,8 @@ export function registerAppHandlers() {
         }
 
         await fsPromises.mkdir(normalizedParentDir, { recursive: true });
+        // Before the repository moves: see `settleE2eTestCleanupsForApp`.
+        await settleE2eTestCleanupsForApp(appId);
 
         try {
           // Copy the directory without node_modules

@@ -176,6 +176,7 @@
     "sessionUploadFailed": "Impossible d'envoyer votre session de chat. Le rapport sera envoyé sans elle.",
     "systemInfoFailed": "Vos informations système n'ont pas pu être incluses. Le rapport sera envoyé sans elles.",
     "screenshotRestoreFailed": "Votre capture d'écran n'a pas pu être restaurée. Le rapport sera envoyé sans elle.",
+    "screenshotClipboardRetry": "Votre capture d'écran n'a pas pu être copiée. Réessayez ou retirez-la pour envoyer le rapport sans image.",
     "screenshotDropped": "Votre capture d'écran n'a plus pu être restaurée. Elle a donc été retirée de ce rapport.",
     "filingFailed": "Une erreur s'est produite lors de l'envoi de votre rapport. Veuillez réessayer.",
     "updaterLogs": "Journaux de la mise à jour automatique",

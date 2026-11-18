@@ -62,6 +62,9 @@ interface FooterContext {
   streamMessage: ReturnType<typeof useStreamChat>["streamMessage"];
   selectedChatId: number | null;
   appId: number | null;
+  // The app the displayed chat belongs to, from the chat record itself. `appId`
+  // is the globally selected app, which can briefly lag or lead the chat.
+  chatAppId: number | null;
   renderSetupBanner: () => React.ReactNode;
 }
 
@@ -139,6 +142,7 @@ function FooterComponent({ context }: { context?: FooterContext }) {
     streamMessage,
     selectedChatId,
     appId,
+    chatAppId,
     renderSetupBanner,
     executionBackend,
   } = context;
@@ -440,8 +444,20 @@ function FooterComponent({ context }: { context?: FooterContext }) {
   // When the last assistant turn produced a commit, show the modified-files card
   // (which owns its own Undo/Retry buttons). Otherwise fall back to the standalone
   // buttons so text-only replies keep those affordances.
-  const showModifiedFilesCard =
-    isLastMessageAssistant && !!lastMessage?.commitHash && appId != null;
+  const lastTurnHasCommit = isLastMessageAssistant && !!lastMessage?.commitHash;
+  // Switching to a chat in another app updates the selected app and the routed
+  // chat at different moments, so for a render `appId` can belong to a
+  // different app than these messages. The card looks the commit up in
+  // `appId`'s repository, where another app's commit fails with
+  // `fatal: bad object`. Render it only once the chat record confirms it
+  // belongs to `appId`. Hide the fallback buttons while the two are known to
+  // disagree, since their handlers would also mix the two apps.
+  const chatBelongsToSelectedApp = appId != null && chatAppId === appId;
+  const chatInOtherApp =
+    appId != null && chatAppId != null && chatAppId !== appId;
+  const showModifiedFilesCard = lastTurnHasCommit && chatBelongsToSelectedApp;
+  const showFallbackButtons =
+    !chatInOtherApp && (!lastTurnHasCommit || appId == null);
   const currentPendingRevert =
     pendingRevert &&
     isCurrentContext(
@@ -466,7 +482,7 @@ function FooterComponent({ context }: { context?: FooterContext }) {
           isAnyVersionMutationPending={isAnyVersionMutationPending}
         />
       )}
-      {!isStreaming && !showModifiedFilesCard && (
+      {!isStreaming && showFallbackButtons && (
         <div className="flex max-w-3xl mx-auto gap-2">
           {isLastMessageAssistant && (
             <Button
@@ -754,6 +770,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
         streamMessage,
         selectedChatId,
         appId,
+        chatAppId: selectedChat?.appId ?? null,
         renderSetupBanner,
       }),
       [
@@ -771,6 +788,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
         streamMessage,
         selectedChatId,
         appId,
+        selectedChat?.appId,
         renderSetupBanner,
       ],
     );

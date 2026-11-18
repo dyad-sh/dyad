@@ -12,6 +12,18 @@ const testSetup = testWithConfig({
   showSetupScreen: true,
 });
 
+const testBuildSetup = testWithConfig({
+  showSetupScreen: true,
+  preLaunchHook: async ({ userDataDir }) => {
+    // Seed the initial mode before the renderer loads its settings query.
+    await fs.promises.mkdir(userDataDir, { recursive: true });
+    await fs.promises.writeFile(
+      path.join(userDataDir, "user-settings.json"),
+      JSON.stringify({ selectedChatMode: "build", defaultChatMode: "build" }),
+    );
+  },
+});
+
 testSetup.describe("Setup Flow", () => {
   testSetup("setup dialog shows AI provider options", async ({ po }) => {
     const dialog = await openAiSetupDialog(po);
@@ -100,7 +112,7 @@ testSetup.describe("Setup Flow", () => {
     },
   );
 
-  testSetup(
+  testBuildSetup(
     "OpenRouter API key setup switches the pending first prompt from Build to Basic Agent",
     async ({ po }) => {
       await seedFakeModelSelection(po);
@@ -314,7 +326,7 @@ testSetup.describe("Setup Flow", () => {
     },
   );
 
-  testSetup(
+  testBuildSetup(
     "Dyad Pro return deep link switches the pending first prompt from Build to Agent",
     async ({ po, electronApp }) => {
       await expectInitialBuildMode(po);
@@ -339,7 +351,6 @@ testSetup.describe("Setup Flow", () => {
 });
 
 async function expectInitialBuildMode(po: PageObject) {
-  await po.pinBuildChatModeForSetup();
   await po.navigation.goToAppsTab();
   await expect(po.page.getByTestId("chat-mode-selector")).toContainText(
     "Build",

@@ -362,6 +362,7 @@ If a targeted E2E fails before launch with `ENOENT: no such file or directory, s
 
 ## Triaging failures from a CI run's html-report
 
+- Electron can expose a window before the packaged document loads, and TanStack Router can replace its entry URL before the test observes it. Wait for the Dyad preload bridge before renderer IPC. To reload the packaged document, resolve its entry from `app.getAppPath()`; the current `file:///` route may not exist on disk.
 - If the Playwright artifacts have expired, query failed job IDs from
   `gh run view --json jobs`, then inspect each E2E job with `--job <id> --log`.
   The final Playwright summary and inline snapshot diff usually preserve the

@@ -566,7 +566,7 @@ export function ChatList({
                     row.kind === "group" ? (
                       <div
                         className={cn(
-                          "px-5 text-xs font-medium text-muted-foreground",
+                          "px-3 text-xs font-medium text-muted-foreground",
                           !row.isFirst && "pt-2",
                         )}
                         data-testid={`chat-group-${row.key}`}
@@ -583,7 +583,7 @@ export function ChatList({
               <div className="flex flex-col space-y-3">
                 {chatGroups.map((group) => (
                   <div key={group.key} data-testid={`chat-group-${group.key}`}>
-                    <div className="px-5 pb-1 text-xs font-medium text-muted-foreground">
+                    <div className="px-3 pb-1 text-xs font-medium text-muted-foreground">
                       {group.label}
                     </div>
                     <SidebarMenu className="space-y-1">
@@ -691,7 +691,7 @@ function ChatRow({
 
   return (
     <div
-      className="group/chat-row relative mx-2 flex items-center"
+      className="group/chat-row relative flex w-full items-center"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       onFocusCapture={() => setIsFocused(true)}
@@ -716,9 +716,7 @@ function ChatRow({
                 variant="ghost"
                 onClick={onSelect}
                 className={cn(
-                  // h-auto: the default h-9 is shorter than the two text lines
-                  // and squeezed the vertical padding to nothing.
-                  "h-auto w-full min-w-0 cursor-pointer justify-start py-2 pl-3 pr-16 text-left hover:bg-sidebar-accent/80",
+                  "w-full cursor-pointer justify-start py-3 pr-14 text-left hover:bg-sidebar-accent/80",
                   isSelected &&
                     "bg-sidebar-accent text-sidebar-accent-foreground",
                 )}
@@ -726,7 +724,7 @@ function ChatRow({
               />
             }
           >
-            <div className="flex w-full min-w-0 flex-col gap-0.5">
+            <div className="flex w-full flex-col">
               <span ref={titleRef} className="truncate">
                 {title}
               </span>
@@ -743,7 +741,7 @@ function ChatRow({
         </Tooltip>
       </TooltipProvider>
 
-      <div className="absolute right-1.5 flex w-14 items-center">
+      <div className="absolute right-0 flex w-14 items-center">
         <motion.button
           ref={favoriteButtonRef}
           type="button"

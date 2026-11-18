@@ -83,7 +83,6 @@ describe("ChatList title tooltip (integration)", () => {
     // The row stays a single button: the tooltip trigger must not nest one.
     expect(row.tagName).toBe("BUTTON");
     expect(row.querySelector("button")).toBeNull();
-    expect(row.className).toContain("h-auto");
 
     hover(row);
 

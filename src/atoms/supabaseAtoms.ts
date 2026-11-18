@@ -11,6 +11,10 @@ export const edgeLogPollCursorsAtom = atom<Record<string, EdgeLogPollCursor>>(
   {},
 );
 
+// The polling preference is global. Dismiss its explanatory hint throughout
+// this renderer session, including after the console or selected app changes.
+export const supabaseEdgeLogPollingHintDismissedAtom = atom(false);
+
 /**
  * Apps whose legacy-Supabase-key banner the user has dismissed, by app id.
  *

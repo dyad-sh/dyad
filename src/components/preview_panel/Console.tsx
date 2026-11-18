@@ -72,8 +72,12 @@ ConsoleItem.displayName = "ConsoleItem";
 // Console component
 export const Console = ({
   supabaseProjectId,
+  supabaseOrganizationSlug,
+  edgeLogsWarning,
 }: {
   supabaseProjectId?: string | null;
+  supabaseOrganizationSlug?: string | null;
+  edgeLogsWarning?: string | null;
 }) => {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const consoleEntries = useConsoleEntries(selectedAppId);
@@ -237,7 +241,16 @@ export const Console = ({
         showFilters={showFilters}
       />
 
-      {supabaseProjectId && <SupabaseEdgeLogPollingHint />}
+      {supabaseProjectId && (
+        <SupabaseEdgeLogPollingHint
+          organizationSlug={supabaseOrganizationSlug ?? null}
+        />
+      )}
+      {edgeLogsWarning && (
+        <p role="status" className="px-4 py-2 text-sm text-muted-foreground">
+          {edgeLogsWarning}
+        </p>
+      )}
 
       {/* Virtualized log area */}
       <div ref={containerRef} className="flex-1 overflow-hidden px-4">

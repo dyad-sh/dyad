@@ -249,7 +249,9 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
       appId: number;
       pollKey: string;
       requestedAt: number;
-      logs: ConsoleEntry[];
+      entries: ConsoleEntry[];
+      retryFrom?: number;
+      warning?: string;
     },
     Error
   >({
@@ -269,7 +271,7 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
       const organizationSlug = edgeLogsOrganizationSlug ?? null;
       const pollKey = edgeLogPollKey({ appId, projectId, organizationSlug });
       const requestedAt = Date.now();
-      const logs = await ipc.supabase.getEdgeLogs({
+      const result = await ipc.supabase.getEdgeLogs({
         projectId,
         timestampStart: getEdgeLogPollStart(
           edgeLogPollCursorsRef.current[pollKey],
@@ -278,7 +280,7 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
         appId,
         organizationSlug,
       });
-      return { appId, pollKey, requestedAt, logs };
+      return { appId, pollKey, requestedAt, ...result };
     },
     enabled: edgeLogsEnabled,
     refetchInterval: EDGE_LOGS_POLL_INTERVAL_MS,
@@ -294,7 +296,7 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
     if (!edgeLogsEnabled || !edgeLogsDataUpdatedAt) return;
     const edgeLogsResult = edgeLogsQuery.data;
     if (!edgeLogsResult) return;
-    const { appId, pollKey, requestedAt, logs } = edgeLogsResult;
+    const { appId, pollKey, requestedAt, entries, retryFrom } = edgeLogsResult;
 
     // Polls overlap so late-arriving logs are seen, and React Query serves
     // cached data again on remount (StrictMode double-invokes, too). The
@@ -303,8 +305,9 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
     // they are not forwarded to the central log store as well.
     const { newEntries, cursor } = applyEdgeLogPollResult(
       edgeLogPollCursorsRef.current[pollKey],
-      logs,
+      entries,
       requestedAt,
+      retryFrom,
     );
     edgeLogPollCursorsRef.current = {
       ...edgeLogPollCursorsRef.current,
@@ -348,6 +351,9 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
       setAppProjectMutation.isPending || recoverAppProjectMutation.isPending,
     isUnsettingAppProject: unsetAppProjectMutation.isPending,
     isLoadingEdgeLogs: edgeLogsQuery.isFetching,
+    edgeLogsWarning: edgeLogsEnabled
+      ? (edgeLogsQuery.error?.message ?? edgeLogsQuery.data?.warning ?? null)
+      : null,
 
     // Actions
     refetchOrganizations: organizationsQuery.refetch,

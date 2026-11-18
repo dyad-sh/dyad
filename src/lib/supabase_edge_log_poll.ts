@@ -7,13 +7,15 @@ import {
 /**
  * Per-app, per-project progress of background Edge Function log polling in
  * one renderer window. Each poll re-reads the recent overlap so late-arriving
- * logs are seen, and `seen` remembers ids inside that overlap so they are
- * appended to the preview console only once.
+ * logs are seen, and `seen` remembers ids inside the next overlap or retry
+ * window so they are appended to the preview console only once.
  */
 export interface EdgeLogPollCursor {
-  /** When the last successful poll was requested. */
+  /** When the last applied poll was requested, including partial results. */
   lastRequestedAt: number;
-  /** Ids already delivered, with their timestamps, inside the next overlap. */
+  /** Earliest gap reported by the last applied poll, if it was incomplete. */
+  retryFrom?: number;
+  /** Ids already delivered, with their timestamps, inside the next window. */
   seen: ReadonlyMap<string, number>;
 }
 
@@ -38,7 +40,10 @@ export function getEdgeLogPollStart(
   if (!cursor) return earliest;
   return Math.max(
     earliest,
-    cursor.lastRequestedAt - SUPABASE_LOG_RECENT_OVERLAP_MS,
+    Math.min(
+      cursor.lastRequestedAt - SUPABASE_LOG_RECENT_OVERLAP_MS,
+      cursor.retryFrom ?? Infinity,
+    ),
   );
 }
 
@@ -55,6 +60,7 @@ export function applyEdgeLogPollResult(
   cursor: EdgeLogPollCursor | undefined,
   entries: readonly ConsoleEntry[],
   requestedAt: number,
+  retryFrom?: number,
 ): { newEntries: ConsoleEntry[]; cursor: EdgeLogPollCursor } {
   if (cursor && requestedAt <= cursor.lastRequestedAt) {
     return { newEntries: [], cursor };
@@ -72,11 +78,11 @@ export function applyEdgeLogPollResult(
   const lastRequestedAt = Math.max(cursor?.lastRequestedAt ?? 0, requestedAt);
   // Only ids the next poll can return again need remembering.
   const nextStart = getEdgeLogPollStart(
-    { lastRequestedAt, seen },
+    { lastRequestedAt, retryFrom, seen },
     lastRequestedAt,
   );
   for (const [key, timestamp] of seen) {
     if (timestamp < nextStart) seen.delete(key);
   }
-  return { newEntries, cursor: { lastRequestedAt, seen } };
+  return { newEntries, cursor: { lastRequestedAt, retryFrom, seen } };
 }

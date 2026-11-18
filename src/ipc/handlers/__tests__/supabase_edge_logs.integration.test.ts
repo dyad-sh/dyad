@@ -128,7 +128,7 @@ describe("Supabase edge logs shared by polling and read_logs (integration)", () 
 
       // A poll overlaps the agent's default five-minute window while its
       // provider request is still in flight.
-      const poll = harness.invokeHandler<ConsoleEntry[]>(
+      const poll = harness.invokeHandler<{ entries: ConsoleEntry[] }>(
         "supabase:get-edge-logs",
         {
           appId: APP_ID,
@@ -145,7 +145,7 @@ describe("Supabase edge logs shared by polling and read_logs (integration)", () 
       releaseResponse();
       const [agentResult, polledLogs] = await Promise.all([agentRead, poll]);
 
-      expect(polledLogs).toEqual([
+      expect(polledLogs.entries).toEqual([
         {
           providerLogId: "error-log",
           timestamp: NOW - 2 * MINUTE,

@@ -173,7 +173,7 @@ vi.mock("@/hooks/useSettings", () => ({
 }));
 
 vi.mock("@/hooks/useSupabase", () => ({
-  useSupabase: vi.fn(),
+  useSupabase: () => ({ edgeLogsWarning: null }),
 }));
 
 vi.mock("react-i18next", () => ({

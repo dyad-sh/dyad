@@ -421,7 +421,7 @@ export function registerSupabaseHandlers() {
     // A poll scheduled before the app was relinked must not fetch, or label
     // as this app's, the previous project's logs.
     if (!(await isAppStillLinkedTo(target))) {
-      return [];
+      return { entries: [] };
     }
     const start = Math.min(
       now - 1,
@@ -435,24 +435,19 @@ export function registerSupabaseHandlers() {
       start,
       end: now,
     });
-    // A successful reply advances the renderer's cursor. Keep incomplete
-    // windows retryable even when the cache contains some of their rows.
-    if (result.associationChanged) return [];
-    if (result.error) {
-      throw isDyadError(result.error)
-        ? result.error
-        : new DyadError(
-            `Failed to fetch logs: ${result.error instanceof Error ? result.error.message : String(result.error)}`,
-            DyadErrorKind.External,
-          );
-    }
-    if (result.missingRanges.length > 0) {
-      throw new DyadError(
-        "Supabase Edge Function logs are incomplete. The next poll will retry the missing ranges.",
-        DyadErrorKind.External,
-      );
-    }
-    return result.entries;
+    if (result.associationChanged) return { entries: [] };
+    const incomplete = result.missingRanges.length > 0;
+    // Deliver available rows without acknowledging gaps. Otherwise a busy
+    // window that always reaches a page limit would never show any logs.
+    return {
+      entries: result.entries,
+      retryFrom: incomplete
+        ? Math.min(...result.missingRanges.map((range) => range.start))
+        : undefined,
+      warning: incomplete
+        ? "Some Supabase Edge Function logs are unavailable. Available logs are shown; missing ranges will be retried within the last ten minutes."
+        : undefined,
+    };
   });
 
   // Set app project - links a Dyad app to a Supabase project.

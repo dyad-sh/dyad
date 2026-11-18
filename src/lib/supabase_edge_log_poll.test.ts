@@ -125,4 +125,29 @@ describe("edge log polling cursor", () => {
       edgeLogPollKey({ appId: 1, projectId: "other", organizationSlug: null }),
     );
   });
+
+  it("delivers partial results while retaining gaps and their dedupe IDs", () => {
+    const retryFrom = NOW - 8 * 60_000;
+    const logs = [entry("available", NOW - 5 * 60_000)];
+    const partial = applyEdgeLogPollResult(undefined, logs, NOW, retryFrom);
+    expect(partial.newEntries).toEqual(logs);
+    expect(getEdgeLogPollStart(partial.cursor, NOW + 5_000)).toBe(retryFrom);
+    expect(partial.cursor.seen.has("available")).toBe(true);
+
+    const recovered = applyEdgeLogPollResult(
+      partial.cursor,
+      [entry("recovered", NOW - 7 * 60_000), ...logs],
+      NOW + 5_000,
+    );
+    expect(recovered.newEntries.map((log) => log.providerLogId)).toEqual([
+      "recovered",
+    ]);
+    expect(getEdgeLogPollStart(recovered.cursor, NOW + 10_000)).toBe(
+      NOW + 5_000 - SUPABASE_LOG_RECENT_OVERLAP_MS,
+    );
+    // Permanently truncated windows still respect the ten-minute lookback cap.
+    expect(getEdgeLogPollStart(partial.cursor, NOW + 20 * 60_000)).toBe(
+      NOW + 20 * 60_000 - EDGE_LOGS_POLL_MAX_LOOKBACK_MS,
+    );
+  });
 });

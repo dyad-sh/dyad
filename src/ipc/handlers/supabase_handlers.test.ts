@@ -363,17 +363,21 @@ describe("Supabase handlers", () => {
         // Far older than a poll may look back.
         timestampStart: NOW - 60 * MINUTE,
       });
-      expect(first).toEqual([
-        {
-          level: "info",
-          type: "edge-function",
-          message: "[hello] ran",
-          timestamp: NOW - MINUTE,
-          sourceName: "hello",
-          appId: 7,
-          providerLogId: "log-1",
-        },
-      ]);
+      expect(first).toEqual({
+        entries: [
+          {
+            level: "info",
+            type: "edge-function",
+            message: "[hello] ran",
+            timestamp: NOW - MINUTE,
+            sourceName: "hello",
+            appId: 7,
+            providerLogId: "log-1",
+          },
+        ],
+        retryFrom: undefined,
+        warning: undefined,
+      });
       expect(mocks.getSupabaseProjectLogs).toHaveBeenCalledWith(
         "project",
         expect.objectContaining({
@@ -407,11 +411,11 @@ describe("Supabase handlers", () => {
           projectId: "previous-project",
           organizationSlug: "org",
         }),
-      ).resolves.toEqual([]);
+      ).resolves.toEqual({ entries: [] });
       expect(mocks.getSupabaseProjectLogs).not.toHaveBeenCalled();
     });
 
-    it("reports a provider failure instead of an empty result", async () => {
+    it("reports a provider failure with a retry boundary and visible warning", async () => {
       mocks.getSupabaseProjectLogs.mockRejectedValue(
         new DyadError("Supabase is unavailable", DyadErrorKind.External),
       );
@@ -421,10 +425,14 @@ describe("Supabase handlers", () => {
           projectId: "project",
           organizationSlug: "org",
         }),
-      ).rejects.toMatchObject({ kind: DyadErrorKind.External });
+      ).resolves.toMatchObject({
+        entries: [],
+        retryFrom: NOW - 10 * MINUTE,
+        warning: expect.stringContaining("unavailable"),
+      });
     });
 
-    it("rejects a partial poll with cached rows and retries the older gap", async () => {
+    it("delivers partial rows while keeping the older gap retryable", async () => {
       const params = {
         appId: 7,
         projectId: "project",
@@ -443,7 +451,11 @@ describe("Supabase handlers", () => {
           ...params,
           timestampStart: NOW - 10 * MINUTE,
         }),
-      ).rejects.toThrow("Older range unavailable");
+      ).resolves.toMatchObject({
+        entries: [expect.objectContaining({ providerLogId: "log-1" })],
+        retryFrom: NOW - 10 * MINUTE,
+        warning: expect.stringContaining("unavailable"),
+      });
 
       mocks.getSupabaseProjectLogs.mockResolvedValueOnce({
         result: [
@@ -459,12 +471,14 @@ describe("Supabase handlers", () => {
         ...params,
         timestampStart: NOW - 10 * MINUTE,
       });
-      expect(recovered).toEqual(
-        expect.arrayContaining([
+      expect(recovered).toMatchObject({
+        entries: expect.arrayContaining([
           expect.objectContaining({ providerLogId: "older" }),
           expect.objectContaining({ providerLogId: "log-1" }),
         ]),
-      );
+        retryFrom: undefined,
+        warning: undefined,
+      });
       expect(mocks.getSupabaseProjectLogs).toHaveBeenLastCalledWith(
         "project",
         expect.objectContaining({
@@ -473,7 +487,7 @@ describe("Supabase handlers", () => {
       );
     });
 
-    it("rejects truncated coverage even without a provider error", async () => {
+    it("delivers truncated rows with a retry boundary and warning", async () => {
       mocks.getSupabaseProjectLogs.mockImplementation(
         async (_project, { limit }) => ({
           result: Array.from({ length: limit }, (_, index) => ({
@@ -490,7 +504,13 @@ describe("Supabase handlers", () => {
           projectId: "project",
           organizationSlug: "org",
         }),
-      ).rejects.toThrow("logs are incomplete");
+      ).resolves.toMatchObject({
+        entries: expect.arrayContaining([
+          expect.objectContaining({ providerLogId: "log-0" }),
+        ]),
+        retryFrom: NOW - 10 * MINUTE,
+        warning: expect.stringContaining("unavailable"),
+      });
     });
   });
 

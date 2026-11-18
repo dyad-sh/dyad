@@ -244,7 +244,12 @@ export const supabaseContracts = {
   getEdgeLogs: defineContract({
     channel: "supabase:get-edge-logs",
     input: GetSupabaseEdgeLogsParamsSchema,
-    output: z.array(ConsoleEntrySchema),
+    output: z.object({
+      entries: z.array(ConsoleEntrySchema),
+      /** Earliest incomplete time to retain in the next bounded poll window. */
+      retryFrom: z.number().optional(),
+      warning: z.string().optional(),
+    }),
   }),
 
   // Same scopes as the Neon equivalents: these repoint an app's provider too,

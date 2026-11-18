@@ -97,7 +97,7 @@ beforeEach(() => {
   vi.setSystemTime(NOW);
   vi.clearAllMocks();
   mocks.settings = {};
-  mocks.getEdgeLogs.mockResolvedValue([]);
+  mocks.getEdgeLogs.mockResolvedValue({ entries: [] });
 });
 
 afterEach(() => {
@@ -186,19 +186,19 @@ describe("useSupabase edge log polling", () => {
 
   it("does not append older cached logs when the preview remounts", async () => {
     mocks.settings = { autoFetchSupabaseEdgeFunctionLogs: true };
-    mocks.getEdgeLogs.mockResolvedValueOnce([
-      edgeEntry("old", NOW - 5 * 60_000),
-    ]);
+    mocks.getEdgeLogs.mockResolvedValueOnce({
+      entries: [edgeEntry("old", NOW - 5 * 60_000)],
+    });
     const first = setup();
     await flush();
     expect(mocks.append).toHaveBeenCalledTimes(1);
     first.unmount();
 
     // Hold the new fetch so the remount must first consume the cached result.
-    let finish!: (entries: ConsoleEntry[]) => void;
+    let finish!: (result: { entries: ConsoleEntry[] }) => void;
     mocks.getEdgeLogs.mockImplementationOnce(
       () =>
-        new Promise<ConsoleEntry[]>((resolve) => {
+        new Promise<{ entries: ConsoleEntry[] }>((resolve) => {
           finish = resolve;
         }),
     );
@@ -214,7 +214,7 @@ describe("useSupabase edge log polling", () => {
     await flush();
     expect(mocks.getEdgeLogs).toHaveBeenCalledTimes(2);
     expect(mocks.append).toHaveBeenCalledTimes(1);
-    await act(async () => finish([]));
+    await act(async () => finish({ entries: [] }));
     await flush();
     remount.unmount();
     first.queryClient.clear();
@@ -222,7 +222,7 @@ describe("useSupabase edge log polling", () => {
 
   it("does not advance past a failed poll window", async () => {
     mocks.settings = { autoFetchSupabaseEdgeFunctionLogs: true };
-    mocks.getEdgeLogs.mockResolvedValueOnce([]);
+    mocks.getEdgeLogs.mockResolvedValueOnce({ entries: [] });
     mocks.getEdgeLogs.mockRejectedValueOnce(new Error("Incomplete logs"));
     const { unmount, queryClient } = setup();
     await flush();
@@ -234,15 +234,46 @@ describe("useSupabase edge log polling", () => {
     queryClient.clear();
   });
 
+  it("shows partial logs immediately, retries gaps, and clears the warning on recovery", async () => {
+    mocks.settings = { autoFetchSupabaseEdgeFunctionLogs: true };
+    const available = edgeEntry("available", NOW - 5 * 60_000);
+    const recovered = edgeEntry("recovered", NOW - 7 * 60_000);
+    const retryFrom = NOW - 8 * 60_000;
+    mocks.getEdgeLogs.mockResolvedValueOnce({
+      entries: [available],
+      retryFrom,
+      warning: "Some logs are unavailable",
+    });
+    mocks.getEdgeLogs.mockResolvedValueOnce({
+      entries: [recovered, available],
+    });
+    const { result, unmount, queryClient } = setup();
+    await flush();
+    expect(mocks.append).toHaveBeenLastCalledWith(APP_ID, [available]);
+    expect(result.current.edgeLogsWarning).toBe("Some logs are unavailable");
+
+    await flush(EDGE_LOGS_POLL_INTERVAL_MS);
+    expect(mocks.getEdgeLogs.mock.calls[1][0].timestampStart).toBe(retryFrom);
+    expect(mocks.append).toHaveBeenCalledTimes(2);
+    expect(mocks.append).toHaveBeenLastCalledWith(APP_ID, [recovered]);
+    expect(result.current.edgeLogsWarning).toBeNull();
+    unmount();
+    queryClient.clear();
+  });
+
   it("appends each log to the preview console once and not to the central store", async () => {
     mocks.settings = { autoFetchSupabaseEdgeFunctionLogs: true };
-    mocks.getEdgeLogs.mockResolvedValueOnce([edgeEntry("a", NOW - 1_000)]);
+    mocks.getEdgeLogs.mockResolvedValueOnce({
+      entries: [edgeEntry("a", NOW - 1_000)],
+    });
     // The next poll overlaps the first and includes a late arrival.
-    mocks.getEdgeLogs.mockResolvedValueOnce([
-      edgeEntry("a", NOW - 1_000),
-      edgeEntry("late", NOW - 3_000),
-      edgeEntry("b", NOW + 4_000),
-    ]);
+    mocks.getEdgeLogs.mockResolvedValueOnce({
+      entries: [
+        edgeEntry("a", NOW - 1_000),
+        edgeEntry("late", NOW - 3_000),
+        edgeEntry("b", NOW + 4_000),
+      ],
+    });
     const { unmount, queryClient } = setup();
     await flush();
     expect(mocks.append).toHaveBeenCalledTimes(1);
@@ -263,7 +294,9 @@ describe("useSupabase edge log polling", () => {
     ]);
 
     // A poll that only returns known logs appends nothing.
-    mocks.getEdgeLogs.mockResolvedValueOnce([edgeEntry("b", NOW + 4_000)]);
+    mocks.getEdgeLogs.mockResolvedValueOnce({
+      entries: [edgeEntry("b", NOW + 4_000)],
+    });
     await flush(EDGE_LOGS_POLL_INTERVAL_MS);
     expect(mocks.append).toHaveBeenCalledTimes(2);
 

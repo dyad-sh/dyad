@@ -22,6 +22,7 @@ import {
   type IsolatedPackageManager,
 } from "@/ipc/services/isolated_package_install";
 import { trackE2eTestProcess } from "@/ipc/services/e2e_test_process_registry";
+import { scheduleE2eTestCleanup } from "@/ipc/services/e2e_test_cleanup_queue";
 import { isMissingPathError } from "../../../shared/node_module_resolution";
 import { ENV_FILE_NAME } from "@/ipc/utils/app_env_var_utils";
 import {
@@ -91,6 +92,14 @@ export interface E2eTestWorkspace {
   packageRootPath?: string;
   dependencyInstallPath?: string;
   usesWorkspaceInstallRoot?: boolean;
+  /**
+   * End the run's ownership and queue the sandbox for background deletion.
+   *
+   * Ownership ends immediately: the run is done with the directory, and its
+   * retained artifacts become supersedable by later runs. The returned promise
+   * settles once the deletion has finished, failed (logged) or been deferred to
+   * the startup sweep. It never rejects, so callers may drop it.
+   */
   dispose(): Promise<void>;
 }
 
@@ -171,24 +180,33 @@ export async function createE2eTestWorkspace({
   assertOwnedPath(sandboxRoot, snapshot.worktreePath);
   assertOwnedPath(artifactRoot, artifactPath);
   activeWorkspaceNames.add(runName);
-  let disposed = false;
-  const dispose = async () => {
-    if (disposed) return;
-    disposed = true;
-    assertOwnedPath(sandboxRoot, snapshot.worktreePath);
-    const disposeStartedAt = Date.now();
-    try {
-      await removeGitOverlayWorkspace(
-        snapshot.worktreePath,
-        snapshot.sourceRepoPath,
-      );
-      sendTelemetryEvent("e2e_test_workspace_disposed", {
-        duration_ms: Date.now() - disposeStartedAt,
-        platform: process.platform,
-      });
-    } finally {
-      activeWorkspaceNames.delete(runName);
-    }
+  let disposal: Promise<void> | undefined;
+  const dispose = () => {
+    if (disposal) return disposal;
+    // Released now rather than after the deletion. The sandbox sweep is still
+    // kept off this directory until removal ends (`isGitOverlayWorkspaceActive`),
+    // while this run's retained artifacts must not stay exempt from the next
+    // full run's prune for however long the deletion waits in the queue.
+    activeWorkspaceNames.delete(runName);
+    const queuedAt = Date.now();
+    disposal = scheduleE2eTestCleanup({
+      appId,
+      label: "test workspace",
+      run: async () => {
+        assertOwnedPath(sandboxRoot, snapshot.worktreePath);
+        const disposeStartedAt = Date.now();
+        await removeGitOverlayWorkspace(
+          snapshot.worktreePath,
+          snapshot.sourceRepoPath,
+        );
+        sendTelemetryEvent("e2e_test_workspace_disposed", {
+          duration_ms: Date.now() - disposeStartedAt,
+          queued_ms: disposeStartedAt - queuedAt,
+          platform: process.platform,
+        });
+      },
+    }).then(() => undefined);
+    return disposal;
   };
 
   try {
@@ -233,16 +251,10 @@ export async function createE2eTestWorkspace({
       dispose,
     };
   } catch (error) {
-    // Never let cleanup replace the failure it is cleaning up after. Removing a
-    // partial worktree can itself fail (EBUSY/EPERM on Windows), and that error
-    // would otherwise bury the original, well-classified setup failure.
-    try {
-      await dispose();
-    } catch (disposeError) {
-      logger.warn(
-        `Failed to remove a partial E2E test workspace after a setup failure: ${disposeError}`,
-      );
-    }
+    // Queued, not awaited: the setup failure reaches the user without waiting
+    // on the deletion, and a failed removal (EBUSY/EPERM on Windows) is logged
+    // by the queue instead of burying the original, well-classified error.
+    void dispose();
     throw error;
   }
 }
@@ -577,6 +589,11 @@ export async function retainE2eTestArtifacts(
  * overlap here — the skip is kept as the cheap guard that stops a future
  * concurrent-run change from silently deleting the other run's screenshots
  * before they ever reach the panel.
+ *
+ * The superseded set is chosen here, at retention, and only deleted later on
+ * the background cleanup queue. Re-evaluating it at deletion time would be
+ * wrong: by then a newer run may have finished and released its name, and its
+ * directory — the one the panel is now showing — would match as superseded.
  */
 async function pruneSupersededArtifacts(
   artifactPath: string,
@@ -586,14 +603,38 @@ async function pruneSupersededArtifacts(
   const runName = path.basename(artifactPath);
   const appId = runDirectoryAppId(runName);
   if (appId === null) return;
-  await removeRunDirectories(
-    path.dirname(artifactPath),
-    (name) =>
-      name !== runName &&
-      !activeWorkspaceNames.has(name) &&
-      runDirectoryAppId(name) === appId,
-    "test artifacts",
+  const artifactRoot = path.dirname(artifactPath);
+  let entries;
+  try {
+    entries = await fs.readdir(artifactRoot, { withFileTypes: true });
+  } catch (error) {
+    if (!isMissingPathError(error)) {
+      logger.warn(`Failed to list superseded E2E test artifacts: ${error}`);
+    }
+    return;
+  }
+  const superseded = new Set(
+    entries
+      .filter(
+        (entry) =>
+          entry.isDirectory() &&
+          entry.name !== runName &&
+          !activeWorkspaceNames.has(entry.name) &&
+          runDirectoryAppId(entry.name) === appId,
+      )
+      .map((entry) => entry.name),
   );
+  if (superseded.size === 0) return;
+  void scheduleE2eTestCleanup({
+    appId,
+    label: "superseded test artifacts",
+    run: () =>
+      removeRunDirectories(
+        artifactRoot,
+        (name) => superseded.has(name),
+        "test artifacts",
+      ),
+  });
 }
 
 export function rewriteE2eArtifactPath(

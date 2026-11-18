@@ -31,6 +31,11 @@ import {
 import { trackedE2eTestProcessCount } from "@/ipc/services/e2e_test_process_registry";
 import { forceKillProcessTree } from "@/ipc/utils/process_manager";
 import {
+  E2E_TEST_CLEANUP_CONCURRENCY,
+  scheduleE2eTestCleanup,
+  settleE2eTestCleanups,
+} from "./e2e_test_cleanup_queue";
+import {
   createE2eTestWorkspace as createWorkspaceUnderTest,
   E2E_TEST_ARTIFACT_DIR,
   E2E_TEST_SANDBOX_DIR,
@@ -63,6 +68,9 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+  // Disposal and pruning run on the background queue; let them finish before
+  // their roots are removed underneath them.
+  await settleE2eTestCleanups();
   await Promise.all(
     roots
       .splice(0)
@@ -919,6 +927,8 @@ describe("E2E test workspace", () => {
       "png",
     );
     await retainE2eTestArtifacts(workspace);
+    // The prune is queued in the background, after retention returns.
+    await settleE2eTestCleanups();
 
     const remaining = await fs.readdir(
       path.join(userData, E2E_TEST_ARTIFACT_DIR),
@@ -928,6 +938,69 @@ describe("E2E test workspace", () => {
     expect(remaining).toContain("8-otherapp");
     expect(remaining).toContain(path.basename(workspace.artifactPath));
     await workspace.dispose();
+  });
+
+  it("prunes only what was superseded at retention, even when deletion runs later", async () => {
+    // The prune is chosen at retention and deleted on the background queue. A
+    // newer run that finishes while it waits has released its name, so
+    // re-evaluating at deletion time would delete the artifacts on screen.
+    const root = await tempRoot();
+    const appPath = path.join(root, "app");
+    const userData = path.join(root, "user-data");
+    vi.mocked(getUserDataPath).mockReturnValue(userData);
+    await fs.mkdir(path.join(appPath, "node_modules"), { recursive: true });
+    const previous = path.join(userData, E2E_TEST_ARTIFACT_DIR, "7-oldrun");
+    await fs.mkdir(previous, { recursive: true });
+
+    // Occupy every cleanup slot so the prune has to wait.
+    const releaseSlots: (() => void)[] = [];
+    const slotJobs = Array.from({ length: E2E_TEST_CLEANUP_CONCURRENCY }, () =>
+      scheduleE2eTestCleanup({
+        appId: 99,
+        label: "blocker",
+        run: () =>
+          new Promise<void>((resolve) => {
+            releaseSlots.push(resolve);
+          }),
+      }),
+    );
+    try {
+      const first = await createE2eTestWorkspace({ appId: 7, appPath });
+      await fs.mkdir(path.join(first.workspacePath, "test-results"), {
+        recursive: true,
+      });
+      await retainE2eTestArtifacts(first);
+      void first.dispose();
+
+      // A later run finishes and releases its name before the prune runs.
+      const second = await createE2eTestWorkspace({ appId: 7, appPath });
+      await fs.mkdir(path.join(second.workspacePath, "test-results"), {
+        recursive: true,
+      });
+      await fs.writeFile(
+        path.join(second.workspacePath, "test-results", "shot.png"),
+        "png",
+      );
+      await retainE2eTestArtifacts(second, { replacesEveryResult: false });
+      void second.dispose();
+
+      expect((await fs.stat(previous)).isDirectory()).toBe(true);
+      releaseSlots.splice(0).forEach((release) => release());
+      await Promise.all(slotJobs);
+      await settleE2eTestCleanups();
+
+      await expect(fs.stat(previous)).rejects.toThrow();
+      expect(
+        await fs.readFile(
+          path.join(second.artifactPath, "test-results", "shot.png"),
+          "utf8",
+        ),
+      ).toBe("png");
+      await expect(fs.stat(first.workspacePath)).rejects.toThrow();
+      await expect(fs.stat(second.workspacePath)).rejects.toThrow();
+    } finally {
+      releaseSlots.splice(0).forEach((release) => release());
+    }
   });
 
   it("registers the dependency install so quit can tree-kill it", async () => {

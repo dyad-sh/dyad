@@ -16,6 +16,7 @@ import {
 import { configureTrustedRenderer } from "@/ipc/utils/renderer_security";
 import { activeRecordings } from "@/ipc/services/recording_registry";
 import { appOperationCoordinator } from "@/ipc/services/app_operation_coordinator";
+import { scheduleE2eTestCleanup } from "@/ipc/services/e2e_test_cleanup_queue";
 
 // All app folders live under one throwaway base so the filesystem-probing
 // conflict checks (and actual folder moves) run against real directories.
@@ -640,6 +641,42 @@ describe("app naming handlers", () => {
         name: "New Name",
         path: "new-name",
       });
+    });
+
+    it("waits for the app's queued test sandbox removal before moving the folder", async () => {
+      // Removing a finished run's sandbox ends with Git running in the
+      // repository path captured at run start, so the folder must not move
+      // until it settles.
+      const appId = seedAppWithFolder("Old Name", "old-name");
+      let finishRemoval!: () => void;
+      const removal = scheduleE2eTestCleanup({
+        appId,
+        label: "test workspace",
+        run: () =>
+          new Promise<void>((resolve) => {
+            finishRemoval = resolve;
+          }),
+      });
+
+      const renaming = harness.invokeHandler("rename-app", {
+        appId,
+        appName: "New Name",
+        appPath: "new-name",
+      });
+      try {
+        await vi.waitFor(() => expect(finishRemoval).toBeTypeOf("function"));
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        expect(fs.existsSync(path.join(TEMP_BASE, "old-name"))).toBe(true);
+        expect(fs.existsSync(path.join(TEMP_BASE, "new-name"))).toBe(false);
+      } finally {
+        finishRemoval?.();
+      }
+
+      await renaming;
+      expect(await removal).toBe("completed");
+      expect(fs.existsSync(path.join(TEMP_BASE, "new-name", "index.ts"))).toBe(
+        true,
+      );
     });
 
     it("rejects invalid folder names with Validation", async () => {

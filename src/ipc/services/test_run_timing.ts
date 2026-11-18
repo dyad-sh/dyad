@@ -67,7 +67,6 @@ const RUN_STEP_GROUPS = {
     "artifact_prune",
     "artifact_retention",
     "database_teardown",
-    "workspace_disposal",
     "neon_branch_delete",
     "supabase_user_cleanup",
     "supabase_row_cleanup",

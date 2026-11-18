@@ -22,8 +22,9 @@ These tests are faster, easier to debug, and avoid Electron launch/package
 overhead.
 
 `vi.waitFor` advances fake time even with `vi.useFakeTimers({ toFake: ["Date"] })`.
-For concurrent cache reads that must share one timestamp, spy on `Date.now`
-with a fixed return value and keep real timers, or waits can create extra fetches.
+For cache-sharing tests, hold the provider response until both readers enter and
+keep query bounds fixed. Also cover readers joining after the clock advances:
+sharing must depend on the in-flight request, not identical timestamps.
 
 When moving a workflow from Build mode to Agent mode, update its fake-LLM
 response from `<dyad-write>` XML to a local-Agent fixture that invokes

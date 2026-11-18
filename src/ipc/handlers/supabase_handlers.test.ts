@@ -383,14 +383,21 @@ describe("Supabase handlers", () => {
         }),
       );
 
-      // An overlapping poll in the same instant is answered from the cache.
+      // A new poll refreshes recent coverage even in the same millisecond.
       await harness.invokeHandler("supabase:get-edge-logs", {
         appId: 7,
         projectId: "project",
         organizationSlug: "org",
         timestampStart: NOW - 2 * MINUTE,
       });
-      expect(mocks.getSupabaseProjectLogs).toHaveBeenCalledTimes(1);
+      expect(mocks.getSupabaseProjectLogs).toHaveBeenCalledTimes(2);
+      expect(mocks.getSupabaseProjectLogs).toHaveBeenLastCalledWith(
+        "project",
+        expect.objectContaining({
+          timestampStart: Date.UTC(2026, 10, 18, 11, 58, 0),
+          timestampEnd: Date.UTC(2026, 10, 18, 12, 1, 0),
+        }),
+      );
     });
 
     it("ignores a poll for a project the app is no longer linked to", async () => {

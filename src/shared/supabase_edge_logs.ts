@@ -19,10 +19,9 @@ export const SUPABASE_LOGS_PAGE_SIZE = 1000;
  * reads and polls fetch that span again and merge late arrivals by log id.
  *
  * This bounds the cost of re-fetching, but it cannot guarantee recovery of
- * arbitrarily delayed events. An event that becomes visible more than this
- * long after its timestamp is only picked up once its range is fetched again,
- * either because the cached coverage expired or a read asked for a range the
- * cache no longer covers.
+ * arbitrarily delayed events. Events that arrive after their range has been
+ * fetched as settled may be missed until that coverage is evicted or
+ * explicitly cleared and the range is read again.
  */
 export const SUPABASE_LOG_RECENT_OVERLAP_MS = 2 * 60 * 1000;
 

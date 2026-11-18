@@ -12,16 +12,18 @@
  * one filtered read cannot hide rows from a later one.
  *
  * Invariant: a scope only keeps rows whose timestamps lie inside its coverage.
- * Coverage that expires or is evicted takes its rows with it, and rows trimmed
+ * Coverage that is evicted takes its rows with it, and rows trimmed
  * for memory take their coverage with them, so the cache never claims to know
  * a range it holds no rows for.
  *
  * Freshness: coverage within SUPABASE_LOG_RECENT_OVERLAP_MS of the moment it
  * was fetched is provisional because Supabase ingests logs asynchronously. It
- * is reused for PROVISIONAL_REUSE_MS (so concurrent or back-to-back readers
- * share one request) and fetched again after that. Settled coverage is reused
- * until COVERAGE_TTL_MS after its fetch. See SUPABASE_LOG_RECENT_OVERLAP_MS for
- * why this cannot recover arbitrarily delayed events.
+ * is fetched again on every new read; concurrent readers can still share an
+ * in-flight fetch. Coverage fetched or joined by a read answers that read,
+ * including its provisional portion. Settled coverage has no time-based
+ * expiration and is reused until evicted or explicitly cleared. See
+ * SUPABASE_LOG_RECENT_OVERLAP_MS for why this cannot recover arbitrarily
+ * delayed events.
  *
  * The provider rounds query bounds to minutes, so fetches are widened to
  * minute boundaries (never narrowed) and results are filtered to the exact
@@ -37,10 +39,6 @@ import {
 } from "@/shared/supabase_edge_logs";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
-/** Provisional coverage is reused this long before it is fetched again. */
-export const PROVISIONAL_REUSE_MS = 4_000;
-/** Coverage and its rows expire this long after they were fetched. */
-export const COVERAGE_TTL_MS = 15 * 60 * 1000;
 /** Pages fetched backwards for one range before reporting truncation. */
 export const MAX_PAGES_PER_RANGE = 5;
 /** Provider requests one query may start in parallel. */
@@ -114,6 +112,7 @@ export interface SupabaseLogQueryResult {
 
 interface CoverageInterval extends TimeRange {
   fetchedAt: number;
+  fetchId: number;
 }
 
 interface FetchOutcome {
@@ -123,6 +122,7 @@ interface FetchOutcome {
 }
 
 interface InFlightFetch {
+  id: number;
   range: TimeRange;
   controller: AbortController;
   waiters: number;
@@ -153,6 +153,7 @@ export interface SupabaseLogCacheOptions {
 
 export class SupabaseLogCache {
   private readonly scopes = new Map<string, ScopeState>();
+  private nextFetchId = 0;
   private readonly fetchPage: SupabaseLogPageFetcher;
   private readonly now: () => number;
   private readonly pageSize: number;
@@ -200,22 +201,24 @@ export class SupabaseLogCache {
       );
     }
     signal?.throwIfAborted();
-    // One clock reading decides what counts as fresh for the whole call, so
-    // coverage this call fetched itself is never judged stale by the time
-    // the call finishes.
-    const now = this.now();
     const state = this.touchScope(scope);
-    this.expire(state, now);
 
     const requested: TimeRange[] = [{ start, end }];
     const attempted: TimeRange[] = [];
+    // Accept coverage fetched during this read, including newer overlapping
+    // fetches from other readers. Older in-flight fetches can also be joined.
+    const firstFetchId = this.nextFetchId;
+    const joinedFetchIds = new Set<number>();
     let truncated = false;
     let error: unknown = null;
     let providerRequests = 0;
 
     // Round two only fetches ranges that a joined fetch failed to cover.
     for (let round = 0; round < 2; round++) {
-      const gaps = subtractRanges(requested, this.usableCoverage(state, now));
+      const gaps = subtractRanges(
+        requested,
+        this.usableCoverage(state, firstFetchId, joinedFetchIds),
+      );
       if (gaps.length === 0) break;
 
       // A fetch every earlier reader abandoned is already being aborted.
@@ -237,6 +240,7 @@ export class SupabaseLogCache {
       attempted.push(...started.map((fetch) => fetch.range));
       if (joined.length === 0 && started.length === 0) break;
 
+      for (const fetch of joined) joinedFetchIds.add(fetch.id);
       const outcomes = await Promise.all(
         [...joined, ...started].map((fetch) => this.join(fetch, signal)),
       );
@@ -249,7 +253,7 @@ export class SupabaseLogCache {
 
     const missingRanges = subtractRanges(
       requested,
-      this.usableCoverage(state, now),
+      this.usableCoverage(state, firstFetchId, joinedFetchIds),
     );
     const logs = [...state.logs.values()]
       .filter((entry) => entry.timestamp >= start && entry.timestamp < end)
@@ -313,10 +317,17 @@ export class SupabaseLogCache {
     return state;
   }
 
-  private usableCoverage(state: ScopeState, now: number): TimeRange[] {
+  private usableCoverage(
+    state: ScopeState,
+    firstFetchId: number,
+    joinedFetchIds: ReadonlySet<number>,
+  ): TimeRange[] {
     const usable: TimeRange[] = [];
     for (const interval of state.coverage) {
-      if (now - interval.fetchedAt <= PROVISIONAL_REUSE_MS) {
+      if (
+        interval.fetchId >= firstFetchId ||
+        joinedFetchIds.has(interval.fetchId)
+      ) {
         usable.push({ start: interval.start, end: interval.end });
         continue;
       }
@@ -331,18 +342,9 @@ export class SupabaseLogCache {
     return mergeRanges(usable);
   }
 
-  private expire(state: ScopeState, now: number): void {
-    const before = state.coverage.length;
-    state.coverage = state.coverage.filter(
-      (interval) => now - interval.fetchedAt <= COVERAGE_TTL_MS,
-    );
-    if (state.coverage.length !== before) {
-      this.dropLogsOutsideCoverage(state);
-    }
-  }
-
   private startFetch(state: ScopeState, range: TimeRange): InFlightFetch {
     const fetch: InFlightFetch = {
+      id: this.nextFetchId++,
       range,
       controller: new AbortController(),
       waiters: 0,
@@ -350,13 +352,16 @@ export class SupabaseLogCache {
       promise: Promise.resolve({ truncated: false, error: null, pages: 0 }),
     };
     state.inFlight.add(fetch);
-    fetch.promise = this.runFetch(state, range, fetch.controller.signal).then(
-      (outcome) => {
-        fetch.settled = true;
-        state.inFlight.delete(fetch);
-        return outcome;
-      },
-    );
+    fetch.promise = this.runFetch(
+      state,
+      range,
+      fetch.controller.signal,
+      fetch.id,
+    ).then((outcome) => {
+      fetch.settled = true;
+      state.inFlight.delete(fetch);
+      return outcome;
+    });
     return fetch;
   }
 
@@ -386,6 +391,7 @@ export class SupabaseLogCache {
     state: ScopeState,
     range: TimeRange,
     cancelSignal: AbortSignal,
+    fetchId: number,
   ): Promise<FetchOutcome> {
     const issuedAt = this.now();
     const deadline = new AbortController();
@@ -425,6 +431,7 @@ export class SupabaseLogCache {
             start: alignedStart,
             end: coveredEnd,
             fetchedAt: issuedAt,
+            fetchId,
           });
           return { truncated: false, error: null, pages };
         }
@@ -435,6 +442,7 @@ export class SupabaseLogCache {
           start: oldest + 1,
           end: coveredEnd,
           fetchedAt: issuedAt,
+          fetchId,
         });
         if (oldest < range.start) {
           return { truncated: false, error: null, pages };
@@ -488,32 +496,32 @@ export class SupabaseLogCache {
     if (added.end <= added.start) return;
     let pieces: TimeRange[] = [{ start: added.start, end: added.end }];
     for (const interval of state.coverage) {
-      if (interval.fetchedAt >= added.fetchedAt) {
+      if (interval.fetchId >= added.fetchId) {
         pieces = subtractRanges(pieces, [interval]);
       }
     }
     const next: CoverageInterval[] = [];
     for (const interval of state.coverage) {
-      if (interval.fetchedAt >= added.fetchedAt) {
+      if (interval.fetchId >= added.fetchId) {
         next.push(interval);
         continue;
       }
       for (const remaining of subtractRanges([interval], pieces)) {
-        next.push({ ...remaining, fetchedAt: interval.fetchedAt });
+        next.push({ ...interval, ...remaining });
       }
     }
     for (const piece of pieces) {
-      next.push({ ...piece, fetchedAt: added.fetchedAt });
+      next.push({ ...added, ...piece });
     }
     next.sort((a, b) => a.start - b.start);
-    // Merge touching intervals fetched at the same moment.
+    // Keep different fetches distinct even when issued in the same millisecond.
     const merged: CoverageInterval[] = [];
     for (const interval of next) {
       const last = merged.at(-1);
       if (
         last &&
         last.end === interval.start &&
-        last.fetchedAt === interval.fetchedAt
+        last.fetchId === interval.fetchId
       ) {
         last.end = interval.end;
       } else {
@@ -782,6 +790,7 @@ function compactCoverage(coverage: CoverageInterval[]): CoverageInterval[] {
       start: result[index].start,
       end: result[index + 1].end,
       fetchedAt: Math.min(result[index].fetchedAt, result[index + 1].fetchedAt),
+      fetchId: Math.min(result[index].fetchId, result[index + 1].fetchId),
     };
     result = [...result.slice(0, index), merged, ...result.slice(index + 2)];
   }

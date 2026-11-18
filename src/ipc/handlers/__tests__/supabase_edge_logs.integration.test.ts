@@ -75,31 +75,32 @@ describe("Supabase edge logs shared by polling and read_logs (integration)", () 
     log.transports.file.level = originalFileLogLevel;
   });
 
-  it("shares an in-flight fetch and reuses unfiltered rows for later reads", async () => {
+  it("shares an in-flight fetch and refreshes recent rows on the next read", async () => {
     // Keep the database, handler, tool, service, cache and provider response
     // parsing real. Only the HTTP response is held at the network boundary.
     let releaseResponse!: () => void;
     const responseGate = new Promise<void>((resolve) => {
       releaseResponse = resolve;
     });
+    const rows = [
+      {
+        id: "info-log",
+        timestamp: new Date(NOW - MINUTE).toISOString(),
+        event_message: "[hello] request completed",
+        severity_text: "info",
+      },
+      {
+        id: "error-log",
+        timestamp: new Date(NOW - 2 * MINUTE).toISOString(),
+        event_message: "[hello] request failed",
+        severity_text: "error",
+      },
+    ];
     const fetchLogs = vi.fn<typeof fetch>(async () => {
       await responseGate;
       return new Response(
         JSON.stringify({
-          result: [
-            {
-              id: "info-log",
-              timestamp: new Date(NOW - MINUTE).toISOString(),
-              event_message: "[hello] request completed",
-              severity_text: "info",
-            },
-            {
-              id: "error-log",
-              timestamp: new Date(NOW - 2 * MINUTE).toISOString(),
-              event_message: "[hello] request failed",
-              severity_text: "error",
-            },
-          ],
+          result: rows,
         }),
         { status: 200 },
       );
@@ -175,19 +176,26 @@ describe("Supabase edge logs shared by polling and read_logs (integration)", () 
         "/v1/projects/proj-1/analytics/endpoints/logs",
       );
 
-      // The filtered agent read must not remove rows needed by other readers.
-      // No logs were copied into the local store: this hits the shared cache.
+      // A new read refreshes the recent range without a grace period and
+      // picks up delayed events, even with the clock held at the same instant.
       expect(getLogs(APP_ID)).toEqual([]);
+      rows.push({
+        id: "late-log",
+        timestamp: new Date(NOW - 30_000).toISOString(),
+        event_message: "[hello] delayed event",
+        severity_text: "info",
+      });
       const unfiltered = await readLogsTool.execute(
         { type: "edge-function" },
         ctx,
       );
       expect(unfiltered).toMatch(/request failed[\s\S]*request completed/);
+      expect(unfiltered).toContain("delayed event");
       expect(unfiltered).not.toContain("Partial results");
       expect(onXmlComplete).toHaveBeenLastCalledWith(
-        expect.stringContaining('count="2"'),
+        expect.stringContaining('count="3"'),
       );
-      expect(fetchLogs).toHaveBeenCalledTimes(1);
+      expect(fetchLogs).toHaveBeenCalledTimes(2);
     } finally {
       releaseResponse();
       await Promise.allSettled(pending);

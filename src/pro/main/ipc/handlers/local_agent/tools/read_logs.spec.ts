@@ -285,17 +285,22 @@ describe("read_logs", () => {
 
   it("filters after fetching so a filtered read does not hide logs from the next", async () => {
     h.providerRows = [
-      supabaseRow("e1", NOW - 2 * MINUTE, "needle", "error"),
-      supabaseRow("e2", NOW - 2 * MINUTE, "haystack", "info"),
+      supabaseRow("e1", NOW - 4 * MINUTE, "needle", "error"),
+      supabaseRow("e2", NOW - 4 * MINUTE, "haystack", "info"),
     ];
-    const filtered = await run({ searchTerm: "needle", level: "error" });
+    const endTime = new Date(NOW - 3 * MINUTE).toISOString();
+    const filtered = await run({
+      searchTerm: "needle",
+      level: "error",
+      endTime,
+    });
     expect(filtered.result).toContain("needle");
     expect(filtered.result).not.toContain("haystack");
 
-    const all = await run({});
+    const all = await run({ endTime });
     expect(all.result).toContain("needle");
     expect(all.result).toContain("haystack");
-    // The second read was answered from the shared cache.
+    // Settled, unfiltered history remains reusable across reads.
     expect(h.providerCalls).toHaveLength(1);
   });
 

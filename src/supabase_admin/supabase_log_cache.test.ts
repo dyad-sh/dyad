@@ -1,7 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  COVERAGE_TTL_MS,
-  PROVISIONAL_REUSE_MS,
   SupabaseLogCache,
   planFetchRanges,
   subtractRanges,
@@ -86,7 +84,7 @@ describe("SupabaseLogCache", () => {
     expect(first.missingRanges).toEqual([]);
     expect(provider.fetchPage).toHaveBeenCalledTimes(1);
 
-    // Settled range: reused well after the provisional window.
+    // Settled history remains reusable on later reads.
     time.state.now += 60_000;
     const second = await cache.query({
       scope,
@@ -101,7 +99,7 @@ describe("SupabaseLogCache", () => {
     expect(provider.fetchPage).toHaveBeenCalledTimes(1);
   });
 
-  it("caches successful empty ranges", async () => {
+  it("keeps successful empty ranges cached across days", async () => {
     const provider = fakeProvider();
     const time = clock(T0 + 30 * MINUTE);
     const cache = new SupabaseLogCache({
@@ -115,6 +113,7 @@ describe("SupabaseLogCache", () => {
       error: null,
       truncated: false,
     });
+    time.state.now += 24 * 60 * MINUTE;
     await cache.query({ scope, start: T0, end: T0 + MINUTE });
     expect(provider.fetchPage).toHaveBeenCalledTimes(1);
   });
@@ -182,25 +181,28 @@ describe("SupabaseLogCache", () => {
     ]);
   });
 
-  it("shares one in-flight request between overlapping concurrent readers", async () => {
+  it("shares a recent in-flight fetch even when readers start at different times", async () => {
     let release!: () => void;
     const gate = new Promise<void>((resolve) => (release = resolve));
-    const provider = fakeProvider([row("proj-1:a", T0 + MINUTE)]);
+    const provider = fakeProvider([row("proj-1:a", T0 + 9 * MINUTE)]);
+    const time = clock(T0 + 10 * MINUTE);
     const fetchPage = vi.fn<SupabaseLogPageFetcher>(async (request) => {
       await gate;
       return provider.fetchPage(request);
     });
     const cache = new SupabaseLogCache({
       fetchPage,
-      now: () => T0 + 30 * MINUTE,
+      now: time.now,
     });
 
     const first = cache.query({ scope, start: T0, end: T0 + 10 * MINUTE });
+    time.state.now += 5_000;
     const second = cache.query({
       scope,
-      start: T0 + MINUTE,
-      end: T0 + 5 * MINUTE,
+      start: T0 + 8 * MINUTE,
+      end: T0 + 10 * MINUTE,
     });
+    time.state.now += 5_000;
     release();
     const [a, b] = await Promise.all([first, second]);
 
@@ -208,6 +210,36 @@ describe("SupabaseLogCache", () => {
     expect(a.logs.map((entry) => entry.id)).toEqual(["proj-1:a"]);
     expect(b.logs.map((entry) => entry.id)).toEqual(["proj-1:a"]);
     expect(b.providerRequests).toBe(0);
+    expect(a.missingRanges).toEqual([]);
+    expect(b.missingRanges).toEqual([]);
+  });
+
+  it("accepts newer concurrent coverage where minute-rounded fetches overlap", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const now = T0 + 10 * MINUTE;
+    const provider = fakeProvider([row("proj-1:recent", now - 45_000)]);
+    const fetchPage = vi.fn<SupabaseLogPageFetcher>(async (request) => {
+      if (request.start === T0) await gate;
+      return provider.fetchPage(request);
+    });
+    const cache = new SupabaseLogCache({ fetchPage, now: () => now });
+
+    const first = cache.query({ scope, start: T0, end: now - 30_000 });
+    // The logical windows are disjoint, but both fetches include the last
+    // minute. Let the newer fetch finish before the older one.
+    const second = await cache.query({
+      scope,
+      start: now - 20_000,
+      end: now,
+    });
+    release();
+    const result = await first;
+
+    expect(result.logs.map((entry) => entry.id)).toEqual(["proj-1:recent"]);
+    expect(result.missingRanges).toEqual([]);
+    expect(second.missingRanges).toEqual([]);
+    expect(fetchPage).toHaveBeenCalledTimes(2);
   });
 
   it("keeps a shared fetch alive until every reader cancels", async () => {
@@ -261,40 +293,79 @@ describe("SupabaseLogCache", () => {
     expect(sawAbort).toBe(true);
   });
 
-  it("refetches the provisional tail to pick up delayed arrivals", async () => {
+  it.each([0, 1_000, 5_000])(
+    "refetches the provisional tail on a new read after %i ms",
+    async (elapsed) => {
+      const now = T0 + 10 * MINUTE;
+      const time = clock(now);
+      const provider = fakeProvider([row("proj-1:early", T0 + MINUTE)]);
+      const cache = new SupabaseLogCache({
+        fetchPage: provider.fetchPage,
+        now: time.now,
+      });
+      await cache.query({ scope, start: T0, end: now });
+
+      // An event stamped 30s before the first read becomes visible later.
+      provider.rows.push(row("proj-1:late", now - 30_000));
+
+      time.state.now += elapsed;
+      provider.calls.length = 0;
+      const later = await cache.query({ scope, start: T0, end: now });
+      expect(later.providerRequests).toBe(1);
+      expect(later.missingRanges).toEqual([]);
+      expect(later.logs.map((entry) => entry.id)).toEqual([
+        "proj-1:early",
+        "proj-1:late",
+      ]);
+      // Only the provisional overlap is fetched again; settled history is not.
+      expect(provider.calls).toEqual([
+        {
+          start: now - SUPABASE_LOG_RECENT_OVERLAP_MS,
+          end: now,
+          projectRef: "proj-1",
+        },
+      ]);
+    },
+  );
+
+  it("refreshes provisional coverage before reusing it as settled history", async () => {
     const now = T0 + 10 * MINUTE;
     const time = clock(now);
-    const provider = fakeProvider([row("proj-1:early", T0 + MINUTE)]);
+    const provider = fakeProvider();
     const cache = new SupabaseLogCache({
       fetchPage: provider.fetchPage,
       now: time.now,
     });
     await cache.query({ scope, start: T0, end: now });
 
-    // An event stamped 30s before the first read becomes visible later.
+    time.state.now += 3 * MINUTE;
     provider.rows.push(row("proj-1:late", now - 30_000));
+    const refreshed = await cache.query({ scope, start: T0, end: now });
+    expect(refreshed.providerRequests).toBe(1);
+    expect(refreshed.missingRanges).toEqual([]);
+    expect(refreshed.logs.map((entry) => entry.id)).toEqual(["proj-1:late"]);
 
-    // Within the reuse window the provisional tail is still served as-is.
-    time.state.now = now + PROVISIONAL_REUSE_MS - 1;
-    const reused = await cache.query({ scope, start: T0, end: now });
-    expect(reused.providerRequests).toBe(0);
-    expect(reused.logs.map((entry) => entry.id)).toEqual(["proj-1:early"]);
+    const settled = await cache.query({ scope, start: T0, end: now });
+    expect(settled.providerRequests).toBe(0);
+    expect(settled.logs).toEqual(refreshed.logs);
+  });
 
-    time.state.now = now + 5_000;
-    provider.calls.length = 0;
-    const later = await cache.query({ scope, start: T0, end: time.state.now });
-    expect(later.logs.map((entry) => entry.id)).toEqual([
-      "proj-1:early",
-      "proj-1:late",
-    ]);
-    // Only the provisional overlap and the new time are fetched again,
-    // widened to whole minutes; settled history is not.
-    expect(provider.calls).toEqual([
-      {
-        start: now - SUPABASE_LOG_RECENT_OVERLAP_MS,
-        end: now + MINUTE,
-        projectRef: "proj-1",
-      },
+  it("reports a failed recent refresh while retaining previously fetched logs", async () => {
+    const now = T0 + 10 * MINUTE;
+    const provider = fakeProvider([row("proj-1:recent", now - 30_000)]);
+    const cache = new SupabaseLogCache({
+      fetchPage: provider.fetchPage,
+      now: () => now,
+    });
+    const first = await cache.query({ scope, start: T0, end: now });
+    const error = new Error("Supabase is down");
+    provider.fetchPage.mockRejectedValueOnce(error);
+
+    const failed = await cache.query({ scope, start: T0, end: now });
+    expect(failed.logs).toEqual(first.logs);
+    expect(failed.error).toBe(error);
+    expect(failed.missingRanges).toEqual([
+      { start: now - SUPABASE_LOG_RECENT_OVERLAP_MS, end: now },
     ]);
   });
 
@@ -426,24 +497,35 @@ describe("SupabaseLogCache", () => {
     expect(String(result.error)).toContain("did not return logs");
   });
 
-  it("expires coverage together with its rows", async () => {
+  it("retains settled coverage and its rows across days until cleared", async () => {
     const provider = fakeProvider([row("proj-1:a", T0 + MINUTE)]);
     const time = clock(T0 + 10 * MINUTE);
     const cache = new SupabaseLogCache({
       fetchPage: provider.fetchPage,
       now: time.now,
     });
-    await cache.query({ scope, start: T0, end: T0 + 5 * MINUTE });
+    const first = await cache.query({ scope, start: T0, end: T0 + 5 * MINUTE });
     expect(cache.stats().logs).toBe(1);
 
-    time.state.now += COVERAGE_TTL_MS + 1;
+    time.state.now += 24 * 60 * MINUTE;
     provider.rows.length = 0;
-    // A different window triggers expiry without refetching the old one.
+    // Fetching a new window must not discard previously cached history.
     await cache.query({
       scope,
       start: time.state.now - MINUTE,
       end: time.state.now,
     });
+    expect(cache.stats().logs).toBe(1);
+    const cached = await cache.query({
+      scope,
+      start: T0,
+      end: T0 + 5 * MINUTE,
+    });
+    expect(cached.providerRequests).toBe(0);
+    expect(cached.missingRanges).toEqual([]);
+    expect(cached.logs).toEqual(first.logs);
+
+    cache.clear();
     expect(cache.stats().logs).toBe(0);
     const refetched = await cache.query({
       scope,

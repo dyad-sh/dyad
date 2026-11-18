@@ -11,7 +11,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { App } from "@/ipc/types";
-import type { ConnectionFlowState } from "@/connection_flow/state";
+import type {
+  ConnectionFlowInvocationRef,
+  ConnectionFlowState,
+} from "@/connection_flow/state";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import type { GithubOpsProjection } from "@/github_ops/projection";
 import { projectGithubOps } from "@/github_ops/projection";
@@ -111,6 +114,11 @@ vi.mock("@/hooks/useNeon", () => ({
       { branchId: "prod", branchName: "main", type: "production" },
       { branchId: "dev", branchName: "development", type: "development" },
     ],
+    // MigrationPanel defers its automatic preview until access is resolved.
+    isAccessResolved: true,
+    requiresReconnection: false,
+    projectAccessDenied: false,
+    projectNotFound: false,
   }),
 }));
 vi.mock("@/github_ops/useGithubOps", () => ({
@@ -150,11 +158,10 @@ const plan = {
   warningReasons: [],
   destructiveStatements: [],
 };
-const neonInvocation = {
-  kind: "connection-flow",
-  entityKey: "neon",
-  operationId: "neon-sign-in",
-} as const;
+// NeonSignInButton remembers handled outcomes by operation id and revision at
+// module scope, so each test needs its own operation id.
+let operationCount = 0;
+let neonInvocation: ConnectionFlowInvocationRef;
 let client: QueryClient;
 let onClose: ReturnType<typeof vi.fn>;
 function mount() {
@@ -222,6 +229,11 @@ async function refetchDeployments() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  neonInvocation = {
+    kind: "connection-flow",
+    entityKey: "neon",
+    operationId: `neon-sign-in-${++operationCount}`,
+  };
   client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -378,7 +390,7 @@ describe.each([false, true])("Neon sign-in (hosted: %s)", (hosted) => {
     await waitFor(() => {
       expect(h.startConnection).toHaveBeenCalledWith("neon");
       expect(h.openExternalUrl).toHaveBeenCalledWith(
-        "https://oauth.dyad.sh/api/integrations/neon/login?state=neon-sign-in",
+        `https://oauth.dyad.sh/api/integrations/neon/login?state=${neonInvocation.operationId}`,
       );
     });
     setFlow(view, {
@@ -388,7 +400,7 @@ describe.each([false, true])("Neon sign-in (hosted: %s)", (hosted) => {
       invocationRef: neonInvocation,
     });
     expect(button(connectLabel).disabled).toBe(true);
-    expect(screen.getByText("integrations.neon.completingSignIn")).toBeTruthy();
+    expect(screen.getByText("integrations.neon.waitingForSignIn")).toBeTruthy();
     expect(button("integrations.neon.cancelSignIn")).toBeTruthy();
     expect(screen.getByText(missingToken)).toBeTruthy();
     expect(h.getProject).toHaveBeenCalledOnce();

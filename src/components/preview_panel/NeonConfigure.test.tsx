@@ -228,6 +228,12 @@ it.each(["initial load", "background refresh"])(
     expect(h.showError).not.toHaveBeenCalled();
     expect(screen.queryByText(/Error loading Neon project:/)).toBeNull();
 
+    let resolveProject!: (project: unknown) => void;
+    h.getProject.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveProject = resolve;
+      }),
+    );
     await act(async () => {
       client.setQueryData(queryKeys.settings.user, {
         neon: { accessToken: { value: "fresh-token" } },
@@ -236,6 +242,18 @@ it.each(["initial load", "background refresh"])(
     await waitFor(() =>
       expect(screen.queryByTestId("neon-reconnection-notice")).toBeNull(),
     );
+    expect(
+      screen.getByText("Loading Neon project information..."),
+    ).toBeDefined();
+    expect(screen.queryByText(/Error loading Neon project:/)).toBeNull();
+    await act(async () =>
+      resolveProject({
+        projectId: "project",
+        projectName: "Demo database",
+        branches: [],
+      }),
+    );
+    await screen.findByText("Demo database");
     expect(screen.getByText("Demo database")).toBeDefined();
     expect(h.getProject).toHaveBeenCalledTimes(requestCount + 1);
   },

@@ -44,6 +44,7 @@ import { neonPreviewDomainService } from "@/ipc/services/neon_preview_domain_ser
 import * as appEnvVars from "@/ipc/utils/app_env_var_utils";
 import { ipc } from "@/ipc/types";
 import * as neonManagement from "@/neon_admin/neon_management_client";
+import * as rateLimitRetry from "@/ipc/utils/retryWithRateLimit";
 import * as dependencies from "@/ipc/processors/executeAddDependency";
 import { shouldFilterTelemetryException } from "@/ipc/utils/telemetry";
 import { handleNeonOAuthReturn } from "@/neon_admin/neon_return_handler";
@@ -218,15 +219,22 @@ describe("Neon branch actions (integration)", () => {
         "new-access",
         readSettings(),
       );
-      client.instance.defaults.adapter = async () => {
+      client.instance.defaults.adapter = async (config) => {
         throw Object.assign(
           new Error(`Request failed with status code ${status}`),
-          { response: { status, data: {}, headers: {} } },
+          { config, response: { status, data: {}, headers: {} } },
         );
       };
       const mockClient = vi
         .spyOn(neonManagement, "getNeonClient")
         .mockResolvedValue(client);
+      const refresh = vi
+        .spyOn(rateLimitRetry, "fetchWithRetry")
+        .mockResolvedValue(
+          new Response(JSON.stringify({ error: "invalid_grant" }), {
+            status: 400,
+          }),
+        );
       try {
         await expect(
           ipc.neon.getProject({ appId: app.appId }),
@@ -238,8 +246,10 @@ describe("Neon branch actions (integration)", () => {
         // Only a rejected token (401) asks the user to sign in again.
         expect(readSettings().neon?.reconnectRequired).toBe(reconnectRequired);
         expect(readSettings().neon?.accessToken?.value).toBe("new-access");
+        expect(refresh).toHaveBeenCalledTimes(status === 401 ? 1 : 0);
       } finally {
         mockClient.mockRestore();
+        refresh.mockRestore();
       }
     },
   );

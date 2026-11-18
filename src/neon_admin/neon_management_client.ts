@@ -21,7 +21,7 @@ const refreshResponseSchema = z.object({
 
 type NeonSettings = ReturnType<typeof readSettings>["neon"];
 type NeonRequestConfig = Parameters<Api<unknown>["instance"]["request"]>[0] & {
-  /** Set on the single retry after refreshing an access token that expired. */
+  /** Bounds credential recovery to one retry per request. */
   dyadNeonTokenRefreshed?: boolean;
 };
 
@@ -47,7 +47,7 @@ function isTokenExpired(neon: NeonSettings): boolean {
  */
 let refreshNeonTokenPromise: Promise<void> | null = null;
 
-async function refreshNeonTokenOnce(): Promise<void> {
+async function refreshNeonTokenOnce(force = false): Promise<void> {
   const settings = readSettings();
   const refreshToken = settings.neon?.refreshToken?.value;
 
@@ -55,7 +55,7 @@ async function refreshNeonTokenOnce(): Promise<void> {
     throw new DyadError(NEON_RECONNECT_REQUIRED_MESSAGE, DyadErrorKind.Auth);
   }
 
-  if (!isTokenExpired(settings.neon)) {
+  if (!force && !isTokenExpired(settings.neon)) {
     return;
   }
 
@@ -175,9 +175,9 @@ function requireNeonReconnection(
   sendTelemetryEvent("neon:reconnect-required", { reason });
 }
 
-export function refreshNeonToken(): Promise<void> {
+export function refreshNeonToken(force = false): Promise<void> {
   if (!refreshNeonTokenPromise) {
-    refreshNeonTokenPromise = refreshNeonTokenOnce().finally(() => {
+    refreshNeonTokenPromise = refreshNeonTokenOnce(force).finally(() => {
       refreshNeonTokenPromise = null;
     });
   }
@@ -499,29 +499,39 @@ export function createNeonApiClient(
       const status = (error as { response?: { status?: number } })?.response
         ?.status;
       if (status !== 401) throw error;
-      if (!isTokenExpired(credentials.neon)) {
-        // Neon rejected a token that has not expired (for example, because
-        // the user revoked Dyad's access).
-        requireNeonReconnectionForRejectedCredentials(credentials);
+      const config = (error as { config?: NeonRequestConfig }).config;
+      if (!config || config.dyadNeonTokenRefreshed) {
+        if (
+          config?.dyadNeonTokenRefreshed &&
+          hasSameNeonCredentials(credentials) &&
+          !isTokenExpired(credentials.neon)
+        ) {
+          requireNeonReconnectionForRejectedCredentials(credentials);
+          throw new DyadError(
+            NEON_RECONNECT_REQUIRED_MESSAGE,
+            DyadErrorKind.Auth,
+          );
+        }
+        throw new DyadError(
+          "Neon authentication changed or expired during the request. Please try again.",
+          DyadErrorKind.External,
+        );
+      }
+      // A 401 can precede local expiry (clock skew or early invalidation).
+      // Try the refresh grant once, but recheck under the lock so concurrent
+      // requests share the new credentials and a newer sign-in always wins.
+      await withLock("refresh-neon-token", async () => {
+        if (hasSameNeonCredentials(credentials)) {
+          await refreshNeonToken(true);
+        }
+      });
+      const refreshed = readSettings();
+      if (refreshed.neon?.reconnectRequired) {
         throw new DyadError(
           NEON_RECONNECT_REQUIRED_MESSAGE,
           DyadErrorKind.Auth,
         );
       }
-      // getNeonClient() checks expiry only when it builds a client, so a
-      // client held across long work (such as a dev-branch migration) can
-      // outlive its token. The refresh token may still be valid: refresh and
-      // retry once instead of discarding the session.
-      const config = (error as { config?: NeonRequestConfig }).config;
-      if (!config || config.dyadNeonTokenRefreshed) {
-        throw new DyadError(
-          "The Neon access token expired during the request. Please try again.",
-          DyadErrorKind.External,
-        );
-      }
-      // Throws the reconnect error itself when the refresh grant is rejected.
-      await withLock("refresh-neon-token", refreshNeonToken);
-      const refreshed = readSettings();
       const refreshedToken = refreshed.neon?.accessToken?.value;
       if (!refreshedToken) {
         throw new DyadError(

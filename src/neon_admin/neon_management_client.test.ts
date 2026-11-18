@@ -339,6 +339,7 @@ describe("refreshNeonToken", () => {
 });
 
 describe("Neon API rejection of an unexpired access token", () => {
+  afterEach(() => vi.unstubAllGlobals());
   const reconnectError = {
     kind: DyadErrorKind.Auth,
     message: NEON_RECONNECT_REQUIRED_MESSAGE,
@@ -357,6 +358,18 @@ describe("Neon API rejection of an unexpired access token", () => {
         tokenTimestamp: Math.floor(Date.now() / 1000),
       },
     } as ReturnType<typeof readSettings>;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              accessToken: "fresh-access",
+              expiresIn: 3600,
+            }),
+          ),
+      ),
+    );
   });
 
   it("requires reconnection once for concurrent rejected requests", async () => {
@@ -373,7 +386,8 @@ describe("Neon API rejection of an unexpired access token", () => {
       );
     }
     expect(settings.neon?.reconnectRequired).toBe(true);
-    expect(settings.neon?.accessToken?.value).toBe("revoked-access");
+    expect(settings.neon?.accessToken?.value).toBe("fresh-access");
+    expect(fetch).toHaveBeenCalledOnce();
     expect(publishQueryInvalidations).toHaveBeenCalledOnce();
     expect(sendTelemetryEvent).toHaveBeenCalledExactlyOnceWith(
       "neon:reconnect-required",
@@ -390,18 +404,91 @@ describe("Neon API rejection of an unexpired access token", () => {
 
   it("ignores a rejection of credentials replaced by a newer sign-in", async () => {
     const client = await getNeonClient();
-    neonApi.onRequest = () =>
+    neonApi.statusByToken = { "new-access": 200 };
+    neonApi.onRequest = () => {
+      neonApi.onRequest = undefined;
       handleNeonOAuthReturn({
         token: "new-access",
         refreshToken: "new-refresh",
         expiresIn: 3600,
       });
+    };
 
-    await expect(client.getProject("project-1")).rejects.toMatchObject(
-      reconnectError,
-    );
+    await expect(client.getProject("project-1")).resolves.toMatchObject({
+      data: { token: "new-access" },
+    });
+    expect(neonApi.requestTokens).toEqual(["revoked-access", "new-access"]);
+    expect(fetch).not.toHaveBeenCalled();
     expect(settings.neon?.reconnectRequired).toBeUndefined();
     expect(settings.neon?.accessToken?.value).toBe("new-access");
+    expect(sendTelemetryEvent).not.toHaveBeenCalled();
+  });
+
+  it("refreshes once for concurrent 401s even before local expiry", async () => {
+    neonApi.statusByToken = { "fresh-access": 200 };
+    const client = await getNeonClient();
+    const results = await Promise.all([
+      client.getProject("project-1"),
+      client.listProjects({}),
+    ]);
+    expect(results.map((result) => result.data)).toEqual([
+      { token: "fresh-access" },
+      { token: "fresh-access" },
+    ]);
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(settings.neon?.reconnectRequired).toBe(false);
+    expect(sendTelemetryEvent).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [400, { error: "invalid_grant" }, DyadErrorKind.Auth, true],
+    [503, {}, DyadErrorKind.External, undefined],
+  ] as const)(
+    "handles forced-refresh HTTP %s without prematurely latching reconnection",
+    async (status, body, kind, reconnectRequired) => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => new Response(JSON.stringify(body), { status })),
+      );
+      const client = await getNeonClient();
+      await expect(client.getProject("project-1")).rejects.toMatchObject({
+        kind,
+      });
+      expect(fetch).toHaveBeenCalledOnce();
+      expect(neonApi.requestTokens).toEqual(["revoked-access"]);
+      expect(settings.neon?.reconnectRequired).toBe(reconnectRequired);
+    },
+  );
+
+  it("does not restore or flag credentials after disconnect during a request", async () => {
+    const client = await getNeonClient();
+    neonApi.onRequest = () => writeSettings({ neon: undefined });
+    await expect(client.getProject("project-1")).rejects.toMatchObject({
+      kind: DyadErrorKind.Auth,
+      message: "Neon access token not found. Please authenticate first.",
+    });
+    expect(settings.neon).toBeUndefined();
+    expect(fetch).not.toHaveBeenCalled();
+    expect(sendTelemetryEvent).not.toHaveBeenCalled();
+  });
+
+  it("does not flag a new sign-in if even the retry is superseded", async () => {
+    const client = await getNeonClient();
+    neonApi.onRequest = () => {
+      if (neonApi.requestTokens.length === 1) {
+        handleNeonOAuthReturn({
+          token: "new-access",
+          refreshToken: "new-refresh",
+          expiresIn: 3600,
+        });
+      }
+    };
+    await expect(client.getProject("project-1")).rejects.toMatchObject({
+      kind: DyadErrorKind.External,
+    });
+    expect(neonApi.requestTokens).toEqual(["revoked-access", "fresh-access"]);
+    expect(settings.neon?.accessToken?.value).toBe("new-access");
+    expect(settings.neon?.reconnectRequired).toBeUndefined();
     expect(sendTelemetryEvent).not.toHaveBeenCalled();
   });
 

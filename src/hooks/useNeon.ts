@@ -69,6 +69,7 @@ export function useNeon(
   const {
     data: projectInfo,
     isLoading: isLoadingBranches,
+    isFetching: isFetchingBranches,
     error: branchesError,
   } = useQuery({
     queryKey: queryKeys.neon.project({ appId }),
@@ -82,9 +83,11 @@ export function useNeon(
   // is still linked (it is stale after the project is unlinked).
   // The request can reject before the settings invalidation reaches us; show
   // recovery immediately instead of briefly rendering a generic error.
+  // After sign-in, ignore that cached failure while checking the new session.
   const requiresReconnection =
     settingsRequireReconnection ||
     (!!app?.neonProjectId &&
+      !isFetchingBranches &&
       isProjectAccessError(
         branchesError,
         DyadErrorKind.Auth,
@@ -109,10 +112,14 @@ export function useNeon(
       ));
   // Settings, the app and (for a linked project) the access check have all
   // loaded, so requiresReconnection and projectAccessDenied are settled.
+  // A retry of a failed access check is unsettled even when it has old data.
   const isAccessResolved =
     !!settings &&
     !isLoadingApp &&
-    !(isProjectQueryEnabled && isLoadingBranches);
+    !(
+      isProjectQueryEnabled &&
+      (isLoadingBranches || (isFetchingBranches && !!branchesError))
+    );
 
   // Fetch email and password config for the active branch
   const { data: emailPasswordConfig, isLoading: isLoadingEmailConfig } =

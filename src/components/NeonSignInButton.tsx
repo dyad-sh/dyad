@@ -18,7 +18,7 @@ import {
 } from "@/hooks/useConnectionFlow";
 import { useSettings } from "@/hooks/useSettings";
 import { buildOAuthLoginUrl } from "@/connection_flow/oauth_deep_link";
-import { ipc, type App } from "@/ipc/types";
+import { ipc } from "@/ipc/types";
 import { getErrorMessage } from "@/lib/errors";
 import { queryKeys } from "@/lib/queryKeys";
 
@@ -39,20 +39,20 @@ const handledNeonSignInOutcomes = new Set<string>();
 
 /**
  * Refreshes the linked project even if the surface that shows it is not
- * mounted. Best effort: the sign-in already succeeded, so a failure (for
- * example, the new account cannot use the project) stays in the query cache
- * for the inline NeonReconnectionNotice instead of being toasted.
+ * mounted. The app lookup must succeed before deciding what to refresh.
+ * The project fetch is best effort: sign-in already succeeded, so an access
+ * failure stays in the query cache for the inline NeonReconnectionNotice.
  */
 async function refreshReconnectedProject(
   queryClient: QueryClient,
   appId: number,
 ): Promise<void> {
   const appKey = queryKeys.apps.detail({ appId });
-  await queryClient.prefetchQuery({
+  const app = await queryClient.fetchQuery({
     queryKey: appKey,
     queryFn: () => ipc.app.getApp(appId),
   });
-  if (!queryClient.getQueryData<App>(appKey)?.neonProjectId) return;
+  if (!app.neonProjectId) return;
   await queryClient.prefetchQuery({
     queryKey: queryKeys.neon.project({ appId }),
     queryFn: () => ipc.neon.getProject({ appId }),

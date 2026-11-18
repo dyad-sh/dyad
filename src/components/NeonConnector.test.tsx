@@ -94,6 +94,7 @@ vi.mock("sonner", () => ({
 }));
 
 import { NeonConnector } from "./NeonConnector";
+import { NeonSignInButton } from "./NeonSignInButton";
 import { NeonIntegration } from "./NeonIntegration";
 import { NeonReconnectionBanner } from "./chat/NeonReconnectionBanner";
 
@@ -446,6 +447,47 @@ it("reports a successful sign-in when the other account cannot use the project e
   // The inline notice, not a toast, reports the remaining access problem.
   await screen.findByText("integrations.neon.projectAccessRequired");
 });
+
+it.each(["failed", "unlinked"])(
+  "uses the app refresh result after reconnection (%s)",
+  async (outcome) => {
+    client.setQueryData(queryKeys.apps.detail({ appId: 1 }), {
+      id: 1,
+      neonProjectId: "stale-project",
+    });
+    h.settings = { neon: { accessToken: { value: "fresh-access" } } };
+    if (outcome === "failed")
+      h.getApp.mockRejectedValue(new Error("App could not be loaded"));
+    else h.getApp.mockResolvedValue({ id: 1, neonProjectId: null });
+    h.flowState = {
+      status: "connected",
+      revision: 1,
+      provider: "neon",
+      invocationRef,
+    };
+    render(
+      <QueryClientProvider client={client}>
+        <NeonSignInButton appId={1} reconnect />
+      </QueryClientProvider>,
+    );
+    await waitFor(() =>
+      expect(h.acknowledge).toHaveBeenCalledExactlyOnceWith(
+        "neon",
+        invocationRef,
+      ),
+    );
+    expect(h.success).toHaveBeenCalledExactlyOnceWith(
+      "integrations.neon.reconnectedSuccess",
+    );
+    expect(h.getApp).toHaveBeenCalledWith(1);
+    expect(h.getProject).not.toHaveBeenCalled();
+    if (outcome === "failed")
+      expect(h.error).toHaveBeenCalledExactlyOnceWith(
+        "App could not be loaded",
+      );
+    else expect(h.error).not.toHaveBeenCalled();
+  },
+);
 
 it.each([NEON_PROJECT_ACCESS_DENIED_MESSAGE, NEON_RECONNECT_REQUIRED_MESSAGE])(
   "shows the project picker after unlinking a project with error %s",

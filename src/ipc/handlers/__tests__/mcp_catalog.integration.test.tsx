@@ -32,6 +32,7 @@ import {
   encryptToString,
 } from "@/ipc/utils/mcp_oauth_provider";
 import { syncVendoredOAuthClient } from "@/ipc/utils/vendored_oauth_client";
+import { pluginConnection } from "@/shared/mcp_connection_ref";
 
 vi.mock("@/lib/toast", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/toast")>()),
@@ -138,7 +139,7 @@ describe("Plugins catalog (integration)", () => {
     // Tool discovery completes against the real fake MCP server.
     await waitFor(
       async () => {
-        const result = await ipc.mcp.listTools(servers[0].id);
+        const result = await ipc.mcp.listTools(servers[0].connection);
         expect(result.status).toBe("ok");
         expect(result.tools.map((t) => t.name)).toContain("calculator_add");
       },
@@ -545,11 +546,15 @@ describe("Plugins catalog (integration)", () => {
       expect(wiped.oauthClientId).toBeNull();
 
       // Nothing is written back while OAuth is off.
-      expect(await syncVendoredOAuthClient(created.id)).toBe(false);
+      expect(await syncVendoredOAuthClient(pluginConnection(created.id))).toBe(
+        false,
+      );
 
       // Turning OAuth back on restores the client it needs to connect.
       await ipc.mcp.updateServer({ id: created.id, oauthEnabled: true });
-      expect(await syncVendoredOAuthClient(created.id)).toBe(true);
+      expect(await syncVendoredOAuthClient(pluginConnection(created.id))).toBe(
+        true,
+      );
       const [restored] = await db
         .select()
         .from(mcpServers)
@@ -577,7 +582,7 @@ describe("Plugins catalog (integration)", () => {
         .where(eq(mcpServers.id, created.id));
       catalogPayload = { servers: [vendoredEntry("second-secret")] };
       clearMcpCatalogCacheForTests();
-      await syncVendoredOAuthClient(created.id);
+      await syncVendoredOAuthClient(pluginConnection(created.id));
       const [rotated] = await db
         .select()
         .from(mcpServers)
@@ -614,7 +619,7 @@ describe("Plugins catalog (integration)", () => {
         ],
       };
       clearMcpCatalogCacheForTests();
-      await syncVendoredOAuthClient(created.id);
+      await syncVendoredOAuthClient(pluginConnection(created.id));
       const [reclient] = await db
         .select()
         .from(mcpServers)
@@ -624,7 +629,7 @@ describe("Plugins catalog (integration)", () => {
 
       catalogPayload = { servers: [vendoredEntry("second-secret")] };
       clearMcpCatalogCacheForTests();
-      await syncVendoredOAuthClient(created.id);
+      await syncVendoredOAuthClient(pluginConnection(created.id));
 
       // Adding the same entry again returns the existing server with the
       // current client rather than the copy it was created with.
@@ -649,7 +654,9 @@ describe("Plugins catalog (integration)", () => {
           ),
         })
         .where(eq(mcpServers.id, created.id));
-      expect(await syncVendoredOAuthClient(created.id)).toBe(true);
+      expect(await syncVendoredOAuthClient(pluginConnection(created.id))).toBe(
+        true,
+      );
       const [repaired] = await db
         .select()
         .from(mcpServers)
@@ -674,7 +681,9 @@ describe("Plugins catalog (integration)", () => {
           ),
         })
         .where(eq(mcpServers.id, created.id));
-      expect(await syncVendoredOAuthClient(created.id)).toBe(true);
+      expect(await syncVendoredOAuthClient(pluginConnection(created.id))).toBe(
+        true,
+      );
       const [reissued] = await db
         .select()
         .from(mcpServers)
@@ -694,7 +703,9 @@ describe("Plugins catalog (integration)", () => {
           ),
         })
         .where(eq(mcpServers.id, created.id));
-      expect(await syncVendoredOAuthClient(created.id)).toBe(true);
+      expect(await syncVendoredOAuthClient(pluginConnection(created.id))).toBe(
+        true,
+      );
       const [rotatedOnly] = await db
         .select()
         .from(mcpServers)

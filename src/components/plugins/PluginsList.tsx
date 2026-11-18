@@ -3,6 +3,11 @@ import { useNavigate } from "@tanstack/react-router";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useMcp } from "@/hooks/useMcp";
+import type { McpServer } from "@/ipc/types";
+import {
+  mcpConnectionKey,
+  type McpConnectionRef,
+} from "@/shared/mcp_connection_ref";
 import { useMcpCatalog } from "@/hooks/useMcpCatalog";
 import type { McpCatalogEntry } from "@/ipc/types/mcp_catalog";
 import { AddPluginDialog, useOauthStorageEncrypted } from "./AddPluginDialog";
@@ -10,6 +15,7 @@ import { OauthPlaintextStorageAlert } from "./OauthPlaintextStorageAlert";
 import { PluginSummaryCard } from "./PluginSummaryCard";
 import { PluginsStats } from "./PluginsStats";
 import { serverNeedsSetup } from "./pluginSetup";
+import { pluginToolSummary } from "./pluginToolSummary";
 import { usePluginConnect } from "./usePluginConnect";
 
 export function PluginsList({
@@ -24,13 +30,14 @@ export function PluginsList({
   // and the cards already render a placeholder count until it lands.
   const {
     servers,
+    appConfigs,
     toolsByServer,
     statusByServer,
     consentsMap,
     isServersLoading,
     toggleEnabled,
   } = useMcp();
-  const { connectingServerId, feedbackFor, onServerCreated, onConnect } =
+  const { connectingKey, feedbackFor, onServerCreated, onConnect } =
     usePluginConnect();
 
   const oauthStorageEncrypted = useOauthStorageEncrypted();
@@ -61,28 +68,26 @@ export function PluginsList({
   const showPlaintextBanner =
     oauthStorageEncrypted === false && hasStoredSecret;
 
-  // Still-loading, unreachable, or unauthorized servers have no tool
-  // list; the card shows a placeholder instead of a misleading zero.
-  const toolCountFor = (serverId: number): number | null =>
-    toolsByServer[serverId] ? toolsByServer[serverId].length : null;
-
-  const enabledToolCountFor = (serverId: number): number | null =>
-    toolsByServer[serverId]
-      ? toolsByServer[serverId].filter(
-          (t) => consentsMap[`${serverId}:${t.name}`] !== "denied",
-        ).length
-      : null;
-
-  // A settled status with no tool list means the listing failed
-  // (unreachable or unauthorized), as opposed to still pending.
-  const discoveryFailedFor = (serverId: number): boolean =>
-    !toolsByServer[serverId] && !!statusByServer[serverId];
+  // A plugin's default configuration plus its app-specific ones.
+  const connectionsFor = useMemo(() => {
+    const byServer = new Map<number, McpConnectionRef[]>();
+    for (const config of appConfigs) {
+      const list = byServer.get(config.serverId) ?? [];
+      list.push(config.connection);
+      byServer.set(config.serverId, list);
+    }
+    return (s: McpServer): McpConnectionRef[] => [
+      s.connection,
+      ...(byServer.get(s.id) ?? []),
+    ];
+  }, [appConfigs]);
 
   return (
     <div className="space-y-6">
       {showPlaintextBanner && <OauthPlaintextStorageAlert />}
       <PluginsStats
         servers={servers}
+        connectionsFor={connectionsFor}
         toolsByServer={toolsByServer}
         statusByServer={statusByServer}
         consentsMap={consentsMap}
@@ -114,6 +119,15 @@ export function PluginsList({
             const setupLocked =
               needsSetup ||
               (!!s.catalogSlug && catalogQuery.isLoading && !s.enabled);
+            // Still-loading, unreachable, or unauthorized configurations
+            // have no tool list; the card shows a placeholder instead of
+            // a misleading zero.
+            const tools = pluginToolSummary(
+              connectionsFor(s),
+              toolsByServer,
+              statusByServer,
+              consentsMap,
+            );
             return (
               <PluginSummaryCard
                 key={s.id}
@@ -121,12 +135,12 @@ export function PluginsList({
                 iconUrl={catalogEntry?.iconUrl}
                 needsSetup={needsSetup}
                 setupLocked={setupLocked}
-                toolCount={toolCountFor(s.id)}
-                enabledToolCount={enabledToolCountFor(s.id)}
-                discoveryFailed={discoveryFailedFor(s.id)}
+                toolCount={tools.toolCount}
+                enabledToolCount={tools.enabledToolCount}
+                discoveryFailed={tools.discoveryFailed}
                 feedback={feedbackFor(s)}
-                isConnecting={connectingServerId === s.id}
-                connectDisabled={connectingServerId !== null}
+                isConnecting={connectingKey === mcpConnectionKey(s.connection)}
+                connectDisabled={connectingKey !== null}
                 onConnect={onConnect}
                 onToggleEnabled={toggleEnabled}
                 onOpen={(serverId) =>

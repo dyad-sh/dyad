@@ -16,6 +16,7 @@ function entryOf(overrides: Partial<McpCatalogEntry> = {}): McpCatalogEntry {
 function serverOf(overrides: Partial<McpServer> = {}): McpServer {
   return {
     id: 1,
+    connection: { serverId: overrides.id ?? 1, appConfigId: null },
     name: "Example",
     transport: "http",
     command: null,
@@ -32,6 +33,9 @@ function serverOf(overrides: Partial<McpServer> = {}): McpServer {
     envUnreadable: false,
     headersUnreadable: false,
     catalogSlug: "example",
+    defaultScope: "all",
+    defaultAppIds: [],
+    appConfigCount: 0,
     createdAt: new Date(0),
     updatedAt: new Date(0),
     ...overrides,
@@ -42,18 +46,18 @@ function statusFor({
   entry = entryOf(),
   server,
   added = true,
-  connectingServerId = null,
+  connectingKey = null,
 }: {
   entry?: McpCatalogEntry;
   server?: McpServer;
   added?: boolean;
-  connectingServerId?: number | null;
+  connectingKey?: string | null;
 } = {}) {
   return catalogCardStatus({
     entry,
     addedSlugs: new Set(added ? [entry.slug] : []),
     serverBySlug: new Map(server ? [[entry.slug, server]] : []),
-    connectingServerId,
+    connectingKey,
   });
 }
 
@@ -71,7 +75,7 @@ describe("catalogCardStatus", () => {
       statusFor({
         entry: entryOf({ oauth: { required: true } }),
         server: serverOf({ oauthEnabled: true }),
-        connectingServerId: 1,
+        connectingKey: "1",
       }),
     ).toBe("connecting");
   });

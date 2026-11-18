@@ -48,6 +48,7 @@ export const SETTING_IDS = {
   enablePnpmMinimumReleaseAgeWarning:
     "setting-enable-pnpm-minimum-release-age-warning",
   enableMcpToolSearch: "setting-enable-mcp-tool-search",
+  enableAppScopedPlugins: "setting-enable-app-scoped-plugins",
   enableCodeExplorer: "setting-enable-code-explorer",
   runTypeScriptForWholeProject: "setting-run-typescript-for-whole-project",
   enableMultiWindow: "setting-enable-multi-window",
@@ -582,6 +583,15 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     description:
       "When many MCP tools are enabled, let the agent search for the tools on demand instead of listing every tool in its context. Requires sandbox script execution",
     keywords: ["mcp", "search", "tools", "agent", "sandbox", "context"],
+    sectionId: SECTION_IDS.experiments,
+    sectionLabel: "Experiments",
+  },
+  {
+    id: SETTING_IDS.enableAppScopedPlugins,
+    label: "Enable app-specific plugin configurations",
+    description:
+      "Choose which apps each plugin is available in, and give some apps a different configuration of the same plugin",
+    keywords: ["mcp", "plugins", "apps", "scope", "configuration", "accounts"],
     sectionId: SECTION_IDS.experiments,
     sectionLabel: "Experiments",
   },

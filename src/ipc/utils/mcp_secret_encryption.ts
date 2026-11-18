@@ -2,7 +2,7 @@ import log from "electron-log";
 import { and, eq, isNotNull, isNull, like, or, type SQL } from "drizzle-orm";
 import type { AnySQLiteColumn } from "drizzle-orm/sqlite-core";
 import { db } from "@/db";
-import { mcpServers } from "@/db/schema";
+import { mcpAppConfigs, mcpServers } from "@/db/schema";
 import {
   decryptSecretMap,
   encryptSecretMap,
@@ -153,6 +153,54 @@ function unchanged(
  * Runs on app startup. Never throws: a failure here must not block
  * startup, and the plaintext columns stay readable.
  */
+// App-specific plugin configurations never had plaintext columns, so only
+// a `plain:` blob written before a keyring was available needs upgrading.
+async function encryptAppConfigSecrets(): Promise<number> {
+  const rows = await db
+    .select({
+      id: mcpAppConfigs.id,
+      envEncrypted: mcpAppConfigs.envEncrypted,
+      headersEncrypted: mcpAppConfigs.headersEncrypted,
+    })
+    .from(mcpAppConfigs)
+    .where(
+      or(
+        like(mcpAppConfigs.envEncrypted, PLAINTEXT_BLOB_PATTERN),
+        like(mcpAppConfigs.headersEncrypted, PLAINTEXT_BLOB_PATTERN),
+      ),
+    );
+  let updated = 0;
+  for (const row of rows) {
+    const nextEnv = nextEncryptedValue(null, row.envEncrypted);
+    if (nextEnv !== undefined) {
+      const result = await db
+        .update(mcpAppConfigs)
+        .set({ envEncrypted: nextEnv })
+        .where(
+          and(
+            eq(mcpAppConfigs.id, row.id),
+            unchanged(mcpAppConfigs.envEncrypted, row.envEncrypted),
+          ),
+        );
+      updated += result.changes;
+    }
+    const nextHeaders = nextEncryptedValue(null, row.headersEncrypted);
+    if (nextHeaders !== undefined) {
+      const result = await db
+        .update(mcpAppConfigs)
+        .set({ headersEncrypted: nextHeaders })
+        .where(
+          and(
+            eq(mcpAppConfigs.id, row.id),
+            unchanged(mcpAppConfigs.headersEncrypted, row.headersEncrypted),
+          ),
+        );
+      updated += result.changes;
+    }
+  }
+  return updated;
+}
+
 export async function encryptStoredMcpSecrets(): Promise<number> {
   try {
     const rows = await db
@@ -208,6 +256,8 @@ export async function encryptStoredMcpSecrets(): Promise<number> {
         updated += result.changes;
       }
     }
+
+    updated += await encryptAppConfigSecrets();
 
     if (updated > 0) {
       logger.info(`Encrypted ${updated} stored MCP secret(s).`);

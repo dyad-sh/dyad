@@ -209,6 +209,7 @@ export function registerTokenCountHandlers() {
         selectedChatMode === "local-agent"
           ? await collectSuggestablePlugins({
               chatId: req.chatId,
+              appId: chat.appId,
               cachedOnly: true,
             }).catch((error: unknown) => {
               logger.warn("Failed to read suggestable MCP servers", error);

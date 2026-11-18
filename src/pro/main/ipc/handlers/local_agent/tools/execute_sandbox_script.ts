@@ -33,7 +33,6 @@ import {
   shouldTrackToolMutation,
 } from "./tool_invocation";
 import {
-  collectMcpToolDefs,
   buildMcpTypeDefsBlock,
   buildMcpToolNameInventory,
   buildMcpCapabilityMap,
@@ -271,14 +270,14 @@ ${inventory}
  * Build the full tool description, appending the MCP host-function
  * declarations and usage notes when any MCP server is enabled. The
  * caller passes in the per-turn defs collected by the local-agent
- * handler; the standalone `collectMcpToolDefs()` fallback is only for
- * callers that don't go through the handler. When no MCP defs are
+ * handler, which knows the chat's app and therefore which configuration
+ * of each plugin applies. When no MCP defs are
  * available the description carries no MCP framing at all, so the
  * model does not try to call host functions that don't exist (e.g. in
  * read-only / plan-only turns).
  */
 export async function buildExecuteSandboxScriptDescription(
-  precomputedDefs: McpToolDef[] | undefined,
+  defs: McpToolDef[],
   options: {
     useSearch?: boolean;
     hasGetSchemaTool?: boolean;
@@ -291,7 +290,6 @@ export async function buildExecuteSandboxScriptDescription(
     includeWriteFile: boolean;
   },
 ): Promise<string> {
-  const defs = precomputedDefs ?? (await collectMcpToolDefs());
   const builtInHostFunctionsPreamble = buildBuiltInHostFunctionsPreamble({
     includeWriteFile: options.includeWriteFile,
   });

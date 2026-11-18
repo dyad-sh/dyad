@@ -13,6 +13,7 @@ import {
   type HybridChatHarness,
 } from "@/testing/hybrid_chat_harness";
 import { h } from "@/testing/hybrid.setup";
+import { pluginConnection } from "@/shared/mcp_connection_ref";
 
 describe("Plugins page (integration)", () => {
   let harness: HybridChatHarness;
@@ -142,7 +143,7 @@ describe("Plugins page (integration)", () => {
     // the tools query). The failed listing must fall back to the
     // placeholder, not report "0 tools".
     const { mcpManager } = await import("@/ipc/utils/mcp_manager");
-    await mcpManager.dispose(server.id);
+    await mcpManager.dispose(pluginConnection(server.id));
     await stop();
     const enabledSwitch = within(card).getByRole("switch");
     await harness.setSwitch(enabledSwitch, false);
@@ -223,7 +224,7 @@ describe("Plugins page (integration)", () => {
         }),
       );
     });
-    const { tools } = await ipc.mcp.listTools(server.id);
+    const { tools } = await ipc.mcp.listTools(pluginConnection(server.id));
     const total = tools.length;
     fireEvent.click(screen.getByRole("button", { name: "All Plugins" }));
     await waitFor(() => {

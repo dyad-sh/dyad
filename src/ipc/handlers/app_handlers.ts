@@ -166,6 +166,7 @@ import {
   MAX_FILE_SEARCH_SIZE,
   RIPGREP_EXCLUDED_GLOBS,
 } from "../utils/ripgrep_utils";
+import { copyPluginAssignments } from "../utils/mcp_app_configs";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import { detectFrameworkType } from "../utils/framework_utils";
 import { readAppFileForEditor } from "../utils/bounded_text_file";
@@ -1145,6 +1146,18 @@ export function registerAppHandlers() {
             startCommand: originalApp.startCommand,
           })
           .returning();
+
+        // The copy uses the same plugin configurations as the original.
+        // Best-effort: the copy already exists, and a missing assignment
+        // only means the user picks configurations for it again.
+        try {
+          db.transaction((tx) => copyPluginAssignments(tx, appId, newDbApp.id));
+        } catch (error) {
+          logger.warn(
+            `App ${appId}: failed to copy plugin configurations to app ${newDbApp.id}`,
+            error,
+          );
+        }
 
         if (withHistory) {
           const originalVersionMetadata = await db.query.versions.findMany({

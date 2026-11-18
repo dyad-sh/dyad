@@ -446,7 +446,10 @@
     "never": "Don't suggest again",
     "neverTitle": "Won't suggest {{name}} again",
     "neverDescription": "Dyad will continue without it. You can still add it from the Plugins page.",
-    "connectFailed": "Could not connect the plugin. Try again, or manage it on the Plugins page."
+    "connectFailed": "Could not connect the plugin. Try again, or manage it on the Plugins page.",
+    "unavailableTitle": "{{name}} isn't set up for this app",
+    "unavailableDescription": "It's added in Dyad, but this app doesn't use it. You can make it available for this app on the plugin's page.",
+    "openPluginSettings": "Open plugin settings"
   },
   "guide": "Guide",
   "annotations": {

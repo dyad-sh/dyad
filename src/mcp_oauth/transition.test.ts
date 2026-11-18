@@ -10,7 +10,7 @@ import { transition } from "./transition";
 function ref(serverId: number, operationId: string): McpOAuthInvocationRef {
   return {
     kind: "mcp-oauth",
-    entityKey: serverId,
+    entityKey: String(serverId),
     operationId,
   };
 }
@@ -20,7 +20,7 @@ function identity(serverId: number, operationId: string): McpOAuthFlowIdentity {
     invocationRef: ref(serverId, operationId),
     rendererMessageId: `message-${operationId}`,
     expectedState: `state-${operationId}`,
-    serverId,
+    connectionKey: String(serverId),
   };
 }
 

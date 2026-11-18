@@ -13,8 +13,9 @@ function def(
   return {
     jsName: overrides.toolName,
     toolKey: `srv__${overrides.toolName}`,
-    serverId: 1,
+    connection: { serverId: 1, appConfigId: null },
     serverName: "srv",
+    displayName: "srv",
     description: undefined,
     inputSchema: { type: "object" },
     ...overrides,

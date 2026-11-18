@@ -76,6 +76,7 @@ function mcpDescriptor(requestId: string): UserInputDescriptorPayload {
     chatId: 7,
     deadlineAt: 10_000,
     serverId: 1,
+    appConfigId: null,
     serverName: "test server",
     toolName: "read_file",
     classifier: "racing",

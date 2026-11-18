@@ -144,6 +144,8 @@ vi.mock("@/db", () => ({
 }));
 
 vi.mock("@/db/schema", () => ({
+  // App-specific plugin configurations; these tests only use plugin rows.
+  mcpAppConfigs: { id: "app_config_id", oauthState: "app_config_oauth_state" },
   mcpServers: { id: "id" },
 }));
 
@@ -252,7 +254,10 @@ describe("mcp updateServer handler", () => {
   it("disposes the cached MCP client so the next use rebuilds with the new config", async () => {
     seedRow({ id: 44 });
     await invoke("mcp:update-server", { id: 44, name: "renamed" });
-    expect(disposeMock).toHaveBeenCalledWith(44);
+    expect(disposeMock).toHaveBeenCalledWith({
+      serverId: 44,
+      appConfigId: null,
+    });
   });
 
   it("preserves unreadable secret columns on unrelated edits and permits deliberate replacement", async () => {
@@ -305,7 +310,7 @@ describe("mcp updateServer handler", () => {
     seedRow({ id: 45 });
     await invoke("mcp:update-server", { id: 45, ...change });
     expect(withMcpOAuthServerMutationMock).toHaveBeenCalledWith(
-      45,
+      { serverId: 45, appConfigId: null },
       expect.stringMatching(/configuration changed/),
       expect.any(Function),
     );
@@ -328,15 +333,18 @@ describe("mcp destructive OAuth boundaries", () => {
     seedRow({ id: 47 });
     await invoke("mcp:delete-server", 47);
     expect(withMcpOAuthServerMutationMock).toHaveBeenCalledWith(
-      47,
+      { serverId: 47, appConfigId: null },
       expect.stringMatching(/deleted/),
       expect.any(Function),
     );
   });
 
   it("routes disconnect through the server-scoped OAuth cancellation path", async () => {
-    await invoke("mcp:disconnect-oauth", 48);
-    expect(disconnectOAuthMock).toHaveBeenCalledWith(48);
+    await invoke("mcp:disconnect-oauth", { serverId: 48, appConfigId: null });
+    expect(disconnectOAuthMock).toHaveBeenCalledWith({
+      serverId: 48,
+      appConfigId: null,
+    });
   });
 });
 
@@ -582,9 +590,14 @@ describe("mcp listTools handler", () => {
   it("caps listing tools at 8s so a hung server can't freeze the tools list", async () => {
     getClientMock.mockResolvedValueOnce({ tools: vi.fn(async () => ({})) });
 
-    await invoke("mcp:list-tools", 3);
+    await invoke("mcp:list-tools", { serverId: 3, appConfigId: null });
 
-    expect(listToolsWithinMock).toHaveBeenCalledWith(3, { timeoutMs: 8_000 });
+    expect(listToolsWithinMock).toHaveBeenCalledWith(
+      { serverId: 3, appConfigId: null },
+      {
+        timeoutMs: 8_000,
+      },
+    );
   });
 
   it("returns an empty list (not a crash) when getClient throws", async () => {
@@ -599,7 +612,10 @@ describe("mcp listTools handler", () => {
       ),
     );
 
-    const result = await invoke("mcp:list-tools", 1);
+    const result = await invoke("mcp:list-tools", {
+      serverId: 1,
+      appConfigId: null,
+    });
     expect(result).toMatchObject({ tools: [], status: "error" });
   });
 
@@ -613,7 +629,10 @@ describe("mcp listTools handler", () => {
       .mockRejectedValueOnce(new Error("401 Unauthorized"));
     getClientMock.mockResolvedValueOnce({ tools: failingTools });
 
-    const result = await invoke("mcp:list-tools", 2);
+    const result = await invoke("mcp:list-tools", {
+      serverId: 2,
+      appConfigId: null,
+    });
     expect(result).toEqual({
       tools: [],
       status: "unauthorized",
@@ -625,7 +644,9 @@ describe("mcp listTools handler", () => {
   it("returns the protocol version failure for display", async () => {
     const message = "Server's protocol version is not supported: 2025-11-25";
     getClientMock.mockRejectedValueOnce(new Error(message));
-    expect(await invoke("mcp:list-tools", 1)).toEqual({
+    expect(
+      await invoke("mcp:list-tools", { serverId: 1, appConfigId: null }),
+    ).toEqual({
       tools: [],
       status: "error",
       errorMessage: message,
@@ -641,7 +662,10 @@ describe("mcp listTools handler", () => {
           "Details ".repeat(1_000),
       ),
     );
-    const result = await invoke<{ errorMessage: string }>("mcp:list-tools", 1);
+    const result = await invoke<{ errorMessage: string }>("mcp:list-tools", {
+      serverId: 1,
+      appConfigId: null,
+    });
     expect(result.errorMessage).toContain("Connection failed");
     expect(result.errorMessage).not.toContain("very-secret-token-value");
     expect(result.errorMessage).toContain("[redacted URL]");

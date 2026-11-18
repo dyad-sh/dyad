@@ -346,6 +346,33 @@ export default function SettingsPage() {
             </div>
 
             <div
+              id={SETTING_IDS.enableAppScopedPlugins}
+              className="space-y-1.5"
+            >
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="enable-app-scoped-plugins"
+                  aria-label="Enable app-specific plugin configurations"
+                  checked={!!settings?.enableAppScopedPlugins}
+                  disabled={!settings}
+                  onCheckedChange={(checked) => {
+                    void updateSettings({
+                      enableAppScopedPlugins: checked,
+                    }).catch(() => {});
+                  }}
+                />
+                <Label htmlFor="enable-app-scoped-plugins">
+                  Enable app-specific plugin configurations
+                </Label>
+              </div>
+              <p className={hint}>
+                Choose which apps each plugin is available in, and give some
+                apps a different configuration of the same plugin, such as a
+                different server or account.
+              </p>
+            </div>
+
+            <div
               id={SETTING_IDS.enablePnpmMinimumReleaseAgeWarning}
               className="space-y-1.5"
             >

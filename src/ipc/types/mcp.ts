@@ -18,8 +18,20 @@ export const DEFAULT_OAUTH_CALLBACK_PORT = 53682;
 export const McpTransportEnum = z.enum(["stdio", "sse", "http"]);
 export type McpTransport = z.infer<typeof McpTransportEnum>;
 
-export const McpServerSchema = z.object({
+// Names one configuration: a plugin's default (null `appConfigId`) or one
+// of its app-specific configurations. See src/shared/mcp_connection_ref.ts.
+export const McpConnectionRefSchema = z.object({
+  serverId: z.number().int().positive(),
+  appConfigId: z.number().int().positive().nullable(),
+});
+
+// Fields every connectable configuration has: a plugin's default
+// configuration (McpServer) and an app-specific one (McpAppConfig). `id` is
+// the row id in its own table. `connection` is what the per-configuration
+// channels below (tools, OAuth, approvals) take.
+export const McpConnectionConfigSchema = z.object({
   id: z.number(),
+  connection: McpConnectionRefSchema,
   name: z.string(),
   transport: McpTransportEnum,
   command: z.string().nullable(),
@@ -48,13 +60,36 @@ export const McpServerSchema = z.object({
   // would otherwise show.
   envUnreadable: z.boolean(),
   headersUnreadable: z.boolean(),
-  // Set when the server was added from the curated catalog.
+  // Set when the server was added from the curated catalog. An
+  // app-specific configuration reports its plugin's.
   catalogSlug: z.string().nullable(),
   createdAt: z.date(),
   updatedAt: z.date(),
 });
 
+export type McpConnectionConfig = z.infer<typeof McpConnectionConfigSchema>;
+
+export const PluginDefaultScopeSchema = z.enum(["all", "selected", "none"]);
+
+export const McpServerSchema = McpConnectionConfigSchema.extend({
+  // App-scoped plugins experiment; "all" with no app configurations when
+  // it's off. Which apps the default configuration serves; see
+  // mcp_plugin_availability.ts.
+  defaultScope: PluginDefaultScopeSchema,
+  defaultAppIds: z.array(z.number()),
+  appConfigCount: z.number().int(),
+});
+
 export type McpServer = z.infer<typeof McpServerSchema>;
+
+// An app-specific configuration of a plugin. `serverId` is its plugin, and
+// `enabled` mirrors the plugin's switch.
+export const McpAppConfigSchema = McpConnectionConfigSchema.extend({
+  serverId: z.number(),
+  appIds: z.array(z.number()),
+});
+
+export type McpAppConfig = z.infer<typeof McpAppConfigSchema>;
 
 // OAuth scope tokens use only printable ASCII (no space, quote, or
 // backslash), separated by single spaces. Catches typos like
@@ -105,8 +140,8 @@ export const CreateMcpServerSchema = z.object({
 
 export type CreateMcpServer = z.infer<typeof CreateMcpServerSchema>;
 
-export const McpServerUpdateSchema = z.object({
-  id: z.number(),
+// Fields an edit can change on either kind of configuration.
+const McpConnectionConfigUpdateFields = {
   name: z.string().optional(),
   transport: McpTransportEnum.optional(),
   command: z.string().optional(),
@@ -116,16 +151,31 @@ export const McpServerUpdateSchema = z.object({
     .union([z.record(z.string(), z.string()), z.string()])
     .optional(),
   url: z.string().optional(),
-  enabled: z.boolean().optional(),
   oauthEnabled: z.boolean().optional(),
   oauthClientId: z.string().nullable().optional(),
   // Plaintext on update; the handler encrypts it before storing and never
   // returns it via `McpServerSchema`.
   oauthClientSecret: z.string().nullable().optional(),
   oauthScope: oauthScopeSchema,
+};
+
+export const McpServerUpdateSchema = z.object({
+  id: z.number().int().positive(),
+  enabled: z.boolean().optional(),
+  ...McpConnectionConfigUpdateFields,
 });
 
 export type McpServerUpdate = z.infer<typeof McpServerUpdateSchema>;
+
+// An app-specific configuration is turned on and off with its plugin, so
+// its edits have no `enabled`.
+export const McpAppConfigUpdateSchema = z.object({
+  serverId: z.number().int().positive(),
+  appConfigId: z.number().int().positive(),
+  ...McpConnectionConfigUpdateFields,
+});
+
+export type McpAppConfigUpdate = z.infer<typeof McpAppConfigUpdateSchema>;
 
 export const McpConsentEnum = z.enum(["ask", "always", "denied"]);
 export type McpConsentValue = z.infer<typeof McpConsentEnum>;
@@ -152,6 +202,7 @@ export type McpListToolsResult = z.infer<typeof McpListToolsResultSchema>;
 export const McpToolConsentRecordSchema = z.object({
   id: z.number(),
   serverId: z.number(),
+  appConfigId: z.number().nullable(),
   toolName: z.string(),
   consent: McpConsentEnum,
   updatedAt: z.date(),
@@ -160,7 +211,7 @@ export const McpToolConsentRecordSchema = z.object({
 export type McpToolConsent = z.infer<typeof McpToolConsentRecordSchema>;
 
 export const SetMcpToolConsentParamsSchema = z.object({
-  serverId: z.number(),
+  connection: McpConnectionRefSchema,
   toolName: z.string(),
   consent: McpConsentEnum,
 });
@@ -234,7 +285,7 @@ export const mcpContracts = {
 
   deleteServer: defineContract({
     channel: "mcp:delete-server",
-    input: z.number(), // serverId
+    input: z.number().int().positive(), // serverId
     output: z.object({ success: z.boolean() }),
     invalidates: () => [
       { family: "mcp-servers" },
@@ -250,7 +301,7 @@ export const mcpContracts = {
 
   listTools: defineContract({
     channel: "mcp:list-tools",
-    input: z.number(), // serverId
+    input: McpConnectionRefSchema,
     output: McpListToolsResultSchema,
   }),
 
@@ -269,7 +320,7 @@ export const mcpContracts = {
   startOAuth: defineContract({
     channel: "mcp:start-oauth",
     input: z.object({
-      serverId: z.number(),
+      connection: McpConnectionRefSchema,
       // Durable retry identity from the renderer. This is intentionally
       // distinct from the main-minted McpOAuthInvocationRef.
       rendererMessageId: z.string().min(1),
@@ -289,8 +340,82 @@ export const mcpContracts = {
 
   disconnectOAuth: defineContract({
     channel: "mcp:disconnect-oauth",
-    input: z.number(), // serverId
+    input: McpConnectionRefSchema,
     output: z.object({ success: z.boolean() }),
+    invalidates: () => [{ family: "mcp-servers" }, { family: "mcp-tools" }],
+    originHandles: () => [{ family: "mcp-servers" }, { family: "mcp-tools" }],
+  }),
+
+  // App-scoped plugins experiment. The mutations below are refused while
+  // the experiment is off.
+  listAppConfigs: defineContract({
+    channel: "mcp:list-app-configs",
+    input: z.void(),
+    output: z.array(McpAppConfigSchema),
+  }),
+
+  createAppConfig: defineContract({
+    channel: "mcp:create-app-config",
+    input: z.object({
+      serverId: z.number().int().positive(),
+      name: z.string().trim().min(1).max(100),
+      // Apps already using another configuration of the plugin move to
+      // this one.
+      appIds: z.array(z.number().int().positive()).max(10_000),
+    }),
+    output: McpAppConfigSchema,
+    invalidates: () => [{ family: "mcp-servers" }, { family: "mcp-tools" }],
+    originHandles: () => [{ family: "mcp-servers" }, { family: "mcp-tools" }],
+  }),
+
+  updateAppConfig: defineContract({
+    channel: "mcp:update-app-config",
+    input: McpAppConfigUpdateSchema,
+    output: McpAppConfigSchema,
+    invalidates: () => [{ family: "mcp-servers" }, { family: "mcp-tools" }],
+    originHandles: () => [{ family: "mcp-servers" }, { family: "mcp-tools" }],
+  }),
+
+  deleteAppConfig: defineContract({
+    channel: "mcp:delete-app-config",
+    input: z.object({
+      serverId: z.number().int().positive(),
+      appConfigId: z.number().int().positive(),
+    }),
+    output: z.object({ success: z.boolean() }),
+    invalidates: () => [
+      { family: "mcp-servers" },
+      { family: "mcp-tools" },
+      { family: "mcp-catalog" },
+    ],
+    originHandles: () => [
+      { family: "mcp-servers" },
+      { family: "mcp-tools" },
+      { family: "mcp-catalog" },
+    ],
+  }),
+
+  setAppConfigApps: defineContract({
+    channel: "mcp:set-app-config-apps",
+    input: z.object({
+      serverId: z.number().int().positive(),
+      appConfigId: z.number().int().positive(),
+      appIds: z.array(z.number().int().positive()).max(10_000),
+    }),
+    output: McpAppConfigSchema,
+    invalidates: () => [{ family: "mcp-servers" }, { family: "mcp-tools" }],
+    originHandles: () => [{ family: "mcp-servers" }, { family: "mcp-tools" }],
+  }),
+
+  setPluginAvailability: defineContract({
+    channel: "mcp:set-plugin-availability",
+    input: z.object({
+      serverId: z.number().int().positive(),
+      defaultScope: PluginDefaultScopeSchema,
+      // The apps a "selected" default serves; ignored otherwise.
+      defaultAppIds: z.array(z.number().int().positive()).max(10_000),
+    }),
+    output: McpServerSchema,
     invalidates: () => [{ family: "mcp-servers" }, { family: "mcp-tools" }],
     originHandles: () => [{ family: "mcp-servers" }, { family: "mcp-tools" }],
   }),
@@ -303,7 +428,7 @@ export const mcpContracts = {
 
   probeConnection: defineContract({
     channel: "mcp:probe-connection",
-    input: z.number(), // serverId
+    input: McpConnectionRefSchema,
     output: z.object({
       status: z.enum(["ok", "unauthorized", "error"]),
       error: z.string().nullable(),

@@ -4,9 +4,26 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import type { McpServer } from "@/ipc/types";
+import type { McpConnectionRef } from "@/shared/mcp_connection_ref";
 import { CatalogBadge } from "./CatalogBadge";
 import { PluginIcon } from "./PluginIcon";
 import type { ConnectFeedback } from "./usePluginConnect";
+
+// Only set while the app-scoped plugins experiment is in use for this
+// plugin; otherwise the card reads exactly as before.
+function appScopeSummary(s: McpServer): string[] {
+  const parts: string[] = [];
+  if (s.defaultScope === "selected") parts.push("Default: some apps");
+  if (s.defaultScope === "none") parts.push("Default: no apps");
+  if (s.appConfigCount > 0) {
+    parts.push(
+      `${s.appConfigCount} app-specific configuration${
+        s.appConfigCount === 1 ? "" : "s"
+      }`,
+    );
+  }
+  return parts;
+}
 
 export function PluginSummaryCard({
   server: s,
@@ -42,7 +59,7 @@ export function PluginSummaryCard({
    * slot, so starting a second flow is blocked, not just this card's.
    */
   connectDisabled: boolean;
-  onConnect: (serverId: number) => void;
+  onConnect: (connection: McpConnectionRef) => void;
   onToggleEnabled: (serverId: number, currentEnabled: boolean) => void;
   onOpen: (serverId: number) => void;
 }) {
@@ -103,6 +120,14 @@ export function PluginSummaryCard({
               {s.url ? ` · ${s.url}` : ""}
               {s.command ? ` · ${s.command}` : ""}
             </div>
+            {appScopeSummary(s).map((line) => (
+              <div
+                key={line}
+                className="text-xs text-muted-foreground truncate"
+              >
+                {line}
+              </div>
+            ))}
           </div>
         </div>
         <div className="mt-3 flex items-center justify-between gap-2">
@@ -121,7 +146,7 @@ export function PluginSummaryCard({
                 <Button
                   size="sm"
                   onClick={() =>
-                    s.oauthUnreadable ? onOpen(s.id) : onConnect(s.id)
+                    s.oauthUnreadable ? onOpen(s.id) : onConnect(s.connection)
                   }
                   disabled={!s.oauthUnreadable && connectDisabled}
                 >

@@ -1524,7 +1524,10 @@ export async function setupHybridChatHarness(
     ): Promise<void> => {
       await waitFor(
         async () => {
-          const result = await ipc.mcp.listTools(serverId);
+          const result = await ipc.mcp.listTools({
+            serverId,
+            appConfigId: null,
+          });
           expect(result.status).toBe("ok");
           expect(result.tools.map((tool) => tool.name)).toContain(toolName);
         },

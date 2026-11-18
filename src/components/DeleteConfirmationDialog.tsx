@@ -20,6 +20,8 @@ interface DeleteConfirmationDialogProps {
   onDelete: () => void | Promise<void>;
   trigger?: React.ReactNode;
   isDeleting?: boolean;
+  /** Extra consequences of the deletion, shown under the confirmation. */
+  details?: React.ReactNode;
 }
 
 export function DeleteConfirmationDialog({
@@ -28,6 +30,7 @@ export function DeleteConfirmationDialog({
   onDelete,
   trigger,
   isDeleting = false,
+  details,
 }: DeleteConfirmationDialogProps) {
   const { t } = useTranslation(["home", "common"]);
   return (
@@ -52,6 +55,9 @@ export function DeleteConfirmationDialog({
           <AlertDialogDescription>
             {t("home:deleteItemConfirmation", { itemName })}
           </AlertDialogDescription>
+          {details && (
+            <div className="text-sm text-muted-foreground">{details}</div>
+          )}
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={isDeleting}>

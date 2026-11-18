@@ -658,6 +658,10 @@ const BaseUserSettingsFields = {
   // unless explicitly turned on: the integration is early, undocumented and
   // still changing, and with it off the Publish panel has no tab for it.
   enableOwnServerDeployment: z.boolean().optional(),
+  // Lets a plugin use different configurations for different apps. Off
+  // by default; with it off, plugins behave exactly as builds without the
+  // feature: only the default configuration exists, for every app.
+  enableAppScopedPlugins: z.boolean().optional(),
   // Publishing to GitLab (gitlab.com or a self-hosted instance). Off unless
   // explicitly turned on; it gates new GitLab connections only, so an app
   // already linked to GitLab keeps its GitLab card when this is off again.

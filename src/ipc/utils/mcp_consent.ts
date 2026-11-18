@@ -1,59 +1,16 @@
-import { db } from "../../db";
-import { mcpToolConsents } from "../../db/schema";
-import { and, eq } from "drizzle-orm";
 import { IpcMainInvokeEvent } from "electron";
 import {
   rememberUserInputSubscriber,
   userInputRegistry,
 } from "../../user_input/main";
+import type { McpConnectionRef } from "@/shared/mcp_connection_ref";
+import { getStoredConsent } from "./mcp_consent_store";
 
-export type Consent = "ask" | "always" | "denied";
-
-export async function getStoredConsent(
-  serverId: number,
-  toolName: string,
-): Promise<Consent> {
-  const rows = await db
-    .select()
-    .from(mcpToolConsents)
-    .where(
-      and(
-        eq(mcpToolConsents.serverId, serverId),
-        eq(mcpToolConsents.toolName, toolName),
-      ),
-    );
-  if (rows.length === 0) return "ask";
-  return (rows[0].consent as Consent) ?? "ask";
-}
-
-export async function setStoredConsent(
-  serverId: number,
-  toolName: string,
-  consent: Consent,
-): Promise<void> {
-  const rows = await db
-    .select()
-    .from(mcpToolConsents)
-    .where(
-      and(
-        eq(mcpToolConsents.serverId, serverId),
-        eq(mcpToolConsents.toolName, toolName),
-      ),
-    );
-  if (rows.length > 0) {
-    await db
-      .update(mcpToolConsents)
-      .set({ consent })
-      .where(
-        and(
-          eq(mcpToolConsents.serverId, serverId),
-          eq(mcpToolConsents.toolName, toolName),
-        ),
-      );
-  } else {
-    await db.insert(mcpToolConsents).values({ serverId, toolName, consent });
-  }
-}
+export {
+  getStoredConsent,
+  setStoredConsent,
+  type Consent,
+} from "./mcp_consent_store";
 
 // Result of the auto-approve hook: whether the classifier auto-approved, plus
 // its one-sentence reason (shown to the user on either path).
@@ -72,7 +29,7 @@ export interface McpConsentResult {
 export async function requireMcpToolConsent(
   event: IpcMainInvokeEvent,
   params: {
-    serverId: number;
+    connection: McpConnectionRef;
     serverName: string;
     toolName: string;
     toolDescription?: string | null;
@@ -84,7 +41,7 @@ export async function requireMcpToolConsent(
     abortSignal?: AbortSignal;
   },
 ): Promise<McpConsentResult> {
-  const current = await getStoredConsent(params.serverId, params.toolName);
+  const current = await getStoredConsent(params.connection, params.toolName);
   if (current === "always") return { approved: true };
   if (current === "denied") return { approved: false };
 
@@ -93,7 +50,8 @@ export async function requireMcpToolConsent(
   const requestId = userInputRegistry.request({
     kind: "mcp-consent",
     chatId: params.chatId,
-    serverId: params.serverId,
+    serverId: params.connection.serverId,
+    appConfigId: params.connection.appConfigId,
     serverName: params.serverName,
     toolName: params.toolName,
     toolDescription: params.toolDescription,

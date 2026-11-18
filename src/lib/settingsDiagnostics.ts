@@ -28,6 +28,7 @@ export function getSharedSettingsDiagnostics(settings: UserSettings) {
     autoFixReviewIssues: settings.autoFixReviewIssues ?? null,
     enableContextCompaction: settings.enableContextCompaction ?? null,
     enableMcpToolSearch: settings.enableMcpToolSearch ?? null,
+    enableAppScopedPlugins: settings.enableAppScopedPlugins ?? null,
     enableSandboxScriptExecution: settings.enableSandboxScriptExecution ?? null,
     enableSuggestedPrompts: settings.enableSuggestedPrompts ?? null,
     enableMultiWindow: settings.enableMultiWindow ?? null,

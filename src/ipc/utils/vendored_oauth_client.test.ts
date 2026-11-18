@@ -1,6 +1,7 @@
 // @vitest-environment node
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { pluginConnection } from "@/shared/mcp_connection_ref";
 
 const mocks = vi.hoisted(() => ({
   row: {} as Record<string, unknown>,
@@ -111,7 +112,7 @@ describe("syncVendoredOAuthClient", () => {
   });
 
   it("writes the catalog's client when the row has none", async () => {
-    expect(await syncVendoredOAuthClient(1)).toBe(true);
+    expect(await syncVendoredOAuthClient(pluginConnection(1))).toBe(true);
     expect(mocks.revoke).toHaveBeenCalledWith(1);
     expect(mocks.update).toHaveBeenCalledWith({
       oauthClientId: "client-1",
@@ -130,7 +131,7 @@ describe("syncVendoredOAuthClient", () => {
       } else {
         mocks.storedClientError = new Error("keyring denied");
       }
-      expect(await syncVendoredOAuthClient(1)).toBe(false);
+      expect(await syncVendoredOAuthClient(pluginConnection(1))).toBe(false);
       expect(mocks.revoke).not.toHaveBeenCalled();
       expect(mocks.update).not.toHaveBeenCalled();
       expect(mocks.applyClientChange).not.toHaveBeenCalled();
@@ -140,7 +141,7 @@ describe("syncVendoredOAuthClient", () => {
   it("leaves a row that already matches alone", async () => {
     mocks.row.oauthClientId = "client-1";
     mocks.row.oauthClientSecret = "enc:secret-1";
-    expect(await syncVendoredOAuthClient(1)).toBe(false);
+    expect(await syncVendoredOAuthClient(pluginConnection(1))).toBe(false);
     expect(mocks.revoke).not.toHaveBeenCalled();
     expect(mocks.update).not.toHaveBeenCalled();
   });
@@ -154,7 +155,7 @@ describe("syncVendoredOAuthClient", () => {
       client_id: "client-1",
       client_secret: "stale-secret",
     };
-    expect(await syncVendoredOAuthClient(1)).toBe(true);
+    expect(await syncVendoredOAuthClient(pluginConnection(1))).toBe(true);
     expect(mocks.revoke).toHaveBeenCalledWith(1);
     expect(mocks.applyClientChange).toHaveBeenCalledWith(1, {
       clientId: "client-1",
@@ -166,7 +167,7 @@ describe("syncVendoredOAuthClient", () => {
   it("reports a changed client id so the old client's tokens go", async () => {
     mocks.row.oauthClientId = "old-client";
     mocks.row.oauthClientSecret = "enc:secret-1";
-    expect(await syncVendoredOAuthClient(1)).toBe(true);
+    expect(await syncVendoredOAuthClient(pluginConnection(1))).toBe(true);
     expect(mocks.applyClientChange).toHaveBeenCalledWith(1, {
       clientId: "client-1",
       clientSecret: "secret-1",
@@ -178,7 +179,7 @@ describe("syncVendoredOAuthClient", () => {
     mocks.applyClientChange.mockRejectedValue(new Error("state write failed"));
     // The cached client can no longer persist tokens, so the caller still
     // has to drop it.
-    expect(await syncVendoredOAuthClient(1)).toBe(true);
+    expect(await syncVendoredOAuthClient(pluginConnection(1))).toBe(true);
     expect(mocks.revoke).toHaveBeenCalledWith(1);
   });
 
@@ -186,14 +187,14 @@ describe("syncVendoredOAuthClient", () => {
     mocks.entries = [];
     mocks.row.oauthClientId = "client-1";
     mocks.row.oauthClientSecret = "enc:secret-1";
-    expect(await syncVendoredOAuthClient(1)).toBe(false);
+    expect(await syncVendoredOAuthClient(pluginConnection(1))).toBe(false);
     expect(mocks.revoke).not.toHaveBeenCalled();
   });
 
   it("writes only while the row is still an http server using oauth", async () => {
     // An edit landing between the read and the write must not leave a client
     // on a server that no longer uses one.
-    expect(await syncVendoredOAuthClient(1)).toBe(true);
+    expect(await syncVendoredOAuthClient(pluginConnection(1))).toBe(true);
     expect(mocks.updateWhere).toEqual([
       { column: "id", value: 1 },
       { column: "transport", value: "http" },
@@ -205,7 +206,7 @@ describe("syncVendoredOAuthClient", () => {
     // The conditional write matches no row once OAuth is off, so the client
     // must not be put back on a server that no longer uses one.
     mocks.updatedRows = [];
-    expect(await syncVendoredOAuthClient(1)).toBe(true);
+    expect(await syncVendoredOAuthClient(pluginConnection(1))).toBe(true);
     expect(mocks.applyClientChange).not.toHaveBeenCalled();
   });
 
@@ -214,16 +215,20 @@ describe("syncVendoredOAuthClient", () => {
     mocks.row.oauthClientSecret = "enc:stale";
     // A rotation here would fence an in-flight connect, so it waits for
     // Connect or a re-add.
-    expect(await syncVendoredOAuthClient(1, { cachedOnly: true })).toBe(false);
+    expect(
+      await syncVendoredOAuthClient(pluginConnection(1), { cachedOnly: true }),
+    ).toBe(false);
     expect(mocks.revoke).not.toHaveBeenCalled();
 
     mocks.row.oauthClientId = null;
-    expect(await syncVendoredOAuthClient(1, { cachedOnly: true })).toBe(true);
+    expect(
+      await syncVendoredOAuthClient(pluginConnection(1), { cachedOnly: true }),
+    ).toBe(true);
   });
 
   it("skips a server with oauth turned off", async () => {
     mocks.row.oauthEnabled = false;
-    expect(await syncVendoredOAuthClient(1)).toBe(false);
+    expect(await syncVendoredOAuthClient(pluginConnection(1))).toBe(false);
     expect(mocks.update).not.toHaveBeenCalled();
   });
 });

@@ -444,7 +444,10 @@
     "never": "Bir daha önerme",
     "neverTitle": "{{name}} bir daha önerilmeyecek",
     "neverDescription": "Dyad onsuz devam edecek. Eklentiler sayfasından yine de ekleyebilirsiniz.",
-    "connectFailed": "Eklenti bağlanamadı. Tekrar deneyin veya Eklentiler sayfasından yönetin."
+    "connectFailed": "Eklenti bağlanamadı. Tekrar deneyin veya Eklentiler sayfasından yönetin.",
+    "unavailableTitle": "{{name}} bu uygulama için ayarlanmamış",
+    "unavailableDescription": "Dyad'a eklendi ancak bu uygulama onu kullanmıyor. Eklentinin sayfasından bu uygulama için kullanılabilir yapabilirsiniz.",
+    "openPluginSettings": "Eklenti ayarlarını aç"
   },
   "guide": "Rehber",
   "annotations": {

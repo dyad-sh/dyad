@@ -864,6 +864,16 @@ export const mcpServers = sqliteTable(
     // Slug of the curated catalog entry this server was added from.
     // Null for manually configured servers.
     catalogSlug: text("catalog_slug"),
+    // App-scoped plugins experiment. Which apps the default configuration
+    // (this row) serves: "all", "selected" (the apps in
+    // mcp_server_default_apps), or "none". `enabled` stays the switch older
+    // builds read, so it is only true for an "all" plugin that is on; the
+    // switch for a plugin whose default is limited lives in `scopedEnabled`.
+    // See src/ipc/utils/mcp_plugin_availability.ts.
+    defaultScope: text("default_scope").notNull().default("all"),
+    scopedEnabled: integer("scoped_enabled", { mode: "boolean" })
+      .notNull()
+      .default(sql`0`),
     createdAt: integer("created_at", { mode: "timestamp" })
       .notNull()
       .default(sql`(unixepoch())`),
@@ -875,6 +885,107 @@ export const mcpServers = sqliteTable(
     // Provenance/dedupe key for catalog adds. SQLite allows multiple
     // NULLs, so manually-configured servers are unaffected.
     uniqueIndex("uniq_mcp_catalog_slug").on(table.catalogSlug),
+  ],
+);
+
+// The apps a plugin's default configuration serves when its
+// `defaultScope` is "selected".
+export const mcpServerDefaultApps = sqliteTable(
+  "mcp_server_default_apps",
+  {
+    serverId: integer("server_id")
+      .notNull()
+      .references(() => mcpServers.id, { onDelete: "cascade" }),
+    appId: integer("app_id")
+      .notNull()
+      .references(() => apps.id, { onDelete: "cascade" }),
+  },
+  (table) => [
+    uniqueIndex("uniq_mcp_server_default_app").on(table.serverId, table.appId),
+    index("mcp_server_default_apps_app_idx").on(table.appId),
+  ],
+);
+
+// App-specific configurations of a plugin (app-scoped plugins experiment).
+// Kept out of mcp_servers so builds without the feature never see them:
+// they only know the default configuration. The config columns mirror
+// mcp_servers; secrets are always stored encrypted.
+export const mcpAppConfigs = sqliteTable(
+  "mcp_app_configs",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    serverId: integer("server_id")
+      .notNull()
+      .references(() => mcpServers.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    transport: text("transport").notNull(),
+    command: text("command"),
+    args: text("args", { mode: "json" }).$type<string[] | null>(),
+    envEncrypted: text("env_encrypted"),
+    headersEncrypted: text("headers_encrypted"),
+    url: text("url"),
+    oauthEnabled: integer("oauth_enabled", { mode: "boolean" })
+      .notNull()
+      .default(sql`0`),
+    oauthState: text("oauth_state"),
+    oauthClientId: text("oauth_client_id"),
+    oauthClientSecret: text("oauth_client_secret"),
+    oauthScope: text("oauth_scope"),
+    oauthCallbackPort: integer("oauth_callback_port"),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [index("mcp_app_configs_server_idx").on(table.serverId)],
+);
+
+// Which apps use which app-specific configuration. `serverId` repeats the
+// configuration's plugin so the unique index can guarantee an app uses at
+// most one configuration of each plugin.
+export const mcpAppConfigApps = sqliteTable(
+  "mcp_app_config_apps",
+  {
+    appConfigId: integer("app_config_id")
+      .notNull()
+      .references(() => mcpAppConfigs.id, { onDelete: "cascade" }),
+    serverId: integer("server_id")
+      .notNull()
+      .references(() => mcpServers.id, { onDelete: "cascade" }),
+    appId: integer("app_id")
+      .notNull()
+      .references(() => apps.id, { onDelete: "cascade" }),
+  },
+  (table) => [
+    uniqueIndex("uniq_mcp_app_config_plugin_app").on(
+      table.serverId,
+      table.appId,
+    ),
+    index("mcp_app_config_apps_config_idx").on(table.appConfigId),
+    index("mcp_app_config_apps_app_idx").on(table.appId),
+  ],
+);
+
+// Tool approvals for app-specific configurations. Each configuration can
+// reach a different server or account, so approvals are not shared with
+// the default configuration's (mcp_tool_consents).
+export const mcpAppConfigToolConsents = sqliteTable(
+  "mcp_app_config_tool_consents",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    appConfigId: integer("app_config_id")
+      .notNull()
+      .references(() => mcpAppConfigs.id, { onDelete: "cascade" }),
+    toolName: text("tool_name").notNull(),
+    consent: text("consent").notNull().default("ask"), // ask | always | denied
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [
+    unique("uniq_mcp_app_config_consent").on(table.appConfigId, table.toolName),
   ],
 );
 

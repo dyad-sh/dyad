@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   getToolConsents: vi.fn(),
   probeConnection: vi.fn(),
   updateServer: vi.fn(),
+  updateAppConfig: vi.fn(),
   listCatalog: vi.fn(),
   showError: vi.fn(),
 }));
@@ -24,6 +25,7 @@ vi.mock("@/ipc/types", async (importOriginal) => ({
       getToolConsents: mocks.getToolConsents,
       probeConnection: mocks.probeConnection,
       updateServer: mocks.updateServer,
+      updateAppConfig: mocks.updateAppConfig,
       listCatalog: mocks.listCatalog,
     },
   },
@@ -40,6 +42,10 @@ vi.mock("@/lib/toast", () => ({
 }));
 
 import { useMcp } from "@/hooks/useMcp";
+import {
+  mcpConnectionKey,
+  pluginConnection,
+} from "@/shared/mcp_connection_ref";
 import { usePluginConnect } from "./usePluginConnect";
 
 const SERVER_ID = 7;
@@ -47,6 +53,7 @@ const SERVER_ID = 7;
 function makeServer(overrides: Partial<McpServer> = {}): McpServer {
   return {
     id: SERVER_ID,
+    connection: pluginConnection(overrides.id ?? SERVER_ID),
     name: "GitHub",
     transport: "http",
     command: null,
@@ -64,6 +71,9 @@ function makeServer(overrides: Partial<McpServer> = {}): McpServer {
     headersUnreadable: false,
     // No catalog slug, so a 401 here reads as "enable OAuth".
     catalogSlug: null,
+    defaultScope: "all",
+    defaultAppIds: [],
+    appConfigCount: 0,
     createdAt: new Date(0),
     updatedAt: new Date(0),
     ...overrides,
@@ -145,7 +155,11 @@ describe("usePluginConnect feedback ownership", () => {
     await waitFor(() =>
       expect(result.current.connect.feedbackFor(makeServer())).toBeNull(),
     );
-    expect(result.current.mcp.statusByServer[SERVER_ID]).toBe("ok");
+    expect(
+      result.current.mcp.statusByServer[
+        mcpConnectionKey(pluginConnection(SERVER_ID))
+      ],
+    ).toBe("ok");
   });
 
   it("keeps the auth alert while discovery still reports a 401", async () => {
@@ -177,5 +191,65 @@ describe("usePluginConnect feedback ownership", () => {
         "unauthorized",
       ),
     );
+  });
+});
+
+describe("useMcp updateConnection", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.listServers.mockResolvedValue([makeServer()]);
+    mocks.listTools.mockResolvedValue(AUTHORIZED);
+    mocks.getToolConsents.mockResolvedValue([]);
+    mocks.listCatalog.mockResolvedValue({ entries: [] });
+    mocks.updateServer.mockImplementation(async () => makeServer());
+    mocks.updateAppConfig.mockResolvedValue({});
+  });
+
+  it("sends a plugin's edit to the plugin channel", async () => {
+    const { result } = renderConnect();
+
+    await act(async () => {
+      await result.current.mcp.updateConnection(pluginConnection(SERVER_ID), {
+        name: "Renamed",
+        enabled: true,
+      });
+    });
+
+    expect(mocks.updateServer).toHaveBeenCalledWith({
+      id: SERVER_ID,
+      name: "Renamed",
+      enabled: true,
+    });
+    expect(mocks.updateAppConfig).not.toHaveBeenCalled();
+  });
+
+  it("sends an app-specific configuration's edit to its own channel", async () => {
+    const { result } = renderConnect();
+
+    await act(async () => {
+      await result.current.mcp.updateConnection(
+        { serverId: SERVER_ID, appConfigId: 3 },
+        { name: "Lab" },
+      );
+    });
+
+    expect(mocks.updateAppConfig).toHaveBeenCalledWith({
+      serverId: SERVER_ID,
+      appConfigId: 3,
+      name: "Lab",
+    });
+    expect(mocks.updateServer).not.toHaveBeenCalled();
+  });
+
+  it("refuses to switch an app-specific configuration on or off", async () => {
+    const { result } = renderConnect();
+
+    await expect(
+      result.current.mcp.updateConnection(
+        { serverId: SERVER_ID, appConfigId: 3 },
+        { enabled: false },
+      ),
+    ).rejects.toThrow(/with its plugin/);
+    expect(mocks.updateAppConfig).not.toHaveBeenCalled();
   });
 });

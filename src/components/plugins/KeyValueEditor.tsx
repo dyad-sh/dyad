@@ -43,7 +43,7 @@ export function KeyValueEditor({
   isSaving,
   itemLabel = "Environment Variable",
 }: {
-  id: number;
+  id: string;
   json?: Record<string, string> | null;
   disabled?: boolean;
   onSave: (envVars: KeyValue[]) => Promise<void>;

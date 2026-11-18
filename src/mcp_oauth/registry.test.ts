@@ -49,7 +49,7 @@ function request(
 ) {
   return {
     port,
-    serverId,
+    connectionKey: String(serverId),
     rendererMessageId: messageId,
     expectedState: `state-${serverId}`,
     authorize,
@@ -71,7 +71,7 @@ describe("MCP OAuth registry", () => {
     const listener = bindings[0];
     expect(listener.invocationRef).toEqual({
       kind: "mcp-oauth",
-      entityKey: 7,
+      entityKey: "7",
       operationId: "mcp-oauth:1",
     });
     expect(
@@ -89,7 +89,7 @@ describe("MCP OAuth registry", () => {
       2,
       "authorization-code",
     );
-    expect(settled).toHaveBeenCalledWith(7, listener.invocationRef, {
+    expect(settled).toHaveBeenCalledWith("7", listener.invocationRef, {
       success: true,
       error: null,
     });
@@ -143,7 +143,8 @@ describe("MCP OAuth registry", () => {
 
     expect(bindings).toHaveLength(2);
     expect(bindings.map((binding) => binding.invocationRef.entityKey)).toEqual([
-      1, 2,
+      "1",
+      "2",
     ]);
     await registry.dispose();
     await expect(first).resolves.toMatchObject({ success: false });
@@ -165,7 +166,7 @@ describe("MCP OAuth registry", () => {
     });
     expect(firstRequest.onAbort).toHaveBeenCalledOnce();
     expect(bindings).toHaveLength(2);
-    expect(bindings[1].invocationRef.entityKey).toBe(2);
+    expect(bindings[1].invocationRef.entityKey).toBe("2");
 
     await registry.dispose();
     await expect(second).resolves.toMatchObject({ success: false });
@@ -177,7 +178,7 @@ describe("MCP OAuth registry", () => {
     const result = registry.connect(connectRequest);
     await flush();
 
-    await registry.cancelServer(11, "server deleted");
+    await registry.cancelConnection("11", "server deleted");
     await expect(result).resolves.toEqual({
       success: false,
       error: "server deleted",
@@ -207,7 +208,7 @@ describe("MCP OAuth registry", () => {
     await flush();
     expect(registry.getState(53682).status).toBe("exchanging");
 
-    await registry.cancelServer(12, "OAuth disabled");
+    await registry.cancelConnection("12", "OAuth disabled");
     finishExchange("AUTHORIZED");
     await flush();
     await expect(result).resolves.toEqual({

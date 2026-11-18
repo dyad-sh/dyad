@@ -1,7 +1,9 @@
 import React, { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAtomValue } from "jotai";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
+import { queryKeys } from "@/lib/queryKeys";
 import { CheckCircle2, Loader2, Plug, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
@@ -22,7 +24,13 @@ interface DyadSuggestPluginProps {
   reason: string;
   /** The parked request this card belongs to; only pending cards carry it. */
   requestId?: string;
-  outcome?: "pending" | "connected" | "declined" | "never" | "dismissed";
+  outcome?:
+    | "pending"
+    | "connected"
+    | "declined"
+    | "never"
+    | "dismissed"
+    | "unavailable";
 }
 
 /**
@@ -105,12 +113,81 @@ export const DyadSuggestPlugin: React.FC<DyadSuggestPluginProps> = ({
     );
   }
 
+  if (outcome === "unavailable") {
+    return (
+      <UnavailableSuggestionCard
+        slug={slug}
+        displayName={displayName}
+        reason={reason}
+      />
+    );
+  }
+
   // Once the durable pending card settles, its appended terminal card owns
   // the historical presentation. Dismissed requests have no terminal UI.
   if (outcome === "dismissed" || !pending) return null;
 
   return <PendingSuggestionCard pending={pending} />;
 };
+
+// The plugin is added, but no configuration of it serves this chat's app
+// (app-specific plugin configurations). The card can't fix that, so it
+// links to the plugin's page, where the user chooses its apps.
+function UnavailableSuggestionCard({
+  slug,
+  displayName,
+  reason,
+}: {
+  slug: string;
+  displayName: string;
+  reason: string;
+}) {
+  const { t } = useTranslation("chat");
+  const navigate = useNavigate();
+  // Shares the plugin list's cache entry; deliberately not useMcp, which
+  // would also start tool discovery for every plugin.
+  const serversQuery = useQuery({
+    queryKey: queryKeys.mcp.servers,
+    queryFn: () => ipc.mcp.listServers(),
+  });
+  const server = serversQuery.data?.find((s) => s.catalogSlug === slug);
+  return (
+    <DyadCard
+      accentColor="amber"
+      state="finished"
+      data-testid="plugin-suggestion-unavailable"
+    >
+      <DyadCardHeader icon={<Plug size={15} />} accentColor="amber">
+        <DyadBadge color="amber">{t("suggestPlugin.badge")}</DyadBadge>
+        <span className="text-sm font-medium text-foreground">
+          {t("suggestPlugin.unavailableTitle", { name: displayName })}
+        </span>
+      </DyadCardHeader>
+      <div className="px-3 pb-3 flex flex-col gap-2">
+        {reason && <p className="text-xs text-foreground/80">{reason}</p>}
+        <p className="text-xs text-muted-foreground">
+          {t("suggestPlugin.unavailableDescription")}
+        </p>
+        <div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() =>
+              server
+                ? navigate({
+                    to: "/plugins/$serverId",
+                    params: { serverId: server.id },
+                  })
+                : navigate({ to: "/plugins" })
+            }
+          >
+            {t("suggestPlugin.openPluginSettings")}
+          </Button>
+        </div>
+      </div>
+    </DyadCard>
+  );
+}
 
 type ConnectPhase = "idle" | "adding" | "authorizing" | "declining";
 
@@ -123,7 +200,7 @@ function PendingSuggestionCard({
   const { t } = useTranslation("chat");
   const readModel = useUserInputReadModel();
   const queryClient = useQueryClient();
-  const { connectNewServer, connectingServerId } = usePluginConnect();
+  const { connectNewServer, connectingKey } = usePluginConnect();
   const [phase, setPhase] = useState<ConnectPhase>("idle");
   // Kept on the card so a failure outlives its toast. By then the plugin
   // may already be added, and the user needs to see it still needs work.
@@ -132,7 +209,7 @@ function PendingSuggestionCard({
   const displayName = pending.serverName;
   // Another connect flow anywhere in the app holds the shared slot.
   const isBusy =
-    pending.isResponding || phase !== "idle" || connectingServerId !== null;
+    pending.isResponding || phase !== "idle" || connectingKey !== null;
 
   const handleConnect = async () => {
     if (isBusy) return;
@@ -165,7 +242,7 @@ function PendingSuggestionCard({
       }
       // Added and authorized are not the same as reachable; the agent
       // should only be told the plugin is ready when its server answers.
-      const probe = await ipc.mcp.probeConnection(created.id);
+      const probe = await ipc.mcp.probeConnection(created.connection);
       if (probe.status !== "ok") {
         // A 401 means the server answered and wants authorization, which
         // calls for a different next step than a server that is down.

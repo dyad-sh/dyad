@@ -5,6 +5,10 @@ interface Row {
   catalogSlug: string;
   enabled: boolean;
   oauthState: string | null;
+  // Which configuration serves the chat's app: the default (as with the
+  // app-scoped plugins experiment off), an app-specific one, or none.
+  coverage: "default" | "app-config" | "none";
+  appConfigOAuthState: string | null;
 }
 
 const mocks = vi.hoisted(() => ({
@@ -12,11 +16,7 @@ const mocks = vi.hoisted(() => ({
   park: vi.fn(),
   catalog: vi.fn(async (): Promise<unknown[]> => []),
   peekCatalog: vi.fn((): unknown[] | null => null),
-  rows: [] as {
-    catalogSlug: string;
-    enabled: boolean;
-    oauthState: string | null;
-  }[],
+  rows: [] as Row[],
   neverSlugs: undefined as string[] | undefined,
   tryWriteSettings: vi.fn(() => true),
 }));
@@ -44,32 +44,33 @@ vi.mock("@/main/settings", () => ({
   tryWriteSettings: mocks.tryWriteSettings,
 }));
 
-// Two queries run against the servers table: every catalog row, and the
-// row for one slug. `eq` carries the slug so `where` can tell them apart.
-vi.mock("@/db", () => ({
-  db: {
-    select: () => ({
-      from: () => ({
-        where: async (condition?: { slug?: string }) =>
-          condition?.slug !== undefined
-            ? mocks.rows.filter((row) => row.catalogSlug === condition.slug)
-            : mocks.rows,
-      }),
+vi.mock("@/ipc/utils/mcp_app_scoping", () => ({
+  readPluginStatusesForApp: async () =>
+    mocks.rows.map((row, index) => {
+      const serverId = index + 1;
+      const resolved = {
+        pluginName: row.catalogSlug,
+        displayName: row.catalogSlug,
+        transport: "http",
+      };
+      return {
+        serverId,
+        catalogSlug: row.catalogSlug,
+        availability: { pluginEnabled: row.enabled, defaultScope: "all" },
+        coveringConnection:
+          row.coverage === "none"
+            ? null
+            : {
+                ...resolved,
+                connection: {
+                  serverId,
+                  appConfigId: row.coverage === "app-config" ? 1 : null,
+                },
+              },
+        defaultOAuthState: row.oauthState,
+        appConfigOAuthState: row.appConfigOAuthState,
+      };
     }),
-  },
-}));
-
-vi.mock("@/db/schema", () => ({
-  mcpServers: {
-    catalogSlug: "catalog_slug",
-    enabled: "enabled",
-    oauthState: "oauth_state",
-  },
-}));
-
-vi.mock("drizzle-orm", () => ({
-  isNotNull: vi.fn(),
-  eq: (_column: unknown, slug: string) => ({ slug }),
 }));
 
 vi.mock("electron-log", () => ({
@@ -91,7 +92,14 @@ import {
 const row = (
   catalogSlug: string,
   overrides: Partial<Omit<Row, "catalogSlug">> = {},
-): Row => ({ catalogSlug, enabled: true, oauthState: null, ...overrides });
+): Row => ({
+  catalogSlug,
+  enabled: true,
+  oauthState: null,
+  coverage: "default",
+  appConfigOAuthState: null,
+  ...overrides,
+});
 
 const VERCEL = {
   slug: "vercel",
@@ -99,6 +107,7 @@ const VERCEL = {
   description: "Deployments, logs and projects on Vercel.",
   oauthRequired: true,
   needsOAuth: true,
+  unavailableInApp: false,
 };
 
 const CATALOG = [
@@ -149,6 +158,8 @@ const CATALOG = [
   },
 ];
 
+const APP_ID = 3;
+
 const slugs = (servers: { slug: string }[]) =>
   servers.map((server) => server.slug);
 
@@ -167,7 +178,9 @@ describe("collectSuggestablePlugins", () => {
   it("keeps only featured one-click http entries that are not usable yet", async () => {
     mocks.rows = [row("stripe")];
 
-    await expect(collectSuggestablePlugins({ chatId: 7 })).resolves.toEqual([
+    await expect(
+      collectSuggestablePlugins({ chatId: 7, appId: APP_ID }),
+    ).resolves.toEqual([
       VERCEL,
       {
         slug: "exa",
@@ -175,6 +188,7 @@ describe("collectSuggestablePlugins", () => {
         description: undefined,
         oauthRequired: false,
         needsOAuth: false,
+        unavailableInApp: false,
       },
     ]);
   });
@@ -198,15 +212,17 @@ describe("collectSuggestablePlugins", () => {
       },
     ]);
 
-    expect(slugs(await collectSuggestablePlugins({ chatId: 7 }))).toEqual([
-      "optional-header",
-    ]);
+    expect(
+      slugs(await collectSuggestablePlugins({ chatId: 7, appId: APP_ID })),
+    ).toEqual(["optional-header"]);
   });
 
   it("re-suggests a plugin that is added but disabled or not authorized", async () => {
     mocks.rows = [row("exa", { enabled: false }), row("vercel"), row("stripe")];
 
-    await expect(collectSuggestablePlugins({ chatId: 7 })).resolves.toEqual([
+    await expect(
+      collectSuggestablePlugins({ chatId: 7, appId: APP_ID }),
+    ).resolves.toEqual([
       VERCEL,
       {
         slug: "exa",
@@ -214,6 +230,7 @@ describe("collectSuggestablePlugins", () => {
         description: undefined,
         oauthRequired: false,
         needsOAuth: false,
+        unavailableInApp: false,
       },
     ]);
   });
@@ -221,48 +238,56 @@ describe("collectSuggestablePlugins", () => {
   it("skips authorization for a disabled plugin that already holds tokens", async () => {
     mocks.rows = [row("vercel", { enabled: false, oauthState: "tokens" })];
 
-    const [vercel] = await collectSuggestablePlugins({ chatId: 7 });
+    const [vercel] = await collectSuggestablePlugins({
+      chatId: 7,
+      appId: APP_ID,
+    });
     expect(vercel).toMatchObject({ slug: "vercel", needsOAuth: false });
   });
 
   it("still suggests a plugin whose authorization was started but never finished", async () => {
     mocks.rows = [row("vercel", { oauthState: "registration-only" })];
 
-    const [vercel] = await collectSuggestablePlugins({ chatId: 7 });
+    const [vercel] = await collectSuggestablePlugins({
+      chatId: 7,
+      appId: APP_ID,
+    });
     expect(vercel).toMatchObject({ slug: "vercel", needsOAuth: true });
   });
 
   it("leaves out an authorized, enabled plugin", async () => {
     mocks.rows = [row("vercel", { oauthState: "tokens" })];
 
-    expect(slugs(await collectSuggestablePlugins({ chatId: 7 }))).toEqual([
-      "exa",
-      "stripe",
-    ]);
+    expect(
+      slugs(await collectSuggestablePlugins({ chatId: 7, appId: APP_ID })),
+    ).toEqual(["exa", "stripe"]);
   });
 
   it("leaves out plugins the user asked never to be offered", async () => {
     mocks.neverSlugs = ["vercel", "stripe"];
 
-    expect(slugs(await collectSuggestablePlugins({ chatId: 7 }))).toEqual([
-      "exa",
-    ]);
+    expect(
+      slugs(await collectSuggestablePlugins({ chatId: 7, appId: APP_ID })),
+    ).toEqual(["exa"]);
   });
 
   it("returns nothing when the catalog is unavailable", async () => {
     mocks.catalog.mockResolvedValue([]);
-    await expect(collectSuggestablePlugins({ chatId: 7 })).resolves.toEqual([]);
+    await expect(
+      collectSuggestablePlugins({ chatId: 7, appId: APP_ID }),
+    ).resolves.toEqual([]);
   });
 
   it("reads only the cache when asked, without fetching", async () => {
     await expect(
-      collectSuggestablePlugins({ chatId: 7, cachedOnly: true }),
+      collectSuggestablePlugins({ chatId: 7, appId: APP_ID, cachedOnly: true }),
     ).resolves.toEqual([]);
     expect(mocks.catalog).not.toHaveBeenCalled();
 
     mocks.peekCatalog.mockReturnValue(CATALOG);
     const cached = await collectSuggestablePlugins({
       chatId: 7,
+      appId: APP_ID,
       cachedOnly: true,
     });
     expect(slugs(cached)).toEqual(["vercel", "exa", "stripe"]);
@@ -273,7 +298,7 @@ describe("collectSuggestablePlugins", () => {
     vi.useFakeTimers();
     try {
       mocks.catalog.mockReturnValue(new Promise(() => {}));
-      const pending = collectSuggestablePlugins({ chatId: 7 });
+      const pending = collectSuggestablePlugins({ chatId: 7, appId: APP_ID });
       await vi.advanceTimersByTimeAsync(1_000);
       await expect(pending).resolves.toEqual([]);
     } finally {
@@ -296,14 +321,50 @@ describe("collectSuggestablePlugins", () => {
       } as unknown as AgentContext,
     );
 
-    expect(slugs(await collectSuggestablePlugins({ chatId: 7 }))).toEqual([
-      "exa",
-      "stripe",
-    ]);
-    expect(slugs(await collectSuggestablePlugins({ chatId: 8 }))).toEqual([
-      "vercel",
-      "exa",
-      "stripe",
+    expect(
+      slugs(await collectSuggestablePlugins({ chatId: 7, appId: APP_ID })),
+    ).toEqual(["exa", "stripe"]);
+    expect(
+      slugs(await collectSuggestablePlugins({ chatId: 8, appId: APP_ID })),
+    ).toEqual(["vercel", "exa", "stripe"]);
+  });
+
+  it("marks an added plugin that serves no configuration to this app as unavailable", async () => {
+    mocks.rows = [
+      row("vercel", { oauthState: "tokens", coverage: "none" }),
+      row("stripe"),
+    ];
+
+    const [vercel] = await collectSuggestablePlugins({
+      chatId: 7,
+      appId: APP_ID,
+    });
+    expect(vercel).toMatchObject({
+      slug: "vercel",
+      needsOAuth: false,
+      unavailableInApp: true,
+    });
+  });
+
+  it("judges an app-specific configuration by its own authorization", async () => {
+    mocks.rows = [
+      // The default is authorized, but this app uses a configuration
+      // that isn't, and the card can only connect the default.
+      row("vercel", {
+        oauthState: "tokens",
+        coverage: "app-config",
+        appConfigOAuthState: null,
+      }),
+      row("exa", { coverage: "app-config" }),
+    ];
+
+    const suggestable = await collectSuggestablePlugins({
+      chatId: 7,
+      appId: APP_ID,
+    });
+    expect(suggestable).toEqual([
+      expect.objectContaining({ slug: "vercel", unavailableInApp: true }),
+      expect.objectContaining({ slug: "stripe", unavailableInApp: false }),
     ]);
   });
 });
@@ -314,6 +375,7 @@ describe("suggestPluginTool", () => {
   const context = (overrides: Partial<AgentContext> = {}) =>
     ({
       chatId: 7,
+      appId: APP_ID,
       messageId: 99,
       onXmlComplete,
       suggestablePlugins: [VERCEL],
@@ -323,6 +385,27 @@ describe("suggestPluginTool", () => {
   beforeEach(() => {
     resetMocks();
     onXmlComplete = vi.fn();
+  });
+
+  it("points to the plugin's settings, without waiting, when the plugin isn't set up for this app", async () => {
+    const unavailable = {
+      ...VERCEL,
+      needsOAuth: false,
+      unavailableInApp: true,
+    };
+    mocks.rows = [row("vercel", { oauthState: "tokens", coverage: "none" })];
+
+    const result = await suggestPluginTool.execute(
+      { slug: "vercel", reason: "Read the build logs." },
+      context({ suggestablePlugins: [unavailable] }),
+    );
+
+    expect(mocks.request).not.toHaveBeenCalled();
+    expect(mocks.park).not.toHaveBeenCalled();
+    expect(onXmlComplete).toHaveBeenCalledWith(
+      expect.stringContaining('outcome="unavailable"'),
+    );
+    expect(result).toMatch(/not set up for this app/);
   });
 
   it("is hidden until a suggestable plugin exists", () => {

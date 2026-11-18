@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { McpServer } from "@/ipc/types";
 import type { CatalogInput } from "@/ipc/types/mcp_catalog";
+import { pluginConnection } from "@/shared/mcp_connection_ref";
 import { serverNeedsSetup, unfilledOptionalInputs } from "./pluginSetup";
 
 function makeServer(overrides: Partial<McpServer> = {}): McpServer {
   return {
     id: 1,
+    connection: pluginConnection(overrides.id ?? 1),
     name: "Test Server",
     transport: "stdio",
     command: "npx",
@@ -22,6 +24,9 @@ function makeServer(overrides: Partial<McpServer> = {}): McpServer {
     envUnreadable: false,
     headersUnreadable: false,
     catalogSlug: "test",
+    defaultScope: "all",
+    defaultAppIds: [],
+    appConfigCount: 0,
     createdAt: new Date(0),
     updatedAt: new Date(0),
     ...overrides,

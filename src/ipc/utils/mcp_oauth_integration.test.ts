@@ -17,6 +17,7 @@
 
 import { spawn, type ChildProcess } from "node:child_process";
 import { createServer } from "node:net";
+import { pluginConnection } from "@/shared/mcp_connection_ref";
 import {
   afterAll,
   beforeAll,
@@ -99,6 +100,8 @@ vi.mock("@/db", () => ({
 }));
 
 vi.mock("@/db/schema", () => ({
+  // App-specific plugin configurations; these tests only use plugin rows.
+  mcpAppConfigs: { id: "app_config_id", oauthState: "app_config_oauth_state" },
   mcpServers: { id: "id", oauthState: "oauth_state" },
 }));
 
@@ -254,7 +257,10 @@ describe("OAuth integration: DCR mode against fake server", () => {
     const callbackPort = await getAvailableCallbackPort();
     seedRow({ id: serverId, url: `${base}/mcp` });
 
-    const result = await runOAuthFlow({ serverId, callbackPort });
+    const result = await runOAuthFlow({
+      connection: pluginConnection(serverId),
+      callbackPort,
+    });
 
     expect(result.success).toBe(true);
     expect(result.error).toBeNull();
@@ -292,7 +298,7 @@ describe("OAuth integration: DCR mode against fake server", () => {
     globalThis.fetch = teeFetch;
     try {
       const first = await runOAuthFlow({
-        serverId,
+        connection: pluginConnection(serverId),
         callbackPort: await getAvailableCallbackPort(),
       });
       expect(first.success).toBe(true);
@@ -304,11 +310,13 @@ describe("OAuth integration: DCR mode against fake server", () => {
       // the provider's own invalidateCredentials path rather than
       // hand-parsing the encrypted blob -- keeps the test honest
       // about the storage format.
-      const provider = new DyadOAuthClientProvider({ serverId });
+      const provider = new DyadOAuthClientProvider({
+        connection: pluginConnection(serverId),
+      });
       await provider.invalidateCredentials("tokens");
 
       const second = await runOAuthFlow({
-        serverId,
+        connection: pluginConnection(serverId),
         callbackPort: await getAvailableCallbackPort(),
       });
       expect(second.success).toBe(true);
@@ -350,7 +358,7 @@ describe("OAuth integration: static client_id mode against fake server", () => {
     };
     try {
       const result = await runOAuthFlow({
-        serverId,
+        connection: pluginConnection(serverId),
         callbackPort: await getAvailableCallbackPort(),
       });
       expect(result.success).toBe(true);
@@ -385,7 +393,7 @@ describe("OAuth integration: refresh-token rotation against fake server", () => 
 
     // First flow: real PKCE redirect path, tokens land.
     const first = await runOAuthFlow({
-      serverId,
+      connection: pluginConnection(serverId),
       callbackPort: await getAvailableCallbackPort(),
     });
     expect(first.success).toBe(true);
@@ -401,7 +409,7 @@ describe("OAuth integration: refresh-token rotation against fake server", () => 
     // with grant_type=refresh_token, rotates tokens, returns
     // 'AUTHORIZED' without ever calling redirectToAuthorization.
     const second = await runOAuthFlow({
-      serverId,
+      connection: pluginConnection(serverId),
       callbackPort: await getAvailableCallbackPort(),
     });
     expect(second.success).toBe(true);
@@ -452,7 +460,7 @@ describe("OAuth integration: confidential client (client_secret) against fake se
     });
 
     const result = await runOAuthFlow({
-      serverId,
+      connection: pluginConnection(serverId),
       callbackPort: await getAvailableCallbackPort(),
     });
     // Success here is the load-bearing assertion: the fake /token
@@ -474,7 +482,7 @@ describe("OAuth integration: confidential client (client_secret) against fake se
     });
 
     const result = await runOAuthFlow({
-      serverId,
+      connection: pluginConnection(serverId),
       callbackPort: await getAvailableCallbackPort(),
     });
     expect(result.success).toBe(false);
@@ -503,7 +511,7 @@ describe("OAuth integration: scope passthrough against fake server", () => {
     });
 
     const result = await runOAuthFlow({
-      serverId,
+      connection: pluginConnection(serverId),
       callbackPort: await getAvailableCallbackPort(),
     });
 

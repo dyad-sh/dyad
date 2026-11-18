@@ -1,10 +1,18 @@
-import type { McpServer } from "@/ipc/types";
-import { isRequiredInput, type CatalogInput } from "@/ipc/types/mcp_catalog";
+import type { McpConnectionConfig } from "@/ipc/types";
+import {
+  isRequiredInput,
+  userSuppliedInputs,
+  type CatalogInput,
+  type McpCatalogEntry,
+} from "@/ipc/types/mcp_catalog";
 
 // Whether a declared setup input already has a stored value. The client
 // secret never reaches the renderer, so a saved client id stands in for
 // the id/secret pair it was saved alongside.
-function isInputSatisfied(server: McpServer, input: CatalogInput): boolean {
+function isInputSatisfied(
+  server: McpConnectionConfig,
+  input: CatalogInput,
+): boolean {
   switch (input.kind) {
     case "header":
       return !!server.headersJson?.[input.name];
@@ -26,7 +34,7 @@ function isInputSatisfied(server: McpServer, input: CatalogInput): boolean {
 // server must not send it back through setup. Optional inputs are offered
 // on the setup form but never hold it open.
 export function serverNeedsSetup(
-  server: McpServer,
+  server: McpConnectionConfig,
   inputs: CatalogInput[],
 ): boolean {
   return inputs.some(
@@ -37,10 +45,35 @@ export function serverNeedsSetup(
 // Optional inputs that still have no saved value, offered on the detail
 // page after setup so they can be filled in later.
 export function unfilledOptionalInputs<T extends CatalogInput>(
-  server: McpServer,
+  server: McpConnectionConfig,
   inputs: T[],
 ): T[] {
   return inputs.filter(
     (input) => !isRequiredInput(input) && !isInputSatisfied(server, input),
   );
+}
+
+// Where a connection stands on its catalog setup. Shared by the plugin's
+// default configuration and its app-specific ones, which use the same
+// catalog entry.
+export function connectionSetupState(
+  connection: McpConnectionConfig,
+  catalogEntry: McpCatalogEntry | undefined,
+  catalogIsLoading: boolean,
+) {
+  const setupInputs = userSuppliedInputs(catalogEntry?.inputs);
+  // Show the guided setup until every declared field has a saved value.
+  const needsSetup = serverNeedsSetup(connection, setupInputs);
+  // A disabled catalog server might still need setup while its catalog is
+  // loading, so keep its controls locked until the fetch settles. Once it
+  // settles (even on error) the toggle works again, so a slow or failing
+  // catalog can't strand an already-configured server.
+  const setupPending =
+    !!connection.catalogSlug && catalogIsLoading && !connection.enabled;
+  return {
+    setupInputs,
+    needsSetup,
+    setupPending,
+    setupIncomplete: needsSetup || setupPending,
+  };
 }

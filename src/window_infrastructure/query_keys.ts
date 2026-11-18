@@ -87,7 +87,8 @@ export function queryKeysForInvalidationScope(
               : queryKeys.neon.all,
       ];
     case "mcp-servers":
-      return [queryKeys.mcp.servers];
+      // App-specific configurations belong to their plugin's rows.
+      return [queryKeys.mcp.servers, queryKeys.mcp.appConfigs];
     case "mcp-catalog":
       return [queryKeys.mcp.catalog];
     case "mcp-tools":

@@ -1248,6 +1248,7 @@ export async function handleLocalAgentStream(
         if (getAgentToolConsent("suggest_plugin") !== "never") {
           ctx.suggestablePlugins = await collectSuggestablePlugins({
             chatId: chat.id,
+            appId: chat.appId,
           });
         }
       } catch (e) {
@@ -1271,6 +1272,7 @@ export async function handleLocalAgentStream(
       try {
         stallWatchdog.setPhase("loading MCP tools");
         mcpDefs = await collectMcpToolDefs({
+          appId: ctx.appId,
           abortSignal: ctx.abortSignal,
           onWarningMessage: ctx.onWarningMessage,
         });
@@ -3021,19 +3023,29 @@ async function getMcpTools(
     // One bad server (e.g. unconnected OAuth, or one that never answers)
     // is skipped rather than stripping or blocking every other server's tools.
     const loadedServers = await loadEnabledMcpServerTools({
+      appId: ctx.appId,
       abortSignal: ctx.abortSignal,
       onWarningMessage: ctx.onWarningMessage,
     });
 
     for (const { server: s, tools: toolSet } of loadedServers) {
       for (const [name, mcpTool] of Object.entries(toolSet)) {
-        const key = `${sanitizeMcpName(s.name || "")}__${sanitizeMcpName(name)}`;
+        // Keyed by the plugin's name, so a tool keeps its key whichever of
+        // the plugin's configurations this app uses.
+        const key = `${sanitizeMcpName(s.pluginName || "")}__${sanitizeMcpName(name)}`;
 
         mcpToolSet[key] = {
           description: mcpTool.description,
           inputSchema: mcpTool.inputSchema,
           execute: async (args: unknown, execCtx: ToolExecutionOptions) => {
-            const { serverName, toolName } = parseMcpToolKey(key);
+            const parsedKey = parseMcpToolKey(key);
+            const { toolName } = parsedKey;
+            // Tool cards name the app-specific configuration that ran the
+            // tool; a default configuration keeps the label it always had.
+            const serverName =
+              s.connection.appConfigId === null
+                ? parsedKey.serverName
+                : s.displayName;
             const callId = execCtx.toolCallId;
             let callEmitted = false;
             let executionStarted = false;
@@ -3057,7 +3069,7 @@ async function getMcpTools(
                 isDyadPro: ctx.isDyadPro,
                 freeModelMode: ctx.freeModelMode,
                 chatId: ctx.chatId,
-                serverName: s.name,
+                serverName: s.pluginName,
                 toolName: name,
                 toolDescription: mcpTool.description,
                 inputSchema: mcpTool.inputSchema,
@@ -3066,8 +3078,8 @@ async function getMcpTools(
 
               const { approved, autoApprovedReason } =
                 await requireMcpToolConsent(event, {
-                  serverId: s.id,
-                  serverName: s.name,
+                  connection: s.connection,
+                  serverName: s.displayName,
                   toolName: name,
                   toolDescription: mcpTool.description,
                   inputPreview,

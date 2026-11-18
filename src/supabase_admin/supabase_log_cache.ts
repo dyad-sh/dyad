@@ -132,6 +132,7 @@ interface InFlightFetch {
 
 interface ScopeState {
   key: string;
+  cleared: boolean;
   scope: SupabaseLogScope;
   logs: Map<string, CachedSupabaseLog>;
   coverage: CoverageInterval[];
@@ -181,7 +182,8 @@ export class SupabaseLogCache {
   /**
    * Returns the rows in [start, end), fetching whatever the cache cannot
    * answer. Provider failures are reported in the result rather than thrown,
-   * so callers keep whatever was available. Only caller cancellation throws.
+   * so callers keep whatever was available. Caller cancellation and an explicit
+   * clear of the scope throw instead of returning that scope's old rows.
    */
   async query({
     scope,
@@ -244,6 +246,12 @@ export class SupabaseLogCache {
       const outcomes = await Promise.all(
         [...joined, ...started].map((fetch) => this.join(fetch, signal)),
       );
+      if (state.cleared) {
+        throw new DyadError(
+          "The Supabase log cache was cleared while fetching logs. Retry to read the current connection's logs.",
+          DyadErrorKind.UserCancelled,
+        );
+      }
       outcomes.forEach((outcome, index) => {
         if (index >= joined.length) providerRequests += outcome.pages;
         truncated ||= outcome.truncated;
@@ -273,10 +281,14 @@ export class SupabaseLogCache {
     };
   }
 
-  /** Drops cached scopes, all of them or those matching `predicate`. */
+  /** Drops cached scopes and cancels their pending readers and fetches. */
   clear(predicate?: (scope: SupabaseLogScope) => boolean): void {
     for (const [key, state] of this.scopes) {
       if (!predicate || predicate(state.scope)) {
+        state.cleared = true;
+        for (const fetch of state.inFlight) {
+          fetch.controller.abort();
+        }
         this.scopes.delete(key);
       }
     }
@@ -306,6 +318,7 @@ export class SupabaseLogCache {
     } else {
       state = {
         key,
+        cleared: false,
         scope: { ...scope },
         logs: new Map(),
         coverage: [],
@@ -421,6 +434,7 @@ export class SupabaseLogCache {
           }),
           signal,
         );
+        signal.throwIfAborted();
         pages++;
         this.insertLogs(state, rows);
         // Rows stamped after the request was issued may still be arriving;

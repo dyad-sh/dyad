@@ -8,7 +8,8 @@ import { act, renderHook } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
 import type { PropsWithChildren } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
+import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
 import type { ConsoleEntry } from "@/ipc/types";
 import type { UserSettings } from "@/lib/schemas";
 import { EDGE_LOGS_POLL_INTERVAL_MS } from "@/shared/supabase_edge_logs";
@@ -20,7 +21,8 @@ const mocks = vi.hoisted(() => ({
   append: vi.fn(),
 }));
 
-vi.mock("@/ipc/types", () => ({
+vi.mock("@/ipc/types", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/ipc/types")>()),
   ipc: {
     supabase: {
       getEdgeLogs: mocks.getEdgeLogs,
@@ -76,7 +78,7 @@ function setup({ selectedAppId = APP_ID } = {}) {
       }),
     { wrapper },
   );
-  return { ...view, queryClient };
+  return { ...view, queryClient, store, wrapper };
 }
 
 async function flush(ms = 0) {
@@ -154,6 +156,80 @@ describe("useSupabase edge log polling", () => {
     const { unmount, queryClient } = setup({ selectedAppId: APP_ID + 1 });
     await flush(EDGE_LOGS_POLL_INTERVAL_MS * 2);
     expect(mocks.getEdgeLogs).not.toHaveBeenCalled();
+    unmount();
+    queryClient.clear();
+  });
+
+  it("pauses when the preview is collapsed or another tab is selected", async () => {
+    mocks.settings = { autoFetchSupabaseEdgeFunctionLogs: true };
+    const { store, unmount, queryClient } = setup();
+    await flush();
+    expect(mocks.getEdgeLogs).toHaveBeenCalledTimes(1);
+
+    act(() => store.set(isPreviewOpenAtom, false));
+    await flush(EDGE_LOGS_POLL_INTERVAL_MS * 2);
+    expect(mocks.getEdgeLogs).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      store.set(previewModeAtom, "code");
+      store.set(isPreviewOpenAtom, true);
+    });
+    await flush(EDGE_LOGS_POLL_INTERVAL_MS * 2);
+    expect(mocks.getEdgeLogs).toHaveBeenCalledTimes(1);
+
+    act(() => store.set(previewModeAtom, "preview"));
+    await flush();
+    expect(mocks.getEdgeLogs).toHaveBeenCalledTimes(2);
+    unmount();
+    queryClient.clear();
+  });
+
+  it("does not append older cached logs when the preview remounts", async () => {
+    mocks.settings = { autoFetchSupabaseEdgeFunctionLogs: true };
+    mocks.getEdgeLogs.mockResolvedValueOnce([
+      edgeEntry("old", NOW - 5 * 60_000),
+    ]);
+    const first = setup();
+    await flush();
+    expect(mocks.append).toHaveBeenCalledTimes(1);
+    first.unmount();
+
+    // Hold the new fetch so the remount must first consume the cached result.
+    let finish!: (entries: ConsoleEntry[]) => void;
+    mocks.getEdgeLogs.mockImplementationOnce(
+      () =>
+        new Promise<ConsoleEntry[]>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const remount = renderHook(
+      () =>
+        useSupabase({
+          edgeLogsProjectId: "proj-1",
+          edgeLogsOrganizationSlug: "org-1",
+          edgeLogsAppId: APP_ID,
+        }),
+      { wrapper: first.wrapper, reactStrictMode: true },
+    );
+    await flush();
+    expect(mocks.getEdgeLogs).toHaveBeenCalledTimes(2);
+    expect(mocks.append).toHaveBeenCalledTimes(1);
+    await act(async () => finish([]));
+    await flush();
+    remount.unmount();
+    first.queryClient.clear();
+  });
+
+  it("does not advance past a failed poll window", async () => {
+    mocks.settings = { autoFetchSupabaseEdgeFunctionLogs: true };
+    mocks.getEdgeLogs.mockResolvedValueOnce([]);
+    mocks.getEdgeLogs.mockRejectedValueOnce(new Error("Incomplete logs"));
+    const { unmount, queryClient } = setup();
+    await flush();
+    await flush(EDGE_LOGS_POLL_INTERVAL_MS);
+    const failedStart = mocks.getEdgeLogs.mock.calls[1][0].timestampStart;
+    await flush(EDGE_LOGS_POLL_INTERVAL_MS);
+    expect(mocks.getEdgeLogs.mock.calls[2][0].timestampStart).toBe(failedStart);
     unmount();
     queryClient.clear();
   });

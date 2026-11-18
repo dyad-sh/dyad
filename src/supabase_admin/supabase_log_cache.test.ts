@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { DyadErrorKind } from "@/errors/dyad_error";
 import {
   SupabaseLogCache,
   planFetchRanges,
@@ -565,6 +566,66 @@ describe("SupabaseLogCache", () => {
     cache.clear((candidate) => candidate.organizationSlug === "org-2");
     expect(cache.stats().scopes).toBe(2);
   });
+
+  it.each([false, true])(
+    "cancels cleared scopes without delivering old results (response already resolved: %s)",
+    async (resolveBeforeClear) => {
+      const pending: {
+        signal: AbortSignal;
+        resolve: (rows: SupabaseLogRow[]) => void;
+      }[] = [];
+      const fetchPage = vi.fn<SupabaseLogPageFetcher>(
+        ({ signal }) =>
+          new Promise((resolve) => pending.push({ signal, resolve })),
+      );
+      fetchPage.mockResolvedValueOnce([row("cached", T0 + 1_000)]);
+      const cache = new SupabaseLogCache({
+        fetchPage,
+        now: () => T0 + 30 * MINUTE,
+      });
+      await cache.query({ scope, start: T0, end: T0 + MINUTE });
+
+      const request = { scope, start: T0, end: T0 + 3 * MINUTE };
+      const first = cache.query(request);
+      const second = cache.query(request);
+      const other = cache.query({
+        ...request,
+        scope: { ...scope, organizationSlug: "other-org" },
+      });
+      expect(pending).toHaveLength(2);
+      const readers = Promise.allSettled([first, second]);
+      if (resolveBeforeClear)
+        pending[0].resolve([row("stale", T0 + 2 * MINUTE)]);
+
+      cache.clear(
+        (candidate) => candidate.organizationSlug === scope.organizationSlug,
+      );
+      expect(pending[0].signal.aborted).toBe(true);
+      expect(pending[1].signal.aborted).toBe(false);
+      for (const result of await readers) {
+        expect(result.status).toBe("rejected");
+        if (result.status === "rejected") {
+          expect(result.reason).toMatchObject({
+            kind: DyadErrorKind.UserCancelled,
+          });
+        }
+      }
+      // Clearing must not launch a retry with the disconnected credentials.
+      expect(fetchPage).toHaveBeenCalledTimes(3);
+
+      // A new scope with the same key must remain independent of the old fetch.
+      fetchPage.mockResolvedValueOnce([row("fresh", T0 + 2 * MINUTE)]);
+      const fresh = await cache.query(request);
+      expect(fresh.logs.map((log) => log.id)).toEqual(["fresh"]);
+      pending[0].resolve([row("stale", T0 + 2 * MINUTE)]);
+      pending[1].resolve([row("other", T0 + 2 * MINUTE)]);
+      expect((await other).logs.map((log) => log.id)).toEqual(["other"]);
+      expect((await cache.query(request)).logs.map((log) => log.id)).toEqual([
+        "fresh",
+      ]);
+      expect(cache.stats().logs).toBe(2);
+    },
+  );
 
   it("evicts least recently used scopes and bounds rows per scope", async () => {
     const provider = fakeProvider([

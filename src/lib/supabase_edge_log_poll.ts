@@ -56,6 +56,9 @@ export function applyEdgeLogPollResult(
   entries: readonly ConsoleEntry[],
   requestedAt: number,
 ): { newEntries: ConsoleEntry[]; cursor: EdgeLogPollCursor } {
+  if (cursor && requestedAt <= cursor.lastRequestedAt) {
+    return { newEntries: [], cursor };
+  }
   const seen = new Map(cursor?.seen);
   const newEntries: ConsoleEntry[] = [];
   for (const entry of entries) {

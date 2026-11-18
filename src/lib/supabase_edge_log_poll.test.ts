@@ -71,15 +71,32 @@ describe("edge log polling cursor", () => {
   });
 
   it("ignores a replayed result and does not move the cursor back", () => {
-    const first = applyEdgeLogPollResult(undefined, [entry("a", NOW)], NOW);
+    const logs = [entry("old", NOW - 5 * 60_000), entry("a", NOW)];
+    const first = applyEdgeLogPollResult(undefined, logs, NOW);
+    expect(first.newEntries).toEqual(logs);
+    expect(first.cursor.seen.has("old")).toBe(false);
+    const same = applyEdgeLogPollResult(first.cursor, logs, NOW);
+    expect(same.newEntries).toEqual([]);
+    expect(same.cursor).toBe(first.cursor);
     const later = applyEdgeLogPollResult(
       first.cursor,
       [entry("b", NOW + 4_000)],
       NOW + 5_000,
     );
-    const replay = applyEdgeLogPollResult(later.cursor, [entry("a", NOW)], NOW);
+    const replay = applyEdgeLogPollResult(later.cursor, logs, NOW);
     expect(replay.newEntries).toEqual([]);
     expect(replay.cursor.lastRequestedAt).toBe(NOW + 5_000);
+  });
+
+  it("does not replay logs pruned between consecutive overlap windows", () => {
+    const first = applyEdgeLogPollResult(undefined, [], NOW);
+    const logs = [entry("late", NOW - SUPABASE_LOG_RECENT_OVERLAP_MS + 1)];
+    const next = applyEdgeLogPollResult(first.cursor, logs, NOW + 5_000);
+    expect(next.newEntries).toEqual(logs);
+    expect(next.cursor.seen.size).toBe(0);
+    expect(
+      applyEdgeLogPollResult(next.cursor, logs, NOW + 5_000).newEntries,
+    ).toEqual([]);
   });
 
   it("forgets ids the next poll cannot return", () => {
@@ -103,6 +120,9 @@ describe("edge log polling cursor", () => {
     );
     expect(key).not.toBe(
       edgeLogPollKey({ appId: 1, projectId: "p", organizationSlug: "o" }),
+    );
+    expect(key).not.toBe(
+      edgeLogPollKey({ appId: 1, projectId: "other", organizationSlug: null }),
     );
   });
 });

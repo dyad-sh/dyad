@@ -7,7 +7,8 @@ import {
 import { useAtom, useAtomValue } from "jotai";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { edgeLogPollCursorsAtom } from "@/atoms/supabaseAtoms";
-import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
+import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
 import {
   ipc,
   ConsoleEntry,
@@ -67,6 +68,8 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
 
   const appRunManager = useAppRunRemoteManager();
   const selectedAppId = useAtomValue(selectedAppIdAtom);
+  const isPreviewOpen = useAtomValue(isPreviewOpenAtom);
+  const previewMode = useAtomValue(previewModeAtom);
   const [edgeLogPollCursors, setEdgeLogPollCursors] = useAtom(
     edgeLogPollCursorsAtom,
   );
@@ -236,6 +239,8 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
       : null;
   const edgeLogsEnabled =
     autoFetchEdgeLogs &&
+    isPreviewOpen &&
+    previewMode === "preview" &&
     !!edgeLogsProjectId &&
     edgeLogsActiveAppId !== null &&
     edgeLogsActiveAppId === selectedAppId;

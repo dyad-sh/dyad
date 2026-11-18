@@ -423,6 +423,75 @@ describe("Supabase handlers", () => {
         }),
       ).rejects.toMatchObject({ kind: DyadErrorKind.External });
     });
+
+    it("rejects a partial poll with cached rows and retries the older gap", async () => {
+      const params = {
+        appId: 7,
+        projectId: "project",
+        organizationSlug: "org",
+      };
+      // Seed recent rows, then expand to a window with an uncached older range.
+      await harness.invokeHandler("supabase:get-edge-logs", {
+        ...params,
+        timestampStart: NOW - 2 * MINUTE,
+      });
+      mocks.getSupabaseProjectLogs.mockRejectedValueOnce(
+        new DyadError("Older range unavailable", DyadErrorKind.External),
+      );
+      await expect(
+        harness.invokeHandler("supabase:get-edge-logs", {
+          ...params,
+          timestampStart: NOW - 10 * MINUTE,
+        }),
+      ).rejects.toThrow("Older range unavailable");
+
+      mocks.getSupabaseProjectLogs.mockResolvedValueOnce({
+        result: [
+          {
+            id: "older",
+            timestamp: NOW - 7 * MINUTE,
+            event_message: "[hello] older",
+            level: "info",
+          },
+        ],
+      });
+      const recovered = await harness.invokeHandler("supabase:get-edge-logs", {
+        ...params,
+        timestampStart: NOW - 10 * MINUTE,
+      });
+      expect(recovered).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ providerLogId: "older" }),
+          expect.objectContaining({ providerLogId: "log-1" }),
+        ]),
+      );
+      expect(mocks.getSupabaseProjectLogs).toHaveBeenLastCalledWith(
+        "project",
+        expect.objectContaining({
+          timestampStart: Date.UTC(2026, 10, 18, 11, 50, 0),
+        }),
+      );
+    });
+
+    it("rejects truncated coverage even without a provider error", async () => {
+      mocks.getSupabaseProjectLogs.mockImplementation(
+        async (_project, { limit }) => ({
+          result: Array.from({ length: limit }, (_, index) => ({
+            id: `log-${index}`,
+            timestamp: NOW - 1_000,
+            event_message: "[hello] dense logs",
+            level: "info",
+          })),
+        }),
+      );
+      await expect(
+        harness.invokeHandler("supabase:get-edge-logs", {
+          appId: 7,
+          projectId: "project",
+          organizationSlug: "org",
+        }),
+      ).rejects.toThrow("logs are incomplete");
+    });
   });
 
   describe("supabase:redeploy-all-functions", () => {

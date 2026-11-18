@@ -38,7 +38,15 @@ function parseTimestamp(value: string, name: "startTime" | "endTime"): number {
     );
   }
   const parsed = Date.parse(trimmed);
-  if (!Number.isFinite(parsed)) {
+  // Date.parse normalizes dates such as February 31. Check the calendar date
+  // separately from the timezone, which may legitimately change the UTC day.
+  const calendarDate = trimmed.slice(0, 10);
+  const parsedCalendarDate = Date.parse(`${calendarDate}T00:00:00Z`);
+  if (
+    !Number.isFinite(parsed) ||
+    !Number.isFinite(parsedCalendarDate) ||
+    new Date(parsedCalendarDate).toISOString().slice(0, 10) !== calendarDate
+  ) {
     throw new DyadError(
       `${name} is not a valid date: "${value}".`,
       DyadErrorKind.Validation,

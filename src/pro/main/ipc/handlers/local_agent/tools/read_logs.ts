@@ -71,8 +71,7 @@ function buildFilterSummary(args: ReadLogsArgs, timePart: string): string {
   const parts: string[] = [timePart];
   if (args.type && args.type !== "all") parts.push(`Type: ${args.type}`);
   if (args.level && args.level !== "all") parts.push(`Level: ${args.level}`);
-  if (args.searchTerm)
-    parts.push(`Search: "${escapeXmlContent(args.searchTerm)}"`);
+  if (args.searchTerm) parts.push(`Search: "${args.searchTerm}"`);
   if (args.limit) parts.push(`Limit: ${args.limit}`);
   return parts.join(" | ");
 }
@@ -160,13 +159,10 @@ export const readLogsTool: ToolDefinition<ReadLogsArgs> = {
       return undefined;
     }
 
-    const summary = buildFilterSummary(
-      args,
-      escapeXmlContent(describeRequestedWindow(args)),
-    );
+    const summary = buildFilterSummary(args, describeRequestedWindow(args));
 
     return `<dyad-read-logs ${buildFilterAttributes(args)}>
-${summary}
+${escapeXmlContent(summary)}
 </dyad-read-logs>`;
   },
 
@@ -269,7 +265,7 @@ ${summary}
 
     // Output the complete results in a single tag
     ctx.onXmlComplete(
-      `<dyad-read-logs ${buildFilterAttributes(args)} count="${recentLogs.length}">\n${summary}\n\n${escapeXmlContent(formattedLogs)}\n</dyad-read-logs>`,
+      `<dyad-read-logs ${buildFilterAttributes(args)} count="${recentLogs.length}">\n${escapeXmlContent(summary)}\n\n${escapeXmlContent(formattedLogs)}\n</dyad-read-logs>`,
     );
 
     return `${summary}\n\n${formattedLogs}`;

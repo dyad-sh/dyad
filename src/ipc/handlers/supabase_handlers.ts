@@ -435,13 +435,22 @@ export function registerSupabaseHandlers() {
       start,
       end: now,
     });
-    if (result.error && result.entries.length === 0) {
+    // A successful reply advances the renderer's cursor. Keep incomplete
+    // windows retryable even when the cache contains some of their rows.
+    if (result.associationChanged) return [];
+    if (result.error) {
       throw isDyadError(result.error)
         ? result.error
         : new DyadError(
             `Failed to fetch logs: ${result.error instanceof Error ? result.error.message : String(result.error)}`,
             DyadErrorKind.External,
           );
+    }
+    if (result.missingRanges.length > 0) {
+      throw new DyadError(
+        "Supabase Edge Function logs are incomplete. The next poll will retry the missing ranges.",
+        DyadErrorKind.External,
+      );
     }
     return result.entries;
   });

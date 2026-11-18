@@ -977,7 +977,7 @@ LIMIT ${Math.max(1, Math.floor(limit))}`;
   });
   const url = `https://api.supabase.com/v1/projects/${encodeURIComponent(projectId)}/analytics/endpoints/logs?${params.toString()}`;
 
-  logger.info(
+  logger.debug(
     `Fetching Edge Function logs for ${projectId} (${params.get("iso_timestamp_start")} to ${params.get("iso_timestamp_end")})`,
   );
 
@@ -1033,7 +1033,7 @@ LIMIT ${Math.max(1, Math.floor(limit))}`;
     };
   });
 
-  logger.info(`Received ${result.length} logs`);
+  logger.debug(`Received ${result.length} logs`);
 
   return { result, error: parsed.data.error };
 }

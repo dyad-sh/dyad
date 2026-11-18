@@ -271,6 +271,10 @@ describe("read_logs", () => {
   it.each([
     [{ startTime: "2026-11-18T11:00:00" }, "explicit timezone"],
     [{ startTime: "yesterday" }, "explicit timezone"],
+    [{ startTime: "2026-02-31T00:00:00Z" }, "not a valid date"],
+    [{ endTime: "2026-02-29T12:00:00+05:00" }, "not a valid date"],
+    [{ endTime: "2026-04-31T12:00:00-05:00" }, "not a valid date"],
+    [{ endTime: "1900-02-29T00:00:00Z" }, "not a valid date"],
     [
       { startTime: "2026-11-18T11:00:00Z", endTime: "2026-11-18T10:00:00Z" },
       "must be before endTime",
@@ -281,6 +285,31 @@ describe("read_logs", () => {
   ])("rejects invalid windows: %j", async (args, message) => {
     await expect(run(args)).rejects.toThrow(message);
     expect(h.providerCalls).toEqual([]);
+  });
+
+  it.each([
+    ["2000-02-29T00:00:00Z", "2000-02-29T00:00:00.000Z"],
+    ["2024-02-29T00:30:00+02:00", "2024-02-28T22:30:00.000Z"],
+    ["2024-02-29T23:30:00-02:00", "2024-03-01T01:30:00.000Z"],
+  ])(
+    "accepts valid leap dates across timezone boundaries: %s",
+    async (endTime, expected) => {
+      const { result } = await run({ endTime });
+      expect(result).toContain(`to ${expected}`);
+    },
+  );
+
+  it("keeps search text literal for the model and escapes it once for XML", async () => {
+    const searchTerm = '<tag> & "quoted"';
+    const escaped = '&lt;tag&gt; &amp; "quoted"';
+    const { result, xml } = await run({ searchTerm });
+    expect(result).toContain(`Search: "${searchTerm}"`);
+    expect(result).not.toContain("&lt;");
+    expect(xml).toContain(escaped);
+    expect(xml).not.toContain("&amp;lt;");
+    const preview = readLogsTool.buildXml!({ searchTerm }, false);
+    expect(preview).toContain(escaped);
+    expect(preview).not.toContain(searchTerm);
   });
 
   it("filters after fetching so a filtered read does not hide logs from the next", async () => {

@@ -355,7 +355,7 @@ export function PreviewPanel() {
                     onToggle={() => setIsConsoleOpen(false)}
                     latestMessage={latestMessage}
                   />
-                  <Console />
+                  <Console supabaseProjectId={app?.supabaseProjectId} />
                 </div>
               </Panel>
             </>

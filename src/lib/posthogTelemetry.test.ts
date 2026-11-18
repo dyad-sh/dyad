@@ -710,6 +710,7 @@ const PERSON_PROPERTY_NAMES = [
   "autoApproveChanges",
   "autoApproveNonSchemaSql",
   "autoApproveSafeMcpTools",
+  "autoFetchSupabaseEdgeFunctionLogs",
   "autoFixReviewIssues",
   "blockUnsafeNpmPackages",
   "chatgptFastMode",

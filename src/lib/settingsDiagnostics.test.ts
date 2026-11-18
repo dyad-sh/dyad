@@ -71,6 +71,7 @@ describe("getSharedSettingsDiagnostics", () => {
       maxToolCallSteps: null,
       enableParallelTestRuns: null,
       maxConcurrentTestRuns: null,
+      autoFetchSupabaseEdgeFunctionLogs: null,
       githubConnected: false,
       supabaseConnected: false,
     });
@@ -101,6 +102,7 @@ describe("getSessionDebugSettings", () => {
         "autoApproveNonSchemaSql",
         "autoApproveSafeMcpTools",
         "autoExpandPreviewPanel",
+        "autoFetchSupabaseEdgeFunctionLogs",
         "autoFixReviewIssues",
         "blockUnsafeNpmPackages",
         "chatgptFastMode",

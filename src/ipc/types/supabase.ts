@@ -68,6 +68,12 @@ export const ConsoleEntrySchema = z.object({
   sourceName: z.string().optional(),
   appId: z.number(),
   runtimeBoundary: z.enum(["start", "restart", "rebuild"]).optional(),
+  /**
+   * The provider's id for a log fetched from a remote service (Supabase Edge
+   * Function logs). Distinct events can share a timestamp and message, so
+   * consumers deduplicate repeated fetches by this id.
+   */
+  providerLogId: z.string().optional(),
 });
 
 export type ConsoleEntry = z.infer<typeof ConsoleEntrySchema>;

@@ -1,7 +1,15 @@
 import { atom } from "jotai";
+import type { EdgeLogPollCursor } from "@/lib/supabase_edge_log_poll";
 
-// Define atom for tracking the last log timestamp per project (for incremental log loading)
-export const lastLogTimestampAtom = atom<Record<string, number>>({});
+/**
+ * Background Edge Function log polling progress, keyed by
+ * `edgeLogPollKey({ appId, projectId, organizationSlug })`. Lives in an atom
+ * so the preview console does not receive the same logs again when the
+ * preview panel remounts.
+ */
+export const edgeLogPollCursorsAtom = atom<Record<string, EdgeLogPollCursor>>(
+  {},
+);
 
 /**
  * Apps whose legacy-Supabase-key banner the user has dismissed, by app id.

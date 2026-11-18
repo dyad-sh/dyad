@@ -24,6 +24,7 @@ const mocks = vi.hoisted(() => ({
   createSupabaseProject: vi.fn(),
   ensureSupabaseAuthRedirectUrls: vi.fn(),
   getProjectApiKeys: vi.fn(),
+  getSupabaseProjectLogs: vi.fn(),
   executeExternalLifecycle: vi.fn(),
   syncCloudSandboxSnapshot: vi.fn(),
   appRoot: "",
@@ -78,11 +79,14 @@ vi.mock(
     createSupabaseProject: mocks.createSupabaseProject,
     ensureSupabaseAuthRedirectUrls: mocks.ensureSupabaseAuthRedirectUrls,
     getProjectApiKeys: mocks.getProjectApiKeys,
+    getSupabaseProjectLogs: mocks.getSupabaseProjectLogs,
   }),
 );
 
 const { registerSupabaseHandlers, unlinkedProjectsByApp } =
   await import("./supabase_handlers");
+const { supabaseFunctionLogCache } =
+  await import("@/supabase_admin/supabase_edge_logs_service");
 const { registerAppEnvVarsHandlers } = await import("./app_env_vars_handlers");
 
 describe("Supabase handlers", () => {
@@ -308,6 +312,110 @@ describe("Supabase handlers", () => {
         expect(mocks.syncCloudSandboxSnapshot).not.toHaveBeenCalled();
       },
     );
+  });
+
+  describe("supabase:get-edge-logs (background polling)", () => {
+    // 2026-11-18T12:00:30Z
+    const NOW = Date.UTC(2026, 10, 18, 12, 0, 30);
+    const MINUTE = 60_000;
+
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(NOW);
+      supabaseFunctionLogCache.clear();
+      mocks.readSettings.mockReturnValue({
+        ...harness.readSettings(),
+        supabase: {
+          organizations: { org: { accessToken: { value: "token" } } },
+        },
+      });
+      mocks.getSupabaseProjectLogs.mockReset().mockResolvedValue({
+        result: [
+          {
+            id: "log-1",
+            timestamp: NOW - MINUTE,
+            event_message: "[hello] ran",
+            level: "info",
+          },
+        ],
+      });
+      harness.db
+        .insert(apps)
+        .values({
+          id: 7,
+          name: "App",
+          path: "app",
+          supabaseProjectId: "project",
+          supabaseOrganizationSlug: "org",
+        })
+        .run();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("reads through the shared cache and clamps the lookback", async () => {
+      const first = await harness.invokeHandler("supabase:get-edge-logs", {
+        appId: 7,
+        projectId: "project",
+        organizationSlug: "org",
+        // Far older than a poll may look back.
+        timestampStart: NOW - 60 * MINUTE,
+      });
+      expect(first).toEqual([
+        {
+          level: "info",
+          type: "edge-function",
+          message: "[hello] ran",
+          timestamp: NOW - MINUTE,
+          sourceName: "hello",
+          appId: 7,
+          providerLogId: "log-1",
+        },
+      ]);
+      expect(mocks.getSupabaseProjectLogs).toHaveBeenCalledWith(
+        "project",
+        expect.objectContaining({
+          organizationSlug: "org",
+          timestampStart: Date.UTC(2026, 10, 18, 11, 50, 0),
+          timestampEnd: Date.UTC(2026, 10, 18, 12, 1, 0),
+        }),
+      );
+
+      // An overlapping poll in the same instant is answered from the cache.
+      await harness.invokeHandler("supabase:get-edge-logs", {
+        appId: 7,
+        projectId: "project",
+        organizationSlug: "org",
+        timestampStart: NOW - 2 * MINUTE,
+      });
+      expect(mocks.getSupabaseProjectLogs).toHaveBeenCalledTimes(1);
+    });
+
+    it("ignores a poll for a project the app is no longer linked to", async () => {
+      await expect(
+        harness.invokeHandler("supabase:get-edge-logs", {
+          appId: 7,
+          projectId: "previous-project",
+          organizationSlug: "org",
+        }),
+      ).resolves.toEqual([]);
+      expect(mocks.getSupabaseProjectLogs).not.toHaveBeenCalled();
+    });
+
+    it("reports a provider failure instead of an empty result", async () => {
+      mocks.getSupabaseProjectLogs.mockRejectedValue(
+        new DyadError("Supabase is unavailable", DyadErrorKind.External),
+      );
+      await expect(
+        harness.invokeHandler("supabase:get-edge-logs", {
+          appId: 7,
+          projectId: "project",
+          organizationSlug: "org",
+        }),
+      ).rejects.toMatchObject({ kind: DyadErrorKind.External });
+    });
   });
 
   describe("supabase:redeploy-all-functions", () => {

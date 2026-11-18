@@ -657,7 +657,10 @@ test.describe("safeStorage keychain identity (issue #3837)", () => {
           await storedIntegrationSecrets(candidate, userDataDir, server.id),
         ).toEqual(integrations);
         if (restart === 2) {
-          await invokeApp(candidate, "mcp:disconnect-oauth", server.id);
+          await invokeApp(candidate, "mcp:disconnect-oauth", {
+            serverId: server.id,
+            appConfigId: null,
+          });
           await invokeApp(candidate, "codex-subscription:disconnect");
           const afterDisconnect = await storedIntegrationSecrets(
             candidate,

@@ -113,7 +113,7 @@ describe("syncVendoredOAuthClient", () => {
 
   it("writes the catalog's client when the row has none", async () => {
     expect(await syncVendoredOAuthClient(pluginConnection(1))).toBe(true);
-    expect(mocks.revoke).toHaveBeenCalledWith(1);
+    expect(mocks.revoke).toHaveBeenCalledWith(pluginConnection(1));
     expect(mocks.update).toHaveBeenCalledWith({
       oauthClientId: "client-1",
       oauthClientSecret: "enc:secret-1",
@@ -156,8 +156,8 @@ describe("syncVendoredOAuthClient", () => {
       client_secret: "stale-secret",
     };
     expect(await syncVendoredOAuthClient(pluginConnection(1))).toBe(true);
-    expect(mocks.revoke).toHaveBeenCalledWith(1);
-    expect(mocks.applyClientChange).toHaveBeenCalledWith(1, {
+    expect(mocks.revoke).toHaveBeenCalledWith(pluginConnection(1));
+    expect(mocks.applyClientChange).toHaveBeenCalledWith(pluginConnection(1), {
       clientId: "client-1",
       clientSecret: "secret-1",
       clientIdChanged: false,
@@ -168,7 +168,7 @@ describe("syncVendoredOAuthClient", () => {
     mocks.row.oauthClientId = "old-client";
     mocks.row.oauthClientSecret = "enc:secret-1";
     expect(await syncVendoredOAuthClient(pluginConnection(1))).toBe(true);
-    expect(mocks.applyClientChange).toHaveBeenCalledWith(1, {
+    expect(mocks.applyClientChange).toHaveBeenCalledWith(pluginConnection(1), {
       clientId: "client-1",
       clientSecret: "secret-1",
       clientIdChanged: true,
@@ -180,7 +180,7 @@ describe("syncVendoredOAuthClient", () => {
     // The cached client can no longer persist tokens, so the caller still
     // has to drop it.
     expect(await syncVendoredOAuthClient(pluginConnection(1))).toBe(true);
-    expect(mocks.revoke).toHaveBeenCalledWith(1);
+    expect(mocks.revoke).toHaveBeenCalledWith(pluginConnection(1));
   });
 
   it("reports no change when it fails before fencing", async () => {

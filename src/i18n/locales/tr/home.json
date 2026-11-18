@@ -186,6 +186,7 @@
     "sessionUploadFailed": "Sohbet oturumunuz yüklenemedi. Rapor onsuz gönderiliyor.",
     "systemInfoFailed": "Sistem bilgileriniz dahil edilemedi. Rapor onsuz gönderiliyor.",
     "screenshotRestoreFailed": "Ekran görüntünüz geri yüklenemedi. Rapor onsuz gönderiliyor.",
+    "screenshotClipboardRetry": "Ekran görüntünüz kopyalanamadı. Tekrar deneyin veya raporu görsel olmadan göndermek için ekran görüntüsünü kaldırın.",
     "screenshotDropped": "Ekran görüntünüz artık geri yüklenemediği için bu rapordan kaldırıldı.",
     "screenshotUploadFailed": "Ekran görüntünüz eklenemedi. Soruna yapıştırabilmeniz için Dyad onu panonuza koyacak.",
     "filingFailed": "Raporunuz gönderilirken bir şeyler ters gitti. Lütfen tekrar deneyin.",

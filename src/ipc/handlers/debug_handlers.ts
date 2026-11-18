@@ -1,4 +1,5 @@
-import { app as electronApp, BrowserWindow, clipboard } from "electron";
+import { writeClipboardImage } from "@/main/clipboard_image";
+import { app as electronApp, BrowserWindow } from "electron";
 import {
   discardCapture,
   getCapture,
@@ -496,7 +497,18 @@ export function registerDebugHandlers() {
   createTypedHandler(systemContracts.recopyScreenshot, async (_, params) => {
     const image = getCapture(params.captureId);
     if (!image) return { copied: false };
-    clipboard.writeImage(image);
+    try {
+      await writeClipboardImage(image);
+    } catch (error) {
+      log.warn(
+        "Screenshot clipboard write failed; keeping the capture for retry",
+        error,
+      );
+      return {
+        copied: false,
+        retained: getCapture(params.captureId) === image,
+      };
+    }
     // A full-resolution picture of the window can show source, paths or an
     // open .env, and the clipboard is its last stop. Nothing reads it again.
     discardCapture(params.captureId);

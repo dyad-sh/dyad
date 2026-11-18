@@ -69,6 +69,8 @@ export const APP_MUTATING_TOOL_NAMES = [
 export type AppMutatingToolName = (typeof APP_MUTATING_TOOL_NAMES)[number];
 
 export interface AgentContext {
+  /** Shared across invocation/child copies; stays closed through either choice. */
+  testingDecision?: { requested: boolean };
   /** Refresh the final callable inventory immediately before safety review. */
   refreshShellReviewTools?: () => void;
   /** Recovery journal is needed only for Claude-owned conversations. */

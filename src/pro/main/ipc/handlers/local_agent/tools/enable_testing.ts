@@ -15,6 +15,7 @@ export const enableTestingTool: ToolDefinition<Record<string, never>> = {
   isEnabled: (ctx) => !ctx.testingEnabled,
   getConsentPreview: () => "Enable E2E testing",
   execute: async (_args, ctx) => {
+    (ctx.testingDecision ??= { requested: false }).requested = true;
     if (
       userInputRegistry
         .getPending()

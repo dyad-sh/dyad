@@ -29,6 +29,7 @@ import {
   truncatedFromAttr,
 } from "@/ipc/utils/mcp_transcript_preview";
 import { withTrackedMutation } from "../subagents/mutation_activity_tracker";
+import { assertNoTestingDecision } from "./testing_decision";
 
 const logger = log.scope("mcp_tools");
 
@@ -221,6 +222,7 @@ export function buildMcpCapabilityMap(params: {
 
   for (const def of params.defs) {
     map[def.jsName] = async (rawArgs: unknown) => {
+      assertNoTestingDecision(params.ctx);
       const args = rawArgs ?? {};
       // Correlates the call/result blocks for the merged UI card. The SDK
       // toolCallId isn't available on this sandbox path, so generate one.
@@ -311,6 +313,7 @@ export function buildMcpCapabilityMap(params: {
             );
           }
           if (params.ctx.abortSignal?.aborted) throw cancelled();
+          assertNoTestingDecision(params.ctx);
           params.ctx.mcpToolRan = true;
           executionStarted = true;
           return mcpTool.execute(args, {

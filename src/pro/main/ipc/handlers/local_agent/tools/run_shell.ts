@@ -7,6 +7,7 @@ import {
   shellExecutionGuidance,
 } from "@/shared/shell_capability";
 import { withTrackedMutation } from "../subagents/mutation_activity_tracker";
+import { assertNoTestingDecision } from "./testing_decision";
 import {
   appOperationCoordinator,
   readAppResource,
@@ -196,6 +197,7 @@ export const runShellTool: ToolDefinition<z.infer<typeof schema>> = {
         }
         let output = "";
         let lastUpdate = 0;
+        assertNoTestingDecision(ctx);
         present("running", decision.reason);
         const result: ShellProcessResult = await runShellProcess({
           command: args.command,

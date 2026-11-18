@@ -64,7 +64,7 @@ describe("DyadEnableTesting", () => {
       );
     },
   );
-  it("prevents duplicate choices while saving and allows retry after a failure", async () => {
+  it("prevents duplicate choices while saving and allows retry after an unaccepted response", async () => {
     let resolve!: (result: boolean) => void;
     mocks.respond.mockImplementationOnce(
       () =>
@@ -85,6 +85,21 @@ describe("DyadEnableTesting", () => {
     await screen.findByRole("alert");
     fireEvent.click(screen.getByRole("button", { name: "Enable testing" }));
     await waitFor(() => expect(mocks.respond).toHaveBeenCalledTimes(2));
+  });
+  it("shows an error and allows retry when saving rejects", async () => {
+    mocks.respond.mockRejectedValueOnce(new Error("IPC unavailable"));
+    renderCard();
+    fireEvent.click(screen.getByRole("button", { name: "Enable testing" }));
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      en.enableTesting.failed,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Enable testing" }));
+    await waitFor(() => expect(mocks.respond).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+    expect(mocks.respond).toHaveBeenLastCalledWith("testing:1", {
+      kind: "enable-testing",
+      enabled: true,
+    });
   });
   it.each([{ requestId: "stale" }, { outcome: "dismissed" as const }])(
     "hides inactive cards (%o)",

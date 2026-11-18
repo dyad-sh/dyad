@@ -34,6 +34,25 @@ afterEach(() => {
 });
 
 describe("mutation activity tracker", () => {
+  it("blocks mutation bridges after a testing decision without blocking other turns", async () => {
+    const operation = vi.fn().mockResolvedValue("done");
+    await expect(
+      withTrackedMutation(
+        {
+          mutationActivityOwner: trackedOwner("testing-turn", "root"),
+          testingDecision: { requested: true },
+        },
+        operation,
+      ),
+    ).rejects.toThrow("Tool admission is closed");
+    expect(operation).not.toHaveBeenCalled();
+    await expect(
+      withTrackedMutation(
+        { mutationActivityOwner: trackedOwner("other-turn", "root", 2) },
+        operation,
+      ),
+    ).resolves.toBe("done");
+  });
   it("allows actors from different turns and chats to mutate concurrently", () => {
     const a = reserveMutationActivity(trackedOwner("turn-a", "actor-a"));
     const b = reserveMutationActivity(trackedOwner("turn-b", "actor-b", 2));

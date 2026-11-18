@@ -48,6 +48,16 @@ describe("streamingMessageParser", () => {
       complete: true,
     };
     expect(parseFullMessage(content).blocks[0]).toMatchObject(expected);
+    const partial = advanceParser(
+      initialParserState(),
+      content.slice(0, content.indexOf("</")),
+    );
+    expect(getParserBlocks(partial)).toHaveLength(1);
+    expect(getParserBlocks(partial)[0]).toMatchObject({
+      ...expected,
+      complete: false,
+      inProgress: true,
+    });
     expect(getParserBlocks(feedAll(content, [15, 45]))[0]).toMatchObject(
       expected,
     );

@@ -55,6 +55,7 @@ describe("enable_testing", () => {
         return result;
       });
       const [pending] = mock.registry.getPending();
+      expect(ctx.testingDecision?.requested).toBe(true);
       expect(pending.descriptor).toMatchObject({
         kind: "enable-testing",
         appId: 3,
@@ -78,6 +79,7 @@ describe("enable_testing", () => {
       expect(await execution).toContain(
         enabled ? "user enabled" : "user declined",
       );
+      expect(ctx.testingDecision?.requested).toBe(true);
       expect(onXmlComplete).toHaveBeenLastCalledWith(
         expect.stringContaining(
           `outcome="${enabled ? "enabled" : "declined"}"`,

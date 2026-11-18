@@ -166,6 +166,7 @@ import {
 } from "./tools/mcp_type_defs";
 import { addIntegrationTool } from "./tools/add_integration";
 import { enableTestingTool } from "./tools/enable_testing";
+import { assertNoTestingDecision } from "./tools/testing_decision";
 import { collectSuggestablePlugins } from "./tools/suggest_plugin";
 import { writePlanTool } from "./tools/write_plan";
 import { exitPlanTool } from "./tools/exit_plan";
@@ -3013,6 +3014,7 @@ async function getMcpTools(
           description: mcpTool.description,
           inputSchema: mcpTool.inputSchema,
           execute: async (args: unknown, execCtx: ToolExecutionOptions) => {
+            assertNoTestingDecision(ctx);
             const { serverName, toolName } = parseMcpToolKey(key);
             const callId = execCtx.toolCallId;
             let callEmitted = false;

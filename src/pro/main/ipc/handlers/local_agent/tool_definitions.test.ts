@@ -1,8 +1,10 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { reportFsFailure } from "@/ipc/utils/fs_failure_telemetry";
+import { enableTestingTool } from "./tools/enable_testing";
+import type { AgentContext } from "./tools/types";
 
 import {
   BUILD_MODE_TOOL_NAMES,
@@ -243,6 +245,115 @@ describe("discovery versus invocation availability", () => {
     expect(
       shouldIncludeTool(tool, { ...ctx, isDyadPro: false }, {}, "invocation"),
     ).toBe(false);
+  });
+});
+
+describe("testing decision admission", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  function context(): AgentContext {
+    return {
+      appId: 987659,
+      chatId: 1,
+      appPath: "/unused",
+      isDyadPro: true,
+      testingEnabled: false,
+      canUseImplementerSubagent: true,
+      canUseAdvancedSubagentTools: true,
+      onXmlComplete: vi.fn(),
+      onXmlStream: vi.fn(),
+      onToolActivity: vi.fn().mockResolvedValue(undefined),
+      requireConsent: vi.fn().mockResolvedValue(true),
+      referencedApps: new Map(),
+      abortSignal: new AbortController().signal,
+    } as unknown as AgentContext;
+  }
+
+  it.each(["enabled", "declined", "cancelled"])(
+    "blocks parallel tools before and after the decision is %s",
+    async (outcome) => {
+      let finish!: (result: string) => void;
+      const execute = vi.spyOn(enableTestingTool, "execute").mockReturnValue(
+        new Promise<string>((resolve) => {
+          finish = resolve;
+        }),
+      );
+      const ctx = context();
+      const tools = buildAgentToolSet(ctx, { enableAppBlueprint: false });
+      // A child/invocation context copied before the decision must see it too.
+      const copiedTools = buildAgentToolSet(
+        { ...ctx },
+        { enableAppBlueprint: false },
+      );
+      const choice = tools.enable_testing.execute({}, { toolCallId: "choice" });
+      try {
+        for (const name of [
+          "write_file",
+          "add_dependency",
+          "spawn_agent",
+          "execute_sandbox_script",
+          "run_build",
+        ]) {
+          await expect(copiedTools[name].execute({})).rejects.toThrow(
+            "Tool admission is closed",
+          );
+        }
+        await vi.waitFor(() => expect(execute).toHaveBeenCalledOnce());
+        finish(outcome);
+        await choice;
+        await expect(tools.write_file.execute({})).rejects.toThrow(
+          "Tool admission is closed",
+        );
+        await expect(tools.enable_testing.execute({})).rejects.toThrow(
+          "Tool admission is closed",
+        );
+        // The queued continuation owns a fresh context and can execute tools.
+        const fresh = buildAgentToolSet(context(), {
+          enableAppBlueprint: false,
+        });
+        vi.spyOn(
+          TOOL_DEFINITIONS.find((tool) => tool.name === "list_files")!,
+          "execute",
+        ).mockResolvedValue("files");
+        await expect(fresh.list_files.execute({})).resolves.toMatchObject({
+          value: "files",
+        });
+      } finally {
+        finish(outcome);
+        await choice;
+      }
+    },
+  );
+
+  it("rejects an earlier write whose consent arrives during the decision", async () => {
+    const ctx = context();
+    let approve!: (allowed: boolean) => void;
+    const consent = new Promise<boolean>((resolve) => {
+      approve = resolve;
+    });
+    vi.mocked(ctx.requireConsent).mockImplementation(async ({ toolName }) =>
+      toolName === "write_file" ? consent : true,
+    );
+    const write = vi.spyOn(
+      TOOL_DEFINITIONS.find((tool) => tool.name === "write_file")!,
+      "execute",
+    );
+    vi.spyOn(enableTestingTool, "execute").mockResolvedValue("declined");
+    const tools = buildAgentToolSet(ctx, { enableAppBlueprint: false });
+    const writing = tools.write_file.execute({ path: "test.ts", content: "x" });
+    const rejected = expect(writing).rejects.toThrow(
+      "Tool admission is closed",
+    );
+    try {
+      await vi.waitFor(() => expect(ctx.requireConsent).toHaveBeenCalledOnce());
+      await tools.enable_testing.execute({});
+      approve(true);
+      await rejected;
+      expect(write).not.toHaveBeenCalled();
+    } finally {
+      approve(true);
+      await rejected;
+    }
   });
 });
 

@@ -16,6 +16,7 @@ import { DYAD_MEDIA_DIR_NAME } from "@/ipc/utils/media_path_utils";
 import { readSettings } from "@/main/settings";
 import type { UserSettings } from "@/lib/schemas";
 import { withTrackedMutation } from "../subagents/mutation_activity_tracker";
+import { assertNoTestingDecision } from "./testing_decision";
 import { writeFileTool } from "./write_file";
 import {
   AgentContext,
@@ -449,6 +450,7 @@ function buildWriteFileCapability(ctx: AgentContext) {
     description?: unknown,
   ) => {
     const args = parseWriteFileHostArgs(pathOrArgs, content, description);
+    assertNoTestingDecision(ctx);
     if (!isWriteFileHostEnabled()) {
       throw new DyadError(
         "write_file is disabled in agent tool permissions.",

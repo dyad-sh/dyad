@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import type { SubagentPersona } from "@/ipc/types";
 import type { AgentContext } from "../tools/types";
+import { assertNoTestingDecision } from "../tools/testing_decision";
 
 export interface MutationActivityOwner {
   appId: number;
@@ -136,9 +137,11 @@ export function reserveSubagentRun(
 }
 
 export async function withTrackedMutation<T>(
-  ctx: Pick<AgentContext, "mutationActivityOwner">,
+  ctx: Pick<AgentContext, "mutationActivityOwner" | "testingDecision">,
   operation: () => Promise<T>,
 ): Promise<T> {
+  // Includes sandbox host writes, MCP calls, and shell execution after consent.
+  assertNoTestingDecision(ctx);
   const owner = ctx.mutationActivityOwner;
   // Transitional test fixtures may omit owners while they are migrated. All
   // production writable contexts are constructed by the root/child handlers.

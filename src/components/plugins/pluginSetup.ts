@@ -1,4 +1,4 @@
-import type { McpConnectionConfig } from "@/ipc/types";
+import type { McpConnectionConfig, McpServer } from "@/ipc/types";
 import {
   isRequiredInput,
   userSuppliedInputs,
@@ -51,6 +51,20 @@ export function unfilledOptionalInputs<T extends CatalogInput>(
   return inputs.filter(
     (input) => !isRequiredInput(input) && !isInputSatisfied(server, input),
   );
+}
+
+// The plugin switch locks while the default configuration's setup is
+// incomplete and turning the plugin on would give that default to some
+// app. A default that serves no app can stay unfinished while app-specific
+// configurations are used.
+export function pluginSwitchLocked(
+  server: McpServer,
+  defaultSetupIncomplete: boolean,
+): boolean {
+  const defaultServesApps =
+    server.defaultScope === "all" ||
+    (server.defaultScope === "selected" && server.defaultAppIds.length > 0);
+  return defaultSetupIncomplete && defaultServesApps;
 }
 
 // Where a connection stands on its catalog setup. Shared by the plugin's

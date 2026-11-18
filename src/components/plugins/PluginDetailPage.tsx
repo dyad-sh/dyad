@@ -18,7 +18,7 @@ import {
 } from "./PluginConnectionPanel";
 import { PluginDefaultAvailability } from "./PluginDefaultAvailability";
 import { PluginAppConfigsSection } from "./PluginAppConfigsSection";
-import { connectionSetupState } from "./pluginSetup";
+import { connectionSetupState, pluginSwitchLocked } from "./pluginSetup";
 
 export function PluginDetailPage({ serverId }: { serverId: number }) {
   const navigate = useNavigate();
@@ -139,7 +139,7 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
               <Switch
                 aria-label={`Enabled toggle for ${s.name}`}
                 checked={!!s.enabled}
-                disabled={setupIncomplete}
+                disabled={pluginSwitchLocked(s, setupIncomplete)}
                 onCheckedChange={() => toggleEnabled(s.id, !!s.enabled)}
               />
               <DeleteConfirmationDialog

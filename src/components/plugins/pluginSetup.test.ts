@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import type { McpServer } from "@/ipc/types";
 import type { CatalogInput } from "@/ipc/types/mcp_catalog";
 import { pluginConnection } from "@/shared/mcp_connection_ref";
-import { serverNeedsSetup, unfilledOptionalInputs } from "./pluginSetup";
+import {
+  pluginSwitchLocked,
+  serverNeedsSetup,
+  unfilledOptionalInputs,
+} from "./pluginSetup";
 
 function makeServer(overrides: Partial<McpServer> = {}): McpServer {
   return {
@@ -78,5 +82,37 @@ describe("unfilledOptionalInputs", () => {
       envJson: { API_TOKEN: "tok", ACCOUNT_ID: "123" },
     });
     expect(unfilledOptionalInputs(server, [token, accountId])).toEqual([]);
+  });
+});
+
+describe("pluginSwitchLocked", () => {
+  it("locks while an unfinished default serves apps", () => {
+    expect(pluginSwitchLocked(makeServer({ defaultScope: "all" }), true)).toBe(
+      true,
+    );
+    expect(
+      pluginSwitchLocked(
+        makeServer({ defaultScope: "selected", defaultAppIds: [4] }),
+        true,
+      ),
+    ).toBe(true);
+  });
+
+  it("unlocks when the unfinished default serves no app", () => {
+    expect(pluginSwitchLocked(makeServer({ defaultScope: "none" }), true)).toBe(
+      false,
+    );
+    expect(
+      pluginSwitchLocked(
+        makeServer({ defaultScope: "selected", defaultAppIds: [] }),
+        true,
+      ),
+    ).toBe(false);
+  });
+
+  it("unlocks once the default is set up", () => {
+    expect(pluginSwitchLocked(makeServer({ defaultScope: "all" }), false)).toBe(
+      false,
+    );
   });
 });

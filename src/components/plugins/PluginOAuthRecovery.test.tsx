@@ -82,6 +82,7 @@ describe("unreadable plugin OAuth recovery", () => {
         server={server}
         needsSetup={false}
         setupLocked={false}
+        switchLocked={false}
         toolCount={null}
         enabledToolCount={null}
         discoveryFailed

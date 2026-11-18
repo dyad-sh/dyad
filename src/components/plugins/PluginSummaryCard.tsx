@@ -30,6 +30,7 @@ export function PluginSummaryCard({
   iconUrl,
   needsSetup,
   setupLocked,
+  switchLocked,
   toolCount,
   enabledToolCount,
   discoveryFailed,
@@ -47,6 +48,8 @@ export function PluginSummaryCard({
   needsSetup: boolean;
   /** Setup is unfinished or its catalog entry hasn't resolved; lock controls. */
   setupLocked: boolean;
+  /** The plugin switch can't be used yet; see pluginSwitchLocked. */
+  switchLocked: boolean;
   toolCount: number | null;
   enabledToolCount: number | null;
   /** Discovery settled without a tool list (unreachable or unauthorized). */
@@ -167,7 +170,7 @@ export function PluginSummaryCard({
                 id={`plugin-enabled-${s.id}`}
                 aria-label={`Enabled toggle for ${s.name}`}
                 checked={!!s.enabled}
-                disabled={setupLocked}
+                disabled={switchLocked}
                 onCheckedChange={() => onToggleEnabled(s.id, !!s.enabled)}
               />
             </div>

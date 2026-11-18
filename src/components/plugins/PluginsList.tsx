@@ -14,7 +14,7 @@ import { AddPluginDialog, useOauthStorageEncrypted } from "./AddPluginDialog";
 import { OauthPlaintextStorageAlert } from "./OauthPlaintextStorageAlert";
 import { PluginSummaryCard } from "./PluginSummaryCard";
 import { PluginsStats } from "./PluginsStats";
-import { serverNeedsSetup } from "./pluginSetup";
+import { connectionSetupState, pluginSwitchLocked } from "./pluginSetup";
 import { pluginToolSummary } from "./pluginToolSummary";
 import { usePluginConnect } from "./usePluginConnect";
 
@@ -110,15 +110,11 @@ export function PluginsList({
             const catalogEntry = s.catalogSlug
               ? entryBySlug.get(s.catalogSlug)
               : undefined;
-            const needsSetup =
-              !!s.catalogSlug &&
-              serverNeedsSetup(s, catalogEntry?.inputs ?? []);
-            // A disabled catalog server might still need setup while its
-            // catalog is loading, so lock its controls until the fetch
-            // settles rather than for as long as data is missing.
-            const setupLocked =
-              needsSetup ||
-              (!!s.catalogSlug && catalogQuery.isLoading && !s.enabled);
+            const { needsSetup, setupIncomplete } = connectionSetupState(
+              s,
+              catalogEntry,
+              catalogQuery.isLoading,
+            );
             // Still-loading, unreachable, or unauthorized configurations
             // have no tool list; the card shows a placeholder instead of
             // a misleading zero.
@@ -134,7 +130,8 @@ export function PluginsList({
                 server={s}
                 iconUrl={catalogEntry?.iconUrl}
                 needsSetup={needsSetup}
-                setupLocked={setupLocked}
+                setupLocked={setupIncomplete}
+                switchLocked={pluginSwitchLocked(s, setupIncomplete)}
                 toolCount={tools.toolCount}
                 enabledToolCount={tools.enabledToolCount}
                 discoveryFailed={tools.discoveryFailed}

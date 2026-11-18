@@ -39,6 +39,7 @@ function renderCard(server: McpServer) {
       server={server}
       needsSetup={false}
       setupLocked={false}
+      switchLocked={false}
       toolCount={null}
       enabledToolCount={null}
       discoveryFailed={false}

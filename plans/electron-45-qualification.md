@@ -51,7 +51,8 @@ does not establish Windows, Linux, or Intel compatibility.
 
 - Electron 44+ requires **macOS 13+**. Confirm download/support messaging and
   prevent the existing update service from offering this build to macOS 12.
-  A guard only in the new binary cannot protect clients already on Electron 40.
+  Release tag preparation blocks Electron 44+ builds until the update service
+  protects clients already on Electron 40.
 - Require the existing hosted old-Electron-40-to-candidate Keychain E2Es to pass
   with no skipped upgrade cases. These tests swap the default Keychain and
   must never run on a shared workstation.

@@ -7,9 +7,18 @@ on:
       - package.json
       - package-lock.json
       - forge.config.ts
+      - vite.preload.config.mts
       - makers/**
       - scripts/hydrate-electron.mjs
+      - src/lib/packaging_cleanup.ts
+      - src/lib/windows_wer.ts
+      - src/lib/sandboxed_preload.ts
+      - src/main/clipboard_image.ts
+      - src/ipc/handlers/debug_handlers.ts
+      - e2e-tests/bug_report_screenshot.spec.ts
       - e2e-tests/electron_packaging.spec.ts
+      - e2e-tests/github_device_transport.spec.ts
+      - e2e-tests/helpers/fixtures.ts
       - e2e-tests/helpers/packaged-native-probe.cjs
       - .github/workflows/electron-qualification.yml
 
@@ -78,6 +87,7 @@ jobs:
         env:
           PLAYWRIGHT_PARALLELISM: "1"
           PLAYWRIGHT_RETRIES: "0"
+          DYAD_E2E_ELECTRON_QUALIFICATION: "1"
       - name: Save qualification evidence
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6

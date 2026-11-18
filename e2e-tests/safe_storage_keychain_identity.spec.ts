@@ -72,6 +72,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { ElectronApplication, _electron as electron } from "playwright";
+import { waitForDyadWindow } from "./helpers/fixtures";
 
 const ENABLED =
   process.platform === "darwin" && process.env.DYAD_E2E_SAFE_STORAGE === "1";
@@ -196,8 +197,7 @@ async function launchDyad({
   });
   launchedApps.add(electronApp);
   try {
-    // Ensures the app is fully ready before main-process evaluate calls.
-    await electronApp.firstWindow();
+    await waitForDyadWindow(electronApp);
     return electronApp;
   } catch (error) {
     await closeDyad(electronApp);

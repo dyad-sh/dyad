@@ -17,12 +17,16 @@ class GithubRequestError extends Error {
   }
 }
 
-function readPackageVersion(packageJsonPath) {
+function readReleasePackage(packageJsonPath) {
   const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
   if (typeof packageJson.version !== "string" || !packageJson.version) {
     throw new Error(`No package.json version found at ${packageJsonPath}`);
   }
-  return packageJson.version;
+  return packageJson;
+}
+
+function readPackageVersion(packageJsonPath) {
+  return readReleasePackage(packageJsonPath).version;
 }
 
 async function githubRequest({ owner, path, repo, token }) {
@@ -195,7 +199,12 @@ async function prepareReleaseTag({
     throw new Error("GITHUB_TOKEN environment variable is required");
   }
 
-  const version = readPackageVersion(packageJsonPath);
+  const { version, devDependencies } = readReleasePackage(packageJsonPath);
+  if (Number.parseInt(devDependencies?.electron, 10) >= 44) {
+    throw new Error(
+      "Release blocked until the update service keeps macOS 12 clients on a compatible build. Electron 44 and later require macOS 13.",
+    );
+  }
   const tagName = `v${version}`;
   const release = await findReleaseByTag({ owner, repo, tagName, token });
   assertReleaseCanMoveTag({ release, tagName });

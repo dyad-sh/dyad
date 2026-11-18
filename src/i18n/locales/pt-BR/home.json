@@ -188,6 +188,7 @@
     "sessionUploadFailed": "Não foi possível enviar sua sessão de chat. O relatório será enviado sem ela.",
     "systemInfoFailed": "Não foi possível incluir as informações do seu sistema. O relatório será enviado sem elas.",
     "screenshotRestoreFailed": "Não foi possível restaurar sua captura de tela. O relatório será enviado sem ela.",
+    "screenshotClipboardRetry": "Não foi possível copiar sua captura de tela. Tente novamente ou remova-a para enviar o relatório sem imagem.",
     "screenshotDropped": "Sua captura de tela não pôde mais ser restaurada, então foi removida deste relatório.",
     "screenshotUploadFailed": "Não foi possível anexar sua captura de tela. O Dyad vai colocá-la na área de transferência para você colar na issue.",
     "filingFailed": "Algo deu errado ao enviar seu relatório. Tente novamente.",

@@ -1035,12 +1035,22 @@ export function HelpDialog() {
     // maintainer to expect an image that is not there.
     if (outgoingScreenshot.status === "captured" && report.captureId) {
       let copied = false;
+      let retained = false;
       try {
-        ({ copied } = await ipc.system.recopyScreenshot({
+        ({ copied, retained = false } = await ipc.system.recopyScreenshot({
           captureId: report.captureId,
         }));
       } catch (error) {
         console.error("Failed to copy the screenshot:", error);
+        // IPC failure does not establish that main discarded the image.
+        retained = true;
+      }
+      if (!copied && retained) {
+        if (mounted.current && captureToken.current === token) {
+          setIsFiling(false);
+          showError(t("home:report.screenshotClipboardRetry"));
+        }
+        return;
       }
       if (copied) {
         // Said only now that the clipboard really holds the image.

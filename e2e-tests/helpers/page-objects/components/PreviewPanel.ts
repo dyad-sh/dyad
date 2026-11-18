@@ -184,14 +184,18 @@ export class PreviewPanel {
 
   async clickRebuild() {
     await this.ensurePreviewPanelOpen();
-    await this.clickPreviewMoreOptions();
-    // The preview can rerender this animated menu while Playwright waits for
-    // the item to become stable, closing it before the click is dispatched.
     const rebuildItem = this.page.getByRole("menuitem", {
       name: /^Rebuild/,
     });
-    await expect(rebuildItem).toBeVisible({ timeout: Timeout.MEDIUM });
-    await rebuildItem.click({ force: true });
+    // A forced coordinate click can miss the item while its menu animates.
+    // Keep actionability checks, reopening if a preview rerender closes it
+    // before Playwright can dispatch the click.
+    await expect(async () => {
+      if (!(await rebuildItem.isVisible())) {
+        await this.clickPreviewMoreOptions();
+      }
+      await rebuildItem.click({ timeout: 2_000 });
+    }).toPass({ timeout: Timeout.MEDIUM });
   }
 
   async clickTogglePreviewPanel() {

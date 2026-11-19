@@ -29,13 +29,6 @@ export function mcpConnectionKey(ref: McpConnectionRef): string {
     : `${ref.serverId}:${ref.appConfigId}`;
 }
 
-export function sameMcpConnection(
-  a: McpConnectionRef,
-  b: McpConnectionRef,
-): boolean {
-  return a.serverId === b.serverId && a.appConfigId === b.appConfigId;
-}
-
 /** The inverse of mcpConnectionKey. */
 export function parseMcpConnectionKey(key: string): McpConnectionRef {
   const match = /^(\d+)(?::(\d+))?$/.exec(key);

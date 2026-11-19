@@ -290,12 +290,6 @@ interface ProviderConfig {
   // redirect.
   allowInteractive?: boolean;
   writeAuthority?: McpOAuthWriteAuthority;
-  // Ask the provider to show its account chooser, for signing in a
-  // second configuration of a plugin whose other configuration is already
-  // connected. Without it, a browser already signed in to (and having
-  // authorized) the first account can redirect straight back and connect
-  // that same account again.
-  requestAccountSelection?: boolean;
 }
 
 export class DyadOAuthClientProvider implements OAuthClientProvider {
@@ -308,7 +302,6 @@ export class DyadOAuthClientProvider implements OAuthClientProvider {
   private readonly flowState: string | undefined;
   private readonly allowInteractive: boolean;
   private readonly writeAuthority: McpOAuthWriteAuthority | undefined;
-  private readonly requestAccountSelection: boolean;
   // Client info kept in memory. The SDK calls `addClientAuthentication`
   // without awaiting it, so that method can't do an async DB read --
   // it uses this instead. Set by `clientInformation()` and
@@ -333,7 +326,6 @@ export class DyadOAuthClientProvider implements OAuthClientProvider {
     this.preregisteredClientSecret = config.preregisteredClientSecret;
     this.flowState = config.flowState;
     this.allowInteractive = config.allowInteractive ?? false;
-    this.requestAccountSelection = config.requestAccountSelection ?? false;
     this.writeAuthority =
       config.writeAuthority ?? captureMcpOAuthWriteAuthority(config.connection);
   }
@@ -515,17 +507,6 @@ export class DyadOAuthClientProvider implements OAuthClientProvider {
       throw new Error(
         `Refusing to open OAuth authorize URL with protocol "${authorizationUrl.protocol}" (only https, or http on localhost).`,
       );
-    }
-    // `prompt=select_account` is the OpenID Connect way to ask for the
-    // account chooser. A plain OAuth 2.0 server must ignore a parameter it
-    // doesn't recognize (RFC 6749 §3.1), so this is sent to every server
-    // rather than to a list of known providers. A server that already set
-    // its own `prompt` keeps it.
-    if (
-      this.requestAccountSelection &&
-      !authorizationUrl.searchParams.has("prompt")
-    ) {
-      authorizationUrl.searchParams.set("prompt", "select_account");
     }
     logger.info(
       `Opening browser for OAuth: ${authorizationUrl.origin}${authorizationUrl.pathname}`,

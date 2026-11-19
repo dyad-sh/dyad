@@ -10,13 +10,9 @@ import {
   DyadOAuthClientProvider,
   decryptFromString,
   issueMcpOAuthWriteAuthority,
-  oauthStateHasTokens,
   revokeMcpOAuthWriteAuthority,
 } from "./mcp_oauth_provider";
-import {
-  listPluginOAuthStates,
-  readMcpConnection,
-} from "./mcp_connection_store";
+import { readMcpConnection } from "./mcp_connection_store";
 import { DEFAULT_OAUTH_CALLBACK_PORT } from "../types/mcp";
 import { mcpManager } from "./mcp_manager";
 import { DyadError, DyadErrorKind } from "../../errors/dyad_error";
@@ -31,7 +27,6 @@ import { publishQueryInvalidations } from "./query_invalidation_delivery";
 import {
   mcpConnectionKey,
   parseMcpConnectionKey,
-  sameMcpConnection,
   type McpConnectionRef,
 } from "@/shared/mcp_connection_ref";
 
@@ -401,10 +396,7 @@ async function prepareAndRunOAuthFlow(
   }
   // Every await comes before the recheck below, so nothing can change the
   // connection between the recheck and issuing its write authority.
-  const [server, requestAccountSelection] = await Promise.all([
-    readMcpConnection(params.connection),
-    anotherConfigurationIsConnected(params.connection),
-  ]);
+  const server = await readMcpConnection(params.connection);
   if (
     oauthShuttingDown ||
     mutatingConnections.has(connectionKey) ||
@@ -466,7 +458,6 @@ async function prepareAndRunOAuthFlow(
     flowState: expectedState,
     allowInteractive: true,
     writeAuthority,
-    requestAccountSelection,
   });
 
   let silentlyAuthorized = false;
@@ -501,21 +492,6 @@ async function prepareAndRunOAuthFlow(
     );
   }
   return result;
-}
-
-/**
- * Whether a different configuration of the same plugin already holds
- * tokens. Signing in another one is then most likely meant for a different
- * account, so the flow asks the provider for its account chooser.
- */
-async function anotherConfigurationIsConnected(
-  target: McpConnectionRef,
-): Promise<boolean> {
-  const states = await listPluginOAuthStates(target.serverId);
-  return states.some(
-    ({ connection, oauthState }) =>
-      !sameMcpConnection(connection, target) && oauthStateHasTokens(oauthState),
-  );
 }
 
 export async function disconnectOAuth(

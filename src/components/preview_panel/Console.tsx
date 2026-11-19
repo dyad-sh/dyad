@@ -12,6 +12,7 @@ import { appLogForwarder } from "@/lib/app_log_forwarder";
 import { useConsoleEntries } from "@/preview_console/hooks";
 import { useAppRunRemoteManager } from "@/app_run/AppRunRemoteProvider";
 import { matchesConsoleEntryFilters } from "./console_entry_filters";
+import { SupabaseEdgeLogPollingHint } from "./SupabaseEdgeLogPollingHint";
 
 // Placeholder component shown during fast scrolling
 const ScrollSeekPlaceholder = () => {
@@ -69,7 +70,15 @@ const ConsoleItem = memo(
 ConsoleItem.displayName = "ConsoleItem";
 
 // Console component
-export const Console = () => {
+export const Console = ({
+  supabaseProjectId,
+  supabaseOrganizationSlug,
+  edgeLogsWarning,
+}: {
+  supabaseProjectId?: string | null;
+  supabaseOrganizationSlug?: string | null;
+  edgeLogsWarning?: string | null;
+}) => {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const consoleEntries = useConsoleEntries(selectedAppId);
   const appRunManager = useAppRunRemoteManager();
@@ -231,6 +240,17 @@ export const Console = () => {
         totalLogs={filteredEntries.length}
         showFilters={showFilters}
       />
+
+      {supabaseProjectId && (
+        <SupabaseEdgeLogPollingHint
+          organizationSlug={supabaseOrganizationSlug ?? null}
+        />
+      )}
+      {edgeLogsWarning && (
+        <p role="status" className="px-4 py-2 text-sm text-muted-foreground">
+          {edgeLogsWarning}
+        </p>
+      )}
 
       {/* Virtualized log area */}
       <div ref={containerRef} className="flex-1 overflow-hidden px-4">

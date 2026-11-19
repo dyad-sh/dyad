@@ -21,6 +21,11 @@ or the renderer+IPC chat harness without needing the packaged Electron app.
 These tests are faster, easier to debug, and avoid Electron launch/package
 overhead.
 
+`vi.waitFor` advances fake time even with `vi.useFakeTimers({ toFake: ["Date"] })`.
+For cache-sharing tests, hold the provider response until both readers enter and
+keep query bounds fixed. Also cover readers joining after the clock advances:
+sharing must depend on the in-flight request, not identical timestamps.
+
 When moving a workflow from Build mode to Agent mode, update its fake-LLM
 response from `<dyad-write>` XML to a local-Agent fixture that invokes
 `write_file` or `search_replace`, then run the integration path that exercises

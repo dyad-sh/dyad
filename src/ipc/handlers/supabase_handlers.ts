@@ -6,13 +6,16 @@ import {
   createSupabaseProject,
   getSupabaseClientForOrganization,
   listSupabaseBranches,
-  getSupabaseProjectLogs,
   getOrganizationDetails,
   getOrganizationMembers,
   classifyManagementApiError,
-  type SupabaseProjectLog,
 } from "../../supabase_admin/supabase_management_client";
-import { extractFunctionName } from "../../supabase_admin/supabase_utils";
+import {
+  clearSupabaseLogCacheForOrganization,
+  getAppEdgeFunctionLogs,
+  isAppStillLinkedTo,
+} from "../../supabase_admin/supabase_edge_logs_service";
+import { EDGE_LOGS_POLL_MAX_LOOKBACK_MS } from "../../shared/supabase_edge_logs";
 import { deployAllSupabaseFunctions } from "../../supabase_admin/supabase_utils";
 import {
   detectLegacyAppKey,
@@ -196,6 +199,7 @@ export function registerSupabaseHandlers() {
           organizations,
         },
       });
+      clearSupabaseLogCacheForOrganization(organizationSlug);
 
       logger.info(`Deleted Supabase organization ${organizationSlug}`);
     },
@@ -403,42 +407,47 @@ export function registerSupabaseHandlers() {
     }));
   });
 
-  // Get edge function logs for a Supabase project
+  // Background polling of Edge Function logs. Reads through the same cache as
+  // the agent's read_logs tool, so polls and agent reads share fetches. The
+  // renderer only calls this while the polling setting is on.
   createTypedHandler(supabaseContracts.getEdgeLogs, async (_, params) => {
     const { projectId, timestampStart, appId, organizationSlug } = params;
-    const response = await getSupabaseProjectLogs(
+    const now = Date.now();
+    const target = {
+      appId,
       projectId,
-      timestampStart,
-      organizationSlug ?? undefined,
-    );
-
-    if (response.error) {
-      const errorMsg =
-        typeof response.error === "string"
-          ? response.error
-          : JSON.stringify(response.error);
-      throw new DyadError(
-        `Failed to fetch logs: ${errorMsg}`,
-        DyadErrorKind.External,
-      );
+      organizationSlug: organizationSlug ?? null,
+    };
+    // A poll scheduled before the app was relinked must not fetch, or label
+    // as this app's, the previous project's logs.
+    if (!(await isAppStillLinkedTo(target))) {
+      return { entries: [] };
     }
-
-    const rawLogs = response.result || [];
-
-    // Transform to ConsoleEntry format
-    return rawLogs.map((logEntry: SupabaseProjectLog) => {
-      const eventMessage = logEntry.event_message || "";
-      const functionName = extractFunctionName(eventMessage);
-
-      return {
-        level: logEntry.level,
-        type: "edge-function" as const,
-        message: eventMessage,
-        timestamp: logEntry.timestamp,
-        sourceName: functionName,
-        appId,
-      };
+    const start = Math.min(
+      now - 1,
+      Math.max(
+        timestampStart ?? now - EDGE_LOGS_POLL_MAX_LOOKBACK_MS,
+        now - EDGE_LOGS_POLL_MAX_LOOKBACK_MS,
+      ),
+    );
+    const result = await getAppEdgeFunctionLogs({
+      target,
+      start,
+      end: now,
     });
+    if (result.associationChanged) return { entries: [] };
+    const incomplete = result.missingRanges.length > 0;
+    // Deliver available rows without acknowledging gaps. Otherwise a busy
+    // window that always reaches a page limit would never show any logs.
+    return {
+      entries: result.entries,
+      retryFrom: incomplete
+        ? Math.min(...result.missingRanges.map((range) => range.start))
+        : undefined,
+      warning: incomplete
+        ? "Some Supabase Edge Function logs are unavailable. Available logs are shown; missing ranges will be retried within the last ten minutes."
+        : undefined,
+    };
   });
 
   // Set app project - links a Dyad app to a Supabase project.

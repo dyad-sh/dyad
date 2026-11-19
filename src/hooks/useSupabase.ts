@@ -6,8 +6,9 @@ import {
 } from "@tanstack/react-query";
 import { useAtom, useAtomValue } from "jotai";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { lastLogTimestampAtom } from "@/atoms/supabaseAtoms";
-import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { edgeLogPollCursorsAtom } from "@/atoms/supabaseAtoms";
+import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
+import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
 import {
   ipc,
   ConsoleEntry,
@@ -23,10 +24,14 @@ import {
 import { useSettings } from "./useSettings";
 import { isSupabaseConnected } from "@/lib/schemas";
 import { queryKeys } from "@/lib/queryKeys";
-import { appLogForwarder } from "@/lib/app_log_forwarder";
 import { useAppRunRemoteManager } from "@/app_run/AppRunRemoteProvider";
-
-const EDGE_LOGS_POLL_INTERVAL_MS = 5_000;
+import { DEFAULT_AUTO_FETCH_SUPABASE_EDGE_FUNCTION_LOGS } from "@/shared/settings_defaults";
+import { EDGE_LOGS_POLL_INTERVAL_MS } from "@/shared/supabase_edge_logs";
+import {
+  applyEdgeLogPollResult,
+  edgeLogPollKey,
+  getEdgeLogPollStart,
+} from "@/lib/supabase_edge_log_poll";
 
 /**
  * Did a create fail *after* the project was created? Matched on the code the
@@ -63,7 +68,11 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
 
   const appRunManager = useAppRunRemoteManager();
   const selectedAppId = useAtomValue(selectedAppIdAtom);
-  const [lastLogTimestamp, setLastLogTimestamp] = useAtom(lastLogTimestampAtom);
+  const isPreviewOpen = useAtomValue(isPreviewOpenAtom);
+  const previewMode = useAtomValue(previewModeAtom);
+  const [edgeLogPollCursors, setEdgeLogPollCursors] = useAtom(
+    edgeLogPollCursorsAtom,
+  );
 
   // Query: Load all connected Supabase organizations
   // Only runs when Supabase is connected to avoid unnecessary API calls
@@ -212,21 +221,38 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
   });
 
   // Query: Poll edge function logs for a Supabase project.
+  // Only while the "Automatically fetch Supabase Edge Function logs" setting
+  // is on (off by default, including while settings load): when it is off
+  // nothing fetches on mount, on poll ticks, on focus or on reconnect. The
+  // agent's read_logs tool fetches on demand in the main process either way.
   // Polling + in-flight serialization + background-tab pause are all handled
   // by React Query. Side effects live in the useEffect below, not in queryFn.
-  const lastLogTimestampRef = useRef(lastLogTimestamp);
-  lastLogTimestampRef.current = lastLogTimestamp;
+  const edgeLogPollCursorsRef = useRef(edgeLogPollCursors);
+  edgeLogPollCursorsRef.current = edgeLogPollCursors;
 
+  const autoFetchEdgeLogs =
+    settings?.autoFetchSupabaseEdgeFunctionLogs ??
+    DEFAULT_AUTO_FETCH_SUPABASE_EDGE_FUNCTION_LOGS;
   const edgeLogsActiveAppId =
     edgeLogsAppId !== null && edgeLogsAppId !== undefined
       ? edgeLogsAppId
       : null;
   const edgeLogsEnabled =
+    autoFetchEdgeLogs &&
+    isPreviewOpen &&
+    previewMode === "preview" &&
     !!edgeLogsProjectId &&
     edgeLogsActiveAppId !== null &&
     edgeLogsActiveAppId === selectedAppId;
   const edgeLogsQuery = useQuery<
-    { appId: number; logs: ConsoleEntry[] },
+    {
+      appId: number;
+      pollKey: string;
+      requestedAt: number;
+      entries: ConsoleEntry[];
+      retryFrom?: number;
+      warning?: string;
+    },
     Error
   >({
     queryKey: edgeLogsEnabled
@@ -242,15 +268,19 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
       if (appId === null) {
         throw new Error("Cannot fetch Supabase edge logs without an app id");
       }
-      const lastTimestamp = lastLogTimestampRef.current[projectId];
-      const timestampStart = lastTimestamp ?? Date.now() - 10 * 60 * 1000;
-      const logs = await ipc.supabase.getEdgeLogs({
+      const organizationSlug = edgeLogsOrganizationSlug ?? null;
+      const pollKey = edgeLogPollKey({ appId, projectId, organizationSlug });
+      const requestedAt = Date.now();
+      const result = await ipc.supabase.getEdgeLogs({
         projectId,
-        timestampStart,
+        timestampStart: getEdgeLogPollStart(
+          edgeLogPollCursorsRef.current[pollKey],
+          requestedAt,
+        ),
         appId,
-        organizationSlug: edgeLogsOrganizationSlug ?? null,
+        organizationSlug,
       });
-      return { appId, logs };
+      return { appId, pollKey, requestedAt, ...result };
     },
     enabled: edgeLogsEnabled,
     refetchInterval: EDGE_LOGS_POLL_INTERVAL_MS,
@@ -264,42 +294,29 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
   const edgeLogsDataUpdatedAt = edgeLogsQuery.dataUpdatedAt;
   useEffect(() => {
     if (!edgeLogsEnabled || !edgeLogsDataUpdatedAt) return;
-    const projectId = edgeLogsProjectId!;
     const edgeLogsResult = edgeLogsQuery.data;
     if (!edgeLogsResult) return;
-    const { appId, logs } = edgeLogsResult;
+    const { appId, pollKey, requestedAt, entries, retryFrom } = edgeLogsResult;
 
-    const lastTimestamp = lastLogTimestampRef.current[projectId];
-
-    if (logs.length === 0) {
-      if (!lastTimestamp) {
-        setLastLogTimestamp((prev) => ({
-          ...prev,
-          [projectId]: Date.now(),
-        }));
-      }
-      return;
-    }
-
-    // Filter out logs we've already processed. React Query serves cached
-    // data on remount with a non-zero dataUpdatedAt, which would otherwise
-    // re-fire this effect and duplicate entries that were appended during
-    // the original fetch. Also defends against StrictMode double-invoke.
-    const newLogs = lastTimestamp
-      ? logs.filter((log) => log.timestamp > lastTimestamp)
-      : logs;
-    if (newLogs.length === 0) return;
-
-    appLogForwarder.enqueue(newLogs);
-    appRunManager.previewConsole.append(appId, newLogs);
-
-    const latestLog = newLogs.reduce((latest, log) =>
-      log.timestamp > latest.timestamp ? log : latest,
+    // Polls overlap so late-arriving logs are seen, and React Query serves
+    // cached data again on remount (StrictMode double-invokes, too). The
+    // cursor delivers each provider log id to the preview console once.
+    // Fetched logs stay in the main-process cache that read_logs reads, so
+    // they are not forwarded to the central log store as well.
+    const { newEntries, cursor } = applyEdgeLogPollResult(
+      edgeLogPollCursorsRef.current[pollKey],
+      entries,
+      requestedAt,
+      retryFrom,
     );
-    setLastLogTimestamp((prev) => ({
-      ...prev,
-      [projectId]: latestLog.timestamp,
-    }));
+    edgeLogPollCursorsRef.current = {
+      ...edgeLogPollCursorsRef.current,
+      [pollKey]: cursor,
+    };
+    setEdgeLogPollCursors((prev) => ({ ...prev, [pollKey]: cursor }));
+    if (newEntries.length > 0) {
+      appRunManager.previewConsole.append(appId, newEntries);
+    }
     // edgeLogsDataUpdatedAt is the stable per-fetch trigger; other deps are
     // read via ref or are stable setters.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -334,6 +351,9 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
       setAppProjectMutation.isPending || recoverAppProjectMutation.isPending,
     isUnsettingAppProject: unsetAppProjectMutation.isPending,
     isLoadingEdgeLogs: edgeLogsQuery.isFetching,
+    edgeLogsWarning: edgeLogsEnabled
+      ? (edgeLogsQuery.error?.message ?? edgeLogsQuery.data?.warning ?? null)
+      : null,
 
     // Actions
     refetchOrganizations: organizationsQuery.refetch,

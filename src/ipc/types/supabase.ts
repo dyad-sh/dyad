@@ -68,6 +68,12 @@ export const ConsoleEntrySchema = z.object({
   sourceName: z.string().optional(),
   appId: z.number(),
   runtimeBoundary: z.enum(["start", "restart", "rebuild"]).optional(),
+  /**
+   * The provider's id for a log fetched from a remote service (Supabase Edge
+   * Function logs). Distinct events can share a timestamp and message, so
+   * consumers deduplicate repeated fetches by this id.
+   */
+  providerLogId: z.string().optional(),
 });
 
 export type ConsoleEntry = z.infer<typeof ConsoleEntrySchema>;
@@ -238,7 +244,12 @@ export const supabaseContracts = {
   getEdgeLogs: defineContract({
     channel: "supabase:get-edge-logs",
     input: GetSupabaseEdgeLogsParamsSchema,
-    output: z.array(ConsoleEntrySchema),
+    output: z.object({
+      entries: z.array(ConsoleEntrySchema),
+      /** Earliest incomplete time to retain in the next bounded poll window. */
+      retryFrom: z.number().optional(),
+      warning: z.string().optional(),
+    }),
   }),
 
   // Same scopes as the Neon equivalents: these repoint an app's provider too,

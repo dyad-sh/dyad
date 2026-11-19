@@ -39,6 +39,7 @@ import {
   DEFAULT_ENABLE_NEON_BRANCH_PROTECTION,
   DEFAULT_ENABLE_TESTING_FOR_NEW_APPS,
   DEFAULT_MAX_CONCURRENT_TEST_RUNS,
+  DEFAULT_AUTO_FETCH_SUPABASE_EDGE_FUNCTION_LOGS,
 } from "@/shared/settings_defaults";
 
 const logger = log.scope("settings");
@@ -97,6 +98,8 @@ export const DEFAULT_SETTINGS: UserSettings = {
   previewIdleTimeoutPolicy: "default",
   nodeRuntimePreference: "system",
   disablePreviewNodeAutoInstall: false,
+  autoFetchSupabaseEdgeFunctionLogs:
+    DEFAULT_AUTO_FETCH_SUPABASE_EDGE_FUNCTION_LOGS,
 };
 
 const CRASH_SENTINEL_FILE = "session.lock";

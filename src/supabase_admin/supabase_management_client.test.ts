@@ -469,6 +469,7 @@ describe("getSupabaseProjectLogs", () => {
             JSON.stringify({
               result: [
                 {
+                  id: "log-1",
                   timestamp: "2026-08-22T00:01:02.345000",
                   event_message: "warning from function",
                   severity_text: "warning",
@@ -481,11 +482,13 @@ describe("getSupabaseProjectLogs", () => {
     );
 
     const timestampStart = Date.UTC(2026, 7, 22, 0, 0, 0);
-    const response = await getSupabaseProjectLogs(
-      "proj-1",
+    const timestampEnd = Date.UTC(2026, 7, 22, 0, 5, 0);
+    const response = await getSupabaseProjectLogs("proj-1", {
       timestampStart,
-      "org-1",
-    );
+      timestampEnd,
+      organizationSlug: "org-1",
+      limit: 250,
+    });
 
     const requestUrl = new URL(String(vi.mocked(fetch).mock.calls[0][0]));
     expect(requestUrl.pathname).toBe(
@@ -494,16 +497,24 @@ describe("getSupabaseProjectLogs", () => {
     const sql = requestUrl.searchParams.get("sql");
     expect(sql).toContain("FROM logs");
     expect(sql).toContain("WHERE source = 'function_logs'");
+    // The provider's log id is selected so callers can deduplicate.
+    expect(sql).toMatch(/SELECT\s+id,/);
+    // Newest first, so a capped page keeps the most recent rows.
+    expect(sql).toContain("ORDER BY timestamp DESC");
+    expect(sql).toContain("LIMIT 250");
     expect(sql).not.toContain("FROM function_logs");
     expect(sql).not.toContain("metadata");
     expect(sql).not.toContain("TIMESTAMP_MICROS");
     expect(requestUrl.searchParams.get("iso_timestamp_start")).toBe(
       "2026-08-22T00:00:00.000Z",
     );
-    expect(requestUrl.searchParams.has("iso_timestamp_end")).toBe(true);
+    expect(requestUrl.searchParams.get("iso_timestamp_end")).toBe(
+      "2026-08-22T00:05:00.000Z",
+    );
     expect(response).toEqual({
       result: [
         {
+          id: "log-1",
           timestamp: Date.UTC(2026, 7, 22, 0, 1, 2, 345),
           event_message: "warning from function",
           level: "warn",
@@ -511,6 +522,78 @@ describe("getSupabaseProjectLogs", () => {
       ],
       error: undefined,
     });
+  });
+
+  it("rejects windows the provider would refuse", async () => {
+    const start = Date.UTC(2026, 7, 22, 0, 0, 0);
+    await expect(
+      getSupabaseProjectLogs("proj-1", {
+        timestampStart: start,
+        timestampEnd: start + 24 * 60 * 60 * 1000 + 60_000,
+      }),
+    ).rejects.toMatchObject({ kind: DyadErrorKind.Validation });
+    await expect(
+      getSupabaseProjectLogs("proj-1", {
+        timestampStart: start,
+        timestampEnd: start,
+      }),
+    ).rejects.toMatchObject({ kind: DyadErrorKind.Validation });
+  });
+
+  it("rejects rows without a provider log id", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              result: [{ timestamp: 1, event_message: "no id" }],
+            }),
+            { status: 200 },
+          ),
+      ),
+    );
+    await expect(
+      getSupabaseProjectLogs("proj-1", {
+        timestampStart: 0,
+        timestampEnd: 60_000,
+        organizationSlug: "org-1",
+      }),
+    ).rejects.toMatchObject({ kind: DyadErrorKind.External });
+  });
+
+  it("classifies an unauthorized logs request as an auth error", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("denied", { status: 403 })),
+    );
+    await expect(
+      getSupabaseProjectLogs("proj-1", {
+        timestampStart: 0,
+        timestampEnd: 60_000,
+        organizationSlug: "org-1",
+      }),
+    ).rejects.toMatchObject({ kind: DyadErrorKind.Auth });
+  });
+
+  it("passes the caller's signal to the request", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ result: [] }), { status: 200 }),
+      ),
+    );
+    const controller = new AbortController();
+    await getSupabaseProjectLogs("proj-1", {
+      timestampStart: 0,
+      timestampEnd: 60_000,
+      organizationSlug: "org-1",
+      signal: controller.signal,
+    });
+    const init = vi.mocked(fetch).mock.calls[0][1] as RequestInit;
+    controller.abort();
+    expect(init.signal?.aborted).toBe(true);
   });
 });
 

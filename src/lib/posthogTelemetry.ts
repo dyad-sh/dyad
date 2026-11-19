@@ -5,6 +5,7 @@ import {
   MAX_CHAT_TURNS_IN_CONTEXT,
 } from "@/constants/settings_constants";
 import {
+  DEFAULT_AUTO_FETCH_SUPABASE_EDGE_FUNCTION_LOGS,
   DEFAULT_ENABLE_SUGGESTED_PROMPTS,
   DEFAULT_ENABLE_TESTING_FOR_NEW_APPS,
   DEFAULT_MAX_CONCURRENT_TEST_RUNS,
@@ -110,6 +111,9 @@ export function getSettingsPersonTelemetryProperties(settings: UserSettings) {
     enableCloudSandbox: settings.experiments?.enableCloudSandbox ?? false,
     enableSuggestedPrompts:
       settings.enableSuggestedPrompts ?? DEFAULT_ENABLE_SUGGESTED_PROMPTS,
+    autoFetchSupabaseEdgeFunctionLogs:
+      settings.autoFetchSupabaseEdgeFunctionLogs ??
+      DEFAULT_AUTO_FETCH_SUPABASE_EDGE_FUNCTION_LOGS,
     blockUnsafeNpmPackages: settings.blockUnsafeNpmPackages ?? true,
     maxToolCallSteps: settings.maxToolCallSteps ?? DEFAULT_MAX_TOOL_CALL_STEPS,
     maxConcurrentTestRuns:

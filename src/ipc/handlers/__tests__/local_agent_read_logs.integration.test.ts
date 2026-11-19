@@ -113,11 +113,19 @@ describe("local-agent read_logs (integration)", () => {
     expect(content).toMatch(/<dyad-read-logs level="error" count="0">/);
     expect(content).toMatch(/<dyad-read-logs type="client" count="0">/);
 
-    // Filter summaries rendered inside the tags.
-    expect(content).toContain(
-      "Time: last 5 minutes | Level: error | Limit: 10",
+    // Filter summaries rendered inside the tags, with the exact window the
+    // call queried.
+    const iso = "\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z";
+    expect(content).toMatch(
+      new RegExp(
+        `Time: last 5 minutes \\(${iso} to ${iso}\\) \\| Level: error \\| Limit: 10`,
+      ),
     );
-    expect(content).toContain("Time: last 5 minutes | Type: client");
+    expect(content).toMatch(
+      new RegExp(
+        `Time: last 5 minutes \\(${iso} to ${iso}\\) \\| Type: client`,
+      ),
+    );
     expect(content).toContain("No logs found matching the specified filters.");
 
     // Every channel the UI invoked had a real handler.

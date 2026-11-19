@@ -161,6 +161,7 @@ export const DebugSettingsSchema = z.object({
   disablePreviewNodeAutoInstall: z.boolean().nullable(),
   previewIdleTimeoutPolicy: z.string().nullable(),
   maxToolCallSteps: z.number().nullable(),
+  autoFetchSupabaseEdgeFunctionLogs: z.boolean().nullable(),
   /** Whether a credential is stored. No secrets or account details. */
   githubConnected: z.boolean(),
   gitlabConnected: z.boolean(),

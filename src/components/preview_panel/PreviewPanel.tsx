@@ -195,7 +195,7 @@ export function PreviewPanel() {
     }
   }, []);
 
-  useSupabase({
+  const { edgeLogsWarning } = useSupabase({
     edgeLogsProjectId: app?.supabaseProjectId,
     edgeLogsOrganizationSlug: app?.supabaseOrganizationSlug,
     edgeLogsAppId: app?.id,
@@ -355,7 +355,11 @@ export function PreviewPanel() {
                     onToggle={() => setIsConsoleOpen(false)}
                     latestMessage={latestMessage}
                   />
-                  <Console />
+                  <Console
+                    supabaseProjectId={app?.supabaseProjectId}
+                    supabaseOrganizationSlug={app?.supabaseOrganizationSlug}
+                    edgeLogsWarning={edgeLogsWarning}
+                  />
                 </div>
               </Panel>
             </>

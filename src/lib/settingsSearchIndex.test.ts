@@ -228,4 +228,19 @@ describe("SETTINGS_SEARCH_INDEX", () => {
       sectionLabel: "Experiments",
     });
   });
+
+  it("includes the Supabase Edge Function log polling setting", () => {
+    const item = SETTINGS_SEARCH_INDEX.find(
+      (entry) => entry.id === SETTING_IDS.autoFetchSupabaseEdgeFunctionLogs,
+    );
+    expect(item).toMatchObject({
+      label: "Automatically fetch Supabase Edge Function logs",
+      sectionId: SECTION_IDS.integrations,
+      sectionLabel: "Integrations",
+    });
+    expect(item?.description).toContain("on demand");
+    expect(item?.keywords).toEqual(
+      expect.arrayContaining(["supabase", "logs", "polling"]),
+    );
+  });
 });

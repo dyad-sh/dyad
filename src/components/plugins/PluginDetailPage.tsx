@@ -28,6 +28,7 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
     appScopedPluginsEnabled,
     isServersLoading,
     isAppConfigsLoading,
+    appConfigsFailed,
     toggleEnabled,
     deleteServer,
   } = useMcp();
@@ -189,6 +190,7 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
             catalogEntry={catalogEntry}
             catalogIsLoading={catalogQuery.isLoading}
             isLoading={isAppConfigsLoading}
+            loadFailed={appConfigsFailed}
           />
         )}
       </div>

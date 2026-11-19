@@ -429,6 +429,7 @@ export function useMcp() {
     // tool counts gate on this instead of `isLoading`.
     isServersLoading: serversQuery.isLoading,
     isAppConfigsLoading: appScopedPluginsEnabled && appConfigsQuery.isLoading,
+    appConfigsFailed: appScopedPluginsEnabled && appConfigsQuery.isError,
     error:
       serversQuery.error || toolsByServerQuery.error || consentsQuery.error,
     refetchAll,

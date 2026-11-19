@@ -372,6 +372,7 @@ export function PluginAppConfigsSection({
   catalogEntry,
   catalogIsLoading,
   isLoading = false,
+  loadFailed = false,
 }: {
   server: McpServer;
   appConfigs: McpAppConfig[];
@@ -380,6 +381,8 @@ export function PluginAppConfigsSection({
   catalogIsLoading: boolean;
   /** The configurations haven't loaded yet. */
   isLoading?: boolean;
+  /** The configurations couldn't be loaded. */
+  loadFailed?: boolean;
 }) {
   const [createOpen, setCreateOpen] = useState(false);
   // Expanded configurations; one the user just created starts open so its
@@ -437,7 +440,12 @@ export function PluginAppConfigsSection({
             />
           );
         })}
-        {!isLoading && appConfigs.length === 0 && (
+        {loadFailed && (
+          <div className="text-xs text-destructive">
+            Couldn't load this plugin's app-specific configurations.
+          </div>
+        )}
+        {!isLoading && !loadFailed && appConfigs.length === 0 && (
           <div className="text-xs text-muted-foreground">
             No app-specific configurations. Every app that has {server.name}{" "}
             uses the default configuration.

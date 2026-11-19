@@ -225,6 +225,25 @@ describe("PluginAppConfigsSection", () => {
     expect(screen.queryByText(/No app-specific configurations/)).toBeNull();
   });
 
+  it("says the configurations couldn't load instead of saying there are none", () => {
+    render(
+      <PluginAppConfigsSection
+        server={plugin()}
+        appConfigs={[]}
+        apps={APPS}
+        catalogEntry={undefined}
+        catalogIsLoading={false}
+        loadFailed
+      />,
+    );
+    expect(
+      screen.getByText(
+        /Couldn't load this plugin's app-specific configurations/,
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/No app-specific configurations/)).toBeNull();
+  });
+
   it("offers no collapse toggle for a configuration held open for setup", () => {
     render(
       <PluginAppConfigsSection

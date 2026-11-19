@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "../../db";
 import { mcpAppConfigs, mcpServers } from "../../db/schema";
-import { readSettings } from "../../main/settings";
+import { isAppScopedPluginsEnabled } from "./mcp_app_scoped_experiment";
 import {
   appConfigConnection,
   pluginConnection,
@@ -82,8 +82,7 @@ export async function readMcpConnection(
       catalogSlug: row.catalogSlug,
     };
   }
-  // Read here rather than through mcp_app_scoping, which imports this file.
-  if (!readSettings().enableAppScopedPlugins) return undefined;
+  if (!isAppScopedPluginsEnabled()) return undefined;
   const [row] = await db
     .select({
       config: mcpAppConfigs,

@@ -6,7 +6,7 @@ import {
   mcpServerDefaultApps,
   mcpServers,
 } from "../../db/schema";
-import { readSettings } from "../../main/settings";
+import { isAppScopedPluginsEnabled } from "./mcp_app_scoped_experiment";
 import {
   getRemoteMcpCatalog,
   peekRemoteMcpCatalog,
@@ -22,9 +22,7 @@ import {
   type PluginAvailability,
 } from "./mcp_plugin_availability";
 
-export function isAppScopedPluginsEnabled(): boolean {
-  return !!readSettings().enableAppScopedPlugins;
-}
+export { isAppScopedPluginsEnabled };
 
 /** One plugin as an app's chat sees it. */
 export interface ResolvedMcpConnection {

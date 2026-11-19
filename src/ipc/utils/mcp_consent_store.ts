@@ -7,6 +7,7 @@ import {
 } from "../../db/schema";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import type { McpConnectionRef } from "@/shared/mcp_connection_ref";
+import { isAppScopedPluginsEnabled } from "./mcp_app_scoped_experiment";
 
 export type Consent = "ask" | "always" | "denied";
 
@@ -73,15 +74,19 @@ export async function setStoredConsent(
       .returning();
     return { ...row, appConfigId: null, consent: row.consent as Consent };
   }
-  const [config] = await db
-    .select({ id: mcpAppConfigs.id })
-    .from(mcpAppConfigs)
-    .where(
-      and(
-        eq(mcpAppConfigs.id, ref.appConfigId),
-        eq(mcpAppConfigs.serverId, ref.serverId),
-      ),
-    );
+  // While the experiment is off, app-specific configurations read as
+  // missing everywhere, so their approvals can't be changed either.
+  const [config] = !isAppScopedPluginsEnabled()
+    ? []
+    : await db
+        .select({ id: mcpAppConfigs.id })
+        .from(mcpAppConfigs)
+        .where(
+          and(
+            eq(mcpAppConfigs.id, ref.appConfigId),
+            eq(mcpAppConfigs.serverId, ref.serverId),
+          ),
+        );
   if (!config) {
     throw new DyadError(
       `App-specific configuration ${ref.appConfigId} of plugin ${ref.serverId} not found`,

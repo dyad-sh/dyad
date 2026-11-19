@@ -320,6 +320,25 @@ describe("app-specific plugin configurations", () => {
     expect(mocks.catalogFetches).toBe(1);
   });
 
+  it("won't change an app-specific configuration's approvals while the experiment is off", async () => {
+    const serverId = insertPlugin();
+    const config = await createAppConfig({
+      serverId,
+      name: "Lab",
+      appIds: [],
+    });
+
+    mocks.settings = {};
+
+    await expect(
+      setStoredConsent(config.connection, "deploy", "always"),
+    ).rejects.toThrow(/not found/);
+    // The plugin's own approvals still work.
+    await expect(
+      setStoredConsent(pluginConnection(serverId), "deploy", "always"),
+    ).resolves.toMatchObject({ consent: "always" });
+  });
+
   it("reads an app-specific configuration as missing while the experiment is off", async () => {
     const serverId = insertPlugin();
     const config = await createAppConfig({

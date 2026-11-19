@@ -14,7 +14,11 @@ import { Label } from "@/components/ui/label";
 import { DeleteConfirmationDialog } from "@/components/DeleteConfirmationDialog";
 import { useMcp } from "@/hooks/useMcp";
 import type { McpAppConfig, McpServer } from "@/ipc/types";
-import type { McpCatalogEntry } from "@/ipc/types/mcp_catalog";
+import {
+  isRequiredInput,
+  userSuppliedInputs,
+  type McpCatalogEntry,
+} from "@/ipc/types/mcp_catalog";
 import {
   PluginConnectionPanel,
   PluginOAuthBadge,
@@ -77,6 +81,7 @@ function AppConfigDialog({
   apps,
   editing,
   onSaved,
+  requiresSetup = false,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -86,6 +91,8 @@ function AppConfigDialog({
   /** The configuration being edited; creates a new one when absent. */
   editing?: McpAppConfig;
   onSaved: (config: McpAppConfig) => void;
+  /** A new configuration has required setup fields to fill in. */
+  requiresSetup?: boolean;
 }) {
   const {
     createAppConfig,
@@ -196,6 +203,8 @@ function AppConfigDialog({
               You'll enter this configuration's settings and credentials after
               creating it. Nothing is copied from the default configuration's
               credentials.
+              {requiresSetup &&
+                ` The apps you choose won't have ${server.name} until you finish setting it up.`}
             </p>
           )}
         </div>
@@ -459,6 +468,9 @@ export function PluginAppConfigsSection({
           server={server}
           appConfigs={appConfigs}
           apps={apps}
+          requiresSetup={userSuppliedInputs(catalogEntry?.inputs).some(
+            isRequiredInput,
+          )}
           onSaved={(created) =>
             setExpandedIds((current) => new Set(current).add(created.id))
           }

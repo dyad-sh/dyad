@@ -211,6 +211,33 @@ describe("PluginAppConfigsSection", () => {
     );
   });
 
+  it("warns before creating that the apps wait for setup, only when setup is required", () => {
+    const { unmount } = render(
+      <PluginAppConfigsSection
+        server={plugin({ catalogSlug: "coolify" })}
+        appConfigs={[]}
+        apps={APPS}
+        catalogEntry={{
+          slug: "coolify",
+          name: "Coolify",
+          transport: "http",
+          url: "https://prod.example.com/mcp",
+          inputs: [{ kind: "header", name: "Authorization", label: "Token" }],
+        }}
+        catalogIsLoading={false}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Add configuration/ }));
+    expect(
+      screen.getByText(/won't have Coolify until you finish setting it up/),
+    ).toBeTruthy();
+    unmount();
+
+    renderSection(plugin(), []);
+    fireEvent.click(screen.getByRole("button", { name: /Add configuration/ }));
+    expect(screen.queryByText(/until you finish setting it up/)).toBeNull();
+  });
+
   it("waits for configurations to load before saying there are none", () => {
     render(
       <PluginAppConfigsSection

@@ -112,7 +112,9 @@ async function readPluginStatusesBySlug(
         usesDefault ? status.defaultOAuthState : status.appConfigOAuthState,
       );
       const usable =
-        status.availability.pluginEnabled && (!oauthRequired || authorized);
+        status.availability.pluginEnabled &&
+        !status.appConfigNeedsSetup &&
+        (!oauthRequired || authorized);
       if (!usesDefault && !usable) {
         return { usable, needsOAuth: false, unavailableInApp: true };
       }

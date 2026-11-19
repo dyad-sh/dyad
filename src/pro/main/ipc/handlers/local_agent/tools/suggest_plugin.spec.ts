@@ -9,6 +9,7 @@ interface Row {
   // app-scoped plugins experiment off), an app-specific one, or none.
   coverage: "default" | "app-config" | "none";
   appConfigOAuthState: string | null;
+  appConfigNeedsSetup: boolean;
 }
 
 const mocks = vi.hoisted(() => ({
@@ -69,6 +70,7 @@ vi.mock("@/ipc/utils/mcp_app_scoping", () => ({
               },
         defaultOAuthState: row.oauthState,
         appConfigOAuthState: row.appConfigOAuthState,
+        appConfigNeedsSetup: row.appConfigNeedsSetup,
       };
     }),
 }));
@@ -98,6 +100,7 @@ const row = (
   oauthState: null,
   coverage: "default",
   appConfigOAuthState: null,
+  appConfigNeedsSetup: false,
   ...overrides,
 });
 
@@ -367,6 +370,25 @@ describe("collectSuggestablePlugins", () => {
       expect.objectContaining({ slug: "stripe", unavailableInApp: false }),
     ]);
   });
+});
+
+it("marks an app-specific configuration that still needs setup as unavailable", async () => {
+  resetMocks();
+  mocks.rows = [
+    row("vercel", { oauthState: "tokens" }),
+    // Key-based, so it would count as usable if setup weren't checked.
+    row("exa", { coverage: "app-config", appConfigNeedsSetup: true }),
+  ];
+
+  const suggestable = await collectSuggestablePlugins({
+    chatId: 7,
+    appId: APP_ID,
+  });
+  expect(suggestable).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ slug: "exa", unavailableInApp: true }),
+    ]),
+  );
 });
 
 describe("suggestPluginTool", () => {

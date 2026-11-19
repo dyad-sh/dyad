@@ -7,7 +7,10 @@ import {
   mcpServers,
 } from "../../db/schema";
 import { readSettings } from "../../main/settings";
+import { peekRemoteMcpCatalog } from "@/ipc/shared/remote_mcp_catalog";
 import type { McpConnectionRef } from "@/shared/mcp_connection_ref";
+import { needsCatalogSetup } from "@/shared/mcp_setup_inputs";
+import { readServerSecretMap } from "./secret_storage";
 import { appConfigDisplayName } from "./mcp_connection_store";
 import {
   readPluginAvailability,
@@ -44,6 +47,41 @@ export interface PluginAppStatus {
   defaultOAuthState: string | null;
   /** The app-specific configuration's OAuth state, when it covers the app. */
   appConfigOAuthState: string | null;
+  /**
+   * The app-specific configuration covering the app still has required
+   * catalog setup inputs unfilled, so the app has no working plugin yet.
+   */
+  appConfigNeedsSetup: boolean;
+}
+
+/**
+ * Whether an app-specific configuration still has required catalog setup
+ * inputs unfilled. Reads only the cached catalog, since this runs on every
+ * chat turn; when the entry or the stored values can't be read, it reports
+ * the configuration as set up, so connecting proceeds as before.
+ */
+function appConfigNeedsSetup(
+  catalogSlug: string | null,
+  config: {
+    envEncrypted: string | null;
+    headersEncrypted: string | null;
+    oauthClientId: string | null;
+  },
+): boolean {
+  if (!catalogSlug) return false;
+  const entry = peekRemoteMcpCatalog()?.find((e) => e.slug === catalogSlug);
+  if (!entry?.inputs?.length) return false;
+  const env = readServerSecretMap(config.envEncrypted, null);
+  const headers = readServerSecretMap(config.headersEncrypted, null);
+  if (env.status !== "ok" || headers.status !== "ok") return false;
+  return needsCatalogSetup(
+    {
+      envJson: env.value,
+      headersJson: headers.value,
+      oauthClientId: config.oauthClientId,
+    },
+    entry.inputs,
+  );
 }
 
 /**
@@ -82,6 +120,9 @@ export async function readPluginStatusesForApp(
             name: mcpAppConfigs.name,
             transport: mcpAppConfigs.transport,
             oauthState: mcpAppConfigs.oauthState,
+            envEncrypted: mcpAppConfigs.envEncrypted,
+            headersEncrypted: mcpAppConfigs.headersEncrypted,
+            oauthClientId: mcpAppConfigs.oauthClientId,
           })
           .from(mcpAppConfigApps)
           // Matching the plugin too means an assignment whose plugin
@@ -139,6 +180,8 @@ export async function readPluginStatusesForApp(
               },
       defaultOAuthState: server.oauthState,
       appConfigOAuthState: usesAppConfig ? config.oauthState : null,
+      appConfigNeedsSetup:
+        usesAppConfig && appConfigNeedsSetup(server.catalogSlug, config),
     };
   });
 }
@@ -146,14 +189,18 @@ export async function readPluginStatusesForApp(
 /**
  * The plugins an app's chat can use, each with the configuration it uses
  * there: an app-specific configuration if the app has one, otherwise the
- * default when it serves the app.
+ * default when it serves the app. An app-specific configuration that still
+ * needs setup leaves the app without the plugin; it never falls back to
+ * the default, which may reach a different server or account.
  */
 export async function resolveMcpConnectionsForApp(
   appId: number,
 ): Promise<ResolvedMcpConnection[]> {
   const statuses = await readPluginStatusesForApp(appId);
   return statuses.flatMap((status) =>
-    status.availability.pluginEnabled && status.coveringConnection
+    status.availability.pluginEnabled &&
+    status.coveringConnection &&
+    !status.appConfigNeedsSetup
       ? [status.coveringConnection]
       : [],
   );

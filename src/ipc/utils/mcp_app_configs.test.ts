@@ -240,6 +240,46 @@ describe("app-specific plugin configurations", () => {
     ]);
   });
 
+  it("leaves an app without the plugin until its configuration is set up", async () => {
+    mocks.catalog = [
+      {
+        slug: "coolify",
+        name: "Coolify",
+        transport: "stdio",
+        command: "npx",
+        args: ["-y", "coolify-mcp@1.0.0"],
+        inputs: [{ kind: "env", name: "COOLIFY_ACCESS_TOKEN", label: "Token" }],
+      },
+    ];
+    const lab = insertApp("Lab app");
+    const serverId = insertPlugin({
+      catalogSlug: "coolify",
+      transport: "stdio",
+      url: null,
+      command: "npx",
+      args: ["-y", "coolify-mcp@1.0.0"],
+      envEncrypted: encryptSecretMap({ COOLIFY_ACCESS_TOKEN: "default" }),
+    });
+    const config = await createAppConfig({
+      serverId,
+      name: "Lab",
+      appIds: [lab],
+    });
+
+    // No fallback to the default, which reaches a different server.
+    expect(await connectionsFor(lab)).toEqual([]);
+    const [status] = await readPluginStatusesForApp(lab);
+    expect(status.appConfigNeedsSetup).toBe(true);
+
+    db.update(schema.mcpAppConfigs)
+      .set({
+        envEncrypted: encryptSecretMap({ COOLIFY_ACCESS_TOKEN: "lab" }),
+      })
+      .where(eq(schema.mcpAppConfigs.id, config.id))
+      .run();
+    expect(await connectionsFor(lab)).toEqual([config.connection]);
+  });
+
   it("refuses a configuration when the catalog entry changed transport", async () => {
     mocks.catalog = [
       {

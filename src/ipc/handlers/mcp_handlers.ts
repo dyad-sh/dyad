@@ -647,9 +647,16 @@ export function registerMcpHandlers() {
       "OAuth flow cancelled because its configuration was deleted.",
       async () => {
         void mcpManager.dispose(connection).catch(() => {});
-        await db
+        const deleted = await db
           .delete(mcpAppConfigs)
-          .where(appConfigRowFilter(params.serverId, params.appConfigId));
+          .where(appConfigRowFilter(params.serverId, params.appConfigId))
+          .returning({ id: mcpAppConfigs.id });
+        if (deleted.length === 0) {
+          throw new DyadError(
+            `App-specific configuration not found: ${params.appConfigId}`,
+            DyadErrorKind.NotFound,
+          );
+        }
         return { success: true };
       },
     );

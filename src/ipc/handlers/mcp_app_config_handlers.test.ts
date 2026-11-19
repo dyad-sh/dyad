@@ -148,10 +148,12 @@ describe("app-specific configuration handlers", () => {
         name: "Renamed",
       }),
     ).rejects.toThrow(/not found/);
-    await harness.invokeHandler("mcp:delete-app-config", {
-      serverId: otherPlugin,
-      appConfigId: created.id,
-    });
+    await expect(
+      harness.invokeHandler("mcp:delete-app-config", {
+        serverId: otherPlugin,
+        appConfigId: created.id,
+      }),
+    ).rejects.toThrow(/not found/);
 
     expect(
       await harness.invokeHandler<{ name: string }[]>("mcp:list-app-configs"),

@@ -216,7 +216,9 @@ export async function readPluginStatusesForApp(
  * there: an app-specific configuration if the app has one, otherwise the
  * default when it serves the app. An app-specific configuration that still
  * needs setup leaves the app without the plugin; it never falls back to
- * the default, which may reach a different server or account.
+ * the default, which may reach a different server or account. Setup is
+ * judged from the cached catalog, so while the cache is cold an unfinished
+ * configuration is tried, and its connection fails, for that turn.
  */
 export async function resolveMcpConnectionsForApp(
   appId: number,

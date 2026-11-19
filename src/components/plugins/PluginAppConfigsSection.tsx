@@ -259,6 +259,7 @@ function AppConfigCard({
 }) {
   const { deleteAppConfig } = useMcp();
   const [editOpen, setEditOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const { needsSetup, setupIncomplete } = connectionSetupState(
     config,
     catalogEntry,
@@ -301,11 +302,17 @@ function AppConfigCard({
             itemName={config.name}
             itemType="Configuration"
             onDelete={async () => {
-              await deleteAppConfig({
-                serverId: config.serverId,
-                appConfigId: config.id,
-              });
+              setIsDeleting(true);
+              try {
+                await deleteAppConfig({
+                  serverId: config.serverId,
+                  appConfigId: config.id,
+                });
+              } finally {
+                setIsDeleting(false);
+              }
             }}
+            isDeleting={isDeleting}
             details={
               config.appIds.length > 0
                 ? fallbackSentence(server, config.appIds, apps).join(" ")

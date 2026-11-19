@@ -43,13 +43,16 @@ vi.mock("@/components/DeleteConfirmationDialog", () => ({
   DeleteConfirmationDialog: ({
     details,
     onDelete,
+    isDeleting,
   }: {
     details?: string;
     onDelete: () => Promise<void>;
+    isDeleting?: boolean;
   }) => (
     <div>
       <div data-testid="delete-details">{details}</div>
       <button onClick={() => void onDelete()}>Confirm delete</button>
+      {isDeleting && <span>Deleting…</span>}
     </div>
   ),
 }));
@@ -239,6 +242,22 @@ describe("PluginAppConfigsSection", () => {
     renderSection(plugin(), []);
     fireEvent.click(screen.getByRole("button", { name: /Add configuration/ }));
     expect(screen.queryByText(/until you finish setting it up/)).toBeNull();
+  });
+
+  it("shows the delete as pending until it finishes", async () => {
+    let finish!: () => void;
+    mocks.deleteAppConfig.mockReturnValue(
+      new Promise<void>((resolve) => {
+        finish = resolve;
+      }),
+    );
+    renderSection(plugin(), [config(1, "Lab", [])]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Confirm delete" }));
+    expect(await screen.findByText("Deleting…")).toBeTruthy();
+
+    finish();
+    await waitFor(() => expect(screen.queryByText("Deleting…")).toBeNull());
   });
 
   it("waits for configurations to load before saying there are none", () => {

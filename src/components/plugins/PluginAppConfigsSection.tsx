@@ -222,7 +222,11 @@ function AppConfigDialog({
           )}
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={isSavingAppScope}
+          >
             Cancel
           </Button>
           <Button
@@ -318,9 +322,11 @@ function AppConfigCard({
                 ? fallbackSentence(server, config.appIds, apps).join(" ")
                 : undefined
             }
+            // The confirmation closes as soon as Delete is clicked, so the
+            // pending state shows on this button instead.
             trigger={
               <span className={buttonVariants({ variant: "outline" })}>
-                Delete
+                {isDeleting ? "Deleting…" : "Delete"}
               </span>
             }
           />

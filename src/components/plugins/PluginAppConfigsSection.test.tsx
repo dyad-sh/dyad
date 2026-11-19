@@ -6,6 +6,7 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { McpAppConfig, McpServer } from "@/ipc/types";
 import {
@@ -21,6 +22,7 @@ const mocks = vi.hoisted(() => ({
   setPluginAvailability: vi.fn(),
   updateConnection: vi.fn(),
   deleteAppConfig: vi.fn(),
+  isSaving: false,
 }));
 
 vi.mock("@/hooks/useMcp", () => ({
@@ -30,7 +32,7 @@ vi.mock("@/hooks/useMcp", () => ({
     setPluginAvailability: mocks.setPluginAvailability,
     updateConnection: mocks.updateConnection,
     deleteAppConfig: mocks.deleteAppConfig,
-    isSavingAppScope: false,
+    isSavingAppScope: mocks.isSaving,
   }),
 }));
 // The configuration's own settings and tools are covered elsewhere.
@@ -43,16 +45,16 @@ vi.mock("@/components/DeleteConfirmationDialog", () => ({
   DeleteConfirmationDialog: ({
     details,
     onDelete,
-    isDeleting,
+    trigger,
   }: {
     details?: string;
     onDelete: () => Promise<void>;
-    isDeleting?: boolean;
+    trigger?: ReactNode;
   }) => (
     <div>
+      <div data-testid="delete-trigger">{trigger}</div>
       <div data-testid="delete-details">{details}</div>
       <button onClick={() => void onDelete()}>Confirm delete</button>
-      {isDeleting && <span>Deleting…</span>}
     </div>
   ),
 }));
@@ -122,6 +124,7 @@ function renderSection(server: McpServer, appConfigs: McpAppConfig[]) {
 describe("PluginAppConfigsSection", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.isSaving = false;
     mocks.createAppConfig.mockImplementation(async (params) => ({
       ...config(9, params.name, params.appIds),
     }));
@@ -244,6 +247,17 @@ describe("PluginAppConfigsSection", () => {
     expect(screen.queryByText(/until you finish setting it up/)).toBeNull();
   });
 
+  it("keeps the dialog open while a save is in flight", () => {
+    mocks.isSaving = true;
+    renderSection(plugin(), []);
+
+    fireEvent.click(screen.getByRole("button", { name: /Add configuration/ }));
+    expect(
+      screen.getByRole<HTMLButtonElement>("button", { name: "Cancel" })
+        .disabled,
+    ).toBe(true);
+  });
+
   it("shows the delete as pending until it finishes", async () => {
     let finish!: () => void;
     mocks.deleteAppConfig.mockReturnValue(
@@ -254,10 +268,12 @@ describe("PluginAppConfigsSection", () => {
     renderSection(plugin(), [config(1, "Lab", [])]);
 
     fireEvent.click(screen.getByRole("button", { name: "Confirm delete" }));
-    expect(await screen.findByText("Deleting…")).toBeTruthy();
+    // On the card's own button, which stays visible once the dialog closes.
+    const trigger = screen.getByTestId("delete-trigger");
+    await waitFor(() => expect(trigger.textContent).toBe("Deleting…"));
 
     finish();
-    await waitFor(() => expect(screen.queryByText("Deleting…")).toBeNull());
+    await waitFor(() => expect(trigger.textContent).toBe("Delete"));
   });
 
   it("waits for configurations to load before saying there are none", () => {

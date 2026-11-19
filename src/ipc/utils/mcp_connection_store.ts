@@ -199,32 +199,6 @@ export async function writeMcpConnectionOAuthClientIfHttpOAuth(
   return written.length > 0;
 }
 
-/** The stored OAuth state of every configuration of a plugin. */
-export async function listPluginOAuthStates(
-  serverId: number,
-): Promise<{ connection: McpConnectionRef; oauthState: string | null }[]> {
-  const [plugin, configs] = await Promise.all([
-    db
-      .select({ oauthState: mcpServers.oauthState })
-      .from(mcpServers)
-      .where(eq(mcpServers.id, serverId)),
-    db
-      .select({ id: mcpAppConfigs.id, oauthState: mcpAppConfigs.oauthState })
-      .from(mcpAppConfigs)
-      .where(eq(mcpAppConfigs.serverId, serverId)),
-  ]);
-  return [
-    ...plugin.map((row) => ({
-      connection: pluginConnection(serverId),
-      oauthState: row.oauthState,
-    })),
-    ...configs.map((row) => ({
-      connection: appConfigConnection(serverId, row.id),
-      oauthState: row.oauthState,
-    })),
-  ];
-}
-
 /**
  * Matches an app-specific configuration only under the plugin the ref
  * names, so a ref whose ids don't belong together never reads or writes a

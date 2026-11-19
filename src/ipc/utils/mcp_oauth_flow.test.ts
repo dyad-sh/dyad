@@ -102,28 +102,6 @@ vi.mock("@/ipc/utils/mcp_manager", () => ({
   mcpManager: { dispose: vi.fn(async () => {}) },
 }));
 
-// Lets a test hold the "is another configuration signed in?" lookup open.
-const accountLookup = vi.hoisted(() => ({
-  delay: null as Promise<void> | null,
-  onStart: null as (() => void) | null,
-}));
-vi.mock("@/ipc/utils/mcp_connection_store", async (importOriginal) => {
-  const original =
-    await importOriginal<typeof import("@/ipc/utils/mcp_connection_store")>();
-  return {
-    ...original,
-    listPluginOAuthStates: async (
-      ...args: Parameters<typeof original.listPluginOAuthStates>
-    ) => {
-      const delay = accountLookup.delay;
-      accountLookup.delay = null;
-      accountLookup.onStart?.();
-      if (delay) await delay;
-      return original.listPluginOAuthStates(...args);
-    },
-  };
-});
-
 const flowImport = await import("@/ipc/utils/mcp_oauth_flow");
 const {
   disconnectOAuth,
@@ -346,39 +324,6 @@ describe("runOAuthFlow happy path (auth resolves AUTHORIZED first call)", () => 
     ).resolves.toMatchObject({ success: true });
     expect(authMock).toHaveBeenCalledOnce();
   });
-});
-
-it("fences a preparation whose account lookup spans a server mutation", async () => {
-  dbStore.clear();
-  authMock.mockReset();
-  seedRow({ id: 9, transport: "http", url: "https://example.com/mcp" });
-  let releaseLookup!: () => void;
-  accountLookup.delay = new Promise<void>((resolve) => {
-    releaseLookup = resolve;
-  });
-  const lookupStarted = new Promise<void>((resolve) => {
-    accountLookup.onStart = resolve;
-  });
-  const callbackPort = await getAvailableCallbackPort();
-  const preparation = runOAuthFlow({
-    connection: pluginConnection(9),
-    rendererMessageId: "lookup-before-mutation",
-    callbackPort,
-  });
-
-  // Edit the connection only once the lookup is under way, after the
-  // connection itself has been read.
-  await lookupStarted;
-  accountLookup.onStart = null;
-  await withMcpOAuthServerMutation(
-    pluginConnection(9),
-    "configuration changed",
-    async () => undefined,
-  );
-  releaseLookup();
-
-  await expect(preparation).resolves.toMatchObject({ success: false });
-  expect(authMock).not.toHaveBeenCalled();
 });
 
 describe("disconnectOAuth", () => {

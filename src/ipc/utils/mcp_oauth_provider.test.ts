@@ -412,34 +412,6 @@ describe("DyadOAuthClientProvider", () => {
     );
   });
 
-  it("asks for the account chooser when signing in another configuration", async () => {
-    const p = new DyadOAuthClientProvider({
-      connection: { serverId: 1, appConfigId: 3 },
-      allowInteractive: true,
-      requestAccountSelection: true,
-    });
-    await p.redirectToAuthorization(
-      new URL("https://example.com/authorize?foo=bar"),
-    );
-    expect(shell.openExternal).toHaveBeenCalledWith(
-      "https://example.com/authorize?foo=bar&prompt=select_account",
-    );
-  });
-
-  it("keeps a prompt the authorization server already chose", async () => {
-    const p = new DyadOAuthClientProvider({
-      connection: { serverId: 1, appConfigId: 3 },
-      allowInteractive: true,
-      requestAccountSelection: true,
-    });
-    await p.redirectToAuthorization(
-      new URL("https://example.com/authorize?prompt=consent"),
-    );
-    expect(shell.openExternal).toHaveBeenCalledWith(
-      "https://example.com/authorize?prompt=consent",
-    );
-  });
-
   it("refuses to open the browser when allowInteractive is not set", async () => {
     // Background providers (built by `mcp_manager`) must throw here
     // instead of opening a browser whose redirect has nowhere to

@@ -320,6 +320,22 @@ describe("app-specific plugin configurations", () => {
     expect(mocks.catalogFetches).toBe(1);
   });
 
+  it("reads an app-specific configuration as missing while the experiment is off", async () => {
+    const serverId = insertPlugin();
+    const config = await createAppConfig({
+      serverId,
+      name: "Lab",
+      appIds: [],
+    });
+
+    mocks.settings = {};
+
+    expect(await readMcpConnection(config.connection)).toBeUndefined();
+    expect(await readMcpConnection(pluginConnection(serverId))).toMatchObject({
+      pluginName: "Coolify",
+    });
+  });
+
   it("refuses a configuration when the catalog entry changed transport", async () => {
     mocks.catalog = [
       {

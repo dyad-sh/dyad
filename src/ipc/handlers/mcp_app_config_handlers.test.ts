@@ -253,6 +253,23 @@ describe("app-specific configuration handlers", () => {
     ).rejects.toThrow(/turned off/);
   });
 
+  it("won't sign out an app-specific configuration while the experiment is off", async () => {
+    const serverId = insertPlugin();
+    const created = await harness.invokeHandler<{ id: number }>(
+      "mcp:create-app-config",
+      { serverId, name: "Lab", appIds: [] },
+    );
+
+    mocks.settings = {};
+
+    await expect(
+      harness.invokeHandler("mcp:disconnect-oauth", {
+        serverId,
+        appConfigId: created.id,
+      }),
+    ).rejects.toThrow(/not found/);
+  });
+
   it("refuses to delete a configuration while the experiment is off", async () => {
     const serverId = insertPlugin();
     const created = await harness.invokeHandler<{ id: number }>(

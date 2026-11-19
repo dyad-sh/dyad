@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "../../db";
 import { mcpAppConfigs, mcpServers } from "../../db/schema";
+import { readSettings } from "../../main/settings";
 import {
   appConfigConnection,
   pluginConnection,
@@ -46,6 +47,11 @@ export function appConfigDisplayName(
   return `${pluginName} (${configName})`;
 }
 
+/**
+ * The stored connection a ref points at. An app-specific configuration
+ * reads as missing while the app-scoped plugins experiment is off, so no
+ * channel can connect to it, list its tools or sign it in.
+ */
 export async function readMcpConnection(
   ref: McpConnectionRef,
 ): Promise<McpConnectionRecord | undefined> {
@@ -76,6 +82,8 @@ export async function readMcpConnection(
       catalogSlug: row.catalogSlug,
     };
   }
+  // Read here rather than through mcp_app_scoping, which imports this file.
+  if (!readSettings().enableAppScopedPlugins) return undefined;
   const [row] = await db
     .select({
       config: mcpAppConfigs,

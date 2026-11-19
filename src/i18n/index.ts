@@ -50,6 +50,13 @@ import frChat from "./locales/fr/chat.json";
 import frHome from "./locales/fr/home.json";
 import frErrors from "./locales/fr/errors.json";
 
+// Italian
+import itCommon from "./locales/it/common.json";
+import itSettings from "./locales/it/settings.json";
+import itChat from "./locales/it/chat.json";
+import itHome from "./locales/it/home.json";
+import itErrors from "./locales/it/errors.json";
+
 const resources = {
   en: {
     common: enCommon,
@@ -99,6 +106,13 @@ const resources = {
     chat: frChat,
     home: frHome,
     errors: frErrors,
+  },
+  it: {
+    common: itCommon,
+    settings: itSettings,
+    chat: itChat,
+    home: itHome,
+    errors: itErrors,
   },
 };
 

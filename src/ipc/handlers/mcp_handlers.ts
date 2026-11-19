@@ -624,6 +624,7 @@ export function registerMcpHandlers() {
   });
 
   createTypedHandler(mcpContracts.deleteAppConfig, async (_, params) => {
+    assertAppScopedPluginsEnabled();
     const connection = appConfigConnection(params.serverId, params.appConfigId);
     return await withMcpOAuthServerMutation(
       connection,

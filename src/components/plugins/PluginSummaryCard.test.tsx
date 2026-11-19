@@ -63,6 +63,13 @@ describe("PluginSummaryCard app scope summary", () => {
     expect(scope.textContent).toBe("Default: no apps");
   });
 
+  it("says no apps for a selected default with none chosen", () => {
+    renderCard(makeServer({ defaultScope: "selected", defaultAppIds: [] }));
+
+    expect(screen.getByText("Default: no apps")).toBeTruthy();
+    expect(screen.queryByText("Default: some apps")).toBeNull();
+  });
+
   it("shows nothing extra for a plugin available to every app", () => {
     renderCard(makeServer());
 

@@ -1,3 +1,4 @@
+import { useId } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 
 export interface PickableApp {
@@ -23,6 +24,7 @@ export function PluginAppPicker({
   noteFor?: (appId: number) => string | undefined;
   disabled?: boolean;
 }) {
+  const idPrefix = useId();
   if (apps.length === 0) {
     return (
       <div className="text-xs text-muted-foreground">
@@ -37,6 +39,7 @@ export function PluginAppPicker({
     >
       {apps.map((app) => {
         const note = noteFor?.(app.id);
+        const noteId = note ? `${idPrefix}-note-${app.id}` : undefined;
         return (
           <label
             key={app.id}
@@ -44,6 +47,7 @@ export function PluginAppPicker({
           >
             <Checkbox
               aria-label={app.name}
+              aria-describedby={noteId}
               checked={selected.has(app.id)}
               disabled={disabled}
               onCheckedChange={(checked) => {
@@ -55,7 +59,10 @@ export function PluginAppPicker({
             />
             <span className="truncate">{app.name}</span>
             {note && (
-              <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+              <span
+                id={noteId}
+                className="ml-auto shrink-0 text-xs text-muted-foreground"
+              >
                 {note}
               </span>
             )}

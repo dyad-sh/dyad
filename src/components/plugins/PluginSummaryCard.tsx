@@ -13,8 +13,12 @@ import type { ConnectFeedback } from "./usePluginConnect";
 // plugin; otherwise the card reads exactly as before.
 function appScopeSummary(s: McpServer): string[] {
   const parts: string[] = [];
-  if (s.defaultScope === "selected") parts.push("Default: some apps");
-  if (s.defaultScope === "none") parts.push("Default: no apps");
+  // "Selected" with no apps chosen serves no app either.
+  if (s.defaultScope === "selected" && s.defaultAppIds.length > 0) {
+    parts.push("Default: some apps");
+  } else if (s.defaultScope !== "all") {
+    parts.push("Default: no apps");
+  }
   if (s.appConfigCount > 0) {
     parts.push(
       `${s.appConfigCount} app-specific configuration${

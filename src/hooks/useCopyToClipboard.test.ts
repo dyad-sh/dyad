@@ -207,6 +207,13 @@ describe("useCopyToClipboard", () => {
       expect(out).toContain("### Suggested plugin: Vercel");
     });
 
+    it("copies a suggestion for a plugin not set up for the app", async () => {
+      const out = await copy(
+        '<dyad-suggest-plugin slug="vercel" name="Vercel" reason="Read the build logs." outcome="unavailable"></dyad-suggest-plugin>',
+      );
+      expect(out).toContain("### Suggested plugin: Vercel");
+    });
+
     it("copies a declined suggestion", async () => {
       const out = await copy(
         '<dyad-suggest-plugin slug="vercel" name="Vercel" reason="Read the build logs." outcome="declined"></dyad-suggest-plugin>',

@@ -27,6 +27,7 @@ const { registerMcpHandlers } = await import("./mcp_handlers");
 const { setupHandlerTestHarness } =
   await import("@/testing/handler_test_harness");
 const schema = await import("@/db/schema");
+const { mcpContracts } = await import("@/ipc/types/mcp");
 type Harness = ReturnType<typeof setupHandlerTestHarness>;
 
 registerMcpHandlers();
@@ -215,5 +216,42 @@ describe("app-specific configuration handlers", () => {
         appIds: [],
       }),
     ).rejects.toThrow(/turned off/);
+  });
+
+  it("refuses to delete a configuration while the experiment is off", async () => {
+    const serverId = insertPlugin();
+    const created = await harness.invokeHandler<{ id: number }>(
+      "mcp:create-app-config",
+      { serverId, name: "Lab", appIds: [] },
+    );
+
+    mocks.settings = {};
+
+    await expect(
+      harness.invokeHandler("mcp:delete-app-config", {
+        serverId,
+        appConfigId: created.id,
+      }),
+    ).rejects.toThrow(/turned off/);
+    mocks.settings = { enableAppScopedPlugins: true };
+    expect(
+      await harness.invokeHandler<unknown[]>("mcp:list-app-configs"),
+    ).toHaveLength(1);
+  });
+
+  it("caps a configuration name at 100 characters on edit, as on create", () => {
+    const edit = { serverId: 1, appConfigId: 2 };
+    expect(
+      mcpContracts.updateAppConfig.input.safeParse({
+        ...edit,
+        name: "x".repeat(100),
+      }).success,
+    ).toBe(true);
+    expect(
+      mcpContracts.updateAppConfig.input.safeParse({
+        ...edit,
+        name: "x".repeat(101),
+      }).success,
+    ).toBe(false);
   });
 });

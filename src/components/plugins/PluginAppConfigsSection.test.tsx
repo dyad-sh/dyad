@@ -137,6 +137,13 @@ describe("PluginAppConfigsSection", () => {
       target: { value: "Staging" },
     });
     expect(screen.getByText("currently: Lab")).toBeTruthy();
+    // Screen readers hear the note with the checkbox.
+    expect(
+      screen.getByRole("checkbox", {
+        name: "Shop",
+        description: "currently: Lab",
+      }),
+    ).toBeTruthy();
     await userEvent.click(screen.getByRole("checkbox", { name: "Shop" }));
 
     expect(

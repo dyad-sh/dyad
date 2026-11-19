@@ -413,8 +413,8 @@ export async function setPluginAvailability(params: {
 
 /**
  * Columns to write when the plugin's switch changes. With the experiment
- * off this is exactly what older builds write: the plugin is on or off for
- * every app.
+ * off the switch means on or off for every app, so the default's scope is
+ * written as "all".
  */
 export function pluginSwitchColumns(
   plugin: Pick<ServerRow, "enabled" | "defaultScope" | "scopedEnabled">,

@@ -173,6 +173,8 @@ export const McpAppConfigUpdateSchema = z.object({
   serverId: z.number().int().positive(),
   appConfigId: z.number().int().positive(),
   ...McpConnectionConfigUpdateFields,
+  // Same limit as on create.
+  name: z.string().max(100).optional(),
 });
 
 export type McpAppConfigUpdate = z.infer<typeof McpAppConfigUpdateSchema>;

@@ -140,19 +140,6 @@ function unchanged(
   return value === null ? isNull(column) : eq(column, value);
 }
 
-/**
- * Brings the encrypted env var and header columns in line with what is
- * actually stored, and returns the number of columns it rewrote.
- *
- * Three cases: a secret that has never been encrypted, one an older
- * build edited through the plaintext column, and one written as a
- * `plain:` blob before a keyring was available. The plaintext columns
- * are left in place so builds that predate the encrypted columns keep
- * working.
- *
- * Runs on app startup. Never throws: a failure here must not block
- * startup, and the plaintext columns stay readable.
- */
 // App-specific plugin configurations never had plaintext columns, so only
 // a `plain:` blob written before a keyring was available needs upgrading.
 async function encryptAppConfigSecrets(): Promise<number> {
@@ -201,6 +188,19 @@ async function encryptAppConfigSecrets(): Promise<number> {
   return updated;
 }
 
+/**
+ * Brings the encrypted env var and header columns in line with what is
+ * actually stored, and returns the number of columns it rewrote.
+ *
+ * Three cases: a secret that has never been encrypted, one an older
+ * build edited through the plaintext column, and one written as a
+ * `plain:` blob before a keyring was available. The plaintext columns
+ * are left in place so builds that predate the encrypted columns keep
+ * working.
+ *
+ * Runs on app startup. Never throws: a failure here must not block
+ * startup, and the plaintext columns stay readable.
+ */
 export async function encryptStoredMcpSecrets(): Promise<number> {
   try {
     const rows = await db

@@ -298,6 +298,12 @@ async function initialConfigValues(
           : DyadErrorKind.NotFound,
       );
     }
+    if (entry.transport !== plugin.transport) {
+      throw new DyadError(
+        `${plugin.name}'s catalog entry has changed how it connects. Remove the plugin and add it again to use the new version.`,
+        DyadErrorKind.Precondition,
+      );
+    }
     if (entry.transport === "stdio") return reviewedStdioValues(plugin, entry);
     return catalogEntryConnectionValues(entry);
   }

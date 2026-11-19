@@ -240,6 +240,24 @@ describe("app-specific plugin configurations", () => {
     ]);
   });
 
+  it("refuses a configuration when the catalog entry changed transport", async () => {
+    mocks.catalog = [
+      {
+        slug: "coolify",
+        name: "Coolify",
+        transport: "stdio",
+        command: "npx",
+        args: ["-y", "coolify-mcp@1.0.0"],
+      },
+    ];
+    const serverId = insertPlugin({ catalogSlug: "coolify" });
+
+    await expect(
+      createAppConfig({ serverId, name: "Lab", appIds: [] }),
+    ).rejects.toThrow(/changed how it connects/);
+    expect(await listAppConfigs()).toEqual([]);
+  });
+
   it("runs the plugin's reviewed stdio command, not one the catalog changed to", async () => {
     // The catalog now lists a different command and env than the user
     // reviewed when adding the plugin.

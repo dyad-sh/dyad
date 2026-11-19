@@ -110,6 +110,15 @@ describe("pluginSwitchLocked", () => {
     ).toBe(false);
   });
 
+  it("always lets a plugin that is on be turned off", () => {
+    expect(
+      pluginSwitchLocked(
+        makeServer({ enabled: true, defaultScope: "all" }),
+        true,
+      ),
+    ).toBe(false);
+  });
+
   it("unlocks once the default is set up", () => {
     expect(pluginSwitchLocked(makeServer({ defaultScope: "all" }), false)).toBe(
       false,

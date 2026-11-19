@@ -53,10 +53,11 @@ export function unfilledOptionalInputs<T extends CatalogInput>(
   );
 }
 
-// The plugin switch locks while the default configuration's setup is
-// incomplete and turning the plugin on would give that default to some
-// app. A default that serves no app can stay unfinished while app-specific
-// configurations are used.
+// The plugin switch can't be turned on while the default configuration's
+// setup is incomplete and turning the plugin on would give that default to
+// some app. A default that serves no app can stay unfinished while
+// app-specific configurations are used. Turning a plugin off is never
+// locked.
 export function pluginSwitchLocked(
   server: McpServer,
   defaultSetupIncomplete: boolean,
@@ -64,7 +65,7 @@ export function pluginSwitchLocked(
   const defaultServesApps =
     server.defaultScope === "all" ||
     (server.defaultScope === "selected" && server.defaultAppIds.length > 0);
-  return defaultSetupIncomplete && defaultServesApps;
+  return !server.enabled && defaultSetupIncomplete && defaultServesApps;
 }
 
 // Where a connection stands on its catalog setup. Shared by the plugin's

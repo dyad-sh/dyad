@@ -578,6 +578,22 @@ export function registerMcpHandlers() {
       // use rebuilds the transport with the updated row. Fire-and-forget: a
       // hung transport's close must not block the handler.
       void mcpManager.dispose(connection).catch(() => {});
+      // The switch covers every configuration, so turning the plugin off
+      // also stops its app-specific ones.
+      if (enabled === false) {
+        const configs = await listAppConfigConnections(params.id);
+        await Promise.all(
+          configs.map((config) =>
+            cancelMcpOAuthForServer(
+              config,
+              "OAuth flow cancelled because its plugin was turned off.",
+            ),
+          ),
+        );
+        for (const config of configs) {
+          void mcpManager.dispose(config).catch(() => {});
+        }
+      }
       return toOneMcpServer(result[0]);
     };
     const oauthRelevant =
@@ -783,6 +799,9 @@ export function registerMcpHandlers() {
 
   createTypedHandler(mcpContracts.setPluginAvailability, async (_, params) => {
     await setPluginAvailability(params);
+    // The default may no longer serve some apps; a running stdio server for
+    // it is restarted on its next use.
+    void mcpManager.dispose(pluginConnection(params.serverId)).catch(() => {});
     return readMcpServer(params.serverId);
   });
 

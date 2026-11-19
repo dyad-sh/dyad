@@ -67,6 +67,41 @@ function insertApp(name: string) {
 }
 
 describe("app-specific configuration handlers", () => {
+  it("stops a plugin's app-specific connections when the plugin is turned off", async () => {
+    const serverId = insertPlugin();
+    const created = await harness.invokeHandler<{ id: number }>(
+      "mcp:create-app-config",
+      { serverId, name: "Lab", appIds: [] },
+    );
+    vi.mocked(mcpManager.dispose).mockClear();
+
+    await harness.invokeHandler("mcp:update-server", {
+      id: serverId,
+      enabled: false,
+    });
+
+    expect(mcpManager.dispose).toHaveBeenCalledWith({
+      serverId,
+      appConfigId: created.id,
+    });
+  });
+
+  it("restarts the default's connection when its apps change", async () => {
+    const serverId = insertPlugin();
+    vi.mocked(mcpManager.dispose).mockClear();
+
+    await harness.invokeHandler("mcp:set-plugin-availability", {
+      serverId,
+      defaultScope: "none",
+      defaultAppIds: [],
+    });
+
+    expect(mcpManager.dispose).toHaveBeenCalledWith({
+      serverId,
+      appConfigId: null,
+    });
+  });
+
   it("edits a configuration through its own channel", async () => {
     const serverId = insertPlugin();
     const created = await harness.invokeHandler<{ id: number }>(

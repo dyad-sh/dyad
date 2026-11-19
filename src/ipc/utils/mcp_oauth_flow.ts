@@ -16,7 +16,6 @@ import {
 import {
   listPluginOAuthStates,
   readMcpConnection,
-  type McpConnectionRecord,
 } from "./mcp_connection_store";
 import { DEFAULT_OAUTH_CALLBACK_PORT } from "../types/mcp";
 import { mcpManager } from "./mcp_manager";
@@ -400,7 +399,12 @@ async function prepareAndRunOAuthFlow(
         : "MCP server configuration is changing; retry OAuth in a moment.",
     };
   }
-  const server = await readMcpConnection(params.connection);
+  // Every await comes before the recheck below, so nothing can change the
+  // connection between the recheck and issuing its write authority.
+  const [server, requestAccountSelection] = await Promise.all([
+    readMcpConnection(params.connection),
+    anotherConfigurationIsConnected(params.connection),
+  ]);
   if (
     oauthShuttingDown ||
     mutatingConnections.has(connectionKey) ||
@@ -451,7 +455,6 @@ async function prepareAndRunOAuthFlow(
       DyadErrorKind.Precondition,
     );
   }
-  const requestAccountSelection = await anotherConfigurationIsConnected(server);
   const expectedState = generateState();
   const writeAuthority = issueMcpOAuthWriteAuthority(server.connection);
   const provider = new DyadOAuthClientProvider({
@@ -506,13 +509,12 @@ async function prepareAndRunOAuthFlow(
  * account, so the flow asks the provider for its account chooser.
  */
 async function anotherConfigurationIsConnected(
-  server: McpConnectionRecord,
+  target: McpConnectionRef,
 ): Promise<boolean> {
-  const states = await listPluginOAuthStates(server.connection.serverId);
+  const states = await listPluginOAuthStates(target.serverId);
   return states.some(
     ({ connection, oauthState }) =>
-      !sameMcpConnection(connection, server.connection) &&
-      oauthStateHasTokens(oauthState),
+      !sameMcpConnection(connection, target) && oauthStateHasTokens(oauthState),
   );
 }
 

@@ -298,6 +298,7 @@ async function initialConfigValues(
           : DyadErrorKind.NotFound,
       );
     }
+    if (entry.transport === "stdio") return reviewedStdioValues(plugin, entry);
     return catalogEntryConnectionValues(entry);
   }
   return {
@@ -310,6 +311,36 @@ async function initialConfigValues(
     oauthClientId: plugin.oauthClientId,
     oauthClientSecret: plugin.oauthClientSecret,
     oauthCallbackPort: plugin.oauthCallbackPort,
+  };
+}
+
+/**
+ * A stdio configuration runs the command the user reviewed when adding the
+ * plugin, which is the plugin's own, not whatever the catalog lists now.
+ * The catalog's fixed env vars are taken from the plugin too; the setup
+ * inputs (credentials) are left for the user to fill in.
+ */
+function reviewedStdioValues(
+  plugin: ServerRow,
+  entry: McpCatalogEntry & { transport: "stdio" },
+) {
+  const stored = readServerSecretMap(plugin.envEncrypted, plugin.envJson);
+  if (stored.status !== "ok") {
+    throw new DyadError(
+      `${plugin.name}'s saved settings can't be read. Unlock or restore your OS keyring and try again.`,
+      DyadErrorKind.Precondition,
+    );
+  }
+  const env: Record<string, string> = {};
+  for (const key of Object.keys(entry.env ?? {})) {
+    const value = stored.value?.[key];
+    if (value !== undefined) env[key] = value;
+  }
+  return {
+    transport: "stdio" as const,
+    command: plugin.command,
+    args: plugin.args,
+    envEncrypted: encryptSecretMap(env),
   };
 }
 

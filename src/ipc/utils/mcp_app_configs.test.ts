@@ -218,6 +218,50 @@ describe("app-specific plugin configurations", () => {
       value: { "X-Fixed": "from-catalog" },
     });
   });
+
+  it("runs the plugin's reviewed stdio command, not one the catalog changed to", async () => {
+    // The catalog now lists a different command and env than the user
+    // reviewed when adding the plugin.
+    mocks.catalog = [
+      {
+        slug: "coolify",
+        name: "Coolify",
+        transport: "stdio",
+        command: "npx",
+        args: ["-y", "coolify-mcp@9.9.9"],
+        env: { MODE: "changed", EXTRA: "unreviewed" },
+        inputs: [{ kind: "env", name: "COOLIFY_ACCESS_TOKEN", label: "Token" }],
+      },
+    ];
+    const serverId = insertPlugin({
+      catalogSlug: "coolify",
+      transport: "stdio",
+      url: null,
+      command: "npx",
+      args: ["-y", "coolify-mcp@1.0.0"],
+      envEncrypted: encryptSecretMap({
+        MODE: "reviewed",
+        COOLIFY_ACCESS_TOKEN: "default-token",
+      }),
+    });
+
+    const config = await createAppConfig({
+      serverId,
+      name: "Lab",
+      appIds: [],
+    });
+
+    const stored = await readMcpConnection(config.connection);
+    expect(stored).toMatchObject({
+      command: "npx",
+      args: ["-y", "coolify-mcp@1.0.0"],
+    });
+    // The reviewed fixed value, no unreviewed var, and no copied credential.
+    expect(readServerSecretMap(stored!.envEncrypted, null)).toEqual({
+      status: "ok",
+      value: { MODE: "reviewed" },
+    });
+  });
 });
 
 describe("the default configuration's scope", () => {

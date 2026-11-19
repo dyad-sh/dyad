@@ -232,11 +232,20 @@ describe("collectMcpToolDefs", () => {
     expect(getCachedMcpToolDefs(APP_ID)).toEqual(complete);
   });
 
-  it("gives no cached tools to a different app", async () => {
+  it("gives no cached tools to an app that hasn't loaded any", async () => {
     mocks.listToolsWithin.mockResolvedValue(stripeTools);
     await collectMcpToolDefs({ appId: APP_ID });
 
     expect(getCachedMcpToolDefs(APP_ID)).toHaveLength(2);
-    expect(getCachedMcpToolDefs(APP_ID + 1)).toEqual([]);
+    expect(getCachedMcpToolDefs(APP_ID + 100)).toEqual([]);
+  });
+
+  it("keeps each app's tools when another app loads", async () => {
+    mocks.listToolsWithin.mockResolvedValue(stripeTools);
+    await collectMcpToolDefs({ appId: APP_ID });
+    await collectMcpToolDefs({ appId: APP_ID + 1 });
+
+    expect(getCachedMcpToolDefs(APP_ID)).toHaveLength(2);
+    expect(getCachedMcpToolDefs(APP_ID + 1)).toHaveLength(2);
   });
 });

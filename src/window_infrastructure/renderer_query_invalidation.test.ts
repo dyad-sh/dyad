@@ -487,7 +487,7 @@ describe("app lifecycle contracts publish the app-name scope", () => {
     expect(families).toContain("mcp-servers");
   });
 
-  it("refreshes plugin app assignments after deleteApps deletes an app", () => {
+  it("refreshes plugin app assignments only when deleteApps deletes an app", () => {
     const contract = appContracts.deleteApps as {
       invalidates?: (
         input: unknown,
@@ -502,6 +502,14 @@ describe("app lifecycle contracts publish the app-name scope", () => {
         ) ?? []
       ).map((scope) => scope.family),
     ).toContain("mcp-servers");
+    expect(
+      (
+        contract.invalidates?.(
+          { appIds: [1] },
+          { results: [{ appId: 1, success: false }] },
+        ) ?? []
+      ).map((scope) => scope.family),
+    ).not.toContain("mcp-servers");
   });
 
   it("publishes app-name from deleteApps only when at least one app was deleted", () => {

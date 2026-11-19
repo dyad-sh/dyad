@@ -9,6 +9,8 @@ import {
 const mocks = vi.hoisted(() => ({
   settings: { enableAppScopedPlugins: true } as Record<string, unknown>,
   catalog: [] as unknown[],
+  catalogCached: true,
+  catalogFetches: 0,
 }));
 
 vi.mock("electron", () => ({
@@ -23,8 +25,11 @@ vi.mock("@/main/settings", () => ({
 }));
 
 vi.mock("@/ipc/shared/remote_mcp_catalog", () => ({
-  getRemoteMcpCatalog: async () => mocks.catalog,
-  peekRemoteMcpCatalog: () => mocks.catalog,
+  getRemoteMcpCatalog: async () => {
+    mocks.catalogFetches++;
+    return mocks.catalog;
+  },
+  peekRemoteMcpCatalog: () => (mocks.catalogCached ? mocks.catalog : null),
 }));
 
 const { setDatabaseForTesting } = await import("@/db");
@@ -100,6 +105,8 @@ beforeEach(() => {
   setDatabaseForTesting(db);
   mocks.settings = { enableAppScopedPlugins: true };
   mocks.catalog = [];
+  mocks.catalogCached = true;
+  mocks.catalogFetches = 0;
 });
 
 afterEach(() => {
@@ -280,6 +287,39 @@ describe("app-specific plugin configurations", () => {
     expect(await connectionsFor(lab)).toEqual([config.connection]);
   });
 
+  it("refreshes a cold catalog without waiting on it", async () => {
+    mocks.catalog = [
+      {
+        slug: "coolify",
+        name: "Coolify",
+        transport: "stdio",
+        command: "npx",
+        args: ["-y", "coolify-mcp@1.0.0"],
+        inputs: [{ kind: "env", name: "COOLIFY_ACCESS_TOKEN", label: "Token" }],
+      },
+    ];
+    const lab = insertApp("Lab app");
+    const serverId = insertPlugin({
+      catalogSlug: "coolify",
+      transport: "stdio",
+      url: null,
+      command: "npx",
+      args: ["-y", "coolify-mcp@1.0.0"],
+    });
+    const config = await createAppConfig({
+      serverId,
+      name: "Lab",
+      appIds: [lab],
+    });
+    mocks.catalogCached = false;
+    mocks.catalogFetches = 0;
+
+    // Unknown setup counts as set up for this turn, and the next turn has
+    // the catalog.
+    expect(await connectionsFor(lab)).toEqual([config.connection]);
+    expect(mocks.catalogFetches).toBe(1);
+  });
+
   it("refuses a configuration when the catalog entry changed transport", async () => {
     mocks.catalog = [
       {
@@ -344,6 +384,87 @@ describe("app-specific plugin configurations", () => {
 });
 
 describe("the default configuration's scope", () => {
+  it("won't make an unfinished default serve apps while the plugin is on", async () => {
+    mocks.catalog = [
+      {
+        slug: "coolify",
+        name: "Coolify",
+        transport: "stdio",
+        command: "npx",
+        args: ["-y", "coolify-mcp@1.0.0"],
+        inputs: [{ kind: "env", name: "COOLIFY_ACCESS_TOKEN", label: "Token" }],
+      },
+    ];
+    const serverId = insertPlugin({
+      catalogSlug: "coolify",
+      transport: "stdio",
+      url: null,
+      enabled: false,
+    });
+    await setPluginAvailability({
+      serverId,
+      defaultScope: "none",
+      defaultAppIds: [],
+    });
+    setPluginSwitch(serverId, true);
+
+    await expect(
+      setPluginAvailability({
+        serverId,
+        defaultScope: "all",
+        defaultAppIds: [],
+      }),
+    ).rejects.toThrow(/Finish setting up Coolify/);
+    expect(pluginRow(serverId)).toMatchObject({
+      enabled: false,
+      defaultScope: "none",
+    });
+
+    // While off, the scope can change; turning it on is locked in the UI.
+    setPluginSwitch(serverId, false);
+    await setPluginAvailability({
+      serverId,
+      defaultScope: "all",
+      defaultAppIds: [],
+    });
+    expect(pluginRow(serverId)).toMatchObject({
+      enabled: false,
+      defaultScope: "all",
+    });
+  });
+
+  it("lets a set-up default serve apps while the plugin is on", async () => {
+    mocks.catalog = [
+      {
+        slug: "coolify",
+        name: "Coolify",
+        transport: "stdio",
+        command: "npx",
+        args: ["-y", "coolify-mcp@1.0.0"],
+        inputs: [{ kind: "env", name: "COOLIFY_ACCESS_TOKEN", label: "Token" }],
+      },
+    ];
+    const serverId = insertPlugin({
+      catalogSlug: "coolify",
+      transport: "stdio",
+      url: null,
+      envEncrypted: encryptSecretMap({ COOLIFY_ACCESS_TOKEN: "set" }),
+    });
+    await setPluginAvailability({
+      serverId,
+      defaultScope: "none",
+      defaultAppIds: [],
+    });
+    setPluginSwitch(serverId, true);
+
+    await setPluginAvailability({
+      serverId,
+      defaultScope: "all",
+      defaultAppIds: [],
+    });
+    expect(pluginRow(serverId)).toMatchObject({ enabled: true });
+  });
+
   it("limits the default to the selected apps", async () => {
     const chosen = insertApp("Chosen");
     const other = insertApp("Other");

@@ -7,7 +7,11 @@ import {
   mcpServers,
 } from "../../db/schema";
 import { readSettings } from "../../main/settings";
-import { peekRemoteMcpCatalog } from "@/ipc/shared/remote_mcp_catalog";
+import {
+  getRemoteMcpCatalog,
+  peekRemoteMcpCatalog,
+} from "@/ipc/shared/remote_mcp_catalog";
+import type { McpCatalogEntry } from "@/ipc/types/mcp_catalog";
 import type { McpConnectionRef } from "@/shared/mcp_connection_ref";
 import { needsCatalogSetup } from "@/shared/mcp_setup_inputs";
 import { readServerSecretMap } from "./secret_storage";
@@ -54,34 +58,56 @@ export interface PluginAppStatus {
   appConfigNeedsSetup: boolean;
 }
 
+/** The stored columns a connection's setup inputs are saved in. */
+export interface StoredSetupValues {
+  envEncrypted: string | null;
+  headersEncrypted: string | null;
+  envJson?: Record<string, string> | null;
+  headersJson?: Record<string, string> | null;
+  oauthClientId: string | null;
+}
+
 /**
- * Whether an app-specific configuration still has required catalog setup
- * inputs unfilled. Reads only the cached catalog, since this runs on every
- * chat turn; when the entry or the stored values can't be read, it reports
- * the configuration as set up, so connecting proceeds as before.
+ * Whether a stored connection still has required catalog setup inputs
+ * unfilled. A connection whose entry or stored values can't be read is
+ * reported as set up, so connecting proceeds as before.
  */
-function appConfigNeedsSetup(
-  catalogSlug: string | null,
-  config: {
-    envEncrypted: string | null;
-    headersEncrypted: string | null;
-    oauthClientId: string | null;
-  },
+export function connectionNeedsSetup(
+  entry: McpCatalogEntry | undefined,
+  stored: StoredSetupValues,
 ): boolean {
-  if (!catalogSlug) return false;
-  const entry = peekRemoteMcpCatalog()?.find((e) => e.slug === catalogSlug);
   if (!entry?.inputs?.length) return false;
-  const env = readServerSecretMap(config.envEncrypted, null);
-  const headers = readServerSecretMap(config.headersEncrypted, null);
+  const env = readServerSecretMap(stored.envEncrypted, stored.envJson);
+  const headers = readServerSecretMap(
+    stored.headersEncrypted,
+    stored.headersJson,
+  );
   if (env.status !== "ok" || headers.status !== "ok") return false;
   return needsCatalogSetup(
     {
       envJson: env.value,
       headersJson: headers.value,
-      oauthClientId: config.oauthClientId,
+      oauthClientId: stored.oauthClientId,
     },
     entry.inputs,
   );
+}
+
+/**
+ * A plugin's catalog entry from the cache, for checks that run on every
+ * chat turn and must not wait on the network. When the cache is cold it
+ * starts a refresh for the next turn and returns undefined.
+ */
+function cachedCatalogEntry(
+  catalogSlug: string | null,
+): McpCatalogEntry | undefined {
+  if (!catalogSlug) return undefined;
+  const catalog = peekRemoteMcpCatalog();
+  if (!catalog) {
+    void getRemoteMcpCatalog().catch(() => {});
+    return undefined;
+  }
+  return catalog.find((e) => e.slug === catalogSlug);
 }
 
 /**
@@ -181,7 +207,8 @@ export async function readPluginStatusesForApp(
       defaultOAuthState: server.oauthState,
       appConfigOAuthState: usesAppConfig ? config.oauthState : null,
       appConfigNeedsSetup:
-        usesAppConfig && appConfigNeedsSetup(server.catalogSlug, config),
+        usesAppConfig &&
+        connectionNeedsSetup(cachedCatalogEntry(server.catalogSlug), config),
     };
   });
 }

@@ -22,7 +22,10 @@ import {
 } from "./secret_storage";
 import { getOAuthStateStatus } from "./mcp_oauth_provider";
 import { appConfigRowFilter } from "./mcp_connection_store";
-import { isAppScopedPluginsEnabled } from "./mcp_app_scoping";
+import {
+  connectionNeedsSetup,
+  isAppScopedPluginsEnabled,
+} from "./mcp_app_scoping";
 import {
   pluginAvailabilityColumns,
   readPluginAvailability,
@@ -379,6 +382,18 @@ export async function setPluginAvailability(params: {
   defaultAppIds: number[];
 }): Promise<void> {
   assertAppScopedPluginsEnabled();
+  const servesApps =
+    params.defaultScope === "all" ||
+    (params.defaultScope === "selected" && params.defaultAppIds.length > 0);
+  // The catalog read can't happen inside the transaction below.
+  const [before] = await db
+    .select()
+    .from(mcpServers)
+    .where(eq(mcpServers.id, params.serverId));
+  const entry =
+    servesApps && before?.catalogSlug
+      ? (await getRemoteMcpCatalog()).find((e) => e.slug === before.catalogSlug)
+      : undefined;
   db.transaction((tx) => {
     const plugin = tx
       .select()
@@ -392,6 +407,15 @@ export async function setPluginAvailability(params: {
       );
     }
     const { pluginEnabled } = readPluginAvailability(plugin, true);
+    // An unfinished default must not start serving apps while the plugin
+    // is on. With an "all" scope this would also turn the plugin on for
+    // builds without the feature.
+    if (pluginEnabled && servesApps && connectionNeedsSetup(entry, plugin)) {
+      throw new DyadError(
+        `Finish setting up ${plugin.name}'s default configuration before making it available to apps.`,
+        DyadErrorKind.Precondition,
+      );
+    }
     tx.update(mcpServers)
       .set(
         pluginAvailabilityColumns({

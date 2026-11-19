@@ -116,6 +116,7 @@ describe("PluginSetupSection", () => {
     render(
       <PluginSetupSection
         server={makeServer({
+          id: 3,
           transport: "stdio",
           url: null,
           connection: { serverId: 1, appConfigId: 3 },

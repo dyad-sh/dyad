@@ -5,6 +5,7 @@ import type { PropsWithChildren } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { queryKeys } from "@/lib/queryKeys";
 import { DyadSuggestPlugin } from "./DyadSuggestPlugin";
 
 const mocks = vi.hoisted(() => ({
@@ -104,10 +105,13 @@ const CREATED = {
 
 function renderCard(
   props: Partial<Parameters<typeof DyadSuggestPlugin>[0]> = {},
+  { servers }: { servers?: unknown[] } = {},
 ) {
   const store = createStore();
   store.set(selectedChatIdAtom, 7);
   const queryClient = new QueryClient();
+  // Already-loaded plugins, so the card has them on its first render.
+  if (servers) queryClient.setQueryData(queryKeys.mcp.servers, servers);
   const Wrapper = ({ children }: PropsWithChildren) => (
     <QueryClientProvider client={queryClient}>
       <Provider store={store}>{children}</Provider>
@@ -136,18 +140,18 @@ describe("DyadSuggestPlugin for a plugin not set up for the chat's app", () => {
   });
 
   it("links to the plugin's settings", async () => {
-    mocks.listServers.mockResolvedValue([{ id: 12, catalogSlug: "vercel" }]);
-    renderCard({ requestId: undefined, outcome: "unavailable" });
+    const servers = [{ id: 12, catalogSlug: "vercel" }];
+    mocks.listServers.mockResolvedValue(servers);
+    renderCard({ requestId: undefined, outcome: "unavailable" }, { servers });
 
     expect(screen.getByText("Vercel isn't set up for this app")).toBeTruthy();
-    const open = screen.getByRole("button", { name: "Open plugin settings" });
-    await waitFor(() => expect(mocks.listServers).toHaveBeenCalled());
-    await waitFor(() => {
-      fireEvent.click(open);
-      expect(mocks.navigate).toHaveBeenLastCalledWith({
-        to: "/plugins/$serverId",
-        params: { serverId: 12 },
-      });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open plugin settings" }),
+    );
+    expect(mocks.navigate).toHaveBeenCalledOnce();
+    expect(mocks.navigate).toHaveBeenCalledWith({
+      to: "/plugins/$serverId",
+      params: { serverId: 12 },
     });
   });
 

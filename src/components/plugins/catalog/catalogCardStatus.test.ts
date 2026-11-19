@@ -80,6 +80,17 @@ describe("catalogCardStatus", () => {
     ).toBe("connecting");
   });
 
+  it("ignores a connect in flight for one of the plugin's app-specific configurations", () => {
+    // The catalog card shows the plugin's default configuration.
+    expect(
+      statusFor({
+        entry: entryOf({ oauth: { required: true } }),
+        server: serverOf({ oauthEnabled: true, oauthConnected: true }),
+        connectingKey: "1:5",
+      }),
+    ).toBe("added");
+  });
+
   it("reports a required-OAuth server that hasn't connected", () => {
     expect(
       statusFor({

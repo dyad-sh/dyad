@@ -27,7 +27,7 @@ vi.mock("electron-log", () => ({
 }));
 
 import { setDatabaseForTesting } from "@/db";
-import { mcpServers } from "@/db/schema";
+import { mcpAppConfigs, mcpServers } from "@/db/schema";
 import { createInMemoryTestDb, type TestDb } from "@/testing/test_db";
 import { encryptStoredMcpSecrets } from "./mcp_secret_encryption";
 
@@ -310,6 +310,38 @@ describe("encryptStoredMcpSecrets", () => {
 
     expect(await encryptStoredMcpSecrets()).toBe(1);
     expect((await readRow(1)).headersEncrypted).toMatch(/^plain:/);
+  });
+
+  it("upgrades an app-specific configuration's plain: blobs once a keyring is available", async () => {
+    const plainEnv = `plain:${Buffer.from(`{"TOKEN":"1"}`, "utf8").toString("base64")}`;
+    const plainHeaders = `plain:${Buffer.from(`{"A":"1"}`, "utf8").toString("base64")}`;
+    await db.insert(mcpServers).values({
+      id: 1,
+      name: "http",
+      transport: "http",
+      url: "https://example.com/mcp",
+    });
+    await db.insert(mcpAppConfigs).values({
+      id: 3,
+      serverId: 1,
+      name: "Lab",
+      transport: "http",
+      envEncrypted: plainEnv,
+      headersEncrypted: plainHeaders,
+    });
+
+    isEncryptionAvailable.mockReturnValue(false);
+    expect(await encryptStoredMcpSecrets()).toBe(0);
+
+    isEncryptionAvailable.mockReturnValue(true);
+    expect(await encryptStoredMcpSecrets()).toBe(2);
+    const [config] = await db
+      .select()
+      .from(mcpAppConfigs)
+      .where(eq(mcpAppConfigs.id, 3));
+    expect(decode(config.envEncrypted)).toBe(`enc:{"TOKEN":"1"}`);
+    expect(decode(config.headersEncrypted)).toBe(`enc:{"A":"1"}`);
+    expect(await encryptStoredMcpSecrets()).toBe(0);
   });
 
   it("returns 0 instead of throwing when the query fails", async () => {

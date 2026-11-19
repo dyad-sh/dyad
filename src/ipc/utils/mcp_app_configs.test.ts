@@ -420,8 +420,10 @@ describe("the default configuration's scope", () => {
       defaultScope: "none",
     });
 
-    // While off, the scope can change; turning it on is locked in the UI.
+    // While off, the scope can change without waiting on the catalog;
+    // turning it on is locked in the UI.
     setPluginSwitch(serverId, false);
+    mocks.catalogFetches = 0;
     await setPluginAvailability({
       serverId,
       defaultScope: "all",
@@ -431,6 +433,7 @@ describe("the default configuration's scope", () => {
       enabled: false,
       defaultScope: "all",
     });
+    expect(mocks.catalogFetches).toBe(0);
   });
 
   it("lets a set-up default serve apps while the plugin is on", async () => {

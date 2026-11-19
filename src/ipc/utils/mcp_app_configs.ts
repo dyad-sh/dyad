@@ -390,8 +390,12 @@ export async function setPluginAvailability(params: {
     .select()
     .from(mcpServers)
     .where(eq(mcpServers.id, params.serverId));
+  // Only the check for a plugin that is on needs the catalog, so a plugin
+  // that is off never waits on the fetch.
   const entry =
-    servesApps && before?.catalogSlug
+    servesApps &&
+    before?.catalogSlug &&
+    readPluginAvailability(before, true).pluginEnabled
       ? (await getRemoteMcpCatalog()).find((e) => e.slug === before.catalogSlug)
       : undefined;
   db.transaction((tx) => {

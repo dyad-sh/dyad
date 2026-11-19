@@ -8,7 +8,10 @@ import {
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { McpAppConfig, McpServer } from "@/ipc/types";
-import { PluginAppConfigsSection } from "./PluginAppConfigsSection";
+import {
+  nextConfigurationName,
+  PluginAppConfigsSection,
+} from "./PluginAppConfigsSection";
 import { pluginConnection } from "@/shared/mcp_connection_ref";
 import { PluginDefaultAvailability } from "./PluginDefaultAvailability";
 
@@ -307,6 +310,22 @@ describe("PluginAppConfigsSection", () => {
     expect(screen.getByTestId("delete-details").textContent).toBe(
       "Docs won't have Coolify (the default is set to No apps).",
     );
+  });
+});
+
+describe("nextConfigurationName", () => {
+  it("suggests a name no configuration uses, even after a delete", () => {
+    expect(nextConfigurationName([])).toBe("Configuration 2");
+    // "Configuration 2" was deleted, leaving 3; a count would suggest 3.
+    expect(nextConfigurationName([{ name: "Configuration 3" }])).toBe(
+      "Configuration 2",
+    );
+    expect(
+      nextConfigurationName([
+        { name: "Configuration 2" },
+        { name: "Configuration 3" },
+      ]),
+    ).toBe("Configuration 4");
   });
 });
 

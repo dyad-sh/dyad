@@ -31,6 +31,19 @@ import {
 } from "./PluginAppPicker";
 import { connectionSetupState } from "./pluginSetup";
 
+/**
+ * A suggested name for a new configuration that no existing one uses.
+ * Numbering starts at 2, since the default is the first configuration.
+ */
+export function nextConfigurationName(
+  appConfigs: readonly { name: string }[],
+): string {
+  const taken = new Set(appConfigs.map((config) => config.name));
+  let n = 2;
+  while (taken.has(`Configuration ${n}`)) n++;
+  return `Configuration ${n}`;
+}
+
 /** What an app falls back to once it stops using an app-specific config. */
 export function fallbackDescription(
   server: McpServer,
@@ -101,7 +114,7 @@ function AppConfigDialog({
     isSavingAppScope,
   } = useMcp();
   const [name, setName] = useState(
-    editing?.name ?? `Configuration ${appConfigs.length + 2}`,
+    editing?.name ?? nextConfigurationName(appConfigs),
   );
   const [selected, setSelected] = useState<Set<number>>(
     () => new Set(editing?.appIds ?? []),

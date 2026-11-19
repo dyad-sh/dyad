@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   }>,
   resolveMcpConnectionsForApp: vi.fn(),
   listToolsWithin: vi.fn(),
+  settings: {} as Record<string, unknown>,
 }));
 
 vi.mock("@/ipc/utils/mcp_app_scoping", () => ({
@@ -33,7 +34,7 @@ vi.mock("@/ipc/utils/mcp_consent", () => ({
 }));
 
 vi.mock("@/main/settings", () => ({
-  readSettings: vi.fn(() => ({})),
+  readSettings: vi.fn(() => mocks.settings),
 }));
 
 const { McpListToolsTimeoutError } = await import("@/ipc/utils/mcp_manager");
@@ -233,6 +234,7 @@ describe("collectMcpToolDefs", () => {
   });
 
   it("gives no cached tools to an app that hasn't loaded any", async () => {
+    mocks.settings = { enableAppScopedPlugins: true };
     mocks.listToolsWithin.mockResolvedValue(stripeTools);
     await collectMcpToolDefs({ appId: APP_ID });
 
@@ -240,7 +242,18 @@ describe("collectMcpToolDefs", () => {
     expect(getCachedMcpToolDefs(APP_ID + 100)).toEqual([]);
   });
 
+  it("shares the latest tools with every app while the experiment is off", async () => {
+    mocks.settings = {};
+    mocks.listToolsWithin.mockResolvedValue(stripeTools);
+    await collectMcpToolDefs({ appId: APP_ID });
+
+    // Every app has the same plugins, so an app with no turn yet still
+    // gets an estimate.
+    expect(getCachedMcpToolDefs(APP_ID + 100)).toHaveLength(2);
+  });
+
   it("keeps each app's tools when another app loads", async () => {
+    mocks.settings = { enableAppScopedPlugins: true };
     mocks.listToolsWithin.mockResolvedValue(stripeTools);
     await collectMcpToolDefs({ appId: APP_ID });
     await collectMcpToolDefs({ appId: APP_ID + 1 });

@@ -34,6 +34,7 @@ import {
   truncatedFromAttr,
 } from "@/ipc/utils/mcp_transcript_preview";
 import { withTrackedMutation } from "../subagents/mutation_activity_tracker";
+import { isAppScopedPluginsEnabled } from "@/ipc/utils/mcp_app_scoped_experiment";
 
 const logger = log.scope("mcp_tools");
 
@@ -77,9 +78,17 @@ function cacheMcpToolDefs(appId: number, defs: McpToolDef[]): void {
   }
 }
 
-/** The last complete tool set loaded for this app, or none. */
+/**
+ * The last complete tool set loaded for this app. With the experiment off
+ * every app has the same plugins, so an app that hasn't loaded its own yet
+ * gets the most recently loaded set.
+ */
 export function getCachedMcpToolDefs(appId: number): McpToolDef[] {
-  return [...(cachedMcpToolDefs.get(appId) ?? [])];
+  const own = cachedMcpToolDefs.get(appId);
+  if (own) return [...own];
+  if (isAppScopedPluginsEnabled()) return [];
+  const latest = [...cachedMcpToolDefs.values()].at(-1);
+  return [...(latest ?? [])];
 }
 
 /**

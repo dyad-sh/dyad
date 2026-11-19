@@ -464,6 +464,8 @@ export const appContracts = {
       { family: "chats" },
       { family: "app-collections" },
       { family: "app-name" },
+      // A deleted app leaves its plugins' "Used by" lists.
+      { family: "mcp-servers" },
     ],
     originHandles: () => [{ family: "apps" }, { family: "app-collections" }],
   }),
@@ -479,6 +481,7 @@ export const appContracts = {
             { family: "chats" },
             { family: "app-collections" },
             { family: "app-name" },
+            { family: "mcp-servers" },
           ]
         : [],
     originHandles: (_input, output) =>
@@ -495,6 +498,8 @@ export const appContracts = {
       { family: "apps" },
       { family: "chats" },
       { family: "app-name" },
+      // The copy joins its source's plugin configurations.
+      { family: "mcp-servers" },
     ],
   }),
 

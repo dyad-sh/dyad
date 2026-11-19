@@ -36,7 +36,7 @@ export function DeleteConfirmationDialog({
   return (
     <AlertDialog>
       {trigger ? (
-        <AlertDialogTrigger>{trigger}</AlertDialogTrigger>
+        <AlertDialogTrigger disabled={isDeleting}>{trigger}</AlertDialogTrigger>
       ) : (
         <AlertDialogTrigger
           className={buttonVariants({ variant: "ghost", size: "icon" })}

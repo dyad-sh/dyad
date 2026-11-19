@@ -1,0 +1,10 @@
+{
+  "unknown": "Si è verificato un errore sconosciuto",
+  "failedToCreate": "Creazione non riuscita: {{error}}",
+  "failedToUpdate": "Aggiornamento non riuscito: {{error}}",
+  "failedToDelete": "Eliminazione non riuscita: {{error}}",
+  "failedToLoad": "Caricamento non riuscito: {{error}}",
+  "networkError": "Si è verificato un errore di rete. Controlla la connessione.",
+  "copyError": "Copia il messaggio di errore",
+  "errorOccurred": "Si è verificato un errore"
+}

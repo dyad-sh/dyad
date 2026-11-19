@@ -63,10 +63,13 @@ export interface McpToolDef {
   inputSchema: JSONSchema7;
 }
 
-let cachedMcpToolDefs: McpToolDef[] = [];
+// Each app can use different plugin configurations, so the cached set
+// belongs to the app it was loaded for.
+let cachedMcpToolDefs: { appId: number; defs: McpToolDef[] } | null = null;
 
-export function getCachedMcpToolDefs(): McpToolDef[] {
-  return [...cachedMcpToolDefs];
+/** The last complete tool set loaded for this app, or none. */
+export function getCachedMcpToolDefs(appId: number): McpToolDef[] {
+  return cachedMcpToolDefs?.appId === appId ? [...cachedMcpToolDefs.defs] : [];
 }
 
 /**
@@ -158,7 +161,7 @@ export async function collectMcpToolDefs(
   try {
     loadedServers = await loadEnabledMcpServerTools(options);
   } catch {
-    cachedMcpToolDefs = [];
+    cachedMcpToolDefs = null;
     return [];
   }
 
@@ -212,7 +215,7 @@ export async function collectMcpToolDefs(
   // A stopped turn returns only the servers that finished loading; keep the
   // last complete set for the renderer's token estimate instead.
   if (!options.abortSignal?.aborted) {
-    cachedMcpToolDefs = defs;
+    cachedMcpToolDefs = { appId: options.appId, defs };
   }
   return defs;
 }

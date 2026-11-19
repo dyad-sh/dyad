@@ -208,7 +208,7 @@ describe("collectMcpToolDefs", () => {
   it("keeps the last complete cache when the turn is stopped mid-load", async () => {
     mocks.listToolsWithin.mockResolvedValue(stripeTools);
     await collectMcpToolDefs({ appId: APP_ID });
-    const complete = getCachedMcpToolDefs();
+    const complete = getCachedMcpToolDefs(APP_ID);
     expect(complete).toHaveLength(2);
 
     const controller = new AbortController();
@@ -229,6 +229,14 @@ describe("collectMcpToolDefs", () => {
     controller.abort(new Error("stopped by user"));
 
     await expect(loading).resolves.toEqual([]);
-    expect(getCachedMcpToolDefs()).toEqual(complete);
+    expect(getCachedMcpToolDefs(APP_ID)).toEqual(complete);
+  });
+
+  it("gives no cached tools to a different app", async () => {
+    mocks.listToolsWithin.mockResolvedValue(stripeTools);
+    await collectMcpToolDefs({ appId: APP_ID });
+
+    expect(getCachedMcpToolDefs(APP_ID)).toHaveLength(2);
+    expect(getCachedMcpToolDefs(APP_ID + 1)).toEqual([]);
   });
 });

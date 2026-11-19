@@ -202,7 +202,9 @@ export function registerTokenCountHandlers() {
       const isDyadPro = isDyadProEnabled(settings);
       const freeModelMode = isFreeProModel(selectedModel);
       const mcpToolDefs =
-        selectedChatMode === "local-agent" ? getCachedMcpToolDefs() : [];
+        selectedChatMode === "local-agent"
+          ? getCachedMcpToolDefs(chat.appId)
+          : [];
       // Cached only: an estimate must never wait on the catalog network
       // fetch, and a failure here must not fail the whole count.
       const suggestablePlugins =

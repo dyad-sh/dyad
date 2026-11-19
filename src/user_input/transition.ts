@@ -12,6 +12,11 @@ import type {
 export const SKIP_DATABASE_INTEGRATION_PROMPT =
   "We don't want to use Supabase or Neon right now";
 
+export const ENABLE_TESTING_FOLLOW_UP_PROMPT =
+  "Continue my original request. I enabled E2E testing. Follow Dyad's testing conventions and use run_tests to verify the tests.";
+export const DECLINE_TESTING_FOLLOW_UP_PROMPT =
+  "Continue my original request without writing or running tests. I declined to enable E2E testing. Do not offer testing again unless I explicitly ask to enable it. If the request was only about tests, explain that testing remains disabled.";
+
 export type UserInputIgnoreReason =
   | "unknown-request"
   | "request-id-mismatch"
@@ -99,6 +104,14 @@ function followUpPromptFor(
   descriptor: UserInputDescriptor,
   response: UserInputResponse,
 ): string | null {
+  if (
+    descriptor.kind === "enable-testing" &&
+    response.kind === "enable-testing"
+  ) {
+    return response.enabled
+      ? descriptor.followUpPrompt
+      : DECLINE_TESTING_FOLLOW_UP_PROMPT;
+  }
   if (descriptor.kind === "integration" && response.kind === "integration") {
     if (response.completed && response.provider) {
       return `Continue. I have completed the ${response.provider} integration.`;

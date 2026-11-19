@@ -165,6 +165,8 @@ import {
   type McpToolDef,
 } from "./tools/mcp_type_defs";
 import { addIntegrationTool } from "./tools/add_integration";
+import { enableTestingTool } from "./tools/enable_testing";
+import { assertNoTestingDecision } from "./tools/testing_decision";
 import { collectSuggestablePlugins } from "./tools/suggest_plugin";
 import { writePlanTool } from "./tools/write_plan";
 import { exitPlanTool } from "./tools/exit_plan";
@@ -1544,6 +1546,9 @@ export async function handleLocalAgentStream(
               // Supabase/Neon context. The frontend auto-triggers a hidden
               // continuation message once the user clicks Continue.
               hasToolCall(addIntegrationTool.name),
+              // Testing tools and conventions are rebuilt on the automatically
+              // queued continuation after the user's enable/decline decision.
+              hasToolCall(enableTestingTool.name),
               // End the turn only after the blueprint was persisted. A rejected
               // initial call (for example, before a successful questionnaire)
               // must leave room for the model to correct itself. After success,
@@ -2234,10 +2239,14 @@ export async function handleLocalAgentStream(
           lastStep.toolCalls.length === 0 ||
           stepOnlyCalledTool(lastStep, setChatSummaryTool.name));
 
-      // A successful blueprint write owns the end of this user turn. Do not
-      // start Explorer synthesis or todo follow-up passes against an
-      // unapproved blueprint.
-      if (shouldStopAfterAppBlueprintWrite(ctx)) {
+      // Blueprint approval and testing opt-in resume in a fresh turn. Do not
+      // start synthesis or todo passes with this turn's stale capabilities.
+      if (
+        shouldStopAfterAppBlueprintWrite(ctx) ||
+        lastStep?.toolCalls.some(
+          (call) => isRecord(call) && call.toolName === enableTestingTool.name,
+        )
+      ) {
         break;
       }
 
@@ -3033,6 +3042,7 @@ async function getMcpTools(
           description: mcpTool.description,
           inputSchema: mcpTool.inputSchema,
           execute: async (args: unknown, execCtx: ToolExecutionOptions) => {
+            assertNoTestingDecision(ctx);
             const { serverName, toolName } = parseMcpToolKey(key);
             const callId = execCtx.toolCallId;
             let callEmitted = false;

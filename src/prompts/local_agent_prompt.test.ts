@@ -479,6 +479,13 @@ describe("local_agent_prompt", () => {
   it("agent mode omits test-writing guidance when testing is disabled", () => {
     const prompt = constructLocalAgentPrompt(undefined);
     expect(prompt).not.toContain("# Writing end-to-end tests");
+    expect(prompt).toContain(
+      "call `enable_testing` before creating test files",
+    );
+    expect(prompt).toContain("tests in general");
+    expect(prompt).toContain(
+      "After a decline, continue without writing or running tests",
+    );
   });
 
   it("agent mode includes test-writing guidance when testing is enabled", () => {
@@ -486,6 +493,7 @@ describe("local_agent_prompt", () => {
       testingEnabled: true,
     });
     expect(prompt).toContain("# Writing end-to-end tests");
+    expect(prompt).not.toContain("<testing_disabled>");
     expect(prompt).toContain(
       'testFiles: ["e2e-tests/signup.spec.ts", "e2e-tests/checkout.spec.ts"]',
     );
@@ -506,6 +514,9 @@ describe("local_agent_prompt", () => {
       basicAgentMode: true,
     });
     expect(disabled).not.toContain("# Writing end-to-end tests");
+    expect(disabled).toContain(
+      "call `enable_testing` before creating test files",
+    );
 
     const enabled = constructLocalAgentPrompt(undefined, undefined, {
       basicAgentMode: true,

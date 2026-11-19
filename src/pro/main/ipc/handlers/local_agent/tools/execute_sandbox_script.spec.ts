@@ -289,6 +289,42 @@ describe("executeSandboxScriptTool", () => {
     }
   });
 
+  it.each(["before consent", "during consent"])(
+    "blocks an already-injected write capability when testing is requested %s",
+    async (phase) => {
+      const ctx = createWritableSandboxContext();
+      ctx.testingDecision = { requested: false };
+      vi.mocked(runSandboxScript).mockResolvedValue({
+        value: "done",
+        truncated: false,
+        executionMs: 1,
+      });
+      await executeSandboxScriptTool.execute(
+        { script: 'write_file("out.txt", "x");' },
+        ctx,
+      );
+      const writeFile =
+        vi.mocked(runSandboxScript).mock.calls[0][0].remoteCapabilities!
+          .write_file;
+      ctx.testingDecision.requested = phase === "before consent";
+      vi.mocked(ctx.requireConsent).mockImplementation(async () => {
+        ctx.testingDecision!.requested = true;
+        return true;
+      });
+      const writeSpy = vi.spyOn(writeFileTool, "execute");
+      try {
+        await expect(writeFile("out.txt", "x")).rejects.toThrow(
+          "Tool admission is closed",
+        );
+        expect(writeSpy).not.toHaveBeenCalled();
+        if (phase === "before consent")
+          expect(ctx.requireConsent).not.toHaveBeenCalled();
+      } finally {
+        writeSpy.mockRestore();
+      }
+    },
+  );
+
   it("does not count a failed direct mutation as a successful change", async () => {
     const ctx = createWritableSandboxContext();
     const writeSpy = vi

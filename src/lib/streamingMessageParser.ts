@@ -32,6 +32,7 @@ const DYAD_CUSTOM_TAG_NAMES = [
   "dyad-read-logs",
   "dyad-add-integration",
   "dyad-suggest-plugin",
+  "dyad-enable-testing",
   "dyad-enable-nitro",
   "dyad-output",
   "dyad-problem-report",

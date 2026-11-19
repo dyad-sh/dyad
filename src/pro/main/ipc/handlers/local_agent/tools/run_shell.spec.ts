@@ -57,6 +57,33 @@ const writeCommand =
     ? "Set-Content result.txt 'done'"
     : "printf done > result.txt";
 describe("reviewed shell execution", () => {
+  it.each(["review", "inspection"])(
+    "does not spawn when a testing decision starts during %s",
+    async (phase) => {
+      ctx.testingDecision = { requested: false };
+      mocks.review.mockImplementation(async () => {
+        if (phase === "review") ctx.testingDecision!.requested = true;
+        return {
+          decision: "allow",
+          reason: "safe",
+          revalidateInspection: async () => {
+            ctx.testingDecision!.requested = true;
+            return true;
+          },
+        };
+      });
+      await expect(
+        runShellTool.execute(
+          { command: writeCommand, description: "test" },
+          ctx,
+        ),
+      ).rejects.toThrow("Tool admission is closed");
+      await expect(
+        readFile(path.join(directory, "result.txt")),
+      ).rejects.toThrow();
+      expect(mocks.track).not.toHaveBeenCalled();
+    },
+  );
   it("blocks despite saved always consent and never writes", async () => {
     mocks.review.mockResolvedValue({
       decision: "block",

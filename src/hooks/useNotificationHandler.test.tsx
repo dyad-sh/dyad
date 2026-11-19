@@ -152,6 +152,32 @@ describe("useNotificationHandler", () => {
     unmount();
   });
 
+  it("notifies when testing opt-in waits and closes the notification on cancellation", async () => {
+    const { unmount } = renderHook(() => useNotificationHandler());
+    act(() => {
+      mocks.requestedListener?.({
+        kind: "enable-testing",
+        requestId: "testing:1",
+        chatId: 42,
+        appId: 7,
+        deadlineAt: null,
+        classifier: "none",
+        followUpPrompt: "Continue.",
+      });
+    });
+    await waitFor(() => expect(FakeNotification.instances).toHaveLength(1));
+    const notification = FakeNotification.instances[0];
+    expect(notification.options).toMatchObject({
+      tag: "dyad-enable-testing-testing:1",
+      requireInteraction: true,
+    });
+    act(() =>
+      mocks.settledListener?.({ requestId: "testing:1", outcome: "swept" }),
+    );
+    expect(notification.close).toHaveBeenCalled();
+    unmount();
+  });
+
   it("notifies when the agent parks on a plugin suggestion", async () => {
     const { unmount } = renderHook(() => useNotificationHandler());
     expect(mocks.requestedListener).toBeDefined();

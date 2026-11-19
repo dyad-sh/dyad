@@ -12,6 +12,66 @@ import {
   readAppResource,
 } from "../services/app_operation_coordinator";
 import { DyadError, DyadErrorKind } from "../../errors/dyad_error";
+import { publishQueryInvalidations } from "../utils/query_invalidation_delivery";
+
+async function respondToEnableTesting(
+  requestId: string,
+  enabled: boolean,
+): Promise<void> {
+  const getPending = () =>
+    userInputRegistry
+      .getPending()
+      .find(
+        (entry) =>
+          entry.descriptor.requestId === requestId &&
+          entry.status === "awaiting" &&
+          entry.descriptor.kind === "enable-testing",
+      );
+  const pending = getPending();
+  if (!pending || pending.descriptor.kind !== "enable-testing") {
+    throw new DyadError(
+      "This testing request is no longer pending.",
+      DyadErrorKind.NotFound,
+    );
+  }
+  const { appId } = pending.descriptor;
+  await appOperationCoordinator.run(
+    {
+      appId,
+      operation: "enable-testing-from-chat",
+      resources: ["metadata"],
+    },
+    async () => {
+      // Cancellation or another window's response may win while admission waits.
+      // Keep this check, the SQLite write, and response dispatch synchronous.
+      if (!getPending()) {
+        throw new DyadError(
+          "This testing request is no longer pending.",
+          DyadErrorKind.NotFound,
+        );
+      }
+      if (enabled) {
+        const updated = db
+          .update(apps)
+          .set({ testingEnabled: true })
+          .where(eq(apps.id, appId))
+          .returning({ id: apps.id })
+          .get();
+        if (!updated)
+          throw new DyadError("App not found", DyadErrorKind.NotFound);
+      }
+      await userInputRegistry.respond(requestId, {
+        kind: "enable-testing",
+        enabled,
+      });
+      if (enabled)
+        publishQueryInvalidations([
+          { family: "app", appId },
+          { family: "apps" },
+        ]);
+    },
+  );
+}
 
 async function respondToIntegrationSkip(requestId: string): Promise<void> {
   const response = {
@@ -70,6 +130,8 @@ export function registerUserInputHandlers(): void {
     rememberUserInputSubscriber(event.sender);
     if (input.response.kind === "follow-up-dispatched") {
       await userInputRegistry.followUpDispatched(input.requestId);
+    } else if (input.response.kind === "enable-testing") {
+      await respondToEnableTesting(input.requestId, input.response.enabled);
     } else if (
       input.response.kind === "integration" &&
       !input.response.completed &&

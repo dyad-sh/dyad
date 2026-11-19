@@ -481,5 +481,18 @@
     "tabList": "测试运行输出",
     "noTabs": "没有测试输出标签页。运行测试即可查看输出。",
     "noOutput": "暂无输出。"
+  },
+  "enableTesting": {
+    "title": "启用 E2E 测试？",
+    "description": "让 Dyad 按照其测试规范编写并运行端到端测试。",
+    "scope": "为此应用启用测试，包括其他聊天和测试面板。",
+    "enable": "启用测试",
+    "notNow": "暂不启用",
+    "enabling": "正在启用…",
+    "saving": "正在保存您的选择…",
+    "waiting": "智能体正在等待您的选择。",
+    "enabled": "E2E 测试已启用",
+    "declined": "测试仍处于禁用状态",
+    "failed": "无法保存您的选择。请重试。"
   }
 }

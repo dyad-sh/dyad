@@ -484,5 +484,18 @@
     "tabList": "Test run output",
     "noTabs": "No test output tabs. Run tests to see output.",
     "noOutput": "No output yet."
+  },
+  "enableTesting": {
+    "title": "Enable E2E testing?",
+    "description": "Let Dyad write and run end-to-end tests using its testing conventions.",
+    "scope": "Enables testing for this app, including its other chats and the Tests panel.",
+    "enable": "Enable testing",
+    "notNow": "Not now",
+    "enabling": "Enabling…",
+    "saving": "Saving your choice…",
+    "waiting": "The agent is waiting for your choice.",
+    "enabled": "E2E testing enabled",
+    "declined": "Testing remains disabled",
+    "failed": "Could not save your choice. Please try again."
   }
 }

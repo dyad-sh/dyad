@@ -72,6 +72,7 @@ export function useNotificationHandler() {
             | "agent-consent"
             | "mcp-consent"
             | "questionnaire"
+            | "enable-testing"
             | "plugin-suggestion";
         }
       >
@@ -447,6 +448,14 @@ export function useNotificationHandler() {
           sourceLabel: `${descriptor.questions.length} questions`,
           tagPrefix: "dyad-plan-questionnaire",
         });
+      } else if (descriptor.kind === "enable-testing") {
+        startConsentNotification({
+          chatId: descriptor.chatId,
+          toolName: "Enable E2E testing",
+          requestId: descriptor.requestId,
+          tagPrefix: "dyad-enable-testing",
+          body: "Dyad is waiting for your choice about enabling E2E testing. Click to review.",
+        });
       } else if (descriptor.kind === "plugin-suggestion") {
         // Agent-initiated and turn-blocking, like a consent request, so a
         // user who switched away learns the agent is waiting on them.
@@ -504,7 +513,9 @@ export function useNotificationHandler() {
             ? "dyad-mcp-consent"
             : descriptor.kind === "plugin-suggestion"
               ? "dyad-plugin-suggestion"
-              : "dyad-plan-questionnaire",
+              : descriptor.kind === "enable-testing"
+                ? "dyad-enable-testing"
+                : "dyad-plan-questionnaire",
         requestId,
       );
     });
@@ -531,6 +542,7 @@ export function useNotificationHandler() {
           (tag.startsWith("dyad-agent-consent-") ||
             tag.startsWith("dyad-mcp-consent-") ||
             tag.startsWith("dyad-plugin-suggestion-") ||
+            tag.startsWith("dyad-enable-testing-") ||
             tag.startsWith("dyad-plan-questionnaire-")) &&
           currentChatId
         ) {

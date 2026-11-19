@@ -40,7 +40,11 @@ const QUESTIONNAIRE_CONFIRMATION_MS = 2_000;
 function descriptorArmsFollowUp(
   kind: UserInputDescriptorPayload["kind"],
 ): boolean {
-  return kind === "integration" || kind === "plugin-suggestion";
+  return (
+    kind === "integration" ||
+    kind === "plugin-suggestion" ||
+    kind === "enable-testing"
+  );
 }
 
 export type UserInputRequest =

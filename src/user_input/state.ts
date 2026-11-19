@@ -29,6 +29,12 @@ export interface UserInputQuestion {
 
 export type UserInputDescriptor =
   | (DescriptorBase & {
+      kind: "enable-testing";
+      appId: number;
+      classifier: "none";
+      followUpPrompt: string;
+    })
+  | (DescriptorBase & {
       kind: "mcp-consent";
       serverId: number;
       serverName: string;
@@ -89,6 +95,7 @@ export type NewUserInputDescriptor = UserInputDescriptor extends infer D
   : never;
 
 export type UserInputResponse =
+  | { kind: "enable-testing"; enabled: boolean }
   | {
       kind: "mcp-consent" | "agent-consent";
       decision: ConsentDecision;

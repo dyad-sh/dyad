@@ -328,6 +328,35 @@ describe("buildMcpCapabilityMap", () => {
     mockState.settings = { autoApproveSafeMcpTools: true };
   });
 
+  it.each(["before consent", "during consent", "during lookup"])(
+    "blocks MCP execution when testing is requested %s",
+    async (phase) => {
+      const ctx = createCtx();
+      ctx.testingDecision = { requested: phase === "before consent" };
+      const execute = vi.fn();
+      vi.mocked(requireMcpToolConsent).mockImplementation(async () => {
+        if (phase === "during consent") ctx.testingDecision!.requested = true;
+        return { approved: true };
+      });
+      vi.mocked(mcpManager.getClient).mockImplementation(async () => {
+        if (phase === "during lookup") ctx.testingDecision!.requested = true;
+        return { tools: async () => ({ hello: { execute } }) } as any;
+      });
+      const map = buildMcpCapabilityMap({
+        event: ctx.event,
+        ctx,
+        defs: [makeDef()],
+      });
+      await expect(map.srv__hello({})).rejects.toThrow(
+        "Tool admission is closed",
+      );
+      expect(execute).not.toHaveBeenCalled();
+      if (phase === "before consent") {
+        expect(requireMcpToolConsent).not.toHaveBeenCalled();
+      }
+    },
+  );
+
   it("invokes the MCP tool and emits tool-call + tool-result XML on success", async () => {
     vi.mocked(requireMcpToolConsent).mockResolvedValue({ approved: true });
     const execute = vi.fn().mockResolvedValue({

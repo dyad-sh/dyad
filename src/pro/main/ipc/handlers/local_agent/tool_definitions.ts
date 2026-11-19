@@ -62,6 +62,8 @@ import {
   waitAgentsTool,
 } from "./tools/subagent_tools";
 import { planningQuestionnaireTool } from "./tools/planning_questionnaire";
+import { enableTestingTool } from "./tools/enable_testing";
+import { assertNoTestingDecision } from "./tools/testing_decision";
 import { writePlanTool } from "./tools/write_plan";
 import { exitPlanTool } from "./tools/exit_plan";
 import { readGuideTool } from "./tools/read_guide";
@@ -179,6 +181,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   getDatabaseTableSchemaTool,
   setChatSummaryTool,
   addIntegrationTool,
+  enableTestingTool,
   enableNitroTool,
   readLogsTool,
   webSearchTool,
@@ -851,6 +854,7 @@ export function buildAgentToolSet(
   options: BuildAgentToolSetOptions = {},
 ) {
   const toolSet: Record<string, any> = {};
+  ctx.testingDecision ??= { requested: false };
   if (shouldIncludeTool(runShellTool, ctx, options)) {
     ctx.shellReviewContext = {
       tools: TOOL_DEFINITIONS.filter((tool) => tool.name !== "run_shell").map(
@@ -914,6 +918,13 @@ export function buildAgentToolSet(
               DyadErrorKind.Precondition,
             );
           }
+          assertNoTestingDecision(invocationCtx);
+          if (tool.name === enableTestingTool.name) {
+            // Close admission before validation/consent's first async gap so
+            // parallel calls cannot overtake the decision. A new turn gets a
+            // new gate after either choice; this turn's capabilities are stale.
+            invocationCtx.testingDecision!.requested = true;
+          }
           const schema = asSchema(
             tool.getInputSchema?.(invocationCtx) ?? tool.inputSchema,
           );
@@ -962,9 +973,13 @@ export function buildAgentToolSet(
           // registering mutation activity so cancellation cannot let delayed
           // consent enter a closed actor generation.
           // Shell resolves consent after classification, including mandatory one-time approval.
+          if (tool.name !== enableTestingTool.name)
+            assertNoTestingDecision(invocationCtx);
           if (tool.name !== "run_shell")
             await requireToolConsentOrThrow(tool, processedArgs, invocationCtx);
           const invoke = async () => {
+            if (tool.name !== enableTestingTool.name)
+              assertNoTestingDecision(invocationCtx);
             if (
               !shouldIncludeTool(tool, invocationCtx, options, "invocation")
             ) {

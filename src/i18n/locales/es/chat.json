@@ -482,5 +482,18 @@
     "tabList": "Salida de las ejecuciones de pruebas",
     "noTabs": "No hay pestañas de salida de pruebas. Ejecuta las pruebas para ver la salida.",
     "noOutput": "Todavía no hay salida."
+  },
+  "enableTesting": {
+    "title": "¿Activar las pruebas E2E?",
+    "description": "Permite que Dyad escriba y ejecute pruebas de extremo a extremo siguiendo sus convenciones.",
+    "scope": "Activa las pruebas para esta aplicación, incluidos sus otros chats y el panel Pruebas.",
+    "enable": "Activar pruebas",
+    "notNow": "Ahora no",
+    "enabling": "Activando…",
+    "saving": "Guardando tu elección…",
+    "waiting": "El agente está esperando tu elección.",
+    "enabled": "Pruebas E2E activadas",
+    "declined": "Las pruebas siguen desactivadas",
+    "failed": "No se pudo guardar tu elección. Inténtalo de nuevo."
   }
 }

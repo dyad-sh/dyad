@@ -37,7 +37,11 @@ vi.mock("@/neon_admin/neon_management_client", async (importOriginal) => ({
 }));
 
 const branchData = vi.hoisted(() => ({
-  prepareSchemaOnlyBranchForNeonAuth: vi.fn(async (_uri: string) => {}),
+  // Tells the fake Neon API the branch was prepared, so Neon Auth can be
+  // turned on there, as on real Neon.
+  prepareSchemaOnlyBranchForNeonAuth: vi.fn(async (uri: string) => {
+    fakeNeon.prepareForNeonAuth(uri);
+  }),
   listForeignKeys: vi.fn(async (_uri: string) => []),
   exportBranchDataAsSql: vi.fn(
     async (_args: { sourceUri: string; filePath: string; title: string }) => ({
@@ -200,13 +204,16 @@ describe("Neon database revert (integration)", () => {
    * The layout Dyad created before the fix, after `legacyReverts` database
    * reverts: each one left a backup that took over as development's parent.
    */
-  async function legacyLayout(legacyReverts: number) {
-    fakeNeon.addBranch("main", { neonAuth: true });
+  async function legacyLayout(
+    legacyReverts: number,
+    { neonAuth = true }: { neonAuth?: boolean } = {},
+  ) {
+    fakeNeon.addBranch("main", { neonAuth });
     const development = fakeNeon.addBranch("development", {
       parent: "main",
-      neonAuth: true,
+      neonAuth,
     });
-    fakeNeon.addBranch("preview", { parent: "development", neonAuth: true });
+    fakeNeon.addBranch("preview", { parent: "development", neonAuth });
     for (let i = 1; i <= legacyReverts; i++) {
       await fakeNeon
         .client()
@@ -690,6 +697,36 @@ describe("Neon database revert (integration)", () => {
       "br-dyad-restore-source-",
     );
     expect((await appRow(appId)).neonPreviewBranchId).toBeNull();
+  });
+
+  it("migrates an old-layout app without Neon Auth, turning it on for the new branch", async () => {
+    await legacyLayout(1, { neonAuth: false });
+    const { appId, appDir } = await connectApp();
+
+    const result = await migrate(appId);
+    expect(result).toEqual({
+      success: true,
+      backupPath: expect.any(String),
+    });
+    // Pointing the app at the new branch turns Neon Auth on there, which a
+    // schema-only branch refuses until it is prepared.
+    const newDevelopment = fakeNeon.byName("development");
+    expect(branchData.prepareSchemaOnlyBranchForNeonAuth).toHaveBeenCalledWith(
+      fakeNeon.connectionUri(newDevelopment.id),
+    );
+    expect(newDevelopment.neonAuth).toBe(true);
+    expect(fakeNeon.tree()).toEqual({
+      development: null,
+      main: null,
+      preview: "development",
+    });
+    expect(await appRow(appId)).toMatchObject({
+      neonDevelopmentBranchId: newDevelopment.id,
+      neonActiveBranchId: newDevelopment.id,
+    });
+    const env = fs.readFileSync(path.join(appDir, ".env.local"), "utf8");
+    expect(env).toContain(fakeNeon.connectionUri(newDevelopment.id));
+    expect(env).toContain(fakeNeon.authBaseUrl(newDevelopment.id));
   });
 
   it("migrates past a source branch an interrupted attempt left behind", async () => {

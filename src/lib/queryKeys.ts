@@ -366,6 +366,12 @@ export const queryKeys = {
     }) => ["cloudflare", "deploymentStatus", appId, rootDirectory] as const,
   },
 
+  deedpage: {
+    all: ["deedpage"] as const,
+    site: ({ appId }: { appId: number }) =>
+      ["deedpage", "site", appId] as const,
+  },
+
   // ─────────────────────────────────────────────────────────────────────────────
   // Coolify Deployments
   // ─────────────────────────────────────────────────────────────────────────────

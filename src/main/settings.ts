@@ -427,6 +427,11 @@ export function writeSettings(settings: Partial<UserSettings>): void {
         newSettings.cloudflareAccessToken.value,
       );
     }
+    if (newSettings.deedPageAccessToken) {
+      newSettings.deedPageAccessToken = encrypt(
+        newSettings.deedPageAccessToken.value,
+      );
+    }
     if (newSettings.coolify?.accessToken) {
       newSettings.coolify = {
         ...newSettings.coolify,
@@ -703,6 +708,19 @@ function readExistingSettingsFile(
       combinedSettings.vercelAccessToken = resolved;
     } else {
       delete combinedSettings.vercelAccessToken;
+    }
+  }
+  if (combinedSettings.deedPageAccessToken) {
+    const resolved = resolveStoredSecret(
+      combinedSettings.deedPageAccessToken,
+      "deed.page access token",
+      ["deedPageAccessToken"],
+      ctx,
+    );
+    if (resolved) {
+      combinedSettings.deedPageAccessToken = resolved;
+    } else {
+      delete combinedSettings.deedPageAccessToken;
     }
   }
   if (combinedSettings.cloudflareAccessToken) {

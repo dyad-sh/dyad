@@ -575,6 +575,13 @@ const BaseUserSettingsFields = {
   // One API token does two jobs: Dyad uses it to set up Workers and deploy
   // rules, and Cloudflare's build service deploys with it after each push.
   cloudflareAccessToken: SecretSchema.optional(),
+  // The owner token deed.page returns from the first publish. One token
+  // updates every site published from this install.
+  deedPageAccessToken: SecretSchema.optional(),
+  // The deed.page site each app publishes to, keyed by app id.
+  deedPageSites: z
+    .record(z.string(), z.object({ slug: z.string(), url: z.string() }))
+    .optional(),
   coolify: CoolifySchema.optional(),
   supabase: SupabaseSchema.optional(),
   neon: NeonSchema.optional(),

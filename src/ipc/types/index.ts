@@ -37,6 +37,7 @@ export {
 } from "./connection_flow";
 export { mcpContracts } from "./mcp";
 export { vercelContracts } from "./vercel";
+export { deedPageContracts } from "./deedpage";
 export { cloudflareContracts } from "./cloudflare";
 export { coolifyContracts, coolifyEvents, coolifyEventClient } from "./coolify";
 export {
@@ -131,6 +132,7 @@ export {
 } from "./connection_flow";
 export { mcpClient } from "./mcp";
 export { vercelClient } from "./vercel";
+export { deedPageClient } from "./deedpage";
 export { cloudflareClient } from "./cloudflare";
 export { supabaseClient, supabaseEventClient } from "./supabase";
 export { neonClient } from "./neon";
@@ -299,6 +301,13 @@ export type {
   GetVercelDeploymentsParams,
   DisconnectVercelProjectParams,
 } from "./vercel";
+
+// deed.page types
+export type {
+  DeedPageSite,
+  PublishToDeedPageParams,
+  PublishToDeedPageResult,
+} from "./deedpage";
 
 // Cloudflare types
 export type {
@@ -551,6 +560,7 @@ import {
 } from "./connection_flow";
 import { mcpClient } from "./mcp";
 import { vercelClient } from "./vercel";
+import { deedPageClient } from "./deedpage";
 import { gitlabClient } from "./gitlab";
 import { cloudflareClient } from "./cloudflare";
 import { coolifyClient, coolifyEventClient } from "./coolify";
@@ -637,6 +647,7 @@ export const ipc = {
   connectionFlow: connectionFlowClient,
   mcp: mcpClient,
   vercel: vercelClient,
+  deedpage: deedPageClient,
   gitlab: gitlabClient,
   cloudflare: cloudflareClient,
   coolify: coolifyClient,

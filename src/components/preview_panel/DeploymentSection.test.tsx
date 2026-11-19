@@ -30,6 +30,9 @@ vi.mock("@/components/CoolifyConnector", () => ({
 vi.mock("@/components/CloudflareConnector", () => ({
   CloudflareConnector: () => <div>cloudflare-connector</div>,
 }));
+vi.mock("@/components/DeedPageConnector", () => ({
+  DeedPageConnector: () => <div>deedpage-connector</div>,
+}));
 vi.mock("@/ipc/types", () => ({
   ipc: { system: { openExternalUrl: vi.fn() } },
 }));
@@ -67,11 +70,15 @@ beforeEach(() => {
 });
 
 describe("with deployment to your own server turned off", () => {
-  it("offers Vercel and Cloudflare, opening on Vercel", () => {
+  it("offers Vercel, Cloudflare, and deed.page, opening on Vercel", () => {
     render(<DeploymentSection appId={1} app={APP} />);
 
     const tabs = screen.getAllByRole("tab");
-    expect(tabs.map((t) => t.textContent)).toEqual(["Vercel", "Cloudflare"]);
+    expect(tabs.map((t) => t.textContent)).toEqual([
+      "Vercel",
+      "Cloudflare",
+      "deed.page",
+    ]);
     // Vercel is where an app publishes unless the user says otherwise, so it
     // is the tab that opens.
     expect(tabs[0].getAttribute("aria-selected")).toBe("true");
@@ -91,6 +98,7 @@ describe("with it turned on", () => {
     expect(tabs.map((t) => t.textContent)).toEqual([
       "Vercel",
       "Cloudflare",
+      "deed.page",
       "Your Own Server",
     ]);
     expect(tabs[0].getAttribute("aria-selected")).toBe("true");
@@ -122,6 +130,23 @@ describe("the Cloudflare tab", () => {
       screen.getByText("GitHub Required for Cloudflare Deployment"),
     ).toBeTruthy();
     expect(screen.queryByText("cloudflare-connector")).toBeNull();
+  });
+});
+
+describe("the deed.page tab", () => {
+  it("shows the connector without needing GitHub", () => {
+    // deed.page publishes the local build output, not a repository.
+    render(
+      <DeploymentSection
+        appId={1}
+        app={{ ...APP, githubOrg: null, githubRepo: null }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: "deed.page" }));
+
+    expect(screen.getByText("deedpage-connector")).toBeTruthy();
+    expect(screen.queryByText(/GitHub Required/)).toBeNull();
   });
 });
 
@@ -199,6 +224,18 @@ describe("chooseDefaultDeploymentTab", () => {
         vercel: false,
         cloudflare: true,
         coolify: true,
+      }),
+    ).toBe("cloudflare");
+  });
+
+  it("never opens on deed.page on its own", () => {
+    expect(
+      chooseDefaultDeploymentTab(["vercel", "cloudflare", "deedpage"], NONE),
+    ).toBe("vercel");
+    expect(
+      chooseDefaultDeploymentTab(["vercel", "cloudflare", "deedpage"], {
+        ...NONE,
+        cloudflare: true,
       }),
     ).toBe("cloudflare");
   });

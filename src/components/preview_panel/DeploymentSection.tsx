@@ -1,7 +1,8 @@
-import { Cloud, Server } from "lucide-react";
+import { Cloud, Globe, Server } from "lucide-react";
 import { VercelConnector } from "@/components/VercelConnector";
 import { CoolifyConnector } from "@/components/CoolifyConnector";
 import { CloudflareConnector } from "@/components/CloudflareConnector";
+import { DeedPageConnector } from "@/components/DeedPageConnector";
 import { ipc } from "@/ipc/types";
 import type { DeploymentProvidersInUse } from "@/ipc/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,8 +11,8 @@ import { useSettings } from "@/hooks/useSettings";
 import { describeLinkedRemote } from "@/shared/linked_remote";
 
 /**
- * Where an app is published: Vercel, Cloudflare, or a server the user runs
- * themselves.
+ * Where an app is published: Vercel, Cloudflare, deed.page, or a server the
+ * user runs themselves.
  *
  * They are alternatives, so they share one card and a row of tabs rather than
  * stacking cards that each look like the next required step.
@@ -30,14 +31,19 @@ interface AppSummary {
   deploymentProvidersInUse: DeploymentProvidersInUse;
 }
 
-export type DeploymentTab = "vercel" | "cloudflare" | "own-server";
+export type DeploymentTab = "vercel" | "cloudflare" | "deedpage" | "own-server";
 
-const PROVIDER_FOR_TAB: Record<DeploymentTab, keyof DeploymentProvidersInUse> =
-  {
-    vercel: "vercel",
-    cloudflare: "cloudflare",
-    "own-server": "coolify",
-  };
+// deed.page has no entry: a publish is not recorded on the app row, so it
+// never decides which tab the card opens on.
+const PROVIDER_FOR_TAB: Record<
+  DeploymentTab,
+  keyof DeploymentProvidersInUse | null
+> = {
+  vercel: "vercel",
+  cloudflare: "cloudflare",
+  deedpage: null,
+  "own-server": "coolify",
+};
 
 /** The tabs on screen, in display order. */
 export function visibleDeploymentTabs({
@@ -48,6 +54,7 @@ export function visibleDeploymentTabs({
   return [
     "vercel",
     "cloudflare",
+    "deedpage",
     ...(showOwnServer ? (["own-server"] as const) : []),
   ];
 }
@@ -66,7 +73,12 @@ export function chooseDefaultDeploymentTab(
   tabs: readonly DeploymentTab[],
   inUse: DeploymentProvidersInUse,
 ): DeploymentTab {
-  return tabs.find((tab) => inUse[PROVIDER_FOR_TAB[tab]]) ?? tabs[0];
+  return (
+    tabs.find((tab) => {
+      const provider = PROVIDER_FOR_TAB[tab];
+      return provider !== null && inUse[provider];
+    }) ?? tabs[0]
+  );
 }
 
 function VercelDashboardLink() {
@@ -189,6 +201,18 @@ function CloudflareDeployment({
   );
 }
 
+function DeedPageDeployment({ appId }: { appId: number }) {
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-gray-600 dark:text-gray-400">
+        Build this app on your computer and publish the output as a static site
+        on deed.page. No account or GitHub repository is needed.
+      </p>
+      <DeedPageConnector appId={appId} />
+    </div>
+  );
+}
+
 function OwnServerDeployment({ appId }: { appId: number }) {
   return (
     <div className="space-y-4">
@@ -233,6 +257,7 @@ export function DeploymentSection({
           <TabsList>
             <TabsTrigger value="vercel">Vercel</TabsTrigger>
             <TabsTrigger value="cloudflare">Cloudflare</TabsTrigger>
+            <TabsTrigger value="deedpage">deed.page</TabsTrigger>
             {showOwnServer && (
               <TabsTrigger value="own-server">Your Own Server</TabsTrigger>
             )}
@@ -254,6 +279,13 @@ export function DeploymentSection({
               Cloudflare
             </div>
             <CloudflareDeployment appId={appId} app={app} />
+          </TabsContent>
+          <TabsContent value="deedpage" className="pt-4 space-y-4">
+            <div className="flex items-center gap-2 text-sm font-semibold">
+              <Globe className="w-5 h-5" />
+              deed.page
+            </div>
+            <DeedPageDeployment appId={appId} />
           </TabsContent>
           {/* Mounted with the card rather than on first click. The connector
               cannot read its status until it mounts, so a lazy panel opens on

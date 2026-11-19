@@ -1304,6 +1304,28 @@ describe("preserving undecryptable secrets", () => {
     expect(readSettings().cloudflareAccessToken).toBeUndefined();
   });
 
+  it("puts the deed.page owner token through encryption", () => {
+    writeSettings({ deedPageAccessToken: { value: "deed_tok_test" } });
+
+    expect(readStoredFile().deedPageAccessToken).toEqual({
+      value: "deed_tok_test",
+      encryptionType: "plaintext",
+    });
+    expect(readSettings().deedPageAccessToken?.value).toBe("deed_tok_test");
+  });
+
+  it("keeps a deed.page token that will not decrypt, without exposing it", () => {
+    // The token is the only way to update a published site, and deed.page
+    // cannot reissue it, so an unrelated write must not drop it.
+    const locked = lockedSecret("deedpage");
+    store[mockSettingsPath] = JSON.stringify({ deedPageAccessToken: locked });
+
+    expect(readSettings().deedPageAccessToken).toBeUndefined();
+
+    writeSettings({ enableAutoUpdate: false });
+    expect(readStoredFile().deedPageAccessToken).toEqual(locked);
+  });
+
   it("forgets a Coolify token that will not decrypt when signing out", () => {
     // The preservation pass puts a secret back whenever the container it
     // lives in is still there, treating an absent key as a consumer read that

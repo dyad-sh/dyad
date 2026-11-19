@@ -44,7 +44,7 @@ export function useMcp() {
   const queryClient = useQueryClient();
   // App-specific configurations only exist for the user while the
   // experiment is on; with it off, none are listed or connected to.
-  const { settings } = useSettings();
+  const { settings, settingsLoading } = useSettings();
   const appScopedPluginsEnabled = !!settings?.enableAppScopedPlugins;
 
   const serversQuery = useQuery<McpServer[], Error>({
@@ -85,7 +85,12 @@ export function useMcp() {
     Error
   >({
     queryKey: queryKeys.mcp.toolsByServer.list({ connectionKeys }),
-    enabled: connectionKeys.length > 0,
+    // Waits for settings, which decide whether app-specific configurations
+    // are listed, so the batch isn't run once without them and again with.
+    enabled:
+      !settingsLoading &&
+      !(appScopedPluginsEnabled && appConfigsQuery.isLoading) &&
+      connectionKeys.length > 0,
     queryFn: async () => {
       // Promise.allSettled (not all) so one server's listTools
       // rejection doesn't fail the whole batch. The handler returns a
@@ -423,6 +428,7 @@ export function useMcp() {
     // read. Callers that render per-server placeholders for pending
     // tool counts gate on this instead of `isLoading`.
     isServersLoading: serversQuery.isLoading,
+    isAppConfigsLoading: appScopedPluginsEnabled && appConfigsQuery.isLoading,
     error:
       serversQuery.error || toolsByServerQuery.error || consentsQuery.error,
     refetchAll,
@@ -454,6 +460,7 @@ export function useMcp() {
     isSavingAppScope:
       createAppConfigMutation.isPending ||
       setAppConfigAppsMutation.isPending ||
+      updateAppConfigMutation.isPending ||
       setPluginAvailabilityMutation.isPending,
   } as const;
 }

@@ -204,6 +204,50 @@ describe("PluginAppConfigsSection", () => {
     );
   });
 
+  it("waits for configurations to load before saying there are none", () => {
+    render(
+      <PluginAppConfigsSection
+        server={plugin()}
+        appConfigs={[]}
+        apps={APPS}
+        catalogEntry={undefined}
+        catalogIsLoading={false}
+        isLoading
+      />,
+    );
+    expect(screen.queryByText(/No app-specific configurations/)).toBeNull();
+  });
+
+  it("offers no collapse toggle for a configuration held open for setup", () => {
+    render(
+      <PluginAppConfigsSection
+        server={plugin({ catalogSlug: "coolify" })}
+        appConfigs={[
+          { ...config(1, "Lab", [1]), catalogSlug: "coolify" },
+          {
+            ...config(2, "Ready", [2]),
+            catalogSlug: "coolify",
+            headersJson: { Authorization: "set" },
+          },
+        ]}
+        apps={APPS}
+        catalogEntry={{
+          slug: "coolify",
+          name: "Coolify",
+          transport: "http",
+          url: "https://prod.example.com/mcp",
+          inputs: [{ kind: "header", name: "Authorization", label: "Token" }],
+        }}
+        catalogIsLoading={false}
+      />,
+    );
+    const toggles = screen.queryAllByRole("button", { expanded: false });
+    // Only the configuration that's set up can be expanded.
+    expect(toggles).toHaveLength(1);
+    expect(toggles[0].textContent).toContain("Ready");
+    expect(screen.queryByRole("button", { expanded: true })).toBeNull();
+  });
+
   it("says on delete which apps lose the plugin when there is no default", () => {
     renderSection(plugin({ defaultScope: "none" }), [config(1, "Lab", [3])]);
 

@@ -9,6 +9,8 @@ import { TelemetrySwitch } from "@/components/TelemetrySwitch";
 import { MaxToolCallStepsSelector } from "@/components/MaxToolCallStepsSelector";
 import { SystemResourceUsageSwitch } from "@/components/SystemResourceUsageSwitch";
 import { useSettings } from "@/hooks/useSettings";
+import { useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/queryKeys";
 import { useAppVersion } from "@/hooks/useAppVersion";
 import { BackButton } from "@/components/ui/back-button";
 import { GitHubIntegration } from "@/components/GitHubIntegration";
@@ -102,6 +104,7 @@ function SettingsSection({
 }
 
 export default function SettingsPage() {
+  const queryClient = useQueryClient();
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const appVersion = useAppVersion();
@@ -358,7 +361,15 @@ export default function SettingsPage() {
                   onCheckedChange={(checked) => {
                     void updateSettings({
                       enableAppScopedPlugins: checked,
-                    }).catch(() => {});
+                    })
+                      // Plugin data is read differently with the experiment
+                      // on and off.
+                      .then(() =>
+                        queryClient.invalidateQueries({
+                          queryKey: queryKeys.mcp.all,
+                        }),
+                      )
+                      .catch(() => {});
                   }}
                 />
                 <Label htmlFor="enable-app-scoped-plugins">
@@ -368,7 +379,7 @@ export default function SettingsPage() {
               <p className={hint}>
                 Choose which apps each plugin is available in, and give some
                 apps a different configuration of the same plugin, such as a
-                different server or account.
+                different account or credentials.
               </p>
             </div>
 

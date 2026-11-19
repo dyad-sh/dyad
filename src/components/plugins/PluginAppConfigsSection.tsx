@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { ChevronDown, ChevronRight, Plus } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -232,7 +232,8 @@ function AppConfigCard({
   catalogEntry: McpCatalogEntry | undefined;
   catalogIsLoading: boolean;
   expanded: boolean;
-  onToggleExpanded: () => void;
+  /** Absent while the card is held open, so it has nothing to toggle. */
+  onToggleExpanded?: () => void;
 }) {
   const { deleteAppConfig } = useMcp();
   const [editOpen, setEditOpen] = useState(false);
@@ -250,17 +251,7 @@ function AppConfigCard({
   return (
     <div className="rounded-lg border p-4" data-testid="plugin-app-config">
       <div className="flex items-center justify-between gap-3">
-        <button
-          type="button"
-          className="flex min-w-0 items-center gap-2 text-left"
-          onClick={onToggleExpanded}
-          aria-expanded={expanded}
-        >
-          {expanded ? (
-            <ChevronDown className="h-4 w-4 shrink-0" aria-hidden />
-          ) : (
-            <ChevronRight className="h-4 w-4 shrink-0" aria-hidden />
-          )}
+        <CardHeaderToggle expanded={expanded} onToggle={onToggleExpanded}>
           <div className="min-w-0">
             <div className="flex items-center gap-2 font-medium">
               <span className="truncate">{config.name}</span>
@@ -275,7 +266,7 @@ function AppConfigCard({
               {usedBy ? `Used by: ${usedBy}` : "Not used by any app"}
             </div>
           </div>
-        </button>
+        </CardHeaderToggle>
         <div className="flex shrink-0 items-center gap-2">
           <PluginOAuthButtons
             connection={config}
@@ -337,6 +328,42 @@ function AppConfigCard({
   );
 }
 
+// The card's header expands and collapses it, unless the card is held
+// open; then it's plain text with the chevron's space kept.
+function CardHeaderToggle({
+  expanded,
+  onToggle,
+  children,
+}: {
+  expanded: boolean;
+  onToggle?: () => void;
+  children: ReactNode;
+}) {
+  if (!onToggle) {
+    return (
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="h-4 w-4 shrink-0" aria-hidden />
+        {children}
+      </div>
+    );
+  }
+  return (
+    <button
+      type="button"
+      className="flex min-w-0 items-center gap-2 text-left"
+      onClick={onToggle}
+      aria-expanded={expanded}
+    >
+      {expanded ? (
+        <ChevronDown className="h-4 w-4 shrink-0" aria-hidden />
+      ) : (
+        <ChevronRight className="h-4 w-4 shrink-0" aria-hidden />
+      )}
+      {children}
+    </button>
+  );
+}
+
 /** A plugin's app-specific configurations, on its detail page. */
 export function PluginAppConfigsSection({
   server,
@@ -344,12 +371,15 @@ export function PluginAppConfigsSection({
   apps,
   catalogEntry,
   catalogIsLoading,
+  isLoading = false,
 }: {
   server: McpServer;
   appConfigs: McpAppConfig[];
   apps: PickableApp[];
   catalogEntry: McpCatalogEntry | undefined;
   catalogIsLoading: boolean;
+  /** The configurations haven't loaded yet. */
+  isLoading?: boolean;
 }) {
   const [createOpen, setCreateOpen] = useState(false);
   // Expanded configurations; one the user just created starts open so its
@@ -366,7 +396,7 @@ export function PluginAppConfigsSection({
           <h2 className="text-lg font-semibold">App-specific configurations</h2>
           <p className="text-sm text-muted-foreground">
             Give some apps a different configuration of {server.name}, such as
-            another server or account.
+            another account or credentials.
           </p>
         </div>
         <Button variant="outline" onClick={() => setCreateOpen(true)}>
@@ -393,18 +423,21 @@ export function PluginAppConfigsSection({
               // A configuration still waiting for setup stays open, since
               // it can't be used until it's filled in.
               expanded={expandedIds.has(config.id) || setupIncomplete}
-              onToggleExpanded={() =>
-                setExpandedIds((current) => {
-                  const next = new Set(current);
-                  if (next.has(config.id)) next.delete(config.id);
-                  else next.add(config.id);
-                  return next;
-                })
+              onToggleExpanded={
+                setupIncomplete
+                  ? undefined
+                  : () =>
+                      setExpandedIds((current) => {
+                        const next = new Set(current);
+                        if (next.has(config.id)) next.delete(config.id);
+                        else next.add(config.id);
+                        return next;
+                      })
               }
             />
           );
         })}
-        {appConfigs.length === 0 && (
+        {!isLoading && appConfigs.length === 0 && (
           <div className="text-xs text-muted-foreground">
             No app-specific configurations. Every app that has {server.name}{" "}
             uses the default configuration.

@@ -27,6 +27,7 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
     appConfigs,
     appScopedPluginsEnabled,
     isServersLoading,
+    isAppConfigsLoading,
     toggleEnabled,
     deleteServer,
   } = useMcp();
@@ -187,6 +188,7 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
             apps={pickableApps}
             catalogEntry={catalogEntry}
             catalogIsLoading={catalogQuery.isLoading}
+            isLoading={isAppConfigsLoading}
           />
         )}
       </div>

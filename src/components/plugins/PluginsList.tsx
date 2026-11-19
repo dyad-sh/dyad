@@ -57,13 +57,13 @@ export function PluginsList({
   // OAuth tokens and client secrets, request headers, or env vars.
   const hasStoredSecret = useMemo(
     () =>
-      (servers || []).some(
+      [...(servers || []), ...appConfigs].some(
         (s) =>
           (s.transport === "http" && s.oauthEnabled) ||
           Object.keys(s.headersJson ?? {}).length > 0 ||
           Object.keys(s.envJson ?? {}).length > 0,
       ),
-    [servers],
+    [servers, appConfigs],
   );
   const showPlaintextBanner =
     oauthStorageEncrypted === false && hasStoredSecret;

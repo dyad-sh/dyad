@@ -4,7 +4,7 @@
  * The private per-port lifecycle retains its listener, waiter, timer, and
  * close-barrier internals. Typed invocation references correlate every
  * asynchronous boundary; renderer message IDs independently deduplicate IPC
- * retries. Server-scoped cancellation settles callers and closes resources
+ * retries. Connection-scoped cancellation settles callers and closes resources
  * before a row mutation is allowed to proceed.
  */
 
@@ -61,7 +61,7 @@ export interface McpOAuthListenerRequest {
 
 export interface McpOAuthConnectRequest {
   port: number;
-  serverId: number;
+  connectionKey: string;
   rendererMessageId: string;
   expectedState: string;
   authorize(code?: string): Promise<"AUTHORIZED" | "REDIRECT">;
@@ -75,7 +75,7 @@ export interface McpOAuthConnectResult {
 
 interface FlowRuntime {
   invocationRef: McpOAuthInvocationRef;
-  serverId: number;
+  connectionKey: string;
   rendererMessageId: string;
   authorize(code?: string): Promise<"AUTHORIZED" | "REDIRECT">;
   onAbort(): void;
@@ -90,7 +90,7 @@ export interface McpOAuthRegistryOptions {
   timeoutMs?: number;
   bindListener(request: McpOAuthListenerRequest): McpOAuthListenerHandle;
   onSettled?: (
-    serverId: number,
+    connectionKey: string,
     invocationRef: McpOAuthInvocationRef,
     result: McpOAuthConnectResult,
   ) => void;
@@ -114,7 +114,7 @@ export function createMcpOAuthRegistry(options: McpOAuthRegistryOptions) {
   const flowPorts = new Map<string, number>();
   const runtimes = new Map<string, FlowRuntime>();
   const activeInvocations = new InvocationRegistry<FlowRuntime>();
-  const activeByServer = new Map<number, McpOAuthInvocationRef>();
+  const activeByConnection = new Map<string, McpOAuthInvocationRef>();
   const listeners = new Map<string, McpOAuthListenerHandle>();
   const timeoutHandles = new Map<string, ReturnType<Clock["schedule"]>>();
   const closeBarriers = new Map<number, Promise<void>>();
@@ -171,16 +171,16 @@ export function createMcpOAuthRegistry(options: McpOAuthRegistryOptions) {
     activeInvocations.delete(invocationRef);
     if (
       sameInvocationRef(
-        activeByServer.get(runtime.serverId) ?? invocationRef,
+        activeByConnection.get(runtime.connectionKey) ?? invocationRef,
         invocationRef,
       )
     ) {
-      activeByServer.delete(runtime.serverId);
+      activeByConnection.delete(runtime.connectionKey);
     }
     cancelTimeout(invocationRef);
     if (abortProvider) runtime.onAbort();
     runtime.resolve(result);
-    options.onSettled?.(runtime.serverId, invocationRef, result);
+    options.onSettled?.(runtime.connectionKey, invocationRef, result);
   }
 
   function closeListener(
@@ -450,19 +450,21 @@ export function createMcpOAuthRegistry(options: McpOAuthRegistryOptions) {
     const claim = receiptLedger.claim({
       scope: "mcp-oauth-registry",
       messageId: request.rendererMessageId,
-      fingerprint: String(request.serverId),
+      fingerprint: request.connectionKey,
       start: () => {
-        const previousForServer = activeByServer.get(request.serverId);
-        if (previousForServer) {
+        const previousForConnection = activeByConnection.get(
+          request.connectionKey,
+        );
+        if (previousForConnection) {
           void cancelInvocation(
-            previousForServer,
+            previousForConnection,
             "OAuth flow superseded by a new Connect attempt.",
           );
         }
 
         const invocationRef = createInvocationRef(
           MCP_OAUTH_INVOCATION_KIND,
-          request.serverId,
+          request.connectionKey,
           ids,
         );
         let resolvePromise!: (result: McpOAuthConnectResult) => void;
@@ -471,7 +473,7 @@ export function createMcpOAuthRegistry(options: McpOAuthRegistryOptions) {
         });
         const runtime: FlowRuntime = {
           invocationRef,
-          serverId: request.serverId,
+          connectionKey: request.connectionKey,
           rendererMessageId: request.rendererMessageId,
           authorize: request.authorize,
           onAbort: request.onAbort,
@@ -481,14 +483,14 @@ export function createMcpOAuthRegistry(options: McpOAuthRegistryOptions) {
         };
         runtimes.set(keyOf(invocationRef), runtime);
         activeInvocations.register(invocationRef, runtime);
-        activeByServer.set(request.serverId, invocationRef);
+        activeByConnection.set(request.connectionKey, invocationRef);
         flowPorts.set(keyOf(invocationRef), request.port);
         dispatch(request.port, {
           type: "CONNECT",
           invocationRef,
           rendererMessageId: request.rendererMessageId,
           expectedState: request.expectedState,
-          serverId: request.serverId,
+          connectionKey: request.connectionKey,
         });
         return promise;
       },
@@ -567,8 +569,11 @@ export function createMcpOAuthRegistry(options: McpOAuthRegistryOptions) {
     await closeListener(port, invocationRef);
   }
 
-  function cancelServer(serverId: number, reason: string): Promise<void> {
-    const invocationRef = activeByServer.get(serverId);
+  function cancelConnection(
+    connectionKey: string,
+    reason: string,
+  ): Promise<void> {
+    const invocationRef = activeByConnection.get(connectionKey);
     return invocationRef
       ? cancelInvocation(invocationRef, reason)
       : Promise.resolve();
@@ -601,7 +606,7 @@ export function createMcpOAuthRegistry(options: McpOAuthRegistryOptions) {
     getState,
     connect,
     claimCallback,
-    cancelServer,
+    cancelConnection,
     dispose,
   };
 }

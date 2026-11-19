@@ -720,6 +720,7 @@ const PERSON_PROPERTY_NAMES = [
   "enableAdvancedSubagents",
   "enableAppBlueprint",
   "enableAppPreviewDomains",
+  "enableAppScopedPlugins",
   "enableAutoReview",
   "enableAutoUpdate",
   "enableCloudSandbox",

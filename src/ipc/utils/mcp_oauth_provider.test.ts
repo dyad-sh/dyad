@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { pluginConnection } from "@/shared/mcp_connection_ref";
 
 // In-memory store of `oauth_state` rows keyed by serverId. The mocked
 // db's `update().set().where()` chain writes here; the mocked
@@ -63,6 +64,8 @@ vi.mock("@/db", () => ({
 }));
 
 vi.mock("@/db/schema", () => ({
+  // App-specific plugin configurations; these tests only use plugin rows.
+  mcpAppConfigs: { id: "app_config_id", oauthState: "app_config_oauth_state" },
   mcpServers: {
     id: "id",
     oauthState: "oauth_state",
@@ -112,7 +115,7 @@ describe("DyadOAuthClientProvider", () => {
     const raw = Buffer.from("v10locked-oauth").toString("base64");
     dbStore.set(71, raw);
     const provider = new DyadOAuthClientProvider({
-      serverId: 71,
+      connection: pluginConnection(71),
       allowInteractive: true,
       preregisteredClientId: "client",
     });
@@ -135,7 +138,9 @@ describe("DyadOAuthClientProvider", () => {
       expect(dbStore.get(71)).toBe(raw);
     }
     expect(oauthStateHasTokens(raw)).toBe(false);
-    await new DyadOAuthClientProvider({ serverId: 71 }).disconnect();
+    await new DyadOAuthClientProvider({
+      connection: pluginConnection(71),
+    }).disconnect();
     expect(dbStore.get(71)).toBe(raw);
     await provider.disconnect();
     expect(dbStore.get(71)).toBeNull();
@@ -148,7 +153,7 @@ describe("DyadOAuthClientProvider", () => {
     const raw = Buffer.from("v10legacy-oauth").toString("base64");
     dbStore.set(72, raw);
     const provider = new DyadOAuthClientProvider({
-      serverId: 72,
+      connection: pluginConnection(72),
       allowInteractive: true,
     });
     vi.mocked(safeStorage.decryptString).mockImplementationOnce(() => {
@@ -184,7 +189,7 @@ describe("DyadOAuthClientProvider", () => {
       const raw = Buffer.from("v10legacy-oauth").toString("base64");
       dbStore.set(74, raw);
       const provider = new DyadOAuthClientProvider({
-        serverId: 74,
+        connection: pluginConnection(74),
         allowInteractive: true,
       });
       vi.mocked(safeStorage.isEncryptionAvailable).mockReturnValue(false);
@@ -215,7 +220,7 @@ describe("DyadOAuthClientProvider", () => {
     const raw = Buffer.from(`enc:${json}`).toString("base64");
     dbStore.set(73, raw);
     const provider = new DyadOAuthClientProvider({
-      serverId: 73,
+      connection: pluginConnection(73),
       allowInteractive: true,
     });
     await expect(
@@ -226,14 +231,14 @@ describe("DyadOAuthClientProvider", () => {
 
   it("computes redirectUrl from the configured callback port", () => {
     const p = new DyadOAuthClientProvider({
-      serverId: 1,
+      connection: pluginConnection(1),
       callbackPort: 12345,
     });
     expect(p.redirectUrl).toBe("http://localhost:12345/callback");
   });
 
   it("round-trips tokens through encrypted storage", async () => {
-    const p = new DyadOAuthClientProvider({ serverId: 7 });
+    const p = new DyadOAuthClientProvider({ connection: pluginConnection(7) });
     expect(await p.tokens()).toBeUndefined();
     await p.saveTokens({
       access_token: "tok",
@@ -256,9 +261,9 @@ describe("DyadOAuthClientProvider", () => {
   });
 
   it("rejects writes from a revoked OAuth flow authority", async () => {
-    const authority = issueMcpOAuthWriteAuthority(71);
+    const authority = issueMcpOAuthWriteAuthority(pluginConnection(71));
     const staleProvider = new DyadOAuthClientProvider({
-      serverId: 71,
+      connection: pluginConnection(71),
       allowInteractive: true,
       writeAuthority: authority,
     });
@@ -268,16 +273,18 @@ describe("DyadOAuthClientProvider", () => {
     });
     const before = dbStore.get(71);
 
-    await revokeMcpOAuthWriteAuthority(71);
+    await revokeMcpOAuthWriteAuthority(pluginConnection(71));
     await staleProvider.saveTokens({
       access_token: "stale-after-revoke",
       token_type: "Bearer",
     });
     expect(dbStore.get(71)).toBe(before);
 
-    const replacementAuthority = issueMcpOAuthWriteAuthority(71);
+    const replacementAuthority = issueMcpOAuthWriteAuthority(
+      pluginConnection(71),
+    );
     const replacement = new DyadOAuthClientProvider({
-      serverId: 71,
+      connection: pluginConnection(71),
       allowInteractive: true,
       writeAuthority: replacementAuthority,
     });
@@ -292,7 +299,7 @@ describe("DyadOAuthClientProvider", () => {
 
   it("also revokes background providers that captured the prior epoch", async () => {
     const background = new DyadOAuthClientProvider({
-      serverId: 72,
+      connection: pluginConnection(72),
       allowInteractive: false,
     });
     await background.saveTokens({
@@ -301,7 +308,7 @@ describe("DyadOAuthClientProvider", () => {
     });
     const before = dbStore.get(72);
 
-    await revokeMcpOAuthWriteAuthority(72);
+    await revokeMcpOAuthWriteAuthority(pluginConnection(72));
     await background.saveTokens({
       access_token: "stale-background-refresh",
       token_type: "Bearer",
@@ -311,7 +318,7 @@ describe("DyadOAuthClientProvider", () => {
 
   it("seeds clientInformation from preregisteredClientId on first read", async () => {
     const p = new DyadOAuthClientProvider({
-      serverId: 9,
+      connection: pluginConnection(9),
       preregisteredClientId: "client-xyz",
     });
     const first = await p.clientInformation();
@@ -328,7 +335,7 @@ describe("DyadOAuthClientProvider", () => {
     // clientInformation must carry both so addClientAuthentication
     // can post them when the SDK builds the request.
     const p = new DyadOAuthClientProvider({
-      serverId: 91,
+      connection: pluginConnection(91),
       preregisteredClientId: "confidential-id",
       preregisteredClientSecret: "confidential-secret",
     });
@@ -341,7 +348,7 @@ describe("DyadOAuthClientProvider", () => {
     // Aligns with `addClientAuthentication` below: Basic for
     // confidential clients (RFC 6749 §2.3.1), `none` for public.
     const publicProvider = new DyadOAuthClientProvider({
-      serverId: 92,
+      connection: pluginConnection(92),
       preregisteredClientId: "id-only",
     });
     expect(publicProvider.clientMetadata.token_endpoint_auth_method).toBe(
@@ -349,7 +356,7 @@ describe("DyadOAuthClientProvider", () => {
     );
 
     const confidentialProvider = new DyadOAuthClientProvider({
-      serverId: 93,
+      connection: pluginConnection(93),
       preregisteredClientId: "id",
       preregisteredClientSecret: "sec",
     });
@@ -360,7 +367,7 @@ describe("DyadOAuthClientProvider", () => {
 
   it("persists saveClientInformation and skips reseeding from preregistered id", async () => {
     const p = new DyadOAuthClientProvider({
-      serverId: 11,
+      connection: pluginConnection(11),
       preregisteredClientId: "from-config",
       allowInteractive: true,
     });
@@ -375,7 +382,7 @@ describe("DyadOAuthClientProvider", () => {
 
   it("holds the PKCE code verifier in memory only and never on disk", async () => {
     const p = new DyadOAuthClientProvider({
-      serverId: 3,
+      connection: pluginConnection(3),
       allowInteractive: true,
     });
     await p.saveCodeVerifier("the-verifier");
@@ -386,7 +393,7 @@ describe("DyadOAuthClientProvider", () => {
   });
 
   it("throws when codeVerifier is requested without a prior save", async () => {
-    const p = new DyadOAuthClientProvider({ serverId: 4 });
+    const p = new DyadOAuthClientProvider({ connection: pluginConnection(4) });
     await expect(p.codeVerifier()).rejects.toThrow(
       /No PKCE code verifier in memory/,
     );
@@ -394,7 +401,7 @@ describe("DyadOAuthClientProvider", () => {
 
   it("opens the system browser when redirectToAuthorization is called in an interactive provider", async () => {
     const p = new DyadOAuthClientProvider({
-      serverId: 1,
+      connection: pluginConnection(1),
       allowInteractive: true,
     });
     await p.redirectToAuthorization(
@@ -405,11 +412,39 @@ describe("DyadOAuthClientProvider", () => {
     );
   });
 
+  it("asks for the account chooser when signing in another configuration", async () => {
+    const p = new DyadOAuthClientProvider({
+      connection: { serverId: 1, appConfigId: 3 },
+      allowInteractive: true,
+      requestAccountSelection: true,
+    });
+    await p.redirectToAuthorization(
+      new URL("https://example.com/authorize?foo=bar"),
+    );
+    expect(shell.openExternal).toHaveBeenCalledWith(
+      "https://example.com/authorize?foo=bar&prompt=select_account",
+    );
+  });
+
+  it("keeps a prompt the authorization server already chose", async () => {
+    const p = new DyadOAuthClientProvider({
+      connection: { serverId: 1, appConfigId: 3 },
+      allowInteractive: true,
+      requestAccountSelection: true,
+    });
+    await p.redirectToAuthorization(
+      new URL("https://example.com/authorize?prompt=consent"),
+    );
+    expect(shell.openExternal).toHaveBeenCalledWith(
+      "https://example.com/authorize?prompt=consent",
+    );
+  });
+
   it("refuses to open the browser when allowInteractive is not set", async () => {
     // Background providers (built by `mcp_manager`) must throw here
     // instead of opening a browser whose redirect has nowhere to
     // land. The error propagates out and the row shows "not connected".
-    const p = new DyadOAuthClientProvider({ serverId: 1 });
+    const p = new DyadOAuthClientProvider({ connection: pluginConnection(1) });
     await expect(
       p.redirectToAuthorization(new URL("https://example.com/authorize")),
     ).rejects.toThrow(/click Connect/);
@@ -418,7 +453,9 @@ describe("DyadOAuthClientProvider", () => {
 
   describe("addClientAuthentication", () => {
     it("uses Basic auth when token_endpoint_auth_method is client_secret_basic", async () => {
-      const p = new DyadOAuthClientProvider({ serverId: 20 });
+      const p = new DyadOAuthClientProvider({
+        connection: pluginConnection(20),
+      });
       await p.saveClientInformation({
         client_id: "cid",
         client_secret: "sec",
@@ -435,7 +472,9 @@ describe("DyadOAuthClientProvider", () => {
     });
 
     it("posts client_id + client_secret as body params for client_secret_post", async () => {
-      const p = new DyadOAuthClientProvider({ serverId: 21 });
+      const p = new DyadOAuthClientProvider({
+        connection: pluginConnection(21),
+      });
       await p.saveClientInformation({
         client_id: "cid",
         client_secret: "sec",
@@ -450,7 +489,9 @@ describe("DyadOAuthClientProvider", () => {
     });
 
     it("uses public PKCE (no secret) when the client has no secret", async () => {
-      const p = new DyadOAuthClientProvider({ serverId: 22 });
+      const p = new DyadOAuthClientProvider({
+        connection: pluginConnection(22),
+      });
       await p.saveClientInformation({ client_id: "cid" });
       const headers = new Headers();
       const params = new URLSearchParams();
@@ -468,7 +509,9 @@ describe("DyadOAuthClientProvider", () => {
       // would lose its binding here and crash trying to read
       // `this.clientInformation`. Arrow-function field binding keeps
       // `this` lexical, so the call still works.
-      const p = new DyadOAuthClientProvider({ serverId: 23 });
+      const p = new DyadOAuthClientProvider({
+        connection: pluginConnection(23),
+      });
       await p.saveClientInformation({ client_id: "cid" });
       const unbound = p.addClientAuthentication;
       const headers = new Headers();
@@ -484,7 +527,7 @@ describe("DyadOAuthClientProvider", () => {
       // the server rejects token exchange / refresh with
       // invalid_client.
       const p = new DyadOAuthClientProvider({
-        serverId: 25,
+        connection: pluginConnection(25),
         preregisteredClientId: "cid",
         preregisteredClientSecret: "sec",
       });
@@ -503,7 +546,7 @@ describe("DyadOAuthClientProvider", () => {
 
     it("honors token_endpoint_auth_methods_supported from metadata (Basic-only server)", async () => {
       const p = new DyadOAuthClientProvider({
-        serverId: 26,
+        connection: pluginConnection(26),
         preregisteredClientId: "cid",
         preregisteredClientSecret: "sec",
       });
@@ -523,7 +566,7 @@ describe("DyadOAuthClientProvider", () => {
       // Basic is the safer default per spec, and matches the
       // historical behavior pre-metadata-aware fix.
       const p = new DyadOAuthClientProvider({
-        serverId: 27,
+        connection: pluginConnection(27),
         preregisteredClientId: "cid",
         preregisteredClientSecret: "sec",
       });
@@ -545,7 +588,9 @@ describe("DyadOAuthClientProvider", () => {
       // server would reject with `invalid_client`. This test models
       // that pattern: invoke without awaiting, then assert params
       // are populated before any microtask boundary.
-      const p = new DyadOAuthClientProvider({ serverId: 24 });
+      const p = new DyadOAuthClientProvider({
+        connection: pluginConnection(24),
+      });
       await p.saveClientInformation({ client_id: "sync-cid" });
       const headers = new Headers();
       const params = new URLSearchParams();
@@ -558,7 +603,7 @@ describe("DyadOAuthClientProvider", () => {
   describe("invalidateCredentials", () => {
     async function seedFull(serverId: number) {
       const p = new DyadOAuthClientProvider({
-        serverId,
+        connection: pluginConnection(serverId),
         allowInteractive: true,
       });
       await p.saveTokens({ access_token: "t", token_type: "Bearer" });
@@ -595,7 +640,7 @@ describe("DyadOAuthClientProvider", () => {
       // probe path against the same persisted row.
       void seeded;
       const bg = new DyadOAuthClientProvider({
-        serverId: 35,
+        connection: pluginConnection(35),
         allowInteractive: false,
       });
       await bg.invalidateCredentials("tokens");
@@ -609,7 +654,7 @@ describe("DyadOAuthClientProvider", () => {
       const seeded = await seedFull(36);
       void seeded;
       const bg = new DyadOAuthClientProvider({
-        serverId: 36,
+        connection: pluginConnection(36),
         allowInteractive: false,
       });
       await bg.invalidateCredentials("all");
@@ -691,7 +736,7 @@ describe("DyadOAuthClientProvider", () => {
 
   it("falls back to base64-only storage when safeStorage encryption is unavailable", async () => {
     vi.mocked(safeStorage.isEncryptionAvailable).mockReturnValue(false);
-    const p = new DyadOAuthClientProvider({ serverId: 99 });
+    const p = new DyadOAuthClientProvider({ connection: pluginConnection(99) });
     await p.saveTokens({ access_token: "fallback-tok", token_type: "Bearer" });
     expect(safeStorage.encryptString).not.toHaveBeenCalled();
     // Round-trip still works (decrypt path also falls back).

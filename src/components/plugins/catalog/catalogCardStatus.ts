@@ -1,4 +1,5 @@
 import type { McpServer } from "@/ipc/types";
+import { mcpConnectionKey } from "@/shared/mcp_connection_ref";
 import type { McpCatalogEntry } from "@/ipc/types/mcp_catalog";
 import type { CatalogCardStatus } from "./CatalogCard";
 
@@ -27,17 +28,20 @@ export function catalogCardStatus({
   entry,
   addedSlugs,
   serverBySlug,
-  connectingServerId,
+  connectingKey,
 }: {
   entry: McpCatalogEntry;
   addedSlugs: ReadonlySet<string>;
   serverBySlug: ReadonlyMap<string, McpServer>;
-  connectingServerId: number | null;
+  /** mcpConnectionKey of the configuration whose connect flow is running. */
+  connectingKey: string | null;
 }): CatalogCardStatus {
   if (!addedSlugs.has(entry.slug)) return "not-added";
   const server = serverBySlug.get(entry.slug);
   if (!server) return "added";
-  if (connectingServerId === server.id) return "connecting";
+  if (connectingKey === mcpConnectionKey(server.connection)) {
+    return "connecting";
+  }
   if (catalogEntryCanConnect(entry) && !server.oauthConnected) {
     return "needs-connect";
   }

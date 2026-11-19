@@ -7,6 +7,7 @@ import { PluginSummaryCard } from "./PluginSummaryCard";
 const mocks = vi.hoisted(() => ({ disconnect: vi.fn(), connect: vi.fn() }));
 const server = McpServerSchema.parse({
   id: 1,
+  connection: { serverId: 1, appConfigId: null },
   name: "Locked plugin",
   transport: "http",
   command: null,
@@ -23,6 +24,9 @@ const server = McpServerSchema.parse({
   envUnreadable: false,
   headersUnreadable: false,
   catalogSlug: null,
+  defaultScope: "all",
+  defaultAppIds: [],
+  appConfigCount: 0,
   createdAt: new Date(0),
   updatedAt: new Date(0),
 });
@@ -30,6 +34,8 @@ vi.mock("@tanstack/react-router", () => ({ useNavigate: () => vi.fn() }));
 vi.mock("@/hooks/useMcp", () => ({
   useMcp: () => ({
     servers: [server],
+    appConfigs: [],
+    appScopedPluginsEnabled: false,
     toolsByServer: {},
     statusByServer: {},
     errorByServer: {},
@@ -37,13 +43,14 @@ vi.mock("@/hooks/useMcp", () => ({
     isServersLoading: false,
   }),
 }));
+vi.mock("@/hooks/useLoadApps", () => ({ useLoadApps: () => ({ apps: [] }) }));
 vi.mock("@/hooks/useMcpCatalog", () => ({
   useMcpCatalog: () => ({ data: { entries: [] }, isLoading: false }),
 }));
 vi.mock("./usePluginConnect", () => ({
   usePluginConnect: () => ({
-    connectingServerId: null,
-    disconnectingServerId: null,
+    connectingKey: null,
+    disconnectingKey: null,
     feedbackFor: () => null,
     onConnect: mocks.connect,
     onDisconnect: mocks.disconnect,
@@ -62,7 +69,10 @@ describe("unreadable plugin OAuth recovery", () => {
     expect(screen.getByText(/Unlock or restore your OS keyring/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Connect" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Reset OAuth" }));
-    expect(mocks.disconnect).toHaveBeenCalledWith(1);
+    expect(mocks.disconnect).toHaveBeenCalledWith({
+      serverId: 1,
+      appConfigId: null,
+    });
     expect(mocks.connect).not.toHaveBeenCalled();
   });
   it("routes the summary recovery action to the detail page", () => {
@@ -72,6 +82,7 @@ describe("unreadable plugin OAuth recovery", () => {
         server={server}
         needsSetup={false}
         setupLocked={false}
+        switchLocked={false}
         toolCount={null}
         enabledToolCount={null}
         discoveryFailed

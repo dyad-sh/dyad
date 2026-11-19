@@ -99,6 +99,7 @@ describe("user-input registry", () => {
       chatId: 1,
       toolName: "write_file",
       serverId: 2,
+      appConfigId: null,
       serverName: "test-server",
       classifier: "none",
     });
@@ -344,6 +345,7 @@ describe("user-input registry", () => {
       kind: "mcp-consent",
       chatId: 1,
       serverId: 1,
+      appConfigId: null,
       serverName: "server",
       toolName: "read",
       classifier: "racing",
@@ -362,6 +364,7 @@ describe("user-input registry", () => {
       kind: "mcp-consent",
       chatId: 1,
       serverId: 1,
+      appConfigId: null,
       serverName: "server",
       toolName: "read",
       classifier: "racing",

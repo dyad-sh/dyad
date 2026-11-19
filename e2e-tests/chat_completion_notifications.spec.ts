@@ -459,6 +459,7 @@ testWithNotificationsEnabled(
         window.webContents.send("user-input:requested", {
           requestId: "mcp-in-flight-request",
           serverId: 1,
+          appConfigId: null,
           chatId,
           deadlineAt: Date.now() + 300_000,
           kind: "mcp-consent",
@@ -575,6 +576,7 @@ testWithNotificationsEnabled(
         window.webContents.send("user-input:requested", {
           requestId: "mcp-request",
           serverId: 1,
+          appConfigId: null,
           chatId,
           deadlineAt: Date.now() + 300_000,
           kind: "mcp-consent",
@@ -613,6 +615,7 @@ testWithNotificationsEnabled(
         window.webContents.send("user-input:requested", {
           requestId: "mcp-request",
           serverId: 1,
+          appConfigId: null,
           chatId,
           deadlineAt: Date.now() + 300_000,
           kind: "mcp-consent",
@@ -651,6 +654,7 @@ testWithNotificationsEnabled(
         window.webContents.send("user-input:requested", {
           requestId: "mcp-request",
           serverId: 1,
+          appConfigId: null,
           chatId,
           deadlineAt: Date.now() + 300_000,
           kind: "mcp-consent",

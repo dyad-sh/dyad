@@ -241,7 +241,7 @@ describe("local-agent consent banner (integration)", () => {
     const eventBaseline = harness.bridge.sentEvents.length;
     const traceBaseline = getTraceLog("user_input").length;
     const consent = requireMcpToolConsent(harness.bridge.fakeEvent as any, {
-      serverId: 999,
+      connection: { serverId: 999, appConfigId: null },
       serverName: "race-server",
       toolName: "safe-tool",
       chatId: harness.chatId,

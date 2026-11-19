@@ -5,6 +5,7 @@ import type { PropsWithChildren } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { queryKeys } from "@/lib/queryKeys";
 import { DyadSuggestPlugin } from "./DyadSuggestPlugin";
 
 const mocks = vi.hoisted(() => ({
@@ -14,8 +15,14 @@ const mocks = vi.hoisted(() => ({
   probeConnection: vi.fn(),
   updateServer: vi.fn(),
   connectNewServer: vi.fn(),
-  connectingServerId: null as number | null,
+  connectingKey: null as string | null,
   showError: vi.fn(),
+  navigate: vi.fn(),
+  listServers: vi.fn(async (): Promise<unknown[]> => []),
+}));
+
+vi.mock("@tanstack/react-router", () => ({
+  useNavigate: () => mocks.navigate,
 }));
 
 vi.mock("react-i18next", () => ({
@@ -38,6 +45,10 @@ vi.mock("react-i18next", () => ({
           return "Don't suggest again";
         case "suggestPlugin.neverTitle":
           return `Won't suggest ${values?.name} again`;
+        case "suggestPlugin.unavailableTitle":
+          return `${values?.name} isn't set up for this app`;
+        case "suggestPlugin.openPluginSettings":
+          return "Open plugin settings";
         default:
           return key;
       }
@@ -53,7 +64,7 @@ vi.mock("@/user_input/hooks", () => ({
 vi.mock("@/components/plugins/usePluginConnect", () => ({
   usePluginConnect: () => ({
     connectNewServer: mocks.connectNewServer,
-    connectingServerId: mocks.connectingServerId,
+    connectingKey: mocks.connectingKey,
   }),
 }));
 
@@ -63,6 +74,7 @@ vi.mock("@/ipc/types", () => ({
       addFromCatalog: mocks.addFromCatalog,
       probeConnection: mocks.probeConnection,
       updateServer: mocks.updateServer,
+      listServers: mocks.listServers,
     },
   },
 }));
@@ -83,6 +95,7 @@ const PENDING = {
 };
 const CREATED = {
   id: 42,
+  connection: { serverId: 42, appConfigId: null },
   enabled: true,
   oauthEnabled: false,
   oauthConnected: false,
@@ -92,10 +105,13 @@ const CREATED = {
 
 function renderCard(
   props: Partial<Parameters<typeof DyadSuggestPlugin>[0]> = {},
+  { servers }: { servers?: unknown[] } = {},
 ) {
   const store = createStore();
   store.set(selectedChatIdAtom, 7);
   const queryClient = new QueryClient();
+  // Already-loaded plugins, so the card has them on its first render.
+  if (servers) queryClient.setQueryData(queryKeys.mcp.servers, servers);
   const Wrapper = ({ children }: PropsWithChildren) => (
     <QueryClientProvider client={queryClient}>
       <Provider store={store}>{children}</Provider>
@@ -117,11 +133,45 @@ function renderCard(
 const connectButton = () =>
   screen.getByRole<HTMLButtonElement>("button", { name: "Connect Vercel" });
 
+describe("DyadSuggestPlugin for a plugin not set up for the chat's app", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.pending = new Map();
+  });
+
+  it("links to the plugin's settings", async () => {
+    const servers = [{ id: 12, catalogSlug: "vercel" }];
+    mocks.listServers.mockResolvedValue(servers);
+    renderCard({ requestId: undefined, outcome: "unavailable" }, { servers });
+
+    expect(screen.getByText("Vercel isn't set up for this app")).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open plugin settings" }),
+    );
+    expect(mocks.navigate).toHaveBeenCalledOnce();
+    expect(mocks.navigate).toHaveBeenCalledWith({
+      to: "/plugins/$serverId",
+      params: { serverId: 12 },
+    });
+  });
+
+  it("falls back to the plugins list when the plugin is gone", async () => {
+    mocks.listServers.mockResolvedValue([]);
+    renderCard({ requestId: undefined, outcome: "unavailable" });
+
+    await waitFor(() => expect(mocks.listServers).toHaveBeenCalled());
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open plugin settings" }),
+    );
+    expect(mocks.navigate).toHaveBeenCalledWith({ to: "/plugins" });
+  });
+});
+
 describe("DyadSuggestPlugin", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.pending = new Map([[7, PENDING]]);
-    mocks.connectingServerId = null;
+    mocks.connectingKey = null;
     mocks.addFromCatalog.mockResolvedValue(CREATED);
     mocks.probeConnection.mockResolvedValue({ status: "ok", error: null });
     mocks.connectNewServer.mockResolvedValue(true);
@@ -152,7 +202,10 @@ describe("DyadSuggestPlugin", () => {
       }),
     );
     expect(mocks.addFromCatalog).toHaveBeenCalledWith({ slug: "vercel" });
-    expect(mocks.probeConnection).toHaveBeenCalledWith(42);
+    expect(mocks.probeConnection).toHaveBeenCalledWith({
+      serverId: 42,
+      appConfigId: null,
+    });
     expect(mocks.connectNewServer).not.toHaveBeenCalled();
   });
 
@@ -222,7 +275,10 @@ describe("DyadSuggestPlugin", () => {
       }),
     );
     // An authorized plugin is probed too before the agent resumes.
-    expect(mocks.probeConnection).toHaveBeenCalledWith(42);
+    expect(mocks.probeConnection).toHaveBeenCalledWith({
+      serverId: 42,
+      appConfigId: null,
+    });
   });
 
   it("skips OAuth when the row came back already authorized", async () => {
@@ -274,7 +330,7 @@ describe("DyadSuggestPlugin", () => {
   });
 
   it("disables both buttons while another connect flow holds the slot", () => {
-    mocks.connectingServerId = 3;
+    mocks.connectingKey = "3";
     renderCard();
 
     expect(connectButton().disabled).toBe(true);

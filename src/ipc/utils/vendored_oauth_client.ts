@@ -1,7 +1,4 @@
 import log from "electron-log";
-import { and, eq } from "drizzle-orm";
-import { db } from "../../db";
-import { mcpServers } from "../../db/schema";
 import {
   getRemoteMcpCatalog,
   peekRemoteMcpCatalog,
@@ -12,6 +9,14 @@ import {
   revokeMcpOAuthWriteAuthority,
 } from "./mcp_oauth_provider";
 import { decryptFromString, encryptToString } from "./secret_storage";
+import {
+  mcpConnectionKey,
+  type McpConnectionRef,
+} from "@/shared/mcp_connection_ref";
+import {
+  readMcpConnection,
+  writeMcpConnectionOAuthClientIfHttpOAuth,
+} from "./mcp_connection_store";
 
 const logger = log.scope("vendored_oauth_client");
 
@@ -30,9 +35,12 @@ const logger = log.scope("vendored_oauth_client");
  * read, or on an unexpected failure, the stored client is left alone and the
  * caller continues with it. `cachedOnly` keeps callers on hot paths off the
  * network.
+ *
+ * An app-specific configuration uses its plugin's catalog entry, so it
+ * gets the same vendored client.
  */
 export async function syncVendoredOAuthClient(
-  serverId: number,
+  connection: McpConnectionRef,
   { cachedOnly = false }: { cachedOnly?: boolean } = {},
 ): Promise<boolean> {
   // A cached client whose provider lost its write authority can no longer
@@ -40,10 +48,10 @@ export async function syncVendoredOAuthClient(
   // follow the fence fail.
   const fence = { revoked: false };
   try {
-    return await syncOrThrow(serverId, cachedOnly, fence);
+    return await syncOrThrow(connection, cachedOnly, fence);
   } catch (error) {
     logger.warn(
-      `Could not refresh the vendored OAuth client for server ${serverId}`,
+      `Could not refresh the vendored OAuth client for server ${mcpConnectionKey(connection)}`,
       error,
     );
     return fence.revoked;
@@ -51,14 +59,11 @@ export async function syncVendoredOAuthClient(
 }
 
 async function syncOrThrow(
-  serverId: number,
+  connection: McpConnectionRef,
   cachedOnly: boolean,
   fence: { revoked: boolean },
 ): Promise<boolean> {
-  const [server] = await db
-    .select()
-    .from(mcpServers)
-    .where(eq(mcpServers.id, serverId));
+  const server = await readMcpConnection(connection);
   // Only an http server with OAuth on can use a client, so anything else
   // needs no catalog read at all.
   if (!server?.catalogSlug) return false;
@@ -85,37 +90,29 @@ async function syncOrThrow(
     server.oauthClientId === vendored.clientId && storedSecret === wantedSecret;
   // A stored client that disagrees with the catalog keeps being sent even
   // once the columns are right, so it counts as stale on its own.
-  const stored = await readStoredOAuthClient(serverId);
+  const stored = await readStoredOAuthClient(connection);
   const storedStateMatches =
     !stored ||
     (stored.client_id === vendored.clientId &&
       (stored.client_secret ?? null) === wantedSecret);
   if (columnsMatch && storedStateMatches) return false;
 
-  logger.info(`Refreshing the vendored OAuth client for server ${serverId}`);
+  logger.info(
+    `Refreshing the vendored OAuth client for server ${mcpConnectionKey(connection)}`,
+  );
   // Fence providers built from the old client: their later writes would put
   // the credentials this is replacing back.
-  await revokeMcpOAuthWriteAuthority(serverId);
+  await revokeMcpOAuthWriteAuthority(connection);
   fence.revoked = true;
   // Conditional on the row still being an http server with OAuth on, the
   // same shape checked above: an edit landing in between must not leave a
   // client on a server that no longer uses one.
-  const written = await db
-    .update(mcpServers)
-    .set({
-      oauthClientId: vendored.clientId,
-      oauthClientSecret: wantedSecret ? encryptToString(wantedSecret) : null,
-    })
-    .where(
-      and(
-        eq(mcpServers.id, serverId),
-        eq(mcpServers.transport, "http"),
-        eq(mcpServers.oauthEnabled, true),
-      ),
-    )
-    .returning({ id: mcpServers.id });
-  if (written.length === 0) return true;
-  await applyOAuthClientChange(serverId, {
+  const written = await writeMcpConnectionOAuthClientIfHttpOAuth(connection, {
+    oauthClientId: vendored.clientId,
+    oauthClientSecret: wantedSecret ? encryptToString(wantedSecret) : null,
+  });
+  if (!written) return true;
+  await applyOAuthClientChange(connection, {
     clientId: vendored.clientId,
     clientSecret: wantedSecret,
     clientIdChanged: server.oauthClientId !== vendored.clientId,

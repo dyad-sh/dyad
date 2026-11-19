@@ -5,6 +5,7 @@ import type { AddressInfo } from "node:net";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { MCPClient } from "@ai-sdk/mcp";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { pluginConnection } from "@/shared/mcp_connection_ref";
 
 const mocks = vi.hoisted(() => ({
   rows: new Map<number, Record<string, unknown>>(),
@@ -121,8 +122,8 @@ describe("McpManager lifecycle", () => {
     mocks.createMCPClient.mockReturnValueOnce(pendingClient.promise);
     const manager = new McpManager();
 
-    const first = manager.getClient(1);
-    const second = manager.getClient(1);
+    const first = manager.getClient(pluginConnection(1));
+    const second = manager.getClient(pluginConnection(1));
 
     await vi.waitFor(() => {
       expect(mocks.createMCPClient).toHaveBeenCalledTimes(1);
@@ -142,8 +143,10 @@ describe("McpManager lifecycle", () => {
       .mockResolvedValueOnce(client);
     const manager = new McpManager();
 
-    await expect(manager.getClient(2)).rejects.toThrow("launch failed");
-    await expect(manager.getClient(2)).resolves.toBe(client);
+    await expect(manager.getClient(pluginConnection(2))).rejects.toThrow(
+      "launch failed",
+    );
+    await expect(manager.getClient(pluginConnection(2))).resolves.toBe(client);
 
     expect(mocks.createMCPClient).toHaveBeenCalledTimes(2);
     expect(mocks.stdioOptions).toHaveLength(2);
@@ -160,12 +163,14 @@ describe("McpManager lifecycle", () => {
       .mockResolvedValueOnce(replacement);
     const manager = new McpManager();
 
-    const initializationResult = manager.getClient(3).catch((error) => error);
+    const initializationResult = manager
+      .getClient(pluginConnection(3))
+      .catch((error) => error);
     await vi.waitFor(() => {
       expect(mocks.createMCPClient).toHaveBeenCalledTimes(1);
     });
 
-    const disposal = manager.dispose(3);
+    const disposal = manager.dispose(pluginConnection(3));
     pendingClient.resolve(client);
 
     await expect(disposal).resolves.toBeUndefined();
@@ -176,7 +181,9 @@ describe("McpManager lifecycle", () => {
     });
     await expect(initializationResult).resolves.toBeInstanceOf(DyadError);
     expect(close).toHaveBeenCalledTimes(1);
-    await expect(manager.getClient(3)).resolves.toBe(replacement);
+    await expect(manager.getClient(pluginConnection(3))).resolves.toBe(
+      replacement,
+    );
   });
 
   it("disposes one server without disturbing other cached clients", async () => {
@@ -192,16 +199,18 @@ describe("McpManager lifecycle", () => {
       .mockResolvedValueOnce(replacement);
     const manager = new McpManager();
 
-    await manager.getClient(4);
-    await manager.getClient(5);
-    const firstDisposal = manager.dispose(4);
-    const duplicateDisposal = manager.dispose(4);
+    await manager.getClient(pluginConnection(4));
+    await manager.getClient(pluginConnection(5));
+    const firstDisposal = manager.dispose(pluginConnection(4));
+    const duplicateDisposal = manager.dispose(pluginConnection(4));
 
     expect(duplicateDisposal).toBe(firstDisposal);
     await expect(firstDisposal).resolves.toBeUndefined();
     expect(firstClose).toHaveBeenCalledTimes(1);
-    await expect(manager.getClient(5)).resolves.toBe(second);
-    await expect(manager.getClient(4)).resolves.toBe(replacement);
+    await expect(manager.getClient(pluginConnection(5))).resolves.toBe(second);
+    await expect(manager.getClient(pluginConnection(4))).resolves.toBe(
+      replacement,
+    );
     expect(mocks.createMCPClient).toHaveBeenCalledTimes(3);
   });
 
@@ -217,8 +226,8 @@ describe("McpManager lifecycle", () => {
       .mockResolvedValueOnce(createClient(successfulClose));
     const manager = new McpManager();
 
-    await manager.getClient(6);
-    await manager.getClient(7);
+    await manager.getClient(pluginConnection(6));
+    await manager.getClient(pluginConnection(7));
 
     await expect(manager.disposeAll()).resolves.toBeUndefined();
     expect(failingClose).toHaveBeenCalledTimes(1);
@@ -241,9 +250,9 @@ describe("McpManager lifecycle", () => {
         .mockResolvedValueOnce(replacement);
       const manager = new McpManager();
 
-      await manager.getClient(8);
-      const disposal = manager.dispose(8);
-      const retry = manager.getClient(8);
+      await manager.getClient(pluginConnection(8));
+      const disposal = manager.dispose(pluginConnection(8));
+      const retry = manager.getClient(pluginConnection(8));
 
       await vi.advanceTimersByTimeAsync(1_500);
       await expect(disposal).resolves.toBeUndefined();
@@ -266,12 +275,12 @@ describe("McpManager lifecycle", () => {
         .mockResolvedValueOnce(replacement);
       const manager = new McpManager();
 
-      const firstInitialization = manager.getClient(9);
+      const firstInitialization = manager.getClient(pluginConnection(9));
       await vi.advanceTimersByTimeAsync(0);
       expect(mocks.createMCPClient).toHaveBeenCalledTimes(1);
 
-      const disposal = manager.dispose(9);
-      const retry = manager.getClient(9);
+      const disposal = manager.dispose(pluginConnection(9));
+      const retry = manager.getClient(pluginConnection(9));
 
       await vi.advanceTimersByTimeAsync(1_500);
       await expect(disposal).resolves.toBeUndefined();
@@ -314,7 +323,9 @@ describe("McpManager.listToolsWithin", () => {
     );
     const manager = new McpManager();
 
-    await expect(manager.listToolsWithin(20)).resolves.toBe(toolSet);
+    await expect(manager.listToolsWithin(pluginConnection(20))).resolves.toBe(
+      toolSet,
+    );
   });
 
   it("times out a slow start without killing it, so a later call reuses the finished client", async () => {
@@ -327,7 +338,9 @@ describe("McpManager.listToolsWithin", () => {
       mocks.createMCPClient.mockReturnValueOnce(slowStart.promise);
       const manager = new McpManager();
 
-      const first = manager.listToolsWithin(21, { timeoutMs: 5_000 });
+      const first = manager.listToolsWithin(pluginConnection(21), {
+        timeoutMs: 5_000,
+      });
       const firstResult = expect(first).rejects.toBeInstanceOf(
         McpListToolsTimeoutError,
       );
@@ -337,7 +350,9 @@ describe("McpManager.listToolsWithin", () => {
       // The launch keeps running after the caller gave up (e.g. `npx` on a
       // cold cache), and the next turn joins it instead of relaunching.
       slowStart.resolve({ close, tools: async () => toolSet } as never);
-      await expect(manager.listToolsWithin(21)).resolves.toBe(toolSet);
+      await expect(manager.listToolsWithin(pluginConnection(21))).resolves.toBe(
+        toolSet,
+      );
       expect(mocks.createMCPClient).toHaveBeenCalledTimes(1);
       expect(close).not.toHaveBeenCalled();
     } finally {
@@ -358,7 +373,9 @@ describe("McpManager.listToolsWithin", () => {
       mocks.createMCPClient.mockResolvedValueOnce({ close, tools } as never);
       const manager = new McpManager();
 
-      const first = manager.listToolsWithin(25, { timeoutMs: 5_000 });
+      const first = manager.listToolsWithin(pluginConnection(25), {
+        timeoutMs: 5_000,
+      });
       const firstResult = expect(first).rejects.toBeInstanceOf(
         McpListToolsTimeoutError,
       );
@@ -368,7 +385,9 @@ describe("McpManager.listToolsWithin", () => {
       // Another chat may be mid tool call on this client, so it stays open
       // and the next call simply asks again.
       expect(close).not.toHaveBeenCalled();
-      await expect(manager.listToolsWithin(25)).resolves.toBe(toolSet);
+      await expect(manager.listToolsWithin(pluginConnection(25))).resolves.toBe(
+        toolSet,
+      );
       expect(mocks.createMCPClient).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();
@@ -381,7 +400,9 @@ describe("McpManager.listToolsWithin", () => {
     const manager = new McpManager();
     const controller = new AbortController();
 
-    const pending = manager.listToolsWithin(22, { signal: controller.signal });
+    const pending = manager.listToolsWithin(pluginConnection(22), {
+      signal: controller.signal,
+    });
     controller.abort(new Error("stopped by user"));
 
     await expect(pending).rejects.toThrow("stopped by user");
@@ -394,7 +415,9 @@ describe("McpManager.listToolsWithin", () => {
     controller.abort(new Error("stopped by user"));
 
     await expect(
-      manager.listToolsWithin(23, { signal: controller.signal }),
+      manager.listToolsWithin(pluginConnection(23), {
+        signal: controller.signal,
+      }),
     ).rejects.toThrow("stopped by user");
     expect(mocks.createMCPClient).not.toHaveBeenCalled();
   });
@@ -421,7 +444,7 @@ describe("McpManager.listToolsWithin", () => {
 
     try {
       await expect(
-        manager.listToolsWithin(24, { timeoutMs: 300 }),
+        manager.listToolsWithin(pluginConnection(24), { timeoutMs: 300 }),
       ).rejects.toBeInstanceOf(McpListToolsTimeoutError);
     } finally {
       server.closeAllConnections();
@@ -515,7 +538,7 @@ describe("McpManager.listToolsWithin", () => {
       const manager = new McpManager();
 
       try {
-        const tools = await manager.listToolsWithin(26);
+        const tools = await manager.listToolsWithin(pluginConnection(26));
         expect(Object.keys(tools)).toEqual(["inspect_artboard"]);
         await expect(
           tools.inspect_artboard.execute(
@@ -578,7 +601,9 @@ describe("McpManager unreadable secrets", () => {
       envEncrypted: undecryptable,
     });
 
-    await expect(new McpManager().getClient(1)).rejects.toThrow(
+    await expect(
+      new McpManager().getClient(pluginConnection(1)),
+    ).rejects.toThrow(
       /Could not decrypt the environment variables for "broken"/,
     );
     expect(mocks.createMCPClient).not.toHaveBeenCalled();
@@ -594,9 +619,9 @@ describe("McpManager unreadable secrets", () => {
       headersEncrypted: undecryptable,
     });
 
-    await expect(new McpManager().getClient(2)).rejects.toThrow(
-      /Could not decrypt the headers for "broken-http"/,
-    );
+    await expect(
+      new McpManager().getClient(pluginConnection(2)),
+    ).rejects.toThrow(/Could not decrypt the headers for "broken-http"/);
     expect(mocks.createMCPClient).not.toHaveBeenCalled();
   });
 
@@ -612,7 +637,9 @@ describe("McpManager unreadable secrets", () => {
     });
     mocks.createMCPClient.mockResolvedValue(createClient());
 
-    await expect(new McpManager().getClient(3)).resolves.toBeDefined();
+    await expect(
+      new McpManager().getClient(pluginConnection(3)),
+    ).resolves.toBeDefined();
     expect(mocks.stdioOptions[0]).toMatchObject({
       env: { TEST_MCP: "true" },
     });

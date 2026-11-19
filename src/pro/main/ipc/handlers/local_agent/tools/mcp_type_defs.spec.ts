@@ -23,6 +23,7 @@ import {
   endTurnFinalization,
   tryBeginTurnFinalization,
 } from "../subagents/mutation_activity_tracker";
+import { pluginConnection } from "@/shared/mcp_connection_ref";
 
 vi.mock("@/ipc/utils/mcp_manager", () => {
   const getClient = vi.fn();
@@ -30,8 +31,8 @@ vi.mock("@/ipc/utils/mcp_manager", () => {
     mcpManager: {
       getClient,
       // Mirror the real wrapper so tests can stub the client alone.
-      listToolsWithin: vi.fn((serverId: number) =>
-        getClient(serverId).then((client: any) => client.tools()),
+      listToolsWithin: vi.fn((connection: unknown) =>
+        getClient(connection).then((client: any) => client.tools()),
       ),
     },
   };
@@ -52,8 +53,9 @@ vi.mock("@/main/settings", () => ({
 function def(overrides: Partial<McpToolDef> & { jsName: string }): McpToolDef {
   return {
     toolKey: overrides.jsName,
-    serverId: 1,
+    connection: { serverId: 1, appConfigId: null },
     serverName: "test_server",
+    displayName: "test_server",
     toolName: overrides.jsName,
     description: undefined,
     inputSchema: { type: "object" },
@@ -314,8 +316,9 @@ function makeDef(): McpToolDef {
   return {
     jsName: "srv__hello",
     toolKey: "srv__hello",
-    serverId: 42,
+    connection: { serverId: 42, appConfigId: null },
     serverName: "srv",
+    displayName: "srv",
     toolName: "hello",
     description: "Greet",
     inputSchema: { type: "object" },
@@ -415,11 +418,14 @@ describe("buildMcpCapabilityMap", () => {
     }).srv__hello({});
 
     await vi.waitFor(() =>
-      expect(mcpManager.getClient).toHaveBeenCalledWith(42),
+      expect(mcpManager.getClient).toHaveBeenCalledWith(pluginConnection(42)),
     );
-    expect(mcpManager.listToolsWithin).toHaveBeenCalledWith(42, {
-      signal: abortController.signal,
-    });
+    expect(mcpManager.listToolsWithin).toHaveBeenCalledWith(
+      pluginConnection(42),
+      {
+        signal: abortController.signal,
+      },
+    );
     // The lookup is in flight, so the turn must not be finalizable yet.
     expect(tryBeginTurnFinalization(turnId)).toBe(false);
     abortController.abort();

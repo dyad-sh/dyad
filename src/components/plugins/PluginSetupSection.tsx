@@ -6,9 +6,10 @@ import {
   isRequiredInput,
   type UserSuppliedInput,
 } from "@/ipc/types/mcp_catalog";
-import type { McpServer } from "@/ipc/types";
-import type { McpServerUpdate } from "@/ipc/types/mcp";
+import type { McpConnectionConfig } from "@/ipc/types";
+import type { McpConnectionEdit } from "@/hooks/useMcp";
 import { useOauthCallbackPort } from "./AddPluginDialog";
+import { mcpConnectionKey } from "@/shared/mcp_connection_ref";
 
 // A stable key per input, and where its value is stored, both derive from
 // `kind` (plus `name` for the ones that address a specific header/var).
@@ -45,10 +46,10 @@ export function PluginSetupSection({
   variant = "setup",
   disabled = false,
 }: {
-  server: McpServer;
+  server: McpConnectionConfig;
   inputs: UserSuppliedInput[];
   isSaving: boolean;
-  onSave: (update: McpServerUpdate) => Promise<void>;
+  onSave: (update: McpConnectionEdit) => Promise<void>;
   variant?: "setup" | "optional";
   disabled?: boolean;
 }) {
@@ -69,9 +70,12 @@ export function PluginSetupSection({
   );
 
   const save = async () => {
-    const update: McpServerUpdate = isSetup
-      ? { id: server.id, enabled: true }
-      : { id: server.id };
+    // Finishing setup turns a plugin on. An app-specific configuration has
+    // no switch of its own; it follows its plugin's.
+    const update: McpConnectionEdit =
+      isSetup && server.connection.appConfigId === null
+        ? { enabled: true }
+        : {};
     const headers: Record<string, string> = { ...server.headersJson };
     const env: Record<string, string> = { ...server.envJson };
     let wroteHeader = false;
@@ -116,7 +120,7 @@ export function PluginSetupSection({
           const key = keyOf(input);
           // Namespace the DOM id by server so two setups on screen can't
           // share an id.
-          const fieldId = `setup-${server.id}-${key}`;
+          const fieldId = `setup-${mcpConnectionKey(server.connection)}-${key}`;
           return (
             <div key={key} className="space-y-1">
               <Label htmlFor={fieldId}>{labelOf(input, isSetup)}</Label>

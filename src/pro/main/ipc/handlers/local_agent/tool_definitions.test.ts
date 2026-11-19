@@ -137,8 +137,9 @@ describe("Build mode tool profile", () => {
         {
           jsName: "test_server__large_tool",
           toolKey: "test-server__large-tool",
-          serverId: 1,
+          connection: { serverId: 1, appConfigId: null },
           serverName: "test-server",
+          displayName: "test-server",
           toolName: "large-tool",
           description: "A connected MCP tool with a declaration to count.",
           inputSchema: {

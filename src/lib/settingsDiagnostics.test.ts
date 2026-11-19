@@ -114,6 +114,7 @@ describe("getSessionDebugSettings", () => {
         "enableAdvancedSubagents",
         "enableAppBlueprint",
         "enableAppPreviewDomains",
+        "enableAppScopedPlugins",
         "enableAutoReview",
         "enableAutoUpdate",
         "enableChatEventNotifications",

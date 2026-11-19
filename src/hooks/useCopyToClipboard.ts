@@ -181,7 +181,8 @@ export const useCopyToClipboard = () => {
         if (
           attributes.outcome !== "connected" &&
           attributes.outcome !== "declined" &&
-          attributes.outcome !== "never"
+          attributes.outcome !== "never" &&
+          attributes.outcome !== "unavailable"
         ) {
           return "";
         }

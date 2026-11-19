@@ -11,9 +11,14 @@ import {
   type McpToolSet,
 } from "@/ipc/utils/mcp_manager";
 import { SANDBOX_HOST_CALL_NAMES } from "@/ipc/utils/sandbox/capabilities";
-import { mcpServers } from "@/db/schema";
-import { db } from "@/db";
-import { eq } from "drizzle-orm";
+import {
+  mcpConnectionKey,
+  type McpConnectionRef,
+} from "@/shared/mcp_connection_ref";
+import {
+  resolveMcpConnectionsForApp,
+  type ResolvedMcpConnection,
+} from "@/ipc/utils/mcp_app_scoping";
 import { sanitizeMcpName } from "@/ipc/utils/mcp_tool_utils";
 import { requireMcpToolConsent } from "@/ipc/utils/mcp_consent";
 import { readSettings } from "@/main/settings";
@@ -29,6 +34,7 @@ import {
   truncatedFromAttr,
 } from "@/ipc/utils/mcp_transcript_preview";
 import { withTrackedMutation } from "../subagents/mutation_activity_tracker";
+import { isAppScopedPluginsEnabled } from "@/ipc/utils/mcp_app_scoped_experiment";
 
 const logger = log.scope("mcp_tools");
 
@@ -46,18 +52,43 @@ export interface McpToolDef {
   jsName: string;
   /** Original MCP tool key (serverName__toolName, matching getMcpTools). */
   toolKey: string;
-  serverId: number;
+  /** The plugin, and the app-specific configuration in use if any. */
+  connection: McpConnectionRef;
+  /** The plugin's name, which the agent sees and tool keys are built from. */
   serverName: string;
+  /** Shown to the user; names the app-specific configuration when one is used. */
+  displayName: string;
   toolName: string;
   description?: string;
   /** Tool input schema, normalized to JSON Schema at collection time. */
   inputSchema: JSONSchema7;
 }
 
-let cachedMcpToolDefs: McpToolDef[] = [];
+// Each app can use different plugin configurations, so each keeps its own
+// last complete tool set. Only the most recently loaded apps are kept.
+const MAX_CACHED_APPS = 20;
+const cachedMcpToolDefs = new Map<number, McpToolDef[]>();
 
-export function getCachedMcpToolDefs(): McpToolDef[] {
-  return [...cachedMcpToolDefs];
+function cacheMcpToolDefs(appId: number, defs: McpToolDef[]): void {
+  cachedMcpToolDefs.delete(appId);
+  cachedMcpToolDefs.set(appId, defs);
+  if (cachedMcpToolDefs.size > MAX_CACHED_APPS) {
+    const oldest = cachedMcpToolDefs.keys().next().value;
+    if (oldest !== undefined) cachedMcpToolDefs.delete(oldest);
+  }
+}
+
+/**
+ * The last complete tool set loaded for this app. With the experiment off
+ * every app has the same plugins, so an app that hasn't loaded its own yet
+ * gets the most recently loaded set.
+ */
+export function getCachedMcpToolDefs(appId: number): McpToolDef[] {
+  const own = cachedMcpToolDefs.get(appId);
+  if (own) return [...own];
+  if (isAppScopedPluginsEnabled()) return [];
+  const latest = [...cachedMcpToolDefs.values()].at(-1);
+  return [...(latest ?? [])];
 }
 
 /**
@@ -73,7 +104,7 @@ function toJsIdentifier(name: string): string {
 }
 
 export interface LoadedMcpServerTools {
-  server: typeof mcpServers.$inferSelect;
+  server: ResolvedMcpConnection;
   tools: McpToolSet;
 }
 
@@ -84,16 +115,16 @@ export interface LoadedMcpServerTools {
  * that fail or time out are skipped; results keep the servers' query order.
  */
 export async function loadEnabledMcpServerTools({
+  appId,
   abortSignal,
   onWarningMessage,
 }: {
+  /** The chat's app; picks which configuration of each plugin is used. */
+  appId: number;
   abortSignal?: AbortSignal;
   onWarningMessage?: (message: string) => void;
-} = {}): Promise<LoadedMcpServerTools[]> {
-  const servers = await db
-    .select()
-    .from(mcpServers)
-    .where(eq(mcpServers.enabled, true as any));
+}): Promise<LoadedMcpServerTools[]> {
+  const servers = await resolveMcpConnectionsForApp(appId);
   if (servers.length === 0) return [];
 
   const startedAt = performance.now();
@@ -101,11 +132,11 @@ export async function loadEnabledMcpServerTools({
     servers.map(async (server) => {
       const serverStartedAt = performance.now();
       try {
-        const tools = await mcpManager.listToolsWithin(server.id, {
+        const tools = await mcpManager.listToolsWithin(server.connection, {
           signal: abortSignal,
         });
         logger.info(
-          `Loaded ${Object.keys(tools).length} tools from MCP server ${server.id} (${server.name}) in ${elapsedMs(serverStartedAt)}ms`,
+          `Loaded ${Object.keys(tools).length} tools from MCP server ${mcpConnectionKey(server.connection)} (${server.displayName}) in ${elapsedMs(serverStartedAt)}ms`,
         );
         return { server, tools };
       } catch (error) {
@@ -113,14 +144,14 @@ export async function loadEnabledMcpServerTools({
         if (error instanceof McpListToolsTimeoutError) {
           const seconds = MCP_LIST_TOOLS_TIMEOUT_MS / 1000;
           logger.warn(
-            `MCP server ${server.id} (${server.name}, ${server.transport}) did not return tools within ${seconds}s; skipping it for this turn`,
+            `MCP server ${mcpConnectionKey(server.connection)} (${server.displayName}, ${server.transport}) did not return tools within ${seconds}s; skipping it for this turn`,
           );
           onWarningMessage?.(
-            `MCP server "${server.name}" didn't respond within ${seconds}s, so its tools weren't available for this response.`,
+            `MCP server "${server.displayName}" didn't respond within ${seconds}s, so its tools weren't available for this response.`,
           );
         } else {
           logger.warn(
-            `Failed to load tools for MCP server ${server.id} (${server.name})`,
+            `Failed to load tools for MCP server ${mcpConnectionKey(server.connection)} (${server.displayName})`,
             error,
           );
         }
@@ -143,13 +174,13 @@ function elapsedMs(startedAt: number): number {
 }
 
 export async function collectMcpToolDefs(
-  options: Parameters<typeof loadEnabledMcpServerTools>[0] = {},
+  options: Parameters<typeof loadEnabledMcpServerTools>[0],
 ): Promise<McpToolDef[]> {
   let loadedServers: LoadedMcpServerTools[];
   try {
     loadedServers = await loadEnabledMcpServerTools(options);
   } catch {
-    cachedMcpToolDefs = [];
+    cachedMcpToolDefs.delete(options.appId);
     return [];
   }
 
@@ -166,7 +197,7 @@ export async function collectMcpToolDefs(
   // maps are merged.
   const seenJsNames = new Set<string>(SANDBOX_HOST_CALL_NAMES);
   for (const { server: s, tools: toolSet } of loadedServers) {
-    const serverNameSanitized = sanitizeMcpName(s.name || "");
+    const serverNameSanitized = sanitizeMcpName(s.pluginName || "");
     for (const [toolName, mcpTool] of Object.entries(toolSet)) {
       const sanitizedToolName = sanitizeMcpName(toolName);
       const toolKey = `${serverNameSanitized}__${sanitizedToolName}`;
@@ -191,8 +222,9 @@ export async function collectMcpToolDefs(
       defs.push({
         jsName,
         toolKey,
-        serverId: s.id,
-        serverName: s.name || "",
+        connection: s.connection,
+        serverName: s.pluginName || "",
+        displayName: s.displayName || s.pluginName || "",
         toolName,
         description: mcpTool.description,
         inputSchema,
@@ -202,7 +234,7 @@ export async function collectMcpToolDefs(
   // A stopped turn returns only the servers that finished loading; keep the
   // last complete set for the renderer's token estimate instead.
   if (!options.abortSignal?.aborted) {
-    cachedMcpToolDefs = defs;
+    cacheMcpToolDefs(options.appId, defs);
   }
   return defs;
 }
@@ -248,8 +280,8 @@ export function buildMcpCapabilityMap(params: {
       const { approved, autoApprovedReason } = await requireMcpToolConsent(
         params.event,
         {
-          serverId: def.serverId,
-          serverName: def.serverName,
+          connection: def.connection,
+          serverName: def.displayName,
           toolName: def.toolName,
           toolDescription: def.description,
           inputPreview,
@@ -279,7 +311,7 @@ export function buildMcpCapabilityMap(params: {
         ? ` auto-approved-reason="${escapeXmlAttr(autoApprovedReason)}"`
         : "";
       params.ctx.onXmlComplete(
-        `<dyad-mcp-tool-call server="${escapeXmlAttr(def.serverName)}" tool="${escapeXmlAttr(def.toolName)}" call-id="${escapeXmlAttr(callId)}"${autoApprovedAttr}${truncatedFromAttr(argsPreview)}>\n${escapeXmlContent(argsPreview.text)}\n</dyad-mcp-tool-call>`,
+        `<dyad-mcp-tool-call server="${escapeXmlAttr(def.displayName)}" tool="${escapeXmlAttr(def.toolName)}" call-id="${escapeXmlAttr(callId)}"${autoApprovedAttr}${truncatedFromAttr(argsPreview)}>\n${escapeXmlContent(argsPreview.text)}\n</dyad-mcp-tool-call>`,
       );
 
       let executionStarted = false;
@@ -297,7 +329,7 @@ export function buildMcpCapabilityMap(params: {
             );
           let toolSet: McpToolSet;
           try {
-            toolSet = await mcpManager.listToolsWithin(def.serverId, {
+            toolSet = await mcpManager.listToolsWithin(def.connection, {
               signal: params.ctx.abortSignal,
             });
           } catch (error) {
@@ -334,7 +366,7 @@ export function buildMcpCapabilityMap(params: {
           transcriptBudget,
         );
         params.ctx.onXmlComplete(
-          `<dyad-mcp-tool-result server="${escapeXmlAttr(def.serverName)}" tool="${escapeXmlAttr(def.toolName)}" call-id="${escapeXmlAttr(callId)}"${truncatedFromAttr(resultPreview)}${toolTruncatedAttr(safeResult.truncated)}>\n${escapeXmlContent(resultPreview.text)}\n</dyad-mcp-tool-result>`,
+          `<dyad-mcp-tool-result server="${escapeXmlAttr(def.displayName)}" tool="${escapeXmlAttr(def.toolName)}" call-id="${escapeXmlAttr(callId)}"${truncatedFromAttr(resultPreview)}${toolTruncatedAttr(safeResult.truncated)}>\n${escapeXmlContent(resultPreview.text)}\n</dyad-mcp-tool-result>`,
         );
         return safeResult.value;
       } catch (error) {
@@ -357,7 +389,7 @@ export function buildMcpCapabilityMap(params: {
           transcriptBudget,
         );
         params.ctx.onXmlComplete(
-          `<dyad-mcp-tool-result server="${escapeXmlAttr(def.serverName)}" tool="${escapeXmlAttr(def.toolName)}" call-id="${escapeXmlAttr(callId)}" is-error="true"${truncatedFromAttr(errorPreview)}>\n${escapeXmlContent(errorPreview.text)}\n</dyad-mcp-tool-result>`,
+          `<dyad-mcp-tool-result server="${escapeXmlAttr(def.displayName)}" tool="${escapeXmlAttr(def.toolName)}" call-id="${escapeXmlAttr(callId)}" is-error="true"${truncatedFromAttr(errorPreview)}>\n${escapeXmlContent(errorPreview.text)}\n</dyad-mcp-tool-result>`,
         );
         const outputMessage = previewMcpPayload(
           safeErrorMessage,

@@ -154,6 +154,7 @@ describe("RendererQueryInvalidationConsumer", () => {
       queryKeys.settings.all,
       queryKeys.neon.all,
       queryKeys.mcp.servers,
+      queryKeys.mcp.appConfigs,
       queryKeys.mcp.catalog,
       queryKeys.mcp.toolsByServer.all,
       queryKeys.languageModels.byProviders,
@@ -476,6 +477,39 @@ describe("app lifecycle contracts publish the app-name scope", () => {
   ] as const)("publishes app-name from %s", (channel, input) => {
     const families = scopesFor(channel, input).map((scope) => scope.family);
     expect(families, `${channel} must publish app-name`).toContain("app-name");
+  });
+
+  it.each([
+    ["copyApp", { appId: 1, newAppName: "copy", withHistory: false }],
+    ["deleteApp", { appId: 1 }],
+  ] as const)("refreshes plugin app assignments after %s", (channel, input) => {
+    const families = scopesFor(channel, input).map((scope) => scope.family);
+    expect(families).toContain("mcp-servers");
+  });
+
+  it("refreshes plugin app assignments only when deleteApps deletes an app", () => {
+    const contract = appContracts.deleteApps as {
+      invalidates?: (
+        input: unknown,
+        output: unknown,
+      ) => Array<{ family: string }>;
+    };
+    expect(
+      (
+        contract.invalidates?.(
+          { appIds: [1] },
+          { results: [{ appId: 1, success: true }] },
+        ) ?? []
+      ).map((scope) => scope.family),
+    ).toContain("mcp-servers");
+    expect(
+      (
+        contract.invalidates?.(
+          { appIds: [1] },
+          { results: [{ appId: 1, success: false }] },
+        ) ?? []
+      ).map((scope) => scope.family),
+    ).not.toContain("mcp-servers");
   });
 
   it("publishes app-name from deleteApps only when at least one app was deleted", () => {

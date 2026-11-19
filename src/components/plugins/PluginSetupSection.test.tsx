@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { McpServer } from "@/ipc/types";
 import type { UserSuppliedInput } from "@/ipc/types/mcp_catalog";
+import { pluginConnection } from "@/shared/mcp_connection_ref";
 import { PluginSetupSection } from "./PluginSetupSection";
 
 vi.mock("./AddPluginDialog", () => ({
@@ -11,6 +12,7 @@ vi.mock("./AddPluginDialog", () => ({
 function makeServer(overrides: Partial<McpServer> = {}): McpServer {
   return {
     id: 1,
+    connection: pluginConnection(overrides.id ?? 1),
     name: "Test Server",
     transport: "http",
     command: null,
@@ -27,6 +29,9 @@ function makeServer(overrides: Partial<McpServer> = {}): McpServer {
     envUnreadable: false,
     headersUnreadable: false,
     catalogSlug: "test",
+    defaultScope: "all",
+    defaultAppIds: [],
+    appConfigCount: 0,
     createdAt: new Date(0),
     updatedAt: new Date(0),
     ...overrides,
@@ -70,7 +75,6 @@ describe("PluginSetupSection", () => {
     expect(onSave).toHaveBeenCalledTimes(1);
     expect(onSave).toHaveBeenCalledWith(
       expect.objectContaining({
-        id: 1,
         enabled: true,
         headersJson: { "X-Existing": "1", Authorization: "Bearer secret-key" },
       }),
@@ -102,6 +106,31 @@ describe("PluginSetupSection", () => {
         envJson: { API_TOKEN: "tok-123" },
       }),
     );
+  });
+
+  it("leaves an app-specific configuration's switch to its plugin", () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const inputs: UserSuppliedInput[] = [
+      { kind: "env", name: "API_TOKEN", label: "Token" },
+    ];
+    render(
+      <PluginSetupSection
+        server={makeServer({
+          id: 3,
+          transport: "stdio",
+          url: null,
+          connection: { serverId: 1, appConfigId: 3 },
+        })}
+        inputs={inputs}
+        isSaving={false}
+        onSave={onSave}
+      />,
+    );
+
+    fillInputs(["tok-123"]);
+    fireEvent.click(screen.getByRole("button", { name: "Save & enable" }));
+
+    expect(onSave).toHaveBeenCalledWith({ envJson: { API_TOKEN: "tok-123" } });
   });
 
   it("writes oauth client id/secret and shows the redirect-URI hint with the callback port", () => {
@@ -200,7 +229,6 @@ describe("PluginSetupSection", () => {
     fireEvent.click(button);
 
     expect(onSave).toHaveBeenCalledWith({
-      id: 1,
       headersJson: { "X-Other": "1", "X-Workspace": "ws-acme" },
     });
   });

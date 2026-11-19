@@ -32,7 +32,7 @@ function eventIdentity(
     invocationRef: event.invocationRef,
     rendererMessageId: event.rendererMessageId,
     expectedState: event.expectedState,
-    serverId: event.serverId,
+    connectionKey: event.connectionKey,
   };
 }
 
@@ -74,7 +74,7 @@ export function transition(
             invocationRef: state.invocationRef,
             rendererMessageId: state.rendererMessageId,
             expectedState: state.expectedState,
-            serverId: state.serverId,
+            connectionKey: state.connectionKey,
           },
           next,
         });

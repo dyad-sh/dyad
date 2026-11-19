@@ -441,7 +441,10 @@
     "never": "Não sugerir novamente",
     "neverTitle": "{{name}} não será sugerido novamente",
     "neverDescription": "O Dyad continuará sem ele. Você ainda pode adicioná-lo na página de Plugins.",
-    "connectFailed": "Não foi possível conectar o plugin. Tente novamente ou gerencie-o na página de Plugins."
+    "connectFailed": "Não foi possível conectar o plugin. Tente novamente ou gerencie-o na página de Plugins.",
+    "unavailableTitle": "{{name}} não está configurado para este app",
+    "unavailableDescription": "Ele foi adicionado ao Dyad, mas este app não o usa. Você pode disponibilizá-lo para este app na página do plugin.",
+    "openPluginSettings": "Abrir configurações do plugin"
   },
   "guide": "Guia",
   "annotations": {

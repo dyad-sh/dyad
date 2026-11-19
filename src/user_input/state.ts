@@ -31,6 +31,8 @@ export type UserInputDescriptor =
   | (DescriptorBase & {
       kind: "mcp-consent";
       serverId: number;
+      /** Null for the plugin's default configuration. */
+      appConfigId: number | null;
       serverName: string;
       toolName: string;
       toolDescription?: string | null;

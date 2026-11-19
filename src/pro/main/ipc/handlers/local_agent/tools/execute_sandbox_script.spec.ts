@@ -618,8 +618,9 @@ describe("executeSandboxScriptTool", () => {
     const def: McpToolDef = {
       jsName: "srv__hello",
       toolKey: "srv__hello",
-      serverId: 1,
+      connection: { serverId: 1, appConfigId: null },
       serverName: "srv",
+      displayName: "srv",
       toolName: "hello",
       inputSchema: { type: "object" } as any,
     };
@@ -694,8 +695,9 @@ describe("buildExecuteSandboxScriptDescription (search mode)", () => {
     return {
       jsName: `${serverName}__${toolName}`,
       toolKey: `${serverName}__${toolName}`,
-      serverId: 1,
+      connection: { serverId: 1, appConfigId: null },
       serverName,
+      displayName: serverName,
       toolName,
       inputSchema: { type: "object" } as any,
     };

@@ -438,7 +438,10 @@
     "never": "不再建议",
     "neverTitle": "不会再建议 {{name}}",
     "neverDescription": "Dyad 将在没有它的情况下继续。你仍可以在插件页面中添加它。",
-    "connectFailed": "无法连接该插件。请重试，或在插件页面中管理它。"
+    "connectFailed": "无法连接该插件。请重试，或在插件页面中管理它。",
+    "unavailableTitle": "{{name}} 尚未为此应用设置",
+    "unavailableDescription": "它已添加到 Dyad，但此应用未使用它。你可以在插件页面中为此应用启用它。",
+    "openPluginSettings": "打开插件设置"
   },
   "guide": "指南",
   "annotations": {

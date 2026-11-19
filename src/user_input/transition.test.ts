@@ -20,6 +20,7 @@ const descriptor: UserInputDescriptor = {
   chatId: 10,
   deadlineAt: 300_000,
   serverId: 2,
+  appConfigId: null,
   serverName: "server",
   toolName: "read",
   classifier: "racing",

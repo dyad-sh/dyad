@@ -2,6 +2,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createServer } from "node:net";
+import { pluginConnection } from "@/shared/mcp_connection_ref";
 
 // In-memory replacement for the `mcp_servers` table. The mocked db
 // reads/writes from here so we can exercise the flow without spinning
@@ -73,6 +74,8 @@ vi.mock("@/db", () => ({
 }));
 
 vi.mock("@/db/schema", () => ({
+  // App-specific plugin configurations; these tests only use plugin rows.
+  mcpAppConfigs: { id: "app_config_id", oauthState: "app_config_oauth_state" },
   mcpServers: { id: "id", oauthState: "oauth_state" },
 }));
 
@@ -99,6 +102,28 @@ vi.mock("@/ipc/utils/mcp_manager", () => ({
   mcpManager: { dispose: vi.fn(async () => {}) },
 }));
 
+// Lets a test hold the "is another configuration signed in?" lookup open.
+const accountLookup = vi.hoisted(() => ({
+  delay: null as Promise<void> | null,
+  onStart: null as (() => void) | null,
+}));
+vi.mock("@/ipc/utils/mcp_connection_store", async (importOriginal) => {
+  const original =
+    await importOriginal<typeof import("@/ipc/utils/mcp_connection_store")>();
+  return {
+    ...original,
+    listPluginOAuthStates: async (
+      ...args: Parameters<typeof original.listPluginOAuthStates>
+    ) => {
+      const delay = accountLookup.delay;
+      accountLookup.delay = null;
+      accountLookup.onStart?.();
+      if (delay) await delay;
+      return original.listPluginOAuthStates(...args);
+    },
+  };
+});
+
 const flowImport = await import("@/ipc/utils/mcp_oauth_flow");
 const {
   disconnectOAuth,
@@ -114,13 +139,15 @@ it("points unreadable client secrets to settings and preserves them through Disc
     oauthClientSecret: "unreadable-secret",
   });
   for (let attempt = 0; attempt < 2; attempt++) {
-    await expect(runOAuthFlow({ serverId: 91 })).rejects.toMatchObject({
+    await expect(
+      runOAuthFlow({ connection: pluginConnection(91) }),
+    ).rejects.toMatchObject({
       message: expect.stringContaining(
         "re-enter the client secret in the plugin settings",
       ),
     });
     expect(authMock).not.toHaveBeenCalled();
-    await disconnectOAuth(91);
+    await disconnectOAuth(pluginConnection(91));
     expect(dbStore.get(91)?.oauthClientSecret).toBe("unreadable-secret");
   }
 });
@@ -174,7 +201,7 @@ describe("runOAuthFlow validation", () => {
   });
 
   it("returns an error result when the server id does not exist", async () => {
-    const result = await runOAuthFlow({ serverId: 999 });
+    const result = await runOAuthFlow({ connection: pluginConnection(999) });
     expect(result.success).toBe(false);
     expect(result.error).toContain("MCP server not found");
   });
@@ -183,14 +210,14 @@ describe("runOAuthFlow validation", () => {
     // Stdio rows seeded here have a non-null URL so we exercise the
     // transport-rejection branch rather than the URL-missing one.
     seedRow({ id: 1, transport: "stdio", url: "ignored-for-stdio" });
-    const result = await runOAuthFlow({ serverId: 1 });
+    const result = await runOAuthFlow({ connection: pluginConnection(1) });
     expect(result.success).toBe(false);
     expect(result.error).toContain("OAuth not supported");
   });
 
   it("rejects when URL is missing on an http server", async () => {
     seedRow({ id: 2, transport: "http", url: null });
-    const result = await runOAuthFlow({ serverId: 2 });
+    const result = await runOAuthFlow({ connection: pluginConnection(2) });
     expect(result.success).toBe(false);
     expect(result.error).toContain("OAuth requires HTTP");
   });
@@ -208,7 +235,7 @@ describe("runOAuthFlow happy path (auth resolves AUTHORIZED first call)", () => 
     // returns 'AUTHORIZED' on the first call.
     authMock.mockResolvedValueOnce("AUTHORIZED");
     const result = await runOAuthFlow({
-      serverId: 3,
+      connection: pluginConnection(3),
       callbackPort: await getAvailableCallbackPort(),
     });
     expect(result.success).toBe(true);
@@ -222,12 +249,12 @@ describe("runOAuthFlow happy path (auth resolves AUTHORIZED first call)", () => 
 
     const callbackPort = await getAvailableCallbackPort();
     const first = runOAuthFlow({
-      serverId: 4,
+      connection: pluginConnection(4),
       rendererMessageId: "stable-message",
       callbackPort,
     });
     const retry = runOAuthFlow({
-      serverId: 4,
+      connection: pluginConnection(4),
       rendererMessageId: "stable-message",
       callbackPort,
     });
@@ -252,12 +279,12 @@ describe("runOAuthFlow happy path (auth resolves AUTHORIZED first call)", () => 
 
     const callbackPort = await getAvailableCallbackPort();
     const older = runOAuthFlow({
-      serverId: 6,
+      connection: pluginConnection(6),
       rendererMessageId: "older",
       callbackPort,
     });
     const newer = runOAuthFlow({
-      serverId: 6,
+      connection: pluginConnection(6),
       rendererMessageId: "newer",
       callbackPort,
     });
@@ -269,7 +296,7 @@ describe("runOAuthFlow happy path (auth resolves AUTHORIZED first call)", () => 
       error: expect.stringMatching(/superseded/i),
     });
     const cleanup = await runOAuthFlow({
-      serverId: 6,
+      connection: pluginConnection(6),
       rendererMessageId: "cleanup",
       callbackPort,
     });
@@ -291,13 +318,13 @@ describe("runOAuthFlow happy path (auth resolves AUTHORIZED first call)", () => 
     );
     const callbackPort = await getAvailableCallbackPort();
     const preparation = runOAuthFlow({
-      serverId: 8,
+      connection: pluginConnection(8),
       rendererMessageId: "before-mutation",
       callbackPort,
     });
 
     await withMcpOAuthServerMutation(
-      8,
+      pluginConnection(8),
       "configuration changed",
       async () => undefined,
     );
@@ -312,13 +339,46 @@ describe("runOAuthFlow happy path (auth resolves AUTHORIZED first call)", () => 
     authMock.mockResolvedValueOnce("AUTHORIZED");
     await expect(
       runOAuthFlow({
-        serverId: 8,
+        connection: pluginConnection(8),
         rendererMessageId: "before-mutation",
         callbackPort,
       }),
     ).resolves.toMatchObject({ success: true });
     expect(authMock).toHaveBeenCalledOnce();
   });
+});
+
+it("fences a preparation whose account lookup spans a server mutation", async () => {
+  dbStore.clear();
+  authMock.mockReset();
+  seedRow({ id: 9, transport: "http", url: "https://example.com/mcp" });
+  let releaseLookup!: () => void;
+  accountLookup.delay = new Promise<void>((resolve) => {
+    releaseLookup = resolve;
+  });
+  const lookupStarted = new Promise<void>((resolve) => {
+    accountLookup.onStart = resolve;
+  });
+  const callbackPort = await getAvailableCallbackPort();
+  const preparation = runOAuthFlow({
+    connection: pluginConnection(9),
+    rendererMessageId: "lookup-before-mutation",
+    callbackPort,
+  });
+
+  // Edit the connection only once the lookup is under way, after the
+  // connection itself has been read.
+  await lookupStarted;
+  accountLookup.onStart = null;
+  await withMcpOAuthServerMutation(
+    pluginConnection(9),
+    "configuration changed",
+    async () => undefined,
+  );
+  releaseLookup();
+
+  await expect(preparation).resolves.toMatchObject({ success: false });
+  expect(authMock).not.toHaveBeenCalled();
 });
 
 describe("disconnectOAuth", () => {
@@ -333,7 +393,7 @@ describe("disconnectOAuth", () => {
       url: "https://example.com/mcp",
       oauthState: 'enc:{"tokens":{"access_token":"t"}}',
     });
-    const result = await disconnectOAuth(5);
+    const result = await disconnectOAuth(pluginConnection(5));
     expect(result.success).toBe(true);
     const row = dbStore.get(5);
     expect(row).toBeDefined();
@@ -343,7 +403,9 @@ describe("disconnectOAuth", () => {
   });
 
   it("throws DyadError(NotFound) for an unknown server id", async () => {
-    await expect(disconnectOAuth(404)).rejects.toThrow(/not found/i);
+    await expect(disconnectOAuth(pluginConnection(404))).rejects.toThrow(
+      /not found/i,
+    );
   });
 });
 
@@ -365,7 +427,10 @@ describe("OAuth loopback listener (state CSRF check)", () => {
     authMock.mockResolvedValueOnce("AUTHORIZED");
 
     const callbackPort = await getAvailableCallbackPort();
-    const flowPromise = runOAuthFlow({ serverId: 10, callbackPort });
+    const flowPromise = runOAuthFlow({
+      connection: pluginConnection(10),
+      callbackPort,
+    });
 
     // The flow's `state` is cryptographically random and flow-scoped,
     // so we can't forge a matching callback. Instead, probe `[::1]`
@@ -382,7 +447,7 @@ describe("OAuth loopback listener (state CSRF check)", () => {
     // Mismatched-state callbacks no longer terminate the flow (a
     // stale tab from a superseded Connect must not kill the active
     // listener). Supersede explicitly so the original flow resolves.
-    await runOAuthFlow({ serverId: 19, callbackPort });
+    await runOAuthFlow({ connection: pluginConnection(19), callbackPort });
 
     const result = await flowPromise;
     expect(result.success).toBe(false);
@@ -404,12 +469,18 @@ describe("OAuth loopback listener (state CSRF check)", () => {
     authMock.mockResolvedValueOnce("AUTHORIZED");
 
     const callbackPort = await getAvailableCallbackPort();
-    const firstPromise = runOAuthFlow({ serverId: 11, callbackPort });
+    const firstPromise = runOAuthFlow({
+      connection: pluginConnection(11),
+      callbackPort,
+    });
     // auth() runs only after the listener has bound.
     await vi.waitFor(() => expect(authMock).toHaveBeenCalledTimes(1));
 
     // Second click on the same port: must not reject with port-busy.
-    const secondPromise = runOAuthFlow({ serverId: 12, callbackPort });
+    const secondPromise = runOAuthFlow({
+      connection: pluginConnection(12),
+      callbackPort,
+    });
     await vi.waitFor(() => expect(authMock).toHaveBeenCalledTimes(2));
 
     // The new listener must be reachable -- probe via a malformed
@@ -427,7 +498,7 @@ describe("OAuth loopback listener (state CSRF check)", () => {
 
     // Tear the second flow down with a third supersede so its
     // listener releases.
-    await runOAuthFlow({ serverId: 13, callbackPort });
+    await runOAuthFlow({ connection: pluginConnection(13), callbackPort });
 
     const secondResult = await secondPromise;
     expect(secondResult.success).toBe(false);
@@ -442,7 +513,10 @@ describe("OAuth loopback listener (state CSRF check)", () => {
     authMock.mockResolvedValueOnce("AUTHORIZED");
 
     const callbackPort = await getAvailableCallbackPort();
-    const flowPromise = runOAuthFlow({ serverId: 7, callbackPort });
+    const flowPromise = runOAuthFlow({
+      connection: pluginConnection(7),
+      callbackPort,
+    });
 
     // Wait for the listener to bind, then send a forged
     // callback with a `state` value that cannot possibly match (the
@@ -457,7 +531,7 @@ describe("OAuth loopback listener (state CSRF check)", () => {
     // stale tab from a superseded Connect attempt should not kill
     // the active listener. Supersede explicitly and check the flow
     // surfaces the supersede error, not a CSRF abort.
-    await runOAuthFlow({ serverId: 17, callbackPort });
+    await runOAuthFlow({ connection: pluginConnection(17), callbackPort });
 
     const result = await flowPromise;
     expect(result.success).toBe(false);
@@ -485,7 +559,10 @@ describe("OAuth loopback listener (state CSRF check)", () => {
         throw new Error("Failed to select an OAuth callback port");
       }
       const callbackPort = address.port;
-      const result = await runOAuthFlow({ serverId: 21, callbackPort });
+      const result = await runOAuthFlow({
+        connection: pluginConnection(21),
+        callbackPort,
+      });
       expect(result.success).toBe(false);
       expect(result.error ?? "").toMatch(/another local process is holding/i);
       // auth() must not have been called: the listener bind failed
@@ -508,7 +585,7 @@ describe("MCP OAuth shutdown", () => {
       }),
     );
     const flow = runOAuthFlow({
-      serverId: 31,
+      connection: pluginConnection(31),
       rendererMessageId: "shutdown-preparation",
     });
     let shutdownFinished = false;

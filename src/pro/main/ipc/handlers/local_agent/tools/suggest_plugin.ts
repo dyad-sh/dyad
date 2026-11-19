@@ -1,8 +1,6 @@
 import { z } from "zod";
 import log from "electron-log";
-import { eq, isNotNull } from "drizzle-orm";
-import { db } from "@/db";
-import { mcpServers } from "@/db/schema";
+import { readPluginStatusesForApp } from "@/ipc/utils/mcp_app_scoping";
 import {
   getRemoteMcpCatalog,
   peekRemoteMcpCatalog,
@@ -34,6 +32,13 @@ export interface SuggestablePlugin {
   oauthRequired: boolean;
   /** Whether connecting it still has to run that authorization. */
   needsOAuth: boolean;
+  /**
+   * Added, but not ready in this app: no configuration of it serves the
+   * app, or the app's own configuration still needs setting up. The chat
+   * card can't fix that (it only adds, enables and connects the default
+   * configuration), so it points the user at the plugin's settings.
+   */
+  unavailableInApp: boolean;
 }
 
 /**
@@ -75,45 +80,67 @@ function addTo(
   set.add(slug);
 }
 
-interface PluginRow {
-  catalogSlug: string | null;
-  enabled: boolean;
-  oauthState: string | null;
+interface PluginStatus {
+  usable: boolean;
+  needsOAuth: boolean;
+  unavailableInApp: boolean;
 }
 
-// Built on use rather than at import, so loading this module never
-// depends on the schema being fully available.
-function pluginRowColumns() {
-  return {
-    catalogSlug: mcpServers.catalogSlug,
-    enabled: mcpServers.enabled,
-    oauthState: mcpServers.oauthState,
-  };
+/**
+ * Whether a catalog plugin can serve tools in the app, and if not, what
+ * the suggestion card has to do about it. A plugin can serve tools once it
+ * is added, on, used by the app, and authorized when its catalog entry
+ * requires that. The card can add, enable or authorize the default
+ * configuration; anything else is fixed on the plugin's page.
+ */
+async function readPluginStatusesBySlug(
+  appId: number,
+): Promise<Map<string, (oauthRequired: boolean) => PluginStatus>> {
+  const statuses = await readPluginStatusesForApp(appId);
+  const bySlug = new Map<string, (oauthRequired: boolean) => PluginStatus>();
+  for (const status of statuses) {
+    if (!status.catalogSlug) continue;
+    bySlug.set(status.catalogSlug, (oauthRequired) => {
+      const connection = status.coveringConnection;
+      if (!connection) {
+        return { usable: false, needsOAuth: false, unavailableInApp: true };
+      }
+      const usesDefault = connection.connection.appConfigId === null;
+      // The OAuth column holds the client registration before any token
+      // exists, so only a stored access token counts as authorized.
+      const authorized = oauthStateHasTokens(
+        usesDefault ? status.defaultOAuthState : status.appConfigOAuthState,
+      );
+      const usable =
+        status.availability.pluginEnabled &&
+        !status.appConfigNeedsSetup &&
+        (!oauthRequired || authorized);
+      if (!usesDefault && !usable) {
+        return { usable, needsOAuth: false, unavailableInApp: true };
+      }
+      return {
+        usable,
+        needsOAuth: oauthRequired && !authorized,
+        unavailableInApp: false,
+      };
+    });
+  }
+  return bySlug;
 }
 
-// The OAuth column holds the client registration before any token exists,
-// so only a stored access token counts as authorized.
-function isAuthorized(row: PluginRow | undefined) {
-  return oauthStateHasTokens(row?.oauthState ?? null);
-}
-
-// A plugin can serve tools once it is added, enabled, and authorized when
-// its catalog entry requires that. Anything short of this is worth
-// suggesting: the card can enable or authorize an existing row.
-function isUsable(row: PluginRow | undefined, oauthRequired: boolean) {
-  if (!row || !row.enabled) return false;
-  return !oauthRequired || isAuthorized(row);
-}
+const NOT_ADDED: PluginStatus = {
+  usable: false,
+  needsOAuth: true,
+  unavailableInApp: false,
+};
 
 async function isPluginUsable(
   slug: string,
   oauthRequired: boolean,
+  appId: number,
 ): Promise<boolean> {
-  const rows = await db
-    .select(pluginRowColumns())
-    .from(mcpServers)
-    .where(eq(mcpServers.catalogSlug, slug));
-  return isUsable(rows[0], oauthRequired);
+  const statuses = await readPluginStatusesBySlug(appId);
+  return statuses.get(slug)?.(oauthRequired).usable ?? false;
 }
 
 async function readCatalog(cachedOnly: boolean): Promise<McpCatalogEntry[]> {
@@ -145,18 +172,17 @@ async function readCatalog(cachedOnly: boolean): Promise<McpCatalogEntry[]> {
  */
 export async function collectSuggestablePlugins({
   chatId,
+  appId,
   cachedOnly = false,
 }: {
   chatId: number;
+  /** The chat's app: availability depends on its plugin configurations. */
+  appId: number;
   cachedOnly?: boolean;
 }): Promise<SuggestablePlugin[]> {
   const entries = await readCatalog(cachedOnly);
   if (entries.length === 0) return [];
-  const rows: PluginRow[] = await db
-    .select(pluginRowColumns())
-    .from(mcpServers)
-    .where(isNotNull(mcpServers.catalogSlug));
-  const rowBySlug = new Map(rows.map((row) => [row.catalogSlug, row]));
+  const statusBySlug = await readPluginStatusesBySlug(appId);
   const declined = declinedSlugsByChat.get(chatId);
   const neverSuggest = new Set(readSettings().neverSuggestPluginSlugs ?? []);
   return entries
@@ -170,16 +196,20 @@ export async function collectSuggestablePlugins({
     )
     .map((entry) => {
       const oauthRequired = !!entry.oauth?.required;
-      const row = rowBySlug.get(entry.slug);
-      return { entry, oauthRequired, row };
+      const status = statusBySlug.get(entry.slug)?.(oauthRequired) ?? {
+        ...NOT_ADDED,
+        needsOAuth: oauthRequired,
+      };
+      return { entry, oauthRequired, status };
     })
-    .filter(({ row, oauthRequired }) => !isUsable(row, oauthRequired))
-    .map(({ entry, oauthRequired, row }) => ({
+    .filter(({ status }) => !status.usable)
+    .map(({ entry, oauthRequired, status }) => ({
       slug: entry.slug,
       name: entry.name,
       description: entry.description,
       oauthRequired,
-      needsOAuth: oauthRequired && !isAuthorized(row),
+      needsOAuth: status.needsOAuth,
+      unavailableInApp: status.unavailableInApp,
     }));
 }
 
@@ -228,7 +258,7 @@ function pendingXml(
 function terminalXml(
   server: { slug: string; name: string },
   reason: string,
-  outcome: "connected" | "declined" | "never" | "dismissed",
+  outcome: "connected" | "declined" | "never" | "dismissed" | "unavailable",
 ): string {
   return `<dyad-suggest-plugin slug="${escapeXmlAttr(server.slug)}" name="${escapeXmlAttr(server.name)}" reason="${escapeXmlAttr(reason)}" outcome="${outcome}"></dyad-suggest-plugin>`;
 }
@@ -291,9 +321,17 @@ export const suggestPluginTool: ToolDefinition<SuggestPluginArgs> = {
         ctx.onXmlComplete(terminalXml(server, args.reason, "dismissed"));
         return `You already suggested the ${server.name} plugin in this turn and the user did not connect it. Continue without it.`;
       }
-      if (await isPluginUsable(server.slug, server.oauthRequired)) {
+      if (await isPluginUsable(server.slug, server.oauthRequired, ctx.appId)) {
         ctx.onXmlComplete(terminalXml(server, args.reason, "dismissed"));
         return `The ${server.name} plugin is already connected. Its tools become available the next time the user sends a message, not in this turn. Tell the user that and continue with whatever you can do without it.`;
+      }
+
+      if (server.unavailableInApp) {
+        // Not parked: the card only links to the plugin's settings, and the
+        // change made there applies from the user's next message.
+        addTo(attemptedSlugsByTurn, turnKey, server.slug);
+        ctx.onXmlComplete(terminalXml(server, args.reason, "unavailable"));
+        return `The ${server.name} plugin is added in Dyad but is not set up for this app, so its tools are not available here. Tell the user they can make it available for this app on the plugin's page (Plugins → ${server.name}), which the card above links to, and continue with whatever you can do without it. Do not suggest it again in this turn.`;
       }
 
       const followUpPrompt = `Continue. I have connected the ${server.name} plugin. Resume what you needed it for: ${args.reason}`;

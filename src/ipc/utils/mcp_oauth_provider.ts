@@ -2,16 +2,21 @@ import { shell } from "electron";
 import log from "electron-log";
 import { z } from "zod";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { eq } from "drizzle-orm";
 import type {
   OAuthClientInformation,
   OAuthClientMetadata,
   OAuthClientProvider,
   OAuthTokens,
 } from "@ai-sdk/mcp";
-import { db } from "../../db";
-import { mcpServers } from "../../db/schema";
 import { DEFAULT_OAUTH_CALLBACK_PORT } from "../types/mcp";
+import {
+  mcpConnectionKey,
+  type McpConnectionRef,
+} from "@/shared/mcp_connection_ref";
+import {
+  readMcpConnectionOAuthState,
+  writeMcpConnectionOAuthColumns,
+} from "./mcp_connection_store";
 import {
   encryptToString,
   decryptFromString,
@@ -113,18 +118,16 @@ export function getOAuthStateStatus(stored: string | null): {
   }
 }
 
-async function readState(serverId: number): Promise<StoredOAuthState> {
-  const rows = await db
-    .select({ oauthState: mcpServers.oauthState })
-    .from(mcpServers)
-    .where(eq(mcpServers.id, serverId));
-  const raw = rows[0]?.oauthState;
+async function readState(
+  connection: McpConnectionRef,
+): Promise<StoredOAuthState> {
+  const raw = await readMcpConnectionOAuthState(connection);
   if (!raw) return {};
   return parseStoredState(raw);
 }
 
 async function writeState(
-  serverId: number,
+  connection: McpConnectionRef,
   state: StoredOAuthState,
 ): Promise<void> {
   // No tokens and no client info: store NULL instead of an encrypted
@@ -134,16 +137,11 @@ async function writeState(
   // Inspect the actual output, not an availability precheck: the keyring can
   // disappear between two calls. Never replace encrypted state with plaintext.
   if (blob?.startsWith(PLAINTEXT_PREFIX)) {
-    const [current] = await db
-      .select({ oauthState: mcpServers.oauthState })
-      .from(mcpServers)
-      .where(eq(mcpServers.id, serverId));
+    const current = await readMcpConnectionOAuthState(connection);
     if (
-      current?.oauthState &&
+      current &&
       /^v\d\d$/.test(
-        Buffer.from(current.oauthState, "base64")
-          .subarray(0, 3)
-          .toString("ascii"),
+        Buffer.from(current, "base64").subarray(0, 3).toString("ascii"),
       )
     ) {
       throw new DyadError(
@@ -152,21 +150,18 @@ async function writeState(
       );
     }
   }
-  await db
-    .update(mcpServers)
-    .set({ oauthState: blob })
-    .where(eq(mcpServers.id, serverId));
+  await writeMcpConnectionOAuthColumns(connection, { oauthState: blob });
 }
 
-// Per-server queue so concurrent read-modify-write callers on the same
-// `oauth_state` row don't trample each other's writes. Single-process
+// Per-configuration queue so concurrent read-modify-write callers on the
+// same `oauth_state` row don't trample each other's writes. Single-process
 // Electron app means an in-memory chain is enough; SQLite doesn't give
-// us row-level locking.
-const stateLocks = new Map<number, Promise<unknown>>();
-const writeAuthorityGenerations = new Map<number, number>();
+// us row-level locking. Both maps are keyed by mcpConnectionKey.
+const stateLocks = new Map<string, Promise<unknown>>();
+const writeAuthorityGenerations = new Map<string, number>();
 
 export interface McpOAuthWriteAuthority {
-  serverId: number;
+  connectionKey: string;
   generation: number;
 }
 
@@ -176,32 +171,35 @@ export interface McpOAuthWriteAuthority {
  * work from a cancelled flow cannot commit after a row mutation.
  */
 export function issueMcpOAuthWriteAuthority(
-  serverId: number,
+  connection: McpConnectionRef,
 ): McpOAuthWriteAuthority {
-  const generation = (writeAuthorityGenerations.get(serverId) ?? 0) + 1;
-  writeAuthorityGenerations.set(serverId, generation);
-  return { serverId, generation };
+  const connectionKey = mcpConnectionKey(connection);
+  const generation = (writeAuthorityGenerations.get(connectionKey) ?? 0) + 1;
+  writeAuthorityGenerations.set(connectionKey, generation);
+  return { connectionKey, generation };
 }
 
 /** Captures the current epoch without replacing another provider's authority. */
 export function captureMcpOAuthWriteAuthority(
-  serverId: number,
+  connection: McpConnectionRef,
 ): McpOAuthWriteAuthority {
+  const connectionKey = mcpConnectionKey(connection);
   return {
-    serverId,
-    generation: writeAuthorityGenerations.get(serverId) ?? 0,
+    connectionKey,
+    generation: writeAuthorityGenerations.get(connectionKey) ?? 0,
   };
 }
 
 async function withStateLock<T>(
-  serverId: number,
+  connection: McpConnectionRef,
   fn: () => Promise<T>,
 ): Promise<T> {
-  const prev = stateLocks.get(serverId) ?? Promise.resolve();
+  const connectionKey = mcpConnectionKey(connection);
+  const prev = stateLocks.get(connectionKey) ?? Promise.resolve();
   // Catch so a rejected previous task doesn't block the queue.
   const next = prev.catch(() => undefined).then(fn);
   stateLocks.set(
-    serverId,
+    connectionKey,
     next.catch(() => undefined),
   );
   return next;
@@ -209,11 +207,11 @@ async function withStateLock<T>(
 
 /** The client the stored state will hand back, shadowing the row's columns. */
 export async function readStoredOAuthClient(
-  serverId: number,
+  connection: McpConnectionRef,
 ): Promise<OAuthClientInformation | undefined> {
   return withStateLock(
-    serverId,
-    async () => (await readState(serverId)).clientInformation,
+    connection,
+    async () => (await readState(connection)).clientInformation,
   );
 }
 
@@ -226,28 +224,28 @@ export async function readStoredOAuthClient(
  * knows it even when the state holds no client to compare against.
  */
 export async function applyOAuthClientChange(
-  serverId: number,
+  connection: McpConnectionRef,
   client: {
     clientId: string;
     clientSecret: string | null;
     clientIdChanged: boolean;
   },
 ): Promise<void> {
-  await withStateLock(serverId, async () => {
-    const state = await readState(serverId);
+  await withStateLock(connection, async () => {
+    const state = await readState(connection);
     const replacesClient =
       client.clientIdChanged ||
       (state.clientInformation !== undefined &&
         state.clientInformation.client_id !== client.clientId);
     if (replacesClient) {
       if (state.tokens || state.clientInformation) {
-        await writeState(serverId, {});
+        await writeState(connection, {});
       }
       return;
     }
     // Nothing stored to bring in line; the columns carry the new secret.
     if (!state.clientInformation) return;
-    await writeState(serverId, {
+    await writeState(connection, {
       ...state,
       clientInformation: {
         client_id: client.clientId,
@@ -258,19 +256,21 @@ export async function applyOAuthClientChange(
 }
 
 export async function revokeMcpOAuthWriteAuthority(
-  serverId: number,
+  connection: McpConnectionRef,
 ): Promise<void> {
+  const connectionKey = mcpConnectionKey(connection);
   writeAuthorityGenerations.set(
-    serverId,
-    (writeAuthorityGenerations.get(serverId) ?? 0) + 1,
+    connectionKey,
+    (writeAuthorityGenerations.get(connectionKey) ?? 0) + 1,
   );
-  // Join the per-server queue so every write that began under the revoked
-  // authority has either committed before this barrier or observed staleness.
-  await withStateLock(serverId, async () => undefined);
+  // Join the per-configuration queue so every write that began under the
+  // revoked authority has either committed before this barrier or observed
+  // staleness.
+  await withStateLock(connection, async () => undefined);
 }
 
 interface ProviderConfig {
-  serverId: number;
+  connection: McpConnectionRef;
   callbackPort?: number;
   scope?: string;
   // Client ID the user registered by hand, for servers that don't
@@ -290,10 +290,17 @@ interface ProviderConfig {
   // redirect.
   allowInteractive?: boolean;
   writeAuthority?: McpOAuthWriteAuthority;
+  // Ask the provider to show its account chooser, for signing in a
+  // second configuration of a plugin whose other configuration is already
+  // connected. Without it, a browser already signed in to (and having
+  // authorized) the first account can redirect straight back and connect
+  // that same account again.
+  requestAccountSelection?: boolean;
 }
 
 export class DyadOAuthClientProvider implements OAuthClientProvider {
-  private readonly serverId: number;
+  private readonly connection: McpConnectionRef;
+  private readonly connectionKey: string;
   private readonly callbackPort: number;
   private readonly scope: string | undefined;
   private readonly preregisteredClientId: string | undefined;
@@ -301,6 +308,7 @@ export class DyadOAuthClientProvider implements OAuthClientProvider {
   private readonly flowState: string | undefined;
   private readonly allowInteractive: boolean;
   private readonly writeAuthority: McpOAuthWriteAuthority | undefined;
+  private readonly requestAccountSelection: boolean;
   // Client info kept in memory. The SDK calls `addClientAuthentication`
   // without awaiting it, so that method can't do an async DB read --
   // it uses this instead. Set by `clientInformation()` and
@@ -317,22 +325,24 @@ export class DyadOAuthClientProvider implements OAuthClientProvider {
   private aborted = false;
 
   constructor(config: ProviderConfig) {
-    this.serverId = config.serverId;
+    this.connection = config.connection;
+    this.connectionKey = mcpConnectionKey(config.connection);
     this.callbackPort = config.callbackPort ?? DEFAULT_OAUTH_CALLBACK_PORT;
     this.scope = config.scope;
     this.preregisteredClientId = config.preregisteredClientId;
     this.preregisteredClientSecret = config.preregisteredClientSecret;
     this.flowState = config.flowState;
     this.allowInteractive = config.allowInteractive ?? false;
+    this.requestAccountSelection = config.requestAccountSelection ?? false;
     this.writeAuthority =
-      config.writeAuthority ?? captureMcpOAuthWriteAuthority(config.serverId);
+      config.writeAuthority ?? captureMcpOAuthWriteAuthority(config.connection);
   }
 
   private canWrite(): boolean {
     return (
       !this.aborted &&
-      this.writeAuthority?.serverId === this.serverId &&
-      (writeAuthorityGenerations.get(this.serverId) ?? 0) ===
+      this.writeAuthority?.connectionKey === this.connectionKey &&
+      (writeAuthorityGenerations.get(this.connectionKey) ?? 0) ===
         this.writeAuthority.generation
     );
   }
@@ -371,15 +381,15 @@ export class DyadOAuthClientProvider implements OAuthClientProvider {
   }
 
   async tokens(): Promise<OAuthTokens | undefined> {
-    const state = await readState(this.serverId);
+    const state = await readState(this.connection);
     return state.tokens;
   }
 
   async saveTokens(tokens: OAuthTokens): Promise<void> {
     if (!this.canWrite()) return;
-    await withStateLock(this.serverId, async () => {
+    await withStateLock(this.connection, async () => {
       if (!this.canWrite()) return;
-      const state = await readState(this.serverId);
+      const state = await readState(this.connection);
       // Servers that don't rotate refresh tokens omit `refresh_token`
       // from the response; carry the previous one forward so the SDK
       // can still silently refresh later.
@@ -388,13 +398,13 @@ export class DyadOAuthClientProvider implements OAuthClientProvider {
         next.refresh_token = state.tokens.refresh_token;
       }
       state.tokens = next;
-      await writeState(this.serverId, state);
+      await writeState(this.connection, state);
     });
   }
 
   async clientInformation(): Promise<OAuthClientInformation | undefined> {
-    return withStateLock(this.serverId, async () => {
-      const state = await readState(this.serverId);
+    return withStateLock(this.connection, async () => {
+      const state = await readState(this.connection);
       if (state.clientInformation) {
         this.cachedClientInformation = state.clientInformation;
         return state.clientInformation;
@@ -412,7 +422,7 @@ export class DyadOAuthClientProvider implements OAuthClientProvider {
         // Skip the seed write if this flow has been superseded; a
         // fresh flow will reseed on its own first read.
         if (this.canWrite()) {
-          await writeState(this.serverId, {
+          await writeState(this.connection, {
             ...state,
             clientInformation: seeded,
           });
@@ -437,27 +447,26 @@ export class DyadOAuthClientProvider implements OAuthClientProvider {
     // /authorize and /token.
     if (!this.allowInteractive) return;
     if (!this.canWrite()) return;
-    await withStateLock(this.serverId, async () => {
+    await withStateLock(this.connection, async () => {
       if (!this.canWrite()) return;
-      const state = await readState(this.serverId);
+      const state = await readState(this.connection);
       state.clientInformation = clientInformation;
-      await writeState(this.serverId, state);
+      await writeState(this.connection, state);
       // Persist the callback port the DCR client was registered with.
       // The provider's `redirectUrl` (hence the registered redirect
       // URI) is derived from this port, so later Connects must reuse
       // it or the OAuth server will reject `/authorize` with
       // "redirect_uri did not match".
-      await db
-        .update(mcpServers)
-        .set({ oauthCallbackPort: this.callbackPort })
-        .where(eq(mcpServers.id, this.serverId));
+      await writeMcpConnectionOAuthColumns(this.connection, {
+        oauthCallbackPort: this.callbackPort,
+      });
     });
   }
 
   async codeVerifier(): Promise<string> {
     if (!this.codeVerifierBuf) {
       throw new Error(
-        `No PKCE code verifier in memory for MCP server ${this.serverId}; the OAuth flow must be restarted.`,
+        `No PKCE code verifier in memory for MCP server ${this.connectionKey}; the OAuth flow must be restarted.`,
       );
     }
     return this.codeVerifierBuf;
@@ -483,7 +492,7 @@ export class DyadOAuthClientProvider implements OAuthClientProvider {
     // tab for an aborted attempt.
     if (this.aborted) {
       logger.info(
-        `Skipping authorize redirect for MCP server ${this.serverId}: flow was superseded.`,
+        `Skipping authorize redirect for MCP server ${this.connectionKey}: flow was superseded.`,
       );
       return;
     }
@@ -507,6 +516,17 @@ export class DyadOAuthClientProvider implements OAuthClientProvider {
         `Refusing to open OAuth authorize URL with protocol "${authorizationUrl.protocol}" (only https, or http on localhost).`,
       );
     }
+    // `prompt=select_account` is the OpenID Connect way to ask for the
+    // account chooser. A plain OAuth 2.0 server must ignore a parameter it
+    // doesn't recognize (RFC 6749 §3.1), so this is sent to every server
+    // rather than to a list of known providers. A server that already set
+    // its own `prompt` keeps it.
+    if (
+      this.requestAccountSelection &&
+      !authorizationUrl.searchParams.has("prompt")
+    ) {
+      authorizationUrl.searchParams.set("prompt", "select_account");
+    }
     logger.info(
       `Opening browser for OAuth: ${authorizationUrl.origin}${authorizationUrl.pathname}`,
     );
@@ -525,7 +545,7 @@ export class DyadOAuthClientProvider implements OAuthClientProvider {
     const info = this.cachedClientInformation;
     if (!info) {
       logger.warn(
-        `addClientAuthentication invoked without cached clientInformation for MCP server ${this.serverId}; token exchange will fail.`,
+        `addClientAuthentication invoked without cached clientInformation for MCP server ${this.connectionKey}; token exchange will fail.`,
       );
       return;
     }
@@ -581,7 +601,7 @@ export class DyadOAuthClientProvider implements OAuthClientProvider {
     scope: "all" | "client" | "tokens" | "verifier",
   ): Promise<void> {
     logger.debug(
-      `invalidateCredentials(${scope}) for MCP server ${this.serverId}`,
+      `invalidateCredentials(${scope}) for MCP server ${this.connectionKey}`,
     );
     // The SDK only ever calls with "all" or "tokens"; warn (rather
     // than silently no-op) if that ever changes so we notice.
@@ -599,25 +619,25 @@ export class DyadOAuthClientProvider implements OAuthClientProvider {
     // floor.
     if (scope === "all" && !this.allowInteractive) return;
     if (!this.canWrite()) return;
-    await withStateLock(this.serverId, async () => {
+    await withStateLock(this.connection, async () => {
       if (!this.canWrite()) return;
-      const state = await readState(this.serverId);
+      const state = await readState(this.connection);
       delete state.tokens;
       if (scope === "all") {
         this.codeVerifierBuf = undefined;
         delete state.clientInformation;
         this.cachedClientInformation = undefined;
       }
-      await writeState(this.serverId, state);
+      await writeState(this.connection, state);
     });
   }
 
   /** Only the user's explicit Disconnect action may discard unreadable state. */
   async disconnect(): Promise<void> {
     if (!this.allowInteractive || !this.canWrite()) return;
-    await withStateLock(this.serverId, async () => {
+    await withStateLock(this.connection, async () => {
       if (!this.canWrite()) return;
-      await writeState(this.serverId, {});
+      await writeState(this.connection, {});
       this.codeVerifierBuf = undefined;
       this.cachedClientInformation = undefined;
     });

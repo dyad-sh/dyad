@@ -12,14 +12,14 @@ export const MCP_OAUTH_INVOCATION_KIND = "mcp-oauth";
 
 export type McpOAuthInvocationRef = InvocationRef<
   typeof MCP_OAUTH_INVOCATION_KIND,
-  number
+  string
 >;
 
 export interface McpOAuthFlowIdentity {
   invocationRef: McpOAuthInvocationRef;
   rendererMessageId: string;
   expectedState: string;
-  serverId: number;
+  connectionKey: string;
 }
 
 export type McpOAuthState =

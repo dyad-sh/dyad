@@ -6,15 +6,17 @@ import {
 } from "node:http";
 import log from "electron-log";
 import { auth } from "@ai-sdk/mcp";
-import { eq } from "drizzle-orm";
-import { db } from "../../db";
-import { mcpServers } from "../../db/schema";
 import {
   DyadOAuthClientProvider,
   decryptFromString,
   issueMcpOAuthWriteAuthority,
+  oauthStateHasTokens,
   revokeMcpOAuthWriteAuthority,
 } from "./mcp_oauth_provider";
+import {
+  listPluginOAuthStates,
+  readMcpConnection,
+} from "./mcp_connection_store";
 import { DEFAULT_OAUTH_CALLBACK_PORT } from "../types/mcp";
 import { mcpManager } from "./mcp_manager";
 import { DyadError, DyadErrorKind } from "../../errors/dyad_error";
@@ -26,12 +28,19 @@ import {
 import { systemClock, uuidIdSource } from "@/state_machines/clock";
 import { PendingReceiptLedger } from "@/state_machines/pending_receipt_ledger";
 import { publishQueryInvalidations } from "./query_invalidation_delivery";
+import {
+  mcpConnectionKey,
+  parseMcpConnectionKey,
+  sameMcpConnection,
+  type McpConnectionRef,
+} from "@/shared/mcp_connection_ref";
 
 const logger = log.scope("mcp_oauth_flow");
 const LOOPBACK_BIND_HOSTS = ["127.0.0.1", "::1"] as const;
-const mutatingServers = new Set<number>();
-const serverMutationBarriers = new Map<number, Promise<unknown>>();
-const latestOAuthRequestGeneration = new Map<number, number>();
+// Keyed by mcpConnectionKey.
+const mutatingConnections = new Set<string>();
+const connectionMutationBarriers = new Map<string, Promise<unknown>>();
+const latestOAuthRequestGeneration = new Map<string, number>();
 const activeOAuthPreparations = new Set<
   Promise<{ success: boolean; error: string | null }>
 >();
@@ -301,21 +310,22 @@ const mcpOAuthRegistry = createMcpOAuthRegistry({
   clock: systemClock,
   ids: uuidIdSource,
   bindListener: bindCallbackListener,
-  onSettled: (serverId) => {
+  onSettled: (connectionKey) => {
     // Issuing an interactive authority invalidates any cached background
     // provider for this server. Rebuild it after every terminal outcome,
     // including cancellation/failure, so later refreshes capture the current
     // epoch instead of remaining permanently fenced.
-    void mcpManager.dispose(serverId).catch(() => {});
+    const connection = parseMcpConnectionKey(connectionKey);
+    void mcpManager.dispose(connection).catch(() => {});
     publishQueryInvalidations([
       { family: "mcp-servers" },
-      { family: "mcp-tools", serverId },
+      { family: "mcp-tools", serverId: connection.serverId },
     ]);
   },
 });
 
 interface RunOAuthFlowParams {
-  serverId: number;
+  connection: McpConnectionRef;
   /** Required by IPC; optional only for direct main-process callers/tests. */
   rendererMessageId?: string;
   callbackPort?: number;
@@ -334,14 +344,15 @@ export function runOAuthFlow(
     });
   }
   let admitted = false;
+  const connectionKey = mcpConnectionKey(params.connection);
   const claim = oauthReceiptLedger.claim({
     scope: "mcp-oauth-flow",
     messageId: rendererMessageId,
-    fingerprint: String(params.serverId),
+    fingerprint: connectionKey,
     start: () => {
       const generation =
-        (latestOAuthRequestGeneration.get(params.serverId) ?? 0) + 1;
-      latestOAuthRequestGeneration.set(params.serverId, generation);
+        (latestOAuthRequestGeneration.get(connectionKey) ?? 0) + 1;
+      latestOAuthRequestGeneration.set(connectionKey, generation);
       const preparation = prepareAndRunOAuthFlow(
         { ...params, rendererMessageId },
         generation,
@@ -379,7 +390,8 @@ async function prepareAndRunOAuthFlow(
   generation: number,
   onAdmitted: () => void,
 ): Promise<{ success: boolean; error: string | null }> {
-  if (oauthShuttingDown || mutatingServers.has(params.serverId)) {
+  const connectionKey = mcpConnectionKey(params.connection);
+  if (oauthShuttingDown || mutatingConnections.has(connectionKey)) {
     return {
       success: false,
       error: oauthShuttingDown
@@ -387,21 +399,22 @@ async function prepareAndRunOAuthFlow(
         : "MCP server configuration is changing; retry OAuth in a moment.",
     };
   }
-  const rows = await db
-    .select()
-    .from(mcpServers)
-    .where(eq(mcpServers.id, params.serverId));
-  const server = rows[0];
+  // Every await comes before the recheck below, so nothing can change the
+  // connection between the recheck and issuing its write authority.
+  const [server, requestAccountSelection] = await Promise.all([
+    readMcpConnection(params.connection),
+    anotherConfigurationIsConnected(params.connection),
+  ]);
   if (
     oauthShuttingDown ||
-    mutatingServers.has(params.serverId) ||
-    latestOAuthRequestGeneration.get(params.serverId) !== generation
+    mutatingConnections.has(connectionKey) ||
+    latestOAuthRequestGeneration.get(connectionKey) !== generation
   ) {
     return {
       success: false,
       error: oauthShuttingDown
         ? "OAuth is shutting down."
-        : latestOAuthRequestGeneration.get(params.serverId) !== generation
+        : latestOAuthRequestGeneration.get(connectionKey) !== generation
           ? "OAuth flow superseded by a newer Connect attempt."
           : "MCP server configuration is changing; retry OAuth in a moment.",
     };
@@ -409,13 +422,13 @@ async function prepareAndRunOAuthFlow(
   if (!server) {
     return {
       success: false,
-      error: `MCP server not found: ${params.serverId}`,
+      error: `MCP server not found: ${connectionKey}`,
     };
   }
   if (!server.url) {
     return {
       success: false,
-      error: `MCP server "${server.name}" has no URL; OAuth requires HTTP transport.`,
+      error: `MCP server "${server.displayName}" has no URL; OAuth requires HTTP transport.`,
     };
   }
   if (server.transport !== "http") {
@@ -443,9 +456,9 @@ async function prepareAndRunOAuthFlow(
     );
   }
   const expectedState = generateState();
-  const writeAuthority = issueMcpOAuthWriteAuthority(server.id);
+  const writeAuthority = issueMcpOAuthWriteAuthority(server.connection);
   const provider = new DyadOAuthClientProvider({
-    serverId: server.id,
+    connection: server.connection,
     callbackPort,
     scope,
     preregisteredClientId: server.oauthClientId ?? undefined,
@@ -453,13 +466,14 @@ async function prepareAndRunOAuthFlow(
     flowState: expectedState,
     allowInteractive: true,
     writeAuthority,
+    requestAccountSelection,
   });
 
   let silentlyAuthorized = false;
   onAdmitted();
   const result = await mcpOAuthRegistry.connect({
     port: callbackPort,
-    serverId: server.id,
+    connectionKey,
     rendererMessageId: params.rendererMessageId,
     expectedState,
     authorize: async (authorizationCode) => {
@@ -477,39 +491,52 @@ async function prepareAndRunOAuthFlow(
 
   if (result.success) {
     if (silentlyAuthorized) {
-      await mcpManager.dispose(server.id);
+      await mcpManager.dispose(server.connection);
     } else {
-      void mcpManager.dispose(server.id).catch(() => {});
+      void mcpManager.dispose(server.connection).catch(() => {});
     }
   } else {
-    logger.warn(`OAuth flow failed for server ${server.id}: ${result.error}`);
+    logger.warn(
+      `OAuth flow failed for server ${connectionKey}: ${result.error}`,
+    );
   }
   return result;
 }
 
+/**
+ * Whether a different configuration of the same plugin already holds
+ * tokens. Signing in another one is then most likely meant for a different
+ * account, so the flow asks the provider for its account chooser.
+ */
+async function anotherConfigurationIsConnected(
+  target: McpConnectionRef,
+): Promise<boolean> {
+  const states = await listPluginOAuthStates(target.serverId);
+  return states.some(
+    ({ connection, oauthState }) =>
+      !sameMcpConnection(connection, target) && oauthStateHasTokens(oauthState),
+  );
+}
+
 export async function disconnectOAuth(
-  serverId: number,
+  connection: McpConnectionRef,
 ): Promise<{ success: boolean }> {
   return withMcpOAuthServerMutation(
-    serverId,
+    connection,
     "OAuth flow cancelled because the server was disconnected.",
     async () => {
-      const rows = await db
-        .select({ id: mcpServers.id })
-        .from(mcpServers)
-        .where(eq(mcpServers.id, serverId));
-      if (!rows[0]) {
+      if (!(await readMcpConnection(connection))) {
         throw new DyadError(
-          `MCP server not found: ${serverId}`,
+          `MCP server not found: ${mcpConnectionKey(connection)}`,
           DyadErrorKind.NotFound,
         );
       }
       const provider = new DyadOAuthClientProvider({
-        serverId,
+        connection,
         allowInteractive: true,
       });
       await provider.disconnect();
-      void mcpManager.dispose(serverId).catch(() => {});
+      void mcpManager.dispose(connection).catch(() => {});
       return { success: true };
     },
   );
@@ -521,38 +548,39 @@ export async function disconnectOAuth(
  * the authority barrier then fences writes that were already queued.
  */
 export async function cancelMcpOAuthForServer(
-  serverId: number,
+  connection: McpConnectionRef,
   reason: string,
 ): Promise<void> {
-  await mcpOAuthRegistry.cancelServer(serverId, reason);
-  await revokeMcpOAuthWriteAuthority(serverId);
+  await mcpOAuthRegistry.cancelConnection(mcpConnectionKey(connection), reason);
+  await revokeMcpOAuthWriteAuthority(connection);
 }
 
 export function withMcpOAuthServerMutation<T>(
-  serverId: number,
+  connection: McpConnectionRef,
   reason: string,
   mutate: () => Promise<T>,
 ): Promise<T> {
   // Fence both active flows and preparations that are currently awaiting the
   // row read. Keep the admission fence raised across an entire queued
   // mutation chain; only the last barrier for this server may lower it.
-  mutatingServers.add(serverId);
+  const connectionKey = mcpConnectionKey(connection);
+  mutatingConnections.add(connectionKey);
   latestOAuthRequestGeneration.set(
-    serverId,
-    (latestOAuthRequestGeneration.get(serverId) ?? 0) + 1,
+    connectionKey,
+    (latestOAuthRequestGeneration.get(connectionKey) ?? 0) + 1,
   );
   const previous =
-    serverMutationBarriers.get(serverId)?.catch(() => undefined) ??
+    connectionMutationBarriers.get(connectionKey)?.catch(() => undefined) ??
     Promise.resolve();
   const operation = previous.then(async () => {
-    await cancelMcpOAuthForServer(serverId, reason);
+    await cancelMcpOAuthForServer(connection, reason);
     return await mutate();
   });
-  serverMutationBarriers.set(serverId, operation);
+  connectionMutationBarriers.set(connectionKey, operation);
   const clearBarrier = () => {
-    if (serverMutationBarriers.get(serverId) === operation) {
-      serverMutationBarriers.delete(serverId);
-      mutatingServers.delete(serverId);
+    if (connectionMutationBarriers.get(connectionKey) === operation) {
+      connectionMutationBarriers.delete(connectionKey);
+      mutatingConnections.delete(connectionKey);
     }
   };
   void operation.then(clearBarrier, clearBarrier);

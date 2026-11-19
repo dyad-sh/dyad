@@ -39,6 +39,7 @@ export const UserInputDescriptorSchema = z.discriminatedUnion("kind", [
   DescriptorBaseSchema.extend({
     kind: z.literal("mcp-consent"),
     serverId: z.number(),
+    appConfigId: z.number().nullable(),
     serverName: z.string(),
     toolName: z.string(),
     toolDescription: z.string().nullable().optional(),

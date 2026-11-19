@@ -2,15 +2,20 @@ import { useMemo } from "react";
 import { atom, useAtom } from "jotai";
 import { useMcp } from "@/hooks/useMcp";
 import { useMcpCatalog } from "@/hooks/useMcpCatalog";
-import type { McpServer } from "@/ipc/types";
+import type { McpConnectionConfig, McpServer } from "@/ipc/types";
 import { ipc } from "@/ipc/types";
 import { showError, showInfo, showSuccess } from "@/lib/toast";
 import { useOauthCallbackPort } from "./AddPluginDialog";
+import {
+  mcpConnectionKey,
+  type McpConnectionRef,
+} from "@/shared/mcp_connection_ref";
 
 // Produced by feedbackFor below; the summary card and detail page
 // render it as a badge or alert.
 export type ConnectFeedback = {
-  serverId: number;
+  /** mcpConnectionKey of the configuration it is about. */
+  connectionKey: string;
   kind: "discovery_failed" | "unauthorized" | "credentials";
   message: string;
 };
@@ -24,20 +29,24 @@ type StoredConnectFeedback = ConnectFeedback & { kind: "discovery_failed" };
 // plugin detail page, so a failure raised on one is visible on the
 // other and an in-flight flow can't be started twice.
 const connectFeedbackAtom = atom<StoredConnectFeedback | null>(null);
-const connectingServerIdAtom = atom<number | null>(null);
-const disconnectingServerIdAtom = atom<number | null>(null);
+// Both hold an mcpConnectionKey.
+const connectingKeyAtom = atom<string | null>(null);
+const disconnectingKeyAtom = atom<string | null>(null);
 
 // Shared OAuth connect/probe handling for the plugins list and the
 // plugin detail page.
 export function usePluginConnect() {
-  const { servers, statusByServer, updateServer, startOAuth, disconnectOAuth } =
-    useMcp();
-  const [connectingServerId, setConnectingServerId] = useAtom(
-    connectingServerIdAtom,
-  );
-  const [disconnectingServerId, setDisconnectingServerId] = useAtom(
-    disconnectingServerIdAtom,
-  );
+  // Connections: plugins and their app-specific configurations, which
+  // connect the same way.
+  const {
+    connections,
+    statusByServer,
+    updateConnection,
+    startOAuth,
+    disconnectOAuth,
+  } = useMcp();
+  const [connectingKey, setConnectingKey] = useAtom(connectingKeyAtom);
+  const [disconnectingKey, setDisconnectingKey] = useAtom(disconnectingKeyAtom);
   const [connectFeedback, setConnectFeedback] = useAtom(connectFeedbackAtom);
 
   const callbackPort = useOauthCallbackPort();
@@ -65,10 +74,10 @@ export function usePluginConnect() {
   // is held, so only one flow can run at a time. Resolves to `fn`'s
   // result, or undefined when it threw.
   const withConnectSlot = async <T>(
-    serverId: number,
+    connection: McpConnectionRef,
     fn: () => Promise<T>,
   ): Promise<T | undefined> => {
-    setConnectingServerId(serverId);
+    setConnectingKey(mcpConnectionKey(connection));
     try {
       return await fn();
     } catch (err) {
@@ -79,14 +88,14 @@ export function usePluginConnect() {
       console.error("Connect flow failed", err);
       return undefined;
     } finally {
-      setConnectingServerId(null);
+      setConnectingKey(null);
     }
   };
 
   // The OAuth flow itself; callers hold the connect slot. Resolves to
   // whether the flow succeeded.
   const autoConnect = async (
-    serverId: number,
+    connection: McpConnectionRef,
     opts?: { showToast?: boolean; callbackPort?: number },
   ): Promise<boolean> => {
     // Clear any prior feedback so a stale "discovery_failed" alert
@@ -96,7 +105,7 @@ export function usePluginConnect() {
     // matches its registered redirect URI. Callers pass the probed
     // port only for rows with none saved yet.
     const result = await startOAuth({
-      serverId,
+      connection,
       callbackPort: opts?.callbackPort,
     });
     if (result.success) {
@@ -106,7 +115,7 @@ export function usePluginConnect() {
     const message = result.error ?? "OAuth flow failed";
     if (result.errorKind === "discovery_failed") {
       setConnectFeedback({
-        serverId,
+        connectionKey: mcpConnectionKey(connection),
         kind: "discovery_failed",
         message,
       });
@@ -125,14 +134,14 @@ export function usePluginConnect() {
   };
 
   const runAutoConnect = async (
-    serverId: number,
+    connection: McpConnectionRef,
     opts?: { showToast?: boolean; callbackPort?: number },
-  ) => withConnectSlot(serverId, () => autoConnect(serverId, opts));
+  ) => withConnectSlot(connection, () => autoConnect(connection, opts));
 
   // OAuth for a row that was just created, holding the connect slot so
   // no other flow can start meanwhile. Resolves to whether it succeeded.
   const connectNewServer = async (created: McpServer): Promise<boolean> =>
-    (await runAutoConnect(created.id, {
+    (await runAutoConnect(created.connection, {
       showToast: true,
       callbackPort:
         created.oauthCallbackPort ??
@@ -141,9 +150,9 @@ export function usePluginConnect() {
 
   // Reports a 401 right after an add, ahead of the tool discovery that
   // the new row triggers. The alert itself comes from that discovery.
-  const runProbe = async (serverId: number) => {
+  const runProbe = async (connection: McpConnectionRef) => {
     try {
-      const result = await ipc.mcp.probeConnection(serverId);
+      const result = await ipc.mcp.probeConnection(connection);
       if (result.status === "unauthorized") {
         showError(
           "Server connection failed. This server requires authentication. Try enabling OAuth.",
@@ -163,18 +172,21 @@ export function usePluginConnect() {
       // and shows its own "Connecting…" state. A freshly created row
       // has no saved port yet, so use the probed one.
       showInfo(`Connecting OAuth for "${created.name}"…`);
-      await runAutoConnect(created.id, {
+      await runAutoConnect(created.connection, {
         showToast: true,
         callbackPort:
           typeof callbackPort === "number" ? callbackPort : undefined,
       });
     } else {
-      await runProbe(created.id);
+      await runProbe(created.connection);
     }
   };
 
-  const onConnect = async (serverId: number) => {
-    const server = servers.find((s) => s.id === serverId);
+  const onConnect = async (connection: McpConnectionRef) => {
+    const key = mcpConnectionKey(connection);
+    const server = connections.find(
+      (s) => mcpConnectionKey(s.connection) === key,
+    );
     // Catalog rows are added without a saved callback port, so a
     // Connect from the card would fall back to the default port and
     // fail if it's occupied. Use the probed port for rows with none
@@ -184,7 +196,7 @@ export function usePluginConnect() {
       server != null &&
       server.oauthCallbackPort == null &&
       typeof callbackPort === "number";
-    await runAutoConnect(serverId, {
+    await runAutoConnect(connection, {
       callbackPort: usesProbedPort ? callbackPort : undefined,
     });
   };
@@ -194,60 +206,64 @@ export function usePluginConnect() {
   // which can take seconds, and a second click in that window would
   // start a duplicate OAuth flow or probe. `isUpdatingServer` can't
   // guard this; mutation state is local to each useMcp() instance.
-  const onEnableOAuthAndRetry = async (serverId: number) =>
-    withConnectSlot(serverId, async () => {
-      await updateServer({ id: serverId, oauthEnabled: true });
+  const onEnableOAuthAndRetry = async (connection: McpConnectionRef) =>
+    withConnectSlot(connection, async () => {
+      await updateConnection(connection, { oauthEnabled: true });
       setConnectFeedback(null);
       // Just enabled, so no saved port yet -- use the probed one.
-      await autoConnect(serverId, {
+      await autoConnect(connection, {
         callbackPort:
           typeof callbackPort === "number" ? callbackPort : undefined,
       });
     });
 
-  const onDisableOAuthAndRetry = async (serverId: number) =>
-    withConnectSlot(serverId, async () => {
+  const onDisableOAuthAndRetry = async (connection: McpConnectionRef) =>
+    withConnectSlot(connection, async () => {
       // The update re-runs discovery, which is what the alert reads.
-      await updateServer({ id: serverId, oauthEnabled: false });
+      await updateConnection(connection, { oauthEnabled: false });
       setConnectFeedback(null);
     });
 
-  const onDisconnect = async (serverId: number) => {
-    setDisconnectingServerId(serverId);
+  const onDisconnect = async (connection: McpConnectionRef) => {
+    setDisconnectingKey(mcpConnectionKey(connection));
     try {
-      await disconnectOAuth(serverId);
+      await disconnectOAuth(connection);
       showSuccess("Disconnected OAuth");
     } catch (err) {
       showError(
         err instanceof Error ? err.message : "Failed to disconnect OAuth",
       );
     } finally {
-      setDisconnectingServerId(null);
+      setDisconnectingKey(null);
     }
   };
 
   // An OAuth-off server that returns 401 needs auth; surface that from
   // the live probe status so the alert stays put. Auth kinds are built
   // on each read, so they clear as soon as discovery stops seeing a 401.
-  const feedbackFor = (server: McpServer): ConnectFeedback | null => {
-    if (connectFeedback && connectFeedback.serverId === server.id) {
+  const feedbackFor = (server: McpConnectionConfig): ConnectFeedback | null => {
+    const connectionKey = mcpConnectionKey(server.connection);
+    if (connectFeedback && connectFeedback.connectionKey === connectionKey) {
       return connectFeedback;
     }
-    if (!server.oauthEnabled && statusByServer[server.id] === "unauthorized") {
+    if (
+      !server.oauthEnabled &&
+      statusByServer[connectionKey] === "unauthorized"
+    ) {
       // If the catalog says this server needs an API key, treat a 401 as
       // a bad key rather than a sign that OAuth is required.
       const wantsKey =
         server.catalogSlug != null && slugsNeedingKey.has(server.catalogSlug);
       if (wantsKey) {
         return {
-          serverId: server.id,
+          connectionKey,
           kind: "credentials",
           message:
             "This server rejected the provided credentials. Check that your API key or token is correct.",
         };
       }
       return {
-        serverId: server.id,
+        connectionKey,
         kind: "unauthorized",
         message:
           "This server requires authentication. Enable OAuth and try again.",
@@ -257,8 +273,9 @@ export function usePluginConnect() {
   };
 
   return {
-    connectingServerId,
-    disconnectingServerId,
+    /** mcpConnectionKey of the configuration whose flow holds the slot. */
+    connectingKey,
+    disconnectingKey,
     feedbackFor,
     connectNewServer,
     onServerCreated,

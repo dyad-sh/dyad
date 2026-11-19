@@ -13,7 +13,7 @@ export function CatalogSection() {
   const {
     addFromCatalog,
     addingSlug,
-    connectingServerId,
+    connectingKey,
     pendingStdioEntry,
     confirmPendingStdio,
     cancelPendingStdio,
@@ -115,7 +115,7 @@ export function CatalogSection() {
                   entry,
                   addedSlugs,
                   serverBySlug,
-                  connectingServerId,
+                  connectingKey,
                 })}
                 isAdding={addingSlug === entry.slug}
                 onAdd={addFromCatalog}
@@ -138,7 +138,7 @@ export function CatalogSection() {
                   entry,
                   addedSlugs,
                   serverBySlug,
-                  connectingServerId,
+                  connectingKey,
                 })}
                 isAdding={addingSlug === entry.slug}
                 onAdd={addFromCatalog}

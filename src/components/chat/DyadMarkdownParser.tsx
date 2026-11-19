@@ -908,7 +908,8 @@ function renderCustomTag(
             attributes.outcome === "connected" ||
             attributes.outcome === "declined" ||
             attributes.outcome === "never" ||
-            attributes.outcome === "dismissed"
+            attributes.outcome === "dismissed" ||
+            attributes.outcome === "unavailable"
               ? attributes.outcome
               : undefined
           }

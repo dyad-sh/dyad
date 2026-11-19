@@ -403,7 +403,10 @@
     "never": "Ne plus me le suggérer",
     "neverTitle": "{{name}} ne sera plus suggéré",
     "neverDescription": "Dyad continuera sans lui. Vous pouvez toujours l'ajouter depuis la page Plugins.",
-    "connectFailed": "Impossible de connecter le plugin. Réessayez ou gérez-le depuis la page Plugins."
+    "connectFailed": "Impossible de connecter le plugin. Réessayez ou gérez-le depuis la page Plugins.",
+    "unavailableTitle": "{{name}} n'est pas configuré pour cette app",
+    "unavailableDescription": "Il est ajouté dans Dyad, mais cette app ne l'utilise pas. Vous pouvez le rendre disponible pour cette app sur la page du plugin.",
+    "openPluginSettings": "Ouvrir les réglages du plugin"
   },
   "guide": "Guide",
   "annotations": {

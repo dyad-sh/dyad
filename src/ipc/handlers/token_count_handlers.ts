@@ -168,9 +168,13 @@ export function registerTokenCountHandlers() {
       });
 
       if (rootDatabasePromptState === "supabase") {
+        // The renderer re-runs this count when the network comes back or the
+        // window becomes visible, often before connectivity has recovered. A
+        // cached key keeps the count exact without a request that can fail.
         const supabaseClientCode = await getSupabaseClientCode({
           projectId: chat.app.supabaseProjectId!,
           organizationSlug: chat.app.supabaseOrganizationSlug ?? null,
+          preferCachedKey: true,
         });
         systemPrompt +=
           "\n\n" + getSupabaseAvailableSystemPrompt(supabaseClientCode);

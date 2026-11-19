@@ -219,6 +219,27 @@ describe("app-specific plugin configurations", () => {
     });
   });
 
+  it("ignores an assignment whose plugin disagrees with its configuration's", async () => {
+    const app = insertApp("App");
+    const coolify = insertPlugin();
+    const github = insertPlugin({ name: "GitHub" });
+    const lab = await createAppConfig({
+      serverId: coolify,
+      name: "Lab",
+      appIds: [],
+    });
+    // Only a bug could write this row: Coolify's configuration filed
+    // under GitHub.
+    db.insert(schema.mcpAppConfigApps)
+      .values({ appConfigId: lab.id, serverId: github, appId: app })
+      .run();
+
+    expect(await connectionsFor(app)).toEqual([
+      pluginConnection(coolify),
+      pluginConnection(github),
+    ]);
+  });
+
   it("runs the plugin's reviewed stdio command, not one the catalog changed to", async () => {
     // The catalog now lists a different command and env than the user
     // reviewed when adding the plugin.

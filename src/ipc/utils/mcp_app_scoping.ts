@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "../../db";
 import {
   mcpAppConfigApps,
@@ -84,9 +84,14 @@ export async function readPluginStatusesForApp(
             oauthState: mcpAppConfigs.oauthState,
           })
           .from(mcpAppConfigApps)
+          // Matching the plugin too means an assignment whose plugin
+          // disagrees with its configuration's is ignored.
           .innerJoin(
             mcpAppConfigs,
-            eq(mcpAppConfigs.id, mcpAppConfigApps.appConfigId),
+            and(
+              eq(mcpAppConfigs.id, mcpAppConfigApps.appConfigId),
+              eq(mcpAppConfigs.serverId, mcpAppConfigApps.serverId),
+            ),
           )
           .where(eq(mcpAppConfigApps.appId, appId))
       : [],

@@ -155,7 +155,15 @@ function AppConfigDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      // The close button, Escape and an outside click all wait for a save
+      // in flight, like Cancel.
+      onOpenChange={(next) => {
+        if (!next && isSavingAppScope) return;
+        onOpenChange(next);
+      }}
+    >
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>

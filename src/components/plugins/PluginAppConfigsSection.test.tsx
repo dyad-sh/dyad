@@ -247,7 +247,7 @@ describe("PluginAppConfigsSection", () => {
     expect(screen.queryByText(/until you finish setting it up/)).toBeNull();
   });
 
-  it("keeps the dialog open while a save is in flight", () => {
+  it("keeps the dialog open while a save is in flight", async () => {
     mocks.isSaving = true;
     renderSection(plugin(), []);
 
@@ -256,6 +256,8 @@ describe("PluginAppConfigsSection", () => {
       screen.getByRole<HTMLButtonElement>("button", { name: "Cancel" })
         .disabled,
     ).toBe(true);
+    await userEvent.keyboard("{Escape}");
+    expect(screen.getByRole("dialog")).toBeTruthy();
   });
 
   it("shows the delete as pending until it finishes", async () => {

@@ -132,7 +132,13 @@ testWithConfig({
     }, linkedApp.id);
     expect(reconnectedApp).toMatchObject(expectedLink);
 
-    await po.navigation.clickBackButton();
+    // Return through "Open in Chat" rather than Back: after the entry-point
+    // reload above, Back can land on Home instead of the app's chat (seen on
+    // Windows), which never shows the publish panel.
+    await po.page.getByRole("button", { name: "Open in Chat" }).click();
+    await expect(po.page.getByTestId("chat-input-container")).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
     // The publish panel was open before visiting app details. Recovery must
     // restore its database controls as well as the connector's branch picker.
     await expect(publishPanel.getByTestId("database-section")).toBeVisible({

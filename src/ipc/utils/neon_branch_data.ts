@@ -14,8 +14,9 @@ const NEON_AUTH_SERVICE_TABLES = new Set(["project_config", "jwks"]);
 /**
  * Neon Auth's tables belong to Neon: on a provisioned branch the `neon_auth`
  * role owns them, and the app role is not a member of it, so it may read and
- * write their rows but not alter them. Copies leave their keys and triggers
- * alone and order the rows instead.
+ * write their rows but not alter them. Copies keep their keys and order the
+ * rows instead. Legacy app-owned tables may still have user triggers, which
+ * can be temporarily disabled when the connected role has permission.
  */
 const NEON_MANAGED_SCHEMA = "neon_auth";
 const COPY_BATCH_SIZE = 500;
@@ -96,7 +97,7 @@ async function listForeignKeysWith(db: Queryable): Promise<TableForeignKey[]> {
   return rows as TableForeignKey[];
 }
 
-/** Tables with user (not internal, foreign-key) triggers. */
+/** Tables with enabled user (not internal, foreign-key) triggers. */
 async function listTriggeredTables(
   db: Queryable,
 ): Promise<{ schema: string; name: string }[]> {
@@ -105,7 +106,8 @@ async function listTriggeredTables(
     from pg_trigger t
     join pg_class c on c.oid = t.tgrelid
     join pg_namespace n on n.oid = c.relnamespace
-    where not t.tgisinternal and ${USER_SCHEMA_FILTER}`);
+    where not t.tgisinternal and t.tgenabled <> 'D'
+      and ${USER_SCHEMA_FILTER}`);
   return rows as { schema: string; name: string }[];
 }
 
@@ -197,7 +199,7 @@ export interface DataCopyPlan {
   /** Keys to drop before the copy and re-add after it, which validates them. */
   droppedForeignKeys: TableForeignKey[];
   /**
-   * Tables the copy must not alter, parents before children. Their keys stay
+   * Tables whose keys the copy keeps, parents before children. Their keys stay
    * on, so they are cleared children first and filled parents first.
    */
   managedTables: CopyTable[];
@@ -212,9 +214,9 @@ function isManaged(table: { schema: string; canAlter: boolean }): boolean {
 const tableKey = (schema: string, name: string) => `${schema}.${name}`;
 
 /**
- * Splits `tables` into those the copy may alter and those it may not (Neon
- * Auth's, and any the role doesn't own), and orders the latter so every row
- * goes in after the rows it references. Throws `UncopyableDataError`, before
+ * Splits `tables` into those whose keys the copy drops and those whose keys
+ * it keeps (Neon Auth's, and any the role doesn't own), and orders the latter
+ * so every row goes in after the rows it references. Throws `UncopyableDataError`, before
  * anything is written, for what no order fixes: user triggers it can't turn
  * off, a key on a table that references itself, a cycle, or a key into a
  * table copied with its keys off.
@@ -238,10 +240,10 @@ export function planDataCopy({
   const triggeredKeys = new Set(
     triggered.map((t) => tableKey(t.schema, t.name)),
   );
-  for (const key of managedByKey.keys()) {
-    if (triggeredKeys.has(key)) {
+  for (const [key, table] of managedByKey) {
+    if (triggeredKeys.has(key) && !table.canAlter) {
       throw new UncopyableDataError(
-        `Can't copy ${key}: it has triggers, and Dyad can't turn them off on a table it doesn't own.`,
+        `Can't copy ${key}: it has enabled user triggers that the connected database role cannot disable.`,
       );
     }
   }
@@ -297,8 +299,8 @@ export function planDataCopy({
 
 /**
  * What a migration's copy would lose, as user-facing descriptions; empty when
- * it is safe. When Neon Auth is re-provisioned, views and policies that depend
- * on its tables would be dropped with the copied `neon_auth` schema (only
+ * it is safe. When Neon Auth is re-provisioned, user triggers and dependent
+ * views and policies would be dropped with the copied `neon_auth` schema (only
  * foreign keys are carried over). Large objects live in system catalogs that
  * a schema-only branch starts without.
  */
@@ -335,6 +337,12 @@ export async function findMigrationBlockers(
       where d.refclassid = 'pg_class'::regclass
         and d.refobjid in (select oid from auth_tables)
         and n.nspname <> 'neon_auth'
+      union
+      select format('the trigger %I on %I.%I', t.tgname, n.nspname, c.relname)
+      from pg_trigger t
+      join pg_class c on c.oid = t.tgrelid
+      join pg_namespace n on n.oid = c.relnamespace
+      where c.oid in (select oid from auth_tables) and not t.tgisinternal
       order by 1`);
     blockers.push(
       ...dependents.map((d) => `${d.object} (it uses Neon Auth's tables)`),
@@ -364,12 +372,68 @@ async function poolQueryable(connectionUri: string) {
   };
 }
 
-const ENABLE_TRIGGER: Record<string, string> = {
-  O: "enable trigger",
-  D: "disable trigger",
-  R: "enable replica trigger",
-  A: "enable always trigger",
-};
+/**
+ * Inspect the destination at execution time, including for a SQL backup.
+ * Source ownership and trigger states say nothing about the role or tables
+ * used to restore it. Keep triggers off across all deletes and inserts, and
+ * restore only the enabled triggers we changed; disabled ones stay untouched.
+ * Both blocks run inside the copy/restore transaction, so any error rolls
+ * back their changes as well as the copied rows.
+ */
+function triggerCopySql(tables: CopyTable[]): {
+  disable: string;
+  restore: string;
+} {
+  const names = JSON.stringify(
+    tables.map((t) => qualifiedName(t.schema, t.name)),
+  );
+  const namesTag = dollarQuoteTag(names);
+  const disable = `
+declare
+  table_name text;
+  table_id regclass;
+  user_trigger record;
+begin
+  create temporary table dyad_copy_trigger_states (
+    table_id oid, trigger_name name, state text
+  ) on commit drop;
+  for table_name in
+    select json_array_elements_text(${namesTag}${names}${namesTag}::json)
+  loop
+    table_id := table_name::regclass;
+    for user_trigger in
+      select t.tgname, t.tgenabled, ${CAN_ALTER("c")} as can_alter
+      from pg_trigger t join pg_class c on c.oid = t.tgrelid
+      where t.tgrelid = table_id and not t.tgisinternal and t.tgenabled <> 'D'
+    loop
+      if not user_trigger.can_alter then
+        raise exception 'Can''t copy %: it has enabled user triggers that the connected database role cannot disable.', table_name;
+      end if;
+      insert into pg_temp.dyad_copy_trigger_states
+        values (table_id, user_trigger.tgname, user_trigger.tgenabled);
+      execute format('alter table %s disable trigger %I', table_id, user_trigger.tgname);
+    end loop;
+  end loop;
+end`;
+  // Identifiers can contain dollar-quote tags too, so quote the entire body.
+  const disableTag = dollarQuoteTag(disable);
+  return {
+    disable: `do ${disableTag}${disable}${disableTag};`,
+    restore: `do $$
+declare
+  user_trigger record;
+begin
+  for user_trigger in select * from pg_temp.dyad_copy_trigger_states loop
+    execute format('alter table %s %s %I', user_trigger.table_id::regclass,
+      case user_trigger.state
+        when 'R' then 'enable replica trigger'
+        when 'A' then 'enable always trigger'
+        else 'enable trigger'
+      end, user_trigger.trigger_name);
+  end loop;
+end $$;`,
+  };
+}
 
 export interface CopyBranchDataResult {
   tables: number;
@@ -384,8 +448,8 @@ export interface CopyBranchDataResult {
  * one transaction: if anything fails, the target is left as it was. Both go
  * over WebSockets, which have no response size limit for wide rows. The app
  * role cannot set `session_replication_role`, so foreign keys are dropped for
- * the copy and re-added afterwards (re-adding validates them), and user
- * triggers are disabled per table, then put back in their original state.
+ * the copy and re-added afterwards (re-adding validates them). Enabled user
+ * triggers are disabled, then put back in their original state.
  * Tables it may not alter, Neon Auth's among them, keep their keys: their
  * rows go in parents first instead (see `planDataCopy`).
  *
@@ -454,6 +518,8 @@ export async function copyBranchData({
       foreignKeys: await listForeignKeysWith(target),
       triggered: await listTriggeredTables(target),
     });
+    const triggers = triggerCopySql(tables);
+    await target.query(triggers.disable);
 
     // Every key dropped below is re-added, including those on partitioned
     // parents, which hold no rows and so are not in `tables`. The extra keys
@@ -527,20 +593,9 @@ export async function copyBranchData({
 
     for (const table of plan.ownedTables) {
       const tableName = qualifiedName(table.schema, table.name);
-      const triggers = (await target.query(
-        `select tgname as name, tgenabled as state from pg_trigger
-         where tgrelid = $1::regclass and not tgisinternal`,
-        [tableName],
-      )) as { name: string; state: string }[];
-      await target.query(`alter table ${tableName} disable trigger user`);
       await target.query(`delete from only ${tableName}`);
       copiedTableNames.push(tableName);
       await copyRows(table);
-      for (const trigger of triggers) {
-        await target.query(
-          `alter table ${tableName} ${ENABLE_TRIGGER[trigger.state] ?? "enable trigger"} ${quoteIdentifier(trigger.name)}`,
-        );
-      }
     }
 
     const sequences = await source.query(`
@@ -586,6 +641,7 @@ export async function copyBranchData({
       }
     }
 
+    await target.query(triggers.restore);
     await target.query("commit");
   } catch (error) {
     await target.query("rollback").catch(() => {});
@@ -611,8 +667,8 @@ function dollarQuoteTag(text: string): string {
  * SQL script, read in one snapshot. Running the script (in the Neon SQL
  * editor, or with psql) against a database with the same schema, such as the
  * new development branch, replaces those tables' rows with the saved ones.
- * It never alters Neon Auth's tables, which the app role the editor uses may
- * not alter; their rows are written parents first instead.
+ * Neon Auth's keys stay in place; their rows are written parents first.
+ * Triggers are checked and, where permitted, disabled on the restore target.
  *
  * It holds the app's data, Neon Auth users included, so the file and its
  * directory are readable by the owner only. A partial file is removed.
@@ -647,8 +703,8 @@ export async function exportBranchDataAsSql({
       ].join("\n"),
     );
     // The file is restored later, as whatever role runs it (the Neon SQL
-    // editor uses the app role), so Neon Auth's tables are planned as tables
-    // it may not alter whoever may alter them here.
+    // editor uses the app role), so Neon Auth's keys stay in place regardless
+    // of source ownership. Trigger permissions are checked during restoration.
     const tables: CopyTable[] = [];
     const insertShape = new Map<
       string,
@@ -668,8 +724,11 @@ export async function exportBranchDataAsSql({
     const plan = planDataCopy({
       tables,
       foreignKeys: await listForeignKeysWith(source),
-      triggered: await listTriggeredTables(source),
+      // The file checks the destination's triggers before writing any rows.
+      triggered: [],
     });
+    const triggers = triggerCopySql(tables);
+    await write(triggers.disable);
     for (const fk of plan.droppedForeignKeys) {
       await write(
         `alter table ${qualifiedName(fk.schema, fk.table)} drop constraint if exists ${quoteIdentifier(fk.name)};`,
@@ -712,7 +771,7 @@ export async function exportBranchDataAsSql({
       await write(
         [
           "",
-          "-- Neon Auth's tables belong to Neon, so their keys and triggers stay on:",
+          "-- Neon Auth's foreign keys stay on:",
           "-- they are cleared children first, then filled parents first.",
         ].join("\n"),
       );
@@ -729,20 +788,9 @@ export async function exportBranchDataAsSql({
 
     for (const table of plan.ownedTables) {
       const tableName = qualifiedName(table.schema, table.name);
-      const triggers = (await source.query(
-        `select tgname as name, tgenabled as state from pg_trigger
-         where tgrelid = $1::regclass and not tgisinternal`,
-        [tableName],
-      )) as { name: string; state: string }[];
       await write(`\n-- ${tableName}`);
-      await write(`alter table ${tableName} disable trigger user;`);
       await write(`delete from only ${tableName};`);
       await writeRows(table);
-      for (const trigger of triggers) {
-        await write(
-          `alter table ${tableName} ${ENABLE_TRIGGER[trigger.state] ?? "enable trigger"} ${quoteIdentifier(trigger.name)};`,
-        );
-      }
     }
     await write("");
     const sequences = await source.query(`
@@ -767,6 +815,7 @@ export async function exportBranchDataAsSql({
         `alter table ${qualifiedName(fk.schema, fk.table)} add constraint ${quoteIdentifier(fk.name)} ${fk.definition};`,
       );
     }
+    await write(triggers.restore);
     await write("commit;");
     await file.close();
   } catch (error) {

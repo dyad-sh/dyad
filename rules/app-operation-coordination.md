@@ -200,3 +200,9 @@ Preserve explicit run cancellation and existing infrastructure errors, including
 timeouts, in the final result. Log genuine lifecycle failures separately; when
 the run was not cancelled, append their user-facing explanation after any
 earlier infrastructure error rather than replacing the primary failure.
+
+## Copying and migrating Neon Auth data
+
+- Keep Neon Auth foreign keys intact even on legacy app-owned tables; use the destination role's `canAlter` capability separately to decide whether enabled user triggers can be disabled.
+- SQL backups must inspect trigger permissions and states on the restore target. Leave disabled triggers alone and restore enabled triggers' original modes within the same transaction.
+- Reprovisioning Neon Auth drops legacy custom trigger definitions, including disabled ones. Check `findMigrationBlockers` before schema preparation so migrations cannot silently erase them.

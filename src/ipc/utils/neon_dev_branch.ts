@@ -972,8 +972,11 @@ async function migrateToRootDevelopmentBranch({
     // Capture foreign keys before dropping the copied neon_auth schema
     // cascades away any that reference it.
     const foreignKeys = await listForeignKeys(created.connectionUri);
+    // Even without Neon Auth on the old branch: pointing the apps at the new
+    // one (the env step) turns Neon Auth on there, which a schema-only branch
+    // refuses until it is prepared.
+    await prepareSchemaOnlyBranchForNeonAuth(created.connectionUri);
     if (hasAuth) {
-      await prepareSchemaOnlyBranchForNeonAuth(created.connectionUri);
       await ensureNeonAuth({ projectId, branchId: newDevelopment.id });
       notCopied = await copyNeonAuthSettings(
         neonClient,

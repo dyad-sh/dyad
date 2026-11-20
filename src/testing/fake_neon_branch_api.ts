@@ -55,6 +55,12 @@ export interface FakeBranch {
   parent_id?: string;
   init_source: "parent-data" | "parent-schema";
   neonAuth: boolean;
+  /**
+   * Whether `neon_service` may create in the database, which Neon Auth
+   * provisioning needs. A schema-only branch Dyad creates starts without it,
+   * as on real Neon, until `prepareForNeonAuth` grants it.
+   */
+  neonServiceCanCreate: boolean;
   auth: FakeAuthSettings;
   created_at: string;
 }
@@ -102,11 +108,26 @@ export class FakeNeonBranchApi {
       parent_id: options.schemaOnly ? undefined : parentId,
       init_source: options.schemaOnly ? "parent-schema" : "parent-data",
       neonAuth: options.neonAuth ?? false,
+      neonServiceCanCreate: true,
       auth: defaultAuthSettings(),
       created_at: new Date().toISOString(),
     };
     this.branches.set(branch.id, branch);
     return branch;
+  }
+
+  /**
+   * What `prepareSchemaOnlyBranchForNeonAuth` does to the branch behind
+   * `connectionUri`, as far as the Neon API can tell.
+   */
+  prepareForNeonAuth(connectionUri: string): void {
+    const branch = [...this.branches.values()].find(
+      (b) => this.connectionUri(b.id) === connectionUri,
+    );
+    if (!branch) {
+      throw new Error(`fake Neon: no branch at ${connectionUri}`);
+    }
+    branch.neonServiceCanCreate = true;
   }
 
   /** Completes every pending detach, as Neon eventually does. */
@@ -214,6 +235,7 @@ export class FakeNeonBranchApi {
             parent: parent.name,
             schemaOnly,
           });
+          branch.neonServiceCanCreate = !schemaOnly;
           return {
             data: {
               branch: publicBranch(branch, this.projectId),
@@ -301,6 +323,12 @@ export class FakeNeonBranchApi {
           const branch = this.get(branchId);
           if (branch.neonAuth) {
             throw new FakeNeonApiError(409, "neon_auth schema already exists");
+          }
+          if (!branch.neonServiceCanCreate) {
+            throw new FakeNeonApiError(
+              412,
+              "permission denied for database neondb",
+            );
           }
           branch.neonAuth = true;
           branch.auth = defaultAuthSettings();

@@ -663,4 +663,117 @@ describe.skipIf(!LIVE_KEY)("Neon database revert (live Neon API)", () => {
       await authRequest(projectId, devId, "sign-in", "a@example.com"),
     ).toBe(200);
   }, 600_000);
+  it("migrates a child development branch without Neon Auth and turns Neon Auth on for the new branch", async () => {
+    const { appId, appDir } = await createGitApp("neon-legacy-no-auth");
+    commit(appDir, "A");
+
+    // The old layout, never given Neon Auth: development a child of main
+    // with a leaked backup above it, preview a child of development.
+    const { data: created } = await liveClient.createProject({
+      project: { name: `dyad-4943-no-auth-${Date.now()}` },
+    });
+    const projectId = created.project.id;
+    projectIds.push(projectId);
+    await waitForOperations(projectId);
+    const { data: devData } = await setup(() =>
+      liveClient.createProjectBranch(projectId, {
+        endpoints: [{ type: "read_write" as never }],
+        branch: { name: "development", parent_id: created.branch.id },
+      }),
+    );
+    const devId = devData.branch.id;
+    await waitForOperations(projectId);
+    const { data: previewData } = await setup(() =>
+      liveClient.createProjectBranch(projectId, {
+        endpoints: [{ type: "read_write" as never }],
+        branch: { name: "preview", parent_id: devId },
+      }),
+    );
+    await sleep(3000);
+    await waitForOperations(projectId);
+    await setup(() =>
+      liveClient.restoreProjectBranch(projectId, devId, {
+        source_branch_id: devId,
+        source_timestamp: new Date(Date.now() - 1000).toISOString(),
+        preserve_under_name: `preserve_${"cd".repeat(20)}-${Date.now()}`,
+      }),
+    );
+    fs.writeFileSync(
+      path.join(appDir, ".env.local"),
+      `DATABASE_URL=${devData.connection_uris![0].connection_uri}\n`,
+    );
+    await harness.db
+      .update(apps)
+      .set({
+        neonProjectId: projectId,
+        neonDevelopmentBranchId: devId,
+        neonPreviewBranchId: previewData.branch.id,
+        neonActiveBranchId: devId,
+      })
+      .where(eq(apps.id, appId));
+    const dev = await sql(projectId, devId);
+    await dev.query(`create table notes (id serial primary key, body text)`);
+    await dev.query(`insert into notes(body) values ('kept')`);
+    // Status codes only: a Neon API error carries the API key.
+    const neonAuthStatus = (branchId: string) =>
+      liveClient.getNeonAuth(projectId, branchId).then(
+        () => 200,
+        (error) => error?.response?.status,
+      );
+    expect(await neonAuthStatus(devId)).toBe(404);
+    expect(
+      (await ipc.neon.getDevelopmentBranchStatus({ appId })).needsMigration,
+    ).toBe(true);
+
+    expect(await ipc.neon.migrateDevelopmentBranch({ appId })).toMatchObject({
+      success: true,
+      backupPath: expect.any(String),
+    });
+
+    const tree = await branches(projectId);
+    expect(describeTree(tree)).toEqual([
+      { name: "development", parent: null },
+      { name: "main", parent: null },
+      { name: "preview", parent: "development" },
+    ]);
+    const newDev = tree.find((b) => b.name === "development")!;
+    expect(newDev.id).not.toBe(devId);
+    const row = await appRow(appId);
+    expect([row.neonDevelopmentBranchId, row.neonActiveBranchId]).toEqual([
+      newDev.id,
+      newDev.id,
+    ]);
+    expect(
+      (
+        await (await sql(projectId, newDev.id)).query(`select body from notes`)
+      ).map((r) => r.body),
+    ).toEqual(["kept"]);
+
+    // The app now has working Neon Auth on the new branch.
+    expect(await neonAuthStatus(newDev.id)).toBe(200);
+    const env = Object.fromEntries(
+      ((await readEnvFileIfExists({ appPath: appDir })) ?? "")
+        .split("\n")
+        .filter((line) => line.includes("="))
+        .map((line) => [
+          line.slice(0, line.indexOf("=")),
+          line.slice(line.indexOf("=") + 1).replace(/^"(.*)"$/, "$1"),
+        ]),
+    );
+    const { data: auth } = await liveClient.getNeonAuth(projectId, newDev.id);
+    expect(env.NEON_AUTH_BASE_URL).toBe(auth.base_url);
+    const { data: endpoints } = await liveClient.listProjectBranchEndpoints(
+      projectId,
+      newDev.id,
+    );
+    expect(
+      new URL(env.DATABASE_URL).hostname.split(".")[0].replace(/-pooler$/, ""),
+    ).toBe(endpoints.endpoints[0].id);
+    expect(
+      await authRequest(projectId, newDev.id, "sign-up", "new@example.com"),
+    ).toBe(200);
+    expect(
+      await authRequest(projectId, newDev.id, "sign-in", "new@example.com"),
+    ).toBe(200);
+  }, 600_000);
 });

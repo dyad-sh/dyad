@@ -18,6 +18,7 @@ import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { usePlan } from "@/hooks/usePlan";
+import { planFileName } from "@/lib/planFileName";
 import { useChatMode } from "@/hooks/useChatMode";
 import { usePlanDocument } from "@/hooks/usePlanDocument";
 import { showError } from "@/lib/toast";
@@ -263,6 +264,17 @@ export const PlanPanel: React.FC = () => {
                 <h2 className="text-lg font-semibold">
                   {currentTitle || "Implementation Plan"}
                 </h2>
+                {chatId != null && (
+                  <span
+                    className="text-xs text-muted-foreground whitespace-nowrap"
+                    title={planFileName(
+                      chatId,
+                      savedPlan?.content === currentPlan ? savedPlan : null,
+                    )}
+                  >
+                    Plan #{chatId}
+                  </span>
+                )}
               </div>
               {currentSummary && (
                 <p className="text-sm text-muted-foreground mt-1">

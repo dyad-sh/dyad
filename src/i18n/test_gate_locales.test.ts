@@ -7,6 +7,7 @@ import ptBR from "./locales/pt-BR/home.json";
 import zhCN from "./locales/zh-CN/home.json";
 import tr from "./locales/tr/home.json";
 import fr from "./locales/fr/home.json";
+import ja from "./locales/ja/home.json";
 import enChat from "./locales/en/chat.json";
 import esChat from "./locales/es/chat.json";
 import koChat from "./locales/ko/chat.json";
@@ -14,8 +15,9 @@ import ptBRChat from "./locales/pt-BR/chat.json";
 import zhCNChat from "./locales/zh-CN/chat.json";
 import trChat from "./locales/tr/chat.json";
 import frChat from "./locales/fr/chat.json";
+import jaChat from "./locales/ja/chat.json";
 
-const LOCALES = { es, ko, "pt-BR": ptBR, "zh-CN": zhCN, tr, fr };
+const LOCALES = { es, ko, "pt-BR": ptBR, "zh-CN": zhCN, tr, fr, ja };
 const CHAT_LOCALES = {
   en: enChat,
   es: esChat,
@@ -24,6 +26,7 @@ const CHAT_LOCALES = {
   "zh-CN": zhCNChat,
   tr: trChat,
   fr: frChat,
+  ja: jaChat,
 };
 
 it.each(Object.entries(CHAT_LOCALES))(

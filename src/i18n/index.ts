@@ -50,6 +50,13 @@ import frChat from "./locales/fr/chat.json";
 import frHome from "./locales/fr/home.json";
 import frErrors from "./locales/fr/errors.json";
 
+// Japanese
+import jaCommon from "./locales/ja/common.json";
+import jaSettings from "./locales/ja/settings.json";
+import jaChat from "./locales/ja/chat.json";
+import jaHome from "./locales/ja/home.json";
+import jaErrors from "./locales/ja/errors.json";
+
 const resources = {
   en: {
     common: enCommon,
@@ -99,6 +106,13 @@ const resources = {
     chat: frChat,
     home: frHome,
     errors: frErrors,
+  },
+  ja: {
+    common: jaCommon,
+    settings: jaSettings,
+    chat: jaChat,
+    home: jaHome,
+    errors: jaErrors,
   },
 };
 

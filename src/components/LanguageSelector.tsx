@@ -26,8 +26,8 @@ const LANGUAGE_OPTIONS: { value: Language; nativeLabel: string }[] = [
   { value: "ko", nativeLabel: "한국어" },
   { value: "tr", nativeLabel: "Türkçe" },
   { value: "fr", nativeLabel: "Français" },
+  { value: "ja", nativeLabel: "日本語" },
   // Additional languages will be added as translations are completed:
-  // { value: "ja", nativeLabel: "日本語" },
   // { value: "de", nativeLabel: "Deutsch" },
 ];
 

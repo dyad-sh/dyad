@@ -11,6 +11,14 @@ const logger = log.scope("neon_branch_data");
 // Neon Auth service metadata. A provisioned branch creates its own copies, and
 // overwriting them with another branch's rows breaks every auth request.
 const NEON_AUTH_SERVICE_TABLES = new Set(["project_config", "jwks"]);
+/**
+ * Neon Auth's tables belong to Neon: on a provisioned branch the `neon_auth`
+ * role owns them, and the app role is not a member of it, so it may read and
+ * write their rows but not alter them. Copies keep their keys and order the
+ * rows instead. Legacy app-owned tables may still have user triggers, which
+ * can be temporarily disabled when the connected role has permission.
+ */
+const NEON_MANAGED_SCHEMA = "neon_auth";
 const COPY_BATCH_SIZE = 500;
 
 /** The copied rows did not match the source; the copy was rolled back. */
@@ -20,11 +28,30 @@ export class CopyVerificationError extends DyadError {
   }
 }
 
+/**
+ * Rows of a table the copy may not alter can't be put in a safe order, e.g.
+ * its foreign keys form a cycle, or a foreign key dropped from it can't be
+ * added back. Raised before anything is written.
+ */
+export class UncopyableDataError extends DyadError {
+  constructor(message: string) {
+    super(message, DyadErrorKind.Precondition);
+  }
+}
+
 export interface ForeignKeyDefinition {
   schema: string;
   table: string;
   name: string;
   definition: string;
+}
+
+/** A foreign key with the table it references and who may alter its table. */
+export interface TableForeignKey extends ForeignKeyDefinition {
+  referencedSchema: string;
+  referencedTable: string;
+  /** Whether the connected role may alter the table the key is on. */
+  canAlter: boolean;
 }
 
 interface Queryable {
@@ -48,20 +75,41 @@ const USER_SCHEMA_FILTER = `n.nspname not in ('pg_catalog', 'information_schema'
   and n.nspname not like 'pg\\_temp%'
   and n.nspname not like 'pg\\_toast\\_temp%'`;
 
-async function listForeignKeysWith(
-  db: Queryable,
-): Promise<ForeignKeyDefinition[]> {
+// Altering a table takes its owner's privileges, which a role has when it is
+// the owner or inherits from it ('USAGE'); membership alone needs SET ROLE.
+const CAN_ALTER = (relation: string) =>
+  `pg_has_role(current_user, ${relation}.relowner, 'USAGE')`;
+
+async function listForeignKeysWith(db: Queryable): Promise<TableForeignKey[]> {
   const rows = await db.query(`
     select n.nspname as schema, c.relname as "table", con.conname as name,
-      pg_get_constraintdef(con.oid) as definition
+      pg_get_constraintdef(con.oid) as definition,
+      rn.nspname as "referencedSchema", r.relname as "referencedTable",
+      ${CAN_ALTER("c")} as "canAlter"
     from pg_constraint con
     join pg_class c on c.oid = con.conrelid
     join pg_namespace n on n.oid = c.relnamespace
+    join pg_class r on r.oid = con.confrelid
+    join pg_namespace rn on rn.oid = r.relnamespace
     where con.contype = 'f' and ${USER_SCHEMA_FILTER}
       -- Partitions inherit their parent's foreign keys; those go with it.
       and con.conparentid = 0
     order by 1, 2, 3`);
-  return rows as ForeignKeyDefinition[];
+  return rows as TableForeignKey[];
+}
+
+/** Tables with enabled user (not internal, foreign-key) triggers. */
+async function listTriggeredTables(
+  db: Queryable,
+): Promise<{ schema: string; name: string }[]> {
+  const rows = await db.query(`
+    select distinct n.nspname as schema, c.relname as name
+    from pg_trigger t
+    join pg_class c on c.oid = t.tgrelid
+    join pg_namespace n on n.oid = c.relnamespace
+    where not t.tgisinternal and t.tgenabled <> 'D'
+      and ${USER_SCHEMA_FILTER}`);
+  return rows as { schema: string; name: string }[];
 }
 
 /** Lists every foreign key outside the Postgres system schemas. */
@@ -104,9 +152,11 @@ export async function prepareSchemaOnlyBranchForNeonAuth(
     end $$`);
 }
 
-interface CopyTable {
+export interface CopyTable {
   schema: string;
   name: string;
+  /** Whether the connected role may alter the table. */
+  canAlter: boolean;
 }
 
 async function listCopyTables(db: Queryable): Promise<CopyTable[]> {
@@ -115,7 +165,7 @@ async function listCopyTables(db: Queryable): Promise<CopyTable[]> {
   // across partitions. Extension-owned tables belong to the extension on each
   // branch.
   const rows = await db.query(`
-    select n.nspname as schema, c.relname as name
+    select n.nspname as schema, c.relname as name, ${CAN_ALTER("c")} as "canAlter"
     from pg_class c
     join pg_namespace n on n.oid = c.relnamespace
     where c.relkind = 'r'
@@ -145,10 +195,113 @@ async function listInsertableColumns(
   return rows as { name: string; identityAlways: boolean }[];
 }
 
+/** How a copy writes each table's rows. */
+export interface DataCopyPlan {
+  /** Keys to drop before the copy and re-add after it, which validates them. */
+  droppedForeignKeys: TableForeignKey[];
+  /**
+   * Tables whose keys the copy keeps, parents before children. Their keys stay
+   * on, so they are cleared children first and filled parents first.
+   */
+  managedTables: CopyTable[];
+  /** Tables copied with their keys dropped and user triggers off. */
+  ownedTables: CopyTable[];
+}
+
+function isManaged(table: { schema: string; canAlter: boolean }): boolean {
+  return table.schema === NEON_MANAGED_SCHEMA || !table.canAlter;
+}
+
+const tableKey = (schema: string, name: string) => `${schema}.${name}`;
+
+/**
+ * Splits `tables` into those whose keys the copy drops and those whose keys
+ * it keeps (Neon Auth's, and any the role doesn't own), and orders the latter
+ * so every row goes in after the rows it references. Throws `UncopyableDataError`, before
+ * anything is written, for what no order fixes: user triggers it can't turn
+ * off, a key on a table that references itself, a cycle, or a key into a
+ * table copied with its keys off.
+ */
+export function planDataCopy({
+  tables,
+  foreignKeys,
+  triggered,
+}: {
+  tables: CopyTable[];
+  foreignKeys: TableForeignKey[];
+  triggered: { schema: string; name: string }[];
+}): DataCopyPlan {
+  const managed = tables.filter(isManaged);
+  const owned = tables.filter((t) => !isManaged(t));
+  const managedByKey = new Map(
+    managed.map((t) => [tableKey(t.schema, t.name), t]),
+  );
+  const ownedKeys = new Set(owned.map((t) => tableKey(t.schema, t.name)));
+
+  const triggeredKeys = new Set(
+    triggered.map((t) => tableKey(t.schema, t.name)),
+  );
+  for (const [key, table] of managedByKey) {
+    if (triggeredKeys.has(key) && !table.canAlter) {
+      throw new UncopyableDataError(
+        `Can't copy ${key}: it has enabled user triggers that the connected database role cannot disable.`,
+      );
+    }
+  }
+
+  const parents = new Map<string, Set<string>>(
+    [...managedByKey.keys()].map((key) => [key, new Set<string>()]),
+  );
+  for (const fk of foreignKeys) {
+    const child = tableKey(fk.schema, fk.table);
+    const parent = tableKey(fk.referencedSchema, fk.referencedTable);
+    if (!managedByKey.has(child)) continue;
+    if (child === parent) {
+      throw new UncopyableDataError(
+        `Can't copy ${child}: its rows refer to each other, and Dyad can't turn off its keys.`,
+      );
+    }
+    if (ownedKeys.has(parent)) {
+      throw new UncopyableDataError(
+        `Can't copy ${child}: it refers to ${parent}, which is copied with its keys turned off.`,
+      );
+    }
+    // A table outside the copy keeps its rows, so it sets no order.
+    if (managedByKey.has(parent)) parents.get(child)!.add(parent);
+  }
+
+  // Parents first; among the tables that are ready, by name, so the order is
+  // always the same.
+  const order: CopyTable[] = [];
+  const done = new Set<string>();
+  const pending = [...managedByKey.keys()].sort();
+  while (pending.length > 0) {
+    const index = pending.findIndex((key) =>
+      [...parents.get(key)!].every((p) => done.has(p)),
+    );
+    if (index < 0) {
+      throw new UncopyableDataError(
+        `Can't copy ${pending.join(", ")}: their foreign keys form a cycle, and Dyad can't turn them off.`,
+      );
+    }
+    const [key] = pending.splice(index, 1);
+    done.add(key);
+    order.push(managedByKey.get(key)!);
+  }
+
+  return {
+    droppedForeignKeys: foreignKeys.filter(
+      (fk) => !isManaged({ schema: fk.schema, canAlter: fk.canAlter }),
+    ),
+    managedTables: order,
+    ownedTables: owned,
+  };
+}
+
 /**
  * What a migration's copy would lose, as user-facing descriptions; empty when
- * it is safe. When Neon Auth is re-provisioned, views and policies that depend
- * on its tables would be dropped with the copied `neon_auth` schema (only
+ * it is safe. When Neon Auth is re-provisioned, user triggers and dependent
+ * views and policies would be dropped with the copied `neon_auth` schema (only
  * foreign keys are carried over). Large objects live in system catalogs that
  * a schema-only branch starts without.
  */
@@ -185,6 +338,12 @@ export async function findMigrationBlockers(
       where d.refclassid = 'pg_class'::regclass
         and d.refobjid in (select oid from auth_tables)
         and n.nspname <> 'neon_auth'
+      union
+      select format('the trigger %I on %I.%I', t.tgname, n.nspname, c.relname)
+      from pg_trigger t
+      join pg_class c on c.oid = t.tgrelid
+      join pg_namespace n on n.oid = c.relnamespace
+      where c.oid in (select oid from auth_tables) and not t.tgisinternal
       order by 1`);
     blockers.push(
       ...dependents.map((d) => `${d.object} (it uses Neon Auth's tables)`),
@@ -214,12 +373,68 @@ async function poolQueryable(connectionUri: string) {
   };
 }
 
-const ENABLE_TRIGGER: Record<string, string> = {
-  O: "enable trigger",
-  D: "disable trigger",
-  R: "enable replica trigger",
-  A: "enable always trigger",
-};
+/**
+ * Inspect the destination at execution time, including for a SQL backup.
+ * Source ownership and trigger states say nothing about the role or tables
+ * used to restore it. Keep triggers off across all deletes and inserts, and
+ * restore only the enabled triggers we changed; disabled ones stay untouched.
+ * Both blocks run inside the copy/restore transaction, so any error rolls
+ * back their changes as well as the copied rows.
+ */
+function triggerCopySql(tables: CopyTable[]): {
+  disable: string;
+  restore: string;
+} {
+  const names = JSON.stringify(
+    tables.map((t) => qualifiedName(t.schema, t.name)),
+  );
+  const namesTag = dollarQuoteTag(names);
+  const disable = `
+declare
+  table_name text;
+  table_id regclass;
+  user_trigger record;
+begin
+  create temporary table dyad_copy_trigger_states (
+    table_id oid, trigger_name name, state text
+  ) on commit drop;
+  for table_name in
+    select json_array_elements_text(${namesTag}${names}${namesTag}::json)
+  loop
+    table_id := table_name::regclass;
+    for user_trigger in
+      select t.tgname, t.tgenabled, ${CAN_ALTER("c")} as can_alter
+      from pg_trigger t join pg_class c on c.oid = t.tgrelid
+      where t.tgrelid = table_id and not t.tgisinternal and t.tgenabled <> 'D'
+    loop
+      if not user_trigger.can_alter then
+        raise exception 'Can''t copy %: it has enabled user triggers that the connected database role cannot disable.', table_name;
+      end if;
+      insert into pg_temp.dyad_copy_trigger_states
+        values (table_id, user_trigger.tgname, user_trigger.tgenabled);
+      execute format('alter table %s disable trigger %I', table_id, user_trigger.tgname);
+    end loop;
+  end loop;
+end`;
+  // Identifiers can contain dollar-quote tags too, so quote the entire body.
+  const disableTag = dollarQuoteTag(disable);
+  return {
+    disable: `do ${disableTag}${disable}${disableTag};`,
+    restore: `do $$
+declare
+  user_trigger record;
+begin
+  for user_trigger in select * from pg_temp.dyad_copy_trigger_states loop
+    execute format('alter table %s %s %I', user_trigger.table_id::regclass,
+      case user_trigger.state
+        when 'R' then 'enable replica trigger'
+        when 'A' then 'enable always trigger'
+        else 'enable trigger'
+      end, user_trigger.trigger_name);
+  end loop;
+end $$;`,
+  };
+}
 
 export interface CopyBranchDataResult {
   tables: number;
@@ -234,12 +449,15 @@ export interface CopyBranchDataResult {
  * one transaction: if anything fails, the target is left as it was. Both go
  * over WebSockets, which have no response size limit for wide rows. The app
  * role cannot set `session_replication_role`, so foreign keys are dropped for
- * the copy and re-added afterwards (re-adding validates them), and user
- * triggers are disabled per table, then put back in their original state.
+ * the copy and re-added afterwards (re-adding validates them). Enabled user
+ * triggers are disabled, then put back in their original state.
+ * Tables it may not alter, Neon Auth's among them, keep their keys: their
+ * rows go in parents first instead (see `planDataCopy`).
  *
  * `extraForeignKeys` are constraints captured from the target before
  * `prepareSchemaOnlyBranchForNeonAuth` dropped them along with the copied
- * `neon_auth` schema; they are restored once the data is in place.
+ * `neon_auth` schema; they are restored once the data is in place. If the
+ * role can't restore one, the copy throws `UncopyableDataError` instead.
  */
 export async function copyBranchData({
   sourceUri,
@@ -260,65 +478,100 @@ export async function copyBranchData({
   try {
     await source.query("begin isolation level repeatable read read only");
     await target.query("begin");
-    const sourceTables = await listCopyTables(source);
 
-    const targetTables = new Set(
-      (await listCopyTables(target)).map((t) => `${t.schema}.${t.name}`),
+    // Ownership is the target's: that is where the rows are written.
+    const targetTables = new Map(
+      (await listCopyTables(target)).map((t) => [
+        tableKey(t.schema, t.name),
+        t,
+      ]),
     );
-    const currentForeignKeys = await listForeignKeysWith(target);
-    // Every key dropped below is re-added, including those on partitioned
-    // parents, which hold no rows and so are not in `targetTables`. The extra
-    // keys come back only where their table still exists; neon_auth's own
-    // keys belong to Neon Auth's fresh provisioning.
-    const foreignKeysToRestore = new Map<string, ForeignKeyDefinition>();
-    for (const fk of currentForeignKeys) {
-      foreignKeysToRestore.set(`${fk.schema}.${fk.table}.${fk.name}`, fk);
-    }
-    for (const fk of extraForeignKeys) {
-      const key = `${fk.schema}.${fk.table}.${fk.name}`;
-      if (fk.schema === "neon_auth" || foreignKeysToRestore.has(key)) continue;
-      const [{ exists }] = await target.query(
-        "select to_regclass($1) is not null as exists",
-        [qualifiedName(fk.schema, fk.table)],
-      );
-      if (exists) foreignKeysToRestore.set(key, fk);
-    }
-    for (const fk of currentForeignKeys) {
-      await target.query(
-        `alter table ${qualifiedName(fk.schema, fk.table)} drop constraint ${quoteIdentifier(fk.name)}`,
-      );
-    }
-
-    for (const table of sourceTables) {
-      if (!targetTables.has(`${table.schema}.${table.name}`)) {
-        logger.warn(
-          `Skipping ${table.schema}.${table.name}: missing on the target branch`,
-        );
+    const tables: CopyTable[] = [];
+    const insertShape = new Map<
+      string,
+      { columnList: string; overriding: string }
+    >();
+    for (const table of await listCopyTables(source)) {
+      const key = tableKey(table.schema, table.name);
+      const onTarget = targetTables.get(key);
+      if (!onTarget) {
+        logger.warn(`Skipping ${key}: missing on the target branch`);
         continue;
       }
-      const tableName = qualifiedName(table.schema, table.name);
       const targetColumns = new Map(
-        (await listInsertableColumns(target, table)).map((c) => [c.name, c]),
+        (await listInsertableColumns(target, onTarget)).map((c) => [c.name, c]),
       );
       const columns = (await listInsertableColumns(source, table)).filter((c) =>
         targetColumns.has(c.name),
       );
       if (columns.length === 0) continue;
-      const columnList = columns.map((c) => quoteIdentifier(c.name)).join(", ");
-      const overriding = columns.some(
-        (c) => targetColumns.get(c.name)?.identityAlways,
-      )
-        ? "overriding system value"
-        : "";
+      insertShape.set(key, {
+        columnList: columns.map((c) => quoteIdentifier(c.name)).join(", "),
+        overriding: columns.some(
+          (c) => targetColumns.get(c.name)?.identityAlways,
+        )
+          ? "overriding system value"
+          : "",
+      });
+      tables.push(onTarget);
+    }
+    const targetForeignKeys = await listForeignKeysWith(target);
+    const plan = planDataCopy({
+      tables,
+      foreignKeys: targetForeignKeys,
+      triggered: await listTriggeredTables(target),
+    });
 
-      const triggers = (await target.query(
-        `select tgname as name, tgenabled as state from pg_trigger
-         where tgrelid = $1::regclass and not tgisinternal`,
+    // Every key dropped below is re-added, including those on partitioned
+    // parents, which hold no rows and so are not in `tables`. An extra key
+    // still on the target was never dropped; neon_auth's own keys belong to
+    // Neon Auth's fresh provisioning. Any other extra key was dropped with
+    // the copied neon_auth schema, so it comes back, and a copy that can't
+    // add it back is refused rather than committed without it.
+    const foreignKeyId = (fk: ForeignKeyDefinition) =>
+      `${fk.schema}.${fk.table}.${fk.name}`;
+    const foreignKeysToRestore = new Map<string, ForeignKeyDefinition>(
+      plan.droppedForeignKeys.map((fk) => [foreignKeyId(fk), fk]),
+    );
+    const presentForeignKeys = new Set(targetForeignKeys.map(foreignKeyId));
+    for (const fk of extraForeignKeys) {
+      const id = foreignKeyId(fk);
+      if (fk.schema === NEON_MANAGED_SCHEMA || presentForeignKeys.has(id)) {
+        continue;
+      }
+      const tableName = qualifiedName(fk.schema, fk.table);
+      const [{ exists, canAlter }] = await target.query(
+        `select c.oid is not null as exists,
+           coalesce(${CAN_ALTER("c")}, false) as "canAlter"
+         from (select to_regclass($1)::oid as oid) r
+         left join pg_class c on c.oid = r.oid`,
         [tableName],
-      )) as { name: string; state: string }[];
-      await target.query(`alter table ${tableName} disable trigger user`);
-      await target.query(`delete from only ${tableName}`);
-      copiedTableNames.push(tableName);
+      );
+      if (!exists) {
+        logger.warn(`Not restoring ${id}: its table is missing on the target`);
+        continue;
+      }
+      if (!canAlter) {
+        throw new UncopyableDataError(
+          `Can't copy ${tableKey(fk.schema, fk.table)}: its foreign key ${fk.name} was removed along with Neon Auth's tables, and the connected database role can't add it back.`,
+        );
+      }
+      foreignKeysToRestore.set(id, fk);
+    }
+
+    const triggers = triggerCopySql(tables);
+    await target.query(triggers.disable);
+    for (const fk of plan.droppedForeignKeys) {
+      await target.query(
+        `alter table ${qualifiedName(fk.schema, fk.table)} drop constraint ${quoteIdentifier(fk.name)}`,
+      );
+    }
+
+    const copyRows = async (table: CopyTable) => {
+      const tableName = qualifiedName(table.schema, table.name);
+      const { columnList, overriding } = insertShape.get(
+        tableKey(table.schema, table.name),
+      )!;
       // Keyset pagination on ctid, stable within the source snapshot.
       let lastCtid = "(0,0)";
       for (;;) {
@@ -344,12 +597,24 @@ export async function copyBranchData({
         lastCtid = last;
         if (batch.length < COPY_BATCH_SIZE) break;
       }
-      for (const trigger of triggers) {
-        await target.query(
-          `alter table ${tableName} ${ENABLE_TRIGGER[trigger.state] ?? "enable trigger"} ${quoteIdentifier(trigger.name)}`,
-        );
-      }
       copiedTables += 1;
+    };
+
+    // Tables the copy may not alter keep their keys: clear them children
+    // first, so no key blocks a delete, then fill them parents first. Keys
+    // into them from the app's tables were dropped above.
+    for (const table of [...plan.managedTables].reverse()) {
+      const tableName = qualifiedName(table.schema, table.name);
+      await target.query(`delete from only ${tableName}`);
+      copiedTableNames.push(tableName);
+    }
+    for (const table of plan.managedTables) await copyRows(table);
+
+    for (const table of plan.ownedTables) {
+      const tableName = qualifiedName(table.schema, table.name);
+      await target.query(`delete from only ${tableName}`);
+      copiedTableNames.push(tableName);
+      await copyRows(table);
     }
 
     const sequences = await source.query(`
@@ -395,6 +660,7 @@ export async function copyBranchData({
       }
     }
 
+    await target.query(triggers.restore);
     await target.query("commit");
   } catch (error) {
     await target.query("rollback").catch(() => {});
@@ -420,6 +686,8 @@ function dollarQuoteTag(text: string): string {
  * SQL script, read in one snapshot. Running the script (in the Neon SQL
  * editor, or with psql) against a database with the same schema, such as the
  * new development branch, replaces those tables' rows with the saved ones.
+ * Neon Auth's keys stay in place; their rows are written parents first.
+ * Triggers are checked and, where permitted, disabled on the restore target.
  *
  * It holds the app's data, Neon Auth users included, so the file and its
  * directory are readable by the owner only. A partial file is removed.
@@ -453,28 +721,44 @@ export async function exportBranchDataAsSql({
         "begin;",
       ].join("\n"),
     );
-    const foreignKeys = await listForeignKeysWith(source);
-    for (const fk of foreignKeys) {
+    // The file is restored later, as whatever role runs it (the Neon SQL
+    // editor uses the app role), so Neon Auth's keys stay in place regardless
+    // of source ownership. Trigger permissions are checked during restoration.
+    const tables: CopyTable[] = [];
+    const insertShape = new Map<
+      string,
+      { columnList: string; overriding: string }
+    >();
+    for (const table of await listCopyTables(source)) {
+      const columns = await listInsertableColumns(source, table);
+      if (columns.length === 0) continue;
+      insertShape.set(tableKey(table.schema, table.name), {
+        columnList: columns.map((c) => quoteIdentifier(c.name)).join(", "),
+        overriding: columns.some((c) => c.identityAlways)
+          ? "overriding system value "
+          : "",
+      });
+      tables.push(table);
+    }
+    const plan = planDataCopy({
+      tables,
+      foreignKeys: await listForeignKeysWith(source),
+      // The file checks the destination's triggers before writing any rows.
+      triggered: [],
+    });
+    const triggers = triggerCopySql(tables);
+    await write(triggers.disable);
+    for (const fk of plan.droppedForeignKeys) {
       await write(
         `alter table ${qualifiedName(fk.schema, fk.table)} drop constraint if exists ${quoteIdentifier(fk.name)};`,
       );
     }
-    for (const table of await listCopyTables(source)) {
+
+    const writeRows = async (table: CopyTable) => {
       const tableName = qualifiedName(table.schema, table.name);
-      const columns = await listInsertableColumns(source, table);
-      if (columns.length === 0) continue;
-      const columnList = columns.map((c) => quoteIdentifier(c.name)).join(", ");
-      const overriding = columns.some((c) => c.identityAlways)
-        ? "overriding system value "
-        : "";
-      const triggers = (await source.query(
-        `select tgname as name, tgenabled as state from pg_trigger
-         where tgrelid = $1::regclass and not tgisinternal`,
-        [tableName],
-      )) as { name: string; state: string }[];
-      await write(`\n-- ${tableName}`);
-      await write(`alter table ${tableName} disable trigger user;`);
-      await write(`delete from only ${tableName};`);
+      const { columnList, overriding } = insertShape.get(
+        tableKey(table.schema, table.name),
+      )!;
       let lastCtid = "(0,0)";
       for (;;) {
         const [{ rows, last }] = await source.query(
@@ -499,12 +783,33 @@ export async function exportBranchDataAsSql({
         lastCtid = last;
         if (batch.length < COPY_BATCH_SIZE) break;
       }
-      for (const trigger of triggers) {
+      tableCount += 1;
+    };
+
+    if (plan.managedTables.length > 0) {
+      await write(
+        [
+          "",
+          "-- Neon Auth's foreign keys stay on:",
+          "-- they are cleared children first, then filled parents first.",
+        ].join("\n"),
+      );
+      for (const table of [...plan.managedTables].reverse()) {
         await write(
-          `alter table ${tableName} ${ENABLE_TRIGGER[trigger.state] ?? "enable trigger"} ${quoteIdentifier(trigger.name)};`,
+          `delete from only ${qualifiedName(table.schema, table.name)};`,
         );
       }
-      tableCount += 1;
+      for (const table of plan.managedTables) {
+        await write(`\n-- ${qualifiedName(table.schema, table.name)}`);
+        await writeRows(table);
+      }
+    }
+
+    for (const table of plan.ownedTables) {
+      const tableName = qualifiedName(table.schema, table.name);
+      await write(`\n-- ${tableName}`);
+      await write(`delete from only ${tableName};`);
+      await writeRows(table);
     }
     await write("");
     const sequences = await source.query(`
@@ -524,11 +829,12 @@ export async function exportBranchDataAsSql({
         `select setval('${sequenceName.replace(/'/g, "''")}', ${state.lastValue}, ${state.isCalled ? "true" : "false"});`,
       );
     }
-    for (const fk of foreignKeys) {
+    for (const fk of plan.droppedForeignKeys) {
       await write(
         `alter table ${qualifiedName(fk.schema, fk.table)} add constraint ${quoteIdentifier(fk.name)} ${fk.definition};`,
       );
     }
+    await write(triggers.restore);
     await write("commit;");
     await file.close();
   } catch (error) {

@@ -1017,18 +1017,23 @@ describe("Neon database revert (integration)", () => {
     });
   });
 
-  it("refuses to migrate when the copy would lose objects", async () => {
+  it.each([
+    "the view public.member_emails",
+    'the trigger sync_profile on neon_auth."user"',
+  ])("refuses to migrate when reprovisioning would lose %s", async (object) => {
     await legacyLayout(1);
     branchData.findMigrationBlockers.mockResolvedValueOnce([
-      "the view public.member_emails (it uses Neon Auth's tables)",
+      `${object} (it uses Neon Auth's tables)`,
     ]);
     const { appId } = await connectApp();
     const treeBefore = fakeNeon.tree();
 
-    await expect(migrate(appId)).rejects.toThrow(
-      /would lose the view public\.member_emails/,
-    );
+    await expect(migrate(appId)).rejects.toThrow(`would lose ${object}`);
     expect(fakeNeon.tree()).toEqual(treeBefore);
+    expect(
+      branchData.prepareSchemaOnlyBranchForNeonAuth,
+    ).not.toHaveBeenCalled();
+    expect(branchData.copyBranchData).not.toHaveBeenCalled();
     expect(branchData.findMigrationBlockers).toHaveBeenCalledWith(
       fakeNeon.connectionUri(fakeNeon.byName("development").id),
       { neonAuth: true },

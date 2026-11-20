@@ -200,3 +200,10 @@ Preserve explicit run cancellation and existing infrastructure errors, including
 timeouts, in the final result. Log genuine lifecycle failures separately; when
 the run was not cancelled, append their user-facing explanation after any
 earlier infrastructure error rather than replacing the primary failure.
+
+## Copying and migrating Neon Auth data
+
+- Keep Neon Auth foreign keys intact even on legacy app-owned tables; use the destination role's `canAlter` capability separately to decide whether enabled user triggers can be disabled.
+- SQL backups must inspect trigger permissions and states on the restore target. Leave disabled triggers alone and restore enabled triggers' original modes within the same transaction.
+- Reprovisioning Neon Auth drops legacy custom trigger definitions, including disabled ones. Check `findMigrationBlockers` before schema preparation so migrations cannot silently erase them.
+- `drop schema neon_auth cascade` also drops foreign keys into it on tables the app role can't alter (Postgres doesn't check ownership of cascaded objects), so the role may be unable to add them back. In `copyBranchData`, skip a captured extra key only when it is still on the target or its table is gone; throw `UncopyableDataError` for one the role can't re-add. Never filter by `canAlter`, which commits the branch without the key.

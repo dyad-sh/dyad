@@ -1640,6 +1640,10 @@ export function ModelPicker() {
                 ...(enabled ? { proModelUsage: "subscription" as const } : {}),
               })
             }
+            nativeTools={!!settings.enableClaudeCodeNativeTools}
+            onNativeToolsChange={(enabled) =>
+              updateSettings({ enableClaudeCodeNativeTools: enabled })
+            }
             connected={
               !!claudeStatus.data?.connected && !!claudeStatus.data?.compatible
             }

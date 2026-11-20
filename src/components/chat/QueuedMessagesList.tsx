@@ -11,8 +11,10 @@ import {
   Paperclip,
   PlayIcon,
   PauseIcon,
+  SendHorizontal,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { canSendQueuedMessageNow } from "@/lib/queuedMessageSteer";
 
 interface QueuedMessagesListProps {
   messages: QueuedMessageItem[];
@@ -25,6 +27,9 @@ interface QueuedMessagesListProps {
   isPaused: boolean;
   onPauseQueue: () => void;
   onResumeQueue: () => void;
+  /** Hand a queued text message to the running native Claude Code turn.
+   * Omitted when the running turn cannot take messages. */
+  onSendNow?: (id: string) => void | Promise<void>;
 }
 
 interface QueuedMessageItemRowProps {
@@ -35,6 +40,7 @@ interface QueuedMessageItemRowProps {
   onDelete: () => void | Promise<void>;
   onMoveUp: () => void;
   onMoveDown: () => void;
+  onSendNow?: () => void | Promise<void>;
 }
 
 function QueuedMessageItemRow({
@@ -45,6 +51,7 @@ function QueuedMessageItemRow({
   onDelete,
   onMoveUp,
   onMoveDown,
+  onSendNow,
 }: QueuedMessageItemRowProps) {
   const editable = message.editable ?? true;
   const removable = message.removable ?? true;
@@ -62,6 +69,17 @@ function QueuedMessageItemRow({
 
       {/* Action buttons - visible on hover */}
       <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+        {onSendNow && canSendQueuedMessageNow(message) && (
+          <button
+            type="button"
+            onClick={() => void onSendNow()}
+            className="p-1 hover:bg-muted rounded cursor-pointer"
+            title="Send now"
+            aria-label="Send now to the running Claude Code turn"
+          >
+            <SendHorizontal size={14} className="text-muted-foreground" />
+          </button>
+        )}
         {editable && (
           <button
             type="button"
@@ -126,6 +144,7 @@ export function QueuedMessagesList({
   isPaused,
   onPauseQueue,
   onResumeQueue,
+  onSendNow,
 }: QueuedMessagesListProps) {
   const [isExpanded, setIsExpanded] = useState(true);
 
@@ -221,6 +240,7 @@ export function QueuedMessagesList({
                 onDelete={() => onDelete(msg.id)}
                 onMoveUp={() => onMoveUp(msg.id)}
                 onMoveDown={() => onMoveDown(msg.id)}
+                onSendNow={onSendNow ? () => onSendNow(msg.id) : undefined}
               />
             ))}
           </ul>

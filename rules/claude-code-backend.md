@@ -39,3 +39,12 @@ from the globally selected model or the chat's stored backend alone.
 - On macOS, sandboxed `claude auth status` can report `loggedIn: false` when the same account is signed in outside the sandbox. Verify outside the sandbox before diagnosing an authentication failure.
 - For a failed turn, `userData/claude-sessions/<chatId>.json` identifies the CLI session; its `~/.claude/projects/<app-path>/<sessionId>.jsonl` record can contain a synthetic assistant entry with the actual API error. Inspect only its error fields, since the file also contains private conversation content.
 - When projecting CLI errors through the Git output redactor, assert the exact displayed OAuth refresh guidance and `/login` command: `token:` prose can be mistaken for a secret, and a slash command for an absolute path. Keep credential and real-path redaction tests alongside those assertions.
+
+## Native tools harness
+
+- Probe CLI behavior with an `env -i HOME=$HOME PATH=$PATH USER=$USER claude …` environment. An agent session inherits `ANTHROPIC_AUTH_TOKEN`/`ANTHROPIC_BASE_URL`, so a bare `claude` works there even when the machine is signed out, but Dyad strips those variables. Fake CLIs in tests must take their parameters as arguments for the same reason.
+- The CLI's default built-in set changes between versions (2.1.325 dropped Glob/Grep/WebFetch/TodoWrite from the default set and added worktree/cron/workflow tools). Always pass an explicit `--tools` allowlist and validate init against it; unknown names in `--tools` are ignored.
+- After `result`, a CLI with a live `run_in_background` task does not exit, and a plain SIGKILL of the CLI orphans the task. Stop the process group (POSIX) or the process tree (Windows) instead of waiting for `close`.
+- A user message written to stdin mid-turn is folded into the same turn (one `result`). One written after the final `end_turn` can start a second answer that nobody waits for, so stop accepting steering at `end_turn`.
+- `--resume-session-at <uuid> --fork-session` is undocumented. It keeps the original message uuids in the fork, reports the fork's new id in `init.session_id`, and keeps `modelUsage` cumulative over the whole original session. Keep a contract test and the fresh-session fallback.
+- Classify every new Dyad tool in `DYAD_TOOL_NATIVE_POLICY` (`native` if Claude Code's built-ins cover it, `mcp` otherwise). Tools whose results depend on current files also belong in `WORKSPACE_DEPENDENT_DYAD_TOOLS`, so native edits' side effects are scheduled first.

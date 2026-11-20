@@ -6,6 +6,9 @@ import {
 } from "@/shared/cancellation_reason";
 import { chatCancellationReason } from "../services/chat_cancellation_cause";
 import { modelForChatBackend } from "@/shared/execution_backend";
+import { resolveClaudeCodeHarness } from "@/shared/claude_code_harness";
+import { constructClaudeCodeNativePrompt } from "@/prompts/local_agent_prompt";
+import { runningApps } from "@/ipc/utils/process_manager";
 import { isZipAttachmentName } from "@/shared/zip_attachments";
 import { isDotenvFilePath } from "@/utils/dotenv_redaction";
 import type { ExternalModelAdmission } from "../services/external_model_admission";
@@ -2554,33 +2557,66 @@ ${componentSnippet}
           };
         };
 
-        // Migration on read converts "agent" to "build", so no need to check for it here
-        let systemPrompt = constructSystemPrompt({
-          aiRules,
-          chatMode: selectedChatMode,
-          enableTurboEditsV2: isTurboEditsV2Enabled(settings),
-          themePrompt,
-          basicAgentMode: isBasicAgentMode(settings),
-          freeModelMode,
-          frameworkType,
-          hasSupabaseProject: !!updatedChat.app?.supabaseProjectId,
-          enableAppBlueprint:
-            settings.enableAppBlueprint && updatedChat.app.needsAppBlueprint,
-          hasAppBlueprint,
-          planningQuestionnaireAvailable,
-          appBlueprintQuestionnaireCompleted,
-          appBlueprint,
-          codeExplorerAvailable,
-          historyExplorerAvailable,
-          implementerAvailable,
-          testingEnabled: !!updatedChat.app?.testingEnabled,
-          preCommitHookAvailable,
-          restartAppToolAvailable,
-          reinstallAndRestartAppToolAvailable,
-          runBuildToolAvailable,
-          suggestedPromptsEnabled:
-            settings.enableSuggestedPrompts ?? DEFAULT_ENABLE_SUGGESTED_PROMPTS,
+        // One harness decision per turn: the prompt, tools and CLI arguments all
+        // follow it. Native tools are an Agent-mode, host-runtime opt-in.
+        const claudeCodeHarness = resolveClaudeCodeHarness({
+          settings,
+          provider: selectedModel.provider,
+          agentMode: isLocalAgentMode,
+          runtimeMode:
+            runningApps.get(updatedChat.app.id)?.mode ??
+            settings.runtimeMode2 ??
+            "host",
         });
+
+        // Migration on read converts "agent" to "build", so no need to check for it here
+        let systemPrompt =
+          claudeCodeHarness.harness === "native"
+            ? constructClaudeCodeNativePrompt(aiRules, themePrompt, {
+                frameworkType,
+                hasSupabaseProject: !!updatedChat.app?.supabaseProjectId,
+                enableAppBlueprint:
+                  settings.enableAppBlueprint &&
+                  updatedChat.app.needsAppBlueprint,
+                hasAppBlueprint,
+                planningQuestionnaireAvailable,
+                appBlueprintQuestionnaireCompleted,
+                appBlueprint,
+                testingEnabled: !!updatedChat.app?.testingEnabled,
+                restartAppToolAvailable,
+                reinstallAndRestartAppToolAvailable,
+                suggestedPromptsEnabled:
+                  settings.enableSuggestedPrompts ??
+                  DEFAULT_ENABLE_SUGGESTED_PROMPTS,
+              })
+            : constructSystemPrompt({
+                aiRules,
+                chatMode: selectedChatMode,
+                enableTurboEditsV2: isTurboEditsV2Enabled(settings),
+                themePrompt,
+                basicAgentMode: isBasicAgentMode(settings),
+                freeModelMode,
+                frameworkType,
+                hasSupabaseProject: !!updatedChat.app?.supabaseProjectId,
+                enableAppBlueprint:
+                  settings.enableAppBlueprint &&
+                  updatedChat.app.needsAppBlueprint,
+                hasAppBlueprint,
+                planningQuestionnaireAvailable,
+                appBlueprintQuestionnaireCompleted,
+                appBlueprint,
+                codeExplorerAvailable,
+                historyExplorerAvailable,
+                implementerAvailable,
+                testingEnabled: !!updatedChat.app?.testingEnabled,
+                preCommitHookAvailable,
+                restartAppToolAvailable,
+                reinstallAndRestartAppToolAvailable,
+                runBuildToolAvailable,
+                suggestedPromptsEnabled:
+                  settings.enableSuggestedPrompts ??
+                  DEFAULT_ENABLE_SUGGESTED_PROMPTS,
+              });
 
         // Add information for any legacy caller that still injects full
         // referenced-app codebases.
@@ -3163,6 +3199,7 @@ This conversation includes one or more image attachments. When the user uploads 
               preCommitHookAvailable,
               refreshImplementerContext,
               implementerFallbackSystemPrompt,
+              claudeCodeHarness,
               supabaseProviderToolsAvailable:
                 initialSupabaseProviderToolsAvailable,
               neonProviderToolsAvailable: initialNeonProviderToolsAvailable,

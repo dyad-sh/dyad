@@ -30,7 +30,8 @@ export class CopyVerificationError extends DyadError {
 
 /**
  * Rows of a table the copy may not alter can't be put in a safe order, e.g.
- * its foreign keys form a cycle. Raised before anything is written.
+ * its foreign keys form a cycle, or a foreign key dropped from it can't be
+ * added back. Raised before anything is written.
  */
 export class UncopyableDataError extends DyadError {
   constructor(message: string) {
@@ -455,7 +456,8 @@ export interface CopyBranchDataResult {
  *
  * `extraForeignKeys` are constraints captured from the target before
  * `prepareSchemaOnlyBranchForNeonAuth` dropped them along with the copied
- * `neon_auth` schema; they are restored once the data is in place.
+ * `neon_auth` schema; they are restored once the data is in place. If the
+ * role can't restore one, the copy throws `UncopyableDataError` instead.
  */
 export async function copyBranchData({
   sourceUri,
@@ -513,35 +515,52 @@ export async function copyBranchData({
       });
       tables.push(onTarget);
     }
+    const targetForeignKeys = await listForeignKeysWith(target);
     const plan = planDataCopy({
       tables,
-      foreignKeys: await listForeignKeysWith(target),
+      foreignKeys: targetForeignKeys,
       triggered: await listTriggeredTables(target),
     });
-    const triggers = triggerCopySql(tables);
-    await target.query(triggers.disable);
 
     // Every key dropped below is re-added, including those on partitioned
-    // parents, which hold no rows and so are not in `tables`. The extra keys
-    // come back only where their table still exists and may be altered;
-    // neon_auth's own keys belong to Neon Auth's fresh provisioning.
-    const foreignKeysToRestore = new Map<string, ForeignKeyDefinition>();
-    for (const fk of plan.droppedForeignKeys) {
-      foreignKeysToRestore.set(`${fk.schema}.${fk.table}.${fk.name}`, fk);
-    }
+    // parents, which hold no rows and so are not in `tables`. An extra key
+    // still on the target was never dropped; neon_auth's own keys belong to
+    // Neon Auth's fresh provisioning. Any other extra key was dropped with
+    // the copied neon_auth schema, so it comes back, and a copy that can't
+    // add it back is refused rather than committed without it.
+    const foreignKeyId = (fk: ForeignKeyDefinition) =>
+      `${fk.schema}.${fk.table}.${fk.name}`;
+    const foreignKeysToRestore = new Map<string, ForeignKeyDefinition>(
+      plan.droppedForeignKeys.map((fk) => [foreignKeyId(fk), fk]),
+    );
+    const presentForeignKeys = new Set(targetForeignKeys.map(foreignKeyId));
     for (const fk of extraForeignKeys) {
-      const key = `${fk.schema}.${fk.table}.${fk.name}`;
-      if (fk.schema === NEON_MANAGED_SCHEMA || foreignKeysToRestore.has(key)) {
+      const id = foreignKeyId(fk);
+      if (fk.schema === NEON_MANAGED_SCHEMA || presentForeignKeys.has(id)) {
         continue;
       }
-      const [{ canAlter }] = await target.query(
-        `select coalesce(${CAN_ALTER("c")}, false) as "canAlter"
+      const tableName = qualifiedName(fk.schema, fk.table);
+      const [{ exists, canAlter }] = await target.query(
+        `select c.oid is not null as exists,
+           coalesce(${CAN_ALTER("c")}, false) as "canAlter"
          from (select to_regclass($1)::oid as oid) r
          left join pg_class c on c.oid = r.oid`,
-        [qualifiedName(fk.schema, fk.table)],
+        [tableName],
       );
-      if (canAlter) foreignKeysToRestore.set(key, fk);
+      if (!exists) {
+        logger.warn(`Not restoring ${id}: its table is missing on the target`);
+        continue;
+      }
+      if (!canAlter) {
+        throw new UncopyableDataError(
+          `Can't copy ${tableKey(fk.schema, fk.table)}: its foreign key ${fk.name} was removed along with Neon Auth's tables, and the connected database role can't add it back.`,
+        );
+      }
+      foreignKeysToRestore.set(id, fk);
     }
+
+    const triggers = triggerCopySql(tables);
+    await target.query(triggers.disable);
     for (const fk of plan.droppedForeignKeys) {
       await target.query(
         `alter table ${qualifiedName(fk.schema, fk.table)} drop constraint ${quoteIdentifier(fk.name)}`,

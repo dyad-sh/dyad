@@ -353,3 +353,96 @@ describe("branch data triggers", () => {
     expect(sql).not.toContain("t.tgenabled");
   });
 });
+
+describe("copyBranchData extra foreign keys", () => {
+  // Keys captured before neon_auth was dropped. `profiles_user_fkey` and
+  // `audit_user_fkey` went with it; `profiles_org_fkey` is still on the target.
+  const userKey = key(
+    "public.profiles",
+    "neon_auth.user",
+    true,
+    "profiles_user_fkey",
+  );
+  const orgKey = key(
+    "public.profiles",
+    "public.orgs",
+    true,
+    "profiles_org_fkey",
+  );
+  const auditKey = key(
+    "public.audit",
+    "neon_auth.user",
+    false,
+    "audit_user_fkey",
+  );
+  const goneKey = key("public.gone", "neon_auth.user", true, "gone_user_fkey");
+  const authKey = key("neon_auth.session", "neon_auth.user", false);
+
+  function mockDatabase(
+    query: typeof mocks.source,
+    // Tables on the target that exist and whether the role may alter them.
+    target: Record<string, boolean> = {},
+  ) {
+    query.mockImplementation(async (sql: string, params?: unknown[]) => {
+      let rows: Record<string, unknown>[] = [];
+      if (sql.includes("from pg_class c") && sql.includes("c.relkind = 'r'")) {
+        rows = [{ ...table("public.profiles", true) }];
+      } else if (sql.includes("from pg_attribute")) {
+        rows = [{ name: "id", identityAlways: false }];
+      } else if (sql.includes("from pg_constraint con")) {
+        rows = [{ ...orgKey }];
+      } else if (sql.includes("to_regclass($1)::oid")) {
+        const name = String(params?.[0]).replace(/"/g, "");
+        rows = [{ exists: name in target, canAlter: target[name] ?? false }];
+      } else if (sql.includes("json_agg")) {
+        rows = [{ rows: [{ id: "p-1", x_ctid: "(0,1)" }], last: "(0,1)" }];
+      } else if (sql.includes("select count(*)::text")) {
+        rows = [{ n: "1" }];
+      }
+      return { rows };
+    });
+  }
+
+  const statements = () =>
+    mocks.target.mock.calls.map(([sql]) => sql as string);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockDatabase(mocks.source);
+  });
+
+  it("restores keys dropped with neon_auth and skips the rest", async () => {
+    mockDatabase(mocks.target, { "public.profiles": true });
+    await copyBranchData({
+      sourceUri: "source",
+      targetUri: "target",
+      extraForeignKeys: [userKey, orgKey, goneKey, authKey],
+    });
+    const added = statements().filter((s) => s.includes(" add constraint "));
+    expect(added).toEqual([
+      `alter table "public"."profiles" add constraint "profiles_org_fkey" ${orgKey.definition}`,
+      `alter table "public"."profiles" add constraint "profiles_user_fkey" ${userKey.definition}`,
+    ]);
+    expect(statements()).toContain("commit");
+  });
+
+  it("refuses a dropped key it can't add back before changing anything", async () => {
+    mockDatabase(mocks.target, {
+      "public.profiles": true,
+      "public.audit": false,
+    });
+    const copy = copyBranchData({
+      sourceUri: "source",
+      targetUri: "target",
+      extraForeignKeys: [userKey, auditKey],
+    });
+    await expect(copy).rejects.toThrow(UncopyableDataError);
+    await expect(copy).rejects.toThrow(
+      /public\.audit: its foreign key audit_user_fkey .* can't add it back/,
+    );
+    const sql = statements();
+    expect(sql.some((s) => /^(delete|insert|alter|do) /i.test(s))).toBe(false);
+    expect(sql).toContain("rollback");
+    expect(sql).not.toContain("commit");
+  });
+});

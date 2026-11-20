@@ -1,0 +1,10 @@
+{
+  "unknown": "不明なエラーが発生しました",
+  "failedToCreate": "作成に失敗しました: {{error}}",
+  "failedToUpdate": "更新に失敗しました: {{error}}",
+  "failedToDelete": "削除に失敗しました: {{error}}",
+  "failedToLoad": "読み込みに失敗しました: {{error}}",
+  "networkError": "ネットワークエラーが発生しました。接続を確認してください。",
+  "copyError": "エラーメッセージをコピー",
+  "errorOccurred": "エラーが発生しました"
+}

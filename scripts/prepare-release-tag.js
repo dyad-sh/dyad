@@ -196,6 +196,24 @@ async function prepareReleaseTag({
   }
 
   const version = readPackageVersion(packageJsonPath);
+  const lockfile = JSON.parse(
+    fs.readFileSync(
+      path.join(path.dirname(packageJsonPath), "package-lock.json"),
+      "utf8",
+    ),
+  );
+  const electronVersion = lockfile.packages?.["node_modules/electron"]?.version;
+  const electronMajor = Number(electronVersion?.split(".")[0]);
+  if (!Number.isSafeInteger(electronMajor) || electronMajor < 1) {
+    throw new Error(
+      "Cannot determine the locked Electron version for release.",
+    );
+  }
+  if (electronMajor >= 44) {
+    throw new Error(
+      "Release blocked until the update service keeps macOS 12 clients on a compatible build. Electron 44 and later require macOS 13.",
+    );
+  }
   const tagName = `v${version}`;
   const release = await findReleaseByTag({ owner, repo, tagName, token });
   assertReleaseCanMoveTag({ release, tagName });

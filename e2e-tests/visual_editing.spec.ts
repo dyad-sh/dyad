@@ -169,34 +169,22 @@ testSkipIfWindows("swap image via URL", async ({ po }) => {
   // Select the image element in the preview
   await heroImage.click();
 
-  // Wait for the toolbar to appear (check for the Margin button which is always visible)
-  const marginButton = po.page.getByRole("button", { name: "Margin" });
-  await expect(marginButton).toBeVisible({
-    timeout: Timeout.MEDIUM,
-  });
-
-  // Ensure the toolbar has proper coordinates before clicking
-  await expect(async () => {
-    const box = await marginButton.boundingBox();
-    expect(box).not.toBeNull();
-    expect(box!.y).toBeGreaterThan(0);
-  }).toPass({ timeout: Timeout.MEDIUM });
-
-  // Click the Swap Image button to open the image popover
+  // The floating toolbar can move while switching focus from the preview.
+  // Activate the image popover through its keyboard-accessible trigger.
   const swapImageButton = po.page.getByRole("button", { name: "Swap Image" });
   await expect(swapImageButton).toBeVisible({ timeout: Timeout.LONG });
-  await swapImageButton.click();
+  await swapImageButton.press("Enter");
 
   // Wait for the Image Source popover to appear
   const imagePopover = po.page
-    .locator('[role="dialog"]')
+    .getByRole("dialog")
     .filter({ hasText: "Image Source" });
   await expect(imagePopover).toBeVisible({
     timeout: Timeout.LONG,
   });
 
   // Enter a new image URL
-  const urlInput = po.page.getByLabel("Image URL");
+  const urlInput = imagePopover.getByLabel("Image URL");
   await urlInput.fill(`http://localhost:${FAKE_LLM_BASE_PORT}/test-image.png`);
 
   // Click Apply to submit the new URL

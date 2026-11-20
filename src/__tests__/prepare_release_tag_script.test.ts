@@ -1,6 +1,9 @@
 // @vitest-environment node
 
 import { createRequire } from "module";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const require = createRequire(import.meta.url);
@@ -9,13 +12,66 @@ const {
   findReleaseByTag,
   getRepoParts,
   getRemoteTagShaFromOutput,
+  prepareReleaseTag,
   writeGithubOutputs,
 } = require("../../scripts/prepare-release-tag.js");
 
 describe("prepare release tag script", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
+
+  it.each([
+    ["^45.3.2", "45.3.2", /Release blocked until the update service/, false],
+    [">=40", "44.0.0", /Release blocked until the update service/, false],
+    [
+      "^40.0.0",
+      undefined,
+      /Cannot determine the locked Electron version/,
+      false,
+    ],
+    ["^40.0.0", "40.0.0", /already published/, true],
+  ])(
+    "checks Electron %s resolved to %s before preparing the release tag",
+    async (electronSpecifier, lockedVersion, expectedError, reachesGitHub) => {
+      const directory = mkdtempSync(path.join(tmpdir(), "dyad-release-tag-"));
+      try {
+        const packageJsonPath = path.join(directory, "package.json");
+        writeFileSync(
+          packageJsonPath,
+          JSON.stringify({
+            version: "1.3.0",
+            devDependencies: { electron: electronSpecifier },
+          }),
+        );
+        writeFileSync(
+          path.join(directory, "package-lock.json"),
+          JSON.stringify({
+            packages: { "node_modules/electron": { version: lockedVersion } },
+          }),
+        );
+        const fetchMock = vi.fn().mockResolvedValue({
+          ok: true,
+          json: async () => ({ draft: false }),
+        });
+        vi.stubGlobal("fetch", fetchMock);
+
+        await expect(
+          prepareReleaseTag({
+            currentSha: "commit-sha",
+            owner: "dyad-sh",
+            packageJsonPath,
+            repo: "dyad",
+            token: "token",
+          }),
+        ).rejects.toThrow(expectedError);
+        expect(fetchMock).toHaveBeenCalledTimes(reachesGitHub ? 1 : 0);
+      } finally {
+        rmSync(directory, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("allows missing or draft releases to move a tag", () => {
     expect(() =>

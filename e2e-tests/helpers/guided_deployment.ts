@@ -2,6 +2,7 @@ import { expect } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { testWithConfig } from "./fixtures";
 import { Timeout } from "./constants";
 import type { PageObject } from "./page-objects/PageObject";
@@ -27,7 +28,6 @@ export const test = testWithConfig({
 });
 
 export async function prepareDeploymentApp(po: PageObject) {
-  const entryUrl = po.page.url();
   await po.setUp({ autoApprove: true });
   await po.githubConnector.resetRepos();
   const response = await po.page.request.post(
@@ -59,9 +59,12 @@ export async function prepareDeploymentApp(po: PageObject) {
     );
   }, appName);
   // Reload the actual packaged entry point to clear the renderer's app cache
-  // after the test-only database write (a file:// chat route cannot reload).
-  await po.page.goto(entryUrl);
-  await po.page.waitForLoadState("domcontentloaded");
+  // after the test-only database write. Router URLs are not files on disk.
+  const appPath = await po.electronApp.evaluate(({ app }) => app.getAppPath());
+  const entryUrl = pathToFileURL(
+    path.join(appPath, ".vite", "renderer", "main_window", "index.html"),
+  );
+  await po.page.goto(entryUrl.href, { waitUntil: "domcontentloaded" });
   await po.navigation.goToChatTab();
   await expect(po.page.getByTestId("deploy-button")).toBeVisible({
     timeout: Timeout.MEDIUM,

@@ -29,6 +29,19 @@ export interface ElectronConfig {
   testTimeout?: number;
 }
 
+export async function waitForDyadWindow(electronApp: ElectronApplication) {
+  const page = await electronApp.firstWindow();
+  // Electron can expose the initial empty window before loading the app.
+  // The bridge is also available after the router replaces the entry URL.
+  await page.waitForFunction(
+    () =>
+      location.protocol === "file:" &&
+      document.readyState !== "loading" &&
+      typeof (window as any).electron?.ipcRenderer?.invoke === "function",
+  );
+  return page;
+}
+
 export async function launchElectronApp({
   userDataDir,
   fakeLlmPort,
@@ -72,6 +85,12 @@ export async function launchElectronApp({
     });
     (electronApp as any).$dyadUserDataDir = userDataDir;
     (electronApp as any).$fakeLlmPort = fakeLlmPort;
+    try {
+      await waitForDyadWindow(electronApp);
+    } catch (error) {
+      await terminateElectronApp(electronApp);
+      throw error;
+    }
     return electronApp;
   } finally {
     if (sfwGitHubToken === undefined) {

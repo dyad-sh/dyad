@@ -107,7 +107,7 @@
     "@xterm/addon-web-links": "^0.12.0",
     "@xterm/xterm": "^6.0.0",
     "ai": "^6.0.202",
-    "better-sqlite3": "^12.6.2",
+    "better-sqlite3": "13.1.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
@@ -163,8 +163,8 @@
     "update-electron-app": "^3.1.2",
     "use-sync-external-store": "^1.6.0",
     "uuid": "^11.1.0",
-    "yaml": "^2.8.1",
     "ws": "^8.19.0",
+    "yaml": "^2.8.1",
     "zod": "^4.3.6"
   },
   "optionalDependencies": {
@@ -206,7 +206,7 @@
     "babel-plugin-react-compiler": "^1.0.0",
     "cross-env": "^7.0.3",
     "drizzle-kit": "^0.30.6",
-    "electron": "40.0.0",
+    "electron": "45.3.2",
     "esbuild": "^0.25.9",
     "eslint": "^8.57.1",
     "eslint-plugin-import": "^2.31.0",
@@ -225,5 +225,8 @@
   "engines": {
     "node": ">=24 <26"
   },
-  "productName": "dyad"
+  "productName": "dyad",
+  "overrides": {
+    "@electron/rebuild": "4.1.0"
+  }
 }

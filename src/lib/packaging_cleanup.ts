@@ -191,7 +191,11 @@ async function pruneNodePty(
   );
 }
 
-async function pruneBetterSqlite3(betterSqlite3Path: string): Promise<void> {
+async function pruneBetterSqlite3(
+  betterSqlite3Path: string,
+  platform: PackagerPlatform,
+  arch: PackagerArch,
+): Promise<void> {
   await removeRelativePaths(
     betterSqlite3Path,
     BETTER_SQLITE3_REMOVE_RELATIVE_PATHS,
@@ -202,6 +206,16 @@ async function pruneBetterSqlite3(betterSqlite3Path: string): Promise<void> {
     ({ name }) =>
       hasNativeBuildArtifactExtension(name) ||
       name.startsWith("test_extension."),
+  );
+
+  // v13 includes every target in one package. Foreign ELF binaries break
+  // rpmbuild's strip step, and none belong in a platform-specific release.
+  // Linux releases target glibc, not musl; keep the matching glibc prebuild.
+  const prebuildPlatform = platform === "mas" ? "darwin" : platform;
+  await removeFilesMatching(
+    path.join(betterSqlite3Path, "prebuilds"),
+    ({ name }) =>
+      name.endsWith(".node") && name !== `${prebuildPlatform}-${arch}.node`,
   );
 }
 
@@ -227,7 +241,11 @@ export async function removeUnusedAppPackageFiles(
       platform,
       arch,
     ),
-    pruneBetterSqlite3(path.join(appPath, "node_modules", "better-sqlite3")),
+    pruneBetterSqlite3(
+      path.join(appPath, "node_modules", "better-sqlite3"),
+      platform,
+      arch,
+    ),
     pruneKeychainReader(
       path.join(appPath, "node_modules", "dyad-keychain-reader"),
     ),

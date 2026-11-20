@@ -1,7 +1,10 @@
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ chatId: 7 as number | null }));
+const mocks = vi.hoisted(() => ({
+  chatId: 7 as number | null,
+  savedPlan: null as null | { id: string; chatId: number },
+}));
 
 vi.mock("jotai", () => ({
   useAtomValue: () => mocks.chatId,
@@ -11,7 +14,7 @@ vi.mock("@/atoms/appAtoms", () => ({ previewModeAtom: Symbol() }));
 vi.mock("@/atoms/chatAtoms", () => ({ selectedChatIdAtom: Symbol() }));
 vi.mock("@/atoms/viewAtoms", () => ({ isPreviewOpenAtom: Symbol() }));
 vi.mock("@/hooks/usePlan", () => ({
-  usePlan: () => ({ savedPlan: null, hasPlanInMemory: true }),
+  usePlan: () => ({ savedPlan: mocks.savedPlan, hasPlanInMemory: true }),
 }));
 
 import { DyadWritePlan } from "./DyadWritePlan";
@@ -21,6 +24,20 @@ const node = { properties: { title: "Add authentication" } };
 describe("DyadWritePlan", () => {
   beforeEach(() => {
     mocks.chatId = 7;
+    mocks.savedPlan = null;
+  });
+
+  it("names a saved legacy plan by its own file, except while a new plan is generating", () => {
+    mocks.savedPlan = { id: "chat-7-20260101", chatId: 7 };
+    const { rerender } = render(<DyadWritePlan node={node} />);
+    expect(screen.getByText("Plan #7").title).toBe("chat-7-20260101.md");
+
+    rerender(
+      <DyadWritePlan
+        node={{ properties: { ...node.properties, complete: "false" } }}
+      />,
+    );
+    expect(screen.getByText("Plan #7").title).toBe("chat-7-plan.md");
   });
 
   it("shows the plan number beside the title, including while generating", () => {

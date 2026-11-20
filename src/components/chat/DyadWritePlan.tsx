@@ -6,6 +6,7 @@ import { previewModeAtom } from "@/atoms/appAtoms";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
 import { CustomTagState } from "./stateTypes";
 import { usePlan } from "@/hooks/usePlan";
+import { planFileName } from "@/lib/planFileName";
 
 interface DyadWritePlanProps {
   node: {
@@ -50,7 +51,7 @@ export const DyadWritePlan: React.FC<DyadWritePlanProps> = ({ node }) => {
             {chatId != null && (
               <span
                 className="text-xs text-muted-foreground whitespace-nowrap"
-                title={`chat-${chatId}-plan.md`}
+                title={planFileName(chatId, isInProgress ? null : savedPlan)}
               >
                 Plan #{chatId}
               </span>

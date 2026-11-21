@@ -579,8 +579,6 @@ export const chatWorkspaces = sqliteTable(
      * branch pauses integration instead of retargeting it.
      */
     targetBranch: text("target_branch").notNull(),
-    /** Target commit the worktree was created from. */
-    baseCommit: text("base_commit").notNull(),
     status: text("status", { enum: ["creating", "active", "removing"] })
       .notNull()
       .default("creating"),
@@ -600,20 +598,12 @@ export const chatWorkspaces = sqliteTable(
     /** Automatic conflict/validation repair turns started for this attempt. */
     repairAttempts: integer("repair_attempts").notNull().default(0),
     /**
-     * Workspace HEAD when its work last reached the target (after the squash
-     * was fast-forwarded and recorded here) or it was last synchronized. The
-     * workspace is fully integrated while HEAD is still this commit.
+     * Workspace commit whose content is already represented in the target.
+     * Initialized to the creation commit, then updated after integration or
+     * synchronization. The workspace is fully integrated while HEAD is still
+     * this commit.
      */
-    lastIntegratedCommit: text("last_integrated_commit"),
-    /**
-     * Package manager the worktree's installs use, detected when it was
-     * created. npm copies every dependency into each worktree; pnpm links
-     * them from one shared store. Null when detection failed.
-     */
-    packageManager: text("package_manager", { enum: ["npm", "pnpm"] }),
-    lastActiveAt: integer("last_active_at", { mode: "timestamp" })
-      .notNull()
-      .default(sql`(unixepoch())`),
+    lastIntegratedCommit: text("last_integrated_commit").notNull(),
     createdAt: integer("created_at", { mode: "timestamp" })
       .notNull()
       .default(sql`(unixepoch())`),

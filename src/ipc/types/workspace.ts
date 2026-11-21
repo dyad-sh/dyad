@@ -48,8 +48,8 @@ export const ChatWorkspaceStatusSchema = z.object({
   /** Whether a writable turn of this chat is running right now. */
   writableTurnRunning: z.boolean(),
   /**
-   * Package manager the chat's worktree installs with, detected when it was
-   * created; null for the original folder or when unknown.
+   * Package manager the chat's worktree currently installs with;
+   * null for the original folder or when unknown.
    */
   packageManager: z.enum(["npm", "pnpm"]).nullable(),
   /**

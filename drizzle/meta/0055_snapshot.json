@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "e98bc00e-2352-4fcc-912a-309b05fbde6d",
+  "id": "38f25532-cef7-4693-a8ee-affa880b7b83",
   "prevId": "1431eac9-c22a-4ba5-add5-70b4ac676a8a",
   "tables": {
     "agent_activities": {
@@ -1096,13 +1096,6 @@
           "notNull": true,
           "autoincrement": false
         },
-        "base_commit": {
-          "name": "base_commit",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
         "status": {
           "name": "status",
           "type": "text",
@@ -1152,23 +1145,8 @@
           "name": "last_integrated_commit",
           "type": "text",
           "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "package_manager": {
-          "name": "package_manager",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "last_active_at": {
-          "name": "last_active_at",
-          "type": "integer",
-          "primaryKey": false,
           "notNull": true,
-          "autoincrement": false,
-          "default": "(unixepoch())"
+          "autoincrement": false
         },
         "created_at": {
           "name": "created_at",

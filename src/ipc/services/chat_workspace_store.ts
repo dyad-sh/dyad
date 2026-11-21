@@ -92,17 +92,6 @@ export function getWorkspaceAppPath(
 }
 
 /**
- * The workspace commit whose content its target already has: recorded at each
- * successful fast-forward (and each synchronization of an integrated
- * workspace); the base commit before the first.
- */
-export function integratedHead(
-  workspace: Pick<ChatWorkspaceRow, "lastIntegratedCommit" | "baseCommit">,
-): string {
-  return workspace.lastIntegratedCommit ?? workspace.baseCommit;
-}
-
-/**
  * Whether everything in the workspace is already in its target: its HEAD has
  * not moved since the last successful fast-forward. Work reaches the target as
  * one squash commit, so this never looks for the workspace's own commits in
@@ -114,7 +103,7 @@ export async function isWorkspaceIntegrated(
   const head = await getCurrentCommitHash({
     path: getWorkspaceAppPath(workspace),
   });
-  return head === integratedHead(workspace);
+  return head === workspace.lastIntegratedCommit;
 }
 
 /**
@@ -183,7 +172,7 @@ export function insertWorkspace(input: {
   appSubpath: string;
   branch: string;
   targetBranch: string;
-  baseCommit: string;
+  lastIntegratedCommit: string;
 }): ChatWorkspaceRow {
   const id = pickWorkspaceId({
     lastId: lastWorkspaceId(),
@@ -207,14 +196,12 @@ export function updateWorkspace(
     Pick<
       ChatWorkspaceRow,
       | "status"
-      | "lastActiveAt"
       | "lastIntegratedCommit"
       | "validationJson"
       | "integrationStatus"
       | "integrationDetail"
       | "integrationTargetCommit"
       | "repairAttempts"
-      | "packageManager"
     >
   >,
 ): void {
@@ -222,10 +209,6 @@ export function updateWorkspace(
     .set({ ...values, updatedAt: new Date() })
     .where(eq(chatWorkspaces.id, workspaceId))
     .run();
-}
-
-export function touchWorkspace(workspaceId: number): void {
-  updateWorkspace(workspaceId, { lastActiveAt: new Date() });
 }
 
 export function deleteWorkspaceRow(workspaceId: number): void {

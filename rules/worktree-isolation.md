@@ -197,9 +197,10 @@ worktree use the app's original folder.
   chat's `.dyad/chats/<id>/` backups in.
 - Use `waitForChange(signal, { timeoutMs })` to poll; racing it against a
   timer leaves a waiter and an abort listener behind each round.
-- Each worktree installs its own `node_modules`. `createWorkspace` records
-  the package manager its installs will use (`chat_workspaces.package_manager`)
-  so the chat can warn npm users, whose worktrees each get a full copy.
+- Each worktree installs its own `node_modules`. Workspace status resolves
+  the current package manager using the same resolver as installs, so the
+  chat can warn npm users, whose worktrees each get a full copy. This is
+  derived from the workspace and available tooling, not stored in the DB.
 
 ## Integration
 
@@ -216,9 +217,9 @@ worktree use the app's original folder.
 - A successful fast-forward is integration success. Never decide "is this
   integrated?" by looking for the worktree's commits in the target (they are
   never there): use `isWorkspaceIntegrated`, which compares HEAD with
-  `integratedHead` (`lastIntegratedCommit`, or `baseCommit` before the first
-  integration). Anything that moves HEAD without adding chat work (pre-turn
-  synchronization, recording a squash) must update `lastIntegratedCommit`; a
+  `lastIntegratedCommit` (initialized to the creation commit). Anything that
+  moves HEAD without adding chat work (pre-turn synchronization, recording a
+  squash) must update `lastIntegratedCommit`; a
   spurious "unintegrated" self-heals because identical trees integrate as
   `NOTHING_TO_INTEGRATE`.
 - After integration, publish the app's `test-specs` query invalidation along

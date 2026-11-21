@@ -64,12 +64,14 @@ import { chatWorkspaceService } from "@/ipc/services/chat_workspace_service";
 import {
   getWorkspaceAppPath,
   getWorkspaceForChat,
+  isWorkspaceIntegrated,
 } from "@/ipc/services/chat_workspace_store";
 import { workspaceIntegrationQueue } from "@/ipc/services/workspace_integration_queue";
 import { validateWorkspace } from "@/ipc/services/workspace_validation";
 import { ensureDyadGitignored } from "@/ipc/handlers/gitignoreUtils";
 import { workspaceRuntimeId } from "../../../../shared/workspace_runtime_id";
 import { resolvePackageManager } from "@/ipc/services/isolated_package_install";
+import * as socketFirewall from "@/ipc/utils/socket_firewall";
 import * as fileOperations from "@/pro/main/ipc/handlers/local_agent/processors/file_operations";
 import {
   setupChatFlowHarness,
@@ -81,9 +83,10 @@ import {
   versionPreviewHandlerService,
 } from "@/ipc/handlers/version_handlers";
 import { registerChatHandlers } from "@/ipc/handlers/chat_handlers";
+import { registerWorkspaceHandlers } from "@/ipc/handlers/workspace_handlers";
 import * as gitWorktreeUtils from "@/ipc/utils/git_worktree_utils";
 import * as chatJournalCleanup from "@/ipc/services/chat_journal_cleanup";
-import type { Version } from "@/ipc/types";
+import type { ChatWorkspaceStatus, Version } from "@/ipc/types";
 import { listSpecFiles } from "@/ipc/handlers/tests_handlers";
 import { queryKeys } from "@/lib/queryKeys";
 import { queryInvalidationBus } from "@/window_infrastructure/main/query_invalidation_bus";
@@ -132,6 +135,7 @@ describe("worktree isolation (integration)", () => {
     registerOnce(() => remoteMachineHost.register(planHandoffDefinition));
     registerVersionHandlers();
     registerChatHandlers();
+    registerWorkspaceHandlers();
     await chatWorkspaceService.recover();
     targetBranch = git(["branch", "--show-current"]);
   }, 60_000);
@@ -152,6 +156,13 @@ describe("worktree isolation (integration)", () => {
     const envelope = (await handler(createFakeIpcEvent([]), {
       appId: harness.appId,
     })) as { ok: boolean; value: Version[] };
+    expect(envelope.ok).toBe(true);
+    return envelope.value;
+  }
+
+  async function workspaceStatus(chatId: number): Promise<ChatWorkspaceStatus> {
+    const handler = h.ipcHandlers.get("workspace:get-chat-status");
+    const envelope = await handler(createFakeIpcEvent([]), { chatId });
     expect(envelope.ok).toBe(true);
     return envelope.value;
   }
@@ -398,11 +409,10 @@ describe("worktree isolation (integration)", () => {
     expect(workspace).toMatchObject({
       branch: `dyad/chat-${chatId}`,
       targetBranch,
-      baseCommit: initialCommit,
       status: "active",
     });
-    // Recorded at creation with the same choice its installs make.
-    expect(workspace.packageManager).toBe(
+    // The status warning uses the same current choice as installs.
+    expect((await workspaceStatus(chatId)).packageManager).toBe(
       (
         await resolvePackageManager(
           getWorkspaceAppPath(workspace),
@@ -487,6 +497,52 @@ describe("worktree isolation (integration)", () => {
     ).toBe(chatId);
   }, 60_000);
 
+  it("initializes the integration checkpoint before the first turn commits", async () => {
+    await waitForQuietApp();
+    const chatId = await createChat();
+    const initialCommit = git(["rev-parse", targetBranch]);
+    const turn = await chatWorkspaceService.prepareTurnWorkspace({
+      appId: harness.appId,
+      chatId,
+      originalAppPath: harness.appDir,
+      writable: true,
+      allowIsolation: true,
+      signal: new AbortController().signal,
+    });
+    try {
+      const workspace = getWorkspaceForChat(chatId)!;
+      expect(workspace.lastIntegratedCommit).toBe(initialCommit);
+      expect(await isWorkspaceIntegrated(workspace)).toBe(true);
+
+      fs.writeFileSync(path.join(turn.appPath, "checkpoint.txt"), "New work\n");
+      git(["add", "checkpoint.txt"], turn.appPath);
+      git(
+        [
+          "-c",
+          "user.name=Test",
+          "-c",
+          "user.email=test@example.com",
+          "commit",
+          "-m",
+          "First workspace change",
+        ],
+        turn.appPath,
+      );
+      expect(await isWorkspaceIntegrated(getWorkspaceForChat(chatId)!)).toBe(
+        false,
+      );
+      turn.outcome.completed = true;
+    } finally {
+      await turn.settle();
+    }
+    await waitForMerged(chatId);
+    expect(await isWorkspaceIntegrated(getWorkspaceForChat(chatId)!)).toBe(
+      true,
+    );
+    expect(harness.readAppFile("checkpoint.txt")).toBe("New work\n");
+    await discardWorkspace(chatId);
+  }, 60_000);
+
   it("isolates every writer and merges each one's work after validation", async () => {
     validation.calls = 0;
     const slowChatId = await createChat();
@@ -498,6 +554,7 @@ describe("worktree isolation (integration)", () => {
       );
       const isolatedChatId = await createChat();
       featureChatId = isolatedChatId;
+      const initialCommit = git(["rev-parse", targetBranch]);
 
       const isolatedTurn = await harness.streamChat(
         "tc=local-agent/workspace-isolation-fast-feature",
@@ -525,7 +582,7 @@ describe("worktree isolation (integration)", () => {
       // The turn's checkpoint is on the workspace branch and durably linked.
       const isolatedReply = await lastAssistant(isolatedChatId);
       expect(isolatedReply.commitHash).toBeTruthy();
-      expect(isolatedReply.sourceCommitHash).toBe(workspace!.baseCommit);
+      expect(isolatedReply.sourceCommitHash).toBe(initialCommit);
       const commitMessage = git(
         ["log", "-1", "--format=%B", isolatedReply.commitHash!],
         workspacePath,
@@ -812,7 +869,7 @@ describe("worktree isolation (integration)", () => {
     // including at startup.
     harness.db
       .update(chatWorkspaces)
-      .set({ lastActiveAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) })
+      .set({ updatedAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) })
       .run();
     await chatWorkspaceService.recover();
     expect(getWorkspaceForChat(featureChatId)?.status).toBe("active");
@@ -1050,6 +1107,7 @@ describe("worktree isolation (integration)", () => {
       .values({ appId: harness.appId, chatMode: "build" })
       .returning({ id: chats.id });
     buildChatId = buildChat.id;
+    const initialCommit = git(["rev-parse", targetBranch]);
 
     const turn = await harness.streamChat("tc=write-index-2", {
       chatId: buildChat.id,
@@ -1063,7 +1121,7 @@ describe("worktree isolation (integration)", () => {
       fs.readFileSync(path.join(workspacePath, "src/pages/Index.tsx"), "utf8"),
     ).toContain("Testing:write-index(2)!");
     const reply = await lastAssistant(buildChat.id);
-    expect(reply.sourceCommitHash).toBe(workspace.baseCommit);
+    expect(reply.sourceCommitHash).toBe(initialCommit);
     expect(
       git(["log", "-1", "--format=%B", reply.commitHash!], workspacePath),
     ).toContain(`Dyad-Chat: ${buildChat.id}`);
@@ -1379,7 +1437,7 @@ describe("worktree isolation (integration)", () => {
     await discardWorkspace(isolatedChatId);
   }, 60_000);
 
-  it("records npm for a worktree whose app installs with npm", async () => {
+  it("derives the package-manager warning from the current workspace configuration", async () => {
     await waitForQuietApp();
     const manifest = JSON.parse(harness.readAppFile("package.json"));
     commitInApp(
@@ -1394,8 +1452,36 @@ describe("worktree isolation (integration)", () => {
     });
     expect(turn.event("chat:response:error")).toBeUndefined();
     // Each npm worktree gets a full node_modules; the chat warns about it.
-    expect(getWorkspaceForChat(chatId)?.packageManager).toBe("npm");
-    await discardWorkspace(chatId);
+    expect((await workspaceStatus(chatId)).packageManager).toBe("npm");
+
+    const workspace = getWorkspaceForChat(chatId)!;
+    const packageJsonPath = path.join(
+      getWorkspaceAppPath(workspace),
+      "package.json",
+    );
+    const pnpmSupport = vi
+      .spyOn(socketFirewall, "getPnpmMinimumReleaseAgeSupport")
+      .mockResolvedValue({ available: true, minimumReleaseAgeSupported: true });
+    try {
+      fs.writeFileSync(
+        packageJsonPath,
+        JSON.stringify({ ...manifest, packageManager: "pnpm@10.9.0" }),
+      );
+      expect((await workspaceStatus(chatId)).packageManager).toBe("pnpm");
+
+      // The warning follows the workspace, even though the app still uses npm.
+      expect(
+        JSON.parse(harness.readAppFile("package.json")).packageManager,
+      ).toBe("npm@10.9.0");
+      pnpmSupport.mockResolvedValue({
+        available: false,
+        minimumReleaseAgeSupported: false,
+      });
+      expect((await workspaceStatus(chatId)).packageManager).toBe("npm");
+    } finally {
+      pnpmSupport.mockRestore();
+      await discardWorkspace(chatId);
+    }
   }, 60_000);
 
   it("refuses restoring a merged chat's checkpoint after its worktree is deleted", async () => {

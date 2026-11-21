@@ -390,7 +390,7 @@
     {
       "idx": 55,
       "version": "6",
-      "when": 1794435399034,
+      "when": 1795286812118,
       "tag": "0055_chat_worktree_isolation",
       "breakpoints": true
     }

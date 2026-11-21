@@ -58,7 +58,6 @@ import {
   getOriginalAppPath,
   getWorkspaceAppPath,
   getWorkspaceById,
-  integratedHead,
   isWorkspaceIntegrated,
   listAllWorkspaces,
   toAppRelativePath,
@@ -130,7 +129,7 @@ async function buildSquashMessage(
   const own = await listCommitsNotIn({
     path: appPath,
     from: workspaceHead,
-    exclude: integratedHead(workspace),
+    exclude: workspace.lastIntegratedCommit,
     firstParent: true,
     noMerges: true,
   }).catch(() => []);
@@ -189,7 +188,7 @@ async function carryDbTimestampToSquash(
   const included = await listCommitsNotIn({
     path: getWorkspaceAppPath(workspace),
     from: workspaceHead,
-    exclude: integratedHead(workspace),
+    exclude: workspace.lastIntegratedCommit,
     firstParent: true,
   });
   if (included.length === 0) return;

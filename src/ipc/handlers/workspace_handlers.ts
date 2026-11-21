@@ -7,6 +7,7 @@ import { gitCurrentBranch } from "@/ipc/utils/git_utils";
 import { chatWorkspaceRegistry } from "@/ipc/services/chat_workspace_registry";
 import {
   chatWorkspaceService,
+  getWorkspacePackageManager,
   isWorktreeIsolationEnabled,
 } from "@/ipc/services/chat_workspace_service";
 import {
@@ -60,7 +61,7 @@ export function registerWorkspaceHandlers() {
           workspaceId: workspace.id,
           runtimeAppId: workspaceRuntimeId(workspace.id),
           writableTurnRunning,
-          packageManager: workspace.packageManager,
+          packageManager: await getWorkspacePackageManager(workspace),
           // A running turn is making work, and the worktree can't be deleted
           // meanwhile, so skip running Git in the folder it is writing to.
           hasUnmergedWork:

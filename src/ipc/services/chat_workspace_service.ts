@@ -64,7 +64,6 @@ import {
   listAllWorkspaces,
   listWorkspacesForApp,
   renameBranchReferences,
-  touchWorkspace,
   updateWorkspace,
   type ChatWorkspaceRow,
 } from "./chat_workspace_store";
@@ -198,12 +197,13 @@ async function readMarker(
  * validation and its preview pick one. Each npm worktree gets a full copy of
  * its dependencies, which is what the chat warns about.
  */
-async function detectPackageManager(
-  appPath: string,
-  worktreeRoot: string,
+export async function getWorkspacePackageManager(
+  workspace: Pick<ChatWorkspaceRow, "path" | "appSubpath">,
 ): Promise<"npm" | "pnpm" | null> {
+  const appPath = getWorkspaceAppPath(workspace);
   try {
-    return (await resolvePackageManager(appPath, worktreeRoot)).packageManager;
+    return (await resolvePackageManager(appPath, workspace.path))
+      .packageManager;
   } catch (error) {
     logger.warn(`Could not detect the package manager for ${appPath}`, error);
     return null;
@@ -564,7 +564,6 @@ class ChatWorkspaceService {
                   DyadErrorKind.Precondition,
                 );
               }
-              touchWorkspace(workspace.id);
               // Settings changed in the app since the last turn reach the
               // worktree too.
               await syncEnvironmentFiles(
@@ -734,7 +733,7 @@ class ChatWorkspaceService {
           appSubpath,
           branch,
           targetBranch,
-          baseCommit,
+          lastIntegratedCommit: baseCommit,
         });
         try {
           await addBranchWorktree({
@@ -744,13 +743,7 @@ class ChatWorkspaceService {
             startPoint: baseCommit,
           });
           await syncEnvironmentFiles(originalAppPath, getWorkspaceAppPath(row));
-          updateWorkspace(row.id, {
-            status: "active",
-            packageManager: await detectPackageManager(
-              getWorkspaceAppPath(row),
-              worktreeRoot,
-            ),
-          });
+          updateWorkspace(row.id, { status: "active" });
         } catch (error) {
           logger.error("Failed to create isolated workspace", error);
           await removeLinkedWorktree({
@@ -773,7 +766,8 @@ class ChatWorkspaceService {
         const created = getWorkspaceById(row.id)!;
         sendTelemetryEvent("workspace:created", {
           liveWorkspaces: listWorkspacesForApp(appId).length,
-          packageManager: created.packageManager ?? "unknown",
+          packageManager:
+            (await getWorkspacePackageManager(created)) ?? "unknown",
         });
         publishWorkspaceChanged(appId);
         return created;
@@ -1017,7 +1011,6 @@ class ChatWorkspaceService {
       const workspace = getWorkspaceById(workspaceId);
       const outcome = handle.outcome;
       if (!workspace) return;
-      touchWorkspace(workspace.id);
       const appPath = getWorkspaceAppPath(workspace);
       if (!fs.existsSync(appPath)) return;
       if (isMergeInProgress(appPath)) {

@@ -511,7 +511,7 @@ export function ChatList({
               <Button
                 onClick={handleNewChat}
                 variant="outline"
-                className="flex flex-1 items-center justify-start gap-2 py-3"
+                className="flex flex-1 cursor-pointer items-center justify-start gap-2 py-3"
                 data-testid="new-chat-button"
               >
                 <PlusCircle size={16} />
@@ -520,7 +520,7 @@ export function ChatList({
               <Button
                 onClick={() => setIsSearchDialogOpen(!isSearchDialogOpen)}
                 variant="outline"
-                className="flex shrink-0 items-center justify-center py-3 px-3"
+                className="flex shrink-0 cursor-pointer items-center justify-center py-3 px-3"
                 title={t("searchChats")}
                 aria-label={t("searchChats")}
                 data-testid="search-chats-button"
@@ -707,7 +707,7 @@ function ChatRow({
           ref={favoriteButtonRef}
           type="button"
           className={cn(
-            "flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-sidebar-accent hover:text-[#6c55dc] focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+            "flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-sidebar-accent hover:text-[#6c55dc] focus-visible:ring-2 focus-visible:ring-sidebar-ring",
             "aria-disabled:cursor-wait aria-disabled:opacity-60",
             !chat.isFavorite &&
               !isFavoriteConfirmed &&
@@ -771,7 +771,7 @@ function ChatRow({
               variant: "ghost",
               size: "icon",
               className:
-                "pointer-events-none h-7 w-7 translate-x-1 scale-90 opacity-0 transition-[opacity,transform] duration-200 ease-out group-hover/chat-row:pointer-events-auto group-hover/chat-row:translate-x-0 group-hover/chat-row:scale-100 group-hover/chat-row:opacity-100 group-focus-within/chat-row:pointer-events-auto group-focus-within/chat-row:translate-x-0 group-focus-within/chat-row:scale-100 group-focus-within/chat-row:opacity-100 data-popup-open:pointer-events-auto data-popup-open:translate-x-0 data-popup-open:scale-100 data-popup-open:opacity-100 motion-reduce:transition-none",
+                "pointer-events-none h-7 w-7 cursor-pointer translate-x-1 scale-90 opacity-0 transition-[opacity,transform] duration-200 ease-out group-hover/chat-row:pointer-events-auto group-hover/chat-row:translate-x-0 group-hover/chat-row:scale-100 group-hover/chat-row:opacity-100 group-focus-within/chat-row:pointer-events-auto group-focus-within/chat-row:translate-x-0 group-focus-within/chat-row:scale-100 group-focus-within/chat-row:opacity-100 data-popup-open:pointer-events-auto data-popup-open:translate-x-0 data-popup-open:scale-100 data-popup-open:opacity-100 motion-reduce:transition-none",
             })}
             onClick={(e) => e.stopPropagation()}
             aria-label={t("chatActions", { title })}

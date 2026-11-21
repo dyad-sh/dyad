@@ -22,4 +22,9 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  server: {
+    // Dev keeps Electron's data in ./userData; watching its locked files
+    // (e.g. Network/Cookies) crashes Forge with EBUSY on Windows.
+    watch: { ignored: ["**/userData/**"] },
+  },
 });

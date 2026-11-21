@@ -13,9 +13,11 @@ import {
   gitCurrentBranch,
   gitGetMergeConflicts,
   inspectRepositoryHealth,
+  type RepositoryHealth,
 } from "@/ipc/utils/git_utils";
 import {
   addBranchWorktree,
+  isLinkedWorktreeOf,
   checkoutBranchWorktree,
   deleteMergedBranch,
   forceDeleteBranch,
@@ -80,6 +82,31 @@ import { runWorkspaceScopedOperation } from "./workspace_coordination";
 
 const logger = log.scope("chat_workspace_service");
 
+const FAILED_REMOVAL_DETAIL =
+  "Dyad could not finish deleting this worktree. Its remaining files and branch have been kept. Check the folder permissions, then choose Delete worktree again.";
+const INCOMPLETE_WORKTREE_DETAIL =
+  "Dyad could not verify this worktree. Inspect its remaining files before choosing Delete worktree.";
+
+function markWorkspaceUnavailable(workspace: ChatWorkspaceRow, detail: string) {
+  updateWorkspace(workspace.id, {
+    status: "unavailable",
+    integrationStatus: "failed",
+    integrationDetail: detail,
+  });
+  publishWorkspaceChanged(workspace.appId);
+}
+
+function getTurnWorkspaceRow(chatId: number) {
+  const workspace = getWorkspaceForChat(chatId);
+  if (workspace?.status === "unavailable") {
+    throw new DyadError(
+      workspace.integrationDetail ?? INCOMPLETE_WORKTREE_DETAIL,
+      DyadErrorKind.Precondition,
+    );
+  }
+  return workspace;
+}
+
 const MARKER_SCHEMA = "dyad-chat-workspace-v1";
 const BRANCH_RECHECK_MS = 30_000;
 const FORCED_REMOVAL_WAIT_MS = 30_000;
@@ -116,6 +143,8 @@ export interface TurnWorkspace {
   readonly coordinationKey: number | undefined;
   /** Facts about the workspace the agent must know before editing. */
   readonly promptNotes: readonly string[];
+  /** Excludes an image already saved in the app library from settlement. */
+  onMediaSavedToApp?: (fileName: string) => void;
   /** Filled in by the turn before it settles. */
   readonly outcome: {
     completed: boolean;
@@ -401,7 +430,7 @@ interface MirroredState {
   planBaseline: string | null;
   /** False when the working plan could not be copied in. */
   copyWorkingPlanBack: boolean;
-  mediaBaseline: ReadonlySet<string>;
+  mediaBaseline: Set<string>;
 }
 
 /** Copies the app's media and the chat's plans into its workspace. */
@@ -462,8 +491,8 @@ class ChatWorkspaceService {
   private async prepareReadOnlyTurn(
     input: PrepareTurnWorkspaceInput,
   ): Promise<TurnWorkspace> {
-    const workspace = getActiveWorkspaceForChat(input.chatId);
-    if (!workspace) {
+    const workspace = getTurnWorkspaceRow(input.chatId);
+    if (workspace?.status !== "active") {
       return this.buildHandle(input, null, [], async () => undefined);
     }
     // Ask and Plan read the chat's workspace as it is: no worktree is created
@@ -503,7 +532,7 @@ class ChatWorkspaceService {
     try {
       while (true) {
         signal.throwIfAborted();
-        const existing = getWorkspaceForChat(chatId);
+        const existing = getTurnWorkspaceRow(chatId);
         if (existing && existing.status !== "active") {
           // The chat's previous workspace is still being cleaned up (or set
           // up by an interrupted attempt); a chat has one workspace at most.
@@ -578,13 +607,18 @@ class ChatWorkspaceService {
                 workspace,
                 chatId,
               );
-              return this.buildHandle(input, workspace, notes, (handle) =>
-                this.settleIsolatedTurn(
-                  workspace.id,
-                  reservation,
-                  handle,
-                  mirrored,
-                ),
+              return this.buildHandle(
+                input,
+                workspace,
+                notes,
+                (handle) =>
+                  this.settleIsolatedTurn(
+                    workspace.id,
+                    reservation,
+                    handle,
+                    mirrored,
+                  ),
+                mirrored.mediaBaseline,
               );
             } catch (error) {
               chatWorkspaceRegistry.release(reservation);
@@ -622,6 +656,7 @@ class ChatWorkspaceService {
                   handle,
                   mirrored,
                 ),
+              mirrored.mediaBaseline,
             );
           }
           default: {
@@ -782,8 +817,20 @@ class ChatWorkspaceService {
   private async ensureCheckout(
     workspace: ChatWorkspaceRow,
   ): Promise<ChatWorkspaceRow | null> {
-    if (fs.existsSync(getWorkspaceAppPath(workspace))) {
+    if (fs.existsSync(workspace.path)) {
       await this.ensureLinked(workspace);
+      const original = await getOriginalAppPath(workspace.appId);
+      if (
+        !original ||
+        !isLinkedWorktreeOf(workspace.path, original) ||
+        !fs.existsSync(getWorkspaceAppPath(workspace))
+      ) {
+        markWorkspaceUnavailable(workspace, INCOMPLETE_WORKTREE_DETAIL);
+        throw new DyadError(
+          INCOMPLETE_WORKTREE_DETAIL,
+          DyadErrorKind.Precondition,
+        );
+      }
       return workspace;
     }
     const original = await getOriginalAppPath(workspace.appId);
@@ -820,6 +867,16 @@ class ChatWorkspaceService {
   ): Promise<string[]> {
     const appPath = getWorkspaceAppPath(workspace);
     const health = await inspectRepositoryHealth({ path: appPath });
+    await this.reconcileIntegration(workspace, health);
+    if (
+      health.branch !== workspace.branch &&
+      !(health.branch === null && health.operationInProgress === "rebase")
+    ) {
+      throw new DyadError(
+        `Switch this worktree back to ${workspace.branch} before continuing.`,
+        DyadErrorKind.Precondition,
+      );
+    }
     if (health.operationInProgress === "merge") {
       const conflicts = await gitGetMergeConflicts({ path: appPath });
       return [
@@ -836,7 +893,7 @@ class ChatWorkspaceService {
         "This chat's workspace has uncommitted changes from an earlier turn that did not finish. Review them (for example with git status and git diff) and continue from them instead of starting over.",
       ];
     }
-    if (!(await isWorkspaceIntegrated(workspace))) {
+    if (health.headOid !== workspace.lastIntegratedCommit) {
       // Earlier work that never reached the target (queued, paused, failed,
       // or undone) is preserved; this turn's completion requests integration
       // for all of it together.
@@ -959,8 +1016,65 @@ class ChatWorkspaceService {
     }
   }
 
+  /** Called during startup or with this turn's reservation held. */
+  private async reconcileIntegration(
+    workspace: ChatWorkspaceRow,
+    health: RepositoryHealth,
+  ): Promise<void> {
+    const phase = workspace.integrationStatus;
+    if (
+      phase === "resolving-conflicts" &&
+      !workspaceIntegrationQueue.hasPendingRepair(workspace.id)
+    ) {
+      workspaceIntegrationQueue.dispatch(workspace.id, {
+        type: "REPAIR_SETTLED",
+        outcome: "interrupted",
+      });
+      return;
+    }
+    if (phase !== "idle" && phase !== "merged") return;
+    const reason =
+      health.branch !== workspace.branch
+        ? `Switch this worktree back to ${workspace.branch} before retrying.`
+        : health.operationInProgress
+          ? `An unfinished Git ${health.operationInProgress} needs attention in this workspace.`
+          : !health.isClean
+            ? "This workspace has uncommitted changes. Review them in this chat before merging."
+            : null;
+    if (reason) {
+      workspaceIntegrationQueue.dispatch(workspace.id, {
+        type: "PAUSE_PENDING_WORK",
+        reason,
+      });
+      return;
+    }
+    if (health.headOid === workspace.lastIntegratedCommit) return;
+    // Rewritten history isn't a missed turn commit. Only recover descendants
+    // of the last integrated worktree HEAD, independently of the target squash.
+    if (
+      await isAncestorCommit({
+        path: workspace.path,
+        ancestor: workspace.lastIntegratedCommit,
+        descendant: health.headOid,
+      }).catch((error) => {
+        logger.warn(
+          `Could not verify workspace ${workspace.id} history`,
+          error,
+        );
+        return false;
+      })
+    ) {
+      this.requestIntegration(workspace);
+    } else {
+      workspaceIntegrationQueue.dispatch(workspace.id, {
+        type: "PAUSE_PENDING_WORK",
+        reason:
+          "Dyad could not verify this workspace's history against its last merge. Review it before retrying.",
+      });
+    }
+  }
+
   private requestIntegration(workspace: ChatWorkspaceRow): void {
-    // The turn still holds the workspace; the queue waits for its release.
     workspaceIntegrationQueue.dispatch(workspace.id, {
       type: "REQUESTED",
       userInitiated: false,
@@ -977,6 +1091,13 @@ class ChatWorkspaceService {
         DyadErrorKind.NotFound,
       );
     }
+    if (workspaceIntegrationQueue.hasPendingRepair(workspace.id)) {
+      throw new DyadError(
+        "Conflict resolution is still running.",
+        DyadErrorKind.Conflict,
+      );
+    }
+    // The queue rechecks Git under its workspace claim when starting the retry.
     // The user asked to check again, so earlier verdicts are not reused.
     workspaceIntegrationQueue.forgetValidation(workspace.id);
     workspaceIntegrationQueue.dispatch(workspace.id, {
@@ -1036,7 +1157,21 @@ class ChatWorkspaceService {
       // A turn that hit its step limit still committed its work, which then
       // merges like any other (it is validated first); only a cancelled or
       // failed turn waits for the next one.
-      if (!outcome.completed) return;
+      if (!outcome.completed) {
+        if (
+          (workspace.integrationStatus === "idle" ||
+            workspace.integrationStatus === "queued" ||
+            workspace.integrationStatus === "merged") &&
+          !(await isWorkspaceIntegrated(workspace))
+        ) {
+          workspaceIntegrationQueue.dispatch(workspace.id, {
+            type: "PAUSE_PENDING_WORK",
+            reason:
+              "The turn was interrupted. Its commits are kept in this workspace. Continue in this chat or retry the merge.",
+          });
+        }
+        return;
+      }
       if (!(await isWorkspaceIntegrated(workspace))) {
         this.requestIntegration(workspace);
       } else if (workspace.integrationStatus === "resolving-conflicts") {
@@ -1084,6 +1219,7 @@ class ChatWorkspaceService {
     workspace: ChatWorkspaceRow | null,
     promptNotes: string[],
     onSettle: (handle: TurnWorkspace) => Promise<void>,
+    mediaBaseline?: Set<string>,
   ): TurnWorkspace {
     let settled = false;
     const handle: TurnWorkspace = {
@@ -1100,6 +1236,11 @@ class ChatWorkspaceService {
       runtimeAppId: workspace ? workspaceRuntimeId(workspace.id) : input.appId,
       coordinationKey: workspace ? workspaceRuntimeId(workspace.id) : undefined,
       promptNotes,
+      onMediaSavedToApp: mediaBaseline
+        ? (name) => {
+            mediaBaseline.add(name);
+          }
+        : undefined,
       outcome: { completed: false, stepLimitReached: false },
       settle: async () => {
         if (settled) return;
@@ -1121,7 +1262,7 @@ class ChatWorkspaceService {
     try {
       const workspaces = listWorkspacesForApp(appId).filter(
         (workspace) =>
-          workspace.status !== "removing" && fs.existsSync(workspace.path),
+          workspace.status === "active" && fs.existsSync(workspace.path),
       );
       if (workspaces.length === 0) return;
       const original = await getOriginalAppPath(appId);
@@ -1243,7 +1384,10 @@ class ChatWorkspaceService {
   async deleteChatWorkspace(chatId: number): Promise<void> {
     await this.waitForRecovery();
     const workspace = getWorkspaceForChat(chatId);
-    if (!workspace || workspace.status !== "active") {
+    if (
+      !workspace ||
+      (workspace.status !== "active" && workspace.status !== "unavailable")
+    ) {
       throw new DyadError(
         "This chat has no worktree to delete",
         DyadErrorKind.NotFound,
@@ -1322,30 +1466,36 @@ class ChatWorkspaceService {
     // Work reaches the target as a squash, so Git never sees the branch as
     // merged; delete it only when its HEAD is the integrated one.
     const current = getWorkspaceById(workspace.id) ?? workspace;
+    const original = await getOriginalAppPath(current.appId);
     const integrated =
-      fs.existsSync(getWorkspaceAppPath(current)) &&
+      current.status === "active" &&
+      original !== null &&
+      isLinkedWorktreeOf(current.path, original) &&
+      (await gitCurrentBranch({ path: current.path }).catch(() => null)) ===
+        current.branch &&
       (await isWorkspaceIntegrated(current).catch(() => false));
     updateWorkspace(workspace.id, { status: "removing" });
     workspaceIntegrationQueue.forget(workspace.appId, workspace.id);
     try {
       await this.deleteWorkspaceFiles(workspace, integrated);
     } catch (error) {
-      if (fs.existsSync(getWorkspaceAppPath(current))) {
-        // The worktree is still there (removal was refused or failed part
-        // way): keep it usable so the chat's next turn runs, its merge
-        // resumes, and the user can delete it again. Files the removal
-        // already deleted come back first, or the next turn would commit
-        // their deletion as the chat's work.
-        if (
-          !(await restoreMissingTrackedFiles(workspace.path).catch(() => false))
-        ) {
-          logger.warn(
-            `Could not restore every file of workspace ${workspace.id} after a failed removal`,
-          );
+      if (fs.existsSync(current.path)) {
+        // A surviving directory may have already lost its Git link. Only
+        // restore missing files from the verified workspace index.
+        const restored =
+          original !== null &&
+          isLinkedWorktreeOf(current.path, original) &&
+          (await gitCurrentBranch({ path: current.path }).catch(() => null)) ===
+            current.branch &&
+          (await restoreMissingTrackedFiles(current.path).catch(() => false)) &&
+          fs.existsSync(getWorkspaceAppPath(current));
+        if (restored && current.status !== "unavailable") {
+          updateWorkspace(workspace.id, { status: "active" });
+          workspaceIntegrationQueue.resumePending();
+          publishWorkspaceChanged(workspace.appId);
+        } else {
+          markWorkspaceUnavailable(workspace, FAILED_REMOVAL_DETAIL);
         }
-        updateWorkspace(workspace.id, { status: "active" });
-        workspaceIntegrationQueue.resumePending();
-        publishWorkspaceChanged(workspace.appId);
         throw error;
       }
       // Its folder is gone, so it is unusable either way; finish removing
@@ -1569,19 +1719,22 @@ class ChatWorkspaceService {
   }
 
   private async recoverWorkspace(workspace: ChatWorkspaceRow): Promise<void> {
-    if (workspace.status === "creating" || workspace.status === "removing") {
+    if (workspace.status === "unavailable") return;
+    if (workspace.status === "removing") {
+      await this.removeClaimedWorkspace(workspace);
+      return;
+    }
+    if (workspace.status === "creating") {
       const original = await getOriginalAppPath(workspace.appId);
       if (original) {
         await removeLinkedWorktree({
           repositoryPath: original,
           worktreePath: workspace.path,
         }).catch(() => undefined);
-        if (workspace.status === "creating") {
-          await deleteMergedBranch({
-            repositoryPath: original,
-            branch: workspace.branch,
-          }).catch(() => undefined);
-        }
+        await deleteMergedBranch({
+          repositoryPath: original,
+          branch: workspace.branch,
+        }).catch(() => undefined);
       }
       await fsPromises
         .rm(markerPath(workspace.path), { force: true })
@@ -1590,15 +1743,29 @@ class ChatWorkspaceService {
       return;
     }
     const appPath = getWorkspaceAppPath(workspace);
-    if (!fs.existsSync(appPath)) return;
+    if (!fs.existsSync(workspace.path)) return;
     const phase = workspace.integrationStatus;
     const original = await getOriginalAppPath(workspace.appId);
-    if (!original) return;
+    if (!original || !fs.existsSync(original)) return;
+    if (
+      !isLinkedWorktreeOf(workspace.path, original) ||
+      !fs.existsSync(appPath)
+    ) {
+      markWorkspaceUnavailable(workspace, INCOMPLETE_WORKTREE_DETAIL);
+      return;
+    }
     switch (phase) {
       case "integrating":
       case "validating":
       case "merging":
       case "queued": {
+        if ((await gitCurrentBranch({ path: appPath })) !== workspace.branch) {
+          workspaceIntegrationQueue.dispatch(workspace.id, {
+            type: "FAILED",
+            reason: `Switch this worktree back to ${workspace.branch} before retrying.`,
+          });
+          return;
+        }
         if (
           phase === "integrating" &&
           (await this.recoverLandedSquash(workspace, original).catch(
@@ -1623,6 +1790,7 @@ class ChatWorkspaceService {
         return;
       }
       case "resolving-conflicts":
+        if (workspaceIntegrationQueue.hasPendingRepair(workspace.id)) return;
         updateWorkspace(workspace.id, {
           integrationStatus: "paused",
           integrationDetail:
@@ -1630,7 +1798,13 @@ class ChatWorkspaceService {
         });
         return;
       case "idle":
-      case "merged":
+      case "merged": {
+        await this.reconcileIntegration(
+          workspace,
+          await inspectRepositoryHealth({ path: appPath }),
+        );
+        return;
+      }
       case "paused":
       case "failed":
         return;

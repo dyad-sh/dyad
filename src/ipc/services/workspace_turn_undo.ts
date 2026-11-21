@@ -237,6 +237,13 @@ export async function undoIsolatedChatTurns({
           };
         },
       ).then(({ undoCommit, requestIntegration }) => {
+        if (!integrateNow && undoCommit) {
+          workspaceIntegrationQueue.dispatch(workspace.id, {
+            type: "PAUSE_PENDING_WORK",
+            reason:
+              "Waiting for the replacement turn before merging this undo.",
+          });
+        }
         if (requestIntegration) {
           // After the workspace claim is released below, the queue picks it up.
           queueMicrotask(() =>

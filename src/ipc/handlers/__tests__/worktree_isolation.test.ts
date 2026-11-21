@@ -67,6 +67,8 @@ import {
   isWorkspaceIntegrated,
 } from "@/ipc/services/chat_workspace_store";
 import { workspaceIntegrationQueue } from "@/ipc/services/workspace_integration_queue";
+import { waitForChatActorIdle } from "@/ipc/services/chat_actor_service";
+import { generateImageTool } from "@/pro/main/ipc/handlers/local_agent/tools/generate_image";
 import { validateWorkspace } from "@/ipc/services/workspace_validation";
 import { ensureDyadGitignored } from "@/ipc/handlers/gitignoreUtils";
 import { workspaceRuntimeId } from "../../../../shared/workspace_runtime_id";
@@ -1996,6 +1998,236 @@ describe("worktree isolation (integration)", () => {
       windowRegistry.unregister(endpoint.id);
       unsubscribe();
       queryClient.clear();
+      await discardWorkspace(chatId);
+    }
+  }, 60_000);
+
+  function prepareWritable(chatId: number) {
+    return chatWorkspaceService.prepareTurnWorkspace({
+      appId: harness.appId,
+      chatId,
+      originalAppPath: harness.appDir,
+      writable: true,
+      allowIsolation: true,
+      signal: new AbortController().signal,
+    });
+  }
+
+  function commitInWorkspace(folder: string, name: string, content: string) {
+    fs.writeFileSync(path.join(folder, name), content);
+    git(["add", name], folder);
+    git(
+      [
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.com",
+        "commit",
+        "-m",
+        "Workspace change",
+      ],
+      folder,
+    );
+  }
+
+  it("recovers a commit missed after a merged turn and integrates it only once", async () => {
+    await waitForQuietApp();
+    const chatId = await createChat();
+    await landTurn(chatId, { "recover.txt": "first" });
+    await waitForMerged(chatId);
+    const workspace = getWorkspaceForChat(chatId)!;
+    commitInWorkspace(workspace.path, "recover.txt", "second");
+    await chatWorkspaceService.recover();
+    await waitForMerged(chatId);
+    expect(harness.readAppFile("recover.txt")).toBe("second");
+    const landed = git(["rev-parse", targetBranch]);
+    await chatWorkspaceService.recover();
+    await waitForQuietApp();
+    expect(git(["rev-parse", targetBranch])).toBe(landed);
+    fs.writeFileSync(path.join(workspace.path, "recover.txt"), "unfinished");
+    await chatWorkspaceService.recover();
+    expect(getWorkspaceForChat(chatId)?.integrationStatus).toBe("paused");
+    expect(harness.readAppFile("recover.txt")).toBe("second");
+    expect(
+      fs.readFileSync(path.join(workspace.path, "recover.txt"), "utf8"),
+    ).toBe("unfinished");
+    await discardWorkspace(chatId);
+  }, 60_000);
+
+  it("preserves a damaged checkout and lets the user retry deletion after restart", async () => {
+    await waitForQuietApp();
+    const chatId = await createChat();
+    const turn = await prepareWritable(chatId);
+    await turn.settle();
+    const workspace = getWorkspaceForChat(chatId)!;
+    commitInWorkspace(workspace.path, "unmerged.txt", "keep this commit");
+    const tip = git(["rev-parse", "HEAD"], workspace.path);
+    const note = path.join(workspace.path, "notes.txt");
+    fs.writeFileSync(note, "uncommitted notes");
+    const removal = vi
+      .spyOn(gitWorktreeUtils, "removeLinkedWorktree")
+      .mockImplementationOnce(async () => {
+        fs.unlinkSync(path.join(workspace.path, ".git"));
+        throw new Error("simulated partial removal");
+      });
+    try {
+      await expect(
+        chatWorkspaceService.deleteChatWorkspace(chatId),
+      ).rejects.toThrow("partial removal");
+    } finally {
+      removal.mockRestore();
+    }
+    await chatWorkspaceService.recover();
+    expect(getWorkspaceForChat(chatId)?.status).toBe("unavailable");
+    expect((await workspaceStatus(chatId)).integration).toMatchObject({
+      phase: "failed",
+      canRetry: false,
+    });
+    await expect(prepareWritable(chatId)).rejects.toThrow(/Delete worktree/);
+    expect(fs.readFileSync(note, "utf8")).toBe("uncommitted notes");
+    await chatWorkspaceService.deleteChatWorkspace(chatId);
+    expect(getWorkspaceForChat(chatId)).toBeUndefined();
+    expect(git(["rev-parse", workspace.branch])).toBe(tip);
+  }, 60_000);
+
+  it("detects a missed commit on the next writable turn and keeps an interrupted turn paused across restart", async () => {
+    await waitForQuietApp();
+    const chatId = await createChat();
+    const first = await prepareWritable(chatId);
+    await first.settle();
+    const workspace = getWorkspaceForChat(chatId)!;
+    commitInWorkspace(workspace.path, "pending.txt", "missed commit");
+
+    const next = await prepareWritable(chatId);
+    expect(getWorkspaceForChat(chatId)?.integrationStatus).toBe("queued");
+    commitInWorkspace(next.appPath, "pending.txt", "interrupted commit");
+    await next.settle();
+    await chatWorkspaceService.recover();
+    expect(getWorkspaceForChat(chatId)?.integrationStatus).toBe("paused");
+    expect(fs.existsSync(path.join(harness.appDir, "pending.txt"))).toBe(false);
+
+    await chatWorkspaceService.retryIntegration(chatId);
+    await waitForMerged(chatId);
+    expect(harness.readAppFile("pending.txt")).toBe("interrupted commit");
+    await discardWorkspace(chatId);
+  }, 60_000);
+
+  it("pauses an accepted repair cancelled before workspace acquisition", async () => {
+    await waitForQuietApp();
+    const chatId = await createChat();
+    commitInApp({ "repair-stop.txt": "base" }, "Initial repair fixture");
+    const turn = await prepareWritable(chatId);
+    commitInWorkspace(turn.appPath, "repair-stop.txt", "chat");
+    commitInApp({ "repair-stop.txt": "app" }, "Conflicting change");
+    let started!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const prepare = vi
+      .spyOn(chatWorkspaceService, "prepareTurnWorkspace")
+      .mockImplementationOnce(async (input) => {
+        started();
+        return new Promise<never>((_, reject) => {
+          input.signal.throwIfAborted();
+          input.signal.addEventListener(
+            "abort",
+            () => reject(input.signal.reason),
+            { once: true },
+          );
+        });
+      });
+    try {
+      turn.outcome.completed = true;
+      await turn.settle();
+      await entered;
+      expect(getWorkspaceForChat(chatId)?.integrationStatus).toBe(
+        "resolving-conflicts",
+      );
+      await waitForChatActorIdle(chatId, { cancelActive: true });
+      await vi.waitFor(() =>
+        expect(getWorkspaceForChat(chatId)?.integrationStatus).toBe("paused"),
+      );
+      expect((await workspaceStatus(chatId)).integration?.canRetry).toBe(true);
+      expect(
+        git(["diff", "--name-only", "--diff-filter=U"], turn.appPath),
+      ).toBe("repair-stop.txt");
+      expect(harness.readAppFile("repair-stop.txt")).toBe("app");
+    } finally {
+      prepare.mockRestore();
+    }
+    await discardWorkspace(chatId);
+  }, 60_000);
+
+  it("refuses to resume an integration from a different checked-out branch", async () => {
+    await waitForQuietApp();
+    const chatId = await createChat();
+    const turn = await prepareWritable(chatId);
+    await turn.settle();
+    const workspace = getWorkspaceForChat(chatId)!;
+    const originalTarget = git(["rev-parse", targetBranch]);
+    git(["switch", "-c", "unrelated-work"], workspace.path);
+    commitInWorkspace(workspace.path, "unrelated.txt", "another branch");
+    harness.db
+      .update(chatWorkspaces)
+      .set({ integrationStatus: "integrating" })
+      .where(eq(chatWorkspaces.id, workspace.id))
+      .run();
+
+    await chatWorkspaceService.recover();
+    expect(getWorkspaceForChat(chatId)).toMatchObject({
+      integrationStatus: "failed",
+      integrationDetail: expect.stringContaining(workspace.branch),
+    });
+    await chatWorkspaceService.retryIntegration(chatId);
+    await vi.waitFor(() =>
+      expect(getWorkspaceForChat(chatId)?.integrationStatus).toBe("failed"),
+    );
+    expect(git(["rev-parse", targetBranch])).toBe(originalTarget);
+    expect(git(["branch", "--show-current"], workspace.path)).toBe(
+      "unrelated-work",
+    );
+    await discardWorkspace(chatId);
+  }, 60_000);
+
+  it("saves generated images in the app before settlement and respects a subsequent deletion", async () => {
+    await waitForQuietApp();
+    const chatId = await createChat();
+    const execute = generateImageTool.execute;
+    let generated: string | undefined;
+    let workspaceBytes: Buffer | undefined;
+    let appBytes: Buffer | undefined;
+    const spy = vi
+      .spyOn(generateImageTool, "execute")
+      .mockImplementation(async (args, ctx) => {
+        const result = await execute(args, ctx);
+        const media = path.join(".dyad", "media");
+        generated = fs
+          .readdirSync(path.join(ctx.appPath, media))
+          .find((name) => name.startsWith("generated-"));
+        if (generated) {
+          workspaceBytes = fs.readFileSync(
+            path.join(ctx.appPath, media, generated),
+          );
+          const durable = path.join(harness.appDir, media, generated);
+          if (fs.existsSync(durable)) {
+            appBytes = fs.readFileSync(durable);
+            fs.unlinkSync(durable);
+          }
+        }
+        return result;
+      });
+    try {
+      const turn = await harness.streamChat("tc=local-agent/generate-image", {
+        chatId,
+      });
+      expect(turn.event("chat:response:error")).toBeUndefined();
+      expect(appBytes?.length).toBeGreaterThan(0);
+      expect(appBytes).toEqual(workspaceBytes);
+      expect(
+        fs.existsSync(path.join(harness.appDir, ".dyad", "media", generated!)),
+      ).toBe(false);
+    } finally {
+      spy.mockRestore();
       await discardWorkspace(chatId);
     }
   }, 60_000);

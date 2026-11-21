@@ -98,8 +98,8 @@ export async function executeCopyFile({
       const appPath = workspace?.appPath ?? getDyadAppPath(app.path);
       const { supabaseProjectId, supabaseOrganizationSlug } = app;
       // Media and attachments live with the app's original folder even when
-      // the copy targets an isolated workspace. Media generated during this
-      // turn is only in the workspace's copy until the turn settles.
+      // the copy targets an isolated workspace. Other tools can also create
+      // files directly in the workspace's media folder during the turn.
       const mediaRoots = workspace
         ? [workspace.mediaAppPath, workspace.appPath]
         : [appPath];

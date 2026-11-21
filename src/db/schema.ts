@@ -579,7 +579,9 @@ export const chatWorkspaces = sqliteTable(
      * branch pauses integration instead of retargeting it.
      */
     targetBranch: text("target_branch").notNull(),
-    status: text("status", { enum: ["creating", "active", "removing"] })
+    status: text("status", {
+      enum: ["creating", "active", "removing", "unavailable"],
+    })
       .notNull()
       .default("creating"),
     integrationStatus: text("integration_status", {

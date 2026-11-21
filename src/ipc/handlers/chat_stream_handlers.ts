@@ -441,24 +441,26 @@ export async function executeChatStreamFromActor(
     observer,
   );
   let terminalObserved = false;
-  let deferredCancellation: ChatStreamEndPayload | undefined;
+  let deferredTerminal: (() => void) | undefined;
+  const isRepair = observer.intent.owner?.kind === "workspace-integration";
   const observeTerminal = (channel: string, payload: unknown) => {
     if (terminalObserved) return;
     if (channel === "chat:response:end") {
       terminalObserved = true;
       const response = payload as ChatStreamEndPayload;
-      if (response.wasCancelled) {
-        // Cancellation is announced to renderers before the handler has
-        // finished persisting its partial response. Keep actor authority
-        // pending until the handler unwinds so its completion snapshot only
-        // becomes observable after the cancellation notice is durable.
-        deferredCancellation = response;
+      if (response.wasCancelled || isRepair) {
+        // Wait for the cancellation notice to be durable and for a repair's
+        // workspace settlement before reporting actor completion.
+        deferredTerminal = () => observer.onEnd?.(response);
       } else {
         observer.onEnd?.(response);
       }
     } else if (channel === "chat:response:error") {
       terminalObserved = true;
-      observer.onError?.(payload as ChatStreamErrorPayload);
+      const reportError = () =>
+        observer.onError?.(payload as ChatStreamErrorPayload);
+      if (isRepair) deferredTerminal = reportError;
+      else reportError();
     }
   };
   const observedSender = createObservedChatStreamSender(
@@ -471,8 +473,8 @@ export async function executeChatStreamFromActor(
         { sender: observedSender } as IpcMainInvokeEvent,
         request,
       )) ?? "error";
-    if (deferredCancellation) {
-      observer.onEnd?.(deferredCancellation);
+    if (deferredTerminal) {
+      deferredTerminal();
     } else if (!terminalObserved) {
       const wasCancelled = request.invocationRef
         ? cancelledActorInvocations.delete(request.invocationRef.operationId)

@@ -197,6 +197,32 @@ export async function removeLinkedWorktree({
   await pruneGitWorktrees(repositoryPath);
 }
 
+/** Verify both directions of a linked checkout before using its index or HEAD. */
+export function isLinkedWorktreeOf(
+  worktreePath: string,
+  originalAppPath: string,
+): boolean {
+  try {
+    const root = findCheckoutRootSync(originalAppPath);
+    if (!root) return false;
+    const dotGit = path.join(worktreePath, ".git");
+    if (!fs.lstatSync(dotGit).isFile()) return false;
+    const gitDir = resolveGitDirSync(worktreePath);
+    const backlink = fs
+      .readFileSync(path.join(gitDir, "gitdir"), "utf8")
+      .trim();
+    return (
+      fs.realpathSync(path.resolve(gitDir, backlink)) ===
+        fs.realpathSync(dotGit) &&
+      fs.realpathSync(resolveGitCommonDirSync(root)) ===
+        fs.realpathSync(resolveGitCommonDirSync(worktreePath)) &&
+      fs.statSync(path.join(gitDir, "index")).isFile()
+    );
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Writes back the tracked files missing from a worktree (a deletion that
  * stopped part way), leaving every file that still exists as it is. Returns

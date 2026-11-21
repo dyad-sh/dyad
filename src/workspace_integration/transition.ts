@@ -55,6 +55,14 @@ export function transitionIntegration(
           return assertNever(state.phase);
       }
     }
+    case "PAUSE_PENDING_WORK":
+      if (
+        state.phase !== "idle" &&
+        state.phase !== "merged" &&
+        state.phase !== "queued"
+      )
+        return ignore(state, "invalid-in-current-state");
+      return change({ ...state, phase: "paused", detail: event.reason });
     case "STARTED": {
       if (state.phase !== "queued") {
         return ignore(state, "invalid-in-current-state");

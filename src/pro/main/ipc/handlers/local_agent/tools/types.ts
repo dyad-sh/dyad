@@ -99,6 +99,7 @@ export interface AgentContext {
    * `appPath`.
    */
   dyadMetadataPath?: string;
+  onMediaSavedToApp?: (fileName: string) => void;
   /**
    * Runtime the turn's preview, log, and lifecycle tools address: the app id
    * for the original folder, or the isolated workspace's runtime id. Defaults

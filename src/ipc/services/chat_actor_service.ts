@@ -230,6 +230,7 @@ export async function beginAppChatActorMutation(
 export async function dispatchChatIntentAndWait(
   intent: SerializableChatTurnIntent,
   signal?: AbortSignal,
+  waitFor: "acceptance" | "completion" = "acceptance",
 ): Promise<"accepted" | "rejected"> {
   signal?.throwIfAborted();
   // Main-owned follow-ups and plan turns bypass remote authorization, so they
@@ -240,46 +241,62 @@ export async function dispatchChatIntentAndWait(
     chatStreamDefinition,
     chatStreamKey(intent.chatId),
   );
-  const settled = new Promise<"accepted" | "rejected">((resolve, reject) => {
+  return new Promise<"accepted" | "rejected">((resolve, reject) => {
+    const finish = (result: "accepted" | "rejected") => {
+      unsubscribe();
+      signal?.removeEventListener("abort", abort);
+      resolve(result);
+    };
     const abort = () => {
       unsubscribe();
       reject(signal?.reason);
     };
     const inspect = () => {
       const snapshot = actor.getSnapshot();
-      const acceptance = snapshot.lastAcceptance;
-      const persistedAcceptance = getIntentAcceptance(intent.intentId);
+      const acceptance =
+        snapshot.lastAcceptance?.intentId === intent.intentId
+          ? snapshot.lastAcceptance.acceptance
+          : undefined;
+      const completed = snapshot.lastCompletion?.intentId === intent.intentId;
+      if (waitFor === "completion" && completed) {
+        finish(
+          snapshot.lastCompletion?.outcome === "completed"
+            ? "accepted"
+            : "rejected",
+        );
+        return;
+      }
+      const stored = getIntentAcceptance(intent.intentId);
       if (
-        (acceptance?.intentId === intent.intentId &&
-          acceptance.acceptance === "message-accepted") ||
-        (acceptance?.intentId === intent.intentId &&
-          acceptance.acceptance === "replayed") ||
-        persistedAcceptance === "message-accepted"
+        waitFor === "acceptance" &&
+        (acceptance === "message-accepted" ||
+          acceptance === "replayed" ||
+          stored === "message-accepted")
       ) {
-        unsubscribe();
-        signal?.removeEventListener("abort", abort);
-        resolve("accepted");
+        finish("accepted");
       } else if (
-        (acceptance?.intentId === intent.intentId &&
-          acceptance.acceptance === "rejected") ||
-        persistedAcceptance === "rejected" ||
-        snapshot.lastCompletion?.intentId === intent.intentId
+        acceptance === "rejected" ||
+        stored === "rejected" ||
+        completed
       ) {
-        unsubscribe();
-        signal?.removeEventListener("abort", abort);
-        resolve("rejected");
+        finish("rejected");
       }
     };
     const unsubscribe = actor.subscribe(inspect);
     signal?.addEventListener("abort", abort, { once: true });
-    inspect();
+    try {
+      inspect();
+      actor.send({
+        type: "SUBMIT",
+        intent,
+        observedStopPolicyVersion: actor.getSnapshot().stopPolicyVersion,
+      });
+    } catch (error) {
+      unsubscribe();
+      signal?.removeEventListener("abort", abort);
+      reject(error);
+    }
   });
-  actor.send({
-    type: "SUBMIT",
-    intent,
-    observedStopPolicyVersion: actor.getSnapshot().stopPolicyVersion,
-  });
-  return settled;
 }
 
 export async function dispatchPlanImplementationTurn(input: {
@@ -326,7 +343,7 @@ export async function dispatchPlanImplementationTurn(input: {
 /**
  * Resumes a chat so its agent can resolve conflicts left by combining the
  * chat's isolated workspace with the target branch. Resolves once the turn is
- * accepted or rejected; a busy chat queues it behind the user's own messages.
+ * finished or rejected, including cancellation before the workspace is acquired.
  */
 export async function dispatchWorkspaceRepairTurn(input: {
   workspaceId: number;
@@ -335,7 +352,7 @@ export async function dispatchWorkspaceRepairTurn(input: {
   prompt: string;
   requestedChatMode: "build" | "local-agent";
   signal?: AbortSignal;
-}): Promise<"accepted" | "rejected"> {
+}): Promise<void> {
   const operationId = randomUUID();
   const withoutHash = {
     schemaVersion: 1 as const,
@@ -355,12 +372,13 @@ export async function dispatchWorkspaceRepairTurn(input: {
       workspaceId: input.workspaceId,
     },
   };
-  return dispatchChatIntentAndWait(
+  await dispatchChatIntentAndWait(
     {
       ...withoutHash,
       payloadHash: computeChatTurnPayloadHash(withoutHash),
     },
     input.signal,
+    "completion",
   );
 }
 

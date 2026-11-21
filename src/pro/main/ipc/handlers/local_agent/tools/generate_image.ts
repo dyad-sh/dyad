@@ -10,9 +10,17 @@ import {
   escapeXmlContent,
 } from "./types";
 import { engineFetch } from "./engine_fetch";
-import { DYAD_MEDIA_DIR_NAME } from "@/ipc/utils/media_path_utils";
+import {
+  DYAD_INTERNAL_DIR_NAME,
+  DYAD_MEDIA_DIR_NAME,
+  getDyadMediaDir,
+} from "@/ipc/utils/media_path_utils";
 import { ImageGenerationApiResponseSchema } from "@/ipc/types/image_generation";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+
+import { getOriginalAppPath } from "@/ipc/services/chat_workspace_store";
+import { readAppResource } from "@/ipc/services/app_operation_coordinator";
+import { runWorkspaceScopedOperation } from "@/ipc/services/workspace_coordination";
 
 const logger = log.scope("generate_image");
 
@@ -78,24 +86,33 @@ async function callGenerateImage(
   return data.data[0];
 }
 
+async function writeImage(
+  appPath: string,
+  name: string,
+  bytes: Buffer,
+  signal: AbortSignal | undefined,
+): Promise<void> {
+  const media = getDyadMediaDir(appPath);
+  await fs.mkdir(media, { recursive: true });
+  // A concurrent turn mirroring the library must only see complete images.
+  const temp = path.join(appPath, DYAD_INTERNAL_DIR_NAME, name + ".tmp");
+  try {
+    await fs.writeFile(temp, bytes, { flag: "wx", signal });
+    await fs.rename(temp, path.join(media, name));
+  } finally {
+    await fs.rm(temp, { force: true });
+  }
+}
+
 async function saveGeneratedImage(
   imageData: z.infer<typeof ImageGenerationApiResponseSchema>["data"][number],
-  appPath: string,
+  ctx: AgentContext,
 ): Promise<string> {
-  const mediaDir = path.join(appPath, DYAD_MEDIA_DIR_NAME);
-  await fs.mkdir(mediaDir, { recursive: true });
-
-  const hash = crypto.randomBytes(8).toString("hex");
-  const timestamp = Date.now();
-  const fileName = `generated-${timestamp}-${hash}.png`;
-  const filePath = path.join(mediaDir, fileName);
-  const relativePath = path.join(DYAD_MEDIA_DIR_NAME, fileName);
-
+  let buffer: Buffer;
   if (imageData.b64_json) {
-    const buffer = Buffer.from(imageData.b64_json, "base64");
-    await fs.writeFile(filePath, buffer);
+    buffer = Buffer.from(imageData.b64_json, "base64");
   } else if (imageData.url) {
-    const response = await fetch(imageData.url);
+    const response = await fetch(imageData.url, { signal: ctx.abortSignal });
     if (!response.ok) {
       throw new DyadError(
         `Failed to download generated image: ${response.status}`,
@@ -103,7 +120,7 @@ async function saveGeneratedImage(
       );
     }
     const arrayBuffer = await response.arrayBuffer();
-    await fs.writeFile(filePath, Buffer.from(arrayBuffer));
+    buffer = Buffer.from(arrayBuffer);
   } else {
     throw new DyadError(
       "Image generation returned no image data",
@@ -111,7 +128,32 @@ async function saveGeneratedImage(
     );
   }
 
-  return relativePath;
+  return runWorkspaceScopedOperation(
+    {
+      appId: ctx.appId,
+      workspaceKey: ctx.workspaceCoordinationKey,
+      operation: "save image generated in chat",
+      appResources: [readAppResource("app-path"), "media"],
+      workspaceResources:
+        ctx.workspaceCoordinationKey === undefined
+          ? []
+          : ["repository-worktree"],
+      signal: ctx.abortSignal,
+    },
+    async () => {
+      // An app may have moved during generation. Resolve the path while claimed.
+      const appPath = await getOriginalAppPath(ctx.appId);
+      if (!appPath)
+        throw new DyadError("App not found", DyadErrorKind.NotFound);
+      const name = `generated-${Date.now()}-${crypto.randomBytes(8).toString("hex")}.png`;
+      await writeImage(appPath, name, buffer, ctx.abortSignal);
+      if (ctx.workspaceCoordinationKey !== undefined) {
+        ctx.onMediaSavedToApp?.(name);
+        await writeImage(ctx.appPath, name, buffer, ctx.abortSignal);
+      }
+      return path.join(DYAD_MEDIA_DIR_NAME, name);
+    },
+  );
 }
 
 export const generateImageTool: ToolDefinition<
@@ -147,7 +189,7 @@ export const generateImageTool: ToolDefinition<
     try {
       const imageData = await callGenerateImage(args.prompt, ctx);
 
-      const relativePath = await saveGeneratedImage(imageData, ctx.appPath);
+      const relativePath = await saveGeneratedImage(imageData, ctx);
 
       ctx.onXmlComplete(
         `<dyad-image-generation prompt="${escapeXmlAttr(args.prompt)}" path="${escapeXmlAttr(relativePath)}">${escapeXmlContent(relativePath)}</dyad-image-generation>`,

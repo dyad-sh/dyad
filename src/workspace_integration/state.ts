@@ -64,6 +64,8 @@ export type RepairOutcome =
 export type IntegrationEvent =
   /** A writable turn committed work that the target does not contain yet. */
   | { type: "REQUESTED"; userInitiated: boolean }
+  /** Work found outside a finished turn requires attention before integration. */
+  | { type: "PAUSE_PENDING_WORK"; reason: string }
   /** The queue acquired the workspace and is starting an attempt. */
   | { type: "STARTED"; targetCommit: string }
   /** Something the user can fix blocks the attempt; retry later. */

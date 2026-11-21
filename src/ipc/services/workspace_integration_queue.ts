@@ -21,6 +21,7 @@ import {
   inspectRepositoryHealth,
 } from "@/ipc/utils/git_utils";
 import {
+  isLinkedWorktreeOf,
   commitInProgressMerge,
   createSquashCommit,
   diffPathsByStatus,
@@ -415,7 +416,21 @@ export class WorkspaceIntegrationQueue {
     { tree: string; checks: WorkspaceValidationCheck[] }
   >();
   private unsubscribeRegistry: (() => void) | null = null;
-  private stopped = false;
+  // Startup recovery can discover missed commits. Leave them queued until
+  // every workspace has been checked against the target as it was on launch.
+  private stopped = true;
+  // One observer per repair, including time spent queued or preparing a turn.
+  private readonly repairs = new Map<number, AbortController>();
+
+  hasPendingRepair(workspaceId: number): boolean {
+    return this.repairs.has(workspaceId);
+  }
+
+  private releaseRepair(workspaceId: number): void {
+    const repair = this.repairs.get(workspaceId);
+    this.repairs.delete(workspaceId);
+    repair?.abort();
+  }
 
   start(): void {
     this.stopped = false;
@@ -427,6 +442,7 @@ export class WorkspaceIntegrationQueue {
 
   stop(): void {
     this.stopped = true;
+    for (const id of this.repairs.keys()) this.releaseRepair(id);
     this.unsubscribeRegistry?.();
     this.unsubscribeRegistry = null;
     for (const timer of this.timers.values()) clearTimeout(timer);
@@ -455,6 +471,12 @@ export class WorkspaceIntegrationQueue {
       return previous;
     }
     writeIntegrationState(workspaceId, result.state);
+    if (
+      previous.phase === "resolving-conflicts" &&
+      result.state.phase !== previous.phase
+    ) {
+      this.releaseRepair(workspaceId);
+    }
     if (
       result.state.phase !== previous.phase &&
       TELEMETRY_PHASES.has(result.state.phase)
@@ -512,6 +534,11 @@ export class WorkspaceIntegrationQueue {
 
   /** Cancels and forgets a workspace (used before removing it). */
   forget(appId: number, workspaceId: number): void {
+    this.releaseRepair(workspaceId);
+    this.stopAttempt(appId, workspaceId);
+  }
+
+  private stopAttempt(appId: number, workspaceId: number): void {
     this.scheduled.get(appId)?.delete(workspaceId);
     this.waits.delete(workspaceId);
     const timer = this.timers.get(workspaceId);
@@ -538,7 +565,9 @@ export class WorkspaceIntegrationQueue {
    */
   stopApp(appId: number): void {
     for (const workspace of listAllWorkspaces()) {
-      if (workspace.appId === appId) this.forget(appId, workspace.id);
+      // App deletion can still fail. Keep observing a repair until its chat
+      // stops or the workspace is actually removed.
+      if (workspace.appId === appId) this.stopAttempt(appId, workspace.id);
     }
   }
 
@@ -855,7 +884,24 @@ export class WorkspaceIntegrationQueue {
         wait: { kind: "timer", at: Date.now() + TIMER_RETRY_MS },
       };
     }
+    if (!isLinkedWorktreeOf(workspace.path, preconditions.originalPath)) {
+      return {
+        event: {
+          type: "FAILED",
+          reason:
+            "The worktree is no longer linked to the expected repository. Check its folder before retrying.",
+        },
+      };
+    }
     const health = await inspectRepositoryHealth({ path: appPath });
+    if (health.branch !== workspace.branch) {
+      return {
+        event: {
+          type: "FAILED",
+          reason: `Switch this worktree back to ${workspace.branch} before retrying.`,
+        },
+      };
+    }
     if (health.operationInProgress && health.operationInProgress !== "merge") {
       return {
         event: {
@@ -1255,14 +1301,25 @@ export class WorkspaceIntegrationQueue {
     conflictedFiles: readonly string[],
     attempt: number,
   ): void {
+    const repair = new AbortController();
+    this.repairs.set(workspaceId, repair);
+    const interrupted = (detail?: string) => {
+      if (this.repairs.get(workspaceId) !== repair) return;
+      this.releaseRepair(workspaceId);
+      this.dispatch(workspaceId, {
+        type: "REPAIR_SETTLED",
+        outcome: "interrupted",
+        detail,
+      });
+    };
     void (async () => {
       const workspace = getWorkspaceById(workspaceId);
-      if (!workspace) return;
+      if (!workspace) return interrupted();
       const chat = await db.query.chats.findFirst({
         columns: { chatMode: true },
         where: eq(chats.id, workspace.chatId),
       });
-      if (!chat) return;
+      if (!chat) return interrupted();
       const prompt = await buildWorkspaceRepairPrompt({
         chatId: workspace.chatId,
         repositoryPath: workspace.path,
@@ -1276,28 +1333,21 @@ export class WorkspaceIntegrationQueue {
       // this queue -> chat actor -> chat_stream_handlers.
       const { dispatchWorkspaceRepairTurn } =
         await import("./chat_actor_service");
-      const result = await dispatchWorkspaceRepairTurn({
+      await dispatchWorkspaceRepairTurn({
+        signal: repair.signal,
         workspaceId,
         chatId: workspace.chatId,
         appId: workspace.appId,
         prompt,
         requestedChatMode: chat.chatMode === "build" ? "build" : "local-agent",
       });
-      if (result === "rejected") {
-        this.dispatch(workspaceId, {
-          type: "REPAIR_SETTLED",
-          outcome: "interrupted",
-          detail:
-            "Dyad couldn't start resolving conflicts in this chat. Send a message to continue.",
-        });
-      }
+      // Normal settlement already moved the workspace on. A terminal repair
+      // that never obtained a workspace handle still needs to release the UI.
+      interrupted();
     })().catch((error) => {
+      if (repair.signal.aborted) return;
       logger.error("Failed to start a conflict-resolution turn", error);
-      this.dispatch(workspaceId, {
-        type: "REPAIR_SETTLED",
-        outcome: "interrupted",
-        detail: `Dyad couldn't start resolving conflicts: ${errorMessage(error)}`,
-      });
+      interrupted(`Dyad couldn't resolve conflicts: ${errorMessage(error)}`);
     });
   }
 }

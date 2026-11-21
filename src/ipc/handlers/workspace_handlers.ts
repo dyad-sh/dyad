@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { chats } from "@/db/schema";
@@ -11,7 +12,8 @@ import {
   isWorktreeIsolationEnabled,
 } from "@/ipc/services/chat_workspace_service";
 import {
-  getActiveWorkspaceForChat,
+  getWorkspaceForChat,
+  getWorkspaceAppPath,
   isWorkspaceIntegrated,
   listWorkspacesForApp,
   readIntegrationState,
@@ -49,8 +51,14 @@ export function registerWorkspaceHandlers() {
       const writableTurnRunning = chatWorkspaceRegistry
         .getWritableChatIds(chat.appId)
         .includes(chatId);
-      const workspace = getActiveWorkspaceForChat(chatId);
-      if (workspace) {
+      const workspace = getWorkspaceForChat(chatId);
+      const unavailable = workspace?.status === "unavailable";
+      if (
+        workspace &&
+        (unavailable ||
+          (workspace.status === "active" &&
+            fs.existsSync(getWorkspaceAppPath(workspace))))
+      ) {
         const state = readIntegrationState(workspace);
         return {
           chatId,
@@ -61,16 +69,21 @@ export function registerWorkspaceHandlers() {
           workspaceId: workspace.id,
           runtimeAppId: workspaceRuntimeId(workspace.id),
           writableTurnRunning,
-          packageManager: await getWorkspacePackageManager(workspace),
+          packageManager: unavailable
+            ? null
+            : await getWorkspacePackageManager(workspace),
           // A running turn is making work, and the worktree can't be deleted
           // meanwhile, so skip running Git in the folder it is writing to.
           hasUnmergedWork:
-            writableTurnRunning || (await hasUnmergedWork(workspace)),
+            unavailable ||
+            writableTurnRunning ||
+            (await hasUnmergedWork(workspace)),
           integration: {
             phase: workspace.integrationStatus,
             detail: workspace.integrationDetail,
             validation: workspace.validationJson,
-            canRetry: selectIntegrationCapabilities(state).canRetry,
+            canRetry:
+              !unavailable && selectIntegrationCapabilities(state).canRetry,
           },
         };
       }

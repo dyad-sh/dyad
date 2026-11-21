@@ -23,9 +23,10 @@ worktree use the app's original folder.
   `getActiveWorkspaceForChat` outside a turn.
 - `.dyad` state that must outlive a workspace (plans, todos) uses
   `ctx.dyadMetadataPath`. Media/attachments are mirrored into the worktree at
-  turn start and new files are mirrored back at settle. The chat's plan files
-  are mirrored in too (`/implement-plan` edits the working plan with ordinary
-  file tools); the working plan is copied back only if the turn changed it.
+  turn start. Generated images are saved to the app immediately. Other new
+  media files are mirrored back at settlement. The chat's plan files are
+  mirrored in too (`/implement-plan` edits the working plan with ordinary
+  file tools). The working plan is copied back only if the turn changed it.
 - Mirrored files must never look like work: `excludeDyadMetadata` adds
   `.dyad/` to the repository's `info/exclude` (shared by its worktrees)
   because the branch a workspace starts from may predate the app's
@@ -150,18 +151,19 @@ worktree use the app's original folder.
   it adds `.dyad/` to `info/exclude` itself, since an attachment on a
   chat's first message is stored before its worktree exists; it falls back
   to `.gitignore` when the repository's Git directory is missing.
-- Settlement copies back only media the turn created (not what was mirrored
-  in), so media the user deleted or moved meanwhile does not return. Until
-  then a turn's generated media is only in the worktree, so `copy_file` /
-  `<dyad-copy>` resolve media from the app's folder and then the worktree. Undo
+- Image generation saves atomically to the app's media library before exposing
+  the workspace copy. Settlement skips both previously mirrored media and
+  images already saved to the app, so deleting either from the library sticks.
+  Other files created in the worktree's media folder are copied at settlement.
+  `copy_file` / `<dyad-copy>` look in both folders during the turn. Undo
   that fails after committing interrupted edits resets them to uncommitted.
 - New workspace ids skip any port slot (`id % workspacePortSlotCount()`) a
   kept workspace holds (`pickWorkspaceId`), so previews share ports only
   once every slot (1,000; 500 in E2E) is held by a kept workspace; then the
-  next id is used anyway. A removal that fails while the folder still exists
-  puts the workspace back to `active` so the chat is not stuck waiting,
-  after `restoreMissingTrackedFiles` writes back files the removal already
-  deleted (the next turn would otherwise commit their deletion). Forced
+  next id is used anyway. After a partial removal, return to `active` only
+  when the checkout belongs to the expected repository and branch and its
+  missing tracked files were restored. Otherwise keep it `unavailable` so
+  the user can inspect the remaining files and retry deletion. Forced
   removal that gives up still disposes the workspace's preview.
 - `hasUnmergedWork` in the chat's workspace status (unintegrated HEAD or
   uncommitted changes) picks the delete dialog's copy. Never infer it from
@@ -306,6 +308,11 @@ worktree use the app's original folder.
   under the reservation, because a merge can start (and conflict) while the
   approval waits. Never release such a reservation through `settle()`, which
   would report an interrupted conflict repair.
+- Startup and writable turn preparation check idle/merged workspaces for clean
+  commits ahead of the integration checkpoint and request normal validation.
+  Interrupted work and intentionally deferred Undo commits stay paused.
+  Repair dispatch observes the specific chat intent until it settles, including
+  cancellation before workspace acquisition.
 - Restart recovery inspects Git before trusting the stored phase. For
   "integrating", the fast-forward landed when the target moved off
   `integrationTargetCommit` and has exactly the worktree's tree; recovery then

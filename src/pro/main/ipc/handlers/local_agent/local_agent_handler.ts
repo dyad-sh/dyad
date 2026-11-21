@@ -1107,6 +1107,7 @@ export async function handleLocalAgentStream(
       appId: chat.app.id,
       appPath,
       dyadMetadataPath,
+      onMediaSavedToApp: workspace?.onMediaSavedToApp,
       runtimeAppId: workspace?.runtimeAppId ?? chat.app.id,
       workspaceCoordinationKey: workspace?.coordinationKey,
       isolatedWorkspace:

@@ -24,6 +24,7 @@ const events: IntegrationEvent[] = [
   { type: "MERGE_CLEAN" },
   { type: "NOTHING_TO_INTEGRATE" },
   { type: "MERGE_CONFLICTED", conflictedFiles: ["src/App.tsx"] },
+  { type: "PAUSE_PENDING_WORK", reason: "Unfinished work" },
   { type: "REPAIR_SETTLED", outcome: "resolved" },
   { type: "REPAIR_SETTLED", outcome: "unresolved" },
   { type: "REPAIR_SETTLED", outcome: "interrupted" },

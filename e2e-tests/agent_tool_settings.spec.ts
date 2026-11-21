@@ -22,7 +22,10 @@ test("tool permissions can be identified and changed with the keyboard", async (
   await expect(otherPermission).toContainText("ask", { ignoreCase: true });
 
   await permission.focus();
-  await permission.press("Enter");
+  await po.page.keyboard.press("Tab");
+  await po.page.keyboard.press("Shift+Tab");
+  await expect(permission).toBeFocused();
+  await po.page.keyboard.press("Enter");
   await expect(
     po.page.getByRole("option", { name: "Never allow" }),
   ).toBeVisible();
@@ -45,12 +48,15 @@ test("tool permissions can be identified and changed with the keyboard", async (
   });
   await expect(disclosure).toHaveAttribute("aria-expanded", "false");
   await disclosure.focus();
-  await disclosure.press("Enter");
+  await po.page.keyboard.press("Tab");
+  await po.page.keyboard.press("Shift+Tab");
+  await expect(disclosure).toBeFocused();
+  await po.page.keyboard.press("Enter");
   await expect(disclosure).toHaveAttribute("aria-expanded", "true");
   await expect(
     po.page.getByRole("combobox", { name: "read_file", exact: true }),
   ).toBeVisible();
-  await disclosure.press("Enter");
+  await po.page.keyboard.press("Enter");
   await expect(disclosure).toHaveAttribute("aria-expanded", "false");
   await expect(
     po.page.getByRole("combobox", { name: "read_file", exact: true }),

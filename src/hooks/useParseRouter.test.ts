@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   buildRouteLabel,
+  getVueRouterCandidateFiles,
+  parseRoutesFromVueRouterFile,
   getReactRouterCandidateFiles,
   parseRoutesFromRouterFile,
   parseRoutesFromRouterFiles,
@@ -465,5 +467,88 @@ describe("isTanStackStartAppFile", () => {
   it("does not treat generic app config files as TanStack Start signals", () => {
     expect(isTanStackStartAppFile("app.config.ts")).toBe(false);
     expect(isTanStackStartAppFile("app.config.js")).toBe(false);
+  });
+});
+
+describe("Vue Router", () => {
+  it("finds conventional router entry files without reading every component", () => {
+    expect(
+      getVueRouterCandidateFiles([
+        "src/router/index.ts",
+        "src/router/routes.js",
+        "src/main.ts",
+        "src/views/About.vue",
+        "src/utils.ts",
+      ]),
+    ).toEqual(["src/router/index.ts", "src/router/routes.js", "src/main.ts"]);
+  });
+
+  it("reads nested literal routes, absolute children and empty child paths", () => {
+    const routes = parseRoutesFromVueRouterFile(`
+      import { createRouter as makeRouter, createWebHistory } from 'vue-router';
+      const children = [
+        { path: '', component: Dashboard },
+        { path: 'profile', component: Profile },
+        { path: '/help', component: Help },
+      ];
+      const routes = [
+        { path: '/', component: Home },
+        { path: '/dashboard', children },
+        { path: '/users/:id', component: User },
+        { path: '/:pathMatch(.*)*', component: NotFound },
+      ] satisfies RouteRecordRaw[];
+      const options = { history: createWebHistory(), routes };
+      export default makeRouter(options);
+    `);
+    expect(routes.map((route) => route.path)).toEqual([
+      "/",
+      "/dashboard",
+      "/dashboard/profile",
+      "/help",
+      "/users/:id",
+    ]);
+    expect(routes[0].label).toBe("Home");
+  });
+
+  it("ignores unrelated objects and never executes computed paths", () => {
+    expect(
+      parseRoutesFromVueRouterFile(`
+      import { createRouter } from 'vue-router';
+      const unrelated = { path: '/not-a-route' };
+      export default createRouter({ routes: [
+        { path: process.exit(1), component: Home },
+        { path: '/about', component: () => import('./About.vue') },
+      ] });
+    `).map((route) => route.path),
+    ).toEqual(["/about"]);
+    expect(
+      parseRoutesFromVueRouterFile(
+        `const createRouter = x => x; createRouter({ routes: [{path: '/fake'}] });`,
+      ),
+    ).toEqual([]);
+  });
+
+  it("handles cyclic bindings and incomplete source without hanging", () => {
+    expect(
+      parseRoutesFromVueRouterFile(`
+      import { createRouter } from 'vue-router';
+      const a = b; const b = a;
+      createRouter({ routes: a });
+    `),
+    ).toEqual([]);
+    expect(
+      parseRoutesFromVueRouterFile(
+        `import { createRouter } from 'vue-router'; createRouter({`,
+      ),
+    ).toEqual([]);
+  });
+
+  it("merges Vue and React results across router files", () => {
+    expect(
+      parseRoutesFromRouterFiles([
+        `import { createRouter } from 'vue-router'; createRouter({ routes: [{path: '/about'}] });`,
+        `<Route path="/about" /><Route path="/contact" />`,
+      ]).map((route) => route.path),
+    ).toEqual(["/about", "/contact"]);
   });
 });

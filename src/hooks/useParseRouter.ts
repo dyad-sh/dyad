@@ -1,4 +1,6 @@
 import { useMemo } from "react";
+import { parse } from "@babel/parser";
+import type * as t from "@babel/types";
 import { useQueries } from "@tanstack/react-query";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { ipc } from "@/ipc/types";
@@ -68,6 +70,133 @@ export function getReactRouterCandidateFiles(files: string[]): string[] {
   return Array.from(candidates);
 }
 
+/** Vue applications commonly keep their router in src/router/index.ts. */
+export function getVueRouterCandidateFiles(files: string[]): string[] {
+  return files.filter((file) =>
+    /(?:^|\/)(?:router\/[^/]+|main)\.(?:js|ts)$/i.test(file),
+  );
+}
+
+/** Read literal Vue Router records without importing or executing app code. */
+export function parseRoutesFromVueRouterFile(content: string): ParsedRoute[] {
+  if (!content.includes("vue-router")) return [];
+  try {
+    const ast = parse(content, {
+      sourceType: "module",
+      plugins: ["typescript", "jsx"],
+    });
+    const factories = new Set<string>();
+    const bindings = new Map<string, t.Expression>();
+    for (const statement of ast.program.body) {
+      if (
+        statement.type === "ImportDeclaration" &&
+        statement.source.value === "vue-router"
+      ) {
+        for (const specifier of statement.specifiers) {
+          if (
+            specifier.type === "ImportSpecifier" &&
+            specifier.imported.type === "Identifier" &&
+            specifier.imported.name === "createRouter"
+          ) {
+            factories.add(specifier.local.name);
+          }
+        }
+      }
+      const declaration =
+        statement.type === "ExportNamedDeclaration"
+          ? statement.declaration
+          : statement;
+      if (declaration?.type === "VariableDeclaration") {
+        for (const variable of declaration.declarations) {
+          if (variable.id.type === "Identifier" && variable.init) {
+            bindings.set(variable.id.name, variable.init);
+          }
+        }
+      }
+    }
+    if (factories.size === 0) return [];
+
+    function resolve(
+      node: t.Node | null | undefined,
+      seen = new Set<string>(),
+    ): t.Node | undefined {
+      if (!node) return undefined;
+      if (
+        node.type === "TSAsExpression" ||
+        node.type === "TSSatisfiesExpression" ||
+        node.type === "ParenthesizedExpression"
+      )
+        return resolve(node.expression, seen);
+      if (node.type !== "Identifier") return node;
+      if (seen.has(node.name)) return undefined;
+      seen.add(node.name);
+      return resolve(bindings.get(node.name), seen);
+    }
+    function property(
+      node: t.Node | undefined,
+      name: string,
+    ): t.Node | undefined {
+      if (node?.type !== "ObjectExpression") return undefined;
+      const prop = node.properties.find(
+        (entry): entry is t.ObjectProperty =>
+          entry.type === "ObjectProperty" &&
+          !entry.computed &&
+          ((entry.key.type === "Identifier" && entry.key.name === name) ||
+            (entry.key.type === "StringLiteral" && entry.key.value === name)),
+      );
+      return resolve(prop?.value);
+    }
+    const paths = new Set<string>();
+    function records(
+      node: t.Node | undefined,
+      parent: string,
+      ancestors = new Set<t.Node>(),
+    ) {
+      node = resolve(node);
+      if (node?.type !== "ArrayExpression" || ancestors.has(node)) return;
+      const nextAncestors = new Set(ancestors).add(node);
+      for (const element of node.elements) {
+        const record = resolve(element);
+        const value = property(record, "path");
+        if (value?.type !== "StringLiteral") continue;
+        // Wildcards and custom parameter regexes do not name navigable pages.
+        if (/[()*]/.test(value.value)) continue;
+        const path = value.value.startsWith("/")
+          ? value.value
+          : `${parent.replace(/\/$/, "")}/${value.value}`;
+        const normalized = path.replace(/\/$/, "") || "/";
+        paths.add(normalized);
+        records(property(record, "children"), normalized, nextAncestors);
+      }
+    }
+    function visit(node: t.Node) {
+      if (
+        node.type === "CallExpression" &&
+        node.callee.type === "Identifier" &&
+        factories.has(node.callee.name)
+      ) {
+        records(property(resolve(node.arguments[0]), "routes"), "");
+      }
+      for (const value of Object.values(node)) {
+        if (Array.isArray(value)) {
+          for (const child of value)
+            if (child && typeof child === "object" && "type" in child)
+              visit(child as t.Node);
+        } else if (value && typeof value === "object" && "type" in value)
+          visit(value as t.Node);
+      }
+    }
+    visit(ast.program);
+    return Array.from(paths, (path) => ({
+      path,
+      label: buildRouteLabel(path),
+    }));
+  } catch {
+    // Incomplete source while the app is being edited is not a router error.
+    return [];
+  }
+}
+
 /**
  * Builds a human-readable label from a route path.
  */
@@ -121,7 +250,10 @@ export function parseRoutesFromRouterFiles(
   const parsedRoutes: ParsedRoute[] = [];
 
   for (const content of contents) {
-    for (const route of parseRoutesFromRouterFile(content ?? null)) {
+    for (const route of [
+      ...parseRoutesFromRouterFile(content ?? null),
+      ...parseRoutesFromVueRouterFile(content ?? ""),
+    ]) {
       if (
         !parsedRoutes.some((existingRoute) => existingRoute.path === route.path)
       ) {
@@ -381,7 +513,12 @@ export function useParseRouter(appId: number | null) {
       return [];
     }
 
-    return getReactRouterCandidateFiles(app.files);
+    return Array.from(
+      new Set([
+        ...getReactRouterCandidateFiles(app.files),
+        ...getVueRouterCandidateFiles(app.files),
+      ]),
+    );
   }, [app?.files, isAstroApp, isNextApp, isTanStackStartApp]);
 
   const routerFileQueries = useQueries({

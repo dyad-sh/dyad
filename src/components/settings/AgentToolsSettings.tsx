@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useId, useState } from "react";
 import {
   Select,
   SelectContent,
@@ -66,6 +66,7 @@ export function AgentToolsSettings() {
       <div className="space-y-3">
         <button
           type="button"
+          aria-expanded={showAutoApproved}
           onClick={() => setShowAutoApproved(!showAutoApproved)}
           className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
@@ -110,11 +111,14 @@ function ToolConsentRow({
   onConsentChange: (consent: AgentToolConsent) => void;
 }) {
   const { t } = useTranslation("settings");
+  const toolNameId = useId();
   return (
     <div className="border rounded p-3">
       <div className="flex items-center justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <div className="font-mono text-sm">{name}</div>
+          <div id={toolNameId} className="font-mono text-sm">
+            {name}
+          </div>
           <div className="text-xs text-muted-foreground truncate">
             {description?.slice(0, 100)} {description?.length > 100 && "..."}
           </div>
@@ -123,7 +127,7 @@ function ToolConsentRow({
           value={consent}
           onValueChange={(v) => onConsentChange(v as AgentToolConsent)}
         >
-          <SelectTrigger className="w-[140px] h-8">
+          <SelectTrigger aria-labelledby={toolNameId} className="w-[140px] h-8">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

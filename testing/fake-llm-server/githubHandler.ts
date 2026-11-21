@@ -118,6 +118,12 @@ function ensureBareRepoHeadTracksCreatedBranch(
   }
 }
 
+// Repos that already exist on the fake GitHub, by default branch.
+const seededRepoDefaultBranches: Record<string, string> = {
+  "existing-vite-app": "main",
+  "existing-vite-app-on-master": "master",
+};
+
 // Mock data for testing
 const mockAccessToken = "fake_access_token_12345";
 const mockDeviceCode = "fake_device_code_12345";
@@ -165,6 +171,14 @@ const initialMockRepos = [
     private: false,
     owner: { login: "testuser", id: 12345 },
     default_branch: "main",
+  },
+  {
+    id: 5,
+    name: "existing-vite-app-on-master",
+    full_name: "testuser/existing-vite-app-on-master",
+    private: false,
+    owner: { login: "testuser", id: 12345 },
+    default_branch: "master",
   },
 ];
 
@@ -590,7 +604,10 @@ export function handleGitPush(req: Request, res: Response, next?: Function) {
         // Only repos that are meant to already exist on GitHub (e.g. the
         // "existing-vite-app" fixture used by the import auto-upgrade test) get
         // seeded with an initial commit so they can be cloned/imported.
-        if (repoName === "existing-vite-app") {
+        const seededBranch = Object.hasOwn(seededRepoDefaultBranches, repoName)
+          ? seededRepoDefaultBranches[repoName]
+          : undefined;
+        if (seededBranch) {
           const tmpClone = fs.mkdtempSync(
             path.join(os.tmpdir(), "dyad-git-clone-"),
           );
@@ -635,13 +652,13 @@ export function handleGitPush(req: Request, res: Response, next?: Function) {
               `git -c user.name=dyad -c user.email=dyad@example.com commit -m "initial commit"`,
               { cwd: tmpClone, stdio: "pipe" },
             );
-            execSync(`git push origin HEAD:refs/heads/main`, {
+            execSync(`git push origin HEAD:refs/heads/${seededBranch}`, {
               cwd: tmpClone,
               stdio: "pipe",
             });
             try {
               execSync(
-                `git --git-dir="${bareRepoPath}" symbolic-ref HEAD refs/heads/main`,
+                `git --git-dir="${bareRepoPath}" symbolic-ref HEAD refs/heads/${seededBranch}`,
                 { stdio: "pipe" },
               );
             } catch (err) {

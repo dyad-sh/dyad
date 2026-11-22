@@ -299,6 +299,7 @@ async function refreshSupabaseTokenOnce(): Promise<void> {
     } = await response.json();
 
     // Re-read settings right before writing to get latest state
+    if (!hasSameSupabaseCredentials(settings)) return;
     const freshSettings = readSettings();
     // Update settings with new tokens, preserving existing fields (e.g. organizations map)
     writeSettings({
@@ -315,6 +316,7 @@ async function refreshSupabaseTokenOnce(): Promise<void> {
       },
     });
   } catch (error) {
+    if (!hasSameSupabaseCredentials(settings)) return;
     logger.error("Error refreshing Supabase token:", error);
     throw error;
   }
@@ -327,6 +329,24 @@ export function refreshSupabaseToken(): Promise<void> {
     });
   }
   return refreshSupabaseTokenPromise;
+}
+
+function hasSameSupabaseCredentials(
+  previous: ReturnType<typeof readSettings>,
+  organizationSlug?: string,
+): boolean {
+  const settings = readSettings();
+  const current = organizationSlug
+    ? settings.supabase?.organizations?.[organizationSlug]
+    : settings.supabase;
+  const original = organizationSlug
+    ? previous.supabase?.organizations?.[organizationSlug]
+    : previous.supabase;
+  return (
+    current?.refreshToken?.value === original?.refreshToken?.value &&
+    current?.accessToken?.value === original?.accessToken?.value &&
+    current?.tokenTimestamp === original?.tokenTimestamp
+  );
 }
 
 // Function to get the Supabase Management API client
@@ -446,6 +466,7 @@ async function refreshSupabaseTokenForOrganization(
     // Re-read settings right before writing to avoid stale-read race conditions.
     // The async fetch above may take time, during which other org credentials
     // could be written. Reading here ensures we merge into the latest state.
+    if (!hasSameSupabaseCredentials(settings, organizationSlug)) return;
     const freshSettings = readSettings();
     const existingOrgs = freshSettings.supabase?.organizations ?? {};
     writeSettings({
@@ -468,6 +489,7 @@ async function refreshSupabaseTokenForOrganization(
       },
     });
   } catch (error) {
+    if (!hasSameSupabaseCredentials(settings, organizationSlug)) return;
     logger.error(
       `Error refreshing Supabase token for organization ${organizationSlug}:`,
       error,

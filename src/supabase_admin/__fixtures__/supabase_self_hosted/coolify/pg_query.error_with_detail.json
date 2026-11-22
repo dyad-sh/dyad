@@ -1,0 +1,30 @@
+{
+  "name": "pg_query.error_with_detail",
+  "request": {
+    "method": "POST",
+    "path": "/pg/query",
+    "auth": "service",
+    "body": {
+      "query": "create table public.fx_u(x int unique); insert into public.fx_u values (1),(1)"
+    }
+  },
+  "response": {
+    "status": 400,
+    "body": {
+      "error": "ERROR:  23505: duplicate key value violates unique constraint \"fx_u_x_key\"\nDETAIL:  Key (x)=(1) already exists.\n",
+      "length": 178,
+      "name": "error",
+      "severity": "ERROR",
+      "code": "23505",
+      "detail": "Key (x)=(1) already exists.",
+      "schema": "public",
+      "table": "fx_u",
+      "constraint": "fx_u_x_key",
+      "file": "nbtinsert.c",
+      "line": "664",
+      "routine": "_bt_check_unique",
+      "message": "duplicate key value violates unique constraint \"fx_u_x_key\"",
+      "formattedError": "ERROR:  23505: duplicate key value violates unique constraint \"fx_u_x_key\"\nDETAIL:  Key (x)=(1) already exists.\n"
+    }
+  }
+}

@@ -867,7 +867,9 @@ export function TestsPanel() {
   const hasSupabase = !!app?.supabaseProjectId;
   const hasNeonIsolation =
     hasNeon && (settings?.runtimeMode2 ?? "host") === "host";
-  const hasSupabaseIsolation = hasSupabase && !!app?.supabaseOrganizationSlug;
+  const hasSupabaseIsolation =
+    hasSupabase &&
+    (!!app?.supabaseOrganizationSlug || !!app?.supabaseSelfHosted);
 
   const [outputOpen, setOutputOpen] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);

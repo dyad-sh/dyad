@@ -26,6 +26,11 @@ import {
   CUSTOM_PROVIDER_MODELS_REQUEST_ERROR_NAME,
   CUSTOM_PROVIDER_MODELS_TRANSPORT_ERROR_NAME,
 } from "@/shared/openai_compatible_error_names";
+import {
+  SUPABASE_SELF_HOSTED_REQUEST_ERROR_NAME,
+  SUPABASE_SELF_HOSTED_TRANSPORT_ERROR_NAME,
+  SUPABASE_SELF_HOSTED_COMMAND_ERROR_NAME,
+} from "@/shared/supabase_self_hosted_error_names";
 import { ResponseValidationError } from "@vercel/sdk/models/responsevalidationerror.js";
 import { SDKError } from "@vercel/sdk/models/sdkerror.js";
 import { getVercelProjectCreationError } from "./vercel_errors";
@@ -141,6 +146,21 @@ describe("shouldFilterTelemetryException", () => {
     ]) {
       const error = new DyadError(
         "private endpoint details",
+        DyadErrorKind.External,
+      );
+      error.name = name;
+      expect(shouldFilterTelemetryException(error)).toBe(true);
+    }
+  });
+
+  it("filters self-hosted Supabase request, transport and command errors", () => {
+    for (const name of [
+      SUPABASE_SELF_HOSTED_REQUEST_ERROR_NAME,
+      SUPABASE_SELF_HOSTED_TRANSPORT_ERROR_NAME,
+      SUPABASE_SELF_HOSTED_COMMAND_ERROR_NAME,
+    ]) {
+      const error = new DyadError(
+        "relation public.customers does not exist",
         DyadErrorKind.External,
       );
       error.name = name;
@@ -309,6 +329,17 @@ describe("exceptions from a self-hosted instance", () => {
     expect(JSON.stringify(payload)).not.toContain("private.provider.example");
     expect(payload.exception_message).toBeUndefined();
     expect(payload.ipc_channel).toBe("fetch-custom-provider-models");
+  });
+
+  it("redacts self-hosted Supabase instance details", () => {
+    sendTelemetryException(
+      new Error("Couldn't reach https://supabase.theirdomain.com"),
+      { ipc_channel: "supabase:add-self-hosted-instance" },
+    );
+
+    const payload = sent.calls[0];
+    expect(JSON.stringify(payload)).not.toContain("theirdomain.com");
+    expect(payload.exception_message).toBeUndefined();
   });
 
   it("matches the custom provider channel exactly, not by prefix", () => {

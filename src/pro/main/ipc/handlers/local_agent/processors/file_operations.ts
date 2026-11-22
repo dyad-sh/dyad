@@ -30,7 +30,7 @@ import {
   deleteSupabaseFunction,
   withSupabaseFunctionDeployment,
 } from "@/supabase_admin/supabase_management_client";
-import { isSupabaseFunctionSyncDeferred } from "@/supabase_admin/supabase_recording_deferred_sync";
+import { isSupabaseFunctionSyncSkipped } from "@/supabase_admin/supabase_function_sync_skip";
 import {
   appOperationCoordinator,
   readAppResource,
@@ -279,7 +279,7 @@ export async function deployAllFunctionsIfNeeded(
       },
     );
   } catch (error) {
-    if (isSupabaseFunctionSyncDeferred(error)) {
+    if (isSupabaseFunctionSyncSkipped(error)) {
       return { success: true, warning: error.message };
     }
     return {

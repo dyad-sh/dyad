@@ -664,6 +664,9 @@ const BaseUserSettingsFields = {
   // by default; with it off, plugins behave exactly as builds without the
   // feature: only the default configuration exists, for every app.
   enableAppScopedPlugins: z.boolean().optional(),
+  // Connecting apps to self-hosted Supabase instances. Off unless explicitly
+  // turned on while the integration is experimental.
+  enableSupabaseSelfHosted: z.boolean().optional(),
   // Publishing to GitLab (gitlab.com or a self-hosted instance). Off unless
   // explicitly turned on; it gates new GitLab connections only, so an app
   // already linked to GitLab keeps its GitLab card when this is off again.

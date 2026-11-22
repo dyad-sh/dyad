@@ -19,6 +19,7 @@ import { GitLabPublishingExperimentSwitch } from "@/components/GitLabPublishingE
 import { VercelIntegration } from "@/components/VercelIntegration";
 import { CloudflareIntegration } from "@/components/CloudflareIntegration";
 import { SupabaseIntegration } from "@/components/SupabaseIntegration";
+import { SupabaseSelfHostedInstancesSettings } from "@/components/SupabaseSelfHosted";
 import { CustomAppsFolderSelector } from "@/components/CustomAppsFolderSelector";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -45,6 +46,7 @@ import { ContextCompactionSwitch } from "@/components/ContextCompactionSwitch";
 import { BlockUnsafeNpmPackagesSwitch } from "@/components/BlockUnsafeNpmPackagesSwitch";
 import { CloudSandboxExperimentSwitch } from "@/components/CloudSandboxExperimentSwitch";
 import { MultiWindowExperimentSwitch } from "@/components/MultiWindowExperimentSwitch";
+import { SupabaseSelfHostedExperimentSwitch } from "@/components/SupabaseSelfHostedExperimentSwitch";
 import { NeonBranchProtectionSwitch } from "@/components/NeonBranchProtectionSwitch";
 import { ClaudeCodeSubscriptionExperimentSwitch } from "@/components/ClaudeCodeSubscriptionExperimentSwitch";
 import { AppPreviewDomainsSwitch } from "@/components/AppPreviewDomainsSwitch";
@@ -195,8 +197,11 @@ export default function SettingsPage() {
             <div id={SETTING_IDS.cloudflare}>
               <CloudflareIntegration />
             </div>
-            <div id={SETTING_IDS.supabase}>
+            <div id={SETTING_IDS.supabase} className="space-y-4">
               <SupabaseIntegration />
+              {settings?.enableSupabaseSelfHosted && (
+                <SupabaseSelfHostedInstancesSettings />
+              )}
             </div>
             <div id={SETTING_IDS.neon}>
               <NeonIntegration />
@@ -310,6 +315,10 @@ export default function SettingsPage() {
                 run yourself. This is in early development: it is undocumented,
                 unstable, and may change or break without notice.
               </p>
+            </div>
+
+            <div id={SETTING_IDS.enableSupabaseSelfHosted}>
+              <SupabaseSelfHostedExperimentSwitch />
             </div>
 
             <div id={SETTING_IDS.enableGitlabPublishing}>

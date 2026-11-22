@@ -3,6 +3,11 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+vi.mock(
+  "@/supabase_admin/supabase_self_hosted_store",
+  () => import("@/testing/supabase_self_hosted_store_cloud_only"),
+);
+
 const mocks = vi.hoisted(() => ({
   getGitUncommittedFiles: vi.fn(),
   getCurrentCommitHash: vi.fn(),

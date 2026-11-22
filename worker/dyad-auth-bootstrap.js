@@ -76,9 +76,10 @@
     );
   }
 
+  // supabase-js names its session key after the hostname, without the port.
   function projectRef(url) {
     try {
-      return new URL(url).host.split(".")[0];
+      return new URL(url).hostname.split(".")[0];
     } catch {
       return null;
     }

@@ -16,7 +16,7 @@ import {
 } from "../../../../../../supabase_admin/supabase_utils";
 import { queueCloudSandboxSnapshotSync } from "@/ipc/utils/cloud_sandbox_provider";
 import { getFileWriteKey, withLock } from "@/ipc/utils/lock_utils";
-import { isSupabaseFunctionSyncDeferred } from "@/supabase_admin/supabase_recording_deferred_sync";
+import { isSupabaseFunctionSyncSkipped } from "@/supabase_admin/supabase_function_sync_skip";
 
 const logger = log.scope("delete_file");
 
@@ -133,7 +133,7 @@ export const deleteFileTool: ToolDefinition<z.infer<typeof deleteFileSchema>> =
             });
           }
         } catch (error) {
-          if (isSupabaseFunctionSyncDeferred(error)) {
+          if (isSupabaseFunctionSyncSkipped(error)) {
             return `Successfully deleted ${args.path}. ${error.message}`;
           }
           return `File deleted, but failed to reconcile Supabase function: ${error}`;

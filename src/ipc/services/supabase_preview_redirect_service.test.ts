@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock(
+  "@/supabase_admin/supabase_self_hosted_store",
+  () => import("@/testing/supabase_self_hosted_store_cloud_only"),
+);
+
 const mocks = vi.hoisted(() => ({ findApp: vi.fn(), register: vi.fn() }));
 vi.mock("@/db", () => ({
   db: { query: { apps: { findFirst: mocks.findApp } } },
@@ -12,6 +17,7 @@ import {
   ensureSupabasePreviewRedirects,
   resolveSupabasePreviewTarget,
 } from "./supabase_preview_redirect_service";
+import { isSupabaseSelfHostedProject } from "@/supabase_admin/supabase_self_hosted_store";
 
 const input = () => ({
   appId: 9,
@@ -46,6 +52,11 @@ describe("Supabase preview redirect registration", () => {
       ],
       signal: expect.any(AbortSignal),
     });
+  });
+
+  it("resolves no target for a self-hosted instance, which has no redirect API", async () => {
+    vi.mocked(isSupabaseSelfHostedProject).mockReturnValueOnce(true);
+    expect(await resolveSupabasePreviewTarget(9)).toBeNull();
   });
 
   it.each([undefined, { supabaseProjectId: null }])(

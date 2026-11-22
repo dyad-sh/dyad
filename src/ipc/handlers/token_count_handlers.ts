@@ -24,6 +24,7 @@ import { detectFrameworkType } from "../utils/framework_utils";
 import log from "electron-log";
 import {
   getSupabaseContext,
+  getSupabaseSelfHostedPromptOptions,
   getSupabaseClientCode,
 } from "../../supabase_admin/supabase_context";
 
@@ -46,8 +47,8 @@ import {
   isBasicAgentMode,
   isLocalAgentBackedMode,
   isTurboEditsV2Enabled,
-  hasSupabaseCredentialsForOrganization,
 } from "@/lib/schemas";
+import { hasSupabaseCredentialsForApp } from "@/supabase_admin/supabase_self_hosted_store";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { resolveChatModeForTurn } from "./chat_mode_resolution";
 import { isImplementerSubagentEnabled } from "@/lib/autoSidekick";
@@ -147,10 +148,7 @@ export function registerTokenCountHandlers() {
       let supabaseContext = "";
       const supabaseProviderToolsAvailable = Boolean(
         chat.app.supabaseProjectId &&
-        hasSupabaseCredentialsForOrganization(
-          settings,
-          chat.app.supabaseOrganizationSlug,
-        ),
+        hasSupabaseCredentialsForApp(settings, chat.app),
       );
       const neonCredentialsAvailable = Boolean(
         chat.app.neonProjectId && settings.neon?.accessToken?.value,
@@ -173,7 +171,11 @@ export function registerTokenCountHandlers() {
           organizationSlug: chat.app.supabaseOrganizationSlug ?? null,
         });
         systemPrompt +=
-          "\n\n" + getSupabaseAvailableSystemPrompt(supabaseClientCode);
+          "\n\n" +
+          getSupabaseAvailableSystemPrompt(
+            supabaseClientCode,
+            getSupabaseSelfHostedPromptOptions(chat.app.supabaseProjectId!),
+          );
         if (!willUseLocalAgentStream) {
           supabaseContext = await getSupabaseContext({
             supabaseProjectId: chat.app.supabaseProjectId!,

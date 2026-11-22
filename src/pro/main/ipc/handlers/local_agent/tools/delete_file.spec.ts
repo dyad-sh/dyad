@@ -12,6 +12,7 @@ import {
 import { resolveSelfAlias } from "@/ipc/utils/path_test_utils";
 import { getFileWriteKey, withLock } from "@/ipc/utils/lock_utils";
 import { SupabaseFunctionSyncDeferredError } from "@/supabase_admin/supabase_recording_deferred_sync";
+import { SupabaseFunctionsUnsupportedError } from "@/supabase_admin/supabase_function_sync_skip";
 
 vi.mock("node:fs", async () => {
   const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
@@ -381,6 +382,25 @@ describe("deleteFileTool", () => {
 
       expect(result).toMatch(
         /^Successfully deleted .*after the recording ends/,
+      );
+    });
+
+    it("reports a function on a self-hosted instance without SSH as saved but not deployed", async () => {
+      vi.mocked(fs.lstatSync).mockReturnValue({
+        isDirectory: () => false,
+        isSymbolicLink: () => false,
+      } as any);
+      vi.mocked(deleteSupabaseFunction).mockRejectedValueOnce(
+        new SupabaseFunctionsUnsupportedError(),
+      );
+
+      const result = await deleteFileTool.execute(
+        { path: "supabase/functions/hello-world/index.ts" },
+        { ...mockContext, supabaseProjectId: "instance-id" },
+      );
+
+      expect(result).toMatch(
+        /^Successfully deleted .*added without SSH access/,
       );
     });
 

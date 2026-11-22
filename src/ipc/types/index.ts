@@ -324,6 +324,8 @@ export type {
   SupabaseRedeployProgress,
   CreateSupabaseProjectParams,
   SupabaseRegionId,
+  SupabaseSelfHostedInstance,
+  AddSupabaseSelfHostedInstanceParams,
 } from "./supabase";
 export {
   SUPABASE_REGIONS,

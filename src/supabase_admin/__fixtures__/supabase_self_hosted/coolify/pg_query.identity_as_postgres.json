@@ -1,0 +1,20 @@
+{
+  "name": "pg_query.identity_as_postgres",
+  "request": {
+    "method": "POST",
+    "path": "/pg/query",
+    "auth": "service",
+    "body": {
+      "query": "set role postgres; select current_user, (select rolsuper from pg_roles where rolname=current_user) super"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": [
+      {
+        "current_user": "postgres",
+        "super": false
+      }
+    ]
+  }
+}

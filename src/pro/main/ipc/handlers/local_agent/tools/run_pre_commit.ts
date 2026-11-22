@@ -35,7 +35,7 @@ import {
 import { trackWorkspaceMutation } from "./tool_invocation";
 import { deleteSupabaseFunction } from "@/supabase_admin/supabase_management_client";
 import { isSupabaseFunctionNotFoundError } from "../processors/file_operations";
-import { isSupabaseFunctionSyncDeferred } from "@/supabase_admin/supabase_recording_deferred_sync";
+import { isSupabaseFunctionSyncSkipped } from "@/supabase_admin/supabase_function_sync_skip";
 import { MAX_PRE_COMMIT_RUNS_PER_TURN } from "./turn_tool_budgets";
 
 export { isPreCommitHookAvailable } from "@/ipc/services/pre_commit_service";
@@ -649,9 +649,9 @@ export async function deleteHookRemovedFunctions(
         signal: ctx.abortSignal,
       });
     } catch (error) {
-      // Deferred until a recording ends, or already gone: nothing left to do.
+      // Deferred, unsupported for this project, or already gone: nothing to do.
       if (
-        !isSupabaseFunctionSyncDeferred(error) &&
+        !isSupabaseFunctionSyncSkipped(error) &&
         !isSupabaseFunctionNotFoundError(error)
       ) {
         logger.warn(

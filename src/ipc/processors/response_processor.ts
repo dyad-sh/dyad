@@ -29,7 +29,10 @@ import {
   deployAffectedSupabaseFunctions,
   extractFunctionNameFromPath,
 } from "../../supabase_admin/supabase_utils";
-import { isSupabaseFunctionSyncDeferred } from "../../supabase_admin/supabase_recording_deferred_sync";
+import {
+  isSupabaseFunctionSyncSkipped,
+  SupabaseFunctionsUnsupportedError,
+} from "../../supabase_admin/supabase_function_sync_skip";
 import { UserSettings } from "../../lib/schemas";
 import {
   gitCommit,
@@ -232,21 +235,24 @@ export async function processFullResponseActions(
 
   const warnings: Output[] = [];
   const errors: Output[] = [];
-  // A deploy/delete deferred until an active recording ends is not a failure;
-  // report it once as a warning instead.
-  let reportedDeferredSupabaseSync = false;
+  // A deploy/delete that was deferred until a recording ends, or that this
+  // project does not support, is not a failure; report it once as a warning.
+  let reportedSkippedSupabaseSync = false;
   const reportSupabaseFailure = (
     output: Output,
     severity: "error" | "warning" = "error",
   ) => {
-    if (!isSupabaseFunctionSyncDeferred(output.error)) {
+    if (!isSupabaseFunctionSyncSkipped(output.error)) {
       (severity === "error" ? errors : warnings).push(output);
       return;
     }
-    if (reportedDeferredSupabaseSync) return;
-    reportedDeferredSupabaseSync = true;
+    if (reportedSkippedSupabaseSync) return;
+    reportedSkippedSupabaseSync = true;
     warnings.push({
-      message: "Supabase function changes will deploy after the recording ends",
+      message:
+        output.error instanceof SupabaseFunctionsUnsupportedError
+          ? "Supabase function changes were not deployed"
+          : "Supabase function changes will deploy after the recording ends",
       error: output.error,
     });
   };

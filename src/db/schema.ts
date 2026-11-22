@@ -154,8 +154,37 @@ export const testUserCleanup = sqliteTable("test_user_cleanup", {
   appId: integer("app_id").notNull(),
   ownerId: text("owner_id").notNull(),
   projectId: text("project_id").notNull(),
+  // Empty for a self-hosted Supabase instance, which has no organization.
   organizationSlug: text("organization_slug").notNull(),
 });
+
+// Self-hosted Supabase instances. An app links to one by storing the instance
+// id in apps.supabaseProjectId; an id found here marks the app as self-hosted.
+// Both keys are encrypted with secret_storage's encryptToString.
+export const supabaseSelfHostedInstances = sqliteTable(
+  "supabase_self_hosted_instances",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    url: text("url").notNull(),
+    studioUrl: text("studio_url"),
+    anonKeyEncrypted: text("anon_key_encrypted").notNull(),
+    serviceKeyEncrypted: text("service_key_encrypted").notNull(),
+    // SSH access for deploying edge functions. All null when the instance
+    // was added without it; then functions are saved but not deployed.
+    sshHost: text("ssh_host"),
+    sshPort: integer("ssh_port"),
+    sshUsername: text("ssh_username"),
+    sshPrivateKeyEncrypted: text("ssh_private_key_encrypted"),
+    // Pinned on first connect; a different key later is refused.
+    sshHostKeyFingerprint: text("ssh_host_key_fingerprint"),
+    // The edge runtime container that serves this instance's /functions/v1.
+    functionsContainer: text("functions_container"),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+);
 
 // One record per sandboxed run, independent of the recorder's app-row marker.
 // Retain provider identity after app deletion/reassociation so failed cleanup

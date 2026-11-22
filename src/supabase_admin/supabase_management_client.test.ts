@@ -16,6 +16,11 @@ import { readSettings } from "@/main/settings";
 import { SUPABASE_PROJECT_CREATED_BUT_UNLINKED } from "@/ipc/types/supabase";
 import { SupabaseTokenRefreshError } from "./supabase_errors";
 
+vi.mock(
+  "@/supabase_admin/supabase_self_hosted_store",
+  () => import("@/testing/supabase_self_hosted_store_cloud_only"),
+);
+
 vi.mock("@/main/settings", () => ({
   readSettings: vi.fn(() => ({})),
   writeSettings: vi.fn(),

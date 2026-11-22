@@ -1,0 +1,15 @@
+{
+  "name": "pg_query.alter_auth_users",
+  "request": {
+    "method": "POST",
+    "path": "/pg/query",
+    "auth": "service",
+    "body": {
+      "query": "alter table auth.users add column fx_col int"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": []
+  }
+}

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { defineContract, createClient } from "../contracts/core";
 import { APP_FRAMEWORK_TYPES } from "../../lib/framework_constants";
 import { ChatModeSchema } from "../../lib/schemas";
+import { SupabaseSelfHostedInstanceSchema } from "./supabase";
 import type { AppRunInvocationRef } from "@/app_run/state";
 import type { LinkedRemoteColumns } from "@/shared/linked_remote";
 
@@ -85,6 +86,8 @@ export const AppSchema = AppBaseSchema.extend({
   files: z.array(z.string()),
   frameworkType: z.enum(APP_FRAMEWORK_TYPES).nullable().optional(),
   supabaseProjectName: z.string().nullable(),
+  /** Set when supabaseProjectId names a self-hosted instance. Never has keys. */
+  supabaseSelfHosted: SupabaseSelfHostedInstanceSchema.nullable().optional(),
   vercelTeamSlug: z.string().nullable(),
   resolvedPath: z.string().optional(),
   deploymentProvidersInUse: DeploymentProvidersInUseSchema,

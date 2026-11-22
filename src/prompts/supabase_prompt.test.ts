@@ -66,3 +66,96 @@ describe("Supabase auth redirect guidance", () => {
     },
   );
 });
+
+describe("self-hosted Supabase prompt", () => {
+  const url = "http://supabase.example.com";
+  const selfHosted = (
+    functionsDeployed: boolean,
+    pendingUpdates: { functionName: string; minutesLeft: number }[] = [],
+  ) =>
+    getSupabaseAvailableSystemPrompt("// client", {
+      url,
+      functionsDeployed,
+      pendingUpdates,
+    });
+
+  it("replaces Cloud-only instructions instead of contradicting them", () => {
+    for (const prompt of [selfHosted(true), selfHosted(false)]) {
+      for (const cloudOnly of [
+        "supabase.co",
+        "Supabase Console",
+        "Manage Secrets",
+        "URL Configuration",
+        "Dyad registers",
+        "<resource-link>",
+        "override",
+      ]) {
+        expect(prompt).not.toContain(cloudOnly);
+      }
+      expect(prompt).toContain(
+        `This app uses a self-hosted Supabase instance at ${url}, not Supabase Cloud.`,
+      );
+      expect(prompt).toContain(
+        `   - Format: ${url}/functions/v1/EDGE_FUNCTION_NAME\n`,
+      );
+      expect(prompt).toContain("ADDITIONAL_REDIRECT_URLS");
+    }
+  });
+
+  it("keeps the Cloud passages for Cloud projects", () => {
+    const prompt = getSupabaseAvailableSystemPrompt("// client");
+    expect(prompt).toContain(
+      "   - Format: https://SUPABASE_PROJECT_ID.supabase.co/functions/v1/EDGE_FUNCTION_NAME\n",
+    );
+    expect(prompt).toContain(
+      "Direct them to: Project -> Edge Functions -> Manage Secrets",
+    );
+    expect(prompt).not.toContain("self-hosted");
+  });
+
+  it("says whether functions run on the instance", () => {
+    expect(selfHosted(true)).toContain(
+      "- Edge Functions are deployed automatically after edits. After an update,",
+    );
+    const withoutSsh = selfHosted(false);
+    expect(withoutSsh).toContain(
+      "- Edge Functions are NOT deployed to this instance",
+    );
+    expect(withoutSsh).not.toContain("deployed automatically");
+  });
+
+  it("names functions whose update may not be live yet", () => {
+    expect(
+      selfHosted(true, [
+        { functionName: "send-email", minutesLeft: 1 },
+        { functionName: "charge", minutesLeft: 7 },
+      ]),
+    ).toContain(
+      "These functions were just updated and may still answer with their previous code: send-email (for up to 1 more minute), charge (for up to 7 more minutes).",
+    );
+  });
+
+  it("leaves telling the user about setup state to Dyad's UI", () => {
+    const pendingUpdates = [{ functionName: "send-email", minutesLeft: 3 }];
+    for (const functionsDeployed of [true, false]) {
+      // Only the secrets rule asks the agent to tell the user something,
+      // as the Cloud instructions do for secrets. "Do NOT tell the user" is
+      // a prohibition, not a request.
+      expect(
+        selfHosted(functionsDeployed, pendingUpdates).match(
+          /(?<!not )tell the user/gi,
+        ),
+      ).toEqual(["Tell the user"]);
+    }
+  });
+
+  it("says nothing about updates when none are pending or none are deployed", () => {
+    const pendingUpdates = [{ functionName: "send-email", minutesLeft: 3 }];
+    for (const prompt of [
+      selfHosted(true),
+      selfHosted(false, pendingUpdates),
+    ]) {
+      expect(prompt).not.toContain("just updated");
+    }
+  });
+});

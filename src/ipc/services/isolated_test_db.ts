@@ -5,6 +5,10 @@ import {
 } from "./test_run_timing";
 import fs from "node:fs";
 import { randomUUID } from "node:crypto";
+import {
+  getSupabaseProjectUrl,
+  isSupabaseSelfHostedProject,
+} from "@/supabase_admin/supabase_self_hosted_store";
 import { acquireNeonTestBranch } from "./neon_test_branch_lease";
 import type { NeonBranchLimitStatus } from "@/shared/neon_branch_limit";
 import log from "electron-log";
@@ -709,7 +713,7 @@ async function prepareSupabaseTestUserIsolation({
 }): Promise<PreparedIsolation> {
   const projectId = app.supabaseProjectId!;
   const organizationSlug = app.supabaseOrganizationSlug;
-  if (!organizationSlug) {
+  if (!organizationSlug && !isSupabaseSelfHostedProject(projectId)) {
     return {
       isolation: {
         mode: "none",
@@ -902,7 +906,7 @@ async function prepareSupabaseTestUserIsolation({
       testRunnerEnv: adminKey
         ? {
             SUPABASE_SECRET_KEY: adminKey.apiKey,
-            SUPABASE_URL: `https://${projectId}.supabase.co`,
+            SUPABASE_URL: getSupabaseProjectUrl(projectId),
           }
         : undefined,
       authSetup,

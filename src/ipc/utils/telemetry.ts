@@ -23,6 +23,11 @@ import {
   CUSTOM_PROVIDER_MODELS_TRANSPORT_ERROR_NAME,
 } from "@/shared/openai_compatible_error_names";
 import {
+  SUPABASE_SELF_HOSTED_REQUEST_ERROR_NAME,
+  SUPABASE_SELF_HOSTED_TRANSPORT_ERROR_NAME,
+  SUPABASE_SELF_HOSTED_COMMAND_ERROR_NAME,
+} from "@/shared/supabase_self_hosted_error_names";
+import {
   POSTHOG_CHUNK_IDS_PROPERTY,
   type PostHogChunkIdRegistry,
   readPostHogChunkIds,
@@ -132,7 +137,13 @@ const SELF_HOSTED_CHANNEL_PREFIXES = [
 
 // Single channels, matched exactly so a future channel sharing the name as a
 // prefix isn't redacted by accident.
-const SELF_HOSTED_CHANNELS = new Set(["fetch-custom-provider-models"]);
+const SELF_HOSTED_CHANNELS = new Set([
+  "fetch-custom-provider-models",
+  // Self-hosted Supabase instances: these carry the instance address.
+  "supabase:list-self-hosted-instances",
+  "supabase:add-self-hosted-instance",
+  "supabase:remove-self-hosted-instance",
+]);
 
 function isSelfHostedChannel(context?: Record<string, unknown>): boolean {
   const channel = context?.ipc_channel;
@@ -451,6 +462,17 @@ export function shouldFilterTelemetryException(error: unknown): boolean {
   // failure nothing here recognised, which is what telemetry is for.
   const sshFailure = sshFailureOf(error);
   if (sshFailure === "unreachable" || sshFailure === "timeout") {
+    return true;
+  }
+
+  // A self-hosted Supabase instance is the same surface again. Its SQL errors
+  // quote the user's schema, and a failed connection carries its address.
+  if (
+    error instanceof Error &&
+    (error.name === SUPABASE_SELF_HOSTED_REQUEST_ERROR_NAME ||
+      error.name === SUPABASE_SELF_HOSTED_TRANSPORT_ERROR_NAME ||
+      error.name === SUPABASE_SELF_HOSTED_COMMAND_ERROR_NAME)
+  ) {
     return true;
   }
 

@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SupabaseManagementAPIError } from "@dyad-sh/supabase-management-js";
 
+vi.mock(
+  "@/supabase_admin/supabase_self_hosted_store",
+  () => import("@/testing/supabase_self_hosted_store_cloud_only"),
+);
+
 const mocks = vi.hoisted(() => {
   const testUserCleanup = {
     userId: "cleanup.userId",
@@ -94,6 +99,10 @@ import {
   reconcileOrphanTestUsers,
 } from "./supabase_test_user";
 import { DyadErrorKind } from "@/errors/dyad_error";
+import {
+  getSupabaseProjectUrl,
+  isSupabaseSelfHostedProject,
+} from "@/supabase_admin/supabase_self_hosted_store";
 import {
   SupabaseTestUserCreationRejectedError,
   supabaseTestUserStepError,
@@ -710,6 +719,34 @@ describe("createTempTestUser", () => {
     ).rejects.toThrow(/not connected to a Supabase project/);
   });
 
+  it("creates the user on a self-hosted instance, which has no organization", async () => {
+    vi.mocked(isSupabaseSelfHostedProject).mockReturnValue(true);
+    vi.mocked(getSupabaseProjectUrl).mockReturnValue(
+      "http://supabase.lan:8000",
+    );
+    try {
+      const fetchSpy = mockFetch(
+        () => new Response(JSON.stringify({ id: UUID })),
+      );
+
+      const result = await createTempTestUser(
+        makeApp({ supabaseOrganizationSlug: null }),
+        { ownerId: "run:case" },
+      );
+
+      expect(fetchSpy.mock.calls[0][0]).toBe(
+        "http://supabase.lan:8000/auth/v1/admin/users",
+      );
+      expect(result.projectUrl).toBe("http://supabase.lan:8000");
+      expect(mocks.insertValues).toHaveBeenCalledWith(
+        expect.objectContaining({ organizationSlug: "" }),
+      );
+    } finally {
+      vi.mocked(isSupabaseSelfHostedProject).mockReset();
+      vi.mocked(getSupabaseProjectUrl).mockReset();
+    }
+  });
+
   it("throws when the app has no Supabase organization", async () => {
     await expect(
       createTempTestUser(makeApp({ supabaseOrganizationSlug: null })),
@@ -1039,6 +1076,30 @@ describe("deleteTempTestUser", () => {
       expect.objectContaining({ method: "DELETE" }),
     );
     expect(mocks.set).toHaveBeenCalledWith({ supabaseTestUserId: null });
+  });
+
+  it("deletes a self-hosted instance's user without an organization", async () => {
+    vi.mocked(isSupabaseSelfHostedProject).mockReturnValue(true);
+    vi.mocked(getSupabaseProjectUrl).mockReturnValue(
+      "http://supabase.lan:8000",
+    );
+    try {
+      const fetchSpy = mockFetch(() => new Response(null, { status: 200 }));
+
+      await expect(
+        deleteTempTestUser(
+          makeApp({ supabaseOrganizationSlug: null, supabaseTestUserId: UUID }),
+        ),
+      ).resolves.toBe(true);
+
+      expect(fetchSpy).toHaveBeenCalledWith(
+        `http://supabase.lan:8000/auth/v1/admin/users/${UUID}`,
+        expect.objectContaining({ method: "DELETE" }),
+      );
+    } finally {
+      vi.mocked(isSupabaseSelfHostedProject).mockReset();
+      vi.mocked(getSupabaseProjectUrl).mockReset();
+    }
   });
 
   it("does not clear the column when the user delete fails", async () => {

@@ -279,6 +279,30 @@ export class CoolifyClient {
   }
 
   /**
+   * Raw reads for importing a self-hosted Supabase service. The caller checks
+   * the shape, since only it knows which fields it needs.
+   */
+  async listServicesRaw(): Promise<unknown> {
+    return this.request("GET", "/services");
+  }
+
+  async listServiceEnvsRaw(serviceUuid: string): Promise<unknown> {
+    return this.request(
+      "GET",
+      `/services/${encodeURIComponent(serviceUuid)}/envs`,
+    );
+  }
+
+  async listServersRaw(): Promise<unknown> {
+    return this.request("GET", "/servers");
+  }
+
+  /** Includes key material, so it needs a token with the root permission. */
+  async listPrivateKeysRaw(): Promise<unknown> {
+    return this.request("GET", "/security/keys");
+  }
+
+  /**
    * Fetches a list and checks it is the shape we expect.
    *
    * Coolify is self-hosted, so the instance can be any version. Casting the

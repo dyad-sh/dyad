@@ -18,6 +18,11 @@ import { deployAllSupabaseFunctions } from "./supabase_utils";
 import { executeCopyFile } from "@/ipc/utils/copy_file_utils";
 import { appOperationCoordinator } from "@/ipc/services/app_operation_coordinator";
 
+vi.mock(
+  "@/supabase_admin/supabase_self_hosted_store",
+  () => import("@/testing/supabase_self_hosted_store_cloud_only"),
+);
+
 const { findApp, gitAdd } = vi.hoisted(() => ({
   findApp: vi.fn(),
   gitAdd: vi.fn(),

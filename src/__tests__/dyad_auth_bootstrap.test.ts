@@ -199,6 +199,29 @@ describe("dyad auth bootstrap", () => {
     expect(typeof marker.startedAt).toBe("number");
   });
 
+  it("names the session key after the hostname of a self-hosted URL with a port", async () => {
+    const h = setup();
+    h.fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ access_token: "a", user: { id: "u" } }),
+    });
+
+    h.sendLogin({
+      mode: "supabase-password",
+      email: "e@x.test",
+      password: "pw",
+      projectUrl: "http://localhost:8000",
+      anonKey: "anon-key",
+    });
+
+    // supabase-js derives its key from the hostname, so the port must not
+    // appear in it or the app never sees the seeded session.
+    await vi.waitFor(() => expect(h.replace).toHaveBeenCalledWith("/"));
+    expect(h.localStorage.getItem("sb-localhost-auth-token")).toContain(
+      "access_token",
+    );
+  });
+
   it("signs in via the app's own Better Auth endpoint and lands on the homepage (Neon)", async () => {
     const h = setup();
     h.fetchMock.mockResolvedValue({ ok: true });

@@ -7,6 +7,11 @@ import { SupabaseTokenRefreshError } from "../../supabase_admin/supabase_errors"
 import { TestRunTiming } from "./test_run_timing";
 import { sendTelemetryEvent } from "../utils/telemetry";
 
+vi.mock(
+  "@/supabase_admin/supabase_self_hosted_store",
+  () => import("@/testing/supabase_self_hosted_store_cloud_only"),
+);
+
 vi.mock("../utils/telemetry", () => ({ sendTelemetryEvent: vi.fn() }));
 
 const mocks = vi.hoisted(() => ({
@@ -143,6 +148,10 @@ vi.mock("electron-log", () => ({
 }));
 
 import { prepareIsolatedTestDatabase } from "./isolated_test_db";
+import {
+  getSupabaseProjectUrl,
+  isSupabaseSelfHostedProject,
+} from "@/supabase_admin/supabase_self_hosted_store";
 import {
   SupabaseTestUserActionError,
   SupabaseTestUserCreationRejectedError,
@@ -879,6 +888,34 @@ describe("prepareIsolatedTestDatabase — Supabase test-user path", () => {
     );
     expect(prepared.testCredentials).toBeDefined();
     expect(prepared.infraError).toBeUndefined();
+  });
+
+  it("isolates a self-hosted instance, which has no organization, at its own URL", async () => {
+    vi.mocked(isSupabaseSelfHostedProject).mockReturnValue(true);
+    vi.mocked(getSupabaseProjectUrl).mockReturnValue(
+      "http://supabase.lan:8000",
+    );
+    try {
+      mocks.getServiceRoleKey.mockResolvedValueOnce({
+        apiKey: "sb_secret_fixture-key",
+        isLegacyJwt: false,
+      });
+      const prepared = await prepareIsolatedTestDatabase({
+        app: makeApp({ supabaseProjectId: "instance-id" }),
+        emit,
+        runtimeMode: "host",
+        perTestCase: true,
+      });
+
+      expect(prepared.isolation.mode).toBe("supabase-test-user");
+      expect(prepared.testRunnerEnv).toEqual({
+        SUPABASE_SECRET_KEY: "sb_secret_fixture-key",
+        SUPABASE_URL: "http://supabase.lan:8000",
+      });
+    } finally {
+      vi.mocked(isSupabaseSelfHostedProject).mockReset();
+      vi.mocked(getSupabaseProjectUrl).mockReset();
+    }
   });
 
   it("discloses without creating a user when no organization is connected", async () => {

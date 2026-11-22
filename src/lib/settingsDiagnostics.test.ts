@@ -138,6 +138,7 @@ describe("getSessionDebugSettings", () => {
         "enableSandboxScriptExecution",
         "enableShellTool",
         "enableSuggestedPrompts",
+        "enableSupabaseSelfHosted",
         "enableSupabaseWriteSqlMigration",
         "enableTestRunInPreview",
         "enableTestingForNewApps",

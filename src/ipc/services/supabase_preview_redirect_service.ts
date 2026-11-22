@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { apps } from "@/db/schema";
 import { ensureSupabaseAuthRedirectUrls } from "@/supabase_admin/supabase_management_client";
+import { isSupabaseSelfHostedProject } from "@/supabase_admin/supabase_self_hosted_store";
 import { assertAppPreviewOrigin } from "./preview_origin";
 import { abortable } from "../utils/abortable";
 
@@ -16,6 +17,9 @@ export async function resolveSupabasePreviewTarget(
 ): Promise<SupabasePreviewTarget | null> {
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
   if (!app?.supabaseProjectId) return null;
+  // A self-hosted instance has no API for its redirect allow-list; it is set in
+  // the instance's own Auth configuration instead.
+  if (isSupabaseSelfHostedProject(app.supabaseProjectId)) return null;
   return {
     projectId: app.supabaseProjectId,
     organizationSlug: app.supabaseOrganizationSlug,

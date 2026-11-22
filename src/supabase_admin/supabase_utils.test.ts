@@ -4,6 +4,11 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 
+vi.mock(
+  "@/supabase_admin/supabase_self_hosted_store",
+  () => import("@/testing/supabase_self_hosted_store_cloud_only"),
+);
+
 vi.mock("@/ipc/processors/supabase_dependency_analysis", async () => {
   const { analyzeSupabaseDependencies } =
     await import("../../workers/supabase_dependency_analysis/analyze");

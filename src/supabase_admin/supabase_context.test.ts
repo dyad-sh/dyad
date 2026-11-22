@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getProjectApiKeys,
-  getSupabaseClient,
+  runSupabaseQuery,
 } from "./supabase_management_client";
 import {
   getSupabaseClientCode,
@@ -9,12 +9,17 @@ import {
 } from "./supabase_context";
 import { DyadErrorKind } from "@/errors/dyad_error";
 
+vi.mock(
+  "@/supabase_admin/supabase_self_hosted_store",
+  () => import("@/testing/supabase_self_hosted_store_cloud_only"),
+);
+
 vi.mock("./supabase_management_client", () => ({
-  getSupabaseClient: vi.fn(),
+  runSupabaseQuery: vi.fn(),
   getProjectApiKeys: vi.fn(),
 }));
 
-const getSupabaseClientMock = vi.mocked(getSupabaseClient);
+const runSupabaseQueryMock = vi.mocked(runSupabaseQuery);
 const getProjectApiKeysMock = vi.mocked(getProjectApiKeys);
 
 const PUBLISHABLE_KEY = "sb_publishable_abc123";
@@ -59,11 +64,11 @@ const EMPTY_SNAPSHOT = {
 
 describe("getSupabaseTableSchema", () => {
   beforeEach(() => {
-    getSupabaseClientMock.mockReset();
+    runSupabaseQueryMock.mockReset();
   });
 
   it("renders table schema from one Supabase schema snapshot query", async () => {
-    const runQuery = vi.fn().mockResolvedValue([
+    runSupabaseQueryMock.mockResolvedValue([
       {
         schema_snapshot: {
           ...EMPTY_SNAPSHOT,
@@ -109,7 +114,6 @@ describe("getSupabaseTableSchema", () => {
         },
       },
     ]);
-    getSupabaseClientMock.mockResolvedValue({ runQuery } as any);
 
     await expect(
       getSupabaseTableSchema({
@@ -121,20 +125,21 @@ describe("getSupabaseTableSchema", () => {
       'CREATE SCHEMA "public";\n\nCREATE TABLE "public"."users" (\n\t"id" bigint NOT NULL\n);',
     );
 
-    expect(runQuery).toHaveBeenCalledTimes(1);
-    expect(runQuery).toHaveBeenCalledWith(
-      "project-id",
-      expect.stringMatching(
-        /snapshot_scope\.table_schema_name IN \('public'\)[\s\S]*snapshot_scope\.table_name = 'users'[\s\S]*AS schema_snapshot/u,
-      ),
+    expect(runSupabaseQueryMock).toHaveBeenCalledTimes(1);
+    expect(runSupabaseQueryMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        supabaseProjectId: "project-id",
+        query: expect.stringMatching(
+          /snapshot_scope\.table_schema_name IN \('public'\)[\s\S]*snapshot_scope\.table_name = 'users'[\s\S]*AS schema_snapshot/u,
+        ),
+      }),
     );
   });
 
   it("returns the empty-table comment when public has no tables", async () => {
-    const runQuery = vi
-      .fn()
-      .mockResolvedValue([{ schema_snapshot: EMPTY_SNAPSHOT }]);
-    getSupabaseClientMock.mockResolvedValue({ runQuery } as any);
+    runSupabaseQueryMock.mockResolvedValue([
+      { schema_snapshot: EMPTY_SNAPSHOT },
+    ]);
 
     await expect(
       getSupabaseTableSchema({
@@ -145,8 +150,7 @@ describe("getSupabaseTableSchema", () => {
   });
 
   it("wraps an unexpected Management API response as an external error", async () => {
-    const runQuery = vi.fn().mockResolvedValue({ error: "unexpected" });
-    getSupabaseClientMock.mockResolvedValue({ runQuery } as any);
+    runSupabaseQueryMock.mockResolvedValue({ error: "unexpected" });
 
     await expect(
       getSupabaseTableSchema({
@@ -162,8 +166,7 @@ describe("getSupabaseTableSchema", () => {
   });
 
   it("reports an empty schema snapshot response clearly", async () => {
-    const runQuery = vi.fn().mockResolvedValue([]);
-    getSupabaseClientMock.mockResolvedValue({ runQuery } as any);
+    runSupabaseQueryMock.mockResolvedValue([]);
 
     await expect(
       getSupabaseTableSchema({

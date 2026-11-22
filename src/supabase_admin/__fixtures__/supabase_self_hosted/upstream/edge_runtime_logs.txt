@@ -1,0 +1,25 @@
+2026-11-17T17:30:44.683196150Z serving the request with /home/deno/functions/hello-logs
+2026-11-17T17:30:44.785834986Z [Info] [hello-logs] request received { mode: [32m"ok"[39m, nested: { ok: [33mtrue[39m } }
+2026-11-17T17:30:44.785874776Z 
+2026-11-17T17:30:44.785882656Z [Warning] [hello-logs] slow path
+2026-11-17T17:30:44.785889886Z 
+2026-11-17T17:30:44.785896396Z [Info] [hello-logs] two
+2026-11-17T17:30:44.785902786Z lines
+2026-11-17T17:30:44.785909426Z 
+2026-11-17T17:30:44.786934882Z [Error] unprefixed error line
+2026-11-17T17:30:44.786951992Z 
+2026-11-17T17:30:44.871380630Z serving the request with /home/deno/functions/hello-logs
+2026-11-17T17:30:44.881418678Z [Info] [hello-logs] request received { mode: [32m"throw"[39m, nested: { ok: [33mtrue[39m } }
+2026-11-17T17:30:44.881450278Z 
+2026-11-17T17:30:44.881458458Z [Warning] [hello-logs] slow path
+2026-11-17T17:30:44.881464798Z 
+2026-11-17T17:30:44.881471188Z [Info] [hello-logs] two
+2026-11-17T17:30:44.881477488Z lines
+2026-11-17T17:30:44.881483658Z 
+2026-11-17T17:30:44.884466753Z [Error] Error: handler failed
+2026-11-17T17:30:44.884490133Z     at Object.handler (file:///var/tmp/sb-compile-edge-runtime/functions/hello-logs/index.ts:11:31)
+2026-11-17T17:30:44.884498493Z     at mapped (ext:runtime/http.js:246:44)
+2026-11-17T17:30:44.884505683Z     at respond (ext:runtime/http.js:357:14)
+2026-11-17T17:30:44.884512283Z     at handleHttp (ext:runtime/http.js:162:9)
+2026-11-17T17:30:44.884519033Z     at eventLoopTick (ext:core/01_core.js:175:7)
+2026-11-17T17:30:44.884525773Z 

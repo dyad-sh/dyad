@@ -39,6 +39,8 @@ describe("generateTestUserFixtureSource", () => {
     expect(source).toContain("process.env.DYAD_TEST_SUPABASE_ANON_KEY");
     expect(source).toContain("addInitScript");
     expect(source).toContain("sb-${projectRef}-auth-token");
+    // supabase-js keys the session by hostname; a port must not leak in.
+    expect(source).toContain('new URL(url).hostname.split(".")[0]');
   });
 
   it("stamps the auth mode so a fixture for the other backend is detectable", () => {

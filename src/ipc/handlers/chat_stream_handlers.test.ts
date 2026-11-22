@@ -29,6 +29,11 @@ import { cleanFullResponse } from "@/ipc/utils/cleanFullResponse";
 import { gitAdd, gitRemove, gitCommit } from "@/ipc/utils/git_utils";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
+vi.mock(
+  "@/supabase_admin/supabase_self_hosted_store",
+  () => import("@/testing/supabase_self_hosted_store_cloud_only"),
+);
+
 const MOCK_APP_PATH = "/mock/user/data/path/mock-app-path";
 const appPath = (...segments: string[]) =>
   path.join(MOCK_APP_PATH, ...segments);

@@ -33,6 +33,7 @@ import {
   isMergeInProgress,
   listChangedPaths,
   listCommitsNotIn,
+  listPathsChangedByOwnCommits,
   listUncommittedPaths,
   mergeIntoWorkspace,
   readMergeConflicts,
@@ -75,6 +76,12 @@ import { queueCloudSandboxSnapshotSync } from "@/ipc/utils/cloud_sandbox_provide
 import { runWorkspaceScopedOperation } from "./workspace_coordination";
 import { buildWorkspaceRepairPrompt } from "./workspace_repair_prompt";
 import {
+  appUsesSupabase,
+  findSupabaseFunctionChanges,
+  resyncSupabaseFunctionsFromApp,
+  type SupabaseFunctionChanges,
+} from "./workspace_supabase_sync";
+import {
   describeValidationFailure,
   validateWorkspace,
 } from "./workspace_validation";
@@ -106,7 +113,12 @@ type RecordedWait =
   | { kind: "registry"; sinceVersion: number }
   | { kind: "timer"; at: number };
 
-type StepResult = { event: IntegrationEvent; wait?: WaitCondition } | null;
+type StepResult = {
+  event: IntegrationEvent;
+  wait?: WaitCondition;
+  /** Edge functions to redeploy from the app's folder once claims are released. */
+  supabaseFunctions?: SupabaseFunctionChanges;
+} | null;
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -1164,7 +1176,7 @@ export class WorkspaceIntegrationQueue {
           wait: { kind: "timer", at: Date.now() + BUSY_RETRY_MS },
         };
       }
-      return await runWorkspaceScopedOperation(
+      const result = await runWorkspaceScopedOperation(
         {
           appId: workspace.appId,
           workspaceKey: workspaceRuntimeId(workspace.id),
@@ -1176,6 +1188,16 @@ export class WorkspaceIntegrationQueue {
         },
         () => this.fastForwardTarget(workspace),
       );
+      // Never inside the claims above (rules/supabase-functions.md): the
+      // deploy takes its own once the merged files are on the target.
+      if (result?.supabaseFunctions) {
+        resyncSupabaseFunctionsFromApp({
+          appId: workspace.appId,
+          changes: result.supabaseFunctions,
+          reason: "merged",
+        });
+      }
+      return result;
     } catch (error) {
       if (isDyadError(error) && error.kind === DyadErrorKind.Precondition) {
         return {
@@ -1322,20 +1344,26 @@ export class WorkspaceIntegrationQueue {
     this.squashes.delete(workspace.id);
     // Like any other edit to the app's folder, the merged files reach its
     // cloud sandbox when it runs in one.
+    let merged: { changed: string[]; deleted: string[] } | null = null;
     try {
-      const { changed, deleted } = await diffPathsByStatus({
+      merged = await diffPathsByStatus({
         path: originalPath,
         from: targetCommit,
         to: squash,
       });
       queueCloudSandboxSnapshotSync({
         appId: workspace.appId,
-        changedPaths: changed,
-        deletedPaths: deleted,
+        changedPaths: merged.changed,
+        deletedPaths: merged.deleted,
       });
     } catch (error) {
       logger.warn("Failed to sync merged files to the cloud sandbox", error);
     }
+    const supabaseFunctions = await this.mergedSupabaseFunctionChanges(
+      workspace,
+      workspaceHead,
+      merged,
+    );
     queryInvalidationBus.publish([
       { family: "versions", appId: workspace.appId },
       { family: "uncommitted-files", appId: workspace.appId },
@@ -1349,7 +1377,42 @@ export class WorkspaceIntegrationQueue {
         type: "INTEGRATED",
         ...(setAsideNotice ? { detail: setAsideNotice } : {}),
       },
+      ...(supabaseFunctions ? { supabaseFunctions } : {}),
     };
+  }
+
+  /**
+   * The edge functions to redeploy from the app's folder now that this
+   * work landed: what the squash changes there, plus everything the chat's
+   * own commits since the last integration touched. A turn deploys its
+   * function the moment it writes it, so one a later commit reverted (an
+   * Undo) can still be live in the worktree's version even though the
+   * squash leaves it as it was. Null when the app has no Supabase project.
+   */
+  private async mergedSupabaseFunctionChanges(
+    workspace: ChatWorkspaceRow,
+    workspaceHead: string,
+    merged: { changed: string[]; deleted: string[] } | null,
+  ): Promise<SupabaseFunctionChanges | null> {
+    try {
+      if (!(await appUsesSupabase(workspace.appId))) return null;
+      const ownCommits = await listPathsChangedByOwnCommits({
+        path: getWorkspaceAppPath(workspace),
+        from: workspace.lastIntegratedCommit,
+        to: workspaceHead,
+      });
+      return findSupabaseFunctionChanges([
+        ...(merged?.changed ?? []),
+        ...(merged?.deleted ?? []),
+        ...ownCommits,
+      ]);
+    } catch (error) {
+      logger.warn(
+        `Failed to find the Supabase functions workspace ${workspace.id} changed`,
+        error,
+      );
+      return null;
+    }
   }
 
   private startRepair(

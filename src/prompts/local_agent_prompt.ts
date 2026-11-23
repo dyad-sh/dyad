@@ -21,6 +21,7 @@ import {
   SUPABASE_IMPLEMENTER_NO_MANUAL_MIGRATIONS_RULE,
   SUPABASE_IMPLEMENTER_RLS_RULE,
   SUPABASE_SERVICE_ROLE_BROWSER_RULE,
+  SUPABASE_SHARED_EDGE_FUNCTIONS_RULE,
 } from "./supabase_prompt";
 import {
   NEON_NO_BROWSER_DATABASE_URL_RULE,
@@ -836,6 +837,7 @@ ${SUPABASE_GRANTS_AND_RLS_RULE}
 ${SUPABASE_IMPLEMENTER_RLS_RULE}
 ${SUPABASE_IMPLEMENTER_NO_MANUAL_MIGRATIONS_RULE}
 ${SUPABASE_EDGE_FUNCTION_JWT_RULE}
+${SUPABASE_SHARED_EDGE_FUNCTIONS_RULE}
 ${supabaseConnected && providerMetadataReadAvailable ? "- The `get_supabase_project_info` metadata tool is available." : "- Supabase project metadata inspection is unavailable for this assignment."}
 ${supabaseConnected && databaseSchemaReadAvailable ? "- The `get_database_table_schema` live-schema tool is available." : "- Live-schema inspection is unavailable for this assignment. Preserve the code-safety invariants above and report any schema access required to the root Agent."}
 </provider_invariants>`;

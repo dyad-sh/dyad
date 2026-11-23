@@ -20,6 +20,8 @@ export const SUPABASE_SERVICE_ROLE_BROWSER_RULE =
   "- **Keep the service role server-side:** The service role is for trusted server-side code only and MUST NEVER be used in browser/client code.";
 export const SUPABASE_EDGE_FUNCTION_JWT_RULE =
   "- **Verify Edge Function JWTs:** Supabase Edge Functions deploy with `verify_jwt: false`. For authenticated or privileged operations, explicitly verify and decode the caller's JWT in function code; checking only that an Authorization header exists is not authentication.";
+export const SUPABASE_SHARED_EDGE_FUNCTIONS_RULE =
+  "- **Deployed Edge Functions are shared:** An Edge Function deploys to the app's one Supabase project as soon as you write it, even from a chat's Git worktree, so the main app and other chats call your version before your work merges. Once a worktree's work merges, or its worktree is deleted, Dyad redeploys those functions from the app's main folder. While you change a function, keep accepting the requests and returning the responses its existing callers rely on.";
 export const SUPABASE_AUTH_REDIRECT_RULE =
   "- **Always supply auth redirect URLs:** Every Supabase auth flow that returns through a URL MUST specify an absolute callback URL for the current app. In browser event handlers, build it with `new URL(callbackPath, window.location.origin).href`; for SSR, use the framework's trusted request origin or configured application origin, never a hardcoded localhost URL or an unvalidated forwarded host. Use `options.redirectTo` for `signInWithOAuth` and `linkIdentity`, `options.emailRedirectTo` for `signUp`, email `signInWithOtp`, `resend`, and email `updateUser`, and `{ redirectTo }` as the second argument to `resetPasswordForEmail`. Pass `redirectTo` to the Auth UI component too. Do not rely on the project's Site URL fallback or change Site URL to fix local redirects. Register and implement the chosen public callback/reset routes, including session/code handling for the client's auth flow; password recovery must reach a password-update screen. When modifying existing auth, replace hardcoded localhost callbacks and add missing redirect options.";
 export const SUPABASE_DISCONNECTED_SYSTEM_PROMPT = `
@@ -399,6 +401,7 @@ CREATE TRIGGER on_auth_user_created
 - Each function should be in a standalone directory where the main file is index.ts (e.g., supabase/functions/hello/index.ts)
 - Reusable utilities belong in the supabase/functions/_shared folder. Import them in your edge functions with relative paths like ../_shared/logger.ts.
 - Edge Functions are deployed automatically after edits, either immediately or during end-of-turn finalization.
+${SUPABASE_SHARED_EDGE_FUNCTIONS_RULE}
 - Do NOT tell the user to manually deploy the edge function using the CLI or Supabase Console. It's unhelpful and not needed.
 
 2. Configuration:

@@ -94,8 +94,21 @@ worktree use the app's original folder.
   fast-forward.
 - Supabase is not isolated: edge-function deploys and `execute_sql` from an
   isolated turn reach the app's one shared Supabase project immediately, as
-  in the app's folder, and integration does not redeploy. Whether to defer
-  them until integration is an open product question (PR #5012).
+  in the app's folder, so the chat's own preview can call them. The agent
+  prompt (`SUPABASE_SHARED_EDGE_FUNCTIONS_RULE`,
+  `SHARED_DATABASE_MIGRATION_GUIDANCE`) and the worktree tooltip say so.
+- To bring the deployed functions back in line with the app's folder,
+  `resyncSupabaseFunctionsFromApp` redeploys from the main folder after a
+  merge lands (what the squash changed plus every file the chat's own
+  commits touched since the last integration, so a function an Undo
+  reverted counts) and after Delete worktree or chat deletion removes
+  unmerged work (own commits, the diff since the last integration, and
+  uncommitted files, read before the files go). It runs in the background
+  after the step's claims are released and never prunes: another chat's
+  worktree may have deployed a function the main folder lacks yet. A named
+  function the folder lacks is deleted unless the user keeps extra
+  functions. Two chats editing one function still overwrite each other's
+  deployment until one merges. SQL is never undone.
 
 ## Coordination
 

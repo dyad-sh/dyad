@@ -488,6 +488,7 @@
   "workspace": {
     "isolated": "격리된 작업 공간",
     "isolatedTooltip": "이 채팅은 자체 브랜치와 폴더에서 작업합니다. Dyad는 결합된 코드를 확인한 후 완료된 작업을 {{target}}에 병합합니다.",
+    "isolatedSupabaseTooltip": "Supabase는 격리되지 않습니다. 이 채팅의 Edge Function과 SQL은 앱의 공유 Supabase 프로젝트에 즉시 적용됩니다. {{target}}에 병합한 후 Dyad가 병합된 Edge Function을 다시 배포합니다.",
     "originalTooltip": "이 채팅은 {{branch}} 브랜치의 앱 기본 폴더에서 작업합니다.",
     "detachedBranch": "이전 버전",
     "statusQueued": "병합 대기 중",

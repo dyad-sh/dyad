@@ -10,6 +10,7 @@ import {
   SUPABASE_AUTH_REDIRECT_RULE,
   SUPABASE_DISCONNECTED_SYSTEM_PROMPT,
   SUPABASE_EDGE_FUNCTION_JWT_RULE,
+  SUPABASE_SHARED_EDGE_FUNCTIONS_RULE,
   SUPABASE_GRANTS_AND_RLS_RULE,
   SUPABASE_IMPLEMENTER_NO_MANUAL_MIGRATIONS_RULE,
   SUPABASE_IMPLEMENTER_RLS_RULE,
@@ -191,6 +192,7 @@ describe("local_agent_prompt", () => {
     expect(prompt).toContain(SUPABASE_GRANTS_AND_RLS_RULE);
     expect(prompt).toContain(SUPABASE_IMPLEMENTER_RLS_RULE);
     expect(prompt).toContain(SUPABASE_EDGE_FUNCTION_JWT_RULE);
+    expect(prompt).toContain(SUPABASE_SHARED_EDGE_FUNCTIONS_RULE);
     expect(prompt).toContain(SUPABASE_IMPLEMENTER_NO_MANUAL_MIGRATIONS_RULE);
     expect(prompt).toContain("SQL execution, dependency installation");
     expect(prompt).toContain("# App Rules\n- Use foo.");

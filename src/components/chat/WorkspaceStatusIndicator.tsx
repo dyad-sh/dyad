@@ -33,6 +33,7 @@ import {
   useRetryWorkspaceIntegration,
 } from "@/hooks/useChatWorkspace";
 import { useSettings } from "@/hooks/useSettings";
+import { useLoadApp } from "@/hooks/useLoadApp";
 import {
   canDeleteChatWorkspace,
   integrationStatusKey,
@@ -68,11 +69,15 @@ export function WorkspaceStatusIndicator(props: WorkspaceStatusProps) {
   const { t } = useTranslation("chat");
   const tooltipId = useId();
   const status = useVisibleWorkspaceStatus(props);
+  const { app } = useLoadApp(props.appId);
   if (!status) return null;
 
   const target = status.targetBranch ?? status.branch ?? "main";
   const branchLabel = status.branch ?? t("workspace.detachedBranch");
   const isMerged = status.integration?.phase === "merged";
+  // A worktree isolates code, not the app's one Supabase project.
+  const sharesSupabase =
+    status.kind === "isolated" && Boolean(app?.supabaseProjectId);
 
   return (
     <div className="flex min-w-0 items-center gap-0.5">
@@ -120,6 +125,11 @@ export function WorkspaceStatusIndicator(props: WorkspaceStatusProps) {
               ? t("workspace.isolatedTooltip", { target })
               : t("workspace.originalTooltip", { branch: branchLabel })}
           </p>
+          {sharesSupabase && (
+            <p data-testid="workspace-shared-supabase">
+              {t("workspace.isolatedSupabaseTooltip", { target })}
+            </p>
+          )}
           {isMerged && <p>{t("workspace.statusMerged", { target })}</p>}
         </TooltipContent>
       </Tooltip>

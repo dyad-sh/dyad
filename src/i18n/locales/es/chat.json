@@ -486,6 +486,7 @@
   "workspace": {
     "isolated": "Espacio de trabajo aislado",
     "isolatedTooltip": "Este chat trabaja en su propia rama y carpeta. Dyad fusiona su trabajo terminado en {{target}} después de comprobar el código combinado.",
+    "isolatedSupabaseTooltip": "Supabase no está aislado: las funciones Edge y el SQL de este chat llegan de inmediato al proyecto de Supabase compartido de la app. Después de fusionar en {{target}}, Dyad vuelve a desplegar las funciones Edge fusionadas.",
     "originalTooltip": "Este chat trabaja en la carpeta principal de la app en {{branch}}.",
     "detachedBranch": "Versión anterior",
     "statusQueued": "Esperando para fusionar",

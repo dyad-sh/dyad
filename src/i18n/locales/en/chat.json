@@ -488,6 +488,7 @@
   "workspace": {
     "isolated": "Isolated workspace",
     "isolatedTooltip": "This chat works on its own branch and folder. Dyad merges its finished work into {{target}} after checking the combined code.",
+    "isolatedSupabaseTooltip": "Supabase is not isolated: edge functions and SQL from this chat reach the app's shared Supabase project right away. After merging into {{target}}, Dyad redeploys the merged edge functions.",
     "originalTooltip": "This chat works in the app's main folder on {{branch}}.",
     "detachedBranch": "Earlier version",
     "statusQueued": "Waiting to merge",

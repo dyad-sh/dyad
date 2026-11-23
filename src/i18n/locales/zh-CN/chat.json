@@ -485,6 +485,7 @@
   "workspace": {
     "isolated": "隔离工作区",
     "isolatedTooltip": "此聊天在自己的分支和文件夹中工作。Dyad 会在检查合并后的代码后，将其完成的工作合并到 {{target}}。",
+    "isolatedSupabaseTooltip": "Supabase 不会被隔离：此聊天中的边缘函数和 SQL 会立即作用于应用共享的 Supabase 项目。合并到 {{target}} 后，Dyad 会重新部署合并后的边缘函数。",
     "originalTooltip": "此聊天在应用的主文件夹中的 {{branch}} 分支上工作。",
     "detachedBranch": "早期版本",
     "statusQueued": "等待合并",

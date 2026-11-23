@@ -488,6 +488,7 @@
   "workspace": {
     "isolated": "Yalıtılmış çalışma alanı",
     "isolatedTooltip": "Bu sohbet kendi dalında ve klasöründe çalışır. Dyad, birleşik kodu kontrol ettikten sonra tamamlanan işi {{target}} dalına birleştirir.",
+    "isolatedSupabaseTooltip": "Supabase yalıtılmaz: bu sohbetteki Edge işlevleri ve SQL, uygulamanın paylaşılan Supabase projesine hemen uygulanır. {{target}} dalına birleştirildikten sonra Dyad birleştirilen Edge işlevlerini yeniden dağıtır.",
     "originalTooltip": "Bu sohbet uygulamanın ana klasöründe {{branch}} dalında çalışır.",
     "detachedBranch": "Önceki sürüm",
     "statusQueued": "Birleştirme bekleniyor",

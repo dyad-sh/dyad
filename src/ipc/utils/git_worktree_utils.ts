@@ -906,6 +906,48 @@ export async function findFilesWithConflictMarkers(
 }
 
 /**
+ * Paths that the first-parent, non-merge commits in `from..to` changed,
+ * each commit on its own: a change a later commit reverted still counts.
+ * Merges that brought other work in are skipped. Relative to `path` (an
+ * app's folder can be a subfolder of its repository); a rename lists both
+ * its old and its new path.
+ */
+export async function listPathsChangedByOwnCommits({
+  path: cwd,
+  from,
+  to,
+}: {
+  path: string;
+  from: string;
+  to: string;
+}): Promise<string[]> {
+  const stdout = await runOrThrow(
+    [
+      "log",
+      "--first-parent",
+      "--no-merges",
+      "--name-only",
+      "--no-renames",
+      "--relative",
+      "--format=",
+      "-z",
+      `${from}..${to}`,
+      "--",
+    ],
+    cwd,
+    "Failed to list the files a chat's commits changed",
+  );
+  return [
+    ...new Set(
+      stdout
+        .split("\0")
+        .map((file) => file.trim())
+        .filter(Boolean),
+    ),
+  ];
+}
+
+/**
  * Paths that differ between two commits, or between a commit and the
  * working tree. Never runs the repository's fsmonitor.
  */

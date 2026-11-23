@@ -27,6 +27,8 @@ import {
   isMergeInProgress,
   isWorktreeLinkBroken,
   listChangedPaths,
+  listPathsChangedByOwnCommits,
+  listUncommittedPaths,
   mergeIntoWorkspace,
   pruneGitWorktrees,
   readMergeConflicts,
@@ -77,6 +79,12 @@ import {
 } from "./workspace_integration_queue";
 import { resolvePackageManager } from "./isolated_package_install";
 import { syncEnvironmentFiles } from "./workspace_environment";
+import {
+  appUsesSupabase,
+  findSupabaseFunctionChanges,
+  resyncSupabaseFunctionsFromApp,
+  type SupabaseFunctionChanges,
+} from "./workspace_supabase_sync";
 import { WORKTREE_BRANCH_PREFIX } from "@/shared/dyad_commit_trailers";
 import { runWorkspaceScopedOperation } from "./workspace_coordination";
 
@@ -187,6 +195,48 @@ export function isWorktreeIsolationEnabled(): boolean {
 
 function markerPath(worktreeRoot: string): string {
   return `${worktreeRoot}.owner.json`;
+}
+
+/**
+ * The edge functions a worktree's unmerged work touched: its own commits
+ * since the last integration (each on its own, so one an Undo reverted
+ * still counts: its version was deployed) and every uncommitted change.
+ * A turn deploys a function the moment it writes it, so these may be live
+ * in the worktree's version. Null when the app has no Supabase project, or
+ * when Git cannot tell (logged).
+ */
+async function unmergedSupabaseFunctionChanges(
+  workspace: ChatWorkspaceRow,
+): Promise<SupabaseFunctionChanges | null> {
+  try {
+    if (!(await appUsesSupabase(workspace.appId))) return null;
+    const appPath = getWorkspaceAppPath(workspace);
+    const [ownCommits, sinceIntegration, uncommitted] = await Promise.all([
+      listPathsChangedByOwnCommits({
+        path: appPath,
+        from: workspace.lastIntegratedCommit,
+        to: "HEAD",
+      }),
+      // Also merge resolutions and anything a merge commit carries.
+      listChangedPaths({
+        path: workspace.path,
+        from: workspace.lastIntegratedCommit,
+      }),
+      listUncommittedPaths(workspace.path),
+    ]);
+    return findSupabaseFunctionChanges([
+      ...ownCommits,
+      ...[...sinceIntegration, ...uncommitted].map((file) =>
+        toAppRelativePath(workspace, file),
+      ),
+    ]);
+  } catch (error) {
+    logger.warn(
+      `Failed to find the Supabase functions workspace ${workspace.id} changed`,
+      error,
+    );
+    return null;
+  }
 }
 
 /**
@@ -1478,13 +1528,19 @@ class ChatWorkspaceService {
     // merged; delete it only when its HEAD is the integrated one.
     const current = getWorkspaceById(workspace.id) ?? workspace;
     const original = await getOriginalAppPath(current.appId);
-    const integrated =
+    const verified =
       current.status === "active" &&
       original !== null &&
       isLinkedWorktreeOf(current.path, original) &&
       (await gitCurrentBranch({ path: current.path }).catch(() => null)) ===
-        current.branch &&
-      (await isWorkspaceIntegrated(current).catch(() => false));
+        current.branch;
+    const integrated =
+      verified && (await isWorkspaceIntegrated(current).catch(() => false));
+    // Read before the files go: the functions this worktree's unmerged work
+    // deployed are redeployed from the app's folder once it is removed.
+    const supabaseFunctions = verified
+      ? await unmergedSupabaseFunctionChanges(current)
+      : null;
     updateWorkspace(workspace.id, { status: "removing" });
     workspaceIntegrationQueue.forget(workspace.appId, workspace.id);
     try {
@@ -1521,6 +1577,14 @@ class ChatWorkspaceService {
     deleteWorkspaceRow(workspace.id);
     logger.info(`Removed isolated workspace ${workspace.path}`);
     publishWorkspaceChanged(workspace.appId);
+    // Outside the removal's claims, like any other redeploy.
+    if (supabaseFunctions) {
+      resyncSupabaseFunctionsFromApp({
+        appId: workspace.appId,
+        changes: supabaseFunctions,
+        reason: "worktree-deleted",
+      });
+    }
   }
 
   /** Stops the workspace's runtime and deletes its worktree and marker. */

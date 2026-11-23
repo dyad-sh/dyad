@@ -49,6 +49,7 @@ import {
   listBranchesContaining,
   listCommitsNotIn,
   listGitWorktrees,
+  listPathsChangedByOwnCommits,
   listUncommittedPaths,
   mergeIntoWorkspace,
   removeLinkedWorktree,
@@ -658,6 +659,42 @@ describe("git worktree helpers", () => {
         path.normalize(entry.path),
       ),
     ).toEqual([moved, worktree]);
+  });
+
+  it("lists each own commit's files, skipping merges that brought other work in", async () => {
+    const base = await createWorkspace();
+    await commitFile(worktree, "supabase/functions/a/index.ts", "1\n", "turn");
+    // An Undo: the endpoints match again, but the change was made.
+    await git(worktree, ["revert", "--no-edit", "HEAD"]);
+    await commitFile(repo, "from-main.txt", "x\n", "another chat landed");
+    await git(worktree, ["merge", "--no-edit", "main"]);
+    await commitFile(
+      worktree,
+      "web/supabase/functions/c/index.ts",
+      "c\n",
+      "web",
+    );
+
+    expect(
+      (
+        await listPathsChangedByOwnCommits({
+          path: worktree,
+          from: base,
+          to: "HEAD",
+        })
+      ).sort(),
+    ).toEqual([
+      "supabase/functions/a/index.ts",
+      "web/supabase/functions/c/index.ts",
+    ]);
+    // Relative to an app in a subfolder, and only its own files.
+    expect(
+      await listPathsChangedByOwnCommits({
+        path: path.join(worktree, "web"),
+        from: base,
+        to: "HEAD",
+      }),
+    ).toEqual(["supabase/functions/c/index.ts"]);
   });
 
   it("deletes a worktree folder by hand only once Git has unregistered it", async () => {

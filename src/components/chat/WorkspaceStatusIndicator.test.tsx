@@ -14,6 +14,7 @@ const state = vi.hoisted(() => ({
   retry: vi.fn(),
   retryPending: false,
   deleteWorkspace: vi.fn(),
+  supabaseProjectId: null as string | null,
 }));
 
 vi.mock("react-i18next", () => ({
@@ -24,6 +25,7 @@ vi.mock("react-i18next", () => ({
         "workspace.detachedBranch": "Earlier version",
         "workspace.originalTooltip": `This chat works in the app's main folder on ${options?.branch}.`,
         "workspace.isolatedTooltip": `This chat works on its own branch and folder. Dyad merges its finished work into ${options?.target} after checking the combined code.`,
+        "workspace.isolatedSupabaseTooltip": `Supabase is not isolated. After merging into ${options?.target}, Dyad redeploys the merged edge functions.`,
         "workspace.statusQueued": "Waiting to merge",
         "workspace.statusMerging": `Combining with ${options?.target}`,
         "workspace.statusResolvingConflicts": "Resolving conflicts",
@@ -57,6 +59,10 @@ vi.mock("@/hooks/useChatWorkspace", () => ({
     isPending: false,
     mutate: state.deleteWorkspace,
   }),
+}));
+
+vi.mock("@/hooks/useLoadApp", () => ({
+  useLoadApp: () => ({ app: { supabaseProjectId: state.supabaseProjectId } }),
 }));
 
 vi.mock("@/hooks/useSettings", () => ({
@@ -101,6 +107,7 @@ describe("WorkspaceStatusIndicator", () => {
     state.retry.mockReset();
     state.retryPending = false;
     state.deleteWorkspace.mockReset();
+    state.supabaseProjectId = null;
   });
 
   const isolated = (overrides: Partial<ChatWorkspaceStatus> = {}) =>
@@ -126,6 +133,32 @@ describe("WorkspaceStatusIndicator", () => {
         .getByTestId("workspace-delete-worktree")
         .getAttribute("aria-label"),
     ).toBe("Delete worktree");
+  });
+
+  it("says a worktree does not isolate the app's Supabase project", async () => {
+    state.isolationEnabled = true;
+    state.supabaseProjectId = "project-id";
+    state.status = isolated();
+    const { unmount } = render(<WorkspaceIndicators />);
+    act(() => screen.getByTestId("chat-workspace-indicator").focus());
+    expect(
+      (await screen.findByTestId("workspace-shared-supabase")).textContent,
+    ).toContain("After merging into main, Dyad redeploys");
+    unmount();
+
+    // Nothing to say for an app without Supabase, or the app's own folder.
+    for (const [projectId, current] of [
+      [null, isolated()],
+      ["project-id", status({})],
+    ] as const) {
+      state.supabaseProjectId = projectId;
+      state.status = current;
+      const view = render(<WorkspaceIndicators />);
+      act(() => screen.getByTestId("chat-workspace-indicator").focus());
+      await screen.findByRole("tooltip");
+      expect(screen.queryByTestId("workspace-shared-supabase")).toBeNull();
+      view.unmount();
+    }
   });
 
   it("confirms before deleting a merged worktree", async () => {

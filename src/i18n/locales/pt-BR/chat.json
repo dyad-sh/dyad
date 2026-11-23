@@ -488,6 +488,7 @@
   "workspace": {
     "isolated": "Espaço de trabalho isolado",
     "isolatedTooltip": "Este chat trabalha em sua própria branch e pasta. O Dyad mescla o trabalho concluído em {{target}} depois de verificar o código combinado.",
+    "isolatedSupabaseTooltip": "O Supabase não é isolado: as Edge Functions e o SQL deste chat chegam imediatamente ao projeto Supabase compartilhado do app. Depois de mesclar em {{target}}, o Dyad reimplanta as Edge Functions mescladas.",
     "originalTooltip": "Este chat trabalha na pasta principal do app em {{branch}}.",
     "detachedBranch": "Versão anterior",
     "statusQueued": "Aguardando mesclagem",

@@ -103,13 +103,14 @@ export async function flushDeferredSupabaseFunctionSync(
   try {
     // Imported lazily: both Supabase modules import the management client,
     // which imports this one, and the database stays out of its load path.
-    const [utils, client, { db }, { apps }, { eq }] = await Promise.all([
-      import("./supabase_utils"),
-      import("./supabase_management_client"),
-      import("@/db"),
-      import("@/db/schema"),
-      import("drizzle-orm"),
-    ]);
+    const [utils, { reconcileSupabaseFunctions }, { db }, { apps }, { eq }] =
+      await Promise.all([
+        import("./supabase_utils"),
+        import("./supabase_function_reconcile"),
+        import("@/db"),
+        import("@/db/schema"),
+        import("drizzle-orm"),
+      ]);
     const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
     if (!app || app.supabaseProjectId !== pending.supabaseProjectId) {
       logger.info(
@@ -127,42 +128,19 @@ export async function flushDeferredSupabaseFunctionSync(
       supabaseOrganizationSlug: pending.organizationSlug,
       skipPruneEdgeFunctions,
     };
-    let errors: string[];
-    if (pending.allFunctions) {
-      errors = await utils.deployAllSupabaseFunctions(target);
-    } else {
-      const deploys: string[] = [];
-      errors = [];
-      for (const functionName of pending.functionNames) {
-        if (await utils.supabaseFunctionEntryExists(appPath, functionName)) {
-          deploys.push(functionName);
-        } else if (!skipPruneEdgeFunctions) {
-          try {
-            await client.deleteSupabaseFunction({
-              appId,
-              supabaseProjectId: pending.supabaseProjectId,
-              functionName,
-              organizationSlug: pending.organizationSlug,
-            });
-          } catch (error) {
-            if (isSupabaseFunctionSyncDeferred(error)) continue;
-            if ((error as { response?: Response })?.response?.status !== 404) {
-              errors.push(`delete ${functionName}: ${error}`);
-            }
-          }
-        }
-      }
-      if (deploys.length > 0 || pending.sharedModulesChanged) {
-        errors.push(
-          ...(await utils.deployAffectedSupabaseFunctions({
-            ...target,
-            sharedModulesChanged: pending.sharedModulesChanged,
-            changedSharedModulePaths: [...pending.sharedModulePaths],
-            pendingFunctionDeploys: deploys,
-          })),
-        );
-      }
-    }
+    const errors = pending.allFunctions
+      ? await utils.deployAllSupabaseFunctions(target)
+      : await reconcileSupabaseFunctions({
+          appId,
+          appPath,
+          supabaseProjectId: pending.supabaseProjectId,
+          organizationSlug: pending.organizationSlug,
+          skipPruneEdgeFunctions,
+          pruneDanglingFunctions: true,
+          functionNames: [...pending.functionNames],
+          sharedModulesChanged: pending.sharedModulesChanged,
+          sharedModulePaths: [...pending.sharedModulePaths],
+        });
     if (errors.length > 0) {
       logger.warn(
         `Deferred Supabase function sync for app ${appId} had errors: ${errors.join(", ")}`,

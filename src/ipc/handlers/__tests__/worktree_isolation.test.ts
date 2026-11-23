@@ -88,6 +88,7 @@ import { registerChatHandlers } from "@/ipc/handlers/chat_handlers";
 import { registerWorkspaceHandlers } from "@/ipc/handlers/workspace_handlers";
 import * as gitWorktreeUtils from "@/ipc/utils/git_worktree_utils";
 import * as chatJournalCleanup from "@/ipc/services/chat_journal_cleanup";
+import * as workspaceSupabaseSync from "@/ipc/services/workspace_supabase_sync";
 import type { ChatWorkspaceStatus, Version } from "@/ipc/types";
 import { listSpecFiles } from "@/ipc/handlers/tests_handlers";
 import { queryKeys } from "@/lib/queryKeys";
@@ -2000,6 +2001,67 @@ describe("worktree isolation (integration)", () => {
     expect(harness.readAppFile("src/builds.ts")).toContain("builds");
     expect(harness.readAppFile("pnpm-workspace.yaml")).toContain("esbuild");
     await discardWorkspace(chatId);
+  }, 60_000);
+
+  it("redeploys a worktree's edge functions from the main folder once merged or deleted", async () => {
+    await waitForQuietApp();
+    const setSupabaseProject = (supabaseProjectId: string | null) =>
+      harness.db
+        .update(apps)
+        .set({ supabaseProjectId })
+        .where(eq(apps.id, harness.appId))
+        .run();
+    const resync = vi
+      .spyOn(workspaceSupabaseSync, "resyncSupabaseFunctionsFromApp")
+      .mockImplementation(() => undefined);
+    setSupabaseProject("test-project");
+    try {
+      // The turn deployed its own version; the merged one replaces it.
+      const mergedChatId = await createChat();
+      await landTurn(mergedChatId, {
+        "supabase/functions/hello/index.ts": "export {};\n",
+      });
+      await waitForMerged(mergedChatId);
+      expect(resync).toHaveBeenCalledWith({
+        appId: harness.appId,
+        changes: { functionNames: ["hello"], sharedModulePaths: [] },
+        reason: "merged",
+      });
+      // Its worktree has nothing unmerged left to undo.
+      await discardWorkspace(mergedChatId);
+      expect(resync).toHaveBeenCalledTimes(1);
+
+      // A stopped turn's function edit never merges; deleting the worktree
+      // puts the main folder's functions back.
+      const stoppedChatId = await createChat();
+      const turn = await chatWorkspaceService.prepareTurnWorkspace({
+        appId: harness.appId,
+        chatId: stoppedChatId,
+        originalAppPath: harness.appDir,
+        writable: true,
+        allowIsolation: true,
+        signal: new AbortController().signal,
+      });
+      try {
+        const target = path.join(
+          turn.appPath,
+          "supabase/functions/bye/index.ts",
+        );
+        fs.mkdirSync(path.dirname(target), { recursive: true });
+        fs.writeFileSync(target, "export {};\n");
+      } finally {
+        await turn.settle();
+      }
+      await discardWorkspace(stoppedChatId);
+      expect(resync).toHaveBeenLastCalledWith({
+        appId: harness.appId,
+        changes: { functionNames: ["bye"], sharedModulePaths: [] },
+        reason: "worktree-deleted",
+      });
+    } finally {
+      resync.mockRestore();
+      setSupabaseProject(null);
+    }
   }, 60_000);
 
   it("refreshes a cached test list after a worktree spec reaches the main folder", async () => {

@@ -488,6 +488,7 @@
   "workspace": {
     "isolated": "Espace de travail isolé",
     "isolatedTooltip": "Ce chat travaille sur sa propre branche et dans son propre dossier. Dyad fusionne son travail terminé dans {{target}} après avoir vérifié le code combiné.",
+    "isolatedSupabaseTooltip": "Supabase n'est pas isolé\u00a0: les fonctions Edge et le SQL de ce chat s'appliquent immédiatement au projet Supabase partagé de l'app. Après la fusion dans {{target}}, Dyad redéploie les fonctions Edge fusionnées.",
     "originalTooltip": "Ce chat travaille dans le dossier principal de l'application sur {{branch}}.",
     "detachedBranch": "Version antérieure",
     "statusQueued": "En attente de fusion",

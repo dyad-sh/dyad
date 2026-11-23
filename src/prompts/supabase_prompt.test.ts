@@ -3,6 +3,7 @@ import {
   getSupabaseAvailableSystemPrompt,
   SUPABASE_AUTH_REDIRECT_RULE,
   SUPABASE_AUTH_BROWSER_EXAMPLE,
+  SUPABASE_SHARED_EDGE_FUNCTIONS_RULE,
 } from "./supabase_prompt";
 
 it("tells agents to preserve existing callers when migrating a shared Supabase database", () => {
@@ -12,6 +13,19 @@ it("tells agents to preserve existing callers when migrating a shared Supabase d
   expect(prompt).toContain("even before a worktree merges");
   expect(prompt).toContain("Keep existing reads and writes working");
   expect(prompt).toContain("backfill existing rows");
+});
+
+it("tells agents that a worktree's Edge Functions deploy to the shared project", () => {
+  const prompt = getSupabaseAvailableSystemPrompt(
+    "// Existing Supabase client",
+  );
+  expect(prompt).toContain(`\n${SUPABASE_SHARED_EDGE_FUNCTIONS_RULE}\n`);
+  expect(SUPABASE_SHARED_EDGE_FUNCTIONS_RULE).toContain(
+    "even from a chat's Git worktree",
+  );
+  expect(SUPABASE_SHARED_EDGE_FUNCTIONS_RULE).toContain(
+    "Dyad redeploys those functions from the app's main folder",
+  );
 });
 
 describe("Supabase auth redirect guidance", () => {

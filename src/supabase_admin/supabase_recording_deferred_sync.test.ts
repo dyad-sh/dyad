@@ -11,8 +11,7 @@ import {
 
 const mocks = vi.hoisted(() => ({
   findApp: vi.fn(),
-  functionExists: vi.fn(),
-  deployAffected: vi.fn(),
+  reconcile: vi.fn(),
   deployAll: vi.fn(),
   fetch: vi.fn(),
   sendToWindow: vi.fn(),
@@ -41,9 +40,11 @@ vi.mock("@/main/settings", () => ({
   writeSettings: vi.fn(),
 }));
 vi.mock("./supabase_utils", () => ({
-  supabaseFunctionEntryExists: mocks.functionExists,
-  deployAffectedSupabaseFunctions: mocks.deployAffected,
   deployAllSupabaseFunctions: mocks.deployAll,
+}));
+// What reconciling a function set does is covered by its own test.
+vi.mock("./supabase_function_reconcile", () => ({
+  reconcileSupabaseFunctions: mocks.reconcile,
 }));
 
 function startRecording(appId: number) {
@@ -71,10 +72,7 @@ describe("Supabase function sync during a recording", () => {
       supabaseProjectId: "project-id",
       path: "/apps/demo",
     });
-    mocks.functionExists.mockImplementation(
-      async (_appPath: string, name: string) => name !== "gone",
-    );
-    mocks.deployAffected.mockResolvedValue([]);
+    mocks.reconcile.mockResolvedValue([]);
     mocks.deployAll.mockResolvedValue([]);
     mocks.fetch.mockResolvedValue(new Response(null, { status: 200 }));
     vi.stubGlobal("fetch", mocks.fetch);
@@ -101,36 +99,32 @@ describe("Supabase function sync during a recording", () => {
     expect(appOperationCoordinator.isBusy(5, ["supabase-functions"])).toBe(
       false,
     );
-    expect(mocks.deployAffected).not.toHaveBeenCalled();
+    expect(mocks.reconcile).not.toHaveBeenCalled();
 
     endRecording();
 
+    // Deploy what the app's folder has, delete the rest (per the setting),
+    // and prune like any app deploy.
     await vi.waitFor(() =>
-      expect(mocks.deployAffected).toHaveBeenCalledWith(
-        expect.objectContaining({
-          appId: 5,
-          appPath: "/apps/demo",
-          supabaseProjectId: "project-id",
-          supabaseOrganizationSlug: null,
-          sharedModulesChanged: true,
-          changedSharedModulePaths: ["supabase/functions/_shared/cors.ts"],
-          pendingFunctionDeploys: ["alpha"],
-        }),
-      ),
+      expect(mocks.reconcile).toHaveBeenCalledWith({
+        appId: 5,
+        appPath: "/apps/demo",
+        supabaseProjectId: "project-id",
+        organizationSlug: null,
+        skipPruneEdgeFunctions: false,
+        pruneDanglingFunctions: true,
+        functionNames: ["alpha", "gone"],
+        sharedModulesChanged: true,
+        sharedModulePaths: ["supabase/functions/_shared/cors.ts"],
+      }),
     );
-    // The missing function is deleted remotely; the existing one is not.
-    expect(mocks.fetch).toHaveBeenCalledWith(
-      "https://api.supabase.com/v1/projects/project-id/functions/gone",
-      expect.objectContaining({ method: "DELETE" }),
-    );
-    expect(mocks.fetch).toHaveBeenCalledTimes(1);
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(mocks.sendToWindow).not.toHaveBeenCalled();
   });
 
   it("shows an error toast when the deferred deploy reports errors", async () => {
     const endRecording = startRecording(9);
-    mocks.deployAffected.mockResolvedValue(["alpha: bundle failed"]);
+    mocks.reconcile.mockResolvedValue(["alpha: bundle failed"]);
 
     await expect(
       withSupabaseFunctionDeployment(
@@ -195,7 +189,7 @@ describe("Supabase function sync during a recording", () => {
         expect.objectContaining({ appId: 6, supabaseProjectId: "project-id" }),
       ),
     );
-    expect(mocks.deployAffected).not.toHaveBeenCalled();
+    expect(mocks.reconcile).not.toHaveBeenCalled();
   });
 
   it("drops deferred work when the app's project changed during the recording", async () => {
@@ -214,7 +208,7 @@ describe("Supabase function sync during a recording", () => {
     endRecording();
     await new Promise((resolve) => setTimeout(resolve, 20));
 
-    expect(mocks.deployAffected).not.toHaveBeenCalled();
+    expect(mocks.reconcile).not.toHaveBeenCalled();
     expect(mocks.fetch).not.toHaveBeenCalled();
     expect(mocks.sendToWindow).not.toHaveBeenCalled();
   });

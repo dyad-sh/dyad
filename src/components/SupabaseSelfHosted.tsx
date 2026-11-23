@@ -37,7 +37,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ipc, type App } from "@/ipc/types";
 import { getErrorMessage } from "@/lib/errors";
 import { queryKeys } from "@/lib/queryKeys";
@@ -219,12 +219,17 @@ export function SupabaseSelfHostedConnectedCard({
   onChanged: () => Promise<unknown>;
 }) {
   const [isDisconnecting, setIsDisconnecting] = useState(false);
+  const queryClient = useQueryClient();
   const instance = app.supabaseSelfHosted;
 
   const handleDisconnect = async () => {
     setIsDisconnecting(true);
     try {
       await ipc.supabase.unsetAppProject({ app: app.id });
+      // Each instance's list of linked apps has changed.
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.supabase.selfHostedInstances,
+      });
       toast.success("Disconnected the self-hosted Supabase instance");
       await onChanged();
     } catch (error) {
@@ -508,6 +513,7 @@ export function SupabaseSelfHostedLinkSection({
   const [formError, setFormError] = useState<string | null>(null);
   const [importedNote, setImportedNote] = useState<string | null>(null);
   const { settings } = useSettings();
+  const queryClient = useQueryClient();
   // Import is part of the Coolify experiment, so it stays hidden while that is off.
   const canImportFromCoolify =
     !!settings?.enableOwnServerDeployment &&
@@ -535,6 +541,10 @@ export function SupabaseSelfHostedLinkSection({
     setIsLinking(true);
     try {
       await linkApp(appId, projectId);
+      // Each instance's list of linked apps has changed.
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.supabase.selfHostedInstances,
+      });
       toast.success("Connected to the self-hosted Supabase instance");
       await onLinked();
     } catch (error) {

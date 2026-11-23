@@ -140,6 +140,28 @@ describe("SupabaseSelfHostedLinkSection", () => {
     );
   });
 
+  it("refreshes each instance's linked apps after connecting", async () => {
+    mocks.listSelfHostedInstances.mockResolvedValue([
+      { ...INSTANCE, linkedApps: [] },
+    ]);
+    const user = userEvent.setup();
+    const onLinked = vi.fn().mockResolvedValue(undefined);
+    renderWithQuery(
+      <SupabaseSelfHostedLinkSection appId={7} onLinked={onLinked} />,
+    );
+
+    await user.click(await screen.findByLabelText("Instance"));
+    await user.click(await screen.findByRole("option", { name: "Home lab" }));
+    await user.click(screen.getByRole("button", { name: "Connect" }));
+
+    await waitFor(() => expect(onLinked).toHaveBeenCalled());
+    // Settings reads linked apps from this list to decide whether to confirm
+    // a removal, so it must not keep the copy from before the link.
+    await waitFor(() =>
+      expect(mocks.listSelfHostedInstances).toHaveBeenCalledTimes(2),
+    );
+  });
+
   it("adds an instance without SSH by default", async () => {
     mocks.addSelfHostedInstance.mockResolvedValue({
       instance: { ...INSTANCE, ssh: null },

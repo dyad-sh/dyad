@@ -17,6 +17,7 @@ import {
   deleteSupabaseSelfHostedInstance,
   getSupabaseSelfHostedInstance,
   insertSupabaseSelfHostedInstance,
+  isSupabaseSelfHostedProject,
   listLinkedApps,
   listSupabaseSelfHostedInstances,
   type SupabaseSelfHostedSsh,
@@ -60,6 +61,11 @@ import { SupabaseManagementAPIError } from "@dyad-sh/supabase-management-js";
 import { isRateLimitError } from "../utils/retryWithRateLimit";
 import { isGenericFetchFailedError } from "@/lib/posthogTelemetry";
 import { queryInvalidationBus } from "@/window_infrastructure/main/query_invalidation_bus";
+import { isRecordingActive } from "../services/recording_registry";
+
+// Self-hosted instance ids are UUIDs; Cloud project refs never are.
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function assertSelfHostedEnabled(): void {
   if (!readSettings().enableSupabaseSelfHosted) {
@@ -532,6 +538,14 @@ export function registerSupabaseHandlers() {
       // The renderer asked the user to confirm these. Nothing here contacts
       // the instance, so this works after its server is gone.
       const linked = listLinkedApps(id);
+      // Check every app first so a refusal can't leave some disconnected.
+      const recording = linked.filter((app) => isRecordingActive(app.id));
+      if (recording.length > 0) {
+        throw new DyadError(
+          `Stop recording in ${recording.map((app) => app.name).join(", ")} before removing this instance.`,
+          DyadErrorKind.Conflict,
+        );
+      }
       for (const app of linked) {
         await disconnectSupabaseProject(app.id);
       }
@@ -609,6 +623,16 @@ export function registerSupabaseHandlers() {
       async (_, params) => {
         const { projectId, appId, parentProjectId, organizationSlug } = params;
         await assertNoNeonProject(appId);
+        if (
+          projectId &&
+          UUID_PATTERN.test(projectId) &&
+          !isSupabaseSelfHostedProject(projectId)
+        ) {
+          throw new DyadError(
+            "That self-hosted Supabase instance no longer exists. Choose another instance.",
+            DyadErrorKind.NotFound,
+          );
+        }
         await db
           .update(apps)
           .set({

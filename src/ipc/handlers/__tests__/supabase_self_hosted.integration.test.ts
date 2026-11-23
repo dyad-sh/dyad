@@ -32,6 +32,7 @@ import {
 } from "@/testing/fake_supabase_edge_runtime_ssh";
 import { generateSshKeyPair } from "@/testing/fake_ssh_server";
 import { closeSupabaseSelfHostedSessions } from "@/supabase_admin/supabase_self_hosted_functions";
+import { reserveRecordingStart } from "@/ipc/services/recording_registry";
 
 const mocks = vi.hoisted(() => ({ readSettings: vi.fn() }));
 
@@ -179,6 +180,55 @@ describe("self-hosted Supabase instances (integration)", () => {
       supabaseProjectId: null,
       supabaseSelfHosted: null,
     });
+  });
+
+  it("removes nothing while a linked app is recording", async () => {
+    const { instance } = await addInstance();
+    const [idle, recording] = ["Blog", "Shop"].map((name) =>
+      harness!.db
+        .insert(apps)
+        .values({ name, path: appDirectory, supabaseProjectId: instance.id })
+        .returning()
+        .get(),
+    );
+    const reservation = reserveRecordingStart(recording.id)!;
+
+    try {
+      await expect(
+        harness!.invokeHandler("supabase:remove-self-hosted-instance", {
+          id: instance.id,
+        }),
+      ).rejects.toMatchObject({ kind: DyadErrorKind.Conflict });
+    } finally {
+      reservation.release();
+    }
+
+    // Neither app was disconnected and the instance is still there.
+    await expect(
+      harness!.invokeHandler("get-app", idle.id),
+    ).resolves.toMatchObject({ supabaseProjectId: instance.id });
+    await expect(
+      harness!.invokeHandler("supabase:list-self-hosted-instances"),
+    ).resolves.toHaveLength(1);
+  });
+
+  it("refuses to link an app to an instance that no longer exists", async () => {
+    const app = harness!.db
+      .insert(apps)
+      .values({ name: "Shop", path: appDirectory })
+      .returning()
+      .get();
+
+    await expect(
+      harness!.invokeHandler("supabase:set-app-project", {
+        appId: app.id,
+        projectId: "00000000-0000-4000-8000-000000000000",
+        organizationSlug: null,
+      }),
+    ).rejects.toMatchObject({ kind: DyadErrorKind.NotFound });
+    await expect(
+      harness!.invokeHandler("get-app", app.id),
+    ).resolves.toMatchObject({ supabaseProjectId: null });
   });
 
   it("finds the functions container when added with SSH", async () => {

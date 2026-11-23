@@ -636,15 +636,16 @@ export function registerSupabaseHandlers() {
       async (_, params) => {
         const { projectId, appId, parentProjectId, organizationSlug } = params;
         await assertNoNeonProject(appId);
-        if (
-          projectId &&
-          UUID_PATTERN.test(projectId) &&
-          !isSupabaseSelfHostedProject(projectId)
-        ) {
-          throw new DyadError(
-            "That self-hosted Supabase instance no longer exists. Choose another instance.",
-            DyadErrorKind.NotFound,
-          );
+        if (projectId && UUID_PATTERN.test(projectId)) {
+          // Apps already linked keep working while the experiment is off,
+          // but new links need it on.
+          assertSelfHostedEnabled();
+          if (!isSupabaseSelfHostedProject(projectId)) {
+            throw new DyadError(
+              "That self-hosted Supabase instance no longer exists. Choose another instance.",
+              DyadErrorKind.NotFound,
+            );
+          }
         }
         await db
           .update(apps)

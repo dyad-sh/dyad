@@ -13,6 +13,7 @@ describe("sendsKeysUnencrypted", () => {
       "http://127.0.0.1:8000",
       "http://[::1]:8000",
       "http://app.localhost",
+      "http://localhost.:8000",
       "not a url",
       "",
     ]) {

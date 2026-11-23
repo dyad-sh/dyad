@@ -96,6 +96,21 @@ describe("pending self-hosted function updates", () => {
     ).toEqual([]);
   });
 
+  it("keeps nothing for a new function or a deleted update", () => {
+    deploy("send-email", false, T0);
+    expect(countTrackedSupabaseSelfHostedProjects()).toBe(0);
+
+    deploy("charge", true, T0);
+    recordSupabaseSelfHostedFunctionDelete({
+      projectId: "instance-1",
+      functionName: "charge",
+      workerLifetimeMs: LIFETIME,
+      nowMs: T0,
+    });
+    deploy("charge", false, T0 + LIFETIME + 1);
+    expect(countTrackedSupabaseSelfHostedProjects()).toBe(0);
+  });
+
   it("forgets deletions and updates once their time has passed", () => {
     deploy("send-email", true, T0);
     recordSupabaseSelfHostedFunctionDelete({

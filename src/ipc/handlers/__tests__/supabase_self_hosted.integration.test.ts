@@ -237,6 +237,27 @@ describe("self-hosted Supabase instances (integration)", () => {
     ).resolves.toMatchObject({ supabaseProjectId: null });
   });
 
+  it("links new apps only while the experiment is on", async () => {
+    const { instance } = await addInstance();
+    const app = harness!.db
+      .insert(apps)
+      .values({ name: "Shop", path: appDirectory })
+      .returning()
+      .get();
+    mocks.readSettings.mockReturnValue({ enableSupabaseSelfHosted: false });
+
+    await expect(
+      harness!.invokeHandler("supabase:set-app-project", {
+        appId: app.id,
+        projectId: instance.id,
+        organizationSlug: null,
+      }),
+    ).rejects.toMatchObject({ kind: DyadErrorKind.Precondition });
+    await expect(
+      harness!.invokeHandler("get-app", app.id),
+    ).resolves.toMatchObject({ supabaseProjectId: null });
+  });
+
   it("finds the functions container when added with SSH", async () => {
     edgeSsh = await startFakeEdgeRuntimeSsh([
       {

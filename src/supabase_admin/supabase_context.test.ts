@@ -5,8 +5,14 @@ import {
 } from "./supabase_management_client";
 import {
   getSupabaseClientCode,
+  getSupabaseSelfHostedPromptOptions,
   getSupabaseTableSchema,
 } from "./supabase_context";
+import { getSupabaseSelfHostedInstanceSummary } from "./supabase_self_hosted_store";
+import {
+  recordSupabaseSelfHostedFunctionDeploy,
+  resetSupabaseSelfHostedFunctionUpdates,
+} from "./supabase_self_hosted_function_updates";
 import { DyadErrorKind } from "@/errors/dyad_error";
 
 vi.mock(
@@ -249,5 +255,39 @@ describe("getSupabaseClientCode", () => {
     expect(getProjectApiKeysMock).toHaveBeenCalledWith(
       expect.not.objectContaining({ reveal: true }),
     );
+  });
+});
+
+describe("getSupabaseSelfHostedPromptOptions", () => {
+  it("lists pending functions by name, whatever order they go live in", () => {
+    vi.mocked(getSupabaseSelfHostedInstanceSummary).mockReturnValue({
+      id: "instance-1",
+      name: "Home lab",
+      url: "https://supabase.example.com",
+      studioUrl: null,
+      ssh: { host: "203.0.113.7", port: 22, username: "root" },
+    });
+    const now = Date.now();
+    try {
+      for (const [functionName, offset] of [
+        ["send-email", 0],
+        ["charge", 1_000],
+      ] as const) {
+        recordSupabaseSelfHostedFunctionDeploy({
+          projectId: "instance-1",
+          functionName,
+          replacedExisting: true,
+          workerLifetimeMs: 60_000,
+          nowMs: now + offset,
+        });
+      }
+
+      expect(
+        getSupabaseSelfHostedPromptOptions("instance-1")?.pendingFunctions,
+      ).toEqual(["charge", "send-email"]);
+    } finally {
+      vi.mocked(getSupabaseSelfHostedInstanceSummary).mockReset();
+      resetSupabaseSelfHostedFunctionUpdates();
+    }
   });
 });

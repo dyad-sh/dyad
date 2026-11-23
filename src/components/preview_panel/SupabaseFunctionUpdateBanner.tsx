@@ -45,8 +45,10 @@ export function SupabaseFunctionUpdateBanner() {
   if (projectId === null || updates.length === 0) return null;
 
   const names = updates.map((update) => update.functionName);
+  // Rounded up to the minute shown, so the time is never early.
+  const latestMs = Math.max(...updates.map((update) => update.liveByMs));
   const liveBy = new Date(
-    Math.max(...updates.map((update) => update.liveByMs)),
+    Math.ceil(latestMs / 60_000) * 60_000,
   ).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   const message =
     names.length === 1

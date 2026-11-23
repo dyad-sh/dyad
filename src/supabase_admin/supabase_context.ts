@@ -133,9 +133,10 @@ export function getSupabaseSelfHostedPromptOptions(
   return {
     url: instance.url,
     functionsDeployed: instance.ssh !== null,
-    pendingFunctions: listPendingSupabaseSelfHostedFunctionUpdates(
-      projectId,
-    ).map(({ functionName }) => functionName),
+    pendingFunctions: listPendingSupabaseSelfHostedFunctionUpdates(projectId)
+      .map(({ functionName }) => functionName)
+      // By name, so redeploying a pending function doesn't reorder them.
+      .sort(),
   };
 }
 

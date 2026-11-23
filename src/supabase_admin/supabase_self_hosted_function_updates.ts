@@ -32,6 +32,18 @@ function entriesFor(
   return entries;
 }
 
+/** Removes one function's entry, and the project once it has none. */
+function removeEntry(
+  store: Map<string, Map<string, number>>,
+  projectId: string,
+  functionName: string,
+): void {
+  const entries = store.get(projectId);
+  if (!entries) return;
+  entries.delete(functionName);
+  if (entries.size === 0) store.delete(projectId);
+}
+
 /**
  * Records a deploy. A function that did not exist is live at once, unless it
  * was deleted recently: the router reuses a worker by the function's path,
@@ -51,15 +63,15 @@ export function recordSupabaseSelfHostedFunctionDeploy({
   nowMs?: number;
 }): void {
   const deletedUntil = deletedWorkers.get(projectId)?.get(functionName);
-  deletedWorkers.get(projectId)?.delete(functionName);
+  removeEntry(deletedWorkers, projectId, functionName);
   const liveByMs = replacedExisting
     ? nowMs + workerLifetimeMs
     : deletedUntil !== undefined && deletedUntil > nowMs
       ? deletedUntil
       : undefined;
-  const pending = entriesFor(pendingUpdates, projectId);
-  if (liveByMs === undefined) pending.delete(functionName);
-  else pending.set(functionName, liveByMs);
+  if (liveByMs === undefined)
+    removeEntry(pendingUpdates, projectId, functionName);
+  else entriesFor(pendingUpdates, projectId).set(functionName, liveByMs);
 }
 
 export function recordSupabaseSelfHostedFunctionDelete({
@@ -73,7 +85,7 @@ export function recordSupabaseSelfHostedFunctionDelete({
   workerLifetimeMs: number;
   nowMs?: number;
 }): void {
-  pendingUpdates.get(projectId)?.delete(functionName);
+  removeEntry(pendingUpdates, projectId, functionName);
   entriesFor(deletedWorkers, projectId).set(
     functionName,
     nowMs + workerLifetimeMs,
@@ -113,12 +125,12 @@ export function listPendingSupabaseSelfHostedFunctionUpdates(
   );
 }
 
-/** Test seam. */
 /** How many projects have anything tracked. For tests. */
 export function countTrackedSupabaseSelfHostedProjects(): number {
   return new Set([...pendingUpdates.keys(), ...deletedWorkers.keys()]).size;
 }
 
+/** Test seam. */
 export function resetSupabaseSelfHostedFunctionUpdates(): void {
   pendingUpdates.clear();
   deletedWorkers.clear();

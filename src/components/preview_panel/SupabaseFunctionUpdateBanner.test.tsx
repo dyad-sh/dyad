@@ -95,6 +95,19 @@ describe("SupabaseFunctionUpdateBanner", () => {
     );
   });
 
+  it("rounds the time up so it is never early", async () => {
+    h.listPendingSelfHostedFunctionUpdates.mockResolvedValue([
+      // 15:41:01 shows as 15:42, not 15:41.
+      { functionName: "send-email", liveByMs: LIVE_BY - 59_000 },
+    ]);
+    renderBanner();
+
+    expect(
+      (await screen.findByTestId("supabase-function-update-banner"))
+        .textContent,
+    ).toContain(`will be live by ${liveByText}.`);
+  });
+
   it("shows nothing when no update is pending", async () => {
     h.listPendingSelfHostedFunctionUpdates.mockResolvedValue([]);
     renderBanner();

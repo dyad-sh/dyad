@@ -1,11 +1,13 @@
 /** URL checks shared by the self-hosted Supabase form and the main process. */
 
 export function isLoopbackHostname(hostname: string): boolean {
+  // "localhost." is the same name written fully qualified.
+  const name = hostname.replace(/\.$/, "");
   return (
-    hostname === "localhost" ||
-    hostname === "127.0.0.1" ||
-    hostname === "[::1]" ||
-    hostname.endsWith(".localhost")
+    name === "localhost" ||
+    name === "127.0.0.1" ||
+    name === "[::1]" ||
+    name.endsWith(".localhost")
   );
 }
 

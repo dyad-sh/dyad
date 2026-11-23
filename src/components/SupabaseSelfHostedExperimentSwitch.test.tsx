@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SupabaseSelfHostedExperimentSwitch } from "./SupabaseSelfHostedExperimentSwitch";
 
 const mocks = vi.hoisted(() => ({
-  settings: undefined as { enableSupabaseSelfHosted?: boolean } | undefined,
+  settings: null as { enableSupabaseSelfHosted?: boolean } | null,
   updateSettings: vi.fn(),
 }));
 
@@ -21,7 +21,8 @@ const toggle = () =>
 describe("SupabaseSelfHostedExperimentSwitch", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.settings = undefined;
+    // What useSettings returns before settings load.
+    mocks.settings = null;
   });
   afterEach(cleanup);
 

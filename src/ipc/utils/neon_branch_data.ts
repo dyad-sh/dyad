@@ -93,9 +93,32 @@ async function listForeignKeysWith(db: Queryable): Promise<TableForeignKey[]> {
     join pg_namespace rn on rn.oid = r.relnamespace
     where con.contype = 'f' and ${USER_SCHEMA_FILTER}
       -- Partitions inherit their parent's foreign keys; those go with it.
+      -- planDataCopy maps them onto the partitions to order their rows.
       and con.conparentid = 0
     order by 1, 2, 3`);
   return rows as TableForeignKey[];
+}
+
+/** A partition and the partitioned table it belongs to. */
+export interface TablePartition {
+  schema: string;
+  name: string;
+  parentSchema: string;
+  parentName: string;
+}
+
+async function listPartitionsWith(db: Queryable): Promise<TablePartition[]> {
+  const rows = await db.query(`
+    select cn.nspname as schema, c.relname as name,
+      n.nspname as "parentSchema", p.relname as "parentName"
+    from pg_inherits i
+    join pg_class p on p.oid = i.inhparent
+    join pg_namespace n on n.oid = p.relnamespace
+    join pg_class c on c.oid = i.inhrelid
+    join pg_namespace cn on cn.oid = c.relnamespace
+    where p.relkind = 'p' and ${USER_SCHEMA_FILTER}
+    order by 1, 2`);
+  return rows as TablePartition[];
 }
 
 /** Tables with enabled user (not internal, foreign-key) triggers. */
@@ -217,19 +240,23 @@ const tableKey = (schema: string, name: string) => `${schema}.${name}`;
 /**
  * Splits `tables` into those whose keys the copy drops and those whose keys
  * it keeps (Neon Auth's, and any the role doesn't own), and orders the latter
- * so every row goes in after the rows it references. Throws `UncopyableDataError`, before
- * anything is written, for what no order fixes: user triggers it can't turn
- * off, a key on a table that references itself, a cycle, or a key into a
- * table copied with its keys off.
+ * so every row goes in after the rows it references. A key declared on (or
+ * into) a partitioned table binds the rows of its partitions, which are what
+ * `tables` lists, so `partitions` maps it onto them. Throws
+ * `UncopyableDataError`, before anything is written, for what no order
+ * fixes: user triggers it can't turn off, a key on a table that references
+ * itself, a cycle, or a key into a table copied with its keys off.
  */
 export function planDataCopy({
   tables,
   foreignKeys,
   triggered,
+  partitions = [],
 }: {
   tables: CopyTable[];
   foreignKeys: TableForeignKey[];
   triggered: { schema: string; name: string }[];
+  partitions?: TablePartition[];
 }): DataCopyPlan {
   const managed = tables.filter(isManaged);
   const owned = tables.filter((t) => !isManaged(t));
@@ -249,25 +276,41 @@ export function planDataCopy({
     }
   }
 
+  const partitionsOf = new Map<string, string[]>();
+  for (const p of partitions) {
+    const parentKey = tableKey(p.parentSchema, p.parentName);
+    partitionsOf.set(parentKey, [
+      ...(partitionsOf.get(parentKey) ?? []),
+      tableKey(p.schema, p.name),
+    ]);
+  }
+  // The tables holding a table's rows: itself, or its partitions' leaves.
+  const leaves = (key: string): string[] =>
+    partitionsOf.get(key)?.flatMap(leaves) ?? [key];
+
   const parents = new Map<string, Set<string>>(
     [...managedByKey.keys()].map((key) => [key, new Set<string>()]),
   );
   for (const fk of foreignKeys) {
-    const child = tableKey(fk.schema, fk.table);
-    const parent = tableKey(fk.referencedSchema, fk.referencedTable);
-    if (!managedByKey.has(child)) continue;
-    if (child === parent) {
-      throw new UncopyableDataError(
-        `Can't copy ${child}: its rows refer to each other, and Dyad can't turn off its keys.`,
-      );
+    for (const child of leaves(tableKey(fk.schema, fk.table))) {
+      if (!managedByKey.has(child)) continue;
+      for (const parent of leaves(
+        tableKey(fk.referencedSchema, fk.referencedTable),
+      )) {
+        if (child === parent) {
+          throw new UncopyableDataError(
+            `Can't copy ${child}: its rows refer to each other, and Dyad can't turn off its keys.`,
+          );
+        }
+        if (ownedKeys.has(parent)) {
+          throw new UncopyableDataError(
+            `Can't copy ${child}: it refers to ${parent}, which is copied with its keys turned off.`,
+          );
+        }
+        // A table outside the copy keeps its rows, so it sets no order.
+        if (managedByKey.has(parent)) parents.get(child)!.add(parent);
+      }
     }
-    if (ownedKeys.has(parent)) {
-      throw new UncopyableDataError(
-        `Can't copy ${child}: it refers to ${parent}, which is copied with its keys turned off.`,
-      );
-    }
-    // A table outside the copy keeps its rows, so it sets no order.
-    if (managedByKey.has(parent)) parents.get(child)!.add(parent);
   }
 
   // Parents first; among the tables that are ready, by name, so the order is
@@ -520,6 +563,7 @@ export async function copyBranchData({
       tables,
       foreignKeys: targetForeignKeys,
       triggered: await listTriggeredTables(target),
+      partitions: await listPartitionsWith(target),
     });
 
     // Every key dropped below is re-added, including those on partitioned
@@ -745,6 +789,7 @@ export async function exportBranchDataAsSql({
       foreignKeys: await listForeignKeysWith(source),
       // The file checks the destination's triggers before writing any rows.
       triggered: [],
+      partitions: await listPartitionsWith(source),
     });
     const triggers = triggerCopySql(tables);
     await write(triggers.disable);

@@ -36,6 +36,7 @@ import {
   UncopyableDataError,
   type CopyTable,
   type TableForeignKey,
+  type TablePartition,
 } from "./neon_branch_data";
 
 const table = (qualified: string, canAlter: boolean): CopyTable => {
@@ -60,6 +61,12 @@ const key = (
     referencedTable,
     canAlter,
   };
+};
+
+const partition = (qualified: string, of: string): TablePartition => {
+  const [schema, name] = qualified.split(".");
+  const [parentSchema, parentName] = of.split(".");
+  return { schema, name, parentSchema, parentName };
 };
 
 const names = (tables: CopyTable[]) =>
@@ -168,6 +175,44 @@ describe("planDataCopy", () => {
     expect(names(plan.managedTables)).toEqual(["neon_auth.account"]);
   });
 
+  it("orders a partition by the key declared on its partitioned table", () => {
+    // A legacy app-owned table partitioned by year: the key is listed once,
+    // on `audit`, while the rows are in `audit_2026`.
+    const plan = planDataCopy({
+      tables: [
+        table("neon_auth.audit_2026", true),
+        table("neon_auth.user", true),
+      ],
+      foreignKeys: [key("neon_auth.audit", "neon_auth.user", true)],
+      triggered: [],
+      partitions: [partition("neon_auth.audit_2026", "neon_auth.audit")],
+    });
+    expect(names(plan.managedTables)).toEqual([
+      "neon_auth.user",
+      "neon_auth.audit_2026",
+    ]);
+    expect(plan.droppedForeignKeys).toEqual([]);
+  });
+
+  it("orders a key into a partitioned table after its leaf partitions", () => {
+    const plan = planDataCopy({
+      tables: [
+        table("vendor.a_items", false),
+        table("vendor.z_kinds_2026_q1", false),
+      ],
+      foreignKeys: [key("vendor.a_items", "vendor.z_kinds", false)],
+      triggered: [],
+      partitions: [
+        partition("vendor.z_kinds_2026", "vendor.z_kinds"),
+        partition("vendor.z_kinds_2026_q1", "vendor.z_kinds_2026"),
+      ],
+    });
+    expect(names(plan.managedTables)).toEqual([
+      "vendor.z_kinds_2026_q1",
+      "vendor.a_items",
+    ]);
+  });
+
   it.each([
     {
       what: "triggers it can't turn off",
@@ -200,10 +245,91 @@ describe("planDataCopy", () => {
       triggered: [],
       message: /neon_auth\.user: it refers to public\.teams/,
     },
-  ])("refuses $what", ({ tables, foreignKeys, triggered, message }) => {
-    const plan = () => planDataCopy({ tables, foreignKeys, triggered });
-    expect(plan).toThrow(UncopyableDataError);
-    expect(plan).toThrow(message);
+    {
+      what: "a key into a partition copied with its keys off",
+      tables: [table("vendor.items", false), table("public.teams_1", true)],
+      foreignKeys: [key("vendor.items", "public.teams", false)],
+      triggered: [],
+      partitions: [partition("public.teams_1", "public.teams")],
+      message: /vendor\.items: it refers to public\.teams_1/,
+    },
+  ])(
+    "refuses $what",
+    ({ tables, foreignKeys, triggered, partitions, message }) => {
+      const plan = () =>
+        planDataCopy({ tables, foreignKeys, triggered, partitions });
+      expect(plan).toThrow(UncopyableDataError);
+      expect(plan).toThrow(message);
+    },
+  );
+});
+
+describe("partitioned tables with kept keys", () => {
+  // A legacy app-owned neon_auth table partitioned by year: its key into
+  // `user` is declared on `audit`, while its rows are in `audit_2026`.
+  const AUDIT = '"neon_auth"."audit_2026"';
+  const USER = '"neon_auth"."user"';
+  let directory: string;
+
+  function mockDatabase(query: typeof mocks.source) {
+    query.mockImplementation(async (sql: string) => {
+      let rows: Record<string, unknown>[] = [];
+      if (sql.includes("from pg_class c") && sql.includes("c.relkind = 'r'")) {
+        rows = [
+          { ...table("neon_auth.audit_2026", true) },
+          { ...table("neon_auth.user", true) },
+        ];
+      } else if (sql.includes("from pg_attribute")) {
+        rows = [{ name: "id", identityAlways: false }];
+      } else if (sql.includes("from pg_constraint con")) {
+        rows = [{ ...key("neon_auth.audit", "neon_auth.user", true) }];
+      } else if (sql.includes("from pg_inherits i")) {
+        rows = [{ ...partition("neon_auth.audit_2026", "neon_auth.audit") }];
+      } else if (sql.includes("json_agg")) {
+        rows = [{ rows: [{ id: "row-1", x_ctid: "(0,1)" }], last: "(0,1)" }];
+      } else if (sql.includes("select count(*)::text")) {
+        rows = [{ n: "1" }];
+      }
+      return { rows };
+    });
+  }
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    directory = await fs.mkdtemp(path.join(os.tmpdir(), "dyad-partitions-"));
+    mockDatabase(mocks.source);
+    mockDatabase(mocks.target);
+  });
+
+  afterEach(async () => {
+    await fs.rm(directory, { recursive: true, force: true });
+  });
+
+  it("copies the partition after the rows its key references", async () => {
+    await copyBranchData({ sourceUri: "source", targetUri: "target" });
+    const sql = mocks.target.mock.calls.map(([s]) => s as string);
+    const at = (prefix: string) => sql.findIndex((s) => s.startsWith(prefix));
+    expect(at(`delete from only ${AUDIT}`)).toBeGreaterThan(-1);
+    expect(at(`delete from only ${AUDIT}`)).toBeLessThan(
+      at(`delete from only ${USER}`),
+    );
+    expect(at(`insert into ${USER}`)).toBeLessThan(at(`insert into ${AUDIT}`));
+    expect(sql.some((s) => s.includes("drop constraint"))).toBe(false);
+    expect(sql).toContain("commit");
+  });
+
+  it("writes a backup that restores the partition after the rows its key references", async () => {
+    const filePath = path.join(directory, "backup.sql");
+    await exportBranchDataAsSql({ sourceUri: "source", filePath, title: "B" });
+    const sql = await fs.readFile(filePath, "utf8");
+    expect(sql.indexOf(`delete from only ${AUDIT};`)).toBeGreaterThan(-1);
+    expect(sql.indexOf(`delete from only ${AUDIT};`)).toBeLessThan(
+      sql.indexOf(`delete from only ${USER};`),
+    );
+    expect(sql.indexOf(`insert into ${USER} `)).toBeLessThan(
+      sql.indexOf(`insert into ${AUDIT} `),
+    );
+    expect(sql).not.toContain("drop constraint");
   });
 });
 

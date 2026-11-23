@@ -268,14 +268,17 @@ describe("planDataCopy", () => {
         key("neon_auth.jwks", "neon_auth.user", false, "jwks_owner_fkey"),
         key("neon_auth.jwks", "neon_auth.project_config", false, "jwks_cfg"),
         key("vendor.log", "public.profiles", false),
+        key("vendor.log", "neon_auth.user", false, "log_user_fkey"),
         // Dropped for the copy, so it doesn't bind the rows.
         key("public.drafts", "public.profiles", true),
       ],
       triggered: [],
     });
+    // Every table it refers to is listed, so the copy can lock each of them.
     expect(plan.outsideReferences).toEqual([
       { table: '"neon_auth"."jwks"', references: '"neon_auth"."user"' },
       { table: '"vendor"."log"', references: '"public"."profiles"' },
+      { table: '"vendor"."log"', references: '"neon_auth"."user"' },
     ]);
   });
 
@@ -703,6 +706,19 @@ describe("tables outside the copy with kept keys", () => {
     expect(statements()).toContain("commit");
   });
 
+  it("locks the table it refers to before checking it, so no row lands after the check", async () => {
+    mockDatabase(mocks.target, false);
+    await copyBranchData({ sourceUri: "source", targetUri: "target" });
+    const sql = statements();
+    const lock = sql.indexOf(`lock table ${USER} in exclusive mode`);
+    const check = sql.indexOf(
+      `select exists (select 1 from only ${JWKS}) as "hasRows"`,
+    );
+    expect(lock).toBeGreaterThan(-1);
+    expect(lock).toBeLessThan(check);
+    expect(check).toBeLessThan(sql.indexOf(`delete from only ${USER}`));
+  });
+
   it("writes a backup that checks that table on the restore target first", async () => {
     const filePath = path.join(directory, "backup.sql");
     await exportBranchDataAsSql({ sourceUri: "source", filePath, title: "B" });
@@ -710,8 +726,10 @@ describe("tables outside the copy with kept keys", () => {
     const check = sql.indexOf(`if to_regclass('${JWKS}') is not null then`);
     expect(check).toBeGreaterThan(-1);
     expect(check).toBeLessThan(sql.indexOf(`delete from only ${USER};`));
-    expect(sql).toContain(
-      `execute 'select exists (select 1 from only ${JWKS})'`,
+    const lock = sql.indexOf(`execute 'lock table ${USER} in exclusive mode';`);
+    expect(lock).toBeGreaterThan(check);
+    expect(lock).toBeLessThan(
+      sql.indexOf(`execute 'select exists (select 1 from only ${JWKS})'`),
     );
     expect(sql).toContain(
       `raise exception using message = 'Can''t copy ${USER}: rows of ${JWKS}, which isn''t copied`,
@@ -754,5 +772,65 @@ describe("copyBranchData table names", () => {
       'insert into "public"."x.y"',
       'insert into "public.x"."y"',
     ]);
+  });
+});
+
+describe("row-level security", () => {
+  // A table the role doesn't own: without BYPASSRLS, its policies would
+  // filter both the rows copied and the counts that verify them.
+  const NOTES = '"public"."notes"';
+  let directory: string;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    directory = await fs.mkdtemp(path.join(os.tmpdir(), "dyad-rls-"));
+    for (const query of [mocks.source, mocks.target]) {
+      query.mockImplementation(async (sql: string) => {
+        let rows: Record<string, unknown>[] = [];
+        if (
+          sql.includes("from pg_class c") &&
+          sql.includes("c.relkind = 'r'")
+        ) {
+          rows = [{ ...table("public.notes", false) }];
+        } else if (sql.includes("from pg_attribute")) {
+          rows = [{ name: "id", identityAlways: false }];
+        } else if (sql.includes("json_agg")) {
+          rows = [{ rows: [{ id: "n-1", x_ctid: "(0,1)" }], last: "(0,1)" }];
+        } else if (sql.includes("select count(*)::text")) {
+          rows = [{ n: "1" }];
+        }
+        return { rows };
+      });
+    }
+  });
+
+  afterEach(async () => {
+    await fs.rm(directory, { recursive: true, force: true });
+  });
+
+  const statements = (query: typeof mocks.source) =>
+    query.mock.calls.map(([sql]) => sql as string);
+
+  it("turns it off on both branches before reading or writing any rows", async () => {
+    await copyBranchData({ sourceUri: "source", targetUri: "target" });
+    for (const query of [mocks.source, mocks.target]) {
+      const sql = statements(query);
+      expect(sql[0]).toMatch(/^begin/);
+      expect(sql[1]).toBe("set local row_security = off");
+    }
+    expect(statements(mocks.target)).toContain(`delete from only ${NOTES}`);
+  });
+
+  it("writes a backup that turns it off on the source and the restore target", async () => {
+    const filePath = path.join(directory, "backup.sql");
+    await exportBranchDataAsSql({ sourceUri: "source", filePath, title: "B" });
+    expect(statements(mocks.source).slice(0, 2)).toEqual([
+      "begin isolation level repeatable read read only",
+      "set local row_security = off",
+    ]);
+    const sql = await fs.readFile(filePath, "utf8");
+    const off = sql.indexOf("\nset local row_security = off;\n");
+    expect(off).toBeGreaterThan(sql.indexOf("\nbegin;\n"));
+    expect(off).toBeLessThan(sql.indexOf(`delete from only ${NOTES};`));
   });
 });

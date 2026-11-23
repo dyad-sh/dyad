@@ -20,6 +20,14 @@ const NEON_AUTH_SERVICE_TABLES = new Set(["project_config", "jwks"]);
  */
 const NEON_MANAGED_SCHEMA = "neon_auth";
 const COPY_BATCH_SIZE = 500;
+/**
+ * A role without `BYPASSRLS` reading a table it doesn't own sees only the rows
+ * its policies allow, and the verifying row counts are filtered the same way,
+ * so a partial copy would pass and the old branch be deleted. With row
+ * security off, Postgres fails any query a policy would filter instead. Run
+ * inside each transaction, on the source as well as the target.
+ */
+const NO_ROW_SECURITY = "set local row_security = off";
 
 /** The copied rows did not match the source; the copy was rolled back. */
 export class CopyVerificationError extends DyadError {
@@ -222,7 +230,10 @@ async function listInsertableColumns(
 export interface OutsideReference {
   /** The table outside the copy, as a quoted SQL name. */
   table: string;
-  /** One table in the copy that it refers to, as a quoted SQL name. */
+  /**
+   * A table in the copy that it refers to, as a quoted SQL name; a table
+   * that refers to several is listed once for each.
+   */
   references: string;
 }
 
@@ -323,7 +334,7 @@ export function planDataCopy({
   const parents = new Map<string, Set<string>>(
     [...managedByKey.keys()].map((key) => [key, new Set<string>()]),
   );
-  const outsideReferences = new Map<string, string>();
+  const outsideReferences = new Map<string, Set<string>>();
   for (const fk of keptForeignKeys) {
     for (const child of leaves(tableKey(fk.schema, fk.table))) {
       for (const parent of leaves(
@@ -332,10 +343,14 @@ export function planDataCopy({
         if (!managedByKey.has(child)) {
           // Every leaf under a kept key is managed, so this one is outside the
           // copy: its rows stay, and stop (or cascade from) clearing `parent`.
+          // Each such parent is locked before the check (see
+          // `lockOutsideReferenceSql`), so all of them are listed.
           const parentCopied =
             managedByKey.has(parent) || ownedKeys.has(parent);
-          if (parentCopied && !outsideReferences.has(child)) {
-            outsideReferences.set(child, parent);
+          if (parentCopied) {
+            const references =
+              outsideReferences.get(child) ?? new Set<string>();
+            outsideReferences.set(child, references.add(parent));
           }
         } else if (child === parent) {
           throw new UncopyableDataError(
@@ -376,11 +391,24 @@ export function planDataCopy({
     droppedForeignKeys: foreignKeys.filter((fk) => !isKept(fk)),
     managedTables: order,
     ownedTables: owned,
-    outsideReferences: [...outsideReferences].map(([table, references]) => ({
-      table,
-      references,
-    })),
+    outsideReferences: [...outsideReferences].flatMap(([table, references]) =>
+      [...references].map((parent) => ({ table, references: parent })),
+    ),
   };
+}
+
+/**
+ * Inserting a row with a foreign key locks the table it refers to (the key
+ * check's `FOR KEY SHARE` lookup), and `exclusive` mode blocks that until
+ * commit while still letting plain reads through. Taken before checking that
+ * an outside table is empty, it stops a row from being committed there
+ * between the check and the delete that would cascade into it. The copy
+ * deletes from that table anyway, and the DELETE privilege permits any lock
+ * mode; locking the outside table itself would need write privileges on a
+ * table the copy only reads.
+ */
+function lockOutsideReferenceSql({ references }: OutsideReference): string {
+  return `lock table ${references} in exclusive mode`;
 }
 
 /**
@@ -395,6 +423,7 @@ declare
   has_rows boolean;
 begin
   if to_regclass(${literal(reference.table)}) is not null then
+    execute ${literal(lockOutsideReferenceSql(reference))};
     execute ${literal(`select exists (select 1 from only ${reference.table})`)}
       into has_rows;
     if has_rows then
@@ -585,7 +614,9 @@ export async function copyBranchData({
   const copiedTableNames: string[] = [];
   try {
     await source.query("begin isolation level repeatable read read only");
+    await source.query(NO_ROW_SECURITY);
     await target.query("begin");
+    await target.query(NO_ROW_SECURITY);
 
     // Ownership is the target's: that is where the rows are written.
     const targetTables = new Map(
@@ -631,6 +662,7 @@ export async function copyBranchData({
       partitions: await listPartitionsWith(target),
     });
     for (const reference of plan.outsideReferences) {
+      await target.query(lockOutsideReferenceSql(reference));
       const [{ hasRows }] = await target.query(
         `select exists (select 1 from only ${reference.table}) as "hasRows"`,
       );
@@ -828,6 +860,7 @@ export async function exportBranchDataAsSql({
   let tableCount = 0;
   try {
     await source.query("begin isolation level repeatable read read only");
+    await source.query(NO_ROW_SECURITY);
     await write(
       [
         `-- ${title.replace(/\n/g, " ")}`,
@@ -836,6 +869,8 @@ export async function exportBranchDataAsSql({
         "-- (e.g. in the Neon SQL editor or with psql). It replaces the rows of every",
         "-- table below.",
         "begin;",
+        "-- Fail, rather than replace only the rows row-level security lets you see.",
+        `${NO_ROW_SECURITY};`,
       ].join("\n"),
     );
     // The file is restored later, as whatever role runs it (the Neon SQL

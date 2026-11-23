@@ -235,6 +235,100 @@ describe("getSupabaseClientCode", () => {
     expect(code).toContain('"eyJ.legacy-anon"');
   });
 
+  // Each cache test uses its own project ID: the cache is module state shared
+  // with the other tests in this file.
+  describe("preferCachedKey", () => {
+    it("reuses the last fetched key without a request", async () => {
+      getProjectApiKeysMock.mockResolvedValue(PROJECT_API_KEYS);
+      await getSupabaseClientCode({
+        projectId: "cached-project",
+        organizationSlug: null,
+      });
+      getProjectApiKeysMock.mockReset();
+      getProjectApiKeysMock.mockRejectedValue(new TypeError("fetch failed"));
+
+      const code = await getSupabaseClientCode({
+        projectId: "cached-project",
+        organizationSlug: null,
+        preferCachedKey: true,
+      });
+
+      expect(code).toContain(`"${PUBLISHABLE_KEY}"`);
+      expect(getProjectApiKeysMock).not.toHaveBeenCalled();
+    });
+
+    it("fetches when nothing is cached for the project", async () => {
+      getProjectApiKeysMock.mockResolvedValue(PROJECT_API_KEYS);
+
+      const code = await getSupabaseClientCode({
+        projectId: "uncached-project",
+        organizationSlug: null,
+        preferCachedKey: true,
+      });
+
+      expect(code).toContain(`"${PUBLISHABLE_KEY}"`);
+      expect(getProjectApiKeysMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("still fails when nothing is cached and the fetch fails", async () => {
+      getProjectApiKeysMock.mockRejectedValue(new TypeError("fetch failed"));
+
+      await expect(
+        getSupabaseClientCode({
+          projectId: "unreachable-project",
+          organizationSlug: null,
+          preferCachedKey: true,
+        }),
+      ).rejects.toMatchObject({ kind: DyadErrorKind.External });
+    });
+
+    it("always fetches without it, and refreshes the cache", async () => {
+      getProjectApiKeysMock.mockResolvedValue(PROJECT_API_KEYS);
+      await getSupabaseClientCode({
+        projectId: "rotated-project",
+        organizationSlug: null,
+      });
+      const rotatedKey = "sb_publishable_rotated456";
+      getProjectApiKeysMock.mockResolvedValue([
+        { name: "default", type: "publishable", api_key: rotatedKey },
+      ]);
+
+      const fresh = await getSupabaseClientCode({
+        projectId: "rotated-project",
+        organizationSlug: null,
+      });
+      const cached = await getSupabaseClientCode({
+        projectId: "rotated-project",
+        organizationSlug: null,
+        preferCachedKey: true,
+      });
+
+      expect(fresh).toContain(`"${rotatedKey}"`);
+      expect(cached).toContain(`"${rotatedKey}"`);
+      expect(getProjectApiKeysMock).toHaveBeenCalledTimes(2);
+    });
+
+    it("does not share a cached key between projects", async () => {
+      getProjectApiKeysMock.mockResolvedValue(PROJECT_API_KEYS);
+      await getSupabaseClientCode({
+        projectId: "first-project",
+        organizationSlug: null,
+      });
+      const otherKey = "sb_publishable_other789";
+      getProjectApiKeysMock.mockResolvedValue([
+        { name: "default", type: "publishable", api_key: otherKey },
+      ]);
+
+      const code = await getSupabaseClientCode({
+        projectId: "second-project",
+        organizationSlug: null,
+        preferCachedKey: true,
+      });
+
+      expect(code).toContain(`"${otherKey}"`);
+    });
+  });
+
   it("does not request that secret key values be revealed", async () => {
     getProjectApiKeysMock.mockResolvedValue(PROJECT_API_KEYS);
 

@@ -42,6 +42,7 @@ import { ipc, type App } from "@/ipc/types";
 import { getErrorMessage } from "@/lib/errors";
 import { queryKeys } from "@/lib/queryKeys";
 import { useSettings } from "@/hooks/useSettings";
+import { sendsKeysUnencrypted } from "@/shared/supabase_self_hosted_url";
 import {
   useAddSupabaseSelfHostedInstance,
   useRemoveSupabaseSelfHostedInstance,
@@ -566,7 +567,7 @@ export function SupabaseSelfHostedLinkSection({
       return;
     }
     try {
-      const { instance, warnings } = await addInstance.mutateAsync({
+      const { instance } = await addInstance.mutateAsync({
         name: form.name,
         url: form.url,
         anonKey: form.anonKey,
@@ -581,9 +582,6 @@ export function SupabaseSelfHostedLinkSection({
             }
           : null,
       });
-      for (const warning of warnings) {
-        toast.warning(warning, { duration: 20_000 });
-      }
       setForm(EMPTY_FORM);
       setImportedNote(null);
       setIsFormOpen(false);
@@ -679,6 +677,16 @@ export function SupabaseSelfHostedLinkSection({
           {field("url", "API URL", {
             placeholder: "https://supabase.example.com",
           })}
+          {sendsKeysUnencrypted(form.url) && (
+            <p
+              className="text-xs text-amber-700 dark:text-amber-400"
+              data-testid="supabase-self-hosted-http-note"
+            >
+              This URL uses plain HTTP, so Dyad will send the instance's keys
+              unencrypted. Use HTTPS if the server is reachable from the
+              internet.
+            </p>
+          )}
           {field("anonKey", "Anon key", { secret: true })}
           {field("serviceKey", "Service role key", { secret: true })}
           {field("studioUrl", "Studio URL (optional)", { optional: true })}

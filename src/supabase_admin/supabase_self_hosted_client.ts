@@ -3,6 +3,7 @@ import {
   SUPABASE_SELF_HOSTED_REQUEST_ERROR_NAME,
   SUPABASE_SELF_HOSTED_TRANSPORT_ERROR_NAME,
 } from "@/shared/supabase_self_hosted_error_names";
+import { isLoopbackHostname } from "@/shared/supabase_self_hosted_url";
 
 /**
  * Below postgres-meta's own ~55s read timeout. postgres-meta answers 408 at
@@ -225,15 +226,6 @@ export function normalizeSupabaseSelfHostedUrl(raw: string): string | null {
   return `${parsed.origin}${parsed.pathname.replace(/\/+$/, "")}`;
 }
 
-function isLoopbackHost(hostname: string): boolean {
-  return (
-    hostname === "localhost" ||
-    hostname === "127.0.0.1" ||
-    hostname === "[::1]" ||
-    hostname.endsWith(".localhost")
-  );
-}
-
 /**
  * Whether two URLs reach the same server. Loopback names are one machine, so
  * a link to localhost matches an instance entered as 127.0.0.1.
@@ -241,8 +233,8 @@ function isLoopbackHost(hostname: string): boolean {
 export function isSameServer(a: URL, b: URL): boolean {
   if (a.origin === b.origin) return true;
   return (
-    isLoopbackHost(a.hostname) &&
-    isLoopbackHost(b.hostname) &&
+    isLoopbackHostname(a.hostname) &&
+    isLoopbackHostname(b.hostname) &&
     a.protocol === b.protocol &&
     a.port === b.port
   );
@@ -250,25 +242,15 @@ export function isSameServer(a: URL, b: URL): boolean {
 
 /**
  * Connect-time checks for a new instance. Throws a DyadError describing the
- * first requirement that is not met; returns warnings for setups that work but
- * will surprise the user later.
+ * first requirement that is not met.
  */
 export async function checkSupabaseSelfHostedInstance(input: {
   url: string;
   anonKey: string;
   serviceKey: string;
   signal?: AbortSignal;
-}): Promise<{ warnings: string[] }> {
+}): Promise<void> {
   const instance = { url: input.url };
-  const warnings: string[] = [];
-
-  if (new URL(input.url).protocol === "http:") {
-    if (!isLoopbackHost(new URL(input.url).hostname)) {
-      warnings.push(
-        "This instance uses plain HTTP, so Dyad sends its service key unencrypted on every request. Put it behind HTTPS if it is reachable from the internet.",
-      );
-    }
-  }
 
   const health = await request(instance, "/auth/v1/health", {
     key: input.anonKey,
@@ -319,6 +301,4 @@ export async function checkSupabaseSelfHostedInstance(input: {
       DyadErrorKind.Validation,
     );
   }
-
-  return { warnings };
 }

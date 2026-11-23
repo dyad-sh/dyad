@@ -221,7 +221,7 @@ describe("recorded Coolify install", () => {
 
 describe("checkSupabaseSelfHostedInstance", () => {
   it.each(["upstream", "coolify"] as const)(
-    "accepts a %s install served from loopback with no warnings",
+    "accepts a %s install without creating anything on it",
     async (mode) => {
       const server = await start(mode);
 
@@ -231,7 +231,7 @@ describe("checkSupabaseSelfHostedInstance", () => {
           anonKey: server.anonKey,
           serviceKey: server.serviceKey,
         }),
-      ).resolves.toEqual({ warnings: [] });
+      ).resolves.toBeUndefined();
       // Connecting creates no users on the instance.
       expect(server.liveUserIds.size).toBe(0);
       expect(

@@ -12,7 +12,6 @@ const mocks = vi.hoisted(() => ({
   removeSelfHostedInstance: vi.fn(),
   openExternalUrl: vi.fn(),
   toastSuccess: vi.fn(),
-  toastWarning: vi.fn(),
   toastError: vi.fn(),
   listCoolifySupabaseServices: vi.fn(),
   importCoolifySupabaseService: vi.fn(),
@@ -46,7 +45,6 @@ vi.mock("@/ipc/types", () => ({
 vi.mock("sonner", () => ({
   toast: {
     success: mocks.toastSuccess,
-    warning: mocks.toastWarning,
     error: mocks.toastError,
   },
 }));
@@ -92,11 +90,8 @@ beforeEach(() => {
 });
 
 describe("SupabaseSelfHostedLinkSection", () => {
-  it("adds an instance, shows its warnings, and connects the app to it", async () => {
-    mocks.addSelfHostedInstance.mockResolvedValue({
-      instance: INSTANCE,
-      warnings: ["This instance uses plain HTTP."],
-    });
+  it("adds an instance and connects the app to it", async () => {
+    mocks.addSelfHostedInstance.mockResolvedValue({ instance: INSTANCE });
     const onLinked = vi.fn().mockResolvedValue(undefined);
     renderWithQuery(
       <SupabaseSelfHostedLinkSection appId={7} onLinked={onLinked} />,
@@ -134,10 +129,28 @@ describe("SupabaseSelfHostedLinkSection", () => {
       projectId: "instance-1",
       organizationSlug: null,
     });
-    expect(mocks.toastWarning).toHaveBeenCalledWith(
-      "This instance uses plain HTTP.",
-      expect.anything(),
+  });
+
+  it("warns about plain HTTP before anything is sent", () => {
+    renderWithQuery(
+      <SupabaseSelfHostedLinkSection appId={7} onLinked={vi.fn()} />,
     );
+    fireEvent.click(screen.getByTestId("supabase-self-hosted-add-button"));
+    const note = () => screen.queryByTestId("supabase-self-hosted-http-note");
+
+    fill("API URL", "http://203.0.113.7:8000");
+    expect(note()?.textContent).toContain(
+      "Dyad will send the instance's keys unencrypted",
+    );
+    expect(mocks.addSelfHostedInstance).not.toHaveBeenCalled();
+
+    for (const url of [
+      "https://supabase.example.com",
+      "http://localhost:8000",
+    ]) {
+      fill("API URL", url);
+      expect(note()).toBeNull();
+    }
   });
 
   it("refreshes each instance's linked apps after connecting", async () => {
@@ -165,7 +178,6 @@ describe("SupabaseSelfHostedLinkSection", () => {
   it("adds an instance without SSH by default", async () => {
     mocks.addSelfHostedInstance.mockResolvedValue({
       instance: { ...INSTANCE, ssh: null },
-      warnings: [],
     });
     const onLinked = vi.fn().mockResolvedValue(undefined);
     renderWithQuery(
@@ -287,7 +299,6 @@ describe("SupabaseSelfHostedLinkSection help and import", () => {
     });
     mocks.addSelfHostedInstance.mockResolvedValue({
       instance: INSTANCE,
-      warnings: [],
     });
     const user = userEvent.setup();
     const onLinked = vi.fn().mockResolvedValue(undefined);

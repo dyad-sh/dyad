@@ -498,7 +498,7 @@ export function registerSupabaseHandlers() {
           );
         }
       }
-      const { warnings } = await checkSupabaseSelfHostedInstance({
+      await checkSupabaseSelfHostedInstance({
         url,
         anonKey: params.anonKey,
         serviceKey: params.serviceKey,
@@ -528,7 +528,7 @@ export function registerSupabaseHandlers() {
         ssh,
       });
       logger.info(`Added self-hosted Supabase instance ${instance.id}`);
-      return { instance, warnings };
+      return { instance };
     },
   );
 

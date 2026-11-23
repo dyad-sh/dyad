@@ -48,7 +48,6 @@ interface AddResult {
     url: string;
     ssh: { host: string; port: number; username: string } | null;
   };
-  warnings: string[];
 }
 
 describe("self-hosted Supabase instances (integration)", () => {
@@ -106,11 +105,9 @@ describe("self-hosted Supabase instances (integration)", () => {
     });
 
   it("checks, saves and serves an instance to a linked app", async () => {
-    const { instance, warnings } = await addInstance();
+    const { instance } = await addInstance();
 
     expect(instance).toMatchObject({ name: "Coolify box", url: fake!.url });
-    // Loopback HTTP, and email links are now checked on the connected card.
-    expect(warnings).toEqual([]);
     await expect(
       harness!.invokeHandler("supabase:list-self-hosted-instances"),
     ).resolves.toEqual([

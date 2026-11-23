@@ -367,15 +367,12 @@ export const supabaseContracts = {
 
   /**
    * Runs the connect-time checks before saving, so an instance Dyad cannot use
-   * is never stored. Warnings describe setups that work but need attention.
+   * is never stored.
    */
   addSelfHostedInstance: defineContract({
     channel: "supabase:add-self-hosted-instance",
     input: AddSupabaseSelfHostedInstanceParamsSchema,
-    output: z.object({
-      instance: SupabaseSelfHostedInstanceSchema,
-      warnings: z.array(z.string()),
-    }),
+    output: z.object({ instance: SupabaseSelfHostedInstanceSchema }),
     invalidates: () => [{ family: "provider-status", provider: "supabase" }],
   }),
 

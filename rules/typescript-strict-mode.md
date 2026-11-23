@@ -64,3 +64,7 @@ mutable binding.
 ## i18next `t()` keys are a literal union, not `string`
 
 `useTranslation` returns a `t()` typed against a union of every key in the namespace. Passing a variable whose type widens to `string` (e.g., a `labelKey` field collected into an array) fails with `TS2345: Argument of type '[string]' is not assignable to parameter of type '[key: "added" | "..."]'`. Resolve the label at the call site (`{ label: t("groupToday") }`) instead of storing the key for later lookup (`{ labelKey: "groupToday" }` then `t(group.labelKey)`). If you really need late binding, narrow with `as const` so the literal type survives.
+
+## Interface values aren't assignable to `Record<string, unknown>`
+
+Mock query implementations often type their result as `Record<string, unknown>[]`. Assigning a helper's interface-typed value (`rows = [table("a.b", true)]`, where `table` returns `CopyTable`) passes Vitest, which doesn't type-check, but fails `npm run ts` with `TS2322: ... Index signature for type 'string' is missing in type 'CopyTable'`. Spread it into a fresh object literal (`rows = [{ ...table("a.b", true) }]`), as the existing mocks in `src/ipc/utils/neon_branch_data.test.ts` do.

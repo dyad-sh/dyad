@@ -117,6 +117,14 @@ function adminHeaders(key: AdminKey): Record<string, string> {
   };
 }
 
+/**
+ * A self-hosted gateway that redirects would forward the admin key in the
+ * `apikey` header to wherever it points, so a redirect fails the request.
+ */
+function adminRedirectPolicy(projectId: string): { redirect?: "manual" } {
+  return isSupabaseSelfHostedProject(projectId) ? { redirect: "manual" } : {};
+}
+
 function isUserCreationDatabaseError(
   status: number,
   error: Record<string, unknown> | undefined,
@@ -230,6 +238,7 @@ export async function createTempTestUser(
           // response can leave a remotely-created user with no recovery marker.
           // Cancellation still stops retries; the lifecycle reports a slow drain.
           headers: adminHeaders(adminKey),
+          ...adminRedirectPolicy(projectId),
           body: JSON.stringify({
             email,
             password,
@@ -749,6 +758,7 @@ async function deleteUserBestEffort({
                 method: "DELETE",
                 signal,
                 headers: adminHeaders(adminKey),
+                ...adminRedirectPolicy(projectId),
               },
               `Delete test user ${userId}`,
             ),

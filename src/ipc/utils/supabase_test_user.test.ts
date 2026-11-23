@@ -737,6 +737,8 @@ describe("createTempTestUser", () => {
       expect(fetchSpy.mock.calls[0][0]).toBe(
         "http://supabase.lan:8000/auth/v1/admin/users",
       );
+      // A redirect would carry the admin key elsewhere.
+      expect(fetchSpy.mock.calls[0][1]).toMatchObject({ redirect: "manual" });
       expect(result.projectUrl).toBe("http://supabase.lan:8000");
       expect(mocks.insertValues).toHaveBeenCalledWith(
         expect.objectContaining({ organizationSlug: "" }),
@@ -745,6 +747,16 @@ describe("createTempTestUser", () => {
       vi.mocked(isSupabaseSelfHostedProject).mockReset();
       vi.mocked(getSupabaseProjectUrl).mockReset();
     }
+  });
+
+  it("follows redirects for Cloud as fetch does by default", async () => {
+    const fetchSpy = mockFetch(
+      () => new Response(JSON.stringify({ id: UUID })),
+    );
+
+    await createTempTestUser(makeApp(), { ownerId: "run:case" });
+
+    expect(fetchSpy.mock.calls[0][1]).not.toHaveProperty("redirect");
   });
 
   it("throws when the app has no Supabase organization", async () => {
@@ -1094,7 +1106,7 @@ describe("deleteTempTestUser", () => {
 
       expect(fetchSpy).toHaveBeenCalledWith(
         `http://supabase.lan:8000/auth/v1/admin/users/${UUID}`,
-        expect.objectContaining({ method: "DELETE" }),
+        expect.objectContaining({ method: "DELETE", redirect: "manual" }),
       );
     } finally {
       vi.mocked(isSupabaseSelfHostedProject).mockReset();

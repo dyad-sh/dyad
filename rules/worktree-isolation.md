@@ -136,8 +136,8 @@ worktree use the app's original folder.
   has it registered (it was unregistered, or Git dropped the registration
   after deleting part of it). A folder whose `.git` is a directory, or a
   worktree Git still has registered (locked, or failing Git's validation),
-  is left in place and the removal throws. Git's messages are localized, so
-  this is decided from the folder, not from stderr.
+  is left in place and the removal throws. This is decided from the folder,
+  not from Git's (localized) stderr.
 - Cleanup that cannot remove a worktree folder (failed creation, an
   interrupted "creating" row, the orphan sweep) keeps its ownership marker
   while the folder survives, so the next startup's orphan sweep retries
@@ -221,7 +221,11 @@ worktree use the app's original folder.
   either checkout tracks or has staged (a staged deletion included) are
   skipped (an uncommitted edit in the app's folder would be committed by the
   chat), nothing is copied when Git cannot tell, and a worktree entry that is
-  not a regular file (a symlink) is never written. Compaction keeps its transcript
+  not a plain file is never written. Check that on the opened file, not with
+  an earlier `lstat` (an entry swapped in between is written through, and
+  `lstat().isFile()` is true for a hard link to a file outside the
+  worktree): `copyIntoRegularFile` opens with `O_NOFOLLOW` and refuses
+  `nlink > 1`. Compaction keeps its transcript
   backup in the app's folder too (`durableAppPath`), and turns mirror the
   chat's `.dyad/chats/<id>/` backups in.
 - Use `waitForChange(signal, { timeoutMs })` to poll; racing it against a
@@ -399,6 +403,9 @@ worktree use the app's original folder.
   `for-each-ref --format=%(refname:lstrip=2) refs/heads`: `git branch --list`
   adds `*`/`+` markers and a detached-HEAD entry, and `refname:short` prints
   `heads/<name>` when a tag shares the branch's name.
+- `execGit` does not force `LC_ALL=C`, so Git's stderr follows the user's
+  locale. Decide from exit codes and the folder/repository state, never by
+  matching message text (see `removeLinkedWorktree`, `readMergeConflicts`).
 - Compare worktree paths with `fs.realpathSync.native` (or
   `fs.promises.realpath`), never `fs.realpathSync`: on Windows the JS version
   keeps 8.3 short names (`RUNNER~1`) and the caller's casing, while Git
@@ -417,3 +424,9 @@ worktree use the app's original folder.
   node harness does not) and stubs `validateWorkspace`, which would install
   dependencies. Run it with the Electron-as-Node recipe from
   `rules/native-modules.md` when `better-sqlite3` is built for Electron.
+- Git fixture tests isolate the runner's Git configuration
+  (`vi.stubEnv("GIT_CONFIG_GLOBAL", <empty file>)` and
+  `GIT_CONFIG_NOSYSTEM=1`, as in `git_worktree_utils.test.ts`): a global
+  `core.hooksPath` makes hook-suppression tests pass without running the
+  repository's hook, and global commit signing breaks fixture commits. Pair a
+  "hook did not run" assertion with a control checkout that does run it.

@@ -172,6 +172,10 @@ and deleted the temporary Neon branch ~200ms after creating it. Mark such stops
 (`stopAppByInfo(appId, appInfo, { recordingOwnedRestart: true })`) rather than
 assuming map-entry ordering distinguishes them.
 
+## Migrating Neon branches with Auth disabled
+
+A 404 from `getNeonAuth` can coexist with populated `neon_auth` tables. Preserve those tables during migration, including `jwks` and `project_config`. Grant `neon_service` database `CREATE` on the replacement branch so Auth can be enabled later.
+
 ## Clearing data on temporary Neon test branches
 
 Batch runs may share the outer provider/runtime claims and temporary branch,

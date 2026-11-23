@@ -1,8 +1,13 @@
 import { getSubscriptionAccount } from "../services/codex_subscription_account";
 import { createTypedHandler } from "./base";
 import { settingsContracts } from "../types/settings";
-import { writeSettings, readEffectiveSettings } from "../../main/settings";
+import {
+  writeSettings,
+  readEffectiveSettings,
+  readSettings,
+} from "../../main/settings";
 import { validateProviderApiKey } from "../services/provider_api_key_validation_service";
+import { clearSupabaseLogCacheWithoutCredentials } from "../../supabase_admin/supabase_edge_logs_service";
 import {
   connectCodexSubscription,
   disconnectCodexSubscription,
@@ -34,6 +39,9 @@ export function registerSettingsHandlers() {
 
   createTypedHandler(settingsContracts.setUserSettings, async (_, settings) => {
     writeSettings(settings);
+    // "Disconnect All" removes Supabase credentials through this generic
+    // write, so logs fetched with them must be invalidated here too.
+    clearSupabaseLogCacheWithoutCredentials(readSettings());
     return readEffectiveSettings();
   });
 

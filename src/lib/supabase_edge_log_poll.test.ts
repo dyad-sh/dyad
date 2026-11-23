@@ -8,6 +8,8 @@ import {
   applyEdgeLogPollResult,
   edgeLogPollKey,
   getEdgeLogPollStart,
+  storeEdgeLogPollCursor,
+  type EdgeLogPollCursor,
 } from "./supabase_edge_log_poll";
 
 const NOW = Date.UTC(2026, 10, 18, 12, 0, 0);
@@ -149,5 +151,31 @@ describe("edge log polling cursor", () => {
     expect(getEdgeLogPollStart(partial.cursor, NOW + 20 * 60_000)).toBe(
       NOW + 20 * 60_000 - EDGE_LOGS_POLL_MAX_LOOKBACK_MS,
     );
+  });
+
+  it("drops cursors that were not polled within the lookback", () => {
+    const cursor = (lastRequestedAt: number): EdgeLogPollCursor => ({
+      lastRequestedAt,
+      seen: new Map([["id", lastRequestedAt]]),
+    });
+    const stale = cursor(
+      NOW - EDGE_LOGS_POLL_MAX_LOOKBACK_MS - SUPABASE_LOG_RECENT_OVERLAP_MS - 1,
+    );
+    // A stale cursor starts the next poll at the lookback limit, exactly as
+    // having no cursor does, so dropping it changes nothing.
+    expect(getEdgeLogPollStart(stale, NOW)).toBe(
+      getEdgeLogPollStart(undefined, NOW),
+    );
+    const recent = cursor(NOW - 60_000);
+    const current = cursor(NOW);
+    const next = storeEdgeLogPollCursor(
+      { stale, recent, current: cursor(NOW - 5_000) },
+      "current",
+      current,
+      NOW,
+    );
+    expect(Object.keys(next).sort()).toEqual(["current", "recent"]);
+    expect(next.current).toBe(current);
+    expect(next.recent).toBe(recent);
   });
 });

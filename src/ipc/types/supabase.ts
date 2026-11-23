@@ -249,6 +249,11 @@ export const supabaseContracts = {
       /** Earliest incomplete time to retain in the next bounded poll window. */
       retryFrom: z.number().optional(),
       warning: z.string().optional(),
+      /**
+       * Supabase rejected Dyad's credentials. Retrying every poll will not
+       * fix that, so the renderer polls less often until a poll succeeds.
+       */
+      authFailed: z.boolean().optional(),
     }),
   }),
 

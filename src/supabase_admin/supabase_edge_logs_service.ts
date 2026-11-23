@@ -8,9 +8,12 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { apps } from "@/db/schema";
-import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import type { ConsoleEntry } from "@/ipc/types";
-import { hasSupabaseCredentialsForOrganization } from "@/lib/schemas";
+import {
+  hasSupabaseCredentialsForOrganization,
+  type UserSettings,
+} from "@/lib/schemas";
 import { readSettings } from "@/main/settings";
 import {
   SupabaseLogCache,
@@ -100,10 +103,26 @@ export interface AppEdgeFunctionLogsResult {
   truncated: boolean;
   error: unknown;
   /**
-   * The app was relinked while the logs were fetched. Entries are empty:
-   * the previous project's logs must not be attributed to this app.
+   * The app was relinked, or Dyad lost the credentials for its organization,
+   * while the logs were fetched. Entries are empty: logs read for the previous
+   * connection must not be attributed to this app.
    */
   associationChanged: boolean;
+}
+
+const MAX_ERROR_DETAIL_CHARS = 300;
+
+/** A provider failure's message, shortened for a warning line. */
+export function describeSupabaseLogError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.length > MAX_ERROR_DETAIL_CHARS
+    ? `${message.slice(0, MAX_ERROR_DETAIL_CHARS)}...`
+    : message;
+}
+
+/** Supabase rejected Dyad's credentials; retrying will not fix it. */
+export function isSupabaseLogAuthError(error: unknown): boolean {
+  return isDyadError(error) && error.kind === DyadErrorKind.Auth;
 }
 
 /** Fetches the target's Edge Function logs in [start, end). */
@@ -129,7 +148,15 @@ export async function getAppEdgeFunctionLogs({
     end,
     signal,
   });
-  if (!(await isAppStillLinkedTo(target))) {
+  // Checked after every await, so a disconnect at any point during the read
+  // keeps that account's rows from being returned.
+  if (
+    !(await isAppStillLinkedTo(target)) ||
+    !hasSupabaseCredentialsForOrganization(
+      readSettings(),
+      target.organizationSlug,
+    )
+  ) {
     return {
       entries: [],
       missingRanges: [{ start, end }],
@@ -161,5 +188,20 @@ export function clearSupabaseLogCacheForOrganization(
 ): void {
   supabaseFunctionLogCache.clear(
     (scope) => scope.organizationSlug === organizationSlug,
+  );
+}
+
+/**
+ * Drops cached logs, and cancels pending reads, for every organization (or
+ * the legacy single account) whose credentials the settings no longer hold.
+ * Covers removals that bypass the organization handler, such as
+ * "Disconnect All" writing `supabase: undefined` through the settings IPC.
+ */
+export function clearSupabaseLogCacheWithoutCredentials(
+  settings: Pick<UserSettings, "supabase">,
+): void {
+  supabaseFunctionLogCache.clear(
+    (scope) =>
+      !hasSupabaseCredentialsForOrganization(settings, scope.organizationSlug),
   );
 }

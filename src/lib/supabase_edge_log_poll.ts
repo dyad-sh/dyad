@@ -47,6 +47,28 @@ export function getEdgeLogPollStart(
   );
 }
 
+/**
+ * Stores `cursor` under `key` and drops cursors not polled within the
+ * lookback. Such a cursor is equivalent to having none: the next poll would
+ * start at the lookback limit, after every id it remembers. Without this the
+ * map keeps one entry per app/project ever previewed in the session.
+ */
+export function storeEdgeLogPollCursor(
+  cursors: Readonly<Record<string, EdgeLogPollCursor>>,
+  key: string,
+  cursor: EdgeLogPollCursor,
+  now: number,
+): Record<string, EdgeLogPollCursor> {
+  const staleBefore =
+    now - EDGE_LOGS_POLL_MAX_LOOKBACK_MS - SUPABASE_LOG_RECENT_OVERLAP_MS;
+  const next: Record<string, EdgeLogPollCursor> = {};
+  for (const [otherKey, other] of Object.entries(cursors)) {
+    if (other.lastRequestedAt >= staleBefore) next[otherKey] = other;
+  }
+  next[key] = cursor;
+  return next;
+}
+
 function entryKey(entry: ConsoleEntry): string {
   return entry.providerLogId ?? `${entry.timestamp}:${entry.message}`;
 }

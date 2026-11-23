@@ -34,6 +34,8 @@ const h = vi.hoisted(() => ({
   }[],
   providerError: null as Error | null,
   providerGate: null as Promise<void> | null,
+  /** Runs while the app association is re-read after the fetch. */
+  onAssociationCheck: null as null | (() => void),
 }));
 
 vi.mock("@/db", () => ({
@@ -43,7 +45,10 @@ vi.mock("@/db", () => ({
         findFirst: vi.fn(async () => (h.app ? { id: 1, app: h.app } : null)),
       },
       apps: {
-        findFirst: vi.fn(async () => h.appAfterFetch ?? h.app),
+        findFirst: vi.fn(async () => {
+          h.onAssociationCheck?.();
+          return h.appAfterFetch ?? h.app;
+        }),
       },
     },
   },
@@ -157,6 +162,7 @@ beforeEach(() => {
   h.providerCalls = [];
   h.providerError = null;
   h.providerGate = null;
+  h.onAssociationCheck = null;
   supabaseFunctionLogCache.clear();
   clearLogs(APP_ID);
 });
@@ -271,6 +277,8 @@ describe("read_logs", () => {
   it.each([
     [{ startTime: "2026-11-18T11:00:00" }, "explicit timezone"],
     [{ startTime: "yesterday" }, "explicit timezone"],
+    // Date.parse rejects an offset without minutes; the hint explains why.
+    [{ startTime: "2026-11-18T11:00:00+05" }, "explicit timezone"],
     [{ startTime: "2026-02-31T00:00:00Z" }, "not a valid date"],
     [{ endTime: "2026-02-29T12:00:00+05:00" }, "not a valid date"],
     [{ endTime: "2026-04-31T12:00:00-05:00" }, "not a valid date"],
@@ -385,11 +393,19 @@ describe("read_logs", () => {
     expect(result).not.toContain("Partial results");
   });
 
-  it("does not fetch without credentials for the app's organization", async () => {
+  it("warns instead of fetching without credentials for the app's organization", async () => {
     h.settings = {};
-    const { result } = await run({});
+    addLogs([localLog("client message", NOW - MINUTE)]);
+    const { result } = await run({ type: "edge-function" });
     expect(h.providerCalls).toEqual([]);
-    expect(result).not.toContain("Partial results");
+    expect(result).toContain("Partial results");
+    expect(result).toContain("not connected to the Supabase organization");
+    expect(result).not.toContain("No logs found matching");
+
+    // Reads that cannot include Edge Function logs need no warning.
+    const local = await run({ type: "client" });
+    expect(local.result).toContain("client message");
+    expect(local.result).not.toContain("Partial results");
   });
 
   it("omits logs fetched for a project the app was unlinked from", async () => {
@@ -400,7 +416,27 @@ describe("read_logs", () => {
     };
     const { result } = await run({});
     expect(result).not.toContain("old project log");
-    expect(result).toContain("Supabase project changed");
+    expect(result).toContain("Supabase connection changed");
+  });
+
+  it("omits logs when the organization is disconnected after the fetch", async () => {
+    h.providerRows = [supabaseRow("e1", NOW - MINUTE, "disconnected log")];
+    h.onAssociationCheck = () => {
+      h.settings = {};
+    };
+    const { result } = await run({});
+    expect(h.providerCalls).toHaveLength(1);
+    expect(result).not.toContain("disconnected log");
+    expect(result).toContain("Supabase connection changed");
+  });
+
+  it("does not emit results when cancelled during the association check", async () => {
+    h.providerRows = [supabaseRow("e1", NOW - MINUTE, "edge log")];
+    const controller = new AbortController();
+    h.onAssociationCheck = () => controller.abort();
+    const { ctx, onXmlComplete } = makeContext(controller.signal);
+    await expect(readLogsTool.execute({}, ctx)).rejects.toThrow();
+    expect(onXmlComplete).not.toHaveBeenCalled();
   });
 
   it("does not duplicate a log already present in the local store", async () => {
@@ -442,5 +478,12 @@ describe("read_logs", () => {
     expect(
       readLogsTool.buildXml?.({ endTime: "2026-11-18T10:00:00Z" }, false),
     ).toContain("Time: 5 minutes before 2026-11-18T10:00:00.000Z");
+    // A date the call will reject is shown as written, not as another day.
+    expect(
+      readLogsTool.buildXml?.({ endTime: "2026-02-31T10:00:00Z" }, false),
+    ).toContain("Time: 5 minutes before 2026-02-31T10:00:00Z");
+    expect(
+      readLogsTool.buildXml?.({ endTime: "2026-11-18T10:00:00+0500" }, false),
+    ).toContain("Time: 5 minutes before 2026-11-18T05:00:00.000Z");
   });
 });

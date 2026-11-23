@@ -3,6 +3,7 @@ import log from "electron-log";
 
 import { apps, chats } from "@/db/schema";
 import { registerSupabaseHandlers } from "@/ipc/handlers/supabase_handlers";
+import { registerSettingsHandlers } from "@/ipc/handlers/settings_handlers";
 import type { ConsoleEntry } from "@/ipc/types";
 import { clearLogs, getLogs } from "@/lib/log_store";
 import { readLogsTool } from "@/pro/main/ipc/handlers/local_agent/tools/read_logs";
@@ -14,11 +15,19 @@ import {
 } from "@/testing/handler_test_harness";
 import { h } from "@/testing/hybrid.setup";
 
-const mocks = vi.hoisted(() => ({ readSettings: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  readSettings: vi.fn(),
+  writeSettings: vi.fn(),
+  readEffectiveSettings: vi.fn(),
+}));
 
+// Settings storage is the harness's in-memory copy; everything that reads or
+// writes it (handlers, service, cache) stays real.
 vi.mock("@/main/settings", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/main/settings")>()),
   readSettings: mocks.readSettings,
+  writeSettings: mocks.writeSettings,
+  readEffectiveSettings: mocks.readEffectiveSettings,
 }));
 
 const MINUTE = 60_000;
@@ -51,7 +60,12 @@ describe("Supabase edge logs shared by polling and read_logs (integration)", () 
       },
     });
     mocks.readSettings.mockImplementation(harness.readSettings);
+    mocks.writeSettings.mockImplementation(harness.writeSettings);
+    mocks.readEffectiveSettings.mockImplementation(async () =>
+      harness.readSettings(),
+    );
     registerSupabaseHandlers();
+    registerSettingsHandlers();
     harness.db
       .insert(apps)
       .values({
@@ -200,5 +214,54 @@ describe("Supabase edge logs shared by polling and read_logs (integration)", () 
       releaseResponse();
       await Promise.allSettled(pending);
     }
+  });
+
+  it("cancels a pending read when Disconnect All removes the credentials", async () => {
+    const requestSignals: AbortSignal[] = [];
+    const fetchLogs = vi.fn<typeof fetch>(
+      (_url, init) =>
+        new Promise<Response>((resolve, reject) => {
+          const signal = init?.signal;
+          if (signal) requestSignals.push(signal);
+          signal?.addEventListener("abort", () => reject(signal.reason));
+          // Resolves only if the request was not cancelled.
+          setTimeout(
+            () =>
+              resolve(
+                new Response(
+                  JSON.stringify({
+                    result: [
+                      {
+                        id: "disconnected-log",
+                        timestamp: new Date(NOW - MINUTE).toISOString(),
+                        event_message: "[hello] disconnected account",
+                        severity_text: "info",
+                      },
+                    ],
+                  }),
+                  { status: 200 },
+                ),
+              ),
+            50,
+          );
+        }),
+    );
+    vi.stubGlobal("fetch", fetchLogs);
+    const ctx = {
+      chatId: CHAT_ID,
+      onXmlComplete: vi.fn(),
+    } as unknown as AgentContext;
+
+    const agentRead = readLogsTool.execute({ type: "edge-function" }, ctx);
+    await vi.waitFor(() => expect(fetchLogs).toHaveBeenCalledTimes(1));
+
+    // The renderer's "Disconnect All" goes through the generic settings write.
+    await harness.invokeHandler("set-user-settings", { supabase: undefined });
+
+    expect(requestSignals[0].aborted).toBe(true);
+    const result = await agentRead;
+    expect(result).not.toContain("disconnected account");
+    expect(result).toContain("could not be fetched");
+    expect(supabaseFunctionLogCache.stats().scopes).toBe(0);
   });
 });

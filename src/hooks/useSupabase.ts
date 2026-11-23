@@ -22,15 +22,22 @@ import {
   SUPABASE_PROJECT_CREATED_BUT_UNLINKED,
 } from "@/ipc/types";
 import { useSettings } from "./useSettings";
-import { isSupabaseConnected } from "@/lib/schemas";
+import {
+  hasSupabaseCredentialsForOrganization,
+  isSupabaseConnected,
+} from "@/lib/schemas";
 import { queryKeys } from "@/lib/queryKeys";
 import { useAppRunRemoteManager } from "@/app_run/AppRunRemoteProvider";
 import { DEFAULT_AUTO_FETCH_SUPABASE_EDGE_FUNCTION_LOGS } from "@/shared/settings_defaults";
-import { EDGE_LOGS_POLL_INTERVAL_MS } from "@/shared/supabase_edge_logs";
+import {
+  EDGE_LOGS_AUTH_FAILURE_POLL_INTERVAL_MS,
+  EDGE_LOGS_POLL_INTERVAL_MS,
+} from "@/shared/supabase_edge_logs";
 import {
   applyEdgeLogPollResult,
   edgeLogPollKey,
   getEdgeLogPollStart,
+  storeEdgeLogPollCursor,
 } from "@/lib/supabase_edge_log_poll";
 
 /**
@@ -237,8 +244,14 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
     edgeLogsAppId !== null && edgeLogsAppId !== undefined
       ? edgeLogsAppId
       : null;
+  // A project link can outlive its organization's credentials; polling it
+  // would only fail on every tick.
   const edgeLogsEnabled =
     autoFetchEdgeLogs &&
+    hasSupabaseCredentialsForOrganization(
+      settings,
+      edgeLogsOrganizationSlug ?? null,
+    ) &&
     isPreviewOpen &&
     previewMode === "preview" &&
     !!edgeLogsProjectId &&
@@ -252,6 +265,7 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
       entries: ConsoleEntry[];
       retryFrom?: number;
       warning?: string;
+      authFailed?: boolean;
     },
     Error
   >({
@@ -283,7 +297,12 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
       return { appId, pollKey, requestedAt, ...result };
     },
     enabled: edgeLogsEnabled,
-    refetchInterval: EDGE_LOGS_POLL_INTERVAL_MS,
+    // Rejected credentials stay rejected until the user reconnects, so poll
+    // slowly until a poll succeeds again.
+    refetchInterval: (query) =>
+      query.state.data?.authFailed
+        ? EDGE_LOGS_AUTH_FAILURE_POLL_INTERVAL_MS
+        : EDGE_LOGS_POLL_INTERVAL_MS,
     refetchOnWindowFocus: false,
     retry: false,
   });
@@ -309,11 +328,15 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
       requestedAt,
       retryFrom,
     );
-    edgeLogPollCursorsRef.current = {
-      ...edgeLogPollCursorsRef.current,
-      [pollKey]: cursor,
-    };
-    setEdgeLogPollCursors((prev) => ({ ...prev, [pollKey]: cursor }));
+    edgeLogPollCursorsRef.current = storeEdgeLogPollCursor(
+      edgeLogPollCursorsRef.current,
+      pollKey,
+      cursor,
+      requestedAt,
+    );
+    setEdgeLogPollCursors((prev) =>
+      storeEdgeLogPollCursor(prev, pollKey, cursor, requestedAt),
+    );
     if (newEntries.length > 0) {
       appRunManager.previewConsole.append(appId, newEntries);
     }

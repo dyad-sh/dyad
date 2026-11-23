@@ -13,8 +13,9 @@ export const READ_LOGS_MAX_WINDOW_MS = SUPABASE_LOGS_MAX_WINDOW_MS;
 export const READ_LOGS_FUTURE_TOLERANCE_MS = 60_000;
 
 // ISO 8601 date-time with an explicit timezone (Z or a numeric offset).
+// Offsets need minutes: Date.parse rejects a bare "+05".
 const ISO_TIMESTAMP_WITH_ZONE =
-  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}(?::?\d{2})?)$/i;
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:?\d{2})$/i;
 
 export interface ReadLogsWindowArgs {
   startTime?: string;
@@ -29,6 +30,26 @@ export interface ReadLogsWindow {
   isDefault: boolean;
 }
 
+/**
+ * Epoch ms for a value that already matches ISO_TIMESTAMP_WITH_ZONE, or NaN
+ * when it names no real instant. Date.parse normalizes dates such as
+ * February 31, so the calendar date is checked separately from the timezone,
+ * which may legitimately change the UTC day.
+ */
+function parseValidatedTimestamp(trimmed: string): number {
+  const parsed = Date.parse(trimmed);
+  const calendarDate = trimmed.slice(0, 10);
+  const parsedCalendarDate = Date.parse(`${calendarDate}T00:00:00Z`);
+  if (
+    !Number.isFinite(parsed) ||
+    !Number.isFinite(parsedCalendarDate) ||
+    new Date(parsedCalendarDate).toISOString().slice(0, 10) !== calendarDate
+  ) {
+    return Number.NaN;
+  }
+  return parsed;
+}
+
 function parseTimestamp(value: string, name: "startTime" | "endTime"): number {
   const trimmed = value.trim();
   if (!ISO_TIMESTAMP_WITH_ZONE.test(trimmed)) {
@@ -37,16 +58,8 @@ function parseTimestamp(value: string, name: "startTime" | "endTime"): number {
       DyadErrorKind.Validation,
     );
   }
-  const parsed = Date.parse(trimmed);
-  // Date.parse normalizes dates such as February 31. Check the calendar date
-  // separately from the timezone, which may legitimately change the UTC day.
-  const calendarDate = trimmed.slice(0, 10);
-  const parsedCalendarDate = Date.parse(`${calendarDate}T00:00:00Z`);
-  if (
-    !Number.isFinite(parsed) ||
-    !Number.isFinite(parsedCalendarDate) ||
-    new Date(parsedCalendarDate).toISOString().slice(0, 10) !== calendarDate
-  ) {
+  const parsed = parseValidatedTimestamp(trimmed);
+  if (!Number.isFinite(parsed)) {
     throw new DyadError(
       `${name} is not a valid date: "${value}".`,
       DyadErrorKind.Validation,
@@ -135,9 +148,12 @@ export function describeQueriedWindow(window: ReadLogsWindow): string {
  * Arguments may be partial, so unparseable bounds are shown verbatim.
  */
 export function describeRequestedWindow(args: ReadLogsWindowArgs): string {
+  // Same validation as the executed call, so a value it would reject (such
+  // as February 31) is shown as written rather than as another day.
   const show = (value: string) => {
-    const parsed = ISO_TIMESTAMP_WITH_ZONE.test(value.trim())
-      ? Date.parse(value.trim())
+    const trimmed = value.trim();
+    const parsed = ISO_TIMESTAMP_WITH_ZONE.test(trimmed)
+      ? parseValidatedTimestamp(trimmed)
       : Number.NaN;
     return Number.isFinite(parsed) ? new Date(parsed).toISOString() : value;
   };

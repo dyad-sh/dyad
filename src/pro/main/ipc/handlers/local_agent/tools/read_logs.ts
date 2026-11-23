@@ -8,6 +8,7 @@ import { getLogs } from "@/lib/log_store";
 import { formatLogsForAI } from "@/shared/format_logs";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
+  describeSupabaseLogError,
   getAppEdgeFunctionLogs,
   resolveAppSupabaseLogTarget,
   type AppSupabaseLogTarget,
@@ -83,15 +84,6 @@ function buildFilterAttributes(args: ReadLogsArgs): string {
   return filters.join(" ");
 }
 
-const MAX_ERROR_DETAIL_CHARS = 300;
-
-function describeError(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
-  return message.length > MAX_ERROR_DETAIL_CHARS
-    ? `${message.slice(0, MAX_ERROR_DETAIL_CHARS)}...`
-    : message;
-}
-
 function describeRanges(ranges: TimeRange[], window: ReadLogsWindow): string {
   const shown = ranges.slice(0, 3).map((range) => {
     const start = Math.max(range.start, window.start);
@@ -119,11 +111,13 @@ async function readSupabaseLogs(
       end: window.end + 1,
       signal,
     });
+    // The association check after the cache read can outlast a cancellation.
+    signal?.throwIfAborted();
     if (result.associationChanged) {
       return {
         logs: [],
         warning:
-          "Partial results: Supabase Edge Function logs were omitted because this app's Supabase project changed while they were being fetched. Call read_logs again to read the current project's logs.",
+          "Partial results: Supabase Edge Function logs were omitted because this app's Supabase connection changed while they were being fetched. Call read_logs again to read the current connection's logs.",
       };
     }
     if (result.missingRanges.length === 0) {
@@ -133,14 +127,14 @@ async function readSupabaseLogs(
     return {
       logs: result.entries,
       warning: result.error
-        ? `Partial results: Supabase Edge Function logs could not be fetched for ${ranges} (${describeError(result.error)}). This is not the same as there being no Edge Function logs. Local logs and any Edge Function logs already retrieved for this window are shown.`
+        ? `Partial results: Supabase Edge Function logs could not be fetched for ${ranges} (${describeSupabaseLogError(result.error)}). This is not the same as there being no Edge Function logs. Local logs and any Edge Function logs already retrieved for this window are shown.`
         : `Partial results: this window has more Supabase Edge Function logs than read_logs retrieves in one call, so logs from ${ranges} were not retrieved. Call read_logs again with a narrower startTime/endTime window to read them.`,
     };
   } catch (error) {
     if (signal?.aborted) throw error;
     return {
       logs: [],
-      warning: `Partial results: Supabase Edge Function logs could not be fetched (${describeError(error)}). This is not the same as there being no Edge Function logs. Showing local logs only.`,
+      warning: `Partial results: Supabase Edge Function logs could not be fetched (${describeSupabaseLogError(error)}). This is not the same as there being no Edge Function logs. Showing local logs only.`,
     };
   }
 }
@@ -189,10 +183,12 @@ ${escapeXmlContent(summary)}
     const localLogs = getLogs(appId).filter(inWindow);
 
     // Supabase Edge Function logs, fetched on demand for the linked project.
-    // Apps without a supported Supabase connection keep local logs only.
+    // Apps without a Supabase project keep local logs only.
     let remoteLogs: ConsoleEntry[] = [];
     let warning: string | null = null;
-    const target = includesSupabaseLogs(args.type)
+    const wantsSupabaseLogs =
+      includesSupabaseLogs(args.type) && !!chat.app.supabaseProjectId;
+    const target = wantsSupabaseLogs
       ? resolveAppSupabaseLogTarget(chat.app)
       : null;
     if (target) {
@@ -201,6 +197,11 @@ ${escapeXmlContent(summary)}
         window,
         ctx.abortSignal,
       ));
+    } else if (wantsSupabaseLogs) {
+      // A linked project whose organization Dyad holds no credentials for.
+      // Without this an edge-function read would look like a clean result.
+      warning =
+        "Partial results: Supabase Edge Function logs were not read because Dyad is not connected to the Supabase organization that owns this app's project. Ask the user to reconnect Supabase in Settings to include them.";
     }
 
     const remoteIds = new Set(remoteLogs.map((log) => log.providerLogId));

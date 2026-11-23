@@ -32,11 +32,16 @@ function row(id: string, timestamp: number, message = `msg ${id}`) {
   } satisfies SupabaseLogRow;
 }
 
+/** A provider row visible only to one organization's credentials. */
+type FakeRow = SupabaseLogRow & { organizationSlug?: string };
+
 /**
  * Fake provider: returns rows inside [start, end), newest first, capped at
  * `limit`, the way the analytics endpoint does for minute-aligned bounds.
+ * Rows belong to the project named by their id prefix and, unless tagged
+ * otherwise, to the default scope's organization.
  */
-function fakeProvider(initialRows: SupabaseLogRow[] = []) {
+function fakeProvider(initialRows: FakeRow[] = []) {
   const rows = [...initialRows];
   const calls: { start: number; end: number; projectRef: string }[] = [];
   const fetchPage = vi.fn<SupabaseLogPageFetcher>(
@@ -46,6 +51,8 @@ function fakeProvider(initialRows: SupabaseLogRow[] = []) {
         .filter(
           (entry) =>
             entry.id.startsWith(`${requestScope.projectRef}:`) &&
+            (entry.organizationSlug ?? scope.organizationSlug) ===
+              requestScope.organizationSlug &&
             entry.timestamp >= start &&
             entry.timestamp < end,
         )
@@ -541,6 +548,7 @@ describe("SupabaseLogCache", () => {
     const provider = fakeProvider([
       row("proj-1:a", T0 + MINUTE),
       row("proj-2:b", T0 + MINUTE),
+      { ...row("proj-1:org-2", T0 + 2 * MINUTE), organizationSlug: "org-2" },
     ]);
     const cache = new SupabaseLogCache({
       fetchPage: provider.fetchPage,
@@ -559,9 +567,18 @@ describe("SupabaseLogCache", () => {
     });
     expect(one.logs.map((entry) => entry.id)).toEqual(["proj-1:a"]);
     expect(two.logs.map((entry) => entry.id)).toEqual(["proj-2:b"]);
-    // Same project under another account context is fetched separately.
+    // Same project under another account context is fetched separately and
+    // never sees the first organization's rows.
     expect(otherOrg.providerRequests).toBe(1);
+    expect(otherOrg.logs.map((entry) => entry.id)).toEqual(["proj-1:org-2"]);
     expect(provider.fetchPage).toHaveBeenCalledTimes(3);
+    const oneAgain = await cache.query({
+      scope,
+      start: T0,
+      end: T0 + 5 * MINUTE,
+    });
+    expect(oneAgain.providerRequests).toBe(0);
+    expect(oneAgain.logs.map((entry) => entry.id)).toEqual(["proj-1:a"]);
 
     cache.clear((candidate) => candidate.organizationSlug === "org-2");
     expect(cache.stats().scopes).toBe(2);
@@ -670,6 +687,46 @@ describe("SupabaseLogCache", () => {
     provider.calls.length = 0;
     await cache.query({ scope, start: T0, end: T0 + MINUTE });
     expect(provider.calls).toHaveLength(1);
+  });
+
+  it("keeps a scope with fetches in flight cancellable instead of evicting it", async () => {
+    const pending: {
+      signal: AbortSignal;
+      resolve: (rows: SupabaseLogRow[]) => void;
+    }[] = [];
+    const fetchPage = vi.fn<SupabaseLogPageFetcher>(
+      ({ scope: requestScope, signal }) =>
+        requestScope.organizationSlug === scope.organizationSlug
+          ? new Promise((resolve) => pending.push({ signal, resolve }))
+          : Promise.resolve([row("proj-1:other", T0 + 1_000)]),
+    );
+    const cache = new SupabaseLogCache({
+      fetchPage,
+      now: () => T0 + 30 * MINUTE,
+      maxScopes: 1,
+    });
+
+    const busy = cache.query({ scope, start: T0, end: T0 + MINUTE });
+    await cache.query({
+      scope: { ...scope, organizationSlug: "org-2" },
+      start: T0,
+      end: T0 + MINUTE,
+    });
+    // Over the scope limit, but the busy scope stays reachable by clear().
+    expect(cache.stats().scopes).toBe(2);
+    cache.clear(
+      (candidate) => candidate.organizationSlug === scope.organizationSlug,
+    );
+    expect(pending[0].signal.aborted).toBe(true);
+    await expect(busy).rejects.toMatchObject({
+      kind: DyadErrorKind.UserCancelled,
+    });
+
+    // Once its read finishes, the limit applies to idle scopes again.
+    const next = cache.query({ scope, start: T0, end: T0 + MINUTE });
+    pending[1].resolve([row("proj-1:a", T0 + 1_000)]);
+    expect((await next).logs.map((entry) => entry.id)).toEqual(["proj-1:a"]);
+    expect(cache.stats().scopes).toBe(1);
   });
 
   it("bounds total cached message size", async () => {

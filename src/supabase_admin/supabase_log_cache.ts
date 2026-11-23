@@ -561,7 +561,11 @@ export class SupabaseLogCache {
   /**
    * Keeps one scope and the whole cache within their bounds. Coverage that
    * does not touch the window just read is evicted first, oldest fetch
-   * first; then the oldest rows. Scopes are evicted least recently used.
+   * first; then the oldest rows. Idle scopes are evicted least recently used.
+   *
+   * A scope with fetches in flight is never evicted: removing it from the map
+   * would hide its waiting readers from clear(), so a disconnect could no
+   * longer cancel them. Its own reads enforce these bounds when they finish.
    */
   private enforceBounds(state: ScopeState, protectedRange: TimeRange): void {
     if (state.logs.size > this.maxLogsPerScope) {
@@ -590,12 +594,23 @@ export class SupabaseLogCache {
       const overCount = totals.logs > this.maxTotalLogs;
       const overChars = totals.messageChars > this.maxTotalMessageChars;
       if (totals.scopes <= this.maxScopes && !overCount && !overChars) return;
-      const lru = [...this.scopes.values()].find(
+      const others = [...this.scopes.values()].filter(
         (candidate) => candidate !== state,
       );
+      const lru = others.find((candidate) => candidate.inFlight.size === 0);
       if (lru) {
         this.scopes.delete(lru.key);
         continue;
+      }
+      if (others.length > 0) {
+        // Only busy scopes remain besides this one. They trim themselves once
+        // their reads finish; this scope must still fit the budget alone.
+        this.trimOldestLogs(
+          state,
+          this.maxTotalLogs,
+          this.maxTotalMessageChars,
+        );
+        return;
       }
       // Only the scope just read remains, and it alone is over budget.
       this.trimOldestLogs(

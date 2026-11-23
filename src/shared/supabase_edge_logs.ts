@@ -31,5 +31,8 @@ export const DEFAULT_LOG_READ_WINDOW_MS = 5 * 60 * 1000;
 /** Interval between background polls while polling is enabled. */
 export const EDGE_LOGS_POLL_INTERVAL_MS = 5_000;
 
+/** Interval between background polls while Supabase rejects the credentials. */
+export const EDGE_LOGS_AUTH_FAILURE_POLL_INTERVAL_MS = 60_000;
+
 /** Furthest back a background poll looks, including its first poll. */
 export const EDGE_LOGS_POLL_MAX_LOOKBACK_MS = 10 * 60 * 1000;

@@ -12,7 +12,10 @@ import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
 import type { ConsoleEntry } from "@/ipc/types";
 import type { UserSettings } from "@/lib/schemas";
-import { EDGE_LOGS_POLL_INTERVAL_MS } from "@/shared/supabase_edge_logs";
+import {
+  EDGE_LOGS_AUTH_FAILURE_POLL_INTERVAL_MS,
+  EDGE_LOGS_POLL_INTERVAL_MS,
+} from "@/shared/supabase_edge_logs";
 
 const mocks = vi.hoisted(() => ({
   settings: {} as Partial<UserSettings>,
@@ -46,6 +49,19 @@ import { useSupabase } from "./useSupabase";
 
 const APP_ID = 3;
 const NOW = Date.UTC(2026, 10, 18, 12, 0, 0);
+const CREDENTIALS = {
+  accessToken: { value: "token" },
+  refreshToken: { value: "refresh" },
+  expiresIn: 3600,
+  tokenTimestamp: 0,
+};
+const CONNECTED: Partial<UserSettings> = {
+  supabase: { organizations: { "org-1": CREDENTIALS } },
+};
+const POLLING_ON: Partial<UserSettings> = {
+  ...CONNECTED,
+  autoFetchSupabaseEdgeFunctionLogs: true,
+};
 
 function edgeEntry(id: string, timestamp: number): ConsoleEntry {
   return {
@@ -127,7 +143,7 @@ describe("useSupabase edge log polling", () => {
     await flush(EDGE_LOGS_POLL_INTERVAL_MS);
     expect(mocks.getEdgeLogs).not.toHaveBeenCalled();
 
-    mocks.settings = { autoFetchSupabaseEdgeFunctionLogs: true };
+    mocks.settings = POLLING_ON;
     const enabledAt = Date.now();
     rerender();
     await flush();
@@ -143,7 +159,7 @@ describe("useSupabase edge log polling", () => {
     await flush(EDGE_LOGS_POLL_INTERVAL_MS);
     expect(mocks.getEdgeLogs).toHaveBeenCalledTimes(2);
 
-    mocks.settings = { autoFetchSupabaseEdgeFunctionLogs: false };
+    mocks.settings = { ...CONNECTED, autoFetchSupabaseEdgeFunctionLogs: false };
     rerender();
     await flush(EDGE_LOGS_POLL_INTERVAL_MS * 3);
     expect(mocks.getEdgeLogs).toHaveBeenCalledTimes(2);
@@ -151,8 +167,48 @@ describe("useSupabase edge log polling", () => {
     queryClient.clear();
   });
 
+  it("does not poll a project whose organization has no credentials", async () => {
+    mocks.settings = {
+      autoFetchSupabaseEdgeFunctionLogs: true,
+      supabase: { organizations: { "org-2": CREDENTIALS } },
+    };
+    const { unmount, queryClient } = setup();
+    await flush(EDGE_LOGS_POLL_INTERVAL_MS * 2);
+    expect(mocks.getEdgeLogs).not.toHaveBeenCalled();
+    unmount();
+    queryClient.clear();
+  });
+
+  it("polls less often while Supabase rejects the credentials", async () => {
+    mocks.settings = POLLING_ON;
+    mocks.getEdgeLogs.mockResolvedValueOnce({
+      entries: [],
+      retryFrom: NOW - 10 * 60_000,
+      warning: "Reconnect your Supabase account in Settings",
+      authFailed: true,
+    });
+    const { result, unmount, queryClient } = setup();
+    await flush();
+    expect(mocks.getEdgeLogs).toHaveBeenCalledTimes(1);
+    expect(result.current.edgeLogsWarning).toContain("Reconnect");
+
+    await flush(EDGE_LOGS_POLL_INTERVAL_MS * 2);
+    expect(mocks.getEdgeLogs).toHaveBeenCalledTimes(1);
+
+    // The next poll succeeds, so the normal cadence resumes.
+    await flush(
+      EDGE_LOGS_AUTH_FAILURE_POLL_INTERVAL_MS - EDGE_LOGS_POLL_INTERVAL_MS * 2,
+    );
+    expect(mocks.getEdgeLogs).toHaveBeenCalledTimes(2);
+    expect(result.current.edgeLogsWarning).toBeNull();
+    await flush(EDGE_LOGS_POLL_INTERVAL_MS);
+    expect(mocks.getEdgeLogs).toHaveBeenCalledTimes(3);
+    unmount();
+    queryClient.clear();
+  });
+
   it("only polls for the selected app", async () => {
-    mocks.settings = { autoFetchSupabaseEdgeFunctionLogs: true };
+    mocks.settings = POLLING_ON;
     const { unmount, queryClient } = setup({ selectedAppId: APP_ID + 1 });
     await flush(EDGE_LOGS_POLL_INTERVAL_MS * 2);
     expect(mocks.getEdgeLogs).not.toHaveBeenCalled();
@@ -161,7 +217,7 @@ describe("useSupabase edge log polling", () => {
   });
 
   it("pauses when the preview is collapsed or another tab is selected", async () => {
-    mocks.settings = { autoFetchSupabaseEdgeFunctionLogs: true };
+    mocks.settings = POLLING_ON;
     const { store, unmount, queryClient } = setup();
     await flush();
     expect(mocks.getEdgeLogs).toHaveBeenCalledTimes(1);
@@ -185,7 +241,7 @@ describe("useSupabase edge log polling", () => {
   });
 
   it("does not append older cached logs when the preview remounts", async () => {
-    mocks.settings = { autoFetchSupabaseEdgeFunctionLogs: true };
+    mocks.settings = POLLING_ON;
     mocks.getEdgeLogs.mockResolvedValueOnce({
       entries: [edgeEntry("old", NOW - 5 * 60_000)],
     });
@@ -221,7 +277,7 @@ describe("useSupabase edge log polling", () => {
   });
 
   it("does not advance past a failed poll window", async () => {
-    mocks.settings = { autoFetchSupabaseEdgeFunctionLogs: true };
+    mocks.settings = POLLING_ON;
     mocks.getEdgeLogs.mockResolvedValueOnce({ entries: [] });
     mocks.getEdgeLogs.mockRejectedValueOnce(new Error("Incomplete logs"));
     const { unmount, queryClient } = setup();
@@ -235,7 +291,7 @@ describe("useSupabase edge log polling", () => {
   });
 
   it("shows partial logs immediately, retries gaps, and clears the warning on recovery", async () => {
-    mocks.settings = { autoFetchSupabaseEdgeFunctionLogs: true };
+    mocks.settings = POLLING_ON;
     const available = edgeEntry("available", NOW - 5 * 60_000);
     const recovered = edgeEntry("recovered", NOW - 7 * 60_000);
     const retryFrom = NOW - 8 * 60_000;
@@ -262,7 +318,7 @@ describe("useSupabase edge log polling", () => {
   });
 
   it("appends each log to the preview console once and not to the central store", async () => {
-    mocks.settings = { autoFetchSupabaseEdgeFunctionLogs: true };
+    mocks.settings = POLLING_ON;
     mocks.getEdgeLogs.mockResolvedValueOnce({
       entries: [edgeEntry("a", NOW - 1_000)],
     });

@@ -319,8 +319,9 @@ describe.skipIf(!LIVE_KEY)("Neon database revert (live Neon API)", () => {
 
     const dev = await sql(projectId, devId);
     await dev.query(`create type mood as enum ('happy', 'sad')`);
+    // `r` is also the copy's alias for each row it reads.
     await dev.query(
-      `create table "Profiles" (id serial primary key, user_id uuid references neon_auth."user"(id) on delete cascade, mood mood, meta jsonb)`,
+      `create table "Profiles" (id serial primary key, user_id uuid references neon_auth."user"(id) on delete cascade, mood mood, meta jsonb, r jsonb)`,
     );
     await dev.query(
       `create table posts (id bigint generated always as identity primary key, profile_id int references "Profiles"(id), title text, title_len int generated always as (length(title)) stored, parent_id bigint references posts(id))`,
@@ -332,7 +333,7 @@ describe.skipIf(!LIVE_KEY)("Neon database revert (live Neon API)", () => {
       `select id from neon_auth."user" where email = 'a@example.com'`,
     );
     await dev.query(
-      `insert into "Profiles"(user_id, mood, meta) values ($1, 'happy', '{"tags":[1,2]}')`,
+      `insert into "Profiles"(user_id, mood, meta, r) values ($1, 'happy', '{"tags":[1,2]}', '{"k":1}')`,
       [userA],
     );
     await dev.query(`insert into posts(profile_id, title) values (1, 'first')`);
@@ -422,7 +423,9 @@ describe.skipIf(!LIVE_KEY)("Neon database revert (live Neon API)", () => {
     // The copy of the old data lives outside the app folder, owner-only.
     const backupPath = migration.backupPath!;
     expect(backupPath.startsWith(appDir)).toBe(false);
-    expect(fs.readFileSync(backupPath, "utf8")).toMatch(/^-- Dyad backup/);
+    const backup = fs.readFileSync(backupPath, "utf8");
+    expect(backup).toMatch(/^-- Dyad backup/);
+    expect(backup).toMatch(/"r":\s*\{"k":\s*1\}/);
     if (process.platform !== "win32") {
       expect(fs.statSync(backupPath).mode & 0o777).toBe(0o600);
       expect(fs.statSync(path.dirname(backupPath)).mode & 0o777).toBe(0o700);
@@ -457,9 +460,9 @@ describe.skipIf(!LIVE_KEY)("Neon database revert (live Neon API)", () => {
       { id: "2", title: "reply", title_len: 5, parent_id: "1" },
       { id: "3", title: "after A", title_len: 7, parent_id: null },
     ]);
-    expect(await migrated.query(`select mood, meta from "Profiles"`)).toEqual([
-      { mood: "happy", meta: { tags: [1, 2] } },
-    ]);
+    expect(
+      await migrated.query(`select mood, meta, r from "Profiles"`),
+    ).toEqual([{ mood: "happy", meta: { tags: [1, 2] }, r: { k: 1 } }]);
     // The identity sequence continues past the copied rows. Postgres logs
     // sequences ahead in batches, so a point-in-time copy may skip values.
     const [{ id: newPostId }] = await migrated.query(

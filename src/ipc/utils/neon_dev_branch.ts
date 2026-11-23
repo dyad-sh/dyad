@@ -646,6 +646,29 @@ function neonAuthLeftoversWarnings(
   ];
 }
 
+/**
+ * The new preview branches from the new development branch, which keeps
+ * development's `neon_auth` schema and role when development has Auth off,
+ * and Neon Auth can't be provisioned over those. Dropping them would drop
+ * their data, and recreating the preview without the Auth it had would break
+ * previews of earlier versions that use it: both are for the user to choose.
+ */
+async function refuseIfPreviewCannotKeepNeonAuth(
+  developmentUri: string,
+  preview: MigrationPreview,
+) {
+  const leftovers = await findLeftoverNeonAuthObjects(developmentUri);
+  if (!leftovers.schema && !leftovers.role) return;
+  const objects = `neon_auth ${describeNeonAuthLeftovers(leftovers)}`;
+  const exist = leftovers.schema && leftovers.role ? "they exist" : "it exists";
+  throw new MigrationRefusedError(
+    `Can't migrate the development database: the preview branch "${preview.name}" has Neon Auth on, and the new preview branch can't have it. ` +
+      `It would inherit the ${objects} that the development database still has, although its Neon Auth is off, and Neon Auth can't be set up while ${exist}. ` +
+      `To migrate, either turn off Neon Auth for "${preview.name}" in the Neon console, or back up and remove the ${objects} from the development branch.`,
+    "preview-neon-auth",
+  );
+}
+
 function neonAuthNotCopiedWarnings(
   skipped: string[],
   backup: string,
@@ -1410,6 +1433,7 @@ async function finishMigration({
 export type MigrationRefusalReason =
   | "foreign-branches"
   | "unsupported-objects"
+  | "preview-neon-auth"
   | "deploys-with-development"
   | "version-preview"
   | "apps-changed"
@@ -1691,18 +1715,21 @@ export async function migrateDevelopmentBranch({
     plan.removable,
     previewBranchId,
   );
-  const blockers = await findMigrationBlockers(
-    await getConnectionUri({ projectId, branchId: developmentBranchId }),
-    {
-      neonAuth: hasNeonAuth,
-      previewNeedsNeonAuth: oldPreview?.hasNeonAuth ?? false,
-    },
-  );
+  const developmentUri = await getConnectionUri({
+    projectId,
+    branchId: developmentBranchId,
+  });
+  const blockers = await findMigrationBlockers(developmentUri, {
+    neonAuth: hasNeonAuth,
+  });
   if (blockers.length > 0) {
     throw new MigrationRefusedError(
       `Can't migrate the development database: the copy would lose ${blockers.join(", ")}.`,
       "unsupported-objects",
     );
+  }
+  if (oldPreview?.hasNeonAuth && !hasNeonAuth) {
+    await refuseIfPreviewCannotKeepNeonAuth(developmentUri, oldPreview);
   }
   try {
     const {

@@ -469,10 +469,10 @@ describe("branch data triggers", () => {
     mockDatabase(mocks.source, false, true);
     await expect(
       copyBranchData({
-      sourceUri: "source",
-      targetUri: "target",
-      hasNeonAuth: true,
-    }),
+        sourceUri: "source",
+        targetUri: "target",
+        hasNeonAuth: true,
+      }),
     ).resolves.toEqual({ tables: 1, rows: 1, skipped: [] });
 
     const sql = statements(mocks.target);
@@ -495,10 +495,10 @@ describe("branch data triggers", () => {
     mockDatabase(mocks.target, false, true);
     await expect(
       copyBranchData({
-      sourceUri: "source",
-      targetUri: "target",
-      hasNeonAuth: true,
-    }),
+        sourceUri: "source",
+        targetUri: "target",
+        hasNeonAuth: true,
+      }),
     ).rejects.toThrow(/enabled user triggers.*cannot disable/);
     const sql = statements(mocks.target);
     expect(sql.some((s) => /^(delete|insert|alter|do) /i.test(s))).toBe(false);
@@ -528,10 +528,10 @@ describe("branch data triggers", () => {
     });
     await expect(
       copyBranchData({
-      sourceUri: "source",
-      targetUri: "target",
-      hasNeonAuth: true,
-    }),
+        sourceUri: "source",
+        targetUri: "target",
+        hasNeonAuth: true,
+      }),
     ).rejects.toThrow("insert failed");
     const sql = statements(mocks.target);
     expect(sql.some((s) => s.includes("disable trigger %I"))).toBe(true);
@@ -578,10 +578,7 @@ describe("branch data triggers", () => {
       ])
       .mockResolvedValueOnce([{ count: 0 }]);
     await expect(
-      findMigrationBlockers("source", {
-        neonAuth: true,
-        previewNeedsNeonAuth: false,
-      }),
+      findMigrationBlockers("source", { neonAuth: true }),
     ).resolves.toEqual([
       'the trigger sync_profile on neon_auth."user" (it uses Neon Auth\'s tables)',
     ]);
@@ -749,10 +746,10 @@ describe("tables outside the copy with kept keys", () => {
     mockDatabase(mocks.target, false);
     await expect(
       copyBranchData({
-      sourceUri: "source",
-      targetUri: "target",
-      hasNeonAuth: true,
-    }),
+        sourceUri: "source",
+        targetUri: "target",
+        hasNeonAuth: true,
+      }),
     ).resolves.toEqual({ tables: 1, rows: 1, skipped: [] });
     expect(statements()).toContain("commit");
   });
@@ -823,10 +820,10 @@ describe("copyBranchData table names", () => {
     }
     await expect(
       copyBranchData({
-      sourceUri: "source",
-      targetUri: "target",
-      hasNeonAuth: true,
-    }),
+        sourceUri: "source",
+        targetUri: "target",
+        hasNeonAuth: true,
+      }),
     ).resolves.toEqual({ tables: 2, rows: 2, skipped: [] });
     const inserts = mocks.target.mock.calls
       .map(([sql]) => sql as string)
@@ -1109,6 +1106,27 @@ describe("Neon migration data", () => {
     expect(page).toMatch(/select ctid, "dyad\$ctid", "id" from only/);
     expect(page).toMatch(/max\(ctid\)/);
     expect(page).not.toMatch(/ as "dyad\$ctid"/);
+  });
+
+  it("reads whole rows even when a column is named like the row alias", async () => {
+    mocks.source.mockImplementation(
+      fakeDatabase({ "public.odd": ["r", "id"] }),
+    );
+    mocks.target.mockImplementation(
+      fakeDatabase({ "public.odd": ["r", "id"] }),
+    );
+
+    await copyBranchData({
+      sourceUri: "source",
+      targetUri: "target",
+      hasNeonAuth: false,
+    });
+
+    const page = statements(mocks.source).find((s) => s.includes("with page"));
+    expect(page).toMatch(/from \(select "r", "id" from page\) r\)/);
+    // A bare `r` would resolve to the column, not the row.
+    expect(page).toMatch(/to_json\(r\.\*\)/);
+    expect(page).not.toMatch(/to_json\(r\)/);
   });
 
   it("refuses to drop app columns even when Neon Auth is re-provisioned", async () => {

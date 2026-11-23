@@ -54,7 +54,7 @@ const branchData = vi.hoisted(() => ({
   findMigrationBlockers: vi.fn(
     async (
       _uri: string,
-      _options: { neonAuth: boolean; previewNeedsNeonAuth: boolean },
+      _options: { neonAuth: boolean },
     ): Promise<string[]> => [],
   ),
   findLeftoverNeonAuthObjects: vi.fn(async (_uri: string) => ({
@@ -630,6 +630,42 @@ describe("Neon database revert (integration)", () => {
     expect(result.warning).toMatch(
       /kept its neon_auth schema and role with their data\. Neon Auth can't be turned on for this app until the neon_auth schema and role are removed/,
     );
+  });
+
+  it("refuses, saying what to do, when the new preview branch can't have Neon Auth", async () => {
+    await legacyLayout(1);
+    const { appId, development, preview } = await connectApp();
+    development.neonAuth = false;
+    preview.neonAuth = true;
+    branchData.findLeftoverNeonAuthObjects.mockResolvedValueOnce({
+      schema: true,
+      role: false,
+    });
+    const treeBefore = fakeNeon.tree();
+
+    await expect(migrate(appId)).rejects.toThrow(
+      /the preview branch "preview" has Neon Auth on, and the new preview branch can't have it\. It would inherit the neon_auth schema that the development database still has, although its Neon Auth is off, and Neon Auth can't be set up while it exists\. To migrate, either turn off Neon Auth for "preview" in the Neon console, or back up and remove the neon_auth schema from the development branch\./,
+    );
+    expect(fakeNeon.tree()).toEqual(treeBefore);
+    expect(branchData.findLeftoverNeonAuthObjects).toHaveBeenCalledWith(
+      fakeNeon.connectionUri(development.id),
+    );
+    expect(telemetryEvents("neon:migration")[0]).toMatchObject({
+      outcome: "refused",
+      reason: "preview-neon-auth",
+    });
+
+    // The first way out the message gives.
+    preview.neonAuth = false;
+    branchData.findLeftoverNeonAuthObjects.mockResolvedValueOnce({
+      schema: true,
+      role: false,
+    });
+    const result = await migrate(appId);
+
+    expect(result.success).toBe(true);
+    expect(result.warning).toMatch(/kept its neon_auth schema/);
+    expect(fakeNeon.byName("preview").neonAuth).toBe(false);
   });
 
   it("warns about Neon Auth tables re-provisioning has no place for", async () => {
@@ -1298,7 +1334,7 @@ describe("Neon database revert (integration)", () => {
     expect(branchData.copyBranchData).not.toHaveBeenCalled();
     expect(branchData.findMigrationBlockers).toHaveBeenCalledWith(
       fakeNeon.connectionUri(fakeNeon.byName("development").id),
-      { neonAuth: true, previewNeedsNeonAuth: true },
+      { neonAuth: true },
     );
   });
 

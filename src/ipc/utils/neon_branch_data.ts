@@ -542,10 +542,7 @@ export async function findNeonAuthDataNotCopied(
  */
 export async function findMigrationBlockers(
   connectionUri: string,
-  {
-    neonAuth,
-    previewNeedsNeonAuth,
-  }: { neonAuth: boolean; previewNeedsNeonAuth: boolean },
+  { neonAuth }: { neonAuth: boolean },
 ): Promise<string[]> {
   if (IS_TEST_BUILD) return [];
   const db = httpQueryable(connectionUri);
@@ -586,15 +583,6 @@ export async function findMigrationBlockers(
     blockers.push(
       ...dependents.map((d) => `${d.object} (it uses Neon Auth's tables)`),
     );
-  } else if (previewNeedsNeonAuth) {
-    // Preview will inherit development's schema and roles. Provisioning it
-    // would require removing these objects even though development has Auth off.
-    const leftovers = await findLeftoverNeonAuthObjects(connectionUri);
-    if (leftovers.schema || leftovers.role) {
-      blockers.push(
-        `Neon Auth on the preview branch (development already contains a neon_auth ${describeNeonAuthLeftovers(leftovers)})`,
-      );
-    }
   }
   const [{ count }] = await db.query(
     "select count(*)::int as count from pg_largeobject_metadata",
@@ -628,7 +616,8 @@ async function poolQueryable(connectionUri: string) {
  *
  * The page keeps the column under its own name, `ctid`: Postgres rejects user
  * columns named after system columns, so it cannot collide with one, as any
- * alias could.
+ * alias could. For the same reason the row is `r.*`: Postgres would resolve a
+ * bare `r` to a column named `r` before the row.
  */
 async function readRowsPage(
   db: Queryable,
@@ -642,7 +631,7 @@ async function readRowsPage(
        where ctid > $1::tid order by ctid limit ${COPY_BATCH_SIZE}
      )
      select
-       (select coalesce(json_agg(to_json(r)), '[]'::json)::text
+       (select coalesce(json_agg(to_json(r.*)), '[]'::json)::text
         from (select ${columnList} from page) r) as json,
        (select count(*)::int from page) as count,
        (select max(ctid)::text from page) as last`,

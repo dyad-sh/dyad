@@ -218,31 +218,52 @@ async function listInsertableColumns(
   return rows as { name: string; identityAlways: boolean }[];
 }
 
+/** A table outside the copy whose kept key refers to a table it clears. */
+export interface OutsideReference {
+  /** The table outside the copy, as a quoted SQL name. */
+  table: string;
+  /** One table in the copy that it refers to, as a quoted SQL name. */
+  references: string;
+}
+
 /** How a copy writes each table's rows. */
 export interface DataCopyPlan {
   /** Keys to drop before the copy and re-add after it, which validates them. */
   droppedForeignKeys: TableForeignKey[];
   /**
-   * Tables whose keys the copy keeps, parents before children. Their keys stay
-   * on, so they are cleared children first and filled parents first.
+   * Tables bound by keys the copy keeps, parents before children. Those keys
+   * stay on, so they are cleared children first and filled parents first.
    */
   managedTables: CopyTable[];
   /** Tables copied with their keys dropped and user triggers off. */
   ownedTables: CopyTable[];
+  /**
+   * Clearing the tables these refer to would fail on, or cascade into, their
+   * rows, so a copy must refuse unless they are empty.
+   */
+  outsideReferences: OutsideReference[];
 }
 
 function isManaged(table: { schema: string; canAlter: boolean }): boolean {
   return table.schema === NEON_MANAGED_SCHEMA || !table.canAlter;
 }
 
-const tableKey = (schema: string, name: string) => `${schema}.${name}`;
+/**
+ * The quoted SQL name: unlike `schema.name`, no two tables share one, e.g.
+ * `"public"."x.y"` and `"public.x"."y"`.
+ */
+const tableKey = qualifiedName;
+
+function outsideReferenceMessage({ table, references }: OutsideReference) {
+  return `Can't copy ${references}: rows of ${table}, which isn't copied, refer to it through a foreign key Dyad can't turn off.`;
+}
 
 /**
- * Splits `tables` into those whose keys the copy drops and those whose keys
- * it keeps (Neon Auth's, and any the role doesn't own), and orders the latter
- * so every row goes in after the rows it references. A key declared on (or
- * into) a partitioned table binds the rows of its partitions, which are what
- * `tables` lists, so `partitions` maps it onto them. Throws
+ * Splits `tables` into those whose keys the copy drops and those bound by
+ * keys it keeps (Neon Auth's, and any the role doesn't own), and orders the
+ * latter so every row goes in after the rows it references. A key declared
+ * on (or into) a partitioned table binds the rows of its partitions, which
+ * are what `tables` lists, so `partitions` maps it onto them. Throws
  * `UncopyableDataError`, before anything is written, for what no order
  * fixes: user triggers it can't turn off, a key on a table that references
  * itself, a cycle, or a key into a table copied with its keys off.
@@ -258,8 +279,31 @@ export function planDataCopy({
   triggered: { schema: string; name: string }[];
   partitions?: TablePartition[];
 }): DataCopyPlan {
-  const managed = tables.filter(isManaged);
-  const owned = tables.filter((t) => !isManaged(t));
+  const partitionsOf = new Map<string, string[]>();
+  for (const p of partitions) {
+    const parentKey = tableKey(p.parentSchema, p.parentName);
+    partitionsOf.set(parentKey, [
+      ...(partitionsOf.get(parentKey) ?? []),
+      tableKey(p.schema, p.name),
+    ]);
+  }
+  // The tables holding a table's rows: itself, or its partitions' leaves.
+  const leaves = (key: string): string[] =>
+    partitionsOf.get(key)?.flatMap(leaves) ?? [key];
+
+  // The copy drops every other key, so while it runs they bind no rows.
+  const isKept = (fk: TableForeignKey) =>
+    isManaged({ schema: fk.schema, canAlter: fk.canAlter });
+  const keptForeignKeys = foreignKeys.filter(isKept);
+  // A partition inherits its ancestors' keys, so one under a kept key is
+  // ordered by it even when the role could drop the partition's own keys.
+  const underKeptKey = new Set(
+    keptForeignKeys.flatMap((fk) => leaves(tableKey(fk.schema, fk.table))),
+  );
+  const isOrdered = (t: CopyTable) =>
+    isManaged(t) || underKeptKey.has(tableKey(t.schema, t.name));
+  const managed = tables.filter(isOrdered);
+  const owned = tables.filter((t) => !isOrdered(t));
   const managedByKey = new Map(
     managed.map((t) => [tableKey(t.schema, t.name), t]),
   );
@@ -276,39 +320,35 @@ export function planDataCopy({
     }
   }
 
-  const partitionsOf = new Map<string, string[]>();
-  for (const p of partitions) {
-    const parentKey = tableKey(p.parentSchema, p.parentName);
-    partitionsOf.set(parentKey, [
-      ...(partitionsOf.get(parentKey) ?? []),
-      tableKey(p.schema, p.name),
-    ]);
-  }
-  // The tables holding a table's rows: itself, or its partitions' leaves.
-  const leaves = (key: string): string[] =>
-    partitionsOf.get(key)?.flatMap(leaves) ?? [key];
-
   const parents = new Map<string, Set<string>>(
     [...managedByKey.keys()].map((key) => [key, new Set<string>()]),
   );
-  for (const fk of foreignKeys) {
+  const outsideReferences = new Map<string, string>();
+  for (const fk of keptForeignKeys) {
     for (const child of leaves(tableKey(fk.schema, fk.table))) {
-      if (!managedByKey.has(child)) continue;
       for (const parent of leaves(
         tableKey(fk.referencedSchema, fk.referencedTable),
       )) {
-        if (child === parent) {
+        if (!managedByKey.has(child)) {
+          // Every leaf under a kept key is managed, so this one is outside the
+          // copy: its rows stay, and stop (or cascade from) clearing `parent`.
+          const parentCopied =
+            managedByKey.has(parent) || ownedKeys.has(parent);
+          if (parentCopied && !outsideReferences.has(child)) {
+            outsideReferences.set(child, parent);
+          }
+        } else if (child === parent) {
           throw new UncopyableDataError(
             `Can't copy ${child}: its rows refer to each other, and Dyad can't turn off its keys.`,
           );
-        }
-        if (ownedKeys.has(parent)) {
+        } else if (ownedKeys.has(parent)) {
           throw new UncopyableDataError(
             `Can't copy ${child}: it refers to ${parent}, which is copied with its keys turned off.`,
           );
+        } else if (managedByKey.has(parent)) {
+          // A table outside the copy keeps its rows, so it sets no order.
+          parents.get(child)!.add(parent);
         }
-        // A table outside the copy keeps its rows, so it sets no order.
-        if (managedByKey.has(parent)) parents.get(child)!.add(parent);
       }
     }
   }
@@ -333,12 +373,37 @@ export function planDataCopy({
   }
 
   return {
-    droppedForeignKeys: foreignKeys.filter(
-      (fk) => !isManaged({ schema: fk.schema, canAlter: fk.canAlter }),
-    ),
+    droppedForeignKeys: foreignKeys.filter((fk) => !isKept(fk)),
     managedTables: order,
     ownedTables: owned,
+    outsideReferences: [...outsideReferences].map(([table, references]) => ({
+      table,
+      references,
+    })),
   };
+}
+
+/**
+ * Refuses, on the restore target, to clear tables that a table outside the
+ * backup refers to while that table has rows (see `outsideReferences`). A
+ * table missing there has none.
+ */
+function outsideReferenceCheckSql(reference: OutsideReference): string {
+  const literal = (text: string) => `'${text.replace(/'/g, "''")}'`;
+  const body = `
+declare
+  has_rows boolean;
+begin
+  if to_regclass(${literal(reference.table)}) is not null then
+    execute ${literal(`select exists (select 1 from only ${reference.table})`)}
+      into has_rows;
+    if has_rows then
+      raise exception using message = ${literal(outsideReferenceMessage(reference))};
+    end if;
+  end if;
+end`;
+  const tag = dollarQuoteTag(body);
+  return `do ${tag}${body}${tag};`;
 }
 
 /**
@@ -565,6 +630,14 @@ export async function copyBranchData({
       triggered: await listTriggeredTables(target),
       partitions: await listPartitionsWith(target),
     });
+    for (const reference of plan.outsideReferences) {
+      const [{ hasRows }] = await target.query(
+        `select exists (select 1 from only ${reference.table}) as "hasRows"`,
+      );
+      if (hasRows) {
+        throw new UncopyableDataError(outsideReferenceMessage(reference));
+      }
+    }
 
     // Every key dropped below is re-added, including those on partitioned
     // parents, which hold no rows and so are not in `tables`. An extra key
@@ -573,7 +646,7 @@ export async function copyBranchData({
     // the copied neon_auth schema, so it comes back, and a copy that can't
     // add it back is refused rather than committed without it.
     const foreignKeyId = (fk: ForeignKeyDefinition) =>
-      `${fk.schema}.${fk.table}.${fk.name}`;
+      `${tableKey(fk.schema, fk.table)}.${quoteIdentifier(fk.name)}`;
     const foreignKeysToRestore = new Map<string, ForeignKeyDefinition>(
       plan.droppedForeignKeys.map((fk) => [foreignKeyId(fk), fk]),
     );
@@ -791,6 +864,9 @@ export async function exportBranchDataAsSql({
       triggered: [],
       partitions: await listPartitionsWith(source),
     });
+    for (const reference of plan.outsideReferences) {
+      await write(outsideReferenceCheckSql(reference));
+    }
     const triggers = triggerCopySql(tables);
     await write(triggers.disable);
     for (const fk of plan.droppedForeignKeys) {

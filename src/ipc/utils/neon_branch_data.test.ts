@@ -213,20 +213,87 @@ describe("planDataCopy", () => {
     ]);
   });
 
+  it("orders an app-owned partition by a kept key on its parent", () => {
+    const plan = planDataCopy({
+      tables: [
+        table("public.audit_2026", true),
+        table("neon_auth.user", false),
+      ],
+      foreignKeys: [key("neon_auth.audit", "neon_auth.user", false)],
+      triggered: [],
+      partitions: [partition("public.audit_2026", "neon_auth.audit")],
+    });
+    expect(names(plan.managedTables)).toEqual([
+      "neon_auth.user",
+      "public.audit_2026",
+    ]);
+    expect(plan.ownedTables).toEqual([]);
+  });
+
+  it("ignores keys it drops, even where they bind partitions it can't alter", () => {
+    const selfKey = key("public.events", "public.events", true);
+    const plan = planDataCopy({
+      tables: [table("public.events_1", false)],
+      foreignKeys: [selfKey],
+      triggered: [],
+      partitions: [partition("public.events_1", "public.events")],
+    });
+    expect(plan.droppedForeignKeys).toEqual([selfKey]);
+    expect(names(plan.managedTables)).toEqual(["public.events_1"]);
+  });
+
+  it("tells apart tables whose names join to the same dotted name", () => {
+    const dotted = { schema: "public", name: "x.y", canAlter: false };
+    const nested = { schema: "public.x", name: "y", canAlter: false };
+    const plan = planDataCopy({
+      tables: [dotted, nested],
+      foreignKeys: [
+        {
+          ...key("public.x", "public.y", false),
+          table: "x.y",
+          referencedSchema: "public.x",
+          referencedTable: "y",
+        },
+      ],
+      triggered: [],
+    });
+    expect(plan.managedTables).toEqual([nested, dotted]);
+  });
+
+  it("lists tables outside the copy whose kept keys refer to tables it clears", () => {
+    const plan = planDataCopy({
+      tables: [table("neon_auth.user", false), table("public.profiles", true)],
+      foreignKeys: [
+        key("neon_auth.jwks", "neon_auth.user", false),
+        key("neon_auth.jwks", "neon_auth.user", false, "jwks_owner_fkey"),
+        key("neon_auth.jwks", "neon_auth.project_config", false, "jwks_cfg"),
+        key("vendor.log", "public.profiles", false),
+        // Dropped for the copy, so it doesn't bind the rows.
+        key("public.drafts", "public.profiles", true),
+      ],
+      triggered: [],
+    });
+    expect(plan.outsideReferences).toEqual([
+      { table: '"neon_auth"."jwks"', references: '"neon_auth"."user"' },
+      { table: '"vendor"."log"', references: '"public"."profiles"' },
+    ]);
+  });
+
   it.each([
     {
       what: "triggers it can't turn off",
       tables: [table("neon_auth.user", false)],
       foreignKeys: [],
       triggered: [{ schema: "neon_auth", name: "user" }],
-      message: /neon_auth\.user: it has enabled user triggers.*cannot disable/,
+      message:
+        /"neon_auth"\."user": it has enabled user triggers.*cannot disable/,
     },
     {
       what: "a table whose rows refer to each other",
       tables: [table("neon_auth.user", false)],
       foreignKeys: [key("neon_auth.user", "neon_auth.user", false)],
       triggered: [],
-      message: /neon_auth\.user: its rows refer to each other/,
+      message: /"neon_auth"\."user": its rows refer to each other/,
     },
     {
       what: "a cycle",
@@ -236,14 +303,15 @@ describe("planDataCopy", () => {
         key("neon_auth.b", "neon_auth.a", false),
       ],
       triggered: [],
-      message: /neon_auth\.a, neon_auth\.b: their foreign keys form a cycle/,
+      message:
+        /"neon_auth"\."a", "neon_auth"\."b": their foreign keys form a cycle/,
     },
     {
       what: "a key into a table copied with its keys off",
       tables: [table("neon_auth.user", false), table("public.teams", true)],
       foreignKeys: [key("neon_auth.user", "public.teams", false)],
       triggered: [],
-      message: /neon_auth\.user: it refers to public\.teams/,
+      message: /"neon_auth"\."user": it refers to "public"\."teams"/,
     },
     {
       what: "a key into a partition copied with its keys off",
@@ -251,7 +319,7 @@ describe("planDataCopy", () => {
       foreignKeys: [key("vendor.items", "public.teams", false)],
       triggered: [],
       partitions: [partition("public.teams_1", "public.teams")],
-      message: /vendor\.items: it refers to public\.teams_1/,
+      message: /"vendor"\."items": it refers to "public"\."teams_1"/,
     },
   ])(
     "refuses $what",
@@ -564,11 +632,127 @@ describe("copyBranchData extra foreign keys", () => {
     });
     await expect(copy).rejects.toThrow(UncopyableDataError);
     await expect(copy).rejects.toThrow(
-      /public\.audit: its foreign key audit_user_fkey .* can't add it back/,
+      /"public"\."audit": its foreign key audit_user_fkey .* can't add it back/,
     );
     const sql = statements();
     expect(sql.some((s) => /^(delete|insert|alter|do) /i.test(s))).toBe(false);
     expect(sql).toContain("rollback");
     expect(sql).not.toContain("commit");
+  });
+});
+
+describe("tables outside the copy with kept keys", () => {
+  // A table the copy leaves alone whose kept key refers to `user`, which it
+  // clears: its rows would block the delete or cascade from it.
+  const JWKS = '"neon_auth"."jwks"';
+  const USER = '"neon_auth"."user"';
+  let directory: string;
+
+  function mockDatabase(query: typeof mocks.source, hasRows: boolean) {
+    query.mockImplementation(async (sql: string) => {
+      let rows: Record<string, unknown>[] = [];
+      if (sql.includes("from pg_class c") && sql.includes("c.relkind = 'r'")) {
+        rows = [{ ...table("neon_auth.user", false) }];
+      } else if (sql.includes("from pg_attribute")) {
+        rows = [{ name: "id", identityAlways: false }];
+      } else if (sql.includes("from pg_constraint con")) {
+        rows = [{ ...key("neon_auth.jwks", "neon_auth.user", false) }];
+      } else if (
+        sql === `select exists (select 1 from only ${JWKS}) as "hasRows"`
+      ) {
+        rows = [{ hasRows }];
+      } else if (sql.includes("json_agg")) {
+        rows = [{ rows: [{ id: "user-1", x_ctid: "(0,1)" }], last: "(0,1)" }];
+      } else if (sql.includes("select count(*)::text")) {
+        rows = [{ n: "1" }];
+      }
+      return { rows };
+    });
+  }
+
+  const statements = () =>
+    mocks.target.mock.calls.map(([sql]) => sql as string);
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    directory = await fs.mkdtemp(path.join(os.tmpdir(), "dyad-outside-"));
+    mockDatabase(mocks.source, true);
+  });
+
+  afterEach(async () => {
+    await fs.rm(directory, { recursive: true, force: true });
+  });
+
+  it("refuses before changing anything when that table has rows", async () => {
+    mockDatabase(mocks.target, true);
+    const copy = copyBranchData({ sourceUri: "source", targetUri: "target" });
+    await expect(copy).rejects.toThrow(UncopyableDataError);
+    await expect(copy).rejects.toThrow(
+      `Can't copy ${USER}: rows of ${JWKS}, which isn't copied`,
+    );
+    const sql = statements();
+    expect(sql.some((s) => /^(delete|insert|alter|do) /i.test(s))).toBe(false);
+    expect(sql).not.toContain("commit");
+  });
+
+  it("copies when that table is empty", async () => {
+    mockDatabase(mocks.target, false);
+    await expect(
+      copyBranchData({ sourceUri: "source", targetUri: "target" }),
+    ).resolves.toEqual({ tables: 1, rows: 1 });
+    expect(statements()).toContain("commit");
+  });
+
+  it("writes a backup that checks that table on the restore target first", async () => {
+    const filePath = path.join(directory, "backup.sql");
+    await exportBranchDataAsSql({ sourceUri: "source", filePath, title: "B" });
+    const sql = await fs.readFile(filePath, "utf8");
+    const check = sql.indexOf(`if to_regclass('${JWKS}') is not null then`);
+    expect(check).toBeGreaterThan(-1);
+    expect(check).toBeLessThan(sql.indexOf(`delete from only ${USER};`));
+    expect(sql).toContain(
+      `execute 'select exists (select 1 from only ${JWKS})'`,
+    );
+    expect(sql).toContain(
+      `raise exception using message = 'Can''t copy ${USER}: rows of ${JWKS}, which isn''t copied`,
+    );
+  });
+});
+
+describe("copyBranchData table names", () => {
+  it("copies tables whose names join to the same dotted name", async () => {
+    vi.clearAllMocks();
+    for (const query of [mocks.source, mocks.target]) {
+      query.mockImplementation(async (sql: string) => {
+        let rows: Record<string, unknown>[] = [];
+        if (
+          sql.includes("from pg_class c") &&
+          sql.includes("c.relkind = 'r'")
+        ) {
+          rows = [
+            { schema: "public", name: "x.y", canAlter: true },
+            { schema: "public.x", name: "y", canAlter: true },
+          ];
+        } else if (sql.includes("from pg_attribute")) {
+          rows = [{ name: "id", identityAlways: false }];
+        } else if (sql.includes("json_agg")) {
+          rows = [{ rows: [{ id: "r-1", x_ctid: "(0,1)" }], last: "(0,1)" }];
+        } else if (sql.includes("select count(*)::text")) {
+          rows = [{ n: "1" }];
+        }
+        return { rows };
+      });
+    }
+    await expect(
+      copyBranchData({ sourceUri: "source", targetUri: "target" }),
+    ).resolves.toEqual({ tables: 2, rows: 2 });
+    const inserts = mocks.target.mock.calls
+      .map(([sql]) => sql as string)
+      .filter((s) => s.startsWith("insert into"))
+      .map((s) => s.split(" (")[0]);
+    expect(inserts.sort()).toEqual([
+      'insert into "public"."x.y"',
+      'insert into "public.x"."y"',
+    ]);
   });
 });

@@ -637,6 +637,11 @@ describe.skipIf(!LIVE_KEY)("Neon database revert (live Neon API)", () => {
       const source = await sql(projectId, devId);
       await source.query("create table notes (body text)");
       await source.query("insert into notes values ('kept')");
+      // Beyond what a JS number holds exactly.
+      await source.query("create table amounts (big bigint, exact numeric)");
+      await source.query(
+        "insert into amounts values (9007199254740993, 0.1000000000000000000001)",
+      );
       const tables = ["invites", "project_config", "jwks"];
       if (leftoverSchema) {
         await source.query("create schema neon_auth");
@@ -666,6 +671,17 @@ describe.skipIf(!LIVE_KEY)("Neon database revert (live Neon API)", () => {
       expect(await target.query("select body from notes")).toEqual([
         { body: "kept" },
       ]);
+      expect(
+        await target.query(
+          "select big::text as big, exact::text as exact from amounts",
+        ),
+      ).toEqual([
+        { big: "9007199254740993", exact: "0.1000000000000000000001" },
+      ]);
+      const backup = fs.readFileSync(result.backupPath!, "utf8");
+      expect(backup).toContain(
+        '{"big":9007199254740993,"exact":0.1000000000000000000001}',
+      );
       for (const branchId of [newId, app.neonPreviewBranchId!]) {
         // Assert on the status only. An API error can contain the live key.
         expect(
@@ -679,7 +695,9 @@ describe.skipIf(!LIVE_KEY)("Neon database revert (live Neon API)", () => {
         "NEON_AUTH_BASE_URL",
       );
       if (leftoverSchema) {
-        const backup = fs.readFileSync(result.backupPath!, "utf8");
+        expect(result.warning).toMatch(
+          /Neon Auth can't be turned on for this app until the neon_auth schema/,
+        );
         for (const table of tables) {
           expect(
             await target.query(`select body from neon_auth.${table}`),

@@ -225,8 +225,11 @@ export class FakeNeonBranchApi {
             schemaOnly,
             neonAuth: !schemaOnly && parent.neonAuth,
           });
-          if (!schemaOnly)
+          if (!schemaOnly) {
             branch.neonServiceCanCreate = parent.neonServiceCanCreate;
+            // Copying the parent's data copies its Auth settings with it.
+            if (parent.neonAuth) branch.auth = structuredClone(parent.auth);
+          }
           return {
             data: {
               branch: publicBranch(branch, this.projectId),

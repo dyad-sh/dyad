@@ -57,10 +57,15 @@ const branchData = vi.hoisted(() => ({
       _options: { neonAuth: boolean; previewNeedsNeonAuth: boolean },
     ): Promise<string[]> => [],
   ),
+  findLeftoverNeonAuthObjects: vi.fn(async (_uri: string) => ({
+    schema: false,
+    role: false,
+  })),
   copyBranchData: vi.fn(
     async (_args: { sourceUri: string; targetUri: string }) => ({
       tables: 2,
       rows: 5,
+      skipped: [] as string[],
     }),
   ),
 }));
@@ -488,6 +493,7 @@ describe("Neon database revert (integration)", () => {
     { developmentAuth: false, previewAuth: false },
     { developmentAuth: false, previewAuth: true },
     { developmentAuth: true, previewAuth: false },
+    { developmentAuth: true, previewAuth: true },
   ])(
     "preserves development Auth ($developmentAuth) and preview Auth ($previewAuth)",
     async ({ developmentAuth, previewAuth }) => {
@@ -509,13 +515,18 @@ describe("Neon database revert (integration)", () => {
       const env = fs.readFileSync(envPath, "utf8");
       expect(env).toContain(fakeNeon.connectionUri(newDev.id));
       expect(env).toMatch(/OTHER_VAR="?keep/);
+      // The new preview inherits development's Auth; only an Auth-off
+      // preview needs it turned back off.
+      const previewDisables = fakeNeon
+        .methodCalls("disableNeonAuth")
+        .filter(([, branchId]) => branchId === newPreview.id);
+      expect(previewDisables).toEqual(
+        developmentAuth && !previewAuth
+          ? [[fakeNeon.projectId, newPreview.id, { delete_data: false }]]
+          : [],
+      );
       if (developmentAuth) {
         expect(env).toContain(fakeNeon.authBaseUrl(newDev.id));
-        expect(fakeNeon.methodCalls("disableNeonAuth")).toContainEqual([
-          fakeNeon.projectId,
-          newPreview.id,
-          { delete_data: false },
-        ]);
       } else {
         expect(env).not.toMatch(/NEON_AUTH_BASE_URL|NEON_AUTH_COOKIE_SECRET/);
         expect(
@@ -540,6 +551,65 @@ describe("Neon database revert (integration)", () => {
       }
     },
   );
+
+  it("keeps the new preview branch when its Neon Auth can't be restored", async () => {
+    await legacyLayout(1);
+    const { appId, development, preview } = await connectApp();
+    preview.neonAuth = false;
+    // Turning off the Auth the preview inherits from development fails.
+    fakeNeon.failures.disableNeonAuth = () => {
+      throw new Error("Neon Auth is unavailable");
+    };
+
+    const result = await migrate(appId);
+
+    expect(result.success).toBe(true);
+    expect(result.warning).toMatch(
+      /Could not turn Neon Auth off on the new preview branch/,
+    );
+    // Previews of earlier versions keep a database of their own.
+    const newPreview = fakeNeon.byName("preview");
+    expect(newPreview.id).not.toBe(preview.id);
+    expect(newPreview.parent_id).toBe(fakeNeon.byName("development").id);
+    expect(fakeNeon.byName("development").id).not.toBe(development.id);
+    expect((await appRow(appId)).neonPreviewBranchId).toBe(newPreview.id);
+  });
+
+  it("warns that a kept neon_auth schema blocks turning Auth on later", async () => {
+    await legacyLayout(1);
+    const { appId, development, preview } = await connectApp();
+    development.neonAuth = false;
+    preview.neonAuth = false;
+    branchData.findLeftoverNeonAuthObjects.mockResolvedValueOnce({
+      schema: true,
+      role: true,
+    });
+
+    const result = await migrate(appId);
+
+    expect(result.success).toBe(true);
+    expect(result.warning).toMatch(
+      /kept its neon_auth schema and role with their data\. Neon Auth can't be turned on for this app until the neon_auth schema and role are removed/,
+    );
+  });
+
+  it("warns about Neon Auth tables re-provisioning has no place for", async () => {
+    await legacyLayout(1);
+    const { appId } = await connectApp();
+    branchData.copyBranchData.mockResolvedValueOnce({
+      tables: 2,
+      rows: 5,
+      skipped: ['"neon_auth"."legacy"'],
+    });
+
+    const result = await migrate(appId);
+
+    expect(result.success).toBe(true);
+    expect(result.warning).toContain(
+      'not copied to the new branch (the backup has it): "neon_auth"."legacy".',
+    );
+    expect(branchData.findLeftoverNeonAuthObjects).not.toHaveBeenCalled();
+  });
 
   it("carries the Neon Auth settings over to the new branch", async () => {
     await legacyLayout(1);

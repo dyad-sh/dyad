@@ -174,7 +174,9 @@ assuming map-entry ordering distinguishes them.
 
 ## Migrating Neon branches with Auth disabled
 
-A 404 from `getNeonAuth` can coexist with populated `neon_auth` tables. Preserve those tables during migration, including `jwks` and `project_config`. Grant `neon_service` database `CREATE` on the replacement branch so Auth can be enabled later.
+A 404 from `getNeonAuth` can coexist with populated `neon_auth` tables. Preserve those tables during migration, including `jwks` and `project_config`. Grant `neon_service` database `CREATE` on the replacement branch so Auth can be enabled later. The grant is enough only when the branch has no `neon_auth` schema or role. Otherwise provisioning still fails with 409 or 412 until they are removed, so the migration warns the user instead of claiming Auth can be enabled.
+
+Do not parse row data as JSON in JS when copying between branches. The driver turns `json` values into JS numbers, which rounds `bigint` and `numeric` values, and row-count verification cannot catch it. Cast the aggregate to `text` and pass it straight to `json_populate_recordset`.
 
 ## Clearing data on temporary Neon test branches
 

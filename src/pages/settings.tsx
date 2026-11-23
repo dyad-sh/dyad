@@ -199,9 +199,8 @@ export default function SettingsPage() {
             </div>
             <div id={SETTING_IDS.supabase} className="space-y-4">
               <SupabaseIntegration />
-              {settings?.enableSupabaseSelfHosted && (
-                <SupabaseSelfHostedInstancesSettings />
-              )}
+              {/* Shown even with the experiment off, so saved keys can still be removed. */}
+              <SupabaseSelfHostedInstancesSettings />
             </div>
             <div id={SETTING_IDS.neon}>
               <NeonIntegration />

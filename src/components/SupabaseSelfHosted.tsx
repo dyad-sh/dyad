@@ -869,14 +869,6 @@ export function SupabaseSelfHostedInstancesSettings() {
         : `Removed ${targets.length} instances`,
     );
   };
-  // Asks first only when removing would disconnect apps.
-  const requestRemove = (targets: InstanceListItem[]) => {
-    if (targets.some((instance) => instance.linkedApps.length > 0)) {
-      setConfirming(targets);
-    } else {
-      void remove(targets).catch(() => {});
-    }
-  };
 
   if (instances.length === 0) return null;
 
@@ -895,7 +887,7 @@ export function SupabaseSelfHostedInstancesSettings() {
           size="sm"
           className="flex items-center gap-2"
           disabled={removeInstance.isPending}
-          onClick={() => requestRemove(instances)}
+          onClick={() => setConfirming(instances)}
         >
           Remove all
           <Trash2 className="h-4 w-4" />
@@ -923,7 +915,7 @@ export function SupabaseSelfHostedInstancesSettings() {
               size="sm"
               className="h-7 shrink-0 px-2 text-muted-foreground hover:text-destructive"
               disabled={removeInstance.isPending}
-              onClick={() => requestRemove([instance])}
+              onClick={() => setConfirming([instance])}
             >
               <Trash2 className="mr-1 h-3.5 w-3.5" />
               <span className="text-xs">Remove</span>
@@ -943,14 +935,20 @@ export function SupabaseSelfHostedInstancesSettings() {
                 : "Remove all self-hosted instances?"}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              This will disconnect the following apps:
+              {confirming?.length === 1
+                ? "Dyad will delete the keys saved for this instance."
+                : "Dyad will delete the keys saved for every instance."}
+              {linkedApps.length > 0 &&
+                " This will also disconnect the following apps:"}
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <ul className="list-disc pl-6 text-sm">
-            {linkedApps.map((app) => (
-              <li key={app.id}>{app.name}</li>
-            ))}
-          </ul>
+          {linkedApps.length > 0 && (
+            <ul className="list-disc pl-6 text-sm">
+              {linkedApps.map((app) => (
+                <li key={app.id}>{app.name}</li>
+              ))}
+            </ul>
+          )}
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction

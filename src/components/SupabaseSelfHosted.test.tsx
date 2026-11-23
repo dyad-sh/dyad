@@ -629,7 +629,7 @@ describe("SupabaseSelfHostedConnectedCard details", () => {
 });
 
 describe("SupabaseSelfHostedInstancesSettings", () => {
-  it("removes an instance no app uses without asking", async () => {
+  it("asks before removing an instance no app uses", async () => {
     mocks.listSelfHostedInstances.mockResolvedValue([
       { ...INSTANCE, linkedApps: [] },
     ]);
@@ -637,13 +637,31 @@ describe("SupabaseSelfHostedInstancesSettings", () => {
     renderWithQuery(<SupabaseSelfHostedInstancesSettings />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Remove" }));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog.textContent).toContain(
+      "Dyad will delete the keys saved for this instance.",
+    );
+    expect(dialog.textContent).not.toContain("disconnect");
+    expect(dialog.querySelector("ul")).toBeNull();
+    expect(mocks.removeSelfHostedInstance).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Remove" }).at(-1)!);
 
     await waitFor(() =>
       expect(mocks.removeSelfHostedInstance).toHaveBeenCalledWith({
         id: "instance-1",
       }),
     );
-    expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+
+  it("shows nothing when there are no instances", async () => {
+    mocks.listSelfHostedInstances.mockResolvedValue([]);
+    renderWithQuery(<SupabaseSelfHostedInstancesSettings />);
+
+    await waitFor(() =>
+      expect(mocks.listSelfHostedInstances).toHaveBeenCalled(),
+    );
+    expect(screen.queryByTestId("supabase-self-hosted-settings")).toBeNull();
   });
 
   it("removes every instance, listing the apps all of them disconnect", async () => {
@@ -685,7 +703,7 @@ describe("SupabaseSelfHostedInstancesSettings", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Remove" }));
     const dialog = await screen.findByRole("alertdialog");
     expect(dialog.textContent).toContain(
-      "This will disconnect the following apps:",
+      "This will also disconnect the following apps:",
     );
     expect(
       Array.from(dialog.querySelectorAll("li")).map((item) => item.textContent),

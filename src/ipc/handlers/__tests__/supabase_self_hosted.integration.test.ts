@@ -364,6 +364,21 @@ describe("self-hosted Supabase instances (integration)", () => {
     ).resolves.toEqual([]);
   });
 
+  it("lists and removes saved instances while the experiment is off", async () => {
+    const { instance } = await addInstance();
+    mocks.readSettings.mockReturnValue({});
+
+    await expect(
+      harness!.invokeHandler("supabase:list-self-hosted-instances"),
+    ).resolves.toMatchObject([{ id: instance.id }]);
+    await harness!.invokeHandler("supabase:remove-self-hosted-instance", {
+      id: instance.id,
+    });
+    await expect(
+      harness!.invokeHandler("supabase:list-self-hosted-instances"),
+    ).resolves.toEqual([]);
+  });
+
   it("refuses to add an instance while the experiment is off", async () => {
     mocks.readSettings.mockReturnValue({});
 

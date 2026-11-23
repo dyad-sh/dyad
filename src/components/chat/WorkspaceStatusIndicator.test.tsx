@@ -306,6 +306,28 @@ describe("WorkspaceStatusIndicator", () => {
     expect(screen.queryByTestId("workspace-retry-merge")).toBeNull();
   });
 
+  it("says where a merge put the user's uncommitted files", async () => {
+    state.status = status({
+      kind: "isolated",
+      branch: "dyad/chat-7",
+      targetBranch: "develop",
+      workspaceId: 3,
+      integration: {
+        phase: "merged",
+        detail: 'Dyad saved your version in the Git stash ("Dyad: …").',
+        validation: null,
+        canRetry: false,
+      },
+    });
+    render(<WorkspaceIndicators />);
+    expect(screen.getByTestId("workspace-integration-row")).toBeTruthy();
+    expect(screen.queryByTestId("workspace-retry-merge")).toBeNull();
+    act(() => screen.getByTestId("workspace-integration-status").focus());
+    expect((await screen.findByRole("tooltip")).textContent).toContain(
+      "saved your version in the Git stash",
+    );
+  });
+
   it("moves completed merge details into the badge and offers retry when blocked", async () => {
     state.status = status({
       kind: "isolated",

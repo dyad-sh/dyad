@@ -1925,6 +1925,10 @@ describe("worktree isolation (integration)", () => {
       `merge chat #${chatId}`,
     );
     expect(git(["show", "stash@{0}:pnpm-lock.yaml"])).toBe(rewritten.trim());
+    // ...and the chat says where it went.
+    expect(getWorkspaceForChat(chatId)?.integrationDetail).toMatch(
+      /pnpm-lock\.yaml.*git stash pop/,
+    );
     git(["stash", "drop", "stash@{0}"]);
     await discardWorkspace(chatId);
   }, 60_000);

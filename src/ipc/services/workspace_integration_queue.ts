@@ -279,7 +279,8 @@ export function isInstallWrittenFile(file: string): boolean {
  * `package.json` alone (`npm update`, a hand-written `pnpm-workspace.yaml`),
  * so nothing is discarded: a file that already has the squash's content is
  * reset (nothing is lost), and any other is moved into a `git stash` entry
- * naming the chat, where `git stash pop` brings it back.
+ * naming the chat, where `git stash pop` brings it back. Returns a notice
+ * for the user when it stashed something, so the chat can say so.
  */
 async function setAsideInstallFilesInTheWay({
   originalPath,
@@ -291,13 +292,15 @@ async function setAsideInstallFilesInTheWay({
   from: string;
   to: string;
   chatId: number;
-}): Promise<void> {
+}): Promise<string | null> {
   const dirty = new Set(await listUncommittedPaths(originalPath));
-  if (dirty.size === 0) return;
+  if (dirty.size === 0) return null;
   const inTheWay = (
     await listChangedPaths({ path: originalPath, from, to })
   ).filter((file) => dirty.has(file));
-  if (inTheWay.length === 0 || !inTheWay.every(isInstallWrittenFile)) return;
+  if (inTheWay.length === 0 || !inTheWay.every(isInstallWrittenFile)) {
+    return null;
+  }
   const manifestEdited = inTheWay.some((file) =>
     dirty.has(path.posix.join(path.posix.dirname(file), "package.json")),
   );
@@ -305,7 +308,7 @@ async function setAsideInstallFilesInTheWay({
     logger.info(
       `Leaving ${inTheWay.join(", ")} in the app's folder for the user: package.json beside them has uncommitted changes too`,
     );
-    return;
+    return null;
   }
   const unchanged: string[] = [];
   const kept: string[] = [];
@@ -317,19 +320,20 @@ async function setAsideInstallFilesInTheWay({
     });
     (matches ? unchanged : kept).push(file);
   }
-  if (kept.length > 0) {
-    const message = `Dyad: uncommitted ${kept.join(", ")} from the app's folder, set aside to merge chat #${chatId}`;
-    logger.info(
-      `Stashing ${kept.join(", ")} in the app's folder ("${message}"): the merge changes them`,
-    );
-    await stashPaths({ checkoutPath: originalPath, files: kept, message });
-  }
   if (unchanged.length > 0) {
     logger.info(
       `Restoring ${unchanged.join(", ")} in the app's folder: they already have the merge's content`,
     );
     await restorePathsToHead({ checkoutPath: originalPath, files: unchanged });
   }
+  if (kept.length === 0) return null;
+  const message = `Dyad: uncommitted ${kept.join(", ")} from the app's folder, set aside to merge chat #${chatId}`;
+  logger.info(
+    `Stashing ${kept.join(", ")} in the app's folder ("${message}"): the merge changes them`,
+  );
+  await stashPaths({ checkoutPath: originalPath, files: kept, message });
+  const files = kept.join(", ");
+  return `This chat's work changes ${files}, which had uncommitted changes in the app's main folder. Dyad saved your version in the Git stash ("${message}"); run \`git stash pop\` there to bring it back.`;
 }
 
 /**
@@ -1266,14 +1270,15 @@ export class WorkspaceIntegrationQueue {
             message: await buildSquashMessage(workspace, workspaceHead),
           });
     this.squashes.set(workspace.id, { parent: targetCommit, tree, squash });
-    await setAsideInstallFilesInTheWay({
+    const setAsideNotice = await setAsideInstallFilesInTheWay({
       originalPath,
       from: targetCommit,
       to: squash,
       chatId: workspace.chatId,
-    }).catch((error) =>
-      logger.warn("Failed to set aside install-written files", error),
-    );
+    }).catch((error) => {
+      logger.warn("Failed to set aside install-written files", error);
+      return null;
+    });
     try {
       await fastForwardCheckedOutBranch({
         worktreePath: originalPath,
@@ -1281,12 +1286,14 @@ export class WorkspaceIntegrationQueue {
       });
     } catch (error) {
       const message = errorMessage(error);
+      const reason = /would be overwritten/.test(message)
+        ? "The app's main folder has uncommitted changes to files this chat also changed. Commit or discard them to merge this chat's work."
+        : `Dyad couldn't update the app's main folder: ${message}`;
       return {
         event: {
           type: "WAITING",
-          reason: /would be overwritten/.test(message)
-            ? "The app's main folder has uncommitted changes to files this chat also changed. Commit or discard them to merge this chat's work."
-            : `Dyad couldn't update the app's main folder: ${message}`,
+          // The next attempt sees those files clean, so say it now.
+          reason: setAsideNotice ? `${reason} ${setAsideNotice}` : reason,
         },
         wait: { kind: "timer", at: Date.now() + TIMER_RETRY_MS },
       };
@@ -1337,7 +1344,12 @@ export class WorkspaceIntegrationQueue {
       // saw the old main folder. Refresh again after the files have landed.
       { family: "test-specs", appId: workspace.appId },
     ]);
-    return { event: { type: "INTEGRATED" } };
+    return {
+      event: {
+        type: "INTEGRATED",
+        ...(setAsideNotice ? { detail: setAsideNotice } : {}),
+      },
+    };
   }
 
   private startRepair(

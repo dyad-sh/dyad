@@ -256,7 +256,11 @@ export function WorkspaceIntegrationStatus({
   const statusKey = integration
     ? integrationStatusKey(integration.phase)
     : null;
-  if (!statusKey || integration?.phase === "merged") return null;
+  // A merge needs no row, unless landing it set some of the user's
+  // uncommitted files aside: then the row says where they went.
+  if (!statusKey || (integration?.phase === "merged" && !integration.detail)) {
+    return null;
+  }
 
   const target = status.targetBranch ?? status.branch ?? "main";
   const tone = integration ? integrationTone(integration.phase) : "neutral";

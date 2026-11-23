@@ -212,7 +212,7 @@ export function transitionIntegration(
       }
       return change({
         phase: "merged",
-        detail: null,
+        detail: event.detail ?? null,
         targetCommit: null,
         repairAttempts: 0,
       });

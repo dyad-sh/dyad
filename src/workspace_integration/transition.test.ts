@@ -112,6 +112,26 @@ describe("workspace integration transitions", () => {
     });
   });
 
+  it("keeps a notice about files landing set aside, until the next request", () => {
+    const merged = transitionIntegration(stateIn("integrating"), {
+      type: "INTEGRATED",
+      detail: "Saved your version in the Git stash.",
+    });
+    expect(merged).toMatchObject({
+      kind: "applied",
+      state: {
+        phase: "merged",
+        detail: "Saved your version in the Git stash.",
+      },
+    });
+    expect(
+      transitionIntegration(merged.state, {
+        type: "REQUESTED",
+        userInitiated: false,
+      }),
+    ).toMatchObject({ state: { phase: "queued", detail: null } });
+  });
+
   it("re-merges and re-validates when the target advanced after validation", () => {
     const result = transitionIntegration(stateIn("integrating"), {
       type: "TARGET_ADVANCED",

@@ -81,7 +81,11 @@ export type IntegrationEvent =
   | { type: "VALIDATION_FAILED"; summary: string }
   /** The target moved while validating; merge the newer commits first. */
   | { type: "TARGET_ADVANCED"; targetCommit: string }
-  | { type: "INTEGRATED" }
+  /**
+   * The work landed on the target. `detail` tells the user about anything
+   * landing it did to their files (uncommitted files set aside in the stash).
+   */
+  | { type: "INTEGRATED"; detail?: string }
   | { type: "FAILED"; reason: string };
 
 export type IntegrationCommand =

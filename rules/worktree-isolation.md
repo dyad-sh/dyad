@@ -305,6 +305,9 @@ worktree use the app's original folder.
   so a file whose content differs from what the merge brings is moved into
   a `git stash` entry naming the chat before it is reset, never discarded.
   A file that already has the merge's content is reset with nothing to keep.
+  A stash is reported to the user: `INTEGRATED` carries it as the merged
+  phase's `detail`, which shows a merged status row (normally hidden), or
+  it is appended to the `WAITING` reason when the fast-forward still fails.
 - A turn that hit its step limit still committed, so it requests integration
   like a finished one; only cancelled or failed turns wait for the next turn.
   A turn that completes a merge left by an attempt that already failed also

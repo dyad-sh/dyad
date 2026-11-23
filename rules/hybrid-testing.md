@@ -156,7 +156,11 @@ apply there. The suite partially mocks that module through its `branchData`
 object. Add any new export that queries a branch database to that object.
 Otherwise the real function runs against `FakeNeonBranchApi` connection URIs.
 Also keep the mocked return shapes in sync with the real types, such as
-`copyBranchData`'s `skipped`.
+`copyBranchData`'s `skipped`. Decision logic inside a mocked export never runs
+in this suite: a refusal once placed inside `findMigrationBlockers` (mocked to
+`[]`) had no coverage. Keep those exports plain queries, such as
+`findLeftoverNeonAuthObjects`, and decide in `neon_dev_branch.ts`, so a test can
+drive the decision with `mockResolvedValueOnce`.
 
 The shared Electron mock's `utilityProcess.fork()` is intentionally inert and
 never emits `spawn`, `message`, or `exit`. If a hybrid flow reaches a packaged

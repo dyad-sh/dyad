@@ -177,6 +177,16 @@ export async function prepareSchemaOnlyBranchForNeonAuth(
       if exists (select 1 from pg_roles where rolname = 'neon_auth') then
         execute 'drop role neon_auth';
       end if;
+    end $$`);
+  await grantNeonAuthCreatePermission(connectionUri);
+}
+
+/** Allows later provisioning without changing existing schemas, roles or data. */
+export async function grantNeonAuthCreatePermission(connectionUri: string) {
+  if (IS_TEST_BUILD) return;
+  await httpQueryable(connectionUri).query(`
+    do $$
+    begin
       if exists (select 1 from pg_roles where rolname = 'neon_service') then
         execute format('grant create on database %I to neon_service', current_database());
       end if;
@@ -190,7 +200,10 @@ export interface CopyTable {
   canAlter: boolean;
 }
 
-async function listCopyTables(db: Queryable): Promise<CopyTable[]> {
+async function listCopyTables(
+  db: Queryable,
+  hasNeonAuth: boolean,
+): Promise<CopyTable[]> {
   // Tables that hold rows, partitions included: a partitioned parent holds
   // none, and paging through it by ctid would skip rows, because ctids repeat
   // across partitions. Extension-owned tables belong to the extension on each
@@ -207,7 +220,12 @@ async function listCopyTables(db: Queryable): Promise<CopyTable[]> {
       )
     order by 1, 2`);
   return (rows as CopyTable[]).filter(
-    (t) => !(t.schema === "neon_auth" && NEON_AUTH_SERVICE_TABLES.has(t.name)),
+    (t) =>
+      !(
+        hasNeonAuth &&
+        t.schema === "neon_auth" &&
+        NEON_AUTH_SERVICE_TABLES.has(t.name)
+      ),
   );
 }
 
@@ -215,14 +233,24 @@ async function listInsertableColumns(
   db: Queryable,
   table: CopyTable,
 ): Promise<{ name: string; identityAlways: boolean }[]> {
+  const name = qualifiedName(table.schema, table.name);
   const rows = await db.query(
     `select a.attname as name, a.attidentity = 'a' as "identityAlways"
      from pg_attribute a
      where a.attrelid = $1::regclass and a.attnum > 0 and not a.attisdropped
        and a.attgenerated = ''
      order by a.attnum`,
-    [qualifiedName(table.schema, table.name)],
+    [name],
   );
+  if (
+    !rows.length &&
+    (await db.query(`select 1 from only ${name} limit 1`)).length
+  ) {
+    throw new DyadError(
+      `Cannot copy ${name}: it contains rows but has no writable columns.`,
+      DyadErrorKind.Precondition,
+    );
+  }
   return rows as { name: string; identityAlways: boolean }[];
 }
 
@@ -444,7 +472,10 @@ end`;
  */
 export async function findMigrationBlockers(
   connectionUri: string,
-  { neonAuth }: { neonAuth: boolean },
+  {
+    neonAuth,
+    previewNeedsNeonAuth,
+  }: { neonAuth: boolean; previewNeedsNeonAuth: boolean },
 ): Promise<string[]> {
   if (IS_TEST_BUILD) return [];
   const db = httpQueryable(connectionUri);
@@ -485,6 +516,17 @@ export async function findMigrationBlockers(
     blockers.push(
       ...dependents.map((d) => `${d.object} (it uses Neon Auth's tables)`),
     );
+  } else if (previewNeedsNeonAuth) {
+    // Preview will inherit development's schema and roles. Provisioning it
+    // would require removing these objects even though development has Auth off.
+    const [existing] = await db.query(`
+      select to_regnamespace('neon_auth') is not null as schema,
+             to_regrole('neon_auth') is not null as role`);
+    if (existing.schema || existing.role) {
+      blockers.push(
+        `Neon Auth on the preview branch (development already contains a neon_auth ${existing.schema ? "schema" : "role"})`,
+      );
+    }
   }
   const [{ count }] = await db.query(
     "select count(*)::int as count from pg_largeobject_metadata",
@@ -599,10 +641,12 @@ export interface CopyBranchDataResult {
 export async function copyBranchData({
   sourceUri,
   targetUri,
+  hasNeonAuth,
   extraForeignKeys = [],
 }: {
   sourceUri: string;
   targetUri: string;
+  hasNeonAuth: boolean;
   extraForeignKeys?: ForeignKeyDefinition[];
 }): Promise<CopyBranchDataResult> {
   const sourceConnection = await poolQueryable(sourceUri);
@@ -620,7 +664,7 @@ export async function copyBranchData({
 
     // Ownership is the target's: that is where the rows are written.
     const targetTables = new Map(
-      (await listCopyTables(target)).map((t) => [
+      (await listCopyTables(target, hasNeonAuth)).map((t) => [
         tableKey(t.schema, t.name),
         t,
       ]),
@@ -630,21 +674,28 @@ export async function copyBranchData({
       string,
       { columnList: string; overriding: string }
     >();
-    for (const table of await listCopyTables(source)) {
-      const key = tableKey(table.schema, table.name);
-      const onTarget = targetTables.get(key);
+    for (const table of await listCopyTables(source, hasNeonAuth)) {
+      const tableName = tableKey(table.schema, table.name);
+      const onTarget = targetTables.get(tableName);
       if (!onTarget) {
-        logger.warn(`Skipping ${key}: missing on the target branch`);
-        continue;
+        throw new DyadError(
+          `Cannot copy ${tableName}: the table is missing on the new development branch.`,
+          DyadErrorKind.Precondition,
+        );
       }
       const targetColumns = new Map(
         (await listInsertableColumns(target, onTarget)).map((c) => [c.name, c]),
       );
-      const columns = (await listInsertableColumns(source, table)).filter((c) =>
-        targetColumns.has(c.name),
-      );
+      const columns = await listInsertableColumns(source, table);
+      const missingColumn = columns.find((c) => !targetColumns.has(c.name));
+      if (missingColumn) {
+        throw new DyadError(
+          `Cannot copy ${tableName}: column ${quoteIdentifier(missingColumn.name)} is missing or generated on the new development branch.`,
+          DyadErrorKind.Precondition,
+        );
+      }
       if (columns.length === 0) continue;
-      insertShape.set(key, {
+      insertShape.set(tableName, {
         columnList: columns.map((c) => quoteIdentifier(c.name)).join(", "),
         overriding: columns.some(
           (c) => targetColumns.get(c.name)?.identityAlways,
@@ -845,8 +896,10 @@ export async function exportBranchDataAsSql({
   sourceUri,
   filePath,
   title,
+  hasNeonAuth,
 }: {
   sourceUri: string;
+  hasNeonAuth: boolean;
   filePath: string;
   /** First line of the file's header comment. */
   title: string;
@@ -881,7 +934,7 @@ export async function exportBranchDataAsSql({
       string,
       { columnList: string; overriding: string }
     >();
-    for (const table of await listCopyTables(source)) {
+    for (const table of await listCopyTables(source, hasNeonAuth)) {
       const columns = await listInsertableColumns(source, table);
       if (columns.length === 0) continue;
       insertShape.set(tableKey(table.schema, table.name), {

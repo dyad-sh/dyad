@@ -25,6 +25,7 @@ import {
   type FakeBranch,
 } from "@/testing/fake_neon_branch_api";
 import { CopyVerificationError } from "@/ipc/utils/neon_branch_data";
+import { ensureNeonAuth } from "@/ipc/utils/neon_utils";
 
 let fakeNeon = new FakeNeonBranchApi();
 
@@ -37,7 +38,12 @@ vi.mock("@/neon_admin/neon_management_client", async (importOriginal) => ({
 }));
 
 const branchData = vi.hoisted(() => ({
-  prepareSchemaOnlyBranchForNeonAuth: vi.fn(async (_uri: string) => {}),
+  prepareSchemaOnlyBranchForNeonAuth: vi.fn(async (uri: string) =>
+    fakeNeon.grantNeonAuthCreatePermission(uri),
+  ),
+  grantNeonAuthCreatePermission: vi.fn(async (uri: string) =>
+    fakeNeon.grantNeonAuthCreatePermission(uri),
+  ),
   listForeignKeys: vi.fn(async (_uri: string) => []),
   exportBranchDataAsSql: vi.fn(
     async (_args: { sourceUri: string; filePath: string; title: string }) => ({
@@ -48,7 +54,7 @@ const branchData = vi.hoisted(() => ({
   findMigrationBlockers: vi.fn(
     async (
       _uri: string,
-      _options: { neonAuth: boolean },
+      _options: { neonAuth: boolean; previewNeedsNeonAuth: boolean },
     ): Promise<string[]> => [],
   ),
   copyBranchData: vi.fn(
@@ -477,6 +483,63 @@ describe("Neon database revert (integration)", () => {
     expect(fakeNeon.byName("preview").id).toBe(preview.id);
     expect((await appRow(appId)).neonPreviewBranchId).toBe(preview.id);
   });
+
+  it.each([
+    { developmentAuth: false, previewAuth: false },
+    { developmentAuth: false, previewAuth: true },
+    { developmentAuth: true, previewAuth: false },
+  ])(
+    "preserves development Auth ($developmentAuth) and preview Auth ($previewAuth)",
+    async ({ developmentAuth, previewAuth }) => {
+      await legacyLayout(1);
+      const { appId, appDir, development, preview } = await connectApp();
+      development.neonAuth = developmentAuth;
+      preview.neonAuth = previewAuth;
+      const envPath = path.join(appDir, ".env.local");
+      fs.appendFileSync(
+        envPath,
+        "NEON_AUTH_COOKIE_SECRET=stale\nOTHER_VAR=keep\n",
+      );
+
+      expect(await migrate(appId)).toMatchObject({ success: true });
+      const newDev = fakeNeon.byName("development");
+      const newPreview = fakeNeon.byName("preview");
+      expect(newDev.neonAuth).toBe(developmentAuth);
+      expect(newPreview.neonAuth).toBe(previewAuth);
+      const env = fs.readFileSync(envPath, "utf8");
+      expect(env).toContain(fakeNeon.connectionUri(newDev.id));
+      expect(env).toMatch(/OTHER_VAR="?keep/);
+      if (developmentAuth) {
+        expect(env).toContain(fakeNeon.authBaseUrl(newDev.id));
+        expect(fakeNeon.methodCalls("disableNeonAuth")).toContainEqual([
+          fakeNeon.projectId,
+          newPreview.id,
+          { delete_data: false },
+        ]);
+      } else {
+        expect(env).not.toMatch(/NEON_AUTH_BASE_URL|NEON_AUTH_COOKIE_SECRET/);
+        expect(
+          branchData.prepareSchemaOnlyBranchForNeonAuth,
+        ).not.toHaveBeenCalled();
+        expect(branchData.copyBranchData).toHaveBeenCalledWith(
+          expect.objectContaining({ hasNeonAuth: false }),
+        );
+        expect(branchData.exportBranchDataAsSql).toHaveBeenCalledWith(
+          expect.objectContaining({ hasNeonAuth: false }),
+        );
+        expect(fakeNeon.methodCalls("createNeonAuth")).not.toContainEqual([
+          fakeNeon.projectId,
+          newDev.id,
+        ]);
+        await expect(
+          ensureNeonAuth({
+            projectId: fakeNeon.projectId,
+            branchId: newDev.id,
+          }),
+        ).resolves.toBe(fakeNeon.authBaseUrl(newDev.id));
+      }
+    },
+  );
 
   it("carries the Neon Auth settings over to the new branch", async () => {
     await legacyLayout(1);
@@ -909,6 +972,46 @@ describe("Neon database revert (integration)", () => {
     });
   });
 
+  it.each([false, true])(
+    "recovers shared database-only apps when the unfinished branch has Auth %s",
+    async (unfinishedAuth) => {
+      await legacyLayout(1);
+      const first = await connectApp();
+      const second = await connectApp();
+      first.development.neonAuth = false;
+      first.preview.neonAuth = false;
+      const { unfinished } = interruptAfterRenames(first.development);
+      unfinished.neonAuth = unfinishedAuth;
+      for (const app of [first, second]) {
+        pointEnvAt(app.appDir, unfinished.id);
+        fs.appendFileSync(
+          path.join(app.appDir, ".env.local"),
+          "NEON_AUTH_BASE_URL=stale\n",
+        );
+      }
+      await migrate(first.appId);
+      for (const app of [first, second]) {
+        expect((await appRow(app.appId)).neonActiveBranchId).toBe(
+          unfinished.id,
+        );
+        expect(
+          fs.readFileSync(path.join(app.appDir, ".env.local"), "utf8"),
+        ).not.toContain("NEON_AUTH");
+      }
+      expect(unfinished.neonAuth).toBe(false);
+      expect(unfinished.neonServiceCanCreate).toBe(true);
+      expect(fakeNeon.byName("preview").neonAuth).toBe(false);
+      expect(fakeNeon.methodCalls("createNeonAuth")).toHaveLength(0);
+      if (unfinishedAuth) {
+        expect(fakeNeon.methodCalls("disableNeonAuth")).toContainEqual([
+          fakeNeon.projectId,
+          unfinished.id,
+          { delete_data: false },
+        ]);
+      }
+    },
+  );
+
   it("refuses when an interrupted migration left apps on both branches", async () => {
     await legacyLayout(1);
     const first = await connectApp();
@@ -1036,9 +1139,28 @@ describe("Neon database revert (integration)", () => {
     expect(branchData.copyBranchData).not.toHaveBeenCalled();
     expect(branchData.findMigrationBlockers).toHaveBeenCalledWith(
       fakeNeon.connectionUri(fakeNeon.byName("development").id),
-      { neonAuth: true },
+      { neonAuth: true, previewNeedsNeonAuth: true },
     );
   });
+
+  it.each(["development", "preview"])(
+    "keeps the source when the %s Auth state cannot be read",
+    async (name) => {
+      await legacyLayout(1);
+      const { appId, development } = await connectApp();
+      const tree = fakeNeon.tree();
+      fakeNeon.failures.getNeonAuth = (_projectId, branchId) => {
+        if (branchId === fakeNeon.byName(name).id)
+          throw new Error("Auth service unavailable");
+      };
+      await expect(migrate(appId)).rejects.toThrow(/Auth service unavailable/);
+      expect(fakeNeon.tree()).toEqual(tree);
+      expect((await appRow(appId)).neonDevelopmentBranchId).toBe(
+        development.id,
+      );
+      expect(branchData.copyBranchData).not.toHaveBeenCalled();
+    },
+  );
 
   it("refuses to migrate while an earlier version is being previewed", async () => {
     await legacyLayout(1);
@@ -1438,8 +1560,8 @@ describe("Neon database revert (integration)", () => {
       "create:development",
       "auth:main",
       "auth:development",
-      "auth:preview",
     ]);
+    expect(fakeNeon.byName("preview").neonAuth).toBe(true);
     expect(await appRow(appId)).toMatchObject({
       neonDevelopmentBranchId: development.id,
       neonPreviewBranchId: fakeNeon.byName("preview").id,

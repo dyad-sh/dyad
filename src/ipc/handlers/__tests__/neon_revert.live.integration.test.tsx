@@ -55,6 +55,7 @@ import {
 import { storeDbTimestampAtCurrentVersion } from "@/ipc/utils/neon_timestamp_utils";
 import { readEnvFileIfExists } from "@/ipc/utils/app_env_var_utils";
 import { retryOnLocked } from "@/ipc/utils/retryOnLocked";
+import { ensureNeonAuth } from "@/ipc/utils/neon_utils";
 import {
   setupHybridChatHarness,
   type HybridChatHarness,
@@ -593,6 +594,112 @@ describe.skipIf(!LIVE_KEY)("Neon database revert (live Neon API)", () => {
       await authRequest(projectId, newDev.id, "sign-in", "b@example.com"),
     ).toBe(200);
   }, 600_000);
+
+  it.each([false, true])(
+    "migrates a database-only app (leftover Auth schema: %s)",
+    async (leftoverSchema) => {
+      const { appId, appDir } = await createGitApp("neon-legacy-no-auth");
+      const { data: created } = await liveClient.createProject({
+        project: { name: `dyad-no-auth-${Date.now()}` },
+      });
+      const projectId = created.project.id;
+      projectIds.push(projectId);
+      await waitForOperations(projectId);
+      const { data: dev } = await setup(() =>
+        liveClient.createProjectBranch(projectId, {
+          endpoints: [{ type: "read_write" as never }],
+          branch: { name: "development", parent_id: created.branch.id },
+        }),
+      );
+      await waitForOperations(projectId);
+      const devId = dev.branch.id;
+      const { data: preview } = await setup(() =>
+        liveClient.createProjectBranch(projectId, {
+          endpoints: [{ type: "read_write" as never }],
+          branch: { name: "preview", parent_id: devId },
+        }),
+      );
+      await waitForOperations(projectId);
+      fs.writeFileSync(
+        path.join(appDir, ".env.local"),
+        `DATABASE_URL=${dev.connection_uris![0].connection_uri}\n`,
+      );
+      await harness.db
+        .update(apps)
+        .set({
+          neonProjectId: projectId,
+          neonDevelopmentBranchId: devId,
+          neonPreviewBranchId: preview.branch.id,
+          neonActiveBranchId: devId,
+        })
+        .where(eq(apps.id, appId));
+
+      const source = await sql(projectId, devId);
+      await source.query("create table notes (body text)");
+      await source.query("insert into notes values ('kept')");
+      const tables = ["invites", "project_config", "jwks"];
+      if (leftoverSchema) {
+        await source.query("create schema neon_auth");
+        for (const table of tables) {
+          await source.query(`create table neon_auth.${table} (body text)`);
+          await source.query(`insert into neon_auth.${table} values ('kept')`);
+        }
+        // A populated table with no writable columns can't be copied by this
+        // migration. Refuse before switching apps or deleting their source.
+        await source.query("create table neon_auth.no_columns ()");
+        await source.query("insert into neon_auth.no_columns default values");
+        await expect(
+          ipc.neon.migrateDevelopmentBranch({ appId }),
+        ).rejects.toThrow(/no_columns/);
+        expect((await appRow(appId)).neonActiveBranchId).toBe(devId);
+        expect(await source.query("select * from neon_auth.invites")).toEqual([
+          { body: "kept" },
+        ]);
+        await source.query("drop table neon_auth.no_columns");
+      }
+      const result = await ipc.neon.migrateDevelopmentBranch({ appId });
+      expect(result.success).toBe(true);
+      const app = await appRow(appId);
+      const newId = app.neonDevelopmentBranchId!;
+      expect(newId).not.toBe(devId);
+      const target = await sql(projectId, newId);
+      expect(await target.query("select body from notes")).toEqual([
+        { body: "kept" },
+      ]);
+      for (const branchId of [newId, app.neonPreviewBranchId!]) {
+        // Assert on the status only. An API error can contain the live key.
+        expect(
+          await liveClient.getNeonAuth(projectId, branchId).then(
+            () => 200,
+            (error) => error.response?.status,
+          ),
+        ).toBe(404);
+      }
+      expect(await readEnvFileIfExists({ appPath: appDir })).not.toContain(
+        "NEON_AUTH_BASE_URL",
+      );
+      if (leftoverSchema) {
+        const backup = fs.readFileSync(result.backupPath!, "utf8");
+        for (const table of tables) {
+          expect(
+            await target.query(`select body from neon_auth.${table}`),
+          ).toEqual([{ body: "kept" }]);
+          expect(backup).toContain(`insert into "neon_auth"."${table}"`);
+        }
+      } else {
+        expect(
+          await ensureNeonAuth({ projectId, branchId: newId }),
+        ).toBeTruthy();
+        expect(
+          await authRequest(projectId, newId, "sign-up", "new@example.com"),
+        ).toBe(200);
+        expect(
+          await authRequest(projectId, newId, "sign-in", "new@example.com"),
+        ).toBe(200);
+      }
+    },
+    600_000,
+  );
 
   it("creates new apps with a root development branch whose reverts leave no backups", async () => {
     const { appId, appDir } = await createGitApp("neon-new");

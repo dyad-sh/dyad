@@ -150,6 +150,14 @@ credentials after a concurrent sign-in. Stub the refresh transport too. A spy on
 `IS_TEST_BUILD`. To cover those, wrap `createApiClient` in a
 `vi.mock("@neondatabase/api-client", importOriginal)` that passes the adapter.
 
+`neon_revert.integration.test.tsx` runs without `IS_TEST_BUILD`, so the
+`IS_TEST_BUILD` early returns in `src/ipc/utils/neon_branch_data.ts` do not
+apply there. The suite partially mocks that module through its `branchData`
+object. Add any new export that queries a branch database to that object.
+Otherwise the real function runs against `FakeNeonBranchApi` connection URIs.
+Also keep the mocked return shapes in sync with the real types, such as
+`copyBranchData`'s `skipped`.
+
 The shared Electron mock's `utilityProcess.fork()` is intentionally inert and
 never emits `spawn`, `message`, or `exit`. If a hybrid flow reaches a packaged
 utility-process boundary, mock that processor in `hybrid.setup.ts` with a

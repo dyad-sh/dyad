@@ -175,6 +175,34 @@ describe("SupabaseSelfHostedLinkSection", () => {
     );
   });
 
+  it("says which apps already use the selected instance", async () => {
+    mocks.listSelfHostedInstances.mockResolvedValue([
+      {
+        ...INSTANCE,
+        linkedApps: [
+          { id: 1, name: "Blog" },
+          { id: 2, name: "Shop" },
+        ],
+      },
+      { ...INSTANCE, id: "instance-2", name: "Spare", linkedApps: [] },
+    ]);
+    const user = userEvent.setup();
+    renderWithQuery(
+      <SupabaseSelfHostedLinkSection appId={7} onLinked={vi.fn()} />,
+    );
+    const note = () => screen.queryByTestId("supabase-self-hosted-shared-note");
+
+    await user.click(await screen.findByLabelText("Instance"));
+    await user.click(await screen.findByRole("option", { name: "Home lab" }));
+    expect(note()?.textContent).toBe(
+      "Also used by Blog, Shop. Apps on one instance share its database and edge functions, so tables or functions with the same name will overwrite each other.",
+    );
+
+    await user.click(screen.getByLabelText("Instance"));
+    await user.click(await screen.findByRole("option", { name: "Spare" }));
+    expect(note()).toBeNull();
+  });
+
   it("adds an instance without SSH by default", async () => {
     mocks.addSelfHostedInstance.mockResolvedValue({
       instance: { ...INSTANCE, ssh: null },

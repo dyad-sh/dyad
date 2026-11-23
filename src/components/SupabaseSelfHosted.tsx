@@ -508,6 +508,8 @@ export function SupabaseSelfHostedLinkSection({
   const instances = instancesQuery.data ?? [];
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isLinking, setIsLinking] = useState(false);
+  const sharedWith =
+    instances.find((instance) => instance.id === selectedId)?.linkedApps ?? [];
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [useSsh, setUseSsh] = useState(false);
@@ -669,6 +671,16 @@ export function SupabaseSelfHostedLinkSection({
             Connect
           </Button>
         </div>
+      )}
+      {sharedWith.length > 0 && (
+        <p
+          className="text-xs text-amber-700 dark:text-amber-400"
+          data-testid="supabase-self-hosted-shared-note"
+        >
+          Also used by {sharedWith.map((app) => app.name).join(", ")}. Apps on
+          one instance share its database and edge functions, so tables or
+          functions with the same name will overwrite each other.
+        </p>
       )}
 
       {isFormOpen ? (

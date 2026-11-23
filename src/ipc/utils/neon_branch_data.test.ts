@@ -11,7 +11,10 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@neondatabase/serverless", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@neondatabase/serverless")>()),
-  neon: () => ({ query: mocks.http }),
+  // The connection string comes along, so a test can route it.
+  neon: (uri: string) => ({
+    query: (sql: string, params?: unknown[]) => mocks.http(sql, params, uri),
+  }),
   Pool: class {
     constructor(private options: { connectionString: string }) {}
     async connect() {
@@ -32,6 +35,7 @@ import {
   copyBranchData,
   exportBranchDataAsSql,
   findMigrationBlockers,
+  findNeonAuthDataNotCopied,
   grantNeonAuthCreatePermission,
   planDataCopy,
   UncopyableDataError,
@@ -945,7 +949,14 @@ describe("Neon migration data", () => {
   beforeEach(() => {
     mocks.source.mockReset().mockResolvedValue({ rows: [] });
     mocks.target.mockReset().mockResolvedValue({ rows: [] });
-    mocks.http.mockReset().mockResolvedValue([]);
+    // The HTTP driver resolves to the rows themselves.
+    mocks.http
+      .mockReset()
+      .mockImplementation(
+        async (sql: string, params: unknown[], uri: string) =>
+          (await (uri === "source" ? mocks.source : mocks.target)(sql, params))
+            .rows,
+      );
   });
 
   it("grants permission for future Auth without resetting SQL objects", async () => {
@@ -1050,6 +1061,54 @@ describe("Neon migration data", () => {
       expect.stringMatching(/^insert into "public"\."ids"/),
     ]);
     expect(statements(mocks.target)).toContain("commit");
+  });
+
+  it("finds what a copy left out of re-provisioned Neon Auth, as the copy reports it", async () => {
+    mocks.source.mockImplementation(
+      fakeDatabase({
+        "neon_auth.legacy": ["body"],
+        "neon_auth.user": ["id", "old_flag"],
+        "public.ids": ["id", "amount"],
+      }),
+    );
+    mocks.target.mockImplementation(
+      fakeDatabase({
+        "neon_auth.user": ["id"],
+        "public.ids": ["id", "amount"],
+      }),
+    );
+
+    const copied = await copyBranchData({
+      sourceUri: "source",
+      targetUri: "target",
+      hasNeonAuth: true,
+    });
+
+    expect(copied.skipped).toHaveLength(2);
+    await expect(
+      findNeonAuthDataNotCopied("source", "target"),
+    ).resolves.toEqual(copied.skipped);
+  });
+
+  it("pages by ctid under a name no user column can take", async () => {
+    // A column named like the alias the page query once used.
+    mocks.source.mockImplementation(
+      fakeDatabase({ "public.odd": ["dyad$ctid", "id"] }),
+    );
+    mocks.target.mockImplementation(
+      fakeDatabase({ "public.odd": ["dyad$ctid", "id"] }),
+    );
+
+    await copyBranchData({
+      sourceUri: "source",
+      targetUri: "target",
+      hasNeonAuth: false,
+    });
+
+    const page = statements(mocks.source).find((s) => s.includes("with page"));
+    expect(page).toMatch(/select ctid, "dyad\$ctid", "id" from only/);
+    expect(page).toMatch(/max\(ctid\)/);
+    expect(page).not.toMatch(/ as "dyad\$ctid"/);
   });
 
   it("refuses to drop app columns even when Neon Auth is re-provisioned", async () => {

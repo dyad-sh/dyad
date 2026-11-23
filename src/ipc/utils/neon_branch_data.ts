@@ -496,6 +496,44 @@ end`;
 }
 
 /**
+ * The `neon_auth` tables and columns of `sourceUri` that the re-provisioned
+ * Neon Auth of `targetUri` lacks: what `copyBranchData` reports as `skipped`
+ * when copying between them. For finishing an interrupted migration, whose
+ * copy is done but whose report was lost.
+ */
+export async function findNeonAuthDataNotCopied(
+  sourceUri: string,
+  targetUri: string,
+): Promise<string[]> {
+  if (IS_TEST_BUILD) return [];
+  const source = httpQueryable(sourceUri);
+  const target = httpQueryable(targetUri);
+  const targetTables = new Set(
+    (await listCopyTables(target, true)).map((t) =>
+      qualifiedName(t.schema, t.name),
+    ),
+  );
+  const skipped: string[] = [];
+  for (const table of await listCopyTables(source, true)) {
+    if (table.schema !== "neon_auth") continue;
+    const tableName = qualifiedName(table.schema, table.name);
+    if (!targetTables.has(tableName)) {
+      skipped.push(tableName);
+      continue;
+    }
+    const targetColumns = new Set(
+      (await listInsertableColumns(target, table)).map((c) => c.name),
+    );
+    for (const column of await listInsertableColumns(source, table)) {
+      if (!targetColumns.has(column.name)) {
+        skipped.push(`${tableName}.${quoteIdentifier(column.name)}`);
+      }
+    }
+  }
+  return skipped;
+}
+
+/**
  * What a migration's copy would lose, as user-facing descriptions; empty when
  * it is safe. When Neon Auth is re-provisioned, user triggers and dependent
  * views and policies would be dropped with the copied `neon_auth` schema (only
@@ -587,6 +625,10 @@ async function poolQueryable(connectionUri: string) {
  * paginated on ctid (stable within a snapshot). The rows stay JSON text that
  * `json_populate_recordset` reads back: Postgres writes bigint and numeric
  * values as exact literals, and parsing them in JS would round them.
+ *
+ * The page keeps the column under its own name, `ctid`: Postgres rejects user
+ * columns named after system columns, so it cannot collide with one, as any
+ * alias could.
  */
 async function readRowsPage(
   db: Queryable,
@@ -596,14 +638,14 @@ async function readRowsPage(
 ): Promise<{ json: string; count: number; last: string | null }> {
   const [page] = await db.query(
     `with page as materialized (
-       select ctid as "dyad$ctid", ${columnList} from only ${tableName}
+       select ctid, ${columnList} from only ${tableName}
        where ctid > $1::tid order by ctid limit ${COPY_BATCH_SIZE}
      )
      select
        (select coalesce(json_agg(to_json(r)), '[]'::json)::text
         from (select ${columnList} from page) r) as json,
        (select count(*)::int from page) as count,
-       (select max("dyad$ctid")::text from page) as last`,
+       (select max(ctid)::text from page) as last`,
     [afterCtid],
   );
   return page as { json: string; count: number; last: string | null };

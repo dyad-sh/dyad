@@ -61,6 +61,9 @@ const branchData = vi.hoisted(() => ({
     schema: false,
     role: false,
   })),
+  findNeonAuthDataNotCopied: vi.fn(
+    async (_sourceUri: string, _targetUri: string): Promise<string[]> => [],
+  ),
   copyBranchData: vi.fn(
     async (_args: { sourceUri: string; targetUri: string }) => ({
       tables: 2,
@@ -549,6 +552,42 @@ describe("Neon database revert (integration)", () => {
           }),
         ).resolves.toBe(fakeNeon.authBaseUrl(newDev.id));
       }
+    },
+  );
+
+  it.each([
+    { developmentAuth: false, previewAuth: true },
+    { developmentAuth: true, previewAuth: false },
+  ])(
+    "keeps preview Auth ($previewAuth) through a failed attempt when development's ($developmentAuth) differs",
+    async ({ developmentAuth, previewAuth }) => {
+      // Neon may carry the source's Auth over on a restore; the migration
+      // must then leave the preview alone, or the retry would read the
+      // carried-over state.
+      fakeNeon.restoreCopiesNeonAuth = true;
+      await legacyLayout(1);
+      const { appId, development, preview } = await connectApp();
+      development.neonAuth = developmentAuth;
+      preview.neonAuth = previewAuth;
+      branchData.copyBranchData.mockRejectedValueOnce(
+        new Error("connection lost"),
+      );
+
+      await expect(migrate(appId)).rejects.toThrow(/connection lost/);
+      expect(
+        fakeNeon
+          .methodCalls("restoreProjectBranch")
+          .filter(([, branchId]) => branchId === preview.id),
+      ).toEqual([]);
+      expect(preview.neonAuth).toBe(previewAuth);
+
+      expect(await migrate(appId)).toMatchObject({ success: true });
+      expect(fakeNeon.byName("preview").neonAuth).toBe(previewAuth);
+      expect(fakeNeon.tree()).toEqual({
+        development: null,
+        main: null,
+        preview: "development",
+      });
     },
   );
 
@@ -1081,6 +1120,56 @@ describe("Neon database revert (integration)", () => {
       }
     },
   );
+
+  it("still warns about the Neon Auth data an interrupted copy left out", async () => {
+    await legacyLayout(1);
+    const { appId, appDir, development: oldDevelopment } = await connectApp();
+    const { unfinished } = interruptAfterRenames(oldDevelopment);
+    pointEnvAt(appDir, unfinished.id);
+    branchData.findNeonAuthDataNotCopied.mockResolvedValueOnce([
+      '"neon_auth"."legacy"',
+    ]);
+
+    const result = await migrate(appId);
+
+    expect(branchData.findNeonAuthDataNotCopied).toHaveBeenCalledWith(
+      fakeNeon.connectionUri(oldDevelopment.id),
+      fakeNeon.connectionUri(unfinished.id),
+    );
+    expect(result.warning).toContain(
+      `not copied to the new branch (the backup the interrupted migration saved in Dyad's neon-backups folder has it): "neon_auth"."legacy".`,
+    );
+    expect(branchData.findLeftoverNeonAuthObjects).not.toHaveBeenCalled();
+  });
+
+  it("still warns about a neon_auth schema an interrupted Auth-off migration kept", async () => {
+    await legacyLayout(1);
+    const {
+      appId,
+      appDir,
+      development: oldDevelopment,
+      preview,
+    } = await connectApp();
+    oldDevelopment.neonAuth = false;
+    preview.neonAuth = false;
+    const { unfinished } = interruptAfterRenames(oldDevelopment);
+    unfinished.neonAuth = false;
+    pointEnvAt(appDir, unfinished.id);
+    branchData.findLeftoverNeonAuthObjects.mockResolvedValueOnce({
+      schema: true,
+      role: false,
+    });
+
+    const result = await migrate(appId);
+
+    expect(branchData.findLeftoverNeonAuthObjects).toHaveBeenCalledWith(
+      fakeNeon.connectionUri(unfinished.id),
+    );
+    expect(result.warning).toContain(
+      `kept its neon_auth schema with their data. Neon Auth can't be turned on for this app until the neon_auth schema is removed; the backup the interrupted migration saved in Dyad's neon-backups folder has a copy.`,
+    );
+    expect(branchData.findNeonAuthDataNotCopied).not.toHaveBeenCalled();
+  });
 
   it("refuses when an interrupted migration left apps on both branches", async () => {
     await legacyLayout(1);

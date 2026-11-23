@@ -81,6 +81,12 @@ export class FakeNeonBranchApi {
   branchLimit = 10;
   /** Reads of a restored root branch that still report the backup as parent. */
   detachAfterPolls = 1;
+  /**
+   * Whether restoring a branch from another one gives it that branch's Neon
+   * Auth state. Not verified against the live API, so the migration must
+   * come out right either way.
+   */
+  restoreCopiesNeonAuth = false;
   /** Override a method to inject failures, e.g. `failures.createProjectBranch`. */
   readonly failures: Partial<Record<string, (...args: any[]) => unknown>> = {};
   private nextId = 1;
@@ -303,6 +309,9 @@ export class FakeNeonBranchApi {
           } else {
             for (const child of children) child.parent_id = backup!.id;
             target.parent_id = selfRestore ? backup!.id : source.id;
+          }
+          if (this.restoreCopiesNeonAuth && !selfRestore) {
+            target.neonAuth = source.neonAuth;
           }
           return { data: { branch: publicBranch(target, this.projectId) } };
         }),

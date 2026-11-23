@@ -29,9 +29,11 @@ import {
   exportBranchDataAsSql,
   findLeftoverNeonAuthObjects,
   findMigrationBlockers,
+  findNeonAuthDataNotCopied,
   grantNeonAuthCreatePermission,
   listForeignKeys,
   prepareSchemaOnlyBranchForNeonAuth,
+  type NeonAuthLeftovers,
 } from "./neon_branch_data";
 import { autoInjectNeonEnvVars, ensureNeonAuth } from "./neon_utils";
 import { getEnvFilePath, readEnvFileIfExists } from "./app_env_var_utils";
@@ -459,13 +461,31 @@ async function repairInterruptedMigration({
     removable,
     previewBranchId,
   );
-  if (!hasNeonAuth) {
+  // The interrupted attempt's warnings about its copy were lost with it, but
+  // the branches still show them: the old branch keeps the schema it copied.
+  const holderUri = await getConnectionUri({ projectId, branchId: holder.id });
+  const warnings: string[] = [];
+  if (hasNeonAuth) {
+    warnings.push(
+      ...neonAuthNotCopiedWarnings(
+        await findNeonAuthDataNotCopied(
+          await getConnectionUri({ projectId, branchId: developmentBranchId }),
+          holderUri,
+        ),
+        INTERRUPTED_BACKUP,
+      ),
+    );
+  } else {
     // An older interrupted migration may have switched the env before this
     // branch had the grant, or may already have provisioned Auth on it.
-    await grantNeonAuthCreatePermission(
-      await getConnectionUri({ projectId, branchId: holder.id }),
-    );
+    await grantNeonAuthCreatePermission(holderUri);
     await keepNeonAuthDisabled(neonClient, projectId, holder.id);
+    warnings.push(
+      ...neonAuthLeftoversWarnings(
+        await findLeftoverNeonAuthObjects(holderUri),
+        INTERRUPTED_BACKUP,
+      ),
+    );
   }
   for (const app of onUnfinished) {
     const warning = await autoInjectNeonEnvVars({
@@ -507,6 +527,7 @@ async function repairInterruptedMigration({
     kind: "rolled-forward",
     developmentBranchId: holder.id,
     ...finished,
+    warnings: [...warnings, ...finished.warnings],
   };
 }
 
@@ -607,6 +628,34 @@ async function keepNeonAuthDisabled(
   }
 }
 
+/** How a migration's warnings refer to the backup of the data they mention. */
+const THIS_BACKUP = "the backup";
+/** A repair saves no backup of its own; the user isn't shown the earlier one. */
+const INTERRUPTED_BACKUP =
+  "the backup the interrupted migration saved in Dyad's neon-backups folder";
+
+/** Kept with their data, these still block turning Auth on later. */
+function neonAuthLeftoversWarnings(
+  leftovers: NeonAuthLeftovers,
+  backup: string,
+): string[] {
+  if (!leftovers.schema && !leftovers.role) return [];
+  const objects = `neon_auth ${describeNeonAuthLeftovers(leftovers)}`;
+  return [
+    `The development database kept its ${objects} with their data. Neon Auth can't be turned on for this app until the ${objects} ${leftovers.schema && leftovers.role ? "are" : "is"} removed; ${backup} has a copy.`,
+  ];
+}
+
+function neonAuthNotCopiedWarnings(
+  skipped: string[],
+  backup: string,
+): string[] {
+  if (skipped.length === 0) return [];
+  return [
+    `These Neon Auth tables or columns are not in its current version, so their data was not copied to the new branch (${backup} has it): ${skipped.join(", ")}.`,
+  ];
+}
+
 async function requireNeonAuth(projectId: string, branchId: string) {
   if (!(await ensureNeonAuth({ projectId, branchId }))) {
     throw new DyadError(
@@ -625,8 +674,9 @@ async function getPreviewToReplace(
   removable: Set<string>,
   previewId: string | null,
 ): Promise<MigrationPreview | undefined> {
-  // A preview outside the old tree survives the migration. Capture the state
-  // of one we will replace before reusing it as the copy's source.
+  // A preview outside the old tree survives the migration. One inside it is
+  // recreated, with the Auth state read here; the migration only reuses it
+  // as the copy's source when a restore cannot change that state.
   const preview = branches.find(
     (b) => b.id === previewId && removable.has(b.id),
   );
@@ -959,10 +1009,17 @@ async function migrateToRootDevelopmentBranch({
   // branch already exists for exactly this, so reuse it instead of spending
   // another branch from the project's limit. Restoring it makes it a child of
   // the old development branch, so only a preview that is deleted with the
-  // old tree can serve.
+  // old tree can serve. And only one whose Neon Auth state matches
+  // development's: a restore may carry development's state over, and an
+  // attempt that fails or crashes after it would leave the next attempt (or
+  // the repair) reading that instead of the preview's own state.
   let sourceBranchId: string;
   let temporarySourceId: string | null = null;
-  if (oldPreview && !previewHasChildren) {
+  if (
+    oldPreview &&
+    !previewHasChildren &&
+    oldPreview.hasNeonAuth === hasNeonAuth
+  ) {
     await retryOnLocked(
       () =>
         neonClient.restoreProjectBranch(projectId, oldPreview.id, {
@@ -1045,16 +1102,12 @@ async function migrateToRootDevelopmentBranch({
       );
     } else {
       await grantNeonAuthCreatePermission(created.connectionUri);
-      // Kept with their data, these still block turning Auth on later.
-      const leftovers = await findLeftoverNeonAuthObjects(
-        created.connectionUri,
+      warnings.push(
+        ...neonAuthLeftoversWarnings(
+          await findLeftoverNeonAuthObjects(created.connectionUri),
+          THIS_BACKUP,
+        ),
       );
-      if (leftovers.schema || leftovers.role) {
-        const objects = `neon_auth ${describeNeonAuthLeftovers(leftovers)}`;
-        warnings.push(
-          `The development database kept its ${objects} with their data. Neon Auth can't be turned on for this app until the ${objects} ${leftovers.schema && leftovers.role ? "are" : "is"} removed; the backup has a copy.`,
-        );
-      }
     }
     onStep("copy");
     const copied = await copyBranchData({
@@ -1072,9 +1125,7 @@ async function migrateToRootDevelopmentBranch({
       logger.warn(
         `Not copied to new development branch ${newDevelopment.id}, missing from re-provisioned Neon Auth: ${copied.skipped.join(", ")}`,
       );
-      warnings.push(
-        `These Neon Auth tables or columns are not in its current version, so their data was not copied to the new branch (the backup has it): ${copied.skipped.join(", ")}.`,
-      );
+      warnings.push(...neonAuthNotCopiedWarnings(copied.skipped, THIS_BACKUP));
     }
 
     onStep("rename");

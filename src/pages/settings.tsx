@@ -193,11 +193,11 @@ export default function SettingsPage() {
             <div id={SETTING_IDS.cloudflare}>
               <CloudflareIntegration />
             </div>
-            <div id={SETTING_IDS.supabase}>
+            <div id={SETTING_IDS.supabase} className="space-y-4">
               <SupabaseIntegration />
-            </div>
-            <div id={SETTING_IDS.autoFetchSupabaseEdgeFunctionLogs}>
-              <SupabaseEdgeLogPollingSwitch />
+              <div id={SETTING_IDS.autoFetchSupabaseEdgeFunctionLogs}>
+                <SupabaseEdgeLogPollingSwitch />
+              </div>
             </div>
             <div id={SETTING_IDS.neon}>
               <NeonIntegration />

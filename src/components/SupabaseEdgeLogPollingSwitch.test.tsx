@@ -36,13 +36,17 @@ it("defaults to off for users without a saved preference", () => {
   render(<SupabaseEdgeLogPollingSwitch />);
   expect(getToggle().getAttribute("aria-checked")).toBe("false");
   expect(
-    screen.getByText(/agent can still fetch Edge Function logs on demand/),
+    screen.getByRole("switch", {
+      description: /agent can still fetch Edge Function logs on demand/,
+    }),
   ).toBeTruthy();
 });
 
 it("persists turning polling on and off", () => {
   const view = render(<SupabaseEdgeLogPollingSwitch />);
-  fireEvent.click(getToggle());
+  fireEvent.click(
+    screen.getByText("Automatically fetch Supabase Edge Function logs"),
+  );
   expect(h.updateSettings).toHaveBeenLastCalledWith({
     autoFetchSupabaseEdgeFunctionLogs: true,
   });

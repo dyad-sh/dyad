@@ -12,9 +12,41 @@ export function SupabaseEdgeLogPollingSwitch() {
     DEFAULT_AUTO_FETCH_SUPABASE_EDGE_FUNCTION_LOGS;
 
   return (
-    <div className="space-y-1.5">
-      <div className="flex items-center gap-2">
-        {!settings ? (
+    <div className="flex items-center gap-3">
+      <div className="flex w-9 shrink-0">
+        {settings && (
+          <Switch
+            id="auto-fetch-supabase-edge-function-logs"
+            aria-labelledby="supabase-edge-logs-label"
+            aria-describedby="supabase-edge-logs-description"
+            checked={isEnabled}
+            onCheckedChange={(checked) => {
+              // The settings mutation displays its own error toast.
+              void updateSettings({
+                autoFetchSupabaseEdgeFunctionLogs: checked,
+              }).catch(() => {});
+            }}
+          />
+        )}
+      </div>
+      <div className="space-y-1">
+        <Label
+          id="supabase-edge-logs-label"
+          htmlFor="auto-fetch-supabase-edge-function-logs"
+          className="text-sm font-medium"
+        >
+          Automatically fetch Supabase Edge Function logs
+        </Label>
+        <p
+          id="supabase-edge-logs-description"
+          className="text-xs text-gray-500 dark:text-gray-400"
+        >
+          Poll Supabase every few seconds while a connected app&apos;s Preview
+          tab is visible and show Edge Function logs in the console. When this
+          is off, the agent can still fetch Edge Function logs on demand while
+          debugging.
+        </p>
+        {!settings && (
           <div className="space-y-2">
             <p role="status" className="text-sm text-muted-foreground">
               {settingsLoading
@@ -31,28 +63,8 @@ export function SupabaseEdgeLogPollingSwitch() {
               </Button>
             )}
           </div>
-        ) : (
-          <Switch
-            id="auto-fetch-supabase-edge-function-logs"
-            aria-label="Automatically fetch Supabase Edge Function logs"
-            checked={isEnabled}
-            onCheckedChange={(checked) => {
-              // The settings mutation displays its own error toast.
-              void updateSettings({
-                autoFetchSupabaseEdgeFunctionLogs: checked,
-              }).catch(() => {});
-            }}
-          />
         )}
-        <Label htmlFor="auto-fetch-supabase-edge-function-logs">
-          Automatically fetch Supabase Edge Function logs
-        </Label>
       </div>
-      <p className="text-[13px] leading-relaxed text-muted-foreground">
-        Poll Supabase every few seconds while a connected app&apos;s Preview tab
-        is visible and show Edge Function logs in the console. When this is off,
-        the agent can still fetch Edge Function logs on demand while debugging.
-      </p>
     </div>
   );
 }

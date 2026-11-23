@@ -213,8 +213,15 @@ export const AddSupabaseSelfHostedInstanceParamsSchema = z.object({
       host: z.string().trim().min(1).max(253),
       port: z.number().int().min(1).max(65535),
       username: z.string().trim().min(1).max(64),
-      privateKey: z.string().trim().min(1).max(16384),
+      /** A key the user pasted, or the Coolify key an import chose. */
+      privateKey: z.string().trim().min(1).max(16384).optional(),
+      coolifyKeyUuid: z.string().trim().min(1).max(200).optional(),
     })
+    .refine(
+      (ssh) =>
+        (ssh.privateKey === undefined) !== (ssh.coolifyKeyUuid === undefined),
+      { message: "Give either a private key or a Coolify key, not both." },
+    )
     .nullable(),
 });
 
@@ -407,7 +414,7 @@ export const supabaseContracts = {
           host: z.string(),
           port: z.number().int(),
           username: z.string(),
-          privateKey: z.string().nullable(),
+          coolifyKeyUuid: z.string().nullable(),
         })
         .nullable(),
     }),

@@ -40,6 +40,7 @@ const ServerSchema = z.object({
 type Server = z.infer<typeof ServerSchema>;
 
 const PrivateKeySchema = z.object({
+  uuid: z.string().nullable().optional(),
   private_key: z.string().nullable().optional(),
   is_git_related: z.boolean().nullable().optional(),
 });
@@ -138,8 +139,11 @@ export interface CoolifySupabaseImport {
     host: string;
     port: number;
     username: string;
-    /** Null when none of Coolify's keys logs in to the server. */
-    privateKey: string | null;
+    /**
+     * The Coolify key that logs in to the server, or null when none does.
+     * The key itself stays in main: adding the instance reads it again.
+     */
+    coolifyKeyUuid: string | null;
   } | null;
 }
 
@@ -170,10 +174,21 @@ function sshTargetFor(
   };
 }
 
+/** Keys that let Coolify into the user's servers; deploy keys for Git are not. */
+async function listServerKeys(
+  client: CoolifyClient,
+): Promise<{ uuid: string; privateKey: string }[]> {
+  return parseList(await client.listPrivateKeysRaw(), PrivateKeySchema).flatMap(
+    (key) =>
+      !key.is_git_related && key.uuid && key.private_key?.trim()
+        ? [{ uuid: key.uuid, privateKey: key.private_key.trim() }]
+        : [],
+  );
+}
+
 /**
  * Coolify does not say which key a server uses, so each of its server keys
- * is tried until one logs in. Only keys that already let Coolify into the
- * user's servers are candidates; deploy keys for Git are skipped.
+ * is tried until one logs in.
  */
 async function findWorkingKey(
   client: CoolifyClient,
@@ -181,32 +196,45 @@ async function findWorkingKey(
 ): Promise<string | null> {
   let keys;
   try {
-    keys = parseList(await client.listPrivateKeysRaw(), PrivateKeySchema);
+    keys = await listServerKeys(client);
   } catch (error) {
     // A token without the root permission cannot read keys. The rest of the
     // import still works; the user can paste a key.
     logger.warn("Could not list Coolify's private keys", error);
     return null;
   }
-  const candidates = keys
-    .filter((key) => !key.is_git_related && key.private_key)
-    .slice(0, MAX_KEYS_TRIED);
-  for (const key of candidates) {
-    const privateKey = `${key.private_key!.trim()}\n`;
+  for (const key of keys.slice(0, MAX_KEYS_TRIED)) {
     try {
       const session = await connectSsh(
-        { ...target, privateKey },
+        { ...target, privateKey: `${key.privateKey}\n` },
         // Only checks that the key logs in. Adding the instance pins the
         // host key, as for a key the user pastes.
         trustOnFirstUse(() => {}),
       );
       session.end();
-      return privateKey;
+      return key.uuid;
     } catch (error) {
       logger.info("A Coolify key did not log in to the Supabase server", error);
     }
   }
   return null;
+}
+
+/** The private key an import chose, read from Coolify when the instance is added. */
+export async function readCoolifyServerKey(
+  client: CoolifyClient,
+  keyUuid: string,
+): Promise<string> {
+  const key = (await listServerKeys(client)).find(
+    (candidate) => candidate.uuid === keyUuid,
+  );
+  if (!key) {
+    throw new DyadError(
+      "Coolify no longer has the SSH key the import chose. Import the service again, or paste a key.",
+      DyadErrorKind.NotFound,
+    );
+  }
+  return key.privateKey;
 }
 
 export async function importCoolifySupabaseService({
@@ -258,7 +286,7 @@ export async function importCoolifySupabaseService({
     // Kong serves Studio at the gateway's root.
     studioUrl: url,
     ssh: target
-      ? { ...target, privateKey: await findWorkingKey(client, target) }
+      ? { ...target, coolifyKeyUuid: await findWorkingKey(client, target) }
       : null,
   };
 }

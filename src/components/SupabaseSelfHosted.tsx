@@ -400,7 +400,7 @@ function importNote(imported: CoolifyImport): string {
     return "Filled in from Coolify. Dyad couldn't tell which server runs this service, so enter SSH details yourself to enable edge functions.";
   }
   const target = `${imported.ssh.username}@${imported.ssh.host}`;
-  return imported.ssh.privateKey
+  return imported.ssh.coolifyKeyUuid
     ? `Filled in from Coolify. Edge functions will connect as ${target} with Coolify's SSH key for that server.`
     : `Filled in from Coolify. None of Coolify's SSH keys logged in as ${target}, so paste a key to enable edge functions. Reading keys needs a Coolify API token with the root permission.`;
 }
@@ -517,9 +517,12 @@ export function SupabaseSelfHostedLinkSection({
   const [useSsh, setUseSsh] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [importedNote, setImportedNote] = useState<string | null>(null);
-  // The user@host an SSH key imported from Coolify logs in as. That key is
-  // kept out of view, since the user never pasted it.
-  const [coolifyKeyTarget, setCoolifyKeyTarget] = useState<string | null>(null);
+  // The Coolify key an import chose, and the user@host it logs in as. Main
+  // reads the key itself when the instance is added.
+  const [coolifyKey, setCoolifyKey] = useState<{
+    uuid: string;
+    target: string;
+  } | null>(null);
   const { settings } = useSettings();
   const queryClient = useQueryClient();
   // Import is part of the Coolify experiment, so it stays hidden while that is off.
@@ -538,12 +541,15 @@ export function SupabaseSelfHostedLinkSection({
       sshHost: imported.ssh?.host ?? "",
       sshPort: String(imported.ssh?.port ?? 22),
       sshUsername: imported.ssh?.username ?? "",
-      sshPrivateKey: imported.ssh?.privateKey ?? "",
+      sshPrivateKey: "",
     });
-    setUseSsh(!!imported.ssh?.privateKey);
-    setCoolifyKeyTarget(
-      imported.ssh?.privateKey
-        ? `${imported.ssh.username}@${imported.ssh.host}`
+    setUseSsh(!!imported.ssh?.coolifyKeyUuid);
+    setCoolifyKey(
+      imported.ssh?.coolifyKeyUuid
+        ? {
+            uuid: imported.ssh.coolifyKeyUuid,
+            target: `${imported.ssh.username}@${imported.ssh.host}`,
+          }
         : null,
     );
     setImportedNote(importNote(imported));
@@ -590,13 +596,15 @@ export function SupabaseSelfHostedLinkSection({
               host: form.sshHost.trim() || hostOf(form.url),
               port: sshPort,
               username: form.sshUsername,
-              privateKey: form.sshPrivateKey,
+              ...(coolifyKey
+                ? { coolifyKeyUuid: coolifyKey.uuid }
+                : { privateKey: form.sshPrivateKey }),
             }
           : null,
       });
       setForm(EMPTY_FORM);
       setImportedNote(null);
-      setCoolifyKeyTarget(null);
+      setCoolifyKey(null);
       setIsFormOpen(false);
       await link(instance.id);
     } catch (error) {
@@ -629,6 +637,8 @@ export function SupabaseSelfHostedLinkSection({
         onChange={(event) => {
           setForm((current) => ({ ...current, [key]: event.target.value }));
           setFormError(null);
+          // Coolify's key was matched to the imported user and server.
+          if (key === "sshHost" || key === "sshUsername") setCoolifyKey(null);
         }}
       />
     </div>
@@ -750,25 +760,19 @@ export function SupabaseSelfHostedLinkSection({
                     label="Private key"
                     field="sshPrivateKey"
                   />
-                  {coolifyKeyTarget ? (
+                  {coolifyKey ? (
                     <div
                       className="flex items-center justify-between gap-2 rounded-md border p-2 text-xs"
                       data-testid="supabase-self-hosted-coolify-key"
                     >
                       <span>
-                        Using Coolify's SSH key for {coolifyKeyTarget}.
+                        Using Coolify's SSH key for {coolifyKey.target}.
                       </span>
                       <Button
                         type="button"
                         variant="ghost"
                         size="sm"
-                        onClick={() => {
-                          setCoolifyKeyTarget(null);
-                          setForm((current) => ({
-                            ...current,
-                            sshPrivateKey: "",
-                          }));
-                        }}
+                        onClick={() => setCoolifyKey(null)}
                       >
                         Use a different key
                       </Button>
@@ -816,9 +820,11 @@ export function SupabaseSelfHostedLinkSection({
               variant="ghost"
               onClick={() => {
                 setIsFormOpen(false);
+                setForm(EMPTY_FORM);
+                setUseSsh(false);
                 setFormError(null);
                 setImportedNote(null);
-                setCoolifyKeyTarget(null);
+                setCoolifyKey(null);
               }}
             >
               Cancel

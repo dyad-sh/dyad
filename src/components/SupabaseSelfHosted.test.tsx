@@ -367,7 +367,7 @@ describe("SupabaseSelfHostedLinkSection help and import", () => {
         host: "203.0.113.7",
         port: 22,
         username: "root",
-        privateKey: "-----BEGIN OPENSSH PRIVATE KEY-----\n",
+        coolifyKeyUuid: "key-1",
       },
     });
     mocks.addSelfHostedInstance.mockResolvedValue({
@@ -396,11 +396,9 @@ describe("SupabaseSelfHostedLinkSection help and import", () => {
     expect(mocks.importCoolifySupabaseService).toHaveBeenCalledWith({
       serviceUuid: "svc-1",
     });
-    // The imported key is used but never shown.
     expect(
       screen.getByTestId("supabase-self-hosted-coolify-key").textContent,
     ).toContain("Using Coolify's SSH key for root@203.0.113.7.");
-    expect(screen.queryByDisplayValue(/BEGIN OPENSSH/)).toBeNull();
     expect(
       screen
         .getByRole("switch", { name: "Enable edge functions" })
@@ -419,12 +417,14 @@ describe("SupabaseSelfHostedLinkSection help and import", () => {
         host: "203.0.113.7",
         port: 22,
         username: "root",
-        privateKey: "-----BEGIN OPENSSH PRIVATE KEY-----\n",
+        // Main reads the key itself, so it never reaches the renderer.
+        coolifyKeyUuid: "key-1",
       },
     });
   });
 
-  it("lets the user paste their own key instead of Coolify's", async () => {
+  /** Opens the form and imports a service whose server a Coolify key logs in to. */
+  async function importWithCoolifyKey() {
     mocks.settings = {
       enableOwnServerDeployment: true,
       coolify: {
@@ -445,7 +445,7 @@ describe("SupabaseSelfHostedLinkSection help and import", () => {
         host: "203.0.113.7",
         port: 22,
         username: "root",
-        privateKey: "coolify-key",
+        coolifyKeyUuid: "key-1",
       },
     });
     mocks.addSelfHostedInstance.mockResolvedValue({ instance: INSTANCE });
@@ -460,20 +460,59 @@ describe("SupabaseSelfHostedLinkSection help and import", () => {
         name: "supabase-t2np (http://kong.example)",
       }),
     );
+    await screen.findByTestId("supabase-self-hosted-coolify-key");
+    return user;
+  }
+
+  const submittedSsh = async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Add and connect" }));
+    await waitFor(() => expect(mocks.addSelfHostedInstance).toHaveBeenCalled());
+    return mocks.addSelfHostedInstance.mock.calls[0][0].ssh;
+  };
+
+  it("lets the user paste their own key instead of Coolify's", async () => {
+    const user = await importWithCoolifyKey();
 
     await user.click(
-      await screen.findByRole("button", { name: "Use a different key" }),
+      screen.getByRole("button", { name: "Use a different key" }),
     );
     fill("Private key", "my-key");
-    fireEvent.click(screen.getByRole("button", { name: "Add and connect" }));
 
-    await waitFor(() =>
-      expect(mocks.addSelfHostedInstance).toHaveBeenCalledWith(
-        expect.objectContaining({
-          ssh: expect.objectContaining({ privateKey: "my-key" }),
-        }),
-      ),
-    );
+    expect(await submittedSsh()).toEqual({
+      host: "203.0.113.7",
+      port: 22,
+      username: "root",
+      privateKey: "my-key",
+    });
+  });
+
+  it("drops Coolify's key when the SSH user or host is changed", async () => {
+    await importWithCoolifyKey();
+
+    // The key was matched to root on that server, not to this user.
+    fill("SSH user", "deployer");
+
+    expect(screen.queryByTestId("supabase-self-hosted-coolify-key")).toBeNull();
+    fill("Private key", "my-key");
+    expect(await submittedSsh()).toMatchObject({
+      username: "deployer",
+      privateKey: "my-key",
+    });
+  });
+
+  it("starts over after Cancel", async () => {
+    const user = await importWithCoolifyKey();
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(screen.getByTestId("supabase-self-hosted-add-button"));
+
+    expect(screen.queryByTestId("supabase-self-hosted-coolify-key")).toBeNull();
+    expect(screen.queryByDisplayValue("http://kong.example")).toBeNull();
+    expect(
+      screen
+        .getByRole("switch", { name: "Enable edge functions" })
+        .getAttribute("aria-checked"),
+    ).toBe("false");
   });
 });
 

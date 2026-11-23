@@ -9,6 +9,7 @@ import {
 } from "@/testing/fake_supabase_edge_runtime_ssh";
 import {
   importCoolifySupabaseService,
+  readCoolifyServerKey,
   listCoolifySupabaseServices,
 } from "./supabase_self_hosted_coolify_import";
 
@@ -155,9 +156,21 @@ describe("importCoolifySupabaseService", () => {
         ],
         keys: [
           // A Git deploy key is never tried on a server.
-          { private_key: gitKey.private, is_git_related: true },
-          { private_key: wrong.private, is_git_related: false },
-          { private_key: right.private, is_git_related: false },
+          {
+            uuid: "key-git",
+            private_key: gitKey.private,
+            is_git_related: true,
+          },
+          {
+            uuid: "key-wrong",
+            private_key: wrong.private,
+            is_git_related: false,
+          },
+          {
+            uuid: "key-right",
+            private_key: right.private,
+            is_git_related: false,
+          },
         ],
       }),
       coolifyInstanceUrl: "http://127.0.0.1:8000",
@@ -168,10 +181,33 @@ describe("importCoolifySupabaseService", () => {
       host: "127.0.0.1",
       port: ssh.port,
       username: "root",
-      privateKey: `${right.private.trim()}\n`,
+      // Only which key: the key itself stays in main.
+      coolifyKeyUuid: "key-right",
     });
+    expect(JSON.stringify(imported)).not.toContain("PRIVATE KEY");
     // The wrong key, then the right one.
     expect(ssh.connections).toBe(1);
+  });
+
+  it("reads the chosen key when the instance is added", async () => {
+    const key = generateSshKeyPair();
+    const client = fakeCoolify({
+      keys: [
+        { uuid: "key-git", private_key: "git", is_git_related: true },
+        { uuid: "key-right", private_key: key.private, is_git_related: false },
+      ],
+    });
+
+    await expect(readCoolifyServerKey(client, "key-right")).resolves.toBe(
+      key.private.trim(),
+    );
+    // A Git deploy key is never handed out for a server.
+    await expect(readCoolifyServerKey(client, "key-git")).rejects.toMatchObject(
+      { kind: DyadErrorKind.NotFound },
+    );
+    await expect(
+      readCoolifyServerKey(client, "key-gone"),
+    ).rejects.toMatchObject({ kind: DyadErrorKind.NotFound });
   });
 
   it("leaves the key out when the token can't read keys", async () => {
@@ -185,7 +221,7 @@ describe("importCoolifySupabaseService", () => {
       host: "203.0.113.7",
       port: 22,
       username: "root",
-      privateKey: null,
+      coolifyKeyUuid: null,
     });
   });
 

@@ -34,7 +34,15 @@ import { generateSshKeyPair } from "@/testing/fake_ssh_server";
 import { closeSupabaseSelfHostedSessions } from "@/supabase_admin/supabase_self_hosted_functions";
 import { reserveRecordingStart } from "@/ipc/services/recording_registry";
 
-const mocks = vi.hoisted(() => ({ readSettings: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  readSettings: vi.fn(),
+  getCoolifyClient: vi.fn(),
+}));
+
+vi.mock("@/coolify_deploy/store", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/coolify_deploy/store")>()),
+  getClient: mocks.getCoolifyClient,
+}));
 
 vi.mock("@/main/settings", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/main/settings")>();
@@ -92,7 +100,8 @@ describe("self-hosted Supabase instances (integration)", () => {
       host: string;
       port: number;
       username: string;
-      privateKey: string;
+      privateKey?: string;
+      coolifyKeyUuid?: string;
     } | null = null,
   ) =>
     harness!.invokeHandler<AddResult>("supabase:add-self-hosted-instance", {
@@ -262,6 +271,40 @@ describe("self-hosted Supabase instances (integration)", () => {
     expect(edgeSsh.files.get("supabase-edge-functions-x1")?.size).toBe(0);
   });
 
+  it("reads an imported Coolify key itself when adding the instance", async () => {
+    mocks.readSettings.mockReturnValue({
+      enableSupabaseSelfHosted: true,
+      enableOwnServerDeployment: true,
+    });
+    const key = generateSshKeyPair();
+    mocks.getCoolifyClient.mockReturnValue({
+      listPrivateKeysRaw: async () => [
+        { uuid: "key-1", private_key: key.private, is_git_related: false },
+      ],
+    });
+    edgeSsh = await startFakeEdgeRuntimeSsh([
+      {
+        name: "supabase-edge-functions-x1",
+        image: "supabase/edge-runtime:v1.71.2",
+      },
+    ]);
+    // Only Coolify's key logs in.
+    edgeSsh.authorizedKeys = [key.public];
+    fake!.serveFunction = (name) =>
+      currentFunctionFiles(edgeSsh!, "supabase-edge-functions-x1", name)
+        .get(`${name}/index.ts`)
+        ?.match(/new Response\("(\w+)"\)/)?.[1];
+
+    const { instance } = await addInstance({
+      host: "127.0.0.1",
+      port: edgeSsh.port,
+      username: "root",
+      coolifyKeyUuid: "key-1",
+    });
+
+    expect(instance.ssh).toMatchObject({ host: "127.0.0.1", username: "root" });
+  });
+
   it("refuses a Coolify import while the Coolify experiment is off", async () => {
     for (const [channel, args] of [
       ["supabase:list-coolify-supabase-services", undefined],
@@ -271,6 +314,16 @@ describe("self-hosted Supabase instances (integration)", () => {
         { kind: DyadErrorKind.Precondition },
       );
     }
+    // Nor does adding an instance read a Coolify key.
+    await expect(
+      addInstance({
+        host: "127.0.0.1",
+        port: 22,
+        username: "root",
+        coolifyKeyUuid: "key-1",
+      }),
+    ).rejects.toMatchObject({ kind: DyadErrorKind.Precondition });
+    expect(mocks.getCoolifyClient).not.toHaveBeenCalled();
   });
 
   it("does not save an instance whose SSH check fails", async () => {

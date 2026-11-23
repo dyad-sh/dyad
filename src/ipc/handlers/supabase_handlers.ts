@@ -28,6 +28,7 @@ import { getSupabaseSelfHostedEmailStatus } from "../../supabase_admin/supabase_
 import {
   importCoolifySupabaseService,
   listCoolifySupabaseServices,
+  readCoolifyServerKey,
 } from "../../supabase_admin/supabase_self_hosted_coolify_import";
 import { getClient as getCoolifyClient } from "@/coolify_deploy/store";
 import {
@@ -505,10 +506,22 @@ export function registerSupabaseHandlers() {
       });
       let ssh: SupabaseSelfHostedSsh | null = null;
       if (params.ssh) {
+        const { host, port, username, coolifyKeyUuid } = params.ssh;
+        let privateKey = params.ssh.privateKey;
+        if (coolifyKeyUuid) {
+          // An imported key is read here so it never reaches the renderer.
+          assertCoolifyImportEnabled();
+          privateKey = await readCoolifyServerKey(
+            getCoolifyClient(),
+            coolifyKeyUuid,
+          );
+        }
         const sshInput = {
-          ...params.ssh,
+          host,
+          port,
+          username,
           // ssh2 wants the key's final newline, which trimming removed.
-          privateKey: `${params.ssh.privateKey}\n`,
+          privateKey: `${privateKey}\n`,
         };
         ssh = {
           ...sshInput,

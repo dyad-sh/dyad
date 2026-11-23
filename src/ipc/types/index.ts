@@ -211,7 +211,6 @@ export type {
   ChangeAppLocationParams,
   ChangeAppLocationResult,
   ListAppsResponse,
-  RenameBranchParams,
   UpdateAppCommandsParams,
 } from "./app";
 

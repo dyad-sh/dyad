@@ -333,14 +333,9 @@
     "warningNotOnBranch": "Attention\u00a0: vous n'êtes sur aucune branche",
     "notOnBranch": "Vous n'êtes sur aucune branche",
     "checkoutInProgress": "Le changement de version est en cours",
-    "checkoutMainBranch": "Revenez sur la branche principale, sinon les modifications ne seront pas enregistrées correctement",
-    "checkingBranch": "Vérification de la branche...",
-    "onBranch": "Vous êtes sur la branche\u00a0: {{name}}.",
-    "renameMasterToMain": "Renommer master en main",
-    "renaming": "Renommage...",
-    "switchToMainBranch": "Passer sur la branche main",
+    "checkoutBranch": "Revenez sur une branche, sinon les modifications ne seront pas enregistrées correctement",
+    "switchToBranch": "Passer sur {{branch}}",
     "checkingOut": "Changement de branche...",
-    "masterRenamed": "Branche master renommée en main",
     "versionCount": "Version {{count}}"
   },
   "errorBox": {

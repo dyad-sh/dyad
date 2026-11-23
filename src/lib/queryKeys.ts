@@ -135,6 +135,8 @@ export const queryKeys = {
       ["branches", appId] as const,
     current: ({ appId }: { appId: number | null }) =>
       ["branches", appId, "current"] as const,
+    local: ({ appId }: { appId: number | null }) =>
+      ["branches", appId, "local"] as const,
     inventory: ({ appId }: { appId: number }) =>
       ["branches", appId, "inventory"] as const,
   },

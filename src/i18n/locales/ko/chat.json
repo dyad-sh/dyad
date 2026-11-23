@@ -376,14 +376,9 @@
     "warningNotOnBranch": "경고: 브랜치에 있지 않습니다",
     "notOnBranch": "브랜치에 있지 않습니다",
     "checkoutInProgress": "버전 체크아웃이 진행 중입니다",
-    "checkoutMainBranch": "main 브랜치로 체크아웃하세요. 그렇지 않으면 변경 사항이 제대로 저장되지 않습니다",
-    "checkingBranch": "브랜치 확인 중...",
-    "onBranch": "현재 브랜치: {{name}}.",
-    "renameMasterToMain": "master를 main으로 이름 변경",
-    "renaming": "이름 변경 중...",
-    "switchToMainBranch": "main 브랜치로 전환",
+    "checkoutBranch": "브랜치로 체크아웃하세요. 그렇지 않으면 변경 사항이 제대로 저장되지 않습니다",
+    "switchToBranch": "{{branch}}(으)로 전환",
     "checkingOut": "체크아웃 중...",
-    "masterRenamed": "master 브랜치가 main으로 이름이 변경되었습니다",
     "versionCount": "버전 {{count}}"
   },
   "errorBox": {

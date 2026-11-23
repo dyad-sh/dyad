@@ -369,14 +369,9 @@
     "warningNotOnBranch": "Advertencia: No estás en una rama",
     "notOnBranch": "No estás en una rama",
     "checkoutInProgress": "El cambio de rama está actualmente en curso",
-    "checkoutMainBranch": "Cambia a la rama principal (main), de lo contrario los cambios no se guardarán correctamente",
-    "checkingBranch": "Comprobando rama...",
-    "onBranch": "Estás en la rama: {{name}}.",
-    "renameMasterToMain": "Renombrar master a main",
-    "renaming": "Renombrando...",
-    "switchToMainBranch": "Cambiar a la rama principal (main)",
+    "checkoutBranch": "Cambia a una rama, de lo contrario los cambios no se guardarán correctamente",
+    "switchToBranch": "Cambiar a {{branch}}",
     "checkingOut": "Cambiando de rama...",
-    "masterRenamed": "Rama master renombrada a main",
     "versionCount": "Versión {{count}}"
   },
   "errorBox": {

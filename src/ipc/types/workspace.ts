@@ -55,7 +55,9 @@ export const ChatWorkspaceStatusSchema = z.object({
   /**
    * Whether deleting the worktree would leave work behind: commits not yet
    * merged into the target, or uncommitted changes (a stopped turn's edits
-   * after an earlier merge). False for the original folder.
+   * after an earlier merge). Conservatively true while a writable turn runs,
+   * for an unavailable worktree, and when Git cannot tell. False for the
+   * original folder.
    */
   hasUnmergedWork: z.boolean(),
   integration: z

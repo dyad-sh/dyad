@@ -39,7 +39,13 @@ describe("runWorkspaceScopedOperation", () => {
         runWorkspaceScopedOperation(request, async () => undefined),
       ).rejects.toMatchObject({ kind: DyadErrorKind.Precondition });
       // ...and waits for what was already admitted before removing anything.
-      const drained = deletion.drain().then(() => finished);
+      let drainSettled = false;
+      const drained = deletion.drain().then(() => {
+        drainSettled = true;
+        return finished;
+      });
+      await settle();
+      expect(drainSettled).toBe(false);
       finish.resolve();
       await merge;
       await expect(drained).resolves.toBe(true);
@@ -51,7 +57,8 @@ describe("runWorkspaceScopedOperation", () => {
   it("releases app-wide and workspace claims from a workspace-scoped operation", async () => {
     const appId = 4243;
     const workspaceKey = workspaceRuntimeId(8);
-    const released = deferred();
+    const acquired = deferred();
+    const release = deferred();
     const finish = deferred();
     const operation = runWorkspaceScopedOperation(
       {
@@ -62,34 +69,50 @@ describe("runWorkspaceScopedOperation", () => {
         workspaceResources: ["repository"],
       },
       async (context) => {
+        acquired.resolve();
+        await release.promise;
         context.releaseResources(["app-path", "repository"]);
-        released.resolve();
         await finish.promise;
       },
     );
-    await released.promise;
+    await acquired.promise;
 
+    const ran: string[] = [];
+    const rename = appOperationCoordinator.run(
+      { appId, operation: "rename app", resources: ["app-path"] },
+      async () => {
+        ran.push("rename");
+        return "renamed";
+      },
+    );
+    const commit = appOperationCoordinator.run(
+      {
+        appId: workspaceKey,
+        operation: "commit in workspace",
+        resources: ["repository"],
+      },
+      async () => {
+        ran.push("commit");
+        return "committed";
+      },
+    );
     try {
-      // Both claims are free while the operation is still running.
-      await expect(
-        appOperationCoordinator.run(
-          { appId, operation: "rename app", resources: ["app-path"] },
-          async () => "renamed",
-        ),
-      ).resolves.toBe("renamed");
-      await expect(
-        appOperationCoordinator.run(
-          {
-            appId: workspaceKey,
-            operation: "commit in workspace",
-            resources: ["repository"],
-          },
-          async () => "committed",
-        ),
-      ).resolves.toBe("committed");
+      // The operation holds the app's claim and the workspace's claim...
+      await settle();
+      expect(ran).toEqual([]);
+      // ...and both are free once released, while it is still running.
+      release.resolve();
+      await expect(rename).resolves.toBe("renamed");
+      await expect(commit).resolves.toBe("committed");
     } finally {
+      release.resolve();
       finish.resolve();
       await operation;
     }
   });
 });
+
+/** Lets every queued promise callback and timer of this tick run. */
+function settle(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}

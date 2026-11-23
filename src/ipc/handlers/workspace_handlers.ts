@@ -72,8 +72,9 @@ export function registerWorkspaceHandlers() {
           packageManager: unavailable
             ? null
             : await getWorkspacePackageManager(workspace),
-          // A running turn is making work, and the worktree can't be deleted
-          // meanwhile, so skip running Git in the folder it is writing to.
+          // Conservatively true while a turn runs: it may be writing (it may
+          // not have edited anything yet), and the worktree can't be deleted
+          // meanwhile, so skip running Git in the folder it writes to.
           hasUnmergedWork:
             unavailable ||
             writableTurnRunning ||

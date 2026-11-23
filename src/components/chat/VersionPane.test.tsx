@@ -164,6 +164,8 @@ describe("VersionPane", () => {
 
     const label = screen.getByTestId("version-workspace-2");
     expect(label.textContent).toBe("dyad/chat-12");
+    // A generic span can't carry an accessible name.
+    expect(label.getAttribute("role")).toBe("note");
     expect(label.getAttribute("aria-label")).toBe(
       'Added by the worktree of chat "Pricing page" (dyad/chat-12)',
     );
@@ -172,6 +174,39 @@ describe("VersionPane", () => {
     // Clicking the label does not select the version.
     fireEvent.click(label);
     expect(mocks.send).not.toHaveBeenCalled();
+  });
+
+  it("searches what a worktree version's row shows, not its hidden body", async () => {
+    mocks.state = browsingState();
+    mocks.versions.push(
+      {
+        ...makeVersion(2),
+        message:
+          "Add navigation\n\nRequested: add a navbar\nChanged: src/Nav.tsx\n\nDyad-Chat: 12\nDyad-Workspace: dyad/chat-12\nDyad-Turn: 40",
+        workspace: { branch: "dyad/chat-12", chatId: 12, chatTitle: null },
+        turnMessageIds: [40],
+      },
+      { ...makeVersion(1), workspace: null },
+    );
+    render(<VersionPane />, { wrapper });
+    await screen.findByText("Version History");
+    const search = screen.getByLabelText("Search versions");
+    const shown = () =>
+      screen
+        .getByTestId("virtualized-version-list")
+        .getAttribute("data-total-count");
+
+    // The changed-file list and trailers are not on the row.
+    fireEvent.change(search, { target: { value: "Nav.tsx" } });
+    expect(screen.queryByTestId("virtualized-version-list")).toBeNull();
+    fireEvent.change(search, { target: { value: "Dyad-Turn" } });
+    expect(screen.queryByTestId("virtualized-version-list")).toBeNull();
+
+    // The subject and the worktree label are.
+    fireEvent.change(search, { target: { value: "navigation" } });
+    expect(shown()).toBe("1");
+    fireEvent.change(search, { target: { value: "chat-12" } });
+    expect(shown()).toBe("1");
   });
 
   it("keeps restore disabled in recovery-required projection", async () => {

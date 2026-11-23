@@ -17,7 +17,6 @@ import {
   getCurrentCommitHash,
   gitCommit,
   gitCurrentBranch,
-  gitGetMergeConflicts,
   inspectRepositoryHealth,
 } from "@/ipc/utils/git_utils";
 import {
@@ -36,10 +35,13 @@ import {
   listCommitsNotIn,
   listUncommittedPaths,
   mergeIntoWorkspace,
+  readMergeConflicts,
   recordMergedCommit,
   restorePathsToHead,
   stageAllChanges,
+  stashPaths,
   stagePaths,
+  workingFileMatchesCommit,
 } from "@/ipc/utils/git_worktree_utils";
 import {
   isIntegrationActive,
@@ -272,15 +274,23 @@ export function isInstallWrittenFile(file: string): boolean {
  * other uncommitted file in the way is left for the user, and so is every
  * such file when the `package.json` beside it is edited too: that is the
  * user's own dependency change, not an install's rewrite.
+ *
+ * Dyad cannot tell an install's rewrite from a hand edit that left
+ * `package.json` alone (`npm update`, a hand-written `pnpm-workspace.yaml`),
+ * so nothing is discarded: a file that already has the squash's content is
+ * reset (nothing is lost), and any other is moved into a `git stash` entry
+ * naming the chat, where `git stash pop` brings it back.
  */
-async function discardInstallRewritesInTheWay({
+async function setAsideInstallFilesInTheWay({
   originalPath,
   from,
   to,
+  chatId,
 }: {
   originalPath: string;
   from: string;
   to: string;
+  chatId: number;
 }): Promise<void> {
   const dirty = new Set(await listUncommittedPaths(originalPath));
   if (dirty.size === 0) return;
@@ -297,10 +307,29 @@ async function discardInstallRewritesInTheWay({
     );
     return;
   }
-  logger.info(
-    `Restoring ${inTheWay.join(", ")} in the app's folder: an install rewrote them and the merge changes them`,
-  );
-  await restorePathsToHead({ checkoutPath: originalPath, files: inTheWay });
+  const unchanged: string[] = [];
+  const kept: string[] = [];
+  for (const file of inTheWay) {
+    const matches = await workingFileMatchesCommit({
+      checkoutPath: originalPath,
+      file,
+      ref: to,
+    });
+    (matches ? unchanged : kept).push(file);
+  }
+  if (kept.length > 0) {
+    const message = `Dyad: uncommitted ${kept.join(", ")} from the app's folder, set aside to merge chat #${chatId}`;
+    logger.info(
+      `Stashing ${kept.join(", ")} in the app's folder ("${message}"): the merge changes them`,
+    );
+    await stashPaths({ checkoutPath: originalPath, files: kept, message });
+  }
+  if (unchanged.length > 0) {
+    logger.info(
+      `Restoring ${unchanged.join(", ")} in the app's folder: they already have the merge's content`,
+    );
+    await restorePathsToHead({ checkoutPath: originalPath, files: unchanged });
+  }
 }
 
 /**
@@ -419,6 +448,9 @@ export class WorkspaceIntegrationQueue {
   // Startup recovery can discover missed commits. Leave them queued until
   // every workspace has been checked against the target as it was on launch.
   private stopped = true;
+  // Set once the app is quitting: startup recovery is not awaited, and its
+  // `start()` must not restart integration after shutdown began.
+  private shutDown = false;
   // One observer per repair, including time spent queued or preparing a turn.
   private readonly repairs = new Map<number, AbortController>();
 
@@ -433,6 +465,7 @@ export class WorkspaceIntegrationQueue {
   }
 
   start(): void {
+    if (this.shutDown) return;
     this.stopped = false;
     if (this.unsubscribeRegistry) return;
     this.unsubscribeRegistry = chatWorkspaceRegistry.subscribe((appId) => {
@@ -450,6 +483,16 @@ export class WorkspaceIntegrationQueue {
     for (const controller of this.attemptControllers.values()) {
       controller.abort(new Error("Dyad is shutting down"));
     }
+  }
+
+  /**
+   * Stops for good because the app is quitting; persisted phases resume on
+   * the next launch. Unlike `stop()`, a later `start()` (from recovery that
+   * is still running) does nothing.
+   */
+  shutdown(): void {
+    this.shutDown = true;
+    this.stop();
   }
 
   /**
@@ -645,7 +688,7 @@ export class WorkspaceIntegrationQueue {
     }
     // Git reports paths relative to the repository root, which is the
     // worktree root, not the app's folder when the app lives in a subfolder.
-    const unmerged = await gitGetMergeConflicts({ path: appPath });
+    const unmerged = await readMergeConflicts(appPath);
     const changed = await listChangedPaths({ path: appPath, from: "HEAD" });
     const withMarkers = await findFilesWithConflictMarkers(workspace.path, [
       ...new Set([...unmerged, ...changed]),
@@ -665,7 +708,7 @@ export class WorkspaceIntegrationQueue {
     // From the worktree root: a conflict can be outside the app's subfolder
     // (a monorepo's root lockfile), and Git resolved some of those itself.
     await stageAllChanges(workspace.path);
-    const remaining = await gitGetMergeConflicts({ path: appPath });
+    const remaining = await readMergeConflicts(appPath);
     if (remaining.length > 0) {
       return {
         outcome: "unresolved",
@@ -954,7 +997,7 @@ export class WorkspaceIntegrationQueue {
       };
     }
     if (isMergeInProgress(appPath)) {
-      const conflicts = await gitGetMergeConflicts({ path: appPath });
+      const conflicts = await readMergeConflicts(appPath);
       if (conflicts.length > 0) {
         return {
           event: { type: "MERGE_CONFLICTED", conflictedFiles: conflicts },
@@ -1223,12 +1266,13 @@ export class WorkspaceIntegrationQueue {
             message: await buildSquashMessage(workspace, workspaceHead),
           });
     this.squashes.set(workspace.id, { parent: targetCommit, tree, squash });
-    await discardInstallRewritesInTheWay({
+    await setAsideInstallFilesInTheWay({
       originalPath,
       from: targetCommit,
       to: squash,
+      chatId: workspace.chatId,
     }).catch((error) =>
-      logger.warn("Failed to restore install-written files", error),
+      logger.warn("Failed to set aside install-written files", error),
     );
     try {
       await fastForwardCheckedOutBranch({

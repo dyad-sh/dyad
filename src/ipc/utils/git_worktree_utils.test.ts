@@ -55,7 +55,9 @@ import {
   repairLinkedWorktrees,
   revertCommitsAsOne,
   stageAllChanges,
+  stashPaths,
   restoreMissingTrackedFiles,
+  workingFileMatchesCommit,
 } from "./git_worktree_utils";
 
 const execFileAsync = promisify(execFile);
@@ -89,9 +91,18 @@ describe("git worktree helpers", () => {
   let worktree: string;
 
   beforeEach(async () => {
+    // The native realpath, like the code under test: on Windows it expands
+    // 8.3 short names (RUNNER~1) the way Git writes paths.
     root = await fs.promises.realpath(
       await fs.promises.mkdtemp(path.join(os.tmpdir(), "dyad-worktree-")),
     );
+    // The runner's own Git configuration (a global `core.hooksPath`, commit
+    // signing, templates) must neither break the fixture nor make the
+    // hook-suppression tests pass without exercising the repository's hooks.
+    const globalConfig = path.join(root, "gitconfig");
+    await fs.promises.writeFile(globalConfig, "");
+    vi.stubEnv("GIT_CONFIG_GLOBAL", globalConfig);
+    vi.stubEnv("GIT_CONFIG_NOSYSTEM", "1");
     repo = path.join(root, "app");
     worktree = path.join(root, "workspaces", "chat-1");
     await fs.promises.mkdir(repo);
@@ -100,6 +111,7 @@ describe("git worktree helpers", () => {
   });
 
   afterEach(async () => {
+    vi.unstubAllEnvs();
     await fs.promises.rm(root, {
       recursive: true,
       force: true,
@@ -141,10 +153,13 @@ describe("git worktree helpers", () => {
 
   it("resolves a linked worktree's own and shared Git directories", async () => {
     await createWorkspace();
-    const gitDir = resolveGitDirSync(worktree);
+    // Git for Windows writes forward slashes into the `.git` file.
+    const gitDir = path.normalize(resolveGitDirSync(worktree));
     expect(gitDir).toContain(path.join(".git", "worktrees"));
     expect(fs.existsSync(path.join(gitDir, "HEAD"))).toBe(true);
-    expect(resolveGitCommonDirSync(worktree)).toBe(path.join(repo, ".git"));
+    expect(path.normalize(resolveGitCommonDirSync(worktree))).toBe(
+      path.join(repo, ".git"),
+    );
     expect(resolveGitDirSync(repo)).toBe(path.join(repo, ".git"));
   });
 
@@ -311,6 +326,32 @@ describe("git worktree helpers", () => {
         "binary.bin",
       ]),
     ).toEqual(["big.txt"]);
+  });
+
+  it("scans a large file with no newlines without carrying it whole", async () => {
+    // Only a line's start can make it a marker line, so a long line split
+    // across chunks is still read correctly.
+    const longLine = "x".repeat(3 * 1024 * 1024);
+    await fs.promises.writeFile(
+      path.join(repo, "one-line.txt"),
+      `<<<<<<<${longLine}\n`,
+    );
+    await fs.promises.writeFile(
+      path.join(repo, "marker-after.txt"),
+      `${longLine}\n<<<<<<< HEAD`,
+    );
+    await fs.promises.writeFile(
+      path.join(repo, "marker-first.txt"),
+      `<<<<<<< ${longLine}`,
+    );
+
+    expect(
+      await findFilesWithConflictMarkers(repo, [
+        "one-line.txt",
+        "marker-after.txt",
+        "marker-first.txt",
+      ]),
+    ).toEqual(["marker-after.txt", "marker-first.txt"]);
   });
 
   it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
@@ -502,6 +543,12 @@ describe("git worktree helpers", () => {
     );
     expect(fs.existsSync(path.join(worktree, "src/App.tsx"))).toBe(true);
     expect(fs.existsSync(marker)).toBe(false);
+
+    // The fixture does run the hook for an ordinary checkout, so the check
+    // above proves the suppression rather than a missing hook.
+    await git(repo, ["branch", "control"]);
+    await git(repo, ["worktree", "add", path.join(root, "control"), "control"]);
+    expect(fs.existsSync(marker)).toBe(true);
   });
 
   it("undoes a chat's own commits without touching other work", async () => {
@@ -602,11 +649,87 @@ describe("git worktree helpers", () => {
     expect(await git(worktree, ["branch", "--show-current"])).toBe(
       "dyad/chat-1",
     );
-    expect(resolveGitCommonDirSync(worktree)).toBe(path.join(moved, ".git"));
-    expect((await listGitWorktrees(moved)).map((entry) => entry.path)).toEqual([
-      moved,
-      worktree,
-    ]);
+    // Git for Windows prints forward-slash paths.
+    expect(path.normalize(resolveGitCommonDirSync(worktree))).toBe(
+      path.join(moved, ".git"),
+    );
+    expect(
+      (await listGitWorktrees(moved)).map((entry) =>
+        path.normalize(entry.path),
+      ),
+    ).toEqual([moved, worktree]);
+  });
+
+  it("deletes a worktree folder by hand only once Git has unregistered it", async () => {
+    await createWorkspace();
+    await git(repo, ["worktree", "lock", worktree]);
+    // Git refuses a locked worktree on purpose; its folder stays.
+    await expect(
+      removeLinkedWorktree({ repositoryPath: repo, worktreePath: worktree }),
+    ).rejects.toThrow(/Could not remove the worktree/);
+    expect(fs.existsSync(path.join(worktree, "src/App.tsx"))).toBe(true);
+    await git(repo, ["worktree", "unlock", worktree]);
+
+    // A folder Git no longer knows (its registration was pruned) is
+    // removed by hand.
+    const gitDir = resolveGitDirSync(worktree);
+    await fs.promises.rm(gitDir, { recursive: true, force: true });
+    await removeLinkedWorktree({
+      repositoryPath: repo,
+      worktreePath: worktree,
+    });
+    expect(fs.existsSync(worktree)).toBe(false);
+
+    // A repository of its own at that path is never deleted.
+    const standalone = path.join(root, "standalone");
+    await fs.promises.mkdir(standalone);
+    await git(standalone, ["init", "-b", "main"]);
+    await expect(
+      removeLinkedWorktree({ repositoryPath: repo, worktreePath: standalone }),
+    ).rejects.toThrow(/Could not remove the worktree/);
+    expect(fs.existsSync(path.join(standalone, ".git"))).toBe(true);
+  });
+
+  it("sets aside uncommitted changes to named files in the stash", async () => {
+    await commitFile(repo, "package-lock.json", "v1\n", "lockfile");
+    const next = await commitFile(repo, "package-lock.json", "v2\n", "bump");
+    await git(repo, ["reset", "--hard", "HEAD~1"]);
+    await fs.promises.writeFile(path.join(repo, "package-lock.json"), "v2\n");
+    // The working file already has the content `next` brings.
+    expect(
+      await workingFileMatchesCommit({
+        checkoutPath: repo,
+        file: "package-lock.json",
+        ref: next,
+      }),
+    ).toBe(true);
+
+    await fs.promises.writeFile(
+      path.join(repo, "package-lock.json"),
+      "user edit\n",
+    );
+    await fs.promises.writeFile(path.join(repo, "src/App.tsx"), "other edit\n");
+    expect(
+      await workingFileMatchesCommit({
+        checkoutPath: repo,
+        file: "package-lock.json",
+        ref: next,
+      }),
+    ).toBe(false);
+    await stashPaths({
+      checkoutPath: repo,
+      files: ["package-lock.json"],
+      message: "Dyad: set aside",
+    });
+    expect(
+      await fs.promises.readFile(path.join(repo, "package-lock.json"), "utf8"),
+    ).toBe("v1\n");
+    // Only the named file moved; the edit is kept in the stash.
+    expect(await git(repo, ["status", "--porcelain"])).toBe("M src/App.tsx");
+    expect(await git(repo, ["stash", "list"])).toContain("Dyad: set aside");
+    expect(await git(repo, ["show", "stash@{0}:package-lock.json"])).toBe(
+      "user edit",
+    );
   });
   it("splits changed and deleted files relative to an app folder", async () => {
     const base = await commitFile(repo, "web/src/old.ts", "old\n", "web app");

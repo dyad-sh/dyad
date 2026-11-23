@@ -1843,8 +1843,10 @@ app.on("will-quit", () => {
   // Stop the chat-search index maintenance timers
   stopChatSearchIndexer();
 
-  // Stop starting new integration steps; persisted phases resume next launch.
-  workspaceIntegrationQueue.stop();
+  // Stop starting new integration steps for good (startup recovery may still
+  // be running and would otherwise start the queue again); persisted phases
+  // resume next launch.
+  workspaceIntegrationQueue.shutdown();
 });
 
 app.on("quit", (_event, exitCode) => {

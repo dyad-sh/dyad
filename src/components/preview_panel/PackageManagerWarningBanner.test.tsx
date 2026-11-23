@@ -77,7 +77,11 @@ vi.mock("@/hooks/useRunApp", () => ({
 }));
 
 vi.mock("@/hooks/useAppRun", () => ({
-  useAppRunState: () => ({ phase: appRunState.ownerPhase }),
+  // Only the owner app (id 1) reports the configured phase, so reading a
+  // workspace runtime's state instead would not pass as the owner's.
+  useAppRunState: (appId: number | null) => ({
+    phase: appId === 1 ? appRunState.ownerPhase : "ready",
+  }),
 }));
 
 const WORKSPACE_RUNTIME_ID = 1_000_000_003;

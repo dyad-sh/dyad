@@ -211,8 +211,10 @@ export const PreviewIframe = ({
   const [annotatorMode, setAnnotatorMode] = useAtom(annotatorModeAtom);
   const { app: loadedApp } = useLoadApp(selectedAppId);
   // Recording is part of the testing feature, so the entry point only exists
-  // for apps that opted into testing (the Tests panel owns that opt-in).
-  const canRecordTests = !!loadedApp?.testingEnabled;
+  // for apps that opted into testing (the Tests panel owns that opt-in). The
+  // recorder drives the app's main folder, so like visual editing it is off
+  // while the preview shows a chat's isolated workspace.
+  const canRecordTests = !!loadedApp?.testingEnabled && !isWorkspacePreview;
 
   const handleRecordClick = () => {
     if (recorder.phase !== "idle") return;

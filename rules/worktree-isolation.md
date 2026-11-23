@@ -92,6 +92,10 @@ worktree use the app's original folder.
   edits (especially deletions) must not reach the app's sandbox before they
   are merged. The integration queue syncs the merged files after the
   fast-forward.
+- Supabase is not isolated: edge-function deploys and `execute_sql` from an
+  isolated turn reach the app's one shared Supabase project immediately, as
+  in the app's folder, and integration does not redeploy. Whether to defer
+  them until integration is an open product question (PR #5012).
 
 ## Coordination
 
@@ -102,7 +106,11 @@ worktree use the app's original folder.
   is still admitted on the app id (with no claims), so app deletion refuses
   and drains it like any other app operation.
 - `repository-ref` goes in `appResources`: refs and worktree registrations
-  are shared by every worktree of the repository. The callback's
+  are shared by every worktree of the repository. Isolated `run_shell` and
+  `run_pre_commit` read-claim it on the app too (a command or hook can run
+  `git stash`, `git tag`, or `git update-ref`), so they never overlap the
+  integration fast-forward. A read claim lets chats' shells run side by side;
+  Git's own ref locks order their ref writes. The callback's
   `releaseResources` drops the named claims on both keys, so app-keyed code
   that releases preparation claims step by step (e.g. upstream `run_build`)
   ports by splitting its resource list, not by restructuring the releases.
@@ -121,9 +129,19 @@ worktree use the app's original folder.
   `deleteChatWorkspace` (the chat's Delete worktree button, refused while a
   turn, merge step, or reader holds it), chat deletion, or app deletion.
 - Deleting stops the workspace runtime, removes the worktree (uncommitted
-  changes go with it), and deletes the branch only when it is fully merged,
-  so unmerged commits stay reachable. The chat's next writable turn creates
-  a new workspace.
+  changes go with it), and deletes the branch only when the workspace is
+  integrated (`isWorkspaceIntegrated`), so unmerged commits stay reachable.
+  The chat's next writable turn creates a new workspace.
+- `removeLinkedWorktree` deletes a folder by hand only when Git no longer
+  has it registered (it was unregistered, or Git dropped the registration
+  after deleting part of it). A folder whose `.git` is a directory, or a
+  worktree Git still has registered (locked, or failing Git's validation),
+  is left in place and the removal throws. Git's messages are localized, so
+  this is decided from the folder, not from stderr.
+- Cleanup that cannot remove a worktree folder (failed creation, an
+  interrupted "creating" row, the orphan sweep) keeps its ownership marker
+  while the folder survives, so the next startup's orphan sweep retries
+  through the marker's `sourceRepoPath`.
 - Every deletion of a chat that may have run a turn calls
   `prepareChatDeletion` before deleting the row, after the chat's turns are
   cancelled and drained (`afterDrain`), or the runtime, worktree, and queue
@@ -140,7 +158,9 @@ worktree use the app's original folder.
   instead every operation that changes a workspace (`prepareTurnWorkspace`,
   undo, delete, retry, idle synchronization) awaits `waitForRecovery()`.
   Recovery deletes interrupted "creating" rows and sweeps orphan folders, and
-  starts the integration queue even when it fails.
+  starts the integration queue even when it fails. Quitting calls
+  `workspaceIntegrationQueue.shutdown()`, not `stop()`: recovery is not
+  awaited, and its `start()` must not restart integration after quit began.
 - `ensureDyadGitignored` does nothing inside a chat worktree
   (`isInsideChatWorkspace`) or where the repository's `info/exclude` already
   lists `.dyad/` (`isDyadMetadataExcludedSync`, which isolation guarantees;
@@ -167,7 +187,9 @@ worktree use the app's original folder.
   removal that gives up still disposes the workspace's preview.
 - `hasUnmergedWork` in the chat's workspace status (unintegrated HEAD or
   uncommitted changes) picks the delete dialog's copy. Never infer it from
-  the phase: "merged" stays after a stopped turn leaves edits.
+  the phase: "merged" stays after a stopped turn leaves edits. It is
+  conservatively `true` while a writable turn runs (the status skips Git in
+  the folder the turn writes to) and when Git cannot tell.
 - `deleteMergedBranch` (orphan sweep, failed creation) also deletes a
   branch whose tree equals its merge-base with `HEAD` (once
   `recordIntegratedSquash` has merged the squash into the worktree, that
@@ -182,10 +204,15 @@ worktree use the app's original folder.
   branch. A commit on no branch for a chat that never integrated (history
   rewritten by a rebase) restores as before.
 - `parseDyadCommitTrailers` reads trailers only from a message's last
-  paragraph, never its subject (the chat summary), like Git. To tell whether
-  a commit was written in a worktree, check `chatId`, not `workspaceBranch`:
-  Build-mode worktree commits carry only `Dyad-Chat`/`Dyad-Turn`, and
-  main-folder commits carry no trailers.
+  paragraph, never its subject (the chat summary), and only when every line
+  of that paragraph is a `Key: value` trailer, like Git. Never classify a
+  commit with `git log --grep` alone: it matches any line, the subject
+  included, so confirm matches with the parser. To tell whether a turn's
+  commit was written in a worktree, check `chatId`, not `workspaceBranch`:
+  Build-mode worktree turn commits carry only `Dyad-Chat`/`Dyad-Turn`, and
+  ordinary main-folder turn commits carry no trailers. Integration squashes
+  on the app's branch carry `Dyad-Chat` too, so `chatId` alone does not say
+  a commit was written in a worktree; the branches that contain it do.
 - `syncEnvironmentFiles` copies the app's untracked `.env*` files into a
   worktree (missing or older than the app's copy) at creation, every writable
   turn, and every worktree preview start. Only files the worktree's Git
@@ -266,9 +293,14 @@ worktree use the app's original folder.
   refuses only when the update would overwrite them, which becomes a
   `WAITING` asking the user to commit or discard those files. Install-written
   files in the way (the main preview rewrote a lockfile) are restored to
-  `HEAD` first (`discardInstallRewritesInTheWay`), so only the user's own
+  `HEAD` first (`setAsideInstallFilesInTheWay`), so only the user's own
   edits ever block. Not when the `package.json` beside them is edited too:
-  that is the user's own dependency change, so it waits for them.
+  that is the user's own dependency change, so it waits for them. Dyad
+  cannot tell an install's rewrite from a hand edit that left
+  `package.json` alone (`npm update`, a hand-written `pnpm-workspace.yaml`),
+  so a file whose content differs from what the merge brings is moved into
+  a `git stash` entry naming the chat before it is reset, never discarded.
+  A file that already has the merge's content is reset with nothing to keep.
 - A turn that hit its step limit still committed, so it requests integration
   like a finished one; only cancelled or failed turns wait for the next turn.
   A turn that completes a merge left by an attempt that already failed also
@@ -367,6 +399,16 @@ worktree use the app's original folder.
   `for-each-ref --format=%(refname:lstrip=2) refs/heads`: `git branch --list`
   adds `*`/`+` markers and a detached-HEAD entry, and `refname:short` prints
   `heads/<name>` when a tag shares the branch's name.
+- Compare worktree paths with `fs.realpathSync.native` (or
+  `fs.promises.realpath`), never `fs.realpathSync`: on Windows the JS version
+  keeps 8.3 short names (`RUNNER~1`) and the caller's casing, while Git
+  writes canonical long paths with forward slashes into `.git` files,
+  backlinks, and `worktree list --porcelain`. Tests should canonicalize
+  their fixture root the same way and `path.normalize` paths Git prints.
+- On Windows, reading the index right after a merge can fail with
+  `Permission denied` while another process still holds the replaced file.
+  Read merge conflicts with `readMergeConflicts`, which retries briefly
+  there, so a conflict is not reported as a failed merge.
 
 ## Tests
 

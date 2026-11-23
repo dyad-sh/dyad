@@ -162,4 +162,43 @@ describe("syncEnvironmentFiles", () => {
       expect(await fs.promises.readFile(outside, "utf8")).toBe("OUTSIDE\n");
     },
   );
+
+  it.skipIf(process.platform === "win32")(
+    "never writes through a symlink swapped in after the check",
+    async () => {
+      const outside = path.join(root, "outside.txt");
+      await write(outside, "OUTSIDE\n", 60);
+      await write(path.join(app, ".env.local"), "KEY=app\n", 0);
+      const destination = path.join(worktree, ".env.local");
+      const lstat = fs.promises.lstat;
+      // At check time the worktree has no file; by the write, a symlink.
+      const spy = vi
+        .spyOn(fs.promises, "lstat")
+        .mockImplementation(async (target, ...rest) => {
+          if (target === destination) {
+            await fs.promises.symlink(outside, destination);
+            throw Object.assign(new Error("missing"), { code: "ENOENT" });
+          }
+          return lstat(target, ...rest);
+        });
+      try {
+        await syncEnvironmentFiles(app, worktree);
+      } finally {
+        spy.mockRestore();
+      }
+
+      expect(await fs.promises.readFile(outside, "utf8")).toBe("OUTSIDE\n");
+    },
+  );
+
+  it("never writes through a hard link to another file", async () => {
+    const outside = path.join(root, "outside.txt");
+    await write(outside, "OUTSIDE\n", 60);
+    await fs.promises.link(outside, path.join(worktree, ".env.local"));
+    await write(path.join(app, ".env.local"), "KEY=app\n", 0);
+
+    await syncEnvironmentFiles(app, worktree);
+
+    expect(await fs.promises.readFile(outside, "utf8")).toBe("OUTSIDE\n");
+  });
 });

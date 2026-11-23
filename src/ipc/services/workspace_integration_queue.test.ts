@@ -10,7 +10,30 @@ vi.mock("./chat_workspace_store", async (importOriginal) => ({
   listAllWorkspaces,
 }));
 
+import { chatWorkspaceRegistry } from "./chat_workspace_registry";
 import { WorkspaceIntegrationQueue } from "./workspace_integration_queue";
+
+describe("WorkspaceIntegrationQueue.shutdown", () => {
+  it("stays stopped when recovery starts the queue after quitting began", () => {
+    const queue = new WorkspaceIntegrationQueue();
+    const subscribe = vi.spyOn(chatWorkspaceRegistry, "subscribe");
+    try {
+      queue.shutdown();
+      // Startup recovery is not awaited; its `finally` starts the queue.
+      queue.start();
+      expect(subscribe).not.toHaveBeenCalled();
+
+      // Stopping alone (not quitting) can still be undone.
+      const restartable = new WorkspaceIntegrationQueue();
+      restartable.stop();
+      restartable.start();
+      expect(subscribe).toHaveBeenCalledTimes(1);
+      restartable.stop();
+    } finally {
+      subscribe.mockRestore();
+    }
+  });
+});
 
 describe("WorkspaceIntegrationQueue.resumePending", () => {
   listAllWorkspaces.mockReturnValue([

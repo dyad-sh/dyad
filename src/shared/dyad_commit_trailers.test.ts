@@ -74,4 +74,28 @@ describe("parseDyadCommitTrailers", () => {
       ),
     ).toEqual({ chatId: null, workspaceBranch: null, turnMessageIds: [] });
   });
+
+  it("ignores a last paragraph that mixes prose with trailer lines", () => {
+    // Git treats such a paragraph as body text, not trailers.
+    expect(
+      parseDyadCommitTrailers(
+        "Fix\n\nThis was reported in another chat.\nDyad-Chat: 5\nDyad-Turn: 7",
+      ),
+    ).toEqual({ chatId: null, workspaceBranch: null, turnMessageIds: [] });
+  });
+
+  it("keeps trailers alongside other trailers and folded values", () => {
+    expect(
+      parseDyadCommitTrailers(
+        "Fix\n\nSigned-off-by: Someone <someone@example.com>\nDyad-Chat: 5\nNote: a long value\n  continued here\nDyad-Turn: 7",
+      ),
+    ).toEqual({ chatId: 5, workspaceBranch: null, turnMessageIds: [7] });
+  });
+
+  it("rejects a chat id that is not a positive safe integer", () => {
+    expect(parseDyadCommitTrailers("Fix\n\nDyad-Chat: 0").chatId).toBeNull();
+    expect(
+      parseDyadCommitTrailers("Fix\n\nDyad-Chat: 99999999999999999999").chatId,
+    ).toBeNull();
+  });
 });

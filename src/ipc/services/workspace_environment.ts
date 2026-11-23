@@ -8,6 +8,45 @@ const logger = log.scope("workspace_environment");
 
 const ENVIRONMENT_PATHSPEC = ":(glob).env*";
 
+/**
+ * Copies `source` over `destination` only while `destination` is a plain
+ * file of its own, checked on the opened file itself so nothing swapped in
+ * after an earlier check is written through: the open refuses a symlink
+ * (`O_NOFOLLOW`; Windows has no such flag), and a hard link to some other
+ * file (more than one link) is left alone. Returns whether it copied.
+ */
+async function copyIntoRegularFile(
+  source: string,
+  destination: string,
+  mode: number,
+): Promise<boolean> {
+  const content = await fsPromises.readFile(source);
+  let handle: fsPromises.FileHandle;
+  try {
+    handle = await fsPromises.open(
+      destination,
+      fs.constants.O_WRONLY |
+        fs.constants.O_CREAT |
+        (fs.constants.O_NOFOLLOW ?? 0),
+      mode & 0o777,
+    );
+  } catch (error) {
+    // ELOOP: a symlink is there.
+    if ((error as NodeJS.ErrnoException).code === "ELOOP") return false;
+    throw error;
+  }
+  try {
+    const opened = await handle.stat();
+    if (!opened.isFile() || opened.nlink > 1) return false;
+    await handle.truncate(0);
+    // A fresh handle writes from the start of the file.
+    await handle.writeFile(content);
+    return true;
+  } finally {
+    await handle.close();
+  }
+}
+
 function splitNulSeparated(stdout: string): string[] {
   return stdout.split("\0").filter(Boolean);
 }
@@ -148,7 +187,11 @@ export async function syncEnvironmentFiles(
       if (destinationStat && destinationStat.mtimeMs >= sourceStat.mtimeMs) {
         continue;
       }
-      await fsPromises.copyFile(source, destination);
+      if (!(await copyIntoRegularFile(source, destination, sourceStat.mode))) {
+        logger.warn(
+          `Not copying ${entry.name} into the workspace: the workspace's entry there is not a plain file`,
+        );
+      }
     } catch (error) {
       logger.warn(`Failed to copy ${entry.name} into the workspace`, error);
     }

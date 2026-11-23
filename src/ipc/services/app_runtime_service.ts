@@ -2080,8 +2080,9 @@ export class AppRuntimeService {
             this.dependencies.deleteRunningApp(appId);
           }
         }
-        // Keep an expected refusal (for example a workspace preview on the
-        // cloud runtime) classified as what it is, not as an outage.
+        // Keep an already-classified DyadError's kind (rules/dyad-errors.md):
+        // an expected refusal, such as a workspace preview on the cloud
+        // runtime, is not an outage. Unclassified failures stay External.
         throw new DyadError(
           `Failed to run app ${appId}: ${errorMessage(error)}`,
           error instanceof DyadError ? error.kind : DyadErrorKind.External,

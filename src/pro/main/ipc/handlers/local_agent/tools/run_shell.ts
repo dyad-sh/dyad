@@ -158,12 +158,22 @@ export const runShellTool: ToolDefinition<z.infer<typeof schema>> = {
       return blocked("Shell access was disabled while reviewing.");
     const removedFunctionNames: string[] = [];
     // Shell commands can touch providers and runtime configuration (app-wide)
-    // as well as the files and runtime of the turn's own workspace.
+    // as well as the files and runtime of the turn's own workspace. Refs,
+    // the stash, and tags are shared by every worktree of the repository
+    // (`git stash`, `git tag`, `git update-ref`), so an isolated command also
+    // claims them on the app and never overlaps the integration
+    // fast-forward. A read claim lets chats' shells run side by side; Git's
+    // own ref locks order their ref writes.
     const request: WorkspaceScopedOperationRequest = {
       appId: ctx.appId,
       workspaceKey: ctx.workspaceCoordinationKey,
       operation: "run-agent-shell",
-      appResources: [readAppResource("app-path"), "provider", "runtime-config"],
+      appResources: [
+        readAppResource("app-path"),
+        readAppResource("repository-ref"),
+        "provider",
+        "runtime-config",
+      ],
       workspaceResources: ["repository", readAppResource("runtime")],
       signal: ctx.abortSignal,
       refuseWhenRecording: "run shell commands",

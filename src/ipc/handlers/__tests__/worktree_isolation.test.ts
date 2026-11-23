@@ -173,6 +173,21 @@ describe("worktree isolation (integration)", () => {
     return execFileSync("git", args, { cwd }).toString().trim();
   }
 
+  /** Canonical paths of the worktrees `repository` has registered. */
+  function listedWorktrees(repository: string): string[] {
+    return git(["worktree", "list", "--porcelain"], repository)
+      .split(/\r?\n/)
+      .filter((line) => line.startsWith("worktree "))
+      .map((line) => {
+        const listed = line.slice("worktree ".length);
+        try {
+          return fs.realpathSync.native(listed);
+        } catch {
+          return path.normalize(listed);
+        }
+      });
+  }
+
   function isAncestor(
     ancestor: string,
     descendant: string,
@@ -1073,8 +1088,10 @@ describe("worktree isolation (integration)", () => {
       });
       expect(turn.event("chat:response:error")).toBeUndefined();
       expect(git(["status", "--porcelain"], workspacePath)).toBe("");
-      expect(git(["worktree", "list", "--porcelain"], movedDir)).toContain(
-        workspace.path,
+      // Git for Windows prints canonical long, forward-slash paths, so
+      // compare the folders they name, not the strings.
+      expect(listedWorktrees(movedDir)).toContain(
+        fs.realpathSync.native(workspace.path),
       );
 
       // Renaming the target is not switching away from it.
@@ -1441,48 +1458,62 @@ describe("worktree isolation (integration)", () => {
 
   it("derives the package-manager warning from the current workspace configuration", async () => {
     await waitForQuietApp();
-    const manifest = JSON.parse(harness.readAppFile("package.json"));
+    const originalManifest = harness.readAppFile("package.json");
+    const manifest = JSON.parse(originalManifest);
     commitInApp(
       {
         "package.json": `${JSON.stringify({ ...manifest, packageManager: "npm@10.9.0" }, null, 2)}\n`,
       },
       "Use npm",
     );
-    const chatId = await createChat();
-    const turn = await harness.streamChat("tc=local-agent/basic-response", {
-      chatId,
-    });
-    expect(turn.event("chat:response:error")).toBeUndefined();
-    // Each npm worktree gets a full node_modules; the chat warns about it.
-    expect((await workspaceStatus(chatId)).packageManager).toBe("npm");
-
-    const workspace = getWorkspaceForChat(chatId)!;
-    const packageJsonPath = path.join(
-      getWorkspaceAppPath(workspace),
-      "package.json",
-    );
-    const pnpmSupport = vi
-      .spyOn(socketFirewall, "getPnpmMinimumReleaseAgeSupport")
-      .mockResolvedValue({ available: true, minimumReleaseAgeSupported: true });
     try {
-      fs.writeFileSync(
-        packageJsonPath,
-        JSON.stringify({ ...manifest, packageManager: "pnpm@10.9.0" }),
-      );
-      expect((await workspaceStatus(chatId)).packageManager).toBe("pnpm");
-
-      // The warning follows the workspace, even though the app still uses npm.
-      expect(
-        JSON.parse(harness.readAppFile("package.json")).packageManager,
-      ).toBe("npm@10.9.0");
-      pnpmSupport.mockResolvedValue({
-        available: false,
-        minimumReleaseAgeSupported: false,
+      const chatId = await createChat();
+      const turn = await harness.streamChat("tc=local-agent/basic-response", {
+        chatId,
       });
+      expect(turn.event("chat:response:error")).toBeUndefined();
+      // Each npm worktree gets a full node_modules; the chat warns about it.
       expect((await workspaceStatus(chatId)).packageManager).toBe("npm");
+
+      const workspace = getWorkspaceForChat(chatId)!;
+      const packageJsonPath = path.join(
+        getWorkspaceAppPath(workspace),
+        "package.json",
+      );
+      const pnpmSupport = vi
+        .spyOn(socketFirewall, "getPnpmMinimumReleaseAgeSupport")
+        .mockResolvedValue({
+          available: true,
+          minimumReleaseAgeSupported: true,
+        });
+      try {
+        fs.writeFileSync(
+          packageJsonPath,
+          JSON.stringify({ ...manifest, packageManager: "pnpm@10.9.0" }),
+        );
+        expect((await workspaceStatus(chatId)).packageManager).toBe("pnpm");
+
+        // The warning follows the workspace, even though the app still uses npm.
+        expect(
+          JSON.parse(harness.readAppFile("package.json")).packageManager,
+        ).toBe("npm@10.9.0");
+        pnpmSupport.mockResolvedValue({
+          available: false,
+          minimumReleaseAgeSupported: false,
+        });
+        expect((await workspaceStatus(chatId)).packageManager).toBe("npm");
+      } finally {
+        pnpmSupport.mockRestore();
+        await discardWorkspace(chatId);
+      }
     } finally {
-      pnpmSupport.mockRestore();
-      await discardWorkspace(chatId);
+      // Later scenarios (pnpm lockfiles, pnpm-workspace.yaml) need the
+      // fixture's own package manager back.
+      await waitForQuietApp();
+      commitInApp(
+        { "package.json": originalManifest },
+        "Restore the fixture's package manager",
+      );
     }
   }, 60_000);
 
@@ -1876,10 +1907,9 @@ describe("worktree isolation (integration)", () => {
     const chatId = await createChat();
     const lockfile = harness.readAppFile("pnpm-lock.yaml");
     // The main preview's install rewrote it; nothing commits it there.
-    fs.writeFileSync(
-      path.join(harness.appDir, "pnpm-lock.yaml"),
-      `${lockfile}\n# rewritten by the main preview\n`,
-    );
+    const rewritten = `${lockfile}\n# rewritten by the main preview\n`;
+    fs.writeFileSync(path.join(harness.appDir, "pnpm-lock.yaml"), rewritten);
+    const stashesBefore = git(["stash", "list"]);
     await landTurn(chatId, {
       "src/dep.ts": "export const dep = true;\n",
       "pnpm-lock.yaml": `${lockfile}\n# the chat added a dependency\n`,
@@ -1889,6 +1919,32 @@ describe("worktree isolation (integration)", () => {
       "# the chat added a dependency",
     );
     expect(git(["status", "--porcelain"])).toBe("");
+    // Dyad can't prove an install wrote it, so it is set aside, not lost.
+    expect(git(["stash", "list"])).not.toBe(stashesBefore);
+    expect(git(["stash", "list"]).split("\n")[0]).toContain(
+      `merge chat #${chatId}`,
+    );
+    expect(git(["show", "stash@{0}:pnpm-lock.yaml"])).toBe(rewritten.trim());
+    git(["stash", "drop", "stash@{0}"]);
+    await discardWorkspace(chatId);
+  }, 60_000);
+
+  it("replaces a lockfile that already has the merge's content without keeping a copy", async () => {
+    await waitForQuietApp();
+    const chatId = await createChat();
+    const lockfile = harness.readAppFile("pnpm-lock.yaml");
+    // The main preview's install produced exactly what the chat committed.
+    const same = `${lockfile}\n# both installs agree\n`;
+    fs.writeFileSync(path.join(harness.appDir, "pnpm-lock.yaml"), same);
+    const stashesBefore = git(["stash", "list"]);
+    await landTurn(chatId, {
+      "src/same.ts": "export const same = true;\n",
+      "pnpm-lock.yaml": same,
+    });
+    await waitForMerged(chatId);
+    expect(harness.readAppFile("pnpm-lock.yaml")).toBe(same);
+    expect(git(["status", "--porcelain"])).toBe("");
+    expect(git(["stash", "list"])).toBe(stashesBefore);
     await discardWorkspace(chatId);
   }, 60_000);
 

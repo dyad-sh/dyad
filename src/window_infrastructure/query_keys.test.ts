@@ -6,6 +6,10 @@ it("refreshes only spec lists for app-scoped and recovery invalidations", () => 
   expect(
     queryKeysForInvalidationScope({ family: "test-specs", appId: 7 }),
   ).toEqual([queryKeys.tests.list({ appId: 7 })]);
+  // Recovery must reach every app's spec list, not one app's.
+  expect(queryKeysForInvalidationScope({ family: "test-specs" })).toEqual([
+    queryKeys.tests.lists,
+  ]);
   const [prefix] = queryKeysForInvalidationScope({ family: "test-specs" });
   expect(queryKeys.tests.list({ appId: 7 }).slice(0, prefix.length)).toEqual(
     prefix,

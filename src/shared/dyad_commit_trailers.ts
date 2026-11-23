@@ -19,24 +19,39 @@ export interface DyadCommitOrigin {
  * squash commit that lands a worktree's work on the app's branch carries the
  * chat, the worktree, and a `Dyad-Turn` for every turn it includes.
  *
- * Like Git, only the message's last paragraph holds trailers, and never its
- * subject: a chat summary such as "Dyad-Chat: 5" must not be able to claim
- * a commit for another chat.
+ * Like Git, only the message's last paragraph holds trailers, never its
+ * subject, and only when every line of that paragraph is a trailer: a chat
+ * summary such as "Dyad-Chat: 5", or prose that quotes one, must not be able
+ * to claim a commit for another chat.
  */
 export function parseDyadCommitTrailers(message: string): DyadCommitOrigin {
   const paragraphs = message
     .replace(/\r\n/g, "\n")
     .trim()
     .split(/\n[ \t]*\n/);
-  const trailers = paragraphs.length > 1 ? paragraphs.at(-1)! : "";
+  const last = paragraphs.length > 1 ? paragraphs.at(-1)! : "";
+  const trailers = last
+    .split("\n")
+    // A trailer is `Key: value`; Git also folds a long value onto indented
+    // continuation lines.
+    .every((line) => TRAILER_LINE.test(line) || /^[ \t]+\S/.test(line))
+    ? last
+    : "";
   const chat = /^Dyad-Chat: (\d+)\s*$/m.exec(trailers);
   const workspace = /^Dyad-Workspace: (\S+)\s*$/m.exec(trailers);
   const turnMessageIds = [...trailers.matchAll(/^Dyad-Turn: (\d+)\s*$/gm)]
     .map((match) => Number.parseInt(match[1], 10))
-    .filter((id) => Number.isSafeInteger(id) && id > 0);
+    .filter(isPositiveId);
+  const chatId = chat ? Number.parseInt(chat[1], 10) : null;
   return {
-    chatId: chat ? Number.parseInt(chat[1], 10) : null,
+    chatId: chatId !== null && isPositiveId(chatId) ? chatId : null,
     workspaceBranch: workspace ? workspace[1] : null,
     turnMessageIds,
   };
+}
+
+const TRAILER_LINE = /^[A-Za-z0-9][A-Za-z0-9-]*:[ \t]/;
+
+function isPositiveId(id: number): boolean {
+  return Number.isSafeInteger(id) && id > 0;
 }

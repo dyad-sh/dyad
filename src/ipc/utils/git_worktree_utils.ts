@@ -168,9 +168,9 @@ export async function checkoutBranchWorktree({
 }
 
 /**
- * Unregisters and deletes a linked worktree. Falls back to deleting the
- * directory and pruning stale registrations when Git cannot remove it (for
- * example after the directory was already deleted by hand).
+ * Unregisters and deletes a linked worktree. When Git cannot remove it, the
+ * folder is deleted by hand only if Git no longer has it registered (see
+ * {@link canDeleteAfterFailedWorktreeRemove}); otherwise this throws.
  */
 export async function removeLinkedWorktree({
   repositoryPath,
@@ -184,8 +184,14 @@ export async function removeLinkedWorktree({
     repositoryPath,
   );
   if (result.exitCode === 0) return;
+  if (!canDeleteAfterFailedWorktreeRemove(worktreePath)) {
+    throw new DyadError(
+      `Could not remove the worktree at ${worktreePath}: ${describeFailure(result)}`,
+      DyadErrorKind.Conflict,
+    );
+  }
   logger.warn(
-    `git worktree remove failed for ${worktreePath}; falling back to deletion`,
+    `git worktree remove failed for ${worktreePath}; deleting the unregistered folder`,
     describeFailure(result),
   );
   await fsPromises.rm(worktreePath, {
@@ -195,6 +201,28 @@ export async function removeLinkedWorktree({
     retryDelay: 100,
   });
   await pruneGitWorktrees(repositoryPath);
+}
+
+/**
+ * Whether a folder `git worktree remove` refused may be deleted by hand:
+ * it is already gone, or Git no longer has it registered (it was
+ * unregistered, or Git dropped the registration after deleting part of it,
+ * as on Windows when a file is still open). A folder with a `.git`
+ * directory is a repository of its own, and a worktree whose Git directory
+ * still exists is one Git refused on purpose (locked, or failing its
+ * validation, such as a `.git` that no longer points back): neither is
+ * deleted. Git's messages are localized, so this looks at the folder.
+ */
+function canDeleteAfterFailedWorktreeRemove(worktreePath: string): boolean {
+  if (!fs.existsSync(worktreePath)) return true;
+  let dotGit: fs.Stats;
+  try {
+    dotGit = fs.lstatSync(path.join(worktreePath, ".git"));
+  } catch {
+    return true;
+  }
+  if (!dotGit.isFile()) return false;
+  return !fs.existsSync(resolveGitDirSync(worktreePath));
 }
 
 /** Verify both directions of a linked checkout before using its index or HEAD. */
@@ -211,11 +239,13 @@ export function isLinkedWorktreeOf(
     const backlink = fs
       .readFileSync(path.join(gitDir, "gitdir"), "utf8")
       .trim();
+    // The native realpath: on Windows the JS one keeps 8.3 short names and
+    // the caller's casing, while Git writes canonical long paths.
+    const realpath = fs.realpathSync.native;
     return (
-      fs.realpathSync(path.resolve(gitDir, backlink)) ===
-        fs.realpathSync(dotGit) &&
-      fs.realpathSync(resolveGitCommonDirSync(root)) ===
-        fs.realpathSync(resolveGitCommonDirSync(worktreePath)) &&
+      realpath(path.resolve(gitDir, backlink)) === realpath(dotGit) &&
+      realpath(resolveGitCommonDirSync(root)) ===
+        realpath(resolveGitCommonDirSync(worktreePath)) &&
       fs.statSync(path.join(gitDir, "index")).isFile()
     );
   } catch {
@@ -488,7 +518,7 @@ export async function mergeIntoWorkspace({
       return { kind: "merged" as const, mergeCommit: head.trim() };
     }
     const conflictedFiles = isMergeInProgress(worktreePath)
-      ? await gitGetMergeConflicts({ path: worktreePath })
+      ? await readMergeConflicts(worktreePath)
       : [];
     if (conflictedFiles.length > 0) {
       return { kind: "conflicts" as const, conflictedFiles };
@@ -503,14 +533,43 @@ export async function mergeIntoWorkspace({
   });
 }
 
+/** Delays between attempts to read the index while Windows still holds it. */
+const WINDOWS_INDEX_RETRY_DELAYS_MS = [100, 250, 500];
+
+/**
+ * The files a merge left unmerged. On Windows, reading the index right after
+ * a merge can fail with "Permission denied" while another process still
+ * holds the file Git just replaced; that is retried briefly instead of
+ * turning a conflict into a failed merge. The command only reads, so any
+ * failure is retried there (Git's messages are localized).
+ */
+export async function readMergeConflicts(
+  worktreePath: string,
+): Promise<string[]> {
+  for (const delay of process.platform === "win32"
+    ? WINDOWS_INDEX_RETRY_DELAYS_MS
+    : []) {
+    try {
+      return await gitGetMergeConflicts({ path: worktreePath });
+    } catch (error) {
+      logger.warn(
+        `Reading merge conflicts in ${worktreePath} failed; retrying`,
+        error,
+      );
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+  return gitGetMergeConflicts({ path: worktreePath });
+}
+
 /**
  * Paths with uncommitted changes (tracked or untracked), relative to the
  * repository root when run from it.
  *
  * Read-only: the chat's status is polled while a turn or integration writes
  * to the same worktree, and a plain `git status` takes `index.lock` to save
- * its index refresh, which would make their `git add` or commit fail. Like
- * every automatic Git command here, it never runs the repository's fsmonitor.
+ * its index refresh, which would make their `git add` or commit fail. It
+ * never runs the repository's fsmonitor (`core.fsmonitor=false`).
  */
 export async function listUncommittedPaths(
   worktreePath: string,
@@ -776,10 +835,14 @@ const CONFLICT_MARKER_PATTERN = /^(<{7}|>{7})(?: |$)/m;
 const MAX_WHOLE_FILE_SCAN_BYTES = 2 * 1024 * 1024;
 /** Like Git, a NUL byte in a file's start marks it binary. */
 const BINARY_SNIFF_BYTES = 8000;
+/** A marker line is told apart by its first 8 characters: 7 markers and a space. */
+const MARKER_PREFIX_LENGTH = 8;
 
 /**
- * Scans a large file chunk by chunk, carrying the last partial line over so
- * a marker split across chunks is still seen.
+ * Scans a large file chunk by chunk, carrying the start of the last partial
+ * line over so a marker split across chunks is still seen. Only a line's
+ * first characters can make it a marker line, so the carry stays bounded
+ * even for a file with no newlines.
  */
 async function hasConflictMarkersInLargeFile(
   absolutePath: string,
@@ -799,7 +862,7 @@ async function hasConflictMarkersInLargeFile(
     if (CONFLICT_MARKER_PATTERN.test(text.slice(0, lastNewline + 1))) {
       return true;
     }
-    carry = text.slice(lastNewline + 1);
+    carry = text.slice(lastNewline + 1, lastNewline + 1 + MARKER_PREFIX_LENGTH);
   }
   return CONFLICT_MARKER_PATTERN.test(carry);
 }
@@ -842,7 +905,10 @@ export async function findFilesWithConflictMarkers(
   return withMarkers;
 }
 
-/** Paths that differ between two commits (or a commit and the index). */
+/**
+ * Paths that differ between two commits, or between a commit and the
+ * working tree. Never runs the repository's fsmonitor.
+ */
 export async function listChangedPaths({
   path: repositoryPath,
   from,
@@ -853,11 +919,96 @@ export async function listChangedPaths({
   to?: string;
 }): Promise<string[]> {
   const stdout = await runOrThrow(
-    ["diff", "--name-only", "-z", from, ...(to ? [to] : []), "--"],
+    [
+      "-c",
+      "core.fsmonitor=false",
+      "diff",
+      "--name-only",
+      "-z",
+      from,
+      ...(to ? [to] : []),
+      "--",
+    ],
     repositoryPath,
     "Failed to list changed files",
   );
   return stdout.split("\0").filter(Boolean);
+}
+
+/**
+ * Whether the working-tree file at `file` (relative to the repository root)
+ * already has exactly the content `ref` has for it, so putting it back to
+ * HEAD and then checking out `ref` loses nothing. False when either side
+ * has no such file or Git cannot tell.
+ */
+export async function workingFileMatchesCommit({
+  checkoutPath,
+  file,
+  ref,
+}: {
+  checkoutPath: string;
+  file: string;
+  ref: string;
+}): Promise<boolean> {
+  const root = (
+    await runOrThrow(
+      ["rev-parse", "--show-toplevel"],
+      checkoutPath,
+      "Failed to find the repository root",
+    )
+  ).trim();
+  const [working, committed] = await Promise.all([
+    // Applies the path's clean filters, as committing it would.
+    execGit(["hash-object", "--", file], root),
+    execGit(["rev-parse", "--verify", "--quiet", `${ref}:${file}`], root),
+  ]);
+  return (
+    working.exitCode === 0 &&
+    committed.exitCode === 0 &&
+    working.stdout.trim() === committed.stdout.trim()
+  );
+}
+
+/**
+ * Moves the uncommitted changes to `files` (relative to the repository
+ * root), staged, unstaged, or untracked, into a new `git stash` entry and
+ * puts those files back the way HEAD has them. Other files are left alone.
+ * The entry keeps what was there, so `git stash list` / `git stash pop`
+ * bring it back.
+ */
+export async function stashPaths({
+  checkoutPath,
+  files,
+  message,
+}: {
+  checkoutPath: string;
+  files: readonly string[];
+  message: string;
+}): Promise<void> {
+  if (files.length === 0) return;
+  const root = (
+    await runOrThrow(
+      ["rev-parse", "--show-toplevel"],
+      checkoutPath,
+      "Failed to find the repository root",
+    )
+  ).trim();
+  await withEmptyHooks(async (hooksArgs) => {
+    await runOrThrow(
+      await withGitAuthor([
+        ...hooksArgs,
+        "stash",
+        "push",
+        "--include-untracked",
+        "--message",
+        message,
+        "--",
+        ...files.map((file) => `:(literal)${file}`),
+      ]),
+      root,
+      "Failed to stash files",
+    );
+  });
 }
 
 /**

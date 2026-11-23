@@ -1,4 +1,5 @@
 import { promises as fsPromises, type Dirent } from "node:fs";
+import { readAppResource } from "@/ipc/services/app_operation_coordinator";
 import { runWorkspaceScopedOperation } from "@/ipc/services/workspace_coordination";
 import path from "node:path";
 import log from "electron-log";
@@ -325,7 +326,13 @@ export const runPreCommitTool: ToolDefinition<
         appId: ctx.appId,
         workspaceKey: ctx.workspaceCoordinationKey,
         operation: "run-local-agent-pre-commit",
-        appResources: ctx.supabaseProjectId ? ["provider"] : [],
+        // A hook can update refs, which every worktree of the repository
+        // shares, so an isolated run also claims them on the app and never
+        // overlaps the integration fast-forward.
+        appResources: [
+          readAppResource("repository-ref"),
+          ...(ctx.supabaseProjectId ? (["provider"] as const) : []),
+        ],
         workspaceResources: ["repository"],
         refuseWhenRecording: "run pre-commit checks",
       },

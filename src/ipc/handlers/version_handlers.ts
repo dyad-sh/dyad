@@ -918,11 +918,18 @@ async function hasIntegratedSquash({
   chatId: number;
   ref: string;
 }): Promise<boolean> {
+  // `--grep` matches any line, the subject included, so it only narrows the
+  // candidates; the trailer parser decides.
   const result = await execGit(
-    ["log", "-1", "--format=%H", `--grep=^Dyad-Chat: ${chatId}$`, ref, "--"],
+    ["log", "--format=%B%x00", `--grep=^Dyad-Chat: ${chatId}$`, ref, "--"],
     appPath,
   );
-  return result.exitCode === 0 && result.stdout.trim() !== "";
+  return (
+    result.exitCode === 0 &&
+    result.stdout
+      .split("\0")
+      .some((message) => parseDyadCommitTrailers(message).chatId === chatId)
+  );
 }
 
 /**

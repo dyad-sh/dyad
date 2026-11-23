@@ -131,5 +131,10 @@ describe("ConcurrentChatBanner", () => {
     rerender(banner());
     fireEvent.click(screen.getByLabelText("Dismiss"));
     expect(screen.queryByTestId("concurrent-chat-banner")).toBeNull();
+
+    // Still dismissed while other chats keep writing.
+    state.overview = { ...state.overview, writableChatIds: [9, 11] };
+    rerender(banner());
+    expect(screen.queryByTestId("concurrent-chat-banner")).toBeNull();
   });
 });

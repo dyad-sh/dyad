@@ -62,6 +62,8 @@ function VersionWorkspaceLabel({
         render={
           <span
             tabIndex={0}
+            // A generic span can't carry an accessible name; a note can.
+            role="note"
             aria-label={description}
             className="inline-flex min-w-0 max-w-40 items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
             data-testid={`version-workspace-${versionNumber}`}
@@ -646,10 +648,14 @@ export function VersionPane() {
     ? favoriteFilteredVersions.filter((v) => {
         const query = searchQuery.toLowerCase();
         const versionNumber = String(versionNumberByOid.get(v.oid) ?? 0);
+        // Match what the row shows: a worktree commit's subject (not its
+        // file list or trailers) and its worktree label.
+        const message = v.message ? summarizeDyadCommitMessage(v.message) : "";
         return (
           v.oid.toLowerCase().includes(query) ||
-          (v.message && v.message.toLowerCase().includes(query)) ||
+          message.toLowerCase().includes(query) ||
           (v.note && v.note.toLowerCase().includes(query)) ||
+          (v.workspace?.branch.toLowerCase().includes(query) ?? false) ||
           versionNumber.includes(query)
         );
       })

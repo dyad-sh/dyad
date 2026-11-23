@@ -11,7 +11,6 @@ import {
   execGit,
   getCurrentCommitHash,
   gitCurrentBranch,
-  gitGetMergeConflicts,
   inspectRepositoryHealth,
   type RepositoryHealth,
 } from "@/ipc/utils/git_utils";
@@ -30,6 +29,7 @@ import {
   listChangedPaths,
   mergeIntoWorkspace,
   pruneGitWorktrees,
+  readMergeConflicts,
   removeLinkedWorktree,
   repairLinkedWorktrees,
   restoreMissingTrackedFiles,
@@ -187,6 +187,18 @@ export function isWorktreeIsolationEnabled(): boolean {
 
 function markerPath(worktreeRoot: string): string {
   return `${worktreeRoot}.owner.json`;
+}
+
+/**
+ * Drops a worktree's ownership marker once its folder is gone. While the
+ * folder survives, the marker is what lets the startup orphan sweep find
+ * and remove it: only marked folders are ever deleted.
+ */
+async function removeMarkerIfFolderGone(worktreeRoot: string): Promise<void> {
+  if (fs.existsSync(worktreeRoot)) return;
+  await fsPromises
+    .rm(markerPath(worktreeRoot), { force: true })
+    .catch(() => undefined);
 }
 
 async function writeMarker(
@@ -789,9 +801,8 @@ class ChatWorkspaceService {
             repositoryPath: originalAppPath,
             branch,
           }).catch(() => undefined);
-          await fsPromises
-            .rm(markerPath(worktreeRoot), { force: true })
-            .catch(() => undefined);
+          // A folder that survived is swept as an orphan at the next startup.
+          await removeMarkerIfFolderGone(worktreeRoot);
           deleteWorkspaceRow(row.id);
           throw error;
         }
@@ -878,7 +889,7 @@ class ChatWorkspaceService {
       );
     }
     if (health.operationInProgress === "merge") {
-      const conflicts = await gitGetMergeConflicts({ path: appPath });
+      const conflicts = await readMergeConflicts(appPath);
       return [
         `A merge of \`${workspace.targetBranch}\` into this chat's workspace is in progress so this chat's earlier work can be integrated.${conflicts.length > 0 ? ` These files still conflict: ${conflicts.map((file) => toAppRelativePath(workspace, file)).join(", ")}.` : ""} Before starting anything new, finish resolving it: edit each conflicted file so both this chat's task and the changes from \`${workspace.targetBranch}\` keep working, and remove every conflict marker. Do not commit or abort the merge; Dyad completes and checks it after this turn.`,
       ];
@@ -1491,7 +1502,9 @@ class ChatWorkspaceService {
           fs.existsSync(getWorkspaceAppPath(current));
         if (restored && current.status !== "unavailable") {
           updateWorkspace(workspace.id, { status: "active" });
-          workspaceIntegrationQueue.resumePending();
+          // Only this app: another app's deletion may be holding its own
+          // integrations stopped.
+          workspaceIntegrationQueue.resumePending(workspace.appId);
           publishWorkspaceChanged(workspace.appId);
         } else {
           markWorkspaceUnavailable(workspace, FAILED_REMOVAL_DETAIL);
@@ -1736,9 +1749,9 @@ class ChatWorkspaceService {
           branch: workspace.branch,
         }).catch(() => undefined);
       }
-      await fsPromises
-        .rm(markerPath(workspace.path), { force: true })
-        .catch(() => undefined);
+      // Without its row, the folder is an orphan: the sweep below retries it
+      // through the marker's repository, so the marker stays with it.
+      await removeMarkerIfFolderGone(workspace.path);
       deleteWorkspaceRow(workspace.id);
       return;
     }
@@ -1775,7 +1788,7 @@ class ChatWorkspaceService {
           return;
         }
         if (isMergeInProgress(appPath)) {
-          const conflicts = await gitGetMergeConflicts({ path: appPath });
+          const conflicts = await readMergeConflicts(appPath);
           if (conflicts.length > 0) {
             updateWorkspace(workspace.id, {
               integrationStatus: "paused",
@@ -1852,9 +1865,8 @@ class ChatWorkspaceService {
             .rm(worktreeRoot, { recursive: true, force: true })
             .catch(() => undefined);
         }
-        await fsPromises
-          .rm(markerPath(worktreeRoot), { force: true })
-          .catch(() => undefined);
+        // A folder that survived is retried at the next startup.
+        await removeMarkerIfFolderGone(worktreeRoot);
       }
     }
   }

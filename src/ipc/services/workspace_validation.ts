@@ -249,8 +249,10 @@ async function runTypeCheck({
         return {
           name: "type-check",
           outcome: "missing",
+          // Also covers an installed package whose metadata is unreadable
+          // or that declares no `tsc` CLI.
           summary:
-            "TypeScript is not installed, so there is no type-check to run.",
+            "No usable TypeScript CLI was found, so there is no type-check to run.",
           output: tail(message),
         };
       case "tsconfig-not-found":

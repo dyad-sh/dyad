@@ -190,8 +190,11 @@ describe("workspace validation isolation", () => {
     { script: "jest --watch-all", runs: false },
     { script: "vitest --watch", runs: false },
     { script: "react-scripts test --watchAll=false", runs: true },
+    // Browser runners need a running preview; the Tests panel runs them.
+    { script: "playwright test", runs: false },
+    { script: "vitest run && cypress run", runs: false },
   ])(
-    "skips a test script in watch mode ($script)",
+    "skips a test script that never finishes or needs a browser ($script)",
     async ({ script, runs }) => {
       await commitAndBranch({
         "package.json": JSON.stringify({ scripts: { test: script } }),
@@ -203,6 +206,10 @@ describe("workspace validation isolation", () => {
       expect(checks.find((check) => check.name === "test")?.outcome).toBe(
         runs ? "passed" : "skipped",
       );
+      const ranTestScript = vi
+        .mocked(spawnStreaming)
+        .mock.calls.some(([options]) => options.args?.includes("test"));
+      expect(ranTestScript).toBe(runs);
     },
   );
 
@@ -248,6 +255,11 @@ describe("workspace validation isolation", () => {
       const result = await validateWorkspace({ appPath: workspace });
 
       expect(typeCheck(result.checks)?.outcome).toBe("missing");
+      // The same kind covers unreadable metadata or no `tsc` CLI, so the
+      // summary does not claim TypeScript is absent.
+      expect(typeCheck(result.checks)?.summary).toMatch(
+        /No usable TypeScript CLI/,
+      );
       expect(result.passed).toBe(true);
       expect(result.transientFailure).toBe(false);
     });

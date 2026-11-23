@@ -53,10 +53,13 @@ export async function getPreciseNeonTimestamp({
 }
 
 /**
- * Stores a Neon database timestamp for the current git commit hash
- * and stores it in the versions table
- * @param appId - The app ID
- * @param neonConnectionUri - The Neon connection URI to get the timestamp from
+ * Takes the Neon database's current timestamp and stores it in the versions
+ * table for a commit: by default the commit checked out in `appPath` (the
+ * app's folder unless given), or `commitHash` when one is passed, such as an
+ * integration squash that is not checked out anywhere yet.
+ * @param appId - The app whose Neon project and branch are read
+ * @param appPath - Folder whose HEAD is used when `commitHash` is omitted
+ * @param commitHash - Commit to store the timestamp for instead of HEAD
  */
 export async function storeDbTimestampAtCurrentVersion({
   appId,

@@ -161,6 +161,8 @@ Tests that inspect repository text files must account for Git's platform-specifi
 
 When a Git unit test needs an unmerged index, seed explicit stage 1/2/3 blob entries instead of relying on `git merge` to reject. On Windows, a merge can reject later in the workflow while leaving a stage-0 entry, so rejection alone does not prove the intended conflict fixture exists.
 
+Vitest's `toMatchObject({ key: undefined })` fails when `key` is absent from the received object. To assert "not set", use `toEqual` (which treats missing and `undefined` alike) or `expect(obj).not.toHaveProperty("key")`.
+
 When mocking a widely imported module such as `@/lib/schemas`, prefer a partial mock with `importOriginal` and override only the target exports. A full replacement can make unrelated transitive imports fail with `No "<export>" export is defined` as the module graph evolves.
 
 When adding another suite or prerequisite to the root `test` script, keep Vitest as the final shell command. `npm test -- <path>` appends its arguments only to the final command, so placing another runner last silently turns a targeted Vitest run into the full suite.

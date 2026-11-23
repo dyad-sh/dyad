@@ -134,6 +134,13 @@ If the unsandboxed rerun reaches the harness but fails loading
 `npm rebuild better-sqlite3` recovery in `rules/native-modules.md` (single
 source of truth for native-module rebuild guidance) before debugging tests.
 
+A partial `@/main/settings` mock that swaps only `readSettings` for the
+harness does not reach the module's own `writeSettings` / `readEffectiveSettings`:
+they keep using the real settings file, and the latter also fetches remote
+config. Tests that invoke `set-user-settings` must also point those two exports
+at `harness.writeSettings` / `harness.readSettings`, or the write never reaches
+the settings the handlers read.
+
 When a hybrid test needs `IS_TEST_BUILD` behavior from modules that capture
 `process.env.E2E_TEST_BUILD` at import time, set it in a `vi.hoisted()` block
 before app imports. `setupHybridChatHarness({ testBuild: true })` sets the flag

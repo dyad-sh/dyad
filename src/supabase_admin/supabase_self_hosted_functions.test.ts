@@ -186,18 +186,19 @@ describe.skipIf(process.platform === "win32")("the deploy script", () => {
     expect((globalThis as { served?: boolean }).served).toBe(true);
   });
 
-  it("removes a version once it has been replaced for 15 minutes", () => {
+  it("removes a version once it has been replaced for 75 minutes", () => {
     deploy("v1", T0);
     const [first] = versions();
     deploy("v2", T0 + MINUTE);
     const [, second] = versions();
 
-    // v1 was replaced 14 minutes ago: kept for workers that may still read it.
-    deploy("v3", T0 + 15 * MINUTE);
+    // v1 was replaced 74 minutes ago: kept for workers that may still read
+    // it, since a router's worker lifetime can be up to an hour.
+    deploy("v3", T0 + 75 * MINUTE);
     expect(versions()).toContain(first);
 
-    // Replaced 16 minutes ago now. v2 was replaced 2 minutes ago.
-    deploy("v4", T0 + 17 * MINUTE);
+    // Replaced 76 minutes ago now. v2 was replaced 2 minutes ago.
+    deploy("v4", T0 + 77 * MINUTE);
     expect(versions()).not.toContain(first);
     expect(versions()).toContain(second);
     expect(versions()).toHaveLength(3);
@@ -211,7 +212,7 @@ describe.skipIf(process.platform === "win32")("the deploy script", () => {
     expect(tree()).toContain("hello/helper.ts");
     expect(await load()).toEqual({ version: "v1", tag: "shared-v1" });
 
-    deploy("v2", T0 + 16 * MINUTE);
+    deploy("v2", T0 + 76 * MINUTE);
     expect(tree().filter((file) => !file.includes("/.dyad/"))).toEqual([
       "_shared/other-app.ts",
       "hello/index.ts",

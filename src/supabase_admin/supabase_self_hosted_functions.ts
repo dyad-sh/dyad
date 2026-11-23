@@ -221,14 +221,16 @@ function assertContainerName(name: string): void {
  * imports resolve to the copy deployed with it.
  */
 const VERSIONS_DIR = ".dyad";
-/**
- * How long a replaced version stays on disk. A worker started on it can keep
- * running for the router's worker lifetime (400s upstream) and may still read
- * its files, so this is well past that.
- */
-const VERSION_RETENTION_MS = 15 * 60_000;
 /** Upstream's router value, used when the router can't be read. */
 export const DEFAULT_WORKER_LIFETIME_MS = 400_000;
+/** The longest router worker lifetime Dyad accepts. */
+const MAX_WORKER_LIFETIME_MS = 60 * 60_000;
+/**
+ * How long a replaced version stays on disk. A worker started on it can keep
+ * running for the router's worker lifetime and may still read its files, so
+ * this is past the longest lifetime Dyad accepts.
+ */
+const VERSION_RETENTION_MS = MAX_WORKER_LIFETIME_MS + 15 * 60_000;
 const WORKER_LIFETIME_MARKER = "dyad-worker-lifetime:";
 const EXISTED_MARKER = "dyad-existed:";
 
@@ -341,7 +343,7 @@ export function parseWorkerLifetimeMs(line: string): number {
     1,
   );
   // Anything outside a second to an hour is not a lifetime Dyad understands.
-  return value >= 1_000 && value <= 3_600_000
+  return value >= 1_000 && value <= MAX_WORKER_LIFETIME_MS
     ? value
     : DEFAULT_WORKER_LIFETIME_MS;
 }

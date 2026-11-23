@@ -49,6 +49,8 @@ const KEY_ENVS = [
 function fakeCoolify({
   services = [SUPABASE_SERVICE] as unknown[],
   envs = [URL_ENV, ...KEY_ENVS],
+  /** Variables for particular services; others get `envs`. */
+  envsByService = {} as Record<string, unknown[]>,
   servers = [
     { id: 0, ip: "host.docker.internal", user: "root", port: 22 },
   ] as unknown[],
@@ -56,7 +58,8 @@ function fakeCoolify({
 } = {}): CoolifyClient {
   return {
     listServicesRaw: async () => services,
-    listServiceEnvsRaw: async () => envs,
+    listServiceEnvsRaw: async (serviceUuid: string) =>
+      envsByService[serviceUuid] ?? envs,
     listServersRaw: async () => servers,
     listPrivateKeysRaw: async () => {
       if (keys instanceof Error) throw keys;
@@ -67,7 +70,17 @@ function fakeCoolify({
 
 describe("listCoolifySupabaseServices", () => {
   it("lists only Supabase services, with their API URL", async () => {
+    const oldUrl = "http://supabasekong-old.203.0.113.7.sslip.io";
     const client = fakeCoolify({
+      envsByService: {
+        "svc-old": [
+          {
+            key: "SERVICE_URL_SUPABASEKONG",
+            value: oldUrl,
+            real_value: oldUrl,
+          },
+        ],
+      },
       services: [
         { uuid: "svc-other", name: "plausible", service_type: "plausible" },
         SUPABASE_SERVICE,
@@ -81,7 +94,7 @@ describe("listCoolifySupabaseServices", () => {
     });
 
     await expect(listCoolifySupabaseServices(client)).resolves.toEqual([
-      { uuid: "svc-old", name: "old-supabase", url: URL_ENV.value },
+      { uuid: "svc-old", name: "old-supabase", url: oldUrl },
       { uuid: "svc-supabase", name: "supabase-t2np", url: URL_ENV.value },
     ]);
   });

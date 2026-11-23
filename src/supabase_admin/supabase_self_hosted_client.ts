@@ -103,11 +103,34 @@ async function request(
 }
 
 /** Node's "fetch failed" hides the useful part in `cause`. */
-function describeFetchFailure(error: unknown): string {
-  const cause = (error as { cause?: { code?: unknown; message?: unknown } })
-    ?.cause;
-  if (cause && typeof cause.code === "string") return cause.code;
-  if (cause && typeof cause.message === "string") return cause.message;
+export function describeFetchFailure(error: unknown): string {
+  // Undici nests the socket error in `cause`, and wraps each address it
+  // tried in an AggregateError when a host has several.
+  const codes: string[] = [];
+  let message: string | undefined;
+  const visit = (value: unknown, depth: number) => {
+    if (!value || typeof value !== "object" || depth > 5) return;
+    const {
+      code,
+      message: text,
+      cause,
+      errors,
+    } = value as {
+      code?: unknown;
+      message?: unknown;
+      cause?: unknown;
+      errors?: unknown;
+    };
+    if (typeof code === "string" && !codes.includes(code)) codes.push(code);
+    if (depth > 0 && typeof text === "string" && text) message ??= text;
+    visit(cause, depth + 1);
+    if (Array.isArray(errors)) {
+      for (const inner of errors) visit(inner, depth + 1);
+    }
+  };
+  visit(error, 0);
+  if (codes.length > 0) return codes.join(", ");
+  if (message) return message;
   return error instanceof Error ? error.message : String(error);
 }
 

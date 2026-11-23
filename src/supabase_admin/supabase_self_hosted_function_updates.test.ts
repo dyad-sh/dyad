@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  countTrackedSupabaseSelfHostedProjects,
   listPendingSupabaseSelfHostedFunctionUpdates,
   recordSupabaseSelfHostedFunctionDelete,
   recordSupabaseSelfHostedFunctionDeploy,
@@ -93,6 +94,21 @@ describe("pending self-hosted function updates", () => {
     expect(
       listPendingSupabaseSelfHostedFunctionUpdates("instance-1", T0 + LIFETIME),
     ).toEqual([]);
+  });
+
+  it("forgets deletions and updates once their time has passed", () => {
+    deploy("send-email", true, T0);
+    recordSupabaseSelfHostedFunctionDelete({
+      projectId: "instance-2",
+      functionName: "charge",
+      workerLifetimeMs: LIFETIME,
+      nowMs: T0,
+    });
+
+    listPendingSupabaseSelfHostedFunctionUpdates("instance-1", T0 + LIFETIME);
+    listPendingSupabaseSelfHostedFunctionUpdates("instance-2", T0 + LIFETIME);
+
+    expect(countTrackedSupabaseSelfHostedProjects()).toBe(0);
   });
 
   it("clears a pending update when the function is deleted", () => {

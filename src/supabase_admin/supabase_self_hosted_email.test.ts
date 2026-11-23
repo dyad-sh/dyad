@@ -122,6 +122,10 @@ describe("supabaseSelfHostedEmailStatusFrom", () => {
         withLinks(INSTANCE_URL).replace("smtp.resend.com", "supabase-kong"),
       ),
     ).toMatchObject({ kind: "configured", host: "supabase-kong" });
+    // A mail container from another Compose project isn't in this list.
+    expect(
+      configured(withLinks(INSTANCE_URL).replace("smtp.resend.com", "mailpit")),
+    ).toMatchObject({ kind: "configured", host: "mailpit" });
   });
 
   it("flags email links that point away from the instance", () => {
@@ -140,6 +144,19 @@ describe("supabaseSelfHostedEmailStatusFrom", () => {
     expect(
       configured(withLinks("http://localhost:1"), "http://127.0.0.1:8000"),
     ).toMatchObject({ brokenLinkOrigin: "http://localhost:1" });
+    // An instance served under a path needs links under the same path.
+    expect(
+      configured(
+        withLinks("https://example.com"),
+        "https://example.com/supabase",
+      ),
+    ).toMatchObject({ brokenLinkOrigin: "https://example.com" });
+    expect(
+      configured(
+        withLinks("https://example.com/supabase/"),
+        "https://example.com/supabase",
+      ),
+    ).toMatchObject({ brokenLinkOrigin: null });
     // Unset leaves auth's own default, which Dyad can't judge.
     expect(configured(withLinks(""))).toMatchObject({ brokenLinkOrigin: null });
   });
@@ -207,6 +224,16 @@ describe("getSupabaseSelfHostedEmailStatus", () => {
     expect(ssh!.commands[0]).toContain(
       "grep -E '^(GOTRUE_SMTP_HOST|GOTRUE_MAILER_AUTOCONFIRM|API_EXTERNAL_URL)='",
     );
+  });
+
+  it("is unknown when the SSH user can't run docker", async () => {
+    const target = await instance({ withSsh: true });
+    ssh!.mailSettingsOutput = COOLIFY_OUTPUT;
+    ssh!.dockerDenied = true;
+
+    await expect(getSupabaseSelfHostedEmailStatus(target)).resolves.toEqual({
+      kind: "unknown",
+    });
   });
 
   it("reads autoconfirm from the instance without SSH", async () => {

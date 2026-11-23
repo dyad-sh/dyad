@@ -30,13 +30,11 @@ export type SupabaseSelfHostedEmailStatus =
   | { kind: "unknown" };
 
 /**
- * A host without a dot is a container name. One that isn't running is the
- * install's placeholder (upstream's `supabase-mail`), so sends fail.
+ * Upstream's Docker Compose file names a `supabase-mail` container that it
+ * doesn't run, so sends fail until the user sets a real mail server.
  */
 function isPlaceholderHost(host: string, runningNames: string[]): boolean {
-  return (
-    !host.includes(".") && !host.includes(":") && !runningNames.includes(host)
-  );
+  return host === "supabase-mail" && !runningNames.includes(host);
 }
 
 /**
@@ -48,9 +46,13 @@ function brokenLinkOrigin(
   instanceUrl: string,
 ): string | null {
   if (!apiExternalUrl) return null;
+  const path = (url: URL) => url.pathname.replace(/\/+$/, "");
   try {
     const links = new URL(apiExternalUrl);
-    return isSameServer(links, new URL(instanceUrl)) ? null : links.origin;
+    const instance = new URL(instanceUrl);
+    return isSameServer(links, instance) && path(links) === path(instance)
+      ? null
+      : `${links.origin}${path(links)}`;
   } catch {
     return apiExternalUrl;
   }

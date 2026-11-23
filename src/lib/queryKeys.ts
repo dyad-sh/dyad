@@ -433,7 +433,9 @@ export const queryKeys = {
     organizations: ["supabase", "organizations"] as const,
     projects: ["supabase", "projects"] as const,
     selfHostedInstances: ["supabase", "selfHostedInstances"] as const,
-    coolifyServices: ["supabase", "coolifyServices"] as const,
+    /** Keyed by the Coolify instance, so switching Coolify shows its own list. */
+    coolifyServices: ({ coolifyUrl }: { coolifyUrl: string }) =>
+      ["supabase", "coolifyServices", coolifyUrl] as const,
     selfHostedEmailStatus: ({ projectId }: { projectId: string }) =>
       ["supabase", "selfHostedEmailStatus", projectId] as const,
     pendingSelfHostedFunctionUpdates: ({

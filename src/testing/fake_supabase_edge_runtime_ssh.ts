@@ -159,7 +159,7 @@ export async function startFakeEdgeRuntimeSsh(
     stdin: string,
   ): { code: number; stdout: string; stderr: string } => {
     fake.commands.push(command);
-    if (fake.dockerDenied && /(^|\| )docker /.test(command)) {
+    if (fake.dockerDenied && /(?:^|[\s(|])docker /.test(command)) {
       return { code: 1, stdout: "", stderr: DOCKER_DENIED };
     }
     if (command.startsWith("p=$(docker inspect -f '{{index .Config.Labels")) {

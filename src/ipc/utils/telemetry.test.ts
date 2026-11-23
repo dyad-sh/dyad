@@ -18,6 +18,7 @@ vi.mock("electron", () => ({
   },
 }));
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { supabaseContracts } from "@/ipc/types/supabase";
 import {
   GITLAB_REQUEST_ERROR_NAME,
   GITLAB_TRANSPORT_ERROR_NAME,
@@ -340,6 +341,21 @@ describe("exceptions from a self-hosted instance", () => {
     const payload = sent.calls[0];
     expect(JSON.stringify(payload)).not.toContain("theirdomain.com");
     expect(payload.exception_message).toBeUndefined();
+  });
+
+  it("redacts every channel that reaches a self-hosted Supabase instance or Coolify", () => {
+    const channels = Object.values(supabaseContracts)
+      .map((contract) => contract.channel)
+      .filter((channel) => /self-hosted|coolify/.test(channel));
+    expect(channels.length).toBeGreaterThan(0);
+    for (const channel of channels) {
+      sent.calls.length = 0;
+      sendTelemetryException(
+        new Error("Couldn't reach https://supabase.theirdomain.com"),
+        { ipc_channel: channel },
+      );
+      expect(sent.calls[0].exception_message, channel).toBeUndefined();
+    }
   });
 
   it("matches the custom provider channel exactly, not by prefix", () => {

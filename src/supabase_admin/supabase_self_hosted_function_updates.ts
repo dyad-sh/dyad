@@ -80,18 +80,33 @@ export function recordSupabaseSelfHostedFunctionDelete({
   );
 }
 
+/** Drops a project's entries whose time has passed, and the project if empty. */
+function removeExpired(
+  store: Map<string, Map<string, number>>,
+  projectId: string,
+  nowMs: number,
+): void {
+  const entries = store.get(projectId);
+  if (!entries) return;
+  for (const [functionName, untilMs] of entries) {
+    if (untilMs <= nowMs) entries.delete(functionName);
+  }
+  if (entries.size === 0) store.delete(projectId);
+}
+
 /** Updates not yet guaranteed live, soonest first. */
 export function listPendingSupabaseSelfHostedFunctionUpdates(
   projectId: string,
   nowMs = Date.now(),
 ): PendingSupabaseFunctionUpdate[] {
+  removeExpired(pendingUpdates, projectId, nowMs);
+  removeExpired(deletedWorkers, projectId, nowMs);
   const pending = pendingUpdates.get(projectId);
   if (!pending) return [];
-  const updates: PendingSupabaseFunctionUpdate[] = [];
-  for (const [functionName, liveByMs] of pending) {
-    if (liveByMs <= nowMs) pending.delete(functionName);
-    else updates.push({ functionName, liveByMs });
-  }
+  const updates = [...pending].map(([functionName, liveByMs]) => ({
+    functionName,
+    liveByMs,
+  }));
   return updates.sort(
     (a, b) =>
       a.liveByMs - b.liveByMs || a.functionName.localeCompare(b.functionName),
@@ -99,6 +114,11 @@ export function listPendingSupabaseSelfHostedFunctionUpdates(
 }
 
 /** Test seam. */
+/** How many projects have anything tracked. For tests. */
+export function countTrackedSupabaseSelfHostedProjects(): number {
+  return new Set([...pendingUpdates.keys(), ...deletedWorkers.keys()]).size;
+}
+
 export function resetSupabaseSelfHostedFunctionUpdates(): void {
   pendingUpdates.clear();
   deletedWorkers.clear();

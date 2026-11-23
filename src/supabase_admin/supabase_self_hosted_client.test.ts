@@ -8,6 +8,7 @@ import {
 } from "@/testing/fake_supabase_self_hosted_server";
 import {
   checkSupabaseSelfHostedInstance,
+  describeFetchFailure,
   normalizeSupabaseSelfHostedUrl,
   runSupabaseSelfHostedQuery,
   SupabaseSelfHostedRequestError,
@@ -39,6 +40,38 @@ async function start(mode: FakeSupabaseSelfHostedMode) {
 function queryRequests(server: FakeSupabaseSelfHosted) {
   return server.requests.filter((request) => request.path === "/pg/query");
 }
+
+describe("describeFetchFailure", () => {
+  const fetchFailed = (cause: unknown) =>
+    new TypeError("fetch failed", { cause });
+  const socketError = (code: string) =>
+    Object.assign(new Error(`connect ${code} 203.0.113.7:8000`), { code });
+
+  it("names the socket error instead of 'fetch failed'", () => {
+    expect(describeFetchFailure(fetchFailed(socketError("ENOTFOUND")))).toBe(
+      "ENOTFOUND",
+    );
+  });
+
+  it("looks inside an AggregateError from trying several addresses", () => {
+    const tried = new AggregateError(
+      [socketError("ECONNREFUSED"), socketError("ENETUNREACH")],
+      "",
+    );
+    expect(describeFetchFailure(fetchFailed(tried))).toBe(
+      "ECONNREFUSED, ENETUNREACH",
+    );
+  });
+
+  it("falls back to the cause's message, then the error's own", () => {
+    expect(describeFetchFailure(fetchFailed(new Error("socket hang up")))).toBe(
+      "socket hang up",
+    );
+    expect(describeFetchFailure(new Error("fetch failed"))).toBe(
+      "fetch failed",
+    );
+  });
+});
 
 describe("runSupabaseSelfHostedQuery", () => {
   it("runs the query as postgres with a statement timeout and returns the rows", async () => {

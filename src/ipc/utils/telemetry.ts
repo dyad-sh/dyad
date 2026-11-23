@@ -143,6 +143,10 @@ const SELF_HOSTED_CHANNELS = new Set([
   "supabase:list-self-hosted-instances",
   "supabase:add-self-hosted-instance",
   "supabase:remove-self-hosted-instance",
+  "supabase:list-coolify-supabase-services",
+  "supabase:import-coolify-supabase-service",
+  "supabase:get-self-hosted-email-status",
+  "supabase:list-pending-self-hosted-function-updates",
 ]);
 
 function isSelfHostedChannel(context?: Record<string, unknown>): boolean {

@@ -33,8 +33,13 @@ export const getSupabaseProjectUrl = vi.fn<typeof Store.getSupabaseProjectUrl>(
 
 export const hasSupabaseCredentialsForApp = vi.fn<
   typeof Store.hasSupabaseCredentialsForApp
->((settings, app) =>
-  hasSupabaseCredentialsForOrganization(settings, app.supabaseOrganizationSlug),
+>(
+  (settings, app) =>
+    isSupabaseSelfHostedProject(app.supabaseProjectId) ||
+    hasSupabaseCredentialsForOrganization(
+      settings,
+      app.supabaseOrganizationSlug,
+    ),
 );
 
 export const listSupabaseSelfHostedInstances = vi.fn<

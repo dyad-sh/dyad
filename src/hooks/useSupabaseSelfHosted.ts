@@ -13,6 +13,9 @@ export function useSupabaseSelfHostedInstances({
   >({
     queryKey: queryKeys.supabase.selfHostedInstances,
     queryFn: () => ipc.supabase.listSelfHostedInstances(),
+    // Read from Dyad's database, and the instance may be on the local
+    // network, so this shouldn't wait for an internet connection.
+    networkMode: "always",
     enabled,
     meta: { showErrorToast: true },
   });

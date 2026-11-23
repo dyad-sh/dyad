@@ -1,6 +1,10 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  QueryClient,
+  QueryClientProvider,
+  onlineManager,
+} from "@tanstack/react-query";
 import type { PropsWithChildren, ReactElement } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -203,6 +207,22 @@ describe("SupabaseSelfHostedLinkSection", () => {
     expect(note()).toBeNull();
   });
 
+  it("lists saved instances while the computer reports being offline", async () => {
+    mocks.listSelfHostedInstances.mockResolvedValue([
+      { ...INSTANCE, linkedApps: [] },
+    ]);
+    onlineManager.setOnline(false);
+    try {
+      renderWithQuery(
+        <SupabaseSelfHostedLinkSection appId={7} onLinked={vi.fn()} />,
+      );
+
+      expect(await screen.findByLabelText("Instance")).toBeTruthy();
+    } finally {
+      onlineManager.setOnline(true);
+    }
+  });
+
   it("adds an instance without SSH by default", async () => {
     mocks.addSelfHostedInstance.mockResolvedValue({
       instance: { ...INSTANCE, ssh: null },
@@ -299,6 +319,31 @@ describe("SupabaseSelfHostedLinkSection help and import", () => {
       screen.queryByTestId("supabase-self-hosted-coolify-import"),
     ).toBeNull();
     expect(mocks.listCoolifySupabaseServices).not.toHaveBeenCalled();
+  });
+
+  it("lists the services of whichever Coolify is connected now", async () => {
+    const coolify = (instanceUrl: string) => ({
+      enableOwnServerDeployment: true,
+      coolify: { instanceUrl, accessToken: { value: "token" } },
+    });
+    mocks.listCoolifySupabaseServices.mockResolvedValue([]);
+    mocks.settings = coolify("http://203.0.113.7:8000");
+    const view = renderWithQuery(
+      <SupabaseSelfHostedLinkSection appId={7} onLinked={vi.fn()} />,
+    );
+    fireEvent.click(screen.getByTestId("supabase-self-hosted-add-button"));
+    await waitFor(() =>
+      expect(mocks.listCoolifySupabaseServices).toHaveBeenCalledTimes(1),
+    );
+
+    mocks.settings = coolify("http://198.51.100.9:8000");
+    view.rerender(
+      <SupabaseSelfHostedLinkSection appId={7} onLinked={vi.fn()} />,
+    );
+
+    await waitFor(() =>
+      expect(mocks.listCoolifySupabaseServices).toHaveBeenCalledTimes(2),
+    );
   });
 
   it("fills the form from a Coolify service and adds it", async () => {

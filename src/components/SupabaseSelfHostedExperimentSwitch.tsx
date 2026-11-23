@@ -12,8 +12,14 @@ export function SupabaseSelfHostedExperimentSwitch() {
           id="enable-supabase-self-hosted"
           aria-label="Allow self-hosted Supabase"
           checked={!!settings?.enableSupabaseSelfHosted}
+          // Until settings load this reads false whatever is saved, so a click
+          // would save the opposite of what the user then sees.
+          disabled={!settings}
           onCheckedChange={(checked) => {
-            void updateSettings({ enableSupabaseSelfHosted: checked });
+            // The mutation shows its own error toast.
+            void updateSettings({ enableSupabaseSelfHosted: checked }).catch(
+              () => {},
+            );
           }}
         />
         <Label htmlFor="enable-supabase-self-hosted">
@@ -22,8 +28,8 @@ export function SupabaseSelfHostedExperimentSwitch() {
       </div>
       <p className="text-[13px] leading-relaxed text-muted-foreground">
         Connect apps to a Supabase instance you run yourself, such as one
-        deployed with Docker Compose or Coolify. Edge functions are not deployed
-        to self-hosted instances yet.
+        deployed with Docker Compose or Coolify. Dyad deploys edge functions to
+        the instance when you give it SSH access.
       </p>
     </div>
   );

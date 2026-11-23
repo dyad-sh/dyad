@@ -407,12 +407,14 @@ function importNote(imported: CoolifyImport): string {
 
 /** Fills the add form from a Supabase service deployed with Coolify. */
 function CoolifyImportPicker({
+  coolifyUrl,
   onImported,
 }: {
+  coolifyUrl: string;
   onImported: (imported: CoolifyImport) => void;
 }) {
   const servicesQuery = useQuery({
-    queryKey: queryKeys.supabase.coolifyServices,
+    queryKey: queryKeys.supabase.coolifyServices({ coolifyUrl }),
     queryFn: () => ipc.supabase.listCoolifySupabaseServices(),
     retry: false,
   });
@@ -521,10 +523,10 @@ export function SupabaseSelfHostedLinkSection({
   const { settings } = useSettings();
   const queryClient = useQueryClient();
   // Import is part of the Coolify experiment, so it stays hidden while that is off.
-  const canImportFromCoolify =
-    !!settings?.enableOwnServerDeployment &&
-    !!settings.coolify?.instanceUrl &&
-    !!settings.coolify.accessToken?.value;
+  const coolifyUrl =
+    settings?.enableOwnServerDeployment && settings.coolify?.accessToken?.value
+      ? settings.coolify.instanceUrl
+      : undefined;
 
   const applyImport = (imported: CoolifyImport) => {
     setForm({
@@ -685,8 +687,11 @@ export function SupabaseSelfHostedLinkSection({
 
       {isFormOpen ? (
         <form className="space-y-3" onSubmit={handleAdd}>
-          {canImportFromCoolify && (
-            <CoolifyImportPicker onImported={applyImport} />
+          {coolifyUrl && (
+            <CoolifyImportPicker
+              coolifyUrl={coolifyUrl}
+              onImported={applyImport}
+            />
           )}
           {importedNote && (
             <Alert data-testid="supabase-self-hosted-import-note">

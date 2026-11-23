@@ -44,8 +44,11 @@ export interface SupabaseSelfHostedPromptOptions {
   url: string;
   /** Whether Dyad deploys edge functions, which needs SSH access. */
   functionsDeployed: boolean;
-  /** Updated functions that may still run their previous code. */
-  pendingUpdates: readonly { functionName: string; minutesLeft: number }[];
+  /**
+   * Updated functions that may still run their previous code. Names only, so
+   * the prompt stays the same from turn to turn while they are pending.
+   */
+  pendingFunctions: readonly string[];
 }
 
 /**
@@ -70,17 +73,10 @@ function supabasePromptPassages(
         "https://SUPABASE_PROJECT_ID.supabase.co/functions/v1/EDGE_FUNCTION_NAME",
     };
   }
-  const { url, functionsDeployed, pendingUpdates } = selfHosted;
+  const { url, functionsDeployed, pendingFunctions } = selfHosted;
   const pending =
-    pendingUpdates.length > 0
-      ? `\n- These functions were just updated and may still answer with their previous code: ${pendingUpdates
-          .map(
-            ({ functionName, minutesLeft }) =>
-              `${functionName} (for up to ${minutesLeft} more minute${minutesLeft === 1 ? "" : "s"})`,
-          )
-          .join(
-            ", ",
-          )}. Until then, a result from calling one may not reflect the latest code. Don't change working code because of such a result.`
+    pendingFunctions.length > 0
+      ? `\n- These functions were just updated and may still answer with their previous code: ${pendingFunctions.join(", ")}. A result from calling one may not reflect the latest code yet. Don't change working code because of such a result.`
       : "";
   return {
     intro: `\nThis app uses a self-hosted Supabase instance at ${url}, not Supabase Cloud.\n`,

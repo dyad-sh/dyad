@@ -130,17 +130,12 @@ export function getSupabaseSelfHostedPromptOptions(
 ): SupabaseSelfHostedPromptOptions | null {
   const instance = getSupabaseSelfHostedInstanceSummary(projectId);
   if (!instance) return null;
-  const now = Date.now();
   return {
     url: instance.url,
     functionsDeployed: instance.ssh !== null,
-    pendingUpdates: listPendingSupabaseSelfHostedFunctionUpdates(
+    pendingFunctions: listPendingSupabaseSelfHostedFunctionUpdates(
       projectId,
-      now,
-    ).map(({ functionName, liveByMs }) => ({
-      functionName,
-      minutesLeft: Math.ceil((liveByMs - now) / 60_000),
-    })),
+    ).map(({ functionName }) => functionName),
   };
 }
 

@@ -513,6 +513,9 @@ export function SupabaseSelfHostedLinkSection({
   const [useSsh, setUseSsh] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [importedNote, setImportedNote] = useState<string | null>(null);
+  // The user@host an SSH key imported from Coolify logs in as. That key is
+  // kept out of view, since the user never pasted it.
+  const [coolifyKeyTarget, setCoolifyKeyTarget] = useState<string | null>(null);
   const { settings } = useSettings();
   const queryClient = useQueryClient();
   // Import is part of the Coolify experiment, so it stays hidden while that is off.
@@ -534,6 +537,11 @@ export function SupabaseSelfHostedLinkSection({
       sshPrivateKey: imported.ssh?.privateKey ?? "",
     });
     setUseSsh(!!imported.ssh?.privateKey);
+    setCoolifyKeyTarget(
+      imported.ssh?.privateKey
+        ? `${imported.ssh.username}@${imported.ssh.host}`
+        : null,
+    );
     setImportedNote(importNote(imported));
     setFormError(null);
   };
@@ -584,6 +592,7 @@ export function SupabaseSelfHostedLinkSection({
       });
       setForm(EMPTY_FORM);
       setImportedNote(null);
+      setCoolifyKeyTarget(null);
       setIsFormOpen(false);
       await link(instance.id);
     } catch (error) {
@@ -724,21 +733,46 @@ export function SupabaseSelfHostedLinkSection({
                     label="Private key"
                     field="sshPrivateKey"
                   />
-                  <Textarea
-                    id="supabase-self-hosted-sshPrivateKey"
-                    required
-                    rows={4}
-                    className="font-mono text-xs"
-                    placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"
-                    value={form.sshPrivateKey}
-                    onChange={(event) => {
-                      setForm((current) => ({
-                        ...current,
-                        sshPrivateKey: event.target.value,
-                      }));
-                      setFormError(null);
-                    }}
-                  />
+                  {coolifyKeyTarget ? (
+                    <div
+                      className="flex items-center justify-between gap-2 rounded-md border p-2 text-xs"
+                      data-testid="supabase-self-hosted-coolify-key"
+                    >
+                      <span>
+                        Using Coolify's SSH key for {coolifyKeyTarget}.
+                      </span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setCoolifyKeyTarget(null);
+                          setForm((current) => ({
+                            ...current,
+                            sshPrivateKey: "",
+                          }));
+                        }}
+                      >
+                        Use a different key
+                      </Button>
+                    </div>
+                  ) : (
+                    <Textarea
+                      id="supabase-self-hosted-sshPrivateKey"
+                      required
+                      rows={4}
+                      className="font-mono text-xs"
+                      placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"
+                      value={form.sshPrivateKey}
+                      onChange={(event) => {
+                        setForm((current) => ({
+                          ...current,
+                          sshPrivateKey: event.target.value,
+                        }));
+                        setFormError(null);
+                      }}
+                    />
+                  )}
                 </div>
               </>
             )}
@@ -767,6 +801,7 @@ export function SupabaseSelfHostedLinkSection({
                 setIsFormOpen(false);
                 setFormError(null);
                 setImportedNote(null);
+                setCoolifyKeyTarget(null);
               }}
             >
               Cancel

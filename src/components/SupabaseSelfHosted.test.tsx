@@ -323,6 +323,11 @@ describe("SupabaseSelfHostedLinkSection help and import", () => {
     expect(mocks.importCoolifySupabaseService).toHaveBeenCalledWith({
       serviceUuid: "svc-1",
     });
+    // The imported key is used but never shown.
+    expect(
+      screen.getByTestId("supabase-self-hosted-coolify-key").textContent,
+    ).toContain("Using Coolify's SSH key for root@203.0.113.7.");
+    expect(screen.queryByDisplayValue(/BEGIN OPENSSH/)).toBeNull();
     expect(
       screen
         .getByRole("switch", { name: "Enable edge functions" })
@@ -344,6 +349,58 @@ describe("SupabaseSelfHostedLinkSection help and import", () => {
         privateKey: "-----BEGIN OPENSSH PRIVATE KEY-----\n",
       },
     });
+  });
+
+  it("lets the user paste their own key instead of Coolify's", async () => {
+    mocks.settings = {
+      enableOwnServerDeployment: true,
+      coolify: {
+        instanceUrl: "http://203.0.113.7:8000",
+        accessToken: { value: "token" },
+      },
+    };
+    mocks.listCoolifySupabaseServices.mockResolvedValue([
+      { uuid: "svc-1", name: "supabase-t2np", url: "http://kong.example" },
+    ]);
+    mocks.importCoolifySupabaseService.mockResolvedValue({
+      name: "supabase-t2np",
+      url: "http://kong.example",
+      anonKey: "anon-jwt",
+      serviceKey: "service-jwt",
+      studioUrl: "http://kong.example",
+      ssh: {
+        host: "203.0.113.7",
+        port: 22,
+        username: "root",
+        privateKey: "coolify-key",
+      },
+    });
+    mocks.addSelfHostedInstance.mockResolvedValue({ instance: INSTANCE });
+    const user = userEvent.setup();
+    renderWithQuery(
+      <SupabaseSelfHostedLinkSection appId={7} onLinked={vi.fn()} />,
+    );
+    fireEvent.click(screen.getByTestId("supabase-self-hosted-add-button"));
+    await user.click(await screen.findByLabelText("Import from Coolify"));
+    await user.click(
+      await screen.findByRole("option", {
+        name: "supabase-t2np (http://kong.example)",
+      }),
+    );
+
+    await user.click(
+      await screen.findByRole("button", { name: "Use a different key" }),
+    );
+    fill("Private key", "my-key");
+    fireEvent.click(screen.getByRole("button", { name: "Add and connect" }));
+
+    await waitFor(() =>
+      expect(mocks.addSelfHostedInstance).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ssh: expect.objectContaining({ privateKey: "my-key" }),
+        }),
+      ),
+    );
   });
 });
 

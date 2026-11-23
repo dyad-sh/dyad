@@ -1,0 +1,3 @@
+export const SHARED_DATABASE_MIGRATION_GUIDANCE = `Git worktrees isolate app code. SQL changes take effect on the connected database immediately, even before a worktree merges. The main app and other chats may still read and write using the old schema.
+
+Keep existing reads and writes working throughout a migration. Prefer additive changes, such as a nullable column or a column with a compatible default. For a rename, add the new column alongside the old one, keep both in sync while callers migrate, and backfill existing rows. Defer dropping or renaming tables or columns and tightening constraints until all callers and existing data are compatible.`;

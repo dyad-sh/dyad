@@ -3,6 +3,7 @@ import addEmailVerificationGuide from "./guides/add-email-verification.md?raw";
 import addPasswordResetGuide from "./guides/add-password-reset.md?raw";
 import { filterGuideByFramework } from "./guides/filter_guide_by_framework";
 import { renderGuide } from "./guides/render_guide";
+import { SHARED_DATABASE_MIGRATION_GUIDANCE } from "./database_prompt_rules";
 import {
   NEON_NO_BROWSER_DATABASE_URL_RULE,
   NEON_NO_BROWSER_SERVERLESS_RULE,
@@ -149,6 +150,8 @@ ${authSection}
 **REMINDER: NEVER implement homegrown auth. Always use Neon Auth.**
 
 ## Database
+
+${SHARED_DATABASE_MIGRATION_GUIDANCE}
 
 ${providerToolsAvailable ? "**REMINDER: Always use the execute SQL tool for schema changes. NEVER write SQL migration files manually.**\n\n- Use `<dyad-execute-sql>` for schema changes." : "**REMINDER: The Neon branch context is unavailable. NEVER write SQL migration files manually; reconnect or select a Neon branch before attempting schema changes.**"}
 - Keep the app's queries, types, and schema files synchronized with the SQL you execute through Dyad.

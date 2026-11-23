@@ -350,6 +350,10 @@ router.push('/auth/sign-in');
 
 ## Database
 
+Git worktrees isolate app code. SQL changes take effect on the connected database immediately, even before a worktree merges. The main app and other chats may still read and write using the old schema.
+
+Keep existing reads and writes working throughout a migration. Prefer additive changes, such as a nullable column or a column with a compatible default. For a rename, add the new column alongside the old one, keep both in sync while callers migrate, and backfill existing rows. Defer dropping or renaming tables or columns and tightening constraints until all callers and existing data are compatible.
+
 **REMINDER: Always use the execute SQL tool for schema changes. NEVER write SQL migration files manually.**
 
 - Use \`<dyad-execute-sql>\` for schema changes.
@@ -506,6 +510,10 @@ When the task involves authentication, login, sign-up, user sessions, or auth UI
 **REMINDER: NEVER implement homegrown auth. Always use Neon Auth.**
 
 ## Database
+
+Git worktrees isolate app code. SQL changes take effect on the connected database immediately, even before a worktree merges. The main app and other chats may still read and write using the old schema.
+
+Keep existing reads and writes working throughout a migration. Prefer additive changes, such as a nullable column or a column with a compatible default. For a rename, add the new column alongside the old one, keep both in sync while callers migrate, and backfill existing rows. Defer dropping or renaming tables or columns and tightening constraints until all callers and existing data are compatible.
 
 **REMINDER: Always use the execute SQL tool for schema changes. NEVER write SQL migration files manually.**
 
@@ -976,6 +984,10 @@ router.push('/auth/sign-in');
 **REMINDER: NEVER implement homegrown auth. Always use Neon Auth.**
 
 ## Database
+
+Git worktrees isolate app code. SQL changes take effect on the connected database immediately, even before a worktree merges. The main app and other chats may still read and write using the old schema.
+
+Keep existing reads and writes working throughout a migration. Prefer additive changes, such as a nullable column or a column with a compatible default. For a rename, add the new column alongside the old one, keep both in sync while callers migrate, and backfill existing rows. Defer dropping or renaming tables or columns and tightening constraints until all callers and existing data are compatible.
 
 **REMINDER: Always use the execute SQL tool for schema changes. NEVER write SQL migration files manually.**
 
@@ -1630,6 +1642,10 @@ router.push('/auth/sign-in');
 **REMINDER: NEVER implement homegrown auth. Always use Neon Auth.**
 
 ## Database
+
+Git worktrees isolate app code. SQL changes take effect on the connected database immediately, even before a worktree merges. The main app and other chats may still read and write using the old schema.
+
+Keep existing reads and writes working throughout a migration. Prefer additive changes, such as a nullable column or a column with a compatible default. For a rename, add the new column alongside the old one, keep both in sync while callers migrate, and backfill existing rows. Defer dropping or renaming tables or columns and tightening constraints until all callers and existing data are compatible.
 
 **REMINDER: Always use the execute SQL tool for schema changes. NEVER write SQL migration files manually.**
 
@@ -2371,6 +2387,10 @@ If the project also has the generic \`/auth/:path\` catch-all rendering \`AuthVi
 
 ## Database
 
+Git worktrees isolate app code. SQL changes take effect on the connected database immediately, even before a worktree merges. The main app and other chats may still read and write using the old schema.
+
+Keep existing reads and writes working throughout a migration. Prefer additive changes, such as a nullable column or a column with a compatible default. For a rename, add the new column alongside the old one, keep both in sync while callers migrate, and backfill existing rows. Defer dropping or renaming tables or columns and tightening constraints until all callers and existing data are compatible.
+
 **REMINDER: Always use the execute SQL tool for schema changes. NEVER write SQL migration files manually.**
 
 - Use \`<dyad-execute-sql>\` for schema changes.
@@ -3074,6 +3094,10 @@ If the project also has the generic \`/auth/:path\` catch-all rendering \`AuthVi
 
 ## Database
 
+Git worktrees isolate app code. SQL changes take effect on the connected database immediately, even before a worktree merges. The main app and other chats may still read and write using the old schema.
+
+Keep existing reads and writes working throughout a migration. Prefer additive changes, such as a nullable column or a column with a compatible default. For a rename, add the new column alongside the old one, keep both in sync while callers migrate, and backfill existing rows. Defer dropping or renaming tables or columns and tightening constraints until all callers and existing data are compatible.
+
 **REMINDER: Always use the execute SQL tool for schema changes. NEVER write SQL migration files manually.**
 
 - Use \`<dyad-execute-sql>\` for schema changes.
@@ -3557,6 +3581,10 @@ If the project also has the generic \`/auth/:path\` catch-all rendering \`AuthVi
 
 ## Database
 
+Git worktrees isolate app code. SQL changes take effect on the connected database immediately, even before a worktree merges. The main app and other chats may still read and write using the old schema.
+
+Keep existing reads and writes working throughout a migration. Prefer additive changes, such as a nullable column or a column with a compatible default. For a rename, add the new column alongside the old one, keep both in sync while callers migrate, and backfill existing rows. Defer dropping or renaming tables or columns and tightening constraints until all callers and existing data are compatible.
+
 **REMINDER: Always use the execute SQL tool for schema changes. NEVER write SQL migration files manually.**
 
 - Use \`<dyad-execute-sql>\` for schema changes.
@@ -3725,6 +3753,10 @@ When the task involves authentication, login, sign-up, user sessions, or auth UI
 **REMINDER: NEVER implement homegrown auth. Always use Neon Auth.**
 
 ## Database
+
+Git worktrees isolate app code. SQL changes take effect on the connected database immediately, even before a worktree merges. The main app and other chats may still read and write using the old schema.
+
+Keep existing reads and writes working throughout a migration. Prefer additive changes, such as a nullable column or a column with a compatible default. For a rename, add the new column alongside the old one, keep both in sync while callers migrate, and backfill existing rows. Defer dropping or renaming tables or columns and tightening constraints until all callers and existing data are compatible.
 
 **REMINDER: Always use the execute SQL tool for schema changes. NEVER write SQL migration files manually.**
 
@@ -4348,6 +4380,10 @@ If the project also has the generic \`/auth/:path\` catch-all rendering \`AuthVi
 **REMINDER: NEVER implement homegrown auth. Always use Neon Auth.**
 
 ## Database
+
+Git worktrees isolate app code. SQL changes take effect on the connected database immediately, even before a worktree merges. The main app and other chats may still read and write using the old schema.
+
+Keep existing reads and writes working throughout a migration. Prefer additive changes, such as a nullable column or a column with a compatible default. For a rename, add the new column alongside the old one, keep both in sync while callers migrate, and backfill existing rows. Defer dropping or renaming tables or columns and tightening constraints until all callers and existing data are compatible.
 
 **REMINDER: Always use the execute SQL tool for schema changes. NEVER write SQL migration files manually.**
 

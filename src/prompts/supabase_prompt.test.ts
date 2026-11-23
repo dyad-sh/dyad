@@ -5,6 +5,15 @@ import {
   SUPABASE_AUTH_BROWSER_EXAMPLE,
 } from "./supabase_prompt";
 
+it("tells agents to preserve existing callers when migrating a shared Supabase database", () => {
+  const prompt = getSupabaseAvailableSystemPrompt(
+    "// Existing Supabase client",
+  );
+  expect(prompt).toContain("even before a worktree merges");
+  expect(prompt).toContain("Keep existing reads and writes working");
+  expect(prompt).toContain("backfill existing rows");
+});
+
 describe("Supabase auth redirect guidance", () => {
   const prompt = getSupabaseAvailableSystemPrompt(
     "// Existing Supabase client",

@@ -282,6 +282,8 @@ describe("copy_file and rename_file protected paths", () => {
         renameFileTool.execute({ from: ".env.example", to: ".env.dev" }, ctx()),
       ).rejects.toThrow(/only be created from a template/);
       expect(await exists(".env.dev")).toBe(false);
+      expect(await exists(".env.example")).toBe(true);
+      expect(gitAdd).not.toHaveBeenCalled();
     },
   );
 

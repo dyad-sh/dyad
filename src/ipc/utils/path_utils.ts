@@ -2,6 +2,111 @@ import fs from "node:fs";
 import path from "node:path";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { normalizePath } from "../../../shared/normalizePath";
+import {
+  isDotenvFilePath,
+  stripWindowsNameAlias,
+} from "@/utils/dotenv_redaction";
+
+export function hasGitSegment(relativePath: string): boolean {
+  return relativePath
+    .replace(/\\/g, "/")
+    .split("/")
+    .some((part) => stripWindowsNameAlias(part).toLowerCase() === ".git");
+}
+
+interface ProtectedMoveSide {
+  displayPath: string;
+  /** The path as written plus every canonical form of it. */
+  checkedPaths: string[];
+}
+
+const DOTENV_TEMPLATE_NAME = /^\.env\.(example|sample|template)$/i;
+
+function isDotenvTemplatePath(filePath: string): boolean {
+  return DOTENV_TEMPLATE_NAME.test(
+    stripWindowsNameAlias(path.basename(filePath.replace(/\\/g, "/"))),
+  );
+}
+
+/**
+ * Reject copy/rename moves that would expose what read_file protects. Git
+ * metadata is blocked both ways. A dotenv name may only be created from a
+ * template, so `.env.example -> .env` works but `.env.local -> .env.example`
+ * (gitignored secrets into a tracked name) and `.env -> leaked.txt` do not.
+ */
+export function assertProtectedMoveAllowed(
+  from: ProtectedMoveSide,
+  to: ProtectedMoveSide,
+): void {
+  const sides = [from, to];
+  const gitSide = sides.find((side) => side.checkedPaths.some(hasGitSegment));
+  if (gitSide) {
+    throw new DyadError(
+      `Cannot copy or rename protected path: ${gitSide.displayPath} (Git metadata cannot be copied or renamed)`,
+      DyadErrorKind.Validation,
+    );
+  }
+  // The source is judged by its dotenv forms, so an ordinary alias of a
+  // template (a symlink, an 8.3 short name) still counts as that template.
+  // Its last, most canonical form must itself be dotenv, so a template-named
+  // alias of an ordinary file does not count.
+  const fromDotenv = from.checkedPaths.filter(isDotenvFilePath);
+  const toDotenv = to.checkedPaths.filter(isDotenvFilePath);
+  if (fromDotenv.length === 0 && toDotenv.length === 0) return;
+  const fromIsDotenv =
+    fromDotenv.length > 0 && isDotenvFilePath(from.checkedPaths.at(-1)!);
+  const toIsDotenv = toDotenv.length === to.checkedPaths.length;
+  if (fromIsDotenv && toIsDotenv) {
+    if (fromDotenv.every(isDotenvTemplatePath)) return;
+    throw new DyadError(
+      `Cannot copy or rename protected path: ${from.displayPath} (dotenv files can only be created from a template like .env.example)`,
+      DyadErrorKind.Validation,
+    );
+  }
+  const blocked =
+    toDotenv.length > 0 && !toIsDotenv ? to : fromDotenv.length > 0 ? from : to;
+  throw new DyadError(
+    `Cannot copy or rename protected path: ${blocked.displayPath} (dotenv content cannot move to or from a non-dotenv name)`,
+    DyadErrorKind.Validation,
+  );
+}
+
+/**
+ * Collect the forms of a rename path the protected-move guard must see: as
+ * written, with ancestors canonicalized, and (for an existing entry) its
+ * on-disk name, which for a symlink is its target. fs.promises.realpath is
+ * the native realpath, so that last form also expands Win32 8.3 short names
+ * such as `ENV~1`. A dangling symlink has no target, so it adds nothing.
+ */
+export async function resolveProtectedMoveSide(
+  appPath: string,
+  relativePath: string,
+): Promise<ProtectedMoveSide> {
+  const operationPath = await assertMutationPathAllowed({
+    appPath,
+    relativePath,
+    followFinalSymlink: false,
+  });
+  const checkedPaths = [relativePath, operationPath];
+  const fullPath = safeJoin(appPath, operationPath);
+  const stat = lstatIfExists(fullPath);
+  if (stat) {
+    const realAppPath = await fs.promises.realpath(appPath);
+    try {
+      checkedPaths.push(
+        path.relative(realAppPath, await fs.promises.realpath(fullPath)),
+      );
+    } catch (error) {
+      if (
+        !isNodeErrorWithCode(error, "ENOENT") &&
+        !isNodeErrorWithCode(error, "ELOOP")
+      ) {
+        throw error;
+      }
+    }
+  }
+  return { displayPath: relativePath, checkedPaths };
+}
 
 /**
  * Safely joins paths while ensuring the result stays within the base directory.

@@ -1,6 +1,9 @@
 import {
   assertMutationPathAllowed,
+  assertProtectedMoveAllowed,
+  hasGitSegment,
   prepareDeletePath,
+  resolveProtectedMoveSide,
   safeJoin,
 } from "@/ipc/utils/path_utils";
 import { describe, it, expect } from "vitest";
@@ -11,6 +14,113 @@ import os from "node:os";
 function toPosixPath(value: string): string {
   return value.replace(/\\/g, "/");
 }
+
+describe("hasGitSegment", () => {
+  it("catches Windows aliases of .git segments", () => {
+    expect(hasGitSegment(".git./config")).toBe(true);
+    expect(hasGitSegment("sub\\.GIT \\config")).toBe(true);
+    expect(hasGitSegment(".git::$INDEX_ALLOCATION/config")).toBe(true);
+    expect(hasGitSegment("foo.git/config")).toBe(false);
+    expect(hasGitSegment(".github/workflows/ci.yml")).toBe(false);
+  });
+});
+
+describe("assertProtectedMoveAllowed", () => {
+  const move = (from: string[], to: string[]) => () =>
+    assertProtectedMoveAllowed(
+      { displayPath: from[0], checkedPaths: from },
+      { displayPath: to[0], checkedPaths: to },
+    );
+
+  it("allows dotenv templates to dotenv names and ordinary moves", () => {
+    expect(move([".env.example"], [".env"])).not.toThrow();
+    expect(move([".env.sample"], ["config/.env.local"])).not.toThrow();
+    expect(move([".env.template."], [".env"])).not.toThrow();
+    expect(move(["a.txt"], ["b.txt"])).not.toThrow();
+  });
+
+  it.each([
+    [".env.local", ".env.example"],
+    [".env.local", "config/.env.production"],
+    [".env", ".env.local"],
+  ])("blocks non-template dotenv %s -> %s", (from, to) => {
+    expect(move([from], [to])).toThrow(/only be created from a template/);
+  });
+
+  it("allows an ordinary alias whose protected form is a template", () => {
+    expect(move(["alias.txt", ".env.example"], [".env"])).not.toThrow();
+    expect(move(["alias.txt", ".env.local"], [".env"])).toThrow(
+      /only be created from a template/,
+    );
+  });
+
+  it("requires every checked source form to be a template", () => {
+    expect(move([".env.example", ".env.local"], [".env"])).toThrow(
+      /only be created from a template/,
+    );
+  });
+
+  it("blocks dotenv crossing to or from an ordinary name, and any Git path", () => {
+    expect(move([".env"], ["leaked.txt"])).toThrow(/protected path: \.env/);
+    expect(move(["notes.txt"], [".env"])).toThrow(/protected/);
+    expect(move([".env.example"], [".env", "leaked.txt"])).toThrow(/protected/);
+    expect(move(["a.txt", ".env"], [".env.local"])).toThrow(/protected/);
+    expect(move([".git/config"], ["leaked.txt"])).toThrow(/protected/);
+    expect(move(["notes.txt"], [".git/hooks/pre-commit"])).toThrow(/protected/);
+  });
+});
+
+describe.runIf(process.platform !== "win32")(
+  "resolveProtectedMoveSide symlinks",
+  () => {
+    it("includes the target of a symlink and tolerates dangling links", async () => {
+      const appPath = await fs.mkdtemp(path.join(os.tmpdir(), "dyad-move-"));
+      try {
+        await fs.writeFile(path.join(appPath, ".env.local"), "TOKEN=secret\n");
+        await fs.symlink(".env.local", path.join(appPath, ".env.example"));
+        await fs.symlink("missing", path.join(appPath, "dangling"));
+        const from = await resolveProtectedMoveSide(appPath, ".env.example");
+        expect(from.checkedPaths).toContain(".env.local");
+        expect(() =>
+          assertProtectedMoveAllowed(from, {
+            displayPath: ".env",
+            checkedPaths: [".env"],
+          }),
+        ).toThrow(/only be created from a template/);
+        await expect(
+          resolveProtectedMoveSide(appPath, "dangling"),
+        ).resolves.toMatchObject({ checkedPaths: ["dangling", "dangling"] });
+        await fs.symlink("loop", path.join(appPath, "loop"));
+        await expect(
+          resolveProtectedMoveSide(appPath, "loop"),
+        ).resolves.toMatchObject({ checkedPaths: ["loop", "loop"] });
+
+        await fs.writeFile(path.join(appPath, "notes.txt"), "hello\n");
+        await fs.symlink("notes.txt", path.join(appPath, ".env.sample"));
+        expect(() =>
+          assertProtectedMoveAllowed(
+            {
+              displayPath: ".env.sample",
+              checkedPaths: [".env.sample", ".env.sample", "notes.txt"],
+            },
+            { displayPath: ".env", checkedPaths: [".env"] },
+          ),
+        ).toThrow(/protected path: \.env\.sample \(dotenv content/);
+        expect(() =>
+          assertProtectedMoveAllowed(
+            { displayPath: ".env.example", checkedPaths: [".env.example"] },
+            {
+              displayPath: ".env.prod",
+              checkedPaths: [".env.prod", ".env.prod", "notes.txt"],
+            },
+          ),
+        ).toThrow(/protected path: \.env\.prod \(dotenv content/);
+      } finally {
+        await fs.rm(appPath, { recursive: true, force: true });
+      }
+    });
+  },
+);
 
 describe("safeJoin", () => {
   const testBaseDir = "/app/workspace";

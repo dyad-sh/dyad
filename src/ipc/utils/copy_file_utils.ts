@@ -1,13 +1,19 @@
 import fs from "node:fs";
 import path from "node:path";
 import log from "electron-log";
-import { assertMutationPathAllowed, safeJoin } from "./path_utils";
+import {
+  assertMutationPathAllowed,
+  assertProtectedMoveAllowed,
+  safeJoin,
+} from "./path_utils";
 import { gitAdd } from "./git_utils";
 import {
   DYAD_MEDIA_DIR_NAME,
+  findAttachmentByStoredPath,
   isWithinDyadMediaDir,
   resolveAttachmentLogicalPath,
 } from "./media_path_utils";
+import { isDotenvAttachment } from "@/utils/dotenv_redaction";
 import {
   appOperationCoordinator,
   readAppResource,
@@ -90,8 +96,12 @@ export async function executeCopyFile({
 
       // Resolve the source path: allow both .dyad/media paths and app-relative paths
       let fromFullPath: string;
+      let sourceAttachment:
+        | Awaited<ReturnType<typeof resolveAttachmentLogicalPath>>
+        | undefined;
       if (from.startsWith("attachments:")) {
         const attachment = await resolveAttachmentLogicalPath(appPath, from);
+        sourceAttachment = attachment;
         if (!attachment) {
           throw new DyadError(
             `Attachment does not exist: ${from}`,
@@ -127,8 +137,9 @@ export async function executeCopyFile({
       // Security: resolve symlinks and re-validate that paths remain within bounds.
       // path.resolve() does not follow symlinks, so an attacker could place a
       // symlink inside the allowed directory that points outside it.
-      const realFromPath = fs.realpathSync(fromFullPath);
-      const resolvedAppPath = fs.realpathSync(appPath);
+      // Native realpath also expands Win32 8.3 short names such as `ENV~1`.
+      const realFromPath = fs.realpathSync.native(fromFullPath);
+      const resolvedAppPath = fs.realpathSync.native(appPath);
       if (
         path.isAbsolute(from) &&
         !isWithinDyadMediaDir(realFromPath, resolvedAppPath)
@@ -146,6 +157,37 @@ export async function executeCopyFile({
           `Source path resolves to a location outside the app directory (possible symlink traversal)`,
         );
       }
+
+      // Checked on resolved paths while claims are held, so aliases, stored
+      // media names and a swapped checkout cannot reach protected content.
+      // The canonical path is rebased onto appPath because manifest entries
+      // resolve against the unresolved app path.
+      const canonicalFromPath = path.join(
+        appPath,
+        path.relative(resolvedAppPath, realFromPath),
+      );
+      let attachment:
+        | { logicalName: string; originalName: string }
+        | null
+        | undefined = sourceAttachment;
+      for (const candidate of [fromFullPath, canonicalFromPath]) {
+        if (attachment || !isWithinDyadMediaDir(candidate, appPath)) continue;
+        attachment = await findAttachmentByStoredPath(appPath, candidate);
+      }
+      assertProtectedMoveAllowed(
+        {
+          displayPath: from,
+          checkedPaths: [
+            from,
+            path.relative(resolvedAppPath, realFromPath),
+            ...(attachment &&
+            isDotenvAttachment({ ...attachment, filePath: fromFullPath })
+              ? [".env"]
+              : []),
+          ],
+        },
+        { displayPath: to, checkedPaths: [to, operationPath] },
+      );
 
       // Track if this involves shared modules
       const sharedModuleChanged = isSharedServerModule(operationPath);

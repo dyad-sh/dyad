@@ -3,7 +3,12 @@ import path from "node:path";
 import { z } from "zod";
 import log from "electron-log";
 import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
-import { assertMutationPathAllowed, safeJoin } from "@/ipc/utils/path_utils";
+import {
+  assertMutationPathAllowed,
+  assertProtectedMoveAllowed,
+  resolveProtectedMoveSide,
+  safeJoin,
+} from "@/ipc/utils/path_utils";
 import { gitAdd, gitRemove } from "@/ipc/utils/git_utils";
 import {
   deploySupabaseFunction,
@@ -45,6 +50,10 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
       result.startsWith("File renamed,"),
 
     execute: async (args, ctx: AgentContext) => {
+      assertProtectedMoveAllowed(
+        { displayPath: args.from, checkedPaths: [args.from] },
+        { displayPath: args.to, checkedPaths: [args.to] },
+      );
       const fromOperationPath = await assertMutationPathAllowed({
         appPath: ctx.appPath,
         relativePath: args.from,
@@ -65,6 +74,12 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
           await getFileWriteKey(toFullPath),
         ],
         async () => {
+          // Re-resolved under the locks so a swapped ancestor cannot alias a
+          // protected path after the checks above.
+          assertProtectedMoveAllowed(
+            await resolveProtectedMoveSide(ctx.appPath, args.from),
+            await resolveProtectedMoveSide(ctx.appPath, args.to),
+          );
           const renamed =
             path.normalize(fromFullPath) !== path.normalize(toFullPath) &&
             fs.existsSync(fromFullPath);

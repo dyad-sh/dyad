@@ -6,6 +6,8 @@ import { getDyadAppPath } from "../../paths/paths";
 import path from "node:path";
 import {
   assertNotProjectRootPath,
+  assertProtectedMoveAllowed,
+  resolveProtectedMoveSide,
   lstatIfExists,
   prepareDeletePath,
   PreparedDeletePath,
@@ -467,8 +469,23 @@ export async function processFullResponseActions(
       }
     }
 
-    // Process all file renames
+    // Process all file renames. Check each tag right before it runs, since an
+    // earlier rename can change what a later path resolves to.
+    const renameTags: typeof dyadRenameTags = [];
     for (const tag of dyadRenameTags) {
+      try {
+        assertProtectedMoveAllowed(
+          await resolveProtectedMoveSide(appPath, tag.from),
+          await resolveProtectedMoveSide(appPath, tag.to),
+        );
+      } catch (error) {
+        errors.push({
+          message: `Failed to rename ${tag.from} to ${tag.to}`,
+          error: error,
+        });
+        continue;
+      }
+      renameTags.push(tag);
       const fromPath = safeJoin(appPath, tag.from);
       const toPath = safeJoin(appPath, tag.to);
 
@@ -850,7 +867,7 @@ export async function processFullResponseActions(
         changedPaths: [...writtenFiles, ...renamedFiles],
         deletedPaths: [
           ...processedDeletePaths,
-          ...dyadRenameTags.map((renameTag) => renameTag.from),
+          ...renameTags.map((renameTag) => renameTag.from),
         ],
       });
     }

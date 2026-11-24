@@ -1,6 +1,7 @@
 import path from "node:path";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import type { AgentContext } from "./types";
+import { hasGitSegment } from "@/ipc/utils/path_utils";
 
 /**
  * Resolve the app path a read-only tool should target.
@@ -93,12 +94,7 @@ export function assertDyadInternalAccessAllowed({
   const relativeFromApp = path.relative(targetAppPath, fullFilePath);
   // Git metadata can contain credential-bearing remotes and extra headers.
   // Apply the same rule to lexical paths and the reader's canonical-path check.
-  if (
-    relativeFromApp
-      .replace(/\\/g, "/")
-      .split("/")
-      .some((part) => part.toLowerCase() === ".git")
-  ) {
+  if (hasGitSegment(relativeFromApp)) {
     throw new DyadError(
       "Cannot read Git metadata through file tools.",
       DyadErrorKind.Validation,

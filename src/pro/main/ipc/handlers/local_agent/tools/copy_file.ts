@@ -1,39 +1,9 @@
-import fs from "node:fs/promises";
-import path from "node:path";
 import { z } from "zod";
-import { DyadError } from "@/errors/dyad_error";
-import { safeJoin } from "@/ipc/utils/path_utils";
-import { resolveAttachmentLogicalPath } from "@/ipc/utils/media_path_utils";
-import { isDotenvAttachment } from "@/utils/dotenv_redaction";
-import { assertProtectedPathNotMoved } from "./resolve_app_context";
 import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
 import { executeCopyFile } from "@/ipc/utils/copy_file_utils";
 import { queueCloudSandboxSnapshotSync } from "@/ipc/utils/cloud_sandbox_provider";
 import { isPathGitVisible } from "./tool_invocation";
 import { isSupabaseFunctionSyncDeferred } from "@/supabase_admin/supabase_recording_deferred_sync";
-
-// Also check what the source resolves to: a suffixed dotenv attachment or a
-// symlink alias of .env must not be copied under an unprotected name.
-async function assertCopySourceNotProtected(from: string, appPath: string) {
-  assertProtectedPathNotMoved(from);
-  if (from.startsWith("attachments:")) {
-    const attachment = await resolveAttachmentLogicalPath(appPath, from);
-    if (attachment && isDotenvAttachment(attachment)) {
-      assertProtectedPathNotMoved(from, [".env"]);
-    }
-    return;
-  }
-  try {
-    const realFrom = await fs.realpath(
-      path.isAbsolute(from) ? from : safeJoin(appPath, from),
-    );
-    const realApp = await fs.realpath(appPath);
-    assertProtectedPathNotMoved(from, [path.relative(realApp, realFrom)]);
-  } catch (error) {
-    if (error instanceof DyadError) throw error;
-    // Missing sources are reported by executeCopyFile.
-  }
-}
 
 const copyFileSchema = z.object({
   from: z
@@ -70,8 +40,6 @@ export const copyFileTool: ToolDefinition<z.infer<typeof copyFileSchema>> = {
   },
 
   execute: async (args, ctx: AgentContext) => {
-    await assertCopySourceNotProtected(args.from, ctx.appPath);
-    assertProtectedPathNotMoved(args.to);
     const result = await executeCopyFile({
       from: args.from,
       to: args.to,

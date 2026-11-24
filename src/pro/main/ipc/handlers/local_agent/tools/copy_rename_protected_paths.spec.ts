@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { appOperationCoordinator } from "@/ipc/services/app_operation_coordinator";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -118,6 +119,87 @@ describe("copy_file and rename_file protected paths", () => {
         copyFileTool.execute({ from: "alias.txt", to: "leaked.txt" }, ctx()),
       ).rejects.toThrow(/protected/i);
       expect(await exists("leaked.txt")).toBe(false);
+    },
+  );
+
+  it("copy_file does not resolve absolute sources before the media containment check", async () => {
+    const outside = path.join(os.tmpdir(), "dyad-outside-source.txt");
+    const realpath = vi.spyOn(fs, "realpath");
+    await expect(
+      copyFileTool.execute({ from: outside, to: "leaked.txt" }, ctx()),
+    ).rejects.toThrow(/only allowed within the .dyad\/media/);
+    expect(realpath.mock.calls.map(([p]) => p)).not.toContain(outside);
+    realpath.mockRestore();
+  });
+
+  it.runIf(process.platform !== "win32")(
+    "copy_file rejects a destination symlink to .env",
+    async () => {
+      await fs.symlink(".env", path.join(appPath, "link.txt"));
+      await expect(
+        copyFileTool.execute({ from: "notes.txt", to: "link.txt" }, ctx()),
+      ).rejects.toThrow(/protected/i);
+      expect(await fs.readFile(path.join(appPath, ".env"), "utf8")).toBe(
+        "TOKEN=secret\n",
+      );
+      expect(gitAdd).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    () => ".dyad/media/stored-env",
+    () => path.join(getDyadMediaDir(appPath), "stored-env"),
+  ])("copy_file rejects a stored dotenv media path (%#)", async (from) => {
+    await expect(
+      copyFileTool.execute({ from: from(), to: "leaked.txt" }, ctx()),
+    ).rejects.toThrow(/protected/i);
+    expect(await exists("leaked.txt")).toBe(false);
+  });
+
+  it.runIf(process.platform !== "win32")(
+    "copy_file rejects an attachment whose stored file links to .env",
+    async () => {
+      const mediaDir = getDyadMediaDir(appPath);
+      await fs.symlink(
+        path.join(appPath, ".env"),
+        path.join(mediaDir, "stored-link"),
+      );
+      await appendAttachmentManifestEntries(appPath, [
+        {
+          logicalName: "plain.txt",
+          originalName: "plain.txt",
+          storedFileName: "stored-link",
+          mimeType: "text/plain",
+          sizeBytes: 13,
+          createdAt: new Date("2026-04-22T00:00:00.000Z").toISOString(),
+        },
+      ]);
+      await expect(
+        copyFileTool.execute(
+          { from: "attachments:plain.txt", to: "leaked.txt" },
+          ctx(),
+        ),
+      ).rejects.toThrow(/protected/i);
+      expect(await exists("leaked.txt")).toBe(false);
+    },
+  );
+
+  it.runIf(process.platform !== "win32")(
+    "copy_file rechecks a source swapped before workspace claims are held",
+    async () => {
+      const run = appOperationCoordinator.run.bind(appOperationCoordinator);
+      const spy = vi
+        .spyOn(appOperationCoordinator, "run")
+        .mockImplementationOnce(async (options, fn) => {
+          await fs.rm(path.join(appPath, "notes.txt"));
+          await fs.symlink(".env", path.join(appPath, "notes.txt"));
+          return run(options, fn);
+        });
+      await expect(
+        copyFileTool.execute({ from: "notes.txt", to: "leaked.txt" }, ctx()),
+      ).rejects.toThrow(/protected/i);
+      expect(await exists("leaked.txt")).toBe(false);
+      spy.mockRestore();
     },
   );
 

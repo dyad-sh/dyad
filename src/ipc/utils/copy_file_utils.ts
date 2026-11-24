@@ -5,9 +5,12 @@ import { assertMutationPathAllowed, safeJoin } from "./path_utils";
 import { gitAdd } from "./git_utils";
 import {
   DYAD_MEDIA_DIR_NAME,
+  findAttachmentByStoredPath,
   isWithinDyadMediaDir,
   resolveAttachmentLogicalPath,
 } from "./media_path_utils";
+import { isDotenvAttachment } from "@/utils/dotenv_redaction";
+import { assertProtectedPathNotMoved } from "@/pro/main/ipc/handlers/local_agent/tools/resolve_app_context";
 import {
   appOperationCoordinator,
   readAppResource,
@@ -90,8 +93,12 @@ export async function executeCopyFile({
 
       // Resolve the source path: allow both .dyad/media paths and app-relative paths
       let fromFullPath: string;
+      let sourceAttachment:
+        | Awaited<ReturnType<typeof resolveAttachmentLogicalPath>>
+        | undefined;
       if (from.startsWith("attachments:")) {
         const attachment = await resolveAttachmentLogicalPath(appPath, from);
+        sourceAttachment = attachment;
         if (!attachment) {
           throw new DyadError(
             `Attachment does not exist: ${from}`,
@@ -146,6 +153,21 @@ export async function executeCopyFile({
           `Source path resolves to a location outside the app directory (possible symlink traversal)`,
         );
       }
+
+      // Checked on resolved paths while claims are held, so aliases, stored
+      // media names and a swapped checkout cannot reach protected content.
+      const attachment =
+        sourceAttachment ??
+        (await findAttachmentByStoredPath(appPath, fromFullPath));
+      assertProtectedPathNotMoved(from, [
+        from,
+        path.relative(resolvedAppPath, realFromPath),
+        ...(attachment &&
+        isDotenvAttachment({ ...attachment, filePath: fromFullPath })
+          ? [".env"]
+          : []),
+      ]);
+      assertProtectedPathNotMoved(to, [to, operationPath]);
 
       // Track if this involves shared modules
       const sharedModuleChanged = isSharedServerModule(operationPath);

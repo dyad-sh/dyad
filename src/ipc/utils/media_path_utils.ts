@@ -733,3 +733,15 @@ export async function resolveAttachmentLogicalPath(
   }
   return toStoredAttachmentInfoIfPresent(getDyadMediaDir(appPath), entry);
 }
+
+/** The manifest entry stored at `filePath`, for copies that name a media path directly. */
+export async function findAttachmentByStoredPath(
+  appPath: string,
+  filePath: string,
+): Promise<AttachmentManifestEntry | undefined> {
+  const mediaDir = getDyadMediaDir(appPath);
+  const target = path.resolve(filePath);
+  return (await readAttachmentManifest(appPath)).find(
+    (entry) => resolveStoredFilePath(mediaDir, entry.storedFileName) === target,
+  );
+}

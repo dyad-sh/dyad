@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import fsSync from "node:fs";
 import { appOperationCoordinator } from "@/ipc/services/app_operation_coordinator";
 import os from "node:os";
 import path from "node:path";
@@ -7,6 +8,7 @@ import { copyFileTool } from "./copy_file";
 import { renameFileTool } from "./rename_file";
 import {
   appendAttachmentManifestEntries,
+  getAttachmentsManifestPath,
   getDyadMediaDir,
 } from "@/ipc/utils/media_path_utils";
 
@@ -122,9 +124,35 @@ describe("copy_file and rename_file protected paths", () => {
     },
   );
 
+  it.runIf(process.platform !== "win32")(
+    "copy_file rejects a symlink alias of a stored dotenv attachment",
+    async () => {
+      await fs.symlink(
+        path.join(".dyad", "media", "stored-env"),
+        path.join(appPath, "media-alias.txt"),
+      );
+      await expect(
+        copyFileTool.execute(
+          { from: "media-alias.txt", to: "leaked.txt" },
+          ctx(),
+        ),
+      ).rejects.toThrow(/protected/i);
+      expect(await exists("leaked.txt")).toBe(false);
+    },
+  );
+
+  it("copy_file skips the attachment manifest for sources outside media", async () => {
+    const stat = vi.spyOn(fs, "stat");
+    await copyFileTool.execute({ from: "notes.txt", to: "copy.txt" }, ctx());
+    expect(stat.mock.calls.map(([p]) => p)).not.toContain(
+      getAttachmentsManifestPath(appPath),
+    );
+    stat.mockRestore();
+  });
+
   it("copy_file does not resolve absolute sources before the media containment check", async () => {
     const outside = path.join(os.tmpdir(), "dyad-outside-source.txt");
-    const realpath = vi.spyOn(fs, "realpath");
+    const realpath = vi.spyOn(fsSync, "realpathSync");
     await expect(
       copyFileTool.execute({ from: outside, to: "leaked.txt" }, ctx()),
     ).rejects.toThrow(/only allowed within the .dyad\/media/);

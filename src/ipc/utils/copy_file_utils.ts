@@ -156,9 +156,20 @@ export async function executeCopyFile({
 
       // Checked on resolved paths while claims are held, so aliases, stored
       // media names and a swapped checkout cannot reach protected content.
-      const attachment =
-        sourceAttachment ??
-        (await findAttachmentByStoredPath(appPath, fromFullPath));
+      // The canonical path is rebased onto appPath because manifest entries
+      // resolve against the unresolved app path.
+      const canonicalFromPath = path.join(
+        appPath,
+        path.relative(resolvedAppPath, realFromPath),
+      );
+      let attachment:
+        | { logicalName: string; originalName: string }
+        | null
+        | undefined = sourceAttachment;
+      for (const candidate of [fromFullPath, canonicalFromPath]) {
+        if (attachment || !isWithinDyadMediaDir(candidate, appPath)) continue;
+        attachment = await findAttachmentByStoredPath(appPath, candidate);
+      }
       assertProtectedPathNotMoved(from, [
         from,
         path.relative(resolvedAppPath, realFromPath),

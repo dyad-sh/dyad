@@ -34,6 +34,7 @@ vi.mock("node:fs", async () => ({
       throw Object.assign(new Error("missing"), { code: "ENOENT" });
     }),
     mkdirSync: vi.fn(),
+    renameSync: vi.fn(),
     writeFileSync: vi.fn(),
     promises: {
       readFile: vi.fn().mockResolvedValue(""),
@@ -389,6 +390,27 @@ describe("processFullResponseActions add dependency errors", () => {
     expect(reportFsFailure).toHaveBeenCalledWith("apply_edits", eperm, {
       appPath: "/mock/apps/test-app",
     });
+  });
+
+  it.each([
+    [".env", "leaked.txt"],
+    ["src/../.env", "leaked.txt"],
+    [".git/config", "leaked.txt"],
+    ["notes.txt", ".git/hooks/pre-commit"],
+  ])("refuses to rename protected path %s -> %s", async (from, to) => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+
+    await processFullResponseActions(
+      `<dyad-rename from="${from}" to="${to}"></dyad-rename>`,
+      1,
+      { chatSummary: undefined, messageId: 1 },
+    );
+
+    expect(fs.renameSync).not.toHaveBeenCalled();
+    expect(gitAdd).not.toHaveBeenCalled();
+    const contentUpdate = dbUpdates.find((update) => "content" in update);
+    expect(String(contentUpdate?.content)).toMatch(/protected path/);
+    vi.mocked(fs.existsSync).mockReturnValue(false);
   });
 
   it("queues delete tags for cloud sync even when the local path is already missing", async () => {

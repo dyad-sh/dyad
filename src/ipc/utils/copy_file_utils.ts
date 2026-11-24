@@ -1,7 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import log from "electron-log";
-import { assertMutationPathAllowed, safeJoin } from "./path_utils";
+import {
+  assertMutationPathAllowed,
+  assertProtectedPathNotMoved,
+  safeJoin,
+} from "./path_utils";
 import { gitAdd } from "./git_utils";
 import {
   DYAD_MEDIA_DIR_NAME,
@@ -10,7 +14,6 @@ import {
   resolveAttachmentLogicalPath,
 } from "./media_path_utils";
 import { isDotenvAttachment } from "@/utils/dotenv_redaction";
-import { assertProtectedPathNotMoved } from "@/pro/main/ipc/handlers/local_agent/tools/resolve_app_context";
 import {
   appOperationCoordinator,
   readAppResource,

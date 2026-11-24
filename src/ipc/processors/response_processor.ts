@@ -5,7 +5,9 @@ import fs from "node:fs";
 import { getDyadAppPath } from "../../paths/paths";
 import path from "node:path";
 import {
+  assertMutationPathAllowed,
   assertNotProjectRootPath,
+  assertProtectedPathNotMoved,
   lstatIfExists,
   prepareDeletePath,
   PreparedDeletePath,
@@ -467,8 +469,33 @@ export async function processFullResponseActions(
       }
     }
 
-    // Process all file renames
+    // Reject renames that would move protected content (dotenv, Git
+    // metadata) to an unprotected name, as written and after canonicalizing.
+    const renameTags: typeof dyadRenameTags = [];
     for (const tag of dyadRenameTags) {
+      try {
+        assertProtectedPathNotMoved(tag.from);
+        assertProtectedPathNotMoved(tag.to);
+        for (const relativePath of [tag.from, tag.to]) {
+          assertProtectedPathNotMoved(relativePath, [
+            await assertMutationPathAllowed({
+              appPath,
+              relativePath,
+              followFinalSymlink: false,
+            }),
+          ]);
+        }
+        renameTags.push(tag);
+      } catch (error) {
+        errors.push({
+          message: `Failed to rename ${tag.from} to ${tag.to}`,
+          error: error,
+        });
+      }
+    }
+
+    // Process all file renames
+    for (const tag of renameTags) {
       const fromPath = safeJoin(appPath, tag.from);
       const toPath = safeJoin(appPath, tag.to);
 
@@ -850,7 +877,7 @@ export async function processFullResponseActions(
         changedPaths: [...writtenFiles, ...renamedFiles],
         deletedPaths: [
           ...processedDeletePaths,
-          ...dyadRenameTags.map((renameTag) => renameTag.from),
+          ...renameTags.map((renameTag) => renameTag.from),
         ],
       });
     }

@@ -3,7 +3,11 @@ import path from "node:path";
 import { z } from "zod";
 import log from "electron-log";
 import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
-import { assertMutationPathAllowed, safeJoin } from "@/ipc/utils/path_utils";
+import {
+  assertMutationPathAllowed,
+  assertProtectedPathNotMoved,
+  safeJoin,
+} from "@/ipc/utils/path_utils";
 import { gitAdd, gitRemove } from "@/ipc/utils/git_utils";
 import {
   deploySupabaseFunction,
@@ -17,7 +21,6 @@ import {
 import { queueCloudSandboxSnapshotSync } from "@/ipc/utils/cloud_sandbox_provider";
 import { getFileWriteKey, withLocks } from "@/ipc/utils/lock_utils";
 import { isSupabaseFunctionSyncDeferred } from "@/supabase_admin/supabase_recording_deferred_sync";
-import { assertProtectedPathNotMoved } from "./resolve_app_context";
 
 const logger = log.scope("rename_file");
 
@@ -58,8 +61,6 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
         relativePath: args.to,
         followFinalSymlink: false,
       });
-      assertProtectedPathNotMoved(fromOperationPath);
-      assertProtectedPathNotMoved(toOperationPath);
       const fromFullPath = safeJoin(ctx.appPath, fromOperationPath);
       const toFullPath = safeJoin(ctx.appPath, toOperationPath);
       let functionToDelete: string | undefined;
@@ -70,6 +71,17 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
           await getFileWriteKey(toFullPath),
         ],
         async () => {
+          // Re-resolved under the locks so a swapped ancestor cannot alias a
+          // protected path after the checks above.
+          for (const relativePath of [args.from, args.to]) {
+            assertProtectedPathNotMoved(relativePath, [
+              await assertMutationPathAllowed({
+                appPath: ctx.appPath,
+                relativePath,
+                followFinalSymlink: false,
+              }),
+            ]);
+          }
           const renamed =
             path.normalize(fromFullPath) !== path.normalize(toFullPath) &&
             fs.existsSync(fromFullPath);

@@ -2,6 +2,30 @@ import fs from "node:fs";
 import path from "node:path";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { normalizePath } from "../../../shared/normalizePath";
+import { isDotenvFilePath } from "@/utils/dotenv_redaction";
+
+export function hasGitSegment(relativePath: string): boolean {
+  return relativePath
+    .replace(/\\/g, "/")
+    .split("/")
+    .some((part) => part.toLowerCase() === ".git");
+}
+
+/**
+ * Reject copy/rename paths that read_file protects (dotenv files and Git
+ * metadata), so their content cannot be moved to an unprotected name.
+ */
+export function assertProtectedPathNotMoved(
+  displayPath: string,
+  checkedPaths: string[] = [displayPath],
+): void {
+  if (checkedPaths.some((p) => isDotenvFilePath(p) || hasGitSegment(p))) {
+    throw new DyadError(
+      `Cannot copy or rename protected path: ${displayPath}`,
+      DyadErrorKind.Validation,
+    );
+  }
+}
 
 /**
  * Safely joins paths while ensuring the result stays within the base directory.

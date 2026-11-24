@@ -1,7 +1,7 @@
 import path from "node:path";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import type { AgentContext } from "./types";
-import { isDotenvFilePath } from "@/utils/dotenv_redaction";
+import { hasGitSegment } from "@/ipc/utils/path_utils";
 
 /**
  * Resolve the app path a read-only tool should target.
@@ -74,29 +74,6 @@ export function filterDyadInternalFiles<T extends { path: string }>(
     return files;
   }
   return files.filter((file) => !isDyadInternalPath(file.path));
-}
-
-function hasGitSegment(relativePath: string): boolean {
-  return relativePath
-    .replace(/\\/g, "/")
-    .split("/")
-    .some((part) => part.toLowerCase() === ".git");
-}
-
-/**
- * Reject copy/rename paths that read_file protects (dotenv files and Git
- * metadata), so their content cannot be moved to an unprotected name.
- */
-export function assertProtectedPathNotMoved(
-  displayPath: string,
-  checkedPaths: string[] = [displayPath],
-): void {
-  if (checkedPaths.some((p) => isDotenvFilePath(p) || hasGitSegment(p))) {
-    throw new DyadError(
-      `Cannot copy or rename protected path: ${displayPath}`,
-      DyadErrorKind.Validation,
-    );
-  }
 }
 
 /**

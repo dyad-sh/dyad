@@ -25,10 +25,15 @@ import { getConnectionUri } from "../../neon_admin/neon_context";
 import { retryOnLocked } from "./retryOnLocked";
 import {
   copyBranchData,
+  describeNeonAuthLeftovers,
   exportBranchDataAsSql,
+  findLeftoverNeonAuthObjects,
   findMigrationBlockers,
+  findNeonAuthDataNotCopied,
+  grantNeonAuthCreatePermission,
   listForeignKeys,
   prepareSchemaOnlyBranchForNeonAuth,
+  type NeonAuthLeftovers,
 } from "./neon_branch_data";
 import { autoInjectNeonEnvVars, ensureNeonAuth } from "./neon_utils";
 import { getEnvFilePath, readEnvFileIfExists } from "./app_env_var_utils";
@@ -351,6 +356,7 @@ async function repairInterruptedMigration({
       branchesDeleted: number;
       branchesNotDeleted: number;
       cleanupFailed: boolean;
+      warnings: string[];
     }
 > {
   const branches = await listBranches(neonClient, projectId);
@@ -437,6 +443,50 @@ async function repairInterruptedMigration({
 
   // Roll forward. Rewriting .env.local first is idempotent for these apps,
   // and refreshes Neon Auth's URL in case the crash cut that write short.
+  const hasNeonAuth = await branchHasNeonAuth(
+    neonClient,
+    projectId,
+    developmentBranchId,
+  );
+  const plan = planLegacyMigration({
+    branches,
+    developmentBranchId,
+    previewBranchId,
+  });
+  const removable = "blockedBy" in plan ? new Set<string>() : plan.removable;
+  const oldPreview = await getPreviewToReplace(
+    neonClient,
+    projectId,
+    branches,
+    removable,
+    previewBranchId,
+  );
+  // The interrupted attempt's warnings about its copy were lost with it, but
+  // the branches still show them: the old branch keeps the schema it copied.
+  const holderUri = await getConnectionUri({ projectId, branchId: holder.id });
+  const warnings: string[] = [];
+  if (hasNeonAuth) {
+    warnings.push(
+      ...neonAuthNotCopiedWarnings(
+        await findNeonAuthDataNotCopied(
+          await getConnectionUri({ projectId, branchId: developmentBranchId }),
+          holderUri,
+        ),
+        INTERRUPTED_BACKUP,
+      ),
+    );
+  } else {
+    // An older interrupted migration may have switched the env before this
+    // branch had the grant, or may already have provisioned Auth on it.
+    await grantNeonAuthCreatePermission(holderUri);
+    await keepNeonAuthDisabled(neonClient, projectId, holder.id);
+    warnings.push(
+      ...neonAuthLeftoversWarnings(
+        await findLeftoverNeonAuthObjects(holderUri),
+        INTERRUPTED_BACKUP,
+      ),
+    );
+  }
   for (const app of onUnfinished) {
     const warning = await autoInjectNeonEnvVars({
       appId: app.id,
@@ -444,6 +494,7 @@ async function repairInterruptedMigration({
       projectId,
       branchId: holder.id,
       branchType: "development",
+      enableNeonAuth: hasNeonAuth,
     });
     if (warning) {
       throw new DyadError(
@@ -458,15 +509,6 @@ async function repairInterruptedMigration({
     previewBranchId,
     newDevelopmentId: holder.id,
   });
-  const plan = planLegacyMigration({
-    branches,
-    developmentBranchId,
-    previewBranchId,
-  });
-  const removable = "blockedBy" in plan ? new Set<string>() : plan.removable;
-  const oldPreview = previewBranchId
-    ? branches.find((b) => b.id === previewBranchId)
-    : undefined;
   const finished = await finishMigration({
     neonClient,
     projectId,
@@ -474,7 +516,6 @@ async function repairInterruptedMigration({
     label: `app${appIds.length > 1 ? "s" : ""} ${appIds.join(", ")}`,
     newDevelopment: holder,
     oldPreview,
-    replacePreview: !!oldPreview && removable.has(oldPreview.id),
     previewBranchId,
     removable,
     stamp,
@@ -486,6 +527,7 @@ async function repairInterruptedMigration({
     kind: "rolled-forward",
     developmentBranchId: holder.id,
     ...finished,
+    warnings: [...warnings, ...finished.warnings],
   };
 }
 
@@ -571,6 +613,102 @@ async function branchHasNeonAuth(
     if (error?.response?.status === 404) return false;
     throw error;
   }
+}
+
+async function keepNeonAuthDisabled(
+  client: Api<unknown>,
+  projectId: string,
+  branchId: string,
+) {
+  if (await branchHasNeonAuth(client, projectId, branchId)) {
+    await retryOnLocked(
+      () => client.disableNeonAuth(projectId, branchId, { delete_data: false }),
+      `Disable Neon Auth on replacement branch ${branchId}`,
+    );
+  }
+}
+
+/** How a migration's warnings refer to the backup of the data they mention. */
+const THIS_BACKUP = "the backup";
+/** A repair saves no backup of its own; the user isn't shown the earlier one. */
+const INTERRUPTED_BACKUP =
+  "the backup the interrupted migration saved in Dyad's neon-backups folder";
+
+/** Kept with their data, these still block turning Auth on later. */
+function neonAuthLeftoversWarnings(
+  leftovers: NeonAuthLeftovers,
+  backup: string,
+): string[] {
+  if (!leftovers.schema && !leftovers.role) return [];
+  const objects = `neon_auth ${describeNeonAuthLeftovers(leftovers)}`;
+  return [
+    `The development database kept its ${objects} with their data. Neon Auth can't be turned on for this app until the ${objects} ${leftovers.schema && leftovers.role ? "are" : "is"} removed; ${backup} has a copy.`,
+  ];
+}
+
+/**
+ * The new preview branches from the new development branch, which keeps
+ * development's `neon_auth` schema and role when development has Auth off,
+ * and Neon Auth can't be provisioned over those. Dropping them would drop
+ * their data, and recreating the preview without the Auth it had would break
+ * previews of earlier versions that use it: both are for the user to choose.
+ */
+async function refuseIfPreviewCannotKeepNeonAuth(
+  developmentUri: string,
+  preview: MigrationPreview,
+) {
+  const leftovers = await findLeftoverNeonAuthObjects(developmentUri);
+  if (!leftovers.schema && !leftovers.role) return;
+  const objects = `neon_auth ${describeNeonAuthLeftovers(leftovers)}`;
+  const exist = leftovers.schema && leftovers.role ? "they exist" : "it exists";
+  throw new MigrationRefusedError(
+    `Can't migrate the development database: the preview branch "${preview.name}" has Neon Auth on, and the new preview branch can't have it. ` +
+      `It would inherit the ${objects} that the development database still has, although its Neon Auth is off, and Neon Auth can't be set up while ${exist}. ` +
+      `To migrate, either turn off Neon Auth for "${preview.name}" in the Neon console, or back up and remove the ${objects} from the development branch.`,
+    "preview-neon-auth",
+  );
+}
+
+function neonAuthNotCopiedWarnings(
+  skipped: string[],
+  backup: string,
+): string[] {
+  if (skipped.length === 0) return [];
+  return [
+    `These Neon Auth tables or columns are not in its current version, so their data was not copied to the new branch (${backup} has it): ${skipped.join(", ")}.`,
+  ];
+}
+
+async function requireNeonAuth(projectId: string, branchId: string) {
+  if (!(await ensureNeonAuth({ projectId, branchId }))) {
+    throw new DyadError(
+      `Could not activate Neon Auth on replacement branch ${branchId}.`,
+      DyadErrorKind.External,
+    );
+  }
+}
+
+type MigrationPreview = Pick<Branch, "id" | "name"> & { hasNeonAuth: boolean };
+
+async function getPreviewToReplace(
+  client: Api<unknown>,
+  projectId: string,
+  branches: Branch[],
+  removable: Set<string>,
+  previewId: string | null,
+): Promise<MigrationPreview | undefined> {
+  // A preview outside the old tree survives the migration. One inside it is
+  // recreated, with the Auth state read here; the migration only reuses it
+  // as the copy's source when a restore cannot change that state.
+  const preview = branches.find(
+    (b) => b.id === previewId && removable.has(b.id),
+  );
+  if (preview)
+    return {
+      id: preview.id,
+      name: preview.name,
+      hasNeonAuth: await branchHasNeonAuth(client, projectId, preview.id),
+    };
 }
 
 /**
@@ -835,6 +973,8 @@ async function migrateToRootDevelopmentBranch({
   appIds,
   projectId,
   oldDevelopment,
+  hasNeonAuth,
+  oldPreview,
   previewBranchId,
   branches,
   plan,
@@ -846,6 +986,8 @@ async function migrateToRootDevelopmentBranch({
   appIds: number[];
   projectId: string;
   oldDevelopment: Branch;
+  hasNeonAuth: boolean;
+  oldPreview: MigrationPreview | undefined;
   previewBranchId: string | null;
   branches: Branch[];
   plan: LegacyMigrationPlan;
@@ -855,6 +997,7 @@ async function migrateToRootDevelopmentBranch({
   developmentBranchId: string;
   previewBranchId: string | null;
   notCopied: string[];
+  warnings: string[];
   tables: number;
   rows: number;
   branchesDeleted: number;
@@ -865,18 +1008,11 @@ async function migrateToRootDevelopmentBranch({
   const neonClient = await getNeonClient();
   const stamp = Date.now();
   const label = `app${appIds.length > 1 ? "s" : ""} ${appIds.join(", ")}`;
-  const oldPreview = previewBranchId
-    ? branches.find((b) => b.id === previewBranchId)
-    : undefined;
-  // A preview branch outside the old tree (possible in a linked project)
-  // survives the migration, so it is kept rather than replaced.
-  const replacePreview = !!oldPreview && plan.removable.has(oldPreview.id);
-
   // Test branches a crashed run left under the preview branch would keep it
   // from serving as the source below; they are deleted with the tree anyway.
   let previewHasChildren = false;
   let branchesDeleted = 0;
-  if (oldPreview && replacePreview) {
+  if (oldPreview) {
     const leftovers = new Set(
       childrenOf(branches, oldPreview.id).map((b) => b.id),
     );
@@ -896,10 +1032,17 @@ async function migrateToRootDevelopmentBranch({
   // branch already exists for exactly this, so reuse it instead of spending
   // another branch from the project's limit. Restoring it makes it a child of
   // the old development branch, so only a preview that is deleted with the
-  // old tree can serve.
+  // old tree can serve. And only one whose Neon Auth state matches
+  // development's: a restore may carry development's state over, and an
+  // attempt that fails or crashes after it would leave the next attempt (or
+  // the repair) reading that instead of the preview's own state.
   let sourceBranchId: string;
   let temporarySourceId: string | null = null;
-  if (oldPreview && replacePreview && !previewHasChildren) {
+  if (
+    oldPreview &&
+    !previewHasChildren &&
+    oldPreview.hasNeonAuth === hasNeonAuth
+  ) {
     await retryOnLocked(
       () =>
         neonClient.restoreProjectBranch(projectId, oldPreview.id, {
@@ -938,6 +1081,7 @@ async function migrateToRootDevelopmentBranch({
   let renamedOld = false;
   let renamedNew = false;
   let notCopied: string[] = [];
+  const warnings: string[] = [];
   let copiedTables = 0;
   let copiedRows = 0;
   const envSnapshots = new Map<string, string | null>();
@@ -947,6 +1091,7 @@ async function migrateToRootDevelopmentBranch({
     // copy of the data. No copy, no migration.
     const backup = await exportBranchDataAsSql({
       sourceUri,
+      hasNeonAuth,
       filePath: backupFilePath,
       title: `Dyad backup of the "${developmentName}" Neon branch, saved before migrating it.`,
     });
@@ -964,28 +1109,34 @@ async function migrateToRootDevelopmentBranch({
     newDevelopment = created.branch;
 
     onStep("neon-auth");
-    const hasAuth = await branchHasNeonAuth(
-      neonClient,
-      projectId,
-      oldDevelopment.id,
-    );
     // Capture foreign keys before dropping the copied neon_auth schema
     // cascades away any that reference it.
-    const foreignKeys = await listForeignKeys(created.connectionUri);
-    if (hasAuth) {
+    const foreignKeys = hasNeonAuth
+      ? await listForeignKeys(created.connectionUri)
+      : [];
+    if (hasNeonAuth) {
       await prepareSchemaOnlyBranchForNeonAuth(created.connectionUri);
-      await ensureNeonAuth({ projectId, branchId: newDevelopment.id });
+      await requireNeonAuth(projectId, newDevelopment.id);
       notCopied = await copyNeonAuthSettings(
         neonClient,
         projectId,
         oldDevelopment.id,
         newDevelopment.id,
       );
+    } else {
+      await grantNeonAuthCreatePermission(created.connectionUri);
+      warnings.push(
+        ...neonAuthLeftoversWarnings(
+          await findLeftoverNeonAuthObjects(created.connectionUri),
+          THIS_BACKUP,
+        ),
+      );
     }
     onStep("copy");
     const copied = await copyBranchData({
       sourceUri,
       targetUri: created.connectionUri,
+      hasNeonAuth,
       extraForeignKeys: foreignKeys,
     });
     copiedTables = copied.tables;
@@ -993,6 +1144,12 @@ async function migrateToRootDevelopmentBranch({
     logger.info(
       `Copied ${copied.rows} rows in ${copied.tables} tables to new development branch ${newDevelopment.id} for ${label}`,
     );
+    if (copied.skipped.length > 0) {
+      logger.warn(
+        `Not copied to new development branch ${newDevelopment.id}, missing from re-provisioned Neon Auth: ${copied.skipped.join(", ")}`,
+      );
+      warnings.push(...neonAuthNotCopiedWarnings(copied.skipped, THIS_BACKUP));
+    }
 
     onStep("rename");
     // Branch names are unique, so free the old name before taking it.
@@ -1036,6 +1193,7 @@ async function migrateToRootDevelopmentBranch({
         projectId,
         branchId: newDevelopmentId,
         branchType: "development",
+        enableNeonAuth: hasNeonAuth,
       });
       if (warning) {
         throw new DyadError(
@@ -1118,7 +1276,6 @@ async function migrateToRootDevelopmentBranch({
     label,
     newDevelopment,
     oldPreview,
-    replacePreview,
     previewBranchId,
     removable: plan.removable,
     stamp,
@@ -1127,6 +1284,7 @@ async function migrateToRootDevelopmentBranch({
     developmentBranchId: newDevelopment.id,
     previewBranchId: finished.previewBranchId,
     notCopied,
+    warnings: [...warnings, ...finished.warnings],
     tables: copiedTables,
     rows: copiedRows,
     branchesDeleted: branchesDeleted + finished.branchesDeleted,
@@ -1148,7 +1306,6 @@ async function finishMigration({
   label,
   newDevelopment,
   oldPreview,
-  replacePreview,
   previewBranchId,
   removable,
   stamp,
@@ -1158,8 +1315,7 @@ async function finishMigration({
   appIds: number[];
   label: string;
   newDevelopment: Branch;
-  oldPreview: Branch | undefined;
-  replacePreview: boolean;
+  oldPreview: MigrationPreview | undefined;
   previewBranchId: string | null;
   removable: Set<string>;
   stamp: number;
@@ -1168,10 +1324,13 @@ async function finishMigration({
   branchesDeleted: number;
   branchesNotDeleted: number;
   cleanupFailed: boolean;
+  /** For the user, about what finishing could not do. */
+  warnings: string[];
 }> {
   let branchesDeleted = 0;
   let branchesNotDeleted = 0;
   let cleanupFailed = false;
+  const warnings: string[] = [];
   try {
     const { deleted, left } = await deleteBranchTree(
       neonClient,
@@ -1199,7 +1358,7 @@ async function finishMigration({
   // The old preview branch went with the old tree; recreate it under the new
   // development branch, under its old name once that is free.
   let newPreviewId = previewBranchId;
-  if (oldPreview && replacePreview) {
+  if (oldPreview) {
     newPreviewId = null;
     try {
       const nameTaken = (await listBranches(neonClient, projectId)).some(
@@ -1220,18 +1379,35 @@ async function finishMigration({
           `Create preview branch for ${label}`,
         ),
       );
-      const previewId = response.data.branch.id;
-      newPreviewId = previewId;
-      await ensureNeonAuth({ projectId, branchId: previewId }).catch((error) =>
-        logger.warn(
-          `Failed to enable Neon Auth on new preview branch ${previewId}: ${getNeonErrorMessage(error)}`,
-        ),
-      );
+      newPreviewId = response.data.branch.id;
     } catch (error) {
       // Version previews then fall back to the development database.
+      cleanupFailed = true;
       logger.error(
         `Failed to create a preview branch for ${label}: ${getNeonErrorMessage(error)}`,
       );
+    }
+    if (newPreviewId) {
+      // Keep the branch whatever happens here: without it, previews of
+      // earlier versions would use the live development database.
+      const previewId = newPreviewId;
+      try {
+        if (oldPreview.hasNeonAuth) {
+          await requireNeonAuth(projectId, previewId);
+        } else {
+          // A data branch can inherit Auth from its parent.
+          await keepNeonAuthDisabled(neonClient, projectId, previewId);
+        }
+      } catch (error) {
+        cleanupFailed = true;
+        const state = oldPreview.hasNeonAuth ? "on" : "off";
+        logger.error(
+          `Failed to turn Neon Auth ${state} on new preview branch ${previewId} for ${label}: ${getNeonErrorMessage(error)}`,
+        );
+        warnings.push(
+          `Could not turn Neon Auth ${state} on the new preview branch, as it was on the old one. Change it in the Neon console if previews of earlier versions need it.`,
+        );
+      }
     }
     try {
       await db
@@ -1249,6 +1425,7 @@ async function finishMigration({
     branchesDeleted,
     branchesNotDeleted,
     cleanupFailed,
+    warnings,
   };
 }
 
@@ -1256,6 +1433,7 @@ async function finishMigration({
 export type MigrationRefusalReason =
   | "foreign-branches"
   | "unsupported-objects"
+  | "preview-neon-auth"
   | "deploys-with-development"
   | "version-preview"
   | "apps-changed"
@@ -1451,6 +1629,8 @@ export async function migrateDevelopmentBranch({
   previewBranchId: string | null;
   /** Neon Auth settings that could not be carried over. */
   notCopied: string[];
+  /** For the user: what the migration kept, left out, or could not finish. */
+  warnings: string[];
   /** Whether this call saved a backup to `backupFilePath`. */
   backupSaved: boolean;
   stats: MigrationStats;
@@ -1469,6 +1649,7 @@ export async function migrateDevelopmentBranch({
       developmentBranchId: repair.developmentBranchId,
       previewBranchId: repair.previewBranchId,
       notCopied: [],
+      warnings: repair.warnings,
       backupSaved: false,
       stats: {
         tables: 0,
@@ -1497,6 +1678,7 @@ export async function migrateDevelopmentBranch({
       developmentBranchId,
       previewBranchId,
       notCopied: [],
+      warnings: [],
       backupSaved: false,
       stats: {
         tables: 0,
@@ -1521,21 +1703,33 @@ export async function migrateDevelopmentBranch({
       "foreign-branches",
     );
   }
-  const blockers = await findMigrationBlockers(
-    await getConnectionUri({ projectId, branchId: developmentBranchId }),
-    {
-      neonAuth: await branchHasNeonAuth(
-        neonClient,
-        projectId,
-        developmentBranchId,
-      ),
-    },
+  const hasNeonAuth = await branchHasNeonAuth(
+    neonClient,
+    projectId,
+    developmentBranchId,
   );
+  const oldPreview = await getPreviewToReplace(
+    neonClient,
+    projectId,
+    branches,
+    plan.removable,
+    previewBranchId,
+  );
+  const developmentUri = await getConnectionUri({
+    projectId,
+    branchId: developmentBranchId,
+  });
+  const blockers = await findMigrationBlockers(developmentUri, {
+    neonAuth: hasNeonAuth,
+  });
   if (blockers.length > 0) {
     throw new MigrationRefusedError(
       `Can't migrate the development database: the copy would lose ${blockers.join(", ")}.`,
       "unsupported-objects",
     );
+  }
+  if (oldPreview?.hasNeonAuth && !hasNeonAuth) {
+    await refuseIfPreviewCannotKeepNeonAuth(developmentUri, oldPreview);
   }
   try {
     const {
@@ -1549,6 +1743,8 @@ export async function migrateDevelopmentBranch({
       appIds,
       projectId,
       oldDevelopment: development,
+      hasNeonAuth,
+      oldPreview,
       previewBranchId,
       branches,
       plan,

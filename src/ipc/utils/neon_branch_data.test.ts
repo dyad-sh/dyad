@@ -11,7 +11,10 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@neondatabase/serverless", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@neondatabase/serverless")>()),
-  neon: () => ({ query: mocks.http }),
+  // The connection string comes along, so a test can route it.
+  neon: (uri: string) => ({
+    query: (sql: string, params?: unknown[]) => mocks.http(sql, params, uri),
+  }),
   Pool: class {
     constructor(private options: { connectionString: string }) {}
     async connect() {
@@ -32,6 +35,8 @@ import {
   copyBranchData,
   exportBranchDataAsSql,
   findMigrationBlockers,
+  findNeonAuthDataNotCopied,
+  grantNeonAuthCreatePermission,
   planDataCopy,
   UncopyableDataError,
   type CopyTable,
@@ -71,6 +76,13 @@ const partition = (qualified: string, of: string): TablePartition => {
 
 const names = (tables: CopyTable[]) =>
   tables.map((t) => `${t.schema}.${t.name}`);
+
+/** A one-row page, as the copy's paging query returns it. */
+const rowsPage = (id: string) => ({
+  json: JSON.stringify([{ id }]),
+  count: 1,
+  last: "(0,1)",
+});
 
 // Neon Auth's tables and keys as a provisioned branch has them: owned by the
 // neon_auth role, which the app role is not a member of.
@@ -357,7 +369,7 @@ describe("partitioned tables with kept keys", () => {
       } else if (sql.includes("from pg_inherits i")) {
         rows = [{ ...partition("neon_auth.audit_2026", "neon_auth.audit") }];
       } else if (sql.includes("json_agg")) {
-        rows = [{ rows: [{ id: "row-1", x_ctid: "(0,1)" }], last: "(0,1)" }];
+        rows = [rowsPage("row-1")];
       } else if (sql.includes("select count(*)::text")) {
         rows = [{ n: "1" }];
       }
@@ -377,7 +389,11 @@ describe("partitioned tables with kept keys", () => {
   });
 
   it("copies the partition after the rows its key references", async () => {
-    await copyBranchData({ sourceUri: "source", targetUri: "target" });
+    await copyBranchData({
+      sourceUri: "source",
+      targetUri: "target",
+      hasNeonAuth: true,
+    });
     const sql = mocks.target.mock.calls.map(([s]) => s as string);
     const at = (prefix: string) => sql.findIndex((s) => s.startsWith(prefix));
     expect(at(`delete from only ${AUDIT}`)).toBeGreaterThan(-1);
@@ -391,7 +407,12 @@ describe("partitioned tables with kept keys", () => {
 
   it("writes a backup that restores the partition after the rows its key references", async () => {
     const filePath = path.join(directory, "backup.sql");
-    await exportBranchDataAsSql({ sourceUri: "source", filePath, title: "B" });
+    await exportBranchDataAsSql({
+      sourceUri: "source",
+      filePath,
+      title: "B",
+      hasNeonAuth: true,
+    });
     const sql = await fs.readFile(filePath, "utf8");
     expect(sql.indexOf(`delete from only ${AUDIT};`)).toBeGreaterThan(-1);
     expect(sql.indexOf(`delete from only ${AUDIT};`)).toBeLessThan(
@@ -421,7 +442,7 @@ describe("branch data triggers", () => {
       } else if (sql.includes("select distinct n.nspname")) {
         rows = triggered ? [{ schema: "neon_auth", name: "user" }] : [];
       } else if (sql.includes("json_agg")) {
-        rows = [{ rows: [{ id: "user-1", x_ctid: "(0,1)" }], last: "(0,1)" }];
+        rows = [rowsPage("user-1")];
       } else if (sql.includes("select count(*)::text")) {
         rows = [{ n: "1" }];
       }
@@ -447,8 +468,12 @@ describe("branch data triggers", () => {
     // Source ownership does not grant or restrict permissions on the target.
     mockDatabase(mocks.source, false, true);
     await expect(
-      copyBranchData({ sourceUri: "source", targetUri: "target" }),
-    ).resolves.toEqual({ tables: 1, rows: 1 });
+      copyBranchData({
+        sourceUri: "source",
+        targetUri: "target",
+        hasNeonAuth: true,
+      }),
+    ).resolves.toEqual({ tables: 1, rows: 1, skipped: [] });
 
     const sql = statements(mocks.target);
     const disable = sql.findIndex((s) => s.includes("disable trigger %I"));
@@ -469,7 +494,11 @@ describe("branch data triggers", () => {
   it("rejects enabled triggers the destination role cannot disable before changing anything", async () => {
     mockDatabase(mocks.target, false, true);
     await expect(
-      copyBranchData({ sourceUri: "source", targetUri: "target" }),
+      copyBranchData({
+        sourceUri: "source",
+        targetUri: "target",
+        hasNeonAuth: true,
+      }),
     ).rejects.toThrow(/enabled user triggers.*cannot disable/);
     const sql = statements(mocks.target);
     expect(sql.some((s) => /^(delete|insert|alter|do) /i.test(s))).toBe(false);
@@ -479,7 +508,11 @@ describe("branch data triggers", () => {
 
   it("excludes disabled triggers when checking an unalterable destination", async () => {
     mockDatabase(mocks.target, false, false);
-    await copyBranchData({ sourceUri: "source", targetUri: "target" });
+    await copyBranchData({
+      sourceUri: "source",
+      targetUri: "target",
+      hasNeonAuth: true,
+    });
     const discovery = statements(mocks.target).find((s) =>
       s.includes("select distinct n.nspname"),
     );
@@ -494,7 +527,11 @@ describe("branch data triggers", () => {
       return query(sql);
     });
     await expect(
-      copyBranchData({ sourceUri: "source", targetUri: "target" }),
+      copyBranchData({
+        sourceUri: "source",
+        targetUri: "target",
+        hasNeonAuth: true,
+      }),
     ).rejects.toThrow("insert failed");
     const sql = statements(mocks.target);
     expect(sql.some((s) => s.includes("disable trigger %I"))).toBe(true);
@@ -512,6 +549,7 @@ describe("branch data triggers", () => {
           sourceUri: "source",
           filePath,
           title: "Backup",
+          hasNeonAuth: true,
         }),
       ).resolves.toEqual({ tables: 1, rows: 1 });
       const sql = await fs.readFile(filePath, "utf8");
@@ -592,7 +630,7 @@ describe("copyBranchData extra foreign keys", () => {
         const name = String(params?.[0]).replace(/"/g, "");
         rows = [{ exists: name in target, canAlter: target[name] ?? false }];
       } else if (sql.includes("json_agg")) {
-        rows = [{ rows: [{ id: "p-1", x_ctid: "(0,1)" }], last: "(0,1)" }];
+        rows = [rowsPage("p-1")];
       } else if (sql.includes("select count(*)::text")) {
         rows = [{ n: "1" }];
       }
@@ -613,6 +651,7 @@ describe("copyBranchData extra foreign keys", () => {
     await copyBranchData({
       sourceUri: "source",
       targetUri: "target",
+      hasNeonAuth: true,
       extraForeignKeys: [userKey, orgKey, goneKey, authKey],
     });
     const added = statements().filter((s) => s.includes(" add constraint "));
@@ -631,6 +670,7 @@ describe("copyBranchData extra foreign keys", () => {
     const copy = copyBranchData({
       sourceUri: "source",
       targetUri: "target",
+      hasNeonAuth: true,
       extraForeignKeys: [userKey, auditKey],
     });
     await expect(copy).rejects.toThrow(UncopyableDataError);
@@ -665,7 +705,7 @@ describe("tables outside the copy with kept keys", () => {
       ) {
         rows = [{ hasRows }];
       } else if (sql.includes("json_agg")) {
-        rows = [{ rows: [{ id: "user-1", x_ctid: "(0,1)" }], last: "(0,1)" }];
+        rows = [rowsPage("user-1")];
       } else if (sql.includes("select count(*)::text")) {
         rows = [{ n: "1" }];
       }
@@ -688,7 +728,11 @@ describe("tables outside the copy with kept keys", () => {
 
   it("refuses before changing anything when that table has rows", async () => {
     mockDatabase(mocks.target, true);
-    const copy = copyBranchData({ sourceUri: "source", targetUri: "target" });
+    const copy = copyBranchData({
+      sourceUri: "source",
+      targetUri: "target",
+      hasNeonAuth: true,
+    });
     await expect(copy).rejects.toThrow(UncopyableDataError);
     await expect(copy).rejects.toThrow(
       `Can't copy ${USER}: rows of ${JWKS}, which isn't copied`,
@@ -701,14 +745,22 @@ describe("tables outside the copy with kept keys", () => {
   it("copies when that table is empty", async () => {
     mockDatabase(mocks.target, false);
     await expect(
-      copyBranchData({ sourceUri: "source", targetUri: "target" }),
-    ).resolves.toEqual({ tables: 1, rows: 1 });
+      copyBranchData({
+        sourceUri: "source",
+        targetUri: "target",
+        hasNeonAuth: true,
+      }),
+    ).resolves.toEqual({ tables: 1, rows: 1, skipped: [] });
     expect(statements()).toContain("commit");
   });
 
   it("locks the table it refers to before checking it, so no row lands after the check", async () => {
     mockDatabase(mocks.target, false);
-    await copyBranchData({ sourceUri: "source", targetUri: "target" });
+    await copyBranchData({
+      sourceUri: "source",
+      targetUri: "target",
+      hasNeonAuth: true,
+    });
     const sql = statements();
     const lock = sql.indexOf(`lock table ${USER} in exclusive mode`);
     const check = sql.indexOf(
@@ -721,7 +773,12 @@ describe("tables outside the copy with kept keys", () => {
 
   it("writes a backup that checks that table on the restore target first", async () => {
     const filePath = path.join(directory, "backup.sql");
-    await exportBranchDataAsSql({ sourceUri: "source", filePath, title: "B" });
+    await exportBranchDataAsSql({
+      sourceUri: "source",
+      filePath,
+      title: "B",
+      hasNeonAuth: true,
+    });
     const sql = await fs.readFile(filePath, "utf8");
     const check = sql.indexOf(`if to_regclass('${JWKS}') is not null then`);
     expect(check).toBeGreaterThan(-1);
@@ -754,7 +811,7 @@ describe("copyBranchData table names", () => {
         } else if (sql.includes("from pg_attribute")) {
           rows = [{ name: "id", identityAlways: false }];
         } else if (sql.includes("json_agg")) {
-          rows = [{ rows: [{ id: "r-1", x_ctid: "(0,1)" }], last: "(0,1)" }];
+          rows = [rowsPage("r-1")];
         } else if (sql.includes("select count(*)::text")) {
           rows = [{ n: "1" }];
         }
@@ -762,8 +819,12 @@ describe("copyBranchData table names", () => {
       });
     }
     await expect(
-      copyBranchData({ sourceUri: "source", targetUri: "target" }),
-    ).resolves.toEqual({ tables: 2, rows: 2 });
+      copyBranchData({
+        sourceUri: "source",
+        targetUri: "target",
+        hasNeonAuth: true,
+      }),
+    ).resolves.toEqual({ tables: 2, rows: 2, skipped: [] });
     const inserts = mocks.target.mock.calls
       .map(([sql]) => sql as string)
       .filter((s) => s.startsWith("insert into"))
@@ -795,7 +856,7 @@ describe("row-level security", () => {
         } else if (sql.includes("from pg_attribute")) {
           rows = [{ name: "id", identityAlways: false }];
         } else if (sql.includes("json_agg")) {
-          rows = [{ rows: [{ id: "n-1", x_ctid: "(0,1)" }], last: "(0,1)" }];
+          rows = [rowsPage("n-1")];
         } else if (sql.includes("select count(*)::text")) {
           rows = [{ n: "1" }];
         }
@@ -812,7 +873,11 @@ describe("row-level security", () => {
     query.mock.calls.map(([sql]) => sql as string);
 
   it("turns it off on both branches before reading or writing any rows", async () => {
-    await copyBranchData({ sourceUri: "source", targetUri: "target" });
+    await copyBranchData({
+      sourceUri: "source",
+      targetUri: "target",
+      hasNeonAuth: true,
+    });
     for (const query of [mocks.source, mocks.target]) {
       const sql = statements(query);
       expect(sql[0]).toMatch(/^begin/);
@@ -823,7 +888,12 @@ describe("row-level security", () => {
 
   it("writes a backup that turns it off on the source and the restore target", async () => {
     const filePath = path.join(directory, "backup.sql");
-    await exportBranchDataAsSql({ sourceUri: "source", filePath, title: "B" });
+    await exportBranchDataAsSql({
+      sourceUri: "source",
+      filePath,
+      title: "B",
+      hasNeonAuth: true,
+    });
     expect(statements(mocks.source).slice(0, 2)).toEqual([
       "begin isolation level repeatable read read only",
       "set local row_security = off",
@@ -832,5 +902,246 @@ describe("row-level security", () => {
     const off = sql.indexOf("\nset local row_security = off;\n");
     expect(off).toBeGreaterThan(sql.indexOf("\nbegin;\n"));
     expect(off).toBeLessThan(sql.indexOf(`delete from only ${NOTES};`));
+  });
+});
+
+describe("Neon migration data", () => {
+  // Exact only as text: both exceed what a JS number holds.
+  const EXACT_ROWS =
+    '[{"id":9007199254740993,"amount":0.1000000000000000000001}]';
+
+  /**
+   * Answers the catalog and data queries the copy and export make, for
+   * `tables` (qualified name → insertable columns) holding one row each.
+   */
+  function fakeDatabase(tables: Record<string, string[]>) {
+    return async (sql: string, params: unknown[] = []) => {
+      let rows: Record<string, unknown>[] = [];
+      if (sql.includes("c.relkind = 'r'")) {
+        rows = Object.keys(tables).map((qualified) => ({
+          ...table(qualified, true),
+        }));
+      } else if (sql.includes("from pg_attribute")) {
+        const [schema, name] = String(params[0])
+          .split(".")
+          .map((part) => part.replace(/"/g, ""));
+        rows = (tables[`${schema}.${name}`] ?? []).map((column) => ({
+          name: column,
+          identityAlways: false,
+        }));
+      } else if (sql.includes("with page as")) {
+        rows = [{ json: EXACT_ROWS, count: 1, last: "(0,1)" }];
+      } else if (sql.includes("count(*)::text as n")) {
+        rows = [{ n: "1" }];
+      } else if (sql.includes("to_regclass")) {
+        rows = [{ exists: true }];
+      }
+      return { rows };
+    };
+  }
+
+  const statements = (query: typeof mocks.source) =>
+    query.mock.calls.map(([sql]) => sql as string);
+
+  beforeEach(() => {
+    mocks.source.mockReset().mockResolvedValue({ rows: [] });
+    mocks.target.mockReset().mockResolvedValue({ rows: [] });
+    // The HTTP driver resolves to the rows themselves.
+    mocks.http
+      .mockReset()
+      .mockImplementation(
+        async (sql: string, params: unknown[], uri: string) =>
+          (await (uri === "source" ? mocks.source : mocks.target)(sql, params))
+            .rows,
+      );
+  });
+
+  it("grants permission for future Auth without resetting SQL objects", async () => {
+    await grantNeonAuthCreatePermission("target");
+    const sql = statements(mocks.http).join("\n");
+    expect(sql).toMatch(/grant create on database .* to neon_service/i);
+    expect(sql).not.toMatch(/drop\s+(schema|role)/i);
+  });
+
+  it.each(["invites", "jwks", "project_config"])(
+    "refuses to skip neon_auth.%s on a database-only migration",
+    async (name) => {
+      mocks.source.mockImplementation(async (sql: string) => ({
+        rows: sql.includes("c.relkind = 'r'")
+          ? [{ ...table(`neon_auth.${name}`, true) }]
+          : [],
+      }));
+      await expect(
+        copyBranchData({
+          sourceUri: "source",
+          targetUri: "target",
+          hasNeonAuth: false,
+        }),
+      ).rejects.toThrow(`"neon_auth"."${name}": the table is missing`);
+      expect(statements(mocks.target)).toContain("rollback");
+      expect(statements(mocks.target)).not.toContain("commit");
+    },
+  );
+
+  it("copies bigint and numeric values exactly", async () => {
+    mocks.source.mockImplementation(
+      fakeDatabase({ "public.ids": ["id", "amount"] }),
+    );
+    mocks.target.mockImplementation(
+      fakeDatabase({ "public.ids": ["id", "amount"] }),
+    );
+
+    await copyBranchData({
+      sourceUri: "source",
+      targetUri: "target",
+      hasNeonAuth: false,
+    });
+
+    expect(mocks.target).toHaveBeenCalledWith(
+      expect.stringMatching(/^insert into "public"\."ids"/),
+      [EXACT_ROWS],
+    );
+    expect(statements(mocks.target)).toContain("commit");
+  });
+
+  it("backs up bigint and numeric values exactly", async () => {
+    mocks.source.mockImplementation(
+      fakeDatabase({ "public.ids": ["id", "amount"] }),
+    );
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "neon-backup-"));
+    try {
+      const filePath = path.join(dir, "backup.sql");
+      await exportBranchDataAsSql({
+        sourceUri: "source",
+        filePath,
+        title: "Test backup",
+        hasNeonAuth: false,
+      });
+      expect(await fs.readFile(filePath, "utf8")).toContain(
+        `$dyad$${EXACT_ROWS}$dyad$`,
+      );
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("reports what re-provisioned Neon Auth no longer has, and copies the rest", async () => {
+    mocks.source.mockImplementation(
+      fakeDatabase({
+        "neon_auth.legacy": ["body"],
+        "neon_auth.user": ["id", "old_flag"],
+        "public.ids": ["id", "amount"],
+      }),
+    );
+    mocks.target.mockImplementation(
+      fakeDatabase({
+        "neon_auth.user": ["id"],
+        "public.ids": ["id", "amount"],
+      }),
+    );
+
+    const result = await copyBranchData({
+      sourceUri: "source",
+      targetUri: "target",
+      hasNeonAuth: true,
+    });
+
+    expect(result.skipped).toEqual([
+      '"neon_auth"."legacy"',
+      '"neon_auth"."user"."old_flag"',
+    ]);
+    const inserts = statements(mocks.target).filter((s) =>
+      s.startsWith("insert into"),
+    );
+    expect(inserts).toEqual([
+      expect.stringMatching(/^insert into "neon_auth"\."user" \("id"\)/),
+      expect.stringMatching(/^insert into "public"\."ids"/),
+    ]);
+    expect(statements(mocks.target)).toContain("commit");
+  });
+
+  it("finds what a copy left out of re-provisioned Neon Auth, as the copy reports it", async () => {
+    mocks.source.mockImplementation(
+      fakeDatabase({
+        "neon_auth.legacy": ["body"],
+        "neon_auth.user": ["id", "old_flag"],
+        "public.ids": ["id", "amount"],
+      }),
+    );
+    mocks.target.mockImplementation(
+      fakeDatabase({
+        "neon_auth.user": ["id"],
+        "public.ids": ["id", "amount"],
+      }),
+    );
+
+    const copied = await copyBranchData({
+      sourceUri: "source",
+      targetUri: "target",
+      hasNeonAuth: true,
+    });
+
+    expect(copied.skipped).toHaveLength(2);
+    await expect(
+      findNeonAuthDataNotCopied("source", "target"),
+    ).resolves.toEqual(copied.skipped);
+  });
+
+  it("pages by ctid under a name no user column can take", async () => {
+    // A column named like the alias the page query once used.
+    mocks.source.mockImplementation(
+      fakeDatabase({ "public.odd": ["dyad$ctid", "id"] }),
+    );
+    mocks.target.mockImplementation(
+      fakeDatabase({ "public.odd": ["dyad$ctid", "id"] }),
+    );
+
+    await copyBranchData({
+      sourceUri: "source",
+      targetUri: "target",
+      hasNeonAuth: false,
+    });
+
+    const page = statements(mocks.source).find((s) => s.includes("with page"));
+    expect(page).toMatch(/select ctid, "dyad\$ctid", "id" from only/);
+    expect(page).toMatch(/max\(ctid\)/);
+    expect(page).not.toMatch(/ as "dyad\$ctid"/);
+  });
+
+  it("reads whole rows even when a column is named like the row alias", async () => {
+    mocks.source.mockImplementation(
+      fakeDatabase({ "public.odd": ["r", "id"] }),
+    );
+    mocks.target.mockImplementation(
+      fakeDatabase({ "public.odd": ["r", "id"] }),
+    );
+
+    await copyBranchData({
+      sourceUri: "source",
+      targetUri: "target",
+      hasNeonAuth: false,
+    });
+
+    const page = statements(mocks.source).find((s) => s.includes("with page"));
+    expect(page).toMatch(/from \(select "r", "id" from page\) r\)/);
+    // A bare `r` would resolve to the column, not the row.
+    expect(page).toMatch(/to_json\(r\.\*\)/);
+    expect(page).not.toMatch(/to_json\(r\)/);
+  });
+
+  it("refuses to drop app columns even when Neon Auth is re-provisioned", async () => {
+    mocks.source.mockImplementation(
+      fakeDatabase({ "public.ids": ["id", "amount"] }),
+    );
+    mocks.target.mockImplementation(fakeDatabase({ "public.ids": ["id"] }));
+
+    await expect(
+      copyBranchData({
+        sourceUri: "source",
+        targetUri: "target",
+        hasNeonAuth: true,
+      }),
+    ).rejects.toThrow(/"public"\."ids": column "amount" is missing/);
+    expect(statements(mocks.target)).not.toContain("commit");
   });
 });

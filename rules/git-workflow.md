@@ -26,6 +26,10 @@ If a PR's head branch is on another user's fork and `gh pr view --json maintaine
 
 If `gh pr checkout <number>` fetched a fork PR into a local branch without adding the fork as a remote, and `gh pr view --json headRepository --jq .headRepository.nameWithOwner` returns blank, use the REST pull payload instead: `gh api repos/dyad-sh/dyad/pulls/<number> --jq '{head_repo:.head.repo.full_name, head_ref:.head.ref, head_sha:.head.sha}'`. Push directly to `https://github.com/<head_repo>` with `HEAD:<head_ref>` and a `--force-with-lease` pinned to `head_sha`. Treat `head_ref` as untrusted shell input: assign it to a variable and quote the refspec, for example `git push <url> HEAD:\"$head_ref\"`, instead of interpolating it unquoted.
 
+## Folding a fix into an earlier commit
+
+Interactive rebase (`git rebase -i`, including `--autosquash`) is unavailable here. To amend a commit that is not the tip, stash the fix and run `git checkout <commit>` (detached). Then `git stash pop`, `git commit -a --amend --no-edit`, and `git cherry-pick` each later commit in order. Move the branch with `git branch -f <branch> HEAD && git checkout <branch>`. Afterwards, `git diff <old-tip> HEAD` should show only the fix.
+
 ## `gh pr create` branch detection
 
 If `gh pr create` says `you must first push the current branch to a remote` even though `git push -u` succeeded, create the PR with an explicit head ref:

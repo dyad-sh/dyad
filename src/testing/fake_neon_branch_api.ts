@@ -55,6 +55,7 @@ export interface FakeBranch {
   parent_id?: string;
   init_source: "parent-data" | "parent-schema";
   neonAuth: boolean;
+  neonServiceCanCreate: boolean;
   auth: FakeAuthSettings;
   created_at: string;
 }
@@ -80,6 +81,12 @@ export class FakeNeonBranchApi {
   branchLimit = 10;
   /** Reads of a restored root branch that still report the backup as parent. */
   detachAfterPolls = 1;
+  /**
+   * Whether restoring a branch from another one gives it that branch's Neon
+   * Auth state. Not verified against the live API, so the migration must
+   * come out right either way.
+   */
+  restoreCopiesNeonAuth = false;
   /** Override a method to inject failures, e.g. `failures.createProjectBranch`. */
   readonly failures: Partial<Record<string, (...args: any[]) => unknown>> = {};
   private nextId = 1;
@@ -102,6 +109,7 @@ export class FakeNeonBranchApi {
       parent_id: options.schemaOnly ? undefined : parentId,
       init_source: options.schemaOnly ? "parent-schema" : "parent-data",
       neonAuth: options.neonAuth ?? false,
+      neonServiceCanCreate: !options.schemaOnly,
       auth: defaultAuthSettings(),
       created_at: new Date().toISOString(),
     };
@@ -115,6 +123,14 @@ export class FakeNeonBranchApi {
       this.get(id).parent_id = undefined;
     }
     this.pendingDetach.clear();
+  }
+
+  grantNeonAuthCreatePermission(uri: string): void {
+    const branch = [...this.branches.values()].find(
+      (b) => this.connectionUri(b.id) === uri,
+    );
+    if (!branch) throw new Error("Unknown fake Neon connection URI");
+    branch.neonServiceCanCreate = true;
   }
 
   byName(name: string): FakeBranch {
@@ -213,7 +229,13 @@ export class FakeNeonBranchApi {
           const branch = this.addBranch(name, {
             parent: parent.name,
             schemaOnly,
+            neonAuth: !schemaOnly && parent.neonAuth,
           });
+          if (!schemaOnly) {
+            branch.neonServiceCanCreate = parent.neonServiceCanCreate;
+            // Copying the parent's data copies its Auth settings with it.
+            if (parent.neonAuth) branch.auth = structuredClone(parent.auth);
+          }
           return {
             data: {
               branch: publicBranch(branch, this.projectId),
@@ -278,6 +300,7 @@ export class FakeNeonBranchApi {
             backup.parent_id = rootRestore ? undefined : target.parent_id;
             backup.init_source = target.init_source;
             backup.neonAuth = target.neonAuth;
+            backup.neonServiceCanCreate = target.neonServiceCanCreate;
           }
           if (rootRestore) {
             // Root: independent backup, children stay, detached later.
@@ -286,6 +309,9 @@ export class FakeNeonBranchApi {
           } else {
             for (const child of children) child.parent_id = backup!.id;
             target.parent_id = selfRestore ? backup!.id : source.id;
+          }
+          if (this.restoreCopiesNeonAuth && !selfRestore) {
+            target.neonAuth = source.neonAuth;
           }
           return { data: { branch: publicBranch(target, this.projectId) } };
         }),
@@ -302,9 +328,24 @@ export class FakeNeonBranchApi {
           if (branch.neonAuth) {
             throw new FakeNeonApiError(409, "neon_auth schema already exists");
           }
+          if (!branch.neonServiceCanCreate) {
+            throw new FakeNeonApiError(
+              412,
+              "permission denied for database neondb",
+            );
+          }
           branch.neonAuth = true;
           branch.auth = defaultAuthSettings();
           return { data: { base_url: this.authBaseUrl(branchId) } };
+        }),
+      disableNeonAuth: async (
+        projectId: string,
+        branchId: string,
+        options: { delete_data: boolean },
+      ) =>
+        call("disableNeonAuth", [projectId, branchId, options], () => {
+          this.get(branchId).neonAuth = false;
+          return { data: {} };
         }),
       listProjectBranchRoles: async (projectId: string, branchId: string) =>
         call("listProjectBranchRoles", [projectId, branchId], () => ({
@@ -487,6 +528,11 @@ export class FakeNeonBranchApi {
 }
 
 function publicBranch(branch: FakeBranch, projectId: string) {
-  const { neonAuth: _neonAuth, auth: _auth, ...rest } = branch;
+  const {
+    neonAuth: _neonAuth,
+    neonServiceCanCreate: _neonServiceCanCreate,
+    auth: _auth,
+    ...rest
+  } = branch;
   return { ...rest, project_id: projectId };
 }

@@ -20,6 +20,8 @@ export function ClaudeCodeSubscriptionMenu({
   detail,
   catalogMessage,
   onRefresh,
+  nativeTools,
+  onNativeToolsChange,
 }: {
   enabled: boolean;
   onEnabledChange(value: boolean): Promise<unknown>;
@@ -27,9 +29,12 @@ export function ClaudeCodeSubscriptionMenu({
   detail: string;
   catalogMessage?: string;
   onRefresh(): void;
+  nativeTools: boolean;
+  onNativeToolsChange(value: boolean): Promise<unknown>;
 }) {
   const [open, setOpen] = useState(false);
   const enablement = useMutation({ mutationFn: onEnabledChange });
+  const nativeToolsChange = useMutation({ mutationFn: onNativeToolsChange });
   return (
     <DropdownMenuSub open={open} onOpenChange={setOpen}>
       <DropdownMenuSubTrigger
@@ -114,6 +119,24 @@ export function ClaudeCodeSubscriptionMenu({
                 <DropdownMenuSeparator />
                 <ClaudeCodeUsage open={open} />
               </>
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuCheckboxItem
+              variant="switch"
+              closeOnClick={false}
+              checked={nativeTools}
+              disabled={nativeToolsChange.isPending}
+              onCheckedChange={(checked) => nativeToolsChange.mutate(checked)}
+            >
+              Use native Claude Code tools
+            </DropdownMenuCheckboxItem>
+            <p className="px-2 pb-1 text-xs text-muted-foreground">
+              Agent mode only. Includes Bash, which runs on your machine.
+            </p>
+            {nativeToolsChange.error && (
+              <p role="alert" className="px-2 py-1 text-xs text-destructive">
+                {nativeToolsChange.error.message}
+              </p>
             )}
             {catalogMessage && (
               <p className="px-2 py-1 text-xs text-muted-foreground">

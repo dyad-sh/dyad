@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import fsSync from "node:fs";
+import { execFileSync } from "node:child_process";
 import { appOperationCoordinator } from "@/ipc/services/app_operation_coordinator";
 import os from "node:os";
 import path from "node:path";
@@ -231,14 +232,31 @@ describe("copy_file and rename_file protected paths", () => {
     },
   );
 
-  it("copies and renames dotenv to dotenv", async () => {
+  it("copies and renames a dotenv template to a dotenv name", async () => {
     await fs.writeFile(path.join(appPath, ".env.example"), "TOKEN=\n");
+    await fs.writeFile(path.join(appPath, ".env.sample"), "TOKEN=\n");
     await expect(
       copyFileTool.execute({ from: ".env.example", to: ".env.local" }, ctx()),
     ).resolves.toBe("Successfully copied .env.example to .env.local");
     await expect(
-      renameFileTool.execute({ from: ".env.local", to: ".env.dev" }, ctx()),
-    ).resolves.toBe("Successfully renamed .env.local to .env.dev");
+      renameFileTool.execute({ from: ".env.sample", to: ".env.dev" }, ctx()),
+    ).resolves.toBe("Successfully renamed .env.sample to .env.dev");
+  });
+
+  it.each([
+    [".env.local", ".env.example"],
+    [".env.local", "config/.env.production"],
+    [".env", ".env.local"],
+  ])("rejects non-template dotenv %s -> %s", async (from, to) => {
+    await fs.writeFile(path.join(appPath, from), "TOKEN=secret\n");
+    for (const tool of [copyFileTool, renameFileTool]) {
+      await expect(tool.execute({ from, to }, ctx())).rejects.toThrow(
+        /only be created from a template/,
+      );
+    }
+    expect(await exists(from)).toBe(true);
+    expect(await exists(to)).toBe(false);
+    expect(gitAdd).not.toHaveBeenCalled();
   });
 
   it.each([".env.", ".env ", ".env::$DATA"])(
@@ -254,13 +272,39 @@ describe("copy_file and rename_file protected paths", () => {
   );
 
   it.runIf(process.platform === "win32")(
-    "copy_file rejects an 8.3 short name of .env",
-    async () => {
-      // 8.3 names may be disabled on the volume, so a missing file also passes.
-      await expect(
-        copyFileTool.execute({ from: "ENV~1", to: "leaked.txt" }, ctx()),
-      ).rejects.toThrow(/protected|does not exist/i);
-      expect(await exists("leaked.txt")).toBe(false);
+    "copy_file and rename_file reject 8.3 short names of .env and .git",
+    async ({ skip }) => {
+      // Read the real short names; the volume may have 8.3 names disabled.
+      const listing = execFileSync("cmd", ["/c", "dir", "/x", "/a"], {
+        cwd: appPath,
+        encoding: "utf8",
+      });
+      const shortName = (longName: string) =>
+        listing
+          .split(/\r?\n/)
+          .map((line) => line.trim().split(/\s+/))
+          .find((cols) => cols.at(-1) === longName && cols.length >= 2)
+          ?.at(-2)
+          ?.match(/^\S*~\S*$/)?.[0];
+      const envShort = shortName(".env");
+      const gitShort = shortName(".git");
+      if (!envShort || !gitShort) {
+        skip("8.3 short names are disabled on this volume");
+      }
+      for (const [from, to] of [
+        [envShort!, "leaked1.txt"],
+        [`${gitShort}/config`, "leaked2.txt"],
+        ["notes.txt", `${gitShort}/hooks/pre-commit`],
+      ]) {
+        for (const tool of [copyFileTool, renameFileTool]) {
+          await expect(tool.execute({ from, to }, ctx())).rejects.toThrow(
+            /protected/i,
+          );
+        }
+      }
+      expect(await exists("leaked1.txt")).toBe(false);
+      expect(await exists("leaked2.txt")).toBe(false);
+      expect(await exists(".env")).toBe(true);
     },
   );
 

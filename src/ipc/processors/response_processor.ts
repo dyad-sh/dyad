@@ -469,8 +469,8 @@ export async function processFullResponseActions(
       }
     }
 
-    // Reject renames that would move protected content (dotenv, Git
-    // metadata) to an unprotected name, as written and after canonicalizing.
+    // Process all file renames. Check each tag right before it runs, since an
+    // earlier rename can change what a later path resolves to.
     const renameTags: typeof dyadRenameTags = [];
     for (const tag of dyadRenameTags) {
       try {
@@ -478,17 +478,14 @@ export async function processFullResponseActions(
           await resolveProtectedMoveSide(appPath, tag.from),
           await resolveProtectedMoveSide(appPath, tag.to),
         );
-        renameTags.push(tag);
       } catch (error) {
         errors.push({
           message: `Failed to rename ${tag.from} to ${tag.to}`,
           error: error,
         });
+        continue;
       }
-    }
-
-    // Process all file renames
-    for (const tag of renameTags) {
+      renameTags.push(tag);
       const fromPath = safeJoin(appPath, tag.from);
       const toPath = safeJoin(appPath, tag.to);
 

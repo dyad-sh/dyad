@@ -20,27 +20,46 @@ interface ProtectedMoveSide {
   checkedPaths: string[];
 }
 
+const DOTENV_TEMPLATE_NAME = /^\.env\.(example|sample|template)$/i;
+
+function isDotenvTemplatePath(filePath: string): boolean {
+  return DOTENV_TEMPLATE_NAME.test(
+    stripWindowsNameAlias(path.basename(filePath.replace(/\\/g, "/"))),
+  );
+}
+
 /**
  * Reject copy/rename moves that would expose what read_file protects. Git
- * metadata is blocked both ways. Dotenv content may only move between dotenv
- * names, so `.env.example -> .env` works but `.env -> leaked.txt` does not.
+ * metadata is blocked both ways. A dotenv name may only be created from a
+ * template, so `.env.example -> .env` works but `.env.local -> .env.example`
+ * (gitignored secrets into a tracked name) and `.env -> leaked.txt` do not.
  */
 export function assertProtectedMoveAllowed(
   from: ProtectedMoveSide,
   to: ProtectedMoveSide,
 ): void {
   const sides = [from, to];
-  const blocked =
-    sides.find((side) => side.checkedPaths.some(hasGitSegment)) ??
-    (sides.every((side) => side.checkedPaths.every(isDotenvFilePath))
-      ? undefined
-      : sides.find((side) => side.checkedPaths.some(isDotenvFilePath)));
-  if (blocked) {
+  const gitSide = sides.find((side) => side.checkedPaths.some(hasGitSegment));
+  if (gitSide) {
     throw new DyadError(
-      `Cannot copy or rename protected path: ${blocked.displayPath}`,
+      `Cannot copy or rename protected path: ${gitSide.displayPath} (Git metadata cannot be copied or renamed)`,
       DyadErrorKind.Validation,
     );
   }
+  const dotenvSide = sides.find((side) =>
+    side.checkedPaths.some(isDotenvFilePath),
+  );
+  if (!dotenvSide) return;
+  const bothDotenv = sides.every((side) =>
+    side.checkedPaths.every(isDotenvFilePath),
+  );
+  if (bothDotenv && from.checkedPaths.every(isDotenvTemplatePath)) return;
+  throw new DyadError(
+    bothDotenv
+      ? `Cannot copy or rename protected path: ${from.displayPath} (dotenv files can only be created from a template like .env.example)`
+      : `Cannot copy or rename protected path: ${dotenvSide.displayPath} (dotenv content cannot move to or from a non-dotenv name)`,
+    DyadErrorKind.Validation,
+  );
 }
 
 /**

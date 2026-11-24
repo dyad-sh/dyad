@@ -31,9 +31,25 @@ describe("assertProtectedMoveAllowed", () => {
       { displayPath: to[0], checkedPaths: to },
     );
 
-  it("allows dotenv to dotenv and ordinary moves", () => {
+  it("allows dotenv templates to dotenv names and ordinary moves", () => {
     expect(move([".env.example"], [".env"])).not.toThrow();
+    expect(move([".env.sample"], ["config/.env.local"])).not.toThrow();
+    expect(move([".env.template."], [".env"])).not.toThrow();
     expect(move(["a.txt"], ["b.txt"])).not.toThrow();
+  });
+
+  it.each([
+    [".env.local", ".env.example"],
+    [".env.local", "config/.env.production"],
+    [".env", ".env.local"],
+  ])("blocks non-template dotenv %s -> %s", (from, to) => {
+    expect(move([from], [to])).toThrow(/only be created from a template/);
+  });
+
+  it("requires every checked source form to be a template", () => {
+    expect(move([".env.example", ".env.local"], [".env"])).toThrow(
+      /only be created from a template/,
+    );
   });
 
   it("blocks dotenv crossing to or from an ordinary name, and any Git path", () => {

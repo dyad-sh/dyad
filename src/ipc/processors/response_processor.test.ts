@@ -413,6 +413,61 @@ describe("processFullResponseActions add dependency errors", () => {
     vi.mocked(fs.existsSync).mockReturnValue(false);
   });
 
+  it("rechecks each rename after earlier renames in the same response", async () => {
+    // lnk -> .git; once lnk is renamed to d, d resolves into .git.
+    const app = "/mock/apps/test-app";
+    const links = new Map([[`${app}/lnk`, `${app}/.git`]]);
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.renameSync).mockImplementation((from, to) => {
+      const target = links.get(String(from));
+      if (target) links.set(String(to), target);
+    });
+    vi.mocked(fs.promises.realpath).mockImplementation(async (p) => {
+      const value = String(p);
+      for (const [link, target] of links) {
+        if (value === link || value.startsWith(`${link}/`)) {
+          return target + value.slice(link.length);
+        }
+      }
+      return value;
+    });
+
+    await processFullResponseActions(
+      `<dyad-rename from="lnk" to="d"></dyad-rename><dyad-rename from="d/config" to="leaked.txt"></dyad-rename>`,
+      1,
+      { chatSummary: undefined, messageId: 1 },
+    );
+
+    expect(fs.renameSync).toHaveBeenCalledTimes(1);
+    expect(gitAdd).not.toHaveBeenCalledWith(
+      expect.objectContaining({ filepath: "leaked.txt" }),
+    );
+    const contentUpdate = dbUpdates.find((update) => "content" in update);
+    expect(String(contentUpdate?.content)).toMatch(/Git metadata/);
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+  });
+
+  it.each([
+    [".env.local", ".env.example"],
+    [".env.local", "config/.env.production"],
+    [".env", ".env.local"],
+  ])("refuses non-template dotenv rename %s -> %s", async (from, to) => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+
+    await processFullResponseActions(
+      `<dyad-rename from="${from}" to="${to}"></dyad-rename>`,
+      1,
+      { chatSummary: undefined, messageId: 1 },
+    );
+
+    expect(fs.renameSync).not.toHaveBeenCalled();
+    const contentUpdate = dbUpdates.find((update) => "content" in update);
+    expect(String(contentUpdate?.content)).toMatch(
+      /only be created from a template/,
+    );
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+  });
+
   it("renames dotenv to dotenv", async () => {
     vi.mocked(fs.existsSync).mockReturnValue(true);
 

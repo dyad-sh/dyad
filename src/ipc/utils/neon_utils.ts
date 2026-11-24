@@ -236,26 +236,31 @@ export async function autoInjectNeonEnvVars({
   projectId,
   branchId,
   branchType,
+  enableNeonAuth = true,
 }: {
   appId: number;
   appPath: string;
   projectId: string;
   branchId: string;
   branchType: NeonBranchType;
+  /** A database-only migration should clear stale Auth variables without provisioning. */
+  enableNeonAuth?: boolean;
 }): Promise<string | undefined> {
   const connectionUri = await getConnectionUri({ projectId, branchId });
   // Attempt to ensure Neon Auth is active; capture any error as a warning
   let neonAuthBaseUrl: string | undefined;
   let warning: string | undefined;
-  try {
-    neonAuthBaseUrl = await ensureNeonAuth({ projectId, branchId });
-    if (!neonAuthBaseUrl) {
-      warning =
-        "Neon Auth could not be fully activated for the active branch. DATABASE_URL was updated, but NEON_AUTH_BASE_URL was not added to .env.local.";
+  if (enableNeonAuth) {
+    try {
+      neonAuthBaseUrl = await ensureNeonAuth({ projectId, branchId });
+      if (!neonAuthBaseUrl) {
+        warning =
+          "Neon Auth could not be fully activated for the active branch. DATABASE_URL was updated, but NEON_AUTH_BASE_URL was not added to .env.local.";
+      }
+    } catch (error: any) {
+      const message = error instanceof Error ? error.message : String(error);
+      warning = `Failed to activate Neon Auth: ${message}`;
     }
-  } catch (error: any) {
-    const message = error instanceof Error ? error.message : String(error);
-    warning = `Failed to activate Neon Auth: ${message}`;
   }
 
   // Resolve per-branch cookie secret from DB (or generate / adopt once).
@@ -290,7 +295,7 @@ export async function autoInjectNeonEnvVars({
     neonAuthBaseUrl,
     frameworkType: detectFrameworkType(getDyadAppPath(appPath)),
     cookieSecret,
-    preserveExistingAuth: !neonAuthBaseUrl,
+    preserveExistingAuth: !!warning,
   });
 
   if (neonAuthBaseUrl) {

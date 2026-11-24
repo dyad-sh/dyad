@@ -177,10 +177,52 @@ export async function prepareSchemaOnlyBranchForNeonAuth(
       if exists (select 1 from pg_roles where rolname = 'neon_auth') then
         execute 'drop role neon_auth';
       end if;
+    end $$`);
+  await grantNeonAuthCreatePermission(connectionUri);
+}
+
+/**
+ * Allows later provisioning without changing existing schemas, roles or data.
+ * Not enough on its own when the branch already has a `neon_auth` schema or
+ * role; see `findLeftoverNeonAuthObjects`.
+ */
+export async function grantNeonAuthCreatePermission(connectionUri: string) {
+  if (IS_TEST_BUILD) return;
+  await httpQueryable(connectionUri).query(`
+    do $$
+    begin
       if exists (select 1 from pg_roles where rolname = 'neon_service') then
         execute format('grant create on database %I to neon_service', current_database());
       end if;
     end $$`);
+}
+
+export interface NeonAuthLeftovers {
+  schema: boolean;
+  role: boolean;
+}
+
+/**
+ * The `neon_auth` schema and role on a branch, which block provisioning Neon
+ * Auth on it (409 and 412; see `prepareSchemaOnlyBranchForNeonAuth`) unless
+ * Auth is already active there.
+ */
+export async function findLeftoverNeonAuthObjects(
+  connectionUri: string,
+): Promise<NeonAuthLeftovers> {
+  if (IS_TEST_BUILD) return { schema: false, role: false };
+  const [existing] = await httpQueryable(connectionUri).query(`
+    select to_regnamespace('neon_auth') is not null as schema,
+           to_regrole('neon_auth') is not null as role`);
+  return { schema: !!existing.schema, role: !!existing.role };
+}
+
+/** "schema", "role" or "schema and role", for messages. */
+export function describeNeonAuthLeftovers({
+  schema,
+  role,
+}: NeonAuthLeftovers): string {
+  return [schema && "schema", role && "role"].filter(Boolean).join(" and ");
 }
 
 export interface CopyTable {
@@ -190,7 +232,10 @@ export interface CopyTable {
   canAlter: boolean;
 }
 
-async function listCopyTables(db: Queryable): Promise<CopyTable[]> {
+async function listCopyTables(
+  db: Queryable,
+  hasNeonAuth: boolean,
+): Promise<CopyTable[]> {
   // Tables that hold rows, partitions included: a partitioned parent holds
   // none, and paging through it by ctid would skip rows, because ctids repeat
   // across partitions. Extension-owned tables belong to the extension on each
@@ -207,7 +252,12 @@ async function listCopyTables(db: Queryable): Promise<CopyTable[]> {
       )
     order by 1, 2`);
   return (rows as CopyTable[]).filter(
-    (t) => !(t.schema === "neon_auth" && NEON_AUTH_SERVICE_TABLES.has(t.name)),
+    (t) =>
+      !(
+        hasNeonAuth &&
+        t.schema === "neon_auth" &&
+        NEON_AUTH_SERVICE_TABLES.has(t.name)
+      ),
   );
 }
 
@@ -215,14 +265,24 @@ async function listInsertableColumns(
   db: Queryable,
   table: CopyTable,
 ): Promise<{ name: string; identityAlways: boolean }[]> {
+  const name = qualifiedName(table.schema, table.name);
   const rows = await db.query(
     `select a.attname as name, a.attidentity = 'a' as "identityAlways"
      from pg_attribute a
      where a.attrelid = $1::regclass and a.attnum > 0 and not a.attisdropped
        and a.attgenerated = ''
      order by a.attnum`,
-    [qualifiedName(table.schema, table.name)],
+    [name],
   );
+  if (
+    !rows.length &&
+    (await db.query(`select 1 from only ${name} limit 1`)).length
+  ) {
+    throw new DyadError(
+      `Cannot copy ${name}: it contains rows but has no writable columns.`,
+      DyadErrorKind.Precondition,
+    );
+  }
   return rows as { name: string; identityAlways: boolean }[];
 }
 
@@ -436,6 +496,44 @@ end`;
 }
 
 /**
+ * The `neon_auth` tables and columns of `sourceUri` that the re-provisioned
+ * Neon Auth of `targetUri` lacks: what `copyBranchData` reports as `skipped`
+ * when copying between them. For finishing an interrupted migration, whose
+ * copy is done but whose report was lost.
+ */
+export async function findNeonAuthDataNotCopied(
+  sourceUri: string,
+  targetUri: string,
+): Promise<string[]> {
+  if (IS_TEST_BUILD) return [];
+  const source = httpQueryable(sourceUri);
+  const target = httpQueryable(targetUri);
+  const targetTables = new Set(
+    (await listCopyTables(target, true)).map((t) =>
+      qualifiedName(t.schema, t.name),
+    ),
+  );
+  const skipped: string[] = [];
+  for (const table of await listCopyTables(source, true)) {
+    if (table.schema !== "neon_auth") continue;
+    const tableName = qualifiedName(table.schema, table.name);
+    if (!targetTables.has(tableName)) {
+      skipped.push(tableName);
+      continue;
+    }
+    const targetColumns = new Set(
+      (await listInsertableColumns(target, table)).map((c) => c.name),
+    );
+    for (const column of await listInsertableColumns(source, table)) {
+      if (!targetColumns.has(column.name)) {
+        skipped.push(`${tableName}.${quoteIdentifier(column.name)}`);
+      }
+    }
+  }
+  return skipped;
+}
+
+/**
  * What a migration's copy would lose, as user-facing descriptions; empty when
  * it is safe. When Neon Auth is re-provisioned, user triggers and dependent
  * views and policies would be dropped with the copied `neon_auth` schema (only
@@ -511,6 +609,38 @@ async function poolQueryable(connectionUri: string) {
 }
 
 /**
+ * The next `COPY_BATCH_SIZE` rows of `tableName` after `afterCtid`, keyset
+ * paginated on ctid (stable within a snapshot). The rows stay JSON text that
+ * `json_populate_recordset` reads back: Postgres writes bigint and numeric
+ * values as exact literals, and parsing them in JS would round them.
+ *
+ * The page keeps the column under its own name, `ctid`: Postgres rejects user
+ * columns named after system columns, so it cannot collide with one, as any
+ * alias could. For the same reason the row is `r.*`: Postgres would resolve a
+ * bare `r` to a column named `r` before the row.
+ */
+async function readRowsPage(
+  db: Queryable,
+  tableName: string,
+  columnList: string,
+  afterCtid: string,
+): Promise<{ json: string; count: number; last: string | null }> {
+  const [page] = await db.query(
+    `with page as materialized (
+       select ctid, ${columnList} from only ${tableName}
+       where ctid > $1::tid order by ctid limit ${COPY_BATCH_SIZE}
+     )
+     select
+       (select coalesce(json_agg(to_json(r.*)), '[]'::json)::text
+        from (select ${columnList} from page) r) as json,
+       (select count(*)::int from page) as count,
+       (select max(ctid)::text from page) as last`,
+    [afterCtid],
+  );
+  return page as { json: string; count: number; last: string | null };
+}
+
+/**
  * Inspect the destination at execution time, including for a SQL backup.
  * Source ownership and trigger states say nothing about the role or tables
  * used to restore it. Keep triggers off across all deletes and inserts, and
@@ -578,6 +708,14 @@ export interface CopyBranchDataResult {
   rows: number;
 }
 
+export interface CopyBranchDataOutcome extends CopyBranchDataResult {
+  /**
+   * `neon_auth` tables and columns that re-provisioned Neon Auth no longer
+   * has, so their data is only in the backup.
+   */
+  skipped: string[];
+}
+
 /**
  * Copies every user table's rows from `sourceUri` into the matching tables of
  * `targetUri`, which must already have the same schema (a schema-only branch).
@@ -595,16 +733,23 @@ export interface CopyBranchDataResult {
  * `prepareSchemaOnlyBranchForNeonAuth` dropped them along with the copied
  * `neon_auth` schema; they are restored once the data is in place. If the
  * role can't restore one, the copy throws `UncopyableDataError` instead.
+ *
+ * Every source table and column must exist on the target, except in
+ * `neon_auth` when `hasNeonAuth`: re-provisioning gives it the schema of Neon
+ * Auth's current version, which nothing can change, so what an older version
+ * had is skipped and reported.
  */
 export async function copyBranchData({
   sourceUri,
   targetUri,
+  hasNeonAuth,
   extraForeignKeys = [],
 }: {
   sourceUri: string;
   targetUri: string;
+  hasNeonAuth: boolean;
   extraForeignKeys?: ForeignKeyDefinition[];
-}): Promise<CopyBranchDataResult> {
+}): Promise<CopyBranchDataOutcome> {
   const sourceConnection = await poolQueryable(sourceUri);
   const targetConnection = await poolQueryable(targetUri);
   const source = sourceConnection.db;
@@ -612,6 +757,7 @@ export async function copyBranchData({
   let copiedRows = 0;
   let copiedTables = 0;
   const copiedTableNames: string[] = [];
+  const skipped: string[] = [];
   try {
     await source.query("begin isolation level repeatable read read only");
     await source.query(NO_ROW_SECURITY);
@@ -620,7 +766,7 @@ export async function copyBranchData({
 
     // Ownership is the target's: that is where the rows are written.
     const targetTables = new Map(
-      (await listCopyTables(target)).map((t) => [
+      (await listCopyTables(target, hasNeonAuth)).map((t) => [
         tableKey(t.schema, t.name),
         t,
       ]),
@@ -630,21 +776,39 @@ export async function copyBranchData({
       string,
       { columnList: string; overriding: string }
     >();
-    for (const table of await listCopyTables(source)) {
-      const key = tableKey(table.schema, table.name);
-      const onTarget = targetTables.get(key);
+    for (const table of await listCopyTables(source, hasNeonAuth)) {
+      const tableName = tableKey(table.schema, table.name);
+      const reprovisioned = hasNeonAuth && table.schema === "neon_auth";
+      const onTarget = targetTables.get(tableName);
       if (!onTarget) {
-        logger.warn(`Skipping ${key}: missing on the target branch`);
-        continue;
+        if (reprovisioned) {
+          skipped.push(tableName);
+          continue;
+        }
+        throw new DyadError(
+          `Cannot copy ${tableName}: the table is missing on the new development branch.`,
+          DyadErrorKind.Precondition,
+        );
       }
       const targetColumns = new Map(
         (await listInsertableColumns(target, onTarget)).map((c) => [c.name, c]),
       );
-      const columns = (await listInsertableColumns(source, table)).filter((c) =>
-        targetColumns.has(c.name),
+      const sourceColumns = await listInsertableColumns(source, table);
+      const missingColumns = sourceColumns.filter(
+        (c) => !targetColumns.has(c.name),
       );
+      if (missingColumns.length > 0 && !reprovisioned) {
+        throw new DyadError(
+          `Cannot copy ${tableName}: column ${quoteIdentifier(missingColumns[0].name)} is missing or generated on the new development branch.`,
+          DyadErrorKind.Precondition,
+        );
+      }
+      skipped.push(
+        ...missingColumns.map((c) => `${tableName}.${quoteIdentifier(c.name)}`),
+      );
+      const columns = sourceColumns.filter((c) => targetColumns.has(c.name));
       if (columns.length === 0) continue;
-      insertShape.set(key, {
+      insertShape.set(tableName, {
         columnList: columns.map((c) => quoteIdentifier(c.name)).join(", "),
         overriding: columns.some(
           (c) => targetColumns.get(c.name)?.identityAlways,
@@ -721,30 +885,23 @@ export async function copyBranchData({
       const { columnList, overriding } = insertShape.get(
         tableKey(table.schema, table.name),
       )!;
-      // Keyset pagination on ctid, stable within the source snapshot.
       let lastCtid = "(0,0)";
       for (;;) {
-        const [{ rows, last }] = await source.query(
-          `select coalesce(json_agg(to_json(x)), '[]'::json) as rows,
-             max(x_ctid)::text as last
-           from (
-             select ${columnList}, ctid as x_ctid from only ${tableName}
-             where ctid > $1::tid order by ctid limit ${COPY_BATCH_SIZE}
-           ) x`,
-          [lastCtid],
+        const page = await readRowsPage(
+          source,
+          tableName,
+          columnList,
+          lastCtid,
         );
-        const batch = (rows as Record<string, unknown>[]).map(
-          ({ x_ctid: _ctid, ...row }) => row,
-        );
-        if (batch.length === 0) break;
+        if (page.count === 0 || page.last === null) break;
         await target.query(
           `insert into ${tableName} (${columnList}) ${overriding}
            select ${columnList} from json_populate_recordset(null::${tableName}, $1::json)`,
-          [JSON.stringify(batch)],
+          [page.json],
         );
-        copiedRows += batch.length;
-        lastCtid = last;
-        if (batch.length < COPY_BATCH_SIZE) break;
+        copiedRows += page.count;
+        lastCtid = page.last;
+        if (page.count < COPY_BATCH_SIZE) break;
       }
       copiedTables += 1;
     };
@@ -820,7 +977,7 @@ export async function copyBranchData({
     await targetConnection.close();
   }
 
-  return { tables: copiedTables, rows: copiedRows };
+  return { tables: copiedTables, rows: copiedRows, skipped };
 }
 
 /** A dollar-quote tag that does not occur in `text`. */
@@ -845,8 +1002,10 @@ export async function exportBranchDataAsSql({
   sourceUri,
   filePath,
   title,
+  hasNeonAuth,
 }: {
   sourceUri: string;
+  hasNeonAuth: boolean;
   filePath: string;
   /** First line of the file's header comment. */
   title: string;
@@ -881,7 +1040,7 @@ export async function exportBranchDataAsSql({
       string,
       { columnList: string; overriding: string }
     >();
-    for (const table of await listCopyTables(source)) {
+    for (const table of await listCopyTables(source, hasNeonAuth)) {
       const columns = await listInsertableColumns(source, table);
       if (columns.length === 0) continue;
       insertShape.set(tableKey(table.schema, table.name), {
@@ -917,27 +1076,20 @@ export async function exportBranchDataAsSql({
       )!;
       let lastCtid = "(0,0)";
       for (;;) {
-        const [{ rows, last }] = await source.query(
-          `select coalesce(json_agg(to_json(x)), '[]'::json) as rows,
-             max(x_ctid)::text as last
-           from (
-             select ${columnList}, ctid as x_ctid from only ${tableName}
-             where ctid > $1::tid order by ctid limit ${COPY_BATCH_SIZE}
-           ) x`,
-          [lastCtid],
+        const page = await readRowsPage(
+          source,
+          tableName,
+          columnList,
+          lastCtid,
         );
-        const batch = (rows as Record<string, unknown>[]).map(
-          ({ x_ctid: _ctid, ...row }) => row,
-        );
-        if (batch.length === 0) break;
-        const json = JSON.stringify(batch);
-        const tag = dollarQuoteTag(json);
+        if (page.count === 0 || page.last === null) break;
+        const tag = dollarQuoteTag(page.json);
         await write(
-          `insert into ${tableName} (${columnList}) ${overriding}select ${columnList} from json_populate_recordset(null::${tableName}, ${tag}${json}${tag});`,
+          `insert into ${tableName} (${columnList}) ${overriding}select ${columnList} from json_populate_recordset(null::${tableName}, ${tag}${page.json}${tag});`,
         );
-        rowCount += batch.length;
-        lastCtid = last;
-        if (batch.length < COPY_BATCH_SIZE) break;
+        rowCount += page.count;
+        lastCtid = page.last;
+        if (page.count < COPY_BATCH_SIZE) break;
       }
       tableCount += 1;
     };

@@ -172,6 +172,16 @@ and deleted the temporary Neon branch ~200ms after creating it. Mark such stops
 (`stopAppByInfo(appId, appInfo, { recordingOwnedRestart: true })`) rather than
 assuming map-entry ordering distinguishes them.
 
+## Migrating Neon branches with Auth disabled
+
+A 404 from `getNeonAuth` can coexist with populated `neon_auth` tables. Preserve those tables during migration, including `jwks` and `project_config`. Grant `neon_service` database `CREATE` on the replacement branch so Auth can be enabled later. The grant is enough only when the branch has no `neon_auth` schema or role. Otherwise provisioning still fails with 409 or 412 until they are removed, so the migration warns the user instead of claiming Auth can be enabled.
+
+Do not parse row data as JSON in JS when copying between branches. The driver turns `json` values into JS numbers, which rounds `bigint` and `numeric` values, and row-count verification cannot catch it. Cast the aggregate to `text` and pass it straight to `json_populate_recordset`. When paging rows, name the CTE column `ctid` rather than aliasing it: Postgres rejects user columns named after system columns, so any alias such as `"dyad$ctid"` could collide with a user column and `ctid` cannot. The row alias has the same trap: Postgres resolves the bare `r` in `to_json(r)` to a column named `r` before the row, silently copying that column's value as the whole row. Write whole-row references as `r.*`.
+
+State the migration reads from a branch it later restores must survive a failed or crashed attempt. The retry and `repairInterruptedMigration` re-read it after the restore, and the longest crash window (backup and copy) comes before the `*-replaced-<stamp>` rename that repair keys on. It is unverified whether a restore carries the source's Neon Auth state, so the preview is reused as the copy source only when its Auth matches development's. `FakeNeonBranchApi.restoreCopiesNeonAuth` models the pessimistic case. Version previews restore the preview from development with the same call (`restoreBranchForPreview` in `version_handlers.ts`).
+
+A roll-forward repair loses everything the crashed attempt held in memory, including copy warnings and `notCopied`. Rebuild warnings from the branches, since the old development branch keeps the schema it copied. Repair returns no `backupPath`, so its messages must say where the interrupted attempt's backup is rather than "the backup".
+
 ## Clearing data on temporary Neon test branches
 
 Batch runs may share the outer provider/runtime claims and temporary branch,

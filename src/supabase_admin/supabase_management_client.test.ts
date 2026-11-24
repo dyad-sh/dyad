@@ -12,7 +12,7 @@ import {
 } from "./supabase_management_client";
 import { hasSupabaseCredentialsForOrganization } from "../lib/schemas";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
-import { readSettings } from "@/main/settings";
+import { readSettings, writeSettings } from "@/main/settings";
 import { SUPABASE_PROJECT_CREATED_BUT_UNLINKED } from "@/ipc/types/supabase";
 import { SupabaseTokenRefreshError } from "./supabase_errors";
 
@@ -308,6 +308,94 @@ describe("refreshSupabaseToken", () => {
       undefined,
     ]);
   });
+});
+
+describe("Supabase refresh ownership", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it.each(
+    [null, "org-1"].flatMap((organizationSlug) =>
+      ["reconnect", "disconnect", "renew-session"].flatMap((replacement) =>
+        [200, 404].map((status) => ({ organizationSlug, replacement, status })),
+      ),
+    ),
+  )(
+    "ignores an old HTTP $status refresh after $replacement ($organizationSlug)",
+    async ({ organizationSlug, replacement, status }) => {
+      const oldCredentials = {
+        accessToken: { value: "old-access" },
+        refreshToken: { value: "old-refresh" },
+        expiresIn: 1,
+        tokenTimestamp: 1,
+      };
+      const updatedCredentials =
+        replacement === "disconnect"
+          ? undefined
+          : {
+              accessToken: {
+                value:
+                  replacement === "reconnect" ? "new-access" : "old-access",
+              },
+              refreshToken: {
+                value:
+                  replacement === "reconnect" ? "new-refresh" : "old-refresh",
+              },
+              expiresIn: 3600,
+              tokenTimestamp: Math.floor(Date.now() / 1000),
+            };
+      const settingsWith = (credentials: typeof oldCredentials | undefined) =>
+        ({
+          supabase: organizationSlug
+            ? {
+                organizations: credentials
+                  ? { [organizationSlug]: credentials }
+                  : {},
+              }
+            : credentials,
+        }) as ReturnType<typeof readSettings>;
+      vi.mocked(readSettings).mockReturnValue(settingsWith(oldCredentials));
+      vi.mocked(writeSettings).mockClear();
+      let release!: (response: Response) => void;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(
+          () =>
+            new Promise<Response>((resolve) => {
+              release = resolve;
+            }),
+        ),
+      );
+
+      const pending = getSupabaseClient({ organizationSlug }).then(
+        (client) => ({ client, error: undefined }),
+        (error: unknown) => ({ client: undefined, error }),
+      );
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+      vi.mocked(readSettings).mockReturnValue(settingsWith(updatedCredentials));
+      release(
+        new Response(
+          JSON.stringify({
+            accessToken: "stale-access",
+            refreshToken: "stale-refresh",
+            expiresIn: 3600,
+          }),
+          { status },
+        ),
+      );
+      const result = await pending;
+
+      expect(writeSettings).not.toHaveBeenCalled();
+      if (replacement === "disconnect") {
+        expect(result.error).toBeInstanceOf(DyadError);
+        expect((result.error as DyadError).kind).toBe(DyadErrorKind.Auth);
+      } else {
+        expect(result.error).toBeUndefined();
+        expect((result.client as any).options.accessToken).toBe(
+          updatedCredentials!.accessToken.value,
+        );
+      }
+    },
+  );
 });
 
 describe("getProjectApiKeys", () => {

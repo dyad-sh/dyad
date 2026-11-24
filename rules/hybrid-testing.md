@@ -162,6 +162,12 @@ in this suite: a refusal once placed inside `findMigrationBlockers` (mocked to
 `findLeftoverNeonAuthObjects`, and decide in `neon_dev_branch.ts`, so a test can
 drive the decision with `mockResolvedValueOnce`.
 
+In `src/ipc/utils/neon_branch_data.test.ts`, a mocked paging query must return
+`{ json, count, last }` (the `rowsPage()` helper), the shape `readRowsPage`
+reads. A mock left on the older `{ rows, last }` shape hangs the test rather
+than failing it: `page.count` is `undefined`, so no loop exit fires. When a
+copy test times out, check its `json_agg` mock first.
+
 The shared Electron mock's `utilityProcess.fork()` is intentionally inert and
 never emits `spawn`, `message`, or `exit`. If a hybrid flow reaches a packaged
 utility-process boundary, mock that processor in `hybrid.setup.ts` with a

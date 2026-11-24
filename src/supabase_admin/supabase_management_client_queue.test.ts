@@ -5,6 +5,11 @@ import {
   resetSupabaseDeployQueuesForTests,
 } from "@/supabase_admin/supabase_deploy_queue";
 
+vi.mock(
+  "@/supabase_admin/supabase_self_hosted_store",
+  () => import("@/testing/supabase_self_hosted_store_cloud_only"),
+);
+
 vi.mock("@/main/settings", () => ({
   readSettings: vi.fn(() => ({
     supabase: {

@@ -1,4 +1,5 @@
 import { db } from "../../db";
+import { supportsSupabaseFunctionDeploys } from "@/supabase_admin/supabase_function_sync_skip";
 import {
   apps,
   chats,
@@ -915,7 +916,10 @@ async function revertCodebaseToVersion({
       );
     }
   }
-  if (app.supabaseProjectId) {
+  if (
+    app.supabaseProjectId &&
+    supportsSupabaseFunctionDeploys(app.supabaseProjectId)
+  ) {
     onSupabaseRedeployNeeded?.({
       appPath,
       supabaseProjectId: app.supabaseProjectId,

@@ -63,6 +63,7 @@ export const SETTING_IDS = {
   enableAdvancedSubagents: "setting-enable-advanced-subagents",
   autoFixReviewIssues: "setting-auto-fix-review-issues",
   enableOwnServerDeployment: "setting-enable-own-server-deployment",
+  enableSupabaseSelfHosted: "setting-enable-supabase-self-hosted",
   enableGitlabPublishing: "setting-enable-gitlab-publishing",
   enableTestRunInPreview: "setting-enable-test-run-in-preview",
   reset: "setting-reset",
@@ -782,6 +783,24 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
       "coolify",
       "vps",
       "publish",
+      "experiment",
+    ],
+    sectionId: SECTION_IDS.experiments,
+    sectionLabel: "Experiments",
+  },
+
+  {
+    id: SETTING_IDS.enableSupabaseSelfHosted,
+    label: "Allow self-hosted Supabase",
+    description:
+      "Connect apps to a Supabase instance you run yourself, such as one deployed with Docker Compose or Coolify",
+    keywords: [
+      "supabase",
+      "self-hosted",
+      "self hosted",
+      "database",
+      "coolify",
+      "docker",
       "experiment",
     ],
     sectionId: SECTION_IDS.experiments,

@@ -33,6 +33,7 @@ export function getSharedSettingsDiagnostics(settings: UserSettings) {
     enableSuggestedPrompts: settings.enableSuggestedPrompts ?? null,
     enableMultiWindow: settings.enableMultiWindow ?? null,
     enableOwnServerDeployment: settings.enableOwnServerDeployment ?? null,
+    enableSupabaseSelfHosted: settings.enableSupabaseSelfHosted ?? null,
     enableGitlabPublishing: settings.enableGitlabPublishing ?? null,
     enableTestRunInPreview: settings.enableTestRunInPreview ?? null,
     disableSandboxedE2eTests: settings.disableSandboxedE2eTests ?? null,

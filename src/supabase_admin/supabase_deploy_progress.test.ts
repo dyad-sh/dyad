@@ -16,6 +16,11 @@ import {
 } from "@/supabase_admin/supabase_management_client";
 import { runSupabaseDependencyAnalysis } from "@/ipc/processors/supabase_dependency_analysis";
 
+vi.mock(
+  "@/supabase_admin/supabase_self_hosted_store",
+  () => import("@/testing/supabase_self_hosted_store_cloud_only"),
+);
+
 vi.mock("@/supabase_admin/supabase_management_client", async () => {
   const actual = await vi.importActual<
     typeof import("@/supabase_admin/supabase_management_client")

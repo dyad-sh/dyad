@@ -739,6 +739,7 @@ const PERSON_PROPERTY_NAMES = [
   "enableSandboxScriptExecution",
   "enableShellTool",
   "enableSuggestedPrompts",
+  "enableSupabaseSelfHosted",
   "enableSupabaseWriteSqlMigration",
   "enableTestRunInPreview",
   "enableTestingForNewApps",

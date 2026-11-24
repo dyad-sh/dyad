@@ -147,6 +147,7 @@ export const DebugSettingsSchema = z.object({
   enableSuggestedPrompts: z.boolean().nullable(),
   enableMultiWindow: z.boolean().nullable(),
   enableOwnServerDeployment: z.boolean().nullable(),
+  enableSupabaseSelfHosted: z.boolean().nullable(),
   enableGitlabPublishing: z.boolean().nullable(),
   enableTestRunInPreview: z.boolean().nullable(),
   disableSandboxedE2eTests: z.boolean().nullable(),

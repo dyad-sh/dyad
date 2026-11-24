@@ -1,0 +1,137 @@
+/**
+ * Updated edge functions on self-hosted instances that may still be answering
+ * with their previous code.
+ *
+ * The edge runtime keeps a function's worker running until it ends on its own,
+ * at the latest after the router's worker lifetime, and only a new worker
+ * loads the new files. So an update is guaranteed to be live by the deploy
+ * time plus that lifetime, and often sooner. Kept in memory: after a restart
+ * of Dyad the deadlines have usually passed anyway.
+ */
+
+export interface PendingSupabaseFunctionUpdate {
+  functionName: string;
+  /** When every worker that could run the previous code has ended. */
+  liveByMs: number;
+}
+
+/** projectId -> functionName -> live-by time. */
+const pendingUpdates = new Map<string, Map<string, number>>();
+/** projectId -> functionName -> latest time a worker may still be running. */
+const deletedWorkers = new Map<string, Map<string, number>>();
+
+function entriesFor(
+  store: Map<string, Map<string, number>>,
+  projectId: string,
+): Map<string, number> {
+  let entries = store.get(projectId);
+  if (!entries) {
+    entries = new Map();
+    store.set(projectId, entries);
+  }
+  return entries;
+}
+
+/** Removes one function's entry, and the project once it has none. */
+function removeEntry(
+  store: Map<string, Map<string, number>>,
+  projectId: string,
+  functionName: string,
+): void {
+  const entries = store.get(projectId);
+  if (!entries) return;
+  entries.delete(functionName);
+  if (entries.size === 0) store.delete(projectId);
+}
+
+/**
+ * Records a deploy. A function that did not exist is live at once, unless it
+ * was deleted recently: the router reuses a worker by the function's path,
+ * so a worker of the deleted function can still answer for the recreated one.
+ */
+export function recordSupabaseSelfHostedFunctionDeploy({
+  projectId,
+  functionName,
+  replacedExisting,
+  workerLifetimeMs,
+  nowMs = Date.now(),
+}: {
+  projectId: string;
+  functionName: string;
+  replacedExisting: boolean;
+  workerLifetimeMs: number;
+  nowMs?: number;
+}): void {
+  const deletedUntil = deletedWorkers.get(projectId)?.get(functionName);
+  removeEntry(deletedWorkers, projectId, functionName);
+  const liveByMs = replacedExisting
+    ? nowMs + workerLifetimeMs
+    : deletedUntil !== undefined && deletedUntil > nowMs
+      ? deletedUntil
+      : undefined;
+  if (liveByMs === undefined)
+    removeEntry(pendingUpdates, projectId, functionName);
+  else entriesFor(pendingUpdates, projectId).set(functionName, liveByMs);
+}
+
+export function recordSupabaseSelfHostedFunctionDelete({
+  projectId,
+  functionName,
+  workerLifetimeMs,
+  nowMs = Date.now(),
+}: {
+  projectId: string;
+  functionName: string;
+  workerLifetimeMs: number;
+  nowMs?: number;
+}): void {
+  removeEntry(pendingUpdates, projectId, functionName);
+  entriesFor(deletedWorkers, projectId).set(
+    functionName,
+    nowMs + workerLifetimeMs,
+  );
+}
+
+/** Drops a project's entries whose time has passed, and the project if empty. */
+function removeExpired(
+  store: Map<string, Map<string, number>>,
+  projectId: string,
+  nowMs: number,
+): void {
+  const entries = store.get(projectId);
+  if (!entries) return;
+  for (const [functionName, untilMs] of entries) {
+    if (untilMs <= nowMs) entries.delete(functionName);
+  }
+  if (entries.size === 0) store.delete(projectId);
+}
+
+/** Updates not yet guaranteed live, soonest first. */
+export function listPendingSupabaseSelfHostedFunctionUpdates(
+  projectId: string,
+  nowMs = Date.now(),
+): PendingSupabaseFunctionUpdate[] {
+  removeExpired(pendingUpdates, projectId, nowMs);
+  removeExpired(deletedWorkers, projectId, nowMs);
+  const pending = pendingUpdates.get(projectId);
+  if (!pending) return [];
+  const updates = [...pending].map(([functionName, liveByMs]) => ({
+    functionName,
+    liveByMs,
+  }));
+  return updates.sort(
+    (a, b) =>
+      a.liveByMs - b.liveByMs || a.functionName.localeCompare(b.functionName),
+  );
+}
+
+/** How many projects have anything tracked. For tests. */
+export function countTrackedSupabaseSelfHostedProjects(): number {
+  return new Set([...pendingUpdates.keys(), ...deletedWorkers.keys()]).size;
+}
+
+/** Test seam. */
+export function resetSupabaseSelfHostedFunctionUpdates(): void {
+  pendingUpdates.clear();
+  deletedWorkers.clear();
+}

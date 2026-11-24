@@ -120,6 +120,7 @@ import {
   deploySupabaseFunction,
   getSupabaseProjectName,
 } from "../../supabase_admin/supabase_management_client";
+import { getSupabaseSelfHostedInstanceSummary } from "../../supabase_admin/supabase_self_hosted_store";
 import { createLoggedHandler } from "./safe_handle";
 import { registerTrustedIpcHandler } from "./trusted_handle";
 import { getLanguageModelProviders } from "../shared/language_model_helpers";
@@ -146,7 +147,7 @@ import {
   deployAllSupabaseFunctions,
   extractFunctionNameFromPath,
 } from "@/supabase_admin/supabase_utils";
-import { isSupabaseFunctionSyncDeferred } from "@/supabase_admin/supabase_recording_deferred_sync";
+import { isSupabaseFunctionSyncSkipped } from "@/supabase_admin/supabase_function_sync_skip";
 import { getVercelTeamSlug } from "../utils/vercel_utils";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
 import {
@@ -1211,13 +1212,18 @@ export function registerAppHandlers() {
 
     let supabaseProjectName: string | null = null;
     const settings = readSettings();
+    const supabaseSelfHosted = getSupabaseSelfHostedInstanceSummary(
+      app.supabaseProjectId,
+    );
     // Check for multi-organization credentials or legacy single account
     const hasSupabaseCredentials =
       (app.supabaseOrganizationSlug &&
         settings.supabase?.organizations?.[app.supabaseOrganizationSlug]
           ?.accessToken?.value) ||
       settings.supabase?.accessToken?.value;
-    if (app.supabaseProjectId && hasSupabaseCredentials) {
+    if (supabaseSelfHosted) {
+      supabaseProjectName = supabaseSelfHosted.name;
+    } else if (app.supabaseProjectId && hasSupabaseCredentials) {
       try {
         supabaseProjectName = await getSupabaseProjectName(
           app.supabaseParentProjectId || app.supabaseProjectId,
@@ -1255,6 +1261,7 @@ export function registerAppHandlers() {
       frameworkType: detectFrameworkType(appPath),
       resolvedPath: appPath,
       supabaseProjectName,
+      supabaseSelfHosted,
       vercelTeamSlug,
       deploymentProvidersInUse: {
         vercel: Boolean(app.vercelProjectId),
@@ -1555,7 +1562,7 @@ export function registerAppHandlers() {
             };
           }
         } catch (error) {
-          if (isSupabaseFunctionSyncDeferred(error)) {
+          if (isSupabaseFunctionSyncSkipped(error)) {
             return { warning: `File saved. ${error.message}` };
           }
           logger.error(
@@ -1578,7 +1585,7 @@ export function registerAppHandlers() {
             organizationSlug: app.supabaseOrganizationSlug ?? null,
           });
         } catch (error) {
-          if (isSupabaseFunctionSyncDeferred(error)) {
+          if (isSupabaseFunctionSyncSkipped(error)) {
             return { warning: `File saved. ${error.message}` };
           }
           logger.error(`Error deploying Supabase function ${filePath}:`, error);

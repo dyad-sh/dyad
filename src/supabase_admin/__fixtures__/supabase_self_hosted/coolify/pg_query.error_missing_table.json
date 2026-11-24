@@ -1,0 +1,27 @@
+{
+  "name": "pg_query.error_missing_table",
+  "request": {
+    "method": "POST",
+    "path": "/pg/query",
+    "auth": "service",
+    "body": {
+      "query": "select * from public.fx_nope"
+    }
+  },
+  "response": {
+    "status": 400,
+    "body": {
+      "error": "ERROR:  42P01: relation \"public.fx_nope\" does not exist\nLINE 1: select * from public.fx_nope\n                      ^\n",
+      "length": 113,
+      "name": "error",
+      "severity": "ERROR",
+      "code": "42P01",
+      "position": "15",
+      "file": "parse_relation.c",
+      "line": "1371",
+      "routine": "parserOpenTable",
+      "message": "relation \"public.fx_nope\" does not exist",
+      "formattedError": "ERROR:  42P01: relation \"public.fx_nope\" does not exist\nLINE 1: select * from public.fx_nope\n                      ^\n"
+    }
+  }
+}

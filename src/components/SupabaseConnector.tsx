@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   acknowledgeConnectionFlow,
   cancelConnectionFlow,
@@ -74,6 +75,10 @@ import {
   isSupabaseConnected,
 } from "@/lib/schemas";
 import { showError } from "@/lib/toast";
+import {
+  SupabaseSelfHostedConnectedCard,
+  SupabaseSelfHostedLinkSection,
+} from "@/components/SupabaseSelfHosted";
 
 /** A failed create, and whether it left a real project behind. */
 interface CreateError {
@@ -91,6 +96,61 @@ function findLinkedSupabaseProject(
 }
 
 export function SupabaseConnector({ appId }: { appId: number }) {
+  const { settings } = useSettings();
+  const { app, refreshApp } = useLoadApp(appId);
+
+  if (app?.supabaseSelfHosted) {
+    return (
+      <SupabaseSelfHostedConnectedCard
+        app={{ ...app, supabaseSelfHosted: app.supabaseSelfHosted }}
+        onChanged={refreshApp}
+      />
+    );
+  }
+
+  // Self-hosting is offered to an app not yet linked to any project.
+  const offerSelfHosted =
+    settings?.enableSupabaseSelfHosted && app && !app.supabaseProjectId;
+  return (
+    <SupabaseCloudConnector
+      appId={appId}
+      selfHostedTab={
+        offerSelfHosted ? (
+          <SupabaseSelfHostedLinkSection appId={appId} onLinked={refreshApp} />
+        ) : undefined
+      }
+    />
+  );
+}
+
+function SupabaseCloudConnector({
+  appId,
+  selfHostedTab,
+}: {
+  appId: number;
+  /** When set, the project picker gets Cloud and Self-hosted tabs. */
+  selfHostedTab?: ReactNode;
+}) {
+  // Reset to Cloud when the selected app changes.
+  const [tabState, setTabState] = useState({ appId, tab: "cloud" });
+  const tab = tabState.appId === appId ? tabState.tab : "cloud";
+  const showCloudActions = !selfHostedTab || tab === "cloud";
+  const withSelfHostedTabs = (cloud: ReactNode) =>
+    selfHostedTab ? (
+      <Tabs
+        value={tab}
+        onValueChange={(value) => setTabState({ appId, tab: String(value) })}
+      >
+        <TabsList className="mb-3">
+          <TabsTrigger value="cloud">Supabase Cloud</TabsTrigger>
+          <TabsTrigger value="self-hosted">Self-hosted</TabsTrigger>
+        </TabsList>
+        <TabsContent value="cloud">{cloud}</TabsContent>
+        <TabsContent value="self-hosted">{selfHostedTab}</TabsContent>
+      </Tabs>
+    ) : (
+      cloud
+    );
   const { t } = useTranslation(["home", "common"]);
   const { settings, refreshSettings, loading: settingsLoading } = useSettings();
   const { app, loading: appLoading, refreshApp } = useLoadApp(appId);
@@ -772,240 +832,261 @@ export function SupabaseConnector({ appId }: { appId: number }) {
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             {t("integrations.supabase.projects")}
-            <div className="flex items-center gap-2">
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => refetchProjects()}
-                      disabled={isFetchingProjects}
-                    />
-                  }
-                >
-                  <RefreshCw
-                    className={`h-4 w-4 ${isFetchingProjects ? "animate-spin" : ""}`}
-                  />
-                </TooltipTrigger>
-                <TooltipContent>
-                  {t("integrations.supabase.refreshProjects")}
-                </TooltipContent>
-              </Tooltip>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleAddAccount}
-                disabled={isFlowActive}
-                className="gap-1"
-              >
-                <Plus className="h-4 w-4" />
-                {t("integrations.supabase.addOrganization")}
-              </Button>
-              {isFlowActive && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    if ("invocationRef" in flowState) {
-                      void cancelConnectionFlow(
-                        "supabase",
-                        flowState.invocationRef,
-                      );
+            {showCloudActions && (
+              <div className="flex items-center gap-2">
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => refetchProjects()}
+                        disabled={isFetchingProjects}
+                      />
                     }
-                  }}
-                  data-testid="cancel-supabase-flow-button"
+                  >
+                    <RefreshCw
+                      className={`h-4 w-4 ${isFetchingProjects ? "animate-spin" : ""}`}
+                    />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {t("integrations.supabase.refreshProjects")}
+                  </TooltipContent>
+                </Tooltip>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleAddAccount}
+                  disabled={isFlowActive}
+                  className="gap-1"
                 >
-                  {t("integrations.supabase.cancelSignIn")}
+                  <Plus className="h-4 w-4" />
+                  {t("integrations.supabase.addOrganization")}
                 </Button>
-              )}
-            </div>
+                {isFlowActive && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      if ("invocationRef" in flowState) {
+                        void cancelConnectionFlow(
+                          "supabase",
+                          flowState.invocationRef,
+                        );
+                      }
+                    }}
+                    data-testid="cancel-supabase-flow-button"
+                  >
+                    {t("integrations.supabase.cancelSignIn")}
+                  </Button>
+                )}
+              </div>
+            )}
           </CardTitle>
-          <CardDescription>
-            {t("integrations.supabase.selectProjectDescription")}
-          </CardDescription>
+          {/* With tabs, the description moves into the Cloud tab so the
+              tabs sit right under the title. */}
+          {!selfHostedTab && (
+            <CardDescription>
+              {t("integrations.supabase.selectProjectDescription")}
+            </CardDescription>
+          )}
         </CardHeader>
         <CardContent>
-          {/* Above the loading and error branches below, not inside one of
+          {withSelfHostedTabs(
+            <>
+              {selfHostedTab && (
+                <p className="mb-4 text-sm text-muted-foreground">
+                  {t("integrations.supabase.selectProjectDescription")}
+                </p>
+              )}
+              {/* Above the loading and error branches below, not inside one of
           them: a created-but-unlinked failure refetches the project list, so an
           alert further down would be replaced by that refetch's skeleton, or
           lost entirely if the refetch then errored. The form renders its own
           copy, so this is only for when the form is shut. */}
-          {!isCreateFormOpen && createErrorForThisApp && (
-            <Alert
-              variant="destructive"
-              className="mb-4"
-              data-testid="supabase-create-project-error"
-            >
-              <Info className="h-4 w-4" />
-              {/* No `role` here: `Alert` already puts one on its wrapper, and
+              {!isCreateFormOpen && createErrorForThisApp && (
+                <Alert
+                  variant="destructive"
+                  className="mb-4"
+                  data-testid="supabase-create-project-error"
+                >
+                  <Info className="h-4 w-4" />
+                  {/* No `role` here: `Alert` already puts one on its wrapper, and
               nesting a second live region inside it makes a role query match
               twice. */}
-              <AlertDescription>{createErrorForThisApp}</AlertDescription>
-            </Alert>
-          )}
+                  <AlertDescription>{createErrorForThisApp}</AlertDescription>
+                </Alert>
+              )}
 
-          {/* The create form is checked before the loading and error branches:
+              {/* The create form is checked before the loading and error branches:
           a background refetch of the project list (window focus past the 60s
           staleTime is enough) would otherwise unmount the form mid-edit and
           discard what the user had typed. */}
-          {isCreateFormOpen ? (
-            <CreateSupabaseProjectForm
-              appId={appId}
-              organizations={organizations}
-              // Seeding the name from the app is what makes this a one-click
-              // path for the common case of one database per app.
-              defaultName={app?.name ?? ""}
-              createProject={createProject}
-              // Scoped to this app: a create still running for the app the
-              // user just navigated away from must not disable this app's form.
-              isCreatingProject={isCreatingProjectForApp(appId)}
-              error={createErrorForThisApp}
-              onClearError={clearCreateError}
-              onCreated={handleProjectCreated}
-              onFailed={handleProjectCreateFailed}
-              // Keeps a stranded project's message, for the same reason opening
-              // the form does: it is the only place that project's id appears,
-              // and backing out settles nothing about it. Every other failure
-              // goes, or cancelling would leave a banner with no way to
-              // dismiss it.
-              onCancel={() => {
-                setCreateFormAppId(null);
-                if (!createErrors[appId]?.isOrphan) {
-                  clearCreateError();
-                }
-              }}
-            />
-          ) : isLoadingProjects ||
-            isFetchingProjects ||
-            isLoadingOrganizations ||
-            isFetchingOrganizations ? (
-            <div className="space-y-2">
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="h-10 w-full" />
-            </div>
-          ) : projectsError ? (
-            <div className="text-red-500">
-              {t("integrations.supabase.errorLoadingProjects", {
-                message: projectsError.message,
-              })}
-              <Button
-                variant="outline"
-                className="mt-2"
-                onClick={() => refetchProjects()}
-              >
-                {t("common:retry")}
-              </Button>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {/* Connected organizations list */}
-              <div className="space-y-2">
-                <Label>
-                  {t("integrations.supabase.connectedOrganizations")}
-                </Label>
-                <div className="space-y-1">
-                  {organizations.map((org) => (
-                    <div
-                      key={org.organizationSlug}
-                      className="flex items-center justify-between p-2 rounded-md bg-muted/50 text-sm gap-2"
-                    >
-                      <div className="flex flex-col min-w-0 flex-1">
-                        <span className="font-medium truncate">
-                          {org.name ||
-                            `Organization ${org.organizationSlug.slice(0, 8)}`}
-                        </span>
-                        {org.ownerEmail && (
-                          <span className="text-xs text-muted-foreground truncate">
-                            {org.ownerEmail}
-                          </span>
-                        )}
-                      </div>
-                      <Tooltip>
-                        <TooltipTrigger
-                          render={
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 px-2 text-muted-foreground hover:text-destructive shrink-0"
-                              onClick={() =>
-                                handleDeleteOrganization(org.organizationSlug)
-                              }
-                            />
-                          }
-                        >
-                          <Trash2 className="h-3.5 w-3.5 mr-1" />
-                          <span className="text-xs">Disconnect</span>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          {t("integrations.supabase.disconnectOrganization")}
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {projects.length === 0 ? (
-                <p className="text-sm text-gray-500">
-                  {t("integrations.supabase.noProjectsFound")}
-                </p>
-              ) : (
+              {isCreateFormOpen ? (
+                <CreateSupabaseProjectForm
+                  appId={appId}
+                  organizations={organizations}
+                  // Seeding the name from the app is what makes this a one-click
+                  // path for the common case of one database per app.
+                  defaultName={app?.name ?? ""}
+                  createProject={createProject}
+                  // Scoped to this app: a create still running for the app the
+                  // user just navigated away from must not disable this app's form.
+                  isCreatingProject={isCreatingProjectForApp(appId)}
+                  error={createErrorForThisApp}
+                  onClearError={clearCreateError}
+                  onCreated={handleProjectCreated}
+                  onFailed={handleProjectCreateFailed}
+                  // Keeps a stranded project's message, for the same reason opening
+                  // the form does: it is the only place that project's id appears,
+                  // and backing out settles nothing about it. Every other failure
+                  // goes, or cancelling would leave a banner with no way to
+                  // dismiss it.
+                  onCancel={() => {
+                    setCreateFormAppId(null);
+                    if (!createErrors[appId]?.isOrphan) {
+                      clearCreateError();
+                    }
+                  }}
+                />
+              ) : isLoadingProjects ||
+                isFetchingProjects ||
+                isLoadingOrganizations ||
+                isFetchingOrganizations ? (
                 <div className="space-y-2">
-                  <Label htmlFor="project-select">Project</Label>
-                  <Select
-                    value={currentProjectValue}
-                    onValueChange={(v) => v && handleProjectSelect(v)}
-                  >
-                    <SelectTrigger id="project-select">
-                      <SelectValue
-                        placeholder={t("integrations.supabase.selectAProject")}
-                      />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(groupedProjects).map(
-                        ([orgKey, { orgLabel, projects: orgProjects }]) => (
-                          <SelectGroup key={orgKey}>
-                            <SelectLabel>{orgLabel}</SelectLabel>
-                            {orgProjects.map((project) => (
-                              <SelectItem
-                                key={`${project.organizationSlug}:${project.id}`}
-                                value={`${project.organizationSlug}:${project.id}`}
-                              >
-                                {project.name || project.id}
-                              </SelectItem>
-                            ))}
-                          </SelectGroup>
-                        ),
-                      )}
-                    </SelectContent>
-                  </Select>
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-10 w-full" />
                 </div>
-              )}
+              ) : projectsError ? (
+                <div className="text-red-500">
+                  {t("integrations.supabase.errorLoadingProjects", {
+                    message: projectsError.message,
+                  })}
+                  <Button
+                    variant="outline"
+                    className="mt-2"
+                    onClick={() => refetchProjects()}
+                  >
+                    {t("common:retry")}
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {/* Connected organizations list */}
+                  <div className="space-y-2">
+                    <Label>
+                      {t("integrations.supabase.connectedOrganizations")}
+                    </Label>
+                    <div className="space-y-1">
+                      {organizations.map((org) => (
+                        <div
+                          key={org.organizationSlug}
+                          className="flex items-center justify-between p-2 rounded-md bg-muted/50 text-sm gap-2"
+                        >
+                          <div className="flex flex-col min-w-0 flex-1">
+                            <span className="font-medium truncate">
+                              {org.name ||
+                                `Organization ${org.organizationSlug.slice(0, 8)}`}
+                            </span>
+                            {org.ownerEmail && (
+                              <span className="text-xs text-muted-foreground truncate">
+                                {org.ownerEmail}
+                              </span>
+                            )}
+                          </div>
+                          <Tooltip>
+                            <TooltipTrigger
+                              render={
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 px-2 text-muted-foreground hover:text-destructive shrink-0"
+                                  onClick={() =>
+                                    handleDeleteOrganization(
+                                      org.organizationSlug,
+                                    )
+                                  }
+                                />
+                              }
+                            >
+                              <Trash2 className="h-3.5 w-3.5 mr-1" />
+                              <span className="text-xs">Disconnect</span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              {t(
+                                "integrations.supabase.disconnectOrganization",
+                              )}
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
 
-              {/* Not offered at all without an organization to create in,
+                  {projects.length === 0 ? (
+                    <p className="text-sm text-gray-500">
+                      {t("integrations.supabase.noProjectsFound")}
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      <Label htmlFor="project-select">Project</Label>
+                      <Select
+                        value={currentProjectValue}
+                        onValueChange={(v) => v && handleProjectSelect(v)}
+                      >
+                        <SelectTrigger id="project-select">
+                          <SelectValue
+                            placeholder={t(
+                              "integrations.supabase.selectAProject",
+                            )}
+                          />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Object.entries(groupedProjects).map(
+                            ([orgKey, { orgLabel, projects: orgProjects }]) => (
+                              <SelectGroup key={orgKey}>
+                                <SelectLabel>{orgLabel}</SelectLabel>
+                                {orgProjects.map((project) => (
+                                  <SelectItem
+                                    key={`${project.organizationSlug}:${project.id}`}
+                                    value={`${project.organizationSlug}:${project.id}`}
+                                  >
+                                    {project.name || project.id}
+                                  </SelectItem>
+                                ))}
+                              </SelectGroup>
+                            ),
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  {/* Not offered at all without an organization to create in,
               rather than offered and dead. Connecting can land here — if
               listing organizations fails, the return handler stores the token
               in the legacy fields with no organization — and the way out is the
               Add Organization action above, not this button. */}
-              {organizations.length > 0 && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-1"
-                  // Deliberately does not clear the last failure: for a project
-                  // created but not linked, that message is the only place its
-                  // id appears, and this button is the natural thing to click
-                  // after reading it. The form shows it and the first keystroke
-                  // drops it.
-                  onClick={() => setCreateFormAppId(appId)}
-                  data-testid="supabase-create-project-button"
-                >
-                  <Plus className="h-4 w-4" />
-                  {t("integrations.supabase.createProject")}
-                </Button>
+                  {organizations.length > 0 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1"
+                      // Deliberately does not clear the last failure: for a project
+                      // created but not linked, that message is the only place its
+                      // id appears, and this button is the natural thing to click
+                      // after reading it. The form shows it and the first keystroke
+                      // drops it.
+                      onClick={() => setCreateFormAppId(appId)}
+                      data-testid="supabase-create-project-button"
+                    >
+                      <Plus className="h-4 w-4" />
+                      {t("integrations.supabase.createProject")}
+                    </Button>
+                  )}
+                </div>
               )}
-            </div>
+            </>,
           )}
         </CardContent>
       </Card>
@@ -1013,7 +1094,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
   }
 
   // No accounts connected, show connect button
-  return (
+  const connectButton = (
     <div className="flex flex-col space-y-4 p-4 border rounded-md">
       <div className="flex flex-col md:flex-row items-center justify-between">
         <h2 className="text-lg font-medium">Integrations</h2>
@@ -1045,5 +1126,14 @@ export function SupabaseConnector({ appId }: { appId: number }) {
         </div>
       )}
     </div>
+  );
+  if (!selfHostedTab) return connectButton;
+  return (
+    <Card key="supabase-connect" className="mt-1">
+      <CardHeader>
+        <CardTitle>{t("integrations.supabase.projects")}</CardTitle>
+      </CardHeader>
+      <CardContent>{withSelfHostedTabs(connectButton)}</CardContent>
+    </Card>
   );
 }

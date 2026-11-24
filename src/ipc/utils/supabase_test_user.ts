@@ -26,6 +26,10 @@ import {
   getSupabaseAdminKey,
   type AdminKey,
 } from "../../supabase_admin/supabase_admin_key";
+import {
+  getSupabaseProjectUrl,
+  isSupabaseSelfHostedProject,
+} from "../../supabase_admin/supabase_self_hosted_store";
 
 export type { AdminKey } from "../../supabase_admin/supabase_admin_key";
 
@@ -69,8 +73,19 @@ for (const column of OWNER_COLUMNS) {
   }
 }
 
-function projectUrlFor(ref: string): string {
-  return `https://${ref}.supabase.co`;
+function projectUrlFor(projectId: string): string {
+  return getSupabaseProjectUrl(projectId);
+}
+
+/**
+ * A Cloud project needs its organization to reach the Management API; a
+ * self-hosted instance carries its own keys and has none.
+ */
+function hasSupabaseAdminAccess(
+  projectId: string,
+  organizationSlug: string | null,
+): boolean {
+  return !!organizationSlug || isSupabaseSelfHostedProject(projectId);
 }
 
 /**
@@ -100,6 +115,14 @@ function adminHeaders(key: AdminKey): Record<string, string> {
     ...(key.isLegacyJwt ? { Authorization: `Bearer ${key.apiKey}` } : {}),
     "Content-Type": "application/json",
   };
+}
+
+/**
+ * A self-hosted gateway that redirects would forward the admin key in the
+ * `apikey` header to wherever it points, so a redirect fails the request.
+ */
+function adminRedirectPolicy(projectId: string): { redirect?: "manual" } {
+  return isSupabaseSelfHostedProject(projectId) ? { redirect: "manual" } : {};
 }
 
 function isUserCreationDatabaseError(
@@ -152,7 +175,7 @@ export async function createTempTestUser(
       DyadErrorKind.Precondition,
     );
   }
-  if (!organizationSlug) {
+  if (!hasSupabaseAdminAccess(projectId, organizationSlug)) {
     throw new DyadError(
       `App ${appData.id} is not connected to a Supabase organization.`,
       DyadErrorKind.Precondition,
@@ -215,6 +238,7 @@ export async function createTempTestUser(
           // response can leave a remotely-created user with no recovery marker.
           // Cancellation still stops retries; the lifecycle reports a slow drain.
           headers: adminHeaders(adminKey),
+          ...adminRedirectPolicy(projectId),
           body: JSON.stringify({
             email,
             password,
@@ -364,7 +388,11 @@ export async function deleteTempTestUser(
   const userId = appData.supabaseTestUserId;
   const projectId = appData.supabaseProjectId;
   const organizationSlug = appData.supabaseOrganizationSlug;
-  if (!userId || !projectId || !organizationSlug) {
+  if (
+    !userId ||
+    !projectId ||
+    !hasSupabaseAdminAccess(projectId, organizationSlug)
+  ) {
     return true;
   }
   if (IS_TEST_BUILD) {
@@ -435,7 +463,7 @@ export async function reconcileOrphanTestUsers(): Promise<void> {
               ...appData,
               id: user.appId,
               supabaseProjectId: user.projectId,
-              supabaseOrganizationSlug: user.organizationSlug,
+              supabaseOrganizationSlug: user.organizationSlug || null,
               supabaseTestUserId: user.userId,
             } as AppRow);
           },
@@ -490,7 +518,7 @@ export async function checkRls({
   organizationSlug,
 }: {
   projectId: string;
-  organizationSlug: string;
+  organizationSlug: string | null;
 }): Promise<RlsCheckResult> {
   if (IS_TEST_BUILD) {
     return { tablesWithoutRls: [] };
@@ -534,7 +562,7 @@ async function cleanUpRowsOwnedBy({
   signal,
 }: {
   projectId: string;
-  organizationSlug: string;
+  organizationSlug: string | null;
   userId: string;
   signal?: AbortSignal;
 }): Promise<void> {
@@ -700,7 +728,7 @@ async function deleteUserBestEffort({
 }: {
   projectUrl: string;
   projectId: string;
-  organizationSlug: string;
+  organizationSlug: string | null;
   userId: string;
   adminKey?: AdminKey;
   signal?: AbortSignal;
@@ -730,6 +758,7 @@ async function deleteUserBestEffort({
                 method: "DELETE",
                 signal,
                 headers: adminHeaders(adminKey),
+                ...adminRedirectPolicy(projectId),
               },
               `Delete test user ${userId}`,
             ),
@@ -775,7 +804,7 @@ async function persistTestUserId(
       appId: app.id,
       ownerId,
       projectId: app.supabaseProjectId!,
-      organizationSlug: app.supabaseOrganizationSlug!,
+      organizationSlug: app.supabaseOrganizationSlug ?? "",
     });
     return;
   }

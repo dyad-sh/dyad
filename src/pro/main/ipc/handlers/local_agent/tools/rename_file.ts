@@ -16,7 +16,7 @@ import {
 } from "../../../../../../supabase_admin/supabase_utils";
 import { queueCloudSandboxSnapshotSync } from "@/ipc/utils/cloud_sandbox_provider";
 import { getFileWriteKey, withLocks } from "@/ipc/utils/lock_utils";
-import { isSupabaseFunctionSyncDeferred } from "@/supabase_admin/supabase_recording_deferred_sync";
+import { isSupabaseFunctionSyncSkipped } from "@/supabase_admin/supabase_function_sync_skip";
 
 const logger = log.scope("rename_file");
 
@@ -165,7 +165,7 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
             signal: ctx.abortSignal,
           });
         } catch (error) {
-          if (isSupabaseFunctionSyncDeferred(error)) {
+          if (isSupabaseFunctionSyncSkipped(error)) {
             deferredNote = error.message;
           } else {
             logger.warn(
@@ -186,7 +186,7 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
             signal: ctx.abortSignal,
           });
         } catch (error) {
-          if (!isSupabaseFunctionSyncDeferred(error)) {
+          if (!isSupabaseFunctionSyncSkipped(error)) {
             return `File renamed, but failed to deploy Supabase function: ${error}`;
           }
           deferredNote = error.message;

@@ -181,6 +181,54 @@ export const SUPABASE_PROJECT_CREATED_BUT_UNLINKED =
 // Supabase Contracts
 // =============================================================================
 
+/** SSH details shown to the renderer; the private key never leaves main. */
+export const SupabaseSelfHostedSshSummarySchema = z.object({
+  host: z.string(),
+  port: z.number(),
+  username: z.string(),
+});
+
+export const SupabaseSelfHostedInstanceSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  url: z.string(),
+  studioUrl: z.string().nullable(),
+  /** Null when added without SSH; edge functions are then not deployed. */
+  ssh: SupabaseSelfHostedSshSummarySchema.nullable(),
+});
+
+export type SupabaseSelfHostedInstance = z.infer<
+  typeof SupabaseSelfHostedInstanceSchema
+>;
+
+export const AddSupabaseSelfHostedInstanceParamsSchema = z.object({
+  name: z.string().trim().min(1).max(100),
+  url: z.string().trim().min(1).max(2048),
+  studioUrl: z.string().trim().max(2048).nullable(),
+  anonKey: z.string().trim().min(1).max(4096),
+  serviceKey: z.string().trim().min(1).max(4096),
+  /** SSH access for deploying edge functions, or null to skip them. */
+  ssh: z
+    .object({
+      host: z.string().trim().min(1).max(253),
+      port: z.number().int().min(1).max(65535),
+      username: z.string().trim().min(1).max(64),
+      /** A key the user pasted, or the Coolify key an import chose. */
+      privateKey: z.string().trim().min(1).max(16384).optional(),
+      coolifyKeyUuid: z.string().trim().min(1).max(200).optional(),
+    })
+    .refine(
+      (ssh) =>
+        (ssh.privateKey === undefined) !== (ssh.coolifyKeyUuid === undefined),
+      { message: "Give either a private key or a Coolify key, not both." },
+    )
+    .nullable(),
+});
+
+export type AddSupabaseSelfHostedInstanceParams = z.infer<
+  typeof AddSupabaseSelfHostedInstanceParamsSchema
+>;
+
 export const supabaseContracts = {
   listOrganizations: defineContract({
     channel: "supabase:list-organizations",
@@ -312,6 +360,103 @@ export const supabaseContracts = {
       prunedFunctionNames: z.array(z.string()),
       errors: z.array(z.string()),
     }),
+  }),
+
+  listSelfHostedInstances: defineContract({
+    channel: "supabase:list-self-hosted-instances",
+    input: z.void(),
+    output: z.array(
+      SupabaseSelfHostedInstanceSchema.extend({
+        linkedApps: z.array(z.object({ id: z.number(), name: z.string() })),
+      }),
+    ),
+  }),
+
+  /**
+   * Runs the connect-time checks before saving, so an instance Dyad cannot use
+   * is never stored.
+   */
+  addSelfHostedInstance: defineContract({
+    channel: "supabase:add-self-hosted-instance",
+    input: AddSupabaseSelfHostedInstanceParamsSchema,
+    output: z.object({ instance: SupabaseSelfHostedInstanceSchema }),
+    invalidates: () => [{ family: "provider-status", provider: "supabase" }],
+  }),
+
+  /** Supabase services on the connected Coolify instance, for importing one. */
+  listCoolifySupabaseServices: defineContract({
+    channel: "supabase:list-coolify-supabase-services",
+    input: z.void(),
+    output: z.array(
+      z.object({
+        uuid: z.string(),
+        name: z.string(),
+        url: z.string().nullable(),
+      }),
+    ),
+  }),
+
+  /**
+   * Reads a Coolify Supabase service's URL, keys and server, to fill in the
+   * add form. Nothing is saved until the user adds the instance.
+   */
+  importCoolifySupabaseService: defineContract({
+    channel: "supabase:import-coolify-supabase-service",
+    input: z.object({ serviceUuid: z.string().min(1) }),
+    output: z.object({
+      name: z.string(),
+      url: z.string(),
+      anonKey: z.string(),
+      serviceKey: z.string(),
+      studioUrl: z.string(),
+      ssh: z
+        .object({
+          host: z.string(),
+          port: z.number().int(),
+          username: z.string(),
+          coolifyKeyUuid: z.string().nullable(),
+        })
+        .nullable(),
+    }),
+  }),
+
+  /** What Dyad can tell about a self-hosted instance's email, read fresh. */
+  getSelfHostedEmailStatus: defineContract({
+    channel: "supabase:get-self-hosted-email-status",
+    input: z.object({ projectId: z.string().min(1) }),
+    output: z.discriminatedUnion("kind", [
+      z.object({ kind: z.literal("autoconfirm") }),
+      z.object({ kind: z.literal("not-configured") }),
+      z.object({
+        kind: z.literal("configured"),
+        host: z.string(),
+        brokenLinkOrigin: z.string().nullable(),
+      }),
+      z.object({ kind: z.literal("unknown") }),
+    ]),
+  }),
+
+  /**
+   * Edge functions on a self-hosted instance whose update may not be serving
+   * yet, because a worker started before the deploy can still be running.
+   */
+  listPendingSelfHostedFunctionUpdates: defineContract({
+    channel: "supabase:list-pending-self-hosted-function-updates",
+    input: z.object({ projectId: z.string().min(1) }),
+    output: z.array(
+      z.object({ functionName: z.string(), liveByMs: z.number() }),
+    ),
+  }),
+
+  /** Disconnects every app linked to the instance, then removes it. */
+  removeSelfHostedInstance: defineContract({
+    channel: "supabase:remove-self-hosted-instance",
+    input: z.object({ id: z.string().min(1) }),
+    output: z.void(),
+    invalidates: () => [
+      { family: "provider-status", provider: "supabase" },
+      { family: "apps" },
+    ],
   }),
 
   // Test-only channel

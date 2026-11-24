@@ -32,6 +32,7 @@ const {
   refreshSettingsMock,
   refreshAppMock,
   appState,
+  settingsState,
   projectsState,
   providerLoadingState,
   providerErrorState,
@@ -66,7 +67,15 @@ const {
     supabaseParentProjectId: undefined as string | undefined,
     supabaseProjectName: "My Project" as string | null,
     supabaseOrganizationSlug: "org-1" as string | null,
+    supabaseSelfHosted: null as null | {
+      id: string;
+      name: string;
+      url: string;
+      studioUrl: string | null;
+      ssh: null;
+    },
   },
+  settingsState: { current: {} as Record<string, unknown> },
   organizationsState: {
     current: [] as Array<{ organizationSlug: string; name?: string }>,
   },
@@ -152,7 +161,7 @@ vi.mock("react-i18next", () => ({
 
 vi.mock("@/hooks/useSettings", () => ({
   useSettings: () => ({
-    settings: {},
+    settings: settingsState.current,
     refreshSettings: refreshSettingsMock,
     loading: settingsLoadingState.current,
   }),
@@ -166,6 +175,7 @@ vi.mock("@/hooks/useLoadApp", () => ({
       supabaseParentProjectId: appState.supabaseParentProjectId,
       supabaseProjectName: appState.supabaseProjectName,
       supabaseOrganizationSlug: appState.supabaseOrganizationSlug,
+      supabaseSelfHosted: appState.supabaseSelfHosted,
     },
     loading: appLoadingState.current,
     refreshApp: refreshAppMock,
@@ -223,6 +233,13 @@ vi.mock("@/hooks/useSupabase", () => ({
   }),
 }));
 
+vi.mock("@/components/SupabaseSelfHosted", () => ({
+  SupabaseSelfHostedConnectedCard: ({ app }: { app: { name: string } }) => (
+    <div data-testid="self-hosted-connected">{app.name}</div>
+  ),
+  SupabaseSelfHostedLinkSection: () => <div data-testid="self-hosted-link" />,
+}));
+
 vi.mock("@/hooks/useConnectionFlow", () => ({
   useConnectionFlow: () => ({
     flowState: connectionFlowState.current,
@@ -277,6 +294,8 @@ beforeEach(() => {
   appState.supabaseParentProjectId = undefined;
   appState.name = "My App";
   appState.supabaseProjectName = "My Project";
+  appState.supabaseSelfHosted = null;
+  settingsState.current = {};
   organizationsState.current = [];
   createState.createProject = vi.fn();
   createState.creatingAppIds = new Set();
@@ -1386,4 +1405,75 @@ describe("SupabaseConnector — clearing a create failure", () => {
       (await screen.findByTestId("supabase-create-project-error")).textContent,
     ).toContain("couldn't link it to this app");
   });
+});
+
+describe("self-hosted Supabase", () => {
+  it("shows the self-hosted card instead of the Cloud connector for a linked instance", () => {
+    appState.supabaseOrganizationSlug = null;
+    appState.supabaseProjectId = "instance-1";
+    appState.supabaseSelfHosted = {
+      id: "instance-1",
+      name: "Home lab",
+      url: "https://supabase.example.com",
+      studioUrl: null,
+      ssh: null,
+    };
+
+    renderConnector();
+
+    expect(screen.getByTestId("self-hosted-connected")).toBeTruthy();
+    // The Cloud connector would offer a reconnect for a missing organization.
+    expect(screen.queryByTestId("supabase-reconnect-card")).toBeNull();
+    expect(screen.queryByTestId("self-hosted-link")).toBeNull();
+  });
+
+  it("offers self-hosted in its own tab for an unlinked app when the experiment is on", () => {
+    appState.supabaseProjectId = null;
+    appState.supabaseProjectName = null;
+    settingsState.current = { enableSupabaseSelfHosted: true };
+
+    renderConnector();
+
+    // The tabs sit inside the project picker, which opens on Cloud.
+    expect(screen.getByText("integrations.supabase.projects")).toBeTruthy();
+    expect(screen.queryByTestId("self-hosted-link")).toBeNull();
+    expect(
+      screen.getByText("integrations.supabase.addOrganization"),
+    ).toBeTruthy();
+    // Nothing sits between the title and the tabs: the Cloud description is
+    // inside the Cloud tab.
+    expect(
+      screen
+        .getByText("integrations.supabase.selectProjectDescription")
+        .closest('[role="tabpanel"]'),
+    ).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Self-hosted" }));
+
+    expect(screen.getByTestId("self-hosted-link")).toBeTruthy();
+    // Cloud's account actions don't apply to a self-hosted instance.
+    expect(
+      screen.queryByText("integrations.supabase.addOrganization"),
+    ).toBeNull();
+  });
+
+  it.each([
+    ["the experiment is off", null, {}],
+    [
+      "the app already uses Supabase Cloud",
+      "proj-1",
+      { enableSupabaseSelfHosted: true },
+    ],
+  ])(
+    "does not offer a self-hosted instance when %s",
+    (_label, projectId, settings) => {
+      appState.supabaseProjectId = projectId;
+      settingsState.current = settings;
+
+      renderConnector();
+
+      expect(screen.queryByRole("tab", { name: "Self-hosted" })).toBeNull();
+      expect(screen.queryByTestId("self-hosted-link")).toBeNull();
+    },
+  );
 });

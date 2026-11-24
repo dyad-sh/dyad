@@ -393,6 +393,13 @@
       "when": 1794192570976,
       "tag": "0055_worthless_sabretooth",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "6",
+      "when": 1795390416976,
+      "tag": "0056_supreme_mongu",
+      "breakpoints": true
     }
   ]
 }

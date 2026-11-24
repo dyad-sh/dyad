@@ -1,0 +1,73 @@
+{
+  "_note": "Supabase Cloud Management API POST /v1/projects/{ref}/database/query responses, copied verbatim from the 2026-11-16 comparison run (throwaway project, since deleted). Success status is 201. Error bodies are {message: 'Failed to run sql query: ' + full Postgres error text}.",
+  "identity": {
+    "status": 201,
+    "body": [{ "current_user": "postgres", "super": false }]
+  },
+  "pg_version": { "status": 201, "body": [{ "v": "170012" }] },
+  "types": {
+    "status": 201,
+    "body": [
+      {
+        "big": "9007199254740993",
+        "i": 42,
+        "num": "1.50",
+        "f": 1.5,
+        "ts": "2026-01-02 03:04:05+00",
+        "d": "2026-01-02",
+        "iv": "1 day",
+        "j": { "a": 1 },
+        "js": { "a": 1 },
+        "arr": [1, 2],
+        "nul": null,
+        "b": true,
+        "u": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+        "by": { "type": "Buffer", "data": [1, 2] }
+      }
+    ]
+  },
+  "multi_select": { "status": 201, "body": [{ "b": 2 }] },
+  "empty_result": { "status": 201, "body": [] },
+  "ddl_only": { "status": 201, "body": [] },
+  "insert_returning": { "status": 201, "body": [{ "x": 1 }, { "x": 2 }] },
+  "error_syntax": {
+    "status": 400,
+    "body": {
+      "message": "Failed to run sql query: ERROR:  42601: syntax error at or near \"selec\"\nLINE 1: selec 1\n        ^\n"
+    }
+  },
+  "error_missing_table": {
+    "status": 400,
+    "body": {
+      "message": "Failed to run sql query: ERROR:  42P01: relation \"public.nope\" does not exist\nLINE 1: select * from public.nope\n                      ^\n"
+    }
+  },
+  "error_with_detail": {
+    "status": 400,
+    "body": {
+      "message": "Failed to run sql query: ERROR:  23505: duplicate key value violates unique constraint \"cmp_u_x_key\"\nDETAIL:  Key (x)=(1) already exists.\n"
+    }
+  },
+  "error_storage_delete_guard": {
+    "status": 400,
+    "body": {
+      "message": "Failed to run sql query: ERROR:  42501: Direct deletion from storage tables is not allowed. Use the Storage API instead.\nHINT:  This prevents accidental data loss from orphaned objects.\nCONTEXT:  PL/pgSQL function storage.protect_delete() line 5 at RAISE\n"
+    }
+  },
+  "alter_auth_users": {
+    "status": 400,
+    "body": {
+      "message": "Failed to run sql query: ERROR:  42501: must be owner of table users\n"
+    }
+  },
+  "statement_timeout": {
+    "status": 201,
+    "body": [{ "statement_timeout": "2min" }]
+  },
+  "search_path": {
+    "status": 201,
+    "body": [{ "search_path": "\"\\$user\", public, extensions" }]
+  },
+  "session_does_not_persist": { "status": 201, "body": [{ "v": null }] },
+  "explicit_txn_rollback": { "status": 201, "body": [{ "t": null }] }
+}

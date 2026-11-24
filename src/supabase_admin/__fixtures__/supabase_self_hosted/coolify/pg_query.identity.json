@@ -1,0 +1,20 @@
+{
+  "name": "pg_query.identity",
+  "request": {
+    "method": "POST",
+    "path": "/pg/query",
+    "auth": "service",
+    "body": {
+      "query": "select current_user, (select rolsuper from pg_roles where rolname=current_user) super"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": [
+      {
+        "current_user": "supabase_admin",
+        "super": true
+      }
+    ]
+  }
+}

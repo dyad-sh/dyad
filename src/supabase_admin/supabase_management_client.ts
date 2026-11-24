@@ -22,6 +22,25 @@ import { enqueueSupabaseDeploy } from "./supabase_deploy_queue";
 import { SupabaseTokenRefreshError } from "./supabase_errors";
 import { abortable } from "../ipc/utils/abortable";
 import {
+  getSupabaseSelfHostedInstance,
+  isSupabaseSelfHostedProject,
+  type SupabaseSelfHostedInstance,
+} from "./supabase_self_hosted_store";
+import { runSupabaseSelfHostedQuery } from "./supabase_self_hosted_client";
+import {
+  assertSupabaseFunctionDeploysSupported,
+  SupabaseFunctionsUnsupportedError,
+} from "./supabase_function_sync_skip";
+import {
+  deleteSupabaseSelfHostedFunction,
+  deploySupabaseSelfHostedFunction,
+  readSupabaseSelfHostedFunctionLogs,
+} from "./supabase_self_hosted_functions";
+import {
+  recordSupabaseSelfHostedFunctionDelete,
+  recordSupabaseSelfHostedFunctionDeploy,
+} from "./supabase_self_hosted_function_updates";
+import {
   appOperationCoordinator,
   readAppResource,
   type AppOperationContext,
@@ -80,6 +99,7 @@ export async function withSupabaseFunctionDeployment<T>(
   },
   operation: (context: AppOperationContext, appPath: string) => Promise<T>,
 ): Promise<T> {
+  assertSupabaseFunctionDeploysSupported(target.supabaseProjectId);
   // Same synchronous step as admission below, so a recording cannot start
   // between this check and the coordinator's own recording refusal.
   if (
@@ -699,6 +719,9 @@ export async function getSupabaseProjectName(
     return "Fake Supabase Project";
   }
 
+  const selfHosted = getSupabaseSelfHostedInstance(projectId);
+  if (selfHosted) return selfHosted.name;
+
   const supabase = await getSupabaseClient({ organizationSlug });
   const projects = await retryWithRateLimit(
     () => supabase.getProjects(),
@@ -748,6 +771,40 @@ const SupabaseApiKeySchema = z.object({
 });
 const SupabaseApiKeysSchema = z.array(SupabaseApiKeySchema);
 
+/** The instance's SSH access, which function deploys, deletes and logs need. */
+function withSshOrThrow(instance: SupabaseSelfHostedInstance) {
+  if (!instance.ssh) throw new SupabaseFunctionsUnsupportedError();
+  return { id: instance.id, ssh: instance.ssh };
+}
+
+/**
+ * A self-hosted instance's configured keys in the Management API's shape, so key
+ * selection treats both backends alike. The service key is withheld unless
+ * revealed, as Supabase Cloud does for secret keys.
+ */
+function selfHostedApiKeys(
+  instance: SupabaseSelfHostedInstance,
+  reveal: boolean,
+): SupabaseApiKey[] {
+  const keys: SupabaseApiKey[] = [
+    {
+      name: "anon",
+      type: instance.anonKey.startsWith("sb_publishable_")
+        ? "publishable"
+        : "legacy",
+      api_key: instance.anonKey,
+    },
+  ];
+  if (reveal) {
+    keys.push({
+      name: "service_role",
+      type: instance.serviceKey.startsWith("sb_secret_") ? "secret" : "legacy",
+      api_key: instance.serviceKey,
+    });
+  }
+  return keys;
+}
+
 /**
  * Fetch a project's API keys.
  *
@@ -769,6 +826,9 @@ export async function getProjectApiKeys({
   organizationSlug: string | null;
   reveal?: boolean;
 }): Promise<SupabaseApiKey[]> {
+  const selfHosted = getSupabaseSelfHostedInstance(projectId);
+  if (selfHosted) return selfHostedApiKeys(selfHosted, reveal);
+
   const supabase = await getSupabaseClient({ organizationSlug });
 
   const response = await fetchWithRetry(
@@ -900,6 +960,21 @@ export async function getSupabaseProjectLogs(
   timestampStart?: number,
   organizationSlug?: string,
 ): Promise<SupabaseProjectLogsResponse> {
+  const selfHosted = getSupabaseSelfHostedInstance(projectId);
+  if (selfHosted) {
+    if (!selfHosted.ssh) return { result: [] };
+    const logs = await readSupabaseSelfHostedFunctionLogs({
+      instance: { id: selfHosted.id, ssh: selfHosted.ssh },
+      sinceMs: timestampStart ?? Date.now() - 10 * 60 * 1000,
+    });
+    return {
+      result: logs.map((entry) => ({
+        timestamp: entry.timestamp,
+        event_message: entry.message,
+        level: entry.level,
+      })),
+    };
+  }
   const supabase = await getSupabaseClient({ organizationSlug });
 
   // The unified endpoint is ClickHouse-backed. The time range is applied by
@@ -996,6 +1071,13 @@ export async function executeSupabaseSql({
     return "{}";
   }
 
+  const selfHosted = getSupabaseSelfHostedInstance(supabaseProjectId);
+  if (selfHosted) {
+    return JSON.stringify(
+      await runSupabaseSelfHostedQuery(selfHosted, query, signal),
+    );
+  }
+
   const supabase = await getSupabaseClient({ organizationSlug });
   const result = await retryWithRateLimit(
     async () => {
@@ -1017,6 +1099,51 @@ export async function executeSupabaseSql({
   return JSON.stringify(result);
 }
 
+/**
+ * Runs SQL and returns the parsed rows of the last statement, through the
+ * Management API for a Cloud project or postgres-meta for a self-hosted one.
+ */
+export async function runSupabaseQuery({
+  supabaseProjectId,
+  organizationSlug,
+  query,
+  description,
+}: {
+  supabaseProjectId: string;
+  organizationSlug: string | null;
+  query: string;
+  /** Names the request in retry logs. */
+  description: string;
+}): Promise<unknown> {
+  const selfHosted = getSupabaseSelfHostedInstance(supabaseProjectId);
+  if (selfHosted) return runSupabaseSelfHostedQuery(selfHosted, query);
+  const supabase = await getSupabaseClient({ organizationSlug });
+  return retryWithRateLimit(
+    () => supabase.runQuery(supabaseProjectId, query),
+    description,
+  );
+}
+
+/**
+ * Names of the project's edge function secrets. A self-hosted instance has no
+ * secrets API, so it reports none.
+ */
+export async function listSupabaseSecretNames({
+  supabaseProjectId,
+  organizationSlug,
+}: {
+  supabaseProjectId: string;
+  organizationSlug: string | null;
+}): Promise<string[]> {
+  if (isSupabaseSelfHostedProject(supabaseProjectId)) return [];
+  const supabase = await getSupabaseClient({ organizationSlug });
+  const secrets = await retryWithRateLimit(
+    () => supabase.getSecrets(supabaseProjectId),
+    `Get secrets for ${supabaseProjectId}`,
+  );
+  return secrets?.map((secret) => secret.name) ?? [];
+}
+
 export async function deleteSupabaseFunction({
   appId,
   supabaseProjectId,
@@ -1030,6 +1157,7 @@ export async function deleteSupabaseFunction({
   organizationSlug: string | null;
   signal?: AbortSignal;
 }): Promise<void> {
+  assertSupabaseFunctionDeploysSupported(supabaseProjectId);
   if (appId !== undefined) {
     return withSupabaseFunctionDeployment(
       {
@@ -1053,6 +1181,20 @@ export async function deleteSupabaseFunction({
     `Deleting Supabase function: ${functionName} from project: ${supabaseProjectId}`,
   );
   callerSignal?.throwIfAborted();
+  const selfHosted = getSupabaseSelfHostedInstance(supabaseProjectId);
+  if (selfHosted) {
+    const { workerLifetimeMs } = await deleteSupabaseSelfHostedFunction({
+      instance: withSshOrThrow(selfHosted),
+      functionName,
+      signal: callerSignal,
+    });
+    recordSupabaseSelfHostedFunctionDelete({
+      projectId: supabaseProjectId,
+      functionName,
+      workerLifetimeMs,
+    });
+    return;
+  }
   const supabase = await abortable(
     getSupabaseClient({ organizationSlug }),
     deploymentSignal(callerSignal),
@@ -1090,6 +1232,15 @@ export async function listSupabaseFunctions({
     return [];
   }
 
+  if (isSupabaseSelfHostedProject(supabaseProjectId)) {
+    // Only pruning lists functions, and pruning never runs on a self-hosted
+    // instance: its functions directory also holds the router and other
+    // apps' functions.
+    throw new DyadError(
+      "Listing edge functions isn't supported on self-hosted Supabase instances.",
+      DyadErrorKind.Precondition,
+    );
+  }
   logger.info(`Listing Supabase functions for project: ${supabaseProjectId}`);
   callerSignal?.throwIfAborted();
   const supabase = await abortable(
@@ -1320,6 +1471,7 @@ export async function deploySupabaseFunction({
   snapshot?: SupabaseFunctionSnapshot;
   signal?: AbortSignal;
 }): Promise<DeployedFunctionResponse> {
+  assertSupabaseFunctionDeploysSupported(supabaseProjectId);
   if (appId !== undefined) {
     return withSupabaseFunctionDeployment(
       {
@@ -1402,6 +1554,39 @@ async function deploySupabaseFunctionUnqueued({
       version: 1,
       entrypoint_path: entrypointPath,
       import_map_path: importMapRelPath,
+    };
+  }
+
+  const selfHosted = getSupabaseSelfHostedInstance(supabaseProjectId);
+  if (selfHosted) {
+    // Files are written straight into the edge runtime's directory, so the
+    // function is live at once and the batch activation step has no work.
+    const deployed = await deploySupabaseSelfHostedFunction({
+      instance: withSshOrThrow(selfHosted),
+      functionName,
+      files: await Promise.all(
+        filesToUpload
+          // The edge runtime does not read a per-function import map.
+          .filter((file) => file.relativePath !== importMapRelPath)
+          .map(async (file) => ({
+            relativePath: file.relativePath,
+            content: new Uint8Array(await file.content.arrayBuffer()),
+          })),
+      ),
+      signal,
+    });
+    recordSupabaseSelfHostedFunctionDeploy({
+      projectId: supabaseProjectId,
+      functionName,
+      ...deployed,
+    });
+    return {
+      id: functionName,
+      slug: functionName,
+      name: functionName,
+      status: "ACTIVE",
+      version: 1,
+      entrypoint_path: entrypointPath,
     };
   }
 
@@ -1513,6 +1698,8 @@ async function bulkUpdateFunctionsUnqueued({
     );
     return;
   }
+  // Self-hosted deploys are live as soon as their files are written.
+  if (isSupabaseSelfHostedProject(supabaseProjectId)) return;
 
   signal?.throwIfAborted();
   const supabase = await abortable(

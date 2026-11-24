@@ -13,6 +13,28 @@ import {
   type SupabaseProjectLog,
 } from "../../supabase_admin/supabase_management_client";
 import { extractFunctionName } from "../../supabase_admin/supabase_utils";
+import {
+  deleteSupabaseSelfHostedInstance,
+  getSupabaseSelfHostedInstance,
+  insertSupabaseSelfHostedInstance,
+  isSupabaseSelfHostedProject,
+  listLinkedApps,
+  listSupabaseSelfHostedInstances,
+  type SupabaseSelfHostedSsh,
+} from "../../supabase_admin/supabase_self_hosted_store";
+import { checkSupabaseSelfHostedSsh } from "../../supabase_admin/supabase_self_hosted_functions";
+import { listPendingSupabaseSelfHostedFunctionUpdates } from "../../supabase_admin/supabase_self_hosted_function_updates";
+import { getSupabaseSelfHostedEmailStatus } from "../../supabase_admin/supabase_self_hosted_email";
+import {
+  importCoolifySupabaseService,
+  listCoolifySupabaseServices,
+  readCoolifyServerKey,
+} from "../../supabase_admin/supabase_self_hosted_coolify_import";
+import { getClient as getCoolifyClient } from "@/coolify_deploy/store";
+import {
+  checkSupabaseSelfHostedInstance,
+  normalizeSupabaseSelfHostedUrl,
+} from "../../supabase_admin/supabase_self_hosted_client";
 import { deployAllSupabaseFunctions } from "../../supabase_admin/supabase_utils";
 import {
   detectLegacyAppKey,
@@ -40,6 +62,31 @@ import { SupabaseManagementAPIError } from "@dyad-sh/supabase-management-js";
 import { isRateLimitError } from "../utils/retryWithRateLimit";
 import { isGenericFetchFailedError } from "@/lib/posthogTelemetry";
 import { queryInvalidationBus } from "@/window_infrastructure/main/query_invalidation_bus";
+import { isRecordingActive } from "../services/recording_registry";
+
+// Self-hosted instance ids are UUIDs; Cloud project refs never are.
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function assertSelfHostedEnabled(): void {
+  if (!readSettings().enableSupabaseSelfHosted) {
+    throw new DyadError(
+      "Turn on self-hosted Supabase in Settings > Experiments first.",
+      DyadErrorKind.Precondition,
+    );
+  }
+}
+
+/** Importing from Coolify also needs the Coolify experiment. */
+function assertCoolifyImportEnabled(): void {
+  assertSelfHostedEnabled();
+  if (!readSettings().enableOwnServerDeployment) {
+    throw new DyadError(
+      "Turn on deployment to your own server in Settings > Experiments to import from Coolify.",
+      DyadErrorKind.Precondition,
+    );
+  }
+}
 
 const logger = log.scope("supabase_handlers");
 const testOnlyHandle = createTestOnlyLoggedHandler(logger);
@@ -387,6 +434,142 @@ export function registerSupabaseHandlers() {
     ),
   );
 
+  createTypedHandler(supabaseContracts.listSelfHostedInstances, async () =>
+    listSupabaseSelfHostedInstances(),
+  );
+
+  createTypedHandler(
+    supabaseContracts.listCoolifySupabaseServices,
+    async () => {
+      assertCoolifyImportEnabled();
+      return listCoolifySupabaseServices(getCoolifyClient());
+    },
+  );
+
+  createTypedHandler(
+    supabaseContracts.importCoolifySupabaseService,
+    async (_, { serviceUuid }) => {
+      assertCoolifyImportEnabled();
+      return importCoolifySupabaseService({
+        client: getCoolifyClient(),
+        coolifyInstanceUrl: readSettings().coolify?.instanceUrl ?? "",
+        serviceUuid,
+      });
+    },
+  );
+
+  createTypedHandler(
+    supabaseContracts.getSelfHostedEmailStatus,
+    async (_, { projectId }) => {
+      const instance = getSupabaseSelfHostedInstance(projectId);
+      if (!instance) {
+        throw new DyadError(
+          "That self-hosted Supabase instance no longer exists.",
+          DyadErrorKind.NotFound,
+        );
+      }
+      return getSupabaseSelfHostedEmailStatus(instance);
+    },
+  );
+
+  createTypedHandler(
+    supabaseContracts.listPendingSelfHostedFunctionUpdates,
+    async (_, { projectId }) =>
+      listPendingSupabaseSelfHostedFunctionUpdates(projectId),
+  );
+
+  createTypedHandler(
+    supabaseContracts.addSelfHostedInstance,
+    async (_, params) => {
+      assertSelfHostedEnabled();
+      const url = normalizeSupabaseSelfHostedUrl(params.url);
+      if (!url) {
+        throw new DyadError(
+          "Enter the instance's API URL, starting with http:// or https://.",
+          DyadErrorKind.Validation,
+        );
+      }
+      let studioUrl: string | null = null;
+      if (params.studioUrl) {
+        studioUrl = normalizeSupabaseSelfHostedUrl(params.studioUrl);
+        if (!studioUrl) {
+          throw new DyadError(
+            "Enter the Studio URL starting with http:// or https://, or leave it empty.",
+            DyadErrorKind.Validation,
+          );
+        }
+      }
+      await checkSupabaseSelfHostedInstance({
+        url,
+        anonKey: params.anonKey,
+        serviceKey: params.serviceKey,
+      });
+      let ssh: SupabaseSelfHostedSsh | null = null;
+      if (params.ssh) {
+        const { host, port, username, coolifyKeyUuid } = params.ssh;
+        let privateKey = params.ssh.privateKey;
+        if (coolifyKeyUuid) {
+          // An imported key is read here so it never reaches the renderer.
+          assertCoolifyImportEnabled();
+          privateKey = await readCoolifyServerKey(
+            getCoolifyClient(),
+            coolifyKeyUuid,
+          );
+        }
+        const sshInput = {
+          host,
+          port,
+          username,
+          // ssh2 wants the key's final newline, which trimming removed.
+          privateKey: `${privateKey}\n`,
+        };
+        ssh = {
+          ...sshInput,
+          ...(await checkSupabaseSelfHostedSsh({
+            url,
+            anonKey: params.anonKey,
+            ssh: sshInput,
+          })),
+        };
+      }
+      const instance = await insertSupabaseSelfHostedInstance({
+        name: params.name,
+        url,
+        studioUrl,
+        anonKey: params.anonKey,
+        serviceKey: params.serviceKey,
+        ssh,
+      });
+      logger.info(`Added self-hosted Supabase instance ${instance.id}`);
+      return { instance };
+    },
+  );
+
+  createTypedHandler(
+    supabaseContracts.removeSelfHostedInstance,
+    async (_, { id }) => {
+      // The renderer asked the user to confirm these. Nothing here contacts
+      // the instance, so this works after its server is gone.
+      const linked = listLinkedApps(id);
+      // Check every app first so a refusal can't leave some disconnected.
+      const recording = linked.filter((app) => isRecordingActive(app.id));
+      if (recording.length > 0) {
+        throw new DyadError(
+          `Stop recording in ${recording.map((app) => app.name).join(", ")} before removing this instance.`,
+          DyadErrorKind.Conflict,
+        );
+      }
+      for (const app of linked) {
+        await disconnectSupabaseProject(app.id);
+      }
+      queryInvalidationBus.publish(
+        linked.map((app) => ({ family: "app" as const, appId: app.id })),
+      );
+      await deleteSupabaseSelfHostedInstance(id);
+      logger.info(`Removed self-hosted Supabase instance ${id}`);
+    },
+  );
+
   // List branches for a Supabase project (database branches)
   createTypedHandler(supabaseContracts.listBranches, async (_, params) => {
     const { projectId, organizationSlug } = params;
@@ -453,6 +636,17 @@ export function registerSupabaseHandlers() {
       async (_, params) => {
         const { projectId, appId, parentProjectId, organizationSlug } = params;
         await assertNoNeonProject(appId);
+        if (projectId && UUID_PATTERN.test(projectId)) {
+          // Apps already linked keep working while the experiment is off,
+          // but new links need it on.
+          assertSelfHostedEnabled();
+          if (!isSupabaseSelfHostedProject(projectId)) {
+            throw new DyadError(
+              "That self-hosted Supabase instance no longer exists. Choose another instance.",
+              DyadErrorKind.NotFound,
+            );
+          }
+        }
         await db
           .update(apps)
           .set({
@@ -486,33 +680,7 @@ export function registerSupabaseHandlers() {
   // project. This legacy contract spells the app id `app`, so it declares the
   // provider operation directly rather than using createAppOperationHandler.
   createTypedHandler(supabaseContracts.unsetAppProject, async (_, params) => {
-    const { app } = params;
-    await appOperationCoordinator.run(
-      {
-        appId: app,
-        operation: "unset-supabase-project",
-        resources: ["provider", "supabase-functions"],
-        // Same reason as the connect above: a recording holds `provider` for
-        // its whole session, so this would queue invisibly behind it.
-        refuseWhenRecording: "disconnect this app's Supabase project",
-      },
-      async () => {
-        await db
-          .update(apps)
-          .set({
-            supabaseProjectId: null,
-            supabaseParentProjectId: null,
-            supabaseOrganizationSlug: null,
-          })
-          .where(eq(apps.id, app));
-
-        const { reconcileRunningSupabasePreview } =
-          await import("../services/app_runtime_service");
-        await reconcileRunningSupabasePreview(app);
-
-        logger.info(`Removed Supabase project association for app ${app}`);
-      },
-    );
+    await disconnectSupabaseProject(params.app);
   });
 
   // Does this app still authenticate with the project's legacy anon key?
@@ -710,6 +878,35 @@ export function registerSupabaseHandlers() {
       logger.info(
         `Set fake Supabase project ${fakeProjectId} for app ${appId} during testing.`,
       );
+    },
+  );
+}
+
+async function disconnectSupabaseProject(app: number): Promise<void> {
+  await appOperationCoordinator.run(
+    {
+      appId: app,
+      operation: "unset-supabase-project",
+      resources: ["provider", "supabase-functions"],
+      // Same reason as the connect above: a recording holds `provider` for
+      // its whole session, so this would queue invisibly behind it.
+      refuseWhenRecording: "disconnect this app's Supabase project",
+    },
+    async () => {
+      await db
+        .update(apps)
+        .set({
+          supabaseProjectId: null,
+          supabaseParentProjectId: null,
+          supabaseOrganizationSlug: null,
+        })
+        .where(eq(apps.id, app));
+
+      const { reconcileRunningSupabasePreview } =
+        await import("../services/app_runtime_service");
+      await reconcileRunningSupabasePreview(app);
+
+      logger.info(`Removed Supabase project association for app ${app}`);
     },
   );
 }

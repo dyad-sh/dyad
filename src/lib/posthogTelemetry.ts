@@ -100,6 +100,7 @@ export function getSettingsPersonTelemetryProperties(settings: UserSettings) {
     // Features that stay off until a user turns them on.
     enableShellTool: settings.enableShellTool ?? false,
     enableOwnServerDeployment: settings.enableOwnServerDeployment ?? false,
+    enableSupabaseSelfHosted: settings.enableSupabaseSelfHosted ?? false,
     enableGitlabPublishing: settings.enableGitlabPublishing ?? false,
     enableTestRunInPreview: settings.enableTestRunInPreview ?? false,
     enableParallelTestRuns: settings.enableParallelTestRuns ?? false,

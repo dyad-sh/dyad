@@ -33,6 +33,7 @@ import { TestsPanel } from "./TestsPanel";
 import { PlanPanel } from "./PlanPanel";
 import { PackageManagerWarningBanner } from "./PackageManagerWarningBanner";
 import { NeonMigrationBanner } from "./NeonMigrationBanner";
+import { SupabaseFunctionUpdateBanner } from "./SupabaseFunctionUpdateBanner";
 import { useSupabase } from "@/hooks/useSupabase";
 import { useTranslation } from "react-i18next";
 import { ipc } from "@/ipc/types";
@@ -196,7 +197,12 @@ export function PreviewPanel() {
   }, []);
 
   useSupabase({
-    edgeLogsProjectId: app?.supabaseProjectId,
+    // A self-hosted instance's function logs are read over SSH, so there are
+    // none without it.
+    edgeLogsProjectId:
+      app?.supabaseSelfHosted && !app.supabaseSelfHosted.ssh
+        ? null
+        : app?.supabaseProjectId,
     edgeLogsOrganizationSlug: app?.supabaseOrganizationSlug,
     edgeLogsAppId: app?.id,
   });
@@ -254,6 +260,7 @@ export function PreviewPanel() {
               <PreviewToolbar />
               <PackageManagerWarningBanner />
               <NeonMigrationBanner />
+              <SupabaseFunctionUpdateBanner />
               {/* A session holds the app's lock and its isolated database no
                   matter which tab is showing, and this bar is the only thing
                   that says so and the only place it can be stopped — so it is

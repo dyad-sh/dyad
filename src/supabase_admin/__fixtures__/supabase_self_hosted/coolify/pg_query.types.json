@@ -1,0 +1,36 @@
+{
+  "name": "pg_query.types",
+  "request": {
+    "method": "POST",
+    "path": "/pg/query",
+    "auth": "service",
+    "body": {
+      "query": "select 9007199254740993::bigint big, 42::int i, 1.50::numeric(10,2) num, 1.5::float8 f, '2026-01-02 03:04:05+00'::timestamptz ts, '2026-01-02'::date d, '1 day'::interval iv, '{\"a\":1}'::jsonb j, array[1,2] arr, null::text nul, true b, 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'::uuid u, '\\x0102'::bytea by"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": [
+      {
+        "big": "9007199254740993",
+        "i": 42,
+        "num": "1.50",
+        "f": 1.5,
+        "ts": "2026-01-02 03:04:05+00",
+        "d": "2026-01-02",
+        "iv": "1 day",
+        "j": {
+          "a": 1
+        },
+        "arr": [1, 2],
+        "nul": null,
+        "b": true,
+        "u": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+        "by": {
+          "type": "Buffer",
+          "data": [1, 2]
+        }
+      }
+    ]
+  }
+}

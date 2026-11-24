@@ -9,6 +9,11 @@ import {
   resetDeferredSupabaseFunctionSyncForTests,
 } from "./supabase_recording_deferred_sync";
 
+vi.mock(
+  "@/supabase_admin/supabase_self_hosted_store",
+  () => import("@/testing/supabase_self_hosted_store_cloud_only"),
+);
+
 const mocks = vi.hoisted(() => ({
   findApp: vi.fn(),
   functionExists: vi.fn(),

@@ -39,12 +39,71 @@ await supabase.auth.signUp({ email, password, options: { emailRedirectTo: callba
 await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: callbackUrl } });
 await supabase.auth.resetPasswordForEmail(email, { redirectTo: resetUrl });`;
 
-export function getSupabaseAvailableSystemPrompt(supabaseClientCode: string) {
+/** What the Supabase instructions need to know about a self-hosted instance. */
+export interface SupabaseSelfHostedPromptOptions {
+  url: string;
+  /** Whether Dyad deploys edge functions, which needs SSH access. */
+  functionsDeployed: boolean;
+  /**
+   * Updated functions that may still run their previous code. Names only, so
+   * the prompt stays the same from turn to turn while they are pending.
+   */
+  pendingFunctions: readonly string[];
+}
+
+/**
+ * The passages that differ for a self-hosted instance. Cloud keeps its
+ * original text so its prompt is unchanged; self-hosted replaces each passage
+ * in place rather than overriding it later, so the prompt never says both.
+ */
+function supabasePromptPassages(
+  selfHosted: SupabaseSelfHostedPromptOptions | null,
+) {
+  if (!selfHosted) {
+    return {
+      intro: "",
+      authRedirects: `When app-specific localhost domains are enabled, Dyad registers the running preview's origin and paths in Supabase's Redirect URLs allowlist. With ordinary localhost previews, configure the preview callback URLs in that allowlist as needed. Deployment callback URLs must also be allowed in the project's URL Configuration.`,
+      deploys: `- Edge Functions are deployed automatically after edits, either immediately or during end-of-turn finalization.
+- Do NOT tell the user to manually deploy the edge function using the CLI or Supabase Console. It's unhelpful and not needed.`,
+      newSecrets: `  - Inform user to set up via Supabase Console
+  - Direct them to: Project -> Edge Functions -> Manage Secrets
+  - Use <resource-link> for guidance`,
+      linking: "Use <resource-link> to link to the relevant edge function",
+      functionUrl:
+        "https://SUPABASE_PROJECT_ID.supabase.co/functions/v1/EDGE_FUNCTION_NAME",
+    };
+  }
+  const { url, functionsDeployed, pendingFunctions } = selfHosted;
+  const pending =
+    pendingFunctions.length > 0
+      ? `\n- These functions were just updated and may still answer with their previous code: ${pendingFunctions.join(", ")}. A result from calling one may not reflect the latest code yet. Don't change working code because of such a result.`
+      : "";
+  return {
+    intro: `\nThis app uses a self-hosted Supabase instance at ${url}, not Supabase Cloud.\n`,
+    authRedirects: `Dyad doesn't add callback URLs to a self-hosted instance's allowlist. Preview and deployment callback URLs must be allowed in the instance's ADDITIONAL_REDIRECT_URLS setting (GOTRUE_URI_ALLOW_LIST on its auth service).`,
+    deploys: functionsDeployed
+      ? `- Edge Functions are deployed automatically after edits. After an update, the function's previous version can keep answering for up to a minute after its last request, or a few minutes under steady traffic, so a test right after an update may still show the old behavior.${pending}
+- Do NOT tell the user to manually deploy the edge function. It's unhelpful and not needed.`
+      : `- Edge Functions are NOT deployed to this instance because it was added without SSH access. Their code is saved but does not run. Prefer database features such as RLS policies and Postgres functions.`,
+    newSecrets: `  - Secrets can't be set from Dyad or Supabase Studio on this instance
+  - Tell the user to add each secret as an environment variable on the server that runs Supabase (its .env file, or the service's environment variables in Coolify) and then restart the edge functions container
+  - Name the exact variables the function reads`,
+    linking:
+      "Don't link to the Supabase Cloud dashboard: this instance isn't on Supabase Cloud.",
+    functionUrl: `${url}/functions/v1/EDGE_FUNCTION_NAME`,
+  };
+}
+
+export function getSupabaseAvailableSystemPrompt(
+  supabaseClientCode: string,
+  selfHosted: SupabaseSelfHostedPromptOptions | null = null,
+) {
+  const passages = supabasePromptPassages(selfHosted);
   return `
 # Supabase Instructions
 
 The user has Supabase available for their app so use it for any auth, database or server-side functions.
-
+${passages.intro}
 ## Supabase Client Setup
 
 Check if a Supabase client exists at \`src/integrations/supabase/client.ts\`.
@@ -62,7 +121,7 @@ ${supabaseClientCode}
 
 ${SUPABASE_AUTH_REDIRECT_RULE}
 
-When app-specific localhost domains are enabled, Dyad registers the running preview's origin and paths in Supabase's Redirect URLs allowlist. With ordinary localhost previews, configure the preview callback URLs in that allowlist as needed. Deployment callback URLs must also be allowed in the project's URL Configuration. If the Auth UI uses a shared callback for sign-in and recovery, handle PASSWORD_RECOVERY by showing the password-update screen before ordinary signed-in navigation. For custom email templates, use the requested RedirectTo rather than a fixed SiteURL when constructing the return link. Ordinary Supabase login does not require creating an OAuth Server application.
+${passages.authRedirects} If the Auth UI uses a shared callback for sign-in and recovery, handle PASSWORD_RECOVERY by showing the password-update screen before ordinary signed-in navigation. For custom email templates, use the requested RedirectTo rather than a fixed SiteURL when constructing the return link. Ordinary Supabase login does not require creating an OAuth Server application.
 
 Browser examples (use the callback routes you actually implement):
 \`\`\`typescript
@@ -394,8 +453,7 @@ CREATE TRIGGER on_auth_user_created
 - Write functions in the supabase/functions folder
 - Each function should be in a standalone directory where the main file is index.ts (e.g., supabase/functions/hello/index.ts)
 - Reusable utilities belong in the supabase/functions/_shared folder. Import them in your edge functions with relative paths like ../_shared/logger.ts.
-- Edge Functions are deployed automatically after edits, either immediately or during end-of-turn finalization.
-- Do NOT tell the user to manually deploy the edge function using the CLI or Supabase Console. It's unhelpful and not needed.
+${passages.deploys}
 
 2. Configuration:
 - DO NOT edit config.toml
@@ -453,9 +511,7 @@ const token = authHeader.replace('Bearer ', '')
   - SUPABASE_DB_URL
 
 - For new secrets/API tokens:
-  - Inform user to set up via Supabase Console
-  - Direct them to: Project -> Edge Functions -> Manage Secrets
-  - Use <resource-link> for guidance
+${passages.newSecrets}
 
 9. Logging:
 - Implement comprehensive logging for debugging purposes. 
@@ -470,11 +526,11 @@ const token = authHeader.replace('Bearer ', '')
   - Example: console.error("[function-name] error message", { error });
 
 10. Linking:
-Use <resource-link> to link to the relevant edge function
+${passages.linking}
 
 11. Client Invocation:
    - Call edge functions using the full hardcoded URL path
-   - Format: https://SUPABASE_PROJECT_ID.supabase.co/functions/v1/EDGE_FUNCTION_NAME
+   - Format: ${passages.functionUrl}
    - Note: Environment variables are not supported - always use full hardcoded URLs
 
 12. Edge Function Template:

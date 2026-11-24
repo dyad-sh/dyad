@@ -106,7 +106,7 @@ const SUPABASE_PASSWORD_FIXTURE: string[] = [
   "    `Supabase sign-in failed (${response.status()})`,",
   `  ).toBeTruthy();`,
   `  const session = await response.json();`,
-  `  const projectRef = new URL(url).host.split(".")[0];`,
+  `  const projectRef = new URL(url).hostname.split(".")[0];`,
   "  const storageKey = `sb-${projectRef}-auth-token`;",
   `  await page.context().addInitScript(`,
   `    ([key, value]) => {`,

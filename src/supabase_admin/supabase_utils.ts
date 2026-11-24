@@ -23,6 +23,11 @@ import {
   type SupabaseDeployScope,
 } from "./supabase_deploy_scope";
 
+import {
+  SupabaseFunctionsUnsupportedError,
+  supportsSupabaseFunctionDeploys,
+} from "./supabase_function_sync_skip";
+import { isSupabaseSelfHostedProject } from "./supabase_self_hosted_store";
 export type { SupabaseFunctionImpact } from "../../shared/supabase_dependency_analysis_types";
 
 const logger = log.scope("supabase_utils");
@@ -263,6 +268,9 @@ interface DeployAffectedSupabaseFunctionsArgs extends AppScopedDeployArgs {
 export function deployAffectedSupabaseFunctions(
   args: DeployAffectedSupabaseFunctionsArgs,
 ): Promise<string[]> {
+  if (!supportsSupabaseFunctionDeploys(args.supabaseProjectId)) {
+    return Promise.reject(new SupabaseFunctionsUnsupportedError());
+  }
   return withAppDeploymentOwnership(
     args,
     {
@@ -368,6 +376,9 @@ interface DeploySupabaseFunctionsArgs extends AppScopedDeployArgs {
 export function deploySupabaseFunctions(
   args: DeploySupabaseFunctionsArgs,
 ): Promise<string[]> {
+  if (!supportsSupabaseFunctionDeploys(args.supabaseProjectId)) {
+    return Promise.reject(new SupabaseFunctionsUnsupportedError());
+  }
   return withAppDeploymentOwnership(
     args,
     {
@@ -585,8 +596,13 @@ async function deploySupabaseFunctionsUnscoped({
       }
     }
 
-    // Prune dangling edge functions (deployed but not in codebase)
-    if (!skipPruneEdgeFunctions) {
+    // Prune dangling edge functions (deployed but not in codebase). Never on
+    // a self-hosted instance: its functions directory also holds the router
+    // every function depends on, and other apps' functions.
+    if (
+      !skipPruneEdgeFunctions &&
+      !isSupabaseSelfHostedProject(supabaseProjectId)
+    ) {
       try {
         logger.info("Checking for dangling edge functions to prune...");
         const deployedFunctions = await listSupabaseFunctions({

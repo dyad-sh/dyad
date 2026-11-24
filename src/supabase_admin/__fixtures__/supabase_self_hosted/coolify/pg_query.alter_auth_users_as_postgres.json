@@ -1,0 +1,26 @@
+{
+  "name": "pg_query.alter_auth_users_as_postgres",
+  "request": {
+    "method": "POST",
+    "path": "/pg/query",
+    "auth": "service",
+    "body": {
+      "query": "set role postgres; alter table auth.users add column fx_col2 int"
+    }
+  },
+  "response": {
+    "status": 400,
+    "body": {
+      "error": "ERROR:  42501: must be owner of table users\n",
+      "length": 88,
+      "name": "error",
+      "severity": "ERROR",
+      "code": "42501",
+      "file": "aclchk.c",
+      "line": "3788",
+      "routine": "aclcheck_error",
+      "message": "must be owner of table users",
+      "formattedError": "ERROR:  42501: must be owner of table users\n"
+    }
+  }
+}

@@ -46,27 +46,30 @@ export function assertProtectedMoveAllowed(
       DyadErrorKind.Validation,
     );
   }
-  const dotenvSide = sides.find((side) =>
-    side.checkedPaths.some(isDotenvFilePath),
-  );
-  if (!dotenvSide) return;
-  const bothDotenv = sides.every((side) =>
-    side.checkedPaths.every(isDotenvFilePath),
-  );
-  if (bothDotenv && from.checkedPaths.every(isDotenvTemplatePath)) return;
+  // The source is judged by its dotenv forms only, so an ordinary alias of a
+  // template (a symlink, an 8.3 short name) still counts as that template.
+  const fromDotenv = from.checkedPaths.filter(isDotenvFilePath);
+  const toDotenv = to.checkedPaths.filter(isDotenvFilePath);
+  if (fromDotenv.length === 0 && toDotenv.length === 0) return;
+  if (fromDotenv.length > 0 && toDotenv.length === to.checkedPaths.length) {
+    if (fromDotenv.every(isDotenvTemplatePath)) return;
+    throw new DyadError(
+      `Cannot copy or rename protected path: ${from.displayPath} (dotenv files can only be created from a template like .env.example)`,
+      DyadErrorKind.Validation,
+    );
+  }
   throw new DyadError(
-    bothDotenv
-      ? `Cannot copy or rename protected path: ${from.displayPath} (dotenv files can only be created from a template like .env.example)`
-      : `Cannot copy or rename protected path: ${dotenvSide.displayPath} (dotenv content cannot move to or from a non-dotenv name)`,
+    `Cannot copy or rename protected path: ${(fromDotenv.length > 0 ? from : to).displayPath} (dotenv content cannot move to or from a non-dotenv name)`,
     DyadErrorKind.Validation,
   );
 }
 
 /**
  * Collect the forms of a rename path the protected-move guard must see: as
- * written, with ancestors canonicalized, and (for an existing non-symlink
- * entry) its on-disk name. fs.promises.realpath is the native realpath, so
- * that last form also expands Win32 8.3 short names such as `ENV~1`.
+ * written, with ancestors canonicalized, and (for an existing entry) its
+ * on-disk name, which for a symlink is its target. fs.promises.realpath is
+ * the native realpath, so that last form also expands Win32 8.3 short names
+ * such as `ENV~1`. A dangling symlink has no target, so it adds nothing.
  */
 export async function resolveProtectedMoveSide(
   appPath: string,
@@ -80,11 +83,15 @@ export async function resolveProtectedMoveSide(
   const checkedPaths = [relativePath, operationPath];
   const fullPath = safeJoin(appPath, operationPath);
   const stat = lstatIfExists(fullPath);
-  if (stat && !stat.isSymbolicLink()) {
+  if (stat) {
     const realAppPath = await fs.promises.realpath(appPath);
-    checkedPaths.push(
-      path.relative(realAppPath, await fs.promises.realpath(fullPath)),
-    );
+    try {
+      checkedPaths.push(
+        path.relative(realAppPath, await fs.promises.realpath(fullPath)),
+      );
+    } catch (error) {
+      if (!isNodeErrorWithCode(error, "ENOENT")) throw error;
+    }
   }
   return { displayPath: relativePath, checkedPaths };
 }

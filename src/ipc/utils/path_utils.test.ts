@@ -3,6 +3,7 @@ import {
   assertProtectedMoveAllowed,
   hasGitSegment,
   prepareDeletePath,
+  resolveProtectedMoveSide,
   safeJoin,
 } from "@/ipc/utils/path_utils";
 import { describe, it, expect } from "vitest";
@@ -46,6 +47,13 @@ describe("assertProtectedMoveAllowed", () => {
     expect(move([from], [to])).toThrow(/only be created from a template/);
   });
 
+  it("allows an ordinary alias whose protected form is a template", () => {
+    expect(move(["alias.txt", ".env.example"], [".env"])).not.toThrow();
+    expect(move(["alias.txt", ".env.local"], [".env"])).toThrow(
+      /only be created from a template/,
+    );
+  });
+
   it("requires every checked source form to be a template", () => {
     expect(move([".env.example", ".env.local"], [".env"])).toThrow(
       /only be created from a template/,
@@ -61,6 +69,33 @@ describe("assertProtectedMoveAllowed", () => {
     expect(move(["notes.txt"], [".git/hooks/pre-commit"])).toThrow(/protected/);
   });
 });
+
+describe.runIf(process.platform !== "win32")(
+  "resolveProtectedMoveSide symlinks",
+  () => {
+    it("includes the target of a symlink and tolerates dangling links", async () => {
+      const appPath = await fs.mkdtemp(path.join(os.tmpdir(), "dyad-move-"));
+      try {
+        await fs.writeFile(path.join(appPath, ".env.local"), "TOKEN=secret\n");
+        await fs.symlink(".env.local", path.join(appPath, ".env.example"));
+        await fs.symlink("missing", path.join(appPath, "dangling"));
+        const from = await resolveProtectedMoveSide(appPath, ".env.example");
+        expect(from.checkedPaths).toContain(".env.local");
+        expect(() =>
+          assertProtectedMoveAllowed(from, {
+            displayPath: ".env",
+            checkedPaths: [".env"],
+          }),
+        ).toThrow(/only be created from a template/);
+        await expect(
+          resolveProtectedMoveSide(appPath, "dangling"),
+        ).resolves.toMatchObject({ checkedPaths: ["dangling", "dangling"] });
+      } finally {
+        await fs.rm(appPath, { recursive: true, force: true });
+      }
+    });
+  },
+);
 
 describe("safeJoin", () => {
   const testBaseDir = "/app/workspace";

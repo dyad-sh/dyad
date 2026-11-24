@@ -259,6 +259,32 @@ describe("copy_file and rename_file protected paths", () => {
     expect(gitAdd).not.toHaveBeenCalled();
   });
 
+  it.runIf(process.platform !== "win32")(
+    "copy_file allows a symlink alias of a dotenv template",
+    async () => {
+      await fs.writeFile(path.join(appPath, ".env.example"), "TOKEN=\n");
+      await fs.symlink(".env.example", path.join(appPath, "template-link"));
+      await expect(
+        copyFileTool.execute(
+          { from: "template-link", to: ".env.local" },
+          ctx(),
+        ),
+      ).resolves.toBe("Successfully copied template-link to .env.local");
+    },
+  );
+
+  it.runIf(process.platform !== "win32")(
+    "rename_file rejects a template-named symlink to a secret dotenv",
+    async () => {
+      await fs.writeFile(path.join(appPath, ".env.local"), "TOKEN=secret\n");
+      await fs.symlink(".env.local", path.join(appPath, ".env.example"));
+      await expect(
+        renameFileTool.execute({ from: ".env.example", to: ".env.dev" }, ctx()),
+      ).rejects.toThrow(/only be created from a template/);
+      expect(await exists(".env.dev")).toBe(false);
+    },
+  );
+
   it.each([".env.", ".env ", ".env::$DATA"])(
     "copy_file rejects the Windows alias %j",
     async (from) => {

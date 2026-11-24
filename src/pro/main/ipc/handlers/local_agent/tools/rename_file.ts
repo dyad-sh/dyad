@@ -17,6 +17,7 @@ import {
 import { queueCloudSandboxSnapshotSync } from "@/ipc/utils/cloud_sandbox_provider";
 import { getFileWriteKey, withLocks } from "@/ipc/utils/lock_utils";
 import { isSupabaseFunctionSyncDeferred } from "@/supabase_admin/supabase_recording_deferred_sync";
+import { assertProtectedPathNotMoved } from "./resolve_app_context";
 
 const logger = log.scope("rename_file");
 
@@ -45,6 +46,8 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
       result.startsWith("File renamed,"),
 
     execute: async (args, ctx: AgentContext) => {
+      assertProtectedPathNotMoved(args.from);
+      assertProtectedPathNotMoved(args.to);
       const fromOperationPath = await assertMutationPathAllowed({
         appPath: ctx.appPath,
         relativePath: args.from,
@@ -55,6 +58,8 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
         relativePath: args.to,
         followFinalSymlink: false,
       });
+      assertProtectedPathNotMoved(fromOperationPath);
+      assertProtectedPathNotMoved(toOperationPath);
       const fromFullPath = safeJoin(ctx.appPath, fromOperationPath);
       const toFullPath = safeJoin(ctx.appPath, toOperationPath);
       let functionToDelete: string | undefined;

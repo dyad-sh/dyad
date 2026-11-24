@@ -1,6 +1,7 @@
 import path from "node:path";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import type { AgentContext } from "./types";
+import { isDotenvFilePath } from "@/utils/dotenv_redaction";
 
 /**
  * Resolve the app path a read-only tool should target.
@@ -75,6 +76,29 @@ export function filterDyadInternalFiles<T extends { path: string }>(
   return files.filter((file) => !isDyadInternalPath(file.path));
 }
 
+function hasGitSegment(relativePath: string): boolean {
+  return relativePath
+    .replace(/\\/g, "/")
+    .split("/")
+    .some((part) => part.toLowerCase() === ".git");
+}
+
+/**
+ * Reject copy/rename paths that read_file protects (dotenv files and Git
+ * metadata), so their content cannot be moved to an unprotected name.
+ */
+export function assertProtectedPathNotMoved(
+  displayPath: string,
+  checkedPaths: string[] = [displayPath],
+): void {
+  if (checkedPaths.some((p) => isDotenvFilePath(p) || hasGitSegment(p))) {
+    throw new DyadError(
+      `Cannot copy or rename protected path: ${displayPath}`,
+      DyadErrorKind.Validation,
+    );
+  }
+}
+
 /**
  * Block Git metadata in every app and `.dyad/` content in referenced apps.
  * Current-app `.dyad/` content remains available. The relative path is
@@ -93,12 +117,7 @@ export function assertDyadInternalAccessAllowed({
   const relativeFromApp = path.relative(targetAppPath, fullFilePath);
   // Git metadata can contain credential-bearing remotes and extra headers.
   // Apply the same rule to lexical paths and the reader's canonical-path check.
-  if (
-    relativeFromApp
-      .replace(/\\/g, "/")
-      .split("/")
-      .some((part) => part.toLowerCase() === ".git")
-  ) {
+  if (hasGitSegment(relativeFromApp)) {
     throw new DyadError(
       "Cannot read Git metadata through file tools.",
       DyadErrorKind.Validation,

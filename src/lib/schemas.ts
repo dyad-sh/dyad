@@ -443,6 +443,7 @@ export const LanguageSchema = z.enum([
   "de",
   "pt-BR",
   "tr",
+  "it",
 ]);
 export type Language = z.infer<typeof LanguageSchema>;
 

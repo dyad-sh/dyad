@@ -27,6 +27,53 @@ afterEach(async () => {
 });
 
 describe("removeUnusedAppPackageFiles", () => {
+  it.each([
+    ["darwin", "arm64"],
+    ["darwin", "x64"],
+    ["win32", "x64"],
+    ["linux", "x64"],
+  ])("ships only the SQLite prebuild for %s-%s", async (platform, arch) => {
+    const buildPath = await fs.mkdtemp(
+      path.join(os.tmpdir(), "dyad-package-sqlite-prebuilds-"),
+    );
+    tempDirectories.push(buildPath);
+    const sqlitePath = path.join(buildPath, "node_modules/better-sqlite3");
+    const prebuildsPath = path.join(sqlitePath, "prebuilds");
+    const prebuilds = [
+      "darwin-arm64.node",
+      "darwin-x64.node",
+      "win32-arm64.node",
+      "win32-x64.node",
+      "linux-arm64.node",
+      "linux-x64.node",
+      "linuxmusl-arm64.node",
+      "linuxmusl-x64.node",
+    ];
+    await Promise.all(
+      prebuilds.map((file) =>
+        writeFixtureFile(path.join(prebuildsPath, file), file),
+      ),
+    );
+    const sourceBuild = path.join(
+      sqlitePath,
+      "build/Release/better_sqlite3.node",
+    );
+    await writeFixtureFile(sourceBuild);
+
+    await removeUnusedAppPackageFiles(buildPath, platform, arch);
+
+    expect(await fs.readdir(prebuildsPath)).toEqual([
+      `${platform}-${arch}.node`,
+    ]);
+    expect(
+      await fs.readFile(
+        path.join(prebuildsPath, `${platform}-${arch}.node`),
+        "utf8",
+      ),
+    ).toBe(`${platform}-${arch}.node`);
+    await expect(fs.readFile(sourceBuild, "utf8")).resolves.toBe("fixture");
+  });
+
   it("keeps target node-pty binaries and removes incompatible/debug artifacts", async () => {
     const buildPath = await fs.mkdtemp(
       path.join(os.tmpdir(), "dyad-package-cleanup-app-"),

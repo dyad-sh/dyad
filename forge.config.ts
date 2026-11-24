@@ -4,6 +4,7 @@ import {
   removeUnusedCopiedResources,
 } from "./src/lib/packaging_cleanup";
 import { stagePostHogSourcemaps } from "./src/lib/posthog_sourcemaps";
+import { renameWindowsWerHelper } from "./src/lib/windows_wer";
 import type { ForgeConfig } from "@electron-forge/shared-types";
 import { MakerSquirrel } from "@electron-forge/maker-squirrel";
 import { MakerZIP } from "@electron-forge/maker-zip";
@@ -26,7 +27,7 @@ const { isPrereleaseVersion } =
   };
 const packageJson = JSON.parse(
   readFileSync(new URL("./package.json", import.meta.url), "utf8"),
-) as { version: string };
+) as { version: string; productName: string };
 
 const pgRuntimeDependencies = [
   "pg",
@@ -166,6 +167,19 @@ if (isWindowsSigningEnabled && !process.env.AZURE_CODE_SIGNING_DLIB) {
 
 const config: ForgeConfig = {
   packagerConfig: {
+    executableName: packageJson.productName,
+    afterExtract: [
+      (buildPath, _electronVersion, platform, _arch, callback) => {
+        renameWindowsWerHelper(
+          buildPath,
+          platform,
+          packageJson.productName,
+        ).then(
+          () => callback(),
+          (error) => callback(error as Error),
+        );
+      },
+    ],
     // E2E test builds install local file: dependencies as links on Windows.
     // Dereference them so packaging does not require symlink privileges in the temp app.
     // Local file: native packages install as symlinks; dereference them so the

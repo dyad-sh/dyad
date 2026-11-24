@@ -355,7 +355,7 @@ for (const action of ["retry", "remove"] as const) {
           });
         const state = { calls: 0, denied: true };
         (globalThis as any).__clipboardRecovery = state;
-        clipboard.writeImage = () => {
+        clipboard.write = async () => {
           state.calls++;
           if (state.denied) throw new Error("synthetic clipboard denial");
         };

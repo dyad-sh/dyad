@@ -194,8 +194,9 @@ export class PreviewPanel {
       if (!(await rebuildItem.isVisible())) {
         await this.clickPreviewMoreOptions();
       }
-      await rebuildItem.click({ timeout: 2_000 });
+      await rebuildItem.click({ trial: true, timeout: 2_000 });
     }).toPass({ timeout: Timeout.MEDIUM });
+    await rebuildItem.click({ timeout: Timeout.MEDIUM });
   }
 
   async clickTogglePreviewPanel() {

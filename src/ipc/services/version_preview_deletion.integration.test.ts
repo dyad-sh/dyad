@@ -125,8 +125,11 @@ describe("version preview deletion lifecycle", () => {
       versionId: "abc123",
       operationId: "preview-1",
     });
-    await flush();
-    expect(actor.getSnapshot().state.type).toBe("checking-out");
+    // Origin resolution stats the real `.git` folder on the libuv threadpool,
+    // which a loaded CI runner can finish after a single `flush()`.
+    await vi.waitFor(() =>
+      expect(actor.getSnapshot().state.type).toBe("checking-out"),
+    );
 
     actors.beginAppDeletion(7);
     const preparation = actors.prepareAppDeletion(7);

@@ -90,6 +90,31 @@ describe.runIf(process.platform !== "win32")(
         await expect(
           resolveProtectedMoveSide(appPath, "dangling"),
         ).resolves.toMatchObject({ checkedPaths: ["dangling", "dangling"] });
+        await fs.symlink("loop", path.join(appPath, "loop"));
+        await expect(
+          resolveProtectedMoveSide(appPath, "loop"),
+        ).resolves.toMatchObject({ checkedPaths: ["loop", "loop"] });
+
+        await fs.writeFile(path.join(appPath, "notes.txt"), "hello\n");
+        await fs.symlink("notes.txt", path.join(appPath, ".env.sample"));
+        expect(() =>
+          assertProtectedMoveAllowed(
+            {
+              displayPath: ".env.sample",
+              checkedPaths: [".env.sample", ".env.sample", "notes.txt"],
+            },
+            { displayPath: ".env", checkedPaths: [".env"] },
+          ),
+        ).toThrow(/protected path: \.env\.sample \(dotenv content/);
+        expect(() =>
+          assertProtectedMoveAllowed(
+            { displayPath: ".env.example", checkedPaths: [".env.example"] },
+            {
+              displayPath: ".env.prod",
+              checkedPaths: [".env.prod", ".env.prod", "notes.txt"],
+            },
+          ),
+        ).toThrow(/protected path: \.env\.prod \(dotenv content/);
       } finally {
         await fs.rm(appPath, { recursive: true, force: true });
       }

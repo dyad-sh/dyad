@@ -46,20 +46,27 @@ export function assertProtectedMoveAllowed(
       DyadErrorKind.Validation,
     );
   }
-  // The source is judged by its dotenv forms only, so an ordinary alias of a
+  // The source is judged by its dotenv forms, so an ordinary alias of a
   // template (a symlink, an 8.3 short name) still counts as that template.
+  // Its last, most canonical form must itself be dotenv, so a template-named
+  // alias of an ordinary file does not count.
   const fromDotenv = from.checkedPaths.filter(isDotenvFilePath);
   const toDotenv = to.checkedPaths.filter(isDotenvFilePath);
   if (fromDotenv.length === 0 && toDotenv.length === 0) return;
-  if (fromDotenv.length > 0 && toDotenv.length === to.checkedPaths.length) {
+  const fromIsDotenv =
+    fromDotenv.length > 0 && isDotenvFilePath(from.checkedPaths.at(-1)!);
+  const toIsDotenv = toDotenv.length === to.checkedPaths.length;
+  if (fromIsDotenv && toIsDotenv) {
     if (fromDotenv.every(isDotenvTemplatePath)) return;
     throw new DyadError(
       `Cannot copy or rename protected path: ${from.displayPath} (dotenv files can only be created from a template like .env.example)`,
       DyadErrorKind.Validation,
     );
   }
+  const blocked =
+    toDotenv.length > 0 && !toIsDotenv ? to : fromDotenv.length > 0 ? from : to;
   throw new DyadError(
-    `Cannot copy or rename protected path: ${(fromDotenv.length > 0 ? from : to).displayPath} (dotenv content cannot move to or from a non-dotenv name)`,
+    `Cannot copy or rename protected path: ${blocked.displayPath} (dotenv content cannot move to or from a non-dotenv name)`,
     DyadErrorKind.Validation,
   );
 }
@@ -90,7 +97,12 @@ export async function resolveProtectedMoveSide(
         path.relative(realAppPath, await fs.promises.realpath(fullPath)),
       );
     } catch (error) {
-      if (!isNodeErrorWithCode(error, "ENOENT")) throw error;
+      if (
+        !isNodeErrorWithCode(error, "ENOENT") &&
+        !isNodeErrorWithCode(error, "ELOOP")
+      ) {
+        throw error;
+      }
     }
   }
   return { displayPath: relativePath, checkedPaths };

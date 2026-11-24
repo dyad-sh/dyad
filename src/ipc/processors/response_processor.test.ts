@@ -413,6 +413,22 @@ describe("processFullResponseActions add dependency errors", () => {
     vi.mocked(fs.existsSync).mockReturnValue(false);
   });
 
+  it("renames dotenv to dotenv", async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+
+    await processFullResponseActions(
+      `<dyad-rename from=".env.example" to=".env"></dyad-rename>`,
+      1,
+      { chatSummary: undefined, messageId: 1 },
+    );
+
+    expect(fs.renameSync).toHaveBeenCalledTimes(1);
+    expect(gitAdd).toHaveBeenCalledWith(
+      expect.objectContaining({ filepath: ".env" }),
+    );
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+  });
+
   it("queues delete tags for cloud sync even when the local path is already missing", async () => {
     vi.mocked(hasStagedChanges).mockResolvedValueOnce(true);
 

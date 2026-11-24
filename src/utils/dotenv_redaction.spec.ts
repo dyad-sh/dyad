@@ -15,6 +15,15 @@ describe("dotenv redaction", () => {
     expect(isDotenvFilePath(".envoy/config.yaml")).toBe(false);
   });
 
+  it("recognizes Windows aliases of dotenv names", () => {
+    expect(isDotenvFilePath(".env.")).toBe(true);
+    expect(isDotenvFilePath(".env ")).toBe(true);
+    expect(isDotenvFilePath(".env . .")).toBe(true);
+    expect(isDotenvFilePath(".env::$DATA")).toBe(true);
+    expect(isDotenvFilePath("config/.env.local:stream")).toBe(true);
+    expect(isDotenvFilePath(".environment.")).toBe(false);
+  });
+
   it("redacts unrecognized content to cover multiline dotenv values", () => {
     expect(
       redactDotenvValues(

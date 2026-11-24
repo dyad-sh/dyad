@@ -152,7 +152,7 @@ describe("copy_file and rename_file protected paths", () => {
 
   it("copy_file does not resolve absolute sources before the media containment check", async () => {
     const outside = path.join(os.tmpdir(), "dyad-outside-source.txt");
-    const realpath = vi.spyOn(fsSync, "realpathSync");
+    const realpath = vi.spyOn(fsSync.realpathSync, "native");
     await expect(
       copyFileTool.execute({ from: outside, to: "leaked.txt" }, ctx()),
     ).rejects.toThrow(/only allowed within the .dyad\/media/);
@@ -228,6 +228,39 @@ describe("copy_file and rename_file protected paths", () => {
       ).rejects.toThrow(/protected/i);
       expect(await exists("leaked.txt")).toBe(false);
       spy.mockRestore();
+    },
+  );
+
+  it("copies and renames dotenv to dotenv", async () => {
+    await fs.writeFile(path.join(appPath, ".env.example"), "TOKEN=\n");
+    await expect(
+      copyFileTool.execute({ from: ".env.example", to: ".env.local" }, ctx()),
+    ).resolves.toBe("Successfully copied .env.example to .env.local");
+    await expect(
+      renameFileTool.execute({ from: ".env.local", to: ".env.dev" }, ctx()),
+    ).resolves.toBe("Successfully renamed .env.local to .env.dev");
+  });
+
+  it.each([".env.", ".env ", ".env::$DATA"])(
+    "copy_file rejects the Windows alias %j",
+    async (from) => {
+      // Win32 writes these to .env itself; elsewhere they are real names.
+      await fs.writeFile(path.join(appPath, from), "TOKEN=secret\n");
+      await expect(
+        copyFileTool.execute({ from, to: "leaked.txt" }, ctx()),
+      ).rejects.toThrow(/protected/i);
+      expect(await exists("leaked.txt")).toBe(false);
+    },
+  );
+
+  it.runIf(process.platform === "win32")(
+    "copy_file rejects an 8.3 short name of .env",
+    async () => {
+      // 8.3 names may be disabled on the volume, so a missing file also passes.
+      await expect(
+        copyFileTool.execute({ from: "ENV~1", to: "leaked.txt" }, ctx()),
+      ).rejects.toThrow(/protected|does not exist/i);
+      expect(await exists("leaked.txt")).toBe(false);
     },
   );
 

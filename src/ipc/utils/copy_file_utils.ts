@@ -3,7 +3,7 @@ import path from "node:path";
 import log from "electron-log";
 import {
   assertMutationPathAllowed,
-  assertProtectedPathNotMoved,
+  assertProtectedMoveAllowed,
   safeJoin,
 } from "./path_utils";
 import { gitAdd } from "./git_utils";
@@ -137,8 +137,9 @@ export async function executeCopyFile({
       // Security: resolve symlinks and re-validate that paths remain within bounds.
       // path.resolve() does not follow symlinks, so an attacker could place a
       // symlink inside the allowed directory that points outside it.
-      const realFromPath = fs.realpathSync(fromFullPath);
-      const resolvedAppPath = fs.realpathSync(appPath);
+      // Native realpath also expands Win32 8.3 short names such as `ENV~1`.
+      const realFromPath = fs.realpathSync.native(fromFullPath);
+      const resolvedAppPath = fs.realpathSync.native(appPath);
       if (
         path.isAbsolute(from) &&
         !isWithinDyadMediaDir(realFromPath, resolvedAppPath)
@@ -173,15 +174,20 @@ export async function executeCopyFile({
         if (attachment || !isWithinDyadMediaDir(candidate, appPath)) continue;
         attachment = await findAttachmentByStoredPath(appPath, candidate);
       }
-      assertProtectedPathNotMoved(from, [
-        from,
-        path.relative(resolvedAppPath, realFromPath),
-        ...(attachment &&
-        isDotenvAttachment({ ...attachment, filePath: fromFullPath })
-          ? [".env"]
-          : []),
-      ]);
-      assertProtectedPathNotMoved(to, [to, operationPath]);
+      assertProtectedMoveAllowed(
+        {
+          displayPath: from,
+          checkedPaths: [
+            from,
+            path.relative(resolvedAppPath, realFromPath),
+            ...(attachment &&
+            isDotenvAttachment({ ...attachment, filePath: fromFullPath })
+              ? [".env"]
+              : []),
+          ],
+        },
+        { displayPath: to, checkedPaths: [to, operationPath] },
+      );
 
       // Track if this involves shared modules
       const sharedModuleChanged = isSharedServerModule(operationPath);

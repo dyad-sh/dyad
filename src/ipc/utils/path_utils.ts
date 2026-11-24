@@ -2,29 +2,72 @@ import fs from "node:fs";
 import path from "node:path";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { normalizePath } from "../../../shared/normalizePath";
-import { isDotenvFilePath } from "@/utils/dotenv_redaction";
+import {
+  isDotenvFilePath,
+  stripWindowsNameAlias,
+} from "@/utils/dotenv_redaction";
 
 export function hasGitSegment(relativePath: string): boolean {
   return relativePath
     .replace(/\\/g, "/")
     .split("/")
-    .some((part) => part.toLowerCase() === ".git");
+    .some((part) => stripWindowsNameAlias(part).toLowerCase() === ".git");
+}
+
+interface ProtectedMoveSide {
+  displayPath: string;
+  /** The path as written plus every canonical form of it. */
+  checkedPaths: string[];
 }
 
 /**
- * Reject copy/rename paths that read_file protects (dotenv files and Git
- * metadata), so their content cannot be moved to an unprotected name.
+ * Reject copy/rename moves that would expose what read_file protects. Git
+ * metadata is blocked both ways. Dotenv content may only move between dotenv
+ * names, so `.env.example -> .env` works but `.env -> leaked.txt` does not.
  */
-export function assertProtectedPathNotMoved(
-  displayPath: string,
-  checkedPaths: string[] = [displayPath],
+export function assertProtectedMoveAllowed(
+  from: ProtectedMoveSide,
+  to: ProtectedMoveSide,
 ): void {
-  if (checkedPaths.some((p) => isDotenvFilePath(p) || hasGitSegment(p))) {
+  const sides = [from, to];
+  const blocked =
+    sides.find((side) => side.checkedPaths.some(hasGitSegment)) ??
+    (sides.every((side) => side.checkedPaths.every(isDotenvFilePath))
+      ? undefined
+      : sides.find((side) => side.checkedPaths.some(isDotenvFilePath)));
+  if (blocked) {
     throw new DyadError(
-      `Cannot copy or rename protected path: ${displayPath}`,
+      `Cannot copy or rename protected path: ${blocked.displayPath}`,
       DyadErrorKind.Validation,
     );
   }
+}
+
+/**
+ * Collect the forms of a rename path the protected-move guard must see: as
+ * written, with ancestors canonicalized, and (for an existing non-symlink
+ * entry) its on-disk name. fs.promises.realpath is the native realpath, so
+ * that last form also expands Win32 8.3 short names such as `ENV~1`.
+ */
+export async function resolveProtectedMoveSide(
+  appPath: string,
+  relativePath: string,
+): Promise<ProtectedMoveSide> {
+  const operationPath = await assertMutationPathAllowed({
+    appPath,
+    relativePath,
+    followFinalSymlink: false,
+  });
+  const checkedPaths = [relativePath, operationPath];
+  const fullPath = safeJoin(appPath, operationPath);
+  const stat = lstatIfExists(fullPath);
+  if (stat && !stat.isSymbolicLink()) {
+    const realAppPath = await fs.promises.realpath(appPath);
+    checkedPaths.push(
+      path.relative(realAppPath, await fs.promises.realpath(fullPath)),
+    );
+  }
+  return { displayPath: relativePath, checkedPaths };
 }
 
 /**

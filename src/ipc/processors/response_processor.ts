@@ -5,9 +5,9 @@ import fs from "node:fs";
 import { getDyadAppPath } from "../../paths/paths";
 import path from "node:path";
 import {
-  assertMutationPathAllowed,
   assertNotProjectRootPath,
-  assertProtectedPathNotMoved,
+  assertProtectedMoveAllowed,
+  resolveProtectedMoveSide,
   lstatIfExists,
   prepareDeletePath,
   PreparedDeletePath,
@@ -474,17 +474,10 @@ export async function processFullResponseActions(
     const renameTags: typeof dyadRenameTags = [];
     for (const tag of dyadRenameTags) {
       try {
-        assertProtectedPathNotMoved(tag.from);
-        assertProtectedPathNotMoved(tag.to);
-        for (const relativePath of [tag.from, tag.to]) {
-          assertProtectedPathNotMoved(relativePath, [
-            await assertMutationPathAllowed({
-              appPath,
-              relativePath,
-              followFinalSymlink: false,
-            }),
-          ]);
-        }
+        assertProtectedMoveAllowed(
+          await resolveProtectedMoveSide(appPath, tag.from),
+          await resolveProtectedMoveSide(appPath, tag.to),
+        );
         renameTags.push(tag);
       } catch (error) {
         errors.push({

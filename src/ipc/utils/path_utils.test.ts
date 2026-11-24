@@ -1,5 +1,7 @@
 import {
   assertMutationPathAllowed,
+  assertProtectedMoveAllowed,
+  hasGitSegment,
   prepareDeletePath,
   safeJoin,
 } from "@/ipc/utils/path_utils";
@@ -11,6 +13,38 @@ import os from "node:os";
 function toPosixPath(value: string): string {
   return value.replace(/\\/g, "/");
 }
+
+describe("hasGitSegment", () => {
+  it("catches Windows aliases of .git segments", () => {
+    expect(hasGitSegment(".git./config")).toBe(true);
+    expect(hasGitSegment("sub\\.GIT \\config")).toBe(true);
+    expect(hasGitSegment(".git::$INDEX_ALLOCATION/config")).toBe(true);
+    expect(hasGitSegment("foo.git/config")).toBe(false);
+    expect(hasGitSegment(".github/workflows/ci.yml")).toBe(false);
+  });
+});
+
+describe("assertProtectedMoveAllowed", () => {
+  const move = (from: string[], to: string[]) => () =>
+    assertProtectedMoveAllowed(
+      { displayPath: from[0], checkedPaths: from },
+      { displayPath: to[0], checkedPaths: to },
+    );
+
+  it("allows dotenv to dotenv and ordinary moves", () => {
+    expect(move([".env.example"], [".env"])).not.toThrow();
+    expect(move(["a.txt"], ["b.txt"])).not.toThrow();
+  });
+
+  it("blocks dotenv crossing to or from an ordinary name, and any Git path", () => {
+    expect(move([".env"], ["leaked.txt"])).toThrow(/protected path: \.env/);
+    expect(move(["notes.txt"], [".env"])).toThrow(/protected/);
+    expect(move([".env.example"], [".env", "leaked.txt"])).toThrow(/protected/);
+    expect(move(["a.txt", ".env"], [".env.local"])).toThrow(/protected/);
+    expect(move([".git/config"], ["leaked.txt"])).toThrow(/protected/);
+    expect(move(["notes.txt"], [".git/hooks/pre-commit"])).toThrow(/protected/);
+  });
+});
 
 describe("safeJoin", () => {
   const testBaseDir = "/app/workspace";

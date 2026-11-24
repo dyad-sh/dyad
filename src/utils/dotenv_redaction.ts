@@ -10,11 +10,21 @@ const DOTENV_ASSIGNMENT =
 
 export const REDACTED_DOTENV_VALUE = "[redacted]";
 
+/**
+ * Win32 opens `name.`, `name ` and `name::$DATA` as `name`, so drop the
+ * stream suffix and trailing dots/spaces before matching a path segment.
+ */
+export function stripWindowsNameAlias(segment: string): string {
+  return segment.replace(/:.*$/s, "").replace(/[. ]+$/, "");
+}
+
 export function isDotenvFilePath(filePath: string): boolean {
   const logicalPath = filePath.startsWith("attachments:")
     ? filePath.slice("attachments:".length)
     : filePath;
-  return DOTENV_FILE_NAME.test(path.basename(logicalPath));
+  return DOTENV_FILE_NAME.test(
+    stripWindowsNameAlias(path.basename(logicalPath)),
+  );
 }
 
 /**

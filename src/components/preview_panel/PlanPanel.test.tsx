@@ -103,6 +103,15 @@ vi.mock("./plan/planAnnotationDom", () => ({
 
 import { PlanPanel } from "./PlanPanel";
 
+async function planFileTooltip(label: string): Promise<string | null> {
+  const trigger = screen.getByRole("button", { name: label });
+  act(() => trigger.focus());
+  const tooltip = await screen.findByText(/\.md$/);
+  const text = tooltip.textContent;
+  act(() => trigger.blur());
+  return text;
+}
+
 describe("PlanPanel", () => {
   beforeEach(() => {
     mocks.chatId = 7;
@@ -115,17 +124,17 @@ describe("PlanPanel", () => {
     mocks.setAcceptInNewChat.mockReset();
   });
 
-  it("identifies the displayed plan by its file number when switching chats", () => {
+  it("identifies the displayed plan by its file number when switching chats", async () => {
     const { rerender } = render(<PlanPanel />);
-    expect(screen.getByText("Plan #7").title).toBe("chat-7-plan.md");
+    expect(await planFileTooltip("Plan #7")).toBe("chat-7-plan.md");
 
     mocks.chatId = 12;
     rerender(<PlanPanel />);
-    expect(screen.getByText("Plan #12").title).toBe("chat-12-plan.md");
+    expect(await planFileTooltip("Plan #12")).toBe("chat-12-plan.md");
     expect(screen.queryByText("Plan #7")).toBeNull();
   });
 
-  it("names a saved legacy plan by its own file, and a newer draft by the canonical file", () => {
+  it("names a saved legacy plan by its own file, and a newer draft by the canonical file", async () => {
     mocks.savedPlan = {
       id: "chat-7-20260101",
       chatId: 7,
@@ -134,11 +143,11 @@ describe("PlanPanel", () => {
       content: "Implementation steps",
     };
     const { rerender } = render(<PlanPanel />);
-    expect(screen.getByText("Plan #7").title).toBe("chat-7-20260101.md");
+    expect(await planFileTooltip("Plan #7")).toBe("chat-7-20260101.md");
 
     mocks.savedPlan = { ...mocks.savedPlan, content: "Older steps" };
     rerender(<PlanPanel />);
-    expect(screen.getByText("Plan #7").title).toBe("chat-7-plan.md");
+    expect(await planFileTooltip("Plan #7")).toBe("chat-7-plan.md");
   });
 
   it("accepts once without asking a model to approve the plan", async () => {

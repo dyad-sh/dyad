@@ -239,11 +239,13 @@ const symDir = path.join(userCacheDir(), "dyad-symbol-cache", "sym");
 // Windows/Linux main binary, the macOS framework, and the macOS helpers, under
 // Electron's names or Dyad's renamed ones.
 function isElectronDebugFile(debugFile) {
-  return (
-    /^(dyad|electron)\b/i.test(debugFile) || debugFile === "Electron Framework"
-  );
+  return /^(dyad|electron)\b/i.test(debugFile);
 }
-const brokenElectronModules = new Set();
+// Electron modules the server answered 404 for.
+const missingElectronModules = new Set();
+// Electron modules whose download failed for another reason (network error,
+// timeout, 5xx), mapped to that reason. Running again may fix these.
+const failedElectronModules = new Map();
 
 // Fetch the module's .sym file into the cache and return its path, or
 // null when no candidate name resolves. Renamed binaries miss under
@@ -266,6 +268,8 @@ async function ensureSymbols(debugFile, debugId) {
   // Suffixed with the pid so concurrent runs cannot interleave writes
   // into the same partial file.
   const partial = `${cached}.${process.pid}.part`;
+  // Set when a lookup fails for a reason other than 404.
+  let failure = null;
   try {
     for (const name of candidates) {
       const url = breakpadSymbolUrl(SYMBOL_URL, name, debugId);
@@ -275,6 +279,9 @@ async function ensureSymbols(debugFile, debugId) {
         signal: AbortSignal.timeout(10 * 60 * 1000),
       });
       if (!response.ok) {
+        if (response.status !== 404) {
+          failure = `HTTP ${response.status} from ${url}`;
+        }
         continue;
       }
       console.error(
@@ -291,16 +298,28 @@ async function ensureSymbols(debugFile, debugId) {
       return cached;
     }
     console.error(
-      `No symbols on ${SYMBOL_URL} for "${debugFile}" ${debugId}; its frames will stay unresolved.`,
+      failure
+        ? `Symbol fetch for "${debugFile}" ${debugId} failed (${failure}); its frames will stay unresolved.`
+        : `No symbols on ${SYMBOL_URL} for "${debugFile}" ${debugId}; its frames will stay unresolved.`,
     );
   } catch (error) {
     fs.rmSync(partial, { force: true });
+    // fetch reports network errors as "fetch failed" with the details in cause.
+    const cause = error?.cause?.code ?? error?.cause?.message;
+    failure = [error?.message ?? String(error), cause]
+      .filter(Boolean)
+      .join(": ");
     console.error(
-      `Symbol fetch for "${debugFile}" ${debugId} failed (${error?.message ?? error}); its frames will stay unresolved.`,
+      `Symbol fetch for "${debugFile}" ${debugId} failed (${failure}); its frames will stay unresolved.`,
     );
   }
   if (isElectronDebugFile(debugFile)) {
-    brokenElectronModules.add(`${debugFile} ${debugId}`);
+    const key = `${debugFile} ${debugId}`;
+    if (failure) {
+      failedElectronModules.set(key, failure);
+    } else {
+      missingElectronModules.add(key);
+    }
   }
   return null;
 }
@@ -532,14 +551,23 @@ for (const { dumps, triggeringDump } of bundles) {
 
 // Printed to stdout, not only stderr, so it sits in the output a reader or
 // agent actually looks at, and turned into a nonzero exit so automation
-// notices. An unresolved Electron frame otherwise looks the same as an
-// unresolved OS library, which is how a broken symbol URL went unnoticed.
-if (brokenElectronModules.size > 0) {
+// notices. Otherwise an unresolved Electron frame looks the same as an
+// unresolved OS library.
+if (missingElectronModules.size > 0) {
   console.log(
     `ERROR: no symbols were found for Electron's own binaries, which Electron publishes for every release. Their frames above are unresolved because symbol resolution is broken, not because the code has no symbols:`,
   );
-  for (const module of brokenElectronModules) {
+  for (const module of missingElectronModules) {
     console.log(`  ${module}`);
+  }
+  process.exitCode = 2;
+}
+if (failedElectronModules.size > 0) {
+  console.log(
+    `ERROR: symbols for Electron's own binaries could not be downloaded, so their frames above are unresolved. Run the script again; if it keeps failing, check the network connection and the errors below:`,
+  );
+  for (const [module, reason] of failedElectronModules) {
+    console.log(`  ${module} (${reason})`);
   }
   process.exitCode = 2;
 }

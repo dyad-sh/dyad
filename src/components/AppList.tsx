@@ -1,4 +1,4 @@
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { Folder, PlusCircle, Search, Star } from "lucide-react";
 import { useAtomValue } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
@@ -18,11 +18,15 @@ import { useLoadApps } from "@/hooks/useLoadApps";
 import { useOpenApp } from "@/hooks/useOpenApp";
 import { useAppCollections } from "@/hooks/useAppCollections";
 import { useSettings } from "@/hooks/useSettings";
+import { cn } from "@/lib/utils";
 import { useMemo, useState } from "react";
 import { AppSearchDialog } from "./AppSearchDialog";
 import { AppItem } from "./appItem";
 export function AppList({ show }: { show?: boolean }) {
   const navigate = useNavigate();
+  const isHomePage = useRouterState({
+    select: (state) => state.location.pathname === "/",
+  });
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const openApp = useOpenApp();
   const { apps, loading, error } = useLoadApps();
@@ -100,23 +104,31 @@ export function AppList({ show }: { show?: boolean }) {
         <SidebarGroupContent>
           <div className="flex flex-col space-y-3">
             <div className="mx-2 flex items-center gap-2">
-              <Button
-                onClick={handleNewApp}
-                variant="outline"
-                className="flex flex-1 items-center justify-start gap-2 py-3"
-              >
-                <PlusCircle size={16} />
-                <span>New App</span>
-              </Button>
+              {!isHomePage && (
+                <Button
+                  onClick={handleNewApp}
+                  variant="outline"
+                  className="flex flex-1 items-center justify-start gap-2 py-3"
+                >
+                  <PlusCircle size={16} />
+                  <span>New App</span>
+                </Button>
+              )}
               <Button
                 onClick={() => setIsSearchDialogOpen(!isSearchDialogOpen)}
                 variant="outline"
-                className="flex shrink-0 items-center justify-center py-3 px-3"
+                className={cn(
+                  "flex shrink-0 items-center py-3 px-3",
+                  isHomePage
+                    ? "flex-1 justify-start font-normal text-muted-foreground"
+                    : "justify-center",
+                )}
                 title="Search Apps"
                 aria-label="Search Apps"
                 data-testid="search-apps-button"
               >
                 <Search size={16} />
+                {isHomePage && <span>Search apps…</span>}
               </Button>
             </div>
 

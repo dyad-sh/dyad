@@ -311,7 +311,6 @@ test("group by app: new chat joins its app's group (grouping sticks)", async ({
 
   // App B + one chat. Tabs now span two apps.
   await po.navigation.goToAppsTab();
-  await po.page.getByRole("button", { name: "New App" }).click();
   await po.importApp(appB);
   await po.sendPrompt("[dump] app B first chat");
   await po.chatActions.waitForChatCompletion();

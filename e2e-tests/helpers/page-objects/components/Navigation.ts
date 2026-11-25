@@ -21,18 +21,9 @@ export class Navigation {
     const appsLink = this.page.getByRole("link", { name: "Apps" });
     await expect(appsLink).toBeVisible({ timeout: 60000 });
     await appsLink.click();
-    await expect(async () => {
-      const isAppsLandingVisible = await this.page
-        .getByRole("heading", { name: "What do you want to build?" })
-        .isVisible({ timeout: 500 })
-        .catch(() => false);
-      const isAppListVisible = await this.page
-        .getByRole("button", { name: "New App" })
-        .isVisible({ timeout: 500 })
-        .catch(() => false);
-
-      expect(isAppsLandingVisible || isAppListVisible).toBe(true);
-    }).toPass({ timeout: Timeout.MEDIUM });
+    await expect(
+      this.page.getByRole("heading", { name: "What do you want to build?" }),
+    ).toBeVisible({ timeout: Timeout.MEDIUM });
   }
 
   async goToChatTab() {

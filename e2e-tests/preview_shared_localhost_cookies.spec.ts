@@ -161,12 +161,6 @@ test("shared localhost previews isolate app sessions and clear them on delete", 
   expect(protectedSession.cookie).not.toContain("shadow");
 
   await po.navigation.goToAppsTab();
-  if (
-    await po.page
-      .getByRole("button", { name: "New App", exact: true })
-      .isVisible()
-  )
-    await po.page.getByRole("button", { name: "New App", exact: true }).click();
   const appTwo = await importRecorder("cookie-app-two");
   // Before namespacing, app two received app one's session cookie.
   expect(await sessionUser()).toBeNull();

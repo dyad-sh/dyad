@@ -1,3 +1,4 @@
+import { expect } from "@playwright/test";
 import { test, Timeout } from "./helpers/test_helper";
 
 test("app search - basic search dialog functionality", async ({ po }) => {
@@ -23,12 +24,23 @@ test("app search - basic search dialog functionality", async ({ po }) => {
   // Create third app
   await po.sendPrompt("create a blog system", { timeout: Timeout.LONG });
 
-  // Go back to apps list
+  // New App returns from the gallery to the Home prompt.
   await po.navigation.goToAppsTab();
-  await po.page.getByTestId("search-apps-button").waitFor();
+  await po.page.getByRole("button", { name: "See more", exact: true }).click();
+  await expect(
+    po.page.getByRole("heading", { name: "Apps", exact: true }),
+  ).toBeVisible();
+  await po.page.getByRole("link", { name: "Apps", exact: true }).hover();
+  const newApp = po.page.getByRole("button", { name: "New App", exact: true });
+  await newApp.click();
+  await expect(
+    po.page.getByRole("heading", { name: "What do you want to build?" }),
+  ).toBeVisible();
+  await expect(newApp).toHaveCount(0);
 
   // Test 1: Open search dialog using the search button
   const searchButton = po.page.getByTestId("search-apps-button");
+  await expect(searchButton).toHaveText("Search apps…");
   await searchButton.click();
 
   // Wait for search dialog to appear

@@ -4,6 +4,7 @@ import {
   removeUnusedCopiedResources,
 } from "./src/lib/packaging_cleanup";
 import { stagePostHogSourcemaps } from "./src/lib/posthog_sourcemaps";
+import { bundleMustardscriptWindowsRuntime } from "./src/lib/bundle_windows_runtime";
 import type { ForgeConfig } from "@electron-forge/shared-types";
 import { MakerSquirrel } from "@electron-forge/maker-squirrel";
 import { MakerZIP } from "@electron-forge/maker-zip";
@@ -174,10 +175,14 @@ const config: ForgeConfig = {
     windowsSign: isWindowsSigningEnabled ? windowsSign : undefined,
     afterCopy: [
       (buildPath, _electronVersion, platform, arch, callback) => {
-        removeUnusedAppPackageFiles(buildPath, platform, arch).then(
-          () => callback(),
-          (error) => callback(error as Error),
-        );
+        removeUnusedAppPackageFiles(buildPath, platform, arch)
+          .then(() =>
+            bundleMustardscriptWindowsRuntime(buildPath, platform, arch),
+          )
+          .then(
+            () => callback(),
+            (error) => callback(error as Error),
+          );
       },
       // Must run after the cleanup above and before the asar is created, so
       // the shipped bundles are the ones carrying the chunk IDs.

@@ -26,8 +26,10 @@
 //
 // Prints one line per input frame: the module+offset and the resolved
 // function name, or <unresolved> when no symbol covers the offset.
-// Unresolved frames do not make the script exit nonzero; only usage
-// errors do.
+// Unresolved frames do not make the script exit nonzero, except frames of
+// Electron's own binaries: Electron publishes symbols for every release, so
+// a miss there means resolution itself is broken, and the script prints an
+// ERROR line and exits 2. Usage errors exit 1.
 //
 // Symbol files come from symbols.electronjs.org and can be hundreds of
 // megabytes, so they are cached in the platform's user cache directory
@@ -45,6 +47,7 @@ import path from "node:path";
 import readline from "node:readline";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import { breakpadSymbolUrl } from "./breakpad-symbol-url.mjs";
 
 const SYMBOL_URL = "https://symbols.electronjs.org";
 
@@ -230,6 +233,18 @@ function userCacheDir() {
 }
 const symDir = path.join(userCacheDir(), "dyad-symbol-cache", "sym");
 
+// Electron publishes symbols for every release of its own binaries, so a
+// miss for one of them means resolution is broken (a wrong URL, a server
+// change, a bad debug id), not that the module has no symbols. Covers the
+// Windows/Linux main binary, the macOS framework, and the macOS helpers, under
+// Electron's names or Dyad's renamed ones.
+function isElectronDebugFile(debugFile) {
+  return (
+    /^(dyad|electron)\b/i.test(debugFile) || debugFile === "Electron Framework"
+  );
+}
+const brokenElectronModules = new Set();
+
 // Fetch the module's .sym file into the cache and return its path, or
 // null when no candidate name resolves. Renamed binaries miss under
 // their reported name, so /dyad/i names retry as the Electron names for
@@ -253,7 +268,7 @@ async function ensureSymbols(debugFile, debugId) {
   const partial = `${cached}.${process.pid}.part`;
   try {
     for (const name of candidates) {
-      const url = `${SYMBOL_URL}/${encodeURIComponent(name)}/${encodeURIComponent(debugId)}/${encodeURIComponent(name)}.sym`;
+      const url = breakpadSymbolUrl(SYMBOL_URL, name, debugId);
       // Generous bound: symbol files are large and slow links are fine,
       // but a stalled connection must not hang the script forever.
       const response = await fetch(url, {
@@ -283,6 +298,9 @@ async function ensureSymbols(debugFile, debugId) {
     console.error(
       `Symbol fetch for "${debugFile}" ${debugId} failed (${error?.message ?? error}); its frames will stay unresolved.`,
     );
+  }
+  if (isElectronDebugFile(debugFile)) {
+    brokenElectronModules.add(`${debugFile} ${debugId}`);
   }
   return null;
 }
@@ -510,4 +528,18 @@ for (const { dumps, triggeringDump } of bundles) {
     }
     console.log("");
   }
+}
+
+// Printed to stdout, not only stderr, so it sits in the output a reader or
+// agent actually looks at, and turned into a nonzero exit so automation
+// notices. An unresolved Electron frame otherwise looks the same as an
+// unresolved OS library, which is how a broken symbol URL went unnoticed.
+if (brokenElectronModules.size > 0) {
+  console.log(
+    `ERROR: no symbols were found for Electron's own binaries, which Electron publishes for every release. Their frames above are unresolved because symbol resolution is broken, not because the code has no symbols:`,
+  );
+  for (const module of brokenElectronModules) {
+    console.log(`  ${module}`);
+  }
+  process.exitCode = 2;
 }

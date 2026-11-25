@@ -1396,8 +1396,10 @@ export async function handleLocalAgentStream(
     let compactedMidTurn = false;
     let compactionFailedMidTurn = false;
 
-    const maxOutputTokens = await getMaxTokens(settings.selectedModel);
-    const temperature = await getTemperature(settings.selectedModel);
+    // runtimeModel is the concrete model Auto resolved to when not using the
+    // Pro chain, which sets its own per-entry call options.
+    const maxOutputTokens = await getMaxTokens(runtimeModel);
+    const temperature = await getTemperature(runtimeModel);
 
     // Run one or more generation passes. If the model emits a chat message while
     // there are still incomplete todos, we append a reminder and do another pass.

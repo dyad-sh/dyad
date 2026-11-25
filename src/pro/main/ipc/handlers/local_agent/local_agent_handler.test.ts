@@ -471,6 +471,7 @@ import { MCP_RESULT_MAX_BYTES } from "@/ipc/utils/mcp_result_sanitizer";
 import { MCP_TRANSCRIPT_PAYLOAD_MAX_CHARS } from "@/ipc/utils/mcp_transcript_preview";
 import type { AiMessagesJsonV6 } from "@/db/schema";
 import { getModelClient } from "@/ipc/utils/get_model_client";
+import { getMaxTokens, getTemperature } from "@/ipc/utils/token_utils";
 
 type LocalAgentStreamParameters = Parameters<typeof handleLocalAgentStreamImpl>;
 
@@ -1988,6 +1989,50 @@ describe("handleLocalAgentStream", () => {
         expect.objectContaining({ selectedModel: modelSelectionOverride }),
         modelSelectionOverride,
         { chatId: 1 },
+      );
+    });
+
+    it("sends call options of the model Auto resolved to, not of the Auto entry", async () => {
+      const { event } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: false });
+      mockChatData = buildTestChat({
+        modelSelection: {
+          provider: "auto",
+          name: "auto",
+          effortLevel: "medium",
+        },
+      });
+      mockStreamResult = createFakeStream([]);
+      // Auto's catalog entry has temperature 0, which reasoning models reject.
+      const isAuto = (model: { provider: string }) => model.provider === "auto";
+      vi.mocked(getTemperature).mockImplementationOnce(async (model) =>
+        isAuto(model) ? 0 : 1,
+      );
+      vi.mocked(getMaxTokens).mockImplementationOnce(async (model) =>
+        isAuto(model) ? 32_000 : 128_000,
+      );
+      vi.mocked(getModelClient).mockResolvedValueOnce({
+        modelClient: {
+          model: { id: "test-model" } as never,
+          builtinProviderId: "openai",
+        },
+        runtimeModel: { provider: "openai", name: "gpt-6-luna" },
+      });
+
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+          toolProfile: "build",
+        },
+      );
+
+      expect(streamText).toHaveBeenCalledWith(
+        expect.objectContaining({ temperature: 1, maxOutputTokens: 128_000 }),
       );
     });
   });

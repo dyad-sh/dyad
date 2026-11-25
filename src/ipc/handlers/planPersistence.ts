@@ -3,6 +3,7 @@ import path from "node:path";
 import { buildFrontmatter, parsePlanFile, validatePlanId } from "./planUtils";
 import { ensureDyadGitignored } from "./gitignoreUtils";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { canonicalPlanSlug } from "@/shared/plan_slug";
 
 /** Shared current-draft selection for UI and acceptance. Immutable handoff
  * snapshots are references, not revisions of the editable plan. */
@@ -74,7 +75,7 @@ export function planDirForAppPath(appPath: string): string {
  * overwrite the same file instead of accumulating one file per keystroke/turn.
  */
 export function planSlugForChat(chatId: number): string {
-  const slug = `chat-${chatId}-plan`;
+  const slug = canonicalPlanSlug(chatId);
   validatePlanId(slug);
   return slug;
 }

@@ -1,10 +1,18 @@
 import React, { useState } from "react";
 import { FileText, Eye, ChevronDown, ChevronUp, Loader2 } from "lucide-react";
-import { useSetAtom } from "jotai";
+import { useAtomValue, useSetAtom } from "jotai";
+import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { previewModeAtom } from "@/atoms/appAtoms";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
 import { CustomTagState } from "./stateTypes";
 import { usePlan } from "@/hooks/usePlan";
+import { usePlanDocument } from "@/hooks/usePlanDocument";
+import { planFileName } from "@/lib/planFileName";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface DyadWritePlanProps {
   node: {
@@ -21,6 +29,7 @@ interface DyadWritePlanProps {
 export const DyadWritePlan: React.FC<DyadWritePlanProps> = ({ node }) => {
   const { title, summary, complete, state } = node.properties;
   const [showSummary, setShowSummary] = useState(false);
+  const chatId = useAtomValue(selectedChatIdAtom);
   const setPreviewMode = useSetAtom(previewModeAtom);
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
 
@@ -28,6 +37,7 @@ export const DyadWritePlan: React.FC<DyadWritePlanProps> = ({ node }) => {
   const isInProgress = state === "pending" || complete === "false";
 
   const { savedPlan, hasPlanInMemory } = usePlan({ enabled: !isInProgress });
+  const planDocument = usePlanDocument(chatId);
 
   const hasPlan = hasPlanInMemory || !!savedPlan;
 
@@ -45,6 +55,20 @@ export const DyadWritePlan: React.FC<DyadWritePlanProps> = ({ node }) => {
           />
           <div className="flex items-center gap-2">
             <span className="font-semibold text-foreground">{title}</span>
+            {chatId != null && (
+              <Tooltip>
+                <TooltipTrigger className="text-xs text-muted-foreground whitespace-nowrap">
+                  Plan #{chatId}
+                </TooltipTrigger>
+                <TooltipContent>
+                  {planFileName(
+                    chatId,
+                    isInProgress ? null : (savedPlan ?? null),
+                    planDocument?.content,
+                  )}
+                </TooltipContent>
+              </Tooltip>
+            )}
             {summary && (
               <button
                 type="button"

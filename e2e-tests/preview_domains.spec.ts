@@ -135,12 +135,6 @@ test("app hostnames isolate sessions through restart, HMR, native preview and re
   expect((await po.page.request.get(browserUrl)).ok()).toBe(true);
 
   await po.navigation.goToAppsTab();
-  if (
-    await po.page
-      .getByRole("button", { name: "New App", exact: true })
-      .isVisible()
-  )
-    await po.page.getByRole("button", { name: "New App", exact: true }).click();
   const secondOrigin = await importRecorder("cookie-app-two");
   expect(new URL(secondOrigin).hostname).not.toBe(
     new URL(firstOrigin).hostname,

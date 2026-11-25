@@ -749,6 +749,60 @@ describe("SupabaseLogCache", () => {
     expect(cache.stats().messageChars).toBeLessThanOrEqual(250);
     expect(cache.stats().logs).toBe(2);
   });
+
+  it("enforces bounds when a reader cancels after pages were cached", async () => {
+    let olderPageRequested!: () => void;
+    const olderPage = new Promise<void>((resolve) => {
+      olderPageRequested = resolve;
+    });
+    const fetchPage = vi.fn<SupabaseLogPageFetcher>(
+      async ({ scope: requestScope, end, signal }) => {
+        if (requestScope.projectRef === "proj-2") {
+          return [row("proj-2:a", T0 + 1_000, "y".repeat(100))];
+        }
+        if (end === T0 + 10 * MINUTE) {
+          // A capped newest page, so the fetch pages backwards.
+          return [
+            row("proj-1:b", T0 + 9 * MINUTE, "x".repeat(100)),
+            row("proj-1:a", T0 + 8 * MINUTE, "x".repeat(100)),
+          ];
+        }
+        // The older page stalls until its only reader cancels.
+        return new Promise((_, reject) => {
+          signal.addEventListener("abort", () => reject(signal.reason), {
+            once: true,
+          });
+          olderPageRequested();
+        });
+      },
+    );
+    const cache = new SupabaseLogCache({
+      fetchPage,
+      now: () => T0 + 30 * MINUTE,
+      pageSize: 2,
+      maxTotalMessageChars: 150,
+    });
+
+    const cancel = new AbortController();
+    const busy = cache.query({
+      scope,
+      start: T0,
+      end: T0 + 10 * MINUTE,
+      signal: cancel.signal,
+    });
+    await olderPage;
+    // The busy scope cannot be evicted, so this read leaves its overflow to it.
+    await cache.query({
+      scope: { ...scope, projectRef: "proj-2" },
+      start: T0,
+      end: T0 + MINUTE,
+    });
+    expect(cache.stats().messageChars).toBe(300);
+
+    cancel.abort();
+    await expect(busy).rejects.toThrow();
+    expect(cache.stats()).toEqual({ scopes: 1, logs: 1, messageChars: 100 });
+  });
 });
 
 describe("range helpers", () => {

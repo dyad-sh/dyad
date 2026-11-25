@@ -215,48 +215,57 @@ export class SupabaseLogCache {
     let error: unknown = null;
     let providerRequests = 0;
 
-    // Round two only fetches ranges that a joined fetch failed to cover.
-    for (let round = 0; round < 2; round++) {
-      const gaps = subtractRanges(
-        requested,
-        this.usableCoverage(state, firstFetchId, joinedFetchIds),
-      );
-      if (gaps.length === 0) break;
-
-      // A fetch every earlier reader abandoned is already being aborted.
-      const joined = [...state.inFlight].filter(
-        (fetch) =>
-          !fetch.controller.signal.aborted &&
-          gaps.some((gap) => rangesOverlap(gap, fetch.range)),
-      );
-      const ownGaps = subtractRanges(
-        subtractRanges(
-          gaps,
-          joined.map((fetch) => fetch.range),
-        ),
-        attempted,
-      );
-      const started = planFetchRanges(ownGaps).map((range) =>
-        this.startFetch(state, range),
-      );
-      attempted.push(...started.map((fetch) => fetch.range));
-      if (joined.length === 0 && started.length === 0) break;
-
-      for (const fetch of joined) joinedFetchIds.add(fetch.id);
-      const outcomes = await Promise.all(
-        [...joined, ...started].map((fetch) => this.join(fetch, signal)),
-      );
-      if (state.cleared) {
-        throw new DyadError(
-          "The Supabase log cache was cleared while fetching logs. Retry to read the current connection's logs.",
-          DyadErrorKind.UserCancelled,
+    try {
+      // Round two only fetches ranges that a joined fetch failed to cover.
+      for (let round = 0; round < 2; round++) {
+        const gaps = subtractRanges(
+          requested,
+          this.usableCoverage(state, firstFetchId, joinedFetchIds),
         );
+        if (gaps.length === 0) break;
+
+        // A fetch every earlier reader abandoned is already being aborted.
+        const joined = [...state.inFlight].filter(
+          (fetch) =>
+            !fetch.controller.signal.aborted &&
+            gaps.some((gap) => rangesOverlap(gap, fetch.range)),
+        );
+        const ownGaps = subtractRanges(
+          subtractRanges(
+            gaps,
+            joined.map((fetch) => fetch.range),
+          ),
+          attempted,
+        );
+        const started = planFetchRanges(ownGaps).map((range) =>
+          this.startFetch(state, range),
+        );
+        attempted.push(...started.map((fetch) => fetch.range));
+        if (joined.length === 0 && started.length === 0) break;
+
+        for (const fetch of joined) joinedFetchIds.add(fetch.id);
+        const outcomes = await Promise.all(
+          [...joined, ...started].map((fetch) => this.join(fetch, signal)),
+        );
+        if (state.cleared) {
+          throw new DyadError(
+            "The Supabase log cache was cleared while fetching logs. Retry to read the current connection's logs.",
+            DyadErrorKind.UserCancelled,
+          );
+        }
+        outcomes.forEach((outcome, index) => {
+          if (index >= joined.length) providerRequests += outcome.pages;
+          truncated ||= outcome.truncated;
+          error ??= outcome.error;
+        });
       }
-      outcomes.forEach((outcome, index) => {
-        if (index >= joined.length) providerRequests += outcome.pages;
-        truncated ||= outcome.truncated;
-        error ??= outcome.error;
-      });
+    } catch (cancellation) {
+      // A cancelled read may already have cached pages, and other scopes may
+      // have deferred their overflow to it. An abandoned fetch stores nothing
+      // after it is aborted, so trimming now keeps the cache within bounds. A
+      // cleared scope is no longer in the cache.
+      if (!state.cleared) this.enforceBounds(state, { start, end });
+      throw cancellation;
     }
 
     const missingRanges = subtractRanges(
@@ -565,7 +574,8 @@ export class SupabaseLogCache {
    *
    * A scope with fetches in flight is never evicted: removing it from the map
    * would hide its waiting readers from clear(), so a disconnect could no
-   * longer cancel them. Its own reads enforce these bounds when they finish.
+   * longer cancel them. Its own reads enforce these bounds when they finish
+   * or are cancelled.
    */
   private enforceBounds(state: ScopeState, protectedRange: TimeRange): void {
     if (state.logs.size > this.maxLogsPerScope) {

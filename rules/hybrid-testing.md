@@ -136,10 +136,15 @@ source of truth for native-module rebuild guidance) before debugging tests.
 
 A partial `@/main/settings` mock that swaps only `readSettings` for the
 harness does not reach the module's own `writeSettings` / `readEffectiveSettings`:
-they keep using the real settings file, and the latter also fetches remote
-config. Tests that invoke `set-user-settings` must also point those two exports
-at `harness.writeSettings` / `harness.readSettings`, or the write never reaches
-the settings the handlers read.
+they keep using the real settings file, and `readEffectiveSettings` also fetches
+remote config. Tests that invoke `set-user-settings` must replace all three
+exports, or the write never reaches the settings the handlers read:
+
+- `readSettings` → `harness.readSettings`
+- `writeSettings` → `harness.writeSettings`
+- `readEffectiveSettings` (async) → `async () => harness.readSettings()`
+
+See `src/ipc/handlers/__tests__/supabase_edge_logs.integration.test.ts`.
 
 When a hybrid test needs `IS_TEST_BUILD` behavior from modules that capture
 `process.env.E2E_TEST_BUILD` at import time, set it in a `vi.hoisted()` block

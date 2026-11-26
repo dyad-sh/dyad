@@ -31,3 +31,33 @@ export async function bundleMustardscriptWindowsRuntime(
     path.join(addonDir, "vcruntime140.dll"),
   );
 }
+
+/**
+ * Fails the build unless the packaged app's unpacked binding folder holds both
+ * the addon and the runtime next to it, so a broken installer cannot ship.
+ */
+export async function assertPackagedMustardscriptWindowsRuntime(
+  outputPath: string,
+  platform: string,
+  arch: string,
+): Promise<void> {
+  if (platform !== "win32" || arch !== "x64") {
+    return;
+  }
+  const addonDir = path.join(
+    outputPath,
+    "resources",
+    "app.asar.unpacked",
+    "node_modules",
+    "@mustardscript",
+    "binding-win32-x64-msvc",
+  );
+  for (const file of ["index.win32-x64-msvc.node", "vcruntime140.dll"]) {
+    const stats = await fs
+      .stat(path.join(addonDir, file))
+      .catch(() => undefined);
+    if (!stats?.isFile()) {
+      throw new Error(`Packaged app is missing ${path.join(addonDir, file)}`);
+    }
+  }
+}

@@ -4,7 +4,10 @@ import {
   removeUnusedCopiedResources,
 } from "./src/lib/packaging_cleanup";
 import { stagePostHogSourcemaps } from "./src/lib/posthog_sourcemaps";
-import { bundleMustardscriptWindowsRuntime } from "./src/lib/bundle_windows_runtime";
+import {
+  assertPackagedMustardscriptWindowsRuntime,
+  bundleMustardscriptWindowsRuntime,
+} from "./src/lib/bundle_windows_runtime";
 import type { ForgeConfig } from "@electron-forge/shared-types";
 import { MakerSquirrel } from "@electron-forge/maker-squirrel";
 import { MakerZIP } from "@electron-forge/maker-zip";
@@ -278,6 +281,18 @@ const config: ForgeConfig = {
       icon: "./assets/icon/logo.png",
     }),
   ],
+  hooks: {
+    // The app.asar.unpacked layout only exists after packaging, so check here.
+    postPackage: async (_forgeConfig, { platform, arch, outputPaths }) => {
+      for (const outputPath of outputPaths) {
+        await assertPackagedMustardscriptWindowsRuntime(
+          outputPath,
+          platform,
+          arch,
+        );
+      }
+    },
+  },
   publishers: [
     {
       name: "@electron-forge/publisher-github",

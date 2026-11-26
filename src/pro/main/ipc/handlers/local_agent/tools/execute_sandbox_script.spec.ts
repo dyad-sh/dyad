@@ -207,6 +207,32 @@ describe("executeSandboxScriptTool", () => {
     );
   });
 
+  it("reports a native addon load failure with its nested causes, not as a syntax error", async () => {
+    const loadError = new AggregateError(
+      [new Error("The specified module could not be found.")],
+      "Unable to locate a MustardScript native addon for win32-x64-msvc via @mustardscript/binding-win32-x64-msvc. Install a matching prebuilt package for this platform.",
+    );
+    vi.mocked(runSandboxScript).mockRejectedValue(loadError);
+
+    let thrown: unknown;
+    try {
+      await executeSandboxScriptTool.execute(
+        { script: "({ executionAvailable: true });" },
+        createMockContext(),
+      );
+    } catch (error) {
+      thrown = error;
+    }
+
+    const message = (thrown as Error).message;
+    expect(message).not.toContain("unsupported syntax");
+    expect(message).toContain("The script runtime failed to load.");
+    expect(message).toContain(
+      "Caused by:\n- The specified module could not be found.",
+    );
+    expect((thrown as DyadError).kind).toBe(DyadErrorKind.Internal);
+  });
+
   it("runs every script through the worker runner with the turn's abort signal", async () => {
     vi.mocked(runSandboxScript).mockResolvedValue({
       value: "42",

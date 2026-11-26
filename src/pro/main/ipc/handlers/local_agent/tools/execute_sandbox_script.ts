@@ -77,6 +77,21 @@ function isAttachmentHostCallPath(path: string | undefined): boolean {
   );
 }
 
+const NATIVE_ADDON_LOAD_FAILURE =
+  "Unable to locate a MustardScript native addon";
+
+/** The error message plus, for an AggregateError, each nested cause. */
+function describeSandboxError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (!(error instanceof AggregateError) || error.errors.length === 0) {
+    return message;
+  }
+  const causes = error.errors.map(
+    (inner) => `- ${inner instanceof Error ? inner.message : String(inner)}`,
+  );
+  return [message, "Caused by:", ...causes].join("\n");
+}
+
 function buildSandboxFailureMessage(params: {
   script: string;
   errorMessage: string;
@@ -395,6 +410,14 @@ export const executeSandboxScriptTool: ToolDefinition<ExecuteSandboxScriptArgs> 
         // The worker itself failed, so the script is not at fault.
         if (error instanceof SandboxWorkerError) {
           throw error;
+        }
+        // The runtime could not load (#5079): not the script's fault, and the
+        // real cause is in the AggregateError's nested errors.
+        if (errorMessage.includes(NATIVE_ADDON_LOAD_FAILURE)) {
+          throw new DyadError(
+            `The script runtime failed to load.\n\nOriginal error:\n${describeSandboxError(error)}`,
+            DyadErrorKind.Internal,
+          );
         }
         throw new DyadError(
           buildSandboxFailureMessage({

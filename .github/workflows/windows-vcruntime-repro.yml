@@ -1,0 +1,39 @@
+name: Windows vcruntime repro
+
+# Real-Windows check for #5079: the MustardScript addon fails to load without
+# vcruntime140.dll and loads with it beside the addon. It pulls a Windows
+# container image and takes a while, so it runs on demand or when a PR gets the
+# `ci:windows-vcruntime` label instead of on every push.
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: read
+
+jobs:
+  repro:
+    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'ci:windows-vcruntime'
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: v24.13.1
+      - name: Install the MustardScript version Dyad ships
+        shell: pwsh
+        run: |
+          $version = node -p "require('./package-lock.json').packages['node_modules/mustardscript'].version"
+          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\mustard" | Out-Null
+          npm install --prefix "$env:RUNNER_TEMP\mustard" --no-save --ignore-scripts "mustardscript@$version"
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+      - name: Load the addon in servercore with and without vcruntime140.dll
+        shell: pwsh
+        run: |
+          ./scripts/windows-vcruntime-repro/run.ps1 `
+            -ModulesRoot "$env:RUNNER_TEMP\mustard" `
+            -Vcruntime "$env:SystemRoot\System32\vcruntime140.dll"

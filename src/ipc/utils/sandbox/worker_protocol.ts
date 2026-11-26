@@ -25,6 +25,8 @@ export interface SerializedSandboxWorkerError {
   message: string;
   kind?: DyadErrorKind;
   stack?: string;
+  /** The nested errors of an AggregateError, e.g. each failed native addon load. */
+  errors?: SerializedSandboxWorkerError[];
 }
 
 /** A guest call to a main-thread host function, sent worker → main. */
@@ -70,6 +72,9 @@ export function serializeSandboxWorkerError(
       name: error.name,
       message: error.message,
       stack: error.stack,
+      ...(error instanceof AggregateError
+        ? { errors: error.errors.map(serializeSandboxWorkerError) }
+        : {}),
     };
   }
   return {
@@ -93,7 +98,12 @@ export function deserializeSandboxWorkerError(
     return dyadError;
   }
 
-  const genericError = new Error(error.message);
+  const genericError = error.errors
+    ? new AggregateError(
+        error.errors.map(deserializeSandboxWorkerError),
+        error.message,
+      )
+    : new Error(error.message);
   genericError.name = error.name ?? genericError.name;
   genericError.stack = error.stack;
   return genericError;

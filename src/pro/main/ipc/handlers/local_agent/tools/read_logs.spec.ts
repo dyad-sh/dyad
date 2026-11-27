@@ -190,9 +190,8 @@ describe("read_logs", () => {
       {
         projectId: "proj-1",
         organizationSlug: "org-1",
-        // The last five minutes, widened to whole minutes.
-        timestampStart: Date.UTC(2026, 10, 18, 11, 55, 0),
-        timestampEnd: Date.UTC(2026, 10, 18, 12, 1, 0),
+        timestampStart: NOW - 5 * MINUTE,
+        timestampEnd: NOW + 1,
       },
     ]);
     // Chronological, with the function name parsed from the message.
@@ -246,7 +245,7 @@ describe("read_logs", () => {
     expect(h.providerCalls).toEqual([
       expect.objectContaining({
         timestampStart: start,
-        timestampEnd: end + MINUTE,
+        timestampEnd: end + 1,
       }),
     ]);
     expect(result).toContain("edge inside");
@@ -372,9 +371,9 @@ describe("read_logs", () => {
   });
 
   it("reports truncation when Supabase returns a capped page", async () => {
-    // More rows in one minute than a page holds, so paging cannot finish.
+    // More rows share one millisecond than fit on a page.
     h.providerRows = Array.from({ length: 1001 }, (_, index) =>
-      supabaseRow(`e${index}`, NOW - MINUTE + index, `edge ${index}`),
+      supabaseRow(`e${index}`, NOW - MINUTE, `edge ${index}`),
     );
     const { result } = await run({});
     expect(result).toContain("Partial results");

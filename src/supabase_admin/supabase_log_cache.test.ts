@@ -37,7 +37,7 @@ type FakeRow = SupabaseLogRow & { organizationSlug?: string };
 
 /**
  * Fake provider: returns rows inside [start, end), newest first, capped at
- * `limit`, the way the analytics endpoint does for minute-aligned bounds.
+ * `limit`, as in the provider's SQL query.
  * Rows belong to the project named by their id prefix and, unless tagged
  * otherwise, to the default scope's organization.
  */
@@ -126,39 +126,33 @@ describe("SupabaseLogCache", () => {
     expect(provider.fetchPage).toHaveBeenCalledTimes(1);
   });
 
-  it("widens fetches to whole minutes and filters to the exact window", async () => {
+  it("reads the first second of a busy minute and caches only that second", async () => {
     const provider = fakeProvider([
-      row("proj-1:before", T0 + 10_000),
-      row("proj-1:inside", T0 + 45_000),
-      row("proj-1:boundary-end", T0 + 3 * MINUTE + 15_000),
-      row("proj-1:after", T0 + 3 * MINUTE + 50_000),
+      row("proj-1:early", T0 + 100),
+      ...Array.from({ length: 1000 }, (_, i) =>
+        row(`proj-1:later-${i}`, T0 + 1000 + i),
+      ),
     ]);
     const cache = new SupabaseLogCache({
       fetchPage: provider.fetchPage,
       now: () => T0 + 30 * MINUTE,
     });
 
-    const result = await cache.query({
-      scope,
-      start: T0 + 30_000,
-      end: T0 + 3 * MINUTE + 15_001,
-    });
+    const firstSecond = { scope, start: T0, end: T0 + 1000 };
+    const result = await cache.query(firstSecond);
+    expect(result.logs.map((entry) => entry.id)).toEqual(["proj-1:early"]);
+    expect(result.missingRanges).toEqual([]);
+    expect(result.providerRequests).toBe(1);
+    expect((await cache.query(firstSecond)).providerRequests).toBe(0);
 
-    expect(provider.calls).toEqual([
-      { start: T0, end: T0 + 4 * MINUTE, projectRef: "proj-1" },
-    ]);
-    expect(result.logs.map((entry) => entry.id)).toEqual([
-      "proj-1:inside",
-      "proj-1:boundary-end",
-    ]);
-    // The widened fetch covers the rest of those minutes too.
-    const widened = await cache.query({
+    // The exclusive end of the first read is the start of the next one.
+    const adjacent = await cache.query({
       scope,
-      start: T0,
-      end: T0 + 4 * MINUTE,
+      start: firstSecond.end,
+      end: firstSecond.end + 1,
     });
-    expect(widened.providerRequests).toBe(0);
-    expect(widened.logs).toHaveLength(4);
+    expect(adjacent.providerRequests).toBe(1);
+    expect(adjacent.logs.map((entry) => entry.id)).toEqual(["proj-1:later-0"]);
   });
 
   it("fetches only the missing part when a read extends into older history", async () => {
@@ -222,7 +216,7 @@ describe("SupabaseLogCache", () => {
     expect(b.missingRanges).toEqual([]);
   });
 
-  it("accepts newer concurrent coverage where minute-rounded fetches overlap", async () => {
+  it("tracks disjoint concurrent reads within the same minute independently", async () => {
     let release!: () => void;
     const gate = new Promise<void>((resolve) => (release = resolve));
     const now = T0 + 10 * MINUTE;
@@ -234,8 +228,7 @@ describe("SupabaseLogCache", () => {
     const cache = new SupabaseLogCache({ fetchPage, now: () => now });
 
     const first = cache.query({ scope, start: T0, end: now - 30_000 });
-    // The logical windows are disjoint, but both fetches include the last
-    // minute. Let the newer fetch finish before the older one.
+    // Let the newer fetch finish first.
     const second = await cache.query({
       scope,
       start: now - 20_000,
@@ -245,6 +238,7 @@ describe("SupabaseLogCache", () => {
     const result = await first;
 
     expect(result.logs.map((entry) => entry.id)).toEqual(["proj-1:recent"]);
+    expect(second.logs).toEqual([]);
     expect(result.missingRanges).toEqual([]);
     expect(second.missingRanges).toEqual([]);
     expect(fetchPage).toHaveBeenCalledTimes(2);
@@ -403,16 +397,15 @@ describe("SupabaseLogCache", () => {
   });
 
   it("pages backwards newest first when a page is capped", async () => {
-    const rows = [0, 1, 2, 3, 4, 5].map((minute) =>
-      row(`proj-1:${minute}`, T0 + minute * MINUTE + 1_000),
+    const rows = [0, 1, 2, 3, 4, 5].map((ms) =>
+      row(`proj-1:${ms}`, T0 + 1_000 + ms),
     );
     const provider = fakeProvider(rows);
     const cache = new SupabaseLogCache({
       fetchPage: provider.fetchPage,
       now: () => T0 + 30 * MINUTE,
       pageSize: 2,
-      // Each page re-reads its oldest row's minute, so six rows spread over
-      // six minutes need six pages before a short page proves completeness.
+      // Re-read each boundary millisecond in case multiple rows share it.
       maxPagesPerRange: 6,
     });
 
@@ -436,11 +429,11 @@ describe("SupabaseLogCache", () => {
   });
 
   it("reports truncation instead of treating a capped response as complete", async () => {
-    // Five rows in one minute, two rows per page: paging cannot progress.
-    const rows = [1, 2, 3, 4, 5].map((second) =>
-      row(`proj-1:${second}`, T0 + second * 1_000),
-    );
-    const provider = fakeProvider(rows);
+    // Three rows share the boundary millisecond, more than one page holds.
+    const provider = fakeProvider([
+      row("proj-1:earlier", T0),
+      ...["a", "b", "c"].map((id) => row(`proj-1:${id}`, T0 + 4_000)),
+    ]);
     const cache = new SupabaseLogCache({
       fetchPage: provider.fetchPage,
       now: () => T0 + 30 * MINUTE,
@@ -451,10 +444,10 @@ describe("SupabaseLogCache", () => {
 
     expect(result.truncated).toBe(true);
     expect(result.error).toBeNull();
-    // The two newest rows are known complete; everything older is missing.
+    // The boundary millisecond is still incomplete.
     expect(result.logs.map((entry) => entry.id)).toEqual([
-      "proj-1:4",
-      "proj-1:5",
+      "proj-1:a",
+      "proj-1:b",
     ]);
     expect(result.missingRanges).toEqual([{ start: T0, end: T0 + 4_000 + 1 }]);
 

@@ -382,8 +382,8 @@ describe("Supabase handlers", () => {
         "project",
         expect.objectContaining({
           organizationSlug: "org",
-          timestampStart: Date.UTC(2026, 10, 18, 11, 50, 0),
-          timestampEnd: Date.UTC(2026, 10, 18, 12, 1, 0),
+          timestampStart: NOW - 10 * MINUTE,
+          timestampEnd: NOW,
         }),
       );
 
@@ -398,8 +398,8 @@ describe("Supabase handlers", () => {
       expect(mocks.getSupabaseProjectLogs).toHaveBeenLastCalledWith(
         "project",
         expect.objectContaining({
-          timestampStart: Date.UTC(2026, 10, 18, 11, 58, 0),
-          timestampEnd: Date.UTC(2026, 10, 18, 12, 1, 0),
+          timestampStart: NOW - 2 * MINUTE,
+          timestampEnd: NOW,
         }),
       );
     });
@@ -480,7 +480,7 @@ describe("Supabase handlers", () => {
       expect(mocks.getSupabaseProjectLogs).toHaveBeenLastCalledWith(
         "project",
         expect.objectContaining({
-          timestampStart: Date.UTC(2026, 10, 18, 11, 50, 0),
+          timestampStart: NOW - 10 * MINUTE,
         }),
       );
     });

@@ -30,6 +30,7 @@ import { getDyadAppPath } from "@/paths/paths";
 import {
   SUPABASE_LOGS_MAX_WINDOW_MS,
   SUPABASE_LOGS_PAGE_SIZE,
+  SUPABASE_LOGS_ROUNDING_MS,
 } from "@/shared/supabase_edge_logs";
 import {
   deferSupabaseFunctionSyncForRecording,
@@ -908,11 +909,8 @@ export async function ensureSupabaseAuthRedirectUrls({
 /**
  * Fetches one page of Edge Function runtime logs, newest first.
  *
- * The provider rounds both bounds to the nearest minute, so callers should
- * pass minute-aligned bounds that enclose the range they need and filter the
- * rows to the exact range themselves. When `result.length === limit`, older
- * rows may exist in the range: only rows strictly newer than the oldest one
- * returned are known to be complete.
+ * The API time parameters enclose the requested range in whole minutes.
+ * SQL filters to the exact range before applying the page limit.
  */
 export async function getSupabaseProjectLogs(
   projectId: string,
@@ -926,23 +924,26 @@ export async function getSupabaseProjectLogs(
     organizationSlug?: string | null;
     /** Inclusive lower bound, epoch ms. */
     timestampStart: number;
-    /** Upper bound, epoch ms. */
+    /** Exclusive upper bound, epoch ms. */
     timestampEnd: number;
     limit?: number;
     signal?: AbortSignal;
   },
 ): Promise<SupabaseProjectLogsResponse> {
   if (
-    !Number.isFinite(timestampStart) ||
-    !Number.isFinite(timestampEnd) ||
+    !Number.isSafeInteger(timestampStart) ||
+    !Number.isSafeInteger(timestampEnd) ||
     timestampEnd <= timestampStart
   ) {
     throw new DyadError(
-      "Supabase log queries need a start time before the end time.",
+      "Supabase log queries need whole millisecond timestamps with the start before the end.",
       DyadErrorKind.Validation,
     );
   }
-  if (timestampEnd - timestampStart > SUPABASE_LOGS_MAX_WINDOW_MS) {
+  const minute = SUPABASE_LOGS_ROUNDING_MS;
+  const apiStart = Math.floor(timestampStart / minute) * minute;
+  const apiEnd = Math.ceil(timestampEnd / minute) * minute;
+  if (apiEnd - apiStart > SUPABASE_LOGS_MAX_WINDOW_MS) {
     throw new DyadError(
       "Supabase log queries cannot span more than 24 hours.",
       DyadErrorKind.Validation,
@@ -955,10 +956,6 @@ export async function getSupabaseProjectLogs(
 
   const supabase = await getSupabaseClient({ organizationSlug });
 
-  // The unified endpoint is ClickHouse-backed. The time range is applied by
-  // the API parameters below, while the SQL scopes the unified stream to Edge
-  // Function runtime logs. Newest first, so a capped page keeps the most
-  // recent rows; callers page backwards and display chronologically.
   const sqlQuery = `
 SELECT
   id,
@@ -967,13 +964,15 @@ SELECT
   severity_text
 FROM logs
 WHERE source = 'function_logs'
+  AND timestamp >= fromUnixTimestamp64Milli(${timestampStart})
+  AND timestamp < fromUnixTimestamp64Milli(${timestampEnd})
 ORDER BY timestamp DESC
 LIMIT ${Math.max(1, Math.floor(limit))}`;
 
   const params = new URLSearchParams({
     sql: sqlQuery,
-    iso_timestamp_start: new Date(timestampStart).toISOString(),
-    iso_timestamp_end: new Date(timestampEnd).toISOString(),
+    iso_timestamp_start: new Date(apiStart).toISOString(),
+    iso_timestamp_end: new Date(apiEnd).toISOString(),
   });
   const url = `https://api.supabase.com/v1/projects/${encodeURIComponent(projectId)}/analytics/endpoints/logs?${params.toString()}`;
 

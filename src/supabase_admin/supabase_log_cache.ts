@@ -25,11 +25,10 @@
  * SUPABASE_LOG_RECENT_OVERLAP_MS for why this cannot recover arbitrarily
  * delayed events.
  *
- * The provider rounds query bounds to minutes, so fetches are widened to
- * minute boundaries (never narrowed) and results are filtered to the exact
- * window on read. A capped page is never recorded as complete coverage: only
- * rows strictly newer than its oldest row are known to be complete, and older
- * rows are fetched by paging backwards a bounded number of times.
+ * The provider client filters each page to its exact millisecond range before
+ * applying the row limit. On a capped page, coverage starts just after the
+ * oldest row's millisecond. Fetch older rows by paging backwards, up to the
+ * per-range page limit.
  */
 import {
   SUPABASE_LOG_RECENT_OVERLAP_MS,
@@ -90,7 +89,7 @@ export interface CachedSupabaseLog {
 
 export type SupabaseLogPageFetcher = (request: {
   scope: SupabaseLogScope;
-  /** Minute-aligned bounds that enclose the range being fetched. */
+  /** Exact half-open bounds in epoch milliseconds. */
   start: number;
   end: number;
   limit: number;
@@ -428,15 +427,14 @@ export class SupabaseLogCache {
       this.rangeFetchDeadlineMs,
     );
     const signal = AbortSignal.any([cancelSignal, deadline.signal]);
-    const alignedStart = floorTo(range.start, SUPABASE_LOGS_ROUNDING_MS);
-    let cursorEnd = ceilTo(range.end, SUPABASE_LOGS_ROUNDING_MS);
+    let cursorEnd = range.end;
     let pages = 0;
     try {
       for (;;) {
         const rows = await raceAbort(
           this.fetchPage({
             scope: state.scope,
-            start: alignedStart,
+            start: range.start,
             end: cursorEnd,
             limit: this.pageSize,
             signal,
@@ -451,7 +449,7 @@ export class SupabaseLogCache {
         const coveredEnd = Math.min(cursorEnd, issuedAt + 1);
         if (rows.length < this.pageSize) {
           this.addCoverage(state, {
-            start: alignedStart,
+            start: range.start,
             end: coveredEnd,
             fetchedAt: issuedAt,
             fetchId,
@@ -461,20 +459,14 @@ export class SupabaseLogCache {
         // Capped page: only rows strictly newer than its oldest are complete.
         let oldest = Number.POSITIVE_INFINITY;
         for (const row of rows) oldest = Math.min(oldest, row.timestamp);
+        // Re-read the oldest millisecond because other rows can share it.
+        const nextEnd = oldest + 1;
         this.addCoverage(state, {
-          start: oldest + 1,
+          start: nextEnd,
           end: coveredEnd,
           fetchedAt: issuedAt,
           fetchId,
         });
-        if (oldest < range.start) {
-          return { truncated: false, error: null, pages };
-        }
-        // Bounds are whole minutes, so the next page re-reads the rest of the
-        // oldest row's minute and relies on id dedupe.
-        const nextEnd =
-          floorTo(oldest, SUPABASE_LOGS_ROUNDING_MS) +
-          SUPABASE_LOGS_ROUNDING_MS;
         if (nextEnd >= cursorEnd || pages >= this.maxPagesPerRange) {
           return { truncated: true, error: null, pages };
         }
@@ -675,14 +667,6 @@ export class SupabaseLogCache {
 
 function compareLogs(a: CachedSupabaseLog, b: CachedSupabaseLog): number {
   return a.timestamp - b.timestamp || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
-}
-
-function floorTo(value: number, step: number): number {
-  return Math.floor(value / step) * step;
-}
-
-function ceilTo(value: number, step: number): number {
-  return Math.ceil(value / step) * step;
 }
 
 function rangesOverlap(a: TimeRange, b: TimeRange): boolean {

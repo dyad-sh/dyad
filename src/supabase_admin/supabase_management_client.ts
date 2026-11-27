@@ -203,10 +203,15 @@ const SupabaseProjectLogApiSchema = z.object({
   severity_text: z.string().nullish(),
 });
 
-const SupabaseProjectLogsApiResponseSchema = z.object({
-  result: z.array(SupabaseProjectLogApiSchema).optional(),
-  error: z.unknown().optional(),
-});
+const SupabaseProjectLogsApiResponseSchema = z
+  .object({
+    result: z.array(SupabaseProjectLogApiSchema).optional(),
+    error: z.unknown().optional(),
+  })
+  .refine(({ result, error }) => result !== undefined || Boolean(error), {
+    path: ["result"],
+    message: "Expected a result array for a successful logs query.",
+  });
 
 function parseSupabaseLogTimestamp(timestamp: string | number): number {
   if (typeof timestamp === "number") {

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import log from "electron-log";
 
 import { apps, chats } from "@/db/schema";
+import { DyadErrorKind } from "@/errors/dyad_error";
 import { registerSupabaseHandlers } from "@/ipc/handlers/supabase_handlers";
 import { registerSettingsHandlers } from "@/ipc/handlers/settings_handlers";
 import type { ConsoleEntry } from "@/ipc/types";
@@ -215,6 +216,52 @@ describe("Supabase edge logs shared by polling and read_logs (integration)", () 
       await Promise.allSettled(pending);
     }
   });
+
+  it.each([
+    { body: {}, reason: "result" },
+    { body: { result: null }, reason: "result" },
+    { body: { error: "Query unavailable" }, reason: "Query unavailable" },
+  ])(
+    "retries a historical read after receiving $body, then caches an explicit empty result",
+    async ({ body, reason }) => {
+      const fetchLogs = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(Response.json(body))
+        .mockResolvedValueOnce(Response.json({ result: [] }));
+      vi.stubGlobal("fetch", fetchLogs);
+
+      const window = { start: NOW - 10 * MINUTE, end: NOW - 5 * MINUTE };
+      const query = () =>
+        supabaseFunctionLogCache.query({
+          scope: {
+            organizationSlug: "org-1",
+            projectRef: "proj-1",
+            source: "function_logs",
+          },
+          ...window,
+        });
+      expect(await query()).toMatchObject({
+        error: {
+          kind: DyadErrorKind.External,
+          message: expect.stringContaining(reason),
+        },
+        missingRanges: [window],
+      });
+      expect(await query()).toMatchObject({
+        logs: [],
+        error: null,
+        missingRanges: [],
+        providerRequests: 1,
+      });
+      expect(await query()).toMatchObject({
+        logs: [],
+        error: null,
+        missingRanges: [],
+        providerRequests: 0,
+      });
+      expect(fetchLogs).toHaveBeenCalledTimes(2);
+    },
+  );
 
   it("cancels a pending read when Disconnect All removes the credentials", async () => {
     const requestSignals: AbortSignal[] = [];

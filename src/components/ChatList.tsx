@@ -48,6 +48,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useChats } from "@/hooks/useChats";
 import { AppAvatar } from "@/components/AppAvatar";
 import { RenameChatDialog } from "@/components/chat/RenameChatDialog";
@@ -660,8 +666,19 @@ function ChatRow({
   const [isHovered, setIsHovered] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const [isActionsOpen, setIsActionsOpen] = useState(false);
+  const [isTitleTooltipOpen, setIsTitleTooltipOpen] = useState(false);
   const isActionsOpenRef = useRef(false);
+  const titleRef = useRef<HTMLSpanElement>(null);
   const title = chat.title || t("newChat");
+
+  // Only show the full-title tooltip when the title is actually cut off.
+  // Measured when the tooltip tries to open because the sidebar is resizable.
+  const isTitleTruncated = () => {
+    const titleElement = titleRef.current;
+    return (
+      !!titleElement && titleElement.scrollWidth > titleElement.clientWidth
+    );
+  };
 
   // A row scrolled out of a virtualized list unmounts without its menu
   // closing, so release the shared open-menu flag here.
@@ -684,23 +701,45 @@ function ChatRow({
         }
       }}
     >
-      <Button
-        variant="ghost"
-        onClick={onSelect}
-        className={`justify-start w-full text-left py-3 pr-14 hover:bg-sidebar-accent/80 ${
-          isSelected ? "bg-sidebar-accent text-sidebar-accent-foreground" : ""
-        }`}
-        data-testid={`chat-list-item-${chat.id}`}
-      >
-        <div className="flex flex-col w-full">
-          <span className="truncate">{title}</span>
-          <span className="text-xs text-gray-500">
-            {formatDistanceToNow(new Date(chat.createdAt), {
-              addSuffix: true,
-            })}
-          </span>
-        </div>
-      </Button>
+      {/* The sidebar-wide TooltipProvider uses delay={0}, which overrides a
+          trigger's own delay, so this tooltip gets its own provider. */}
+      <TooltipProvider delay={500}>
+        <Tooltip
+          open={isTitleTooltipOpen}
+          onOpenChange={(open) =>
+            setIsTitleTooltipOpen(open && isTitleTruncated())
+          }
+        >
+          <TooltipTrigger
+            render={
+              <Button
+                variant="ghost"
+                onClick={onSelect}
+                className={cn(
+                  "w-full cursor-pointer justify-start py-3 pr-14 text-left hover:bg-sidebar-accent/80",
+                  isSelected &&
+                    "bg-sidebar-accent text-sidebar-accent-foreground",
+                )}
+                data-testid={`chat-list-item-${chat.id}`}
+              />
+            }
+          >
+            <div className="flex w-full flex-col">
+              <span ref={titleRef} className="truncate">
+                {title}
+              </span>
+              <span className="text-xs text-gray-500">
+                {formatDistanceToNow(new Date(chat.createdAt), {
+                  addSuffix: true,
+                })}
+              </span>
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="right" className="break-words">
+            {title}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
 
       <div className="absolute right-0 flex w-14 items-center">
         <motion.button

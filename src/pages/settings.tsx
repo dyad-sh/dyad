@@ -19,6 +19,7 @@ import { GitLabPublishingExperimentSwitch } from "@/components/GitLabPublishingE
 import { VercelIntegration } from "@/components/VercelIntegration";
 import { CloudflareIntegration } from "@/components/CloudflareIntegration";
 import { SupabaseIntegration } from "@/components/SupabaseIntegration";
+import { SupabaseEdgeLogPollingSwitch } from "@/components/SupabaseEdgeLogPollingSwitch";
 import { CustomAppsFolderSelector } from "@/components/CustomAppsFolderSelector";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -195,8 +196,11 @@ export default function SettingsPage() {
             <div id={SETTING_IDS.cloudflare}>
               <CloudflareIntegration />
             </div>
-            <div id={SETTING_IDS.supabase}>
+            <div id={SETTING_IDS.supabase} className="space-y-4">
               <SupabaseIntegration />
+              <div id={SETTING_IDS.autoFetchSupabaseEdgeFunctionLogs}>
+                <SupabaseEdgeLogPollingSwitch />
+              </div>
             </div>
             <div id={SETTING_IDS.neon}>
               <NeonIntegration />

@@ -24,6 +24,7 @@ const mocks = vi.hoisted(() => ({
   createSupabaseProject: vi.fn(),
   ensureSupabaseAuthRedirectUrls: vi.fn(),
   getProjectApiKeys: vi.fn(),
+  getSupabaseProjectLogs: vi.fn(),
   executeExternalLifecycle: vi.fn(),
   syncCloudSandboxSnapshot: vi.fn(),
   appRoot: "",
@@ -78,11 +79,14 @@ vi.mock(
     createSupabaseProject: mocks.createSupabaseProject,
     ensureSupabaseAuthRedirectUrls: mocks.ensureSupabaseAuthRedirectUrls,
     getProjectApiKeys: mocks.getProjectApiKeys,
+    getSupabaseProjectLogs: mocks.getSupabaseProjectLogs,
   }),
 );
 
 const { registerSupabaseHandlers, unlinkedProjectsByApp } =
   await import("./supabase_handlers");
+const { supabaseFunctionLogCache } =
+  await import("@/supabase_admin/supabase_edge_logs_service");
 const { registerAppEnvVarsHandlers } = await import("./app_env_vars_handlers");
 
 describe("Supabase handlers", () => {
@@ -308,6 +312,291 @@ describe("Supabase handlers", () => {
         expect(mocks.syncCloudSandboxSnapshot).not.toHaveBeenCalled();
       },
     );
+  });
+
+  describe("supabase:get-edge-logs (background polling)", () => {
+    // 2026-11-18T12:00:30Z
+    const NOW = Date.UTC(2026, 10, 18, 12, 0, 30);
+    const MINUTE = 60_000;
+
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(NOW);
+      supabaseFunctionLogCache.clear();
+      mocks.readSettings.mockReturnValue({
+        ...harness.readSettings(),
+        supabase: {
+          organizations: { org: { accessToken: { value: "token" } } },
+        },
+      });
+      mocks.getSupabaseProjectLogs.mockReset().mockResolvedValue({
+        result: [
+          {
+            id: "log-1",
+            timestamp: NOW - MINUTE,
+            event_message: "[hello] ran",
+            level: "info",
+          },
+        ],
+      });
+      harness.db
+        .insert(apps)
+        .values({
+          id: 7,
+          name: "App",
+          path: "app",
+          supabaseProjectId: "project",
+          supabaseOrganizationSlug: "org",
+        })
+        .run();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("reads through the shared cache and clamps the lookback", async () => {
+      const first = await harness.invokeHandler("supabase:get-edge-logs", {
+        appId: 7,
+        projectId: "project",
+        organizationSlug: "org",
+        // Far older than a poll may look back.
+        timestampStart: NOW - 60 * MINUTE,
+      });
+      expect(first).toEqual({
+        entries: [
+          {
+            level: "info",
+            type: "edge-function",
+            message: "[hello] ran",
+            timestamp: NOW - MINUTE,
+            sourceName: "hello",
+            appId: 7,
+            providerLogId: "log-1",
+          },
+        ],
+        retryFrom: undefined,
+        warning: undefined,
+      });
+      expect(mocks.getSupabaseProjectLogs).toHaveBeenCalledWith(
+        "project",
+        expect.objectContaining({
+          organizationSlug: "org",
+          timestampStart: NOW - 10 * MINUTE,
+          timestampEnd: NOW,
+        }),
+      );
+
+      // A new poll refreshes recent coverage even in the same millisecond.
+      await harness.invokeHandler("supabase:get-edge-logs", {
+        appId: 7,
+        projectId: "project",
+        organizationSlug: "org",
+        timestampStart: NOW - 2 * MINUTE,
+      });
+      expect(mocks.getSupabaseProjectLogs).toHaveBeenCalledTimes(2);
+      expect(mocks.getSupabaseProjectLogs).toHaveBeenLastCalledWith(
+        "project",
+        expect.objectContaining({
+          timestampStart: NOW - 2 * MINUTE,
+          timestampEnd: NOW,
+        }),
+      );
+    });
+
+    it("ignores a poll for a project the app is no longer linked to", async () => {
+      await expect(
+        harness.invokeHandler("supabase:get-edge-logs", {
+          appId: 7,
+          projectId: "previous-project",
+          organizationSlug: "org",
+        }),
+      ).resolves.toEqual({ entries: [] });
+      expect(mocks.getSupabaseProjectLogs).not.toHaveBeenCalled();
+    });
+
+    it("reports a provider failure with a retry boundary and visible warning", async () => {
+      mocks.getSupabaseProjectLogs.mockRejectedValue(
+        new DyadError("Supabase is unavailable", DyadErrorKind.External),
+      );
+      await expect(
+        harness.invokeHandler("supabase:get-edge-logs", {
+          appId: 7,
+          projectId: "project",
+          organizationSlug: "org",
+        }),
+      ).resolves.toMatchObject({
+        entries: [],
+        retryFrom: NOW - 10 * MINUTE,
+        warning: expect.stringContaining("unavailable"),
+      });
+    });
+
+    it("delivers partial rows while keeping the older gap retryable", async () => {
+      const params = {
+        appId: 7,
+        projectId: "project",
+        organizationSlug: "org",
+      };
+      // Seed recent rows, then expand to a window with an uncached older range.
+      await harness.invokeHandler("supabase:get-edge-logs", {
+        ...params,
+        timestampStart: NOW - 2 * MINUTE,
+      });
+      mocks.getSupabaseProjectLogs.mockRejectedValueOnce(
+        new DyadError("Older range unavailable", DyadErrorKind.External),
+      );
+      await expect(
+        harness.invokeHandler("supabase:get-edge-logs", {
+          ...params,
+          timestampStart: NOW - 10 * MINUTE,
+        }),
+      ).resolves.toMatchObject({
+        entries: [expect.objectContaining({ providerLogId: "log-1" })],
+        retryFrom: NOW - 10 * MINUTE,
+        warning: expect.stringContaining("unavailable"),
+      });
+
+      mocks.getSupabaseProjectLogs.mockResolvedValueOnce({
+        result: [
+          {
+            id: "older",
+            timestamp: NOW - 7 * MINUTE,
+            event_message: "[hello] older",
+            level: "info",
+          },
+        ],
+      });
+      const recovered = await harness.invokeHandler("supabase:get-edge-logs", {
+        ...params,
+        timestampStart: NOW - 10 * MINUTE,
+      });
+      expect(recovered).toEqual({
+        entries: expect.arrayContaining([
+          expect.objectContaining({ providerLogId: "older" }),
+          expect.objectContaining({ providerLogId: "log-1" }),
+        ]),
+      });
+      expect(mocks.getSupabaseProjectLogs).toHaveBeenLastCalledWith(
+        "project",
+        expect.objectContaining({
+          timestampStart: NOW - 10 * MINUTE,
+        }),
+      );
+    });
+
+    it("delivers truncated rows with a warning but no retry boundary", async () => {
+      mocks.getSupabaseProjectLogs.mockImplementation(
+        async (_project, { limit }) => ({
+          result: Array.from({ length: limit }, (_, index) => ({
+            id: `log-${index}`,
+            timestamp: NOW - 1_000,
+            event_message: "[hello] dense logs",
+            level: "info",
+          })),
+        }),
+      );
+      const result = await harness.invokeHandler("supabase:get-edge-logs", {
+        appId: 7,
+        projectId: "project",
+        organizationSlug: "org",
+      });
+      expect(result).toMatchObject({
+        entries: expect.arrayContaining([
+          expect.objectContaining({ providerLogId: "log-0" }),
+        ]),
+        warning: expect.stringContaining("more Supabase Edge Function logs"),
+      });
+      expect(result).not.toHaveProperty("retryFrom");
+    });
+
+    it("keeps provider requests per poll bounded for a project over the row limits", async () => {
+      // 800 rows a minute for ten minutes: more than the pages one range
+      // fetches and more than one cache scope keeps.
+      const rows = Array.from({ length: 8_000 }, (_, index) => ({
+        id: `dense-${index}`,
+        timestamp: NOW - index * 75,
+        event_message: "[hello] busy",
+        level: "info" as const,
+      }));
+      mocks.getSupabaseProjectLogs.mockImplementation(
+        async (_project, { timestampStart, timestampEnd, limit }) => ({
+          result: rows
+            .filter(
+              (entry) =>
+                entry.timestamp >= timestampStart &&
+                entry.timestamp < timestampEnd,
+            )
+            .slice(0, limit),
+        }),
+      );
+      const params = {
+        appId: 7,
+        projectId: "project",
+        organizationSlug: "org",
+      };
+
+      const first = await harness.invokeHandler<{
+        entries: unknown[];
+        retryFrom?: number;
+        warning?: string;
+      }>("supabase:get-edge-logs", params);
+      expect(first.entries.length).toBeGreaterThan(1_000);
+      expect(first.warning).toContain("more Supabase Edge Function logs");
+      // Retrying the older gap would page down from the newest rows again on
+      // every poll without ever reaching it.
+      expect(first.retryFrom).toBeUndefined();
+      const firstRequests = mocks.getSupabaseProjectLogs.mock.calls.length;
+      expect(firstRequests).toBeLessThanOrEqual(5);
+
+      // The renderer's next poll then starts at the recent overlap, so it
+      // only refetches that provisional tail.
+      for (let poll = 0; poll < 3; poll++) {
+        mocks.getSupabaseProjectLogs.mockClear();
+        await harness.invokeHandler("supabase:get-edge-logs", {
+          ...params,
+          timestampStart: NOW - 2 * MINUTE,
+        });
+        expect(mocks.getSupabaseProjectLogs.mock.calls.length).toBeLessThan(
+          firstRequests,
+        );
+      }
+    });
+
+    it("surfaces rejected credentials and asks the renderer to back off", async () => {
+      mocks.getSupabaseProjectLogs.mockRejectedValue(
+        new DyadError(
+          "Supabase would not authorize Dyad to read this project's Edge Function logs. Reconnect your Supabase account in Settings, or check that this organization still has access to the project.",
+          DyadErrorKind.Auth,
+        ),
+      );
+      await expect(
+        harness.invokeHandler("supabase:get-edge-logs", {
+          appId: 7,
+          projectId: "project",
+          organizationSlug: "org",
+        }),
+      ).resolves.toMatchObject({
+        entries: [],
+        retryFrom: NOW - 10 * MINUTE,
+        warning: expect.stringContaining(
+          "Reconnect your Supabase account in Settings",
+        ),
+        authFailed: true,
+      });
+    });
+
+    it("does not poll an organization Dyad has no credentials for", async () => {
+      mocks.readSettings.mockReturnValue(harness.readSettings());
+      await expect(
+        harness.invokeHandler("supabase:get-edge-logs", {
+          appId: 7,
+          projectId: "project",
+          organizationSlug: "org",
+        }),
+      ).resolves.toEqual({ entries: [] });
+      expect(mocks.getSupabaseProjectLogs).not.toHaveBeenCalled();
+    });
   });
 
   describe("supabase:redeploy-all-functions", () => {

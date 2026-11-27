@@ -38,6 +38,8 @@ export const SETTING_IDS = {
   vercel: "setting-vercel",
   cloudflare: "setting-cloudflare",
   supabase: "setting-supabase",
+  autoFetchSupabaseEdgeFunctionLogs:
+    "setting-auto-fetch-supabase-edge-function-logs",
   neon: "setting-neon",
   enableCloudSandbox: "setting-enable-cloud-sandbox",
   autoApproveNonSchemaSql: "setting-auto-approve-non-schema-sql",
@@ -416,6 +418,24 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
       "backend",
       "connect",
       "postgres",
+    ],
+    sectionId: SECTION_IDS.integrations,
+    sectionLabel: "Integrations",
+  },
+  {
+    id: SETTING_IDS.autoFetchSupabaseEdgeFunctionLogs,
+    label: "Automatically fetch Supabase Edge Function logs",
+    description:
+      "Poll Supabase Edge Function logs while the app's Preview tab is visible. When off, the agent can still fetch logs on demand",
+    keywords: [
+      "supabase",
+      "edge function",
+      "functions",
+      "logs",
+      "polling",
+      "poll",
+      "background",
+      "console",
     ],
     sectionId: SECTION_IDS.integrations,
     sectionLabel: "Integrations",

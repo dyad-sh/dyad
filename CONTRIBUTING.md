@@ -69,6 +69,10 @@ npm run init-precommit
 npm test
 ```
 
+### Live Supabase log tests
+
+For the live Supabase Edge Function logs integration test, set `SUPABASE_ACCESS_TOKEN` and `SUPABASE_ORG_SLUG` for a test organization, leave `E2E_TEST_BUILD` unset, and run `npm run test:live:supabase-logs`. The suite creates one project in `us-east-1`, deploys and invokes a log-producing function, and deletes the project during teardown. A fine-grained token needs `organization_projects_create`, `project_admin_read`, `edge_functions_write`, `analytics_logs_read`, and `project_admin_write` for that organization and its new projects.
+
 ### E2E tests
 
 Build the app for E2E testing:

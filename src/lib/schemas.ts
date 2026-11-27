@@ -605,6 +605,10 @@ const BaseUserSettingsFields = {
   enableShellTool: z.boolean().optional(),
   autoApproveSafeMcpTools: z.boolean().optional(),
   skipPruneEdgeFunctions: z.boolean().optional(),
+  // Background polling of Supabase Edge Function logs while a linked app's
+  // preview is open. Off by default; the agent's read_logs tool still fetches
+  // logs on demand either way.
+  autoFetchSupabaseEdgeFunctionLogs: z.boolean().optional(),
   acceptedCommunityCode: z.boolean().optional(),
   zoomLevel: ZoomLevelSchema.optional(),
   language: LanguageSchema.optional(),

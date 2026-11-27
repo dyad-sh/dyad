@@ -6,13 +6,19 @@ import {
   createSupabaseProject,
   getSupabaseClientForOrganization,
   listSupabaseBranches,
-  getSupabaseProjectLogs,
   getOrganizationDetails,
   getOrganizationMembers,
   classifyManagementApiError,
-  type SupabaseProjectLog,
 } from "../../supabase_admin/supabase_management_client";
-import { extractFunctionName } from "../../supabase_admin/supabase_utils";
+import {
+  clearSupabaseLogCacheForOrganization,
+  describeSupabaseLogError,
+  getAppEdgeFunctionLogs,
+  isAppStillLinkedTo,
+  isSupabaseLogAuthError,
+} from "../../supabase_admin/supabase_edge_logs_service";
+import { hasSupabaseCredentialsForOrganization } from "@/lib/schemas";
+import { EDGE_LOGS_POLL_MAX_LOOKBACK_MS } from "../../shared/supabase_edge_logs";
 import { deployAllSupabaseFunctions } from "../../supabase_admin/supabase_utils";
 import {
   detectLegacyAppKey,
@@ -196,6 +202,7 @@ export function registerSupabaseHandlers() {
           organizations,
         },
       });
+      clearSupabaseLogCacheForOrganization(organizationSlug);
 
       logger.info(`Deleted Supabase organization ${organizationSlug}`);
     },
@@ -403,42 +410,65 @@ export function registerSupabaseHandlers() {
     }));
   });
 
-  // Get edge function logs for a Supabase project
+  // Background polling of Edge Function logs. Reads through the same cache as
+  // the agent's read_logs tool, so polls and agent reads share fetches. The
+  // renderer only calls this while the polling setting is on.
   createTypedHandler(supabaseContracts.getEdgeLogs, async (_, params) => {
     const { projectId, timestampStart, appId, organizationSlug } = params;
-    const response = await getSupabaseProjectLogs(
+    const now = Date.now();
+    const target = {
+      appId,
       projectId,
-      timestampStart,
-      organizationSlug ?? undefined,
-    );
-
-    if (response.error) {
-      const errorMsg =
-        typeof response.error === "string"
-          ? response.error
-          : JSON.stringify(response.error);
-      throw new DyadError(
-        `Failed to fetch logs: ${errorMsg}`,
-        DyadErrorKind.External,
-      );
+      organizationSlug: organizationSlug ?? null,
+    };
+    // A poll scheduled before the app was relinked, or its organization was
+    // disconnected, must not fetch, or label as this app's, those logs.
+    if (
+      !hasSupabaseCredentialsForOrganization(
+        readSettings(),
+        target.organizationSlug,
+      ) ||
+      !(await isAppStillLinkedTo(target))
+    ) {
+      return { entries: [] };
     }
-
-    const rawLogs = response.result || [];
-
-    // Transform to ConsoleEntry format
-    return rawLogs.map((logEntry: SupabaseProjectLog) => {
-      const eventMessage = logEntry.event_message || "";
-      const functionName = extractFunctionName(eventMessage);
-
-      return {
-        level: logEntry.level,
-        type: "edge-function" as const,
-        message: eventMessage,
-        timestamp: logEntry.timestamp,
-        sourceName: functionName,
-        appId,
-      };
+    const start = Math.min(
+      now - 1,
+      Math.max(
+        timestampStart ?? now - EDGE_LOGS_POLL_MAX_LOOKBACK_MS,
+        now - EDGE_LOGS_POLL_MAX_LOOKBACK_MS,
+      ),
+    );
+    const result = await getAppEdgeFunctionLogs({
+      target,
+      start,
+      end: now,
     });
+    if (result.associationChanged) return { entries: [] };
+    if (result.missingRanges.length === 0) return { entries: result.entries };
+    // Available rows are always delivered, so a busy window that keeps
+    // reaching a limit still shows its newest logs.
+    if (!result.error) {
+      // Page or row limits, not a failure. Retrying would page down from the
+      // newest rows again, or refetch rows the cache just trimmed, on every
+      // poll without reaching the gap, so the gap is skipped instead.
+      return {
+        entries: result.entries,
+        warning:
+          "This project produced more Supabase Edge Function logs than the console fetches at once, so some older ones are not shown. Ask the agent to read the logs for that time window to see them.",
+      };
+    }
+    // A provider failure: keep the gap in the next bounded poll window. An
+    // auth failure's own message already says how to fix it.
+    const authFailed = isSupabaseLogAuthError(result.error);
+    return {
+      entries: result.entries,
+      retryFrom: Math.min(...result.missingRanges.map((range) => range.start)),
+      warning: authFailed
+        ? describeSupabaseLogError(result.error)
+        : `Some Supabase Edge Function logs could not be fetched (${describeSupabaseLogError(result.error)}). Available logs are shown; missing logs from the last ten minutes will be retried.`,
+      authFailed,
+    };
   });
 
   // Set app project - links a Dyad app to a Supabase project.

@@ -12,6 +12,7 @@ import { appLogForwarder } from "@/lib/app_log_forwarder";
 import { useConsoleEntries } from "@/preview_console/hooks";
 import { useAppRunRemoteManager } from "@/app_run/AppRunRemoteProvider";
 import { matchesConsoleEntryFilters } from "./console_entry_filters";
+import { SupabaseEdgeLogPollingHint } from "./SupabaseEdgeLogPollingHint";
 
 // Placeholder component shown during fast scrolling
 const ScrollSeekPlaceholder = () => {
@@ -69,7 +70,15 @@ const ConsoleItem = memo(
 ConsoleItem.displayName = "ConsoleItem";
 
 // Console component
-export const Console = () => {
+export const Console = ({
+  supabaseProjectId,
+  supabaseOrganizationSlug,
+  edgeLogsWarning,
+}: {
+  supabaseProjectId?: string | null;
+  supabaseOrganizationSlug?: string | null;
+  edgeLogsWarning?: string | null;
+}) => {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const consoleEntries = useConsoleEntries(selectedAppId);
   const appRunManager = useAppRunRemoteManager();
@@ -78,6 +87,8 @@ export const Console = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [containerHeight, setContainerHeight] = useState(0);
+  // Height left for the list after the filter bar and any notices above it.
+  const [listHeight, setListHeight] = useState(0);
   const [expandedEntries, setExpandedEntries] = useState<Set<string>>(
     new Set(),
   );
@@ -121,17 +132,22 @@ export const Console = () => {
   }, [appRunManager, selectedAppId]);
 
   useEffect(() => {
-    const container = containerRef.current?.parentElement;
-    if (!container) return;
+    const logArea = containerRef.current;
+    const container = logArea?.parentElement;
+    if (!logArea || !container) return;
 
     const resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const newHeight = entry.contentRect.height;
-        setContainerHeight(newHeight);
+        if (entry.target === container) setContainerHeight(newHeight);
+        else setListHeight(newHeight);
       }
     });
 
     resizeObserver.observe(container);
+    // The log area is a flex-1, overflow-hidden child, so its height is the
+    // space the rows above leave rather than its content's height.
+    resizeObserver.observe(logArea);
     return () => resizeObserver.disconnect();
   }, []);
 
@@ -206,8 +222,6 @@ export const Console = () => {
     [filteredEntries, expandedEntries, typeFilter, getEntryKey, toggleExpanded],
   );
 
-  const listHeight = containerHeight - (showFilters ? 60 : 0);
-
   // Disable virtualization in test mode for easier e2e testing
   // Virtualization only renders visible DOM elements, which creates issues for E2E tests:
   // 1. Off-screen logs don't exist in the DOM and can't be queried by test selectors
@@ -232,9 +246,20 @@ export const Console = () => {
         showFilters={showFilters}
       />
 
+      {supabaseProjectId && (
+        <SupabaseEdgeLogPollingHint
+          organizationSlug={supabaseOrganizationSlug ?? null}
+        />
+      )}
+      {edgeLogsWarning && (
+        <p role="status" className="px-4 py-2 text-sm text-muted-foreground">
+          {edgeLogsWarning}
+        </p>
+      )}
+
       {/* Virtualized log area */}
       <div ref={containerRef} className="flex-1 overflow-hidden px-4">
-        {containerHeight > 0 &&
+        {listHeight > 0 &&
           (isTestMode ? (
             // Non-virtualized rendering for test mode - all logs visible in DOM
             <div

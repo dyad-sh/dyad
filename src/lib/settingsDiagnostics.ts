@@ -48,6 +48,8 @@ export function getSharedSettingsDiagnostics(settings: UserSettings) {
       settings.disablePreviewNodeAutoInstall ?? null,
     previewIdleTimeoutPolicy: settings.previewIdleTimeoutPolicy ?? null,
     maxToolCallSteps: settings.maxToolCallSteps ?? null,
+    autoFetchSupabaseEdgeFunctionLogs:
+      settings.autoFetchSupabaseEdgeFunctionLogs ?? null,
     // Whether a credential is stored, never the credential or its account.
     githubConnected: !!settings.githubAccessToken?.value,
     gitlabConnected: !!settings.gitlab?.accessToken?.value,

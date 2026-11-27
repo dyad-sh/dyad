@@ -639,13 +639,13 @@
       },
       {
         "name": "read_logs",
-        "description": "Read logs at the moment this tool is called. Includes client logs, server logs, edge function logs, and network requests. Use this to debug errors, investigate issues, or understand app behavior. IMPORTANT: Logs are a snapshot from when you call this tool - they will NOT update while you are writing code or making changes. Use filters (searchTerm, type, level) to narrow down relevant logs on the first call.",
+        "description": "Read the app's logs for a time window (default: the last 5 minutes). Includes client logs, server logs, network requests, and Supabase Edge Function logs. Edge Function logs are fetched on demand from the app's connected Supabase project whenever type is 'all' or 'edge-function'. Use this to debug errors, investigate issues, or understand app behavior. To investigate an older incident, pass startTime and/or endTime (ISO 8601 with a timezone) to read an earlier or wider window, up to 24 hours per call. Client, server, and network logs come from Dyad's local history, which only retains the most recent logs, so older windows may include only Edge Function logs. IMPORTANT: Logs are a snapshot from when you call this tool - they will NOT update while you are writing code or making changes. Use filters (searchTerm, type, level) to narrow down relevant logs on the first call.",
         "input_schema": {
           "$schema": "http://json-schema.org/draft-07/schema#",
           "type": "object",
           "properties": {
             "type": {
-              "description": "Filter by log source type (default: all). Types: 'client' = browser console logs; 'server' = backend (including development server) logs and build output; 'edge-function' = edge function logs; 'network-requests' = HTTP requests and responses (outgoing calls and their responses).",
+              "description": "Filter by log source type (default: all). Types: 'client' = browser console logs; 'server' = backend (including development server) logs and build output; 'edge-function' = Supabase Edge Function logs, fetched from the app's connected Supabase project; 'network-requests' = HTTP requests and responses (outgoing calls and their responses).",
               "type": "string",
               "enum": [
                 "all",
@@ -674,6 +674,14 @@
               "type": "number",
               "minimum": 1,
               "maximum": 200
+            },
+            "startTime": {
+              "description": "Start of the time window, as an ISO 8601 timestamp with an explicit timezone (e.g. '2026-01-15T14:30:00Z' or '2026-01-15T09:30:00-05:00'). Omit to start 5 minutes before endTime (or 5 minutes ago when endTime is also omitted).",
+              "type": "string"
+            },
+            "endTime": {
+              "description": "End of the time window, as an ISO 8601 timestamp with an explicit timezone. Omit to end at the current time. Must not be in the future, and the window can span at most 24 hours.",
+              "type": "string"
             }
           },
           "additionalProperties": false

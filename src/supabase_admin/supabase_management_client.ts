@@ -28,6 +28,11 @@ import {
 } from "@/ipc/services/app_operation_coordinator";
 import { getDyadAppPath } from "@/paths/paths";
 import {
+  SUPABASE_LOGS_MAX_WINDOW_MS,
+  SUPABASE_LOGS_PAGE_SIZE,
+  SUPABASE_LOGS_ROUNDING_MS,
+} from "@/shared/supabase_edge_logs";
+import {
   deferSupabaseFunctionSyncForRecording,
   SupabaseFunctionSyncDeferredError,
   type DeferredSupabaseFunctionSync,
@@ -176,6 +181,8 @@ export interface DeployedFunctionResponse {
 }
 
 export interface SupabaseProjectLog {
+  /** Provider-assigned log id; unique per project. */
+  id: string;
   timestamp: number;
   event_message: string;
   level: "info" | "warn" | "error";
@@ -186,16 +193,25 @@ export interface SupabaseProjectLogsResponse {
   error?: unknown;
 }
 
+/** Deadline for one logs request attempt, not counting rate-limit backoff. */
+export const SUPABASE_LOGS_ATTEMPT_TIMEOUT_MS = 20_000;
+
 const SupabaseProjectLogApiSchema = z.object({
+  id: z.union([z.string().min(1), z.number()]),
   timestamp: z.union([z.string(), z.number()]),
   event_message: z.string(),
   severity_text: z.string().nullish(),
 });
 
-const SupabaseProjectLogsApiResponseSchema = z.object({
-  result: z.array(SupabaseProjectLogApiSchema).optional(),
-  error: z.unknown().optional(),
-});
+const SupabaseProjectLogsApiResponseSchema = z
+  .object({
+    result: z.array(SupabaseProjectLogApiSchema).optional(),
+    error: z.unknown().optional(),
+  })
+  .refine(({ result, error }) => result !== undefined || Boolean(error), {
+    path: ["result"],
+    message: "Expected a result array for a successful logs query.",
+  });
 
 function parseSupabaseLogTimestamp(timestamp: string | number): number {
   if (typeof timestamp === "number") {
@@ -895,40 +911,79 @@ export async function ensureSupabaseAuthRedirectUrls({
   );
 }
 
+/**
+ * Fetches one page of Edge Function runtime logs, newest first.
+ *
+ * The API time parameters enclose the requested range in whole minutes.
+ * SQL filters to the exact range before applying the page limit.
+ */
 export async function getSupabaseProjectLogs(
   projectId: string,
-  timestampStart?: number,
-  organizationSlug?: string,
+  {
+    organizationSlug,
+    timestampStart,
+    timestampEnd,
+    limit = SUPABASE_LOGS_PAGE_SIZE,
+    signal,
+  }: {
+    organizationSlug?: string | null;
+    /** Inclusive lower bound, epoch ms. */
+    timestampStart: number;
+    /** Exclusive upper bound, epoch ms. */
+    timestampEnd: number;
+    limit?: number;
+    signal?: AbortSignal;
+  },
 ): Promise<SupabaseProjectLogsResponse> {
+  if (
+    !Number.isSafeInteger(timestampStart) ||
+    !Number.isSafeInteger(timestampEnd) ||
+    timestampEnd <= timestampStart
+  ) {
+    throw new DyadError(
+      "Supabase log queries need whole millisecond timestamps with the start before the end.",
+      DyadErrorKind.Validation,
+    );
+  }
+  const minute = SUPABASE_LOGS_ROUNDING_MS;
+  const apiStart = Math.floor(timestampStart / minute) * minute;
+  const apiEnd = Math.ceil(timestampEnd / minute) * minute;
+  if (apiEnd - apiStart > SUPABASE_LOGS_MAX_WINDOW_MS) {
+    throw new DyadError(
+      "Supabase log queries cannot span more than 24 hours.",
+      DyadErrorKind.Validation,
+    );
+  }
+  if (IS_TEST_BUILD) {
+    return { result: [] };
+  }
+  signal?.throwIfAborted();
+
   const supabase = await getSupabaseClient({ organizationSlug });
 
-  // The unified endpoint is ClickHouse-backed. The time range is applied by
-  // the API parameters below, while the SQL scopes the unified stream to Edge
-  // Function runtime logs.
   const sqlQuery = `
-SELECT 
+SELECT
+  id,
   timestamp,
   event_message,
   severity_text
 FROM logs
 WHERE source = 'function_logs'
-ORDER BY timestamp ASC
-LIMIT 1000`;
+  AND timestamp >= fromUnixTimestamp64Milli(${timestampStart})
+  AND timestamp < fromUnixTimestamp64Milli(${timestampEnd})
+ORDER BY timestamp DESC
+LIMIT ${Math.max(1, Math.floor(limit))}`;
 
-  // Calculate time range for API parameters
-  const now = new Date();
-  const isoTimestampEnd = now.toISOString();
-  // Default to last 10 minutes if no start timestamp provided
-  const isoTimestampStart = timestampStart
-    ? new Date(timestampStart).toISOString()
-    : new Date(now.getTime() - 10 * 60 * 1000).toISOString();
+  const params = new URLSearchParams({
+    sql: sqlQuery,
+    iso_timestamp_start: new Date(apiStart).toISOString(),
+    iso_timestamp_end: new Date(apiEnd).toISOString(),
+  });
+  const url = `https://api.supabase.com/v1/projects/${encodeURIComponent(projectId)}/analytics/endpoints/logs?${params.toString()}`;
 
-  // Encode SQL query for URL
-  const encodedSql = encodeURIComponent(sqlQuery);
-
-  const url = `https://api.supabase.com/v1/projects/${projectId}/analytics/endpoints/logs?sql=${encodedSql}&iso_timestamp_start=${isoTimestampStart}&iso_timestamp_end=${isoTimestampEnd}`;
-
-  logger.info(`Fetching logs from: ${url}`);
+  logger.debug(
+    `Fetching Edge Function logs for ${projectId} (${params.get("iso_timestamp_start")} to ${params.get("iso_timestamp_end")})`,
+  );
 
   const response = await fetchWithRetry(
     url,
@@ -937,16 +992,21 @@ LIMIT 1000`;
       headers: {
         Authorization: `Bearer ${(supabase as any).options.accessToken}`,
       },
+      signal,
     },
     `Get Supabase project logs for ${projectId}`,
+    { attemptTimeoutMs: SUPABASE_LOGS_ATTEMPT_TIMEOUT_MS, maxRetries: 3 },
   );
 
   if (response.status !== 200) {
     const errorText = await response.text();
     logger.error(`Failed to fetch logs (${response.status}): ${errorText}`);
-    throw new SupabaseManagementAPIError(
-      `Failed to fetch logs: ${response.statusText} (${response.status}) - ${errorText}`,
-      response,
+    throw classifyManagementApiError(
+      new SupabaseManagementAPIError(
+        `Failed to fetch logs: ${response.statusText} (${response.status}) - ${errorText}`,
+        response,
+      ),
+      "read this project's Edge Function logs",
     );
   }
 
@@ -970,13 +1030,14 @@ LIMIT 1000`;
     }
 
     return {
+      id: String(logEntry.id),
       timestamp,
       event_message: logEntry.event_message,
       level: normalizeSupabaseLogLevel(logEntry.severity_text),
     };
   });
 
-  logger.info(`Received ${result.length} logs`);
+  logger.debug(`Received ${result.length} logs`);
 
   return { result, error: parsed.data.error };
 }

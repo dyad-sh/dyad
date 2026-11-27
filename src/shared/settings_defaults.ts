@@ -10,3 +10,7 @@ export const DEFAULT_ENABLE_SUGGESTED_PROMPTS = false;
 export const DEFAULT_SHOW_SYSTEM_RESOURCE_USAGE = true;
 
 export const DEFAULT_MAX_CONCURRENT_TEST_RUNS = 2;
+
+// Background Supabase Edge Function log polling. Off by default, including for
+// users who never saved a preference: the agent fetches logs on demand.
+export const DEFAULT_AUTO_FETCH_SUPABASE_EDGE_FUNCTION_LOGS = false;

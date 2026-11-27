@@ -21,6 +21,11 @@ or the renderer+IPC chat harness without needing the packaged Electron app.
 These tests are faster, easier to debug, and avoid Electron launch/package
 overhead.
 
+`vi.waitFor` advances fake time even with `vi.useFakeTimers({ toFake: ["Date"] })`.
+For cache-sharing tests, hold the provider response until both readers enter and
+keep query bounds fixed. Also cover readers joining after the clock advances:
+sharing must depend on the in-flight request, not identical timestamps.
+
 When moving a workflow from Build mode to Agent mode, update its fake-LLM
 response from `<dyad-write>` XML to a local-Agent fixture that invokes
 `write_file` or `search_replace`, then run the integration path that exercises
@@ -128,6 +133,18 @@ If the unsandboxed rerun reaches the harness but fails loading
 `better-sqlite3` with a `NODE_MODULE_VERSION` mismatch, follow the
 `npm rebuild better-sqlite3` recovery in `rules/native-modules.md` (single
 source of truth for native-module rebuild guidance) before debugging tests.
+
+A partial `@/main/settings` mock that swaps only `readSettings` for the
+harness does not reach the module's own `writeSettings` / `readEffectiveSettings`:
+they keep using the real settings file, and `readEffectiveSettings` also fetches
+remote config. Tests that invoke `set-user-settings` must replace all three
+exports, or the write never reaches the settings the handlers read:
+
+- `readSettings` → `harness.readSettings`
+- `writeSettings` → `harness.writeSettings`
+- `readEffectiveSettings` (async) → `async () => harness.readSettings()`
+
+See `src/ipc/handlers/__tests__/supabase_edge_logs.integration.test.ts`.
 
 When a hybrid test needs `IS_TEST_BUILD` behavior from modules that capture
 `process.env.E2E_TEST_BUILD` at import time, set it in a `vi.hoisted()` block

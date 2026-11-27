@@ -17,6 +17,7 @@ import {
 import { readSettings } from "@/main/settings";
 import {
   SupabaseLogCache,
+  type SupabaseLogPageFetcher,
   type SupabaseLogQueryResult,
   type SupabaseLogScope,
   type TimeRange,
@@ -24,27 +25,36 @@ import {
 import { getSupabaseProjectLogs } from "./supabase_management_client";
 import { extractFunctionName } from "./supabase_utils";
 
+export const fetchSupabaseFunctionLogPage: SupabaseLogPageFetcher = async ({
+  scope,
+  start,
+  end,
+  limit,
+  signal,
+}) => {
+  const response = await getSupabaseProjectLogs(scope.projectRef, {
+    organizationSlug: scope.organizationSlug,
+    timestampStart: start,
+    timestampEnd: end,
+    limit,
+    signal,
+  });
+  if (response.error) {
+    const detail =
+      typeof response.error === "string"
+        ? response.error
+        : JSON.stringify(response.error);
+    throw new DyadError(
+      `Supabase returned an error for the logs query: ${detail}`,
+      DyadErrorKind.External,
+    );
+  }
+  return response.result;
+};
+
 export const supabaseFunctionLogCache = new SupabaseLogCache({
-  fetchPage: async ({ scope, start, end, limit, signal }) => {
-    const response = await getSupabaseProjectLogs(scope.projectRef, {
-      organizationSlug: scope.organizationSlug,
-      timestampStart: start,
-      timestampEnd: end,
-      limit,
-      signal,
-    });
-    if (response.error) {
-      const detail =
-        typeof response.error === "string"
-          ? response.error
-          : JSON.stringify(response.error);
-      throw new DyadError(
-        `Supabase returned an error for the logs query: ${detail}`,
-        DyadErrorKind.External,
-      );
-    }
-    return response.result;
-  },
+  fetchPage: fetchSupabaseFunctionLogPage,
+  now: () => Date.now(),
 });
 
 /** The Supabase project an app's Edge Function logs come from. */

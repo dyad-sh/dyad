@@ -1627,6 +1627,7 @@ describe("worktree isolation (integration)", () => {
   it("merges past unrelated uncommitted changes in the app's folder, not over them", async () => {
     await waitForQuietApp();
     const chatId = await createChat();
+    const targetCommit = git(["rev-parse", "HEAD"]);
     // Dyad itself leaves changes like this in the app's folder.
     fs.appendFileSync(
       path.join(harness.appDir, "index.html"),
@@ -1635,6 +1636,12 @@ describe("worktree isolation (integration)", () => {
     try {
       await landTurn(chatId, { "src/unrelated.ts": "chat\n" });
       await waitForMerged(chatId);
+      expect(validateWorkspace).toHaveBeenCalledWith(
+        expect.objectContaining({
+          appPath: getWorkspaceAppPath(getWorkspaceForChat(chatId)!),
+          baselineCommit: targetCommit,
+        }),
+      );
       expect(harness.readAppFile("src/unrelated.ts")).toBe("chat\n");
       expect(harness.readAppFile("index.html")).toContain("<!-- local -->");
     } finally {
@@ -1656,6 +1663,35 @@ describe("worktree isolation (integration)", () => {
     workspaceIntegrationQueue.resumePending();
     await waitForMerged(chatId);
     expect(harness.readAppFile("src/unrelated.ts")).toBe("chat again\n");
+    await discardWorkspace(chatId);
+  }, 60_000);
+
+  it("rechecks the same combined files when the target commit changes", async () => {
+    await waitForQuietApp();
+    const chatId = await createChat();
+    const firstTarget = git(["rev-parse", "HEAD"]);
+    const sharedChange = {
+      "src/shared-change.ts": "export const shared = 1;\n",
+    };
+    let nextTarget = "";
+    const validate = vi.mocked(validateWorkspace);
+    validate.mockImplementationOnce(async () => {
+      commitInApp(sharedChange, "Apply the shared change to the target");
+      nextTarget = git(["rev-parse", "HEAD"]);
+      return { passed: true, checks: [] };
+    });
+    const previousCalls = validate.mock.calls.length;
+    await landTurn(chatId, {
+      ...sharedChange,
+      "src/chat-only.ts": "export {};\n",
+    });
+    await waitForMerged(chatId);
+
+    expect(
+      validate.mock.calls
+        .slice(previousCalls)
+        .map(([input]) => input.baselineCommit),
+    ).toEqual([firstTarget, nextTarget]);
     await discardWorkspace(chatId);
   }, 60_000);
 

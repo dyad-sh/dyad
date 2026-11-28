@@ -299,9 +299,10 @@ worktree use the app's original folder.
   A missing TypeScript package or tsconfig after a successful snapshot
   install makes the type-check `missing` (non-blocking), not transient: it
   would still be missing on a retry.
-- The type-check baseline (errors the target already has) uses the app's
-  folder when it is at the target commit and has no uncommitted changes
-  other than install-written files.
+- When the combined workspace reports TypeScript errors, validation installs
+  and checks the captured target commit in a second disposable checkout.
+  Local edits in the app's folder stay out of the comparison. Cached verdicts
+  apply to the same combined tree and target commit.
 - The squash is named after the newest own commit that is not the
   install-files commit (`INSTALL_COMMIT_SUBJECT`).
 - Uncommitted changes in the app's folder do not block the fast-forward:

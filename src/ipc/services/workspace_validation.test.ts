@@ -8,6 +8,7 @@ const h = vi.hoisted(() => ({ userDataPath: "" }));
 vi.mock("@/paths/paths", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/paths/paths")>()),
   getUserDataPath: () => h.userDataPath,
+  getTypeScriptCachePath: () => path.join(h.userDataPath, "typescript-cache"),
 }));
 vi.mock("@/ipc/processors/tsc", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/ipc/processors/tsc")>()),
@@ -220,6 +221,7 @@ describe("workspace validation isolation", () => {
       column: 1,
       code: 2322,
       message: "Type 'string' is not assignable to type 'number'.",
+      snippet: "",
     };
 
     function typeCheck(checks: { name: string }[]) {
@@ -234,9 +236,13 @@ describe("workspace validation isolation", () => {
         "tsconfig.app.json": "{}",
       });
 
-      const { checks } = await validateWorkspace({ appPath: workspace });
+      const { checks } = await validateWorkspace({
+        appPath: workspace,
+        baselineCommit: git(repo, "rev-parse", "HEAD"),
+      });
 
       expect(runTypeScriptCheck).toHaveBeenCalledTimes(1);
+      expect(runCleanPackageInstall).toHaveBeenCalledTimes(1);
       expect(typeCheck(checks)?.outcome).toBe("passed");
     });
 
@@ -286,12 +292,12 @@ describe("workspace validation isolation", () => {
         "tsconfig.json": "{}",
       });
       vi.mocked(runTypeScriptCheck)
-        .mockResolvedValueOnce({ problems: [problem, problem] } as never)
-        .mockResolvedValueOnce({ problems: [problem] } as never);
+        .mockResolvedValueOnce({ problems: [problem, problem] })
+        .mockResolvedValueOnce({ problems: [problem] });
 
       const { checks } = await validateWorkspace({
         appPath: workspace,
-        baselineAppPath: repo,
+        baselineCommit: git(repo, "rev-parse", "HEAD"),
       });
 
       expect(typeCheck(checks)).toMatchObject({
@@ -300,21 +306,140 @@ describe("workspace validation isolation", () => {
       });
     });
 
-    it("passes when every diagnostic already existed on the target", async () => {
+    it("checks an initialized submodule at the target's recorded commit", async () => {
       await commitAndBranch({
-        "package.json": JSON.stringify({}),
+        "package.json": "{}",
         "tsconfig.json": "{}",
+        "shared.ts": "original",
       });
+      git(
+        workspace,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        repo,
+        "lib",
+      );
+      git(workspace, "commit", "-am", "Add library");
+      const baselineCommit = git(workspace, "rev-parse", "HEAD");
+      const library = path.join(workspace, "lib");
+      await fs.writeFile(path.join(library, "shared.ts"), "updated");
+      git(library, "commit", "-am", "Update library");
+      git(workspace, "commit", "-am", "Use updated library");
+      await fs.writeFile(path.join(library, "shared.ts"), "local edit");
+
+      const checked: string[] = [];
+      const check = async ({ appPath }: { appPath: string }) => {
+        checked.push(
+          await fs.readFile(path.join(appPath, "lib/shared.ts"), "utf8"),
+        );
+        return { problems: [problem] };
+      };
       vi.mocked(runTypeScriptCheck)
-        .mockResolvedValueOnce({ problems: [problem, problem] } as never)
-        .mockResolvedValueOnce({ problems: [problem, problem] } as never);
-
-      const { checks } = await validateWorkspace({
+        .mockImplementationOnce(check)
+        .mockImplementationOnce(check);
+      const result = await validateWorkspace({
         appPath: workspace,
-        baselineAppPath: repo,
+        baselineCommit,
       });
-
-      expect(typeCheck(checks)?.outcome).toBe("passed");
+      expect(result.passed).toBe(true);
+      expect(checked).toEqual(["local edit", "original"]);
     });
+
+    it("keeps the merge retryable if the baseline check could not run", async () => {
+      await commitAndBranch({ "package.json": "{}", "tsconfig.json": "{}" });
+      vi.mocked(runTypeScriptCheck)
+        .mockResolvedValueOnce({ problems: [problem] })
+        .mockRejectedValueOnce(new Error("TypeScript process timed out"));
+      const result = await validateWorkspace({
+        appPath: workspace,
+        baselineCommit: git(repo, "rev-parse", "HEAD"),
+      });
+      expect(result).toMatchObject({ passed: false, transientFailure: true });
+      expect(typeCheck(result.checks)?.summary).toContain(
+        "TypeScript process timed out",
+      );
+    });
+
+    it.each([
+      { chatValue: "1", expected: "passed" },
+      { chatValue: '"new error"', expected: "failed" },
+    ])(
+      "compares against the committed target with dirty main-folder edits ($expected)",
+      async ({ chatValue, expected }) => {
+        await commitAndBranch({
+          "package.json": JSON.stringify({ workspaces: ["packages/*"] }),
+          "packages/app/package.json": JSON.stringify({ name: "app" }),
+          "packages/app/tsconfig.json": JSON.stringify({
+            compilerOptions: { rootDir: "..", types: [] },
+            include: ["*.ts", "../shared/*.ts"],
+          }),
+          "packages/shared/old.ts": 'export const x: number = "oops";\n',
+          "README.md": "original\n",
+        });
+        const baselineCommit = git(repo, "rev-parse", "HEAD");
+        await fs.appendFile(path.join(repo, "README.md"), "my edit\n");
+        const appPath = path.join(workspace, "packages/app");
+        const feature = `export const feature: number = ${chatValue};\n`;
+        await fs.writeFile(path.join(appPath, "feature.ts"), feature);
+        git(workspace, "add", ".");
+        git(workspace, "commit", "-m", "chat change");
+        // The same new error in a local-only file must never excuse the chat's.
+        if (expected === "failed") {
+          await fs.writeFile(
+            path.join(repo, "packages/app/feature.ts"),
+            feature,
+          );
+        }
+
+        // Supply the installed compiler locally so both checkouts run a real
+        // type-check without fetching packages.
+        const installTypeScript = async ({ cwd }: { cwd: string }) => {
+          const modules = path.join(cwd, "node_modules");
+          await fs.mkdir(modules);
+          await fs.symlink(
+            path.dirname(require.resolve("typescript/package.json")),
+            path.join(modules, "typescript"),
+            "junction",
+          );
+          return {
+            code: 0,
+            aborted: false,
+            timedOut: false,
+            stdout: "",
+            stderr: "",
+            hasLockfile: false,
+          };
+        };
+        vi.mocked(runCleanPackageInstall)
+          .mockImplementationOnce(installTypeScript)
+          .mockImplementationOnce(installTypeScript);
+        const actual = await vi.importActual<
+          typeof import("@/ipc/processors/tsc")
+        >("@/ipc/processors/tsc");
+        vi.mocked(runTypeScriptCheck)
+          .mockImplementationOnce(actual.runTypeScriptCheck)
+          .mockImplementationOnce(actual.runTypeScriptCheck);
+
+        const result = await validateWorkspace({ appPath, baselineCommit });
+
+        expect(typeCheck(result.checks)).toMatchObject({
+          outcome: expected,
+          summary:
+            expected === "passed"
+              ? "No new TypeScript errors (1 already existed on the target branch)."
+              : "1 new TypeScript error.",
+        });
+        expect(result.passed).toBe(expected === "passed");
+        expect(await fs.readFile(path.join(repo, "README.md"), "utf8")).toBe(
+          "original\nmy edit\n",
+        );
+        expect(
+          git(repo, "worktree", "list", "--porcelain").match(/^worktree /gm),
+        ).toHaveLength(2);
+      },
+      30_000,
+    );
   });
 });

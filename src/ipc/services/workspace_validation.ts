@@ -2,6 +2,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import log from "electron-log";
 import type { WorkspaceValidationCheck } from "@/db/schema";
+import type { Problem } from "@/ipc/types";
 import {
   getTypeCheckPreconditionKind,
   runTypeScriptCheck,
@@ -37,8 +38,8 @@ const OUTPUT_TAIL_CHARS = 4_000;
  */
 export interface ValidationRunInput {
   appPath: string;
-  /** The app's original directory, used only for a type-check baseline. */
-  baselineAppPath?: string;
+  /** The target commit captured before merging it into the chat workspace. */
+  baselineCommit?: string;
   signal?: AbortSignal;
   onOutput?: (chunk: string) => void;
 }
@@ -144,18 +145,58 @@ async function installSnapshotDependencies(
   };
 }
 
-function diagnosticKey(problem: {
-  file: string;
-  code: number;
-  message: string;
-}): string {
-  return `${problem.file.replaceAll("\\", "/")}\u0000${problem.code}\u0000${problem.message}`;
+function diagnosticKey(problem: Problem, appPath: string): string {
+  // The checker reports an absolute path for files in sibling packages.
+  // Both checkouts need to identify the same file by the same path.
+  const file = path.isAbsolute(problem.file)
+    ? path.relative(appPath, problem.file)
+    : problem.file;
+  return `${file.replaceAll("\\", "/")}\u0000${problem.code}\u0000${problem.message}`;
 }
 
-async function runTypeCheck({
-  appPath,
-  baselineAppPath,
-}: ValidationRunInput): Promise<WorkspaceValidationCheck> {
+function failedTypeCheck(
+  summary: string,
+  problems: Problem[],
+): WorkspaceValidationCheck {
+  return {
+    name: "type-check",
+    outcome: "failed",
+    summary,
+    output: tail(
+      problems
+        .slice(0, 30)
+        .map(
+          (problem) =>
+            `${problem.file}:${problem.line}:${problem.column} TS${problem.code}: ${problem.message}`,
+        )
+        .join("\n"),
+    ),
+  };
+}
+
+async function checkBaseline(
+  input: ValidationRunInput,
+  install: SnapshotInstall,
+): Promise<Map<string, number> | null> {
+  const check = await installSnapshotDependencies(input, install);
+  if (check.outcome === "failed" || check.outcome === "skipped") {
+    throw new Error(check.summary);
+  }
+  const report = await runTypeScriptCheck({ appPath: input.appPath });
+  if (report.outcome === "incomplete") return null;
+  // A second copy of a diagnostic the target already has once is still new.
+  const existing = new Map<string, number>();
+  for (const problem of report.problems) {
+    const key = diagnosticKey(problem, input.appPath);
+    existing.set(key, (existing.get(key) ?? 0) + 1);
+  }
+  return existing;
+}
+
+async function runTypeCheck(
+  { appPath }: ValidationRunInput,
+  readBaseline?: () => ReturnType<typeof checkBaseline>,
+): Promise<WorkspaceValidationCheck> {
   if (
     !(await fileExists(path.join(appPath, "tsconfig.app.json"))) &&
     !(await fileExists(path.join(appPath, "tsconfig.json")))
@@ -178,20 +219,17 @@ async function runTypeCheck({
     }
     // Errors the target branch already had are not caused by combining this
     // chat's work; only newly introduced diagnostics block integration.
-    if (baselineAppPath && report.outcome !== "incomplete") {
+    if (readBaseline && report.outcome !== "incomplete") {
       try {
-        const baseline = await runTypeScriptCheck({
-          appPath: baselineAppPath,
-        });
-        // Count occurrences: a second copy of a diagnostic the target already
-        // has once is still new.
-        const existing = new Map<string, number>();
-        for (const problem of baseline.problems) {
-          const key = diagnosticKey(problem);
-          existing.set(key, (existing.get(key) ?? 0) + 1);
+        const existing = await readBaseline();
+        if (!existing) {
+          return failedTypeCheck(
+            "TypeScript could not check the target configuration.",
+            report.problems,
+          );
         }
         const introduced = report.problems.filter((problem) => {
-          const key = diagnosticKey(problem);
+          const key = diagnosticKey(problem, appPath);
           const remaining = existing.get(key) ?? 0;
           if (remaining === 0) return true;
           existing.set(key, remaining - 1);
@@ -204,41 +242,32 @@ async function runTypeCheck({
             summary: `No new TypeScript errors (${report.problems.length} already existed on the target branch).`,
           };
         }
-        return {
-          name: "type-check",
-          outcome: "failed",
-          summary: `${introduced.length} new TypeScript error${introduced.length === 1 ? "" : "s"}.`,
-          output: tail(
-            introduced
-              .slice(0, 30)
-              .map(
-                (problem) =>
-                  `${problem.file}:${problem.line}:${problem.column} TS${problem.code}: ${problem.message}`,
-              )
-              .join("\n"),
-          ),
-        };
+        return failedTypeCheck(
+          `${introduced.length} new TypeScript error${introduced.length === 1 ? "" : "s"}.`,
+          introduced,
+        );
       } catch (error) {
         logger.warn("Type-check baseline failed; reporting strictly", error);
+        // A target without TypeScript or a config has no comparable diagnostics.
+        // A failed checkout or dependency install can succeed on the next attempt.
+        if (!getTypeCheckPreconditionKind(error)) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          return transient(
+            failedTypeCheck(
+              `Could not compare TypeScript errors with the target branch. ${message}`,
+              report.problems,
+            ),
+          );
+        }
       }
     }
-    return {
-      name: "type-check",
-      outcome: "failed",
-      summary:
-        report.outcome === "incomplete"
-          ? "TypeScript could not check the project because of a configuration error."
-          : `${report.problems.length} TypeScript error${report.problems.length === 1 ? "" : "s"}.`,
-      output: tail(
-        report.problems
-          .slice(0, 30)
-          .map(
-            (problem) =>
-              `${problem.file}:${problem.line}:${problem.column} TS${problem.code}: ${problem.message}`,
-          )
-          .join("\n"),
-      ),
-    };
+    return failedTypeCheck(
+      report.outcome === "incomplete"
+        ? "TypeScript could not check the project because of a configuration error."
+        : `${report.problems.length} TypeScript error${report.problems.length === 1 ? "" : "s"}.`,
+      report.problems,
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     // The snapshot's install already succeeded, so a missing TypeScript
@@ -347,11 +376,26 @@ async function runScript(
  * against the combined workspace. Stops after a failed install because every
  * later check would fail for the same reason.
  */
-export async function validateWorkspace(
+export function validateWorkspace(
   input: ValidationRunInput,
 ): Promise<ValidationResult> {
+  const { baselineCommit } = input;
+  const readBaseline = baselineCommit
+    ? () => withValidationSnapshot(input, baselineCommit, checkBaseline)
+    : undefined;
+  return withValidationSnapshot(input, undefined, (snapshot, install) =>
+    runWorkspaceChecks(snapshot, install, readBaseline),
+  );
+}
+
+async function withValidationSnapshot<T>(
+  input: ValidationRunInput,
+  commit: string | undefined,
+  run: (snapshot: ValidationRunInput, install: SnapshotInstall) => Promise<T>,
+): Promise<T> {
   const snapshot = await createGitOverlayWorkspace({
     sourceTargetPath: input.appPath,
+    commit,
     scratchRoot: path.join(getUserDataPath(), BUILD_SNAPSHOT_ROOT_NAME),
     directoryPrefix: BUILD_SNAPSHOT_PREFIX,
     purpose: "build",
@@ -372,17 +416,18 @@ export async function validateWorkspace(
     // An app that is a member of an npm/pnpm workspace installs from the
     // workspace root (root dependencies, workspace links), as its own
     // installs do; scripts still run in the app's folder.
+    const repoPath = commit ? snapshot.worktreePath : snapshot.sourceRepoPath;
     const { packageManager, sourceInstallPath } = await resolvePackageManager(
-      snapshot.sourceTargetPath,
-      snapshot.sourceRepoPath,
+      commit ? snapshot.targetPath : snapshot.sourceTargetPath,
+      repoPath,
     );
-    return await runWorkspaceChecks(
+    return await run(
       { ...input, appPath: snapshot.targetPath },
       {
         packageManager,
         installPath: path.join(
           snapshot.worktreePath,
-          path.relative(snapshot.sourceRepoPath, sourceInstallPath),
+          path.relative(repoPath, sourceInstallPath),
         ),
       },
     );
@@ -397,6 +442,7 @@ export async function validateWorkspace(
 async function runWorkspaceChecks(
   input: ValidationRunInput,
   install: SnapshotInstall,
+  readBaseline?: () => ReturnType<typeof checkBaseline>,
 ): Promise<ValidationResult> {
   const checks: WorkspaceValidationCheck[] = [];
   const installCheck = await installSnapshotDependencies(input, install);
@@ -405,7 +451,7 @@ async function runWorkspaceChecks(
     return { checks, passed: false };
   }
   const scripts = await readPackageScripts(input.appPath);
-  checks.push(await runTypeCheck(input));
+  checks.push(await runTypeCheck(input, readBaseline));
   if (input.signal?.aborted) return { checks, passed: false };
   checks.push(await runScript("build", input, scripts, install));
   if (input.signal?.aborted) return { checks, passed: false };

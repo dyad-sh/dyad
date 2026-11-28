@@ -171,6 +171,8 @@ export interface GitOverlayWorkspaceMarker {
 
 export interface GitOverlayWorkspaceOptions {
   sourceTargetPath: string;
+  /** Check out this commit without copying local edits from the source. */
+  commit?: string;
   scratchRoot: string;
   directoryPrefix: string;
   purpose: GitOverlayWorkspacePurpose;
@@ -1196,6 +1198,7 @@ export async function collectPackageAnchoredExcludedPaths({
 async function materializeInitializedSubmodules({
   sourceRepoPath,
   workspaceRepoPath,
+  committedOnly,
   ownerWorktreePath,
   purpose,
   ownerSourceRepoPath,
@@ -1208,6 +1211,7 @@ async function materializeInitializedSubmodules({
 }: {
   sourceRepoPath: string;
   workspaceRepoPath: string;
+  committedOnly: boolean;
   ownerWorktreePath: string;
   purpose: GitOverlayWorkspacePurpose;
   ownerSourceRepoPath: string;
@@ -1218,7 +1222,10 @@ async function materializeInitializedSubmodules({
   diagnostics: GitOverlayWorkspaceDiagnostics;
   signal?: AbortSignal;
 }): Promise<void> {
-  const gitmodulesPath = path.join(sourceRepoPath, ".gitmodules");
+  const gitmodulesPath = path.join(
+    committedOnly ? workspaceRepoPath : sourceRepoPath,
+    ".gitmodules",
+  );
   const hasGitmodules = await fs
     .stat(gitmodulesPath)
     .then((stat) => stat.isFile())
@@ -1268,6 +1275,19 @@ async function materializeInitializedSubmodules({
       .then(() => true)
       .catch(() => false);
     if (!initialized) continue;
+    let revision = "HEAD";
+    if (committedOnly) {
+      // A submodule's current checkout can differ from the gitlink recorded
+      // in the parent commit. Only the latter belongs to the baseline.
+      const entry = await runWorkspaceGit(
+        workspaceRepoPath,
+        ["--literal-pathspecs", "ls-tree", "-z", "HEAD", "--", relativePath],
+        signal,
+      );
+      const gitlink = /^160000 commit ([0-9a-f]+)\t/.exec(entry.stdout);
+      if (!gitlink) continue;
+      revision = gitlink[1];
+    }
     const snapshotSubmodulePath = path.join(
       workspaceRepoPath,
       toNativePath(relativePath),
@@ -1297,7 +1317,7 @@ async function materializeInitializedSubmodules({
         "add",
         "--detach",
         snapshotSubmodulePath,
-        "HEAD",
+        revision,
       ],
       signal,
     );
@@ -1305,24 +1325,25 @@ async function materializeInitializedSubmodules({
     // the top-level sweep cannot see a `node_modules` or `.venv` committed
     // *inside* this submodule — and Node resolves up through it just the same.
     const submoduleTrackedPaths = await removeAlwaysExcludedRoots(
-      realSubmodulePath,
+      committedOnly ? snapshotSubmodulePath : realSubmodulePath,
       snapshotSubmodulePath,
       signal,
     );
-    await overlayWorkspaceState(
-      realSubmodulePath,
-      snapshotSubmodulePath,
-      childTargetRelativePath,
-      excludedTargetRootNames,
-      diagnostics,
-      signal,
-      // From the submodule's OWN index: its package roots are invisible to the
-      // parent, which records only a gitlink.
-      submoduleTrackedPaths,
-    );
+    if (!committedOnly) {
+      await overlayWorkspaceState(
+        realSubmodulePath,
+        snapshotSubmodulePath,
+        childTargetRelativePath,
+        excludedTargetRootNames,
+        diagnostics,
+        signal,
+        submoduleTrackedPaths,
+      );
+    }
     await materializeInitializedSubmodules({
       sourceRepoPath: realSubmodulePath,
       workspaceRepoPath: snapshotSubmodulePath,
+      committedOnly,
       ownerWorktreePath,
       purpose,
       ownerSourceRepoPath,
@@ -1338,6 +1359,7 @@ async function materializeInitializedSubmodules({
 
 export async function createGitOverlayWorkspace({
   sourceTargetPath,
+  commit,
   scratchRoot,
   directoryPrefix,
   purpose,
@@ -1395,7 +1417,7 @@ export async function createGitOverlayWorkspace({
         "add",
         "--detach",
         worktreePath,
-        "HEAD",
+        commit ?? "HEAD",
       ],
       signal,
     );
@@ -1405,35 +1427,41 @@ export async function createGitOverlayWorkspace({
     // excluding them there too would pin the sandbox to their `HEAD` contents
     // and silently drop every live edit beneath them.
     stage = "remove-excluded-target-roots";
-    const overlayExcludedRootNames = await removeExcludedTargetRoots(
-      sourceRepoPath,
-      targetPath,
-      targetRelativePosix,
-      excludedTargetRootNames,
-      signal,
-    );
+    // A committed checkout has only tracked build inputs and no live overlay.
+    const overlayExcludedRootNames = commit
+      ? NO_EXCLUDED_PACKAGE_PATHS
+      : await removeExcludedTargetRoots(
+          sourceRepoPath,
+          targetPath,
+          targetRelativePosix,
+          excludedTargetRootNames,
+          signal,
+        );
     stage = "remove-excluded-environments";
     const trackedPaths = await removeAlwaysExcludedRoots(
-      sourceRepoPath,
+      commit ? worktreePath : sourceRepoPath,
       worktreePath,
       signal,
     );
-    stage = "overlay-working-tree";
-    await overlayWorkspaceState(
-      sourceRepoPath,
-      worktreePath,
-      targetRelativePosix,
-      overlayExcludedRootNames,
-      diagnostics,
-      signal,
-      trackedPaths,
-      onPhase,
-    );
+    if (!commit) {
+      stage = "overlay-working-tree";
+      await overlayWorkspaceState(
+        sourceRepoPath,
+        worktreePath,
+        targetRelativePosix,
+        overlayExcludedRootNames,
+        diagnostics,
+        signal,
+        trackedPaths,
+        onPhase,
+      );
+    }
     stage = "materialize-submodules";
     onPhase?.("submodule materialization");
     await materializeInitializedSubmodules({
       sourceRepoPath,
       workspaceRepoPath: worktreePath,
+      committedOnly: !!commit,
       ownerWorktreePath: worktreePath,
       purpose,
       ownerSourceRepoPath: sourceRepoPath,

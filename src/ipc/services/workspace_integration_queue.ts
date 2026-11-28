@@ -434,12 +434,13 @@ export class WorkspaceIntegrationQueue {
   private readonly timers = new Map<number, ReturnType<typeof setTimeout>>();
   private readonly attemptControllers = new Map<number, AbortController>();
   /**
-   * The tree that last passed validation, per workspace. Checks depend only
-   * on the files, so an attempt that restarts after waiting (for the app's
-   * folder to be clean, another operation, a branch switch) does not install,
-   * build, and test the identical result again.
+   * Reuse a pass while both the combined files and the target against
+   * which their TypeScript errors were compared are unchanged.
    */
-  private readonly passedTrees = new Map<number, string>();
+  private readonly passedTrees = new Map<
+    number,
+    { tree: string; targetCommit: string }
+  >();
   /**
    * The squash made for an attempt, reused while the target and the files
    * stay the same, so a fast-forward that keeps waiting (a local change in
@@ -451,14 +452,14 @@ export class WorkspaceIntegrationQueue {
   >();
   /**
    * The tree that last failed type-check, build, or tests, per workspace.
-   * Those checks give the same answer for the same files, so later automatic
-   * requests (a text-only turn) do not rerun them; Retry clears it. Install
+   * Later automatic requests for the same files and target (a text-only
+   * turn) do not rerun them; Retry clears it. Install
    * failures (often the network) and checks that timed out or could not run
    * are never remembered.
    */
   private readonly failedTrees = new Map<
     number,
-    { tree: string; checks: WorkspaceValidationCheck[] }
+    { tree: string; targetCommit: string; checks: WorkspaceValidationCheck[] }
   >();
   private unsubscribeRegistry: (() => void) | null = null;
   // Startup recovery can discover missed commits. Leave them queued until
@@ -1084,35 +1085,19 @@ export class WorkspaceIntegrationQueue {
     signal: AbortSignal,
   ): Promise<StepResult> {
     const appPath = getWorkspaceAppPath(workspace);
-    const originalPath = await getOriginalAppPath(workspace.appId);
-    // Only compare type errors against the original directory when it holds
-    // exactly the captured target, so a dirty or moved checkout cannot hide
-    // or invent errors. Lockfiles its own preview's install rewrote do not
-    // change the source, and nothing commits them while chats use worktrees.
-    let baselineAppPath: string | undefined;
-    if (originalPath && workspace.integrationTargetCommit) {
-      try {
-        const health = await inspectRepositoryHealth({ path: originalPath });
-        if (
-          !health.operationInProgress &&
-          health.headOid === workspace.integrationTargetCommit &&
-          (health.isClean ||
-            (await listUncommittedPaths(originalPath)).every(
-              (file) => file.startsWith(".dyad/") || isInstallWrittenFile(file),
-            ))
-        ) {
-          baselineAppPath = originalPath;
-        }
-      } catch (error) {
-        logger.warn("Could not inspect the original directory", error);
-      }
+    const targetCommit = workspace.integrationTargetCommit;
+    if (!targetCommit) {
+      return {
+        event: { type: "FAILED", reason: "No target commit captured." },
+      };
     }
     const tree = await getCommitTree({ path: appPath, ref: "HEAD" });
-    if (this.passedTrees.get(workspace.id) === tree) {
+    const passed = this.passedTrees.get(workspace.id);
+    if (passed?.tree === tree && passed.targetCommit === targetCommit) {
       return { event: { type: "VALIDATION_PASSED" } };
     }
     const failed = this.failedTrees.get(workspace.id);
-    if (failed?.tree === tree) {
+    if (failed?.tree === tree && failed.targetCommit === targetCommit) {
       return {
         event: {
           type: "VALIDATION_FAILED",
@@ -1128,12 +1113,13 @@ export class WorkspaceIntegrationQueue {
         appResources: [readAppResource("app-path")],
         workspaceResources: [readAppResource("repository")],
       },
-      () => validateWorkspace({ appPath, baselineAppPath, signal }),
+      () =>
+        validateWorkspace({ appPath, baselineCommit: targetCommit, signal }),
     );
     updateWorkspace(workspace.id, { validationJson: result.checks });
     if (signal.aborted) return null;
     if (result.passed) {
-      this.passedTrees.set(workspace.id, tree);
+      this.passedTrees.set(workspace.id, { tree, targetCommit });
       this.failedTrees.delete(workspace.id);
     } else if (
       !result.transientFailure &&
@@ -1141,7 +1127,11 @@ export class WorkspaceIntegrationQueue {
         (check) => check.name === "install" && check.outcome !== "passed",
       )
     ) {
-      this.failedTrees.set(workspace.id, { tree, checks: result.checks });
+      this.failedTrees.set(workspace.id, {
+        tree,
+        targetCommit,
+        checks: result.checks,
+      });
     }
     return result.passed
       ? { event: { type: "VALIDATION_PASSED" } }
@@ -1278,7 +1268,8 @@ export class WorkspaceIntegrationQueue {
       path: originalPath,
       ref: workspaceHead,
     });
-    if (this.passedTrees.get(workspace.id) !== tree) {
+    const passed = this.passedTrees.get(workspace.id);
+    if (passed?.tree !== tree || passed.targetCommit !== targetCommit) {
       return { event: { type: "TARGET_ADVANCED", targetCommit } };
     }
     const previous = this.squashes.get(workspace.id);
